@@ -1,6 +1,6 @@
 FROM ubuntu:latest
 
-RUN apt-get update && apt-get install -y squid wget curl dnsutils net-tools && \
+RUN apt-get update && apt-get install -y squid wget curl dnsutils net-tools jq && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Create necessary directories
