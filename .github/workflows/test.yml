@@ -103,31 +103,30 @@ jobs:
       - name: Environment Variable Override Test
         run: |
             echo "testing environment variables"
-            if [[ $(docker exec squid-proxy  cat /etc/squid/squid.conf | grep "http_port 3129" | wc -l) == 1 ]]; then
+            if [[ $(docker exec squid-proxy  cat /etc/squid/squid.conf | grep "http_port 3129" | wc -l) -eq 1 ]]; then
                  echo "Ok: http_port set with environment variables"
               else
                   echo "Error: http_port is not set with environment variables. Verify your env vars settings"
                 exit 1
               fi
-              if [[ $(docker exec squid-proxy  cat /etc/squid/squid.conf | grep "cache_dir ufs /var/spool/squid 600" | wc -l) == 1 ]]; then
+              if [[ $(docker exec squid-proxy  cat /etc/squid/squid.conf | grep "cache_dir ufs /var/spool/squid 600" | wc -l) -eq 1 ]]; then
                 echo "Ok: cache_dir set with environment variables"
                else
                 echo "Error: cache_dir is not set with environment variables. Verify your env vars settings"
                    exit 1
                 fi
-                if [[ $(docker exec squid-proxy  cat /etc/squid/squid.conf | grep 'dns_nameservers' | grep "8.8.8.8 8.8.4.4" | wc -l) == 1 ]]; then
+                if [[ $(docker exec squid-proxy  cat /etc/squid/squid.conf | grep 'dns_nameservers' | grep "8.8.8.8 8.8.4.4" | wc -l) -eq 0 ]]; then
+                  echo "Ok: external dns set correctly with environment variables"
+               else
                   echo "Error: external dns is not set with environment variables. Verify your env vars settings"
                   exit 1
-               else
-                echo "Ok: external dns set correctly with environment variables"
                fi
-               if [[ $(docker exec squid-proxy  cat /etc/squid/squid.conf | grep "https_port 3130"  | wc -l) == 1 ]]; then
+               if [[ $(docker exec squid-proxy  cat /etc/squid/squid.conf | grep "https_port 3130"  | wc -l) -eq 1 ]]; then
                   echo "Ok: https_port set correctly with environment variables"
                 else
                   echo "Error: https_port is not set with environment variables. Verify your env vars settings"
                     exit 1
                 fi
-
       - name: Stop Docker container
         if: always()
         run: docker-compose down
