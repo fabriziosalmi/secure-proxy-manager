@@ -102,35 +102,36 @@ jobs:
              fi
       - name: Environment Variable Override Test
         run: |
-            echo "testing environment variables"
-            HTTP_PORT_CHECK=$(docker exec squid-proxy  cat /etc/squid/squid.conf | grep "http_port 3129" | wc -l)
-            if [[ "$HTTP_PORT_CHECK" -eq 1 ]]; then
-                 echo "Ok: http_port set with environment variables"
-              else
-                  echo "Error: http_port is not set with environment variables. Verify your env vars settings"
-                exit 1
-              fi
-            CACHE_DIR_CHECK=$(docker exec squid-proxy  cat /etc/squid/squid.conf | grep "cache_dir ufs /var/spool/squid 600" | wc -l)
-            if [[ "$CACHE_DIR_CHECK" -eq 1 ]]; then
-                echo "Ok: cache_dir set with environment variables"
-               else
-                echo "Error: cache_dir is not set with environment variables. Verify your env vars settings"
-                   exit 1
-                fi
-            DNS_NAMESERVERS_CHECK=$(docker exec squid-proxy  cat /etc/squid/squid.conf | grep 'dns_nameservers' | grep "8.8.8.8 8.8.4.4" | wc -l)
-             if [[ "$DNS_NAMESERVERS_CHECK" -eq 0 ]]; then
-                echo "Ok: external dns set correctly with environment variables"
-            else
-                  echo "Error: external dns is not set with environment variables. Verify your env vars settings"
-                  exit 1
-              fi
-            HTTPS_PORT_CHECK=$(docker exec squid-proxy  cat /etc/squid/squid.conf | grep "https_port 3130"  | wc -l)
-            if [[ "$HTTPS_PORT_CHECK" -eq 1 ]]; then
-                  echo "Ok: https_port set correctly with environment variables"
-                else
-                  echo "Error: https_port is not set with environment variables. Verify your env vars settings"
-                    exit 1
-                fi
+          echo "testing environment variables"
+          HTTP_PORT_CHECK=$(docker exec squid-proxy grep "http_port 3129" /etc/squid/squid.conf | wc -l)
+          if [ "$HTTP_PORT_CHECK" -ne "1" ]; then
+            echo "Error: http_port is not set with environment variables. Verify your env vars settings"
+            exit 1
+          else
+            echo "Ok: http_port set with environment variables"
+          fi
+
+          CACHE_DIR_CHECK=$(docker exec squid-proxy grep "cache_dir ufs /var/spool/squid 600" /etc/squid/squid.conf | wc -l)
+          if [ "$CACHE_DIR_CHECK" -ne "1" ]; then
+            echo "Error: cache_dir is not set with environment variables. Verify your env vars settings"
+             exit 1
+          else
+           echo "Ok: cache_dir set with environment variables"
+          fi
+          DNS_NAMESERVERS_CHECK=$(docker exec squid-proxy grep 'dns_nameservers' /etc/squid/squid.conf  | grep "8.8.8.8 8.8.4.4" | wc -l)
+          if [ "$DNS_NAMESERVERS_CHECK" -ne "0" ]; then
+             echo "Error: external dns is not set with environment variables. Verify your env vars settings"
+             exit 1
+           else
+            echo "Ok: external dns set correctly with environment variables"
+          fi
+          HTTPS_PORT_CHECK=$(docker exec squid-proxy grep "https_port 3130" /etc/squid/squid.conf | wc -l)
+          if [ "$HTTPS_PORT_CHECK" -ne "1" ]; then
+            echo "Error: https_port is not set with environment variables. Verify your env vars settings"
+              exit 1
+          else
+             echo "Ok: https_port set correctly with environment variables"
+          fi
       - name: Stop Docker container
         if: always()
         run: docker-compose down
