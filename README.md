@@ -1,6 +1,7 @@
+      
 # Dockerized Squid Proxy with Blocklists, Whitelisting, and More
 
-This project provides a Dockerized Squid proxy server with configurable blocklists (DNS and IP), whitelisting, external DNS, HTTPS support, and basic authentication, all managed via a `config.yaml` file.
+This project provides a Dockerized Squid proxy server with configurable blocklists (DNS and IP), whitelisting, external DNS, HTTPS support, and basic authentication, all managed via a `config.yaml` file. Environment variables can be used to override default configuration parameters.
 
 ## Features
 
@@ -20,34 +21,37 @@ This project provides a Dockerized Squid proxy server with configurable blocklis
     *   Option to disable direct connections by IP address, forcing clients to use DNS hostnames.
 *   **Dockerized:**
     *   Easy to deploy and manage using Docker and Docker Compose.
-*   **Configurable:**
-    *   All main configurations are in `config.yaml`.
+*  **Configurable via env vars:**
+    *   All main configurations are in `config.yaml`, can be overwritten by env vars
 
 ## Project Structure
 
-```
+    
+
+Use code with caution.Markdown
+
 my-squid-proxy/
 ├── Dockerfile
 ├── config.yaml
 ├── docker-compose.yaml
 ├── squid-config/
-│   ├── squid.conf.template
-│   └── generate_squid_conf.sh
+│ ├── squid.conf.template
+│ └── generate_squid_conf.sh
 ├── data/
-│   └── blocklists/
-│       ├── dns_blocklist.txt
-│       └── ip_blocklist.txt
-│   └── ssl/
-│       ├── squid.pem
-│       └── squid.key
+│ └── blocklists/
+│ ├── dns_blocklist.txt
+│ └── ip_blocklist.txt
+│ └── ssl/
+│ ├── squid.pem
+│ └── squid.key
 └── README.md
-```
 
+      
 *   **`Dockerfile`:** Defines the Docker image build process.
 *   **`config.yaml`:** Configuration file for Squid settings, blocklists, and more.
-*   **`docker-compose.yaml`:**  Defines how the container should run, mapping ports, and mounting volumes.
+*   **`docker-compose.yaml`:**  Defines how the container should run, mapping ports, mounting volumes, and defining env vars.
 *   **`squid-config/squid.conf.template`:** Template for generating the Squid configuration file (`squid.conf`).
-*   **`squid-config/generate_squid_conf.sh`:** Shell script that downloads blocklists, generates the `squid.conf`, and authentication file.
+*   **`squid-config/generate_squid_conf.sh`:** Shell script that downloads blocklists, generates the `squid.conf`, and authentication file, including env var support.
 *   **`data/blocklists/`:** Directory where blocklist files are saved.
 *   **`data/ssl/`:** Directory to store SSL key and certificate files.
 
@@ -81,7 +85,7 @@ my-squid-proxy/
         *   Whitelisted IPs and domains.
         *   Authentication settings.
         *   Allow or block direct IP connections
-    *   See the inline comments in `config.yaml` for details.
+    *  Alternatively, env vars can be set in docker run command or the `docker-compose.yaml`.
 4.  **Build and Run:**
     ```bash
     docker-compose build
@@ -92,48 +96,49 @@ my-squid-proxy/
 
 ## Configuration Options (`config.yaml`)
 
-The `config.yaml` file controls all the key aspects of the Squid proxy. Here's a breakdown of its sections:
+The `config.yaml` file controls all the key aspects of the Squid proxy.  Environment variables can be set to override these values. Here's a breakdown of its sections and corresponding env var names:
 
 *   **`squid`:**
-    *   `port`: HTTP port for the squid proxy (default: 3128).
-    *   `cache_size`: Cache size in MB.
-    *   `cache_dir`: Directory for cache files.
-    *   `external_dns.enabled`: Enable or disable external DNS
-    *   `external_dns.resolvers`: List of external DNS servers.
-     *   `https.enabled`: Enable or disable HTTPS.
-     *   `https.port`: HTTPS port for the squid proxy (default: 3129).
-     *   `https.ssl_cert`: HTTPS SSL Cert path
-     *   `https.ssl_key`: HTTPS SSL Key path
-
+    *   `port`: HTTP port for the squid proxy (default: 3128). Env var: `SQUID_PORT`
+    *   `cache_size`: Cache size in MB. Env var: `SQUID_CACHE_SIZE`
+    *   `cache_dir`: Directory for cache files. Env var (no var override)
+    *   `external_dns.enabled`: Enable or disable external DNS. Env var: `SQUID_EXTERNAL_DNS_ENABLED`
+    *   `external_dns.resolvers`: List of external DNS servers. Env var: `SQUID_EXTERNAL_DNS_RESOLVERS`
+    *   `https.enabled`: Enable or disable HTTPS. Env var: `SQUID_HTTPS_ENABLED`
+    *   `https.port`: HTTPS port for the squid proxy (default: 3129). Env var: `SQUID_HTTPS_PORT`
+    *   `https.ssl_cert`: HTTPS SSL Cert path. Env var: `SQUID_HTTPS_SSL_CERT`
+    *   `https.ssl_key`: HTTPS SSL Key path. Env var: `SQUID_HTTPS_SSL_KEY`
 *   **`blocklists`:**
-    *   `dns.enabled`: Enable or disable DNS blocklists.
+    *   `dns.enabled`: Enable or disable DNS blocklists. Env var: `BLOCKLISTS_DNS_ENABLED`
     *   `dns.sources`: List of DNS blocklist sources. Each entry should have the following:
         *   `name`: A descriptive name for the blocklist.
         *   `url`: The URL to download the blocklist from.
         *   `format`: `hosts`
-    *   `dns.local_file`: Local file path for the merged DNS blocklist.
-    *   `ip.enabled`: Enable or disable IP blocklists.
+        *   env vars: no vars for sources
+    *   `dns.local_file`: Local file path for the merged DNS blocklist. Env var (no var override)
+    *   `ip.enabled`: Enable or disable IP blocklists. Env var: `BLOCKLISTS_IP_ENABLED`
      *   `ip.sources`: List of IP blocklist sources. Each entry should have the following:
         *   `name`: A descriptive name for the blocklist.
         *   `url`: The URL to download the blocklist from.
         *    `format`: `netset`
-    *   `ip.local_file`: Local file path for the merged IP blocklist.
+          *   env vars: no vars for sources
+    *   `ip.local_file`: Local file path for the merged IP blocklist. Env var (no var override)
 *   **`whitelist`:**
-    *   `enabled`: Enable or disable whitelisting.
-    *   `ips`: List of whitelisted IPs and IP ranges.
-    *  `domain_allowlist`: List of whitelisted domains.
+    *   `enabled`: Enable or disable whitelisting. Env var: `WHITELIST_ENABLED`
+    *   `ips`: List of whitelisted IPs and IP ranges, comma separated. Env var: `WHITELIST_IPS`
+    *   `domain_allowlist`: List of whitelisted domains, comma separated. Env var: `WHITELIST_DOMAIN_ALLOWLIST`
 *    **`network`:**
-    *    `allow_direct`: `true` to allow direct IP connection, `false` to prevent.
+    *    `allow_direct`: `true` to allow direct IP connection, `false` to prevent. Env var: `NETWORK_ALLOW_DIRECT`
 *   **`authentication`:**
-    *    `enabled`: Enable or disable authentication.
+    *    `enabled`: Enable or disable authentication. Env var: `AUTHENTICATION_ENABLED`
     *    `users`: List of users. Each entry should have the following:
         *  `username`: User login
-        * `password`: User password
-    *   `method`: Authentication method (currently only "basic" is supported).
+        * `password`: User password, comma separated. Env var: `AUTHENTICATION_USERS`
+    *   `method`: Authentication method (currently only "basic" is supported).  Env var (no var override)
 
 ## Updating the Configuration
 
-1.  Edit the `config.yaml` file to make the changes you desire.
+1.  Modify the `config.yaml` file or use environment variables
 2.  Restart the container for changes to take effect:
     ```bash
     docker-compose restart
@@ -145,21 +150,4 @@ Feel free to contribute by submitting pull requests or reporting issues.
 
 ## License
 
-This project is licensed under the [Your License] - see the LICENSE.md file for details.
-```
-
-**Explanation:**
-
-*   **Overview:**  Provides a brief description of the project and its features.
-*   **Features:** Lists the key capabilities of the Squid proxy.
-*   **Project Structure:** Explains the purpose of each file and directory in the project.
-*   **Getting Started:** Provides step-by-step instructions for setting up and running the proxy.
-*   **Configuration Options:** Explains each configuration parameter of the `config.yaml` file.
-*   **Updating Configuration:** Describes the process of making changes and restarting the proxy.
-*   **Contributing:** Provides info for those who want to participate in this project.
-*   **License:** Indicates the license under which the project is distributed.
-
-**How to Use:**
-
-1.  Save the text above in a file named `README.md` at the root of your `my-squid-proxy` directory.
-2.  You can then view this file when navigating to your repository, or by using a markdown reader.
+This project is licensed under the [MIT license] - see the LICENSE.md file for details.
