@@ -1,0 +1,50 @@
+# Template - will be dynamically configured with generate_squid_conf.sh script
+http_port {{ .Squid.Port }}
+{{if .Squid.Https.Enabled}}
+https_port {{ .Squid.Https.Port }} cert={{ .Squid.Https.SslCert }} key={{ .Squid.Https.SslKey }}
+{{end}}
+cache_dir ufs {{ .Squid.CacheDir }} {{ .Squid.CacheSize }} 16 256
+cache_access_log /var/log/squid/access.log
+
+# External DNS Resolvers
+{{if .Squid.ExternalDns.Enabled}}
+dns_nameservers {{ range .Squid.ExternalDns.Resolvers}} {{.}} {{end}}
+{{end}}
+
+# Blocklists
+{{if .Blocklists.DNS.Enabled}}
+acl dns_blocklist dstdomain "/data/blocklists/dns_blocklist.txt"
+http_access deny dns_blocklist
+{{end}}
+{{if .Blocklists.IP.Enabled}}
+acl ip_blocklist dst "/data/blocklists/ip_blocklist.txt"
+http_access deny ip_blocklist
+{{end}}
+
+# Whitelist
+{{if .Whitelist.Enabled}}
+acl allowed_ips src {{range .Whitelist.Ips}} {{end}}
+{{ range .Whitelist.DomainAllowlist }}
+acl allowed_domains dstdomain .{{.}}
+{{end}}
+http_access allow allowed_ips
+http_access allow allowed_domains
+{{end}}
+
+# Deny all other requests by default
+{{if not .Network.AllowDirect}}
+acl direct_connection dst 10.0.0.0/8
+acl direct_connection dst 172.16.0.0/12
+acl direct_connection dst 192.168.0.0/16
+http_access deny direct_connection
+{{end}}
+
+# Authentication
+{{if .Authentication.Enabled}}
+auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/users
+auth_param basic realm Squid Proxy
+acl authenticated proxy_auth REQUIRED
+http_access allow authenticated
+{{end}}
+
+http_access deny all
