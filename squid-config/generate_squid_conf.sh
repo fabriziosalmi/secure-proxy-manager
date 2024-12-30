@@ -16,14 +16,15 @@ download_and_merge_blocklists() {
         echo "No sources found for ${blocklist_type} skipping download"
         return
     fi
-    
-    while IFS= read -r source; do
+
+    local IFS=$'\n'
+    for source in $(echo "$sources" | jq -c '.[]'); do
         local source_name=$(echo "$source" | jq -r '.name')
         local source_url=$(echo "$source" | jq -r '.url')
         local source_format=$(echo "$source" | jq -r '.format')
         local temp_file
         temp_file=$(mktemp)
-        
+    
        if [[ -z "$source_url" ]] ; then
             echo "Source URL is empty. Skipping download."
             rm "$temp_file"
@@ -48,7 +49,7 @@ download_and_merge_blocklists() {
         fi
 
         rm "$temp_file"
-    done < <(echo "$sources")
+    done
     echo "${blocklist_type} blocklist merging finished"
 }
 # Process config.yaml
