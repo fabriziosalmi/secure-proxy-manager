@@ -21,14 +21,14 @@ RUN chmod +x /squid-config/generate_squid_conf.sh
 # Run configuration generation
 RUN echo "DEBUG: config.yaml content:"
 RUN cat /config.yaml
-RUN sources_json_dns=$(jq -c ".blocklists.dns.sources" /config.yaml)
-RUN echo "DEBUG: sources_json for dns: $sources_json_dns"
-RUN local_file_dns=$(jq -r '.blocklists.dns.local_file' "$CONFIG_YAML")
-RUN echo "DEBUG: local_file_dns : $local_file_dns"
-RUN sources_json_ip=$(jq -c ".blocklists.ip.sources" /config.yaml)
-RUN echo "DEBUG: sources_json for ip: $sources_json_ip"
-RUN local_file_ip=$(jq -r '.blocklists.ip.local_file' "$CONFIG_YAML")
-RUN echo "DEBUG: local_file_ip : $local_file_ip"
+RUN echo "DEBUG: jq -c \".blocklists.dns.sources\" /config.yaml:"
+RUN jq -c ".blocklists.dns.sources" /config.yaml
+RUN echo "DEBUG: jq -r '.blocklists.dns.local_file' /config.yaml:"
+RUN jq -r '.blocklists.dns.local_file' /config.yaml
+RUN echo "DEBUG: jq -c \".blocklists.ip.sources\" /config.yaml:"
+RUN jq -c ".blocklists.ip.sources" /config.yaml
+RUN echo "DEBUG: jq -r '.blocklists.ip.local_file' /config.yaml:"
+RUN jq -r '.blocklists.ip.local_file' /config.yaml
 
 RUN /squid-config/generate_squid_conf.sh
 
