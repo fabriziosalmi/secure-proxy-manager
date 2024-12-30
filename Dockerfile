@@ -21,14 +21,9 @@ RUN chmod +x /squid-config/generate_squid_conf.sh
 # Run configuration generation
 RUN echo "DEBUG: config.yaml content:"
 RUN cat /config.yaml
-RUN echo "DEBUG: jq -c \".blocklists.dns.sources\" /config.yaml:"
-RUN jq -c ".blocklists.dns.sources" /config.yaml
-RUN echo "DEBUG: jq -r '.blocklists.dns.local_file' /config.yaml:"
-RUN jq -r '.blocklists.dns.local_file' /config.yaml
-RUN echo "DEBUG: jq -c \".blocklists.ip.sources\" /config.yaml:"
-RUN jq -c ".blocklists.ip.sources" /config.yaml
-RUN echo "DEBUG: jq -r '.blocklists.ip.local_file' /config.yaml:"
-RUN jq -r '.blocklists.ip.local_file' /config.yaml
+RUN echo "DEBUG: jq '.' /config.yaml:"
+RUN jq '.' /config.yaml
+
 
 RUN /squid-config/generate_squid_conf.sh
 
