@@ -1,0 +1,133 @@
+name: Test Squid Proxy
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+
+      - name: Build Docker image
+        run: docker-compose build
+
+      - name: Start Docker container
+        run: docker-compose up -d
+
+      - name: Wait for Squid to start
+        run: sleep 30
+
+      - name: Basic Setup Test
+        run: |
+            docker logs squid-proxy
+            curl -x http://localhost:3128 http://example.com || true
+            curl -x https://localhost:3129 https://example.com --insecure || true
+
+      - name: Blocklist Tests
+        run: |
+            echo "testing blocklist"
+            BLOCKLISTED_DOMAIN="doubleclick.net"
+            if curl -x http://localhost:3128 http://${BLOCKLISTED_DOMAIN} || true ; then
+               echo "Error: Blocklisted domain is reachable. Verify your blocklist settings."
+               exit 1
+            else
+               echo "Ok: Blocklisted domain is not reachable."
+            fi
+            BLOCKLISTED_IP="185.216.137.28"
+            if curl -x http://localhost:3128 http://${BLOCKLISTED_IP} || true ; then
+               echo "Error: Blocklisted ip is reachable. Verify your blocklist settings."
+               exit 1
+            else
+               echo "Ok: Blocklisted ip is not reachable."
+            fi
+
+      - name: Whitelist Tests
+        run: |
+          echo "testing whitelist"
+          WHITELISTED_DOMAIN="example.com"
+          if ! curl -x http://localhost:3128 http://${WHITELISTED_DOMAIN} || true ; then
+            echo "Error: Whitelisted domain is unreachable. Verify your whitelist settings."
+            exit 1
+          else
+            echo "Ok: Whitelisted domain is reachable."
+          fi
+          WHITELISTED_IP="192.168.1.1"
+          if ! curl -x http://localhost:3128 http://${WHITELISTED_IP} || true; then
+            echo "Error: Whitelisted IP is unreachable. Verify your whitelist settings."
+            exit 1
+          else
+            echo "Ok: Whitelisted IP is reachable."
+          fi
+
+      - name: Direct IP Connection Test
+        run: |
+            echo "testing direct connections"
+            DIRECT_IP="10.0.0.1"
+            if curl -x http://localhost:3128 http://${DIRECT_IP} --connect-timeout 10 || true ; then
+                echo "Error: Direct ip is reachable. Verify your network settings."
+              exit 1
+            else
+                echo "Ok: Direct ip is unreachable"
+             fi
+
+      - name: Authentication Test
+        run: |
+            echo "testing authentication"
+            AUTH_USER="testuser"
+            AUTH_PASS="testpassword"
+            if ! curl -x http://$AUTH_USER:$AUTH_PASS@localhost:3128 http://example.com --connect-timeout 10 || true ; then
+                echo "Error: Authentication failed. Verify your user settings."
+              exit 1
+            else
+                echo "Ok: Authentication successfull"
+             fi
+            AUTH_PASS="invalid"
+           if  curl -x http://$AUTH_USER:$AUTH_PASS@localhost:3128 http://example.com --connect-timeout 10 || true; then
+                echo "Error: Authentication should be failed with invalid password. Verify your user settings."
+              exit 1
+            else
+                echo "Ok: Authentication failed as expected"
+             fi
+      - name: Environment Variable Override Test
+        run: |
+            echo "testing environment variables"
+            if [[ $(docker exec squid-proxy  cat /etc/squid/squid.conf | grep "http_port 3129" | wc -l) == 1 ]]; then
+                 echo "Ok: http_port set with environment variables"
+              else
+                  echo "Error: http_port is not set with environment variables. Verify your env vars settings"
+                exit 1
+              fi
+              if [[ $(docker exec squid-proxy  cat /etc/squid/squid.conf | grep "cache_dir ufs /var/spool/squid 600" | wc -l) == 1 ]]; then
+                echo "Ok: cache_dir set with environment variables"
+               else
+                echo "Error: cache_dir is not set with environment variables. Verify your env vars settings"
+                   exit 1
+                fi
+                if [[ $(docker exec squid-proxy  cat /etc/squid/squid.conf | grep 'dns_nameservers' | grep "8.8.8.8 8.8.4.4" | wc -l) == 1 ]]; then
+                  echo "Error: external dns is not set with environment variables. Verify your env vars settings"
+                  exit 1
+               else
+                echo "Ok: external dns set correctly with environment variables"
+               fi
+               if [[ $(docker exec squid-proxy  cat /etc/squid/squid.conf | grep "https_port 3130"  | wc -l) == 1 ]]; then
+                  echo "Ok: https_port set correctly with environment variables"
+                else
+                  echo "Error: https_port is not set with environment variables. Verify your env vars settings"
+                    exit 1
+                fi
+
+      - name: Stop Docker container
+        if: always()
+        run: docker-compose down
