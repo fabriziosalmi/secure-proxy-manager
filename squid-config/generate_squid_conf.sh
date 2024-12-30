@@ -9,15 +9,15 @@ download_and_merge_blocklists() {
     echo "Merging ${blocklist_type} blocklists into $local_file"
 
     > "$local_file" # Clear the file
+    
+    local sources_list=$(jq -c ".blocklists.${blocklist_type}.sources" /config.yaml)
+    if [[ "$sources_list" == "null" ]] || [[ -z "$sources_list" ]] ; then
+       echo "No sources found for ${blocklist_type} skipping download"
+       return
+   fi
 
-    local sources_json=$(jq -c ".blocklists.${blocklist_type}.sources" /config.yaml)
-
-     if [[ "$sources_json" == "null" ]] || [[ -z "$sources_json" ]] ; then
-        echo "No sources found for ${blocklist_type} skipping download"
-        return
-    fi
     local IFS=$'\n'
-    for source in $(echo "$sources_json" | jq -c '.[]'); do
+    for source in $(echo "$sources_list" | jq -c '.[]'); do
         local source_name=$(echo "$source" | jq -r '.name')
         local source_url=$(echo "$source" | jq -r '.url')
         local source_format=$(echo "$source" | jq -r '.format')
