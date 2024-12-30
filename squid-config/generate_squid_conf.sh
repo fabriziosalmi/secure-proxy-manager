@@ -7,8 +7,15 @@ download_and_merge_blocklists() {
     local blocklist_type="$1"
     local local_file="$2"
     echo "Merging ${blocklist_type} blocklists into $local_file"
-    
+
     > "$local_file" # Clear the file
+
+    local sources=$(jq -c ".blocklists.${blocklist_type}.sources[]" /config.yaml)
+
+    if [[ -z "$sources" ]] ; then
+        echo "No sources found for ${blocklist_type} skipping download"
+        return
+    fi
     
     while IFS= read -r source; do
         local source_name=$(echo "$source" | jq -r '.name')
@@ -16,6 +23,13 @@ download_and_merge_blocklists() {
         local source_format=$(echo "$source" | jq -r '.format')
         local temp_file
         temp_file=$(mktemp)
+        
+       if [[ -z "$source_url" ]] ; then
+            echo "Source URL is empty. Skipping download."
+            rm "$temp_file"
+           continue
+      fi
+      
         echo "Downloading ${blocklist_type} blocklist '$source_name' from $source_url"
         
         curl -s "$source_url" -o "$temp_file"
@@ -34,7 +48,7 @@ download_and_merge_blocklists() {
         fi
 
         rm "$temp_file"
-    done < <(jq -c ".blocklists.${blocklist_type}.sources[]" /config.yaml)
+    done < <(echo "$sources")
     echo "${blocklist_type} blocklist merging finished"
 }
 # Process config.yaml
@@ -44,8 +58,7 @@ if [ ! -f "$CONFIG_YAML" ]; then
   exit 1
 fi
 #install yq
-apt install -y jq
-
+apk --no-cache add jq
 # Download and process blocklists from yaml config
 download_and_merge_blocklists "dns" "$(jq -r '.blocklists.dns.local_file' "$CONFIG_YAML")"
 download_and_merge_blocklists "ip" "$(jq -r '.blocklists.ip.local_file' "$CONFIG_YAML")"
