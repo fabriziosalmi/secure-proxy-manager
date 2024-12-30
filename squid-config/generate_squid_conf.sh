@@ -12,7 +12,7 @@ download_and_merge_blocklists() {
 
     local sources=$(jq -c ".blocklists.${blocklist_type}.sources[]" /config.yaml)
 
-    if [[ -z "$sources" ]] ; then
+    if [[ -z "$sources" ]] || [[ "$sources" == "null" ]] ; then
         echo "No sources found for ${blocklist_type} skipping download"
         return
     fi
