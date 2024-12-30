@@ -1,0 +1,55 @@
+squid:
+  port: 3128
+  cache_size: 500 # MB
+  cache_dir: /var/spool/squid
+  external_dns:
+    enabled: true
+    resolvers: ["8.8.8.8", "8.8.4.4"]
+  https:
+     enabled: true
+     port: 3129
+     ssl_cert: /data/ssl/squid.pem
+     ssl_key: /data/ssl/squid.key
+
+blocklists:
+  dns:
+    enabled: true
+    sources:
+      - name: "StevenBlack"
+        url: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+        format: "hosts"
+      - name: "AdAway"
+        url: "https://adaway.org/hosts.txt"
+        format: "hosts"
+    local_file: "/data/blocklists/dns_blocklist.txt"
+
+  ip:
+    enabled: true
+    sources:
+      - name: "Firehol Level 1"
+        url: "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset"
+        format: "netset"
+      - name: "AlienVault"
+        url: "https://osint.alienvault.com/feeds/current/blocklist.netset"
+        format: "netset"
+    local_file: "/data/blocklists/ip_blocklist.txt"
+
+whitelist:
+  enabled: true
+  ips:
+    - "192.168.1.0/24"
+    - "10.0.0.5"
+    - "172.17.0.1"
+  domain_allowlist:
+    - example.com
+    - example2.net
+
+network:
+  allow_direct: false
+
+authentication:
+  enabled: true
+  users:
+    - username: "testuser"
+      password: "testpassword"
+  method: "basic"
