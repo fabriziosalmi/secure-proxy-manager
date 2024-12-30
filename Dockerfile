@@ -1,35 +1,22 @@
-FROM ubuntu:latest
+FROM ubuntu:22.04
 
-RUN apt-get update && apt-get install -y squid wget curl dnsutils net-tools jq && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    squid \
+    python3 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create necessary directories
-RUN mkdir -p /squid-config /data/blocklists /data/ssl
-WORKDIR /
+# Install Python library for requests
+RUN pip3 install requests
 
-# Copy configuration files and scripts
-COPY squid-config/ /squid-config/
-COPY config.yaml /config.yaml
-COPY data/ssl/ /data/ssl/
+RUN mkdir /app
 
-# Copy scripts
-COPY  squid-config/generate_squid_conf.sh  /squid-config/
+COPY config.yaml /app/
+COPY parse_config.py /app/
+COPY squid.conf.template /app/
+COPY entrypoint.sh /app/
+RUN chmod +x /app/entrypoint.sh
+RUN mkdir -p /etc/squid
 
-# Set script executable permissions
-RUN chmod +x /squid-config/generate_squid_conf.sh
-
-# Run configuration generation
-RUN echo "DEBUG: config.yaml content:"
-RUN cat /config.yaml
-RUN echo "DEBUG: jq '.' /config.yaml:"
-RUN jq '.' /config.yaml
-
-
-RUN /squid-config/generate_squid_conf.sh
-
-# Expose Squid ports
-EXPOSE 3128
-EXPOSE 3129
-
-# Start Squid
-CMD ["squid", "-N", "-d1"]
+WORKDIR /app
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -1,37 +1,30 @@
-squid:
-  port: 3128
-  cache_size: 500 # MB
-  cache_dir: /var/spool/squid
-  external_dns:
-    enabled: true
-    resolvers: ["8.8.8.8", "8.8.4.4"]
-  https:
-     enabled: true
-     port: 3129
-     ssl_cert: /data/ssl/squid.pem
-     ssl_key: /data/ssl/squid.key
-blocklists:
-  dns:
-    enabled: false
-    sources: []
-    local_file: "/data/blocklists/dns_blocklist.txt"
+whitelist_ips:
+  - 192.168.1.10
 
-  ip:
-    enabled: false
-    sources: []
-    local_file: "/data/blocklists/ip_blocklist.txt"
+whitelist_domains:
+  - allowed.internal
 
-whitelist:
-  enabled: false
-  ips: []
-  domain_allowlist: []
+blocked_ips:
+  - 10.0.0.5
 
-network:
-  allow_direct: false
+blocked_domains:
+  - internalmalware.site
 
-authentication:
-  enabled: true
-  users:
-    - username: "testuser"
-      password: "testpassword"
-  method: "basic"
+external_blocklists:
+  - type: ip
+    url: https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset
+  - type: ip
+    url: https://blocklist.greensnow.co/greensnow.txt
+  - type: domain
+    url: https://phishing.army/download/phishing_army_blocklist.txt
+  - type: domain
+    url: https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+
+external_allowlists:
+  - type: ip
+    url: https://example.com/allowed_ips.txt
+  - type: domain
+    url: https://example.com/allowed_domains.txt
+
+features:
+  owasp_protection: true
