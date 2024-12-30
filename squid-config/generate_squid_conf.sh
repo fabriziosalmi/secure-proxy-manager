@@ -44,7 +44,7 @@ if [ ! -f "$CONFIG_YAML" ]; then
   exit 1
 fi
 #install yq
-apk --no-cache add jq
+apt install -y jq
 
 # Download and process blocklists from yaml config
 download_and_merge_blocklists "dns" "$(jq -r '.blocklists.dns.local_file' "$CONFIG_YAML")"
