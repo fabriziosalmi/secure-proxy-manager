@@ -10,6 +10,8 @@ download_and_merge_blocklists() {
 
     > "$local_file" # Clear the file
 
+    echo "DEBUG: config.yaml content:"
+    cat /config.yaml
     local sources_json=$(jq -c ".blocklists.${blocklist_type}.sources" /config.yaml)
 
     echo "DEBUG: sources_json for ${blocklist_type}: $sources_json"
