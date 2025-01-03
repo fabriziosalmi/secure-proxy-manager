@@ -183,4 +183,18 @@ cache_log {logging_config.get("cache_log", "/var/log/squid/cache.log")}
 
 # Authentication
 {"auth_param basic program /usr/lib/squid/basic_ncsa_auth " + auth_config.get("auth_file", "/etc/squid/passwords") if auth_config.get("enabled", False) else ""}
-{"acl authenticated_users proxy_auth " + " ".join(auth_config.get("auth_users", []))
+{"acl authenticated_users proxy_auth " + " ".join(auth_config.get("auth_users", [])) if auth_config.get("enabled", False) else ""}
+{"http_access allow authenticated_users" if auth_config.get("enabled", False) else ""}
+
+# Time-based restrictions
+{"".join([f"acl {restriction['name']} time {restriction['days']} {restriction['time']}\nhttp_access {restriction['action']} {restriction['name']}\n" for restriction in time_restrictions])}
+
+# Custom ACLs
+{"".join([f"acl {acl['name']} {acl['type']} {', '.join(acl['values'])}\nhttp_access {acl['action']} {acl['name']}\n" for acl in custom_acls])}
+"""
+
+# Write Squid configuration to file
+with open("squid.conf", "w") as file:
+    file.write(squid_conf)
+
+print("squid.conf generated successfully!")
