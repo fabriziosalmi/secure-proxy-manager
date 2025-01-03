@@ -17,7 +17,7 @@ squid:
   # DNS blacklist sources (using real sources and a local file)
   dns_blacklist_sources:
     - dns_blacklist1.txt  # Local file in root
-    - https://v.firebog.net/hosts/lists.firebog.net.txt  # Real DNS blacklist source
+    - https://v.firebog.net/hosts/Prigent-Ads.txt  # Real DNS blacklist source
 
   # OWASP protection
   owasp_protection: true
@@ -39,7 +39,7 @@ squid:
   aws_ip_sources:
     - https://ip-ranges.amazonaws.com/ip-ranges.json
   microsoft_ip_sources:
-    - https://download.microsoft.com/download/f/9/9/f99f56c3-1272-498c-9e71-684562411042/ServiceTags_Public_20240415.json
+    - https://download.microsoft.com/download/f/9/9/f99f56c3-1272-498c-9e71-684562411042/ServiceTags_Public_20240424.json
   google_ip_sources:
     - https://www.gstatic.com/ipranges/goog.json
 
