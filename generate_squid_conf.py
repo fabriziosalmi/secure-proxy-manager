@@ -141,7 +141,7 @@ http_access deny all
 {"".join([f"http_access deny blacklisted_domains_{i}\n" for i in range(len(local_dns_blacklists))])}
 
 # OWASP Protection
-{"acl owasp url_regex -i \"" + owasp_rules_file + "\"" if owasp_protection else ""}
+{"acl owasp url_regex -i \"" + owasp_rules_file.replace("\\", "\\\\") + "\"" if owasp_protection else ""}
 {"http_access deny owasp" if owasp_protection else ""}
 
 # Block VPN IPs
@@ -169,8 +169,8 @@ http_access deny all
 {"".join([f"http_access deny google_ips_{i}\n" for i in range(len(local_google_ips))])}
 
 # User-Agent rewriting
-{"".join([f"acl rewrite_ua_{i} browser \"{rule['user_agent']}\"\n" for i, rule in enumerate(user_agent_rewrite.get("rules", []))])}
-{"".join([f"request_header_replace User-Agent \"{rule['rewrite_to']}\" rewrite_ua_{i}\n" for i, rule in enumerate(user_agent_rewrite.get("rules", [])) if not rule.get("block", False)])}
+{"".join([f"acl rewrite_ua_{i} browser \"{rule['user_agent'].replace('\\', '\\\\')}\"\n" for i, rule in enumerate(user_agent_rewrite.get("rules", []))])}
+{"".join([f"request_header_replace User-Agent \"{rule['rewrite_to'].replace('\\', '\\\\')}\" rewrite_ua_{i}\n" for i, rule in enumerate(user_agent_rewrite.get("rules", [])) if not rule.get("block", False)])}
 {"".join([f"http_access deny rewrite_ua_{i}\n" for i, rule in enumerate(user_agent_rewrite.get("rules", [])) if rule.get("block", False)])}
 
 # Logging
