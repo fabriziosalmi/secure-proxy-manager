@@ -187,7 +187,7 @@ def prepare_blacklist_files(config, temp_dir):
                 raise Exception(f"Local ip blacklist file not found: {source}")
             logging.info(f"Using local ip blacklist file: {source}")
             local_path = source
-         local_ip_blacklists.append(local_path)
+         local_ip_blacklists.append((i, local_path))
 
     for i, source in enumerate(config.get("dns_blacklist_sources", [])):
         local_path = os.path.join(temp_dir, f"dns_blacklist_{i + 1}.txt")
@@ -203,7 +203,7 @@ def prepare_blacklist_files(config, temp_dir):
                 raise Exception(f"Local dns blacklist file not found: {source}")
             logging.info(f"Using local dns blacklist file: {source}")
             local_path = source
-        local_dns_blacklists.append(local_path)
+        local_dns_blacklists.append((i,local_path))
 
     if config.get("block_vpn", False):
         for i, source in enumerate(config.get("vpn_ip_sources", [])):
@@ -213,7 +213,7 @@ def prepare_blacklist_files(config, temp_dir):
              except Exception as e:
                  logging.error(f"Failed to download remote vpn ip file: {source}")
                  continue
-             local_vpn_ips.append(local_path)
+             local_vpn_ips.append((i,local_path))
 
     if config.get("block_tor", False):
         for i, source in enumerate(config.get("tor_ip_sources", [])):
@@ -223,7 +223,7 @@ def prepare_blacklist_files(config, temp_dir):
              except Exception as e:
                  logging.error(f"Failed to download remote tor ip file: {source}")
                  continue
-             local_tor_ips.append(local_path)
+             local_tor_ips.append((i,local_path))
 
     if config.get("block_cloudflare", False):
         for i, source in enumerate(config.get("cloudflare_ip_sources", [])):
@@ -233,7 +233,7 @@ def prepare_blacklist_files(config, temp_dir):
              except Exception as e:
                   logging.error(f"Failed to download remote cloudflare ip file: {source}")
                   continue
-             local_cloudflare_ips.append(local_path)
+             local_cloudflare_ips.append((i,local_path))
 
     if config.get("block_aws", False):
          for i, source in enumerate(config.get("aws_ip_sources", [])):
@@ -247,7 +247,7 @@ def prepare_blacklist_files(config, temp_dir):
              except Exception as e:
                 logging.error(f"Failed to download remote aws ip file: {source}")
                 continue
-             local_aws_ips.append(local_path)
+             local_aws_ips.append((i,local_path))
 
     if config.get("block_microsoft", False):
          for i, source in enumerate(config.get("microsoft_ip_sources", [])):
@@ -257,7 +257,7 @@ def prepare_blacklist_files(config, temp_dir):
              except Exception as e:
                   logging.error(f"Failed to download remote microsoft ip file: {source}")
                   continue
-             local_microsoft_ips.append(local_path)
+             local_microsoft_ips.append((i,local_path))
 
     if config.get("block_google", False):
         for i, source in enumerate(config.get("google_ip_sources", [])):
@@ -271,7 +271,7 @@ def prepare_blacklist_files(config, temp_dir):
              except Exception as e:
                   logging.error(f"Failed to download remote google ip file: {source}")
                   continue
-             local_google_ips.append(local_path)
+             local_google_ips.append((i,local_path))
     
     if config.get("owasp_protection", False):
         owasp_rules_file = config.get("owasp_rules_file", "https://raw.githubusercontent.com/SpiderLabs/owasp-modsecurity-crs/v3.3/dev/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf")
@@ -305,21 +305,21 @@ def prepare_template_data(config, blacklist_files, temp_dir):
             "ssl_port": squid_config.get("ssl_port"),
             "ssl_intercept": squid_config.get("ssl_intercept", False),
             "allowed_ips": squid_config["allowed_ips"],
-            "ip_blacklists": [f"/etc/squid/{path}" for path in blacklist_files["ip_blacklists"]],
-            "dns_blacklists": [f"/etc/squid/{path}" for path in blacklist_files["dns_blacklists"]],
+            "ip_blacklists": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["ip_blacklists"]],
+            "dns_blacklists": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["dns_blacklists"]],
             "owasp_rules_file": f"/etc/squid/{blacklist_files['owasp_rules_file']}" if blacklist_files["owasp_rules_file"] else None,
             "block_vpn": squid_config.get("block_vpn", False),
-            "vpn_ips": [f"/etc/squid/{path}" for path in blacklist_files["vpn_ips"]],
+            "vpn_ips": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["vpn_ips"]],
             "block_tor": squid_config.get("block_tor", False),
-            "tor_ips": [f"/etc/squid/{path}" for path in blacklist_files["tor_ips"]],
+            "tor_ips": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["tor_ips"]],
             "block_cloudflare": squid_config.get("block_cloudflare", False),
-            "cloudflare_ips": [f"/etc/squid/{path}" for path in blacklist_files["cloudflare_ips"]],
+            "cloudflare_ips": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["cloudflare_ips"]],
             "block_aws": squid_config.get("block_aws", False),
-            "aws_ips": [f"/etc/squid/{path}" for path in blacklist_files["aws_ips"]],
+            "aws_ips": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["aws_ips"]],
             "block_microsoft": squid_config.get("block_microsoft", False),
-             "microsoft_ips": [f"/etc/squid/{path}" for path in blacklist_files["microsoft_ips"]],
+             "microsoft_ips": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["microsoft_ips"]],
             "block_google": squid_config.get("block_google", False),
-            "google_ips": [f"/etc/squid/{path}" for path in blacklist_files["google_ips"]],
+            "google_ips": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["google_ips"]],
              "user_agent_rewrite": squid_config.get("user_agent_rewrite", {}),
             "logging": squid_config.get("logging", {}),
             "cache": squid_config.get("cache", {}),
