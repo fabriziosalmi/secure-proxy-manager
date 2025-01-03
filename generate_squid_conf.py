@@ -53,38 +53,6 @@ CONFIG_SCHEMA = {
                         "cache_size": {"type": "integer"},
                         "max_object_size": {"type": "string"}
                     }
-                },
-                "authentication": {
-                    "type": "object",
-                    "properties": {
-                        "enabled": {"type": "boolean"},
-                        "auth_file": {"type": "string"},
-                        "auth_users": {"type": "array", "items": {"type": "string"}}
-                    }
-                },
-                "time_restrictions": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "days": {"type": "string"},
-                            "time": {"type": "string"},
-                            "action": {"type": "string"}
-                        }
-                    }
-                },
-                "custom_acls": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "type": {"type": "string"},
-                            "values": {"type": "array", "items": {"type": "string"}},
-                            "action": {"type": "string"}
-                        }
-                    }
                 }
             }
         }
@@ -315,13 +283,6 @@ def prepare_template_data(config, blacklist_files, temp_dir):
         "google_ips_length": len(blacklist_files["google_ips"]),
         "logging": squid_config.get("logging", {}),
         "cache": squid_config.get("cache", {}),
-        "authentication": {
-            "enabled": squid_config.get("authentication", {}).get("enabled", False),
-            "auth_file": squid_config.get("authentication", {}).get("auth_file", "/etc/squid/passwords"),
-            "auth_users": squid_config.get("authentication", {}).get("auth_users", [])
-        },
-        "time_restrictions": squid_config.get("time_restrictions", []),
-        "custom_acls": squid_config.get("custom_acls", []),
     }
     logging.info(f"Template data: {template_data}")
     return template_data
