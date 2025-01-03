@@ -108,8 +108,10 @@ if block_aws:
         local_path = os.path.join(temp_dir, f"aws_ips_{len(local_aws_ips) + 1}.txt")
         json_data = download_json(source)
         ip_ranges = extract_ips_from_json(json_data, "prefixes")
+        # Extract "ip_prefix" from each dictionary in the list
+        ip_prefixes = [item["ip_prefix"] for item in ip_ranges]
         with open(local_path, "w") as file:
-            file.write("\n".join(ip_ranges))
+            file.write("\n".join(ip_prefixes))
         local_aws_ips.append(local_path)
 
 if block_microsoft:
@@ -123,8 +125,10 @@ if block_google:
         local_path = os.path.join(temp_dir, f"google_ips_{len(local_google_ips) + 1}.txt")
         json_data = download_json(source)
         ip_ranges = extract_ips_from_json(json_data, "prefixes")
+        # Extract "ipv4Prefix" or "ipv6Prefix" from each dictionary in the list
+        ip_prefixes = [item.get("ipv4Prefix") or item.get("ipv6Prefix") for item in ip_ranges]
         with open(local_path, "w") as file:
-            file.write("\n".join(ip_ranges))
+            file.write("\n".join(ip_prefixes))
         local_google_ips.append(local_path)
 
 # Generate Squid configuration
