@@ -9,16 +9,14 @@ on:
       - main
 
 env:
-  PYTHON_VERSIONS: "3.8, 3.9, 3.10"  # Test multiple Python versions
   SQUID_IMAGE: "sameersbn/squid:latest"  # Official Squid image
-  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}  # Add your Slack webhook URL in GitHub Secrets
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ${{ fromJson(format('[{0}]', env.PYTHON_VERSIONS)) }}
+        python-version: ["3.8", "3.9", "3.10"]  # Define Python versions directly
 
     steps:
       - name: Checkout repository
@@ -69,35 +67,3 @@ jobs:
         with:
           name: squid.conf
           path: squid.conf
-
-      - name: Notify Slack on failure
-        if: failure()
-        uses: slackapi/slack-github-action@v1.23.0
-        with:
-          payload: |
-            {
-              "text": "❌ Workflow failed: ${{ github.workflow }} (${{ github.event_name }} on ${{ github.ref }})",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "❌ Workflow failed: *${{ github.workflow }}* (${{ github.event_name }} on ${{ github.ref }})"
-                  }
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "Repository: <https://github.com/${{ github.repository }}|${{ github.repository }}>"
-                  }
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "Run details: <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
-                  }
-                }
-              ]
-            }
