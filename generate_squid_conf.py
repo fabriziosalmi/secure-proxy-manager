@@ -136,6 +136,17 @@ if owasp_protection:
     local_path = os.path.join(temp_dir, "owasp.rules")
     download_file(owasp_rules_file, local_path)
     owasp_rules_file = local_path
+    
+# Prefix all file paths within the docker container with "/etc/squid/"
+local_ip_blacklists = [f"/etc/squid/{path}" for path in local_ip_blacklists]
+local_dns_blacklists = [f"/etc/squid/{path}" for path in local_dns_blacklists]
+local_vpn_ips = [f"/etc/squid/{path}" for path in local_vpn_ips]
+local_tor_ips = [f"/etc/squid/{path}" for path in local_tor_ips]
+local_cloudflare_ips = [f"/etc/squid/{path}" for path in local_cloudflare_ips]
+local_aws_ips = [f"/etc/squid/{path}" for path in local_aws_ips]
+local_microsoft_ips = [f"/etc/squid/{path}" for path in local_microsoft_ips]
+local_google_ips = [f"/etc/squid/{path}" for path in local_google_ips]
+owasp_rules_file = f"/etc/squid/{owasp_rules_file}"
 
 
 # Generate Squid configuration
@@ -210,7 +221,7 @@ for i in range(len(local_google_ips)):
 # User-Agent rewriting
 for i, rule in enumerate(user_agent_rewrite.get("rules", [])):
     user_agent = rule['user_agent'].replace('\\', '/')
-    squid_conf_parts.append(f'acl rewrite_ua_{i} browser "{user_agent}"')
+    squid_conf_parts.append(f'acl rewrite_ua_{i} browser {user_agent}')
     if not rule.get("block", False):
         rewrite_to = rule['rewrite_to'].replace('\\', '/')
         squid_conf_parts.append(f'request_header_replace User-Agent "{rewrite_to}" rewrite_ua_{i}')
@@ -224,7 +235,7 @@ squid_conf_parts.append(f'cache_log {logging_config.get("cache_log", "/var/log/s
 
 # Cache settings
 if cache_config.get("enabled", True):
-    cache_dir = cache_config.get("cache_dir", "/var/spool/squid")
+    cache_dir = cache_config.get("cache_dir", "aufs") # Use a working cache directory
     cache_size = cache_config.get("cache_size", 10000)
     squid_conf_parts.append(f'cache_dir {cache_dir} {cache_size} 16 256')
     squid_conf_parts.append(f'maximum_object_size {cache_config.get("max_object_size", "512 MB")}')
