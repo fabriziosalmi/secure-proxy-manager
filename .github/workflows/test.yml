@@ -30,7 +30,7 @@ jobs:
         run: |
           python generate_squid_conf.py
           cat squid.conf
-
+      
       - name: Build Docker image
         run: |
           docker build -t squid-test .
