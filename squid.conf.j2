@@ -115,4 +115,7 @@ acl {{ restriction.name }} time {{ restriction.days }} {{ restriction.time }}
 http_access {{ restriction.action }} {{ restriction.name }}
 {% endfor %}
 
-{% for acl in data.
+{% for acl in data.custom_acls %}
+acl {{ acl.name }} {{ acl.type }} {{ acl.values | join(', ') }}
+http_access {{ acl.action }} {{ acl.name }}
+{% endfor %}
