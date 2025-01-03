@@ -15,11 +15,19 @@ COPY temp_squid_files/aws_ips*.txt /etc/squid/
 COPY temp_squid_files/microsoft_ips*.txt /etc/squid/
 COPY temp_squid_files/google_ips*.txt /etc/squid/
 
-# Install python and dependencies for download
-RUN apt-get update && apt-get install -y python3 python3-pip
-COPY requirements.txt /
-RUN pip3 install -r /requirements.txt
+# Install Python and dependencies for download
+RUN apt-get update && apt-get install -y python3 python3-venv python3-pip
 
+# Create a virtual environment
+RUN python3 -m venv /opt/venv
+
+# Install Python packages in the virtual environment
+COPY requirements.txt /
+RUN /opt/venv/bin/pip install --upgrade pip && \
+    /opt/venv/bin/pip install -r /requirements.txt
+
+# Set the virtual environment as the default Python interpreter
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Expose Squid ports
 EXPOSE 3128
