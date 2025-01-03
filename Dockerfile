@@ -15,6 +15,11 @@ COPY temp_squid_files/aws_ips*.txt /etc/squid/
 COPY temp_squid_files/microsoft_ips*.txt /etc/squid/
 COPY temp_squid_files/google_ips*.txt /etc/squid/
 
+# Install python and dependencies for download
+RUN apt-get update && apt-get install -y python3 python3-pip
+COPY requirements.txt /
+RUN pip3 install -r /requirements.txt
+
 
 # Expose Squid ports
 EXPOSE 3128
