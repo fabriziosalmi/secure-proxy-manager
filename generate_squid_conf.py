@@ -126,6 +126,7 @@ def prepare_blacklist_files(config, temp_dir):
     local_microsoft_ips = []
     local_google_ips = []
 
+    # Process IP blacklists
     for i, source in enumerate(config.get("ip_blacklist_sources", [])):
         local_path = os.path.join(temp_dir, f"ip_blacklist_{i + 1}.txt")
         if source.startswith("http"):
@@ -142,6 +143,7 @@ def prepare_blacklist_files(config, temp_dir):
             local_path = source
         local_ip_blacklists.append((i, local_path))
 
+    # Process DNS blacklists
     for i, source in enumerate(config.get("dns_blacklist_sources", [])):
         local_path = os.path.join(temp_dir, f"dns_blacklist_{i + 1}.txt")
         if source.startswith("http"):
@@ -158,6 +160,7 @@ def prepare_blacklist_files(config, temp_dir):
             local_path = source
         local_dns_blacklists.append((i, local_path))
 
+    # Process VPN IPs
     if config.get("block_vpn", False):
         for i, source in enumerate(config.get("vpn_ip_sources", [])):
             local_path = os.path.join(temp_dir, f"vpn_ips_{i + 1}.txt")
@@ -168,6 +171,7 @@ def prepare_blacklist_files(config, temp_dir):
                 continue
             local_vpn_ips.append((i, local_path))
 
+    # Process Tor IPs
     if config.get("block_tor", False):
         for i, source in enumerate(config.get("tor_ip_sources", [])):
             local_path = os.path.join(temp_dir, f"tor_ips_{i + 1}.txt")
@@ -178,16 +182,25 @@ def prepare_blacklist_files(config, temp_dir):
                 continue
             local_tor_ips.append((i, local_path))
 
+    # Process Cloudflare IPs
     if config.get("block_cloudflare", False):
         for i, source in enumerate(config.get("cloudflare_ip_sources", [])):
             local_path = os.path.join(temp_dir, f"cloudflare_ips_{i + 1}.txt")
             try:
-                download_file(source, local_path)
+                if source.endswith(".json"):
+                    json_data = download_json(source)
+                    ip_ranges = extract_ips_from_json(json_data, "prefixes")
+                    ip_prefixes = [item["ip_prefix"] for item in ip_ranges]
+                    with open(local_path, "w") as file:
+                        file.write("\n".join(ip_prefixes))
+                else:
+                    download_file(source, local_path)
             except Exception as e:
                 logging.error(f"Failed to download remote cloudflare ip file: {source}")
                 continue
             local_cloudflare_ips.append((i, local_path))
 
+    # Process AWS IPs
     if config.get("block_aws", False):
         for i, source in enumerate(config.get("aws_ip_sources", [])):
             local_path = os.path.join(temp_dir, f"aws_ips_{i + 1}.txt")
@@ -202,16 +215,25 @@ def prepare_blacklist_files(config, temp_dir):
                 continue
             local_aws_ips.append((i, local_path))
 
+    # Process Microsoft IPs
     if config.get("block_microsoft", False):
         for i, source in enumerate(config.get("microsoft_ip_sources", [])):
             local_path = os.path.join(temp_dir, f"microsoft_ips_{i + 1}.txt")
             try:
-                download_file(source, local_path)
+                if source.endswith(".json"):
+                    json_data = download_json(source)
+                    ip_ranges = extract_ips_from_json(json_data, "prefixes")
+                    ip_prefixes = [item["ip_prefix"] for item in ip_ranges]
+                    with open(local_path, "w") as file:
+                        file.write("\n".join(ip_prefixes))
+                else:
+                    download_file(source, local_path)
             except Exception as e:
                 logging.error(f"Failed to download remote microsoft ip file: {source}")
                 continue
             local_microsoft_ips.append((i, local_path))
 
+    # Process Google IPs
     if config.get("block_google", False):
         for i, source in enumerate(config.get("google_ip_sources", [])):
             local_path = os.path.join(temp_dir, f"google_ips_{i + 1}.txt")
@@ -226,6 +248,7 @@ def prepare_blacklist_files(config, temp_dir):
                 continue
             local_google_ips.append((i, local_path))
 
+    # Process OWASP rules
     if config.get("owasp_protection", False):
         owasp_rules_file = config.get("owasp_rules_file", "https://raw.githubusercontent.com/SpiderLabs/owasp-modsecurity-crs/v3.3/dev/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf")
         local_path = os.path.join(temp_dir, "owasp.rules")
