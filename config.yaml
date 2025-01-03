@@ -20,9 +20,7 @@ squid:
     log_format: combined
   cache:
     enabled: true
+    cache_type: ufs  # Explicitly set the cache type
     cache_dir: /var/spool/squid
     cache_size: 10000
     max_object_size: 512 MB
-  authentication:
-    enabled: false
-
