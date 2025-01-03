@@ -1,6 +1,6 @@
 FROM ubuntu:latest
 
-# Install Squid
+# Install Squid and create the squid user/group
 RUN apt-get update && \
     apt-get install -y squid && \
     rm -rf /var/lib/apt/lists/*
