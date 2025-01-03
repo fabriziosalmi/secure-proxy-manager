@@ -11,12 +11,12 @@ squid:
 
   # IP blacklist sources (using real sources and a local file)
   ip_blacklist_sources:
-    - /etc/squid/ip_blacklist1.txt  # Local file
+    - ip_blacklist1.txt  # Local file in root
     - https://iplists.firehol.org/files/firehol_level1.netset  # Real IP blacklist source
 
   # DNS blacklist sources (using real sources and a local file)
   dns_blacklist_sources:
-    - /etc/squid/dns_blacklist1.txt # Local file
+    - dns_blacklist1.txt  # Local file in root
     - https://v.firebog.net/hosts/lists.firebog.net.txt  # Real DNS blacklist source
 
   # OWASP protection
