@@ -94,12 +94,18 @@ acl authenticated_users proxy_auth {{ authentication.auth_users | join(' ')}}
 http_access allow authenticated_users
 {% endif %}
 
+{# Time Restrictions Section #}
+{% if time_restrictions is defined and time_restrictions is iterable %}
 {% for restriction in time_restrictions %}
 acl {{ restriction.name }} time {{ restriction.days }} {{ restriction.time }}
 http_access {{ restriction.action }} {{ restriction.name }}
 {% endfor %}
+{% endif %}
 
+{# Custom ACLs Section #}
+{% if custom_acls is defined and custom_acls is iterable %}
 {% for acl in custom_acls %}
 acl {{ acl.name }} {{ acl.type }} {{ acl.values | join(', ') }}
 http_access {{ acl.action }} {{ acl.name }}
 {% endfor %}
+{% endif %}
