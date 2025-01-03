@@ -33,4 +33,8 @@ jobs:
 
       - name: Validate Squid configuration
         run: |
-          docker run --rm -v $(pwd)/squid.conf:/etc/squid/squid.conf ubuntu/squid:latest squid -k parse
+          docker run --rm \
+            -v $(pwd)/squid.conf:/etc/squid/squid.conf \
+            -v $(pwd)/temp_squid_files:/temp_squid_files \
+            ubuntu/squid:latest \
+            squid -k parse
