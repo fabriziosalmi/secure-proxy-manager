@@ -1,6 +1,6 @@
 # Squid Proxy Configuration Generator
 
-This project automates the generation of a Squid proxy configuration file (`squid.conf`) using a YAML configuration file (`config.yaml`). It supports features like IP blacklisting, DNS blacklisting, OWASP protection, blocking VPN/Tor/Cloudflare/AWS/Microsoft/Google IPs, User-Agent rewriting, and more.
+This project automates the generation of a Squid proxy configuration file (`squid.conf`) using a YAML configuration file (`config.yaml`). It supports features like IP blacklisting, DNS blacklisting, OWASP protection, blocking VPN/Tor/Cloudflare/AWS/Microsoft/Google IPs and more.
 
 ## Features
 
