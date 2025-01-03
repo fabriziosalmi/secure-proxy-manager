@@ -9,17 +9,15 @@ squid:
     - 192.168.1.0/24
     - 10.0.0.1
 
-  # IP blacklist sources
+  # IP blacklist sources (using real sources and a local file)
   ip_blacklist_sources:
-    - /etc/squid/ip_blacklist1.txt
-    - /etc/squid/ip_blacklist2.txt
-    - https://example.com/path/to/remote/ip_blacklist.txt
+    - /etc/squid/ip_blacklist1.txt  # Local file
+    - https://iplists.firehol.org/files/firehol_level1.netset  # Real IP blacklist source
 
-  # DNS blacklist sources
+  # DNS blacklist sources (using real sources and a local file)
   dns_blacklist_sources:
-    - /etc/squid/dns_blacklist1.txt
-    - /etc/squid/dns_blacklist2.txt
-    - https://example.com/path/to/remote/dns_blacklist.txt
+    - /etc/squid/dns_blacklist1.txt # Local file
+    - https://v.firebog.net/hosts/lists.firebog.net.txt  # Real DNS blacklist source
 
   # OWASP protection
   owasp_protection: true
@@ -41,7 +39,7 @@ squid:
   aws_ip_sources:
     - https://ip-ranges.amazonaws.com/ip-ranges.json
   microsoft_ip_sources:
-    - https://www.microsoft.com/en-us/download/confirmation.aspx?id=56519
+    - https://download.microsoft.com/download/7/1/D/71D86715-5596-4529-9B13-DA1E4F665842/ServiceTags_Public_20240401.json
   google_ip_sources:
     - https://www.gstatic.com/ipranges/goog.json
 
