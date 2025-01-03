@@ -23,7 +23,7 @@ squid:
 
   # OWASP protection
   owasp_protection: true
-  owasp_rules_file: /etc/squid/owasp.rules
+  owasp_rules_file: https://raw.githubusercontent.com/SpiderLabs/owasp-modsecurity-crs/v3.3/dev/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf
 
   # Block VPN, Tor, or specific IP groups
   block_vpn: true
