@@ -336,6 +336,7 @@ def prepare_template_data(config, blacklist_files, temp_dir):
         "custom_acls": squid_config.get("custom_acls", []),
     }
     logging.info(f"Template data: {template_data}")
+    logging.info(f"User-Agent Rewrite Rules: {template_data['user_agent_rewrite'].get('rules')}")
     return template_data
 
 def generate_squid_config(template_data, template_path="squid.conf.j2"):
