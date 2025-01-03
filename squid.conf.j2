@@ -10,14 +10,14 @@ http_access deny all
 {% for i, path in ip_blacklists %}
 acl blacklisted_ips_{{ i }} dstdomain "{{ path }}"
 {% endfor %}
-{% for i, path in ip_blacklists %}
+{% for i in range(ip_blacklist_length) %}
 http_access deny blacklisted_ips_{{ i }}
 {% endfor %}
 
 {% for i, path in dns_blacklists %}
 acl blacklisted_domains_{{ i }} dstdomain "{{ path }}"
 {% endfor %}
-{% for i, path in dns_blacklists %}
+{% for i in range(dns_blacklist_length) %}
 http_access deny blacklisted_domains_{{ i }}
 {% endfor %}
 
@@ -30,7 +30,7 @@ http_access deny owasp
 {% for i, path in vpn_ips %}
 acl vpn_ips_{{ i }} src "{{ path }}"
 {% endfor %}
-{% for i, path in vpn_ips %}
+{% for i in range(vpn_ips_length) %}
 http_access deny vpn_ips_{{ i }}
 {% endfor %}
 {% endif %}
@@ -39,7 +39,7 @@ http_access deny vpn_ips_{{ i }}
 {% for i, path in tor_ips %}
 acl tor_ips_{{ i }} src "{{ path }}"
 {% endfor %}
-{% for i, path in tor_ips %}
+{% for i in range(tor_ips_length) %}
 http_access deny tor_ips_{{ i }}
 {% endfor %}
 {% endif %}
@@ -48,7 +48,7 @@ http_access deny tor_ips_{{ i }}
 {% for i, path in cloudflare_ips %}
 acl cloudflare_ips_{{ i }} src "{{ path }}"
 {% endfor %}
-{% for i, path in cloudflare_ips %}
+{% for i in range(cloudflare_ips_length) %}
 http_access deny cloudflare_ips_{{ i }}
 {% endfor %}
 {% endif %}
@@ -57,7 +57,7 @@ http_access deny cloudflare_ips_{{ i }}
 {% for i, path in aws_ips %}
 acl aws_ips_{{ i }} src "{{ path }}"
 {% endfor %}
-{% for i, path in aws_ips %}
+{% for i in range(aws_ips_length) %}
 http_access deny aws_ips_{{ i }}
 {% endfor %}
 {% endif %}
@@ -66,7 +66,7 @@ http_access deny aws_ips_{{ i }}
 {% for i, path in microsoft_ips %}
 acl microsoft_ips_{{ i }} src "{{ path }}"
 {% endfor %}
-{% for i, path in microsoft_ips %}
+{% for i in range(microsoft_ips_length) %}
 http_access deny microsoft_ips_{{ i }}
 {% endfor %}
 {% endif %}
@@ -75,7 +75,7 @@ http_access deny microsoft_ips_{{ i }}
 {% for i, path in google_ips %}
 acl google_ips_{{ i }} src "{{ path }}"
 {% endfor %}
-{% for i, path in google_ips %}
+{% for i in range(google_ips_length) %}
 http_access deny google_ips_{{ i }}
 {% endfor %}
 {% endif %}
