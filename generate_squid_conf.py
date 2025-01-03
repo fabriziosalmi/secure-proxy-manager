@@ -35,7 +35,7 @@ allowed_ips = squid_config["allowed_ips"]
 ip_blacklist_sources = squid_config["ip_blacklist_sources"]
 dns_blacklist_sources = squid_config["dns_blacklist_sources"]
 owasp_protection = squid_config["owasp_protection"]
-owasp_rules_file = squid_config.get("owasp_rules_file", "/etc/squid/owasp.rules")
+owasp_rules_file = squid_config.get("owasp_rules_file", "https://raw.githubusercontent.com/SpiderLabs/owasp-modsecurity-crs/v3.3/dev/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf") # Default value if no value is set in config.yaml
 block_vpn = squid_config.get("block_vpn", False)
 block_tor = squid_config.get("block_tor", False)
 block_cloudflare = squid_config.get("block_cloudflare", False)
@@ -130,6 +130,13 @@ if block_google:
         with open(local_path, "w") as file:
             file.write("\n".join(ip_prefixes))
         local_google_ips.append(local_path)
+
+# Download the owasp rules file
+if owasp_protection:
+    local_path = os.path.join(temp_dir, "owasp.rules")
+    download_file(owasp_rules_file, local_path)
+    owasp_rules_file = local_path
+
 
 # Generate Squid configuration
 squid_conf_parts = []
