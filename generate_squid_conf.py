@@ -123,79 +123,119 @@ if block_google:
         local_google_ips.append(local_path)
 
 # Generate Squid configuration
-squid_conf = f"""
-http_port {port}
-{"https_port " + str(ssl_port) + " intercept" if ssl_intercept else ""}
+squid_conf_parts = []
 
-# Allow only specific IPs or IP ranges
-acl allowed_ips src {", ".join(allowed_ips)}
-http_access allow allowed_ips
-http_access deny all
+# Basic settings
+squid_conf_parts.append(f"http_port {port}")
+if ssl_intercept:
+    squid_conf_parts.append(f"https_port {ssl_port} intercept")
+
+# Allowed IPs
+squid_conf_parts.append(f"acl allowed_ips src {', '.join(allowed_ips)}")
+squid_conf_parts.append("http_access allow allowed_ips")
+squid_conf_parts.append("http_access deny all")
 
 # IP Blacklisting
-{"".join([f"acl blacklisted_ips_{i} dstdomain \"{path}\"\n" for i, path in enumerate(local_ip_blacklists)])}
-{"".join([f"http_access deny blacklisted_ips_{i}\n" for i in range(len(local_ip_blacklists))])}
+for i, path in enumerate(local_ip_blacklists):
+    squid_conf_parts.append(f'acl blacklisted_ips_{i} dstdomain "{path}"')
+for i in range(len(local_ip_blacklists)):
+    squid_conf_parts.append(f'http_access deny blacklisted_ips_{i}')
 
 # DNS Blacklisting
-{"".join([f"acl blacklisted_domains_{i} dstdomain \"{path}\"\n" for i, path in enumerate(local_dns_blacklists)])}
-{"".join([f"http_access deny blacklisted_domains_{i}\n" for i in range(len(local_dns_blacklists))])}
+for i, path in enumerate(local_dns_blacklists):
+  squid_conf_parts.append(f'acl blacklisted_domains_{i} dstdomain "{path}"')
+for i in range(len(local_dns_blacklists)):
+  squid_conf_parts.append(f'http_access deny blacklisted_domains_{i}')
+
 
 # OWASP Protection
-"""
-fixed_owasp_rules_file = owasp_rules_file.replace("\\", "/")
-squid_conf += f"""
-{"acl owasp url_regex -i " + fixed_owasp_rules_file if owasp_protection else ""}
-{"http_access deny owasp" if owasp_protection else ""}
-"""
-squid_conf += f"""
+if owasp_protection:
+    fixed_owasp_rules_file = owasp_rules_file.replace("\\", "/")
+    squid_conf_parts.append(f'acl owasp url_regex -i {fixed_owasp_rules_file}')
+    squid_conf_parts.append("http_access deny owasp")
+
+
 # Block VPN IPs
-{"".join([f"acl vpn_ips_{i} src \"{path}\"\n" for i, path in enumerate(local_vpn_ips)])}
-{"".join([f"http_access deny vpn_ips_{i}\n" for i in range(len(local_vpn_ips))])}
+for i, path in enumerate(local_vpn_ips):
+    squid_conf_parts.append(f'acl vpn_ips_{i} src "{path}"')
+for i in range(len(local_vpn_ips)):
+    squid_conf_parts.append(f'http_access deny vpn_ips_{i}')
 
 # Block Tor IPs
-{"".join([f"acl tor_ips_{i} src \"{path}\"\n" for i, path in enumerate(local_tor_ips)])}
-{"".join([f"http_access deny tor_ips_{i}\n" for i in range(len(local_tor_ips))])}
+for i, path in enumerate(local_tor_ips):
+    squid_conf_parts.append(f'acl tor_ips_{i} src "{path}"')
+for i in range(len(local_tor_ips)):
+    squid_conf_parts.append(f'http_access deny tor_ips_{i}')
 
 # Block Cloudflare IPs
-{"".join([f"acl cloudflare_ips_{i} src \"{path}\"\n" for i, path in enumerate(local_cloudflare_ips)])}
-{"".join([f"http_access deny cloudflare_ips_{i}\n" for i in range(len(local_cloudflare_ips))])}
+for i, path in enumerate(local_cloudflare_ips):
+    squid_conf_parts.append(f'acl cloudflare_ips_{i} src "{path}"')
+for i in range(len(local_cloudflare_ips)):
+    squid_conf_parts.append(f'http_access deny cloudflare_ips_{i}')
 
 # Block AWS IPs
-{"".join([f"acl aws_ips_{i} src \"{path}\"\n" for i, path in enumerate(local_aws_ips)])}
-{"".join([f"http_access deny aws_ips_{i}\n" for i in range(len(local_aws_ips))])}
+for i, path in enumerate(local_aws_ips):
+    squid_conf_parts.append(f'acl aws_ips_{i} src "{path}"')
+for i in range(len(local_aws_ips)):
+    squid_conf_parts.append(f'http_access deny aws_ips_{i}')
 
 # Block Microsoft IPs
-{"".join([f"acl microsoft_ips_{i} src \"{path}\"\n" for i, path in enumerate(local_microsoft_ips)])}
-{"".join([f"http_access deny microsoft_ips_{i}\n" for i in range(len(local_microsoft_ips))])}
+for i, path in enumerate(local_microsoft_ips):
+    squid_conf_parts.append(f'acl microsoft_ips_{i} src "{path}"')
+for i in range(len(local_microsoft_ips)):
+    squid_conf_parts.append(f'http_access deny microsoft_ips_{i}')
 
 # Block Google IPs
-{"".join([f"acl google_ips_{i} src \"{path}\"\n" for i, path in enumerate(local_google_ips)])}
-{"".join([f"http_access deny google_ips_{i}\n" for i in range(len(local_google_ips))])}
+for i, path in enumerate(local_google_ips):
+    squid_conf_parts.append(f'acl google_ips_{i} src "{path}"')
+for i in range(len(local_google_ips)):
+    squid_conf_parts.append(f'http_access deny google_ips_{i}')
 
 # User-Agent rewriting
-{"".join([f"acl rewrite_ua_{i} browser \"{rule['user_agent'].replace('\\', '/')}\"\n" for i, rule in enumerate(user_agent_rewrite.get("rules", []))])}
-{"".join([f"request_header_replace User-Agent \"{rule['rewrite_to'].replace('\\', '/')}\" rewrite_ua_{i}\n" for i, rule in enumerate(user_agent_rewrite.get("rules", [])) if not rule.get("block", False)])}
-{"".join([f"http_access deny rewrite_ua_{i}\n" for i, rule in enumerate(user_agent_rewrite.get("rules", [])) if rule.get("block", False)])}
+for i, rule in enumerate(user_agent_rewrite.get("rules", [])):
+    user_agent = rule['user_agent'].replace('\\', '/')
+    squid_conf_parts.append(f'acl rewrite_ua_{i} browser "{user_agent}"')
+    if not rule.get("block", False):
+        rewrite_to = rule['rewrite_to'].replace('\\', '/')
+        squid_conf_parts.append(f'request_header_replace User-Agent "{rewrite_to}" rewrite_ua_{i}')
+    else:
+        squid_conf_parts.append(f'http_access deny rewrite_ua_{i}')
 
 # Logging
-access_log {logging_config.get("access_log", "/var/log/squid/access.log")} {logging_config.get("log_format", "combined")}
-cache_log {logging_config.get("cache_log", "/var/log/squid/cache.log")}
+squid_conf_parts.append(f'access_log {logging_config.get("access_log", "/var/log/squid/access.log")} {logging_config.get("log_format", "combined")}')
+squid_conf_parts.append(f'cache_log {logging_config.get("cache_log", "/var/log/squid/cache.log")}')
+
 
 # Cache settings
-{"cache_dir " + cache_config.get("cache_dir", "/var/spool/squid") + " " + str(cache_config.get("cache_size", 10000)) + " 16 256" if cache_config.get("enabled", True) else ""}
-{"maximum_object_size " + cache_config.get("max_object_size", "512 MB") if cache_config.get("enabled", True) else ""}
+if cache_config.get("enabled", True):
+    cache_dir = cache_config.get("cache_dir", "/var/spool/squid")
+    cache_size = cache_config.get("cache_size", 10000)
+    squid_conf_parts.append(f'cache_dir {cache_dir} {cache_size} 16 256')
+    squid_conf_parts.append(f'maximum_object_size {cache_config.get("max_object_size", "512 MB")}')
 
 # Authentication
-{"auth_param basic program /usr/lib/squid/basic_ncsa_auth " + auth_config.get("auth_file", "/etc/squid/passwords") if auth_config.get("enabled", False) else ""}
-{"acl authenticated_users proxy_auth " + " ".join(auth_config.get("auth_users", [])) if auth_config.get("enabled", False) else ""}
-{"http_access allow authenticated_users" if auth_config.get("enabled", False) else ""}
+if auth_config.get("enabled", False):
+    auth_file = auth_config.get("auth_file", "/etc/squid/passwords")
+    squid_conf_parts.append(f'auth_param basic program /usr/lib/squid/basic_ncsa_auth {auth_file}')
+    auth_users = " ".join(auth_config.get("auth_users", []))
+    squid_conf_parts.append(f'acl authenticated_users proxy_auth {auth_users}')
+    squid_conf_parts.append('http_access allow authenticated_users')
+
 
 # Time-based restrictions
-{"".join([f"acl {restriction['name']} time {restriction['days']} {restriction['time']}\nhttp_access {restriction['action']} {restriction['name']}\n" for restriction in time_restrictions])}
+for restriction in time_restrictions:
+  squid_conf_parts.append(f'acl {restriction["name"]} time {restriction["days"]} {restriction["time"]}')
+  squid_conf_parts.append(f'http_access {restriction["action"]} {restriction["name"]}')
+
 
 # Custom ACLs
-{"".join([f"acl {acl['name']} {acl['type']} {', '.join(acl['values'])}\nhttp_access {acl['action']} {acl['name']}\n" for acl in custom_acls])}
-"""
+for acl in custom_acls:
+  squid_conf_parts.append(f'acl {acl["name"]} {acl["type"]} {", ".join(acl["values"])}')
+  squid_conf_parts.append(f'http_access {acl["action"]} {acl["name"]}')
+
+
+squid_conf = "\n".join(squid_conf_parts)
+
 
 # Write Squid configuration to file
 with open("squid.conf", "w") as file:
