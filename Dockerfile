@@ -5,8 +5,8 @@ RUN apt-get update && apt-get install -y squid
 
 # Copy configuration files
 COPY squid.conf /etc/squid/squid.conf
-COPY temp_squid_files/ip_blacklist*.txt /etc/squid/
-COPY temp_squid_files/dns_blacklist*.txt /etc/squid/
+COPY ip_blacklist*.txt /etc/squid/
+COPY dns_blacklist*.txt /etc/squid/
 COPY temp_squid_files/owasp.rules /etc/squid/owasp.rules
 COPY temp_squid_files/vpn_ips*.txt /etc/squid/
 COPY temp_squid_files/tor_ips*.txt /etc/squid/
