@@ -9,28 +9,33 @@ on:
       - main
 
 env:
-  PYTHON_VERSION: "3.9"
-  DOCKER_IMAGE_NAME: "squid-test"
+  PYTHON_VERSIONS: "3.8, 3.9, 3.10"  # Test multiple Python versions
+  SQUID_IMAGE: "sameersbn/squid:latest"  # Official Squid image
+  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}  # Add your Slack webhook URL in GitHub Secrets
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ${{ fromJson(format('[{0}]', env.PYTHON_VERSIONS)) }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ matrix.python-version }}
 
       - name: Cache Python dependencies
         uses: actions/cache@v3
         with:
           path: ~/.cache/pip
-          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          key: pip-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('requirements.txt') }}
           restore-keys: |
+            pip-${{ runner.os }}-${{ matrix.python-version }}-
             pip-${{ runner.os }}-
 
       - name: Install dependencies
@@ -52,13 +57,47 @@ jobs:
           fi
           echo "squid.conf file exists and is ready for testing."
 
-      - name: Build Docker image
-        run: |
-          docker build -t ${{ env.DOCKER_IMAGE_NAME }} .
-
       - name: Validate Squid configuration in Docker
         run: |
           docker run --rm \
             -v $(pwd)/squid.conf:/etc/squid/squid.conf \
-            ${{ env.DOCKER_IMAGE_NAME }} \
+            ${{ env.SQUID_IMAGE }} \
             squid -k parse
+
+      - name: Upload squid.conf as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: squid.conf
+          path: squid.conf
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.23.0
+        with:
+          payload: |
+            {
+              "text": "❌ Workflow failed: ${{ github.workflow }} (${{ github.event_name }} on ${{ github.ref }})",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "❌ Workflow failed: *${{ github.workflow }}* (${{ github.event_name }} on ${{ github.ref }})"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "Repository: <https://github.com/${{ github.repository }}|${{ github.repository }}>"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "Run details: <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
+                  }
+                }
+              ]
+            }
