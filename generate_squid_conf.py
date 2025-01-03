@@ -37,23 +37,6 @@ CONFIG_SCHEMA = {
                 "aws_ip_sources": {"type": "array", "items": {"type": "string"}},
                 "microsoft_ip_sources": {"type": "array", "items": {"type": "string"}},
                 "google_ip_sources": {"type": "array", "items": {"type": "string"}},
-                "user_agent_rewrite": {
-                    "type": "object",
-                    "properties": {
-                        "enabled": {"type": "boolean"},
-                        "rules": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "user_agent": {"type": "string"},
-                                    "rewrite_to": {"type": "string"},
-                                    "block": {"type": "boolean"}
-                                }
-                            }
-                        }
-                    }
-                },
                 "logging": {
                     "type": "object",
                     "properties": {
@@ -330,7 +313,6 @@ def prepare_template_data(config, blacklist_files, temp_dir):
         "block_google": squid_config.get("block_google", False),
         "google_ips": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["google_ips"]],
         "google_ips_length": len(blacklist_files["google_ips"]),
-        "user_agent_rewrite": squid_config.get("user_agent_rewrite", {}),
         "logging": squid_config.get("logging", {}),
         "cache": squid_config.get("cache", {}),
         "authentication": squid_config.get("authentication", {}),
@@ -338,7 +320,6 @@ def prepare_template_data(config, blacklist_files, temp_dir):
         "custom_acls": squid_config.get("custom_acls", []),
     }
     logging.info(f"Template data: {template_data}")
-    logging.info(f"User-Agent Rewrite Rules: {template_data['user_agent_rewrite'].get('rules')}")
     return template_data
 
 
