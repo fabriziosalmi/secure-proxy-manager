@@ -1,0 +1,94 @@
+squid:
+  # Network settings
+  port: 3128
+  ssl_port: 3129  # Optional SSL port
+  ssl_intercept: false  # Enable SSL interception
+
+  # Allowed IPs or ranges
+  allowed_ips:
+    - 192.168.1.0/24
+    - 10.0.0.1
+
+  # IP blacklist sources
+  ip_blacklist_sources:
+    - /etc/squid/ip_blacklist1.txt
+    - /etc/squid/ip_blacklist2.txt
+    - https://example.com/path/to/remote/ip_blacklist.txt
+
+  # DNS blacklist sources
+  dns_blacklist_sources:
+    - /etc/squid/dns_blacklist1.txt
+    - /etc/squid/dns_blacklist2.txt
+    - https://example.com/path/to/remote/dns_blacklist.txt
+
+  # OWASP protection
+  owasp_protection: true
+  owasp_rules_file: /etc/squid/owasp.rules
+
+  # Block VPN, Tor, or specific IP groups
+  block_vpn: true
+  block_tor: true
+  block_cloudflare: true
+  block_aws: true
+  block_microsoft: true
+  block_google: true
+  vpn_ip_sources:
+    - https://raw.githubusercontent.com/X4BNet/lists_vpn/main/output/vpn/ipv4.txt
+  tor_ip_sources:
+    - https://check.torproject.org/torbulkexitlist
+  cloudflare_ip_sources:
+    - https://www.cloudflare.com/ips-v4
+  aws_ip_sources:
+    - https://ip-ranges.amazonaws.com/ip-ranges.json
+  microsoft_ip_sources:
+    - https://www.microsoft.com/en-us/download/confirmation.aspx?id=56519
+  google_ip_sources:
+    - https://www.gstatic.com/ipranges/goog.json
+
+  # User-Agent rewriting
+  user_agent_rewrite:
+    enabled: true
+    rules:
+      - user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        rewrite_to: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36"
+      - user_agent: "curl/*"
+        rewrite_to: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36"
+      - user_agent: "wget/*"
+        block: true
+
+  # Logging configuration
+  logging:
+    access_log: /var/log/squid/access.log
+    cache_log: /var/log/squid/cache.log
+    log_format: combined  # Options: combined, common, etc.
+
+  # Cache settings
+  cache:
+    enabled: true
+    cache_dir: /var/spool/squid
+    cache_size: 10000  # Cache size in MB
+    max_object_size: 512 MB  # Maximum size of cached objects
+
+  # Authentication (optional)
+  authentication:
+    enabled: false
+    auth_file: /etc/squid/passwords  # Path to password file
+    auth_users:
+      - username1
+      - username2
+
+  # Time-based restrictions
+  time_restrictions:
+    - name: work_hours
+      days: MTWHF  # Monday to Friday
+      time: 09:00-17:00
+      action: allow  # Allow access during work hours
+
+  # Custom ACLs
+  custom_acls:
+    - name: block_social_media
+      type: dstdomain
+      values:
+        - facebook.com
+        - twitter.com
+      action: deny
