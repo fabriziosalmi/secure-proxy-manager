@@ -8,10 +8,6 @@ This project automates the generation of a Squid proxy configuration file (`squi
 - **DNS Blacklisting**: Block domains from local files or remote URLs.
 - **OWASP Protection**: Block common web attack patterns using regex rules.
 - **Block VPN/Tor/Cloudflare/AWS/Microsoft/Google IPs**: Block IP ranges from predefined sources.
-- **User-Agent Rewriting**: Modify or block specific User-Agent strings.
-- **Custom ACLs**: Define custom access control rules.
-- **Time-based Restrictions**: Allow/deny access based on time.
-- **Authentication**: Enable basic authentication for the proxy.
 
 ## Prerequisites
 
@@ -23,7 +19,7 @@ This project automates the generation of a Squid proxy configuration file (`squi
 1. **Clone the repository**:
    ```bash
    git clone https://github.com/fabriziosalmi/secure-proxy.git
-   cd squid-proxy-config
+   cd secure-proxy
    ```
 
 2. **Edit the `config.yaml` file**:
@@ -57,9 +53,6 @@ The `config.yaml` file supports the following options:
 - **User-Agent Rewriting**: Rewrite or block specific User-Agent strings.
 - **Logging**: Configure access and cache logs.
 - **Cache**: Enable/disable caching and configure cache size.
-- **Authentication**: Enable basic authentication and specify users.
-- **Time-based Restrictions**: Define time-based access rules.
-- **Custom ACLs**: Add custom access control rules.
 
 Refer to the `config.yaml` file for examples.
 
