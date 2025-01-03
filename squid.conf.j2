@@ -1,91 +1,91 @@
-http_port {{ data.port }}
-{% if data.ssl_intercept %}
-https_port {{ data.ssl_port }} intercept
+http_port {{ port }}
+{% if ssl_intercept %}
+https_port {{ ssl_port }} intercept
 {% endif %}
 
-acl allowed_ips src {{ data.allowed_ips | join(', ') }}
+acl allowed_ips src {{ allowed_ips | join(', ') }}
 http_access allow allowed_ips
 http_access deny all
 
-{% for i, path in data.ip_blacklists | enumerate %}
+{% for i, path in ip_blacklists | enumerate %}
 acl blacklisted_ips_{{ i }} dstdomain "{{ path }}"
 {% endfor %}
-{% for i in range(data.ip_blacklists | length) %}
+{% for i in range(ip_blacklists | length) %}
 http_access deny blacklisted_ips_{{ i }}
 {% endfor %}
 
-{% for i, path in data.dns_blacklists | enumerate %}
+{% for i, path in dns_blacklists | enumerate %}
 acl blacklisted_domains_{{ i }} dstdomain "{{ path }}"
 {% endfor %}
-{% for i in range(data.dns_blacklists | length) %}
+{% for i in range(dns_blacklists | length) %}
 http_access deny blacklisted_domains_{{ i }}
 {% endfor %}
 
-{% if data.owasp_rules_file %}
-acl owasp url_regex -i {{ data.owasp_rules_file }}
+{% if owasp_rules_file %}
+acl owasp url_regex -i {{ owasp_rules_file }}
 http_access deny owasp
 {% endif %}
 
-{% if data.block_vpn %}
-{% for i, path in data.vpn_ips | enumerate %}
+{% if block_vpn %}
+{% for i, path in vpn_ips | enumerate %}
 acl vpn_ips_{{ i }} src "{{ path }}"
 {% endfor %}
-{% for i in range(data.vpn_ips | length) %}
+{% for i in range(vpn_ips | length) %}
 http_access deny vpn_ips_{{ i }}
 {% endfor %}
 {% endif %}
 
-{% if data.block_tor %}
-{% for i, path in data.tor_ips | enumerate %}
+{% if block_tor %}
+{% for i, path in tor_ips | enumerate %}
 acl tor_ips_{{ i }} src "{{ path }}"
 {% endfor %}
-{% for i in range(data.tor_ips | length) %}
+{% for i in range(tor_ips | length) %}
 http_access deny tor_ips_{{ i }}
 {% endfor %}
 {% endif %}
 
 
-{% if data.block_cloudflare %}
-{% for i, path in data.cloudflare_ips | enumerate %}
+{% if block_cloudflare %}
+{% for i, path in cloudflare_ips | enumerate %}
 acl cloudflare_ips_{{ i }} src "{{ path }}"
 {% endfor %}
-{% for i in range(data.cloudflare_ips | length) %}
+{% for i in range(cloudflare_ips | length) %}
 http_access deny cloudflare_ips_{{ i }}
 {% endfor %}
 {% endif %}
 
 
-{% if data.block_aws %}
-{% for i, path in data.aws_ips | enumerate %}
+{% if block_aws %}
+{% for i, path in aws_ips | enumerate %}
 acl aws_ips_{{ i }} src "{{ path }}"
 {% endfor %}
-{% for i in range(data.aws_ips | length) %}
+{% for i in range(aws_ips | length) %}
 http_access deny aws_ips_{{ i }}
 {% endfor %}
 {% endif %}
 
 
-{% if data.block_microsoft %}
-{% for i, path in data.microsoft_ips | enumerate %}
+{% if block_microsoft %}
+{% for i, path in microsoft_ips | enumerate %}
 acl microsoft_ips_{{ i }} src "{{ path }}"
 {% endfor %}
-{% for i in range(data.microsoft_ips | length) %}
+{% for i in range(microsoft_ips | length) %}
 http_access deny microsoft_ips_{{ i }}
 {% endfor %}
 {% endif %}
 
 
-{% if data.block_google %}
-{% for i, path in data.google_ips | enumerate %}
+{% if block_google %}
+{% for i, path in google_ips | enumerate %}
 acl google_ips_{{ i }} src "{{ path }}"
 {% endfor %}
-{% for i in range(data.google_ips | length) %}
+{% for i in range(google_ips | length) %}
 http_access deny google_ips_{{ i }}
 {% endfor %}
 {% endif %}
 
-{% if data.user_agent_rewrite.enabled %}
-{% for i, rule in data.user_agent_rewrite.rules | enumerate %}
+{% if user_agent_rewrite.enabled %}
+{% for i, rule in user_agent_rewrite.rules | enumerate %}
 acl rewrite_ua_{{ i }} browser {{ rule.user_agent }}
 {% if not rule.block %}
 request_header_replace User-Agent "{{ rule.rewrite_to }}" rewrite_ua_{{ i }}
@@ -95,27 +95,27 @@ http_access deny rewrite_ua_{{ i }}
 {% endfor %}
 {% endif %}
 
-access_log {{ data.logging.access_log | default("/var/log/squid/access.log") }} {{ data.logging.log_format | default("combined") }}
-cache_log {{ data.logging.cache_log | default("/var/log/squid/cache.log") }}
+access_log {{ logging.access_log | default("/var/log/squid/access.log") }} {{ logging.log_format | default("combined") }}
+cache_log {{ logging.cache_log | default("/var/log/squid/cache.log") }}
 
-{% if data.cache.enabled %}
-cache_dir {{ data.cache.cache_dir | default("aufs") }} {{ data.cache.cache_size | default(10000) }} 16 256
-maximum_object_size {{ data.cache.max_object_size | default("512 MB") }}
+{% if cache.enabled %}
+cache_dir {{ cache.cache_dir | default("aufs") }} {{ cache.cache_size | default(10000) }} 16 256
+maximum_object_size {{ cache.max_object_size | default("512 MB") }}
 {% endif %}
 
 
-{% if data.authentication.enabled %}
-auth_param basic program /usr/lib/squid/basic_ncsa_auth {{ data.authentication.auth_file | default("/etc/squid/passwords") }}
-acl authenticated_users proxy_auth {{ data.authentication.auth_users | join(' ')}}
+{% if authentication.enabled %}
+auth_param basic program /usr/lib/squid/basic_ncsa_auth {{ authentication.auth_file | default("/etc/squid/passwords") }}
+acl authenticated_users proxy_auth {{ authentication.auth_users | join(' ')}}
 http_access allow authenticated_users
 {% endif %}
 
-{% for restriction in data.time_restrictions %}
+{% for restriction in time_restrictions %}
 acl {{ restriction.name }} time {{ restriction.days }} {{ restriction.time }}
 http_access {{ restriction.action }} {{ restriction.name }}
 {% endfor %}
 
-{% for acl in data.custom_acls %}
+{% for acl in custom_acls %}
 acl {{ acl.name }} {{ acl.type }} {{ acl.values | join(', ') }}
 http_access {{ acl.action }} {{ acl.name }}
 {% endfor %}
