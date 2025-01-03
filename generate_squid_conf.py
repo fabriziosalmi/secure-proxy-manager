@@ -138,7 +138,7 @@ def prepare_blacklist_files(config, temp_dir):
         else:
             if not os.path.exists(source):
                 logging.error(f"Local ip blacklist file not found: {source}")
-                raise Exception(f"Local ip blacklist file not found: {source}")
+                continue
             logging.info(f"Using local ip blacklist file: {source}")
             local_path = source
         local_ip_blacklists.append((i, local_path))
@@ -155,7 +155,7 @@ def prepare_blacklist_files(config, temp_dir):
         else:
             if not os.path.exists(source):
                 logging.error(f"Local dns blacklist file not found: {source}")
-                raise Exception(f"Local dns blacklist file not found: {source}")
+                continue
             logging.info(f"Using local dns blacklist file: {source}")
             local_path = source
         local_dns_blacklists.append((i, local_path))
