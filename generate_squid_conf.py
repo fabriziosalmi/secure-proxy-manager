@@ -6,6 +6,7 @@ import logging
 from jinja2 import Environment, FileSystemLoader
 from jsonschema import validate, ValidationError
 import unittest
+import jinja2
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -330,9 +331,9 @@ def prepare_template_data(config, blacklist_files, temp_dir):
 def generate_squid_config(template_data, template_path="squid.conf.j2"):
     """Generate Squid configuration using Jinja2 template."""
     try:
-        env = Environment(loader=FileSystemLoader(os.path.dirname(template_path)))
+        env = jinja2.Environment(loader=FileSystemLoader(os.path.dirname(template_path)))
         template = env.get_template(os.path.basename(template_path))
-        squid_conf = template.render(data=template_data)
+        squid_conf = template.render(template_data)
         logging.info("Squid configuration generated successfully using template.")
         return squid_conf
     except Exception as e:
