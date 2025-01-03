@@ -43,17 +43,6 @@ squid:
   google_ip_sources:
     - https://www.gstatic.com/ipranges/goog.json
 
-  # User-Agent rewriting
-  user_agent_rewrite:
-    enabled: false
-    rules:
-      - user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-        rewrite_to: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36"
-      - user_agent: "curl/*"
-        rewrite_to: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36"
-      - user_agent: "wget/*"
-        block: true
-
   # Logging configuration
   logging:
     access_log: /var/log/squid/access.log
