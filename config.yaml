@@ -39,7 +39,7 @@ squid:
   aws_ip_sources:
     - https://ip-ranges.amazonaws.com/ip-ranges.json
   microsoft_ip_sources:
-    - https://download.microsoft.com/download/f/9/9/f99f56c3-1272-498c-9e71-684562411042/ServiceTags_Public_20240424.json
+    - https://download.microsoft.com/download/7/1/D/71D86715-5596-4529-9B13-DA13A5DE5B63/ServiceTags_Public_20241230.json
   google_ip_sources:
     - https://www.gstatic.com/ipranges/goog.json
 
