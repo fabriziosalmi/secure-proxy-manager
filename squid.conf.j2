@@ -80,18 +80,6 @@ http_access deny google_ips_{{ i }}
 {% endfor %}
 {% endif %}
 
-{# Fixed user_agent_rewrite section #}
-{% if user_agent_rewrite.enabled and user_agent_rewrite.rules is defined and user_agent_rewrite.rules is iterable %}
-{% for rule in user_agent_rewrite.rules %}
-acl rewrite_ua_{{ loop.index }} browser {{ rule.user_agent }}
-{% if not rule.block %}
-request_header_replace User-Agent "{{ rule.rewrite_to }}" rewrite_ua_{{ loop.index }}
-{% else %}
-http_access deny rewrite_ua_{{ loop.index }}
-{% endif %}
-{% endfor %}
-{% endif %}
-
 access_log {{ logging.access_log | default("/var/log/squid/access.log") }} {{ logging.log_format | default("combined") }}
 cache_log {{ logging.cache_log | default("/var/log/squid/cache.log") }}
 
