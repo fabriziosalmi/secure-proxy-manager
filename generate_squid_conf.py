@@ -298,43 +298,45 @@ def prepare_blacklist_files(config, temp_dir):
     }
 
 def prepare_template_data(config, blacklist_files, temp_dir):
-        """Prepare data for the Jinja2 template."""
-        squid_config = config["squid"]
-        return {
-            "port": squid_config["port"],
-            "ssl_port": squid_config.get("ssl_port"),
-            "ssl_intercept": squid_config.get("ssl_intercept", False),
-            "allowed_ips": squid_config["allowed_ips"],
-            "ip_blacklists": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["ip_blacklists"]],
-            "ip_blacklist_length":  len(blacklist_files["ip_blacklists"]),
-            "dns_blacklists": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["dns_blacklists"]],
-            "dns_blacklist_length":  len(blacklist_files["dns_blacklists"]),
-            "owasp_rules_file": f"/etc/squid/{blacklist_files['owasp_rules_file']}" if blacklist_files["owasp_rules_file"] else None,
-            "block_vpn": squid_config.get("block_vpn", False),
-            "vpn_ips": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["vpn_ips"]],
-            "vpn_ips_length":  len(blacklist_files["vpn_ips"]),
-            "block_tor": squid_config.get("block_tor", False),
-            "tor_ips": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["tor_ips"]],
-            "tor_ips_length":  len(blacklist_files["tor_ips"]),
-            "block_cloudflare": squid_config.get("block_cloudflare", False),
-            "cloudflare_ips": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["cloudflare_ips"]],
-            "cloudflare_ips_length":  len(blacklist_files["cloudflare_ips"]),
-            "block_aws": squid_config.get("block_aws", False),
-            "aws_ips": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["aws_ips"]],
-            "aws_ips_length": len(blacklist_files["aws_ips"]),
-            "block_microsoft": squid_config.get("block_microsoft", False),
-             "microsoft_ips": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["microsoft_ips"]],
-            "microsoft_ips_length": len(blacklist_files["microsoft_ips"]),
-            "block_google": squid_config.get("block_google", False),
-            "google_ips": [(i,f"/etc/squid/{path}") for i,path in blacklist_files["google_ips"]],
-             "google_ips_length": len(blacklist_files["google_ips"]),
-             "user_agent_rewrite": squid_config.get("user_agent_rewrite", {}),
-            "logging": squid_config.get("logging", {}),
-            "cache": squid_config.get("cache", {}),
-            "authentication": squid_config.get("authentication", {}),
-            "time_restrictions": squid_config.get("time_restrictions", []),
-            "custom_acls": squid_config.get("custom_acls", []),
-        }
+    """Prepare data for the Jinja2 template."""
+    squid_config = config["squid"]
+    template_data = {
+        "port": squid_config["port"],
+        "ssl_port": squid_config.get("ssl_port"),
+        "ssl_intercept": squid_config.get("ssl_intercept", False),
+        "allowed_ips": squid_config["allowed_ips"],
+        "ip_blacklists": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["ip_blacklists"]],
+        "ip_blacklist_length": len(blacklist_files["ip_blacklists"]),
+        "dns_blacklists": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["dns_blacklists"]],
+        "dns_blacklist_length": len(blacklist_files["dns_blacklists"]),
+        "owasp_rules_file": f"/etc/squid/{blacklist_files['owasp_rules_file']}" if blacklist_files["owasp_rules_file"] else None,
+        "block_vpn": squid_config.get("block_vpn", False),
+        "vpn_ips": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["vpn_ips"]],
+        "vpn_ips_length": len(blacklist_files["vpn_ips"]),
+        "block_tor": squid_config.get("block_tor", False),
+        "tor_ips": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["tor_ips"]],
+        "tor_ips_length": len(blacklist_files["tor_ips"]),
+        "block_cloudflare": squid_config.get("block_cloudflare", False),
+        "cloudflare_ips": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["cloudflare_ips"]],
+        "cloudflare_ips_length": len(blacklist_files["cloudflare_ips"]),
+        "block_aws": squid_config.get("block_aws", False),
+        "aws_ips": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["aws_ips"]],
+        "aws_ips_length": len(blacklist_files["aws_ips"]),
+        "block_microsoft": squid_config.get("block_microsoft", False),
+        "microsoft_ips": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["microsoft_ips"]],
+        "microsoft_ips_length": len(blacklist_files["microsoft_ips"]),
+        "block_google": squid_config.get("block_google", False),
+        "google_ips": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["google_ips"]],
+        "google_ips_length": len(blacklist_files["google_ips"]),
+        "user_agent_rewrite": squid_config.get("user_agent_rewrite", {}),
+        "logging": squid_config.get("logging", {}),
+        "cache": squid_config.get("cache", {}),
+        "authentication": squid_config.get("authentication", {}),
+        "time_restrictions": squid_config.get("time_restrictions", []),
+        "custom_acls": squid_config.get("custom_acls", []),
+    }
+    logging.info(f"Template data: {template_data}")
+    return template_data
 
 def generate_squid_config(template_data, template_path="squid.conf.j2"):
     """Generate Squid configuration using Jinja2 template."""
