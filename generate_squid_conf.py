@@ -141,9 +141,13 @@ http_access deny all
 {"".join([f"http_access deny blacklisted_domains_{i}\n" for i in range(len(local_dns_blacklists))])}
 
 # OWASP Protection
-{"acl owasp url_regex -i " + owasp_rules_file.replace("\\", "/") if owasp_protection else ""}
+"""
+fixed_owasp_rules_file = owasp_rules_file.replace("\\", "/")
+squid_conf += f"""
+{"acl owasp url_regex -i " + fixed_owasp_rules_file if owasp_protection else ""}
 {"http_access deny owasp" if owasp_protection else ""}
-
+"""
+squid_conf += f"""
 # Block VPN IPs
 {"".join([f"acl vpn_ips_{i} src \"{path}\"\n" for i, path in enumerate(local_vpn_ips)])}
 {"".join([f"http_access deny vpn_ips_{i}\n" for i in range(len(local_vpn_ips))])}
