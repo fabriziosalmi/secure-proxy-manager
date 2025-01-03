@@ -315,7 +315,11 @@ def prepare_template_data(config, blacklist_files, temp_dir):
         "google_ips_length": len(blacklist_files["google_ips"]),
         "logging": squid_config.get("logging", {}),
         "cache": squid_config.get("cache", {}),
-        "authentication": squid_config.get("authentication", {}),
+        "authentication": {
+            "enabled": squid_config.get("authentication", {}).get("enabled", False),
+            "auth_file": squid_config.get("authentication", {}).get("auth_file", "/etc/squid/passwords"),
+            "auth_users": squid_config.get("authentication", {}).get("auth_users", [])
+        },
         "time_restrictions": squid_config.get("time_restrictions", []),
         "custom_acls": squid_config.get("custom_acls", []),
     }
