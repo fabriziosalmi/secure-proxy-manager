@@ -1,6 +1,7 @@
 import yaml
 import requests
 import json
+import os
 
 def download_file(url, local_path):
     """Download a file from a URL and save it locally."""
@@ -54,6 +55,10 @@ auth_config = squid_config.get("authentication", {})
 time_restrictions = squid_config.get("time_restrictions", [])
 custom_acls = squid_config.get("custom_acls", [])
 
+# Temporary directory for blacklist files
+temp_dir = "temp_squid_files"
+os.makedirs(temp_dir, exist_ok=True)
+
 # Download remote blacklist files (if any)
 local_ip_blacklists = []
 local_dns_blacklists = []
@@ -66,7 +71,7 @@ local_google_ips = []
 
 for source in ip_blacklist_sources:
     if source.startswith("http"):
-        local_path = f"/etc/squid/ip_blacklist_{len(local_ip_blacklists) + 1}.txt"
+        local_path = os.path.join(temp_dir, f"ip_blacklist_{len(local_ip_blacklists) + 1}.txt")
         download_file(source, local_path)
         local_ip_blacklists.append(local_path)
     else:
@@ -74,7 +79,7 @@ for source in ip_blacklist_sources:
 
 for source in dns_blacklist_sources:
     if source.startswith("http"):
-        local_path = f"/etc/squid/dns_blacklist_{len(local_dns_blacklists) + 1}.txt"
+        local_path = os.path.join(temp_dir, f"dns_blacklist_{len(local_dns_blacklists) + 1}.txt")
         download_file(source, local_path)
         local_dns_blacklists.append(local_path)
     else:
@@ -82,25 +87,25 @@ for source in dns_blacklist_sources:
 
 if block_vpn:
     for source in vpn_ip_sources:
-        local_path = f"/etc/squid/vpn_ips_{len(local_vpn_ips) + 1}.txt"
+        local_path = os.path.join(temp_dir, f"vpn_ips_{len(local_vpn_ips) + 1}.txt")
         download_file(source, local_path)
         local_vpn_ips.append(local_path)
 
 if block_tor:
     for source in tor_ip_sources:
-        local_path = f"/etc/squid/tor_ips_{len(local_tor_ips) + 1}.txt"
+        local_path = os.path.join(temp_dir, f"tor_ips_{len(local_tor_ips) + 1}.txt")
         download_file(source, local_path)
         local_tor_ips.append(local_path)
 
 if block_cloudflare:
     for source in cloudflare_ip_sources:
-        local_path = f"/etc/squid/cloudflare_ips_{len(local_cloudflare_ips) + 1}.txt"
+        local_path = os.path.join(temp_dir, f"cloudflare_ips_{len(local_cloudflare_ips) + 1}.txt")
         download_file(source, local_path)
         local_cloudflare_ips.append(local_path)
 
 if block_aws:
     for source in aws_ip_sources:
-        local_path = f"/etc/squid/aws_ips_{len(local_aws_ips) + 1}.txt"
+        local_path = os.path.join(temp_dir, f"aws_ips_{len(local_aws_ips) + 1}.txt")
         json_data = download_json(source)
         ip_ranges = extract_ips_from_json(json_data, "prefixes")
         with open(local_path, "w") as file:
@@ -109,13 +114,13 @@ if block_aws:
 
 if block_microsoft:
     for source in microsoft_ip_sources:
-        local_path = f"/etc/squid/microsoft_ips_{len(local_microsoft_ips) + 1}.txt"
+        local_path = os.path.join(temp_dir, f"microsoft_ips_{len(local_microsoft_ips) + 1}.txt")
         download_file(source, local_path)
         local_microsoft_ips.append(local_path)
 
 if block_google:
     for source in google_ip_sources:
-        local_path = f"/etc/squid/google_ips_{len(local_google_ips) + 1}.txt"
+        local_path = os.path.join(temp_dir, f"google_ips_{len(local_google_ips) + 1}.txt")
         json_data = download_json(source)
         ip_ranges = extract_ips_from_json(json_data, "prefixes")
         with open(local_path, "w") as file:
