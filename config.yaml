@@ -25,15 +25,4 @@ squid:
     max_object_size: 512 MB
   authentication:
     enabled: false
-  time_restrictions:
-    - name: work_hours
-      days: MTWHF
-      time: 09:00-17:00
-      action: allow
-  custom_acls:
-    - name: block_social_media
-      type: dstdomain
-      values:
-        - facebook.com
-        - twitter.com
-      action: deny
+
