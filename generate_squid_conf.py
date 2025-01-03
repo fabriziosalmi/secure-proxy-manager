@@ -175,69 +175,111 @@ def prepare_blacklist_files(config, temp_dir):
     for i, source in enumerate(config.get("ip_blacklist_sources", [])):
          local_path = os.path.join(temp_dir, f"ip_blacklist_{i + 1}.txt")
          if source.startswith("http"):
-            download_file(source, local_path)
+             try:
+                download_file(source, local_path)
+             except Exception as e:
+                logging.error(f"Failed to download remote ip blacklist file: {source}")
+                continue
          else:
-             logging.info(f"Using local ip blacklist file: {source}")
-             local_path = source
+            if not os.path.exists(source):
+                logging.error(f"Local ip blacklist file not found: {source}")
+                raise Exception(f"Local ip blacklist file not found: {source}")
+            logging.info(f"Using local ip blacklist file: {source}")
+            local_path = source
          local_ip_blacklists.append(local_path)
 
     for i, source in enumerate(config.get("dns_blacklist_sources", [])):
         local_path = os.path.join(temp_dir, f"dns_blacklist_{i + 1}.txt")
         if source.startswith("http"):
-            download_file(source, local_path)
+             try:
+                 download_file(source, local_path)
+             except Exception as e:
+                  logging.error(f"Failed to download remote dns blacklist file: {source}")
+                  continue
         else:
-             logging.info(f"Using local dns blacklist file: {source}")
-             local_path = source
+            if not os.path.exists(source):
+                logging.error(f"Local dns blacklist file not found: {source}")
+                raise Exception(f"Local dns blacklist file not found: {source}")
+            logging.info(f"Using local dns blacklist file: {source}")
+            local_path = source
         local_dns_blacklists.append(local_path)
 
     if config.get("block_vpn", False):
         for i, source in enumerate(config.get("vpn_ip_sources", [])):
              local_path = os.path.join(temp_dir, f"vpn_ips_{i + 1}.txt")
-             download_file(source, local_path)
+             try:
+                 download_file(source, local_path)
+             except Exception as e:
+                 logging.error(f"Failed to download remote vpn ip file: {source}")
+                 continue
              local_vpn_ips.append(local_path)
 
     if config.get("block_tor", False):
         for i, source in enumerate(config.get("tor_ip_sources", [])):
              local_path = os.path.join(temp_dir, f"tor_ips_{i + 1}.txt")
-             download_file(source, local_path)
+             try:
+                 download_file(source, local_path)
+             except Exception as e:
+                 logging.error(f"Failed to download remote tor ip file: {source}")
+                 continue
              local_tor_ips.append(local_path)
 
     if config.get("block_cloudflare", False):
         for i, source in enumerate(config.get("cloudflare_ip_sources", [])):
              local_path = os.path.join(temp_dir, f"cloudflare_ips_{i + 1}.txt")
-             download_file(source, local_path)
+             try:
+                 download_file(source, local_path)
+             except Exception as e:
+                  logging.error(f"Failed to download remote cloudflare ip file: {source}")
+                  continue
              local_cloudflare_ips.append(local_path)
 
     if config.get("block_aws", False):
          for i, source in enumerate(config.get("aws_ip_sources", [])):
              local_path = os.path.join(temp_dir, f"aws_ips_{i + 1}.txt")
-             json_data = download_json(source)
-             ip_ranges = extract_ips_from_json(json_data, "prefixes")
-             ip_prefixes = [item["ip_prefix"] for item in ip_ranges]
-             with open(local_path, "w") as file:
-                 file.write("\n".join(ip_prefixes))
+             try:
+                json_data = download_json(source)
+                ip_ranges = extract_ips_from_json(json_data, "prefixes")
+                ip_prefixes = [item["ip_prefix"] for item in ip_ranges]
+                with open(local_path, "w") as file:
+                     file.write("\n".join(ip_prefixes))
+             except Exception as e:
+                logging.error(f"Failed to download remote aws ip file: {source}")
+                continue
              local_aws_ips.append(local_path)
 
     if config.get("block_microsoft", False):
          for i, source in enumerate(config.get("microsoft_ip_sources", [])):
              local_path = os.path.join(temp_dir, f"microsoft_ips_{i + 1}.txt")
-             download_file(source, local_path)
+             try:
+                 download_file(source, local_path)
+             except Exception as e:
+                  logging.error(f"Failed to download remote microsoft ip file: {source}")
+                  continue
              local_microsoft_ips.append(local_path)
 
     if config.get("block_google", False):
         for i, source in enumerate(config.get("google_ip_sources", [])):
              local_path = os.path.join(temp_dir, f"google_ips_{i + 1}.txt")
-             json_data = download_json(source)
-             ip_ranges = extract_ips_from_json(json_data, "prefixes")
-             ip_prefixes = [item.get("ipv4Prefix") or item.get("ipv6Prefix") for item in ip_ranges]
-             with open(local_path, "w") as file:
-                file.write("\n".join(ip_prefixes))
+             try:
+                json_data = download_json(source)
+                ip_ranges = extract_ips_from_json(json_data, "prefixes")
+                ip_prefixes = [item.get("ipv4Prefix") or item.get("ipv6Prefix") for item in ip_ranges]
+                with open(local_path, "w") as file:
+                    file.write("\n".join(ip_prefixes))
+             except Exception as e:
+                  logging.error(f"Failed to download remote google ip file: {source}")
+                  continue
              local_google_ips.append(local_path)
     
     if config.get("owasp_protection", False):
         owasp_rules_file = config.get("owasp_rules_file", "https://raw.githubusercontent.com/SpiderLabs/owasp-modsecurity-crs/v3.3/dev/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf")
         local_path = os.path.join(temp_dir, "owasp.rules")
-        download_file(owasp_rules_file, local_path)
+        try:
+            download_file(owasp_rules_file, local_path)
+        except Exception as e:
+            logging.error(f"Failed to download remote owasp rules file: {owasp_rules_file}")
+            local_path = None
     else:
          local_path = None
 
