@@ -1,77 +1,35 @@
 squid:
-  # Network settings
   port: 3128
-  ssl_port: 3129  # Optional SSL port
-  ssl_intercept: false  # Enable SSL interception
-
-  # Allowed IPs or ranges
   allowed_ips:
     - 192.168.1.0/24
     - 10.0.0.1
-
-  # IP blacklist sources (using real sources and a local file)
   ip_blacklist_sources:
-    - ip_blacklist1.txt  # Local file in root
-    - https://iplists.firehol.org/files/firehol_level1.netset  # Real IP blacklist source
-
-  # DNS blacklist sources (using real sources and a local file)
+    - ip_blacklist1.txt
   dns_blacklist_sources:
-    - dns_blacklist1.txt  # Local file in root
-    - https://v.firebog.net/hosts/Prigent-Ads.txt  # Real DNS blacklist source
-
-  # OWASP protection
+    - dns_blacklist1.txt
   owasp_protection: true
-  owasp_rules_file: https://raw.githubusercontent.com/SpiderLabs/owasp-modsecurity-crs/v3.3/dev/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf
-
-  # Block VPN, Tor, or specific IP groups
   block_vpn: true
   block_tor: true
   block_cloudflare: true
   block_aws: true
   block_microsoft: true
   block_google: true
-  vpn_ip_sources:
-    - https://raw.githubusercontent.com/X4BNet/lists_vpn/main/output/vpn/ipv4.txt
-  tor_ip_sources:
-    - https://check.torproject.org/torbulkexitlist
-  cloudflare_ip_sources:
-    - https://www.cloudflare.com/ips-v4
-  aws_ip_sources:
-    - https://ip-ranges.amazonaws.com/ip-ranges.json
-  microsoft_ip_sources:
-    - https://download.microsoft.com/download/7/1/D/71D86715-5596-4529-9B13-DA13A5DE5B63/ServiceTags_Public_20241230.json
-  google_ip_sources:
-    - https://www.gstatic.com/ipranges/goog.json
-
-  # Logging configuration
   logging:
     access_log: /var/log/squid/access.log
     cache_log: /var/log/squid/cache.log
-    log_format: combined  # Options: combined, common, etc.
-
-  # Cache settings
+    log_format: combined
   cache:
     enabled: true
     cache_dir: /var/spool/squid
-    cache_size: 10000  # Cache size in MB
-    max_object_size: 512 MB  # Maximum size of cached objects
-
-  # Authentication (optional)
+    cache_size: 10000
+    max_object_size: 512 MB
   authentication:
     enabled: false
-    auth_file: /etc/squid/passwords  # Path to password file
-    auth_users:
-      - username1
-      - username2
-
-  # Time-based restrictions
   time_restrictions:
     - name: work_hours
-      days: MTWHF  # Monday to Friday
+      days: MTWHF
       time: 09:00-17:00
-      action: allow  # Allow access during work hours
-
-  # Custom ACLs
+      action: allow
   custom_acls:
     - name: block_social_media
       type: dstdomain
