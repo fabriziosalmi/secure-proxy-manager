@@ -1,24 +1,40 @@
-# Secure Squid Proxy with Dashboard
+# Secure Squid Proxy with Monitoring Dashboard
 
-A comprehensive, secure implementation of Squid proxy with a modern web-based dashboard for management and monitoring.
+This project provides a Docker-based Squid proxy server with a web-based monitoring dashboard. The application allows you to easily run a Squid proxy and manage it through a simple user interface.
 
 ## Features
 
-- **Secure Squid Configuration**: Hardened proxy with comprehensive security controls
-- **Domain Blacklisting**: Block malicious domains and unwanted content
-- **Modern Dashboard**: React-based UI with Tailwind CSS for easy management
-- **Monitoring & Analytics**: Real-time statistics and traffic visualization
-- **Containerized Architecture**: Docker-based deployment for easy setup and scaling
-- **Access Controls**: Fine-grained access management
-- **Log Analysis**: Advanced log viewing and filtering
+- Dockerized Squid proxy server
+- Web-based monitoring dashboard
+- Basic configuration management
+- Proxy control (start, stop, restart, reload)
+- Built with Flask backend and HTML/CSS/JavaScript frontend
+- Tailwind CSS styling
 
-## Requirements
+## Project Structure
 
-- Docker and Docker Compose
-- Node.js (for development only)
-- Linux/macOS/Windows with Docker support
+```
+secure-proxy/
+├── Dockerfile              # Docker configuration
+├── supervisord.conf        # Supervisor config to manage processes
+├── squid_config/           # Squid configuration files
+│   └── squid.conf          # Main Squid configuration
+├── flask_backend/          # Flask API backend
+│   └── app.py              # Flask application
+└── dashboard/              # Frontend files
+    ├── index.html          # Dashboard HTML
+    ├── style.css           # Dashboard CSS
+    └── script.js           # Dashboard JavaScript
+```
 
-## Quick Start
+## Prerequisites
+
+- Docker
+- Docker Compose (optional, for easier management)
+
+## Building and Running
+
+### Using Docker
 
 1. Clone this repository:
    ```
@@ -26,113 +42,58 @@ A comprehensive, secure implementation of Squid proxy with a modern web-based da
    cd secure-proxy
    ```
 
-2. Start the services using Docker Compose:
+2. Build the Docker image:
+   ```
+   docker build -t secure-proxy .
+   ```
+
+3. Run the container:
+   ```
+   docker run -d --name secure-proxy -p 3128:3128 -p 8000:5000 secure-proxy
+   ```
+
+### Using Docker Compose
+
+1. Create a `docker-compose.yml` file:
+   ```yaml
+   version: '3'
+   services:
+     proxy:
+       build: .
+       ports:
+         - "3128:3128"  # Squid proxy port
+         - "5000:5000"  # Dashboard port
+       restart: unless-stopped
+   ```
+
+2. Start the application:
    ```
    docker-compose up -d
    ```
 
-3. Access the dashboard at http://localhost:8080
+## Accessing the Application
 
-4. Configure your client to use the proxy at `localhost:3128`
+- **Squid Proxy**: Configure your browser or application to use the proxy at `http://localhost:3128`
+- **Dashboard**: Access the monitoring dashboard at `http://localhost:5000`
 
-## Architecture
+## Configuring the Proxy
 
-The project consists of two main components:
+The Squid configuration file is located at `squid_config/squid.conf`. You can modify this file to change the proxy settings before building the Docker image.
 
-1. **Squid Proxy Service**: Provides the actual proxy functionality with security features
-2. **Web Dashboard**: Provides a user-friendly interface for managing and monitoring the proxy
+Some basic configuration options are also available through the dashboard interface.
 
-Both components are containerized using Docker for easy deployment and isolation.
+## Environment Variables
 
-## Configuration
+The application supports the following environment variables:
 
-### Squid Configuration
+- `SQUID_PORT`: The port Squid listens on (default: 3128)
+- `DASHBOARD_PORT`: The port for the monitoring dashboard (default: 5000)
 
-The main Squid configuration file is located at `config/squid/squid.conf`. You can modify this file to adjust the proxy settings according to your needs.
-
-Key settings include:
-- Port configuration
-- Access control lists
-- Cache settings
-- Security parameters
-
-### Blacklist Management
-
-Domain blacklists are stored in `config/blacklists/domains.txt`. You can edit this file directly or use the dashboard to manage blocked domains.
-
-### Dashboard Configuration
-
-The dashboard is configured to connect to the Squid proxy service automatically when deployed using Docker Compose. For development or custom deployments, you may need to adjust the proxy connection settings.
-
-## Development
-
-### Prerequisites
-
-- Node.js (version 14 or higher)
-- npm or yarn
-- Docker and Docker Compose
-
-### Dashboard Development
-
-1. Navigate to the dashboard directory:
-   ```
-   cd src/dashboard
-   ```
-
-2. Install dependencies:
-   ```
-   npm install
-   ```
-
-3. Start the development server:
-   ```
-   npm start
-   ```
-
-The dashboard will be available at http://localhost:3000 with hot-reloading enabled.
-
-### Building for Production
-
-To build the dashboard for production:
-
+Example:
 ```
-cd src/dashboard
-npm run build
+docker run -d --name secure-proxy -p 8080:8080 -p 5000:5000 -e SQUID_PORT=8080 secure-proxy
 ```
-
-This will create optimized static files in the `build` directory.
-
-## Proxy Management
-
-The `scripts/proxy-manager.sh` script provides a convenient way to manage the Squid proxy service when not using Docker:
-
-```
-sudo ./scripts/proxy-manager.sh [command]
-```
-
-Available commands:
-- `start`: Start the Squid proxy service
-- `stop`: Stop the Squid proxy service
-- `restart`: Restart the Squid proxy service
-- `status`: Check the status of the Squid proxy service
-- `validate`: Validate the Squid configuration
-- `logs`: View recent logs
-- `clear`: Clear the Squid cache
-
-## Security Considerations
-
-This implementation includes several security features:
-
-1. **Restricted Access**: By default, the proxy only allows connections from local networks
-2. **Domain Blacklisting**: Blocks known malicious domains
-3. **Protocol Restrictions**: Only allows safe protocols
-4. **SSL Inspection**: Optional SSL/TLS inspection for enhanced security (requires additional setup)
-5. **Authentication**: Optional user authentication for access control
 
 ## License
 
-[MIT License](LICENSE)
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+This project is released under the MIT License. See LICENSE file for details.

@@ -1,0 +1,66 @@
+/* Custom styles for Squid Proxy Dashboard */
+
+/* Button styles */
+.btn {
+    @apply px-4 py-2 rounded font-medium text-white text-center transition-colors;
+}
+
+.btn:focus {
+    @apply outline-none ring-2 ring-offset-2;
+}
+
+.btn:disabled {
+    @apply opacity-50 cursor-not-allowed;
+}
+
+.btn-green {
+    @apply bg-green-500 hover:bg-green-600 focus:ring-green-500;
+}
+
+.btn-red {
+    @apply bg-red-500 hover:bg-red-600 focus:ring-red-500;
+}
+
+.btn-yellow {
+    @apply bg-yellow-500 hover:bg-yellow-600 focus:ring-yellow-500;
+}
+
+.btn-blue {
+    @apply bg-blue-500 hover:bg-blue-600 focus:ring-blue-500;
+}
+
+/* Status indicator */
+.status-running {
+    @apply bg-green-500;
+}
+
+.status-stopped {
+    @apply bg-red-500;
+}
+
+.status-error {
+    @apply bg-yellow-500;
+}
+
+/* Messages */
+.message-success {
+    @apply text-green-600;
+}
+
+.message-error {
+    @apply text-red-600;
+}
+
+/* Animations */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

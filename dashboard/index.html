@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Squid Proxy Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Squid Proxy Dashboard</h1>
+        </header>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Status Card -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-semibold mb-4">Proxy Status</h2>
+                <div class="flex items-center mb-4">
+                    <div id="status-indicator" class="w-4 h-4 rounded-full mr-2 bg-gray-400"></div>
+                    <span id="status-text" class="text-lg">Checking...</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="start-btn" class="btn btn-green">Start</button>
+                    <button id="stop-btn" class="btn btn-red">Stop</button>
+                    <button id="restart-btn" class="btn btn-yellow">Restart</button>
+                    <button id="reload-btn" class="btn btn-blue">Reload</button>
+                </div>
+            </div>
+            
+            <!-- Configuration Card -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-semibold mb-4">Proxy Configuration</h2>
+                <div class="mb-4">
+                    <label for="port" class="block text-gray-700 mb-2">Listening Port</label>
+                    <div class="flex">
+                        <input type="number" id="port" class="flex-grow px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="3128">
+                        <button id="update-port-btn" class="bg-blue-500 text-white px-4 py-2 rounded-r-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500">Update</button>
+                    </div>
+                </div>
+                <div id="config-message" class="mt-2 text-sm"></div>
+            </div>
+        </div>
+        
+        <!-- Logs Card -->
+        <div class="bg-white rounded-lg shadow-md p-6 mt-6">
+            <h2 class="text-xl font-semibold mb-4">Status Details</h2>
+            <pre id="status-details" class="bg-gray-100 p-4 rounded overflow-auto max-h-60 text-sm">Loading...</pre>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
