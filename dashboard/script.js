@@ -253,11 +253,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const reloadBtn = document.getElementById('reload-btn');
         const refreshStatusBtn = document.getElementById('refresh-status-btn');
         
-        // Port Configuration
-        const portInput = document.getElementById('port');
-        const updatePortBtn = document.getElementById('update-port-btn');
-        const configMessage = document.getElementById('config-message');
-        
         // Log Controls
         const downloadLogsBtn = document.getElementById('download-logs-btn');
         const clearLogsBtn = document.getElementById('clear-logs-btn');
@@ -287,13 +282,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const saveAllowedDirectIpsBtn = document.getElementById('save-allowed-direct-ips-btn');
         const allowedDirectIpsMessage = document.getElementById('allowed-direct-ips-message');
         
-        // Cache Settings
-        const cacheSizeInput = document.getElementById('cache-size');
-        const maxObjectSizeValueInput = document.getElementById('max-object-size-value');
-        const maxObjectSizeUnitSelect = document.getElementById('max-object-size-unit');
-        const saveCacheSettingsBtn = document.getElementById('save-cache-settings-btn');
-        const cacheSettingsMessage = document.getElementById('cache-settings-message');
-        
         // Tab Navigation
         const tabButtons = document.querySelectorAll('.tab-btn');
         const tabContents = document.querySelectorAll('.tab-content');
@@ -309,7 +297,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (restartBtn) restartBtn.addEventListener('click', () => controlSquid('restart'));
         if (reloadBtn) reloadBtn.addEventListener('click', () => controlSquid('reload'));
         if (refreshStatusBtn) refreshStatusBtn.addEventListener('click', () => fetchStatus());
-        if (updatePortBtn) updatePortBtn.addEventListener('click', updatePort);
         
         // Log control event listeners
         if (downloadLogsBtn) downloadLogsBtn.addEventListener('click', downloadLogs);
@@ -320,7 +307,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (saveIpBlacklistBtn) saveIpBlacklistBtn.addEventListener('click', saveIpBlacklist);
         if (saveDomainBlacklistBtn) saveDomainBlacklistBtn.addEventListener('click', saveDomainBlacklist);
         if (saveAllowedDirectIpsBtn) saveAllowedDirectIpsBtn.addEventListener('click', saveAllowedDirectIps);
-        if (saveCacheSettingsBtn) saveCacheSettingsBtn.addEventListener('click', saveCacheSettings);
         
         // Tab navigation event listeners
         if (tabButtons) {
@@ -774,6 +760,43 @@ document.addEventListener('DOMContentLoaded', function() {
         const saveConfigBtn = document.getElementById('save-config-btn');
         const configEditorMessage = document.getElementById('config-editor-message');
         
+        // Port Configuration
+        const portInput = document.getElementById('port');
+        const updatePortBtn = document.getElementById('update-port-btn');
+        const configMessage = document.getElementById('config-message');
+        
+        // Cache Settings
+        const cacheSizeInput = document.getElementById('cache-size');
+        const maxObjectSizeValueInput = document.getElementById('max-object-size-value');
+        const maxObjectSizeUnitSelect = document.getElementById('max-object-size-unit');
+        const saveCacheSettingsBtn = document.getElementById('save-cache-settings-btn');
+        const cacheSettingsMessage = document.getElementById('cache-settings-message');
+        
+        // Security Feature Elements
+        const ipBlacklistToggle = document.getElementById('ip-blacklist-toggle');
+        const domainBlacklistToggle = document.getElementById('domain-blacklist-toggle');
+        const directIpToggle = document.getElementById('direct-ip-toggle');
+        const userAgentToggle = document.getElementById('user-agent-toggle');
+        const malwareToggle = document.getElementById('malware-toggle');
+        const httpsFilteringToggle = document.getElementById('https-filtering-toggle');
+        const saveFeaturesBtn = document.getElementById('save-features-btn');
+        const featuresMessage = document.getElementById('features-message');
+        
+        // IP Blacklist Tab
+        const ipBlacklistTextarea = document.getElementById('ip-blacklist-textarea');
+        const saveIpBlacklistBtn = document.getElementById('save-ip-blacklist-btn');
+        const ipBlacklistMessage = document.getElementById('ip-blacklist-message');
+        
+        // Domain Blacklist Tab
+        const domainBlacklistTextarea = document.getElementById('domain-blacklist-textarea');
+        const saveDomainBlacklistBtn = document.getElementById('save-domain-blacklist-btn');
+        const domainBlacklistMessage = document.getElementById('domain-blacklist-message');
+        
+        // Allowed Direct IPs Tab
+        const allowedDirectIpsTextarea = document.getElementById('allowed-direct-ips-textarea');
+        const saveAllowedDirectIpsBtn = document.getElementById('save-allowed-direct-ips-btn');
+        const allowedDirectIpsMessage = document.getElementById('allowed-direct-ips-message');
+        
         // System settings elements
         const squidPathInput = document.getElementById('squid-path');
         const configPathInput = document.getElementById('config-path');
@@ -792,11 +815,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const saveBadUserAgentsBtn = document.getElementById('save-bad-user-agents-btn');
         const badUserAgentsMessage = document.getElementById('bad-user-agents-message');
         
+        // Tab Navigation
+        const tabButtons = document.querySelectorAll('.tab-btn');
+        const tabContents = document.querySelectorAll('.tab-content');
+        
         // Initialize
         fetchSystemInfo();
         fetchRawConfig();
         fetchBadUserAgents();
         loadDashboardSettings();
+        fetchConfig();
+        fetchSecurityFeatures();
         
         // Add event listeners
         if (reloadConfigBtn) reloadConfigBtn.addEventListener('click', fetchRawConfig);
@@ -804,6 +833,52 @@ document.addEventListener('DOMContentLoaded', function() {
         if (saveSystemSettingsBtn) saveSystemSettingsBtn.addEventListener('click', saveSystemSettings);
         if (saveDashboardSettingsBtn) saveDashboardSettingsBtn.addEventListener('click', saveDashboardSettings);
         if (saveBadUserAgentsBtn) saveBadUserAgentsBtn.addEventListener('click', saveBadUserAgents);
+        if (updatePortBtn) updatePortBtn.addEventListener('click', updatePort);
+        if (saveCacheSettingsBtn) saveCacheSettingsBtn.addEventListener('click', saveCacheSettings);
+        
+        // Event listeners for security features
+        if (saveFeaturesBtn) saveFeaturesBtn.addEventListener('click', saveFeatureToggles);
+        if (saveIpBlacklistBtn) saveIpBlacklistBtn.addEventListener('click', saveIpBlacklist);
+        if (saveDomainBlacklistBtn) saveDomainBlacklistBtn.addEventListener('click', saveDomainBlacklist);
+        if (saveAllowedDirectIpsBtn) saveAllowedDirectIpsBtn.addEventListener('click', saveAllowedDirectIps);
+        
+        // Tab navigation event listeners
+        if (tabButtons) {
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    // Remove active class from all buttons
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    
+                    // Add active class to clicked button
+                    button.classList.add('active');
+                    
+                    // Show corresponding content
+                    const tabName = button.getAttribute('data-tab');
+                    
+                    // Hide all tab content sections
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.remove('active');
+                        content.classList.add('hidden');
+                    });
+                    
+                    // Show the selected tab content
+                    const activeTab = document.getElementById(tabName + '-tab');
+                    if (activeTab) {
+                        activeTab.classList.add('active');
+                        activeTab.classList.remove('hidden');
+                    }
+                    
+                    // Fetch data for the active tab
+                    if (tabName === 'ip-blacklist') {
+                        fetchIpBlacklist();
+                    } else if (tabName === 'domain-blacklist') {
+                        fetchDomainBlacklist();
+                    } else if (tabName === 'allowed-direct-ips') {
+                        fetchAllowedDirectIps();
+                    }
+                });
+            });
+        }
         
         // Add theme button listeners
         if (themeButtons) {
@@ -859,192 +934,539 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        async function saveRawConfig() {
-            if (!configEditor) return;
+        async function fetchConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+                
+                if (data.port && portInput) {
+                    portInput.value = data.port;
+                }
+                
+                // Load cache settings if available
+                if (data.cacheSize && cacheSizeInput) {
+                    cacheSizeInput.value = data.cacheSize;
+                }
+                
+                if (data.maxObjectSize && maxObjectSizeValueInput && maxObjectSizeUnitSelect) {
+                    const [value, unit] = data.maxObjectSize.split(' ');
+                    maxObjectSizeValueInput.value = value;
+                    if (unit) {
+                        maxObjectSizeUnitSelect.value = unit;
+                    }
+                }
+            } catch (error) {
+                if (configMessage) {
+                    showMessage(configMessage, 'Failed to fetch configuration: ' + error.message, false);
+                }
+            }
+        }
+        
+        async function updatePort() {
+            if (!portInput) return;
+            const port = portInput.value;
             
-            const content = configEditor.value;
-            if (!content.trim()) {
-                showMessage(configEditorMessage, 'Configuration cannot be empty', false);
+            if (!port || !port.match(/^\d+$/) || port < 1 || port > 65535) {
+                showMessage(configMessage, 'Please enter a valid port number (1-65535)', false);
                 return;
             }
             
-            if (!confirm('Are you sure you want to save this configuration? Invalid configurations may break your proxy.')) {
-                return;
-            }
-            
             try {
-                if (saveConfigBtn) saveConfigBtn.disabled = true;
-                if (configEditorMessage) showMessage(configEditorMessage, 'Saving...', null);
+                if (updatePortBtn) updatePortBtn.disabled = true;
+                showMessage(configMessage, 'Updating...', null);
                 
-                const response = await fetch('/api/config/raw', {
+                const response = await fetch('/api/config', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ content })
+                    body: JSON.stringify({ port })
                 });
                 
                 const data = await response.json();
                 
                 if (data.status === 'success') {
-                    showMessage(configEditorMessage, 'Configuration saved successfully. A backup was created at ' + data.backupPath, true);
-                    // Reload the proxy to apply changes
-                    setTimeout(() => controlSquid('reload'), 1000);
+                    showMessage(configMessage, data.message || 'Port updated successfully', true);
+                    // Refresh status after updating port
+                    setTimeout(fetchStatus, 1000);
                 } else {
-                    showMessage(configEditorMessage, data.message || 'Failed to save configuration', false);
+                    showMessage(configMessage, data.message || 'Failed to update port', false);
                 }
             } catch (error) {
-                showMessage(configEditorMessage, 'Failed to save configuration: ' + error.message, false);
+                showMessage(configMessage, 'Failed to update port: ' + error.message, false);
             } finally {
-                if (saveConfigBtn) saveConfigBtn.disabled = false;
-            }
+                if (updatePortBtn) updatePortBtn.disabled = false;
         }
+    }
+    
+    async function saveCacheSettings() {
+        if (!cacheSizeInput || !maxObjectSizeValueInput || !maxObjectSizeUnitSelect) return;
         
-        async function fetchBadUserAgents() {
-            if (!badUserAgentsTextarea) return;
+        try {
+            if (saveCacheSettingsBtn) saveCacheSettingsBtn.disabled = true;
+            if (cacheSettingsMessage) showMessage(cacheSettingsMessage, 'Saving...', null);
             
-            try {
-                badUserAgentsTextarea.disabled = true;
-                badUserAgentsTextarea.placeholder = 'Loading...';
-                
-                const response = await fetch('/api/security/bad-user-agents');
-                const data = await response.json();
-                
-                if (data.userAgents) {
-                    badUserAgentsTextarea.value = data.userAgents.join('\n');
-                } else {
-                    badUserAgentsTextarea.value = '';
-                }
-            } catch (error) {
-                showMessage(badUserAgentsMessage, 'Failed to fetch bad user agents: ' + error.message, false);
-            } finally {
-                badUserAgentsTextarea.disabled = false;
-                badUserAgentsTextarea.placeholder = 'Enter user agents to block, one per line';
-            }
-        }
-        
-        async function saveBadUserAgents() {
-            if (!badUserAgentsTextarea) return;
+            const cacheSize = cacheSizeInput.value;
+            const maxObjectSize = `${maxObjectSizeValueInput.value} ${maxObjectSizeUnitSelect.value}`;
             
-            try {
-                if (saveBadUserAgentsBtn) saveBadUserAgentsBtn.disabled = true;
-                if (badUserAgentsMessage) showMessage(badUserAgentsMessage, 'Saving...', null);
-                
-                const userAgents = badUserAgentsTextarea.value
-                    .split('\n')
-                    .map(line => line.trim())
-                    .filter(line => line !== '');
-                
-                const response = await fetch('/api/security/bad-user-agents', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ userAgents })
-                });
-                
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    showMessage(badUserAgentsMessage, 'Bad user agents updated successfully', true);
-                } else {
-                    showMessage(badUserAgentsMessage, data.message || 'Failed to update bad user agents', false);
-                }
-            } catch (error) {
-                showMessage(badUserAgentsMessage, 'Failed to save bad user agents: ' + error.message, false);
-            } finally {
-                if (saveBadUserAgentsBtn) saveBadUserAgentsBtn.disabled = false;
-            }
-        }
-        
-        async function saveSystemSettings() {
-            if (!squidPathInput || !configPathInput || !cacheDirInput) return;
+            const response = await fetch('/api/security/cache-settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ cacheSize, maxObjectSize })
+            });
             
-            try {
-                if (saveSystemSettingsBtn) saveSystemSettingsBtn.disabled = true;
-                if (systemSettingsMessage) showMessage(systemSettingsMessage, 'Saving...', null);
-                
-                const paths = {
-                    squidPath: squidPathInput.value.trim(),
-                    configPath: configPathInput.value.trim(),
-                    cacheDir: cacheDirInput.value.trim()
-                };
-                
-                const response = await fetch('/api/system/paths', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(paths)
-                });
-                
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    showMessage(systemSettingsMessage, 'System settings updated successfully', true);
-                } else {
-                    showMessage(systemSettingsMessage, data.message || 'Failed to update system settings', false);
-                }
-            } catch (error) {
-                showMessage(systemSettingsMessage, 'Failed to save system settings: ' + error.message, false);
-            } finally {
-                if (saveSystemSettingsBtn) saveSystemSettingsBtn.disabled = false;
-            }
-        }
-        
-        function loadDashboardSettings() {
-            if (!refreshIntervalInput || !themeButtons) return;
+            const data = await response.json();
             
-            // Load from localStorage if available
-            const settings = JSON.parse(localStorage.getItem('dashboardSettings') || '{}');
-            
-            if (settings.refreshInterval) {
-                refreshIntervalInput.value = settings.refreshInterval;
+            if (data.status === 'success') {
+                showMessage(cacheSettingsMessage, 'Cache settings updated successfully', true);
             } else {
-                refreshIntervalInput.value = '30'; // Default
+                showMessage(cacheSettingsMessage, data.message || 'Failed to update cache settings', false);
             }
-            
-            if (settings.theme) {
-                themeButtons.forEach(btn => {
-                    if (btn.getAttribute('data-theme') === settings.theme) {
-                        btn.classList.add('active');
-                    } else {
-                        btn.classList.remove('active');
-                    }
-                });
+        } catch (error) {
+            if (cacheSettingsMessage) {
+                showMessage(cacheSettingsMessage, 'Failed to save cache settings: ' + error.message, false);
             }
+        } finally {
+            if (saveCacheSettingsBtn) saveCacheSettingsBtn.disabled = false;
+        }
+    }
+    
+    async function saveRawConfig() {
+        if (!configEditor) return;
+        
+        const content = configEditor.value;
+        if (!content.trim()) {
+            showMessage(configEditorMessage, 'Configuration cannot be empty', false);
+            return;
         }
         
-        function saveDashboardSettings() {
-            if (!refreshIntervalInput || !themeButtons) return;
+        if (!confirm('Are you sure you want to save this configuration? Invalid configurations may break your proxy.')) {
+            return;
+        }
+        
+        try {
+            if (saveConfigBtn) saveConfigBtn.disabled = true;
+            if (configEditorMessage) showMessage(configEditorMessage, 'Saving...', null);
             
-            try {
-                const refreshInterval = refreshIntervalInput.value;
-                let theme = 'light'; // Default
-                
-                themeButtons.forEach(btn => {
-                    if (btn.classList.contains('active')) {
-                        theme = btn.getAttribute('data-theme');
-                    }
-                });
-                
-                const settings = {
-                    refreshInterval,
-                    theme
-                };
-                
-                // Save to localStorage
-                localStorage.setItem('dashboardSettings', JSON.stringify(settings));
-                
-                // Apply settings
-                document.documentElement.setAttribute('data-theme', theme);
-                
-                showMessage(dashboardSettingsMessage, 'Dashboard settings saved successfully', true);
-            } catch (error) {
-                showMessage(dashboardSettingsMessage, 'Failed to save dashboard settings: ' + error.message, false);
+            const response = await fetch('/api/config/raw', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ content })
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                showMessage(configEditorMessage, 'Configuration saved successfully. A backup was created at ' + data.backupPath, true);
+                // Reload the proxy to apply changes
+                setTimeout(() => controlSquid('reload'), 1000);
+            } else {
+                showMessage(configEditorMessage, data.message || 'Failed to save configuration', false);
+            }
+        } catch (error) {
+            showMessage(configEditorMessage, 'Failed to save configuration: ' + error.message, false);
+        } finally {
+            if (saveConfigBtn) saveConfigBtn.disabled = false;
+        }
+    }
+    
+    // Functions for security features
+    async function fetchSecurityFeatures() {
+        try {
+            const response = await fetch('/api/security/feature-status');
+            const features = await response.json();
+            
+            // Update toggle states with default HTTPS filtering OFF
+            if (ipBlacklistToggle) ipBlacklistToggle.checked = features.ipBlacklist;
+            if (domainBlacklistToggle) domainBlacklistToggle.checked = features.domainBlacklist;
+            if (directIpToggle) directIpToggle.checked = features.directIpBlocking;
+            if (userAgentToggle) userAgentToggle.checked = features.userAgentFiltering;
+            if (malwareToggle) malwareToggle.checked = features.malwareBlocking;
+            if (httpsFilteringToggle) httpsFilteringToggle.checked = features.httpsFiltering === true ? true : false;
+            
+            // Also fetch the initial data for the first tab
+            fetchIpBlacklist();
+        } catch (error) {
+            if (featuresMessage) {
+                showMessage(featuresMessage, 'Failed to fetch security features: ' + error.message, false);
             }
         }
     }
+    
+    async function saveFeatureToggles() {
+        if (!ipBlacklistToggle) return;
+        
+        try {
+            if (saveFeaturesBtn) saveFeaturesBtn.disabled = true;
+            if (featuresMessage) showMessage(featuresMessage, 'Saving...', null);
+            
+            const features = {
+                ipBlacklist: ipBlacklistToggle.checked,
+                domainBlacklist: domainBlacklistToggle.checked,
+                directIpBlocking: directIpToggle.checked,
+                userAgentFiltering: userAgentToggle.checked,
+                malwareBlocking: malwareToggle.checked,
+                httpsFiltering: httpsFilteringToggle.checked
+            };
+            
+            const response = await fetch('/api/security/feature-status', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(features)
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                showMessage(featuresMessage, 'Security features updated successfully', true);
+                // Reload the proxy to apply changes
+                setTimeout(() => controlSquid('reload'), 1000);
+            } else {
+                showMessage(featuresMessage, data.message || 'Failed to update security features', false);
+            }
+        } catch (error) {
+            if (featuresMessage) {
+                showMessage(featuresMessage, 'Failed to save security features: ' + error.message, false);
+            }
+        } finally {
+            if (saveFeaturesBtn) saveFeaturesBtn.disabled = false;
+        }
+    }
+    
+    async function fetchIpBlacklist() {
+        if (!ipBlacklistTextarea) return;
+        
+        try {
+            ipBlacklistTextarea.disabled = true;
+            ipBlacklistTextarea.placeholder = 'Loading...';
+            
+            const response = await fetch('/api/security/blacklist-ips');
+            const data = await response.json();
+            
+            if (data.ips) {
+                ipBlacklistTextarea.value = data.ips.join('\n');
+            } else {
+                ipBlacklistTextarea.value = '';
+            }
+        } catch (error) {
+            if (ipBlacklistMessage) {
+                showMessage(ipBlacklistMessage, 'Failed to fetch IP blacklist: ' + error.message, false);
+            }
+        } finally {
+            ipBlacklistTextarea.disabled = false;
+            ipBlacklistTextarea.placeholder = 'Enter IPs to blacklist, one per line\nExample:\n192.168.1.100\n10.0.0.5';
+        }
+    }
+    
+    async function saveIpBlacklist() {
+        if (!ipBlacklistTextarea) return;
+        
+        try {
+            if (saveIpBlacklistBtn) saveIpBlacklistBtn.disabled = true;
+            if (ipBlacklistMessage) showMessage(ipBlacklistMessage, 'Saving...', null);
+            
+            const ips = ipBlacklistTextarea.value
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line !== '');
+            
+            const response = await fetch('/api/security/blacklist-ips', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ ips })
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                showMessage(ipBlacklistMessage, 'IP blacklist updated successfully', true);
+            } else {
+                showMessage(ipBlacklistMessage, data.message || 'Failed to update IP blacklist', false);
+            }
+        } catch (error) {
+            if (ipBlacklistMessage) {
+                showMessage(ipBlacklistMessage, 'Failed to save IP blacklist: ' + error.message, false);
+            }
+        } finally {
+            if (saveIpBlacklistBtn) saveIpBlacklistBtn.disabled = false;
+        }
+    }
+    
+    async function fetchDomainBlacklist() {
+        if (!domainBlacklistTextarea) return;
+        
+        try {
+            domainBlacklistTextarea.disabled = true;
+            domainBlacklistTextarea.placeholder = 'Loading...';
+            
+            const response = await fetch('/api/security/blacklist-domains');
+            const data = await response.json();
+            
+            if (data.domains) {
+                domainBlacklistTextarea.value = data.domains.join('\n');
+            } else {
+                domainBlacklistTextarea.value = '';
+            }
+        } catch (error) {
+            if (domainBlacklistMessage) {
+                showMessage(domainBlacklistMessage, 'Failed to fetch domain blacklist: ' + error.message, false);
+            }
+        } finally {
+            domainBlacklistTextarea.disabled = false;
+            domainBlacklistTextarea.placeholder = 'Enter domains to blacklist, one per line\nExample:\nexample.com\nads.example.org';
+        }
+    }
+    
+    async function saveDomainBlacklist() {
+        if (!domainBlacklistTextarea) return;
+        
+        try {
+            if (saveDomainBlacklistBtn) saveDomainBlacklistBtn.disabled = true;
+            if (domainBlacklistMessage) showMessage(domainBlacklistMessage, 'Saving...', null);
+            
+            const domains = domainBlacklistTextarea.value
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line !== '');
+            
+            const response = await fetch('/api/security/blacklist-domains', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ domains })
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                showMessage(domainBlacklistMessage, 'Domain blacklist updated successfully', true);
+            } else {
+                showMessage(domainBlacklistMessage, data.message || 'Failed to update domain blacklist', false);
+            }
+        } catch (error) {
+            if (domainBlacklistMessage) {
+                showMessage(domainBlacklistMessage, 'Failed to save domain blacklist: ' + error.message, false);
+            }
+        } finally {
+            if (saveDomainBlacklistBtn) saveDomainBlacklistBtn.disabled = false;
+        }
+    }
+    
+    async function fetchAllowedDirectIps() {
+        if (!allowedDirectIpsTextarea) return;
+        
+        try {
+            allowedDirectIpsTextarea.disabled = true;
+            allowedDirectIpsTextarea.placeholder = 'Loading...';
+            
+            const response = await fetch('/api/security/allowed-direct-ips');
+            const data = await response.json();
+            
+            if (data.ips) {
+                allowedDirectIpsTextarea.value = data.ips.join('\n');
+            } else {
+                allowedDirectIpsTextarea.value = '';
+            }
+        } catch (error) {
+            if (allowedDirectIpsMessage) {
+                showMessage(allowedDirectIpsMessage, 'Failed to fetch allowed direct IPs: ' + error.message, false);
+            }
+        } finally {
+            allowedDirectIpsTextarea.disabled = false;
+            allowedDirectIpsTextarea.placeholder = 'Enter IPs to allow direct access, one per line\nExample:\n192.168.1.1\n10.0.0.0/24';
+        }
+    }
+    
+    async function saveAllowedDirectIps() {
+        if (!allowedDirectIpsTextarea) return;
+        
+        try {
+            if (saveAllowedDirectIpsBtn) saveAllowedDirectIpsBtn.disabled = true;
+            if (allowedDirectIpsMessage) showMessage(allowedDirectIpsMessage, 'Saving...', null);
+            
+            const ips = allowedDirectIpsTextarea.value
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line !== '');
+            
+            const response = await fetch('/api/security/allowed-direct-ips', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ ips })
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                showMessage(allowedDirectIpsMessage, 'Allowed direct IPs updated successfully', true);
+            } else {
+                showMessage(allowedDirectIpsMessage, data.message || 'Failed to update allowed direct IPs', false);
+            }
+        } catch (error) {
+            if (allowedDirectIpsMessage) {
+                showMessage(allowedDirectIpsMessage, 'Failed to save allowed direct IPs: ' + error.message, false);
+            }
+        } finally {
+            if (saveAllowedDirectIpsBtn) saveAllowedDirectIpsBtn.disabled = false;
+        }
+    }
+    
+    async function fetchBadUserAgents() {
+        if (!badUserAgentsTextarea) return;
+        
+        try {
+            badUserAgentsTextarea.disabled = true;
+            badUserAgentsTextarea.placeholder = 'Loading...';
+            
+            const response = await fetch('/api/security/bad-user-agents');
+            const data = await response.json();
+            
+            if (data.userAgents) {
+                badUserAgentsTextarea.value = data.userAgents.join('\n');
+            } else {
+                badUserAgentsTextarea.value = '';
+            }
+        } catch (error) {
+            showMessage(badUserAgentsMessage, 'Failed to fetch bad user agents: ' + error.message, false);
+        } finally {
+            badUserAgentsTextarea.disabled = false;
+            badUserAgentsTextarea.placeholder = 'Enter user agents to block, one per line';
+        }
+    }
+    
+    async function saveBadUserAgents() {
+        if (!badUserAgentsTextarea) return;
+        
+        try {
+            if (saveBadUserAgentsBtn) saveBadUserAgentsBtn.disabled = true;
+            if (badUserAgentsMessage) showMessage(badUserAgentsMessage, 'Saving...', null);
+            
+            const userAgents = badUserAgentsTextarea.value
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line !== '');
+            
+            const response = await fetch('/api/security/bad-user-agents', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ userAgents })
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                showMessage(badUserAgentsMessage, 'Bad user agents updated successfully', true);
+            } else {
+                showMessage(badUserAgentsMessage, data.message || 'Failed to update bad user agents', false);
+            }
+        } catch (error) {
+            showMessage(badUserAgentsMessage, 'Failed to save bad user agents: ' + error.message, false);
+        } finally {
+            if (saveBadUserAgentsBtn) saveBadUserAgentsBtn.disabled = false;
+        }
+    }
+    
+    async function saveSystemSettings() {
+        if (!squidPathInput || !configPathInput || !cacheDirInput) return;
+        
+        try {
+            if (saveSystemSettingsBtn) saveSystemSettingsBtn.disabled = true;
+            if (systemSettingsMessage) showMessage(systemSettingsMessage, 'Saving...', null);
+            
+            const paths = {
+                squidPath: squidPathInput.value.trim(),
+                configPath: configPathInput.value.trim(),
+                cacheDir: cacheDirInput.value.trim()
+            };
+            
+            const response = await fetch('/api/system/paths', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(paths)
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                showMessage(systemSettingsMessage, 'System settings updated successfully', true);
+            } else {
+                showMessage(systemSettingsMessage, data.message || 'Failed to update system settings', false);
+            }
+        } catch (error) {
+            showMessage(systemSettingsMessage, 'Failed to save system settings: ' + error.message, false);
+        } finally {
+            if (saveSystemSettingsBtn) saveSystemSettingsBtn.disabled = false;
+        }
+    }
+    
+    function loadDashboardSettings() {
+        if (!refreshIntervalInput || !themeButtons) return;
+        
+        // Load from localStorage if available
+        const settings = JSON.parse(localStorage.getItem('dashboardSettings') || '{}');
+        
+        if (settings.refreshInterval) {
+            refreshIntervalInput.value = settings.refreshInterval;
+        } else {
+            refreshIntervalInput.value = '30'; // Default
+        }
+        
+        if (settings.theme) {
+            themeButtons.forEach(btn => {
+                if (btn.getAttribute('data-theme') === settings.theme) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        }
+    }
+    
+    function saveDashboardSettings() {
+        if (!refreshIntervalInput || !themeButtons) return;
+        
+        try {
+            const refreshInterval = refreshIntervalInput.value;
+            let theme = 'light'; // Default
+            
+            themeButtons.forEach(btn => {
+                if (btn.classList.contains('active')) {
+                    theme = btn.getAttribute('data-theme');
+                }
+            });
+            
+            const settings = {
+                refreshInterval,
+                theme
+            };
+            
+            // Save to localStorage
+            localStorage.setItem('dashboardSettings', JSON.stringify(settings));
+            
+            // Apply settings
+            document.documentElement.setAttribute('data-theme', theme);
+            
+            showMessage(dashboardSettingsMessage, 'Dashboard settings saved successfully', true);
+        } catch (error) {
+            showMessage(dashboardSettingsMessage, 'Failed to save dashboard settings: ' + error.message, false);
+        }
+    }
+}
     
     // Initialize Logs Page
     function initLogsPage() {
