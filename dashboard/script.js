@@ -253,6 +253,133 @@ document.addEventListener('DOMContentLoaded', function() {
         const reloadBtn = document.getElementById('reload-btn');
         const refreshStatusBtn = document.getElementById('refresh-status-btn');
         
+        // Real-time Monitoring Elements
+        const connectionsCount = document.getElementById('connections-count');
+        const connectionsBar = document.getElementById('connections-bar');
+        const connectionsLimit = document.getElementById('connections-limit');
+        const clientsCount = document.getElementById('clients-count');
+        const clientsBar = document.getElementById('clients-bar');
+        const clientsLimit = document.getElementById('clients-limit');
+        const peakConnections = document.getElementById('peak-connections');
+        const peakClients = document.getElementById('peak-clients');
+        const lastUpdateTime = document.getElementById('last-update-time');
+        const toggleAutoRefresh = document.getElementById('toggle-auto-refresh');
+        const autoRefreshStatus = document.getElementById('auto-refresh-status');
+        const refreshConnectionsBtn = document.getElementById('refresh-connections-btn');
+        
+        // State variables for real-time monitoring
+        let connectionsAutoRefresh = false;
+        let connectionsRefreshInterval = null;
+        let peakConnectionsValue = 0;
+        let peakClientsValue = 0;
+        
+        // Initialize
+        fetchStatus();
+        fetchRealTimeStats();
+        
+        // Event listeners for basic controls
+        if (startBtn) startBtn.addEventListener('click', () => controlSquid('start'));
+        if (stopBtn) stopBtn.addEventListener('click', () => controlSquid('stop'));
+        if (restartBtn) restartBtn.addEventListener('click', () => controlSquid('restart'));
+        if (reloadBtn) reloadBtn.addEventListener('click', () => controlSquid('reload'));
+        if (refreshStatusBtn) refreshStatusBtn.addEventListener('click', () => fetchStatus());
+        
+        // Event listeners for real-time monitoring
+        if (refreshConnectionsBtn) refreshConnectionsBtn.addEventListener('click', fetchRealTimeStats);
+        if (toggleAutoRefresh) toggleAutoRefresh.addEventListener('click', toggleConnectionsAutoRefresh);
+        
+        // Functions for real-time monitoring
+        function toggleConnectionsAutoRefresh() {
+            connectionsAutoRefresh = !connectionsAutoRefresh;
+            
+            if (autoRefreshStatus) {
+                autoRefreshStatus.textContent = connectionsAutoRefresh ? 'On' : 'Off';
+            }
+            
+            if (connectionsAutoRefresh) {
+                // Start auto-refresh (every 5 seconds)
+                connectionsRefreshInterval = setInterval(fetchRealTimeStats, 5000);
+            } else {
+                // Stop auto-refresh
+                if (connectionsRefreshInterval) {
+                    clearInterval(connectionsRefreshInterval);
+                    connectionsRefreshInterval = null;
+                }
+            }
+        }
+        
+        async function fetchRealTimeStats() {
+            if (!connectionsCount || !clientsCount) return;
+            
+            try {
+                if (refreshConnectionsBtn) refreshConnectionsBtn.classList.add('animate-spin');
+                
+                const response = await fetch('/api/stats/realtime');
+                const data = await response.json();
+                
+                // Update connections count
+                const connections = data.connections || 0;
+                const maxConnections = data.maxConnections || 1000;
+                const connectionPercentage = Math.min(100, Math.round((connections / maxConnections) * 100));
+                
+                if (connectionsCount) connectionsCount.textContent = connections;
+                if (connectionsBar) connectionsBar.style.width = `${connectionPercentage}%`;
+                if (connectionsLimit) connectionsLimit.textContent = maxConnections;
+                
+                // Update clients count
+                const clients = data.clients || 0;
+                const maxClients = data.maxClients || 100;
+                const clientPercentage = Math.min(100, Math.round((clients / maxClients) * 100));
+                
+                if (clientsCount) clientsCount.textContent = clients;
+                if (clientsBar) clientsBar.style.width = `${clientPercentage}%`;
+                if (clientsLimit) clientsLimit.textContent = maxClients;
+                
+                // Update peak values
+                peakConnectionsValue = Math.max(peakConnectionsValue, connections);
+                peakClientsValue = Math.max(peakClientsValue, clients);
+                
+                if (peakConnections) peakConnections.textContent = peakConnectionsValue;
+                if (peakClients) peakClients.textContent = peakClientsValue;
+                
+                // Update last updated time
+                if (lastUpdateTime) {
+                    const now = new Date();
+                    lastUpdateTime.textContent = now.toLocaleTimeString();
+                }
+                
+                // Handle color changes based on usage
+                updateBarColors(connectionsBar, connectionPercentage);
+                updateBarColors(clientsBar, clientPercentage);
+                
+            } catch (error) {
+                console.error('Error fetching real-time stats:', error);
+                
+                // Show error state
+                if (connectionsCount) connectionsCount.textContent = 'Error';
+                if (clientsCount) clientsCount.textContent = 'Error';
+                
+            } finally {
+                if (refreshConnectionsBtn) refreshConnectionsBtn.classList.remove('animate-spin');
+            }
+        }
+        
+        function updateBarColors(barElement, percentage) {
+            if (!barElement) return;
+            
+            // Remove existing color classes
+            barElement.classList.remove('bg-primary', 'bg-warning', 'bg-danger');
+            
+            // Add appropriate color class based on usage percentage
+            if (percentage < 70) {
+                barElement.classList.add('bg-primary');
+            } else if (percentage < 90) {
+                barElement.classList.add('bg-warning');
+            } else {
+                barElement.classList.add('bg-danger');
+            }
+        }
+        
         // Log Controls
         const downloadLogsBtn = document.getElementById('download-logs-btn');
         const clearLogsBtn = document.getElementById('clear-logs-btn');

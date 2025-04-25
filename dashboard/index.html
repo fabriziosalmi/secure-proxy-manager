@@ -21,14 +21,6 @@
                 </div>
                 <div id="current-time" class="text-gray-600 font-medium hidden md:block"></div>
                 <nav class="flex items-center space-x-4">
-                    <div id="header-status" class="flex items-center space-x-1 text-gray-600">
-                        <i class="ri-server-line"></i>
-                        <span id="header-status-text">Loading...</span>
-                    </div>
-                    <div id="header-clients" class="flex items-center space-x-1 text-gray-600">
-                        <i class="ri-user-line"></i>
-                        <span id="header-clients-count">0</span>
-                    </div>
                     <a href="index.html" class="text-primary flex items-center">
                         <i class="ri-dashboard-line mr-1"></i> Dashboard
                     </a>
@@ -96,9 +88,14 @@
                         </p>
                         
                         <div class="bg-gray-50 rounded p-3 border border-gray-200 text-sm">
-                            <div><strong>Developer:</strong> Secure Proxy Team</div>
+                            <div><strong>Developer:</strong> Fabrizio Salmi</div>
                             <div><strong>License:</strong> MIT</div>
                             <div><strong>Squid Version:</strong> <span id="squid-version">Loading...</span></div>
+                            <div class="mt-2">
+                                <a href="https://github.com/fabriziosalmi/secure-proxy" class="text-primary hover:text-primary-hover flex items-center" target="_blank">
+                                    <i class="ri-github-fill mr-1"></i> GitHub Repository
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -106,21 +103,78 @@
             
             <!-- Right Column -->
             <div class="md:col-span-8">
-                <!-- Status Details Card -->
+                <!-- Real-time Connections Card -->
                 <div class="card">
                     <div class="card-header">
-                        <h2 class="card-title">Status Details</h2>
-                        <div class="flex space-x-2">
-                            <button id="download-logs-btn" class="text-primary hover:text-primary-hover transition-colors" title="Download Logs">
-                                <i class="ri-download-line text-lg"></i>
-                            </button>
-                            <button id="clear-logs-btn" class="text-gray-500 hover:text-danger transition-colors" title="Clear Logs">
-                                <i class="ri-delete-bin-line text-lg"></i>
+                        <h2 class="card-title">Real-time Monitoring</h2>
+                        <button id="refresh-connections-btn" class="text-gray-500 hover:text-primary transition-colors" title="Refresh Statistics">
+                            <i class="ri-refresh-line text-lg"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="p-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- Active Connections -->
+                            <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                <div class="flex items-center justify-between mb-2">
+                                    <h3 class="text-lg font-medium text-gray-700">Active Connections</h3>
+                                    <i class="ri-link text-2xl text-primary"></i>
+                                </div>
+                                <div class="flex items-end">
+                                    <div id="connections-count" class="text-3xl font-bold text-gray-800">0</div>
+                                    <div class="text-sm text-gray-500 ml-2 mb-1">connections</div>
+                                </div>
+                                <div class="mt-2">
+                                    <div class="h-1 bg-gray-200 rounded-full">
+                                        <div id="connections-bar" class="h-1 bg-primary rounded-full" style="width: 0%"></div>
+                                    </div>
+                                    <div class="flex justify-between mt-1 text-xs text-gray-500">
+                                        <span>0</span>
+                                        <span id="connections-limit">1000</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Active Clients -->
+                            <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                <div class="flex items-center justify-between mb-2">
+                                    <h3 class="text-lg font-medium text-gray-700">Active Clients</h3>
+                                    <i class="ri-user-3-line text-2xl text-primary"></i>
+                                </div>
+                                <div class="flex items-end">
+                                    <div id="clients-count" class="text-3xl font-bold text-gray-800">0</div>
+                                    <div class="text-sm text-gray-500 ml-2 mb-1">clients</div>
+                                </div>
+                                <div class="mt-2">
+                                    <div class="h-1 bg-gray-200 rounded-full">
+                                        <div id="clients-bar" class="h-1 bg-primary rounded-full" style="width: 0%"></div>
+                                    </div>
+                                    <div class="flex justify-between mt-1 text-xs text-gray-500">
+                                        <span>0</span>
+                                        <span id="clients-limit">100</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4 grid grid-cols-2 gap-3">
+                            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                <div class="text-sm text-gray-500">Peak Connections</div>
+                                <div id="peak-connections" class="font-medium">0</div>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                <div class="text-sm text-gray-500">Peak Clients</div>
+                                <div id="peak-clients" class="font-medium">0</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4 text-center text-sm text-gray-500">
+                            Last updated: <span id="last-update-time">Never</span>
+                            <button id="toggle-auto-refresh" class="ml-2 text-primary hover:underline">
+                                Auto-refresh: <span id="auto-refresh-status">Off</span>
                             </button>
                         </div>
                     </div>
-                    
-                    <div class="status-details-container" id="status-details">Loading...</div>
                 </div>
             </div>
         </div>
