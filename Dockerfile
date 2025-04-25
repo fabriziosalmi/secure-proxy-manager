@@ -7,8 +7,11 @@ RUN apk update && \
     python3 \
     py3-pip \
     supervisor \
-    curl && \
-    pip3 install --no-cache-dir flask requests
+    curl
+
+# Install Python dependencies from requirements.txt
+COPY flask_backend/requirements.txt /tmp/requirements.txt
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
 # Create necessary directories and set permissions
 RUN mkdir -p /var/log/squid /var/cache/squid && \

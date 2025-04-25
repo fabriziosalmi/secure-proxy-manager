@@ -166,9 +166,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const response = await fetch('/api/control', {
                 method: 'POST',
-                headers: {
+                headers: addCSRFToken({
                     'Content-Type': 'application/json'
-                },
+                }),
                 body: JSON.stringify({ action })
             });
             
@@ -241,6 +241,67 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     }
     
+    // Helper function for debouncing rapidly triggered events
+    function debounce(func, wait = 300) {
+        let timeout;
+        return function(...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), wait);
+        };
+    }
+
+    // Input validation helper 
+    function validateInput(input, type) {
+        switch(type) {
+            case 'port':
+                return input && /^\d+$/.test(input) && parseInt(input) >= 1 && parseInt(input) <= 65535;
+            case 'ip':
+                // Basic IP validation, more complex patterns could be added
+                return /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(input) || 
+                       /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/.test(input);
+            case 'domain':
+                return /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(input);
+            case 'number':
+                return input && /^\d+$/.test(input);
+            default:
+                return true;
+        }
+    }
+
+    // Add local storage for persisting user preferences
+    function saveUserPreference(key, value) {
+        try {
+            // Get existing preferences or create new object
+            const preferences = JSON.parse(localStorage.getItem('proxyPreferences') || '{}');
+            preferences[key] = value;
+            localStorage.setItem('proxyPreferences', JSON.stringify(preferences));
+            return true;
+        } catch (error) {
+            console.error('Failed to save preference:', error);
+            return false;
+        }
+    }
+
+    function getUserPreference(key, defaultValue = null) {
+        try {
+            const preferences = JSON.parse(localStorage.getItem('proxyPreferences') || '{}');
+            return preferences[key] !== undefined ? preferences[key] : defaultValue;
+        } catch (error) {
+            console.error('Failed to get preference:', error);
+            return defaultValue;
+        }
+    }
+
+    // Add CSRF protection helper
+    function addCSRFToken(headers = {}) {
+        // This assumes your backend provides a CSRF token in a meta tag
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        if (csrfToken) {
+            return { ...headers, 'X-CSRF-Token': csrfToken };
+        }
+        return headers;
+    }
+
     // Initialize Dashboard Page
     function initDashboardPage() {
         // Elements - Main Controls
@@ -506,7 +567,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!portInput) return;
             const port = portInput.value;
             
-            if (!port || !port.match(/^\d+$/) || port < 1 || port > 65535) {
+            if (!validateInput(port, 'port')) {
                 showMessage(configMessage, 'Please enter a valid port number (1-65535)', false);
                 return;
             }
@@ -517,9 +578,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 const response = await fetch('/api/config', {
                     method: 'POST',
-                    headers: {
+                    headers: addCSRFToken({
                         'Content-Type': 'application/json'
-                    },
+                    }),
                     body: JSON.stringify({ port })
                 });
                 
@@ -575,7 +636,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (clearLogsBtn) clearLogsBtn.classList.add('animate-spin');
                 
                 const response = await fetch('/api/logs/clear', {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: addCSRFToken()
                 });
                 
                 const data = await response.json();
@@ -634,9 +696,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 const response = await fetch('/api/security/feature-status', {
                     method: 'POST',
-                    headers: {
+                    headers: addCSRFToken({
                         'Content-Type': 'application/json'
-                    },
+                    }),
                     body: JSON.stringify(features)
                 });
                 
@@ -693,13 +755,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 const ips = ipBlacklistTextarea.value
                     .split('\n')
                     .map(line => line.trim())
-                    .filter(line => line !== '');
+                    .filter(line => validateInput(line, 'ip'));
                 
                 const response = await fetch('/api/security/blacklist-ips', {
                     method: 'POST',
-                    headers: {
+                    headers: addCSRFToken({
                         'Content-Type': 'application/json'
-                    },
+                    }),
                     body: JSON.stringify({ ips })
                 });
                 
@@ -754,13 +816,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 const domains = domainBlacklistTextarea.value
                     .split('\n')
                     .map(line => line.trim())
-                    .filter(line => line !== '');
+                    .filter(line => validateInput(line, 'domain'));
                 
                 const response = await fetch('/api/security/blacklist-domains', {
                     method: 'POST',
-                    headers: {
+                    headers: addCSRFToken({
                         'Content-Type': 'application/json'
-                    },
+                    }),
                     body: JSON.stringify({ domains })
                 });
                 
@@ -815,13 +877,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 const ips = allowedDirectIpsTextarea.value
                     .split('\n')
                     .map(line => line.trim())
-                    .filter(line => line !== '');
+                    .filter(line => validateInput(line, 'ip'));
                 
                 const response = await fetch('/api/security/allowed-direct-ips', {
                     method: 'POST',
-                    headers: {
+                    headers: addCSRFToken({
                         'Content-Type': 'application/json'
-                    },
+                    }),
                     body: JSON.stringify({ ips })
                 });
                 
@@ -853,9 +915,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 const response = await fetch('/api/security/cache-settings', {
                     method: 'POST',
-                    headers: {
+                    headers: addCSRFToken({
                         'Content-Type': 'application/json'
-                    },
+                    }),
                     body: JSON.stringify({ cacheSize, maxObjectSize })
                 });
                 
@@ -1093,7 +1155,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!portInput) return;
             const port = portInput.value;
             
-            if (!port || !port.match(/^\d+$/) || port < 1 || port > 65535) {
+            if (!validateInput(port, 'port')) {
                 showMessage(configMessage, 'Please enter a valid port number (1-65535)', false);
                 return;
             }
@@ -1104,9 +1166,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 const response = await fetch('/api/config', {
                     method: 'POST',
-                    headers: {
+                    headers: addCSRFToken({
                         'Content-Type': 'application/json'
-                    },
+                    }),
                     body: JSON.stringify({ port })
                 });
                 
@@ -1138,9 +1200,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const response = await fetch('/api/security/cache-settings', {
                 method: 'POST',
-                headers: {
+                headers: addCSRFToken({
                     'Content-Type': 'application/json'
-                },
+                }),
                 body: JSON.stringify({ cacheSize, maxObjectSize })
             });
             
@@ -1179,9 +1241,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const response = await fetch('/api/config/raw', {
                 method: 'POST',
-                headers: {
+                headers: addCSRFToken({
                     'Content-Type': 'application/json'
-                },
+                }),
                 body: JSON.stringify({ content })
             });
             
@@ -1242,9 +1304,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const response = await fetch('/api/security/feature-status', {
                 method: 'POST',
-                headers: {
+                headers: addCSRFToken({
                     'Content-Type': 'application/json'
-                },
+                }),
                 body: JSON.stringify(features)
             });
             
@@ -1301,13 +1363,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const ips = ipBlacklistTextarea.value
                 .split('\n')
                 .map(line => line.trim())
-                .filter(line => line !== '');
+                .filter(line => validateInput(line, 'ip'));
             
             const response = await fetch('/api/security/blacklist-ips', {
                 method: 'POST',
-                headers: {
+                headers: addCSRFToken({
                     'Content-Type': 'application/json'
-                },
+                }),
                 body: JSON.stringify({ ips })
             });
             
@@ -1362,13 +1424,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const domains = domainBlacklistTextarea.value
                 .split('\n')
                 .map(line => line.trim())
-                .filter(line => line !== '');
+                .filter(line => validateInput(line, 'domain'));
             
             const response = await fetch('/api/security/blacklist-domains', {
                 method: 'POST',
-                headers: {
+                headers: addCSRFToken({
                     'Content-Type': 'application/json'
-                },
+                }),
                 body: JSON.stringify({ domains })
             });
             
@@ -1423,13 +1485,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const ips = allowedDirectIpsTextarea.value
                 .split('\n')
                 .map(line => line.trim())
-                .filter(line => line !== '');
+                .filter(line => validateInput(line, 'ip'));
             
             const response = await fetch('/api/security/allowed-direct-ips', {
                 method: 'POST',
-                headers: {
+                headers: addCSRFToken({
                     'Content-Type': 'application/json'
-                },
+                }),
                 body: JSON.stringify({ ips })
             });
             
@@ -1486,9 +1548,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const response = await fetch('/api/security/bad-user-agents', {
                 method: 'POST',
-                headers: {
+                headers: addCSRFToken({
                     'Content-Type': 'application/json'
-                },
+                }),
                 body: JSON.stringify({ userAgents })
             });
             
@@ -1521,9 +1583,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const response = await fetch('/api/system/paths', {
                 method: 'POST',
-                headers: {
+                headers: addCSRFToken({
                     'Content-Type': 'application/json'
-                },
+                }),
                 body: JSON.stringify(paths)
             });
             
@@ -1843,7 +1905,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (clearLogBtn) clearLogBtn.classList.add('animate-spin');
                 
                 const response = await fetch(`/api/logs/${logType}/clear`, {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: addCSRFToken()
                 });
                 
                 const data = await response.json();

@@ -1,13 +1,37 @@
-from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask import Flask, request, jsonify, render_template, send_from_directory, session
 import subprocess
 import os
 import socket
 import re
 import json
 import time
+import secrets
 from datetime import datetime
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 
+# Initialize Flask application with security features
 app = Flask(__name__, static_folder='../dashboard')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
+
+# Initialize CSRF protection
+csrf = CSRFProtect(app)
+
+# Add session cookie security settings
+app.config['SESSION_COOKIE_SECURE'] = True  # Only send cookies over HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access to cookies
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Prevent CSRF
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour session timeout
+
+# Add security headers middleware
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:;"
+    response.headers['Referrer-Policy'] = 'same-origin'
+    return response
 
 # Configuration with corrected paths and commands
 SQUID_CONFIG_PATH = '/etc/squid/squid.conf'
@@ -104,30 +128,66 @@ def update_config():
             'message': str(e)
         }), 500
 
+def run_subprocess_safely(command, shell=True, timeout=30):
+    """
+    Run a subprocess command with error handling and timeout protection.
+    
+    Args:
+        command: The command to run
+        shell: Whether to use shell execution (default True)
+        timeout: Maximum time to wait for the command to complete in seconds
+        
+    Returns:
+        A tuple containing (success, stdout, stderr)
+    """
+    try:
+        process = subprocess.run(
+            command,
+            shell=shell,
+            capture_output=True,
+            text=True,
+            timeout=timeout  # Prevent hanging
+        )
+        return (True, process.stdout, process.stderr)
+    except subprocess.TimeoutExpired:
+        return (False, "", f"Command timed out after {timeout} seconds: {command}")
+    except Exception as e:
+        return (False, "", f"Error executing command: {str(e)}")
+
 @app.route('/api/control', methods=['POST'])
 def control_squid():
     try:
         action = request.get_json().get('action')
         
-        if action == 'start':
-            result = subprocess.run(SQUID_START_COMMAND, shell=True, capture_output=True, text=True)
-        elif action == 'stop':
-            result = subprocess.run(SQUID_STOP_COMMAND, shell=True, capture_output=True, text=True)
-        elif action == 'restart':
-            result = subprocess.run(SQUID_RESTART_COMMAND, shell=True, capture_output=True, text=True)
-        elif action == 'reload':
-            result = subprocess.run(SQUID_RELOAD_COMMAND, shell=True, capture_output=True, text=True)
-        else:
+        if action not in ['start', 'stop', 'restart', 'reload']:
             return jsonify({
                 'status': 'error',
                 'message': 'Invalid action'
             }), 400
+        
+        command = None
+        if action == 'start':
+            command = SQUID_START_COMMAND
+        elif action == 'stop':
+            command = SQUID_STOP_COMMAND
+        elif action == 'restart':
+            command = SQUID_RESTART_COMMAND
+        elif action == 'reload':
+            command = SQUID_RELOAD_COMMAND
             
-        return jsonify({
-            'status': 'success',
-            'action': action,
-            'details': result.stdout
-        })
+        success, stdout, stderr = run_subprocess_safely(command, timeout=60)
+        
+        if success:
+            return jsonify({
+                'status': 'success',
+                'action': action,
+                'details': stdout
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to {action} Squid: {stderr}'
+            }), 500
     except Exception as e:
         return jsonify({
             'status': 'error',
@@ -371,6 +431,10 @@ def read_list_file(file_path):
     try:
         if not os.path.exists(file_path):
             # Create empty file if it doesn't exist
+            directory = os.path.dirname(file_path)
+            if not os.path.exists(directory):
+                os.makedirs(directory, exist_ok=True)
+                
             with open(file_path, 'w') as f:
                 f.write('# Add entries one per line\n')
         
@@ -385,13 +449,25 @@ def read_list_file(file_path):
 
 def write_list_file(file_path, entries):
     try:
+        # Create directory if it doesn't exist
+        directory = os.path.dirname(file_path)
+        if not os.path.exists(directory):
+            os.makedirs(directory, exist_ok=True)
+            
         # Add a header comment
-        content = "# Updated via Squid Management Dashboard\n"
+        content = "# Updated via Squid Management Dashboard on {}\n".format(
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        )
         for entry in entries:
             content += entry.strip() + "\n"
         
-        with open(file_path, 'w') as f:
+        # Use a temporary file and rename for atomicity
+        temp_file = file_path + ".tmp"
+        with open(temp_file, 'w') as f:
             f.write(content)
+        
+        # Atomic file replacement to prevent partial writes
+        os.replace(temp_file, file_path)
         return True
     except Exception as e:
         print(f"Error writing to file {file_path}: {str(e)}")
@@ -483,19 +559,28 @@ def is_feature_enabled(feature_name):
             
             # Check for comment markers that would disable the feature
             if feature_name == 'blacklist_ips':
-                return 'acl blacklist_ips src' in config and 'http_access deny blacklist_ips' in config
+                return ('acl blacklist_ips src' in config and not re.search(r'^\s*#\s*acl blacklist_ips src', config, re.MULTILINE) and
+                        'http_access deny blacklist_ips' in config and not re.search(r'^\s*#\s*http_access deny blacklist_ips', config, re.MULTILINE))
             elif feature_name == 'blacklist_domains':
-                return 'acl blacklist_domains dstdomain' in config and 'http_access deny blacklist_domains' in config
+                return ('acl blacklist_domains dstdomain' in config and not re.search(r'^\s*#\s*acl blacklist_domains dstdomain', config, re.MULTILINE) and
+                        'http_access deny blacklist_domains' in config and not re.search(r'^\s*#\s*http_access deny blacklist_domains', config, re.MULTILINE))
             elif feature_name == 'direct_ip_access':
-                return 'acl direct_ip_access url_regex' in config and 'http_access deny direct_ip_access' in config
+                return ('acl direct_ip_access url_regex' in config and not re.search(r'^\s*#\s*acl direct_ip_access url_regex', config, re.MULTILINE) and
+                        'http_access deny direct_ip_access' in config and not re.search(r'^\s*#\s*http_access deny direct_ip_access', config, re.MULTILINE))
             elif feature_name == 'bad_user_agents':
-                return 'acl bad_user_agents browser' in config and 'http_access deny bad_user_agents' in config
+                return ('acl bad_user_agents browser' in config and not re.search(r'^\s*#\s*acl bad_user_agents browser', config, re.MULTILINE) and
+                        'http_access deny bad_user_agents' in config and not re.search(r'^\s*#\s*http_access deny bad_user_agents', config, re.MULTILINE))
             elif feature_name == 'malware_extensions':
-                return 'acl malware_extensions urlpath_regex' in config and 'http_access deny malware_extensions' in config
+                return ('acl malware_extensions urlpath_regex' in config and not re.search(r'^\s*#\s*acl malware_extensions urlpath_regex', config, re.MULTILINE) and
+                        'http_access deny malware_extensions' in config and not re.search(r'^\s*#\s*http_access deny malware_extensions', config, re.MULTILINE))
             elif feature_name == 'ssl_bump':
-                # Explicitly require that ssl_bump is present AND not commented out
-                ssl_bump_line = re.search(r'^[^#]*ssl_bump\s+server-first', config, re.MULTILINE)
-                return ssl_bump_line is not None
+                try:
+                    # Explicitly require that ssl_bump is present AND not commented out
+                    ssl_bump_line = re.search(r'^[^#]*ssl_bump\s+server-first', config, re.MULTILINE)
+                    return ssl_bump_line is not None
+                except re.error as e:
+                    print(f"Regex error while checking ssl_bump: {str(e)}")
+                    return False
             
             return False
     except Exception as e:
@@ -575,8 +660,53 @@ def update_squid_port(port):
 
 @app.route('/api/clients/count', methods=['GET'])
 def get_clients_count():
-    # TODO: implement real client tracking
-    return jsonify({'count': 0})
+    try:
+        # Get client count from Squid by parsing access.log for unique client IPs
+        # within a recent timeframe (last 5 minutes)
+        access_log = LOG_PATHS.get('access')
+        if not os.path.exists(access_log):
+            return jsonify({'count': 0})
+        
+        # Use awk to extract client IPs and count unique ones from the last 5 minutes
+        current_time = time.time()
+        five_minutes_ago = current_time - 300  # 5 minutes in seconds
+        
+        # Try using tail + awk for efficiency on large files
+        try:
+            # Get the last 1000 lines as a sample (adjust as needed)
+            cmd = f"tail -n 1000 {access_log} | awk '{{print $1, $2}}'"
+            process = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            
+            if process.returncode != 0:
+                return jsonify({'count': 0})
+                
+            lines = process.stdout.strip().split('\n')
+            unique_ips = set()
+            
+            # Process the lines
+            for line in lines:
+                parts = line.split()
+                if len(parts) >= 2:
+                    client_ip = parts[0]
+                    timestamp_str = parts[1]
+                    
+                    # Try to parse timestamp (assuming it's in Unix epoch format)
+                    try:
+                        timestamp = float(timestamp_str)
+                        if timestamp >= five_minutes_ago:
+                            unique_ips.add(client_ip)
+                    except ValueError:
+                        # If timestamp isn't in expected format, just count the IP
+                        unique_ips.add(client_ip)
+            
+            return jsonify({'count': len(unique_ips)})
+            
+        except Exception as e:
+            print(f"Error counting clients: {str(e)}")
+            return jsonify({'count': 0})
+    except Exception as e:
+        print(f"Error in get_clients_count: {str(e)}")
+        return jsonify({'count': 0})
 
 # Health check endpoint
 @app.route('/health', methods=['GET'])
@@ -638,7 +768,55 @@ def get_logs(log_type):
         else:
             formatted_size = f"{file_size / (1024 * 1024):.1f} MB"
         
-        # Read log file
+        # For very large files, use tail to get the last lines efficiently
+        # to avoid loading the entire file into memory
+        if file_size > 10 * 1024 * 1024:  # If file is > 10MB
+            error_count = 0
+            try:
+                # Count total lines efficiently
+                wc_cmd = f"wc -l < {log_path}"
+                wc_process = subprocess.run(wc_cmd, shell=True, capture_output=True, text=True)
+                total_lines = int(wc_process.stdout.strip())
+                
+                # Get the last N lines using tail
+                tail_cmd = f"tail -n {lines} {log_path}"
+                tail_process = subprocess.run(tail_cmd, shell=True, capture_output=True, text=True)
+                log_content = tail_process.stdout.strip().split('\n')
+                
+                # Count error lines in the returned content
+                for line in log_content:
+                    if " ERROR " in line or " FATAL " in line or " CRITICAL " in line:
+                        error_count += 1
+                
+                # If we need error count for entire file (not just tail)
+                # grep_cmd = f"grep -E ' ERROR | FATAL | CRITICAL ' {log_path} | wc -l"
+                # grep_process = subprocess.run(grep_cmd, shell=True, capture_output=True, text=True)
+                # error_count = int(grep_process.stdout.strip())
+            except Exception as e:
+                print(f"Error in subprocess commands for large log file: {str(e)}")
+                # Fall back to standard processing if subprocess fails
+                return read_log_standard(log_path, lines, formatted_size, last_modified)
+                
+            return jsonify({
+                'content': log_content,
+                'totalLines': total_lines,
+                'errors': error_count,
+                'size': formatted_size,
+                'lastModified': last_modified
+            })
+        else:
+            # For smaller files, read them directly
+            return read_log_standard(log_path, lines, formatted_size, last_modified)
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+def read_log_standard(log_path, lines, formatted_size, last_modified):
+    """Standard log reading function for smaller files"""
+    try:
         log_content = []
         error_count = 0
         
@@ -651,7 +829,7 @@ def get_logs(log_type):
             
             for line in log_lines:
                 log_content.append(line.rstrip())
-                # Count error lines (this will depend on your log format)
+                # Count error lines
                 if " ERROR " in line or " FATAL " in line or " CRITICAL " in line:
                     error_count += 1
         
@@ -665,7 +843,7 @@ def get_logs(log_type):
     except Exception as e:
         return jsonify({
             'status': 'error',
-            'message': str(e)
+            'message': f"Error reading log file: {str(e)}"
         }), 500
 
 @app.route('/api/logs/<log_type>/analysis', methods=['GET'])
