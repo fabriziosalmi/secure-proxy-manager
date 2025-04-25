@@ -1,6 +1,6 @@
 http_port {{ port }}
 {% if ssl_intercept %}
-https_port {{ ssl_port }} intercept
+https_port {{ ssl_port }} intercept {% if ssl_cert_path and ssl_key_path %}cert={{ ssl_cert_path }} key={{ ssl_key_path }}{% endif %}
 {% endif %}
 
 acl allowed_ips src {{ allowed_ips | join(', ') }}
@@ -84,6 +84,6 @@ access_log {{ logging.access_log | default("/var/log/squid/access.log") }} {{ lo
 cache_log {{ logging.cache_log | default("/var/log/squid/cache.log") }}
 
 {% if cache.enabled %}
-cache_dir {{ cache.cache_dir | default("aufs") }} {{ cache.cache_size | default(10000) }} 16 256
+cache_dir {{ cache.cache_type | default("ufs") }} {{ cache.cache_dir | default("/var/spool/squid") }} {{ cache.cache_size | default(10000) }} 16 256
 maximum_object_size {{ cache.max_object_size | default("512 MB") }}
 {% endif %}

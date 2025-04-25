@@ -1,22 +1,23 @@
 FROM ubuntu:latest
 
-# Install Squid and create the squid user/group
+# Install Squid and other necessary packages
 RUN apt-get update && \
-    apt-get install -y squid && \
+    apt-get install -y squid netcat-openbsd && \
     rm -rf /var/lib/apt/lists/*
 
-# Create cache directory and set permissions
-RUN mkdir -p /var/spool/squid && \
-    chown -R squid:squid /var/spool/squid
+# Create cache and log directories and set permissions
+RUN mkdir -p /var/spool/squid /var/log/squid && \
+    chown -R squid:squid /var/spool/squid /var/log/squid
 
-# Copy the generated squid.conf file
-COPY squid.conf /etc/squid/squid.conf
+# Copy the entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Initialize the cache directory
-RUN squid -z
+# Create directory for blacklist files
+RUN mkdir -p /etc/squid/blacklists
 
 # Expose Squid port
 EXPOSE 3128
 
-# Start Squid in the foreground
-CMD ["squid", "-N"]
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

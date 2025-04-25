@@ -1,19 +1,37 @@
+# Configuration for Secure Squid Proxy
 squid:
+  # Network settings
   port: 3128
+  ssl_port: 3129  # Only used if ssl_intercept is true
+  ssl_intercept: false
+  # Uncomment the following lines if ssl_intercept is true
+  # ssl_cert_path: /etc/squid/ssl_cert.pem
+  # ssl_key_path: /etc/squid/ssl_key.pem
+
+  # Access control
   allowed_ips:
     - 192.168.1.0/24
     - 10.0.0.1
+
+  # Blacklists
   ip_blacklist_sources:
     - ip_blacklist1.txt  # Local file or replace with a URL
   dns_blacklist_sources:
     - dns_blacklist1.txt  # Local file or replace with a URL
+
+  # Protection features
   owasp_protection: true
+  owasp_rules_file: owasp.rules  # Local file or replace with a URL
+  
+  # IP blocking
   block_vpn: true
   block_tor: true
   block_cloudflare: true
   block_aws: true
   block_microsoft: true
   block_google: true
+  
+  # IP Sources for blocking
   vpn_ip_sources:
     - https://raw.githubusercontent.com/X4BNet/lists_vpn/main/ipv4.txt  # Public VPN IP list
   tor_ip_sources:
@@ -27,13 +45,17 @@ squid:
     - https://download.microsoft.com/download/7/1/D/71D86715-5596-4529-9B13-DA13A5DE5B63/ServiceTags_Public_20240205.json  # Microsoft Azure IP ranges
   google_ip_sources:
     - https://www.gstatic.com/ipranges/goog.json  # Google Cloud IP ranges
+  
+  # Logging configuration
   logging:
     access_log: /var/log/squid/access.log
     cache_log: /var/log/squid/cache.log
     log_format: combined
+  
+  # Cache configuration
   cache:
     enabled: true
-    cache_type: ufs
+    cache_type: ufs  # Options: ufs, aufs, diskd, rock
     cache_dir: /var/spool/squid
-    cache_size: 10000
+    cache_size: 10000  # Size in MB
     max_object_size: 512 MB

@@ -3,6 +3,7 @@ import requests
 import json
 import os
 import logging
+import sys
 from jinja2 import Environment, FileSystemLoader
 from jsonschema import validate, ValidationError
 
@@ -20,6 +21,8 @@ CONFIG_SCHEMA = {
                 "port": {"type": "integer"},
                 "ssl_port": {"type": "integer"},
                 "ssl_intercept": {"type": "boolean"},
+                "ssl_cert_path": {"type": "string"},
+                "ssl_key_path": {"type": "string"},
                 "allowed_ips": {"type": "array", "items": {"type": "string"}},
                 "ip_blacklist_sources": {"type": "array", "items": {"type": "string"}},
                 "dns_blacklist_sources": {"type": "array", "items": {"type": "string"}},
@@ -50,6 +53,7 @@ CONFIG_SCHEMA = {
                     "properties": {
                         "enabled": {"type": "boolean"},
                         "cache_dir": {"type": "string"},
+                        "cache_type": {"type": "string"},
                         "cache_size": {"type": "integer"},
                         "max_object_size": {"type": "string"}
                     }
@@ -71,31 +75,44 @@ def validate_config(config):
         raise
 
 
-def download_file(url, local_path):
+def download_file(url, local_path, retries=3):
     """Download a file from a URL and save it locally."""
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
-        with open(local_path, "wb") as file:
-            file.write(response.content)
-        logging.info(f"Downloaded {url} to {local_path}")
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Error downloading {url}: {e}")
-        raise
+    for attempt in range(retries):
+        try:
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+            with open(local_path, "wb") as file:
+                file.write(response.content)
+            logging.info(f"Downloaded {url} to {local_path}")
+            return
+        except requests.exceptions.RequestException as e:
+            logging.warning(f"Attempt {attempt+1}/{retries}: Error downloading {url}: {e}")
+            if attempt == retries - 1:
+                logging.error(f"All retries failed for {url}")
+                raise
+            # Wait before retrying
+            import time
+            time.sleep(2)
 
 
-def download_json(url):
+def download_json(url, retries=3):
     """Download and parse a JSON file from a URL."""
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Error downloading JSON from {url}: {e}")
-        raise
-    except json.JSONDecodeError as e:
-        logging.error(f"Error decoding JSON from {url}: {e}")
-        raise
+    for attempt in range(retries):
+        try:
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logging.warning(f"Attempt {attempt+1}/{retries}: Error downloading JSON from {url}: {e}")
+            if attempt == retries - 1:
+                logging.error(f"All retries failed for {url}")
+                raise
+        except json.JSONDecodeError as e:
+            logging.error(f"Error decoding JSON from {url}: {e}")
+            raise
+        # Wait before retrying
+        import time
+        time.sleep(2)
 
 
 def extract_ips_from_json(json_data, key_path):
@@ -280,34 +297,36 @@ def prepare_template_data(config, blacklist_files, temp_dir):
         "port": squid_config["port"],
         "ssl_port": squid_config.get("ssl_port"),
         "ssl_intercept": squid_config.get("ssl_intercept", False),
+        "ssl_cert_path": squid_config.get("ssl_cert_path"),
+        "ssl_key_path": squid_config.get("ssl_key_path"),
         "allowed_ips": squid_config["allowed_ips"],
-        "ip_blacklists": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["ip_blacklists"]],
+        "ip_blacklists": [(i, f"/etc/squid/{os.path.basename(path)}") for i, path in blacklist_files["ip_blacklists"]],
         "ip_blacklist_length": len(blacklist_files["ip_blacklists"]),
-        "dns_blacklists": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["dns_blacklists"]],
+        "dns_blacklists": [(i, f"/etc/squid/{os.path.basename(path)}") for i, path in blacklist_files["dns_blacklists"]],
         "dns_blacklist_length": len(blacklist_files["dns_blacklists"]),
-        "owasp_rules_file": f"/etc/squid/{blacklist_files['owasp_rules_file']}" if blacklist_files["owasp_rules_file"] else None,
+        "owasp_rules_file": f"/etc/squid/{os.path.basename(blacklist_files['owasp_rules_file'])}" if blacklist_files["owasp_rules_file"] else None,
         "block_vpn": squid_config.get("block_vpn", False),
-        "vpn_ips": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["vpn_ips"]],
+        "vpn_ips": [(i, f"/etc/squid/{os.path.basename(path)}") for i, path in blacklist_files["vpn_ips"]],
         "vpn_ips_length": len(blacklist_files["vpn_ips"]),
         "block_tor": squid_config.get("block_tor", False),
-        "tor_ips": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["tor_ips"]],
+        "tor_ips": [(i, f"/etc/squid/{os.path.basename(path)}") for i, path in blacklist_files["tor_ips"]],
         "tor_ips_length": len(blacklist_files["tor_ips"]),
         "block_cloudflare": squid_config.get("block_cloudflare", False),
-        "cloudflare_ips": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["cloudflare_ips"]],
+        "cloudflare_ips": [(i, f"/etc/squid/{os.path.basename(path)}") for i, path in blacklist_files["cloudflare_ips"]],
         "cloudflare_ips_length": len(blacklist_files["cloudflare_ips"]),
         "block_aws": squid_config.get("block_aws", False),
-        "aws_ips": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["aws_ips"]],
+        "aws_ips": [(i, f"/etc/squid/{os.path.basename(path)}") for i, path in blacklist_files["aws_ips"]],
         "aws_ips_length": len(blacklist_files["aws_ips"]),
         "block_microsoft": squid_config.get("block_microsoft", False),
-        "microsoft_ips": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["microsoft_ips"]],
+        "microsoft_ips": [(i, f"/etc/squid/{os.path.basename(path)}") for i, path in blacklist_files["microsoft_ips"]],
         "microsoft_ips_length": len(blacklist_files["microsoft_ips"]),
         "block_google": squid_config.get("block_google", False),
-        "google_ips": [(i, f"/etc/squid/{path}") for i, path in blacklist_files["google_ips"]],
+        "google_ips": [(i, f"/etc/squid/{os.path.basename(path)}") for i, path in blacklist_files["google_ips"]],
         "google_ips_length": len(blacklist_files["google_ips"]),
         "logging": squid_config.get("logging", {}),
         "cache": squid_config.get("cache", {}),
     }
-    logging.info(f"Template data: {template_data}")
+    logging.info(f"Template data prepared successfully")
     return template_data
 
 
@@ -327,8 +346,13 @@ def generate_squid_config(template_data, template_path="squid.conf.j2"):
 def main():
     """Main function to generate Squid configuration."""
     try:
+        # Check for config file argument
+        config_file = "config.yaml"
+        if len(sys.argv) > 1:
+            config_file = sys.argv[1]
+            
         # Load YAML configuration
-        with open("config.yaml", "r") as file:
+        with open(config_file, "r") as file:
             config = yaml.safe_load(file)
 
         # Validate the configuration
@@ -347,11 +371,37 @@ def main():
         # Generate Squid config
         squid_conf = generate_squid_config(template_data)
 
+        # Output file
+        output_file = "squid.conf"
+        if len(sys.argv) > 2:
+            output_file = sys.argv[2]
+            
         # Write Squid configuration to file
-        with open("squid.conf", "w") as file:
+        with open(output_file, "w") as file:
             file.write(squid_conf)
 
-        logging.info("squid.conf generated successfully!")
+        logging.info(f"squid.conf generated successfully at {output_file}!")
+
+        # Copy blacklist files to a directory for Docker
+        docker_files_dir = "docker_files"
+        os.makedirs(docker_files_dir, exist_ok=True)
+        
+        # Copy all blacklist files to docker_files directory
+        for file_type in ["ip_blacklists", "dns_blacklists", "vpn_ips", "tor_ips", 
+                         "cloudflare_ips", "aws_ips", "microsoft_ips", "google_ips"]:
+            for _, file_path in blacklist_files[file_type]:
+                if os.path.exists(file_path):
+                    dest_path = os.path.join(docker_files_dir, os.path.basename(file_path))
+                    with open(file_path, "rb") as src_file, open(dest_path, "wb") as dest_file:
+                        dest_file.write(src_file.read())
+                        
+        # Copy OWASP rules if they exist
+        if blacklist_files["owasp_rules_file"] and os.path.exists(blacklist_files["owasp_rules_file"]):
+            dest_path = os.path.join(docker_files_dir, os.path.basename(blacklist_files["owasp_rules_file"]))
+            with open(blacklist_files["owasp_rules_file"], "rb") as src_file, open(dest_path, "wb") as dest_file:
+                dest_file.write(src_file.read())
+                
+        logging.info(f"Files prepared for Docker in {docker_files_dir}")
 
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")

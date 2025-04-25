@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  squid-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: squid-proxy
+    ports:
+      - "3128:3128"
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf:ro
+      - ./docker_files:/etc/squid:ro
+      - squid_cache:/var/spool/squid
+      - squid_logs:/var/log/squid
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "3128"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  squid_cache:
+    driver: local
+  squid_logs:
+    driver: local
