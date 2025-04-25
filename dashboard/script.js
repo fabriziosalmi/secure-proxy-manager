@@ -6,14 +6,19 @@ document.addEventListener('DOMContentLoaded', function() {
     const pageName = currentPath.split('/').pop() || 'index.html';
     
     // Elements - Main Controls (shared across pages)
+    const headerStatusIndicator = document.getElementById('header-status-indicator');
     const headerStatusText = document.getElementById('header-status-text');
     const headerClientsCount = document.getElementById('header-clients-count');
     const currentTimeEl = document.getElementById('current-time');
+    const themeToggleBtn = document.getElementById('theme-toggle');
+    const themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
+    const themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
     
     // Initialize time and header elements for all pages
     updateCurrentTime();
     fetchStatus(true); // Only update header
     fetchClientsCount();
+    initThemeToggle();
     
     // Update current time every minute
     setInterval(updateCurrentTime, 60000);
@@ -36,6 +41,61 @@ document.addEventListener('DOMContentLoaded', function() {
     else if (pageName === 'logs.html') {
         initLogsPage();
     }
+    
+    // Theme toggle initialization
+    function initThemeToggle() {
+        if (!themeToggleBtn) return;
+        
+        // Get current theme from localStorage or system preference
+        const savedTheme = localStorage.getItem('theme') || 'system';
+        setTheme(savedTheme);
+        
+        // Add event listener for theme toggle
+        themeToggleBtn.addEventListener('click', () => {
+            // Get current theme
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+            
+            // Toggle between light and dark
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            setTheme(newTheme);
+            localStorage.setItem('theme', newTheme);
+        });
+    }
+    
+    // Set theme on document and update UI
+    function setTheme(themeName) {
+        document.documentElement.setAttribute('data-theme', themeName);
+        
+        // Update icon visibility
+        if (themeToggleLightIcon && themeToggleDarkIcon) {
+            // For light theme or system theme with light preference
+            if (themeName === 'light' || 
+                (themeName === 'system' && !window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                themeToggleLightIcon.classList.remove('hidden');
+                themeToggleDarkIcon.classList.add('hidden');
+            } else {
+                // For dark theme or system theme with dark preference
+                themeToggleLightIcon.classList.add('hidden');
+                themeToggleDarkIcon.classList.remove('hidden');
+            }
+        }
+        
+        // Update buttons in settings page if they exist
+        document.querySelectorAll('.theme-btn').forEach(btn => {
+            if (btn.dataset.theme === themeName) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    }
+    
+    // Listen for system color scheme changes
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+        if (localStorage.getItem('theme') === 'system') {
+            setTheme('system');
+        }
+    });
     
     // Functions for UI elements (shared across pages)
     function updateCurrentTime() {
@@ -66,8 +126,17 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
             
             // Always update the header
-            if (headerStatusText) {
+            if (headerStatusText && headerStatusIndicator) {
                 headerStatusText.textContent = data.status === 'running' ? 'Running' : data.status === 'stopped' ? 'Stopped' : 'Error';
+                
+                headerStatusIndicator.classList.remove('header-status-running', 'header-status-stopped', 'header-status-error');
+                if (data.status === 'running') {
+                    headerStatusIndicator.classList.add('header-status-running');
+                } else if (data.status === 'stopped') {
+                    headerStatusIndicator.classList.add('header-status-stopped');
+                } else {
+                    headerStatusIndicator.classList.add('header-status-error');
+                }
             }
             
             // Update the main status elements if we're not in header-only mode
@@ -77,16 +146,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 const statusDetails = document.getElementById('status-details');
                 
                 if (statusIndicator && statusText) {
+                    statusIndicator.className = 'status-indicator';
                     if (data.status === 'running') {
-                        statusIndicator.className = 'status-indicator status-running';
+                        statusIndicator.classList.add('status-running');
                         statusText.textContent = 'Running';
                         statusText.className = 'text-lg font-medium text-success';
                     } else if (data.status === 'stopped') {
-                        statusIndicator.className = 'status-indicator status-stopped';
+                        statusIndicator.classList.add('status-stopped');
                         statusText.textContent = 'Stopped';
                         statusText.className = 'text-lg font-medium text-danger';
                     } else {
-                        statusIndicator.className = 'status-indicator status-error';
+                        statusIndicator.classList.add('status-error');
                         statusText.textContent = 'Error';
                         statusText.className = 'text-lg font-medium text-warning';
                     }
@@ -98,8 +168,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) {
             console.error('Error fetching status:', error);
-            if (headerStatusText) {
+            if (headerStatusText && headerStatusIndicator) {
                 headerStatusText.textContent = 'Error';
+                headerStatusIndicator.classList.remove('header-status-running', 'header-status-stopped');
+                headerStatusIndicator.classList.add('header-status-error');
             }
             
             // Update main status if not in header-only mode

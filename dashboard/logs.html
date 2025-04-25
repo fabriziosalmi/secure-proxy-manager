@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="csrf-token" content="{{csrf_token}}">
@@ -24,18 +24,33 @@
                     <span class="logo-icon">🦑</span> 
                     <span>Squid Proxy Dashboard</span>
                 </div>
-                <div id="current-time" class="text-gray-600 font-medium hidden md:block"></div>
-                <nav class="flex items-center space-x-4">
-                    <a href="index.html" class="text-gray-600 hover:text-primary flex items-center">
-                        <i class="ri-dashboard-line mr-1"></i> Dashboard
-                    </a>
-                    <a href="settings.html" class="text-gray-600 hover:text-primary flex items-center">
-                        <i class="ri-settings-3-line mr-1"></i> Settings
-                    </a>
-                    <a href="logs.html" class="text-primary flex items-center">
-                        <i class="ri-file-list-line mr-1"></i> Logs
-                    </a>
-                </nav>
+                <div class="flex items-center">
+                    <div class="flex items-center mr-4">
+                        <div class="header-status-wrapper">
+                            <div id="header-status-indicator" class="header-status-indicator bg-gray-400"></div>
+                            <span id="header-status-text" class="text-sm font-medium">Checking...</span>
+                        </div>
+                        <div class="ml-2 text-sm text-gray-600">
+                            <i class="ri-user-3-line text-sm mr-1"></i><span id="header-clients-count">0</span> clients
+                        </div>
+                    </div>
+                    <div id="current-time" class="text-gray-600 font-medium hidden md:block mr-4"></div>
+                    <button id="theme-toggle" class="theme-toggle mr-4" aria-label="Toggle dark mode">
+                        <i class="ri-sun-line" id="theme-toggle-light-icon"></i>
+                        <i class="ri-moon-line hidden" id="theme-toggle-dark-icon"></i>
+                    </button>
+                    <nav class="flex items-center space-x-4">
+                        <a href="index.html" class="text-gray-600 hover:text-primary flex items-center">
+                            <i class="ri-dashboard-line mr-1"></i> Dashboard
+                        </a>
+                        <a href="settings.html" class="text-gray-600 hover:text-primary flex items-center">
+                            <i class="ri-settings-3-line mr-1"></i> Settings
+                        </a>
+                        <a href="logs.html" class="text-primary flex items-center">
+                            <i class="ri-file-list-line mr-1"></i> Logs
+                        </a>
+                    </nav>
+                </div>
             </div>
         </div>
     </header>
