@@ -493,7 +493,9 @@ def is_feature_enabled(feature_name):
             elif feature_name == 'malware_extensions':
                 return 'acl malware_extensions urlpath_regex' in config and 'http_access deny malware_extensions' in config
             elif feature_name == 'ssl_bump':
-                return 'ssl_bump server-first' in config
+                # Explicitly require that ssl_bump is present AND not commented out
+                ssl_bump_line = re.search(r'^[^#]*ssl_bump\s+server-first', config, re.MULTILINE)
+                return ssl_bump_line is not None
             
             return False
     except Exception as e:

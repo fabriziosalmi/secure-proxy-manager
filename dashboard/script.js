@@ -605,7 +605,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (directIpToggle) directIpToggle.checked = features.directIpBlocking;
                 if (userAgentToggle) userAgentToggle.checked = features.userAgentFiltering;
                 if (malwareToggle) malwareToggle.checked = features.malwareBlocking;
-                if (httpsFilteringToggle) httpsFilteringToggle.checked = features.httpsFiltering;
+                if (httpsFilteringToggle) httpsFilteringToggle.checked = features.httpsFiltering === true ? true : false;
                 
                 // Also fetch the initial data for the first tab
                 fetchIpBlacklist();
