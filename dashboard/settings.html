@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Squid Proxy Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css">
+    <link rel="stylesheet" href="style.css">
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦑</text></svg>">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Dashboard Header -->
+    <header class="dashboard-header">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center">
+                <div class="logo">
+                    <span class="logo-icon">🦑</span> 
+                    <span>Squid Proxy Dashboard</span>
+                </div>
+                <div id="current-time" class="text-gray-600 font-medium hidden md:block"></div>
+                <nav class="flex items-center space-x-4">
+                    <div id="header-status" class="flex items-center space-x-1 text-gray-600">
+                        <i class="ri-server-line"></i>
+                        <span id="header-status-text">Loading...</span>
+                    </div>
+                    <div id="header-clients" class="flex items-center space-x-1 text-gray-600">
+                        <i class="ri-user-line"></i>
+                        <span id="header-clients-count">0</span>
+                    </div>
+                    <a href="index.html" class="text-gray-600 hover:text-primary flex items-center">
+                        <i class="ri-dashboard-line mr-1"></i> Dashboard
+                    </a>
+                    <a href="settings.html" class="text-primary flex items-center">
+                        <i class="ri-settings-3-line mr-1"></i> Settings
+                    </a>
+                    <a href="logs.html" class="text-gray-600 hover:text-primary flex items-center">
+                        <i class="ri-file-list-line mr-1"></i> Logs
+                    </a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <div class="container mx-auto px-4 pb-8">
+        <!-- Settings Content -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+            <!-- Left Column - Advanced Configuration -->
+            <div class="md:col-span-8">
+                <div class="card mb-6">
+                    <div class="card-header">
+                        <h2 class="card-title">Advanced Configuration</h2>
+                    </div>
+                    
+                    <div class="mb-6">
+                        <h3 class="text-lg font-medium mb-3 text-gray-700">
+                            <i class="ri-file-settings-line mr-1 text-primary"></i> Squid Configuration Editor
+                        </h3>
+                        
+                        <div class="form-group">
+                            <div class="flex items-center justify-between mb-2">
+                                <label for="config-editor" class="form-label">Edit squid.conf directly</label>
+                                <div class="text-sm text-gray-500">Careful! Advanced users only</div>
+                            </div>
+                            <textarea id="config-editor" class="form-control font-mono text-sm h-96" placeholder="Loading squid.conf..."></textarea>
+                            
+                            <div class="flex justify-between mt-3">
+                                <div id="config-editor-message"></div>
+                                <div class="flex space-x-2">
+                                    <button id="reload-config-btn" class="btn btn-blue">
+                                        <i class="ri-refresh-line btn-icon"></i> Reload Config
+                                    </button>
+                                    <button id="save-config-btn" class="btn btn-green">
+                                        <i class="ri-save-line btn-icon"></i> Save Config
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- User Agent Filtering -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">User Agent Filtering</h2>
+                    </div>
+                    
+                    <div class="mb-3 flex justify-between items-center">
+                        <h3 class="text-lg font-medium text-gray-700">Bad User Agents</h3>
+                        <div class="text-sm text-gray-500">One user agent per line</div>
+                    </div>
+                    
+                    <textarea id="bad-user-agents-textarea" class="form-control" placeholder="Enter user agents to block, one per line
+Example:
+Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)
+python-requests/2.25.1"></textarea>
+                    
+                    <div class="flex justify-between mt-3">
+                        <div id="bad-user-agents-message"></div>
+                        <button id="save-bad-user-agents-btn" class="btn btn-blue">
+                            <i class="ri-save-line btn-icon"></i> Save User Agents
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Column - System Settings -->
+            <div class="md:col-span-4">
+                <!-- System Settings Card -->
+                <div class="card mb-6">
+                    <div class="card-header">
+                        <h2 class="card-title">System Settings</h2>
+                    </div>
+                    
+                    <div class="mb-6">
+                        <h3 class="text-lg font-medium mb-3 text-gray-700">
+                            <i class="ri-settings-4-line mr-1 text-primary"></i> General Options
+                        </h3>
+                        
+                        <div class="form-group">
+                            <label for="squid-path" class="form-label">Squid Binary Path</label>
+                            <input type="text" id="squid-path" class="form-control" placeholder="/usr/sbin/squid">
+                        </div>
+                        
+                        <div class="form-group mt-4">
+                            <label for="config-path" class="form-label">Configuration Path</label>
+                            <input type="text" id="config-path" class="form-control" placeholder="/etc/squid/squid.conf">
+                        </div>
+                        
+                        <div class="form-group mt-4">
+                            <label for="cache-dir" class="form-label">Cache Directory</label>
+                            <input type="text" id="cache-dir" class="form-control" placeholder="/var/cache/squid">
+                        </div>
+                        
+                        <button id="save-system-settings-btn" class="btn btn-blue mt-4 w-full">
+                            <i class="ri-save-line btn-icon"></i> Save System Settings
+                        </button>
+                        <div id="system-settings-message" class="mt-2"></div>
+                    </div>
+                </div>
+                
+                <!-- Dashboard Settings Card -->
+                <div class="card mb-6">
+                    <div class="card-header">
+                        <h2 class="card-title">Dashboard Settings</h2>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="refresh-interval" class="form-label">Auto Refresh Interval (seconds)</label>
+                        <input type="number" id="refresh-interval" class="form-control" placeholder="30" min="5">
+                    </div>
+                    
+                    <div class="form-group mt-4">
+                        <label class="form-label">Dashboard Theme</label>
+                        <div class="grid grid-cols-3 gap-2 mt-2">
+                            <button class="theme-btn active" data-theme="light">Light</button>
+                            <button class="theme-btn" data-theme="dark">Dark</button>
+                            <button class="theme-btn" data-theme="system">System</button>
+                        </div>
+                    </div>
+                    
+                    <button id="save-dashboard-settings-btn" class="btn btn-blue mt-4 w-full">
+                        <i class="ri-save-line btn-icon"></i> Save Dashboard Settings
+                    </button>
+                    <div id="dashboard-settings-message" class="mt-2"></div>
+                </div>
+                
+                <!-- About Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">About</h2>
+                    </div>
+                    
+                    <div class="p-4">
+                        <div class="text-center mb-4">
+                            <div class="text-6xl mb-2">🦑</div>
+                            <h3 class="text-xl font-bold text-gray-800">Squid Proxy Dashboard</h3>
+                            <div class="text-gray-500">Version 2.1.0</div>
+                        </div>
+                        
+                        <p class="text-gray-600 mb-4">
+                            A modern dashboard for managing and monitoring your Squid proxy server.
+                        </p>
+                        
+                        <div class="bg-gray-50 rounded p-3 border border-gray-200 text-sm">
+                            <div><strong>Developer:</strong> Secure Proxy Team</div>
+                            <div><strong>License:</strong> MIT</div>
+                            <div><strong>Squid Version:</strong> <span id="squid-version">Loading...</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Footer -->
+    <footer class="py-4 bg-white border-t border-gray-200 mt-8">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="text-gray-600 text-sm">
+                    Squid Proxy Dashboard &copy; 2025
+                </div>
+                <div class="text-gray-500 text-sm mt-2 md:mt-0">
+                    Version 2.1.0 | <a href="https://github.com" class="text-primary hover:underline">Documentation</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+    
+    <script src="script.js"></script>
+</body>
+</html>

@@ -5,147 +5,300 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Squid Proxy Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css">
     <link rel="stylesheet" href="style.css">
     <!-- Favicon -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦑</text></svg>">
 </head>
 <body class="bg-gray-100 min-h-screen">
-    <div class="container mx-auto px-4 py-8">
-        <header class="mb-8">
-            <h1 class="text-3xl font-bold text-gray-800">Squid Proxy Dashboard</h1>
-        </header>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Status Card -->
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <h2 class="text-xl font-semibold mb-4">Proxy Status</h2>
-                <div class="flex items-center mb-4">
-                    <div id="status-indicator" class="w-4 h-4 rounded-full mr-2 bg-gray-400"></div>
-                    <span id="status-text" class="text-lg">Checking...</span>
+    <!-- Dashboard Header -->
+    <header class="dashboard-header">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center">
+                <div class="logo">
+                    <span class="logo-icon">🦑</span> 
+                    <span>Squid Proxy Dashboard</span>
                 </div>
-                <div class="grid grid-cols-2 gap-2">
-                    <button id="start-btn" class="btn btn-green">Start</button>
-                    <button id="stop-btn" class="btn btn-red">Stop</button>
-                    <button id="restart-btn" class="btn btn-yellow">Restart</button>
-                    <button id="reload-btn" class="btn btn-blue">Reload</button>
-                </div>
-            </div>
-            
-            <!-- Configuration Card -->
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <h2 class="text-xl font-semibold mb-4">Proxy Configuration</h2>
-                <div class="mb-4">
-                    <label for="port" class="block text-gray-700 mb-2">Listening Port</label>
-                    <div class="flex">
-                        <input type="number" id="port" class="flex-grow px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="3128">
-                        <button id="update-port-btn" class="bg-blue-500 text-white px-4 py-2 rounded-r-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500">Update</button>
+                <div id="current-time" class="text-gray-600 font-medium hidden md:block"></div>
+                <nav class="flex items-center space-x-4">
+                    <div id="header-status" class="flex items-center space-x-1 text-gray-600">
+                        <i class="ri-server-line"></i>
+                        <span id="header-status-text">Loading...</span>
                     </div>
-                </div>
-                <div id="config-message" class="mt-2 text-sm"></div>
+                    <div id="header-clients" class="flex items-center space-x-1 text-gray-600">
+                        <i class="ri-user-line"></i>
+                        <span id="header-clients-count">0</span>
+                    </div>
+                    <a href="index.html" class="text-gray-600 hover:text-primary flex items-center">
+                        <i class="ri-dashboard-line mr-1"></i> Dashboard
+                    </a>
+                    <a href="settings.html" class="text-gray-600 hover:text-primary flex items-center">
+                        <i class="ri-settings-3-line mr-1"></i> Settings
+                    </a>
+                    <a href="logs.html" class="text-gray-600 hover:text-primary flex items-center">
+                        <i class="ri-file-list-line mr-1"></i> Logs
+                    </a>
+                </nav>
             </div>
         </div>
-        
-        <!-- Security Features Card -->
-        <div class="bg-white rounded-lg shadow-md p-6 mt-6">
-            <h2 class="text-xl font-semibold mb-4">Security Features</h2>
-            
-            <div class="mb-6">
-                <h3 class="text-lg font-medium mb-3">Feature Toggles</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div class="flex items-center">
-                        <input type="checkbox" id="ip-blacklist-toggle" class="toggle-checkbox">
-                        <label for="ip-blacklist-toggle" class="ml-2 text-gray-700">IP Blacklist</label>
+    </header>
+
+    <div class="container mx-auto px-4 pb-8">
+        <!-- Main Dashboard -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+            <!-- Left Column -->
+            <div class="md:col-span-4">
+                <!-- Status Card -->
+                <div class="card mb-6">
+                    <div class="card-header">
+                        <h2 class="card-title">Proxy Status</h2>
+                        <button id="refresh-status-btn" class="text-gray-500 hover:text-primary transition-colors" title="Refresh Status">
+                            <i class="ri-refresh-line text-lg"></i>
+                        </button>
                     </div>
-                    <div class="flex items-center">
-                        <input type="checkbox" id="domain-blacklist-toggle" class="toggle-checkbox">
-                        <label for="domain-blacklist-toggle" class="ml-2 text-gray-700">Domain Blacklist</label>
+                    
+                    <div class="flex items-center mb-6 p-3 rounded-lg bg-gray-50 border border-gray-200">
+                        <div id="status-indicator" class="status-indicator bg-gray-400"></div>
+                        <span id="status-text" class="text-lg font-medium">Checking...</span>
                     </div>
-                    <div class="flex items-center">
-                        <input type="checkbox" id="direct-ip-toggle" class="toggle-checkbox">
-                        <label for="direct-ip-toggle" class="ml-2 text-gray-700">Block Direct IP Access</label>
-                    </div>
-                    <div class="flex items-center">
-                        <input type="checkbox" id="user-agent-toggle" class="toggle-checkbox">
-                        <label for="user-agent-toggle" class="ml-2 text-gray-700">User Agent Filtering</label>
-                    </div>
-                    <div class="flex items-center">
-                        <input type="checkbox" id="malware-toggle" class="toggle-checkbox">
-                        <label for="malware-toggle" class="ml-2 text-gray-700">Malware Protection</label>
-                    </div>
-                    <div class="flex items-center">
-                        <input type="checkbox" id="https-filtering-toggle" class="toggle-checkbox">
-                        <label for="https-filtering-toggle" class="ml-2 text-gray-700">HTTPS Filtering</label>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <button id="start-btn" class="btn btn-green">
+                            <i class="ri-play-fill btn-icon"></i> Start
+                        </button>
+                        <button id="stop-btn" class="btn btn-red">
+                            <i class="ri-stop-fill btn-icon"></i> Stop
+                        </button>
+                        <button id="restart-btn" class="btn btn-yellow">
+                            <i class="ri-restart-line btn-icon"></i> Restart
+                        </button>
+                        <button id="reload-btn" class="btn btn-blue">
+                            <i class="ri-refresh-line btn-icon"></i> Reload
+                        </button>
                     </div>
                 </div>
-                <button id="save-features-btn" class="btn btn-blue mt-3">Save Features</button>
-                <div id="features-message" class="mt-2 text-sm"></div>
+                
+                <!-- Configuration Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Configuration</h2>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="port" class="form-label">Listening Port</label>
+                        <div class="flex">
+                            <input type="number" id="port" class="form-control rounded-r-none" placeholder="3128">
+                            <button id="update-port-btn" class="btn btn-blue rounded-l-none">
+                                <i class="ri-save-line btn-icon"></i> Update
+                            </button>
+                        </div>
+                        <div id="config-message" class="mt-2"></div>
+                    </div>
+                    
+                    <div class="form-group mt-4">
+                        <label class="form-label">Cache Settings</label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label for="cache-size" class="text-sm text-gray-600 mb-1 block">Cache Size (MB)</label>
+                                <input type="number" id="cache-size" class="form-control" placeholder="100">
+                            </div>
+                            <div>
+                                <label for="max-object-size-value" class="text-sm text-gray-600 mb-1 block">Max Object Size</label>
+                                <div class="flex">
+                                    <input type="number" id="max-object-size-value" class="form-control rounded-r-none" placeholder="10">
+                                    <select id="max-object-size-unit" class="form-control rounded-l-none w-auto border-l-0">
+                                        <option value="KB">KB</option>
+                                        <option value="MB" selected>MB</option>
+                                        <option value="GB">GB</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <button id="save-cache-settings-btn" class="btn btn-blue mt-3 w-full">
+                            <i class="ri-save-line btn-icon"></i> Save Cache Settings
+                        </button>
+                        <div id="cache-settings-message" class="mt-2"></div>
+                    </div>
+                </div>
             </div>
             
-            <div class="security-tabs">
-                <div class="tab-buttons mb-4 flex border-b">
-                    <button class="tab-btn active px-4 py-2 border-b-2 border-blue-500" data-tab="ip-blacklist">IP Blacklist</button>
-                    <button class="tab-btn px-4 py-2" data-tab="domain-blacklist">Domain Blacklist</button>
-                    <button class="tab-btn px-4 py-2" data-tab="allowed-direct-ips">Allowed Direct IPs</button>
-                    <button class="tab-btn px-4 py-2" data-tab="cache-settings">Cache Settings</button>
-                </div>
-                
-                <!-- IP Blacklist Tab -->
-                <div class="tab-content active" id="ip-blacklist-tab">
-                    <h3 class="text-lg font-medium mb-3">IP Blacklist Configuration</h3>
-                    <p class="text-gray-600 mb-3">Add IPs to block (one per line):</p>
-                    <textarea id="ip-blacklist-textarea" class="w-full h-32 p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter IPs to blacklist, one per line"></textarea>
-                    <button id="save-ip-blacklist-btn" class="btn btn-blue mt-3">Save IP Blacklist</button>
-                    <div id="ip-blacklist-message" class="mt-2 text-sm"></div>
-                </div>
-                
-                <!-- Domain Blacklist Tab -->
-                <div class="tab-content hidden" id="domain-blacklist-tab">
-                    <h3 class="text-lg font-medium mb-3">Domain Blacklist Configuration</h3>
-                    <p class="text-gray-600 mb-3">Add domains to block (one per line):</p>
-                    <textarea id="domain-blacklist-textarea" class="w-full h-32 p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter domains to blacklist, one per line (e.g., example.com)"></textarea>
-                    <button id="save-domain-blacklist-btn" class="btn btn-blue mt-3">Save Domain Blacklist</button>
-                    <div id="domain-blacklist-message" class="mt-2 text-sm"></div>
-                </div>
-                
-                <!-- Allowed Direct IPs Tab -->
-                <div class="tab-content hidden" id="allowed-direct-ips-tab">
-                    <h3 class="text-lg font-medium mb-3">Allowed Direct IP Access</h3>
-                    <p class="text-gray-600 mb-3">Add IPs that are allowed to be accessed directly (one per line):</p>
-                    <textarea id="allowed-direct-ips-textarea" class="w-full h-32 p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter IPs to allow direct access, one per line"></textarea>
-                    <button id="save-allowed-direct-ips-btn" class="btn btn-blue mt-3">Save Allowed IPs</button>
-                    <div id="allowed-direct-ips-message" class="mt-2 text-sm"></div>
-                </div>
-                
-                <!-- Cache Settings Tab -->
-                <div class="tab-content hidden" id="cache-settings-tab">
-                    <h3 class="text-lg font-medium mb-3">Cache Settings</h3>
-                    <div class="mb-4">
-                        <label for="cache-size" class="block text-gray-700 mb-2">Cache Size (MB)</label>
-                        <input type="number" id="cache-size" class="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="100">
+            <!-- Right Column -->
+            <div class="md:col-span-8">
+                <!-- Security Features Card -->
+                <div class="card mb-6">
+                    <div class="card-header">
+                        <h2 class="card-title">Security Features</h2>
                     </div>
-                    <div class="mb-4">
-                        <label for="max-object-size" class="block text-gray-700 mb-2">Maximum Object Size</label>
-                        <div class="flex">
-                            <input type="number" id="max-object-size-value" class="flex-grow px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="10">
-                            <select id="max-object-size-unit" class="px-3 py-2 border border-gray-300 rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="KB">KB</option>
-                                <option value="MB" selected>MB</option>
-                                <option value="GB">GB</option>
-                            </select>
+                    
+                    <div class="mb-6">
+                        <h3 class="text-lg font-medium mb-3 text-gray-700">
+                            <i class="ri-shield-check-line mr-1 text-primary"></i> Feature Controls
+                        </h3>
+                        
+                        <div class="feature-grid">
+                            <div class="toggle-container">
+                                <input type="checkbox" id="ip-blacklist-toggle" class="toggle-checkbox">
+                                <label for="ip-blacklist-toggle" class="toggle-label">
+                                    <span class="toggle-switch"></span>
+                                    <span class="toggle-text">IP Blacklist</span>
+                                </label>
+                            </div>
+                            
+                            <div class="toggle-container">
+                                <input type="checkbox" id="domain-blacklist-toggle" class="toggle-checkbox">
+                                <label for="domain-blacklist-toggle" class="toggle-label">
+                                    <span class="toggle-switch"></span>
+                                    <span class="toggle-text">Domain Blacklist</span>
+                                </label>
+                            </div>
+                            
+                            <div class="toggle-container">
+                                <input type="checkbox" id="direct-ip-toggle" class="toggle-checkbox">
+                                <label for="direct-ip-toggle" class="toggle-label">
+                                    <span class="toggle-switch"></span>
+                                    <span class="toggle-text">Block Direct IP Access</span>
+                                </label>
+                            </div>
+                            
+                            <div class="toggle-container">
+                                <input type="checkbox" id="user-agent-toggle" class="toggle-checkbox">
+                                <label for="user-agent-toggle" class="toggle-label">
+                                    <span class="toggle-switch"></span>
+                                    <span class="toggle-text">User Agent Filtering</span>
+                                </label>
+                            </div>
+                            
+                            <div class="toggle-container">
+                                <input type="checkbox" id="malware-toggle" class="toggle-checkbox">
+                                <label for="malware-toggle" class="toggle-label">
+                                    <span class="toggle-switch"></span>
+                                    <span class="toggle-text">Malware Protection</span>
+                                </label>
+                            </div>
+                            
+                            <div class="toggle-container">
+                                <input type="checkbox" id="https-filtering-toggle" class="toggle-checkbox">
+                                <label for="https-filtering-toggle" class="toggle-label">
+                                    <span class="toggle-switch"></span>
+                                    <span class="toggle-text">HTTPS Filtering</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <button id="save-features-btn" class="btn btn-blue mt-4">
+                            <i class="ri-save-line btn-icon"></i> Save Features
+                        </button>
+                        <div id="features-message" class="mt-2"></div>
+                    </div>
+                    
+                    <div class="tabs">
+                        <div class="tab-buttons">
+                            <button class="tab-btn active" data-tab="ip-blacklist">
+                                <i class="ri-forbid-line mr-1"></i> IP Blacklist
+                            </button>
+                            <button class="tab-btn" data-tab="domain-blacklist">
+                                <i class="ri-global-line mr-1"></i> Domain Blacklist
+                            </button>
+                            <button class="tab-btn" data-tab="allowed-direct-ips">
+                                <i class="ri-checkbox-circle-line mr-1"></i> Allowed Direct IPs
+                            </button>
+                        </div>
+                        
+                        <!-- IP Blacklist Tab -->
+                        <div class="tab-content active" id="ip-blacklist-tab">
+                            <div class="mb-3 flex justify-between items-center">
+                                <h3 class="text-lg font-medium text-gray-700">IP Blacklist Configuration</h3>
+                                <div class="text-sm text-gray-500">One IP per line</div>
+                            </div>
+                            
+                            <textarea id="ip-blacklist-textarea" class="form-control" placeholder="Enter IPs to blacklist, one per line
+Example:
+192.168.1.100
+10.0.0.5"></textarea>
+                            
+                            <div class="flex justify-between mt-3">
+                                <div id="ip-blacklist-message"></div>
+                                <button id="save-ip-blacklist-btn" class="btn btn-blue">
+                                    <i class="ri-save-line btn-icon"></i> Save IP Blacklist
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Domain Blacklist Tab -->
+                        <div class="tab-content hidden" id="domain-blacklist-tab">
+                            <div class="mb-3 flex justify-between items-center">
+                                <h3 class="text-lg font-medium text-gray-700">Domain Blacklist Configuration</h3>
+                                <div class="text-sm text-gray-500">One domain per line</div>
+                            </div>
+                            
+                            <textarea id="domain-blacklist-textarea" class="form-control" placeholder="Enter domains to blacklist, one per line
+Example:
+example.com
+ads.example.org"></textarea>
+                            
+                            <div class="flex justify-between mt-3">
+                                <div id="domain-blacklist-message"></div>
+                                <button id="save-domain-blacklist-btn" class="btn btn-blue">
+                                    <i class="ri-save-line btn-icon"></i> Save Domain Blacklist
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Allowed Direct IPs Tab -->
+                        <div class="tab-content hidden" id="allowed-direct-ips-tab">
+                            <div class="mb-3 flex justify-between items-center">
+                                <h3 class="text-lg font-medium text-gray-700">Allowed Direct IP Access</h3>
+                                <div class="text-sm text-gray-500">One IP or CIDR per line</div>
+                            </div>
+                            
+                            <textarea id="allowed-direct-ips-textarea" class="form-control" placeholder="Enter IPs to allow direct access, one per line
+Example:
+192.168.1.1
+10.0.0.0/24"></textarea>
+                            
+                            <div class="flex justify-between mt-3">
+                                <div id="allowed-direct-ips-message"></div>
+                                <button id="save-allowed-direct-ips-btn" class="btn btn-blue">
+                                    <i class="ri-save-line btn-icon"></i> Save Allowed IPs
+                                </button>
+                            </div>
                         </div>
                     </div>
-                    <button id="save-cache-settings-btn" class="btn btn-blue mt-3">Save Cache Settings</button>
-                    <div id="cache-settings-message" class="mt-2 text-sm"></div>
+                </div>
+                
+                <!-- Status Details Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Status Details</h2>
+                        <div class="flex space-x-2">
+                            <button id="download-logs-btn" class="text-primary hover:text-primary-hover transition-colors" title="Download Logs">
+                                <i class="ri-download-line text-lg"></i>
+                            </button>
+                            <button id="clear-logs-btn" class="text-gray-500 hover:text-danger transition-colors" title="Clear Logs">
+                                <i class="ri-delete-bin-line text-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="status-details-container" id="status-details">Loading...</div>
                 </div>
             </div>
         </div>
-        
-        <!-- Logs Card -->
-        <div class="bg-white rounded-lg shadow-md p-6 mt-6">
-            <h2 class="text-xl font-semibold mb-4">Status Details</h2>
-            <pre id="status-details" class="bg-gray-100 p-4 rounded overflow-auto max-h-60 text-sm">Loading...</pre>
-        </div>
     </div>
+    
+    <!-- Footer -->
+    <footer class="py-4 bg-white border-t border-gray-200 mt-8">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="text-gray-600 text-sm">
+                    Squid Proxy Dashboard &copy; 2025
+                </div>
+                <div class="text-gray-500 text-sm mt-2 md:mt-0">
+                    Version 2.1.0 | <a href="https://github.com" class="text-primary hover:underline">Documentation</a>
+                </div>
+            </div>
+        </div>
+    </footer>
     
     <script src="script.js"></script>
 </body>

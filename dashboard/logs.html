@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logs - Squid Proxy Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css">
+    <link rel="stylesheet" href="style.css">
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦑</text></svg>">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Dashboard Header -->
+    <header class="dashboard-header">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center">
+                <div class="logo">
+                    <span class="logo-icon">🦑</span> 
+                    <span>Squid Proxy Dashboard</span>
+                </div>
+                <div id="current-time" class="text-gray-600 font-medium hidden md:block"></div>
+                <nav class="flex items-center space-x-4">
+                    <div id="header-status" class="flex items-center space-x-1 text-gray-600">
+                        <i class="ri-server-line"></i>
+                        <span id="header-status-text">Loading...</span>
+                    </div>
+                    <div id="header-clients" class="flex items-center space-x-1 text-gray-600">
+                        <i class="ri-user-line"></i>
+                        <span id="header-clients-count">0</span>
+                    </div>
+                    <a href="index.html" class="text-gray-600 hover:text-primary flex items-center">
+                        <i class="ri-dashboard-line mr-1"></i> Dashboard
+                    </a>
+                    <a href="settings.html" class="text-gray-600 hover:text-primary flex items-center">
+                        <i class="ri-settings-3-line mr-1"></i> Settings
+                    </a>
+                    <a href="logs.html" class="text-primary flex items-center">
+                        <i class="ri-file-list-line mr-1"></i> Logs
+                    </a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <div class="container mx-auto px-4 pb-8">
+        <!-- Logs Content -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+            <!-- Left Column - Log Selection -->
+            <div class="md:col-span-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Log Files</h2>
+                    </div>
+                    
+                    <div class="logs-list">
+                        <button class="log-btn active" data-log="access">
+                            <i class="ri-file-list-line mr-1"></i> Access Log
+                        </button>
+                        <button class="log-btn" data-log="cache">
+                            <i class="ri-file-list-line mr-1"></i> Cache Log
+                        </button>
+                        <button class="log-btn" data-log="store">
+                            <i class="ri-file-list-line mr-1"></i> Store Log
+                        </button>
+                        <button class="log-btn" data-log="system">
+                            <i class="ri-file-list-line mr-1"></i> System Log
+                        </button>
+                    </div>
+                    
+                    <div class="mt-4 px-4 pb-4">
+                        <div class="form-group">
+                            <label for="log-lines" class="form-label">Lines to show</label>
+                            <select id="log-lines" class="form-control">
+                                <option value="50">Last 50 lines</option>
+                                <option value="100" selected>Last 100 lines</option>
+                                <option value="200">Last 200 lines</option>
+                                <option value="500">Last 500 lines</option>
+                                <option value="1000">Last 1000 lines</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group mt-4">
+                            <label for="auto-refresh" class="form-label">Auto refresh</label>
+                            <select id="auto-refresh" class="form-control">
+                                <option value="0">Disabled</option>
+                                <option value="5">Every 5 seconds</option>
+                                <option value="10" selected>Every 10 seconds</option>
+                                <option value="30">Every 30 seconds</option>
+                                <option value="60">Every minute</option>
+                            </select>
+                        </div>
+                        
+                        <button id="refresh-logs-btn" class="btn btn-blue mt-4 w-full">
+                            <i class="ri-refresh-line btn-icon"></i> Refresh Logs
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Column - Log Viewer -->
+            <div class="md:col-span-9">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title" id="log-title">Access Log</h2>
+                        <div class="flex space-x-2">
+                            <button id="search-logs-toggle" class="text-gray-500 hover:text-primary transition-colors" title="Search Logs">
+                                <i class="ri-search-line text-lg"></i>
+                            </button>
+                            <button id="download-current-log-btn" class="text-primary hover:text-primary-hover transition-colors" title="Download Log">
+                                <i class="ri-download-line text-lg"></i>
+                            </button>
+                            <button id="clear-log-btn" class="text-gray-500 hover:text-danger transition-colors" title="Clear Log">
+                                <i class="ri-delete-bin-line text-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Search Box (hidden by default) -->
+                    <div id="search-box" class="hidden p-4 bg-gray-50 border-b border-gray-200">
+                        <div class="flex">
+                            <input type="text" id="search-input" class="form-control rounded-r-none" placeholder="Search logs...">
+                            <button id="search-btn" class="btn btn-blue rounded-l-none">
+                                <i class="ri-search-line btn-icon"></i> Search
+                            </button>
+                        </div>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            <label class="inline-flex items-center text-sm text-gray-600">
+                                <input type="checkbox" id="case-sensitive" class="form-checkbox">
+                                <span class="ml-2">Case sensitive</span>
+                            </label>
+                            <label class="inline-flex items-center text-sm text-gray-600">
+                                <input type="checkbox" id="whole-word" class="form-checkbox">
+                                <span class="ml-2">Whole word</span>
+                            </label>
+                            <label class="inline-flex items-center text-sm text-gray-600">
+                                <input type="checkbox" id="regex-search" class="form-checkbox">
+                                <span class="ml-2">Regex</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Log Content -->
+                    <div class="log-viewer" id="log-content">
+                        <div class="text-center p-8 text-gray-500">
+                            Loading logs...
+                        </div>
+                    </div>
+                    
+                    <!-- Log Stats -->
+                    <div class="border-t border-gray-200 p-4">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="text-center">
+                                <div class="text-sm text-gray-500">Total Lines</div>
+                                <div class="font-bold text-lg" id="log-total-lines">-</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-sm text-gray-500">Errors</div>
+                                <div class="font-bold text-lg text-red-500" id="log-errors">-</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-sm text-gray-500">Log Size</div>
+                                <div class="font-bold text-lg" id="log-size">-</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-sm text-gray-500">Last Updated</div>
+                                <div class="font-bold text-lg" id="log-last-updated">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Log Analysis Card -->
+                <div class="card mt-6">
+                    <div class="card-header">
+                        <h2 class="card-title">Log Analysis</h2>
+                        <button id="generate-analysis-btn" class="text-primary hover:text-primary-hover transition-colors" title="Generate Analysis">
+                            <i class="ri-bar-chart-line text-lg"></i>
+                        </button>
+                    </div>
+                    
+                    <div id="log-analysis-content" class="p-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- Top Domains -->
+                            <div>
+                                <h3 class="text-lg font-medium mb-3 text-gray-700">
+                                    <i class="ri-global-line mr-1 text-primary"></i> Top Domains
+                                </h3>
+                                <div id="top-domains-chart" class="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
+                                    <span class="text-gray-500">Click "Generate Analysis" to view data</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Status Codes -->
+                            <div>
+                                <h3 class="text-lg font-medium mb-3 text-gray-700">
+                                    <i class="ri-error-warning-line mr-1 text-primary"></i> HTTP Status Codes
+                                </h3>
+                                <div id="status-codes-chart" class="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
+                                    <span class="text-gray-500">Click "Generate Analysis" to view data</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Request Methods -->
+                            <div>
+                                <h3 class="text-lg font-medium mb-3 text-gray-700">
+                                    <i class="ri-exchange-line mr-1 text-primary"></i> Request Methods
+                                </h3>
+                                <div id="request-methods-chart" class="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
+                                    <span class="text-gray-500">Click "Generate Analysis" to view data</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Traffic by Hour -->
+                            <div>
+                                <h3 class="text-lg font-medium mb-3 text-gray-700">
+                                    <i class="ri-time-line mr-1 text-primary"></i> Traffic by Hour
+                                </h3>
+                                <div id="traffic-by-hour-chart" class="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
+                                    <span class="text-gray-500">Click "Generate Analysis" to view data</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Footer -->
+    <footer class="py-4 bg-white border-t border-gray-200 mt-8">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="text-gray-600 text-sm">
+                    Squid Proxy Dashboard &copy; 2025
+                </div>
+                <div class="text-gray-500 text-sm mt-2 md:mt-0">
+                    Version 2.1.0 | <a href="https://github.com" class="text-primary hover:underline">Documentation</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+    
+    <script src="script.js"></script>
+</body>
+</html>

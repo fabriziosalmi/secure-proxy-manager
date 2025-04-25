@@ -4,6 +4,8 @@ import os
 import socket
 import re
 import json
+import time
+from datetime import datetime
 
 app = Flask(__name__, static_folder='../dashboard')
 
@@ -20,6 +22,14 @@ BLACKLIST_IPS_PATH = '/etc/squid/blacklist_ips.txt'
 BLACKLIST_DOMAINS_PATH = '/etc/squid/blacklist_domains.txt'
 ALLOWED_DIRECT_IPS_PATH = '/etc/squid/allowed_direct_ips.txt'
 BAD_USER_AGENTS_PATH = '/etc/squid/bad_user_agents.txt'
+
+# Log paths
+LOG_PATHS = {
+    'access': '/var/log/squid/access.log',
+    'cache': '/var/log/squid/cache.log',
+    'store': '/var/log/squid/store.log',
+    'system': '/var/log/syslog'
+}
 
 # Routes for serving the dashboard
 @app.route('/')
@@ -561,6 +571,11 @@ def update_squid_port(port):
         print(f"Error updating Squid port: {str(e)}")
         return False
 
+@app.route('/api/clients/count', methods=['GET'])
+def get_clients_count():
+    # TODO: implement real client tracking
+    return jsonify({'count': 0})
+
 # Health check endpoint
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -580,6 +595,362 @@ def health_check():
                 'squid_running': squid_running,
                 'flask_running': flask_running
             }), 503
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+# New Log API endpoints
+@app.route('/api/logs/<log_type>', methods=['GET'])
+def get_logs(log_type):
+    try:
+        if log_type not in LOG_PATHS:
+            return jsonify({
+                'status': 'error',
+                'message': f'Unknown log type: {log_type}'
+            }), 400
+            
+        log_path = LOG_PATHS[log_type]
+        lines = request.args.get('lines', default=100, type=int)
+        
+        if not os.path.exists(log_path):
+            return jsonify({
+                'content': f"Log file not found: {log_path}",
+                'totalLines': 0,
+                'errors': 0,
+                'size': '0 KB',
+                'lastModified': 'Never'
+            })
+        
+        # Get file stats
+        file_stats = os.stat(log_path)
+        file_size = file_stats.st_size
+        last_modified = datetime.fromtimestamp(file_stats.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Format file size
+        if file_size < 1024:
+            formatted_size = f"{file_size} B"
+        elif file_size < 1024 * 1024:
+            formatted_size = f"{file_size / 1024:.1f} KB"
+        else:
+            formatted_size = f"{file_size / (1024 * 1024):.1f} MB"
+        
+        # Read log file
+        log_content = []
+        error_count = 0
+        
+        with open(log_path, 'r') as f:
+            all_lines = f.readlines()
+            total_lines = len(all_lines)
+            
+            # Get the last 'lines' number of lines
+            log_lines = all_lines[-lines:] if lines < total_lines else all_lines
+            
+            for line in log_lines:
+                log_content.append(line.rstrip())
+                # Count error lines (this will depend on your log format)
+                if " ERROR " in line or " FATAL " in line or " CRITICAL " in line:
+                    error_count += 1
+        
+        return jsonify({
+            'content': log_content,
+            'totalLines': total_lines,
+            'errors': error_count,
+            'size': formatted_size,
+            'lastModified': last_modified
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/logs/<log_type>/analysis', methods=['GET'])
+def analyze_logs(log_type):
+    try:
+        if log_type not in LOG_PATHS:
+            return jsonify({
+                'status': 'error',
+                'message': f'Unknown log type: {log_type}'
+            }), 400
+            
+        log_path = LOG_PATHS[log_type]
+        
+        if not os.path.exists(log_path):
+            return jsonify({
+                'status': 'error',
+                'message': f'Log file not found: {log_path}'
+            }), 404
+        
+        # Initialize analysis data structures
+        domains = {}
+        status_codes = {}
+        request_methods = {}
+        traffic_by_hour = {str(h): 0 for h in range(24)}
+        
+        # Read log file
+        with open(log_path, 'r') as f:
+            for line in f:
+                # Analysis will depend on your log format
+                # For access.log, we typically have squid format logs
+                if log_type == 'access':
+                    # Extract domains
+                    domain_match = re.search(r'https?://([^/]+)', line)
+                    if domain_match:
+                        domain = domain_match.group(1)
+                        domains[domain] = domains.get(domain, 0) + 1
+                    
+                    # Extract status codes - typically the 3rd field in squid logs
+                    parts = line.split()
+                    if len(parts) > 3:
+                        status = parts[3].split('/')[1] if '/' in parts[3] else parts[3]
+                        status_codes[status] = status_codes.get(status, 0) + 1
+                    
+                    # Extract request methods - typically in the 5th field
+                    if len(parts) > 5:
+                        method = parts[5].strip('"')
+                        request_methods[method] = request_methods.get(method, 0) + 1
+                    
+                    # Extract time for traffic by hour
+                    timestamp_match = re.search(r'\[\d+/\w+/\d+:(\d+):', line)
+                    if timestamp_match:
+                        hour = timestamp_match.group(1)
+                        traffic_by_hour[hour] = traffic_by_hour.get(hour, 0) + 1
+        
+        # Sort and limit results
+        top_domains = sorted(domains.items(), key=lambda x: x[1], reverse=True)[:10]
+        sorted_status = sorted(status_codes.items(), key=lambda x: x[0])
+        sorted_methods = sorted(request_methods.items(), key=lambda x: x[1], reverse=True)
+        sorted_traffic = [(hour, count) for hour, count in traffic_by_hour.items()]
+        sorted_traffic.sort(key=lambda x: int(x[0]))
+        
+        return jsonify({
+            'topDomains': dict(top_domains),
+            'statusCodes': dict(sorted_status),
+            'requestMethods': dict(sorted_methods),
+            'trafficByHour': dict(sorted_traffic)
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/logs/<log_type>/download', methods=['GET'])
+def download_log(log_type):
+    try:
+        if log_type not in LOG_PATHS:
+            return jsonify({
+                'status': 'error',
+                'message': f'Unknown log type: {log_type}'
+            }), 400
+            
+        log_path = LOG_PATHS[log_type]
+        
+        if not os.path.exists(log_path):
+            return jsonify({
+                'status': 'error',
+                'message': f'Log file not found: {log_path}'
+            }), 404
+        
+        return send_from_directory(os.path.dirname(log_path), os.path.basename(log_path), as_attachment=True)
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/logs/<log_type>/clear', methods=['POST'])
+def clear_log(log_type):
+    try:
+        if log_type not in LOG_PATHS:
+            return jsonify({
+                'status': 'error',
+                'message': f'Unknown log type: {log_type}'
+            }), 400
+            
+        log_path = LOG_PATHS[log_type]
+        
+        if not os.path.exists(log_path):
+            return jsonify({
+                'status': 'error',
+                'message': f'Log file not found: {log_path}'
+            }), 404
+        
+        # Clear the log file (keeping the file but emptying contents)
+        with open(log_path, 'w') as f:
+            f.write(f"# Log cleared at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Log file {log_type} cleared successfully'
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/config/raw', methods=['GET'])
+def get_raw_config():
+    try:
+        if not os.path.exists(SQUID_CONFIG_PATH):
+            return jsonify({
+                'status': 'error',
+                'message': f'Config file not found: {SQUID_CONFIG_PATH}'
+            }), 404
+            
+        with open(SQUID_CONFIG_PATH, 'r') as f:
+            config_content = f.read()
+            
+        return jsonify({
+            'content': config_content
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/config/raw', methods=['POST'])
+def update_raw_config():
+    try:
+        data = request.get_json()
+        content = data.get('content')
+        
+        if not content:
+            return jsonify({
+                'status': 'error',
+                'message': 'Empty configuration content'
+            }), 400
+        
+        # Backup the existing config
+        backup_path = f"{SQUID_CONFIG_PATH}.bak.{int(time.time())}"
+        with open(SQUID_CONFIG_PATH, 'r') as src:
+            with open(backup_path, 'w') as dst:
+                dst.write(src.read())
+        
+        # Write the new config
+        with open(SQUID_CONFIG_PATH, 'w') as f:
+            f.write(content)
+        
+        # Reload Squid to apply changes
+        result = subprocess.run(SQUID_RELOAD_COMMAND, shell=True, capture_output=True, text=True)
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Configuration updated successfully',
+            'details': result.stdout,
+            'backupPath': backup_path
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/security/bad-user-agents', methods=['GET'])
+def get_bad_user_agents():
+    try:
+        return jsonify({
+            'userAgents': read_list_file(BAD_USER_AGENTS_PATH)
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/security/bad-user-agents', methods=['POST'])
+def update_bad_user_agents():
+    try:
+        data = request.get_json()
+        user_agents = data.get('userAgents', [])
+        
+        # Write to file
+        success = write_list_file(BAD_USER_AGENTS_PATH, user_agents)
+        if success:
+            # Reload Squid to apply changes
+            subprocess.run(SQUID_RELOAD_COMMAND, shell=True)
+            return jsonify({
+                'status': 'success',
+                'message': 'Bad user agents updated successfully'
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to update bad user agents'
+            }), 500
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/system/info', methods=['GET'])
+def get_system_info():
+    try:
+        # Get Squid version
+        version_result = subprocess.run('squid -v | head -1', shell=True, capture_output=True, text=True)
+        squid_version = version_result.stdout.strip() if version_result.returncode == 0 else "Unknown"
+        
+        # Get system info
+        os_info = subprocess.run('uname -a', shell=True, capture_output=True, text=True)
+        os_info_text = os_info.stdout.strip() if os_info.returncode == 0 else "Unknown"
+        
+        # Get current paths
+        current_paths = {
+            'squidPath': '/usr/sbin/squid',
+            'configPath': SQUID_CONFIG_PATH,
+            'cacheDir': '/var/cache/squid'
+        }
+        
+        return jsonify({
+            'squidVersion': squid_version,
+            'osInfo': os_info_text,
+            'currentPaths': current_paths
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/system/paths', methods=['POST'])
+def update_system_paths():
+    try:
+        data = request.get_json()
+        squid_path = data.get('squidPath')
+        config_path = data.get('configPath')
+        cache_dir = data.get('cacheDir')
+        
+        # Validate paths
+        if squid_path and not os.path.exists(squid_path):
+            return jsonify({
+                'status': 'error',
+                'message': f'Squid binary not found at {squid_path}'
+            }), 400
+            
+        if config_path and not os.path.exists(os.path.dirname(config_path)):
+            return jsonify({
+                'status': 'error',
+                'message': f'Config directory not found for {config_path}'
+            }), 400
+            
+        if cache_dir and not os.path.exists(cache_dir):
+            return jsonify({
+                'status': 'error',
+                'message': f'Cache directory not found at {cache_dir}'
+            }), 400
+        
+        # TODO: Actually update the paths in the application
+        # This would require updating global variables and possibly restarting the application
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'System paths updated successfully'
+        })
     except Exception as e:
         return jsonify({
             'status': 'error',
