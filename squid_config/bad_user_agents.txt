@@ -1,0 +1,78 @@
+# Suspicious user agents to block
+# Add one per line
+# Example:
+^Mozilla/5.0 \(compatible; Nimbostratus-Bot/v1.3.2;
+^BlackWidow
+^Bot mailto:craftbot@example.com
+^ChinaClaw
+^Custo
+^DISCo
+^Download Demon
+^eCatch
+^EirGrabber
+^EmailSiphon
+^EmailWolf
+^Express WebPictures
+^ExtractorPro
+^EyeNetIE
+^FlashGet
+^GetRight
+^GetWeb!
+^Go!Zilla
+^Go-Ahead-Got-It
+^GrabNet
+^Grafula
+^HMView
+^HTTrack
+^Image Stripper
+^Image Sucker
+^InterGET
+^Internet Ninja
+^JetCar
+^JOC Web Spider
+^larbin
+^LeechFTP
+^Mass Downloader
+^MIDown tool
+^Mister PiX
+^Navroad
+^NearSite
+^NetAnts
+^NetSpider
+^Net Vampire
+^NetZIP
+^Octopus
+^Offline Explorer
+^Offline Navigator
+^PageGrabber
+^Papa Foto
+^pavuk
+^pcBrowser
+^RealDownload
+^ReGet
+^SiteSnagger
+^SmartDownload
+^SuperBot
+^SuperHTTP
+^Surfbot
+^tAkeOut
+^Teleport Pro
+^VoidEYE
+^Web Image Collector
+^Web Sucker
+^WebAuto
+^WebCopier
+^WebFetch
+^WebGo IS
+^WebLeacher
+^WebReaper
+^WebSauger
+^Website eXtractor
+^Website Quester
+^WebStripper
+^WebZIP
+^Wget
+^Widow
+^WWWOFFLE
+^Xaldon WebSpider
+^Zeus

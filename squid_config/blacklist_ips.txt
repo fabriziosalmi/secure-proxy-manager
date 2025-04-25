@@ -1,0 +1,4 @@
+# Add blacklisted IPs one per line
+# Example:
+# 123.45.67.89
+# 98.76.54.32

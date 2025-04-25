@@ -1,0 +1,5 @@
+# Add blacklisted domains one per line
+# Example:
+# malware-site.com
+# phishing-example.org
+# ads.trackers.com

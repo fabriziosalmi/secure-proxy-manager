@@ -45,6 +45,101 @@
             </div>
         </div>
         
+        <!-- Security Features Card -->
+        <div class="bg-white rounded-lg shadow-md p-6 mt-6">
+            <h2 class="text-xl font-semibold mb-4">Security Features</h2>
+            
+            <div class="mb-6">
+                <h3 class="text-lg font-medium mb-3">Feature Toggles</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="flex items-center">
+                        <input type="checkbox" id="ip-blacklist-toggle" class="toggle-checkbox">
+                        <label for="ip-blacklist-toggle" class="ml-2 text-gray-700">IP Blacklist</label>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="domain-blacklist-toggle" class="toggle-checkbox">
+                        <label for="domain-blacklist-toggle" class="ml-2 text-gray-700">Domain Blacklist</label>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="direct-ip-toggle" class="toggle-checkbox">
+                        <label for="direct-ip-toggle" class="ml-2 text-gray-700">Block Direct IP Access</label>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="user-agent-toggle" class="toggle-checkbox">
+                        <label for="user-agent-toggle" class="ml-2 text-gray-700">User Agent Filtering</label>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="malware-toggle" class="toggle-checkbox">
+                        <label for="malware-toggle" class="ml-2 text-gray-700">Malware Protection</label>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="https-filtering-toggle" class="toggle-checkbox">
+                        <label for="https-filtering-toggle" class="ml-2 text-gray-700">HTTPS Filtering</label>
+                    </div>
+                </div>
+                <button id="save-features-btn" class="btn btn-blue mt-3">Save Features</button>
+                <div id="features-message" class="mt-2 text-sm"></div>
+            </div>
+            
+            <div class="security-tabs">
+                <div class="tab-buttons mb-4 flex border-b">
+                    <button class="tab-btn active px-4 py-2 border-b-2 border-blue-500" data-tab="ip-blacklist">IP Blacklist</button>
+                    <button class="tab-btn px-4 py-2" data-tab="domain-blacklist">Domain Blacklist</button>
+                    <button class="tab-btn px-4 py-2" data-tab="allowed-direct-ips">Allowed Direct IPs</button>
+                    <button class="tab-btn px-4 py-2" data-tab="cache-settings">Cache Settings</button>
+                </div>
+                
+                <!-- IP Blacklist Tab -->
+                <div class="tab-content active" id="ip-blacklist-tab">
+                    <h3 class="text-lg font-medium mb-3">IP Blacklist Configuration</h3>
+                    <p class="text-gray-600 mb-3">Add IPs to block (one per line):</p>
+                    <textarea id="ip-blacklist-textarea" class="w-full h-32 p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter IPs to blacklist, one per line"></textarea>
+                    <button id="save-ip-blacklist-btn" class="btn btn-blue mt-3">Save IP Blacklist</button>
+                    <div id="ip-blacklist-message" class="mt-2 text-sm"></div>
+                </div>
+                
+                <!-- Domain Blacklist Tab -->
+                <div class="tab-content hidden" id="domain-blacklist-tab">
+                    <h3 class="text-lg font-medium mb-3">Domain Blacklist Configuration</h3>
+                    <p class="text-gray-600 mb-3">Add domains to block (one per line):</p>
+                    <textarea id="domain-blacklist-textarea" class="w-full h-32 p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter domains to blacklist, one per line (e.g., example.com)"></textarea>
+                    <button id="save-domain-blacklist-btn" class="btn btn-blue mt-3">Save Domain Blacklist</button>
+                    <div id="domain-blacklist-message" class="mt-2 text-sm"></div>
+                </div>
+                
+                <!-- Allowed Direct IPs Tab -->
+                <div class="tab-content hidden" id="allowed-direct-ips-tab">
+                    <h3 class="text-lg font-medium mb-3">Allowed Direct IP Access</h3>
+                    <p class="text-gray-600 mb-3">Add IPs that are allowed to be accessed directly (one per line):</p>
+                    <textarea id="allowed-direct-ips-textarea" class="w-full h-32 p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter IPs to allow direct access, one per line"></textarea>
+                    <button id="save-allowed-direct-ips-btn" class="btn btn-blue mt-3">Save Allowed IPs</button>
+                    <div id="allowed-direct-ips-message" class="mt-2 text-sm"></div>
+                </div>
+                
+                <!-- Cache Settings Tab -->
+                <div class="tab-content hidden" id="cache-settings-tab">
+                    <h3 class="text-lg font-medium mb-3">Cache Settings</h3>
+                    <div class="mb-4">
+                        <label for="cache-size" class="block text-gray-700 mb-2">Cache Size (MB)</label>
+                        <input type="number" id="cache-size" class="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="100">
+                    </div>
+                    <div class="mb-4">
+                        <label for="max-object-size" class="block text-gray-700 mb-2">Maximum Object Size</label>
+                        <div class="flex">
+                            <input type="number" id="max-object-size-value" class="flex-grow px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="10">
+                            <select id="max-object-size-unit" class="px-3 py-2 border border-gray-300 rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="KB">KB</option>
+                                <option value="MB" selected>MB</option>
+                                <option value="GB">GB</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button id="save-cache-settings-btn" class="btn btn-blue mt-3">Save Cache Settings</button>
+                    <div id="cache-settings-message" class="mt-2 text-sm"></div>
+                </div>
+            </div>
+        </div>
+        
         <!-- Logs Card -->
         <div class="bg-white rounded-lg shadow-md p-6 mt-6">
             <h2 class="text-xl font-semibold mb-4">Status Details</h2>

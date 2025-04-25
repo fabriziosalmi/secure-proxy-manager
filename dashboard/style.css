@@ -51,6 +51,28 @@
     @apply text-red-600;
 }
 
+/* Toggle checkbox styling */
+.toggle-checkbox {
+    @apply h-5 w-5 text-blue-600 rounded focus:ring-blue-500;
+}
+
+/* Tab styling */
+.tab-btn {
+    @apply text-gray-600 hover:text-blue-600 border-transparent;
+}
+
+.tab-btn.active {
+    @apply text-blue-600 border-blue-500 font-medium;
+}
+
+.tab-content {
+    @apply hidden;
+}
+
+.tab-content.active {
+    @apply block;
+}
+
 /* Animations */
 @keyframes pulse {
     0%, 100% {
