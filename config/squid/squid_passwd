@@ -1,0 +1,6 @@
+# Squid Authentication Configuration
+# Format: username:password
+
+admin:$apr1$rU8.a5/2$p5uVRxl7wnzWxyvQ9dAGl0
+user1:$apr1$Y0GhJ8H6$GJy2Qy3q8p3sJq.3j89JV1
+user2:$apr1$pR45sN.9$2qzN.H.YtNtZi3M0G6YlL0

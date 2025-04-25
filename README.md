@@ -1,123 +1,138 @@
-# Secure Squid Proxy Configuration Generator
+# Secure Squid Proxy with Dashboard
 
-This project automates the generation of a Squid proxy configuration file (`squid.conf`) using a YAML configuration file (`config.yaml`). It supports features like IP blacklisting, DNS blacklisting, OWASP protection, blocking VPN/Tor/Cloudflare/AWS/Microsoft/Google IPs and more.
+A comprehensive, secure implementation of Squid proxy with a modern web-based dashboard for management and monitoring.
 
 ## Features
 
-- **IP Blacklisting**: Block traffic to specific IPs from local files or remote URLs.
-- **DNS Blacklisting**: Block domains from local files or remote URLs.
-- **OWASP Protection**: Block common web attack patterns using regex rules.
-- **SSL Interception**: Optional SSL traffic interception with certificate and key support.
-- **Block VPN/Tor/Cloudflare/AWS/Microsoft/Google IPs**: Block traffic from IP ranges of popular services.
-- **Flexible Caching**: Configure cache size, type, and maximum object size.
-- **Docker Support**: Easy deployment with Docker and Docker Compose.
+- **Secure Squid Configuration**: Hardened proxy with comprehensive security controls
+- **Domain Blacklisting**: Block malicious domains and unwanted content
+- **Modern Dashboard**: React-based UI with Tailwind CSS for easy management
+- **Monitoring & Analytics**: Real-time statistics and traffic visualization
+- **Containerized Architecture**: Docker-based deployment for easy setup and scaling
+- **Access Controls**: Fine-grained access management
+- **Log Analysis**: Advanced log viewing and filtering
 
-## Prerequisites
+## Requirements
 
-- Python 3.x
-- Docker and Docker Compose (for containerized deployment)
+- Docker and Docker Compose
+- Node.js (for development only)
+- Linux/macOS/Windows with Docker support
 
-## Usage
+## Quick Start
 
-### Configuration
-
-Edit the `config.yaml` file to customize your proxy settings.
-
-### Generate Squid Configuration
-
-```bash
-python generate_squid_conf.py [config_file] [output_file]
-```
-
-Arguments:
-- `config_file`: Path to your config YAML file (default: `config.yaml`)
-- `output_file`: Path where the config should be saved (default: `squid.conf`)
-
-### Docker Deployment
-
-#### Using Docker Compose (Recommended)
-
-1. Generate the configuration:
-   ```bash
-   python generate_squid_conf.py
+1. Clone this repository:
+   ```
+   git clone https://github.com/yourusername/secure-proxy.git
+   cd secure-proxy
    ```
 
-2. Start the Squid proxy using Docker Compose:
-   ```bash
+2. Start the services using Docker Compose:
+   ```
    docker-compose up -d
    ```
 
-3. To view logs:
-   ```bash
-   docker-compose logs -f
+3. Access the dashboard at http://localhost:8080
+
+4. Configure your client to use the proxy at `localhost:3128`
+
+## Architecture
+
+The project consists of two main components:
+
+1. **Squid Proxy Service**: Provides the actual proxy functionality with security features
+2. **Web Dashboard**: Provides a user-friendly interface for managing and monitoring the proxy
+
+Both components are containerized using Docker for easy deployment and isolation.
+
+## Configuration
+
+### Squid Configuration
+
+The main Squid configuration file is located at `config/squid/squid.conf`. You can modify this file to adjust the proxy settings according to your needs.
+
+Key settings include:
+- Port configuration
+- Access control lists
+- Cache settings
+- Security parameters
+
+### Blacklist Management
+
+Domain blacklists are stored in `config/blacklists/domains.txt`. You can edit this file directly or use the dashboard to manage blocked domains.
+
+### Dashboard Configuration
+
+The dashboard is configured to connect to the Squid proxy service automatically when deployed using Docker Compose. For development or custom deployments, you may need to adjust the proxy connection settings.
+
+## Development
+
+### Prerequisites
+
+- Node.js (version 14 or higher)
+- npm or yarn
+- Docker and Docker Compose
+
+### Dashboard Development
+
+1. Navigate to the dashboard directory:
+   ```
+   cd src/dashboard
    ```
 
-4. To stop the proxy:
-   ```bash
-   docker-compose down
+2. Install dependencies:
+   ```
+   npm install
    ```
 
-#### Using Docker Directly
-
-1. Generate the configuration:
-   ```bash
-   python generate_squid_conf.py
+3. Start the development server:
+   ```
+   npm start
    ```
 
-2. Build and run the Docker image:
-   ```bash
-   docker build -t squid-proxy .
-   docker run -d -p 3128:3128 -v $(pwd)/squid.conf:/etc/squid/squid.conf:ro -v $(pwd)/docker_files:/etc/squid:ro --name squid-proxy squid-proxy
-   ```
+The dashboard will be available at http://localhost:3000 with hot-reloading enabled.
 
-### Using the Proxy
+### Building for Production
 
-Configure your browser or application to use the proxy at `http://localhost:3128`.
+To build the dashboard for production:
 
-## Configuration Options
+```
+cd src/dashboard
+npm run build
+```
 
-The `config.yaml` file supports the following options:
+This will create optimized static files in the `build` directory.
 
-### Network Settings
-- `port`: The port to run the proxy on (default: 3128)
-- `ssl_port`: The port for SSL interception (if enabled)
-- `ssl_intercept`: Enable/disable SSL interception
-- `ssl_cert_path`: Path to SSL certificate (for SSL interception)
-- `ssl_key_path`: Path to SSL key (for SSL interception)
+## Proxy Management
 
-### Access Control
-- `allowed_ips`: IPs or networks allowed to use the proxy
+The `scripts/proxy-manager.sh` script provides a convenient way to manage the Squid proxy service when not using Docker:
 
-### Blacklists
-- `ip_blacklist_sources`: Sources for IP blacklists
-- `dns_blacklist_sources`: Sources for DNS blacklists
+```
+sudo ./scripts/proxy-manager.sh [command]
+```
 
-### Protection Features
-- `owasp_protection`: Enable/disable OWASP protection
-- `owasp_rules_file`: Rules file for OWASP protection
-- `block_vpn`, `block_tor`, etc.: Enable/disable blocking of specific services
-- `vpn_ip_sources`, `tor_ip_sources`, etc.: Sources for IP blocks
+Available commands:
+- `start`: Start the Squid proxy service
+- `stop`: Stop the Squid proxy service
+- `restart`: Restart the Squid proxy service
+- `status`: Check the status of the Squid proxy service
+- `validate`: Validate the Squid configuration
+- `logs`: View recent logs
+- `clear`: Clear the Squid cache
 
-### Logging
-- `logging.access_log`: Path to access log
-- `logging.cache_log`: Path to cache log
-- `logging.log_format`: Log format
+## Security Considerations
 
-### Caching
-- `cache.enabled`: Enable/disable caching
-- `cache.cache_type`: Cache storage type (ufs, aufs, diskd, rock)
-- `cache.cache_dir`: Directory for cache storage
-- `cache.cache_size`: Size of cache in MB
-- `cache.max_object_size`: Maximum size of cached objects
+This implementation includes several security features:
 
-## Testing with GitHub Actions
-
-This repository includes a GitHub Actions workflow to test the configuration generation process on multiple Python versions. The workflow runs on every push to the `main` branch.
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request.
+1. **Restricted Access**: By default, the proxy only allows connections from local networks
+2. **Domain Blacklisting**: Blocks known malicious domains
+3. **Protocol Restrictions**: Only allows safe protocols
+4. **SSL Inspection**: Optional SSL/TLS inspection for enhanced security (requires additional setup)
+5. **Authentication**: Optional user authentication for access control
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+[MIT License](LICENSE)
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.

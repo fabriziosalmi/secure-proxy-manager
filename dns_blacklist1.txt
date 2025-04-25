@@ -1,2 +1,0 @@
-example.com
-test.net

@@ -1,0 +1,11 @@
+# Blacklisted domains
+malware-domain.com
+phishing-site.net
+adware-distributor.org
+malicious-tracker.com
+suspicious-downloads.net
+unwanted-ads.com
+data-harvester.net
+fake-login.com
+ransomware-host.net
+trojan-distributor.org
