@@ -335,6 +335,48 @@ textarea.form-control {
   resize: vertical;
 }
 
+/* Form control sizes for CSP compliance */
+.w-80 {
+  width: 80px !important;
+}
+
+.w-100 {
+  width: 100px !important;
+}
+
+.w-120 {
+  width: 120px !important;
+}
+
+.w-150 {
+  width: 150px !important;
+}
+
+.max-h-200 {
+  max-height: 200px !important;
+}
+
+.max-h-500 {
+  max-height: 500px !important;
+}
+
+/* Dimensions to avoid inline styles */
+.h-60 {
+  height: 15rem !important;
+}
+
+.h-1 {
+  height: 0.25rem !important;
+}
+
+.h-2 {
+  height: 0.5rem !important;
+}
+
+.h-3 {
+  height: 0.75rem !important;
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;

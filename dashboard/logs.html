@@ -91,7 +91,7 @@
                 <div class="flex flex-wrap gap-2">
                     <div class="flex items-center mr-2">
                         <label class="mr-2 text-sm" for="log-lines">Lines:</label>
-                        <select id="log-lines" class="form-control form-control-sm" style="width: 80px">
+                        <select id="log-lines" class="form-control form-control-sm w-80">
                             <option value="50">50</option>
                             <option value="100" selected>100</option>
                             <option value="250">250</option>
@@ -101,7 +101,7 @@
                     </div>
                     <div class="flex items-center mr-2">
                         <label class="mr-2 text-sm" for="auto-refresh">Auto Refresh:</label>
-                        <select id="auto-refresh" class="form-control form-control-sm" style="width: 100px">
+                        <select id="auto-refresh" class="form-control form-control-sm w-100">
                             <option value="0">Off</option>
                             <option value="5">5 seconds</option>
                             <option value="10">10 seconds</option>
@@ -173,11 +173,11 @@
                     </label>
                     <div class="flex items-center">
                         <label class="mr-2 text-sm" for="source-filter">Source IP:</label>
-                        <input type="text" id="source-filter" class="form-control form-control-sm" style="width: 150px" placeholder="e.g., 192.168.1.1">
+                        <input type="text" id="source-filter" class="form-control form-control-sm w-150" placeholder="e.g., 192.168.1.1">
                     </div>
                     <div class="flex items-center">
                         <label class="mr-2 text-sm" for="domain-filter">Domain:</label>
-                        <input type="text" id="domain-filter" class="form-control form-control-sm" style="width: 150px" placeholder="e.g., example.com">
+                        <input type="text" id="domain-filter" class="form-control form-control-sm w-150" placeholder="e.g., example.com">
                     </div>
                     <button id="apply-filters-btn" class="btn btn-primary btn-sm">Apply</button>
                     <button id="reset-filters-btn" class="btn btn-outline btn-sm">Reset</button>
@@ -189,11 +189,11 @@
                 <div class="flex flex-wrap gap-2">
                     <div class="flex items-center">
                         <label class="mr-2 text-sm" for="highlight-text">Highlight Text:</label>
-                        <input type="text" id="highlight-text" class="form-control form-control-sm" style="width: 150px" placeholder="Text to highlight">
+                        <input type="text" id="highlight-text" class="form-control form-control-sm w-150" placeholder="Text to highlight">
                     </div>
                     <div class="flex items-center">
                         <label class="mr-2 text-sm" for="highlight-color">Color:</label>
-                        <select id="highlight-color" class="form-control form-control-sm" style="width: 100px">
+                        <select id="highlight-color" class="form-control form-control-sm w-100">
                             <option value="yellow">Yellow</option>
                             <option value="green">Green</option>
                             <option value="blue">Blue</option>
@@ -208,7 +208,7 @@
             </div>
             
             <!-- Log Content -->
-            <div id="log-content" class="log-content mb-4">
+            <div id="log-content" class="log-content mb-4 max-h-500">
                 <div class="text-center p-8 text-gray-500">Loading logs...</div>
             </div>
         </div>
