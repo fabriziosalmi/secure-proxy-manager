@@ -611,13 +611,20 @@ def apply_settings():
         squid_conf.append("# Domain blacklists")
         squid_conf.append('acl domain_blacklist dstdomain "/etc/squid/blacklists/domain/local.txt"')
         
-        # Direct IP access detection - critical fix for direct IP access blocking
+        # HTTP method definitions
         squid_conf.append("")
-        squid_conf.append("# Direct IP access detection")
-        # This acl matches IP addresses in the URL (both with and without http/https)
-        squid_conf.append('acl direct_ip_url url_regex ^https?://[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+')
-        # This acl matches when the hostname is an IP address (for both HTTP and HTTPS)
-        squid_conf.append('acl direct_ip_host dstdom_regex ^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$')
+        squid_conf.append("# HTTP method definitions")
+        squid_conf.append("acl CONNECT method CONNECT")
+        
+        # Direct IP access detection - improved for better blocking with proper escaping
+        squid_conf.append("")
+        squid_conf.append("# Direct IP access detection - improved for better blocking")
+        # IPv4 detection with proper escaping
+        squid_conf.append('acl direct_ip_url url_regex -i ^https?://([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)')
+        squid_conf.append('acl direct_ip_host dstdom_regex -i ^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)$')
+        # IPv6 detection
+        squid_conf.append('acl direct_ipv6_url url_regex -i ^https?://\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]')
+        squid_conf.append('acl direct_ipv6_host dstdom_regex -i ^\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]$')
         
         # Content filtering if enabled
         if settings.get('enable_content_filtering') == 'true' and settings.get('blocked_file_types'):
@@ -640,27 +647,39 @@ def apply_settings():
         squid_conf.append("http_access deny !Safe_ports")
         squid_conf.append("http_access deny CONNECT !SSL_ports")
         
+        # Block direct IP access if enabled - moved to higher priority and improved
+        if settings.get('block_direct_ip') == 'true':
+            squid_conf.append("")
+            squid_conf.append("# Block direct IP URL access - high priority")
+            squid_conf.append("http_access deny direct_ip_url")
+            squid_conf.append("http_access deny direct_ip_host")
+            squid_conf.append("http_access deny direct_ipv6_url")
+            squid_conf.append("http_access deny direct_ipv6_host")
+            # Block CONNECT to IPs (for HTTPS)
+            squid_conf.append("http_access deny CONNECT direct_ip_host")
+            squid_conf.append("http_access deny CONNECT direct_ipv6_host")
+        
         # Apply blacklists if enabled
         if settings.get('enable_ip_blacklist') == 'true':
+            squid_conf.append("")
             squid_conf.append("# Block blacklisted IPs")
             squid_conf.append("http_access deny ip_blacklist")
         
         if settings.get('enable_domain_blacklist') == 'true':
+            squid_conf.append("")
             squid_conf.append("# Block blacklisted domains")
             squid_conf.append("http_access deny domain_blacklist")
         
-        # Block direct IP access if enabled - critical section for direct IP blocking
-        if settings.get('block_direct_ip') == 'true':
-            squid_conf.append("# Block direct IP URL access")
-            squid_conf.append("http_access deny direct_ip_url")
-            squid_conf.append("http_access deny direct_ip_host")
-        
         # Apply content filtering if enabled
         if settings.get('enable_content_filtering') == 'true' and settings.get('blocked_file_types'):
+            squid_conf.append("")
+            squid_conf.append("# Block banned file extensions")
             squid_conf.append("http_access deny blocked_extensions")
         
         # Apply time restrictions if enabled
         if settings.get('enable_time_restrictions') == 'true':
+            squid_conf.append("")
+            squid_conf.append("# Apply time restrictions")
             squid_conf.append("http_access deny !allowed_hours")
         
         # Allow local access
@@ -718,6 +737,24 @@ def apply_settings():
         squid_conf.append("refresh_pattern -i (/cgi-bin/|\\?) 0     0%      0")
         squid_conf.append("refresh_pattern .               0       20%     4320")
         
+        # Create a temporary file to validate the configuration syntax
+        temp_conf_path = '/tmp/squid_test.conf'
+        with open(temp_conf_path, 'w') as f:
+            f.write('\n'.join(squid_conf))
+        
+        # Validate the configuration syntax
+        try:
+            validation_result = subprocess.run(
+                ['docker', 'exec', 'secure-proxy-proxy-1', 'squid', '-k', 'parse', '-f', '/tmp/squid_test.conf'],
+                capture_output=True, check=True, timeout=10
+            )
+            logger.info("Configuration validation successful")
+            valid_config = True
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Configuration validation failed: {e.stderr.decode('utf-8')}")
+            valid_config = False
+            # We continue anyway, as the startup script will handle invalid configurations
+        
         # Write the configuration to both locations where it might be used
         with open('/config/custom_squid.conf', 'w') as f:
             f.write('\n'.join(squid_conf))
@@ -756,6 +793,10 @@ def apply_settings():
         # Reload squid configuration - more robust method
         reloaded = False
         
+        # If configuration is invalid, warn but still try to apply it as the startup script will handle it
+        if not valid_config:
+            logger.warning("Applying configuration despite validation errors - startup script will handle recovery")
+            
         # Try multiple methods to reload the config, in case one fails
         try:
             # Method 1: Direct reconfigure command
