@@ -227,41 +227,6 @@
             </div>
         </div>
     </div>
-    
-    <!-- Recent Logs Card -->
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Recent Logs</h5>
-                    <a href="/logs" class="btn btn-sm btn-primary">View All Logs</a>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover" id="recent-logs-table">
-                            <thead>
-                                <tr>
-                                    <th>Timestamp</th>
-                                    <th>Source IP</th>
-                                    <th>Destination</th>
-                                    <th>Method</th>
-                                    <th>Status</th>
-                                    <th>Size</th>
-                                    <th>Time</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td colspan="8" class="text-center">Loading recent logs...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 {% endblock %}
 
@@ -477,41 +442,6 @@
             })
             .catch(function(error) {
                 $('#blacklisted-domains').text('Error');
-            });
-        
-        // Load recent logs
-        apiRequest('GET', 'logs?limit=10')
-            .then(function(response) {
-                if (response.status === 'success') {
-                    const logs = response.data;
-                    
-                    if (logs.length === 0) {
-                        $('#recent-logs-table tbody').html('<tr><td colspan="8" class="text-center">No logs found</td></tr>');
-                        return;
-                    }
-                    
-                    let html = '';
-                    logs.forEach(log => {
-                        html += `
-                            <tr>
-                                <td>${new Date(log.timestamp).toLocaleString()}</td>
-                                <td>${log.source_ip}</td>
-                                <td>${log.destination}</td>
-                                <td>${log.method}</td>
-                                <td>${log.status}</td>
-                                <td>${formatBytes(log.bytes)}</td>
-                                <td>${log.elapsed_time.toFixed(2)}s</td>
-                                <td>${log.is_blocked ? '<span class="badge bg-danger">Blocked</span>' : '<span class="badge bg-success">Allowed</span>'}</td>
-                            </tr>
-                        `;
-                    });
-                    
-                    $('#recent-logs-table tbody').html(html);
-                }
-            })
-            .catch(function(error) {
-                $('#recent-logs-table tbody').html('<tr><td colspan="8" class="text-center text-danger">Failed to load logs</td></tr>');
-                showToast('Failed to load logs: ' + error.message, 'danger');
             });
         
         // Load blocked requests count
