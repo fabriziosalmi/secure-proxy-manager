@@ -41,13 +41,13 @@
                     </button>
                     <nav class="flex items-center space-x-4">
                         <a href="index.html" class="text-gray-600 hover:text-primary flex items-center">
-                            <i class="ri-dashboard-line mr-1"></i> Dashboard
+                            <i class="ri-dashboard-line mr-1"></i> <span class="hidden sm:inline">Dashboard</span>
                         </a>
                         <a href="settings.html" class="text-gray-600 hover:text-primary flex items-center">
-                            <i class="ri-settings-3-line mr-1"></i> Settings
+                            <i class="ri-settings-3-line mr-1"></i> <span class="hidden sm:inline">Settings</span>
                         </a>
                         <a href="logs.html" class="text-primary flex items-center">
-                            <i class="ri-file-list-line mr-1"></i> Logs
+                            <i class="ri-file-list-line mr-1"></i> <span class="hidden sm:inline">Logs</span>
                         </a>
                     </nav>
                 </div>
@@ -56,181 +56,223 @@
     </header>
 
     <div class="container mx-auto px-4 pb-8">
-        <!-- Logs Content -->
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
-            <!-- Left Column - Log Selection -->
-            <div class="md:col-span-3">
-                <div class="card">
-                    <div class="card-header">
-                        <h2 class="card-title">Log Files</h2>
-                    </div>
-                    
-                    <div class="logs-list">
-                        <button class="log-btn active" data-log="access">
-                            <i class="ri-file-list-line mr-1"></i> Access Log
+        <!-- Main Content -->
+        <div class="card mb-6 fade-in">
+            <div class="flex flex-col md:flex-row justify-between">
+                <h1 class="text-2xl font-bold mb-4">Logs Management</h1>
+                <div class="mb-4 flex flex-wrap items-center gap-2">
+                    <div class="inline-flex rounded-md">
+                        <button class="log-btn btn btn-outline active" data-log-type="access">
+                            <i class="ri-global-line mr-2"></i>Access
                         </button>
-                        <button class="log-btn" data-log="cache">
-                            <i class="ri-file-list-line mr-1"></i> Cache Log
+                        <button class="log-btn btn btn-outline" data-log-type="cache">
+                            <i class="ri-hard-drive-line mr-2"></i>Cache
                         </button>
-                        <button class="log-btn" data-log="store">
-                            <i class="ri-file-list-line mr-1"></i> Store Log
+                        <button class="log-btn btn btn-outline" data-log-type="store">
+                            <i class="ri-database-2-line mr-2"></i>Store
                         </button>
-                        <button class="log-btn" data-log="system">
-                            <i class="ri-file-list-line mr-1"></i> System Log
-                        </button>
-                    </div>
-                    
-                    <div class="mt-4 px-4 pb-4">
-                        <div class="form-group">
-                            <label for="log-lines" class="form-label">Lines to show</label>
-                            <select id="log-lines" class="form-control">
-                                <option value="50">Last 50 lines</option>
-                                <option value="100" selected>Last 100 lines</option>
-                                <option value="200">Last 200 lines</option>
-                                <option value="500">Last 500 lines</option>
-                                <option value="1000">Last 1000 lines</option>
-                            </select>
-                        </div>
-                        
-                        <div class="form-group mt-4">
-                            <label for="auto-refresh" class="form-label">Auto refresh</label>
-                            <select id="auto-refresh" class="form-control">
-                                <option value="0">Disabled</option>
-                                <option value="5">Every 5 seconds</option>
-                                <option value="10" selected>Every 10 seconds</option>
-                                <option value="30">Every 30 seconds</option>
-                                <option value="60">Every minute</option>
-                            </select>
-                        </div>
-                        
-                        <button id="refresh-logs-btn" class="btn btn-blue mt-4 w-full">
-                            <i class="ri-refresh-line btn-icon"></i> Refresh Logs
+                        <button class="log-btn btn btn-outline" data-log-type="system">
+                            <i class="ri-computer-line mr-2"></i>System
                         </button>
                     </div>
                 </div>
             </div>
             
-            <!-- Right Column - Log Viewer -->
-            <div class="md:col-span-9">
-                <div class="card">
-                    <div class="card-header">
-                        <h2 class="card-title" id="log-title">Access Log</h2>
-                        <div class="flex space-x-2">
-                            <button id="search-logs-toggle" class="text-gray-500 hover:text-primary transition-colors" title="Search Logs">
-                                <i class="ri-search-line text-lg"></i>
-                            </button>
-                            <button id="download-current-log-btn" class="text-primary hover:text-primary-hover transition-colors" title="Download Log">
-                                <i class="ri-download-line text-lg"></i>
-                            </button>
-                            <button id="clear-log-btn" class="text-gray-500 hover:text-danger transition-colors" title="Clear Log">
-                                <i class="ri-delete-bin-line text-lg"></i>
-                            </button>
+            <div class="flex flex-col md:flex-row justify-between mb-4">
+                <div>
+                    <h2 id="log-title" class="text-lg font-semibold mb-2">Access Log</h2>
+                    <div class="text-sm text-gray-600 mb-2 space-y-1">
+                        <div><span class="font-medium">Size:</span> <span id="log-size">Loading...</span></div>
+                        <div><span class="font-medium">Total Lines:</span> <span id="log-total-lines">Loading...</span></div>
+                        <div><span class="font-medium">Errors:</span> <span id="log-errors">Loading...</span></div>
+                        <div><span class="font-medium">Last Updated:</span> <span id="log-last-updated">Loading...</span></div>
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <div class="flex items-center mr-2">
+                        <label class="mr-2 text-sm" for="log-lines">Lines:</label>
+                        <select id="log-lines" class="form-control form-control-sm" style="width: 80px">
+                            <option value="50">50</option>
+                            <option value="100" selected>100</option>
+                            <option value="250">250</option>
+                            <option value="500">500</option>
+                            <option value="1000">1000</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center mr-2">
+                        <label class="mr-2 text-sm" for="auto-refresh">Auto Refresh:</label>
+                        <select id="auto-refresh" class="form-control form-control-sm" style="width: 100px">
+                            <option value="0">Off</option>
+                            <option value="5">5 seconds</option>
+                            <option value="10">10 seconds</option>
+                            <option value="30" selected>30 seconds</option>
+                            <option value="60">1 minute</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button id="refresh-logs-btn" class="btn btn-primary btn-sm">
+                            <i class="ri-refresh-line mr-1"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex flex-wrap gap-2 mb-4">
+                <button id="search-logs-toggle" class="btn btn-outline btn-sm">
+                    <i class="ri-search-line mr-1"></i> Search
+                </button>
+                <button id="download-current-log-btn" class="btn btn-outline btn-sm">
+                    <i class="ri-download-line mr-1"></i> Download
+                </button>
+                <button id="clear-log-btn" class="btn btn-danger btn-sm">
+                    <i class="ri-delete-bin-line mr-1"></i> Clear
+                </button>
+                <button id="generate-analysis-btn" class="btn btn-primary btn-sm">
+                    <i class="ri-bar-chart-line mr-1"></i> Generate Analysis
+                </button>
+                <button id="toggle-filters-btn" class="btn btn-outline btn-sm">
+                    <i class="ri-filter-line mr-1"></i> Filters
+                </button>
+                <button id="toggle-highlighting-btn" class="btn btn-outline btn-sm">
+                    <i class="ri-paint-brush-line mr-1"></i> Highlighting
+                </button>
+            </div>
+            
+            <!-- Search Box (Initially Hidden) -->
+            <div id="search-box" class="mb-4 hidden">
+                <div class="flex flex-wrap gap-2 items-center">
+                    <div class="flex-grow">
+                        <input type="text" id="search-input" class="form-control" placeholder="Search logs...">
+                    </div>
+                    <div class="flex gap-2">
+                        <label class="flex items-center text-sm whitespace-nowrap">
+                            <input type="checkbox" id="case-sensitive" class="mr-1"> Case Sensitive
+                        </label>
+                        <label class="flex items-center text-sm whitespace-nowrap">
+                            <input type="checkbox" id="whole-word" class="mr-1"> Whole Word
+                        </label>
+                        <label class="flex items-center text-sm whitespace-nowrap">
+                            <input type="checkbox" id="regex-search" class="mr-1"> Regex
+                        </label>
+                        <button id="search-btn" class="btn btn-primary btn-sm">Search</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filters Box (Initially Hidden) -->
+            <div id="filters-box" class="mb-4 hidden">
+                <div class="flex flex-wrap gap-2">
+                    <label class="flex items-center text-sm whitespace-nowrap">
+                        <input type="checkbox" id="show-errors" class="mr-1" checked> Show Errors
+                    </label>
+                    <label class="flex items-center text-sm whitespace-nowrap">
+                        <input type="checkbox" id="show-warnings" class="mr-1" checked> Show Warnings
+                    </label>
+                    <label class="flex items-center text-sm whitespace-nowrap">
+                        <input type="checkbox" id="show-info" class="mr-1" checked> Show Info
+                    </label>
+                    <div class="flex items-center">
+                        <label class="mr-2 text-sm" for="source-filter">Source IP:</label>
+                        <input type="text" id="source-filter" class="form-control form-control-sm" style="width: 150px" placeholder="e.g., 192.168.1.1">
+                    </div>
+                    <div class="flex items-center">
+                        <label class="mr-2 text-sm" for="domain-filter">Domain:</label>
+                        <input type="text" id="domain-filter" class="form-control form-control-sm" style="width: 150px" placeholder="e.g., example.com">
+                    </div>
+                    <button id="apply-filters-btn" class="btn btn-primary btn-sm">Apply</button>
+                    <button id="reset-filters-btn" class="btn btn-outline btn-sm">Reset</button>
+                </div>
+            </div>
+
+            <!-- Highlighting Box (Initially Hidden) -->
+            <div id="highlighting-box" class="mb-4 hidden">
+                <div class="flex flex-wrap gap-2">
+                    <div class="flex items-center">
+                        <label class="mr-2 text-sm" for="highlight-text">Highlight Text:</label>
+                        <input type="text" id="highlight-text" class="form-control form-control-sm" style="width: 150px" placeholder="Text to highlight">
+                    </div>
+                    <div class="flex items-center">
+                        <label class="mr-2 text-sm" for="highlight-color">Color:</label>
+                        <select id="highlight-color" class="form-control form-control-sm" style="width: 100px">
+                            <option value="yellow">Yellow</option>
+                            <option value="green">Green</option>
+                            <option value="blue">Blue</option>
+                            <option value="red">Red</option>
+                            <option value="purple">Purple</option>
+                        </select>
+                    </div>
+                    <button id="add-highlight-btn" class="btn btn-primary btn-sm">Add</button>
+                    <button id="clear-highlights-btn" class="btn btn-outline btn-sm">Clear All</button>
+                </div>
+                <div id="highlight-tags" class="flex flex-wrap gap-1 mt-2"></div>
+            </div>
+            
+            <!-- Log Content -->
+            <div id="log-content" class="log-content mb-4">
+                <div class="text-center p-8 text-gray-500">Loading logs...</div>
+            </div>
+        </div>
+        
+        <!-- Analysis Section (Initially Hidden) -->
+        <div id="analysis-section" class="card fade-in hidden">
+            <h2 class="text-xl font-bold mb-4">Log Analysis</h2>
+            
+            <!-- Access Log Analysis -->
+            <div id="access-log-analysis">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-2">Top Domains</h3>
+                        <div id="top-domains-chart" class="h-60">
+                            <div class="flex items-center justify-center h-full">
+                                <span class="text-gray-500">Analysis not generated yet</span>
+                            </div>
                         </div>
                     </div>
-                    
-                    <!-- Search Box (hidden by default) -->
-                    <div id="search-box" class="hidden p-4 bg-gray-50 border-b border-gray-200">
-                        <div class="flex">
-                            <input type="text" id="search-input" class="form-control rounded-r-none" placeholder="Search logs...">
-                            <button id="search-btn" class="btn btn-blue rounded-l-none">
-                                <i class="ri-search-line btn-icon"></i> Search
-                            </button>
-                        </div>
-                        <div class="flex flex-wrap gap-2 mt-2">
-                            <label class="inline-flex items-center text-sm text-gray-600">
-                                <input type="checkbox" id="case-sensitive" class="form-checkbox">
-                                <span class="ml-2">Case sensitive</span>
-                            </label>
-                            <label class="inline-flex items-center text-sm text-gray-600">
-                                <input type="checkbox" id="whole-word" class="form-checkbox">
-                                <span class="ml-2">Whole word</span>
-                            </label>
-                            <label class="inline-flex items-center text-sm text-gray-600">
-                                <input type="checkbox" id="regex-search" class="form-checkbox">
-                                <span class="ml-2">Regex</span>
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <!-- Log Content -->
-                    <div class="log-viewer" id="log-content">
-                        <div class="text-center p-8 text-gray-500">
-                            Loading logs...
-                        </div>
-                    </div>
-                    
-                    <!-- Log Stats -->
-                    <div class="border-t border-gray-200 p-4">
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div class="text-center">
-                                <div class="text-sm text-gray-500">Total Lines</div>
-                                <div class="font-bold text-lg" id="log-total-lines">-</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="text-sm text-gray-500">Errors</div>
-                                <div class="font-bold text-lg text-red-500" id="log-errors">-</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="text-sm text-gray-500">Log Size</div>
-                                <div class="font-bold text-lg" id="log-size">-</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="text-sm text-gray-500">Last Updated</div>
-                                <div class="font-bold text-lg" id="log-last-updated">-</div>
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-2">Status Codes</h3>
+                        <div id="status-codes-chart" class="h-60">
+                            <div class="flex items-center justify-center h-full">
+                                <span class="text-gray-500">Analysis not generated yet</span>
                             </div>
                         </div>
                     </div>
                 </div>
-                
-                <!-- Log Analysis Card -->
-                <div class="card mt-6">
-                    <div class="card-header">
-                        <h2 class="card-title">Log Analysis</h2>
-                        <button id="generate-analysis-btn" class="text-primary hover:text-primary-hover transition-colors" title="Generate Analysis">
-                            <i class="ri-bar-chart-line text-lg"></i>
-                        </button>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-2">Request Methods</h3>
+                        <div id="request-methods-chart" class="h-60">
+                            <div class="flex items-center justify-center h-full">
+                                <span class="text-gray-500">Analysis not generated yet</span>
+                            </div>
+                        </div>
                     </div>
-                    
-                    <div id="log-analysis-content" class="p-4">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <!-- Top Domains -->
-                            <div>
-                                <h3 class="text-lg font-medium mb-3 text-gray-700">
-                                    <i class="ri-global-line mr-1 text-primary"></i> Top Domains
-                                </h3>
-                                <div id="top-domains-chart" class="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
-                                    <span class="text-gray-500">Click "Generate Analysis" to view data</span>
-                                </div>
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-2">Traffic by Hour</h3>
+                        <div id="traffic-by-hour-chart" class="h-60">
+                            <div class="flex items-center justify-center h-full">
+                                <span class="text-gray-500">Analysis not generated yet</span>
                             </div>
-                            
-                            <!-- Status Codes -->
-                            <div>
-                                <h3 class="text-lg font-medium mb-3 text-gray-700">
-                                    <i class="ri-error-warning-line mr-1 text-primary"></i> HTTP Status Codes
-                                </h3>
-                                <div id="status-codes-chart" class="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
-                                    <span class="text-gray-500">Click "Generate Analysis" to view data</span>
-                                </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- System Log Analysis -->
+            <div id="system-log-analysis" class="hidden">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-2">Error Types</h3>
+                        <div id="error-types-chart" class="h-60">
+                            <div class="flex items-center justify-center h-full">
+                                <span class="text-gray-500">Analysis not generated yet</span>
                             </div>
-                            
-                            <!-- Request Methods -->
-                            <div>
-                                <h3 class="text-lg font-medium mb-3 text-gray-700">
-                                    <i class="ri-exchange-line mr-1 text-primary"></i> Request Methods
-                                </h3>
-                                <div id="request-methods-chart" class="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
-                                    <span class="text-gray-500">Click "Generate Analysis" to view data</span>
-                                </div>
-                            </div>
-                            
-                            <!-- Traffic by Hour -->
-                            <div>
-                                <h3 class="text-lg font-medium mb-3 text-gray-700">
-                                    <i class="ri-time-line mr-1 text-primary"></i> Traffic by Hour
-                                </h3>
-                                <div id="traffic-by-hour-chart" class="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
-                                    <span class="text-gray-500">Click "Generate Analysis" to view data</span>
-                                </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-2">Errors by Time</h3>
+                        <div id="errors-by-time-chart" class="h-60">
+                            <div class="flex items-center justify-center h-full">
+                                <span class="text-gray-500">Analysis not generated yet</span>
                             </div>
                         </div>
                     </div>
@@ -247,7 +289,7 @@
                     Squid Proxy Dashboard &copy; 2025
                 </div>
                 <div class="text-gray-500 text-sm mt-2 md:mt-0">
-                    Version 2.1.0 | <a href="https://github.com" class="text-primary hover:underline">Documentation</a>
+                    <span class="hidden md:inline">Version 2.1.0 |</span> <a href="https://github.com/fabriziosalmi/secure-proxy" class="text-primary hover:underline" target="_blank">Documentation</a>
                 </div>
             </div>
         </div>

@@ -1,5 +1,256 @@
 // Squid Proxy Dashboard JavaScript
 
+/**
+ * Toast Notification System
+ */
+class ToastNotification {
+    constructor() {
+        this.container = null;
+        this.initialize();
+    }
+    
+    initialize() {
+        // Create container if it doesn't exist
+        if (!this.container) {
+            this.container = document.createElement('div');
+            this.container.className = 'toast-container';
+            document.body.appendChild(this.container);
+        }
+    }
+    
+    show(options) {
+        const {
+            title = '',
+            message = '',
+            type = 'info', // info, success, error, warning
+            duration = 3000
+        } = options;
+        
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        
+        // Set icon based on type
+        let icon = 'ri-information-line';
+        if (type === 'success') icon = 'ri-checkbox-circle-line';
+        if (type === 'error') icon = 'ri-error-warning-line';
+        if (type === 'warning') icon = 'ri-alert-line';
+        
+        toast.innerHTML = `
+            <div class="toast-icon"><i class="${icon}"></i></div>
+            <div class="toast-content">
+                ${title ? `<div class="toast-title">${title}</div>` : ''}
+                <div class="toast-message">${message}</div>
+            </div>
+            <button class="toast-close" aria-label="Close notification">
+                <i class="ri-close-line"></i>
+            </button>
+        `;
+        
+        // Add to container
+        this.container.appendChild(toast);
+        
+        // Add close button event listener
+        const closeBtn = toast.querySelector('.toast-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                this.close(toast);
+            });
+        }
+        
+        // Auto close after duration
+        if (duration > 0) {
+            setTimeout(() => {
+                this.close(toast);
+            }, duration);
+        }
+        
+        return toast;
+    }
+    
+    close(toast) {
+        toast.classList.add('closing');
+        
+        // Remove after animation completes
+        toast.addEventListener('animationend', () => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        });
+    }
+    
+    success(message, title = 'Success') {
+        return this.show({ title, message, type: 'success' });
+    }
+    
+    error(message, title = 'Error') {
+        return this.show({ title, message, type: 'error', duration: 5000 });
+    }
+    
+    info(message, title = 'Information') {
+        return this.show({ title, message, type: 'info' });
+    }
+    
+    warning(message, title = 'Warning') {
+        return this.show({ title, message, type: 'warning', duration: 4000 });
+    }
+}
+
+// Create a global toast instance
+const toast = new ToastNotification();
+
+/**
+ * Enhanced Security Feature - API Request with CSRF protection and improved error handling
+ */
+async function apiRequest(url, options = {}) {
+    try {
+        // Add CSRF token to headers
+        if (!options.headers) options.headers = {};
+        
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        if (csrfToken) {
+            options.headers['X-CSRF-Token'] = csrfToken;
+        }
+        
+        // Set default content type for POST/PUT requests
+        if ((options.method === 'POST' || options.method === 'PUT') && 
+            !options.headers['Content-Type'] && 
+            !(options.body instanceof FormData)) {
+            options.headers['Content-Type'] = 'application/json';
+        }
+        
+        // Add credentials for all requests
+        options.credentials = 'same-origin';
+        
+        // Perform request with timeout to prevent hanging requests
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        // Handle HTTP errors
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({
+                message: `HTTP error ${response.status}: ${response.statusText}`
+            }));
+            
+            throw new Error(errorData.message || `HTTP error ${response.status}: ${response.statusText}`);
+        }
+        
+        // Parse JSON if the response has content
+        if (response.status !== 204) { // 204 No Content
+            return await response.json();
+        }
+        
+        return { status: 'success' };
+    } catch (error) {
+        // Handle request cancellation
+        if (error.name === 'AbortError') {
+            console.error('Request timeout:', url);
+            throw new Error('Request timed out. Please try again.');
+        }
+        
+        console.error(`Error in API request to ${url}:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Enhanced User Experience - Update the toast notifications when showing messages
+ */
+function enhancedShowMessage(element, message, isSuccess) {
+    // Still update the DOM element if provided (backward compatibility)
+    if (element) {
+        element.textContent = message;
+        element.className = 'message';
+        
+        if (isSuccess === true) {
+            element.classList.add('message-success');
+        } else if (isSuccess === false) {
+            element.classList.add('message-error');
+        } else {
+            element.classList.add('message-info');
+        }
+        
+        // Clear message after 5 seconds
+        setTimeout(() => {
+            element.textContent = '';
+            element.className = '';
+        }, 5000);
+    }
+    
+    // Also show a toast notification for better UX
+    if (isSuccess === true) {
+        toast.success(message);
+    } else if (isSuccess === false) {
+        toast.error(message);
+    } else {
+        toast.info(message);
+    }
+    
+    // Log errors to console for debugging
+    if (isSuccess === false) {
+        console.error('Error:', message);
+    }
+}
+
+// Replace the original showMessage function with this enhanced version
+function showMessage(element, message, isSuccess) {
+    return enhancedShowMessage(element, message, isSuccess);
+}
+
+// Avoid using regular console.error directly - instead use this function that can be extended later
+function logError(message, error) {
+    console.error(message, error);
+    // In the future, this could send errors to a monitoring service
+}
+
+/**
+ * Enhanced data validation
+ */ 
+const validationRules = {
+    port: {
+        validate: value => value && /^\d+$/.test(value) && parseInt(value) >= 1 && parseInt(value) <= 65535,
+        message: 'Please enter a valid port number (1-65535)'
+    },
+    ip: {
+        validate: value => /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(value) || 
+                           /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/.test(value) ||
+                           value.startsWith('#'),
+        message: 'Please enter a valid IP address (IPv4 or IPv6)'
+    },
+    domain: {
+        validate: value => /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(value) ||
+                           value.startsWith('#'),
+        message: 'Please enter a valid domain name'
+    },
+    number: {
+        validate: value => value && /^\d+$/.test(value),
+        message: 'Please enter a valid number'
+    },
+    cacheSize: {
+        validate: value => value && /^\d+$/.test(value) && parseInt(value) >= 10 && parseInt(value) <= 10000,
+        message: 'Cache size must be between 10 and 10000 MB'
+    },
+    required: {
+        validate: value => value && value.trim() !== '',
+        message: 'This field is required'
+    }
+};
+
+function validateField(value, type) {
+    const rule = validationRules[type];
+    if (!rule) return { isValid: true, message: '' };
+    
+    const isValid = rule.validate(value);
+    return { isValid, message: isValid ? '' : rule.message };
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Path detection to determine which page we're on
     const currentPath = window.location.pathname;
@@ -122,7 +373,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 refreshStatusBtn.classList.add('animate-spin');
             }
             
-            const response = await fetch('/api/status');
+            const response = await safeFetch('/api/status');
             const data = await response.json();
             
             // Always update the header
@@ -204,7 +455,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (headerClientsCount) {
             try {
                 // replace with real endpoint when available
-                const response = await fetch('/api/clients/count');
+                const response = await safeFetch('/api/clients/count');
                 const result = await response.json();
                 headerClientsCount.textContent = result.count || '0';
             } catch {
@@ -236,7 +487,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 statusText.className = 'text-lg font-medium text-gray-600';
             }
             
-            const response = await fetch('/api/control', {
+            const response = await safeFetch('/api/control', {
                 method: 'POST',
                 headers: addCSRFToken({
                     'Content-Type': 'application/json'
@@ -311,6 +562,25 @@ document.addEventListener('DOMContentLoaded', function() {
             element.textContent = '';
             element.className = '';
         }, 5000);
+        
+        // Log errors to console for debugging
+        if (isSuccess === false) {
+            console.error('Error:', message);
+        }
+    }
+    
+    // Global error handler for fetch operations
+    async function safeFetch(url, options = {}) {
+        try {
+            const response = await fetch(url, options);
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+            }
+            return response;
+        } catch (error) {
+            console.error(`Error fetching ${url}:`, error);
+            throw error;
+        }
     }
     
     // Helper function for debouncing rapidly triggered events
@@ -447,7 +717,7 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 if (refreshConnectionsBtn) refreshConnectionsBtn.classList.add('animate-spin');
                 
-                const response = await fetch('/api/stats/realtime');
+                const response = await safeFetch('/api/stats/realtime');
                 const data = await response.json();
                 
                 // Update connections count
@@ -609,7 +879,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Functions for basic controls
         async function fetchConfig() {
             try {
-                const response = await fetch('/api/config');
+                const response = await safeFetch('/api/config');
                 const data = await response.json();
                 
                 if (data.port && portInput) {
@@ -648,7 +918,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (updatePortBtn) updatePortBtn.disabled = true;
                 showMessage(configMessage, 'Updating...', null);
                 
-                const response = await fetch('/api/config', {
+                const response = await safeFetch('/api/config', {
                     method: 'POST',
                     headers: addCSRFToken({
                         'Content-Type': 'application/json'
@@ -677,7 +947,7 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 if (downloadLogsBtn) downloadLogsBtn.classList.add('animate-spin');
                 
-                const response = await fetch('/api/logs/download');
+                const response = await safeFetch('/api/logs/download');
                 const blob = await response.blob();
                 
                 // Create download link
@@ -707,7 +977,7 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 if (clearLogsBtn) clearLogsBtn.classList.add('animate-spin');
                 
-                const response = await fetch('/api/logs/clear', {
+                const response = await safeFetch('/api/logs/clear', {
                     method: 'POST',
                     headers: addCSRFToken()
                 });
@@ -730,7 +1000,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Functions for security features
         async function fetchSecurityFeatures() {
             try {
-                const response = await fetch('/api/security/feature-status');
+                const response = await safeFetch('/api/security/feature-status');
                 const features = await response.json();
                 
                 // Update toggle states
@@ -766,7 +1036,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     httpsFiltering: httpsFilteringToggle.checked
                 };
                 
-                const response = await fetch('/api/security/feature-status', {
+                const response = await safeFetch('/api/security/feature-status', {
                     method: 'POST',
                     headers: addCSRFToken({
                         'Content-Type': 'application/json'
@@ -799,7 +1069,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 ipBlacklistTextarea.disabled = true;
                 ipBlacklistTextarea.placeholder = 'Loading...';
                 
-                const response = await fetch('/api/security/blacklist-ips');
+                const response = await safeFetch('/api/security/blacklist-ips');
                 const data = await response.json();
                 
                 if (data.ips) {
@@ -829,7 +1099,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     .map(line => line.trim())
                     .filter(line => validateInput(line, 'ip'));
                 
-                const response = await fetch('/api/security/blacklist-ips', {
+                const response = await safeFetch('/api/security/blacklist-ips', {
                     method: 'POST',
                     headers: addCSRFToken({
                         'Content-Type': 'application/json'
@@ -860,7 +1130,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 domainBlacklistTextarea.disabled = true;
                 domainBlacklistTextarea.placeholder = 'Loading...';
                 
-                const response = await fetch('/api/security/blacklist-domains');
+                const response = await safeFetch('/api/security/blacklist-domains');
                 const data = await response.json();
                 
                 if (data.domains) {
@@ -890,7 +1160,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     .map(line => line.trim())
                     .filter(line => validateInput(line, 'domain'));
                 
-                const response = await fetch('/api/security/blacklist-domains', {
+                const response = await safeFetch('/api/security/blacklist-domains', {
                     method: 'POST',
                     headers: addCSRFToken({
                         'Content-Type': 'application/json'
@@ -921,7 +1191,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 allowedDirectIpsTextarea.disabled = true;
                 allowedDirectIpsTextarea.placeholder = 'Loading...';
                 
-                const response = await fetch('/api/security/allowed-direct-ips');
+                const response = await safeFetch('/api/security/allowed-direct-ips');
                 const data = await response.json();
                 
                 if (data.ips) {
@@ -951,7 +1221,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     .map(line => line.trim())
                     .filter(line => validateInput(line, 'ip'));
                 
-                const response = await fetch('/api/security/allowed-direct-ips', {
+                const response = await safeFetch('/api/security/allowed-direct-ips', {
                     method: 'POST',
                     headers: addCSRFToken({
                         'Content-Type': 'application/json'
@@ -985,7 +1255,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const cacheSize = cacheSizeInput.value;
                 const maxObjectSize = `${maxObjectSizeValueInput.value} ${maxObjectSizeUnitSelect.value}`;
                 
-                const response = await fetch('/api/security/cache-settings', {
+                const response = await safeFetch('/api/security/cache-settings', {
                     method: 'POST',
                     headers: addCSRFToken({
                         'Content-Type': 'application/json'
@@ -1154,7 +1424,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Functions for settings page
         async function fetchSystemInfo() {
             try {
-                const response = await fetch('/api/system/info');
+                const response = await safeFetch('/api/system/info');
                 const data = await response.json();
                 
                 if (squidVersionSpan) {
@@ -1179,7 +1449,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 configEditor.disabled = true;
                 configEditor.value = 'Loading...';
                 
-                const response = await fetch('/api/config/raw');
+                const response = await safeFetch('/api/config/raw');
                 const data = await response.json();
                 
                 if (data.content) {
@@ -1197,7 +1467,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         async function fetchConfig() {
             try {
-                const response = await fetch('/api/config');
+                const response = await safeFetch('/api/config');
                 const data = await response.json();
                 
                 if (data.port && portInput) {
@@ -1236,7 +1506,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (updatePortBtn) updatePortBtn.disabled = true;
                 showMessage(configMessage, 'Updating...', null);
                 
-                const response = await fetch('/api/config', {
+                const response = await safeFetch('/api/config', {
                     method: 'POST',
                     headers: addCSRFToken({
                         'Content-Type': 'application/json'
@@ -1270,7 +1540,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const cacheSize = cacheSizeInput.value;
             const maxObjectSize = `${maxObjectSizeValueInput.value} ${maxObjectSizeUnitSelect.value}`;
             
-            const response = await fetch('/api/security/cache-settings', {
+            const response = await safeFetch('/api/security/cache-settings', {
                 method: 'POST',
                 headers: addCSRFToken({
                     'Content-Type': 'application/json'
@@ -1311,7 +1581,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (saveConfigBtn) saveConfigBtn.disabled = true;
             if (configEditorMessage) showMessage(configEditorMessage, 'Saving...', null);
             
-            const response = await fetch('/api/config/raw', {
+            const response = await safeFetch('/api/config/raw', {
                 method: 'POST',
                 headers: addCSRFToken({
                     'Content-Type': 'application/json'
@@ -1338,7 +1608,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Functions for security features
     async function fetchSecurityFeatures() {
         try {
-            const response = await fetch('/api/security/feature-status');
+            const response = await safeFetch('/api/security/feature-status');
             const features = await response.json();
             
             // Update toggle states with default HTTPS filtering OFF
@@ -1374,7 +1644,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 httpsFiltering: httpsFilteringToggle.checked
             };
             
-            const response = await fetch('/api/security/feature-status', {
+            const response = await safeFetch('/api/security/feature-status', {
                 method: 'POST',
                 headers: addCSRFToken({
                     'Content-Type': 'application/json'
@@ -1407,7 +1677,7 @@ document.addEventListener('DOMContentLoaded', function() {
             ipBlacklistTextarea.disabled = true;
             ipBlacklistTextarea.placeholder = 'Loading...';
             
-            const response = await fetch('/api/security/blacklist-ips');
+            const response = await safeFetch('/api/security/blacklist-ips');
             const data = await response.json();
             
             if (data.ips) {
@@ -1437,7 +1707,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 .map(line => line.trim())
                 .filter(line => validateInput(line, 'ip'));
             
-            const response = await fetch('/api/security/blacklist-ips', {
+            const response = await safeFetch('/api/security/blacklist-ips', {
                 method: 'POST',
                 headers: addCSRFToken({
                     'Content-Type': 'application/json'
@@ -1468,7 +1738,7 @@ document.addEventListener('DOMContentLoaded', function() {
             domainBlacklistTextarea.disabled = true;
             domainBlacklistTextarea.placeholder = 'Loading...';
             
-            const response = await fetch('/api/security/blacklist-domains');
+            const response = await safeFetch('/api/security/blacklist-domains');
             const data = await response.json();
             
             if (data.domains) {
@@ -1498,7 +1768,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 .map(line => line.trim())
                 .filter(line => validateInput(line, 'domain'));
             
-            const response = await fetch('/api/security/blacklist-domains', {
+            const response = await safeFetch('/api/security/blacklist-domains', {
                 method: 'POST',
                 headers: addCSRFToken({
                     'Content-Type': 'application/json'
@@ -1529,7 +1799,7 @@ document.addEventListener('DOMContentLoaded', function() {
             allowedDirectIpsTextarea.disabled = true;
             allowedDirectIpsTextarea.placeholder = 'Loading...';
             
-            const response = await fetch('/api/security/allowed-direct-ips');
+            const response = await safeFetch('/api/security/allowed-direct-ips');
             const data = await response.json();
             
             if (data.ips) {
@@ -1559,7 +1829,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 .map(line => line.trim())
                 .filter(line => validateInput(line, 'ip'));
             
-            const response = await fetch('/api/security/allowed-direct-ips', {
+            const response = await safeFetch('/api/security/allowed-direct-ips', {
                 method: 'POST',
                 headers: addCSRFToken({
                     'Content-Type': 'application/json'
@@ -1590,7 +1860,7 @@ document.addEventListener('DOMContentLoaded', function() {
             badUserAgentsTextarea.disabled = true;
             badUserAgentsTextarea.placeholder = 'Loading...';
             
-            const response = await fetch('/api/security/bad-user-agents');
+            const response = await safeFetch('/api/security/bad-user-agents');
             const data = await response.json();
             
             if (data.userAgents) {
@@ -1618,7 +1888,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 .map(line => line.trim())
                 .filter(line => line !== '');
             
-            const response = await fetch('/api/security/bad-user-agents', {
+            const response = await safeFetch('/api/security/bad-user-agents', {
                 method: 'POST',
                 headers: addCSRFToken({
                     'Content-Type': 'application/json'
@@ -1653,7 +1923,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 cacheDir: cacheDirInput.value.trim()
             };
             
-            const response = await fetch('/api/system/paths', {
+            const response = await safeFetch('/api/system/paths', {
                 method: 'POST',
                 headers: addCSRFToken({
                     'Content-Type': 'application/json'
@@ -1845,7 +2115,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (refreshLogsBtn) refreshLogsBtn.disabled = true;
                 
                 const lines = logLinesSelect ? parseInt(logLinesSelect.value, 10) : 100;
-                const response = await fetch(`/api/logs/${logType}?lines=${lines}`);
+                const response = await safeFetch(`/api/logs/${logType}?lines=${lines}`);
                 const data = await response.json();
                 
                 // Update stats
@@ -1976,7 +2246,7 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 if (clearLogBtn) clearLogBtn.classList.add('animate-spin');
                 
-                const response = await fetch(`/api/logs/${logType}/clear`, {
+                const response = await safeFetch(`/api/logs/${logType}/clear`, {
                     method: 'POST',
                     headers: addCSRFToken()
                 });
@@ -2013,7 +2283,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 });
                 
-                const response = await fetch(`/api/logs/${logType}/analysis`);
+                const response = await safeFetch(`/api/logs/${logType}/analysis`);
                 const data = await response.json();
                 
                 // For a real implementation, you would use a charting library here
