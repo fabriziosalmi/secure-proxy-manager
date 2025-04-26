@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="csrf-token" content="{{csrf_token}}">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <meta name="viewport" content="width=device-width, initial-scale=5.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:;">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta http-equiv="X-Frame-Options" content="DENY">
@@ -336,32 +336,6 @@ python-requests/2.25.1"></textarea>
                         </button>
                         <div id="system-settings-message" class="mt-2"></div>
                     </div>
-                </div>
-                
-                <!-- Dashboard Settings Card -->
-                <div class="card mb-6">
-                    <div class="card-header">
-                        <h2 class="card-title">Dashboard Settings</h2>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="refresh-interval" class="form-label">Auto Refresh Interval (seconds)</label>
-                        <input type="number" id="refresh-interval" class="form-control" placeholder="30" min="5">
-                    </div>
-                    
-                    <div class="form-group mt-4">
-                        <label class="form-label">Dashboard Theme</label>
-                        <div class="grid grid-cols-3 gap-2 mt-2">
-                            <button class="theme-btn active" data-theme="light">Light</button>
-                            <button class="theme-btn" data-theme="dark">Dark</button>
-                            <button class="theme-btn" data-theme="system">System</button>
-                        </div>
-                    </div>
-                    
-                    <button id="save-dashboard-settings-btn" class="btn btn-blue mt-4 w-full">
-                        <i class="ri-save-line btn-icon"></i> Save Dashboard Settings
-                    </button>
-                    <div id="dashboard-settings-message" class="mt-2"></div>
                 </div>
             </div>
         </div>

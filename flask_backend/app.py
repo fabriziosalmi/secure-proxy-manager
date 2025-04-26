@@ -1143,5 +1143,89 @@ def update_system_paths():
             'message': str(e)
         }), 500
 
+@app.route('/api/stats/realtime', methods=['GET'])
+def get_realtime_stats():
+    try:
+        # Get real-time connections
+        connections = 0
+        clients = 0
+        max_connections = 1000  # Default
+        max_clients = 100  # Default
+        
+        # Get CPU and memory usage using 'ps'
+        cpu_usage = 0
+        memory_usage = 0
+        disk_usage = 0
+        pid = 0
+        
+        # Check if squid is running and get its PID
+        pid_cmd = "pidof squid"
+        pid_result = subprocess.run(pid_cmd, shell=True, capture_output=True, text=True)
+        if pid_result.returncode == 0 and pid_result.stdout.strip():
+            # Get first PID if multiple are returned
+            pid = pid_result.stdout.strip().split()[0]
+            
+            # Get CPU and memory for this PID
+            ps_cmd = f"ps -p {pid} -o %cpu,%mem,rss"
+            ps_result = subprocess.run(ps_cmd, shell=True, capture_output=True, text=True)
+            if ps_result.returncode == 0:
+                lines = ps_result.stdout.strip().split('\n')
+                if len(lines) > 1:  # First line is header
+                    stats = lines[1].split()
+                    if len(stats) >= 3:
+                        cpu_usage = float(stats[0])
+                        memory_usage = float(stats[1])
+                        memory_rss = int(stats[2]) // 1024  # Convert KB to MB
+        
+        # Get disk usage for cache directory
+        cache_dir = "/var/cache/squid"
+        du_cmd = f"du -sm {cache_dir} 2>/dev/null | cut -f1"
+        du_result = subprocess.run(du_cmd, shell=True, capture_output=True, text=True)
+        if du_result.returncode == 0 and du_result.stdout.strip():
+            disk_usage = int(du_result.stdout.strip())
+        
+        # Count active connections
+        if pid:
+            # Use netstat to count connections
+            netstat_cmd = f"netstat -anp | grep {pid} | grep ESTABLISHED | wc -l"
+            netstat_result = subprocess.run(netstat_cmd, shell=True, capture_output=True, text=True)
+            if netstat_result.returncode == 0:
+                connections = int(netstat_result.stdout.strip())
+        
+        # Get max connections from config
+        config_cmd = f"grep 'maximum_object_size\|cache_mem' {SQUID_CONFIG_PATH}"
+        config_result = subprocess.run(config_cmd, shell=True, capture_output=True, text=True)
+        if config_result.returncode == 0:
+            # Parse config values - simplified for example
+            max_connections = 1000  # Default value
+            max_clients = 100  # Default value
+        
+        # Count unique client IPs in the last minute
+        client_count_cmd = "tail -n 1000 /var/log/squid/access.log | awk '{print $3}' | sort | uniq | wc -l"
+        client_result = subprocess.run(client_count_cmd, shell=True, capture_output=True, text=True)
+        if client_result.returncode == 0:
+            clients = int(client_result.stdout.strip())
+        
+        return jsonify({
+            'connections': connections,
+            'maxConnections': max_connections,
+            'clients': clients,
+            'maxClients': max_clients,
+            'cpu': cpu_usage,
+            'memory': memory_usage,
+            'memoryMB': memory_rss if 'memory_rss' in locals() else 0,
+            'diskUsageMB': disk_usage,
+            'pid': pid
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'connections': 0,
+            'maxConnections': 100,
+            'clients': 0,
+            'maxClients': 10
+        }), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

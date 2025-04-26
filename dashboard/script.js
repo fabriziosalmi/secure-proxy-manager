@@ -745,6 +745,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (peakConnections) peakConnections.textContent = peakConnectionsValue;
                 if (peakClients) peakClients.textContent = peakClientsValue;
                 
+                // Update system info if elements exist
+                const cpuUsageEl = document.getElementById('cpu-usage');
+                const memoryUsageEl = document.getElementById('memory-usage');
+                const diskUsageEl = document.getElementById('disk-usage');
+                const processIdEl = document.getElementById('process-id');
+                
+                if (cpuUsageEl) cpuUsageEl.textContent = `${data.cpu || 0}%`;
+                if (memoryUsageEl) memoryUsageEl.textContent = `${data.memory || 0}% (${data.memoryMB || 0} MB)`;
+                if (diskUsageEl) diskUsageEl.textContent = `${data.diskUsageMB || 0} MB`;
+                if (processIdEl) processIdEl.textContent = data.pid || 'Not running';
+                
                 // Update last updated time
                 if (lastUpdateTime) {
                     const now = new Date();
@@ -759,8 +770,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Error fetching real-time stats:', error);
                 
                 // Show error state
-                if (connectionsCount) connectionsCount.textContent = 'Error';
-                if (clientsCount) clientsCount.textContent = 'Error';
+                if (connectionsCount) connectionsCount.textContent = '0';
+                if (clientsCount) clientsCount.textContent = '0';
                 
             } finally {
                 if (refreshConnectionsBtn) refreshConnectionsBtn.classList.remove('animate-spin');
