@@ -1085,8 +1085,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 if (data.ips) {
                     ipBlacklistTextarea.value = data.ips.join('\n');
+                    
+                    // Update the count display if it exists
+                    const countElement = document.getElementById('ip-blacklist-count');
+                    if (countElement) {
+                        countElement.textContent = data.ips.length;
+                    }
                 } else {
                     ipBlacklistTextarea.value = '';
+                    const countElement = document.getElementById('ip-blacklist-count');
+                    if (countElement) {
+                        countElement.textContent = '0';
+                    }
                 }
             } catch (error) {
                 if (ipBlacklistMessage) {
@@ -1146,8 +1156,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 if (data.domains) {
                     domainBlacklistTextarea.value = data.domains.join('\n');
+                    
+                    // Update the count display if it exists
+                    const countElement = document.getElementById('domain-blacklist-count');
+                    if (countElement) {
+                        countElement.textContent = data.domains.length;
+                    }
                 } else {
                     domainBlacklistTextarea.value = '';
+                    const countElement = document.getElementById('domain-blacklist-count');
+                    if (countElement) {
+                        countElement.textContent = '0';
+                    }
                 }
             } catch (error) {
                 if (domainBlacklistMessage) {
@@ -1207,8 +1227,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 if (data.ips) {
                     allowedDirectIpsTextarea.value = data.ips.join('\n');
+                    
+                    // Update the count display if it exists
+                    const countElement = document.getElementById('allowed-direct-ips-count');
+                    if (countElement) {
+                        countElement.textContent = data.ips.length;
+                    }
                 } else {
                     allowedDirectIpsTextarea.value = '';
+                    const countElement = document.getElementById('allowed-direct-ips-count');
+                    if (countElement) {
+                        countElement.textContent = '0';
+                    }
                 }
             } catch (error) {
                 if (allowedDirectIpsMessage) {
@@ -1693,8 +1723,18 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (data.ips) {
                 ipBlacklistTextarea.value = data.ips.join('\n');
+                
+                // Update the count display if it exists
+                const countElement = document.getElementById('ip-blacklist-count');
+                if (countElement) {
+                    countElement.textContent = data.ips.length;
+                }
             } else {
                 ipBlacklistTextarea.value = '';
+                const countElement = document.getElementById('ip-blacklist-count');
+                if (countElement) {
+                    countElement.textContent = '0';
+                }
             }
         } catch (error) {
             if (ipBlacklistMessage) {
@@ -1754,8 +1794,18 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (data.domains) {
                 domainBlacklistTextarea.value = data.domains.join('\n');
+                
+                // Update the count display if it exists
+                const countElement = document.getElementById('domain-blacklist-count');
+                if (countElement) {
+                    countElement.textContent = data.domains.length;
+                }
             } else {
                 domainBlacklistTextarea.value = '';
+                const countElement = document.getElementById('domain-blacklist-count');
+                if (countElement) {
+                    countElement.textContent = '0';
+                }
             }
         } catch (error) {
             if (domainBlacklistMessage) {
@@ -1815,8 +1865,18 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (data.ips) {
                 allowedDirectIpsTextarea.value = data.ips.join('\n');
+                
+                // Update the count display if it exists
+                const countElement = document.getElementById('allowed-direct-ips-count');
+                if (countElement) {
+                    countElement.textContent = data.ips.length;
+                }
             } else {
                 allowedDirectIpsTextarea.value = '';
+                const countElement = document.getElementById('allowed-direct-ips-count');
+                if (countElement) {
+                    countElement.textContent = '0';
+                }
             }
         } catch (error) {
             if (allowedDirectIpsMessage) {
@@ -1876,8 +1936,18 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (data.userAgents) {
                 badUserAgentsTextarea.value = data.userAgents.join('\n');
+                
+                // Update the count display if it exists
+                const countElement = document.getElementById('bad-user-agents-count');
+                if (countElement) {
+                    countElement.textContent = data.userAgents.length;
+                }
             } else {
                 badUserAgentsTextarea.value = '';
+                const countElement = document.getElementById('bad-user-agents-count');
+                if (countElement) {
+                    countElement.textContent = '0';
+                }
             }
         } catch (error) {
             showMessage(badUserAgentsMessage, 'Failed to fetch bad user agents: ' + error.message, false);
@@ -2008,6 +2078,89 @@ document.addEventListener('DOMContentLoaded', function() {
             showMessage(dashboardSettingsMessage, 'Failed to save dashboard settings: ' + error.message, false);
         }
     }
+    
+    // Add event listeners for import buttons
+    const importIpBlacklistBtn = document.getElementById('import-ip-blacklist-btn');
+    const importDomainBlacklistBtn = document.getElementById('import-domain-blacklist-btn');
+    const importAllowedIpsBtn = document.getElementById('import-allowed-ips-btn');
+    const importUserAgentsBtn = document.getElementById('import-user-agents-btn');
+    
+    if (importIpBlacklistBtn) importIpBlacklistBtn.addEventListener('click', () => importList('ip'));
+    if (importDomainBlacklistBtn) importDomainBlacklistBtn.addEventListener('click', () => importList('domain'));
+    if (importAllowedIpsBtn) importAllowedIpsBtn.addEventListener('click', () => importList('allowed'));
+    if (importUserAgentsBtn) importUserAgentsBtn.addEventListener('click', () => importList('useragent'));
+    
+    // Function to handle file import for blacklists
+    function importList(type) {
+        // Create file input element
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.txt,.csv,.list';
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+        
+        // Handle file selection
+        fileInput.addEventListener('change', async (event) => {
+            if (!event.target.files.length) return;
+            
+            const file = event.target.files[0];
+            try {
+                const content = await readFileContent(file);
+                
+                // Update appropriate textarea based on type
+                if (type === 'ip' && ipBlacklistTextarea) {
+                    ipBlacklistTextarea.value = content;
+                    // Show message about saving
+                    showMessage(ipBlacklistMessage, `Imported ${file.name}. Click "Save IP Blacklist" to apply changes.`, true);
+                } else if (type === 'domain' && domainBlacklistTextarea) {
+                    domainBlacklistTextarea.value = content;
+                    showMessage(domainBlacklistMessage, `Imported ${file.name}. Click "Save Domain Blacklist" to apply changes.`, true);
+                } else if (type === 'allowed' && allowedDirectIpsTextarea) {
+                    allowedDirectIpsTextarea.value = content;
+                    showMessage(allowedDirectIpsMessage, `Imported ${file.name}. Click "Save Allowed IPs" to apply changes.`, true);
+                } else if (type === 'useragent' && badUserAgentsTextarea) {
+                    badUserAgentsTextarea.value = content;
+                    showMessage(badUserAgentsMessage, `Imported ${file.name}. Click "Save User Agents" to apply changes.`, true);
+                }
+                
+                // Update count elements
+                const lines = content.split('\n').filter(line => line.trim() !== '').length;
+                
+                if (type === 'ip') {
+                    const countElement = document.getElementById('ip-blacklist-count');
+                    if (countElement) countElement.textContent = lines;
+                } else if (type === 'domain') {
+                    const countElement = document.getElementById('domain-blacklist-count');
+                    if (countElement) countElement.textContent = lines;
+                } else if (type === 'allowed') {
+                    const countElement = document.getElementById('allowed-direct-ips-count');
+                    if (countElement) countElement.textContent = lines;
+                } else if (type === 'useragent') {
+                    const countElement = document.getElementById('bad-user-agents-count');
+                    if (countElement) countElement.textContent = lines;
+                }
+                
+            } catch (error) {
+                alert('Error reading file: ' + error.message);
+            }
+            
+            // Clean up
+            document.body.removeChild(fileInput);
+        });
+        
+        // Trigger file dialog
+        fileInput.click();
+    }
+    
+    // Helper to read file content
+    function readFileContent(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (event) => resolve(event.target.result);
+            reader.onerror = (error) => reject(error);
+            reader.readAsText(file);
+        });
+    }
 }
     
     // Initialize Logs Page
@@ -2122,44 +2275,130 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!logContent) return;
             
             try {
-                logContent.innerHTML = '<div class="text-center p-8 text-gray-500">Loading logs...</div>';
+                logContent.innerHTML = '<div class="text-center p-8 text-gray-500"><i class="ri-loader-4-line animate-spin text-xl mr-2"></i>Loading logs...</div>';
                 if (refreshLogsBtn) refreshLogsBtn.disabled = true;
                 
                 const lines = logLinesSelect ? parseInt(logLinesSelect.value, 10) : 100;
                 const response = await safeFetch(`/api/logs/${logType}?lines=${lines}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+                }
+                
                 const data = await response.json();
                 
                 // Update stats
                 if (logTotalLines) logTotalLines.textContent = data.totalLines || '0';
-                if (logErrors) logErrors.textContent = data.errors || '0';
-                if (logSize) logSize.textContent = data.size || '0 KB';
-                if (logLastUpdated) logLastUpdated.textContent = data.lastModified || 'Never';
+                if (logErrors) logErrors.textContent = data.errorCount || '0';
+                if (logSize) logSize.textContent = formatFileSize(data.size || 0);
+                
+                const now = new Date();
+                if (logLastUpdated) logLastUpdated.textContent = now.toLocaleTimeString();
+                
+                // Show/hide appropriate analysis section based on log type
+                if (logType === 'access') {
+                    if (document.getElementById('access-log-analysis')) {
+                        document.getElementById('access-log-analysis').classList.remove('hidden');
+                    }
+                    if (document.getElementById('system-log-analysis')) {
+                        document.getElementById('system-log-analysis').classList.add('hidden');
+                    }
+                } else if (logType === 'system') {
+                    if (document.getElementById('access-log-analysis')) {
+                        document.getElementById('access-log-analysis').classList.add('hidden');
+                    }
+                    if (document.getElementById('system-log-analysis')) {
+                        document.getElementById('system-log-analysis').classList.remove('hidden');
+                    }
+                }
                 
                 // Update content
                 if (data.content && Array.isArray(data.content)) {
-                    if (data.content.length > 0) {
-                        const logHtml = data.content.map(line => {
-                            let lineClass = 'log-line';
-                            if (line.includes(' ERROR ') || line.includes(' FATAL ')) {
-                                lineClass += ' log-error';
-                            } else if (line.includes(' WARNING ')) {
-                                lineClass += ' log-warning';
-                            }
-                            return `<div class="${lineClass}">${escapeHtml(line)}</div>`;
-                        }).join('');
-                        
-                        logContent.innerHTML = `<div class="log-lines">${logHtml}</div>`;
+                    if (data.content.length === 0) {
+                        logContent.innerHTML = '<div class="text-center p-8 text-gray-500">No log entries found</div>';
                     } else {
-                        logContent.innerHTML = '<div class="text-center p-8 text-gray-500">Log is empty</div>';
+                        let html = '';
+                        
+                        // Process log entries based on type
+                        data.content.forEach((line, index) => {
+                            let lineClass = 'log-line';
+                            let lineStyle = '';
+                            
+                            // Add specific styling based on log type and content
+                            if (logType === 'access') {
+                                // Access log formatting (contains HTTP status codes)
+                                if (line.includes(' 200 ') || line.includes(' 304 ')) {
+                                    // Success status
+                                    lineStyle = 'color: #2563eb;';
+                                } else if (line.includes(' 404 ') || line.includes(' 403 ')) {
+                                    // Client error
+                                    lineStyle = 'color: #f59e0b;';
+                                    lineClass += ' warning-line';
+                                } else if (line.includes(' 500 ') || line.includes(' 502 ') || line.includes(' 503 ')) {
+                                    // Server error
+                                    lineStyle = 'color: #ef4444;';
+                                    lineClass += ' error-line';
+                                }
+                            } else if (logType === 'cache' || logType === 'store' || logType === 'system') {
+                                // Error and warning coloring for other logs
+                                const lowerLine = line.toLowerCase();
+                                if (lowerLine.includes('error') || lowerLine.includes('fatal') || lowerLine.includes('exception')) {
+                                    lineStyle = 'color: #ef4444;';
+                                    lineClass += ' error-line';
+                                } else if (lowerLine.includes('warn') || lowerLine.includes('denied') || lowerLine.includes('invalid')) {
+                                    lineStyle = 'color: #f59e0b;';
+                                    lineClass += ' warning-line';
+                                } else if (lowerLine.includes('info')) {
+                                    lineStyle = 'color: #2563eb;';
+                                    lineClass += ' info-line';
+                                }
+                            }
+                            
+                            // Add the formatted line
+                            html += `<div class="${lineClass}" style="${lineStyle}" data-index="${index}">${escapeHtml(line)}</div>`;
+                        });
+                        
+                        logContent.innerHTML = html;
+                        
+                        // Scroll to bottom to show newest logs
+                        logContent.scrollTop = logContent.scrollHeight;
+                        
+                        // If analysis section is visible, update charts
+                        if (!document.getElementById('analysis-section').classList.contains('hidden')) {
+                            generateLogAnalysis(logType);
+                        }
                     }
                 } else {
-                    logContent.innerHTML = `<div class="text-center p-8 text-gray-500">${data.content || 'No logs available'}</div>`;
+                    // Handle case when content is not an array
+                    logContent.innerHTML = `<div class="text-center p-8 text-gray-500">
+                        No log entries returned from server. The log file may be empty or not accessible.
+                    </div>`;
                 }
             } catch (error) {
-                logContent.innerHTML = `<div class="text-center p-8 text-red-500">Error loading logs: ${error.message}</div>`;
+                console.error('Error fetching logs:', error);
+                logContent.innerHTML = `<div class="text-center p-8 text-red-500">
+                    <i class="ri-error-warning-line text-xl mr-2"></i>
+                    Error loading logs: ${error.message}
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-outline" onclick="document.getElementById('refresh-logs-btn').click()">
+                            Try Again
+                        </button>
+                    </div>
+                </div>`;
             } finally {
                 if (refreshLogsBtn) refreshLogsBtn.disabled = false;
             }
+        }
+        
+        // Helper function to format file size
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
         
         function searchLogs() {

@@ -186,8 +186,16 @@
                         <!-- IP Blacklist Tab -->
                         <div class="tab-content active" id="ip-blacklist-tab">
                             <div class="mb-3 flex justify-between items-center">
-                                <h3 class="text-lg font-medium text-gray-700">IP Blacklist Configuration</h3>
-                                <div class="text-sm text-gray-500">One IP per line</div>
+                                <div>
+                                    <h3 class="text-lg font-medium text-gray-700">IP Blacklist Configuration</h3>
+                                    <p class="text-sm text-gray-500">Block access from specific IP addresses</p>
+                                </div>
+                                <div class="flex items-center">
+                                    <div class="px-2 py-1 bg-red-100 text-red-800 rounded-md mr-2 text-xs font-medium">
+                                        <span id="ip-blacklist-count">0</span> IPs blocked
+                                    </div>
+                                    <div class="text-sm text-gray-500">One IP per line</div>
+                                </div>
                             </div>
                             
                             <textarea id="ip-blacklist-textarea" class="form-control" placeholder="Enter IPs to blacklist, one per line
@@ -197,17 +205,30 @@ Example:
                             
                             <div class="flex justify-between mt-3">
                                 <div id="ip-blacklist-message"></div>
-                                <button id="save-ip-blacklist-btn" class="btn btn-blue">
-                                    <i class="ri-save-line btn-icon"></i> Save IP Blacklist
-                                </button>
+                                <div class="flex space-x-2">
+                                    <button id="import-ip-blacklist-btn" class="btn btn-outline">
+                                        <i class="ri-upload-line btn-icon"></i> Import
+                                    </button>
+                                    <button id="save-ip-blacklist-btn" class="btn btn-blue">
+                                        <i class="ri-save-line btn-icon"></i> Save IP Blacklist
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         
                         <!-- Domain Blacklist Tab -->
                         <div class="tab-content hidden" id="domain-blacklist-tab">
                             <div class="mb-3 flex justify-between items-center">
-                                <h3 class="text-lg font-medium text-gray-700">Domain Blacklist Configuration</h3>
-                                <div class="text-sm text-gray-500">One domain per line</div>
+                                <div>
+                                    <h3 class="text-lg font-medium text-gray-700">Domain Blacklist Configuration</h3>
+                                    <p class="text-sm text-gray-500">Block access to specific domains and websites</p>
+                                </div>
+                                <div class="flex items-center">
+                                    <div class="px-2 py-1 bg-red-100 text-red-800 rounded-md mr-2 text-xs font-medium">
+                                        <span id="domain-blacklist-count">0</span> domains blocked
+                                    </div>
+                                    <div class="text-sm text-gray-500">One domain per line</div>
+                                </div>
                             </div>
                             
                             <textarea id="domain-blacklist-textarea" class="form-control" placeholder="Enter domains to blacklist, one per line
@@ -217,17 +238,30 @@ ads.example.org"></textarea>
                             
                             <div class="flex justify-between mt-3">
                                 <div id="domain-blacklist-message"></div>
-                                <button id="save-domain-blacklist-btn" class="btn btn-blue">
-                                    <i class="ri-save-line btn-icon"></i> Save Domain Blacklist
-                                </button>
+                                <div class="flex space-x-2">
+                                    <button id="import-domain-blacklist-btn" class="btn btn-outline">
+                                        <i class="ri-upload-line btn-icon"></i> Import
+                                    </button>
+                                    <button id="save-domain-blacklist-btn" class="btn btn-blue">
+                                        <i class="ri-save-line btn-icon"></i> Save Domain Blacklist
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         
                         <!-- Allowed Direct IPs Tab -->
                         <div class="tab-content hidden" id="allowed-direct-ips-tab">
                             <div class="mb-3 flex justify-between items-center">
-                                <h3 class="text-lg font-medium text-gray-700">Allowed Direct IP Access</h3>
-                                <div class="text-sm text-gray-500">One IP or CIDR per line</div>
+                                <div>
+                                    <h3 class="text-lg font-medium text-gray-700">Allowed Direct IP Access</h3>
+                                    <p class="text-sm text-gray-500">IPs that can bypass proxy rules</p>
+                                </div>
+                                <div class="flex items-center">
+                                    <div class="px-2 py-1 bg-green-100 text-green-800 rounded-md mr-2 text-xs font-medium">
+                                        <span id="allowed-direct-ips-count">0</span> IPs allowed
+                                    </div>
+                                    <div class="text-sm text-gray-500">One IP or CIDR per line</div>
+                                </div>
                             </div>
                             
                             <textarea id="allowed-direct-ips-textarea" class="form-control" placeholder="Enter IPs to allow direct access, one per line
@@ -237,9 +271,14 @@ Example:
                             
                             <div class="flex justify-between mt-3">
                                 <div id="allowed-direct-ips-message"></div>
-                                <button id="save-allowed-direct-ips-btn" class="btn btn-blue">
-                                    <i class="ri-save-line btn-icon"></i> Save Allowed IPs
-                                </button>
+                                <div class="flex space-x-2">
+                                    <button id="import-allowed-ips-btn" class="btn btn-outline">
+                                        <i class="ri-upload-line btn-icon"></i> Import
+                                    </button>
+                                    <button id="save-allowed-direct-ips-btn" class="btn btn-blue">
+                                        <i class="ri-save-line btn-icon"></i> Save Allowed IPs
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -252,8 +291,16 @@ Example:
                     </div>
                     
                     <div class="mb-3 flex justify-between items-center">
-                        <h3 class="text-lg font-medium text-gray-700">Bad User Agents</h3>
-                        <div class="text-sm text-gray-500">One user agent per line</div>
+                        <div>
+                            <h3 class="text-lg font-medium text-gray-700">Bad User Agents</h3>
+                            <p class="text-sm text-gray-500">Block requests from specific user agents</p>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="px-2 py-1 bg-red-100 text-red-800 rounded-md mr-2 text-xs font-medium">
+                                <span id="bad-user-agents-count">0</span> agents blocked
+                            </div>
+                            <div class="text-sm text-gray-500">One user agent per line</div>
+                        </div>
                     </div>
                     
                     <textarea id="bad-user-agents-textarea" class="form-control" placeholder="Enter user agents to block, one per line
@@ -263,9 +310,14 @@ python-requests/2.25.1"></textarea>
                     
                     <div class="flex justify-between mt-3">
                         <div id="bad-user-agents-message"></div>
-                        <button id="save-bad-user-agents-btn" class="btn btn-blue">
-                            <i class="ri-save-line btn-icon"></i> Save User Agents
-                        </button>
+                        <div class="flex space-x-2">
+                            <button id="import-user-agents-btn" class="btn btn-outline">
+                                <i class="ri-upload-line btn-icon"></i> Import
+                            </button>
+                            <button id="save-bad-user-agents-btn" class="btn btn-blue">
+                                <i class="ri-save-line btn-icon"></i> Save User Agents
+                            </button>
+                        </div>
                     </div>
                 </div>
                 
