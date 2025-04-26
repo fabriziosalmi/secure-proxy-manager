@@ -141,6 +141,61 @@
             loadDashboardData();
         });
         
+        // Set up quick action buttons
+        $('.btn:contains("Reload Proxy Configuration")').click(function() {
+            apiRequest('POST', 'maintenance/reload-config')
+                .then(function(response) {
+                    showToast('Proxy configuration reloaded successfully');
+                    loadDashboardData(); // Refresh dashboard data
+                })
+                .catch(function(error) {
+                    showToast('Failed to reload configuration: ' + error.message, 'danger');
+                });
+        });
+        
+        $('.btn:contains("Import Logs")').click(function() {
+            apiRequest('POST', 'logs/import')
+                .then(function(response) {
+                    showToast('Logs imported successfully');
+                    loadDashboardData(); // Refresh dashboard data
+                })
+                .catch(function(error) {
+                    showToast('Failed to import logs: ' + error.message, 'danger');
+                });
+        });
+        
+        $('.btn:contains("Export Settings")').click(function() {
+            apiRequest('GET', 'maintenance/backup-config')
+                .then(function(response) {
+                    // Create a download link for the configuration
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(response.data));
+                    const downloadAnchorNode = document.createElement('a');
+                    downloadAnchorNode.setAttribute("href", dataStr);
+                    downloadAnchorNode.setAttribute("download", "secure-proxy-config-" + new Date().toISOString().slice(0, 10) + ".json");
+                    document.body.appendChild(downloadAnchorNode);
+                    downloadAnchorNode.click();
+                    downloadAnchorNode.remove();
+                    
+                    showToast('Settings exported successfully');
+                })
+                .catch(function(error) {
+                    showToast('Failed to export settings: ' + error.message, 'danger');
+                });
+        });
+        
+        $('.btn:contains("Clear Logs")').click(function() {
+            if (confirm('Are you sure you want to clear all logs? This action cannot be undone.')) {
+                apiRequest('POST', 'logs/clear')
+                    .then(function(response) {
+                        showToast('Logs cleared successfully');
+                        loadDashboardData(); // Refresh dashboard data
+                    })
+                    .catch(function(error) {
+                        showToast('Failed to clear logs: ' + error.message, 'danger');
+                    });
+            }
+        });
+        
         // Auto refresh every 30 seconds
         setInterval(loadDashboardData, 30000);
     });
