@@ -356,24 +356,26 @@ def control_squid():
                 status_result = subprocess.run("pgrep -x squid > /dev/null", shell=True)
                 success = status_result.returncode != 0  # Return code 0 means process found, which isn't what we want for 'stop'
             else:
-                # For start/restart/reload, check that Squid is running
-                status_result = subprocess.run("pgrep -x squid > /dev/null", shell=True)
-                success = status_result.returncode == 0  # Return code 0 means process found
-                
-                # If failure on start/restart, try to get more detailed error information
-                if not success and (action == 'start' or action == 'restart'):
-                    # Check Squid logs for errors
+                # For start/restart/reload, poll until Squid is running (up to 10s)
+                success = False
+                for _ in range(10):
+                    status_result = subprocess.run("pgrep -x squid > /dev/null", shell=True)
+                    if status_result.returncode == 0:
+                        success = True
+                        break
+                    time.sleep(1)
+                # If failure after timeout, collect log snippet for diagnostics
+                if not success:
                     try:
                         log_cmd = "tail -n 20 /var/log/squid/cache.log"
                         log_result = subprocess.run(log_cmd, shell=True, capture_output=True, text=True, timeout=2)
                         error_details = log_result.stdout.strip() if log_result.returncode == 0 else "No log details available"
-                    except:
+                    except Exception:
                         error_details = "Failed to retrieve log details"
-                        
+                    # Combine details into message for the frontend
                     return jsonify({
                         'status': 'error',
-                        'message': f'Failed to {action} Squid. Check logs for details.',
-                        'details': error_details
+                        'message': f'Failed to {action} Squid: {error_details}'
                     })
                 
             if success:
@@ -711,18 +713,20 @@ def get_logs(log_type):
     error_count = 0
     size = 0
     try:
-        if path and os.path.exists(path):
-            with open(path, 'r') as f:
-                all_lines = f.read().splitlines()
-            total_lines = len(all_lines)
-            # Get last n lines
-            content = all_lines[-lines_count:]
-            # Estimate file size
-            size = os.path.getsize(path)
-            # Count 'error' occurrences
-            error_count = sum(1 for line in content if 'error' in line.lower())
-        else:
-            content = []
+        if path:
+            if os.path.exists(path):
+                with open(path, 'r') as f:
+                    all_lines = f.read().splitlines()
+                total_lines = len(all_lines)
+                content = all_lines[-lines_count:]
+                size = os.path.getsize(path)
+                error_count = sum(1 for line in content if 'error' in line.lower())
+            else:
+                # File exists mapping but not found on disk
+                return jsonify({'status':'error','message':'Log file not found'}), 404
+        # If file is found but empty, return placeholder
+        if path and total_lines == 0:
+            content = ['No log entries available yet.']
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
     return jsonify({

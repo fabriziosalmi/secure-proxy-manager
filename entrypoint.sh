@@ -1,9 +1,14 @@
 #!/bin/sh
 
 # Ensure directories exist with proper permissions
-mkdir -p /var/log/squid /var/cache/squid /etc/squid
-chown -R squid:squid /var/log/squid /var/cache/squid
-chmod -R 750 /var/log/squid /var/cache/squid
+mkdir -p /var/log/squid /var/cache/squid /etc/squid /var/lib/ssl_db
+chown -R squid:squid /var/log/squid /var/cache/squid /var/lib/ssl_db
+chmod -R 750 /var/log/squid /var/cache/squid /var/lib/ssl_db
+
+# Comment out SSL bumping directives to avoid startup failures
+for f in ssl_bump sslproxy_cert_error sslcrtd_program sslcrtd_children; do
+  sed -i "/^$f /s/^/#/" /etc/squid/squid.conf || true
+done
 
 # Add debug output for troubleshooting
 echo "Running entrypoint.sh"
@@ -28,19 +33,24 @@ done
 
 # Make sure the Squid configuration is valid
 echo "Validating Squid configuration"
-/usr/sbin/squid -k parse -f /etc/squid/squid.conf
+parse_output=$(/usr/sbin/squid -k parse -f /etc/squid/squid.conf 2>&1)
 if [ $? -ne 0 ]; then
   echo "ERROR: Invalid Squid configuration"
+  echo "$parse_output"
   exit 1
 fi
 
-# Check if squid can start manually (test run)
-echo "Testing Squid startup..."
-/usr/sbin/squid -N -d 1 -f /etc/squid/squid.conf &
-TEST_PID=$!
-sleep 2
-kill $TEST_PID 2>/dev/null || true
-echo "Squid test completed"
+# Cleanup any old Squid PID file to avoid "already running" errors
+echo "Cleaning up old Squid PID file"
+rm -f /var/run/squid.pid
+
+# Commented out manual test run to prevent orphan processes
+# echo "Testing Squid startup..."
+# /usr/sbin/squid -N -d 1 -f /etc/squid/squid.conf &
+# TEST_PID=$!
+# sleep 2
+# kill $TEST_PID 2>/dev/null || true
+# echo "Squid test completed"
 
 echo "Starting supervisord..."
 exec "$@"
