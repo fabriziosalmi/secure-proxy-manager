@@ -17,11 +17,17 @@ CORS(app)
 auth = HTTPBasicAuth()
 
 # Configure logging
+log_path = '/logs/backend.log'
+# Check if running in local/test environment
+if not os.path.exists('/logs'):
+    os.makedirs('logs', exist_ok=True)
+    log_path = 'logs/backend.log'
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('/logs/backend.log'),
+        logging.FileHandler(log_path),
         logging.StreamHandler()
     ]
 )
@@ -29,6 +35,10 @@ logger = logging.getLogger(__name__)
 
 # Database configuration
 DATABASE_PATH = '/data/secure_proxy.db'
+# Check if running in local/test environment
+if not os.path.exists('/data'):
+    os.makedirs('data', exist_ok=True)
+    DATABASE_PATH = 'data/secure_proxy.db'
 
 # Proxy service configuration
 PROXY_HOST = os.environ.get('PROXY_HOST', 'proxy')
@@ -36,8 +46,10 @@ PROXY_PORT = os.environ.get('PROXY_PORT', '3128')
 
 # Initialize database
 def init_db():
-    if not os.path.exists('/data'):
-        os.makedirs('/data')
+    # Create data directory if it doesn't exist
+    data_dir = os.path.dirname(DATABASE_PATH)
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir, exist_ok=True)
     
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
@@ -509,6 +521,35 @@ def update_ip_blacklist():
     
     logger.info("IP blacklist updated")
 
+@app.route('/api/logs/clear', methods=['POST'])
+@auth.login_required
+def clear_logs():
+    """Clear all proxy logs"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM proxy_logs")
+        conn.commit()
+        logger.info("All logs cleared successfully")
+        return jsonify({"status": "success", "message": "All logs cleared successfully"})
+    except Exception as e:
+        logger.error(f"Error clearing logs: {str(e)}")
+        return jsonify({"status": "error", "message": f"Error clearing logs: {str(e)}"}), 500
+
+@app.route('/api/maintenance/reload-config', methods=['POST'])
+@auth.login_required
+def reload_proxy_config():
+    """Reload the proxy configuration"""
+    try:
+        # Apply settings to regenerate the config
+        if apply_settings():
+            return jsonify({"status": "success", "message": "Proxy configuration reloaded successfully"})
+        else:
+            return jsonify({"status": "error", "message": "Failed to reload proxy configuration"}), 500
+    except Exception as e:
+        logger.error(f"Error reloading proxy configuration: {str(e)}")
+        return jsonify({"status": "error", "message": f"Error reloading proxy configuration: {str(e)}"}), 500
+
 def update_domain_blacklist():
     """Update the domain blacklist file"""
     conn = get_db()
@@ -570,18 +611,20 @@ def apply_settings():
         squid_conf.append("# Domain blacklists")
         squid_conf.append('acl domain_blacklist dstdomain "/etc/squid/blacklists/domain/local.txt"')
         
-        # Direct IP access detection
+        # Direct IP access detection - critical fix for direct IP access blocking
         squid_conf.append("")
         squid_conf.append("# Direct IP access detection")
-        squid_conf.append('acl direct_ip url_regex ^http://[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+')
-        squid_conf.append('acl direct_ip url_regex ^https://[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+')
+        # This acl matches IP addresses in the URL (both with and without http/https)
+        squid_conf.append('acl direct_ip_url url_regex ^https?://[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+')
+        # This acl matches when the hostname is an IP address (for both HTTP and HTTPS)
+        squid_conf.append('acl direct_ip_host dstdom_regex ^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$')
         
         # Content filtering if enabled
         if settings.get('enable_content_filtering') == 'true' and settings.get('blocked_file_types'):
             file_types = settings.get('blocked_file_types').split(',')
             squid_conf.append("")
             squid_conf.append("# File type blocking")
-            squid_conf.append('acl blocked_extensions urlpath_regex -i "\.(' + '|'.join(file_types) + ')$"')
+            squid_conf.append(r'acl blocked_extensions urlpath_regex -i "\.(' + '|'.join(file_types) + r')$"')
         
         # Time restrictions if enabled
         if settings.get('enable_time_restrictions') == 'true':
@@ -606,10 +649,11 @@ def apply_settings():
             squid_conf.append("# Block blacklisted domains")
             squid_conf.append("http_access deny domain_blacklist")
         
-        # Block direct IP access if enabled
+        # Block direct IP access if enabled - critical section for direct IP blocking
         if settings.get('block_direct_ip') == 'true':
             squid_conf.append("# Block direct IP URL access")
-            squid_conf.append("http_access deny direct_ip")
+            squid_conf.append("http_access deny direct_ip_url")
+            squid_conf.append("http_access deny direct_ip_host")
         
         # Apply content filtering if enabled
         if settings.get('enable_content_filtering') == 'true' and settings.get('blocked_file_types'):
@@ -674,32 +718,80 @@ def apply_settings():
         squid_conf.append("refresh_pattern -i (/cgi-bin/|\\?) 0     0%      0")
         squid_conf.append("refresh_pattern .               0       20%     4320")
         
-        # Write the configuration to file
+        # Write the configuration to both locations where it might be used
         with open('/config/custom_squid.conf', 'w') as f:
             f.write('\n'.join(squid_conf))
         
-        # Also update the main Squid config file
-        with open('/config/squid.conf', 'w') as f:
-            f.write('\n'.join(squid_conf))
-        
-        # Reload squid configuration
+        # Also update the main Squid config files in both possible locations
         try:
+            with open('/config/squid.conf', 'w') as f:
+                f.write('\n'.join(squid_conf))
+        except Exception as e:
+            logger.warning(f"Could not write to /config/squid.conf: {e}")
+            
+        try:
+            with open('/config/squid/squid.conf', 'w') as f:
+                f.write('\n'.join(squid_conf))
+        except Exception as e:
+            logger.warning(f"Could not write to /config/squid/squid.conf: {e}")
+            
+        # Also directly update the proxy config file
+        try:
+            with open('/proxy/squid.conf', 'w') as f:
+                f.write('\n'.join(squid_conf))
+        except Exception as e:
+            logger.warning(f"Could not write to /proxy/squid.conf: {e}")
+        
+        # Also try to write to the local repo's config file
+        try:
+            with open('proxy/squid.conf', 'w') as f:
+                f.write('\n'.join(squid_conf))
+        except Exception as e:
+            logger.warning(f"Could not write to relative proxy/squid.conf: {e}")
+
+        # Also ensure the blacklist files exist and have correct content
+        update_ip_blacklist()
+        update_domain_blacklist()
+        
+        # Reload squid configuration - more robust method
+        reloaded = False
+        
+        # Try multiple methods to reload the config, in case one fails
+        try:
+            # Method 1: Direct reconfigure command
             subprocess.run(
                 ['docker', 'exec', 'secure-proxy-proxy-1', 'squid', '-k', 'reconfigure'],
-                capture_output=True, check=True
+                capture_output=True, check=True, timeout=10
             )
-            logger.info("Squid reconfigured successfully")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Error reconfiguring Squid: {str(e)}")
-            # Try restarting the container if reconfigure fails
+            logger.info("Squid reconfigured successfully via direct command")
+            reloaded = True
+        except Exception as e:
+            logger.warning(f"Error reconfiguring Squid via direct command: {str(e)}")
+            
+        if not reloaded:
             try:
+                # Method 2: Use the squidclient
+                subprocess.run(
+                    ['docker', 'exec', 'secure-proxy-proxy-1', 'squidclient', '-h', 'localhost', 'mgr:reconfigure'],
+                    capture_output=True, check=True, timeout=10
+                )
+                logger.info("Squid reconfigured successfully via squidclient")
+                reloaded = True
+            except Exception as e:
+                logger.warning(f"Error reconfiguring Squid via squidclient: {str(e)}")
+        
+        if not reloaded:
+            try:
+                # Method 3: Restart the container
                 subprocess.run(
                     ['docker', 'restart', 'secure-proxy-proxy-1'],
-                    capture_output=True, check=True
+                    capture_output=True, check=True, timeout=20
                 )
                 logger.info("Proxy container restarted successfully")
-            except subprocess.CalledProcessError as e2:
-                logger.error(f"Error restarting proxy container: {str(e2)}")
+                reloaded = True
+            except Exception as e:
+                logger.error(f"Error restarting proxy container: {str(e)}")
+                return False
         
         logger.info("Settings applied successfully")
         return True
