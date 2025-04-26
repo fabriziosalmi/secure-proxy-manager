@@ -516,20 +516,27 @@ def get_logs():
     conn = get_db()
     cursor = conn.cursor()
     
+    # Check if the unix_timestamp column exists
+    cursor.execute("PRAGMA table_info(proxy_logs)")
+    columns = [column[1] for column in cursor.fetchall()]
+    
+    # Determine the correct ORDER BY clause
+    order_by = "ORDER BY unix_timestamp DESC" if 'unix_timestamp' in columns else "ORDER BY timestamp DESC"
+    
     # Use parameterized queries to prevent SQL injection
     if search:
         # Apply search to multiple fields with proper parameter binding
-        query = """
+        query = f"""
             SELECT * FROM proxy_logs 
             WHERE source_ip LIKE ? 
             OR destination LIKE ? 
             OR status LIKE ?
-            ORDER BY timestamp DESC LIMIT ? OFFSET ?
+            {order_by} LIMIT ? OFFSET ?
         """
         search_param = f"%{search}%"
         cursor.execute(query, (search_param, search_param, search_param, limit, offset))
     else:
-        cursor.execute("SELECT * FROM proxy_logs ORDER BY timestamp DESC LIMIT ? OFFSET ?", 
+        cursor.execute(f"SELECT * FROM proxy_logs {order_by} LIMIT ? OFFSET ?", 
                      (limit, offset))
                       
     logs = [dict(row) for row in cursor.fetchall()]
@@ -1137,7 +1144,7 @@ def parse_squid_logs():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Ensure the log table exists
+        # Ensure the log table exists with proper timestamp column
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS proxy_logs (
             id INTEGER PRIMARY KEY,
@@ -1146,9 +1153,18 @@ def parse_squid_logs():
             destination TEXT,
             status TEXT,
             bytes INTEGER,
-            imported_at TEXT
+            imported_at TEXT,
+            unix_timestamp REAL
         )
         """)
+        
+        # Check if unix_timestamp column exists, add it if not
+        cursor.execute("PRAGMA table_info(proxy_logs)")
+        columns = [column[1] for column in cursor.fetchall()]
+        if 'unix_timestamp' not in columns:
+            logger.info("Adding unix_timestamp column to proxy_logs table")
+            cursor.execute("ALTER TABLE proxy_logs ADD COLUMN unix_timestamp REAL")
+            conn.commit()
         
         # Parse Squid log format matching your actual log format
         imported_count = 0
@@ -1166,7 +1182,7 @@ def parse_squid_logs():
                         error_count += 1
                         continue
                         
-                    timestamp = float(parts[0])  # Convert timestamp to human-readable format
+                    timestamp = float(parts[0])  # Unix timestamp
                     elapsed = parts[1]
                     source_ip = parts[2]
                     status_code = parts[3]
@@ -1181,14 +1197,19 @@ def parse_squid_logs():
                     method = parts[5]
                     url = parts[6]
                     
-                    # Convert Unix timestamp to datetime
+                    # Convert Unix timestamp to datetime in ISO format for display
                     readable_time = datetime.fromtimestamp(timestamp).isoformat()
                     
-                    # Use INSERT OR IGNORE to avoid duplicates if reimporting
+                    # Generate a unique composite key for checking duplicates
+                    composite_key = f"{timestamp}_{source_ip}_{url}"
+                    
+                    # Insert log entry, storing both readable time and unix timestamp
                     cursor.execute("""
-                    INSERT OR IGNORE INTO proxy_logs (timestamp, source_ip, destination, status, bytes, imported_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """, (readable_time, source_ip, url, status_code, bytes_value, datetime.now().isoformat()))
+                    INSERT OR IGNORE INTO proxy_logs 
+                    (timestamp, source_ip, destination, status, bytes, imported_at, unix_timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (readable_time, source_ip, url, status_code, bytes_value, 
+                          datetime.now().isoformat(), timestamp))
                     
                     imported_count += 1
                     if imported_count % 1000 == 0:
