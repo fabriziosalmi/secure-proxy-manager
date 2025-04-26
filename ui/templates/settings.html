@@ -341,6 +341,105 @@
         $('#download-cert-btn').click(function() {
             window.location = '/api/maintenance/download-cert';
         });
+        
+        // Add HTTPS filtering validation when enabling the feature
+        $('#enable_https_filtering').change(function() {
+            const httpsEnabled = $(this).is(':checked');
+            $('#download-cert-container').toggle(httpsEnabled);
+            
+            if (httpsEnabled) {
+                // Check certificate health when enabling
+                apiRequest('GET', 'maintenance/check-cert-security')
+                    .then(function(response) {
+                        if (response.status === 'warning') {
+                            // Show warning about certificate issues
+                            const warningModal = `
+                                <div class="modal fade" id="https-warning-modal" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header bg-warning text-dark">
+                                                <h5 class="modal-title">HTTPS Filtering Certificate Warning</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <p><strong>Warning:</strong> The following issues were detected with your SSL certificates:</p>
+                                                <ul>
+                                                    ${response.details.map(issue => `<li>${issue}</li>`).join('')}
+                                                </ul>
+                                                <p>These issues may affect the functionality of HTTPS filtering. Please address them before enabling this feature.</p>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Understand</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            // Remove any existing modal
+                            $('#https-warning-modal').remove();
+                            
+                            // Add the modal to the DOM and show it
+                            $('body').append(warningModal);
+                            new bootstrap.Modal(document.getElementById('https-warning-modal')).show();
+                        }
+                        else if (response.status === 'error') {
+                            showToast('Error checking certificate security: ' + response.message, 'danger');
+                        }
+                        else if (response.status === 'success') {
+                            showToast('Certificate security checks passed', 'success');
+                        }
+                    })
+                    .catch(function(error) {
+                        showToast('Failed to check certificate security: ' + error.message, 'danger');
+                    });
+                    
+                // Show privacy implications modal
+                const privacyModal = `
+                    <div class="modal fade" id="https-privacy-modal" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header bg-info text-white">
+                                    <h5 class="modal-title">HTTPS Filtering Privacy Notice</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p><strong>Important Privacy Consideration:</strong></p>
+                                    <p>Enabling HTTPS filtering means this proxy will:</p>
+                                    <ul>
+                                        <li>Decrypt and inspect all HTTPS traffic passing through it</li>
+                                        <li>Generate certificates on-the-fly for secure websites</li>
+                                        <li>Potentially have access to sensitive information in HTTPS sessions</li>
+                                    </ul>
+                                    <p>Users must install the proxy's CA certificate on their devices to avoid security warnings.</p>
+                                    <p>Please ensure you understand the privacy and legal implications before enabling this feature.</p>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" id="https-privacy-disable">Disable HTTPS Filtering</button>
+                                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">I Understand</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Remove any existing modal
+                $('#https-privacy-modal').remove();
+                
+                // Add the modal to the DOM
+                $('body').append(privacyModal);
+                
+                // Show the privacy modal
+                const modal = new bootstrap.Modal(document.getElementById('https-privacy-modal'));
+                modal.show();
+                
+                // Handle "Disable HTTPS Filtering" button
+                $('#https-privacy-disable').click(function() {
+                    $('#enable_https_filtering').prop('checked', false).trigger('change');
+                    modal.hide();
+                });
+            }
+        });
     });
     
     function loadSettings() {
@@ -542,5 +641,60 @@
                 showToast('Failed to backup configuration: ' + error.message, 'danger');
             });
     }
+    
+    // Password validation function
+    function validatePassword(password) {
+        const validationResults = {
+            valid: false,
+            errors: []
+        };
+        
+        // Check length
+        if (password.length < 8) {
+            validationResults.errors.push("Password must be at least 8 characters long");
+        }
+        
+        // Check for at least one number
+        if (!/\d/.test(password)) {
+            validationResults.errors.push("Password must contain at least one number");
+        }
+        
+        // Check for at least one special character
+        if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+            validationResults.errors.push("Password must contain at least one special character");
+        }
+        
+        // Set valid flag if no errors
+        validationResults.valid = validationResults.errors.length === 0;
+        
+        return validationResults;
+    }
+    
+    // Add validation to password field
+    $(document).ready(function() {
+        // Create feedback element for password validation
+        $('<div id="password-feedback" class="mt-2"></div>').insertAfter('#admin_password');
+        
+        // Add keyup event for live validation feedback
+        $('#admin_password').keyup(function() {
+            const password = $(this).val();
+            const feedback = $('#password-feedback');
+            
+            // Clear feedback if empty
+            if (!password) {
+                feedback.html('').removeClass('text-danger text-success');
+                return;
+            }
+            
+            // Validate password
+            const validation = validatePassword(password);
+            
+            if (validation.valid) {
+                feedback.html('<i class="fas fa-check-circle"></i> Password meets security requirements').removeClass('text-danger').addClass('text-success');
+            } else {
+                feedback.html('<i class="fas fa-exclamation-circle"></i> ' + validation.errors.join('<br>')).removeClass('text-success').addClass('text-danger');
+            }
+        });
+    });
 </script>
 {% endblock %}
