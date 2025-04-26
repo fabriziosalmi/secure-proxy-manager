@@ -32,6 +32,41 @@ logger = logging.getLogger(__name__)
 BACKEND_URL = os.environ.get('BACKEND_URL', 'http://backend:5000')
 API_AUTH = (app.config['BASIC_AUTH_USERNAME'], app.config['BASIC_AUTH_PASSWORD'])
 
+# Add security headers to all responses
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses to protect against common web vulnerabilities"""
+    # Remove server header
+    response.headers['Server'] = 'Secure-Proxy-UI'
+    
+    # Add basic security headers
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
+    # Add Content Security Policy
+    csp_directives = [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",  # Unsafe-inline needed for Bootstrap JS
+        "style-src 'self' 'unsafe-inline'",   # Unsafe-inline needed for Bootstrap CSS
+        "img-src 'self' data:",                # Allow data: for simple images
+        "font-src 'self'",
+        "connect-src 'self'",
+        "frame-ancestors 'self'",
+        "form-action 'self'",
+        "base-uri 'self'"
+    ]
+    response.headers['Content-Security-Policy'] = "; ".join(csp_directives)
+    
+    # Add Referrer Policy
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    
+    # Add Feature Policy / Permissions Policy
+    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+    
+    return response
+
 # Routes
 @app.route('/')
 @basic_auth.required

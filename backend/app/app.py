@@ -212,15 +212,15 @@ def get_db_connection():
     try:
         conn = get_db()
         yield conn
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Database error: {str(e)}")
+        raise
     finally:
         if conn:
-            # We don't close the connection here as Flask will handle it with close_connection
-            # but we ensure any transaction is committed
-            try:
-                conn.commit()
-            except:
-                conn.rollback()
-                raise
+            conn.commit()
+            # Note: We don't close the connection here as it's managed by Flask's teardown_appcontext
 
 # Authentication
 @auth.verify_password
@@ -311,17 +311,38 @@ def csrf_protected(func):
         return func(*args, **kwargs)
     return wrapper
 
-# Add security headers to responses
+# Enhance security headers function
 @app.after_request
 def add_security_headers(response):
+    """Add security headers to all responses"""
     # Remove server header
     response.headers['Server'] = 'Secure-Proxy'
     
-    # Add security headers
+    # Add basic security headers
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
+    # Add Content Security Policy
+    csp_directives = [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",  # Unsafe-inline needed for Bootstrap JS
+        "style-src 'self' 'unsafe-inline'",   # Unsafe-inline needed for Bootstrap CSS
+        "img-src 'self' data:",                # Allow data: for simple images
+        "font-src 'self'",
+        "connect-src 'self'",
+        "frame-ancestors 'self'",
+        "form-action 'self'",
+        "base-uri 'self'"
+    ]
+    response.headers['Content-Security-Policy'] = "; ".join(csp_directives)
+    
+    # Add Referrer Policy
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    
+    # Add Feature Policy / Permissions Policy
+    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
     
     # Add CSRF token if applicable
     if request.endpoint != 'static':
@@ -399,7 +420,7 @@ def get_ip_blacklist():
     
     return jsonify({"status": "success", "data": blacklist})
 
-@app.route('/api/ip-blacklist', methods=['POST'])
+@app.route('/api/ip-blacklist', methods['POST'])
 @auth.login_required
 @csrf_protected
 def add_ip_to_blacklist():
@@ -1839,5 +1860,441 @@ def validate_domain(domain):
     # Either the TLD is common or it's at least valid from structural perspective
     return tld.lower() in common_tlds or re.match(r'^[a-zA-Z0-9]{2,}$', tld)
 
+def validate_and_normalize_path(path, allowed_base_dirs=None):
+    """
+    Validate that a path doesn't contain traversal attempts and normalize it.
+    
+    Args:
+        path: The path to validate and normalize
+        allowed_base_dirs: Optional list of allowed base directories
+        
+    Returns:
+        Normalized path or None if validation fails
+    """
+    try:
+        # Normalize the path to resolve any ".." components
+        normalized_path = os.path.normpath(path)
+        
+        # Check if the path tries to traverse outside allowed directories
+        if '..' in normalized_path or normalized_path.startswith('../'):
+            logger.warning(f"Path traversal attempt detected: {path}")
+            return None
+            
+        # If allowed base directories are specified, validate against them
+        if allowed_base_dirs:
+            # Convert to absolute paths
+            abs_path = os.path.abspath(normalized_path)
+            if not any(abs_path.startswith(os.path.abspath(base_dir)) for base_dir in allowed_base_dirs):
+                logger.warning(f"Path {path} is outside allowed directories")
+                return None
+                
+        return normalized_path
+    except Exception as e:
+        logger.error(f"Error validating path {path}: {str(e)}")
+        return None
+
+def validate_request_data(data, required_fields=None, field_validators=None):
+    """
+    Validate that request data contains the required fields and passes custom validators.
+    
+    Args:
+        data: The JSON request data to validate
+        required_fields: List of field names that must be present in the data
+        field_validators: Dict mapping field names to validator functions
+        
+    Returns:
+        (is_valid, error_message) tuple
+    """
+    # Check if data is None or empty when fields are required
+    if not data and required_fields:
+        return False, "Request data is empty"
+        
+    # Check for required fields
+    if required_fields:
+        for field in required_fields:
+            if field not in data:
+                return False, f"Missing required field: {field}"
+                
+    # Apply field-specific validators
+    if field_validators and data:
+        for field, validator in field_validators.items():
+            if field in data:
+                is_valid, error = validator(data[field])
+                if not is_valid:
+                    return False, f"Invalid {field}: {error}"
+                    
+    return True, None
+
+def sanitize_url(url):
+    """
+    Sanitize a URL to prevent potential issues with special characters
+    or encoding sequences that could cause problems.
+    
+    Args:
+        url: The URL to sanitize
+        
+    Returns:
+        Sanitized URL string safe for display and processing
+    """
+    if not url:
+        return ""
+        
+    try:
+        # Replace common problematic sequences
+        sanitized = url.replace('\0', '')  # Remove null bytes
+        
+        # Handle potential HTML entities and script tags
+        sanitized = sanitized.replace('<', '&lt;').replace('>', '&gt;')
+        
+        # Clean up any multi-encoding attempts
+        sanitized = re.sub(r'%(?:%)+', '%', sanitized)
+        
+        # Reduce multiple slashes to single slashes (except after protocol)
+        sanitized = re.sub(r'(?<!:)/{2,}', '/', sanitized)
+        
+        # Limit length to prevent DoS
+        if len(sanitized) > 2048:  # Standard URL length limit
+            sanitized = sanitized[:2048] + "..."
+            
+        return sanitized
+    except Exception as e:
+        logger.error(f"Error sanitizing URL: {str(e)}")
+        return "[INVALID URL]"
+
+def safe_write_file(target_path, content, mode="w"):
+    """
+    Safely write content to a file using a temporary file first to prevent 
+    race conditions and partial writes.
+    
+    Args:
+        target_path: Path to the final file location
+        content: Content to write to the file
+        mode: File mode ("w" for text, "wb" for binary)
+        
+    Returns:
+        Boolean indicating success or failure
+    """
+    import tempfile
+    import shutil
+    import os
+    
+    # Ensure the directory exists
+    target_dir = os.path.dirname(target_path)
+    if target_dir and not os.path.exists(target_dir):
+        try:
+            os.makedirs(target_dir, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Failed to create directory {target_dir}: {e}")
+            return False
+    
+    try:
+        # Create a temporary file in the same directory as the target
+        fd, temp_path = tempfile.mkstemp(dir=target_dir)
+        
+        try:
+            # Write content to temporary file
+            with os.fdopen(fd, mode) as f:
+                f.write(content)
+            
+            # Set the same permissions as the original file if it exists
+            if os.path.exists(target_path):
+                # Get original file stats
+                file_stat = os.stat(target_path)
+                # Apply same permissions to temp file
+                os.chmod(temp_path, file_stat.st_mode)
+                # If possible, match ownership too (may require root)
+                try:
+                    os.chown(temp_path, file_stat.st_uid, file_stat.st_gid)
+                except (AttributeError, PermissionError):
+                    pass  # Skip ownership matching if not supported or not permitted
+            
+            # Rename the temporary file to the target (atomic on POSIX)
+            shutil.move(temp_path, target_path)
+            
+            return True
+        except Exception as e:
+            # Clean up the temporary file if something went wrong
+            os.unlink(temp_path)
+            raise e
+    except Exception as e:
+        logger.error(f"Failed to safely write to {target_path}: {e}")
+        return False
+
+# Security event logging
+def log_security_event(event_type, message, details=None, level="warning"):
+    """
+    Log security-relevant events with proper categorization and details
+    
+    Args:
+        event_type: Type of security event (auth, access, blacklist, config)
+        message: Message describing the event
+        details: Additional details about the event (dict)
+        level: Log level (info, warning, error)
+    """
+    if details is None:
+        details = {}
+        
+    # Add client IP and timestamp
+    client_ip = getattr(request, 'remote_addr', 'unknown')
+    timestamp = datetime.now().isoformat()
+    
+    # Add username if authenticated
+    username = None
+    try:
+        username = auth.current_user()
+    except:
+        pass
+        
+    event = {
+        "timestamp": timestamp,
+        "client_ip": client_ip,
+        "username": username,
+        "event_type": event_type,
+        "message": message,
+        **details
+    }
+    
+    # Log using appropriate level
+    log_message = f"SECURITY EVENT [{event_type.upper()}]: {message} - {json.dumps(details)}"
+    if level == "info":
+        logger.info(log_message)
+    elif level == "error":
+        logger.error(log_message)
+    else:
+        logger.warning(log_message)
+        
+    # In a more advanced system, we might want to:
+    # 1. Write to a dedicated security log file
+    # 2. Store security events in a database table
+    # 3. Send alerts for critical events
+    
+    # Store in security_events table if it exists
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Create table if it doesn't exist
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS security_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            username TEXT,
+            client_ip TEXT,
+            message TEXT NOT NULL,
+            details TEXT
+        )
+        """)
+        conn.commit()
+        
+        # Insert the event
+        cursor.execute("""
+        INSERT INTO security_events 
+        (timestamp, event_type, username, client_ip, message, details)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            timestamp, 
+            event_type, 
+            username, 
+            client_ip, 
+            message, 
+            json.dumps(details)
+        ))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to store security event: {str(e)}")
+        
+    return event
+
+@app.route('/api/docs', methods=['GET'])
+@auth.login_required
+def get_api_docs():
+    """Get documentation for all API endpoints"""
+    api_docs = {
+        "version": "1.0.0",
+        "base_url": "/api",
+        "endpoints": [
+            {
+                "path": "/status",
+                "method": "GET",
+                "description": "Get current proxy service status",
+                "auth_required": True,
+                "parameters": [],
+                "response": {
+                    "status": "Success status",
+                    "data": {
+                        "proxy_status": "running|error",
+                        "timestamp": "ISO timestamp",
+                        "version": "API version"
+                    }
+                }
+            },
+            {
+                "path": "/settings",
+                "method": "GET",
+                "description": "Get all proxy settings",
+                "auth_required": True,
+                "parameters": [],
+                "response": {
+                    "status": "Success status",
+                    "data": [
+                        {
+                            "id": "Setting ID",
+                            "setting_name": "Setting name",
+                            "setting_value": "Setting value",
+                            "description": "Setting description"
+                        }
+                    ]
+                }
+            },
+            {
+                "path": "/settings/{setting_name}",
+                "method": "PUT",
+                "description": "Update a specific setting",
+                "auth_required": True,
+                "csrf_protected": True,
+                "parameters": [
+                    {
+                        "name": "value",
+                        "type": "string",
+                        "description": "New value for the setting",
+                        "required": True
+                    }
+                ],
+                "response": {
+                    "status": "Success status",
+                    "message": "Result message"
+                }
+            },
+            # Add documentation for IP blacklist endpoints
+            {
+                "path": "/ip-blacklist",
+                "method": "GET",
+                "description": "Get all blacklisted IPs",
+                "auth_required": True,
+                "parameters": [],
+                "response": {
+                    "status": "Success status",
+                    "data": [
+                        {
+                            "id": "Entry ID",
+                            "ip": "IP address or CIDR",
+                            "description": "Description",
+                            "added_date": "Date added"
+                        }
+                    ]
+                }
+            },
+            {
+                "path": "/ip-blacklist",
+                "method": "POST",
+                "description": "Add an IP to the blacklist",
+                "auth_required": True,
+                "csrf_protected": True,
+                "parameters": [
+                    {
+                        "name": "ip",
+                        "type": "string",
+                        "description": "IP address or CIDR notation",
+                        "required": True
+                    },
+                    {
+                        "name": "description",
+                        "type": "string",
+                        "description": "Description or reason for blacklisting",
+                        "required": False
+                    }
+                ],
+                "response": {
+                    "status": "Success status",
+                    "message": "Result message"
+                }
+            },
+            # Add documentation for logs endpoints
+            {
+                "path": "/logs",
+                "method": "GET",
+                "description": "Get proxy logs with pagination and filtering",
+                "auth_required": True,
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "type": "integer",
+                        "description": "Maximum number of logs to return (default: 100, max: 1000)",
+                        "required": False
+                    },
+                    {
+                        "name": "offset",
+                        "type": "integer",
+                        "description": "Offset for pagination (default: 0)",
+                        "required": False
+                    },
+                    {
+                        "name": "search",
+                        "type": "string",
+                        "description": "Search term to filter logs",
+                        "required": False
+                    },
+                    {
+                        "name": "sort",
+                        "type": "string",
+                        "description": "Field to sort by (timestamp, source_ip, destination, status, bytes)",
+                        "required": False
+                    },
+                    {
+                        "name": "order",
+                        "type": "string",
+                        "description": "Sort order (asc, desc)",
+                        "required": False
+                    }
+                ],
+                "response": {
+                    "status": "Success status",
+                    "data": "Array of log entries",
+                    "meta": {
+                        "total": "Total count of matching logs",
+                        "limit": "Current limit value",
+                        "offset": "Current offset value",
+                        "sort": "Current sort field",
+                        "order": "Current sort order"
+                    }
+                }
+            },
+            # Security-related endpoints
+            {
+                "path": "/security/rate-limits",
+                "method": "GET",
+                "description": "Get current rate limit status for all IPs",
+                "auth_required": True,
+                "parameters": [],
+                "response": {
+                    "status": "Success status",
+                    "data": "Array of rate limit records by IP",
+                    "meta": {
+                        "max_attempts": "Maximum allowed attempts",
+                        "window_seconds": "Rate limit window duration in seconds"
+                    }
+                }
+            },
+            # Maintenance endpoints
+            {
+                "path": "/maintenance/check-cert-security",
+                "method": "GET",
+                "description": "Check security of SSL certificates used for HTTPS filtering",
+                "auth_required": True,
+                "parameters": [],
+                "response": {
+                    "status": "Success status",
+                    "message": "Result message",
+                    "details": "Array of certificate issues (if any)"
+                }
+            }
+        ]
+    }
+    
+    return jsonify({
+        "status": "success",
+        "data": api_docs
+    })
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
