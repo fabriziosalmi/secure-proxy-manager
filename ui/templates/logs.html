@@ -147,6 +147,19 @@
 
 {% block extra_scripts %}
 <script>
+    // HTML escaping function to prevent XSS
+    function escapeHtml(text) {
+        if (text === null || text === undefined) {
+            return 'Unknown';
+        }
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     $(document).ready(function() {
         // Initial data
         let currentPage = 0;
@@ -400,11 +413,11 @@
                 
                 html += `
                     <tr class="${rowClass}">
-                        <td>${formattedDate}</td>
-                        <td>${log.source_ip || 'Unknown'}</td>
-                        <td>${log.destination || 'Unknown'}</td>
-                        <td>${log.status || 'Unknown'}</td>
-                        <td>${log.bytes !== undefined ? log.bytes : 'Unknown'}</td>
+                        <td>${escapeHtml(formattedDate)}</td>
+                        <td>${escapeHtml(log.source_ip)}</td>
+                        <td>${escapeHtml(log.destination)}</td>
+                        <td>${escapeHtml(log.status)}</td>
+                        <td>${escapeHtml(log.bytes)}</td>
                     </tr>
                 `;
             });

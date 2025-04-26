@@ -18,6 +18,8 @@ import re
 from os import R_OK
 from collections import defaultdict
 from contextlib import contextmanager
+import signal
+import sys
 
 # Rate limiting setup
 auth_attempts = defaultdict(list)
@@ -298,6 +300,14 @@ def csrf_protected(func):
                     "status": "error", 
                     "message": "CSRF token validation failed"
                 }), 403
+            
+            # Rotate CSRF token after state-changing operations
+            if hasattr(g, 'rotate_csrf') and g.rotate_csrf:
+                session.pop('csrf_token', None)
+                generate_csrf_token()
+                
+        # Flag to rotate the token after this request
+        g.rotate_csrf = True if request.method not in ['GET', 'HEAD', 'OPTIONS'] else False
         return func(*args, **kwargs)
     return wrapper
 
@@ -515,14 +525,18 @@ def get_logs():
         limit = 100
         offset = 0
     
-    # Validate sort column to prevent SQL injection
-    valid_sort_columns = ['timestamp', 'unix_timestamp', 'source_ip', 'destination', 'status', 'bytes']
-    if sort not in valid_sort_columns:
-        sort = 'timestamp'  # Default to timestamp if invalid
-    
-    # Validate order to prevent SQL injection
-    if order.lower() not in ['asc', 'desc']:
-        order = 'desc'  # Default to descending if invalid
+    # Define a mapping of allowed sort columns to their actual DB counterparts
+    valid_sort_mappings = {
+        'timestamp': 'timestamp',
+        'unix_timestamp': 'unix_timestamp', 
+        'source_ip': 'source_ip',
+        'destination': 'destination',
+        'status': 'status',
+        'bytes': 'bytes'
+    }
+
+    # Define allowed order directions
+    valid_orders = {'asc': 'ASC', 'desc': 'DESC'}
     
     conn = get_db()
     cursor = conn.cursor()
@@ -531,15 +545,24 @@ def get_logs():
     cursor.execute("PRAGMA table_info(proxy_logs)")
     columns = [column[1] for column in cursor.fetchall()]
     
-    # Determine the correct ORDER BY clause
-    # If sorting by timestamp and unix_timestamp exists, use unix_timestamp
-    effective_sort = sort
+    # Validate sorting parameters
+    if sort not in valid_sort_mappings:
+        sort = 'timestamp'  # Default to timestamp if invalid
+    
+    if order.lower() not in valid_orders:
+        order = 'desc'  # Default to descending if invalid
+    
+    # Determine the correct column name for sorting
+    column_name = valid_sort_mappings[sort]
+    
+    # Special case for timestamp
     if sort == 'timestamp' and 'unix_timestamp' in columns:
-        effective_sort = 'unix_timestamp'
+        column_name = 'unix_timestamp'
     
-    # Use parameterized queries to prevent SQL injection
-    order_by_clause = f"{effective_sort} {order.upper()}"
+    # Get the direction
+    direction = valid_orders[order.lower()]
     
+    # Base query with parameters
     if search:
         # Apply search to multiple fields with proper parameter binding
         query = f"""
@@ -547,13 +570,16 @@ def get_logs():
             WHERE source_ip LIKE ? 
             OR destination LIKE ? 
             OR status LIKE ?
-            ORDER BY {order_by_clause} LIMIT ? OFFSET ?
+            ORDER BY {column_name} {direction} LIMIT ? OFFSET ?
         """
         search_param = f"%{search}%"
         cursor.execute(query, (search_param, search_param, search_param, limit, offset))
     else:
-        cursor.execute(f"SELECT * FROM proxy_logs ORDER BY {order_by_clause} LIMIT ? OFFSET ?", 
-                     (limit, offset))
+        query = f"""
+            SELECT * FROM proxy_logs 
+            ORDER BY {column_name} {direction} LIMIT ? OFFSET ?
+        """
+        cursor.execute(query, (limit, offset))
                       
     logs = [dict(row) for row in cursor.fetchall()]
     
@@ -589,8 +615,27 @@ def get_logs():
 def import_logs():
     """Import logs from Squid access.log"""
     try:
-        parse_squid_logs()
-        return jsonify({"status": "success", "message": "Logs imported successfully"})
+        result = parse_squid_logs()
+        
+        # Check the status of the operation
+        if result["status"] == "success":
+            return jsonify({
+                "status": "success", 
+                "message": f"Logs imported successfully. Imported {result['imported_count']} entries with {result['error_count']} errors."
+            })
+        elif result["status"] == "warning":
+            # Return a warning but with a 200 status code
+            return jsonify({
+                "status": "warning", 
+                "message": result.get("message", "Warning during log import")
+            })
+        else:
+            # This is an error
+            logger.error(f"Error importing logs: {result.get('message', 'Unknown error')}")
+            return jsonify({
+                "status": "error", 
+                "message": result.get("message", "Error importing logs")
+            }), 500
     except Exception as e:
         logger.error(f"Error importing logs: {str(e)}")
         return jsonify({"status": "error", "message": f"Error importing logs: {str(e)}"}), 500
@@ -826,38 +871,42 @@ def reload_proxy_config():
 
 def update_domain_blacklist():
     """Update the domain blacklist file"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT domain FROM domain_blacklist")
-    domains = [row['domain'] for row in cursor.fetchall()]
-    
-    # Try multiple possible paths to ensure at least one works
-    config_paths = ['/config/domain_blacklist.txt', 'config/domain_blacklist.txt']
-    success = False
-    
-    for config_path in config_paths:
-        try:
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT domain FROM domain_blacklist")
+            domains = [row['domain'] for row in cursor.fetchall()]
             
-            # Write to config file
-            with open(config_path, 'w') as f:
-                f.write('\n'.join(domains))
+            # Try multiple possible paths to ensure at least one works
+            config_paths = ['/config/domain_blacklist.txt', 'config/domain_blacklist.txt']
+            success = False
             
-            logger.info(f"Domain blacklist updated at {config_path}")
-            success = True
-            break
-        except PermissionError as e:
-            logger.error(f"Permission denied writing to {config_path}: {e}")
-        except IOError as e:
-            logger.error(f"IO Error writing to {config_path}: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error writing to {config_path}: {e}")
-    
-    if not success:
-        logger.error("Failed to update domain blacklist file in any location")
-    
-    return success
+            for config_path in config_paths:
+                try:
+                    # Ensure directory exists
+                    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+                    
+                    # Write to config file
+                    with open(config_path, 'w') as f:
+                        f.write('\n'.join(domains))
+                    
+                    logger.info(f"Domain blacklist updated at {config_path}")
+                    success = True
+                    break
+                except PermissionError as e:
+                    logger.error(f"Permission denied writing to {config_path}: {e}")
+                except IOError as e:
+                    logger.error(f"IO Error writing to {config_path}: {e}")
+                except Exception as e:
+                    logger.error(f"Unexpected error writing to {config_path}: {e}")
+            
+            if not success:
+                logger.error("Failed to update domain blacklist file in any location")
+        
+        return success
+    except Exception as e:
+        logger.error(f"Error updating domain blacklist: {str(e)}")
+        return False
 
 def apply_settings():
     """Apply settings to proxy configuration"""
@@ -1092,22 +1141,44 @@ def apply_settings():
             
             # Validate container name to prevent command injection
             if not re.match(r'^[a-zA-Z0-9_-]+$', container_name):
-                logger.error(f"Invalid container name format: {container_name}")
-                return success and True  # Return True if we at least wrote a configuration file
+                error_msg = f"Invalid container name format: {container_name}"
+                logger.error(error_msg)
+                return False  # Return False to indicate failure
                 
-            subprocess.run(
-                ['docker', 'restart', container_name],
-                capture_output=True, check=True, timeout=20
+            # Check if the container exists before attempting restart
+            check_result = subprocess.run(
+                ['docker', 'inspect', container_name],
+                capture_output=True, check=False, timeout=10
             )
+            
+            if check_result.returncode != 0:
+                error_msg = f"Container '{container_name}' does not exist or is not accessible"
+                logger.error(error_msg)
+                return False  # Return False to indicate failure
+                
+            # Now restart the container
+            restart_result = subprocess.run(
+                ['docker', 'restart', container_name],
+                capture_output=True, check=False, timeout=20
+            )
+            
+            if restart_result.returncode != 0:
+                error_msg = f"Failed to restart container: {restart_result.stderr.decode('utf-8', errors='replace')}"
+                logger.error(error_msg)
+                return False
+                
             logger.info("Proxy container restarted successfully")
             
             # Wait for the container to come up
             time.sleep(5)
             
             return success
+        except subprocess.TimeoutExpired:
+            logger.error("Timeout expired when restarting proxy container")
+            return False
         except Exception as e:
             logger.error(f"Error restarting proxy container: {str(e)}")
-            return success and True  # Return True if we at least wrote a configuration file
+            return False  # Always return False on error to indicate failure
             
     except Exception as e:
         logger.error(f"Error applying settings: {str(e)}")
@@ -1284,10 +1355,13 @@ def parse_squid_logs():
 # Add background log parser with mutex
 _log_parser_lock = threading.Lock()
 
+# Create a shutdown event
+shutdown_event = threading.Event()
+
 def background_log_parser():
     """Parse logs in the background periodically"""
     global _log_parser_lock
-    while True:
+    while not shutdown_event.is_set():
         try:
             # Use a lock to prevent concurrent log parsing
             if _log_parser_lock.acquire(blocking=False):
@@ -1303,8 +1377,21 @@ def background_log_parser():
         except Exception as e:
             logger.error(f"Error in background log parsing: {str(e)}")
         
-        # Parse logs every 30 seconds
-        time.sleep(30)
+        # Wait for shutdown event or timeout
+        shutdown_event.wait(30)  # Parse logs every 30 seconds or exit if shutdown requested
+
+# Signal handler for graceful shutdown
+def signal_handler(sig, frame):
+    logger.info("Shutdown signal received, stopping background tasks...")
+    shutdown_event.set()
+    # Give threads a moment to terminate
+    time.sleep(1)
+    logger.info("Exiting application")
+    sys.exit(0)
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 # Start the background log parser in a separate thread
 log_parser_thread = threading.Thread(target=background_log_parser, daemon=True)
@@ -1336,33 +1423,34 @@ def get_log_stats():
         total_count = cursor.fetchone()[0]
         
         # Get blocked requests count (TCP_DENIED, 403, etc.)
-        cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%'")
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE ? OR status LIKE ? OR status LIKE ?", 
+                      ('%DENIED%', '%403%', '%BLOCKED%'))
         blocked_count = cursor.fetchone()[0]
         
-        # Get direct IP blocks count - use a simpler approach to avoid REGEXP issues
+        # Get direct IP blocks count - use a stronger approach with validation
         try:
-            # Replace complex, error-prone LIKE query with a more robust approach
+            # Try with user-defined function if available
+            conn.create_function("is_ip_address", 1, is_ip_address)
             cursor.execute("""
                 SELECT COUNT(*) FROM proxy_logs 
-                WHERE (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%')
-                AND (
-                    destination REGEXP '^https?://[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}' OR
-                    destination REGEXP '^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}'
-                )
-            """)
+                WHERE (status LIKE ? OR status LIKE ? OR status LIKE ?) 
+                AND is_ip_address(destination)
+            """, ('%DENIED%', '%403%', '%BLOCKED%'))
             ip_blocks_count = cursor.fetchone()[0]
-        except sqlite3.OperationalError:
-            # Fallback for SQLite without REGEXP support
-            # Count only clear IP addresses (simplified but more accurate than previous approach)
+        except (sqlite3.OperationalError, AttributeError):
+            # Simplified fallback without regex
+            # This is an approximation only looking at IP-like URLs
             cursor.execute("""
                 SELECT COUNT(*) FROM proxy_logs 
-                WHERE (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%')
+                WHERE (status LIKE ? OR status LIKE ? OR status LIKE ?)
                 AND (
-                    destination LIKE 'http://%.%.%.%' AND
-                    destination NOT LIKE 'http://%%.%%' AND  -- Exclude domains with dots between letters
-                    destination NOT LIKE 'http://%.%.%.%.%'  -- Exclude domains with 5+ segments
+                    (destination LIKE 'http://%.%.%.%' AND destination NOT LIKE 'http://%.%.%.%.%')
+                    OR
+                    (destination LIKE 'https://%.%.%.%' AND destination NOT LIKE 'https://%.%.%.%.%')
+                    OR
+                    destination LIKE '%.%.%.%'
                 )
-            """)
+            """, ('%DENIED%', '%403%', '%BLOCKED%'))
             ip_blocks_count = cursor.fetchone()[0]
         
         # Get timestamp of last import
@@ -1392,6 +1480,31 @@ def get_log_stats():
                 "last_import": None
             }
         })
+
+# Helper function to check if a string is an IP address
+def is_ip_address(text):
+    """Check if a string represents an IP address"""
+    # Extract potential IPs from URLs
+    if text.startswith('http://') or text.startswith('https://'):
+        # Extract the domain part from the URL
+        parts = text.split('/', 3)
+        if len(parts) >= 3:
+            text = parts[2]  # Get the domain part
+    
+    # Simple pattern matching for IPv4 addresses
+    pattern = r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$'
+    match = re.match(pattern, text)
+    
+    if not match:
+        return False
+    
+    # Validate each octet is in range 0-255
+    for octet in match.groups():
+        num = int(octet)
+        if num < 0 or num > 255:
+            return False
+    
+    return True
 
 def validate_setting(setting_name, setting_value):
     """Validate setting values to prevent injection and ensure proper types"""
@@ -1438,6 +1551,262 @@ def validate_setting(setting_name, setting_value):
             return False
     
     return True
+
+@app.route('/api/change-password', methods=['POST'])
+@auth.login_required
+@csrf_protected
+def change_password():
+    """Change user password with proper validation"""
+    data = request.get_json()
+    if not data or 'current_password' not in data or 'new_password' not in data:
+        return jsonify({"status": "error", "message": "Missing required password fields"}), 400
+    
+    current_password = data['current_password']
+    new_password = data['new_password']
+    
+    # Basic password complexity validation
+    if len(new_password) < 8:
+        return jsonify({"status": "error", "message": "Password must be at least 8 characters long"}), 400
+        
+    # Check for complexity (at least one number and one special character)
+    if not re.search(r'\d', new_password) or not re.search(r'[!@#$%^&*(),.?":{}|<>]', new_password):
+        return jsonify({
+            "status": "error", 
+            "message": "Password must contain at least one number and one special character"
+        }), 400
+    
+    # Get the current user
+    username = auth.current_user()
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+    user = cursor.fetchone()
+    
+    if not user:
+        return jsonify({"status": "error", "message": "User not found"}), 404
+    
+    # Verify current password
+    if not check_password_hash(user['password'], current_password):
+        logger.warning(f"Failed password change attempt for user {username} - incorrect current password")
+        return jsonify({"status": "error", "message": "Current password is incorrect"}), 403
+    
+    # Update password
+    new_password_hash = generate_password_hash(new_password)
+    cursor.execute("UPDATE users SET password = ? WHERE username = ?", (new_password_hash, username))
+    conn.commit()
+    
+    # Check if this was the default admin/admin password change
+    if username == 'admin' and check_password_hash(user['password'], 'admin'):
+        logger.info("Default admin password has been changed")
+        
+        # Update the default password flag in settings if it exists
+        cursor.execute("SELECT COUNT(*) FROM settings WHERE setting_name = 'default_password_changed'")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute(
+                "INSERT INTO settings (setting_name, setting_value, description) VALUES (?, ?, ?)",
+                ('default_password_changed', 'true', 'Flag indicating default admin password has been changed')
+            )
+        else:
+            cursor.execute(
+                "UPDATE settings SET setting_value = ? WHERE setting_name = ?",
+                ('true', 'default_password_changed')
+            )
+        conn.commit()
+    
+    logger.info(f"Password changed successfully for user {username}")
+    return jsonify({"status": "success", "message": "Password changed successfully"})
+
+@app.route('/api/maintenance/check-cert-security', methods=['GET'])
+@auth.login_required
+def check_cert_security():
+    """Check the security of SSL certificates used for HTTPS filtering"""
+    try:
+        cert_issues = []
+        
+        # Check for certificate existence
+        cert_paths = ['/config/ssl_cert.pem', 'config/ssl_cert.pem']
+        cert_found = False
+        
+        for cert_path in cert_paths:
+            if os.path.exists(cert_path):
+                cert_found = True
+                logger.info(f"Found SSL certificate at {cert_path}")
+                break
+        
+        if not cert_found:
+            cert_issues.append("SSL certificate not found at any expected location")
+        
+        # Check for certificate database existence
+        db_paths = ['/config/ssl_db', 'config/ssl_db']
+        db_found = False
+        
+        for db_path in db_paths:
+            if os.path.exists(db_path) and os.path.isdir(db_path) and os.listdir(db_path):
+                db_found = True
+                logger.info(f"Found SSL database at {db_path}")
+                break
+        
+        if not db_found:
+            cert_issues.append("SSL certificate database not found or empty")
+        
+        # Check certificate permissions if found
+        if cert_found:
+            try:
+                # Check for proper certificate format and expiration
+                import OpenSSL.crypto as crypto
+                import datetime
+                
+                with open(cert_path, 'r') as f:
+                    cert_data = f.read()
+                
+                try:
+                    # Try to load the certificate
+                    cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_data)
+                    
+                    # Check expiration
+                    expiry = datetime.datetime.strptime(cert.get_notAfter().decode('ascii'), '%Y%m%d%H%M%SZ')
+                    now = datetime.datetime.now()
+                    
+                    if expiry < now:
+                        cert_issues.append(f"SSL certificate has expired on {expiry.strftime('%Y-%m-%d')}")
+                    elif (expiry - now).days < 30:
+                        cert_issues.append(f"SSL certificate will expire soon (on {expiry.strftime('%Y-%m-%d')})")
+                    
+                    # Check key length
+                    key_length = cert.get_pubkey().bits()
+                    if key_length < 2048:
+                        cert_issues.append(f"SSL certificate uses a weak key length ({key_length} bits)")
+                    
+                except Exception as e:
+                    cert_issues.append(f"Invalid certificate format: {str(e)}")
+            except ImportError:
+                cert_issues.append("OpenSSL library not available for certificate validation")
+            except Exception as e:
+                cert_issues.append(f"Error validating certificate: {str(e)}")
+        
+        # Determine status based on issues found
+        if not cert_issues:
+            return jsonify({
+                "status": "success",
+                "message": "Certificate security checks passed",
+                "details": []
+            })
+        elif cert_found and db_found:
+            # We have certificates but there might be issues
+            return jsonify({
+                "status": "warning",
+                "message": "Certificate security check found issues",
+                "details": cert_issues
+            })
+        else:
+            # Critical issues - certificates missing
+            return jsonify({
+                "status": "error",
+                "message": "Certificate security check failed",
+                "details": cert_issues
+            }), 500
+    except Exception as e:
+        logger.error(f"Error checking certificate security: {str(e)}")
+        return jsonify({
+            "status": "error", 
+            "message": f"Error checking certificate security: {str(e)}",
+            "details": [str(e)]
+        }), 500
+
+@app.route('/api/security/rate-limits', methods=['GET'])
+@auth.login_required
+def get_rate_limits():
+    """Get current rate limit status for all IPs"""
+    # Only administrative users should have access to this endpoint
+    try:
+        now = datetime.now()
+        rate_limit_data = []
+        
+        for ip, attempts in auth_attempts.items():
+            # Clean up expired attempts first
+            valid_attempts = [t for t in attempts if (now - t).total_seconds() < RATE_LIMIT_WINDOW]
+            auth_attempts[ip] = valid_attempts
+            
+            # Only include IPs with active attempts
+            if valid_attempts:
+                rate_limit_data.append({
+                    'ip': ip,
+                    'attempt_count': len(valid_attempts),
+                    'is_blocked': len(valid_attempts) >= MAX_ATTEMPTS,
+                    'oldest_attempt': valid_attempts[0].isoformat() if valid_attempts else None,
+                    'newest_attempt': valid_attempts[-1].isoformat() if valid_attempts else None,
+                    'time_remaining': int(RATE_LIMIT_WINDOW - (now - valid_attempts[0]).total_seconds()) if valid_attempts else 0
+                })
+        
+        return jsonify({
+            "status": "success",
+            "data": rate_limit_data,
+            "meta": {
+                "max_attempts": MAX_ATTEMPTS,
+                "window_seconds": RATE_LIMIT_WINDOW
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error retrieving rate limit data: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error retrieving rate limit data: {str(e)}"
+        }), 500
+
+@app.route('/api/security/rate-limits/<ip>', methods=['DELETE'])
+@auth.login_required
+@csrf_protected
+def clear_rate_limit(ip):
+    """Reset rate limiting for a specific IP"""
+    try:
+        if ip in auth_attempts:
+            auth_attempts.pop(ip)
+            logger.info(f"Rate limit cleared for IP: {ip}")
+            return jsonify({
+                "status": "success",
+                "message": f"Rate limit for IP {ip} has been reset"
+            })
+        else:
+            return jsonify({
+                "status": "warning",
+                "message": f"No rate limit record found for IP {ip}"
+            })
+    except Exception as e:
+        logger.error(f"Error clearing rate limit for IP {ip}: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error clearing rate limit: {str(e)}"
+        }), 500
+
+def get_logs_by_ip(ip_address):
+    """Get logs filtered by a specific IP address using safe parameterized queries"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Use parameterized query with proper placeholders
+        cursor.execute(
+            "SELECT * FROM proxy_logs WHERE source_ip = ? ORDER BY timestamp DESC LIMIT 1000", 
+            (ip_address,)
+        )
+        
+        logs = [dict(row) for row in cursor.fetchall()]
+        
+        return {
+            "status": "success",
+            "data": logs,
+            "meta": {
+                "count": len(logs),
+                "ip": ip_address
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving logs for IP {ip_address}: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"Error retrieving logs: {str(e)}"
+        }
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
