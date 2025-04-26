@@ -3,6 +3,8 @@ import re
 import json
 import ipaddress
 import subprocess
+import time
+from datetime import datetime
 from flask import Flask, jsonify, request, send_file, redirect, send_from_directory
 from flask_cors import CORS
 
@@ -19,9 +21,40 @@ ALLOWED_DIRECT_IPS_PATH = os.path.join(SQUID_CONFIG_DIR, 'allowed_direct_ips.txt
 BAD_USER_AGENTS_PATH = os.path.join(SQUID_CONFIG_DIR, 'bad_user_agents.txt')
 SQUID_CONF_PATH = os.path.join(SQUID_CONFIG_DIR, 'squid.conf')
 
+# Commands - Docker-compatible commands for Squid control
+# Check if running in Docker and set appropriate commands
+IN_DOCKER = os.environ.get('RUNNING_IN_DOCKER', 'false').lower() == 'true'
+
+if IN_DOCKER:
+    SQUID_RELOAD_COMMAND = "squid -k reconfigure"
+    SQUID_RESTART_COMMAND = "squid -k shutdown && squid -N"
+    SQUID_START_COMMAND = "squid -N"
+    SQUID_STOP_COMMAND = "squid -k shutdown"
+    SQUID_STATUS_COMMAND = "pgrep -x squid > /dev/null && echo 'running' || echo 'stopped'"
+else:
+    # Traditional systemctl commands for non-Docker environments
+    SQUID_RELOAD_COMMAND = "sudo systemctl reload squid"
+    SQUID_RESTART_COMMAND = "sudo systemctl restart squid"
+    SQUID_START_COMMAND = "sudo systemctl start squid"
+    SQUID_STOP_COMMAND = "sudo systemctl stop squid"
+    SQUID_STATUS_COMMAND = "sudo systemctl status squid"
+
+# Squid monitoring configuration
+SQUID_HOST = os.environ.get('SQUID_HOST', 'localhost')
+SQUID_PORT = int(os.environ.get('SQUID_PORT', 3128))
+SQUID_CLIENT_BIN = os.environ.get('SQUID_CLIENT_BIN', 'squidclient')
+
+# Cache for metrics to avoid frequent calls to squid
+metrics_cache = {
+    'last_update': 0,
+    'cache_duration': 5,  # seconds
+    'data': {}
+}
+
 print(f"Base directory: {BASE_DIR}")
 print(f"Dashboard directory: {DASHBOARD_DIR}")
 print(f"Squid config directory: {SQUID_CONFIG_DIR}")
+print(f"Running in Docker: {IN_DOCKER}")
 
 # Make sure the directories exist
 for directory in [SQUID_CONFIG_DIR]:
@@ -52,12 +85,137 @@ def serve_static(filename):
         # Return 404 if file doesn't exist
         return f"File {filename} not found in {DASHBOARD_DIR}", 404
 
-# Commands
-SQUID_RELOAD_COMMAND = "sudo systemctl reload squid"
-SQUID_RESTART_COMMAND = "sudo systemctl restart squid"
-SQUID_START_COMMAND = "sudo systemctl start squid"
-SQUID_STOP_COMMAND = "sudo systemctl stop squid"
-SQUID_STATUS_COMMAND = "sudo systemctl status squid"
+# Squid Monitoring Utility Functions
+def get_squid_metrics(force_refresh=False):
+    """
+    Get Squid metrics using squidclient utility
+    Returns cached values if called frequently
+    """
+    current_time = time.time()
+    
+    # Return cached data if still valid
+    if not force_refresh and metrics_cache['last_update'] > 0:
+        if current_time - metrics_cache['last_update'] < metrics_cache['cache_duration']:
+            return metrics_cache['data']
+    
+    # Default metrics in case of failure
+    default_metrics = {
+        'clients': 0,
+        'connections': 0,
+        'maxClients': 100,
+        'maxConnections': 1000,
+        'cpu': 0.0,
+        'memory': 0.0,
+        'memoryMB': 0,
+        'diskUsageMB': 0,
+        'pid': 0,
+        'uptime': 'N/A',
+        'status': 'error',
+        'error': 'Failed to fetch Squid metrics'
+    }
+    
+    try:
+        # Check if squid is running first
+        status_result = subprocess.run(SQUID_STATUS_COMMAND, shell=True, capture_output=True, text=True)
+        if status_result.returncode != 0:
+            default_metrics['status'] = 'stopped'
+            default_metrics['error'] = 'Squid is not running'
+            metrics_cache['data'] = default_metrics
+            metrics_cache['last_update'] = current_time
+            return default_metrics
+
+        # Run squidclient to get metrics
+        cmd = f"{SQUID_CLIENT_BIN} -h {SQUID_HOST} -p {SQUID_PORT} mgr:info"
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
+        
+        if result.returncode != 0:
+            metrics_cache['data'] = default_metrics
+            metrics_cache['last_update'] = current_time
+            return default_metrics
+        
+        output = result.stdout
+        
+        # Parse the output to extract metrics
+        metrics = {
+            'clients': 0,
+            'connections': 0,
+            'maxClients': 100,
+            'maxConnections': 1000,
+            'cpu': 0.0,
+            'memory': 0.0,
+            'memoryMB': 0,
+            'diskUsageMB': 0,
+            'pid': 0,
+            'uptime': 'N/A',
+            'status': 'running',
+            'error': None
+        }
+        
+        # Extract client count
+        client_match = re.search(r'Number of HTTP clients: (\d+)', output)
+        if client_match:
+            metrics['clients'] = int(client_match.group(1))
+        
+        # Extract connection count
+        conn_match = re.search(r'Number of active connections: (\d+)', output)
+        if conn_match:
+            metrics['connections'] = int(conn_match.group(1))
+        
+        # Extract memory usage
+        mem_match = re.search(r'Total memory accounted: (\d+)', output)
+        if mem_match:
+            mem_kb = int(mem_match.group(1))
+            metrics['memoryMB'] = mem_kb // 1024  # Convert KB to MB
+            
+            # Get total system memory to calculate percentage
+            mem_info_cmd = "free -m | grep 'Mem:' | awk '{print $2}'"
+            mem_info = subprocess.run(mem_info_cmd, shell=True, capture_output=True, text=True)
+            if mem_info.returncode == 0 and mem_info.stdout.strip():
+                total_mem = int(mem_info.stdout.strip())
+                if total_mem > 0:
+                    metrics['memory'] = (metrics['memoryMB'] / total_mem) * 100
+        
+        # Extract disk usage (cache)
+        disk_match = re.search(r'Storage Swap size:\s+(\d+) KB', output)
+        if disk_match:
+            metrics['diskUsageMB'] = int(disk_match.group(1)) // 1024  # Convert KB to MB
+        
+        # Extract PID
+        pid_match = re.search(r'Process id: (\d+)', output)
+        if pid_match:
+            metrics['pid'] = int(pid_match.group(1))
+        
+        # Extract uptime
+        uptime_match = re.search(r'Service Up Time: ([\d\.\s]+)', output)
+        if uptime_match:
+            metrics['uptime'] = uptime_match.group(1).strip()
+        
+        # Extract CPU usage
+        # This is more complex and might need a separate command
+        cpu_cmd = f"ps -p {metrics['pid']} -o %cpu | tail -1" if metrics['pid'] > 0 else "echo 0"
+        cpu_result = subprocess.run(cpu_cmd, shell=True, capture_output=True, text=True)
+        if cpu_result.returncode == 0:
+            try:
+                metrics['cpu'] = float(cpu_result.stdout.strip())
+            except ValueError:
+                metrics['cpu'] = 0.0
+        
+        # Update the cache
+        metrics_cache['data'] = metrics
+        metrics_cache['last_update'] = current_time
+        
+        return metrics
+    
+    except subprocess.TimeoutExpired:
+        default_metrics['error'] = 'Squid metrics query timed out'
+        metrics_cache['data'] = default_metrics
+        metrics_cache['last_update'] = current_time
+        return default_metrics
+    except Exception as e:
+        default_metrics['error'] = str(e)
+        metrics_cache['data'] = default_metrics
+        metrics_cache['last_update'] = current_time
+        return default_metrics
 
 # Helper Functions
 def is_valid_ip(ip_str):
@@ -112,17 +270,39 @@ def write_list_file(file_path, items):
 @app.route('/api/status')
 def get_status():
     try:
-        result = subprocess.run(SQUID_STATUS_COMMAND, shell=True, capture_output=True, text=True)
-        if result.returncode == 0:
-            return jsonify({
-                'status': 'running',
-                'details': result.stdout
-            })
+        # Modified to handle Docker environment
+        if IN_DOCKER:
+            # Use pgrep to check if Squid is running
+            result = subprocess.run(SQUID_STATUS_COMMAND, shell=True, capture_output=True, text=True)
+            status_output = result.stdout.strip()
+            
+            if status_output == 'running':
+                # Get additional details about the running squid process
+                details_cmd = "ps -ef | grep -v grep | grep squid"
+                details_result = subprocess.run(details_cmd, shell=True, capture_output=True, text=True)
+                
+                return jsonify({
+                    'status': 'running',
+                    'details': details_result.stdout or 'Squid proxy is running'
+                })
+            else:
+                return jsonify({
+                    'status': 'stopped',
+                    'details': 'Squid proxy is not running'
+                })
         else:
-            return jsonify({
-                'status': 'stopped',
-                'details': result.stderr
-            })
+            # Original systemd implementation
+            result = subprocess.run(SQUID_STATUS_COMMAND, shell=True, capture_output=True, text=True)
+            if result.returncode == 0:
+                return jsonify({
+                    'status': 'running',
+                    'details': result.stdout
+                })
+            else:
+                return jsonify({
+                    'status': 'stopped',
+                    'details': result.stderr or 'Squid service is not running'
+                })
     except Exception as e:
         return jsonify({
             'status': 'error',
@@ -153,17 +333,47 @@ def control_squid():
         })
     
     try:
+        print(f"Executing command: {cmd}")
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-        if result.returncode == 0:
-            return jsonify({
-                'status': 'success',
-                'message': f'Squid {action_desc} successfully'
-            })
+        print(f"Command output: {result.stdout}, Error: {result.stderr}, Return code: {result.returncode}")
+        
+        # In Docker with direct commands, squid might return non-zero even on success
+        # For example, shutdown when squid isn't running returns non-zero
+        # So we need to check status based on action rather than just returncode
+        
+        if IN_DOCKER:
+            # For Docker, verify the result by checking the actual status
+            if action == 'stop':
+                # Check that Squid is actually stopped
+                status_result = subprocess.run("pgrep -x squid > /dev/null", shell=True)
+                success = status_result.returncode != 0  # Return code 0 means process found, which isn't what we want for 'stop'
+            else:
+                # For start/restart/reload, check that Squid is running
+                status_result = subprocess.run("pgrep -x squid > /dev/null", shell=True)
+                success = status_result.returncode == 0  # Return code 0 means process found
+                
+            if success:
+                return jsonify({
+                    'status': 'success',
+                    'message': f'Squid {action_desc} successfully'
+                })
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Failed to {action} Squid'
+                })
         else:
-            return jsonify({
-                'status': 'error',
-                'message': f'Failed to {action} Squid: {result.stderr}'
-            })
+            # Original logic for non-Docker
+            if result.returncode == 0:
+                return jsonify({
+                    'status': 'success',
+                    'message': f'Squid {action_desc} successfully'
+                })
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Failed to {action} Squid: {result.stderr}'
+                })
     except Exception as e:
         return jsonify({
             'status': 'error',
@@ -172,27 +382,55 @@ def control_squid():
 
 @app.route('/api/clients/count')
 def get_clients_count():
-    # In a real implementation, this would query Squid for active client connections
-    # For now, we'll return a placeholder
-    return jsonify({
-        'count': 3  # Placeholder
-    })
+    try:
+        metrics = get_squid_metrics()
+        return jsonify({
+            'count': metrics['clients'],
+            'status': metrics['status']
+        })
+    except Exception as e:
+        return jsonify({
+            'count': 0,
+            'status': 'error',
+            'message': str(e)
+        })
 
 @app.route('/api/stats/realtime')
 def get_realtime_stats():
-    # In a real implementation, this would query Squid for real-time statistics
-    # For now, we'll return placeholders
-    return jsonify({
-        'connections': 12,
-        'clients': 3,
-        'maxConnections': 1000,
-        'maxClients': 100,
-        'cpu': 2.5,
-        'memory': 12.3,
-        'memoryMB': 128,
-        'diskUsageMB': 256,
-        'pid': 1234
-    })
+    try:
+        # Force refresh if requested
+        force_refresh = request.args.get('refresh', 'false') == 'true'
+        metrics = get_squid_metrics(force_refresh)
+        
+        return jsonify({
+            'connections': metrics['connections'],
+            'clients': metrics['clients'],
+            'maxConnections': metrics['maxConnections'],
+            'maxClients': metrics['maxClients'],
+            'cpu': metrics['cpu'],
+            'memory': metrics['memory'],
+            'memoryMB': metrics['memoryMB'],
+            'diskUsageMB': metrics['diskUsageMB'],
+            'pid': metrics['pid'],
+            'uptime': metrics['uptime'],
+            'status': metrics['status'],
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'connections': 0,
+            'clients': 0,
+            'maxConnections': 1000,
+            'maxClients': 100,
+            'cpu': 0,
+            'memory': 0,
+            'memoryMB': 0,
+            'diskUsageMB': 0,
+            'pid': 0,
+            'timestamp': datetime.now().isoformat()
+        })
 
 @app.route('/api/security/feature-status')
 def get_feature_status():

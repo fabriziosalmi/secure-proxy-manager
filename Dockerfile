@@ -53,6 +53,11 @@ COPY supervisord.conf /etc/supervisord.conf
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Set environment variables
+ENV RUNNING_IN_DOCKER=true
+ENV SQUID_CONFIG_DIR=/etc/squid
+ENV DASHBOARD_DIR=/app/dashboard
+
 # Expose ports
 # 3128 for Squid proxy
 # 5000 for Flask dashboard
