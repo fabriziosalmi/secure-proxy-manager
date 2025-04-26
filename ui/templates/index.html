@@ -263,7 +263,7 @@
             });
         
         // Load recent logs
-        apiRequest('GET', 'logs?limit=5')
+        apiRequest('GET', 'logs?limit=5&sort=timestamp&order=desc')
             .then(function(response) {
                 if (response.status === 'success') {
                     const logs = response.data;

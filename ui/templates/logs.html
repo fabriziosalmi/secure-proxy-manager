@@ -65,11 +65,11 @@
                 <table class="table table-hover" id="logs-table">
                     <thead>
                         <tr>
-                            <th>Timestamp <i class="fas fa-sort"></i></th>
-                            <th>Source IP <i class="fas fa-sort"></i></th>
-                            <th>Destination <i class="fas fa-sort"></i></th>
-                            <th>Status <i class="fas fa-sort"></i></th>
-                            <th>Bytes <i class="fas fa-sort"></i></th>
+                            <th class="sortable" data-sort="timestamp">Timestamp <i class="fas fa-sort"></i></th>
+                            <th class="sortable" data-sort="source_ip">Source IP <i class="fas fa-sort"></i></th>
+                            <th class="sortable" data-sort="destination">Destination <i class="fas fa-sort"></i></th>
+                            <th class="sortable" data-sort="status">Status <i class="fas fa-sort"></i></th>
+                            <th class="sortable" data-sort="bytes">Bytes <i class="fas fa-sort"></i></th>
                         </tr>
                     </thead>
                     <tbody id="logs-data">
@@ -162,6 +162,8 @@
         let blockedCount = 0;
         let ipBlocksCount = 0;
         let lastImportTime = null;
+        let currentSortColumn = 'timestamp'; // Default sort by timestamp
+        let currentSortOrder = 'desc'; // Default sort order is descending (latest first)
         
         // Start auto refresh if enabled
         updateAutoRefresh();
@@ -244,6 +246,40 @@
             }
         });
         
+        // Add click handlers for sortable columns
+        $('.sortable').click(function() {
+            const column = $(this).data('sort');
+            
+            // If clicking the same column, toggle sort order
+            if (column === currentSortColumn) {
+                currentSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                // New column, default to descending order (latest first)
+                currentSortColumn = column;
+                currentSortOrder = 'desc';
+            }
+            
+            // Update sort icons
+            updateSortIcons();
+            
+            // Reload logs with new sort
+            loadLogs();
+        });
+        
+        // Function to update sort icons
+        function updateSortIcons() {
+            // Reset all icons
+            $('.sortable i').attr('class', 'fas fa-sort');
+            
+            // Set the active column's icon
+            const activeColumn = $(`.sortable[data-sort="${currentSortColumn}"]`);
+            if (currentSortOrder === 'asc') {
+                activeColumn.find('i').attr('class', 'fas fa-sort-up');
+            } else {
+                activeColumn.find('i').attr('class', 'fas fa-sort-down');
+            }
+        }
+        
         // Function to update auto refresh
         function updateAutoRefresh() {
             // Clear any existing interval
@@ -290,6 +326,9 @@
                 params += `&search=${encodeURIComponent(searchTerm)}`;
             }
             
+            // Add sort parameters
+            params += `&sort=${encodeURIComponent(currentSortColumn)}&order=${encodeURIComponent(currentSortOrder)}`;
+            
             return apiRequest('GET', `logs?${params}`)
                 .then(function(response) {
                     if (response.status === 'success') {
@@ -316,6 +355,9 @@
                         
                         // Get log statistics
                         getLogStats();
+                        
+                        // Update sort icons
+                        updateSortIcons();
                     }
                 })
                 .catch(function(error) {
@@ -470,6 +512,25 @@
                 clearInterval(autoImportInterval);
             }
         });
+        
+        // Initialize sort icons
+        updateSortIcons();
     });
 </script>
 {% endblock %}
+
+<style>
+/* Add styles for sortable columns */
+.sortable {
+    cursor: pointer;
+    position: relative;
+}
+
+.sortable:hover {
+    background-color: rgba(0,0,0,0.05);
+}
+
+.sortable i {
+    margin-left: 5px;
+}
+</style>
