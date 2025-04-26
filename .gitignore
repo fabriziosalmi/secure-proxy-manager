@@ -2,3 +2,5 @@
 logs/*
 secureproxy.db
 *.sqlite
+__pycache__
+*.pyc
