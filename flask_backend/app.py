@@ -26,12 +26,13 @@ SQUID_CONF_PATH = os.path.join(SQUID_CONFIG_DIR, 'squid.conf')
 IN_DOCKER = os.environ.get('RUNNING_IN_DOCKER', 'false').lower() == 'true'
 
 if IN_DOCKER:
-    # In Docker, use supervisorctl for control but pgrep for status
+    # In Docker, use supervisorctl for control but more robust status checks
     SQUID_RELOAD_COMMAND = "supervisorctl signal HUP squid"
     SQUID_RESTART_COMMAND = "supervisorctl restart squid"
     SQUID_START_COMMAND = "supervisorctl start squid"
     SQUID_STOP_COMMAND = "supervisorctl stop squid"
-    SQUID_STATUS_COMMAND = "pgrep -x squid > /dev/null && echo 'running' || echo 'stopped'"
+    # More reliable status check that doesn't require "squid" in the process name
+    SQUID_STATUS_COMMAND = "netstat -tulpn | grep -E ':(3128|8080)' > /dev/null && echo 'running' || echo 'stopped'"
 else:
     # Traditional systemctl commands for non-Docker environments
     SQUID_RELOAD_COMMAND = "sudo systemctl reload squid"
@@ -280,24 +281,47 @@ def get_status():
     try:
         # Modified to handle Docker environment
         if IN_DOCKER:
-            # Use pgrep to check if Squid is running
-            result = subprocess.run(SQUID_STATUS_COMMAND, shell=True, capture_output=True, text=True)
-            status_output = result.stdout.strip()
+            # First check using netstat (port check)
+            port_check = subprocess.run(SQUID_STATUS_COMMAND, shell=True, capture_output=True, text=True)
+            status_output = port_check.stdout.strip()
             
+            # If port check says running, trust it
             if status_output == 'running':
                 # Get additional details about the running squid process
-                details_cmd = "ps -ef | grep -v grep | grep squid"
+                details_cmd = "supervisorctl status squid && netstat -tulpn | grep -E ':(3128|8080)'"
                 details_result = subprocess.run(details_cmd, shell=True, capture_output=True, text=True)
                 
                 return jsonify({
                     'status': 'running',
                     'details': details_result.stdout or 'Squid proxy is running'
                 })
-            else:
+            
+            # Secondary check using squidclient as a more reliable indicator
+            client_check = subprocess.run(f"{SQUID_CLIENT_BIN} -h {SQUID_HOST} -p {SQUID_PORT} -t 1 mgr:info > /dev/null 2>&1", shell=True)
+            if client_check.returncode == 0:
+                # Squid is responding to queries
+                details_cmd = "supervisorctl status squid"
+                details_result = subprocess.run(details_cmd, shell=True, capture_output=True, text=True)
+                
                 return jsonify({
-                    'status': 'stopped',
-                    'details': 'Squid proxy is not running'
+                    'status': 'running',
+                    'details': details_result.stdout or 'Squid proxy is running and responding to queries'
                 })
+                
+            # Final check using supervisor (most reliable for process state)
+            supervisor_check = subprocess.run("supervisorctl status squid | grep RUNNING", shell=True, capture_output=True, text=True)
+            if supervisor_check.returncode == 0:
+                # Supervisor says it's running
+                return jsonify({
+                    'status': 'running',
+                    'details': 'Squid proxy is running according to supervisor'
+                })
+                
+            # All checks failed, safe to assume it's not running
+            return jsonify({
+                'status': 'stopped',
+                'details': 'Squid proxy is not running'
+            })
         else:
             # Original systemd implementation
             result = subprocess.run(SQUID_STATUS_COMMAND, shell=True, capture_output=True, text=True)
@@ -346,41 +370,101 @@ def control_squid():
         print(f"Command output: {result.stdout}, Error: {result.stderr}, Return code: {result.returncode}")
         
         # In Docker with direct commands, squid might return non-zero even on success
-        # For example, shutdown when squid isn't running returns non-zero
         # So we need to check status based on action rather than just returncode
         
         if IN_DOCKER:
-            # For Docker, verify the result by checking the actual status
+            # For Docker, verify the result by checking supervisor status first
+            supervisor_check = subprocess.run("supervisorctl status squid | grep RUNNING", shell=True, capture_output=True, text=True)
+            supervisor_success = supervisor_check.returncode == 0
+            
+            # Different verification approaches based on action
             if action == 'stop':
-                # Check that Squid is actually stopped
-                status_result = subprocess.run("pgrep -x squid > /dev/null", shell=True)
-                success = status_result.returncode != 0  # Return code 0 means process found, which isn't what we want for 'stop'
-            else:
-                # For start/restart/reload, poll until Squid is running (up to 10s)
-                success = False
-                for _ in range(10):
-                    status_result = subprocess.run("pgrep -x squid > /dev/null", shell=True)
-                    if status_result.returncode == 0:
-                        success = True
-                        break
-                    time.sleep(1)
-                # If failure after timeout, collect log snippet for diagnostics
-                if not success:
-                    try:
-                        log_cmd = "tail -n 20 /var/log/squid/cache.log"
-                        log_result = subprocess.run(log_cmd, shell=True, capture_output=True, text=True, timeout=2)
-                        error_details = log_result.stdout.strip() if log_result.returncode == 0 else "No log details available"
-                    except Exception:
-                        error_details = "Failed to retrieve log details"
-                    # Combine details into message for the frontend
-                    return jsonify({
-                        'status': 'error',
-                        'message': f'Failed to {action} Squid: {error_details}'
-                    })
+                # For stop, we want the process to be gone and port to be free
+                port_check = subprocess.run(f"netstat -tulpn | grep -E ':{SQUID_PORT}' > /dev/null", shell=True)
+                success = port_check.returncode != 0  # Port should NOT be in use
                 
-            if success:
+                # If success was determined, return immediately
+                if success:
+                    return jsonify({
+                        'status': 'success',
+                        'message': f'Squid {action_desc} successfully'
+                    })
+            else:
+                # For start/restart/reload, first check supervisor
+                if supervisor_success:
+                    # Supervisor says it's running, verify with port check
+                    port_check = subprocess.run(f"netstat -tulpn | grep -E ':{SQUID_PORT}' > /dev/null", shell=True)
+                    port_success = port_check.returncode == 0  # Port SHOULD be in use
+                    
+                    # If supervisor and port both indicate success, return immediately
+                    if port_success:
+                        return jsonify({
+                            'status': 'success',
+                            'message': f'Squid {action_desc} successfully'
+                        })
+                    
+                    # If only supervisor shows success, give it a bit more time to bind to port
+                    for _ in range(5):
+                        time.sleep(0.5)
+                        port_check = subprocess.run(f"netstat -tulpn | grep -E ':{SQUID_PORT}' > /dev/null", shell=True)
+                        if port_check.returncode == 0:
+                            return jsonify({
+                                'status': 'success',
+                                'message': f'Squid {action_desc} successfully'
+                            })
+                
+                # If we get here, we need to do the full checking routine
+                success = False
+                
+                # Try up to 15 times with shorter intervals
+                for i in range(15):
+                    # Check if squid is in RUNNING state according to supervisor
+                    supervisor_check = subprocess.run("supervisorctl status squid | grep RUNNING", shell=True, capture_output=True, text=True)
+                    if supervisor_check.returncode == 0:
+                        # Supervisor says it's running, check if port is open
+                        port_check = subprocess.run(f"netstat -tulpn | grep -E ':{SQUID_PORT}' > /dev/null", shell=True)
+                        if port_check.returncode == 0:
+                            # Finally, try squidclient to verify it's actually responding
+                            client_check = subprocess.run(f"{SQUID_CLIENT_BIN} -h {SQUID_HOST} -p {SQUID_PORT} -t 1 mgr:info > /dev/null 2>&1", shell=True)
+                            if client_check.returncode == 0:
+                                success = True
+                                break
+                    
+                    # Short sleep between checks
+                    time.sleep(0.3)
+            
+            # If still no success, get detailed diagnostics
+            if not success and action != 'stop':
+                # Get supervisor status
+                supervisor_status = subprocess.run("supervisorctl status squid", shell=True, capture_output=True, text=True).stdout
+                
+                # Get netstat info
+                netstat_info = subprocess.run(f"netstat -tulpn | grep -E ':{SQUID_PORT}'", shell=True, capture_output=True, text=True).stdout
+                
+                # Get recent log entries
+                try:
+                    log_cmd = "tail -n 20 /var/log/squid/cache.log"
+                    log_result = subprocess.run(log_cmd, shell=True, capture_output=True, text=True, timeout=2)
+                    error_details = log_result.stdout.strip() if log_result.returncode == 0 else "No log details available"
+                except Exception:
+                    error_details = "Failed to retrieve log details"
+                
+                # Compile diagnostic info
+                diagnostic = f"""
+Supervisor status: {supervisor_status}
+Port {SQUID_PORT} status: {"In use" if netstat_info else "Not in use"}
+Recent logs: {error_details}
+"""
+                
                 return jsonify({
-                    'status': 'success',
+                    'status': 'error',
+                    'message': f'Failed to {action} Squid. Diagnostics: {diagnostic}'
+                })
+            
+            # If we got here without returning, success is determined by the last check
+            if success or action == 'stop':
+                return jsonify({
+                    'status': 'success', 
                     'message': f'Squid {action_desc} successfully'
                 })
             else:
