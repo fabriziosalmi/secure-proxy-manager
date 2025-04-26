@@ -10,12 +10,16 @@ services:
       - ./logs:/logs
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
     environment:
       - FLASK_ENV=production
       - BACKEND_URL=http://backend:5000
       - BASIC_AUTH_USERNAME=admin
       - BASIC_AUTH_PASSWORD=admin
+      - REQUEST_TIMEOUT=30
+      - MAX_RETRIES=5
+      - BACKOFF_FACTOR=1.0
+      - RETRY_WAIT_AFTER_STARTUP=10
     networks:
       - proxy-network
     restart: unless-stopped
@@ -29,12 +33,20 @@ services:
       - ./config:/config
       - ./data:/data
       - ./logs:/logs
+      - /var/run/docker.sock:/var/run/docker.sock  # Mount Docker socket from host
     environment:
       - FLASK_ENV=production
       - PROXY_HOST=proxy
       - PROXY_PORT=3128
       - BASIC_AUTH_USERNAME=admin
       - BASIC_AUTH_PASSWORD=admin
+      - PROXY_CONTAINER_NAME=secure-proxy-proxy-1  # Add container name for restart commands
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     networks:
       - proxy-network
     restart: unless-stopped

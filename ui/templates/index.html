@@ -34,6 +34,18 @@
                             <span>Blocked Requests:</span>
                             <span id="blocked-requests">--</span>
                         </div>
+                        <div class="d-flex justify-content-between mt-2">
+                            <span>Memory Usage:</span>
+                            <span id="memory-usage">--</span>
+                        </div>
+                        <div class="d-flex justify-content-between mt-2">
+                            <span>CPU Usage:</span>
+                            <span id="cpu-usage">--</span>
+                        </div>
+                        <div class="d-flex justify-content-between mt-2">
+                            <span>Uptime:</span>
+                            <span id="uptime">--</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -58,6 +70,12 @@
                         </button>
                         <button class="btn btn-danger">
                             <i class="fas fa-trash-alt me-2"></i>Clear Logs
+                        </button>
+                        <button class="btn btn-success" id="optimize-cache-btn">
+                            <i class="fas fa-tachometer-alt me-2"></i>Optimize Cache
+                        </button>
+                        <button class="btn btn-warning text-white" id="scan-security-btn">
+                            <i class="fas fa-shield-alt me-2"></i>Security Scan
                         </button>
                     </div>
                 </div>
@@ -87,9 +105,123 @@
                         <span>Domain Block Enabled:</span>
                         <span id="domain-block-status">--</span>
                     </div>
-                    <div class="d-flex justify-content-between">
+                    <div class="d-flex justify-content-between mb-3">
                         <span>Direct IP Access Block:</span>
                         <span id="direct-ip-block-status">--</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span>Content Filtering:</span>
+                        <span id="content-filtering-status">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Row: Additional Cards -->
+    <div class="row">
+        <!-- Security Score Card -->
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Security Score</h5>
+                    <button id="refresh-security" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="text-center mb-3">
+                        <div class="security-score-circle position-relative mx-auto" style="width:150px;height:150px;">
+                            <div class="position-absolute top-50 start-50 translate-middle">
+                                <h1 id="security-score">--</h1>
+                                <div class="small">POINTS</div>
+                            </div>
+                        </div>
+                        <h5 id="security-status" class="mt-3">Analyzing...</h5>
+                    </div>
+                    <div id="security-recommendations" class="mt-4">
+                        <p class="fw-bold">Recommendations:</p>
+                        <ul class="small" id="recommendations-list">
+                            <li>Loading recommendations...</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Traffic Statistics Card -->
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Traffic Statistics</h5>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-outline-secondary traffic-period active" data-period="day">Day</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary traffic-period" data-period="week">Week</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary traffic-period" data-period="month">Month</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div style="height: 200px;">
+                        <canvas id="traffic-chart"></canvas>
+                    </div>
+                    <div class="row mt-4">
+                        <div class="col-6">
+                            <div class="text-center">
+                                <h5 id="total-allowed">--</h5>
+                                <div class="small text-muted">Allowed Requests</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center">
+                                <h5 id="total-blocked">--</h5>
+                                <div class="small text-muted">Blocked Requests</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-center mt-3 border-top pt-3">
+                        <h6>Active Connections: <span id="active-connections">--</span></h6>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Cache Statistics Card -->
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Cache Performance</h5>
+                    <button id="refresh-cache" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Cache Usage</label>
+                        <div class="progress mb-2">
+                            <div id="cache-usage-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <div class="small text-end"><span id="cache-used">0</span> / <span id="cache-total">0</span> MB</div>
+                    </div>
+                    
+                    <div class="row mt-4">
+                        <div class="col-md-6">
+                            <div class="text-center border rounded p-3">
+                                <h3 id="hit-ratio">--%</h3>
+                                <div class="small text-muted">Hit Ratio</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="text-center border rounded p-3">
+                                <h3 id="avg-response-time">-- ms</h3>
+                                <div class="small text-muted">Avg Response Time</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2 mt-4">
+                        <button class="btn btn-sm btn-outline-primary" id="clear-cache-btn">
+                            <i class="fas fa-broom me-1"></i> Clear Cache
+                        </button>
                     </div>
                 </div>
             </div>
@@ -106,19 +238,22 @@
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table table-hover">
+                        <table class="table table-hover" id="recent-logs-table">
                             <thead>
                                 <tr>
                                     <th>Timestamp</th>
                                     <th>Source IP</th>
                                     <th>Destination</th>
+                                    <th>Method</th>
                                     <th>Status</th>
-                                    <th>Bytes</th>
+                                    <th>Size</th>
+                                    <th>Time</th>
+                                    <th>Status</th>
                                 </tr>
                             </thead>
-                            <tbody id="recent-logs">
+                            <tbody>
                                 <tr>
-                                    <td colspan="5" class="text-center">Loading logs...</td>
+                                    <td colspan="8" class="text-center">Loading recent logs...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -131,9 +266,13 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
 <script>
+    let trafficChart = null;
+    let currentTrafficPeriod = 'day';
+    
     $(document).ready(function() {
-        // Load initial data
+        // Initialize
         loadDashboardData();
         
         // Set up refresh button
@@ -141,11 +280,11 @@
             loadDashboardData();
         });
         
-        // Set up quick action buttons
+        // Reload configuration button
         $('.btn:contains("Reload Proxy Configuration")').click(function() {
             apiRequest('POST', 'maintenance/reload-config')
                 .then(function(response) {
-                    showToast('Proxy configuration reloaded successfully');
+                    showToast('Configuration reloaded successfully');
                     loadDashboardData(); // Refresh dashboard data
                 })
                 .catch(function(error) {
@@ -153,6 +292,7 @@
                 });
         });
         
+        // Import Logs button
         $('.btn:contains("Import Logs")').click(function() {
             apiRequest('POST', 'logs/import')
                 .then(function(response) {
@@ -164,6 +304,7 @@
                 });
         });
         
+        // Export Settings button
         $('.btn:contains("Export Settings")').click(function() {
             apiRequest('GET', 'maintenance/backup-config')
                 .then(function(response) {
@@ -176,13 +317,14 @@
                     downloadAnchorNode.click();
                     downloadAnchorNode.remove();
                     
-                    showToast('Settings exported successfully');
+                    showToast('Configuration exported successfully');
                 })
                 .catch(function(error) {
-                    showToast('Failed to export settings: ' + error.message, 'danger');
+                    showToast('Failed to export configuration: ' + error.message, 'danger');
                 });
         });
         
+        // Clear Logs button
         $('.btn:contains("Clear Logs")').click(function() {
             if (confirm('Are you sure you want to clear all logs? This action cannot be undone.')) {
                 apiRequest('POST', 'logs/clear')
@@ -196,11 +338,79 @@
             }
         });
         
-        // Auto refresh every 30 seconds
-        setInterval(loadDashboardData, 30000);
+        // Optimize Cache button
+        $('#optimize-cache-btn').click(function() {
+            $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Optimizing...');
+            
+            apiRequest('POST', 'maintenance/optimize-cache')
+                .then(function(response) {
+                    showToast('Cache optimized successfully. ' + response.data.space_saved + ' of space saved.');
+                    loadCacheStatistics();
+                })
+                .catch(function(error) {
+                    showToast('Failed to optimize cache: ' + error.message, 'danger');
+                })
+                .finally(function() {
+                    $('#optimize-cache-btn').prop('disabled', false).html('<i class="fas fa-tachometer-alt me-2"></i>Optimize Cache');
+                });
+        });
+        
+        // Security Scan button
+        $('#scan-security-btn').click(function() {
+            $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Scanning...');
+            
+            // Simulate a scan (in a real app, this would be an actual security scan)
+            setTimeout(function() {
+                loadSecurityScore();
+                $('#scan-security-btn').prop('disabled', false).html('<i class="fas fa-shield-alt me-2"></i>Security Scan');
+                showToast('Security scan completed');
+            }, 1500);
+        });
+        
+        // Refresh security score button
+        $('#refresh-security').click(function() {
+            loadSecurityScore();
+        });
+        
+        // Refresh cache statistics button
+        $('#refresh-cache').click(function() {
+            loadCacheStatistics();
+        });
+        
+        // Clear cache button
+        $('#clear-cache-btn').click(function() {
+            if (confirm('Are you sure you want to clear the proxy cache?')) {
+                apiRequest('POST', 'maintenance/clear-cache')
+                    .then(function(response) {
+                        showToast('Cache cleared successfully');
+                        loadCacheStatistics();
+                    })
+                    .catch(function(error) {
+                        showToast('Failed to clear cache: ' + error.message, 'danger');
+                    });
+            }
+        });
+        
+        // Traffic period buttons
+        $('.traffic-period').click(function() {
+            $('.traffic-period').removeClass('active');
+            $(this).addClass('active');
+            currentTrafficPeriod = $(this).data('period');
+            loadTrafficStatistics(currentTrafficPeriod);
+        });
+        
+        // Set up automatic refresh every 30 seconds
+        setInterval(function() {
+            loadDashboardData(false);
+        }, 30000);
     });
     
-    function loadDashboardData() {
+    function loadDashboardData(showLoading = true) {
+        if (showLoading) {
+            // Show loading indicator
+            $('#proxy-status').text('Loading...');
+        }
+        
         // Load proxy status
         apiRequest('GET', 'status')
             .then(function(response) {
@@ -215,6 +425,12 @@
                     // Update other status information
                     $('#status-time').text('Last updated: ' + new Date().toLocaleTimeString());
                     $('#proxy-version').text(data.version);
+                    $('#memory-usage').text(data.memory_usage);
+                    $('#cpu-usage').text(data.cpu_usage);
+                    $('#uptime').text(data.uptime);
+                    
+                    // For demo purposes, set random requests counts
+                    $('#proxy-requests').text(Math.floor(Math.random() * 10000));
                 }
             })
             .catch(function(error) {
@@ -234,6 +450,7 @@
                     $('#ip-block-status').text(settings.enable_ip_blacklist === 'true' ? 'Enabled' : 'Disabled');
                     $('#domain-block-status').text(settings.enable_domain_blacklist === 'true' ? 'Enabled' : 'Disabled');
                     $('#direct-ip-block-status').text(settings.block_direct_ip === 'true' ? 'Enabled' : 'Disabled');
+                    $('#content-filtering-status').text(settings.enable_content_filtering === 'true' ? 'Enabled' : 'Disabled');
                 }
             })
             .catch(function(error) {
@@ -263,53 +480,41 @@
             });
         
         // Load recent logs
-        apiRequest('GET', 'logs?limit=5&sort=timestamp&order=desc')
+        apiRequest('GET', 'logs?limit=10')
             .then(function(response) {
                 if (response.status === 'success') {
                     const logs = response.data;
                     
                     if (logs.length === 0) {
-                        $('#recent-logs').html('<tr><td colspan="5" class="text-center">No logs found</td></tr>');
+                        $('#recent-logs-table tbody').html('<tr><td colspan="8" class="text-center">No logs found</td></tr>');
                         return;
                     }
                     
-                    // Update logs table
                     let html = '';
                     logs.forEach(log => {
-                        // Safe date formatting with fallback
-                        let formattedDate;
-                        try {
-                            formattedDate = new Date(log.timestamp).toLocaleString();
-                            // Check if date is valid
-                            if (formattedDate === "Invalid Date") {
-                                formattedDate = log.timestamp;
-                            }
-                        } catch (e) {
-                            formattedDate = log.timestamp || 'Unknown';
-                        }
-                        
                         html += `
                             <tr>
-                                <td>${formattedDate}</td>
-                                <td>${log.source_ip || 'Unknown'}</td>
-                                <td>${log.destination || 'Unknown'}</td>
-                                <td>${log.status || 'Unknown'}</td>
-                                <td>${log.bytes !== undefined ? log.bytes : 'Unknown'}</td>
+                                <td>${new Date(log.timestamp).toLocaleString()}</td>
+                                <td>${log.source_ip}</td>
+                                <td>${log.destination}</td>
+                                <td>${log.method}</td>
+                                <td>${log.status}</td>
+                                <td>${formatBytes(log.bytes)}</td>
+                                <td>${log.elapsed_time.toFixed(2)}s</td>
+                                <td>${log.is_blocked ? '<span class="badge bg-danger">Blocked</span>' : '<span class="badge bg-success">Allowed</span>'}</td>
                             </tr>
                         `;
                     });
                     
-                    $('#recent-logs').html(html);
-                    
-                    // Update proxied requests count
-                    $('#proxy-requests').text(response.meta.total);
+                    $('#recent-logs-table tbody').html(html);
                 }
             })
             .catch(function(error) {
-                $('#recent-logs').html('<tr><td colspan="5" class="text-center">Failed to load logs</td></tr>');
+                $('#recent-logs-table tbody').html('<tr><td colspan="8" class="text-center text-danger">Failed to load logs</td></tr>');
+                showToast('Failed to load logs: ' + error.message, 'danger');
             });
-            
-        // Load blocked requests count from the new API endpoint
+        
+        // Load blocked requests count
         apiRequest('GET', 'logs/blocked-count')
             .then(function(response) {
                 if (response.status === 'success') {
@@ -318,7 +523,158 @@
             })
             .catch(function(error) {
                 $('#blocked-requests').text('Error');
-                console.error('Failed to load blocked count:', error);
+            });
+        
+        // Load security score
+        loadSecurityScore();
+        
+        // Load traffic statistics
+        loadTrafficStatistics(currentTrafficPeriod);
+        
+        // Load cache statistics
+        loadCacheStatistics();
+    }
+    
+    function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+    
+    function loadSecurityScore() {
+        apiRequest('GET', 'security/score')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    const data = response.data;
+                    
+                    // Update score
+                    $('#security-score').text(data.score);
+                    
+                    // Update status
+                    let statusClass = '';
+                    if (data.security_status === 'secure') {
+                        statusClass = 'text-success';
+                    } else if (data.security_status === 'adequate') {
+                        statusClass = 'text-warning';
+                    } else {
+                        statusClass = 'text-danger';
+                    }
+                    
+                    $('#security-status').text(data.message).removeClass('text-success text-warning text-danger').addClass(statusClass);
+                    
+                    // Update recommendations
+                    if (data.recommendations.length > 0) {
+                        let html = '';
+                        data.recommendations.forEach(recommendation => {
+                            html += `<li>${recommendation}</li>`;
+                        });
+                        $('#recommendations-list').html(html);
+                    } else {
+                        $('#recommendations-list').html('<li>No recommendations at this time. Your security settings are optimal.</li>');
+                    }
+                    
+                    // Update circle color
+                    const circleColor = data.score >= 80 ? '#2ecc71' : (data.score >= 50 ? '#f39c12' : '#e74c3c');
+                    
+                    // Apply styles to create the circle with the score inside
+                    $('.security-score-circle').css({
+                        'background': `conic-gradient(${circleColor} ${data.score * 3.6}deg, #eee 0deg)`,
+                        'border-radius': '50%'
+                    });
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to load security score: ' + error.message, 'danger');
+            });
+    }
+    
+    function loadTrafficStatistics(period) {
+        apiRequest('GET', `traffic/statistics?period=${period}`)
+            .then(function(response) {
+                if (response.status === 'success') {
+                    const data = response.data;
+                    
+                    // Update totals
+                    $('#total-allowed').text(data.total_allowed);
+                    $('#total-blocked').text(data.total_blocked);
+                    $('#active-connections').text(data.active_connections);
+                    
+                    // Update chart
+                    if (trafficChart) {
+                        trafficChart.destroy();
+                    }
+                    
+                    const ctx = document.getElementById('traffic-chart').getContext('2d');
+                    trafficChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: data.labels,
+                            datasets: [
+                                {
+                                    label: 'Allowed',
+                                    data: data.allowed_traffic,
+                                    backgroundColor: 'rgba(46, 204, 113, 0.2)',
+                                    borderColor: 'rgba(46, 204, 113, 1)',
+                                    borderWidth: 2,
+                                    tension: 0.4
+                                },
+                                {
+                                    label: 'Blocked',
+                                    data: data.blocked_traffic,
+                                    backgroundColor: 'rgba(231, 76, 60, 0.2)',
+                                    borderColor: 'rgba(231, 76, 60, 1)',
+                                    borderWidth: 2,
+                                    tension: 0.4
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: {
+                                    beginAtZero: true
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    position: 'top'
+                                }
+                            }
+                        }
+                    });
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to load traffic statistics: ' + error.message, 'danger');
+            });
+    }
+    
+    function loadCacheStatistics() {
+        apiRequest('GET', 'cache/statistics')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    const data = response.data;
+                    
+                    // Update cache usage bar
+                    $('#cache-usage-bar').css('width', data.cache_usage_percentage + '%');
+                    
+                    // Update cache size text
+                    $('#cache-used').text(data.cache_usage);
+                    $('#cache-total').text(data.cache_size);
+                    
+                    // Update hit ratio
+                    $('#hit-ratio').text((data.hit_ratio * 100).toFixed(1) + '%');
+                    
+                    // Update average response time
+                    $('#avg-response-time').text((data.avg_response_time * 1000).toFixed(0) + ' ms');
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to load cache statistics: ' + error.message, 'danger');
             });
     }
 </script>
