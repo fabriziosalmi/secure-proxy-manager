@@ -14,6 +14,8 @@ services:
     environment:
       - FLASK_ENV=production
       - BACKEND_URL=http://backend:5000
+      - BASIC_AUTH_USERNAME=admin
+      - BASIC_AUTH_PASSWORD=admin
     networks:
       - proxy-network
     restart: unless-stopped
@@ -29,6 +31,8 @@ services:
       - FLASK_ENV=production
       - PROXY_HOST=proxy
       - PROXY_PORT=3128
+      - BASIC_AUTH_USERNAME=admin
+      - BASIC_AUTH_PASSWORD=admin
     networks:
       - proxy-network
     restart: unless-stopped

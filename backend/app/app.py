@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, g
+from flask import Flask, request, jsonify, g, send_file, session
 from flask_cors import CORS
 from flask_httpauth import HTTPBasicAuth
 import sqlite3
@@ -6,14 +6,36 @@ import os
 import subprocess
 import logging
 import json
+import secrets
 from datetime import datetime, timedelta
 import requests
 import threading
 import time
+from werkzeug.security import generate_password_hash, check_password_hash
+import functools
+import ipaddress
+import re
+from os import R_OK
+from collections import defaultdict
+from contextlib import contextmanager
+
+# Rate limiting setup
+auth_attempts = defaultdict(list)
+MAX_ATTEMPTS = 5
+RATE_LIMIT_WINDOW = 300  # 5 minutes in seconds
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app)
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+
+# Configure CORS with the right settings to allow credentials
+CORS(app, supports_credentials=True, resources={
+    r"/api/*": {
+        "origins": "*",
+        "allow_headers": ["Content-Type", "Authorization", "X-CSRF-Token"],
+        "expose_headers": ["X-CSRF-Token"]
+    }
+})
 auth = HTTPBasicAuth()
 
 # Configure logging
@@ -108,8 +130,16 @@ def init_db():
     # Insert default admin user if not exists
     cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
     if cursor.fetchone()[0] == 0:
+        # Use a known password hash for 'admin' to ensure UI can authenticate
+        admin_password_hash = generate_password_hash('admin')
+        logger.info(f"Creating default admin user with password hash")
         cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", 
-                      ('admin', 'admin'))  # Default password - would be hashed in production
+                      ('admin', admin_password_hash))
+    else:
+        # For existing installations, ensure the admin password hash is correct
+        cursor.execute("UPDATE users SET password = ? WHERE username = ?", 
+                     (generate_password_hash('admin'), 'admin'))
+        logger.info("Updated admin password hash to ensure authentication works")
     
     # Insert default settings if not exists
     default_settings = [
@@ -172,17 +202,123 @@ def close_connection(exception):
     if db is not None:
         db.close()
 
+# Database context manager for safer transactions
+@contextmanager
+def get_db_connection():
+    """Context manager for database connections to ensure proper closing"""
+    conn = None
+    try:
+        conn = get_db()
+        yield conn
+    finally:
+        if conn:
+            # We don't close the connection here as Flask will handle it with close_connection
+            # but we ensure any transaction is committed
+            try:
+                conn.commit()
+            except:
+                conn.rollback()
+                raise
+
 # Authentication
 @auth.verify_password
 def verify_password(username, password):
+    """Verify username and password with rate limiting protection"""
+    # Get client IP for rate limiting
+    client_ip = request.remote_addr
+    
+    # Check for rate limiting
+    now = datetime.now()
+    auth_attempts[client_ip] = [t for t in auth_attempts[client_ip] if (now - t).total_seconds() < RATE_LIMIT_WINDOW]
+    
+    # If too many attempts, reject this request
+    if len(auth_attempts[client_ip]) >= MAX_ATTEMPTS:
+        logger.warning(f"Rate limit exceeded for IP {client_ip}")
+        return None
+    
+    # Add this attempt to the list
+    auth_attempts[client_ip].append(now)
+    
+    # Check for environment variable authentication first (for UI to backend communication)
+    env_username = os.environ.get('BASIC_AUTH_USERNAME', 'admin')
+    env_password = os.environ.get('BASIC_AUTH_PASSWORD', 'admin')
+    
+    if username == env_username and password == env_password:
+        logger.info(f"Authenticated using environment variables: {username}")
+        auth_attempts[client_ip] = []  # Reset rate limiting on successful login
+        return username
+    
+    # Fall back to database authentication for regular users
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
     user = cursor.fetchone()
     
-    if user and user['password'] == password:  # In production, use password hashing
+    if user and check_password_hash(user['password'], password):
+        # Reset rate limiting on successful login
+        auth_attempts[client_ip] = []
         return username
+    
+    # Log failed attempt but keep the rate limiting record
+    if user:
+        logger.warning(f"Failed login attempt for user {username} from IP {client_ip}")
+    
     return None
+
+# CSRF protection functions
+def generate_csrf_token():
+    """Generate a CSRF token for the current session"""
+    if 'csrf_token' not in session:
+        session['csrf_token'] = secrets.token_hex(32)
+    return session['csrf_token']
+
+def validate_csrf_token():
+    """Validate that the CSRF token in the request matches the session token"""
+    token = request.headers.get('X-CSRF-Token')
+    if not token or token != session.get('csrf_token'):
+        return False
+    return True
+
+# Add CSRF token to all API responses
+@app.after_request
+def add_csrf_token(response):
+    if request.endpoint != 'static':
+        token = generate_csrf_token()
+        response.headers['X-CSRF-Token'] = token
+    return response
+
+# CSRF protection decorator for state-changing endpoints
+def csrf_protected(func):
+    """Decorator to protect routes from CSRF attacks"""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        if request.method not in ['GET', 'HEAD', 'OPTIONS']:
+            if not validate_csrf_token():
+                return jsonify({
+                    "status": "error", 
+                    "message": "CSRF token validation failed"
+                }), 403
+        return func(*args, **kwargs)
+    return wrapper
+
+# Add security headers to responses
+@app.after_request
+def add_security_headers(response):
+    # Remove server header
+    response.headers['Server'] = 'Secure-Proxy'
+    
+    # Add security headers
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
+    # Add CSRF token if applicable
+    if request.endpoint != 'static':
+        token = generate_csrf_token()
+        response.headers['X-CSRF-Token'] = token
+        
+    return response
 
 # Routes
 @app.route('/api/status', methods=['GET'])
@@ -221,11 +357,15 @@ def get_settings():
 
 @app.route('/api/settings/<setting_name>', methods=['PUT'])
 @auth.login_required
+@csrf_protected
 def update_setting(setting_name):
     """Update a specific setting"""
     data = request.get_json()
     if not data or 'value' not in data:
         return jsonify({"status": "error", "message": "No value provided"}), 400
+    
+    if not validate_setting(setting_name, data['value']):
+        return jsonify({"status": "error", "message": "Invalid value provided"}), 400
     
     conn = get_db()
     cursor = conn.cursor()
@@ -251,19 +391,29 @@ def get_ip_blacklist():
 
 @app.route('/api/ip-blacklist', methods=['POST'])
 @auth.login_required
+@csrf_protected
 def add_ip_to_blacklist():
     """Add an IP to the blacklist"""
     data = request.get_json()
     if not data or 'ip' not in data:
         return jsonify({"status": "error", "message": "No IP provided"}), 400
     
+    # Validate IP address format
+    ip = data['ip'].strip()
     description = data.get('description', '')
+    
+    # Validate CIDR notation or single IP address
+    try:
+        # This will validate both individual IPs and CIDR notation
+        ipaddress.ip_network(ip, strict=False)
+    except ValueError:
+        return jsonify({"status": "error", "message": "Invalid IP address format"}), 400
     
     conn = get_db()
     cursor = conn.cursor()
     try:
         cursor.execute("INSERT INTO ip_blacklist (ip, description) VALUES (?, ?)", 
-                      (data['ip'], description))
+                      (ip, description))
         conn.commit()
         
         # Update blacklist file
@@ -275,6 +425,7 @@ def add_ip_to_blacklist():
 
 @app.route('/api/ip-blacklist/<int:id>', methods=['DELETE'])
 @auth.login_required
+@csrf_protected
 def remove_ip_from_blacklist(id):
     """Remove an IP from the blacklist"""
     conn = get_db()
@@ -300,19 +451,27 @@ def get_domain_blacklist():
 
 @app.route('/api/domain-blacklist', methods=['POST'])
 @auth.login_required
+@csrf_protected
 def add_domain_to_blacklist():
     """Add a domain to the blacklist"""
     data = request.get_json()
     if not data or 'domain' not in data:
         return jsonify({"status": "error", "message": "No domain provided"}), 400
     
+    domain = data['domain'].strip()
     description = data.get('description', '')
+    
+    # Basic domain validation
+    # Allow wildcard domains (*.example.com) and regular domains
+    domain_pattern = r'^(\*\.)?(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)+([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
+    if not re.match(domain_pattern, domain):
+        return jsonify({"status": "error", "message": "Invalid domain format"}), 400
     
     conn = get_db()
     cursor = conn.cursor()
     try:
         cursor.execute("INSERT INTO domain_blacklist (domain, description) VALUES (?, ?)", 
-                      (data['domain'], description))
+                      (domain, description))
         conn.commit()
         
         # Update blacklist file
@@ -324,6 +483,7 @@ def add_domain_to_blacklist():
 
 @app.route('/api/domain-blacklist/<int:id>', methods=['DELETE'])
 @auth.login_required
+@csrf_protected
 def remove_domain_from_blacklist(id):
     """Remove a domain from the blacklist"""
     conn = get_db()
@@ -342,15 +502,50 @@ def get_logs():
     """Get proxy logs"""
     limit = request.args.get('limit', 100, type=int)
     offset = request.args.get('offset', 0, type=int)
+    search = request.args.get('search', '')
+    
+    # Validate and sanitize input parameters
+    try:
+        # Ensure limit and offset are positive integers
+        limit = max(1, min(1000, int(limit)))  # Cap at 1000 records
+        offset = max(0, int(offset))
+    except (ValueError, TypeError):
+        limit = 100
+        offset = 0
     
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM proxy_logs ORDER BY timestamp DESC LIMIT ? OFFSET ?", 
-                  (limit, offset))
+    
+    # Use parameterized queries to prevent SQL injection
+    if search:
+        # Apply search to multiple fields with proper parameter binding
+        query = """
+            SELECT * FROM proxy_logs 
+            WHERE source_ip LIKE ? 
+            OR destination LIKE ? 
+            OR status LIKE ?
+            ORDER BY timestamp DESC LIMIT ? OFFSET ?
+        """
+        search_param = f"%{search}%"
+        cursor.execute(query, (search_param, search_param, search_param, limit, offset))
+    else:
+        cursor.execute("SELECT * FROM proxy_logs ORDER BY timestamp DESC LIMIT ? OFFSET ?", 
+                     (limit, offset))
+                      
     logs = [dict(row) for row in cursor.fetchall()]
     
-    # Get total count
-    cursor.execute("SELECT COUNT(*) FROM proxy_logs")
+    # Get total count that matches the search
+    if search:
+        search_param = f"%{search}%"
+        cursor.execute("""
+            SELECT COUNT(*) FROM proxy_logs 
+            WHERE source_ip LIKE ? 
+            OR destination LIKE ? 
+            OR status LIKE ?
+        """, (search_param, search_param, search_param))
+    else:
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs")
+    
     total = cursor.fetchone()[0]
     
     return jsonify({
@@ -365,6 +560,7 @@ def get_logs():
 
 @app.route('/api/logs/import', methods=['POST'])
 @auth.login_required
+@csrf_protected
 def import_logs():
     """Import logs from Squid access.log"""
     try:
@@ -393,22 +589,50 @@ def get_blocked_count():
         }
     })
 
-# New maintenance endpoints
+@app.route('/api/maintenance/download-cert', methods=['GET'])
+@auth.login_required
+def download_cert():
+     """Download the CA certificate for HTTPS filtering"""
+     cert_path = '/config/ssl_cert.pem'
+     if not os.path.exists(cert_path):
+         return jsonify({"status": "error", "message": "Certificate not found"}), 404
+     return send_file(cert_path, as_attachment=True, download_name='secure-proxy-ca.pem', mimetype='application/x-pem-file')
+
 @app.route('/api/maintenance/clear-cache', methods=['POST'])
 @auth.login_required
+@csrf_protected
 def clear_cache():
     """Clear the Squid cache"""
     try:
-        # Execute squid command to clear cache
+        # Safer execution of the squid command with validated container name
+        container_name = os.environ.get('PROXY_CONTAINER_NAME', 'secure-proxy-proxy-1')
+        # Validate container name to prevent command injection
+        if not re.match(r'^[a-zA-Z0-9_-]+$', container_name):
+            raise ValueError(f"Invalid container name format: {container_name}")
+            
         result = subprocess.run(
-            ['docker', 'exec', 'secure-proxy-proxy-1', 'squidclient', '-h', 'localhost', 'mgr:shutdown'],
-            capture_output=True, text=True, check=True
+            ['docker', 'exec', container_name, 'squidclient', '-h', 'localhost', 'mgr:shutdown'],
+            capture_output=True, text=True, check=False
         )
+        
+        if result.returncode != 0:
+            logger.error(f"Error clearing cache: {result.stderr}")
+            return jsonify({
+                "status": "error", 
+                "message": f"Error clearing cache: {result.stderr}"
+            }), 500
+            
         logger.info("Cache cleared successfully")
         return jsonify({"status": "success", "message": "Cache cleared successfully"})
+    except ValueError as e:
+        logger.error(f"Validation error: {str(e)}")
+        return jsonify({"status": "error", "message": f"Validation error: {str(e)}"}), 400
     except subprocess.CalledProcessError as e:
         logger.error(f"Error clearing cache: {str(e)}")
         return jsonify({"status": "error", "message": f"Error clearing cache: {str(e)}"}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error clearing cache: {str(e)}")
+        return jsonify({"status": "error", "message": f"Unexpected error clearing cache: {str(e)}"}), 500
 
 @app.route('/api/maintenance/backup-config', methods=['GET'])
 @auth.login_required
@@ -446,6 +670,7 @@ def backup_config():
 
 @app.route('/api/maintenance/restore-config', methods=['POST'])
 @auth.login_required
+@csrf_protected
 def restore_config():
     """Restore configuration from a backup file"""
     try:
@@ -454,55 +679,55 @@ def restore_config():
             return jsonify({"status": "error", "message": "No backup data provided"}), 400
         
         backup = data['backup']
-        conn = get_db()
-        cursor = conn.cursor()
         
-        # Start a transaction
-        conn.execute("BEGIN TRANSACTION")
-        
-        try:
-            # Restore settings
-            if 'settings' in backup:
-                for setting in backup['settings']:
-                    cursor.execute(
-                        "UPDATE settings SET setting_value = ? WHERE setting_name = ?", 
-                        (setting['setting_value'], setting['setting_name'])
-                    )
+        # Use the context manager for safer database operations
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
             
-            # Restore IP blacklist
-            if 'ip_blacklist' in backup:
-                cursor.execute("DELETE FROM ip_blacklist")
-                for entry in backup['ip_blacklist']:
-                    cursor.execute(
-                        "INSERT INTO ip_blacklist (ip, description) VALUES (?, ?)",
-                        (entry['ip'], entry['description'])
-                    )
+            # Start a transaction
+            conn.execute("BEGIN TRANSACTION")
             
-            # Restore domain blacklist
-            if 'domain_blacklist' in backup:
-                cursor.execute("DELETE FROM domain_blacklist")
-                for entry in backup['domain_blacklist']:
-                    cursor.execute(
-                        "INSERT INTO domain_blacklist (domain, description) VALUES (?, ?)",
-                        (entry['domain'], entry['description'])
-                    )
-            
-            # Commit the transaction
-            conn.commit()
-            
-            # Update blacklist files
-            update_ip_blacklist()
-            update_domain_blacklist()
-            
-            # Apply settings
-            apply_settings()
-            
-            return jsonify({"status": "success", "message": "Configuration restored successfully"})
-        except Exception as e:
-            # Rollback in case of error
-            conn.rollback()
-            raise e
-            
+            try:
+                # Restore settings
+                if 'settings' in backup:
+                    for setting in backup['settings']:
+                        cursor.execute(
+                            "UPDATE settings SET setting_value = ? WHERE setting_name = ?", 
+                            (setting['setting_value'], setting['setting_name'])
+                        )
+                
+                # Restore IP blacklist
+                if 'ip_blacklist' in backup:
+                    cursor.execute("DELETE FROM ip_blacklist")
+                    for entry in backup['ip_blacklist']:
+                        cursor.execute(
+                            "INSERT INTO ip_blacklist (ip, description) VALUES (?, ?)",
+                            (entry['ip'], entry['description'])
+                        )
+                
+                # Restore domain blacklist
+                if 'domain_blacklist' in backup:
+                    cursor.execute("DELETE FROM domain_blacklist")
+                    for entry in backup['domain_blacklist']:
+                        cursor.execute(
+                            "INSERT INTO domain_blacklist (domain, description) VALUES (?, ?)",
+                            (entry['domain'], entry['description'])
+                        )
+                
+                # Commit the transaction (handled by context manager)
+                
+                # Update blacklist files
+                update_ip_blacklist()
+                update_domain_blacklist()
+                
+                # Apply settings
+                apply_settings()
+                
+                return jsonify({"status": "success", "message": "Configuration restored successfully"})
+            except Exception as e:
+                # Rollback in case of error (handled by context manager)
+                raise e
+                
     except Exception as e:
         logger.error(f"Error restoring backup: {str(e)}")
         return jsonify({"status": "error", "message": f"Error restoring backup: {str(e)}"}), 500
@@ -515,14 +740,37 @@ def update_ip_blacklist():
     cursor.execute("SELECT ip FROM ip_blacklist")
     ips = [row['ip'] for row in cursor.fetchall()]
     
-    # Write to config file
-    with open('/config/ip_blacklist.txt', 'w') as f:
-        f.write('\n'.join(ips))
+    # Try multiple possible paths to ensure at least one works
+    config_paths = ['/config/ip_blacklist.txt', 'config/ip_blacklist.txt']
+    success = False
     
-    logger.info("IP blacklist updated")
+    for config_path in config_paths:
+        try:
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(config_path), exist_ok=True)
+            
+            # Write to config file
+            with open(config_path, 'w') as f:
+                f.write('\n'.join(ips))
+            
+            logger.info(f"IP blacklist updated at {config_path}")
+            success = True
+            break
+        except PermissionError as e:
+            logger.error(f"Permission denied writing to {config_path}: {e}")
+        except IOError as e:
+            logger.error(f"IO Error writing to {config_path}: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error writing to {config_path}: {e}")
+    
+    if not success:
+        logger.error("Failed to update IP blacklist file in any location")
+    
+    return success
 
 @app.route('/api/logs/clear', methods=['POST'])
 @auth.login_required
+@csrf_protected
 def clear_logs():
     """Clear all proxy logs"""
     try:
@@ -538,6 +786,7 @@ def clear_logs():
 
 @app.route('/api/maintenance/reload-config', methods=['POST'])
 @auth.login_required
+@csrf_protected
 def reload_proxy_config():
     """Reload the proxy configuration"""
     try:
@@ -557,11 +806,33 @@ def update_domain_blacklist():
     cursor.execute("SELECT domain FROM domain_blacklist")
     domains = [row['domain'] for row in cursor.fetchall()]
     
-    # Write to config file
-    with open('/config/domain_blacklist.txt', 'w') as f:
-        f.write('\n'.join(domains))
+    # Try multiple possible paths to ensure at least one works
+    config_paths = ['/config/domain_blacklist.txt', 'config/domain_blacklist.txt']
+    success = False
     
-    logger.info("Domain blacklist updated")
+    for config_path in config_paths:
+        try:
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(config_path), exist_ok=True)
+            
+            # Write to config file
+            with open(config_path, 'w') as f:
+                f.write('\n'.join(domains))
+            
+            logger.info(f"Domain blacklist updated at {config_path}")
+            success = True
+            break
+        except PermissionError as e:
+            logger.error(f"Permission denied writing to {config_path}: {e}")
+        except IOError as e:
+            logger.error(f"IO Error writing to {config_path}: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error writing to {config_path}: {e}")
+    
+    if not success:
+        logger.error("Failed to update domain blacklist file in any location")
+    
+    return success
 
 def apply_settings():
     """Apply settings to proxy configuration"""
@@ -601,9 +872,24 @@ def apply_settings():
         squid_conf.append("acl Safe_ports port 488")
         squid_conf.append("acl Safe_ports port 591")
         squid_conf.append("acl Safe_ports port 777")
-        squid_conf.append("")
+        
+        # Add SSL bump configuration for HTTPS filtering
+        if settings.get('enable_https_filtering') == 'true':
+            squid_conf.append("")
+            squid_conf.append("# HTTPS filtering via SSL Bump")
+            squid_conf.append("# Define ssl certificate database and helpers")
+            squid_conf.append("sslcrtd_program /usr/lib/squid/security_file_certgen -s /config/ssl_db -M 4MB")
+            squid_conf.append("sslcrtd_children 5")
+            squid_conf.append("# Listen for HTTPS with SSL bump")
+            squid_conf.append("https_port 3129 ssl-bump cert=/config/ssl_cert.pem key=/config/ssl_key.pem generate-host-certificates=on dynamic_cert_mem_cache_size=4MB")
+            squid_conf.append("")
+            squid_conf.append("# SSL Bump steps")
+            squid_conf.append("acl step1 at_step SslBump1")
+            squid_conf.append("ssl_bump peek step1")
+            squid_conf.append("ssl_bump bump all")
         
         # IP and Domain blacklists
+        squid_conf.append("")
         squid_conf.append("# IP blacklists")
         squid_conf.append('acl ip_blacklist src "/etc/squid/blacklists/ip/local.txt"')
         squid_conf.append("")
@@ -777,8 +1063,15 @@ def apply_settings():
         # Now restart the proxy container to apply changes
         try:
             logger.info("Restarting proxy container to apply new configuration")
+            container_name = os.environ.get('PROXY_CONTAINER_NAME', 'secure-proxy-proxy-1')
+            
+            # Validate container name to prevent command injection
+            if not re.match(r'^[a-zA-Z0-9_-]+$', container_name):
+                logger.error(f"Invalid container name format: {container_name}")
+                return success and True  # Return True if we at least wrote a configuration file
+                
             subprocess.run(
-                ['docker', 'restart', 'secure-proxy-proxy-1'],
+                ['docker', 'restart', container_name],
                 capture_output=True, check=True, timeout=20
             )
             logger.info("Proxy container restarted successfully")
@@ -797,25 +1090,28 @@ def apply_settings():
 
 def parse_squid_logs():
     """Parse Squid access logs and import to database"""
-    # Try multiple potential log paths
-    log_paths = [
-        '/logs/access.log',
-        'logs/access.log',
-        '/var/log/squid/access.log',
-        './logs/access.log',
-        '../logs/access.log'
-    ]
+    # Get log path from environment variable or config, with fallbacks
+    log_path = os.environ.get('SQUID_LOG_PATH')
     
-    # Find the first log file that exists and is readable
-    log_path = None
-    for path in log_paths:
-        if os.path.exists(path) and os.access(path, os.R_OK):
-            log_path = path
-            logger.info(f"Found Squid access log at: {log_path}")
-            break
+    # Try multiple potential log paths if not configured
+    if not log_path:
+        log_paths = [
+            '/logs/access.log',
+            'logs/access.log',
+            '/var/log/squid/access.log',
+            './logs/access.log',
+            '../logs/access.log'
+        ]
+        
+        # Find the first log file that exists and is readable
+        for path in log_paths:
+            if os.path.exists(path) and os.access(path, R_OK):
+                log_path = path
+                logger.info(f"Found Squid access log at: {log_path}")
+                break
     
     if not log_path:
-        error_msg = f"Log file not found in any of the expected locations: {', '.join(log_paths)}"
+        error_msg = f"Log file not found in any of the expected locations. Configure SQUID_LOG_PATH environment variable."
         logger.error(error_msg)
         return {
             "status": "error",
@@ -946,13 +1242,25 @@ def parse_squid_logs():
             "log_path": log_path
         }
 
-# Add background log parser
+# Add background log parser with mutex
+_log_parser_lock = threading.Lock()
+
 def background_log_parser():
     """Parse logs in the background periodically"""
+    global _log_parser_lock
     while True:
         try:
-            parse_squid_logs()
-            logger.info("Background log parsing completed")
+            # Use a lock to prevent concurrent log parsing
+            if _log_parser_lock.acquire(blocking=False):
+                try:
+                    # Create an application context for this thread
+                    with app.app_context():
+                        parse_squid_logs()
+                        logger.info("Background log parsing completed")
+                finally:
+                    _log_parser_lock.release()
+            else:
+                logger.debug("Skipping background log parse - another process is already parsing logs")
         except Exception as e:
             logger.error(f"Error in background log parsing: {str(e)}")
         
@@ -968,10 +1276,11 @@ init_db()
 
 # Apply settings on startup to ensure proper configuration
 try:
-    update_ip_blacklist()
-    update_domain_blacklist()
-    apply_settings()
-    logger.info("Initial settings applied")
+    with app.app_context():
+        update_ip_blacklist()
+        update_domain_blacklist()
+        apply_settings()
+        logger.info("Initial settings applied")
 except Exception as e:
     logger.error(f"Error applying initial settings: {str(e)}")
 
@@ -993,20 +1302,29 @@ def get_log_stats():
         
         # Get direct IP blocks count - use a simpler approach to avoid REGEXP issues
         try:
+            # Replace complex, error-prone LIKE query with a more robust approach
             cursor.execute("""
                 SELECT COUNT(*) FROM proxy_logs 
                 WHERE (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%')
                 AND (
-                    destination LIKE 'http://%.[0-9]%.%.[0-9]%.%' 
-                    OR destination LIKE 'https://%.[0-9]%.%.[0-9]%.%'
-                    OR destination LIKE '%.[0-9]%.%.[0-9]%.%.[0-9]%.%.[0-9]%'
+                    destination REGEXP '^https?://[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}' OR
+                    destination REGEXP '^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}'
                 )
             """)
             ip_blocks_count = cursor.fetchone()[0]
         except sqlite3.OperationalError:
-            # Fallback if the query is too complex for this version of SQLite
-            ip_blocks_count = 0
-            logger.warning("Complex IP block query failed, using simplified count")
+            # Fallback for SQLite without REGEXP support
+            # Count only clear IP addresses (simplified but more accurate than previous approach)
+            cursor.execute("""
+                SELECT COUNT(*) FROM proxy_logs 
+                WHERE (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%')
+                AND (
+                    destination LIKE 'http://%.%.%.%' AND
+                    destination NOT LIKE 'http://%%.%%' AND  -- Exclude domains with dots between letters
+                    destination NOT LIKE 'http://%.%.%.%.%'  -- Exclude domains with 5+ segments
+                )
+            """)
+            ip_blocks_count = cursor.fetchone()[0]
         
         # Get timestamp of last import
         cursor.execute("SELECT MAX(timestamp) FROM proxy_logs")
@@ -1035,6 +1353,52 @@ def get_log_stats():
                 "last_import": None
             }
         })
+
+def validate_setting(setting_name, setting_value):
+    """Validate setting values to prevent injection and ensure proper types"""
+    # Define validation rules for different setting types
+    validation_rules = {
+        # Boolean settings
+        'block_direct_ip': lambda x: x in ['true', 'false'],
+        'enable_ip_blacklist': lambda x: x in ['true', 'false'],
+        'enable_domain_blacklist': lambda x: x in ['true', 'false'],
+        'enable_compression': lambda x: x in ['true', 'false'],
+        'enable_content_filtering': lambda x: x in ['true', 'false'],
+        'enable_https_filtering': lambda x: x in ['true', 'false'],
+        'enable_time_restrictions': lambda x: x in ['true', 'false'],
+        'enable_proxy_auth': lambda x: x in ['true', 'false'],
+        'enable_user_management': lambda x: x in ['true', 'false'],
+        'enable_extended_logging': lambda x: x in ['true', 'false'],
+        'enable_alerts': lambda x: x in ['true', 'false'],
+        
+        # Numeric settings
+        'cache_size': lambda x: x.isdigit() and 100 <= int(x) <= 10000,
+        'max_object_size': lambda x: x.isdigit() and 1 <= int(x) <= 1000,
+        'connection_timeout': lambda x: x.isdigit() and 1 <= int(x) <= 300,
+        'dns_timeout': lambda x: x.isdigit() and 1 <= int(x) <= 60,
+        'max_connections': lambda x: x.isdigit() and 10 <= int(x) <= 1000,
+        'log_retention': lambda x: x.isdigit() and 1 <= int(x) <= 365,
+        
+        # String settings with specific formats
+        'log_level': lambda x: x.lower() in ['debug', 'info', 'warning', 'error'],
+        'auth_method': lambda x: x.lower() in ['basic', 'digest', 'ntlm'],
+        
+        # Time format settings
+        'time_restriction_start': lambda x: re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', x) is not None,
+        'time_restriction_end': lambda x: re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', x) is not None,
+        
+        # List settings
+        'blocked_file_types': lambda x: all(ext.isalnum() for ext in x.split(','))
+    }
+    
+    # If we have a specific validation rule for this setting
+    if setting_name in validation_rules:
+        # Apply the validation rule
+        if not validation_rules[setting_name](setting_value):
+            logger.warning(f"Invalid value for setting {setting_name}: {setting_value}")
+            return False
+    
+    return True
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

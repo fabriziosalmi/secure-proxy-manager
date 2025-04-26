@@ -80,10 +80,41 @@ def api_proxy(path):
         elif request.method == 'DELETE':
             resp = requests.delete(url, auth=API_AUTH)
         
-        return jsonify(resp.json()), resp.status_code
+        # Handle 401 Unauthorized responses explicitly
+        if resp.status_code == 401:
+            logger.error(f"Authentication failed with backend API: {resp.text}")
+            return jsonify({
+                "status": "error",
+                "message": "Authentication failed with backend API. Please check backend credentials.",
+                "backend_response": resp.text[:200]  # Limit response size
+            }), 500
+            
+        # Check if the response is valid JSON before trying to parse it
+        try:
+            response_data = resp.json()
+            return jsonify(response_data), resp.status_code
+        except json.JSONDecodeError as json_err:
+            logger.error(f"Backend returned invalid JSON: {str(json_err)}")
+            # Return the raw response and status code for debugging
+            return jsonify({
+                "status": "error", 
+                "message": f"Backend returned invalid JSON: {str(json_err)}",
+                "raw_response": resp.text[:500],  # Include start of raw response for debugging
+                "status_code": resp.status_code
+            }), 500
+            
+    except requests.RequestException as e:
+        logger.error(f"Error connecting to backend: {str(e)}")
+        return jsonify({
+            "status": "error", 
+            "message": f"Error connecting to backend: {str(e)}"
+        }), 500
     except Exception as e:
-        logger.error(f"Error proxying request to backend: {str(e)}")
-        return jsonify({"status": "error", "message": f"Backend API error: {str(e)}"}), 500
+        logger.error(f"Unexpected error proxying request to backend: {str(e)}")
+        return jsonify({
+            "status": "error", 
+            "message": f"Unexpected error proxying request to backend: {str(e)}"
+        }), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8011)
