@@ -8,6 +8,8 @@ import logging
 import json
 from datetime import datetime
 import requests
+import threading
+import time
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -508,8 +510,157 @@ def apply_settings():
     cursor.execute("SELECT setting_name, setting_value FROM settings")
     settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
     
-    # Apply settings logic here
-    logger.info("Settings applied")
+    try:
+        # Create custom squid configuration based on settings
+        squid_conf = []
+        
+        # Base configuration
+        squid_conf.append("http_port 3128")
+        squid_conf.append("visible_hostname secure-proxy")
+        squid_conf.append("")
+        
+        # Access control lists
+        squid_conf.append("# Access control lists")
+        squid_conf.append("acl localnet src 10.0.0.0/8")
+        squid_conf.append("acl localnet src 172.16.0.0/12")
+        squid_conf.append("acl localnet src 192.168.0.0/16")
+        squid_conf.append("acl localnet src fc00::/7")
+        squid_conf.append("acl localnet src fe80::/10")
+        squid_conf.append("")
+        
+        # SSL/HTTPS related ACLs
+        squid_conf.append("# SSL/HTTPS related ACLs")
+        squid_conf.append("acl SSL_ports port 443")
+        squid_conf.append("acl Safe_ports port 80")
+        squid_conf.append("acl Safe_ports port 443")
+        squid_conf.append("acl Safe_ports port 21")
+        squid_conf.append("acl Safe_ports port 70")
+        squid_conf.append("acl Safe_ports port 210")
+        squid_conf.append("acl Safe_ports port 1025-65535")
+        squid_conf.append("acl Safe_ports port 280")
+        squid_conf.append("acl Safe_ports port 488")
+        squid_conf.append("acl Safe_ports port 591")
+        squid_conf.append("acl Safe_ports port 777")
+        squid_conf.append("")
+        
+        # IP and Domain blacklists
+        squid_conf.append("# IP blacklists")
+        squid_conf.append('acl ip_blacklist src "/etc/squid/blacklists/ip/local.txt"')
+        squid_conf.append("")
+        squid_conf.append("# Domain blacklists")
+        squid_conf.append('acl domain_blacklist dstdomain "/etc/squid/blacklists/domain/local.txt"')
+        
+        # Content filtering if enabled
+        if settings.get('enable_content_filtering') == 'true' and settings.get('blocked_file_types'):
+            file_types = settings.get('blocked_file_types').split(',')
+            squid_conf.append("")
+            squid_conf.append("# File type blocking")
+            squid_conf.append('acl blocked_extensions urlpath_regex -i "\.(' + '|'.join(file_types) + ')$"')
+        
+        # Time restrictions if enabled
+        if settings.get('enable_time_restrictions') == 'true':
+            start_time = settings.get('time_restriction_start', '09:00')
+            end_time = settings.get('time_restriction_end', '17:00')
+            squid_conf.append("")
+            squid_conf.append("# Time restrictions")
+            squid_conf.append(f'acl allowed_hours time MTWHFA {start_time}-{end_time}')
+        
+        # Basic access control rules
+        squid_conf.append("")
+        squid_conf.append("# Basic access control")
+        squid_conf.append("http_access deny !Safe_ports")
+        squid_conf.append("http_access deny CONNECT !SSL_ports")
+        
+        # Apply blacklists if enabled
+        if settings.get('enable_ip_blacklist') == 'true':
+            squid_conf.append("http_access deny ip_blacklist")
+        
+        if settings.get('enable_domain_blacklist') == 'true':
+            squid_conf.append("http_access deny domain_blacklist")
+        
+        # Apply content filtering if enabled
+        if settings.get('enable_content_filtering') == 'true' and settings.get('blocked_file_types'):
+            squid_conf.append("http_access deny blocked_extensions")
+        
+        # Apply time restrictions if enabled
+        if settings.get('enable_time_restrictions') == 'true':
+            squid_conf.append("http_access deny !allowed_hours")
+        
+        # Block direct IP access if enabled
+        if settings.get('block_direct_ip') == 'true':
+            squid_conf.append("acl is_ipaddress dstdom_regex ^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$")
+            squid_conf.append("http_access deny is_ipaddress")
+        
+        # Allow local access
+        squid_conf.append("")
+        squid_conf.append("# Allow local network access")
+        squid_conf.append("http_access allow localhost")
+        squid_conf.append("http_access allow localnet")
+        
+        # Default deny rule
+        squid_conf.append("")
+        squid_conf.append("# Default deny")
+        squid_conf.append("http_access deny all")
+        
+        # Caching options
+        cache_size = settings.get('cache_size', '1000')  # Default 1GB
+        max_obj_size = settings.get('max_object_size', '50')  # Default 50MB
+        squid_conf.append("")
+        squid_conf.append("# Caching options")
+        squid_conf.append(f"cache_dir ufs /var/spool/squid {cache_size} 16 256")
+        squid_conf.append(f"maximum_object_size {max_obj_size} MB")
+        squid_conf.append("coredump_dir /var/spool/squid")
+        
+        # Compression if enabled
+        if settings.get('enable_compression') == 'true':
+            squid_conf.append("")
+            squid_conf.append("# Compression settings")
+            squid_conf.append("zph_mode off")
+            squid_conf.append("zph_local tos local-hit=0x30")
+            squid_conf.append("zph_sibling tos sibling-hit=0x31")
+            squid_conf.append("zph_parent tos parent-hit=0x32")
+            squid_conf.append("zph_option 136 tos miss=0x33")
+        
+        # Timeout settings
+        conn_timeout = settings.get('connection_timeout', '30')
+        dns_timeout = settings.get('dns_timeout', '5')
+        squid_conf.append("")
+        squid_conf.append("# Timeout settings")
+        squid_conf.append(f"connect_timeout {conn_timeout} seconds")
+        squid_conf.append(f"dns_timeout {dns_timeout} seconds")
+        
+        # Log settings
+        log_level = settings.get('log_level', 'info').upper()
+        squid_conf.append("")
+        squid_conf.append("# Log settings")
+        squid_conf.append(f"debug_options ALL,{log_level}")
+        squid_conf.append("access_log daemon:/var/log/squid/access.log squid")
+        squid_conf.append("cache_log /var/log/squid/cache.log")
+        squid_conf.append("cache_store_log stdio:/var/log/squid/store.log")
+        
+        # Add standard refresh patterns
+        squid_conf.append("")
+        squid_conf.append("# Refresh patterns")
+        squid_conf.append("refresh_pattern ^ftp:           1440    20%     10080")
+        squid_conf.append("refresh_pattern ^gopher:        1440    0%      1440")
+        squid_conf.append("refresh_pattern -i (/cgi-bin/|\\?) 0     0%      0")
+        squid_conf.append("refresh_pattern .               0       20%     4320")
+        
+        # Write the configuration to file
+        with open('/config/custom_squid.conf', 'w') as f:
+            f.write('\n'.join(squid_conf))
+        
+        # Reload squid configuration
+        subprocess.run(
+            ['docker', 'exec', 'secure-proxy-proxy-1', 'squid', '-k', 'reconfigure'],
+            capture_output=True, check=True
+        )
+        
+        logger.info("Settings applied and Squid reconfigured successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Error applying settings: {str(e)}")
+        return False
 
 def parse_squid_logs():
     """Parse Squid access logs and import to database"""
@@ -553,8 +704,34 @@ def parse_squid_logs():
     conn.commit()
     logger.info("Squid logs imported to database")
 
+# Add background log parser
+def background_log_parser():
+    """Parse logs in the background periodically"""
+    while True:
+        try:
+            parse_squid_logs()
+            logger.info("Background log parsing completed")
+        except Exception as e:
+            logger.error(f"Error in background log parsing: {str(e)}")
+        
+        # Parse logs every 30 seconds
+        time.sleep(30)
+
+# Start the background log parser in a separate thread
+log_parser_thread = threading.Thread(target=background_log_parser, daemon=True)
+log_parser_thread.start()
+
 # Initialize the application
 init_db()
+
+# Apply settings on startup to ensure proper configuration
+try:
+    update_ip_blacklist()
+    update_domain_blacklist()
+    apply_settings()
+    logger.info("Initial settings applied")
+except Exception as e:
+    logger.error(f"Error applying initial settings: {str(e)}")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

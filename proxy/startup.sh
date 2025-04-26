@@ -29,18 +29,26 @@ iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 3128
 
 # Apply custom configurations if they exist
 if [ -f /config/custom_squid.conf ]; then
+    echo "Applying custom Squid configuration..."
     cp /config/custom_squid.conf /etc/squid/squid.conf
 fi
 
-# Apply IP blacklists if they exist
+# Copy blacklists from config volume
 if [ -f /config/ip_blacklist.txt ]; then
+    echo "Applying IP blacklist..."
     cp /config/ip_blacklist.txt /etc/squid/blacklists/ip/local.txt
 fi
 
-# Apply domain blacklists if they exist
 if [ -f /config/domain_blacklist.txt ]; then
+    echo "Applying domain blacklist..."
     cp /config/domain_blacklist.txt /etc/squid/blacklists/domain/local.txt
 fi
+
+# Output the blacklists for debugging
+echo "IP Blacklist contents:"
+cat /etc/squid/blacklists/ip/local.txt
+echo "Domain Blacklist contents:"
+cat /etc/squid/blacklists/domain/local.txt
 
 # Create log directory if it doesn't exist
 mkdir -p /var/log/squid
@@ -58,5 +66,7 @@ chown -R proxy:proxy /var/spool/squid
 sleep 2
 
 # Start Squid in foreground mode
-echo "Starting Squid proxy service..."
+echo "Starting Squid proxy service with config:"
+cat /etc/squid/squid.conf
+echo "-------------------------------------"
 exec /usr/sbin/squid -N -d 1
