@@ -40,9 +40,33 @@ elif [ -f /config/squid/squid.conf ]; then
     cp /config/squid/squid.conf /etc/squid/squid.conf
 else
     echo "No custom configuration found - using default configuration"
-    # Ensure default configuration has direct IP blocking enabled
-    grep -q "direct_ip_url" /etc/squid/squid.conf || echo "Warning: Default configuration may be missing direct IP blocking rules!"
 fi
+
+# Ensure the configuration always contains direct IP blocking, even if not in the custom config
+grep -q "direct_ip_url" /etc/squid/squid.conf
+if [ $? -ne 0 ]; then
+    echo "Adding missing direct IP blocking rules to configuration"
+    cat >> /etc/squid/squid.conf << EOL
+
+# Direct IP access detection - added by startup script
+acl direct_ip_url url_regex -i ^https?://([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)
+acl direct_ip_host dstdom_regex -i ^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)$
+acl direct_ipv6_url url_regex -i ^https?://\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]
+acl direct_ipv6_host dstdom_regex -i ^\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]$
+
+# Block direct IP access - added by startup script
+http_access deny direct_ip_url
+http_access deny direct_ip_host
+http_access deny direct_ipv6_url
+http_access deny direct_ipv6_host
+http_access deny CONNECT direct_ip_host
+http_access deny CONNECT direct_ipv6_host
+EOL
+fi
+
+# Output the contents of the squid configuration
+echo "Current Squid configuration:"
+cat /etc/squid/squid.conf
 
 # Copy blacklists from config volume
 if [ -f /config/ip_blacklist.txt ]; then
@@ -116,6 +140,18 @@ refresh_pattern ^ftp: 1440 20% 10080
 refresh_pattern ^gopher: 1440 0% 1440
 refresh_pattern -i (/cgi-bin/|\?) 0 0% 0
 refresh_pattern . 0 20% 4320
+
+# Direct IP blocking - added by recovery script
+acl direct_ip_url url_regex -i ^https?://([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)
+acl direct_ip_host dstdom_regex -i ^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)$
+acl direct_ipv6_url url_regex -i ^https?://\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]
+acl direct_ipv6_host dstdom_regex -i ^\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]$
+http_access deny direct_ip_url
+http_access deny direct_ip_host
+http_access deny direct_ipv6_url
+http_access deny direct_ipv6_host
+http_access deny CONNECT direct_ip_host
+http_access deny CONNECT direct_ipv6_host
 EOL
 
     echo "⚠️ Applied a minimal working configuration to recover functionality"
@@ -123,6 +159,46 @@ fi
 
 # Comprehensive configuration verification
 echo "Verifying all UI settings are properly reflected in Squid configuration..."
+
+# Verify direct IP blocking
+if grep -q "acl direct_ip_url" /etc/squid/squid.conf && grep -q "acl direct_ip_host" /etc/squid/squid.conf; then
+    echo "✅ Direct IP access blocking configuration found"
+    
+    # Also verify the http_access deny rules exist
+    if grep -q "http_access deny direct_ip_url" /etc/squid/squid.conf && grep -q "http_access deny direct_ip_host" /etc/squid/squid.conf; then
+        echo "✅ Direct IP access deny rules found"
+    else
+        echo "⚠️ Direct IP access deny rules missing, adding them"
+        cat >> /etc/squid/squid.conf << EOL
+
+# Block direct IP access - added by verification
+http_access deny direct_ip_url
+http_access deny direct_ip_host
+http_access deny direct_ipv6_url
+http_access deny direct_ipv6_host
+http_access deny CONNECT direct_ip_host
+http_access deny CONNECT direct_ipv6_host
+EOL
+    fi
+else
+    echo "⚠️ Direct IP access blocking configuration missing, adding it"
+    cat >> /etc/squid/squid.conf << EOL
+
+# Direct IP access detection - added by verification
+acl direct_ip_url url_regex -i ^https?://([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)
+acl direct_ip_host dstdom_regex -i ^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)$
+acl direct_ipv6_url url_regex -i ^https?://\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]
+acl direct_ipv6_host dstdom_regex -i ^\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]$
+
+# Block direct IP access - added by verification
+http_access deny direct_ip_url
+http_access deny direct_ip_host
+http_access deny direct_ipv6_url
+http_access deny direct_ipv6_host
+http_access deny CONNECT direct_ip_host
+http_access deny CONNECT direct_ipv6_host
+EOL
+fi
 
 # Verify caching settings
 if grep -q "cache_dir ufs /var/spool/squid" /etc/squid/squid.conf; then
