@@ -505,42 +505,158 @@ def get_clients_count():
             'message': str(e)
         })
 
-@app.route('/api/stats/realtime')
+@app.route('/api/stats/realtime', methods=['GET'])
 def get_realtime_stats():
     try:
-        # Force refresh if requested
-        force_refresh = request.args.get('refresh', 'false') == 'true'
-        metrics = get_squid_metrics(force_refresh)
+        refresh = request.args.get('refresh', 'false').lower() == 'true'
         
-        return jsonify({
-            'connections': metrics['connections'],
-            'clients': metrics['clients'],
-            'maxConnections': metrics['maxConnections'],
-            'maxClients': metrics['maxClients'],
-            'cpu': metrics['cpu'],
-            'memory': metrics['memory'],
-            'memoryMB': metrics['memoryMB'],
-            'diskUsageMB': metrics['diskUsageMB'],
-            'pid': metrics['pid'],
-            'uptime': metrics['uptime'],
-            'status': metrics['status'],
-            'timestamp': datetime.now().isoformat()
-        })
+        # Get process information using ps command
+        if IN_DOCKER:
+            # In Docker, we use supervisorctl to check if squid is running
+            supervisor_check = subprocess.run("supervisorctl status squid | grep RUNNING", 
+                                            shell=True, capture_output=True, text=True)
+            is_running = supervisor_check.returncode == 0
+            
+            if is_running:
+                # Get PID using ps command inside Docker
+                ps_cmd = "ps -ef | grep squid | grep -v grep | head -1 | awk '{print $2}'"
+                ps_result = subprocess.run(ps_cmd, shell=True, capture_output=True, text=True)
+                pid = ps_result.stdout.strip() if ps_result.returncode == 0 else 0
+                
+                # Get CPU and memory usage
+                if pid and pid != '0':
+                    # Get CPU usage
+                    cpu_cmd = f"ps -p {pid} -o %cpu | tail -1"
+                    cpu_result = subprocess.run(cpu_cmd, shell=True, capture_output=True, text=True)
+                    cpu = cpu_result.stdout.strip() if cpu_result.returncode == 0 else '0'
+                    
+                    # Get memory usage
+                    mem_cmd = f"ps -p {pid} -o %mem | tail -1"
+                    mem_result = subprocess.run(mem_cmd, shell=True, capture_output=True, text=True)
+                    memory = mem_result.stdout.strip() if mem_result.returncode == 0 else '0'
+                    
+                    # Get memory in MB
+                    mem_mb_cmd = f"ps -p {pid} -o rss | tail -1"
+                    mem_mb_result = subprocess.run(mem_mb_cmd, shell=True, capture_output=True, text=True)
+                    memory_mb = int(mem_mb_result.stdout.strip()) // 1024 if mem_mb_result.returncode == 0 else 0
+                    
+                    # Get disk usage for cache
+                    du_cmd = "du -sm /var/spool/squid | cut -f1"
+                    du_result = subprocess.run(du_cmd, shell=True, capture_output=True, text=True)
+                    disk_usage_mb = du_result.stdout.strip() if du_result.returncode == 0 else '0'
+                    
+                    # Get active connections and clients using netstat
+                    netstat_cmd = f"netstat -ant | grep ESTABLISHED | grep :{SQUID_PORT} | wc -l"
+                    netstat_result = subprocess.run(netstat_cmd, shell=True, capture_output=True, text=True)
+                    connections = netstat_result.stdout.strip() if netstat_result.returncode == 0 else '0'
+                    
+                    # Get unique client IPs
+                    unique_ips_cmd = f"netstat -ant | grep ESTABLISHED | grep :{SQUID_PORT} | awk '{{print $5}}' | cut -d: -f1 | sort -u | wc -l"
+                    unique_ips_result = subprocess.run(unique_ips_cmd, shell=True, capture_output=True, text=True)
+                    clients = unique_ips_result.stdout.strip() if unique_ips_result.returncode == 0 else '0'
+                    
+                    return jsonify({
+                        'pid': pid,
+                        'cpu': cpu,
+                        'memory': memory,
+                        'memoryMB': memory_mb,
+                        'diskUsageMB': disk_usage_mb,
+                        'connections': connections,
+                        'clients': clients,
+                        'maxConnections': 1000,  # Default hard limits
+                        'maxClients': 100
+                    })
+                else:
+                    return jsonify({
+                        'pid': 0,
+                        'cpu': 0,
+                        'memory': 0,
+                        'memoryMB': 0,
+                        'diskUsageMB': 0,
+                        'connections': 0,
+                        'clients': 0,
+                        'maxConnections': 1000,
+                        'maxClients': 100
+                    })
+            else:
+                # Return zeros if not running
+                return jsonify({
+                    'pid': 0,
+                    'cpu': 0,
+                    'memory': 0,
+                    'memoryMB': 0,
+                    'diskUsageMB': 0,
+                    'connections': 0,
+                    'clients': 0,
+                    'maxConnections': 1000,
+                    'maxClients': 100
+                })
+        else:
+            # Non-Docker environment
+            # Check if squid is running
+            ps_result = subprocess.run(f"pgrep -x squid", shell=True, capture_output=True, text=True)
+            is_running = ps_result.returncode == 0
+            
+            if is_running:
+                pid = ps_result.stdout.strip()
+                
+                # Get CPU and memory usage
+                cpu_cmd = f"ps -p {pid} -o %cpu | tail -1"
+                cpu_result = subprocess.run(cpu_cmd, shell=True, capture_output=True, text=True)
+                cpu = cpu_result.stdout.strip() if cpu_result.returncode == 0 else '0'
+                
+                mem_cmd = f"ps -p {pid} -o %mem | tail -1"
+                mem_result = subprocess.run(mem_cmd, shell=True, capture_output=True, text=True)
+                memory = mem_result.stdout.strip() if mem_result.returncode == 0 else '0'
+                
+                mem_mb_cmd = f"ps -p {pid} -o rss | tail -1"
+                mem_mb_result = subprocess.run(mem_mb_cmd, shell=True, capture_output=True, text=True)
+                memory_mb = int(mem_mb_result.stdout.strip()) // 1024 if mem_mb_result.returncode == 0 else 0
+                
+                # Get disk usage for cache
+                du_cmd = "du -sm /var/spool/squid | cut -f1"
+                du_result = subprocess.run(du_cmd, shell=True, capture_output=True, text=True)
+                disk_usage_mb = du_result.stdout.strip() if du_result.returncode == 0 else '0'
+                
+                # Get active connections and clients
+                netstat_cmd = f"netstat -ant | grep ESTABLISHED | grep :{SQUID_PORT} | wc -l"
+                netstat_result = subprocess.run(netstat_cmd, shell=True, capture_output=True, text=True)
+                connections = netstat_result.stdout.strip() if netstat_result.returncode == 0 else '0'
+                
+                unique_ips_cmd = f"netstat -ant | grep ESTABLISHED | grep :{SQUID_PORT} | awk '{{print $5}}' | cut -d: -f1 | sort -u | wc -l"
+                unique_ips_result = subprocess.run(unique_ips_cmd, shell=True, capture_output=True, text=True)
+                clients = unique_ips_result.stdout.strip() if unique_ips_result.returncode == 0 else '0'
+                
+                return jsonify({
+                    'pid': pid,
+                    'cpu': cpu,
+                    'memory': memory,
+                    'memoryMB': memory_mb,
+                    'diskUsageMB': disk_usage_mb,
+                    'connections': connections,
+                    'clients': clients,
+                    'maxConnections': 1000,
+                    'maxClients': 100
+                })
+            else:
+                # Return zeros if not running
+                return jsonify({
+                    'pid': 0,
+                    'cpu': 0,
+                    'memory': 0,
+                    'memoryMB': 0,
+                    'diskUsageMB': 0,
+                    'connections': 0,
+                    'clients': 0,
+                    'maxConnections': 1000,
+                    'maxClients': 100
+                })
     except Exception as e:
+        print(f"Error fetching real-time stats: {str(e)}")
         return jsonify({
             'status': 'error',
-            'message': str(e),
-            'connections': 0,
-            'clients': 0,
-            'maxConnections': 1000,
-            'maxClients': 100,
-            'cpu': 0,
-            'memory': 0,
-            'memoryMB': 0,
-            'diskUsageMB': 0,
-            'pid': 0,
-            'timestamp': datetime.now().isoformat()
-        })
+            'message': str(e)
+        }), 500
 
 @app.route('/api/security/feature-status')
 def get_feature_status():

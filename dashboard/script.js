@@ -939,25 +939,36 @@ document.addEventListener('DOMContentLoaded', function() {
                 try {
                     if (refreshConnectionsBtn) refreshConnectionsBtn.classList.add('animate-spin');
                     
-                    const response = await safeFetch('/api/stats/realtime');
+                    // Add force refresh parameter to avoid cached data
+                    const response = await safeFetch('/api/stats/realtime?refresh=true');
                     const data = await response.json();
                     
+                    if (data.status === 'error') {
+                        throw new Error(data.message || 'Unknown error fetching stats');
+                    }
+                    
                     // Update connections count
-                    const connections = data.connections || 0;
-                    const maxConnections = data.maxConnections || 1000;
+                    const connections = parseInt(data.connections) || 0;
+                    const maxConnections = parseInt(data.maxConnections) || 1000;
                     const connectionPercentage = Math.min(100, Math.round((connections / maxConnections) * 100));
                     
                     if (connectionsCount) connectionsCount.textContent = connections;
-                    if (connectionsBar) connectionsBar.style.width = `${connectionPercentage}%`;
+                    if (connectionsBar) {
+                        connectionsBar.style.width = `${connectionPercentage}%`;
+                        updateBarColors(connectionsBar, connectionPercentage);
+                    }
                     if (connectionsLimit) connectionsLimit.textContent = maxConnections;
                     
                     // Update clients count
-                    const clients = data.clients || 0;
-                    const maxClients = data.maxClients || 100;
+                    const clients = parseInt(data.clients) || 0;
+                    const maxClients = parseInt(data.maxClients) || 100;
                     const clientPercentage = Math.min(100, Math.round((clients / maxClients) * 100));
                     
                     if (clientsCount) clientsCount.textContent = clients;
-                    if (clientsBar) clientsBar.style.width = `${clientPercentage}%`;
+                    if (clientsBar) {
+                        clientsBar.style.width = `${clientPercentage}%`;
+                        updateBarColors(clientsBar, clientPercentage);
+                    }
                     if (clientsLimit) clientsLimit.textContent = maxClients;
                     
                     // Update peak values
@@ -973,10 +984,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     const diskUsageEl = document.getElementById('disk-usage');
                     const processIdEl = document.getElementById('process-id');
                     
-                    if (cpuUsageEl) cpuUsageEl.textContent = `${data.cpu || 0}%`;
-                    if (memoryUsageEl) memoryUsageEl.textContent = `${data.memory || 0}% (${data.memoryMB || 0} MB)`;
+                    if (cpuUsageEl) cpuUsageEl.textContent = `${parseFloat(data.cpu).toFixed(1) || 0}%`;
+                    if (memoryUsageEl) memoryUsageEl.textContent = `${parseFloat(data.memory).toFixed(1) || 0}% (${data.memoryMB || 0} MB)`;
                     if (diskUsageEl) diskUsageEl.textContent = `${data.diskUsageMB || 0} MB`;
-                    if (processIdEl) processIdEl.textContent = data.pid || 'Not running';
+                    if (processIdEl) processIdEl.textContent = data.pid > 0 ? data.pid : 'Not running';
                     
                     // Update last updated time
                     if (lastUpdateTime) {
@@ -984,16 +995,29 @@ document.addEventListener('DOMContentLoaded', function() {
                         lastUpdateTime.textContent = now.toLocaleTimeString();
                     }
                     
-                    // Handle color changes based on usage
-                    updateBarColors(connectionsBar, connectionPercentage);
-                    updateBarColors(clientsBar, clientPercentage);
-                    
                 } catch (error) {
                     console.error('Error fetching real-time stats:', error);
                     
-                    // Show error state
-                    if (connectionsCount) connectionsCount.textContent = '0';
-                    if (clientsCount) clientsCount.textContent = '0';
+                    // Show error state in a more informative way
+                    if (connectionsCount) connectionsCount.textContent = '?';
+                    if (clientsCount) clientsCount.textContent = '?';
+                    if (lastUpdateTime) lastUpdateTime.textContent = 'Error: ' + error.message;
+                    
+                    // Reset progress bars
+                    if (connectionsBar) {
+                        connectionsBar.style.width = '0%';
+                        connectionsBar.className = 'progress-bar progress-low';
+                    }
+                    if (clientsBar) {
+                        clientsBar.style.width = '0%';
+                        clientsBar.className = 'progress-bar progress-low';
+                    }
+                    
+                    // Clear system metrics
+                    if (cpuUsageEl) cpuUsageEl.textContent = 'N/A';
+                    if (memoryUsageEl) memoryUsageEl.textContent = 'N/A';
+                    if (diskUsageEl) diskUsageEl.textContent = 'N/A';
+                    if (processIdEl) processIdEl.textContent = 'Not running';
                     
                 } finally {
                     if (refreshConnectionsBtn) refreshConnectionsBtn.classList.remove('animate-spin');
