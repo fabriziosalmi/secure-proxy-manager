@@ -997,50 +997,50 @@ footer {
   color: var(--text-muted);
   font-size: 1.25rem;
   margin-left: 0.5rem;
+  transition: color 0.2s;
 }
 
-/* Print styles for better printing experience */
-@media print {
-  body {
-    background-color: white;
-    color: black;
-  }
-  
-  .dashboard-header, 
-  footer, 
-  .action-buttons,
-  button:not(.btn-print) {
-    display: none !important;
-  }
-  
-  .container {
-    width: 100%;
-    padding: 0;
-    margin: 0;
-  }
-  
-  .card {
-    box-shadow: none;
-    border: 1px solid #ddd;
-    break-inside: avoid;
-  }
-  
+.toast-close:hover {
+  color: var(--text-primary);
+}
+
+/* Responsive design improvements */
+@media (max-width: 768px) {
   .log-content {
-    max-height: none;
-    height: auto;
+    max-height: 400px; /* Smaller on mobile */
+  }
+  
+  .toast-container {
+    left: 1rem;
+    right: 1rem;
   }
 }
 
-/* Additional utilities for spacing and layout */
-.space-y-1 > * + * {
-  margin-top: 0.25rem;
+/* Keyboard shortcut styling */
+kbd {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.75rem;
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  background-color: var(--bg-muted);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+  color: var(--text-primary);
 }
 
-.space-y-2 > * + * {
-  margin-top: 0.5rem;
+/* Card enhancements */
+.card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.3s ease;
 }
 
-.space-y-4 > * + * {
+.card:hover {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* Improved button styling */
+.btn {
   margin-top: 1rem;
 }
 

@@ -6,19 +6,33 @@
 class ToastNotification {
     constructor() {
         this.container = null;
-        this.initialize();
+        // Don't initialize immediately - wait for DOM content to be loaded
+        if (document.readyState === 'complete') {
+            this.initialize();
+        }
     }
     
     initialize() {
+        if (this.container) return; // Prevent duplicate initialization
+        
+        // Check if a container already exists in the DOM
+        this.container = document.getElementById('toast-container');
+        
         // Create container if it doesn't exist
         if (!this.container) {
             this.container = document.createElement('div');
+            this.container.id = 'toast-container';
             this.container.className = 'toast-container';
             document.body.appendChild(this.container);
         }
     }
     
     show(options) {
+        // Make sure container exists before showing toasts
+        if (!this.container) {
+            this.initialize();
+        }
+        
         const {
             title = '',
             message = '',
@@ -96,8 +110,15 @@ class ToastNotification {
     }
 }
 
-// Create a global toast instance
+// Create a global toast instance with proper initialization
 const toast = new ToastNotification();
+
+// DOM-ready event to initialize the toast container
+document.addEventListener('DOMContentLoaded', () => {
+    if (toast && typeof toast.initialize === 'function') {
+        toast.initialize();
+    }
+});
 
 /**
  * Enhanced Security Feature - API Request with CSRF protection and improved error handling
@@ -822,7 +843,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const statusIndicator = element.querySelector('.rounded-full');
             if (!statusIndicator) return;
             
-            const isEnabled = features[featureKey];
+            // Make sure we have a boolean value (handle undefined or null)
+            const isEnabled = Boolean(features[featureKey]);
             
             // Reset classes
             statusIndicator.className = 'w-3 h-3 rounded-full mr-2';
@@ -833,6 +855,12 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 // Gray for disabled
                 statusIndicator.classList.add('bg-gray-400');
+            }
+            
+            // Update any related text or tooltip
+            const label = element.querySelector('.feature-status-label');
+            if (label) {
+                label.textContent = isEnabled ? 'Enabled' : 'Disabled';
             }
         });
     }
@@ -906,63 +934,50 @@ document.addEventListener('DOMContentLoaded', function() {
             let peakClientsValue = 0;
             
             // Check if we're on the right page with required elements
-            console.log("Checking real-time monitoring elements...");
-            console.log("Elements found:", {
-                connectionsCount: !!connectionsCount,
-                connectionsBar: !!connectionsBar,
-                clientsCount: !!clientsCount,
-                clientsBar: !!clientsBar,
-                peakConnections: !!peakConnections,
-                peakClients: !!peakClients,
-                lastUpdateTime: !!lastUpdateTime,
-                toggleAutoRefresh: !!toggleAutoRefresh,
-                autoRefreshStatus: !!autoRefreshStatus,
-                refreshConnectionsBtn: !!refreshConnectionsBtn,
-                cpuUsage: !!document.getElementById('cpu-usage'),
-                memoryUsage: !!document.getElementById('memory-usage'),
-                diskUsage: !!document.getElementById('disk-usage'),
-                processId: !!document.getElementById('process-id')
-            });
-            
             const isMonitoringPage = connectionsCount && connectionsBar && clientsCount;
             if (!isMonitoringPage) {
-                console.warn("Not on monitoring page or required elements not found");
                 return; // Exit if elements don't exist or not on dashboard page
             }
-            
-            console.log("Initializing real-time monitoring");
             
             // Initialize
             fetchRealTimeStats();
             
+            // Check for auto-refresh preference in localStorage
+            const savedAutoRefresh = localStorage.getItem('autoRefreshEnabled');
+            if (savedAutoRefresh === 'true') {
+                connectionsAutoRefresh = true;
+                if (autoRefreshStatus) {
+                    autoRefreshStatus.textContent = 'On';
+                }
+                // Start the auto-refresh
+                connectionsRefreshInterval = setInterval(fetchRealTimeStats, 5000);
+            }
+            
             // Event listeners for real-time monitoring
             if (refreshConnectionsBtn) {
-                console.log("Adding click listener to refresh button");
                 refreshConnectionsBtn.addEventListener('click', fetchRealTimeStats);
             }
             
             if (toggleAutoRefresh) {
-                console.log("Adding click listener to auto-refresh toggle");
                 toggleAutoRefresh.addEventListener('click', toggleConnectionsAutoRefresh);
             }
             
             function toggleConnectionsAutoRefresh() {
                 connectionsAutoRefresh = !connectionsAutoRefresh;
-                console.log("Auto-refresh toggled:", connectionsAutoRefresh);
                 
                 if (autoRefreshStatus) {
                     autoRefreshStatus.textContent = connectionsAutoRefresh ? 'On' : 'Off';
-                    console.log("Auto-refresh status updated in UI");
                 }
+                
+                // Save preference to localStorage
+                localStorage.setItem('autoRefreshEnabled', connectionsAutoRefresh.toString());
                 
                 if (connectionsAutoRefresh) {
                     // Start auto-refresh (every 5 seconds)
-                    console.log("Starting auto-refresh interval (5 seconds)");
                     connectionsRefreshInterval = setInterval(fetchRealTimeStats, 5000);
                 } else {
                     // Stop auto-refresh
                     if (connectionsRefreshInterval) {
-                        console.log("Stopping auto-refresh interval");
                         clearInterval(connectionsRefreshInterval);
                         connectionsRefreshInterval = null;
                     }
@@ -970,47 +985,31 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             async function fetchRealTimeStats() {
-                console.log("fetchRealTimeStats called at", new Date().toISOString());
-                
                 if (!connectionsCount || !clientsCount) {
-                    console.warn("Required DOM elements missing, aborting stats update");
                     return;
                 }
                 
                 try {
-                    console.log("Starting API request for real-time stats");
                     if (refreshConnectionsBtn) refreshConnectionsBtn.classList.add('animate-spin');
                     
                     // Add force refresh parameter to avoid cached data
-                    console.time("realtime-stats-api-call");
                     const response = await fetch('/api/stats/realtime?refresh=true');
-                    console.timeEnd("realtime-stats-api-call");
                     
                     if (!response.ok) {
                         throw new Error(`Server returned ${response.status}: ${response.statusText}`);
                     }
                     
-                    console.time("realtime-stats-json-parse");
                     const data = await response.json();
-                    console.timeEnd("realtime-stats-json-parse");
-                    
-                    console.log("Real-time stats received:", JSON.stringify(data));
                     
                     // Check for error status in response
                     if (data.status === 'error') {
                         throw new Error(data.message || 'Unknown error fetching stats');
                     }
                     
-                    // Update connections count - use more robust parsing with fallbacks
+                    // Update connections count
                     const connections = parseInt(data.connections || 0);
                     const maxConnections = parseInt(data.maxConnections || 1000);
                     const connectionPercentage = Math.min(100, Math.round((connections / maxConnections) * 100)) || 0;
-                    
-                    console.log("Updating connections UI:", { 
-                        connections, 
-                        maxConnections, 
-                        connectionPercentage 
-                    });
                     
                     if (connectionsCount) connectionsCount.textContent = connections;
                     if (connectionsBar) {
@@ -1019,16 +1018,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     if (connectionsLimit) connectionsLimit.textContent = maxConnections;
                     
-                    // Update clients count - use more robust parsing with fallbacks
+                    // Update clients count
                     const clients = parseInt(data.clients || 0);
                     const maxClients = parseInt(data.maxClients || 100);
                     const clientPercentage = Math.min(100, Math.round((clients / maxClients) * 100)) || 0;
-                    
-                    console.log("Updating clients UI:", { 
-                        clients, 
-                        maxClients, 
-                        clientPercentage 
-                    });
                     
                     if (clientsCount) clientsCount.textContent = clients;
                     if (clientsBar) {
@@ -1038,66 +1031,35 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (clientsLimit) clientsLimit.textContent = maxClients;
                     
                     // Update peak values
-                    const oldPeakConnections = peakConnectionsValue;
-                    const oldPeakClients = peakClientsValue;
                     peakConnectionsValue = Math.max(peakConnectionsValue, connections);
                     peakClientsValue = Math.max(peakClientsValue, clients);
-                    
-                    console.log("Updating peak values:", {
-                        oldPeakConnections, 
-                        newPeakConnections: peakConnectionsValue,
-                        oldPeakClients,
-                        newPeakClients: peakClientsValue
-                    });
                     
                     if (peakConnections) peakConnections.textContent = peakConnectionsValue;
                     if (peakClients) peakClients.textContent = peakClientsValue;
                     
-                    // Update system info if elements exist - use more robust parsing with fallbacks
+                    // Update system info if elements exist
                     const cpuUsageEl = document.getElementById('cpu-usage');
                     const memoryUsageEl = document.getElementById('memory-usage');
                     const diskUsageEl = document.getElementById('disk-usage');
                     const processIdEl = document.getElementById('process-id');
                     
-                    // Safe parsing for floating point and integer values
-                    const cpuValue = parseFloat(data.cpu || 0) || 0;
-                    const memoryValue = parseFloat(data.memory || 0) || 0;
-                    const memoryMB = parseInt(data.memoryMB || 0) || 0;
-                    const diskUsageMB = parseInt(data.diskUsageMB || 0) || 0;
-                    const pid = parseInt(data.pid || 0) || 0;
-                    
-                    console.log("Updating system info UI:", {
-                        cpu: cpuValue.toFixed(1),
-                        memory: memoryValue.toFixed(1),
-                        memoryMB: memoryMB,
-                        diskUsageMB: diskUsageMB,
-                        pid: pid
-                    });
-                    
-                    if (cpuUsageEl) cpuUsageEl.textContent = `${cpuValue.toFixed(1)}%`;
-                    if (memoryUsageEl) memoryUsageEl.textContent = `${memoryValue.toFixed(1)}% (${memoryMB} MB)`;
-                    if (diskUsageEl) diskUsageEl.textContent = `${diskUsageMB} MB`;
-                    if (processIdEl) processIdEl.textContent = pid > 0 ? pid.toString() : 'Not running';
+                    if (cpuUsageEl) cpuUsageEl.textContent = `${data.cpu.toFixed(1)}%`;
+                    if (memoryUsageEl) memoryUsageEl.textContent = `${data.memory.toFixed(1)}% (${data.memoryMB} MB)`;
+                    if (diskUsageEl) diskUsageEl.textContent = `${data.diskUsageMB} MB`;
+                    if (processIdEl) processIdEl.textContent = data.pid > 0 ? data.pid.toString() : 'Not running';
                     
                     // Update last updated time
                     if (lastUpdateTime) {
                         const now = new Date();
                         lastUpdateTime.textContent = now.toLocaleTimeString();
-                        console.log("Updated last update time:", now.toLocaleTimeString());
                     }
-                    
-                    console.log("Real-time stats update completed successfully");
-                    
                 } catch (error) {
                     console.error('Error fetching real-time stats:', error);
-                    console.trace("Stack trace for real-time stats error");
                     
-                    // Show error state in a more informative way
                     if (connectionsCount) connectionsCount.textContent = '?';
                     if (clientsCount) clientsCount.textContent = '?';
                     if (lastUpdateTime) lastUpdateTime.textContent = 'Error: ' + error.message;
                     
-                    // Reset progress bars
                     if (connectionsBar) {
                         connectionsBar.style.width = '0%';
                         connectionsBar.className = 'progress-bar progress-low';
@@ -1107,7 +1069,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         clientsBar.className = 'progress-bar progress-low';
                     }
                     
-                    // Clear system metrics
                     const cpuUsageEl = document.getElementById('cpu-usage');
                     const memoryUsageEl = document.getElementById('memory-usage');
                     const diskUsageEl = document.getElementById('disk-usage');
@@ -1117,16 +1078,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (memoryUsageEl) memoryUsageEl.textContent = 'N/A';
                     if (diskUsageEl) diskUsageEl.textContent = 'N/A';
                     if (processIdEl) processIdEl.textContent = 'Not running';
-                    
-                    // Show toast notification about the error
-                    if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
-                        toast.error('Error fetching monitoring data. Check console for details.');
-                    }
                 } finally {
-                    if (refreshConnectionsBtn) {
-                        refreshConnectionsBtn.classList.remove('animate-spin');
-                        console.log("Removed spinner from refresh button");
-                    }
+                    if (refreshConnectionsBtn) refreshConnectionsBtn.classList.remove('animate-spin');
                 }
             }
             
@@ -1201,40 +1154,64 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!tabButtons.length) return; // Exit if elements don't exist
             
             // Tab navigation event listeners
-            tabButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    // Remove active class from all buttons
-                    tabButtons.forEach(btn => btn.classList.remove('active'));
-                    
-                    // Add active class to clicked button
-                    button.classList.add('active');
-                    
-                    // Show corresponding content
-                    const tabName = button.getAttribute('data-tab');
-                    
-                    // Hide all tab content sections
-                    document.querySelectorAll('.tab-content').forEach(content => {
-                        content.classList.add('hidden');
-                        content.classList.remove('active');
+            if (tabButtons) {
+                tabButtons.forEach(button => {
+                    button.addEventListener('click', () => {
+                        // Remove active class from all buttons
+                        tabButtons.forEach(btn => btn.classList.remove('active'));
+                        
+                        // Add active class to clicked button
+                        button.classList.add('active');
+                        
+                        // Show corresponding content
+                        const tabName = button.getAttribute('data-tab');
+                        
+                        // Hide all tab content sections
+                        document.querySelectorAll('.tab-content').forEach(content => {
+                            content.classList.add('hidden');
+                            content.classList.remove('active');
+                        });
+                        
+                        // Show the selected tab content
+                        const activeTab = document.getElementById(tabName + '-tab');
+                        if (activeTab) {
+                            activeTab.classList.remove('hidden');
+                            activeTab.classList.add('active');
+                            
+                            // Ensure the tab content is visible by checking its computed style
+                            const computedStyle = window.getComputedStyle(activeTab);
+                            if (computedStyle.display === 'none') {
+                                activeTab.style.display = 'block';
+                            }
+                        }
+                        
+                        // Fetch data for the active tab
+                        if (tabName === 'ip-blacklist') {
+                            fetchIpBlacklist();
+                        } else if (tabName === 'domain-blacklist') {
+                            fetchDomainBlacklist();
+                        } else if (tabName === 'allowed-direct-ips') {
+                            fetchAllowedDirectIps();
+                        } else if (tabName === 'bad-user-agents') {
+                            fetchBadUserAgents();
+                        } else if (tabName === 'cache-settings') {
+                            fetchConfig();
+                        }
+                        
+                        // Save the active tab in local storage for persistence
+                        localStorage.setItem('activeSettingsTab', tabName);
                     });
-                    
-                    // Show the selected tab content
-                    const activeTab = document.getElementById(tabName + '-tab');
-                    if (activeTab) {
-                        activeTab.classList.remove('hidden');
-                        activeTab.classList.add('active');
-                    }
-                    
-                    // Fetch data for the active tab
-                    if (tabName === 'ip-blacklist') {
-                        fetchIpBlacklist();
-                    } else if (tabName === 'domain-blacklist') {
-                        fetchDomainBlacklist();
-                    } else if (tabName === 'allowed-direct-ips') {
-                        fetchAllowedDirectIps();
-                    }
                 });
-            });
+                
+                // Restore active tab from localStorage if available
+                const savedTab = localStorage.getItem('activeSettingsTab');
+                if (savedTab) {
+                    const tabButton = Array.from(tabButtons).find(btn => btn.getAttribute('data-tab') === savedTab);
+                    if (tabButton) {
+                        tabButton.click();
+                    }
+                }
+            }
         }
     }
     
@@ -1340,6 +1317,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (activeTab) {
                         activeTab.classList.remove('hidden');
                         activeTab.classList.add('active');
+                        
+                        // Ensure the tab content is visible by checking its computed style
+                        const computedStyle = window.getComputedStyle(activeTab);
+                        if (computedStyle.display === 'none') {
+                            activeTab.style.display = 'block';
+                        }
                     }
                     
                     // Fetch data for the active tab
@@ -1349,9 +1332,25 @@ document.addEventListener('DOMContentLoaded', function() {
                         fetchDomainBlacklist();
                     } else if (tabName === 'allowed-direct-ips') {
                         fetchAllowedDirectIps();
+                    } else if (tabName === 'bad-user-agents') {
+                        fetchBadUserAgents();
+                    } else if (tabName === 'cache-settings') {
+                        fetchConfig();
                     }
+                    
+                    // Save the active tab in local storage for persistence
+                    localStorage.setItem('activeSettingsTab', tabName);
                 });
             });
+            
+            // Restore active tab from localStorage if available
+            const savedTab = localStorage.getItem('activeSettingsTab');
+            if (savedTab) {
+                const tabButton = Array.from(tabButtons).find(btn => btn.getAttribute('data-tab') === savedTab);
+                if (tabButton) {
+                    tabButton.click();
+                }
+            }
         }
         
         // Add theme button listeners
@@ -1529,8 +1528,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Update status badges
                 updateFeatureStatusBadges();
                 
-                // Update dashboard indicators if on the dashboard page
-                updateDashboardSecurityFeatures(features);
+                // Update dashboard indicators if on the dashboard page - safely
+                try {
+                    updateDashboardSecurityFeatures(features);
+                } catch (dashboardError) {
+                    console.error('Error updating dashboard indicators:', dashboardError);
+                    // Non-critical error, don't block the rest of the execution
+                }
                 
                 // Also fetch the initial data for blacklist counts
                 fetchIpBlacklist();
@@ -1547,8 +1551,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     applyConfigSyntaxHighlighting();
                 }
             } catch (error) {
+                console.error('Failed to fetch security features:', error);
                 if (featuresMessage) {
                     showMessage(featuresMessage, 'Failed to fetch security features: ' + error.message, false);
+                }
+                
+                // Show a toast notification if the toast system is available
+                if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
+                    toast.error('Failed to load security features. Please refresh the page or contact an administrator.');
                 }
             }
         }
@@ -1581,14 +1591,40 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 if (data.status === 'success') {
                     showMessage(featuresMessage, 'Security features updated successfully', true);
+                    
+                    // Update the status badges immediately after success
+                    updateFeatureStatusBadges();
+                    
+                    // Also update the dashboard features if we're on the dashboard
+                    try {
+                        updateDashboardSecurityFeatures(features);
+                    } catch (error) {
+                        console.error('Error updating dashboard security indicators:', error);
+                    }
+                    
                     // Reload the proxy to apply changes
                     setTimeout(() => controlSquid('reload'), 1000);
+                    
+                    // Show toast notification about successful update
+                    if (typeof toast !== 'undefined' && typeof toast.success === 'function') {
+                        toast.success('Security features updated successfully. Reloading proxy...');
+                    }
                 } else {
                     showMessage(featuresMessage, data.message || 'Failed to update security features', false);
+                    
+                    // Show toast notification about the error
+                    if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
+                        toast.error('Failed to update security features: ' + (data.message || 'Unknown error'));
+                    }
                 }
             } catch (error) {
                 if (featuresMessage) {
                     showMessage(featuresMessage, 'Failed to save security features: ' + error.message, false);
+                }
+                
+                // Show a toast notification about the error
+                if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
+                    toast.error('Failed to save security features. Please try again.');
                 }
             } finally {
                 if (saveFeaturesBtn) saveFeaturesBtn.disabled = false;
@@ -2203,18 +2239,25 @@ document.addEventListener('DOMContentLoaded', function() {
                     const regex = new RegExp(searchTerm, caseSensitive ? '' : 'i');
                     searchFunction = text => regex.test(text);
                 } catch (e) {
-                    alert('Invalid regular expression');
+                    // Invalid regex
+                    if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
+                        toast.error(`Invalid regular expression: ${e.message}`);
+                    } else {
+                        alert(`Invalid regular expression: ${e.message}`);
+                    }
                     return;
                 }
             } else if (wholeWord) {
-                const wordBoundary = '\\b';
-                const term = escapeRegExp(searchTerm);
-                const regex = new RegExp(wordBoundary + term + wordBoundary, caseSensitive ? '' : 'i');
-                searchFunction = text => regex.test(text);
+                const wordRegex = new RegExp(`\\b${escapeRegExp(searchTerm)}\\b`, caseSensitive ? '' : 'i');
+                searchFunction = text => wordRegex.test(text);
             } else {
-                searchFunction = caseSensitive 
-                    ? text => text.includes(searchTerm)
-                    : text => text.toLowerCase().includes(searchTerm.toLowerCase());
+                searchFunction = text => {
+                    if (caseSensitive) {
+                        return text.includes(searchTerm);
+                    } else {
+                        return text.toLowerCase().includes(searchTerm.toLowerCase());
+                    }
+                };
             }
             
             // Highlight matching lines
@@ -2222,17 +2265,25 @@ document.addEventListener('DOMContentLoaded', function() {
             logLines.forEach(line => {
                 const lineText = line.textContent || '';
                 if (searchFunction(lineText)) {
-                    line.classList.add('search-highlight');
                     matchCount++;
+                    line.classList.add('search-highlight');
                     
                     // Highlight the matching text
-                    if (!useRegex) {
-                        const term = escapeRegExp(searchTerm);
-                        const regex = new RegExp(term, caseSensitive ? 'g' : 'gi');
-                        line.innerHTML = escapeHtml(lineText).replace(
-                            regex, 
-                            match => `<span class="highlight">${match}</span>`
-                        );
+                    if (useRegex) {
+                        try {
+                            const regex = new RegExp(searchTerm, caseSensitive ? 'g' : 'gi');
+                            line.innerHTML = lineText.replace(regex, match => `<span class="match-highlight">${match}</span>`);
+                        } catch (e) {
+                            // If regex fails for replacement, just use the escaped HTML
+                            line.innerHTML = escapeHtml(lineText);
+                        }
+                    } else if (wholeWord) {
+                        const wordRegex = new RegExp(`\\b${escapeRegExp(searchTerm)}\\b`, caseSensitive ? 'g' : 'gi');
+                        line.innerHTML = lineText.replace(wordRegex, match => `<span class="match-highlight">${match}</span>`);
+                    } else {
+                        // Simple search
+                        const searchTermRegex = new RegExp(escapeRegExp(searchTerm), caseSensitive ? 'g' : 'gi');
+                        line.innerHTML = lineText.replace(searchTermRegex, match => `<span class="match-highlight">${match}</span>`);
                     }
                 }
             });
@@ -2251,19 +2302,20 @@ document.addEventListener('DOMContentLoaded', function() {
             // Show toast notification with match count
             if (typeof toast !== 'undefined' && typeof toast.info === 'function') {
                 toast.info(`Found ${matchCount} matching lines`);
-            } else {
-                alert(`Found ${matchCount} matching lines`);
             }
         }
         
         async function downloadLog(logType) {
             try {
-                if (downloadCurrentLogBtn) downloadCurrentLogBtn.disabled = true;
+                if (downloadCurrentLogBtn) {
+                    downloadCurrentLogBtn.disabled = true;
+                    downloadCurrentLogBtn.classList.add('opacity-50');
+                }
                 
                 const response = await safeFetch(`/api/logs/${logType}/download`);
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+                    throw new Error(`Failed to download log: ${response.status} ${response.statusText}`);
                 }
                 
                 const blob = await response.blob();
@@ -2274,23 +2326,27 @@ document.addEventListener('DOMContentLoaded', function() {
                 a.download = `${logType}_log.txt`;
                 document.body.appendChild(a);
                 a.click();
+                document.body.removeChild(a);
                 window.URL.revokeObjectURL(url);
                 
                 // Show success notification
                 if (typeof toast !== 'undefined' && typeof toast.success === 'function') {
-                    toast.success(`${logType} log downloaded successfully`);
+                    toast.success(`Successfully downloaded ${logType} log`);
                 }
             } catch (error) {
                 console.error('Error downloading log:', error);
                 
                 // Show error notification
                 if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
-                    toast.error('Failed to download log: ' + error.message);
+                    toast.error(`Failed to download log: ${error.message}`);
                 } else {
-                    alert('Failed to download log: ' + error.message);
+                    alert(`Failed to download log: ${error.message}`);
                 }
             } finally {
-                if (downloadCurrentLogBtn) downloadCurrentLogBtn.disabled = false;
+                if (downloadCurrentLogBtn) {
+                    downloadCurrentLogBtn.disabled = false;
+                    downloadCurrentLogBtn.classList.remove('opacity-50');
+                }
             }
         }
         
@@ -2394,27 +2450,30 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Process log entries based on type
                         data.content.forEach((line, index) => {
+                            // Make sure line is a string
+                            const lineStr = String(line || '');
                             let lineClass = 'log-line';
                             let lineStyle = '';
                             
                             // Add specific styling based on log type and content
                             if (logType === 'access') {
                                 // Access log formatting (contains HTTP status codes)
-                                if (line.includes(' 200 ') || line.includes(' 304 ')) {
+                                if (lineStr.includes(' 200 ') || lineStr.includes(' 304 ')) {
                                     // Success status
                                     lineStyle = 'color: #2563eb;';
-                                } else if (line.includes(' 404 ') || line.includes(' 403 ')) {
+                                    lineClass += ' success-line';
+                                } else if (lineStr.includes(' 404 ') || lineStr.includes(' 403 ')) {
                                     // Client error
                                     lineStyle = 'color: #f59e0b;';
                                     lineClass += ' warning-line';
-                                } else if (line.includes(' 500 ') || line.includes(' 502 ') || line.includes(' 503 ')) {
+                                } else if (lineStr.includes(' 500 ') || lineStr.includes(' 502 ') || lineStr.includes(' 503 ')) {
                                     // Server error
                                     lineStyle = 'color: #ef4444;';
                                     lineClass += ' error-line';
                                 }
                             } else if (logType === 'cache' || logType === 'store' || logType === 'system') {
                                 // Error and warning coloring for other logs
-                                const lowerLine = line.toLowerCase();
+                                const lowerLine = lineStr.toLowerCase();
                                 if (lowerLine.includes('error') || lowerLine.includes('fatal') || lowerLine.includes('exception')) {
                                     lineStyle = 'color: #ef4444;';
                                     lineClass += ' error-line';
@@ -2428,7 +2487,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                             
                             // Add the formatted line
-                            html += `<div class="${lineClass}" style="${lineStyle}" data-index="${index}">${escapeHtml(line)}</div>`;
+                            html += `<div class="${lineClass}" style="${lineStyle}" data-index="${index}">${escapeHtml(lineStr)}</div>`;
                         });
                         
                         logContent.innerHTML = html;
@@ -2438,7 +2497,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         updateLogPosition("Showing most recent logs");
                         
                         // If analysis section is visible, update charts
-                        if (!document.getElementById('analysis-section').classList.contains('hidden')) {
+                        if (document.getElementById('analysis-section') && 
+                            !document.getElementById('analysis-section').classList.contains('hidden')) {
                             generateLogAnalysis(logType);
                         }
                     }
@@ -2459,6 +2519,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         </button>
                     </div>
                 </div>`;
+                
+                // Show toast notification
+                if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
+                    toast.error(`Failed to load logs: ${error.message}`);
+                }
             } finally {
                 if (refreshLogsBtn) {
                     refreshLogsBtn.disabled = false;
@@ -2676,7 +2741,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const commonName = prompt('Enter common name for the certificate (e.g., your organization name):', 'Secure Proxy CA');
             if (!commonName) {
                 if (generateCertBtn) generateCertBtn.disabled = false;
-                if (certOperationMessage) showMessage(certOperationMessage, 'Certificate generation cancelled', false);
+                if (certOperationMessage) showMessage(certOperationMessage, 'Certificate generation cancelled', null);
                 return;
             }
             
@@ -2701,22 +2766,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 const downloadCertBtn = document.getElementById('download-cert-btn');
                 if (downloadCertBtn) downloadCertBtn.disabled = false;
                 
-                // Refresh the certificate status
-                fetchCertificateStatus();
+                // Refresh the certificate status after a short delay to ensure the backend has processed it
+                setTimeout(() => {
+                    fetchCertificateStatus();
+                }, 500);
                 
                 // Also update the HTTPS filtering toggle if it exists
                 const httpsFilteringToggle = document.getElementById('https-filtering-toggle');
                 if (httpsFilteringToggle) {
                     httpsFilteringToggle.checked = true;
                     
-                    // Optionally save the feature toggle state
-                    const saveBtn = document.getElementById('save-features-btn');
-                    if (saveBtn && confirm('Do you want to enable HTTPS filtering with the new certificate?')) {
-                        saveBtn.click();
+                    // Update the status badge
+                    const statusBadge = document.getElementById('https-filtering-status');
+                    if (statusBadge) {
+                        statusBadge.textContent = 'Enabled';
+                        statusBadge.className = 'feature-status-badge status-enabled';
                     }
                 }
             } else {
-                if (certOperationMessage) showMessage(certOperationMessage, `Failed to generate certificate: ${data.message || 'Unknown error'}`, false);
+                if (certOperationMessage) showMessage(certOperationMessage, data.message || 'Failed to generate certificate', false);
             }
         } catch (error) {
             console.error('Error generating certificate:', error);
