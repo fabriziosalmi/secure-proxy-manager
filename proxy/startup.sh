@@ -85,3 +85,9 @@ else
     echo "Current http_access rules:"
     grep "http_access" /etc/squid/squid.conf
 fi
+
+# Start Squid in foreground mode
+echo "Starting Squid proxy service with config:"
+cat /etc/squid/squid.conf
+echo "-------------------------------------"
+exec /usr/sbin/squid -N -d 1
