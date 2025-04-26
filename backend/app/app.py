@@ -545,10 +545,17 @@ def apply_settings():
         
         # IP and Domain blacklists
         squid_conf.append("# IP blacklists")
+        # Fixed IP blacklist ACL - using "src" with a file containing IPs
         squid_conf.append('acl ip_blacklist src "/etc/squid/blacklists/ip/local.txt"')
         squid_conf.append("")
         squid_conf.append("# Domain blacklists")
         squid_conf.append('acl domain_blacklist dstdomain "/etc/squid/blacklists/domain/local.txt"')
+        
+        # Direct IP access detection
+        squid_conf.append("")
+        squid_conf.append("# Direct IP access detection")
+        squid_conf.append('acl direct_ip url_regex ^http://[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+')
+        squid_conf.append('acl direct_ip url_regex ^https://[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+')
         
         # Content filtering if enabled
         if settings.get('enable_content_filtering') == 'true' and settings.get('blocked_file_types'):
@@ -573,10 +580,17 @@ def apply_settings():
         
         # Apply blacklists if enabled
         if settings.get('enable_ip_blacklist') == 'true':
+            squid_conf.append("# Block blacklisted IPs")
             squid_conf.append("http_access deny ip_blacklist")
         
         if settings.get('enable_domain_blacklist') == 'true':
+            squid_conf.append("# Block blacklisted domains")
             squid_conf.append("http_access deny domain_blacklist")
+        
+        # Block direct IP access if enabled
+        if settings.get('block_direct_ip') == 'true':
+            squid_conf.append("# Block direct IP URL access")
+            squid_conf.append("http_access deny direct_ip")
         
         # Apply content filtering if enabled
         if settings.get('enable_content_filtering') == 'true' and settings.get('blocked_file_types'):
@@ -585,11 +599,6 @@ def apply_settings():
         # Apply time restrictions if enabled
         if settings.get('enable_time_restrictions') == 'true':
             squid_conf.append("http_access deny !allowed_hours")
-        
-        # Block direct IP access if enabled
-        if settings.get('block_direct_ip') == 'true':
-            squid_conf.append("acl is_ipaddress dstdom_regex ^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$")
-            squid_conf.append("http_access deny is_ipaddress")
         
         # Allow local access
         squid_conf.append("")
@@ -650,13 +659,30 @@ def apply_settings():
         with open('/config/custom_squid.conf', 'w') as f:
             f.write('\n'.join(squid_conf))
         
-        # Reload squid configuration
-        subprocess.run(
-            ['docker', 'exec', 'secure-proxy-proxy-1', 'squid', '-k', 'reconfigure'],
-            capture_output=True, check=True
-        )
+        # Also update the main Squid config file
+        with open('/config/squid.conf', 'w') as f:
+            f.write('\n'.join(squid_conf))
         
-        logger.info("Settings applied and Squid reconfigured successfully")
+        # Reload squid configuration
+        try:
+            subprocess.run(
+                ['docker', 'exec', 'secure-proxy-proxy-1', 'squid', '-k', 'reconfigure'],
+                capture_output=True, check=True
+            )
+            logger.info("Squid reconfigured successfully")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error reconfiguring Squid: {str(e)}")
+            # Try restarting the container if reconfigure fails
+            try:
+                subprocess.run(
+                    ['docker', 'restart', 'secure-proxy-proxy-1'],
+                    capture_output=True, check=True
+                )
+                logger.info("Proxy container restarted successfully")
+            except subprocess.CalledProcessError as e2:
+                logger.error(f"Error restarting proxy container: {str(e2)}")
+        
+        logger.info("Settings applied successfully")
         return True
     except Exception as e:
         logger.error(f"Error applying settings: {str(e)}")
