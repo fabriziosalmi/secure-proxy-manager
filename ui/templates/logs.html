@@ -28,8 +28,11 @@
                     <input class="form-check-input" type="checkbox" id="auto-import" checked>
                     <label class="form-check-label" for="auto-import">Auto Import</label>
                 </div>
-                <button id="import-logs" class="btn btn-primary">
+                <button id="import-logs" class="btn btn-primary me-2">
                     <i class="fas fa-download me-1"></i>Import Logs
+                </button>
+                <button id="clear-logs" class="btn btn-danger">
+                    <i class="fas fa-trash-alt me-1"></i>Clear Logs
                 </button>
             </div>
         </div>
@@ -238,6 +241,17 @@
             });
         });
         
+        // Clear logs button
+        $('#clear-logs').click(function() {
+            $(this).prop('disabled', true);
+            $(this).html('<i class="fas fa-spinner fa-spin me-1"></i>Clearing...');
+            
+            clearLogs().finally(() => {
+                $(this).prop('disabled', false);
+                $(this).html('<i class="fas fa-trash-alt me-1"></i>Clear Logs');
+            });
+        });
+        
         // Change logs per page
         $('#logs-per-page').change(function() {
             logsPerPage = parseInt($(this).val());
@@ -389,35 +403,46 @@
             
             let html = '';
             logs.forEach(log => {
+                // Safely check properties with fallbacks
+                const timestamp = log.timestamp || 'Unknown';
+                const source_ip = log.source_ip || 'Unknown';
+                const destination = log.destination || 'Unknown';
+                const status = log.status || 'Unknown';
+                const bytes = log.bytes !== undefined ? log.bytes : 'Unknown';
+                
                 // Determine row class based on status code
                 let rowClass = '';
-                if (log.status >= 400 && log.status < 500) {
-                    rowClass = 'table-warning';  // Client errors
-                } else if (log.status >= 500) {
-                    rowClass = 'table-danger';   // Server errors
-                } else if (log.status === 0 || log.status === 'TCP_DENIED') {
+                if (typeof status === 'number') {
+                    if (status >= 400 && status < 500) {
+                        rowClass = 'table-warning';  // Client errors
+                    } else if (status >= 500) {
+                        rowClass = 'table-danger';   // Server errors
+                    }
+                } else if (status === 0 || status === 'TCP_DENIED' || 
+                          (typeof status === 'string' && 
+                           (status.includes('DENIED') || status.includes('BLOCKED')))) {
                     rowClass = 'table-danger';   // Blocked requests
                 }
                 
                 // Safe date formatting with fallback
                 let formattedDate;
                 try {
-                    formattedDate = new Date(log.timestamp).toLocaleString();
+                    formattedDate = new Date(timestamp).toLocaleString();
                     // Check if date is valid
                     if (formattedDate === "Invalid Date") {
-                        formattedDate = log.timestamp;
+                        formattedDate = timestamp;
                     }
                 } catch (e) {
-                    formattedDate = log.timestamp || 'Unknown';
+                    formattedDate = timestamp;
                 }
                 
                 html += `
                     <tr class="${rowClass}">
                         <td>${escapeHtml(formattedDate)}</td>
-                        <td>${escapeHtml(log.source_ip)}</td>
-                        <td>${escapeHtml(log.destination)}</td>
-                        <td>${escapeHtml(log.status)}</td>
-                        <td>${escapeHtml(log.bytes)}</td>
+                        <td>${escapeHtml(source_ip)}</td>
+                        <td>${escapeHtml(destination)}</td>
+                        <td>${escapeHtml(status)}</td>
+                        <td>${escapeHtml(bytes)}</td>
                     </tr>
                 `;
             });
@@ -490,6 +515,20 @@
                 })
                 .catch(function(error) {
                     showToast('Failed to import logs: ' + error.message, 'danger');
+                });
+        }
+        
+        // Function to clear logs
+        function clearLogs() {
+            return apiRequest('POST', 'logs/clear')
+                .then(function(response) {
+                    if (response.status === 'success') {
+                        showToast('Logs cleared successfully');
+                        loadLogs(); // Refresh logs
+                    }
+                })
+                .catch(function(error) {
+                    showToast('Failed to clear logs: ' + error.message, 'danger');
                 });
         }
         
