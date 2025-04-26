@@ -141,13 +141,21 @@ class ProxyTester:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(5)
             result = sock.connect_ex((self.proxy_host, self.proxy_port))
-            sock.close()
+            sock.close
             
             if result == 0:
                 # Try to make a simple HTTP request through the proxy
                 try:
+                    # Add proxy authentication with admin/admin
+                    proxy_auth = requests.auth.HTTPBasicAuth('admin', 'admin')
+                    proxies = {
+                        "http": f"http://admin:admin@{self.proxy_host}:{self.proxy_port}",
+                        "https": f"http://admin:admin@{self.proxy_host}:{self.proxy_port}"
+                    }
+                    
                     response = requests.get("http://example.com", 
-                                           proxies=self.proxies, 
+                                           proxies=proxies,
+                                           auth=proxy_auth,
                                            timeout=10)
                     if response.status_code == 200:
                         return {
@@ -194,7 +202,11 @@ class ProxyTester:
     
     def _test_ui_connectivity(self):
         try:
-            response = requests.get(f"http://{self.ui_host}:{self.ui_port}", timeout=10)
+            # Add basic authentication for UI access (admin/admin)
+            auth = ('admin', 'admin')
+            response = requests.get(f"http://{self.ui_host}:{self.ui_port}", 
+                                   timeout=10, 
+                                   auth=auth)
             if response.status_code == 200:
                 return {
                     'name': 'UI Connectivity',
@@ -606,26 +618,46 @@ class ProxyTester:
     
     def _test_file_type_blocking(self):
         try:
-            # First, try to enable file type blocking through the API
+            # First, try to enable file type blocking through the API with authentication
             try:
                 settings_data = {
                     "enable_content_filtering": "true",
                     "blocked_file_types": "exe,zip,iso"
                 }
-                response = requests.post(
-                    f"http://{self.ui_host}:{self.ui_port}/api/settings",
-                    json=settings_data
+                # Add authentication credentials
+                auth = ('admin', 'admin')
+                response = requests.put(
+                    f"http://{self.ui_host}:{self.ui_port}/api/settings/enable_content_filtering",
+                    json={"value": "true"},
+                    auth=auth
                 )
                 if response.status_code != 200:
                     return {
                         'name': 'File Type Blocking',
                         'passed': False,
-                        'message': "Failed to enable file type blocking",
+                        'message': "Failed to enable content filtering",
+                        'detail': f"API response: {response.status_code} - {response.text[:500]}"
+                    }
+                
+                # Update blocked file types
+                response = requests.put(
+                    f"http://{self.ui_host}:{self.ui_port}/api/settings/blocked_file_types",
+                    json={"value": "exe,zip,iso"},
+                    auth=auth
+                )
+                if response.status_code != 200:
+                    return {
+                        'name': 'File Type Blocking',
+                        'passed': False,
+                        'message': "Failed to update blocked file types",
                         'detail': f"API response: {response.status_code} - {response.text[:500]}"
                     }
                 
                 # Restart the proxy to apply changes
                 self._restart_proxy_container()
+                
+                # Give the proxy a moment to restart and apply settings
+                time.sleep(5)
                 
                 # Now try to access a file with a blocked extension
                 response = requests.get(
