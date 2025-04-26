@@ -321,6 +321,133 @@ python-requests/2.25.1"></textarea>
                     </div>
                 </div>
                 
+                <!-- SSL Inspection Configuration -->
+                <div class="card mb-6">
+                    <div class="card-header">
+                        <h2 class="card-title">SSL Inspection & Certificate Management</h2>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <p class="text-sm text-gray-600 mb-4">
+                            SSL inspection (HTTPS filtering) allows the proxy to decrypt HTTPS traffic for content filtering. 
+                            This requires installing a trusted certificate on all client devices.
+                        </p>
+                        
+                        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                            <div class="flex">
+                                <div class="flex-shrink-0">
+                                    <i class="ri-information-line text-yellow-400"></i>
+                                </div>
+                                <div class="ml-3">
+                                    <p class="text-sm text-yellow-700">
+                                        <strong>Important:</strong> SSL inspection is an advanced feature that breaks the end-to-end encryption 
+                                        of HTTPS connections. Only use in environments where you have explicit permission to inspect encrypted traffic.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="ssl-status-container" class="mb-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="font-medium">Certificate Status</div>
+                                <div id="cert-status" class="text-sm px-2 py-1 rounded bg-gray-200">Checking...</div>
+                            </div>
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="font-medium">Certificate Details</div>
+                                <button id="refresh-cert-btn" class="btn btn-sm btn-outline" title="Refresh certificate status">
+                                    <i class="ri-refresh-line"></i>
+                                </button>
+                            </div>
+                            <div id="cert-details" class="text-sm bg-gray-100 p-3 rounded">
+                                <div>Loading certificate details...</div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <button id="generate-cert-btn" class="btn btn-blue w-full">
+                                    <i class="ri-key-line mr-1"></i> Generate New Certificate
+                                </button>
+                            </div>
+                            <div>
+                                <button id="download-cert-btn" class="btn btn-outline w-full">
+                                    <i class="ri-download-line mr-1"></i> Download Certificate
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <h3 class="font-medium mb-2">Certificate Installation Instructions</h3>
+                        <div class="tabs">
+                            <div class="tab-buttons mb-3">
+                                <button class="tab-btn btn btn-sm active" data-os-tab="windows">Windows</button>
+                                <button class="tab-btn btn btn-sm" data-os-tab="macos">macOS</button>
+                                <button class="tab-btn btn btn-sm" data-os-tab="android">Android</button>
+                                <button class="tab-btn btn btn-sm" data-os-tab="ios">iOS</button>
+                                <button class="tab-btn btn btn-sm" data-os-tab="linux">Linux</button>
+                            </div>
+                            
+                            <div class="os-tab-content active" id="windows-tab">
+                                <ol class="list-decimal ml-4 text-sm">
+                                    <li>Download the certificate using the button above</li>
+                                    <li>Double-click the downloaded certificate file</li>
+                                    <li>Select "Local Machine" and click Next</li>
+                                    <li>Select "Place all certificates in the following store"</li>
+                                    <li>Click "Browse" and select "Trusted Root Certification Authorities"</li>
+                                    <li>Click "Next" and then "Finish"</li>
+                                </ol>
+                            </div>
+                            
+                            <div class="os-tab-content hidden" id="macos-tab">
+                                <ol class="list-decimal ml-4 text-sm">
+                                    <li>Download the certificate using the button above</li>
+                                    <li>Double-click the downloaded certificate file to open it in Keychain Access</li>
+                                    <li>In the dialog that appears, select "System" from the dropdown</li>
+                                    <li>Click "Add" to add the certificate to your System keychain</li>
+                                    <li>Find the certificate in Keychain Access, double-click it</li>
+                                    <li>Expand the "Trust" section and set "When using this certificate" to "Always Trust"</li>
+                                    <li>Close the certificate window (you'll be prompted for your password)</li>
+                                </ol>
+                            </div>
+                            
+                            <div class="os-tab-content hidden" id="android-tab">
+                                <ol class="list-decimal ml-4 text-sm">
+                                    <li>Download the certificate using the button above</li>
+                                    <li>Go to Settings > Security > Encryption & Credentials > Install a certificate</li>
+                                    <li>Select "CA Certificate" and confirm any warnings</li>
+                                    <li>Browse to the downloaded certificate file and select it</li>
+                                    <li>Enter your device PIN or password if prompted</li>
+                                    <li>Confirm the certificate installation</li>
+                                </ol>
+                            </div>
+                            
+                            <div class="os-tab-content hidden" id="ios-tab">
+                                <ol class="list-decimal ml-4 text-sm">
+                                    <li>Download the certificate using the button above</li>
+                                    <li>Go to Settings > General > Profile Downloaded or VPN & Device Management</li>
+                                    <li>Select the certificate profile to install it</li>
+                                    <li>Go to Settings > General > About > Certificate Trust Settings</li>
+                                    <li>Find the certificate and toggle it on</li>
+                                    <li>Confirm the trust settings</li>
+                                </ol>
+                            </div>
+                            
+                            <div class="os-tab-content hidden" id="linux-tab">
+                                <ol class="list-decimal ml-4 text-sm">
+                                    <li>Download the certificate using the button above</li>
+                                    <li>For Chrome/Chromium: Go to Settings > Privacy and security > Security > Manage certificates > Authorities > Import</li>
+                                    <li>For Firefox: Go to Preferences > Privacy & Security > Certificates > View Certificates > Authorities > Import</li>
+                                    <li>Select the downloaded certificate file</li>
+                                    <li>Check "Trust this CA to identify websites" and click OK</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="cert-operation-message" class="mt-2"></div>
+                </div>
+                
                 <!-- Advanced Configuration -->
                 <div class="card">
                     <div class="card-header">

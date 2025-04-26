@@ -1118,7 +1118,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const ips = ipBlacklistTextarea.value
                     .split('\n')
                     .map(line => line.trim())
-                    .filter(line => validateInput(line, 'ip'));
+                    .filter(line => line !== '');
                 
                 const response = await safeFetch('/api/security/blacklist-ips', {
                     method: 'POST',
@@ -1132,6 +1132,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 if (data.status === 'success') {
                     showMessage(ipBlacklistMessage, 'IP blacklist updated successfully', true);
+                    
+                    // Update count on success
+                    const countElement = document.getElementById('ip-blacklist-count');
+                    if (countElement) {
+                        countElement.textContent = ips.length;
+                    }
                 } else {
                     showMessage(ipBlacklistMessage, data.message || 'Failed to update IP blacklist', false);
                 }
@@ -1189,7 +1195,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const domains = domainBlacklistTextarea.value
                     .split('\n')
                     .map(line => line.trim())
-                    .filter(line => validateInput(line, 'domain'));
+                    .filter(line => line !== '');
                 
                 const response = await safeFetch('/api/security/blacklist-domains', {
                     method: 'POST',
@@ -1203,6 +1209,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 if (data.status === 'success') {
                     showMessage(domainBlacklistMessage, 'Domain blacklist updated successfully', true);
+                    
+                    // Update count on success
+                    const countElement = document.getElementById('domain-blacklist-count');
+                    if (countElement) {
+                        countElement.textContent = domains.length;
+                    }
                 } else {
                     showMessage(domainBlacklistMessage, data.message || 'Failed to update domain blacklist', false);
                 }
@@ -1317,6 +1329,188 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             } finally {
                 if (saveCacheSettingsBtn) saveCacheSettingsBtn.disabled = false;
+            }
+        }
+        
+        // SSL Certificate Management
+        const certStatusElem = document.getElementById('cert-status');
+        const certDetailsElem = document.getElementById('cert-details');
+        const generateCertBtn = document.getElementById('generate-cert-btn');
+        const downloadCertBtn = document.getElementById('download-cert-btn');
+        const refreshCertBtn = document.getElementById('refresh-cert-btn');
+        const certOperationMessage = document.getElementById('cert-operation-message');
+        
+        // OS-specific certificate installation tab navigation
+        const osTabButtons = document.querySelectorAll('.tab-btn[data-os-tab]');
+        const osTabContents = document.querySelectorAll('.os-tab-content');
+        
+        // Initialize certificate status
+        fetchCertificateStatus();
+        
+        // Add event listeners for certificate operations
+        if (generateCertBtn) generateCertBtn.addEventListener('click', generateCertificate);
+        if (downloadCertBtn) downloadCertBtn.addEventListener('click', downloadCertificate);
+        if (refreshCertBtn) refreshCertBtn.addEventListener('click', fetchCertificateStatus);
+        
+        // OS-specific tabs event listeners
+        if (osTabButtons) {
+            osTabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    // Remove active class from all buttons
+                    osTabButtons.forEach(btn => btn.classList.remove('active'));
+                    
+                    // Add active class to clicked button
+                    button.classList.add('active');
+                    
+                    // Show corresponding content
+                    const osTabName = button.getAttribute('data-os-tab');
+                    
+                    // Hide all tab content sections
+                    osTabContents.forEach(content => {
+                        content.classList.add('hidden');
+                    });
+                    
+                    // Show the selected tab content
+                    const activeOsTab = document.getElementById(osTabName + '-tab');
+                    if (activeOsTab) {
+                        activeOsTab.classList.remove('hidden');
+                        activeOsTab.classList.add('active');
+                    }
+                });
+            });
+        }
+        
+        async function fetchCertificateStatus() {
+            if (!certStatusElem || !certDetailsElem) return;
+            
+            try {
+                if (refreshCertBtn) refreshCertBtn.classList.add('animate-spin');
+                certStatusElem.textContent = 'Checking...';
+                certStatusElem.className = 'text-sm px-2 py-1 rounded bg-gray-200';
+                certDetailsElem.innerHTML = '<div>Loading certificate details...</div>';
+                
+                const response = await safeFetch('/api/security/ssl-certificate');
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.certificate) {
+                    // Certificate exists
+                    certStatusElem.textContent = 'Certificate Available';
+                    certStatusElem.className = 'text-sm px-2 py-1 rounded bg-green-100 text-green-800';
+                    
+                    // Format and display certificate details
+                    const cert = data.certificate;
+                    let detailsHtml = `
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div class="text-gray-600">Subject:</div>
+                            <div>${cert.subject || 'N/A'}</div>
+                            
+                            <div class="text-gray-600">Issuer:</div>
+                            <div>${cert.issuer || 'N/A'}</div>
+                            
+                            <div class="text-gray-600">Valid From:</div>
+                            <div>${cert.validFrom || 'N/A'}</div>
+                            
+                            <div class="text-gray-600">Valid To:</div>
+                            <div>${cert.validTo || 'N/A'}</div>
+                            
+                            <div class="text-gray-600">Serial Number:</div>
+                            <div class="font-mono text-xs overflow-hidden text-ellipsis">${cert.serialNumber || 'N/A'}</div>
+                        </div>
+                    `;
+                    
+                    certDetailsElem.innerHTML = detailsHtml;
+                    
+                    // Enable download button
+                    if (downloadCertBtn) downloadCertBtn.disabled = false;
+                } else {
+                    // No certificate
+                    certStatusElem.textContent = 'No Certificate';
+                    certStatusElem.className = 'text-sm px-2 py-1 rounded bg-yellow-100 text-yellow-800';
+                    certDetailsElem.innerHTML = '<div class="text-center text-gray-500">No SSL certificate has been generated yet.</div>';
+                    
+                    // Disable download button
+                    if (downloadCertBtn) downloadCertBtn.disabled = true;
+                }
+            } catch (error) {
+                certStatusElem.textContent = 'Error';
+                certStatusElem.className = 'text-sm px-2 py-1 rounded bg-red-100 text-red-800';
+                certDetailsElem.innerHTML = `<div class="text-red-500">Failed to fetch certificate status: ${error.message}</div>`;
+                
+                // Disable download button
+                if (downloadCertBtn) downloadCertBtn.disabled = true;
+            } finally {
+                if (refreshCertBtn) refreshCertBtn.classList.remove('animate-spin');
+            }
+        }
+        
+        async function generateCertificate() {
+            if (!generateCertBtn || !certOperationMessage) return;
+            
+            try {
+                generateCertBtn.disabled = true;
+                generateCertBtn.innerHTML = '<i class="ri-loader-4-line animate-spin mr-1"></i> Generating...';
+                showMessage(certOperationMessage, 'Generating SSL certificate...', null);
+                
+                // Optional fields for certificate customization
+                const hostname = window.location.hostname;
+                const certData = {
+                    commonName: hostname !== 'localhost' ? hostname : 'secure-proxy.local',
+                    organization: 'Secure Proxy',
+                    validDays: 3650 // 10 years
+                };
+                
+                const response = await safeFetch('/api/security/ssl-certificate/generate', {
+                    method: 'POST',
+                    headers: addCSRFToken({
+                        'Content-Type': 'application/json'
+                    }),
+                    body: JSON.stringify(certData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showMessage(certOperationMessage, 'SSL certificate generated successfully', true);
+                    
+                    // Refresh the certificate status
+                    fetchCertificateStatus();
+                    
+                    // Reload squid to apply changes - ask user first
+                    if (confirm('Certificate generated successfully. Reload proxy to apply changes?')) {
+                        await controlSquid('reload');
+                    }
+                } else {
+                    showMessage(certOperationMessage, data.message || 'Failed to generate SSL certificate', false);
+                }
+            } catch (error) {
+                showMessage(certOperationMessage, 'Failed to generate SSL certificate: ' + error.message, false);
+            } finally {
+                generateCertBtn.disabled = false;
+                generateCertBtn.innerHTML = '<i class="ri-key-line mr-1"></i> Generate New Certificate';
+            }
+        }
+        
+        async function downloadCertificate() {
+            if (!downloadCertBtn) return;
+            
+            try {
+                downloadCertBtn.disabled = true;
+                downloadCertBtn.innerHTML = '<i class="ri-loader-4-line animate-spin mr-1"></i> Downloading...';
+                
+                // Create download link
+                const a = document.createElement('a');
+                a.href = '/api/security/ssl-certificate/download';
+                a.download = 'secure-proxy-ca.crt';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                showMessage(certOperationMessage, 'Download initiated. Install the certificate on your devices.', true);
+            } catch (error) {
+                showMessage(certOperationMessage, 'Failed to download certificate: ' + error.message, false);
+            } finally {
+                downloadCertBtn.disabled = false;
+                downloadCertBtn.innerHTML = '<i class="ri-download-line mr-1"></i> Download Certificate';
             }
         }
     }
@@ -1756,7 +1950,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const ips = ipBlacklistTextarea.value
                 .split('\n')
                 .map(line => line.trim())
-                .filter(line => validateInput(line, 'ip'));
+                .filter(line => line !== '');
             
             const response = await safeFetch('/api/security/blacklist-ips', {
                 method: 'POST',
@@ -1770,6 +1964,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (data.status === 'success') {
                 showMessage(ipBlacklistMessage, 'IP blacklist updated successfully', true);
+                
+                // Update count on success
+                const countElement = document.getElementById('ip-blacklist-count');
+                if (countElement) {
+                    countElement.textContent = ips.length;
+                }
             } else {
                 showMessage(ipBlacklistMessage, data.message || 'Failed to update IP blacklist', false);
             }
@@ -1827,7 +2027,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const domains = domainBlacklistTextarea.value
                 .split('\n')
                 .map(line => line.trim())
-                .filter(line => validateInput(line, 'domain'));
+                .filter(line => line !== '');
             
             const response = await safeFetch('/api/security/blacklist-domains', {
                 method: 'POST',
@@ -1841,6 +2041,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (data.status === 'success') {
                 showMessage(domainBlacklistMessage, 'Domain blacklist updated successfully', true);
+                
+                // Update count on success
+                const countElement = document.getElementById('domain-blacklist-count');
+                if (countElement) {
+                    countElement.textContent = domains.length;
+                }
             } else {
                 showMessage(domainBlacklistMessage, data.message || 'Failed to update domain blacklist', false);
             }
@@ -1981,6 +2187,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (data.status === 'success') {
                 showMessage(badUserAgentsMessage, 'Bad user agents updated successfully', true);
+                
+                // Update count on success
+                const countElement = document.getElementById('bad-user-agents-count');
+                if (countElement) {
+                    countElement.textContent = userAgents.length;
+                }
             } else {
                 showMessage(badUserAgentsMessage, data.message || 'Failed to update bad user agents', false);
             }

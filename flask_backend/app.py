@@ -282,7 +282,7 @@ def update_blacklist_domains():
     except Exception as e:
         return jsonify({
             'status': 'error',
-            'message': str(e)
+                'message': str(e)
         }), 500
 
 @app.route('/api/security/allowed-direct-ips', methods=['GET'])
@@ -1225,6 +1225,171 @@ def get_realtime_stats():
             'maxConnections': 100,
             'clients': 0,
             'maxClients': 10
+        }), 500
+
+@app.route('/api/security/ssl-certificate', methods=['GET'])
+def get_ssl_certificate_status():
+    try:
+        # Define paths for SSL certificates
+        cert_path = '/etc/squid/ssl_cert/myCA.pem'
+        key_path = '/etc/squid/ssl_cert/myCA.key'
+        
+        if not os.path.exists(cert_path) or not os.path.exists(key_path):
+            return jsonify({
+                'status': 'success',
+                'exists': False,
+                'message': 'SSL certificate not found'
+            })
+        
+        # Get certificate details using OpenSSL
+        cert_info_cmd = f"openssl x509 -in {cert_path} -text -noout"
+        success, stdout, stderr = run_subprocess_safely(cert_info_cmd)
+        
+        if not success:
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to read certificate: {stderr}'
+            }), 500
+        
+        # Parse certificate details
+        cert_info = stdout.strip()
+        
+        # Extract subject
+        subject_match = re.search(r'Subject:\s*(.*?)(?=\n)', cert_info)
+        subject = subject_match.group(1).strip() if subject_match else 'Unknown'
+        
+        # Extract issuer
+        issuer_match = re.search(r'Issuer:\s*(.*?)(?=\n)', cert_info)
+        issuer = issuer_match.group(1).strip() if issuer_match else 'Unknown'
+        
+        # Extract validity dates
+        valid_from_match = re.search(r'Not Before:\s*(.*?)(?=\n)', cert_info)
+        valid_from = valid_from_match.group(1).strip() if valid_from_match else 'Unknown'
+        
+        valid_to_match = re.search(r'Not After\s*:\s*(.*?)(?=\n)', cert_info)
+        valid_to = valid_to_match.group(1).strip() if valid_to_match else 'Unknown'
+        
+        # Extract serial number
+        serial_match = re.search(r'Serial Number:\s*(.*?)(?=\n)', cert_info)
+        serial_number = serial_match.group(1).strip() if serial_match else 'Unknown'
+        
+        return jsonify({
+            'status': 'success',
+            'exists': True,
+            'certificate': {
+                'subject': subject,
+                'issuer': issuer,
+                'validFrom': valid_from,
+                'validTo': valid_to,
+                'serialNumber': serial_number
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/security/ssl-certificate/generate', methods=['POST'])
+def generate_ssl_certificate():
+    try:
+        data = request.get_json()
+        common_name = data.get('commonName', 'secure-proxy.local')
+        organization = data.get('organization', 'Secure Proxy')
+        valid_days = data.get('validDays', 3650)  # Default 10 years
+        
+        # Create directory for SSL certificates
+        ssl_dir = '/etc/squid/ssl_cert'
+        if not os.path.exists(ssl_dir):
+            os.makedirs(ssl_dir, exist_ok=True)
+        
+        # Full paths for certificate files
+        cert_path = os.path.join(ssl_dir, 'myCA.pem')
+        key_path = os.path.join(ssl_dir, 'myCA.key')
+        
+        # Generate root CA certificate
+        openssl_commands = [
+            # Generate private key
+            f"openssl genrsa -out {key_path} 2048",
+            
+            # Generate CA certificate
+            f"openssl req -new -x509 -key {key_path} -out {cert_path} -days {valid_days} "
+            f"-subj '/CN={common_name}/O={organization}/OU=Secure Proxy CA'"
+        ]
+        
+        # Execute commands
+        for cmd in openssl_commands:
+            success, stdout, stderr = run_subprocess_safely(cmd, timeout=30)
+            if not success:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Failed to generate certificate: {stderr}'
+                }), 500
+        
+        # Update Squid configuration to use the new certificate
+        with open(SQUID_CONFIG_PATH, 'r') as f:
+            config = f.read()
+        
+        # Ensure SSL certificate paths are correctly set
+        if 'ssl_bump' in config:
+            # Check if ssl_cert_dir is already set
+            if 'ssl_cert_dir' not in config:
+                config += f"\n\n# SSL Certificate Directory\nssl_cert_dir {ssl_dir}\n"
+            
+            # Check if ssl_bump is already configured
+            ssl_bump_configured = re.search(r'ssl_bump\s+server-first', config)
+            
+            if not ssl_bump_configured:
+                # Add SSL bump configuration
+                config += f"""
+# SSL Bump Configuration
+http_port 3128 ssl-bump generate-host-certificates=on dynamic_cert_mem_cache_size=4MB cert={cert_path} key={key_path}
+ssl_bump server-first all
+sslproxy_cert_error deny all
+sslcrtd_program /usr/lib/squid/security_file_certgen -s {ssl_dir}/ssl_db -M 4MB
+sslcrtd_children 8 startup=1 idle=1
+"""
+        
+        # Write updated config
+        with open(SQUID_CONFIG_PATH, 'w') as f:
+            f.write(config)
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'SSL certificate generated successfully',
+            'details': {
+                'certPath': cert_path,
+                'keyPath': key_path,
+                'commonName': common_name,
+                'validDays': valid_days
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/security/ssl-certificate/download', methods=['GET'])
+def download_ssl_certificate():
+    try:
+        cert_path = '/etc/squid/ssl_cert/myCA.pem'
+        
+        if not os.path.exists(cert_path):
+            return jsonify({
+                'status': 'error',
+                'message': 'Certificate file not found'
+            }), 404
+        
+        # Send the certificate file for download
+        return send_file(cert_path, 
+                        mimetype='application/x-x509-ca-cert',
+                        as_attachment=True,
+                        download_name='secure-proxy-ca.crt')
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
         }), 500
 
 if __name__ == '__main__':
