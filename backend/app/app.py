@@ -379,21 +379,33 @@ def parse_squid_logs():
     conn = get_db()
     cursor = conn.cursor()
     
-    # Simple log parsing (would need to be adapted to your log format)
+    # Clear existing logs before importing
+    cursor.execute("DELETE FROM proxy_logs")
+    
+    # Parse Squid log format matching your actual log format
     with open(log_path, 'r') as f:
         for line in f:
             parts = line.strip().split()
-            if len(parts) >= 10:
-                timestamp = parts[0]
-                source_ip = parts[2]
-                status = parts[3]
-                bytes = parts[4]
-                destination = parts[6]
-                
-                cursor.execute("""
-                INSERT INTO proxy_logs (timestamp, source_ip, destination, status, bytes)
-                VALUES (?, ?, ?, ?, ?)
-                """, (timestamp, source_ip, destination, status, bytes))
+            if len(parts) >= 9:
+                try:
+                    timestamp = float(parts[0])  # Convert timestamp to human-readable format
+                    elapsed = parts[1]
+                    source_ip = parts[2]
+                    status_code = parts[3]
+                    bytes = int(parts[4])
+                    method = parts[5]
+                    url = parts[6]
+                    
+                    # Convert Unix timestamp to datetime
+                    readable_time = datetime.fromtimestamp(timestamp).isoformat()
+                    
+                    cursor.execute("""
+                    INSERT INTO proxy_logs (timestamp, source_ip, destination, status, bytes)
+                    VALUES (?, ?, ?, ?, ?)
+                    """, (readable_time, source_ip, url, status_code, bytes))
+                except (ValueError, IndexError) as e:
+                    logger.error(f"Error parsing log line: {line.strip()} - {str(e)}")
+                    continue
     
     conn.commit()
     logger.info("Squid logs imported to database")
