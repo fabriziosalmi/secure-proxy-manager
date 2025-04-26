@@ -344,13 +344,25 @@
                     rowClass = 'table-danger';   // Blocked requests
                 }
                 
+                // Safe date formatting with fallback
+                let formattedDate;
+                try {
+                    formattedDate = new Date(log.timestamp).toLocaleString();
+                    // Check if date is valid
+                    if (formattedDate === "Invalid Date") {
+                        formattedDate = log.timestamp;
+                    }
+                } catch (e) {
+                    formattedDate = log.timestamp || 'Unknown';
+                }
+                
                 html += `
                     <tr class="${rowClass}">
-                        <td>${new Date(log.timestamp).toLocaleString()}</td>
-                        <td>${log.source_ip}</td>
-                        <td>${log.destination}</td>
-                        <td>${log.status}</td>
-                        <td>${log.bytes}</td>
+                        <td>${formattedDate}</td>
+                        <td>${log.source_ip || 'Unknown'}</td>
+                        <td>${log.destination || 'Unknown'}</td>
+                        <td>${log.status || 'Unknown'}</td>
+                        <td>${log.bytes !== undefined ? log.bytes : 'Unknown'}</td>
                     </tr>
                 `;
             });
