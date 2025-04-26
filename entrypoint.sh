@@ -1,8 +1,8 @@
-#!/bin/sh
+#!/bin/bash
 
 # Ensure directories exist with proper permissions
 mkdir -p /var/log/squid /var/cache/squid /etc/squid /var/lib/ssl_db
-chown -R squid:squid /var/log/squid /var/cache/squid /var/lib/ssl_db
+chown -R proxy:proxy /var/log/squid /var/cache/squid /var/lib/ssl_db
 chmod -R 750 /var/log/squid /var/cache/squid /var/lib/ssl_db
 
 # Comment out SSL bumping directives to avoid startup failures
@@ -12,6 +12,12 @@ done
 
 # Add debug output for troubleshooting
 echo "Running entrypoint.sh"
+
+# Verify squidclient is installed and executable
+if ! command -v squidclient >/dev/null 2>&1; then
+    echo "WARNING: squidclient is not installed, installing it now..."
+    apt-get update && apt-get install -y squidclient
+fi
 
 # Initialize Squid cache if needed
 if [ ! -d /var/cache/squid/00 ]; then
@@ -26,7 +32,7 @@ for file in /etc/squid/blacklist_domains.txt /etc/squid/blacklist_ips.txt /etc/s
   if [ ! -f "$file" ]; then
     echo "Creating empty file: $file"
     touch "$file"
-    chown root:squid "$file"
+    chown root:proxy "$file"
     chmod 644 "$file"
   fi
 done

@@ -1,20 +1,27 @@
-FROM alpine:3.15
+FROM ubuntu:22.04
+
+# Set non-interactive installation
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Install required packages
-RUN apk update && \
-    apk add --no-cache \
+RUN apt-get update && \
+    apt-get install -y \
     squid \
+    squidclient \
     sudo \
     python3 \
-    py3-pip \
+    python3-pip \
     supervisor \
     curl \
     openssl \
+    net-tools \
+    iproute2 \
     # Additional dependencies for potential Python module compilation
     gcc \
     python3-dev \
-    musl-dev \
-    linux-headers
+    build-essential && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies from requirements.txt
 COPY flask_backend/requirements.txt /tmp/requirements.txt
@@ -22,18 +29,18 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
 # Create necessary directories and set permissions
 RUN mkdir -p /var/log/squid /var/cache/squid /etc/squid /var/lib/ssl_db && \
-    chown -R squid:squid /var/log/squid /var/cache/squid /var/lib/ssl_db && \
+    chown -R proxy:proxy /var/log/squid /var/cache/squid /var/lib/ssl_db && \
     chmod -R 750 /var/log/squid /var/cache/squid /var/lib/ssl_db
 
 # Create empty blacklist files if they don't exist
 RUN touch /etc/squid/blacklist_domains.txt /etc/squid/blacklist_ips.txt \
     /etc/squid/allowed_direct_ips.txt /etc/squid/bad_user_agents.txt && \
-    chown root:squid /etc/squid/*.txt && \
+    chown root:proxy /etc/squid/*.txt && \
     chmod 644 /etc/squid/*.txt
 
 # Set up Squid configuration
 COPY squid_config/squid.conf /etc/squid/squid.conf
-RUN chown root:squid /etc/squid/squid.conf && \
+RUN chown root:proxy /etc/squid/squid.conf && \
     chmod 644 /etc/squid/squid.conf
 
 # Initialize Squid cache

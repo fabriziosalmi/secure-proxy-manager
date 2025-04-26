@@ -983,7 +983,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Add force refresh parameter to avoid cached data
                     console.time("realtime-stats-api-call");
-                    const response = await safeFetch('/api/stats/realtime?refresh=true');
+                    const response = await fetch('/api/stats/realtime?refresh=true');
                     console.timeEnd("realtime-stats-api-call");
                     
                     if (!response.ok) {
@@ -996,14 +996,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     console.log("Real-time stats received:", JSON.stringify(data));
                     
+                    // Check for error status in response
                     if (data.status === 'error') {
                         throw new Error(data.message || 'Unknown error fetching stats');
                     }
                     
-                    // Update connections count
-                    const connections = parseInt(data.connections) || 0;
-                    const maxConnections = parseInt(data.maxConnections) || 1000;
-                    const connectionPercentage = Math.min(100, Math.round((connections / maxConnections) * 100));
+                    // Update connections count - use more robust parsing with fallbacks
+                    const connections = parseInt(data.connections || 0);
+                    const maxConnections = parseInt(data.maxConnections || 1000);
+                    const connectionPercentage = Math.min(100, Math.round((connections / maxConnections) * 100)) || 0;
                     
                     console.log("Updating connections UI:", { 
                         connections, 
@@ -1018,10 +1019,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     if (connectionsLimit) connectionsLimit.textContent = maxConnections;
                     
-                    // Update clients count
-                    const clients = parseInt(data.clients) || 0;
-                    const maxClients = parseInt(data.maxClients) || 100;
-                    const clientPercentage = Math.min(100, Math.round((clients / maxClients) * 100));
+                    // Update clients count - use more robust parsing with fallbacks
+                    const clients = parseInt(data.clients || 0);
+                    const maxClients = parseInt(data.maxClients || 100);
+                    const clientPercentage = Math.min(100, Math.round((clients / maxClients) * 100)) || 0;
                     
                     console.log("Updating clients UI:", { 
                         clients, 
@@ -1052,24 +1053,31 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (peakConnections) peakConnections.textContent = peakConnectionsValue;
                     if (peakClients) peakClients.textContent = peakClientsValue;
                     
-                    // Update system info if elements exist
+                    // Update system info if elements exist - use more robust parsing with fallbacks
                     const cpuUsageEl = document.getElementById('cpu-usage');
                     const memoryUsageEl = document.getElementById('memory-usage');
                     const diskUsageEl = document.getElementById('disk-usage');
                     const processIdEl = document.getElementById('process-id');
                     
+                    // Safe parsing for floating point and integer values
+                    const cpuValue = parseFloat(data.cpu || 0) || 0;
+                    const memoryValue = parseFloat(data.memory || 0) || 0;
+                    const memoryMB = parseInt(data.memoryMB || 0) || 0;
+                    const diskUsageMB = parseInt(data.diskUsageMB || 0) || 0;
+                    const pid = parseInt(data.pid || 0) || 0;
+                    
                     console.log("Updating system info UI:", {
-                        cpu: parseFloat(data.cpu).toFixed(1),
-                        memory: parseFloat(data.memory).toFixed(1),
-                        memoryMB: data.memoryMB,
-                        diskUsageMB: data.diskUsageMB,
-                        pid: data.pid
+                        cpu: cpuValue.toFixed(1),
+                        memory: memoryValue.toFixed(1),
+                        memoryMB: memoryMB,
+                        diskUsageMB: diskUsageMB,
+                        pid: pid
                     });
                     
-                    if (cpuUsageEl) cpuUsageEl.textContent = `${parseFloat(data.cpu).toFixed(1) || 0}%`;
-                    if (memoryUsageEl) memoryUsageEl.textContent = `${parseFloat(data.memory).toFixed(1) || 0}% (${data.memoryMB || 0} MB)`;
-                    if (diskUsageEl) diskUsageEl.textContent = `${data.diskUsageMB || 0} MB`;
-                    if (processIdEl) processIdEl.textContent = data.pid > 0 ? data.pid : 'Not running';
+                    if (cpuUsageEl) cpuUsageEl.textContent = `${cpuValue.toFixed(1)}%`;
+                    if (memoryUsageEl) memoryUsageEl.textContent = `${memoryValue.toFixed(1)}% (${memoryMB} MB)`;
+                    if (diskUsageEl) diskUsageEl.textContent = `${diskUsageMB} MB`;
+                    if (processIdEl) processIdEl.textContent = pid > 0 ? pid.toString() : 'Not running';
                     
                     // Update last updated time
                     if (lastUpdateTime) {
@@ -1111,12 +1119,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (processIdEl) processIdEl.textContent = 'Not running';
                     
                     // Show toast notification about the error
-                    if (typeof toast !== 'undefined') {
-                        toast.show({
-                            title: 'Monitoring Error',
-                            message: 'Error fetching monitoring data. Check console for details.',
-                            type: 'error'
-                        });
+                    if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
+                        toast.error('Error fetching monitoring data. Check console for details.');
                     }
                 } finally {
                     if (refreshConnectionsBtn) {
@@ -1972,6 +1976,15 @@ document.addEventListener('DOMContentLoaded', function() {
         const downloadCurrentLogBtn = document.getElementById('download-current-log-btn');
         const clearLogBtn = document.getElementById('clear-log-btn');
         const generateAnalysisBtn = document.getElementById('generate-analysis-btn');
+        const scrollToTopBtn = document.getElementById('scroll-to-top');
+        const scrollToBottomBtn = document.getElementById('scroll-to-bottom');
+        const logPosition = document.getElementById('log-position');
+        const closeAnalysisBtn = document.getElementById('close-analysis-btn');
+        const logSearchCount = document.getElementById('log-search-count');
+        const toggleFiltersBtn = document.getElementById('toggle-filters-btn');
+        const filtersBox = document.getElementById('filters-box');
+        const toggleHighlightingBtn = document.getElementById('toggle-highlighting-btn');
+        const highlightingBox = document.getElementById('highlighting-box');
         
         // Charts placeholders (would need a charting library in production)
         const topDomainsChart = document.getElementById('top-domains-chart');
@@ -2001,7 +2014,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     button.classList.add('active');
                     
                     // Get log type
-                    currentLogType = button.getAttribute('data-log');
+                    currentLogType = button.getAttribute('data-log-type');
                     
                     // Update title
                     if (logTitle) {
@@ -2022,6 +2035,64 @@ document.addEventListener('DOMContentLoaded', function() {
             searchLogsToggle.addEventListener('click', () => {
                 if (searchBox) {
                     searchBox.classList.toggle('hidden');
+                    if (!searchBox.classList.contains('hidden') && searchInput) {
+                        searchInput.focus();
+                    }
+                }
+                
+                // Hide other boxes when showing search
+                if (filtersBox) filtersBox.classList.add('hidden');
+                if (highlightingBox) highlightingBox.classList.add('hidden');
+            });
+        }
+        
+        if (toggleFiltersBtn) {
+            toggleFiltersBtn.addEventListener('click', () => {
+                if (filtersBox) {
+                    filtersBox.classList.toggle('hidden');
+                }
+                
+                // Hide other boxes when showing filters
+                if (searchBox) searchBox.classList.add('hidden');
+                if (highlightingBox) highlightingBox.classList.add('hidden');
+            });
+        }
+        
+        if (toggleHighlightingBtn) {
+            toggleHighlightingBtn.addEventListener('click', () => {
+                if (highlightingBox) {
+                    highlightingBox.classList.toggle('hidden');
+                }
+                
+                // Hide other boxes when showing highlighting
+                if (searchBox) searchBox.classList.add('hidden');
+                if (filtersBox) filtersBox.classList.add('hidden');
+            });
+        }
+        
+        if (scrollToTopBtn) {
+            scrollToTopBtn.addEventListener('click', () => {
+                if (logContent) {
+                    logContent.scrollTop = 0;
+                    updateLogPosition("Showing oldest logs first");
+                }
+            });
+        }
+        
+        if (scrollToBottomBtn) {
+            scrollToBottomBtn.addEventListener('click', () => {
+                if (logContent) {
+                    logContent.scrollTop = logContent.scrollHeight;
+                    updateLogPosition("Showing most recent logs");
+                }
+            });
+        }
+        
+        if (closeAnalysisBtn) {
+            closeAnalysisBtn.addEventListener('click', () => {
+                const analysisSection = document.getElementById('analysis-section');
+                if (analysisSection) {
+                    analysisSection.classList.add('hidden');
                 }
             });
         }
@@ -2039,10 +2110,41 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         if (generateAnalysisBtn) {
-            generateAnalysisBtn.addEventListener('click', () => generateLogAnalysis(currentLogType));
+            generateAnalysisBtn.addEventListener('click', () => {
+                const analysisSection = document.getElementById('analysis-section');
+                if (analysisSection) {
+                    analysisSection.classList.remove('hidden');
+                    // Scroll to analysis section
+                    analysisSection.scrollIntoView({behavior: 'smooth'});
+                }
+                generateLogAnalysis(currentLogType);
+            });
         }
         
-        // Functions for logs page
+        function updateLogPosition(message) {
+            if (logPosition) {
+                logPosition.textContent = message;
+            }
+        }
+        
+        // Listen for scroll events on log content to update position indicator
+        if (logContent) {
+            logContent.addEventListener('scroll', () => {
+                const scrollPosition = logContent.scrollTop;
+                const scrollMax = logContent.scrollHeight - logContent.clientHeight;
+                
+                if (scrollPosition === 0) {
+                    updateLogPosition("Showing oldest logs first");
+                } else if (Math.abs(scrollMax - scrollPosition) < 10) {
+                    updateLogPosition("Showing most recent logs");
+                } else {
+                    const percentage = Math.round((scrollPosition / scrollMax) * 100);
+                    updateLogPosition(`Scrolled to ${percentage}%`);
+                }
+            });
+        }
+        
+        // Set up auto refresh based on select
         function setupAutoRefresh() {
             if (!autoRefreshSelect) return;
             
@@ -2060,12 +2162,194 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
+        // Helper function to format file size
+        function formatFileSize(bytes) {
+            if (bytes < 1024) {
+                return bytes + ' B';
+            } else if (bytes < 1024 * 1024) {
+                return (bytes / 1024).toFixed(2) + ' KB';
+            } else if (bytes < 1024 * 1024 * 1024) {
+                return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+            } else {
+                return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+            }
+        }
+        
+        // Modified searchLogs function with better UX
+        function searchLogs() {
+            if (!searchInput || !logContent) return;
+            
+            const searchTerm = searchInput.value.trim();
+            if (!searchTerm) return;
+            
+            const caseSensitive = document.getElementById('case-sensitive')?.checked || false;
+            const wholeWord = document.getElementById('whole-word')?.checked || false;
+            const useRegex = document.getElementById('regex-search')?.checked || false;
+            
+            // Get all log lines
+            const logLines = logContent.querySelectorAll('.log-line');
+            
+            // Clear previous highlights
+            logLines.forEach(line => {
+                line.innerHTML = escapeHtml(line.textContent || '');
+                line.classList.remove('search-highlight');
+            });
+            
+            // Prepare search function
+            let searchFunction;
+            
+            if (useRegex) {
+                try {
+                    const regex = new RegExp(searchTerm, caseSensitive ? '' : 'i');
+                    searchFunction = text => regex.test(text);
+                } catch (e) {
+                    alert('Invalid regular expression');
+                    return;
+                }
+            } else if (wholeWord) {
+                const wordBoundary = '\\b';
+                const term = escapeRegExp(searchTerm);
+                const regex = new RegExp(wordBoundary + term + wordBoundary, caseSensitive ? '' : 'i');
+                searchFunction = text => regex.test(text);
+            } else {
+                searchFunction = caseSensitive 
+                    ? text => text.includes(searchTerm)
+                    : text => text.toLowerCase().includes(searchTerm.toLowerCase());
+            }
+            
+            // Highlight matching lines
+            let matchCount = 0;
+            logLines.forEach(line => {
+                const lineText = line.textContent || '';
+                if (searchFunction(lineText)) {
+                    line.classList.add('search-highlight');
+                    matchCount++;
+                    
+                    // Highlight the matching text
+                    if (!useRegex) {
+                        const term = escapeRegExp(searchTerm);
+                        const regex = new RegExp(term, caseSensitive ? 'g' : 'gi');
+                        line.innerHTML = escapeHtml(lineText).replace(
+                            regex, 
+                            match => `<span class="highlight">${match}</span>`
+                        );
+                    }
+                }
+            });
+            
+            // Update search count
+            if (logSearchCount) {
+                logSearchCount.textContent = `${matchCount} matches found`;
+            }
+            
+            // Scroll to first match
+            const firstMatch = logContent.querySelector('.search-highlight');
+            if (firstMatch) {
+                firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            
+            // Show toast notification with match count
+            if (typeof toast !== 'undefined' && typeof toast.info === 'function') {
+                toast.info(`Found ${matchCount} matching lines`);
+            } else {
+                alert(`Found ${matchCount} matching lines`);
+            }
+        }
+        
+        async function downloadLog(logType) {
+            try {
+                if (downloadCurrentLogBtn) downloadCurrentLogBtn.disabled = true;
+                
+                const response = await safeFetch(`/api/logs/${logType}/download`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+                }
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `${logType}_log.txt`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                
+                // Show success notification
+                if (typeof toast !== 'undefined' && typeof toast.success === 'function') {
+                    toast.success(`${logType} log downloaded successfully`);
+                }
+            } catch (error) {
+                console.error('Error downloading log:', error);
+                
+                // Show error notification
+                if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
+                    toast.error('Failed to download log: ' + error.message);
+                } else {
+                    alert('Failed to download log: ' + error.message);
+                }
+            } finally {
+                if (downloadCurrentLogBtn) downloadCurrentLogBtn.disabled = false;
+            }
+        }
+        
+        async function clearLog(logType) {
+            if (!confirm(`Are you sure you want to clear the ${logType} log? This action cannot be undone.`)) {
+                return;
+            }
+            
+            try {
+                if (clearLogBtn) clearLogBtn.classList.add('animate-spin');
+                
+                const response = await safeFetch(`/api/logs/${logType}/clear`, {
+                    method: 'POST',
+                    headers: addCSRFToken()
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    fetchLogs(logType);
+                    
+                    // Show success notification
+                    if (typeof toast !== 'undefined' && typeof toast.success === 'function') {
+                        toast.success(`${logType} log cleared successfully`);
+                    }
+                } else {
+                    // Show error notification
+                    if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
+                        toast.error('Failed to clear log: ' + (data.message || 'Unknown error'));
+                    } else {
+                        alert('Failed to clear log: ' + (data.message || 'Unknown error'));
+                    }
+                }
+            } catch (error) {
+                console.error('Error clearing log:', error);
+                
+                // Show error notification
+                if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
+                    toast.error('Failed to clear log: ' + error.message);
+                } else {
+                    alert('Failed to clear log: ' + error.message);
+                }
+            } finally {
+                if (clearLogBtn) clearLogBtn.classList.remove('animate-spin');
+            }
+        }
+        
         async function fetchLogs(logType) {
             if (!logContent) return;
             
             try {
-                logContent.innerHTML = '<div class="text-center p-8 text-gray-500"><i class="ri-loader-4-line animate-spin text-xl mr-2"></i>Loading logs...</div>';
+                logContent.innerHTML = `
+                    <div class="text-center p-8 text-gray-500">
+                        <div class="animate-spin inline-block w-6 h-6 border-2 border-t-primary border-r-primary border-b-transparent border-l-transparent rounded-full mb-2"></div>
+                        <div>Loading logs...</div>
+                    </div>`;
+                    
                 if (refreshLogsBtn) refreshLogsBtn.disabled = true;
+                if (refreshLogsBtn) refreshLogsBtn.classList.add('opacity-50');
                 
                 const lines = logLinesSelect ? parseInt(logLinesSelect.value, 10) : 100;
                 const response = await safeFetch(`/api/logs/${logType}?lines=${lines}`);
@@ -2151,6 +2435,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Scroll to bottom to show newest logs
                         logContent.scrollTop = logContent.scrollHeight;
+                        updateLogPosition("Showing most recent logs");
                         
                         // If analysis section is visible, update charts
                         if (!document.getElementById('analysis-section').classList.contains('hidden')) {
@@ -2175,161 +2460,54 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>`;
             } finally {
-                if (refreshLogsBtn) refreshLogsBtn.disabled = false;
-            }
-        }
-        
-        // Helper function to format file size
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
-        
-        function searchLogs() {
-            if (!searchInput || !logContent) return;
-            
-            const searchTerm = searchInput.value.trim();
-            if (!searchTerm) return;
-            
-            const caseSensitive = document.getElementById('case-sensitive')?.checked || false;
-            const wholeWord = document.getElementById('whole-word')?.checked || false;
-            const useRegex = document.getElementById('regex-search')?.checked || false;
-            
-            // Get all log lines
-            const logLines = logContent.querySelectorAll('.log-line');
-            
-            // Clear previous highlights
-            logLines.forEach(line => {
-                line.innerHTML = escapeHtml(line.textContent || '');
-                line.classList.remove('search-highlight');
-            });
-            
-            // Prepare search function
-            let searchFunction;
-            
-            if (useRegex) {
-                try {
-                    const regex = new RegExp(searchTerm, caseSensitive ? '' : 'i');
-                    searchFunction = text => regex.test(text);
-                } catch (e) {
-                    alert('Invalid regular expression');
-                    return;
+                if (refreshLogsBtn) {
+                    refreshLogsBtn.disabled = false;
+                    refreshLogsBtn.classList.remove('opacity-50');
                 }
-            } else if (wholeWord) {
-                const wordBoundary = '\\b';
-                const term = escapeRegExp(searchTerm);
-                const regex = new RegExp(wordBoundary + term + wordBoundary, caseSensitive ? '' : 'i');
-                searchFunction = text => regex.test(text);
-            } else {
-                searchFunction = caseSensitive 
-                    ? text => text.includes(searchTerm)
-                    : text => text.toLowerCase().includes(searchTerm.toLowerCase());
-            }
-            
-            // Highlight matching lines
-            let matchCount = 0;
-            logLines.forEach(line => {
-                const lineText = line.textContent || '';
-                if (searchFunction(lineText)) {
-                    line.classList.add('search-highlight');
-                    matchCount++;
-                    
-                    // Highlight the matching text
-                    if (!useRegex) {
-                        const term = escapeRegExp(searchTerm);
-                        const regex = new RegExp(term, caseSensitive ? 'g' : 'gi');
-                        line.innerHTML = escapeHtml(lineText).replace(
-                            regex, 
-                            match => `<span class="highlight">${match}</span>`
-                        );
-                    }
-                }
-            });
-            
-            // Scroll to first match
-            const firstMatch = logContent.querySelector('.search-highlight');
-            if (firstMatch) {
-                firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-            
-            alert(`Found ${matchCount} matching lines`);
-        }
-        
-        async function downloadLog(logType) {
-            try {
-                if (downloadCurrentLogBtn) downloadCurrentLogBtn.classList.add('animate-spin');
-                
-                const a = document.createElement('a');
-                a.href = `/api/logs/${logType}/download`;
-                a.download = `${logType}.log`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            } catch (error) {
-                alert('Failed to download log: ' + error.message);
-            } finally {
-                if (downloadCurrentLogBtn) downloadCurrentLogBtn.classList.remove('animate-spin');
-            }
-        }
-        
-        async function clearLog(logType) {
-            if (!confirm(`Are you sure you want to clear the ${logType} log? This action cannot be undone.`)) {
-                return;
-            }
-            
-            try {
-                if (clearLogBtn) clearLogBtn.classList.add('animate-spin');
-                
-                const response = await safeFetch(`/api/logs/${logType}/clear`, {
-                    method: 'POST',
-                    headers: addCSRFToken()
-                });
-                
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    fetchLogs(logType);
-                } else {
-                    alert('Failed to clear log: ' + (data.message || 'Unknown error'));
-                }
-            } catch (error) {
-                alert('Failed to clear log: ' + error.message);
-            } finally {
-                if (clearLogBtn) clearLogBtn.classList.remove('animate-spin');
             }
         }
         
         async function generateLogAnalysis(logType) {
+            if (!topDomainsChart && !statusCodesChart && !requestMethodsChart && !trafficByHourChart) return;
+            
             try {
-                if (generateAnalysisBtn) generateAnalysisBtn.classList.add('animate-spin');
+                // Show loading state
+                if (topDomainsChart) {
+                    topDomainsChart.innerHTML = `<div class="flex items-center justify-center h-full">
+                        <div class="animate-spin inline-block w-6 h-6 border-2 border-t-primary border-r-primary border-b-transparent border-l-transparent rounded-full mb-2"></div>
+                    </div>`;
+                }
+                if (statusCodesChart) {
+                    statusCodesChart.innerHTML = `<div class="flex items-center justify-center h-full">
+                        <div class="animate-spin inline-block w-6 h-6 border-2 border-t-primary border-r-primary border-b-transparent border-l-transparent rounded-full mb-2"></div>
+                    </div>`;
+                }
+                if (requestMethodsChart) {
+                    requestMethodsChart.innerHTML = `<div class="flex items-center justify-center h-full">
+                        <div class="animate-spin inline-block w-6 h-6 border-2 border-t-primary border-r-primary border-b-transparent border-l-transparent rounded-full mb-2"></div>
+                    </div>`;
+                }
+                if (trafficByHourChart) {
+                    trafficByHourChart.innerHTML = `<div class="flex items-center justify-center h-full">
+                        <div class="animate-spin inline-block w-6 h-6 border-2 border-t-primary border-r-primary border-b-transparent border-l-transparent rounded-full mb-2"></div>
+                    </div>`;
+                }
                 
-                // Display "loading" text in chart containers
-                const chartContainers = [
-                    topDomainsChart, 
-                    statusCodesChart, 
-                    requestMethodsChart, 
-                    trafficByHourChart
-                ];
+                const response = await safeFetch(`/api/logs/${logType}/analyze`);
                 
-                chartContainers.forEach(container => {
-                    if (container) {
-                        container.innerHTML = '<div class="flex items-center justify-center h-full"><span class="text-gray-500">Loading analysis data...</span></div>';
-                    }
-                });
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+                }
                 
-                const response = await safeFetch(`/api/logs/${logType}/analysis`);
                 const data = await response.json();
                 
-                // For a real implementation, you would use a charting library here
-                // This is just a placeholder to demonstrate the concept
+                if (data.status === 'error') {
+                    throw new Error(data.message || 'Unknown error');
+                }
                 
+                // Update charts with data
                 if (topDomainsChart) {
-                    topDomainsChart.innerHTML = generateSampleChart(data.topDomains, 'domain', 'requests');
+                    topDomainsChart.innerHTML = generateSampleChart(data.topDomains, 'domain', 'visits');
                 }
                 
                 if (statusCodesChart) {
@@ -2352,8 +2530,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (trafficByHourChart) trafficByHourChart.innerHTML = errorMsg;
                 
                 console.error('Error generating log analysis:', error);
-            } finally {
-                if (generateAnalysisBtn) generateAnalysisBtn.classList.remove('animate-spin');
+                
+                // Show error notification
+                if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
+                    toast.error('Failed to generate analysis: ' + error.message);
+                }
             }
         }
         
@@ -2363,28 +2544,30 @@ document.addEventListener('DOMContentLoaded', function() {
                 return '<div class="flex items-center justify-center h-full"><span class="text-gray-500">No data available</span></div>';
             }
             
-            let html = '<div class="overflow-auto max-h-full">';
-            html += '<table class="w-full text-sm">';
-            html += `<tr><th class="text-left p-1">${keyLabel}</th><th class="text-left p-1">${valueLabel}</th><th class="w-full p-1">Distribution</th></tr>`;
+            let html = '<div class="chart-container">';
             
-            // Find the max value for scaling
-            const maxValue = Math.max(...Object.values(data));
+            // Sort data for better visualization
+            const sortedData = Object.entries(data).sort((a, b) => b[1] - a[1]);
+            const maxValue = Math.max(...sortedData.map(item => item[1]));
             
-            // Generate table rows
-            Object.entries(data).forEach(([key, value]) => {
+            sortedData.forEach(([key, value]) => {
                 const percentage = Math.round((value / maxValue) * 100);
-                html += `<tr>
-                    <td class="p-1">${escapeHtml(key)}</td>
-                    <td class="p-1">${value}</td>
-                    <td class="p-1">
-                        <div class="bg-gray-200 h-4 rounded-full w-full">
-                            <div class="bg-primary h-4 rounded-full" style="width: ${percentage}%"></div>
+                const colorClass = percentage > 75 ? 'bg-blue-500' : percentage > 50 ? 'bg-green-500' : percentage > 25 ? 'bg-yellow-500' : 'bg-gray-500';
+                
+                html += `
+                    <div class="mb-2">
+                        <div class="flex justify-between mb-1 text-xs">
+                            <span title="${key}">${key.length > 25 ? key.substring(0, 22) + '...' : key}</span>
+                            <span>${value} ${valueLabel}${value !== 1 ? 's' : ''}</span>
                         </div>
-                    </td>
-                </tr>`;
+                        <div class="bg-gray-200 rounded-full h-2">
+                            <div class="${colorClass} h-2 rounded-full" style="width: ${percentage}%"></div>
+                        </div>
+                    </div>
+                `;
             });
             
-            html += '</table></div>';
+            html += '</div>';
             return html;
         }
         
@@ -2392,7 +2575,7 @@ document.addEventListener('DOMContentLoaded', function() {
         function escapeHtml(unsafe) {
             return unsafe
                 .replace(/&/g, "&amp;")
-                .replace(/<//g, "&lt;")
+                .replace(/</g, "&lt;")
                 .replace(/>/g, "&gt;")
                 .replace(/"/g, "&quot;")
                 .replace(/'/g, "&#039;");
