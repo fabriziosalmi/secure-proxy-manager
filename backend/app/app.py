@@ -503,6 +503,8 @@ def get_logs():
     limit = request.args.get('limit', 100, type=int)
     offset = request.args.get('offset', 0, type=int)
     search = request.args.get('search', '')
+    sort = request.args.get('sort', 'timestamp')  # Default sort by timestamp
+    order = request.args.get('order', 'desc')     # Default order is descending (latest first)
     
     # Validate and sanitize input parameters
     try:
@@ -513,6 +515,15 @@ def get_logs():
         limit = 100
         offset = 0
     
+    # Validate sort column to prevent SQL injection
+    valid_sort_columns = ['timestamp', 'unix_timestamp', 'source_ip', 'destination', 'status', 'bytes']
+    if sort not in valid_sort_columns:
+        sort = 'timestamp'  # Default to timestamp if invalid
+    
+    # Validate order to prevent SQL injection
+    if order.lower() not in ['asc', 'desc']:
+        order = 'desc'  # Default to descending if invalid
+    
     conn = get_db()
     cursor = conn.cursor()
     
@@ -521,9 +532,14 @@ def get_logs():
     columns = [column[1] for column in cursor.fetchall()]
     
     # Determine the correct ORDER BY clause
-    order_by = "ORDER BY unix_timestamp DESC" if 'unix_timestamp' in columns else "ORDER BY timestamp DESC"
+    # If sorting by timestamp and unix_timestamp exists, use unix_timestamp
+    effective_sort = sort
+    if sort == 'timestamp' and 'unix_timestamp' in columns:
+        effective_sort = 'unix_timestamp'
     
     # Use parameterized queries to prevent SQL injection
+    order_by_clause = f"{effective_sort} {order.upper()}"
+    
     if search:
         # Apply search to multiple fields with proper parameter binding
         query = f"""
@@ -531,12 +547,12 @@ def get_logs():
             WHERE source_ip LIKE ? 
             OR destination LIKE ? 
             OR status LIKE ?
-            {order_by} LIMIT ? OFFSET ?
+            ORDER BY {order_by_clause} LIMIT ? OFFSET ?
         """
         search_param = f"%{search}%"
         cursor.execute(query, (search_param, search_param, search_param, limit, offset))
     else:
-        cursor.execute(f"SELECT * FROM proxy_logs {order_by} LIMIT ? OFFSET ?", 
+        cursor.execute(f"SELECT * FROM proxy_logs ORDER BY {order_by_clause} LIMIT ? OFFSET ?", 
                      (limit, offset))
                       
     logs = [dict(row) for row in cursor.fetchall()]
@@ -561,7 +577,9 @@ def get_logs():
         "meta": {
             "total": total,
             "limit": limit,
-            "offset": offset
+            "offset": offset,
+            "sort": sort,
+            "order": order
         }
     })
 
