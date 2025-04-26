@@ -76,15 +76,138 @@ chown -R proxy:proxy /var/spool/squid
 # Wait a moment to ensure initialization completes
 sleep 2
 
-# Verify configuration contains direct IP blocking rules
-echo "Verifying configuration contains direct IP blocking rules..."
-if grep -q "direct_ip_url" /etc/squid/squid.conf && grep -q "http_access deny direct_ip" /etc/squid/squid.conf; then
-    echo "✅ Configuration contains direct IP blocking rules"
+# Validate Squid configuration before starting
+echo "Validating Squid configuration syntax..."
+if /usr/sbin/squid -k parse; then
+    echo "✅ Squid configuration syntax is valid"
 else
-    echo "⚠️ WARNING: Configuration may be missing direct IP blocking rules!"
-    echo "Current http_access rules:"
-    grep "http_access" /etc/squid/squid.conf
+    echo "❌ Squid configuration has syntax errors, attempting to fix..."
+    # Create a minimal working configuration if the current one is invalid
+    if [ ! -f /etc/squid/squid.conf.backup ]; then
+        cp /etc/squid/squid.conf /etc/squid/squid.conf.backup
+    fi
+    
+    # Use a minimal default configuration
+    cat > /etc/squid/squid.conf << EOL
+http_port 3128
+visible_hostname secure-proxy
+
+acl localnet src 10.0.0.0/8
+acl localnet src 172.16.0.0/12
+acl localnet src 192.168.0.0/16
+acl localnet src fc00::/7
+acl localnet src fe80::/10
+
+acl SSL_ports port 443
+acl Safe_ports port 80
+acl Safe_ports port 443
+acl Safe_ports port 21
+acl Safe_ports port 1025-65535
+
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access allow localhost
+http_access allow localnet
+http_access deny all
+
+cache_dir ufs /var/spool/squid 1000 16 256
+coredump_dir /var/spool/squid
+refresh_pattern ^ftp: 1440 20% 10080
+refresh_pattern ^gopher: 1440 0% 1440
+refresh_pattern -i (/cgi-bin/|\?) 0 0% 0
+refresh_pattern . 0 20% 4320
+EOL
+
+    echo "⚠️ Applied a minimal working configuration to recover functionality"
 fi
+
+# Comprehensive configuration verification
+echo "Verifying all UI settings are properly reflected in Squid configuration..."
+
+# Verify caching settings
+if grep -q "cache_dir ufs /var/spool/squid" /etc/squid/squid.conf; then
+    echo "✅ Cache size configuration found"
+else
+    echo "⚠️ Cache size configuration missing"
+fi
+
+if grep -q "maximum_object_size" /etc/squid/squid.conf; then
+    echo "✅ Maximum object size configuration found"
+else
+    echo "⚠️ Maximum object size configuration missing"
+fi
+
+# Verify network access controls
+if grep -q "acl localnet src" /etc/squid/squid.conf; then
+    echo "✅ Local network access configuration found"
+else
+    echo "⚠️ Local network access configuration missing"
+fi
+
+# Verify IP/domain blacklists
+if grep -q "acl ip_blacklist" /etc/squid/squid.conf; then
+    echo "✅ IP blacklist configuration found"
+else
+    echo "⚠️ IP blacklist configuration missing"
+fi
+
+if grep -q "acl domain_blacklist" /etc/squid/squid.conf; then
+    echo "✅ Domain blacklist configuration found"
+else
+    echo "⚠️ Domain blacklist configuration missing"
+fi
+
+# Verify direct IP blocking
+if grep -q "acl direct_ip_url" /etc/squid/squid.conf && grep -q "acl direct_ip_host" /etc/squid/squid.conf; then
+    echo "✅ Direct IP access blocking configuration found"
+else
+    echo "⚠️ Direct IP access blocking configuration missing"
+fi
+
+# Verify content filtering
+if grep -q "acl blocked_extensions" /etc/squid/squid.conf; then
+    echo "✅ Content filtering configuration found"
+else
+    echo "⚠️ Content filtering configuration may be disabled"
+fi
+
+# Verify time restrictions
+if grep -q "acl allowed_hours time" /etc/squid/squid.conf; then
+    echo "✅ Time restriction configuration found"
+else
+    echo "⚠️ Time restriction configuration may be disabled"
+fi
+
+# Verify performance settings
+if grep -q "connect_timeout" /etc/squid/squid.conf; then
+    echo "✅ Connection timeout configuration found"
+else
+    echo "⚠️ Connection timeout configuration missing"
+fi
+
+if grep -q "dns_timeout" /etc/squid/squid.conf; then
+    echo "✅ DNS timeout configuration found"
+else
+    echo "⚠️ DNS timeout configuration missing"
+fi
+
+# Check for HTTP compression
+if grep -q "zph_mode" /etc/squid/squid.conf; then
+    echo "✅ HTTP compression configuration found"
+else
+    echo "⚠️ HTTP compression may be disabled"
+fi
+
+# Verify logging settings
+if grep -q "debug_options" /etc/squid/squid.conf; then
+    echo "✅ Logging level configuration found"
+else
+    echo "⚠️ Logging level configuration missing"
+fi
+
+# Verify that all http_access rules are in the configuration
+echo "Verifying access control rules..."
+grep "http_access" /etc/squid/squid.conf
 
 # Start Squid in foreground mode
 echo "Starting Squid proxy service with config:"
