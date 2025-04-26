@@ -219,10 +219,38 @@ const validationRules = {
         message: 'Please enter a valid port number (1-65535)'
     },
     ip: {
-        validate: value => /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(value) || 
-                           /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/.test(value) ||
-                           value.startsWith('#'),
-        message: 'Please enter a valid IP address (IPv4 or IPv6)'
+        validate: value => {
+            // Handle comment lines
+            if (value.startsWith('#')) return true;
+            
+            // Handle empty values
+            if (!value.trim()) return true;
+            
+            // Handle CIDR notation
+            if (value.includes('/')) {
+                const [ipPart, cidrPart] = value.split('/', 2);
+                const cidrNum = parseInt(cidrPart, 10);
+                
+                // Check if CIDR part is valid
+                if (isNaN(cidrNum)) return false;
+                
+                // IPv4 CIDR: 0-32
+                if (ipPart.includes('.') && (cidrNum < 0 || cidrNum > 32)) return false;
+                
+                // IPv6 CIDR: 0-128
+                if (ipPart.includes(':') && (cidrNum < 0 || cidrNum > 128)) return false;
+                
+                // Now validate the IP part
+                return ipPart.includes('.') ? 
+                    /^(\d{1,3}\.){3}\d{1,3}$/.test(ipPart) : 
+                    /^([0-9a-fA-F]{1,4}:){1,7}([0-9a-fA-F]{1,4})?$/.test(ipPart);
+            }
+            
+            // Regular IPv4/IPv6 validation
+            return /^(\d{1,3}\.){3}\d{1,3}$/.test(value) || 
+                   /^([0-9a-fA-F]{1,4}:){1,7}([0-9a-fA-F]{1,4})$/.test(value);
+        },
+        message: 'Please enter a valid IP address (IPv4, IPv6, or CIDR notation)'
     },
     domain: {
         validate: value => /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(value) ||
@@ -598,10 +626,39 @@ document.addEventListener('DOMContentLoaded', function() {
             case 'port':
                 return input && /^\d+$/.test(input) && parseInt(input) >= 1 && parseInt(input) <= 65535;
             case 'ip':
-                // Basic IP validation, more complex patterns could be added
-                return /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(input) || 
-                       /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/.test(input);
+                // Accept comment lines
+                if (input.startsWith('#')) return true;
+                
+                // Handle empty values
+                if (!input.trim()) return true;
+                
+                // Handle CIDR notation
+                if (input.includes('/')) {
+                    const [ipPart, cidrPart] = input.split('/', 2);
+                    const cidrNum = parseInt(cidrPart, 10);
+                    
+                    // Check CIDR range validity
+                    if (isNaN(cidrNum)) return false;
+                    
+                    if (ipPart.includes('.') && (cidrNum < 0 || cidrNum > 32)) return false;
+                    if (ipPart.includes(':') && (cidrNum < 0 || cidrNum > 128)) return false;
+                    
+                    // Validate IP part
+                    return ipPart.includes('.') ? 
+                        /^(\d{1,3}\.){3}\d{1,3}$/.test(ipPart) : 
+                        /^([0-9a-fA-F]{1,4}:){1,7}([0-9a-fA-F]{1,4})?$/.test(ipPart);
+                }
+                
+                // Basic IP validation (IPv4 and IPv6)
+                return /^(\d{1,3}\.){3}\d{1,3}$/.test(input) || 
+                       /^([0-9a-fA-F]{1,4}:){1,7}([0-9a-fA-F]{1,4})$/.test(input);
             case 'domain':
+                // Accept comment lines
+                if (input.startsWith('#')) return true;
+                
+                // Handle empty values
+                if (!input.trim()) return true;
+                
                 return /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(input);
             case 'number':
                 return input && /^\d+$/.test(input);
@@ -1521,6 +1578,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     .split('\n')
                     .map(line => line.trim())
                     .filter(line => line !== '');
+                
+                // Validate domains before sending to the API
+                for (const domain of domains) {
+                    if (!domain.startsWith('#') && domain.trim() && !validateInput(domain, 'domain')) {
+                        showMessage(domainBlacklistMessage, `Invalid domain: ${domain}`, false);
+                        if (saveDomainBlacklistBtn) saveDomainBlacklistBtn.disabled = false;
+                        return;
+                    }
+                }
                 
                 const response = await safeFetch('/api/security/blacklist-domains', {
                     method: 'POST',
