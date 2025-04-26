@@ -229,17 +229,23 @@ def verify_password(username, password):
     # Get client IP for rate limiting
     client_ip = request.remote_addr
     
-    # Check for rate limiting
-    now = datetime.now()
-    auth_attempts[client_ip] = [t for t in auth_attempts[client_ip] if (now - t).total_seconds() < RATE_LIMIT_WINDOW]
+    # Skip rate limiting for internal Docker network traffic
+    # The UI container will use the Docker internal IP range
+    internal_networks = ['172.16.', '172.17.', '172.18.', '172.19.', '172.20.', '172.21.', '172.22.', '10.0.', '192.168.']
+    is_internal = any(client_ip.startswith(prefix) for prefix in internal_networks)
     
-    # If too many attempts, reject this request
-    if len(auth_attempts[client_ip]) >= MAX_ATTEMPTS:
-        logger.warning(f"Rate limit exceeded for IP {client_ip}")
-        return None
-    
-    # Add this attempt to the list
-    auth_attempts[client_ip].append(now)
+    # Check for rate limiting only for external traffic
+    if not is_internal:
+        now = datetime.now()
+        auth_attempts[client_ip] = [t for t in auth_attempts[client_ip] if (now - t).total_seconds() < RATE_LIMIT_WINDOW]
+        
+        # If too many attempts, reject this request
+        if len(auth_attempts[client_ip]) >= MAX_ATTEMPTS:
+            logger.warning(f"Rate limit exceeded for IP {client_ip}")
+            return None
+        
+        # Add this attempt to the list
+        auth_attempts[client_ip].append(now)
     
     # Check for environment variable authentication first (for UI to backend communication)
     env_username = os.environ.get('BASIC_AUTH_USERNAME', 'admin')
@@ -247,7 +253,9 @@ def verify_password(username, password):
     
     if username == env_username and password == env_password:
         logger.info(f"Authenticated using environment variables: {username}")
-        auth_attempts[client_ip] = []  # Reset rate limiting on successful login
+        # Reset rate limiting on successful login for external traffic
+        if not is_internal and client_ip in auth_attempts:
+            auth_attempts[client_ip] = []
         return username
     
     # Fall back to database authentication for regular users
@@ -257,8 +265,9 @@ def verify_password(username, password):
     user = cursor.fetchone()
     
     if user and check_password_hash(user['password'], password):
-        # Reset rate limiting on successful login
-        auth_attempts[client_ip] = []
+        # Reset rate limiting on successful login for external traffic
+        if not is_internal and client_ip in auth_attempts:
+            auth_attempts[client_ip] = []
         return username
     
     # Log failed attempt but keep the rate limiting record
@@ -420,7 +429,7 @@ def get_ip_blacklist():
     
     return jsonify({"status": "success", "data": blacklist})
 
-@app.route('/api/ip-blacklist', methods['POST'])
+@app.route('/api/ip-blacklist', methods=['POST'])
 @auth.login_required
 @csrf_protected
 def add_ip_to_blacklist():

@@ -45,13 +45,13 @@ def add_security_headers(response):
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     
-    # Add Content Security Policy
+    # Add Content Security Policy with allowances for CDN resources
     csp_directives = [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline'",  # Unsafe-inline needed for Bootstrap JS
-        "style-src 'self' 'unsafe-inline'",   # Unsafe-inline needed for Bootstrap CSS
-        "img-src 'self' data:",                # Allow data: for simple images
-        "font-src 'self'",
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com",  # Allow CDN scripts
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",  # Allow CDN styles
+        "img-src 'self' data:",
+        "font-src 'self' https://cdnjs.cloudflare.com",  # Allow Font Awesome fonts
         "connect-src 'self'",
         "frame-ancestors 'self'",
         "form-action 'self'",
@@ -97,6 +97,11 @@ def logs():
 def about():
     """About page"""
     return render_template('about.html', active_page='about')
+
+@app.route('/favicon.ico')
+def favicon():
+    """Serve the favicon"""
+    return app.send_static_file('favicon.ico')
 
 # API Proxy routes
 @app.route('/api/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])

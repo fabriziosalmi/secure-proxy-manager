@@ -22,6 +22,8 @@ services:
 
   backend:
     build: ./backend
+    ports:
+      - "5001:5000"  # Map container port 5000 to host port 5001
     volumes:
       - ./backend:/app
       - ./config:/config
