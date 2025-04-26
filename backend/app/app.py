@@ -1808,5 +1808,36 @@ def get_logs_by_ip(ip_address):
             "message": f"Error retrieving logs: {str(e)}"
         }
 
+def validate_domain(domain):
+    """Validate a domain name with better TLD checking"""
+    # Check for wildcards and remove for validation
+    is_wildcard = False
+    clean_domain = domain
+    
+    if domain.startswith('*.'):
+        is_wildcard = True
+        clean_domain = domain[2:]  # Remove the wildcard part
+    
+    # Basic structure validation
+    domain_pattern = r'^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])+$'
+    if not re.match(domain_pattern, clean_domain):
+        return False
+    
+    # Check if TLD looks legitimate (at least 2 chars, not all numbers)
+    parts = clean_domain.split('.')
+    tld = parts[-1]
+    
+    # TLD shouldn't be all numbers and should be at least 2 chars
+    if tld.isdigit() or len(tld) < 2:
+        return False
+    
+    # Check for common TLDs (not exhaustive, but covers most)
+    common_tlds = ['com', 'org', 'net', 'edu', 'gov', 'mil', 'int', 'io', 'co', 'me', 'info', 
+                   'biz', 'app', 'dev', 'blog', 'ai', 'uk', 'us', 'ca', 'au', 'de', 'fr', 
+                   'jp', 'ru', 'cn', 'in', 'br', 'it', 'pl', 'se', 'nl', 'mx', 'ch', 'at']
+    
+    # Either the TLD is common or it's at least valid from structural perspective
+    return tld.lower() in common_tlds or re.match(r'^[a-zA-Z0-9]{2,}$', tld)
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
