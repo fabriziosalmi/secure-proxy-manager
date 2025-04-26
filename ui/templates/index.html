@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">Dashboard</h1>
+    
+    <div class="row">
+        <!-- Proxy Status Card -->
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Proxy Status</h5>
+                    <button id="refresh-status" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div id="proxy-status-indicator" class="status-indicator status-inactive"></div>
+                        <h3 id="proxy-status" class="mb-0">Loading...</h3>
+                    </div>
+                    <div class="small text-muted" id="status-time">Last updated: --</div>
+                    <div class="mt-4">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Version:</span>
+                            <span id="proxy-version">--</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Proxied Requests:</span>
+                            <span id="proxy-requests">--</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Blocked Requests:</span>
+                            <span id="blocked-requests">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Actions Card -->
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="mb-0">Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary">
+                            <i class="fas fa-sync-alt me-2"></i>Reload Proxy Configuration
+                        </button>
+                        <button class="btn btn-info text-white">
+                            <i class="fas fa-download me-2"></i>Import Logs
+                        </button>
+                        <button class="btn btn-secondary">
+                            <i class="fas fa-file-export me-2"></i>Export Settings
+                        </button>
+                        <button class="btn btn-danger">
+                            <i class="fas fa-trash-alt me-2"></i>Clear Logs
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- System Information Card -->
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="mb-0">System Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-3">
+                        <span>Blacklisted IPs:</span>
+                        <span id="blacklisted-ips">--</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span>Blacklisted Domains:</span>
+                        <span id="blacklisted-domains">--</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span>IP Block Enabled:</span>
+                        <span id="ip-block-status">--</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span>Domain Block Enabled:</span>
+                        <span id="domain-block-status">--</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Direct IP Access Block:</span>
+                        <span id="direct-ip-block-status">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Logs Card -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Recent Logs</h5>
+                    <a href="/logs" class="btn btn-sm btn-primary">View All Logs</a>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Source IP</th>
+                                    <th>Destination</th>
+                                    <th>Status</th>
+                                    <th>Bytes</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-logs">
+                                <tr>
+                                    <td colspan="5" class="text-center">Loading logs...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    $(document).ready(function() {
+        // Load initial data
+        loadDashboardData();
+        
+        // Set up refresh button
+        $('#refresh-status').click(function() {
+            loadDashboardData();
+        });
+        
+        // Auto refresh every 30 seconds
+        setInterval(loadDashboardData, 30000);
+    });
+    
+    function loadDashboardData() {
+        // Load proxy status
+        apiRequest('GET', 'status')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    const data = response.data;
+                    
+                    // Update proxy status
+                    $('#proxy-status').text(data.proxy_status === 'running' ? 'Running' : 'Stopped');
+                    $('#proxy-status-indicator').removeClass('status-inactive status-active')
+                        .addClass(data.proxy_status === 'running' ? 'status-active' : 'status-inactive');
+                    
+                    // Update other status information
+                    $('#status-time').text('Last updated: ' + new Date().toLocaleTimeString());
+                    $('#proxy-version').text(data.version);
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to load proxy status: ' + error.message, 'danger');
+            });
+        
+        // Load system information
+        apiRequest('GET', 'settings')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    const settings = {};
+                    response.data.forEach(setting => {
+                        settings[setting.setting_name] = setting.setting_value;
+                    });
+                    
+                    // Update settings information
+                    $('#ip-block-status').text(settings.enable_ip_blacklist === 'true' ? 'Enabled' : 'Disabled');
+                    $('#domain-block-status').text(settings.enable_domain_blacklist === 'true' ? 'Enabled' : 'Disabled');
+                    $('#direct-ip-block-status').text(settings.block_direct_ip === 'true' ? 'Enabled' : 'Disabled');
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to load settings: ' + error.message, 'danger');
+            });
+        
+        // Load IP blacklist count
+        apiRequest('GET', 'ip-blacklist')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    $('#blacklisted-ips').text(response.data.length);
+                }
+            })
+            .catch(function(error) {
+                $('#blacklisted-ips').text('Error');
+            });
+        
+        // Load domain blacklist count
+        apiRequest('GET', 'domain-blacklist')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    $('#blacklisted-domains').text(response.data.length);
+                }
+            })
+            .catch(function(error) {
+                $('#blacklisted-domains').text('Error');
+            });
+        
+        // Load recent logs
+        apiRequest('GET', 'logs?limit=5')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    const logs = response.data;
+                    
+                    if (logs.length === 0) {
+                        $('#recent-logs').html('<tr><td colspan="5" class="text-center">No logs found</td></tr>');
+                        return;
+                    }
+                    
+                    // Update logs table
+                    let html = '';
+                    logs.forEach(log => {
+                        html += `
+                            <tr>
+                                <td>${new Date(log.timestamp).toLocaleString()}</td>
+                                <td>${log.source_ip}</td>
+                                <td>${log.destination}</td>
+                                <td>${log.status}</td>
+                                <td>${log.bytes}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    $('#recent-logs').html(html);
+                    
+                    // Update counts
+                    $('#proxy-requests').text(response.meta.total);
+                    $('#blocked-requests').text('--'); // Would need additional API call for blocked count
+                }
+            })
+            .catch(function(error) {
+                $('#recent-logs').html('<tr><td colspan="5" class="text-center">Failed to load logs</td></tr>');
+            });
+    }
+</script>
+{% endblock %}

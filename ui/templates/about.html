@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}About{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">About Secure Proxy</h1>
+    
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Project Information</h5>
+                </div>
+                <div class="card-body">
+                    <h4>Secure Proxy</h4>
+                    <p class="lead">A transparent proxy solution with security features and a modern web UI</p>
+                    
+                    <hr>
+                    
+                    <h5>Features</h5>
+                    <ul>
+                        <li>Transparent HTTP/HTTPS proxy based on Squid</li>
+                        <li>IP address blacklisting (local and remote)</li>
+                        <li>Domain name blacklisting (local and remote)</li>
+                        <li>Direct IP access blocking with exceptions</li>
+                        <li>Detailed proxy access logs</li>
+                        <li>Modern web interface for configuration and monitoring</li>
+                        <li>Dockerized deployment for easy setup</li>
+                    </ul>
+                    
+                    <h5 class="mt-4">Technology Stack</h5>
+                    <ul>
+                        <li><strong>Proxy Engine:</strong> Squid</li>
+                        <li><strong>Backend API:</strong> Python Flask</li>
+                        <li><strong>Frontend:</strong> HTML5, CSS3, JavaScript</li>
+                        <li><strong>UI Framework:</strong> Bootstrap 5</li>
+                        <li><strong>Database:</strong> SQLite</li>
+                        <li><strong>Containerization:</strong> Docker & Docker Compose</li>
+                    </ul>
+                    
+                    <h5 class="mt-4">Getting Started</h5>
+                    <p>
+                        To use this proxy, configure your network devices to use this server as their proxy or
+                        set up your router to redirect all HTTP/HTTPS traffic through this proxy.
+                    </p>
+                    
+                    <h5 class="mt-4">License</h5>
+                    <p>This project is licensed under the MIT License - see the LICENSE file for details.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">System Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-3">
+                        <span>Version:</span>
+                        <span id="version">1.0.0</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span>Squid Version:</span>
+                        <span id="squid-version">--</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Last Updated:</span>
+                        <span id="last-updated">--</span>
+                    </div>
+                    
+                    <hr>
+                    
+                    <h6 class="mb-3">Contact & Support</h6>
+                    <p>
+                        For issues, feature requests, or contributions, please visit our project repository or contact the administrator.
+                    </p>
+                    
+                    <div class="d-grid gap-2 mt-4">
+                        <button class="btn btn-outline-primary" id="check-updates">
+                            <i class="fas fa-sync-alt me-2"></i>Check for Updates
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    $(document).ready(function() {
+        // Load system information
+        apiRequest('GET', 'status')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    const data = response.data;
+                    $('#version').text(data.version);
+                    $('#last-updated').text(new Date().toLocaleDateString());
+                }
+            })
+            .catch(function(error) {
+                console.error('Failed to load system info:', error);
+            });
+        
+        // Check for updates button
+        $('#check-updates').click(function() {
+            // This would typically check a remote API for updates
+            // For demonstration, just show a toast
+            showToast('Your system is up to date!');
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">Proxy Logs</h1>
+    
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Access Logs</h5>
+            <div>
+                <button id="refresh-logs" class="btn btn-outline-secondary me-2">
+                    <i class="fas fa-sync-alt me-1"></i>Refresh
+                </button>
+                <button id="import-logs" class="btn btn-primary">
+                    <i class="fas fa-download me-1"></i>Import Logs
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <div class="row g-3 align-items-center">
+                    <div class="col-auto">
+                        <label for="logs-per-page" class="col-form-label">Show</label>
+                    </div>
+                    <div class="col-auto">
+                        <select class="form-select" id="logs-per-page">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <span class="form-text">entries</span>
+                    </div>
+                    <div class="col-md-4 ms-auto">
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="log-search" placeholder="Search logs...">
+                            <button class="btn btn-outline-secondary" type="button" id="search-logs">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-hover" id="logs-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp <i class="fas fa-sort"></i></th>
+                            <th>Source IP <i class="fas fa-sort"></i></th>
+                            <th>Destination <i class="fas fa-sort"></i></th>
+                            <th>Status <i class="fas fa-sort"></i></th>
+                            <th>Bytes <i class="fas fa-sort"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs-data">
+                        <tr>
+                            <td colspan="5" class="text-center">Loading logs...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <div id="logs-showing-info">Showing 0 to 0 of 0 entries</div>
+                <nav aria-label="Logs pagination">
+                    <ul class="pagination" id="logs-pagination">
+                        <li class="page-item disabled">
+                            <a class="page-link" href="#" tabindex="-1" aria-disabled="true">Previous</a>
+                        </li>
+                        <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                        <li class="page-item disabled">
+                            <a class="page-link" href="#">Next</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    $(document).ready(function() {
+        // Initial data
+        let currentPage = 0;
+        let logsPerPage = 25;
+        let totalLogs = 0;
+        let searchTerm = '';
+        
+        // Load initial logs
+        loadLogs();
+        
+        // Refresh logs button
+        $('#refresh-logs').click(function() {
+            loadLogs();
+        });
+        
+        // Import logs button
+        $('#import-logs').click(function() {
+            importLogs();
+        });
+        
+        // Change logs per page
+        $('#logs-per-page').change(function() {
+            logsPerPage = parseInt($(this).val());
+            currentPage = 0; // Reset to first page
+            loadLogs();
+        });
+        
+        // Search logs
+        $('#search-logs').click(function() {
+            searchTerm = $('#log-search').val().trim();
+            currentPage = 0; // Reset to first page
+            loadLogs();
+        });
+        
+        // Handle enter key in search box
+        $('#log-search').keypress(function(e) {
+            if (e.which === 13) {
+                $('#search-logs').click();
+            }
+        });
+        
+        // Function to load logs
+        function loadLogs() {
+            const offset = currentPage * logsPerPage;
+            const params = `limit=${logsPerPage}&offset=${offset}`;
+            
+            apiRequest('GET', `logs?${params}`)
+                .then(function(response) {
+                    if (response.status === 'success') {
+                        const logs = response.data;
+                        totalLogs = response.meta.total;
+                        
+                        // Update table
+                        updateLogsTable(logs);
+                        
+                        // Update pagination
+                        updatePagination();
+                        
+                        // Update info
+                        const start = totalLogs === 0 ? 0 : offset + 1;
+                        const end = Math.min(offset + logsPerPage, totalLogs);
+                        $('#logs-showing-info').text(`Showing ${start} to ${end} of ${totalLogs} entries`);
+                    }
+                })
+                .catch(function(error) {
+                    $('#logs-data').html('<tr><td colspan="5" class="text-center text-danger">Failed to load logs</td></tr>');
+                    showToast('Failed to load logs: ' + error.message, 'danger');
+                });
+        }
+        
+        // Function to update the logs table
+        function updateLogsTable(logs) {
+            if (logs.length === 0) {
+                $('#logs-data').html('<tr><td colspan="5" class="text-center">No logs found</td></tr>');
+                return;
+            }
+            
+            let html = '';
+            logs.forEach(log => {
+                html += `
+                    <tr>
+                        <td>${new Date(log.timestamp).toLocaleString()}</td>
+                        <td>${log.source_ip}</td>
+                        <td>${log.destination}</td>
+                        <td>${log.status}</td>
+                        <td>${log.bytes}</td>
+                    </tr>
+                `;
+            });
+            
+            $('#logs-data').html(html);
+        }
+        
+        // Function to update pagination
+        function updatePagination() {
+            const totalPages = Math.ceil(totalLogs / logsPerPage);
+            let paginationHtml = '';
+            
+            // Previous button
+            paginationHtml += `
+                <li class="page-item ${currentPage === 0 ? 'disabled' : ''}">
+                    <a class="page-link" href="#" data-page="${currentPage - 1}">Previous</a>
+                </li>
+            `;
+            
+            // Page numbers
+            const maxPagesToShow = 5;
+            let startPage = Math.max(0, currentPage - Math.floor(maxPagesToShow / 2));
+            let endPage = Math.min(totalPages - 1, startPage + maxPagesToShow - 1);
+            
+            // Adjust startPage if we're near the end
+            if (endPage - startPage + 1 < maxPagesToShow) {
+                startPage = Math.max(0, endPage - maxPagesToShow + 1);
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                paginationHtml += `
+                    <li class="page-item ${i === currentPage ? 'active' : ''}">
+                        <a class="page-link" href="#" data-page="${i}">${i + 1}</a>
+                    </li>
+                `;
+            }
+            
+            // Next button
+            paginationHtml += `
+                <li class="page-item ${currentPage >= totalPages - 1 ? 'disabled' : ''}">
+                    <a class="page-link" href="#" data-page="${currentPage + 1}">Next</a>
+                </li>
+            `;
+            
+            $('#logs-pagination').html(paginationHtml);
+            
+            // Add click handlers to pagination links
+            $('.page-link').click(function(e) {
+                e.preventDefault();
+                
+                if ($(this).parent().hasClass('disabled')) {
+                    return;
+                }
+                
+                currentPage = parseInt($(this).data('page'));
+                loadLogs();
+            });
+        }
+        
+        // Function to import logs
+        function importLogs() {
+            apiRequest('POST', 'logs/import')
+                .then(function(response) {
+                    if (response.status === 'success') {
+                        showToast('Logs imported successfully');
+                        loadLogs(); // Refresh logs
+                    }
+                })
+                .catch(function(error) {
+                    showToast('Failed to import logs: ' + error.message, 'danger');
+                });
+        }
+    });
+</script>
+{% endblock %}

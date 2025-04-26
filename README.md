@@ -1,62 +1,31 @@
-# Secure Squid Proxy with Monitoring Dashboard
+# Secure Proxy
 
-This project provides a Docker-based Squid proxy server with a web-based monitoring dashboard. The application allows you to easily run a Squid proxy and manage it through a modern, responsive user interface.
-
-## Screenshots
-![screenshot1](https://github.com/fabriziosalmi/secure-proxy/blob/main/screenshot_1.png?raw=true)
-![screenshot2](https://github.com/fabriziosalmi/secure-proxy/blob/main/screenshot_2.png?raw=true)
-![screenshot3](https://github.com/fabriziosalmi/secure-proxy/blob/main/screenshot_3.png?raw=true)
-
-> UI looking is temporary and will be updated soon :)
+A Dockerized transparent proxy solution with a modern web UI for configuration and monitoring, providing enhanced security features through IP and domain blacklisting.
 
 ## Features
 
-- Dockerized Squid proxy server
-- Modern responsive web-based monitoring dashboard
-- Dark mode support with system preference detection
-- Real-time monitoring of connections and client activity
-- Comprehensive configuration management
-- Advanced security features:
-  - IP and domain blacklisting
-  - Direct IP access controls
-  - User-agent filtering
-  - Malware protection
-- Detailed log analysis and visualization
-- Proxy control (start, stop, restart, reload)
-- Built with Flask backend and HTML/CSS/JavaScript frontend
-- Tailwind CSS styling for modern UI
+- **Transparent HTTP/HTTPS Proxy**: Built on Squid proxy for reliable performance
+- **IP Blacklisting**: Block traffic from specific IP addresses or ranges
+- **Domain Blacklisting**: Block access to specific domains
+- **Direct IP Access Control**: Block direct IP requests with configurable exceptions
+- **Modern Web Interface**: Clean, Bootstrap-based UI for configuration and monitoring
+- **Detailed Logging**: Track and analyze all proxy traffic
+- **Dockerized Deployment**: Easy setup and management with Docker and Docker Compose
 
-## Project Structure
+## Architecture
 
-```
-secure-proxy/
-├── Dockerfile              # Docker configuration
-├── supervisord.conf        # Supervisor config to manage processes
-├── squid_config/           # Squid configuration files
-│   ├── squid.conf          # Main Squid configuration
-│   ├── blacklist_ips.txt   # Blocked IP addresses
-│   ├── blacklist_domains.txt # Blocked domains
-│   ├── allowed_direct_ips.txt # IPs allowed direct access
-│   └── bad_user_agents.txt # Blocked user agents
-├── flask_backend/          # Flask API backend
-│   ├── app.py              # Flask application
-│   └── requirements.txt    # Python dependencies
-└── dashboard/              # Frontend files
-    ├── index.html          # Dashboard HTML
-    ├── logs.html           # Logs page HTML
-    ├── settings.html       # Settings page HTML
-    ├── style.css           # Dashboard CSS
-    └── script.js           # Dashboard JavaScript
-```
+The application consists of three main components:
+
+1. **Proxy Service**: Squid-based transparent proxy with custom configurations
+2. **Backend API**: Python Flask RESTful API for proxy management
+3. **Web UI**: Modern Bootstrap-based interface for administration
 
 ## Prerequisites
 
-- Docker
-- Docker Compose (optional, for easier management)
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/)
 
-## Building and Running
-
-### Using Docker
+## Quick Start
 
 1. Clone this repository:
    ```
@@ -64,118 +33,130 @@ secure-proxy/
    cd secure-proxy
    ```
 
-2. Build the Docker image:
-   ```
-   docker build -t secure-proxy .
-   ```
-
-3. Run the container:
-   ```
-   docker run -d --name secure-proxy -p 3128:3128 -p 8000:5000 secure-proxy
-   ```
-
-### Using Docker Compose
-
-1. Create a `docker-compose.yml` file:
-   ```yaml
-   version: '3'
-   services:
-     proxy:
-       build: .
-       ports:
-         - "3128:3128"  # Squid proxy port
-         - "5000:5000"  # Dashboard port
-       restart: unless-stopped
-       volumes:
-         - ./squid_config:/etc/squid  # Mount configuration directory
-         - squid_logs:/var/log/squid  # Persist logs
-   
-   volumes:
-     squid_logs:
-   ```
-
 2. Start the application:
    ```
    docker-compose up -d
    ```
 
-## Accessing the Application
+3. Access the web interface:
+   ```
+   http://localhost:8011
+   ```
+   Default credentials: username: `admin`, password: `admin`
 
-- **Squid Proxy**: Configure your browser or application to use the proxy at `http://localhost:3128`
-- **Dashboard**: Access the monitoring dashboard at `http://localhost:5000`
+## Configuration
 
-## Dashboard Features
+### Using the Web Interface
 
-The dashboard consists of three main pages:
+After starting the application, you can configure all aspects of the proxy through the web interface:
 
-### 1. Main Dashboard
-- Proxy status and control buttons (start, stop, restart, reload)
-- Real-time monitoring of active connections and clients
-- Peak connections tracking
-- Auto-refresh capability
+1. **Dashboard**: View proxy status and recent logs
+2. **Blacklists**: Manage IP and domain blacklists
+3. **Settings**: Configure proxy behavior and security features
+4. **Logs**: View and search detailed proxy access logs
 
-### 2. Settings
-- Basic configuration (port, cache settings)
-- Security features management
-- Blacklist configuration (IPs and domains)
-- Direct IP access controls
-- User agent filtering
-- Advanced configuration editor
+### Network Configuration
 
-### 3. Logs
-- View access, cache, store, and system logs
-- Search functionality with regex support
-- Log analysis with visualizations
-- Download and clear log options
+To use as a transparent proxy, configure your network devices to use this server (port 3128) as their proxy server, or set up your router to redirect all HTTP/HTTPS traffic through this proxy.
 
-## Configuring the Proxy
+### Docker Compose Configuration
 
-The Squid configuration file is located at `squid_config/squid.conf`. You can modify this file to change the proxy settings before building the Docker image.
+You can adjust the ports, volumes, and environment variables in the `docker-compose.yml` file:
 
-Many configuration options are available through the dashboard interface, including:
+```yaml
+version: '3.8'
 
-- Changing the listening port
-- Adjusting cache settings
-- Managing security features
-- Setting up blacklists
-- Editing the raw configuration file
+services:
+  web:
+    # UI service configuration
+    ports:
+      - "8011:8011"  # Change the host port if needed
+    # ...additional configuration...
 
-## Security Features
+  backend:
+    # Backend API service configuration
+    # ...
 
-The proxy includes several security features that can be enabled/disabled via the dashboard:
-
-- IP Blacklisting: Block specific IP addresses
-- Domain Blacklisting: Block specific domains
-- Direct IP Access Controls: Prevent direct IP address access
-- User Agent Filtering: Block requests from specific user agents
-- Malware Protection: Block common malware file extensions
-- HTTPS Filtering: Inspect HTTPS traffic (requires proper SSL setup)
-
-## Environment Variables
-
-The application supports the following environment variables:
-
-- `SQUID_PORT`: The port Squid listens on (default: 3128)
-- `DASHBOARD_PORT`: The port for the monitoring dashboard (default: 5000)
-- `SECRET_KEY`: Used for session encryption (auto-generated if not provided)
-
-Example:
-```
-docker run -d --name secure-proxy -p 8080:8080 -p 5000:5000 -e SQUID_PORT=8080 -e SECRET_KEY="your-secret-key" secure-proxy
+  proxy:
+    # Squid proxy service configuration
+    ports:
+      - "3128:3128"  # Change the host port if needed
+    # ...additional configuration...
 ```
 
-## Browser Compatibility
+## Directory Structure
 
-The dashboard is tested and compatible with:
-- Chrome/Edge (latest versions)
-- Firefox (latest version)
-- Safari (latest version)
-- Mobile browsers (responsive design)
+- `/config`: Contains configuration files
+- `/data`: Stores the SQLite database and other persistent data
+- `/logs`: Contains proxy and application logs
+- `/proxy`: Squid proxy configuration and scripts
+- `/backend`: Flask API backend code
+- `/ui`: Web interface code
+
+## Security Considerations
+
+- **Default Credentials**: Change the default admin credentials immediately
+- **Network Exposure**: Consider your network setup when exposing the proxy port
+- **Regular Updates**: Keep the system updated for security patches
+
+## Development
+
+### Building from Source
+
+```
+git clone https://github.com/yourusername/secure-proxy.git
+cd secure-proxy
+docker-compose build
+docker-compose up -d
+```
+
+### Adding Custom Features
+
+- Squid configuration can be modified in `/proxy/squid.conf`
+- Backend API logic is in `/backend/app/app.py`
+- UI templates are in `/ui/templates/`
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Proxy not working**:
+   - Check if Squid service is running: `docker-compose logs proxy`
+   - Verify network configuration
+
+2. **Cannot access web UI**:
+   - Check if web service is running: `docker-compose logs web`
+   - Verify the exposed port configuration
+
+3. **Database errors**:
+   - Check permissions on the `/data` directory
+
+### Logs
+
+Access application logs:
+```
+docker-compose logs -f
+```
+
+For specific service logs:
+```
+docker-compose logs -f proxy
+docker-compose logs -f backend
+docker-compose logs -f web
+```
 
 ## License
 
-This project is released under the MIT License. See LICENSE file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Version History
+## Future Improvements
 
-- **v0.0.1**: Initial release with basic monitoring capabilities
+- Add support for authentication in proxy
+- Implement more advanced traffic analysis
+- Add custom filtering rules
+- Support for SSL inspection (with proper security considerations)
+- Integration with external threat intelligence feeds
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
