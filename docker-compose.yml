@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  web:
+    build: ./ui
+    ports:
+      - "8011:8011"
+    volumes:
+      - ./ui:/app
+      - ./config:/config
+      - ./data:/data
+      - ./logs:/logs
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      - FLASK_ENV=production
+      - BACKEND_URL=http://backend:5000
+    networks:
+      - proxy-network
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    volumes:
+      - ./backend:/app
+      - ./config:/config
+      - ./data:/data
+      - ./logs:/logs
+    environment:
+      - FLASK_ENV=production
+      - PROXY_HOST=proxy
+      - PROXY_PORT=3128
+    networks:
+      - proxy-network
+    restart: unless-stopped
+
+  proxy:
+    build: ./proxy
+    ports:
+      - "3128:3128"
+    volumes:
+      - ./proxy/squid.conf:/etc/squid/squid.conf
+      - ./config:/config
+      - ./data:/data
+      - ./logs:/var/log/squid
+      - squid-cache:/var/spool/squid
+    networks:
+      - proxy-network
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+
+networks:
+  proxy-network:
+    driver: bridge
+
+volumes:
+  squid-cache:
+    driver: local

@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+{% block title %}Blacklists{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">Blacklists</h1>
+    
+    <ul class="nav nav-tabs mb-4" id="blacklistTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="ip-tab" data-bs-toggle="tab" data-bs-target="#ip-blacklist" type="button" role="tab" aria-controls="ip-blacklist" aria-selected="true">IP Blacklist</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="domain-tab" data-bs-toggle="tab" data-bs-target="#domain-blacklist" type="button" role="tab" aria-controls="domain-blacklist" aria-selected="false">Domain Blacklist</button>
+        </li>
+    </ul>
+    
+    <div class="tab-content" id="blacklistTabsContent">
+        <!-- IP Blacklist Tab -->
+        <div class="tab-pane fade show active" id="ip-blacklist" role="tabpanel" aria-labelledby="ip-tab">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">IP Blacklist</h5>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addIpModal">
+                        <i class="fas fa-plus me-2"></i>Add IP
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="ip-blacklist-table">
+                            <thead>
+                                <tr>
+                                    <th>IP Address</th>
+                                    <th>Description</th>
+                                    <th>Added Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="4" class="text-center">Loading IP blacklist...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Domain Blacklist Tab -->
+        <div class="tab-pane fade" id="domain-blacklist" role="tabpanel" aria-labelledby="domain-tab">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Domain Blacklist</h5>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addDomainModal">
+                        <i class="fas fa-plus me-2"></i>Add Domain
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="domain-blacklist-table">
+                            <thead>
+                                <tr>
+                                    <th>Domain</th>
+                                    <th>Description</th>
+                                    <th>Added Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="4" class="text-center">Loading domain blacklist...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add IP Modal -->
+<div class="modal fade" id="addIpModal" tabindex="-1" aria-labelledby="addIpModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addIpModalLabel">Add IP to Blacklist</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="add-ip-form">
+                    <div class="mb-3">
+                        <label for="ip-address" class="form-label">IP Address</label>
+                        <input type="text" class="form-control" id="ip-address" placeholder="e.g. 192.168.1.1" required>
+                        <div class="form-text">Enter a single IP or CIDR notation (e.g. 192.168.1.0/24)</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="ip-description" class="form-label">Description (Optional)</label>
+                        <textarea class="form-control" id="ip-description" rows="2" placeholder="Why is this IP being blacklisted?"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="add-ip-btn">Add to Blacklist</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Domain Modal -->
+<div class="modal fade" id="addDomainModal" tabindex="-1" aria-labelledby="addDomainModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addDomainModalLabel">Add Domain to Blacklist</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="add-domain-form">
+                    <div class="mb-3">
+                        <label for="domain-name" class="form-label">Domain Name</label>
+                        <input type="text" class="form-control" id="domain-name" placeholder="e.g. example.com" required>
+                        <div class="form-text">You can use wildcards (e.g. *.example.com)</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="domain-description" class="form-label">Description (Optional)</label>
+                        <textarea class="form-control" id="domain-description" rows="2" placeholder="Why is this domain being blacklisted?"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="add-domain-btn">Add to Blacklist</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    $(document).ready(function() {
+        // Load initial data
+        loadIpBlacklist();
+        loadDomainBlacklist();
+        
+        // Set up tab change event
+        $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
+            const targetTab = $(e.target).attr('id');
+            if (targetTab === 'ip-tab') {
+                loadIpBlacklist();
+            } else if (targetTab === 'domain-tab') {
+                loadDomainBlacklist();
+            }
+        });
+        
+        // Add IP to blacklist
+        $('#add-ip-btn').click(function() {
+            const ip = $('#ip-address').val().trim();
+            const description = $('#ip-description').val().trim();
+            
+            if (!ip) {
+                showToast('Please enter an IP address', 'danger');
+                return;
+            }
+            
+            apiRequest('POST', 'ip-blacklist', {
+                ip: ip,
+                description: description
+            })
+            .then(function(response) {
+                if (response.status === 'success') {
+                    showToast('IP added to blacklist successfully');
+                    $('#addIpModal').modal('hide');
+                    $('#add-ip-form')[0].reset();
+                    loadIpBlacklist();
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to add IP to blacklist: ' + error.message, 'danger');
+            });
+        });
+        
+        // Add domain to blacklist
+        $('#add-domain-btn').click(function() {
+            const domain = $('#domain-name').val().trim();
+            const description = $('#domain-description').val().trim();
+            
+            if (!domain) {
+                showToast('Please enter a domain name', 'danger');
+                return;
+            }
+            
+            apiRequest('POST', 'domain-blacklist', {
+                domain: domain,
+                description: description
+            })
+            .then(function(response) {
+                if (response.status === 'success') {
+                    showToast('Domain added to blacklist successfully');
+                    $('#addDomainModal').modal('hide');
+                    $('#add-domain-form')[0].reset();
+                    loadDomainBlacklist();
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to add domain to blacklist: ' + error.message, 'danger');
+            });
+        });
+    });
+    
+    // Load IP blacklist
+    function loadIpBlacklist() {
+        apiRequest('GET', 'ip-blacklist')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    const blacklist = response.data;
+                    
+                    if (blacklist.length === 0) {
+                        $('#ip-blacklist-table tbody').html('<tr><td colspan="4" class="text-center">No IPs in blacklist</td></tr>');
+                        return;
+                    }
+                    
+                    let html = '';
+                    blacklist.forEach(item => {
+                        html += `
+                            <tr>
+                                <td>${item.ip}</td>
+                                <td>${item.description || '<em>No description</em>'}</td>
+                                <td>${new Date(item.added_date).toLocaleString()}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-danger delete-ip" data-id="${item.id}">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    
+                    $('#ip-blacklist-table tbody').html(html);
+                    
+                    // Set up delete handlers
+                    $('.delete-ip').click(function() {
+                        const id = $(this).data('id');
+                        if (confirm('Are you sure you want to remove this IP from the blacklist?')) {
+                            deleteIpFromBlacklist(id);
+                        }
+                    });
+                }
+            })
+            .catch(function(error) {
+                $('#ip-blacklist-table tbody').html('<tr><td colspan="4" class="text-center text-danger">Failed to load IP blacklist</td></tr>');
+                showToast('Failed to load IP blacklist: ' + error.message, 'danger');
+            });
+    }
+    
+    // Load domain blacklist
+    function loadDomainBlacklist() {
+        apiRequest('GET', 'domain-blacklist')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    const blacklist = response.data;
+                    
+                    if (blacklist.length === 0) {
+                        $('#domain-blacklist-table tbody').html('<tr><td colspan="4" class="text-center">No domains in blacklist</td></tr>');
+                        return;
+                    }
+                    
+                    let html = '';
+                    blacklist.forEach(item => {
+                        html += `
+                            <tr>
+                                <td>${item.domain}</td>
+                                <td>${item.description || '<em>No description</em>'}</td>
+                                <td>${new Date(item.added_date).toLocaleString()}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-danger delete-domain" data-id="${item.id}">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    
+                    $('#domain-blacklist-table tbody').html(html);
+                    
+                    // Set up delete handlers
+                    $('.delete-domain').click(function() {
+                        const id = $(this).data('id');
+                        if (confirm('Are you sure you want to remove this domain from the blacklist?')) {
+                            deleteDomainFromBlacklist(id);
+                        }
+                    });
+                }
+            })
+            .catch(function(error) {
+                $('#domain-blacklist-table tbody').html('<tr><td colspan="4" class="text-center text-danger">Failed to load domain blacklist</td></tr>');
+                showToast('Failed to load domain blacklist: ' + error.message, 'danger');
+            });
+    }
+    
+    // Delete IP from blacklist
+    function deleteIpFromBlacklist(id) {
+        apiRequest('DELETE', `ip-blacklist/${id}`)
+            .then(function(response) {
+                if (response.status === 'success') {
+                    showToast('IP removed from blacklist successfully');
+                    loadIpBlacklist();
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to remove IP from blacklist: ' + error.message, 'danger');
+            });
+    }
+    
+    // Delete domain from blacklist
+    function deleteDomainFromBlacklist(id) {
+        apiRequest('DELETE', `domain-blacklist/${id}`)
+            .then(function(response) {
+                if (response.status === 'success') {
+                    showToast('Domain removed from blacklist successfully');
+                    loadDomainBlacklist();
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to remove domain from blacklist: ' + error.message, 'danger');
+            });
+    }
+</script>
+{% endblock %}

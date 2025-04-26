@@ -1,0 +1,73 @@
+2025-04-26 19:17:45,289 - werkzeug - WARNING -  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-26 19:17:45,290 - werkzeug - INFO -  * Running on http://172.18.0.4:8011/ (Press CTRL+C to quit)
+2025-04-26 19:17:54,090 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:17:54] "[31m[1mGET / HTTP/1.1[0m" 401 -
+2025-04-26 19:17:57,322 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:17:57] "GET / HTTP/1.1" 200 -
+2025-04-26 19:17:57,584 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:17:57] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:17:57,585 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:17:57] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:17:57,589 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:17:57] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:17:57,590 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:17:57] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:17:57,591 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:17:57] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:17:57,616 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:17:57] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2025-04-26 19:18:02,191 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:02] "GET /blacklists HTTP/1.1" 200 -
+2025-04-26 19:18:02,368 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:02] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:02,370 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:02] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:04,842 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:04] "GET /logs HTTP/1.1" 200 -
+2025-04-26 19:18:05,008 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:05] "GET /api/logs?limit=25&offset=0 HTTP/1.1" 200 -
+2025-04-26 19:18:06,025 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:06] "GET /settings HTTP/1.1" 200 -
+2025-04-26 19:18:06,865 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:06] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:18:37,914 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:37] "GET /about HTTP/1.1" 200 -
+2025-04-26 19:18:38,154 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:38] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:18:46,040 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:46] "GET / HTTP/1.1" 200 -
+2025-04-26 19:18:46,203 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:46] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:46,205 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:46] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:46,205 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:46] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:18:46,209 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:46] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:18:46,210 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:46] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:18:49,433 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:49] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:49,437 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:49] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:49,437 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:49] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:18:49,439 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:49] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:18:49,439 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:49] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:18:50,346 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:50] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:18:50,346 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:50] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:50,349 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:50] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:18:50,349 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:50] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:50,350 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:18:50] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:19:16,218 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:19:16] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:19:16,220 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:19:16] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:19:16,221 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:19:16] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:19:16,222 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:19:16] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:19:16,224 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:19:16] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:19:46,223 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:19:46] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:19:46,225 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:19:46] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:19:46,226 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:19:46] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:19:46,227 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:19:46] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:19:46,231 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:19:46] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:20:16,225 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:20:16] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:20:16,230 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:20:16] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:20:16,233 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:20:16] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:20:16,233 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:20:16] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:20:16,234 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:20:16] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:20:46,232 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:20:46] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:20:46,234 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:20:46] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:20:46,238 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:20:46] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:20:46,238 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:20:46] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:20:46,240 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:20:46] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:21:13,843 - werkzeug - WARNING -  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-26 19:21:13,843 - werkzeug - INFO -  * Running on http://172.18.0.4:8011/ (Press CTRL+C to quit)
+2025-04-26 19:21:16,232 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:21:16] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:21:16,241 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:21:16] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:21:16,241 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:21:16] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:21:16,242 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:21:16] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:21:16,242 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:21:16] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:21:33,848 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:21:33] "GET / HTTP/1.1" 200 -
+2025-04-26 19:21:34,027 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:21:34] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:21:34,030 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:21:34] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:21:34,031 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:21:34] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:21:34,032 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:21:34] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:21:34,032 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:21:34] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:21:38,384 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:21:38] "GET /logs HTTP/1.1" 200 -
+2025-04-26 19:21:38,545 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:21:38] "GET /api/logs?limit=25&offset=0 HTTP/1.1" 200 -
+2025-04-26 19:21:40,372 - werkzeug - INFO - 192.168.65.1 - - [26/Apr/2025 19:21:40] "GET /api/logs?limit=25&offset=0 HTTP/1.1" 200 -

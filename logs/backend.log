@@ -1,0 +1,121 @@
+2025-04-26 18:56:23,630 - __main__ - INFO - Database initialized successfully
+2025-04-26 18:56:23,633 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.18.0.3:5000
+2025-04-26 18:56:23,634 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-04-26 18:57:09,134 - __main__ - INFO - Database initialized successfully
+2025-04-26 18:57:09,138 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.18.0.2:5000
+2025-04-26 18:57:09,138 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-04-26 19:00:08,578 - __main__ - INFO - Database initialized successfully
+2025-04-26 19:00:08,579 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.18.0.2:5000
+2025-04-26 19:00:08,580 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-04-26 19:02:10,905 - __main__ - INFO - Database initialized successfully
+2025-04-26 19:02:10,910 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.18.0.2:5000
+2025-04-26 19:02:10,910 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-04-26 19:12:17,745 - __main__ - INFO - Database initialized successfully
+2025-04-26 19:12:17,748 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.18.0.3:5000
+2025-04-26 19:12:17,748 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-04-26 19:13:23,851 - __main__ - INFO - Database initialized successfully
+2025-04-26 19:13:23,853 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.18.0.3:5000
+2025-04-26 19:13:23,853 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-04-26 19:15:06,223 - __main__ - INFO - Database initialized successfully
+2025-04-26 19:15:06,226 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.18.0.3:5000
+2025-04-26 19:15:06,226 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-04-26 19:17:45,222 - __main__ - INFO - Database initialized successfully
+2025-04-26 19:17:45,225 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.18.0.2:5000
+2025-04-26 19:17:45,226 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-04-26 19:17:57,581 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:17:57] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:17:57,583 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:17:57] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:17:57,584 - __main__ - ERROR - Error checking proxy status: HTTPConnectionPool(host='proxy', port=3128): Max retries exceeded with url: http://proxy:3128/ (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPConnection object at 0xffffa288a5d0>: Failed to establish a new connection: [Errno 111] Connection refused')))
+2025-04-26 19:17:57,586 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:17:57] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:17:57,588 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:17:57] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:17:57,588 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:17:57] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:02,366 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:02] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:02,368 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:02] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:05,007 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:05] "GET /api/logs?limit=25&offset=0 HTTP/1.1" 200 -
+2025-04-26 19:18:06,864 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:06] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:18:38,152 - __main__ - ERROR - Error checking proxy status: HTTPConnectionPool(host='proxy', port=3128): Max retries exceeded with url: http://proxy:3128/ (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPConnection object at 0xffffa2875210>: Failed to establish a new connection: [Errno -2] Name or service not known')))
+2025-04-26 19:18:38,153 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:38] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:18:46,202 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:46] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:46,203 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:46] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:46,203 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:46] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:18:46,205 - __main__ - ERROR - Error checking proxy status: HTTPConnectionPool(host='proxy', port=3128): Max retries exceeded with url: http://proxy:3128/ (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPConnection object at 0xffffa288bb50>: Failed to establish a new connection: [Errno -2] Name or service not known')))
+2025-04-26 19:18:46,207 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:46] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:18:46,208 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:46] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:18:49,431 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:49] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:49,431 - __main__ - ERROR - Error checking proxy status: HTTPConnectionPool(host='proxy', port=3128): Max retries exceeded with url: http://proxy:3128/ (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPConnection object at 0xffffa2874350>: Failed to establish a new connection: [Errno 111] Connection refused')))
+2025-04-26 19:18:49,433 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:49] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:49,433 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:49] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:18:49,435 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:49] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:18:49,436 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:49] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:18:50,343 - __main__ - ERROR - Error checking proxy status: HTTPConnectionPool(host='proxy', port=3128): Max retries exceeded with url: http://proxy:3128/ (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPConnection object at 0xffffa2880690>: Failed to establish a new connection: [Errno 111] Connection refused')))
+2025-04-26 19:18:50,344 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:50] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:18:50,344 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:50] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:50,346 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:50] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:18:50,346 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:50] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:18:50,348 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:18:50] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:19:16,216 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:19:16] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:19:16,218 - __main__ - ERROR - Error checking proxy status: HTTPConnectionPool(host='proxy', port=3128): Max retries exceeded with url: http://proxy:3128/ (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPConnection object at 0xffffa2876210>: Failed to establish a new connection: [Errno -2] Name or service not known')))
+2025-04-26 19:19:16,219 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:19:16] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:19:16,220 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:19:16] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:19:16,221 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:19:16] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:19:16,222 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:19:16] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:19:46,221 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:19:46] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:19:46,221 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:19:46] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:19:46,224 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:19:46] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:19:46,226 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:19:46] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:19:46,227 - __main__ - ERROR - Error checking proxy status: HTTPConnectionPool(host='proxy', port=3128): Max retries exceeded with url: http://proxy:3128/ (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPConnection object at 0xffffa2896510>: Failed to establish a new connection: [Errno -2] Name or service not known')))
+2025-04-26 19:19:46,230 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:19:46] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:20:16,224 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:20:16] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:20:16,226 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:20:16] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:20:16,227 - __main__ - ERROR - Error checking proxy status: HTTPConnectionPool(host='proxy', port=3128): Max retries exceeded with url: http://proxy:3128/ (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPConnection object at 0xffffa2894a50>: Failed to establish a new connection: [Errno 111] Connection refused')))
+2025-04-26 19:20:16,230 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:20:16] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:20:16,231 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:20:16] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:20:16,232 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:20:16] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:20:46,231 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:20:46] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:20:46,232 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:20:46] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:20:46,236 - __main__ - ERROR - Error checking proxy status: HTTPConnectionPool(host='proxy', port=3128): Max retries exceeded with url: http://proxy:3128/ (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPConnection object at 0xffffa2874590>: Failed to establish a new connection: [Errno -2] Name or service not known')))
+2025-04-26 19:20:46,236 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:20:46] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:20:46,237 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:20:46] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:20:46,237 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:20:46] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:21:13,772 - __main__ - INFO - Database initialized successfully
+2025-04-26 19:21:13,776 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.18.0.2:5000
+2025-04-26 19:21:13,776 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-04-26 19:21:16,230 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:21:16] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:21:16,238 - __main__ - ERROR - Error checking proxy status: HTTPConnectionPool(host='proxy', port=3128): Max retries exceeded with url: http://proxy:3128/ (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPConnection object at 0xffff99487090>: Failed to establish a new connection: [Errno 111] Connection refused')))
+2025-04-26 19:21:16,238 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:21:16] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:21:16,239 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:21:16] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:21:16,240 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:21:16] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:21:16,241 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:21:16] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:21:34,025 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:21:34] "GET /api/domain-blacklist HTTP/1.1" 200 -
+2025-04-26 19:21:34,028 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:21:34] "GET /api/ip-blacklist HTTP/1.1" 200 -
+2025-04-26 19:21:34,028 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:21:34] "GET /api/status HTTP/1.1" 200 -
+2025-04-26 19:21:34,029 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:21:34] "GET /api/settings HTTP/1.1" 200 -
+2025-04-26 19:21:34,030 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:21:34] "GET /api/logs?limit=5 HTTP/1.1" 200 -
+2025-04-26 19:21:38,543 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:21:38] "GET /api/logs?limit=25&offset=0 HTTP/1.1" 200 -
+2025-04-26 19:21:40,371 - werkzeug - INFO - 172.18.0.4 - - [26/Apr/2025 19:21:40] "GET /api/logs?limit=25&offset=0 HTTP/1.1" 200 -

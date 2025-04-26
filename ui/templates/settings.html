@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">Settings</h1>
+    
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Proxy Configuration</h5>
+                </div>
+                <div class="card-body">
+                    <form id="settings-form">
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <h6 class="border-bottom pb-2 mb-3">Blacklist Settings</h6>
+                                
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="enable_ip_blacklist">
+                                    <label class="form-check-label" for="enable_ip_blacklist">Enable IP Blacklist</label>
+                                    <div class="form-text">Block requests from blacklisted IP addresses</div>
+                                </div>
+                                
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="enable_domain_blacklist">
+                                    <label class="form-check-label" for="enable_domain_blacklist">Enable Domain Blacklist</label>
+                                    <div class="form-text">Block requests to blacklisted domains</div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <h6 class="border-bottom pb-2 mb-3">Access Control</h6>
+                                
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="block_direct_ip">
+                                    <label class="form-check-label" for="block_direct_ip">Block Direct IP Access</label>
+                                    <div class="form-text">Block requests to direct IP addresses (exceptions can be added)</div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="log_level" class="form-label">Log Level</label>
+                                    <select class="form-select" id="log_level">
+                                        <option value="debug">Debug</option>
+                                        <option value="info">Info</option>
+                                        <option value="warning">Warning</option>
+                                        <option value="error">Error</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h6 class="border-bottom pb-2 mb-3">Authentication</h6>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="admin_username" class="form-label">Admin Username</label>
+                                            <input type="text" class="form-control" id="admin_username" placeholder="admin">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="admin_password" class="form-label">Admin Password</label>
+                                            <input type="password" class="form-control" id="admin_password" placeholder="********">
+                                            <div class="form-text">Leave blank to keep current password</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <button type="button" class="btn btn-secondary me-md-2" id="reset-settings">Reset to Defaults</button>
+                            <button type="button" class="btn btn-primary" id="save-settings">Save Settings</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    $(document).ready(function() {
+        // Load current settings
+        loadSettings();
+        
+        // Save settings
+        $('#save-settings').click(function() {
+            saveSettings();
+        });
+        
+        // Reset settings
+        $('#reset-settings').click(function() {
+            if (confirm('Are you sure you want to reset all settings to default values?')) {
+                resetSettings();
+            }
+        });
+    });
+    
+    function loadSettings() {
+        apiRequest('GET', 'settings')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    const settings = {};
+                    response.data.forEach(setting => {
+                        settings[setting.setting_name] = setting.setting_value;
+                    });
+                    
+                    // Update form values
+                    $('#enable_ip_blacklist').prop('checked', settings.enable_ip_blacklist === 'true');
+                    $('#enable_domain_blacklist').prop('checked', settings.enable_domain_blacklist === 'true');
+                    $('#block_direct_ip').prop('checked', settings.block_direct_ip === 'true');
+                    $('#log_level').val(settings.log_level);
+                    
+                    // For demonstration, we're not actually loading the username/password from backend
+                    // as that would be a security risk
+                    $('#admin_username').val('admin');
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to load settings: ' + error.message, 'danger');
+            });
+    }
+    
+    function saveSettings() {
+        // Collect all settings
+        const settings = {
+            enable_ip_blacklist: $('#enable_ip_blacklist').is(':checked') ? 'true' : 'false',
+            enable_domain_blacklist: $('#enable_domain_blacklist').is(':checked') ? 'true' : 'false',
+            block_direct_ip: $('#block_direct_ip').is(':checked') ? 'true' : 'false',
+            log_level: $('#log_level').val()
+        };
+        
+        // Save each setting
+        const promises = [];
+        
+        for (const [name, value] of Object.entries(settings)) {
+            promises.push(
+                apiRequest('PUT', `settings/${name}`, { value: value })
+                    .catch(function(error) {
+                        showToast(`Failed to update ${name}: ${error.message}`, 'danger');
+                        throw error;
+                    })
+            );
+        }
+        
+        // Handle authentication changes if password was updated
+        const newPassword = $('#admin_password').val();
+        if (newPassword) {
+            // This is just a placeholder - in a real app, you'd have a proper API for changing password
+            console.log("Password would be updated");
+            // Clear password field after submit
+            $('#admin_password').val('');
+        }
+        
+        // Wait for all settings to be updated
+        Promise.all(promises)
+            .then(function() {
+                showToast('Settings saved successfully');
+            })
+            .catch(function(error) {
+                // Individual errors are already handled above
+                console.error('Some settings failed to save:', error);
+            });
+    }
+    
+    function resetSettings() {
+        // Set default values
+        $('#enable_ip_blacklist').prop('checked', true);
+        $('#enable_domain_blacklist').prop('checked', true);
+        $('#block_direct_ip').prop('checked', true);
+        $('#log_level').val('info');
+        
+        // Save the default settings
+        saveSettings();
+    }
+</script>
+{% endblock %}
