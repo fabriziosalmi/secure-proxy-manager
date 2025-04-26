@@ -644,6 +644,142 @@ document.addEventListener('DOMContentLoaded', function() {
         return headers;
     }
 
+    // Squid config editor syntax highlighting
+    function applyConfigSyntaxHighlighting() {
+        const configEditor = document.getElementById('config-editor');
+        if (!configEditor) return;
+        
+        let content = configEditor.value;
+        if (!content) return;
+        
+        // Create a temporary div for HTML conversion
+        const tempDiv = document.createElement('div');
+        
+        // Escape HTML
+        content = content.replace(/&/g, '&amp;')
+                         .replace(/</g, '&lt;')
+                         .replace(/>/g, '&gt;');
+        
+        // Highlight comments
+        content = content.replace(/(#.*)$/gm, '<span class="config-comment">$1</span>');
+        
+        // Highlight directives and values
+        content = content.replace(/^(\s*[a-zA-Z_]+)(\s+)([^#\n]+)/gm, 
+            '<span class="config-directive">$1</span>$2<span class="config-value">$3</span>');
+        
+        // Highlight symbols
+        content = content.replace(/(\{|\}|\(|\)|\[|\])/g, '<span class="config-symbol">$1</span>');
+        
+        // Create a pre element with the highlighted code
+        const highlightedCode = document.createElement('pre');
+        highlightedCode.className = 'config-highlighted';
+        highlightedCode.innerHTML = content;
+        
+        // Replace the textarea with the highlighted code when not focused
+        configEditor.addEventListener('blur', function() {
+            const parent = configEditor.parentNode;
+            highlightedCode.style.height = configEditor.offsetHeight + 'px';
+            configEditor.style.display = 'none';
+            parent.insertBefore(highlightedCode, configEditor);
+        });
+        
+        // Switch back to editable textarea when clicking on the highlighted code
+        highlightedCode.addEventListener('click', function() {
+            highlightedCode.remove();
+            configEditor.style.display = 'block';
+            configEditor.focus();
+        });
+        
+        // Update highlighting when content changes
+        configEditor.addEventListener('input', function() {
+            if (document.contains(highlightedCode)) {
+                highlightedCode.remove();
+            }
+        });
+    }
+
+    // Update security feature status badges
+    function updateFeatureStatusBadges() {
+        const statusElements = {
+            'ip-blacklist-status': document.getElementById('ip-blacklist-toggle'),
+            'domain-blacklist-status': document.getElementById('domain-blacklist-toggle'),
+            'direct-ip-status': document.getElementById('direct-ip-toggle'),
+            'user-agent-status': document.getElementById('user-agent-toggle'),
+            'malware-status': document.getElementById('malware-toggle'),
+            'https-filtering-status': document.getElementById('https-filtering-toggle')
+        };
+        
+        const countElements = {
+            'ip-blacklist': document.getElementById('ip-blacklist-count'),
+            'domain-blacklist': document.getElementById('domain-blacklist-count'),
+            'allowed-direct-ips': document.getElementById('allowed-direct-ips-count')
+        };
+        
+        // Update status badges based on toggle state and count
+        Object.entries(statusElements).forEach(([statusId, toggleElement]) => {
+            if (!toggleElement) return;
+            
+            const statusBadge = document.getElementById(statusId);
+            if (!statusBadge) return;
+            
+            const isEnabled = toggleElement.checked;
+            const countElement = Object.entries(countElements).find(([key]) => statusId.includes(key))?.[1];
+            const count = countElement ? parseInt(countElement.textContent || '0', 10) : null;
+            
+            statusBadge.textContent = isEnabled ? 'Enabled' : 'Disabled';
+            statusBadge.className = 'feature-status-badge';
+            
+            if (isEnabled) {
+                if (count !== null && count === 0) {
+                    // Enabled but no items (partial)
+                    statusBadge.classList.add('status-partial');
+                    statusBadge.textContent = 'No Items';
+                } else {
+                    // Fully enabled
+                    statusBadge.classList.add('status-enabled');
+                }
+            } else {
+                // Disabled
+                statusBadge.classList.add('status-disabled');
+            }
+        });
+    }
+
+    // Update dashboard security feature indicators
+    function updateDashboardSecurityFeatures(features) {
+        // Update feature indicators on the dashboard page
+        const featureElements = {
+            'feature-ip-blacklist': 'ipBlacklist',
+            'feature-domain-blacklist': 'domainBlacklist',
+            'feature-direct-ip': 'directIpBlocking',
+            'feature-user-agent': 'userAgentFiltering',
+            'feature-malware': 'malwareBlocking',
+            'feature-https': 'httpsFiltering'
+        };
+        
+        // Update DOM elements if they exist
+        Object.entries(featureElements).forEach(([elementId, featureKey]) => {
+            const element = document.getElementById(elementId);
+            if (!element) return;
+            
+            const statusIndicator = element.querySelector('.rounded-full');
+            if (!statusIndicator) return;
+            
+            const isEnabled = features[featureKey];
+            
+            // Reset classes
+            statusIndicator.className = 'w-3 h-3 rounded-full mr-2';
+            
+            if (isEnabled) {
+                // Green for enabled
+                statusIndicator.classList.add('bg-green-500');
+            } else {
+                // Gray for disabled
+                statusIndicator.classList.add('bg-gray-400');
+            }
+        });
+    }
+
     // Initialize Dashboard Page
     function initDashboardPage() {
         // Elements - Main Controls
@@ -1193,8 +1329,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (malwareToggle) malwareToggle.checked = features.malwareBlocking;
                 if (httpsFilteringToggle) httpsFilteringToggle.checked = features.httpsFiltering === true ? true : false;
                 
-                // Also fetch the initial data for the first tab
+                // Update status badges
+                updateFeatureStatusBadges();
+                
+                // Update dashboard indicators if on the dashboard page
+                updateDashboardSecurityFeatures(features);
+                
+                // Also fetch the initial data for blacklist counts
                 fetchIpBlacklist();
+                fetchDomainBlacklist();
+                fetchAllowedDirectIps();
+                
+                // Initialize certificate status if on settings page
+                if (document.getElementById('cert-status')) {
+                    fetchCertificateStatus();
+                }
+                
+                // Apply syntax highlighting to Squid config editor if it exists
+                if (document.getElementById('config-editor')) {
+                    applyConfigSyntaxHighlighting();
+                }
             } catch (error) {
                 if (featuresMessage) {
                     showMessage(featuresMessage, 'Failed to fetch security features: ' + error.message, false);
