@@ -362,6 +362,25 @@ def import_logs():
         logger.error(f"Error importing logs: {str(e)}")
         return jsonify({"status": "error", "message": f"Error importing logs: {str(e)}"}), 500
 
+@app.route('/api/logs/blocked-count', methods=['GET'])
+@auth.login_required
+def get_blocked_count():
+    """Get count of blocked requests from logs"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Count logs with status codes that indicate blocked requests
+    # Typically in Squid: TCP_DENIED/403 indicates a denied request
+    cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%'")
+    blocked_count = cursor.fetchone()[0]
+    
+    return jsonify({
+        "status": "success", 
+        "data": {
+            "blocked_count": blocked_count
+        }
+    })
+
 # New maintenance endpoints
 @app.route('/api/maintenance/clear-cache', methods=['POST'])
 @auth.login_required

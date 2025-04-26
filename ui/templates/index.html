@@ -234,13 +234,24 @@
                     
                     $('#recent-logs').html(html);
                     
-                    // Update counts
+                    // Update proxied requests count
                     $('#proxy-requests').text(response.meta.total);
-                    $('#blocked-requests').text('--'); // Would need additional API call for blocked count
                 }
             })
             .catch(function(error) {
                 $('#recent-logs').html('<tr><td colspan="5" class="text-center">Failed to load logs</td></tr>');
+            });
+            
+        // Load blocked requests count from the new API endpoint
+        apiRequest('GET', 'logs/blocked-count')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    $('#blocked-requests').text(response.data.blocked_count);
+                }
+            })
+            .catch(function(error) {
+                $('#blocked-requests').text('Error');
+                console.error('Failed to load blocked count:', error);
             });
     }
 </script>
