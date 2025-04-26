@@ -27,6 +27,91 @@ sleep 2
 iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3128
 iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 3128
 
+# Force clear Squid configuration to ensure a clean start
+echo "Setting up clean Squid configuration..."
+cat > /etc/squid/squid.conf.base << EOL
+http_port 3128
+visible_hostname secure-proxy
+
+# Access control lists
+acl localnet src 10.0.0.0/8
+acl localnet src 172.16.0.0/12
+acl localnet src 192.168.0.0/16
+acl localnet src fc00::/7
+acl localnet src fe80::/10
+
+# SSL/HTTPS related ACLs
+acl SSL_ports port 443
+acl Safe_ports port 80
+acl Safe_ports port 443
+acl Safe_ports port 21
+acl Safe_ports port 70
+acl Safe_ports port 210
+acl Safe_ports port 1025-65535
+acl Safe_ports port 280
+acl Safe_ports port 488
+acl Safe_ports port 591
+acl Safe_ports port 777
+
+# IP blacklists
+acl ip_blacklist src "/etc/squid/blacklists/ip/local.txt"
+
+# Domain blacklists
+acl domain_blacklist dstdomain "/etc/squid/blacklists/domain/local.txt"
+
+# Direct IP access detection - essential for security
+acl direct_ip_url url_regex -i ^https?://([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)
+acl direct_ip_host dstdom_regex -i ^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)$
+acl direct_ipv6_url url_regex -i ^https?://\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]
+acl direct_ipv6_host dstdom_regex -i ^\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]$
+
+# HTTP method definitions
+acl CONNECT method CONNECT
+
+# Basic access control
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+
+# First block all direct IP access (high priority)
+http_access deny direct_ip_url
+http_access deny direct_ip_host
+http_access deny direct_ipv6_url
+http_access deny direct_ipv6_host
+http_access deny CONNECT direct_ip_host
+http_access deny CONNECT direct_ipv6_host
+
+# Then implement additional blocks
+http_access deny ip_blacklist
+http_access deny domain_blacklist
+
+# Allow local network access
+http_access allow localnet
+http_access allow localhost
+
+# Default deny
+http_access deny all
+
+# Caching options
+cache_dir ufs /var/spool/squid 1000 16 256
+maximum_object_size 50 MB
+coredump_dir /var/spool/squid
+
+# Log settings
+debug_options ALL,2
+access_log daemon:/var/log/squid/access.log squid
+cache_log /var/log/squid/cache.log
+cache_store_log stdio:/var/log/squid/store.log
+
+# Timeout settings
+connect_timeout 30 seconds
+dns_timeout 5 seconds
+
+refresh_pattern ^ftp:           1440    20%     10080
+refresh_pattern ^gopher:        1440    0%      1440
+refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
+refresh_pattern .               0       20%     4320
+EOL
+
 # Check for all possible locations of the custom Squid configuration
 echo "Checking for custom Squid configurations..."
 if [ -f /config/custom_squid.conf ]; then
@@ -39,10 +124,13 @@ elif [ -f /config/squid/squid.conf ]; then
     echo "Found /config/squid/squid.conf - applying this configuration"
     cp /config/squid/squid.conf /etc/squid/squid.conf
 else
-    echo "No custom configuration found - using default configuration"
+    echo "No custom configuration found - using base configuration"
+    cp /etc/squid/squid.conf.base /etc/squid/squid.conf
 fi
 
-# Ensure the configuration always contains direct IP blocking, even if not in the custom config
+# CRITICAL: Ensure the configuration always contains direct IP blocking, 
+# by forcing these rules regardless of the source configuration
+echo "Ensuring direct IP blocking rules are present..."
 grep -q "direct_ip_url" /etc/squid/squid.conf
 if [ $? -ne 0 ]; then
     echo "Adding missing direct IP blocking rules to configuration"
@@ -111,51 +199,39 @@ else
         cp /etc/squid/squid.conf /etc/squid/squid.conf.backup
     fi
     
-    # Use a minimal default configuration
-    cat > /etc/squid/squid.conf << EOL
-http_port 3128
-visible_hostname secure-proxy
+    # Use our base configuration (guaranteed to work)
+    cp /etc/squid/squid.conf.base /etc/squid/squid.conf
+    echo "⚠️ Applied base configuration to recover functionality"
+fi
 
-acl localnet src 10.0.0.0/8
-acl localnet src 172.16.0.0/12
-acl localnet src 192.168.0.0/16
-acl localnet src fc00::/7
-acl localnet src fe80::/10
+# FINAL SAFETY CHECK: Force direct IP blocking to be present
+# This is a critical security feature and must be present
+echo "*** FINAL VERIFICATION OF DIRECT IP BLOCKING ***"
+if ! grep -q "acl direct_ip_url" /etc/squid/squid.conf || ! grep -q "http_access deny direct_ip_url" /etc/squid/squid.conf; then
+    echo "⚠️ CRITICAL: Direct IP blocking rules still missing, forcing them..."
+    cat >> /etc/squid/squid.conf << EOL
 
-acl SSL_ports port 443
-acl Safe_ports port 80
-acl Safe_ports port 443
-acl Safe_ports port 21
-acl Safe_ports port 1025-65535
-
-http_access deny !Safe_ports
-http_access deny CONNECT !SSL_ports
-http_access allow localhost
-http_access allow localnet
-http_access deny all
-
-cache_dir ufs /var/spool/squid 1000 16 256
-coredump_dir /var/spool/squid
-refresh_pattern ^ftp: 1440 20% 10080
-refresh_pattern ^gopher: 1440 0% 1440
-refresh_pattern -i (/cgi-bin/|\?) 0 0% 0
-refresh_pattern . 0 20% 4320
-
-# Direct IP blocking - added by recovery script
+# ==== CRITICAL SECURITY RULES - DO NOT REMOVE ====
+# Direct IP access detection - added by final verification
 acl direct_ip_url url_regex -i ^https?://([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)
 acl direct_ip_host dstdom_regex -i ^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)$
 acl direct_ipv6_url url_regex -i ^https?://\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]
 acl direct_ipv6_host dstdom_regex -i ^\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]$
+
+# Block direct IP access - added by final verification
 http_access deny direct_ip_url
 http_access deny direct_ip_host
 http_access deny direct_ipv6_url
 http_access deny direct_ipv6_host
 http_access deny CONNECT direct_ip_host
 http_access deny CONNECT direct_ipv6_host
+# ==== END OF CRITICAL SECURITY RULES ====
 EOL
-
-    echo "⚠️ Applied a minimal working configuration to recover functionality"
+    echo "✅ Direct IP blocking rules have been forcefully added"
 fi
+
+# Final ACL verification
+grep -A 10 "direct_ip" /etc/squid/squid.conf
 
 # Comprehensive configuration verification
 echo "Verifying all UI settings are properly reflected in Squid configuration..."
