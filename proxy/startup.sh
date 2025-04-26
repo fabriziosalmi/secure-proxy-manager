@@ -131,11 +131,18 @@ fi
 # CRITICAL: Ensure the configuration always contains direct IP blocking, 
 # by forcing these rules regardless of the source configuration
 echo "Ensuring direct IP blocking rules are present..."
-grep -q "direct_ip_url" /etc/squid/squid.conf
-if [ $? -ne 0 ]; then
-    echo "Adding missing direct IP blocking rules to configuration"
+
+# Check for all required direct IP blocking patterns
+if ! grep -q "acl direct_ip_url" /etc/squid/squid.conf || \
+   ! grep -q "acl direct_ip_host" /etc/squid/squid.conf || \
+   ! grep -q "http_access deny direct_ip_url" /etc/squid/squid.conf || \
+   ! grep -q "http_access deny direct_ip_host" /etc/squid/squid.conf || \
+   ! grep -q "http_access deny CONNECT direct_ip_host" /etc/squid/squid.conf; then
+    
+    echo "⚠️ Critical security rules missing - adding direct IP blocking rules"
     cat >> /etc/squid/squid.conf << EOL
 
+# ==== CRITICAL SECURITY RULES - DO NOT REMOVE ====
 # Direct IP access detection - added by startup script
 acl direct_ip_url url_regex -i ^https?://([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)
 acl direct_ip_host dstdom_regex -i ^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)$
@@ -150,6 +157,8 @@ http_access deny direct_ipv6_host
 http_access deny CONNECT direct_ip_host
 http_access deny CONNECT direct_ipv6_host
 EOL
+else
+    echo "✅ Direct IP blocking rules already present in configuration"
 fi
 
 # Output the contents of the squid configuration
