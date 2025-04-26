@@ -8,10 +8,26 @@
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Access Logs</h5>
-            <div>
+            <div class="d-flex align-items-center">
+                <div class="form-check form-switch me-3">
+                    <input class="form-check-input" type="checkbox" id="auto-refresh" checked>
+                    <label class="form-check-label" for="auto-refresh">Auto Refresh</label>
+                </div>
+                <div class="me-3">
+                    <select class="form-select form-select-sm" id="refresh-interval">
+                        <option value="5000">5 sec</option>
+                        <option value="10000" selected>10 sec</option>
+                        <option value="30000">30 sec</option>
+                        <option value="60000">1 min</option>
+                    </select>
+                </div>
                 <button id="refresh-logs" class="btn btn-outline-secondary me-2">
                     <i class="fas fa-sync-alt me-1"></i>Refresh
                 </button>
+                <div class="form-check form-switch me-3">
+                    <input class="form-check-input" type="checkbox" id="auto-import" checked>
+                    <label class="form-check-label" for="auto-import">Auto Import</label>
+                </div>
                 <button id="import-logs" class="btn btn-primary">
                     <i class="fas fa-download me-1"></i>Import Logs
                 </button>
@@ -80,6 +96,52 @@
             </div>
         </div>
     </div>
+    
+    <div class="card mt-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Logs Status</h5>
+            <div>
+                <span class="badge bg-success" id="logs-status">Connected</span>
+                <span class="text-muted ms-2" id="last-update-time"></span>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Total Log Entries</h6>
+                            <h3 class="mb-0" id="total-log-count">0</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Blocked Requests</h6>
+                            <h3 class="mb-0" id="blocked-count">0</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Direct IP Blocks</h6>
+                            <h3 class="mb-0" id="ip-blocks-count">0</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Last Import</h6>
+                            <h3 class="mb-0" id="last-import-time">Never</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -91,18 +153,74 @@
         let logsPerPage = 25;
         let totalLogs = 0;
         let searchTerm = '';
+        let autoRefreshInterval = null;
+        let autoImportInterval = null;
+        let lastUpdateTime = new Date();
+        let refreshInterval = parseInt($('#refresh-interval').val());
+        let isAutoRefreshEnabled = $('#auto-refresh').is(':checked');
+        let isAutoImportEnabled = $('#auto-import').is(':checked');
+        let blockedCount = 0;
+        let ipBlocksCount = 0;
+        let lastImportTime = null;
         
-        // Load initial logs
+        // Start auto refresh if enabled
+        updateAutoRefresh();
+        
+        // Start auto import if enabled
+        updateAutoImport();
+        
+        // Initial log fetch
         loadLogs();
+        
+        // Get log statistics
+        getLogStats();
+        
+        // Toggle auto refresh
+        $('#auto-refresh').change(function() {
+            isAutoRefreshEnabled = $(this).is(':checked');
+            updateAutoRefresh();
+            
+            // Show toast notification
+            const status = isAutoRefreshEnabled ? 'enabled' : 'disabled';
+            showToast(`Auto refresh ${status}`, 'info');
+        });
+        
+        // Change refresh interval
+        $('#refresh-interval').change(function() {
+            refreshInterval = parseInt($(this).val());
+            if (isAutoRefreshEnabled) {
+                updateAutoRefresh();
+            }
+            showToast(`Refresh interval set to ${refreshInterval / 1000} seconds`, 'info');
+        });
+        
+        // Toggle auto import
+        $('#auto-import').change(function() {
+            isAutoImportEnabled = $(this).is(':checked');
+            updateAutoImport();
+            
+            // Show toast notification
+            const status = isAutoImportEnabled ? 'enabled' : 'disabled';
+            showToast(`Auto import ${status}`, 'info');
+        });
         
         // Refresh logs button
         $('#refresh-logs').click(function() {
-            loadLogs();
+            $(this).find('i').addClass('fa-spin');
+            loadLogs().finally(() => {
+                $(this).find('i').removeClass('fa-spin');
+            });
         });
         
         // Import logs button
         $('#import-logs').click(function() {
-            importLogs();
+            $(this).prop('disabled', true);
+            $(this).html('<i class="fas fa-spinner fa-spin me-1"></i>Importing...');
+            
+            importLogs().finally(() => {
+                $(this).prop('disabled', false);
+                $(this).html('<i class="fas fa-download me-1"></i>Import Logs');
+            });
         });
         
         // Change logs per page
@@ -126,12 +244,53 @@
             }
         });
         
+        // Function to update auto refresh
+        function updateAutoRefresh() {
+            // Clear any existing interval
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+            
+            // Set new interval if enabled
+            if (isAutoRefreshEnabled) {
+                autoRefreshInterval = setInterval(function() {
+                    loadLogs();
+                    $('#logs-status').removeClass('bg-danger').addClass('bg-success').text('Connected');
+                }, refreshInterval);
+                
+                $('#logs-status').removeClass('bg-danger').addClass('bg-success').text('Connected');
+            } else {
+                $('#logs-status').removeClass('bg-success').addClass('bg-danger').text('Paused');
+            }
+        }
+        
+        // Function to update auto import
+        function updateAutoImport() {
+            // Clear any existing interval
+            if (autoImportInterval) {
+                clearInterval(autoImportInterval);
+                autoImportInterval = null;
+            }
+            
+            // Set new interval if enabled (every 2 minutes)
+            if (isAutoImportEnabled) {
+                autoImportInterval = setInterval(function() {
+                    importLogs();
+                }, 120000);  // 2 minutes
+            }
+        }
+        
         // Function to load logs
         function loadLogs() {
             const offset = currentPage * logsPerPage;
-            const params = `limit=${logsPerPage}&offset=${offset}`;
+            let params = `limit=${logsPerPage}&offset=${offset}`;
             
-            apiRequest('GET', `logs?${params}`)
+            if (searchTerm) {
+                params += `&search=${encodeURIComponent(searchTerm)}`;
+            }
+            
+            return apiRequest('GET', `logs?${params}`)
                 .then(function(response) {
                     if (response.status === 'success') {
                         const logs = response.data;
@@ -147,11 +306,22 @@
                         const start = totalLogs === 0 ? 0 : offset + 1;
                         const end = Math.min(offset + logsPerPage, totalLogs);
                         $('#logs-showing-info').text(`Showing ${start} to ${end} of ${totalLogs} entries`);
+                        
+                        // Update total log count
+                        $('#total-log-count').text(totalLogs.toLocaleString());
+                        
+                        // Update last update time
+                        lastUpdateTime = new Date();
+                        $('#last-update-time').text(`Last updated: ${lastUpdateTime.toLocaleTimeString()}`);
+                        
+                        // Get log statistics
+                        getLogStats();
                     }
                 })
                 .catch(function(error) {
                     $('#logs-data').html('<tr><td colspan="5" class="text-center text-danger">Failed to load logs</td></tr>');
                     showToast('Failed to load logs: ' + error.message, 'danger');
+                    $('#logs-status').removeClass('bg-success').addClass('bg-danger').text('Error');
                 });
         }
         
@@ -164,8 +334,18 @@
             
             let html = '';
             logs.forEach(log => {
+                // Determine row class based on status code
+                let rowClass = '';
+                if (log.status >= 400 && log.status < 500) {
+                    rowClass = 'table-warning';  // Client errors
+                } else if (log.status >= 500) {
+                    rowClass = 'table-danger';   // Server errors
+                } else if (log.status === 0 || log.status === 'TCP_DENIED') {
+                    rowClass = 'table-danger';   // Blocked requests
+                }
+                
                 html += `
-                    <tr>
+                    <tr class="${rowClass}">
                         <td>${new Date(log.timestamp).toLocaleString()}</td>
                         <td>${log.source_ip}</td>
                         <td>${log.destination}</td>
@@ -232,10 +412,12 @@
         
         // Function to import logs
         function importLogs() {
-            apiRequest('POST', 'logs/import')
+            return apiRequest('POST', 'logs/import')
                 .then(function(response) {
                     if (response.status === 'success') {
                         showToast('Logs imported successfully');
+                        lastImportTime = new Date();
+                        $('#last-import-time').text(lastImportTime.toLocaleTimeString());
                         loadLogs(); // Refresh logs
                     }
                 })
@@ -243,6 +425,39 @@
                     showToast('Failed to import logs: ' + error.message, 'danger');
                 });
         }
+        
+        // Function to get log statistics
+        function getLogStats() {
+            apiRequest('GET', 'logs/stats')
+                .then(function(response) {
+                    if (response.status === 'success') {
+                        // Update statistics
+                        blockedCount = response.data.blocked_count || 0;
+                        ipBlocksCount = response.data.ip_blocks_count || 0;
+                        
+                        $('#blocked-count').text(blockedCount.toLocaleString());
+                        $('#ip-blocks-count').text(ipBlocksCount.toLocaleString());
+                        
+                        if (response.data.last_import) {
+                            lastImportTime = new Date(response.data.last_import);
+                            $('#last-import-time').text(lastImportTime.toLocaleTimeString());
+                        }
+                    }
+                })
+                .catch(function(error) {
+                    console.error('Failed to load log statistics:', error);
+                });
+        }
+        
+        // Clean up intervals when leaving the page
+        $(window).on('beforeunload', function() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+            if (autoImportInterval) {
+                clearInterval(autoImportInterval);
+            }
+        });
     });
 </script>
 {% endblock %}
