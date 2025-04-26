@@ -105,7 +105,7 @@
                         <div class="text-center mb-4">
                             <div class="text-6xl mb-2">🦑</div>
                             <h3 class="text-xl font-bold text-gray-800">Squid Proxy Dashboard</h3>
-                            <div class="text-gray-500">Version 2.1.0</div>
+                            <div class="text-gray-500">Version 0.0.1</div>
                         </div>
                         
                         <p class="text-gray-600 mb-4">
@@ -129,26 +129,25 @@
             <!-- Right Column -->
             <div class="md:col-span-8">
                 <!-- Quick Actions -->
-                <div class="card mb-6 fade-in">
+                <div class="card mb-4 fade-in">
                     <div class="card-header">
                         <h2 class="card-title">Quick Actions</h2>
                     </div>
-                    
-                    <div class="p-3 grid grid-cols-2 md:grid-cols-4 gap-2">
-                        <a href="settings.html" class="btn btn-outline flex flex-col items-center p-3">
-                            <i class="ri-settings-3-line text-xl mb-1"></i>
+                    <div class="p-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <a href="settings.html" class="btn btn-outline flex flex-col items-center p-2">
+                            <i class="ri-settings-3-line text-lg mb-1"></i>
                             <span class="text-sm">Settings</span>
                         </a>
-                        <a href="logs.html" class="btn btn-outline flex flex-col items-center p-3">
-                            <i class="ri-file-list-line text-xl mb-1"></i>
+                        <a href="logs.html" class="btn btn-outline flex flex-col items-center p-2">
+                            <i class="ri-file-list-line text-lg mb-1"></i>
                             <span class="text-sm">View Logs</span>
                         </a>
-                        <button id="clear-cache-btn" class="btn btn-outline flex flex-col items-center p-3">
-                            <i class="ri-delete-bin-line text-xl mb-1"></i>
+                        <button id="clear-cache-btn" class="btn btn-outline flex flex-col items-center p-2">
+                            <i class="ri-delete-bin-line text-lg mb-1"></i>
                             <span class="text-sm">Clear Cache</span>
                         </button>
-                        <button id="health-check-btn" class="btn btn-outline flex flex-col items-center p-3">
-                            <i class="ri-heart-pulse-line text-xl mb-1"></i>
+                        <button id="health-check-btn" class="btn btn-outline flex flex-col items-center p-2">
+                            <i class="ri-heart-pulse-line text-lg mb-1"></i>
                             <span class="text-sm">Health Check</span>
                         </button>
                     </div>
@@ -316,39 +315,6 @@
                         </div>
                     </div>
                 </div>
-                
-                <!-- Recent Log Events -->
-                <div class="card fade-in">
-                    <div class="card-header">
-                        <h2 class="card-title">Recent Log Events</h2>
-                        <div class="flex">
-                            <a href="logs.html" class="text-primary hover:underline text-sm mr-3">View All Logs</a>
-                            <button id="refresh-logs-btn" class="text-gray-500 hover:text-primary transition-colors" title="Refresh Log Events">
-                                <i class="ri-refresh-line text-lg"></i>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="p-4">
-                        <div class="mb-2 flex text-sm">
-                            <select id="log-type-selector" class="form-control form-control-sm" style="width: 120px">
-                                <option value="access">Access Log</option>
-                                <option value="cache">Cache Log</option>
-                                <option value="store">Store Log</option>
-                                <option value="system">System Log</option>
-                            </select>
-                            <select id="log-count-selector" class="form-control form-control-sm ml-2" style="width: 80px">
-                                <option value="5">5 lines</option>
-                                <option value="10" selected>10 lines</option>
-                                <option value="20">20 lines</option>
-                            </select>
-                        </div>
-                    
-                        <div id="recent-logs" class="log-content" style="max-height: 200px">
-                            <div class="text-center p-4 text-gray-500">Loading logs...</div>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -399,7 +365,7 @@
                     Squid Proxy Dashboard &copy; 2025
                 </div>
                 <div class="text-gray-500 text-sm mt-2 md:mt-0">
-                    <span class="hidden md:inline">Version 2.1.0 |</span> 
+                    <span class="hidden md:inline">Version 0.0.1 |</span> 
                     <a href="https://github.com/fabriziosalmi/secure-proxy" class="text-primary hover:underline" target="_blank">Documentation</a>
                 </div>
             </div>

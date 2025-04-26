@@ -851,6 +851,18 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Initialize
         fetchStatus();
+        // Fetch system info for About card
+        (async function fetchDashboardSystemInfo() {
+            try {
+                const resp = await safeFetch('/api/system/info');
+                const info = await resp.json();
+                const verEl = document.getElementById('squid-version');
+                if (verEl && info.squidVersion) verEl.textContent = info.squidVersion;
+            } catch (e) {
+                const verEl = document.getElementById('squid-version');
+                if (verEl) verEl.textContent = 'Error';
+            }
+        })();
         
         // Event listeners for basic controls
         if (startBtn) startBtn.addEventListener('click', () => controlSquid('start'));

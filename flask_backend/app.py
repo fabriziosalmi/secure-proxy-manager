@@ -26,13 +26,12 @@ SQUID_CONF_PATH = os.path.join(SQUID_CONFIG_DIR, 'squid.conf')
 IN_DOCKER = os.environ.get('RUNNING_IN_DOCKER', 'false').lower() == 'true'
 
 if IN_DOCKER:
-    # In Docker, we should use supervisor to control Squid instead of direct commands
-    # The -N flag can cause issues in a container environment
+    # In Docker, use supervisorctl for control but pgrep for status
     SQUID_RELOAD_COMMAND = "supervisorctl signal HUP squid"
     SQUID_RESTART_COMMAND = "supervisorctl restart squid"
     SQUID_START_COMMAND = "supervisorctl start squid"
     SQUID_STOP_COMMAND = "supervisorctl stop squid"
-    SQUID_STATUS_COMMAND = "supervisorctl status squid | grep -q RUNNING && echo 'running' || echo 'stopped'"
+    SQUID_STATUS_COMMAND = "pgrep -x squid > /dev/null && echo 'running' || echo 'stopped'"
 else:
     # Traditional systemctl commands for non-Docker environments
     SQUID_RELOAD_COMMAND = "sudo systemctl reload squid"
@@ -40,6 +39,9 @@ else:
     SQUID_START_COMMAND = "sudo systemctl start squid"
     SQUID_STOP_COMMAND = "sudo systemctl stop squid"
     SQUID_STATUS_COMMAND = "sudo systemctl status squid"
+
+# Define log directory for Squid logs
+SQUID_LOG_DIR = os.environ.get('SQUID_LOG_DIR', '/var/log/squid')
 
 # Add debugging to see which commands are being used
 print(f"SQUID_START_COMMAND: {SQUID_START_COMMAND}")
@@ -679,16 +681,39 @@ def get_system_info():
 
 @app.route('/api/logs/<log_type>')
 def get_logs(log_type):
-    # This would fetch actual logs in a production environment
-    # For demo, we'll return dummy data
-    lines = request.args.get('lines', default=100, type=int)
-    content = [f"{log_type} log line {i}" for i in range(1, lines + 1)]
-    
+    # Fetch actual logs from Squid log directory
+    lines_count = request.args.get('lines', default=100, type=int)
+    log_files = {
+        'access': os.path.join(SQUID_LOG_DIR, 'access.log'),
+        'cache': os.path.join(SQUID_LOG_DIR, 'cache.log'),
+        'store': os.path.join(SQUID_LOG_DIR, 'store.log'),
+        'system': os.path.join(SQUID_LOG_DIR, 'store.log')  # reuse store log for system if needed
+    }
+    path = log_files.get(log_type)
+    content = []
+    total_lines = 0
+    error_count = 0
+    size = 0
+    try:
+        if path and os.path.exists(path):
+            with open(path, 'r') as f:
+                all_lines = f.read().splitlines()
+            total_lines = len(all_lines)
+            # Get last n lines
+            content = all_lines[-lines_count:]
+            # Estimate file size
+            size = os.path.getsize(path)
+            # Count 'error' occurrences
+            error_count = sum(1 for line in content if 'error' in line.lower())
+        else:
+            content = []
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
     return jsonify({
         'content': content,
-        'totalLines': lines,
-        'errorCount': 5,
-        'size': 12345
+        'totalLines': total_lines,
+        'errorCount': error_count,
+        'size': size
     })
 
 @app.route('/api/logs/<log_type>/analysis')
@@ -729,6 +754,38 @@ def download_certificate():
     # This would return the actual certificate in a production environment
     # For demo, we'll return a placeholder file
     return send_file(os.path.join(BASE_DIR, 'README.md'), as_attachment=True, download_name='secure-proxy-ca.crt')
+
+@app.route('/api/logs/<log_type>/download')
+def download_log_file(log_type):
+    """Download the full log file for the given type"""
+    log_files = {
+        'access': os.path.join(SQUID_LOG_DIR, 'access.log'),
+        'cache': os.path.join(SQUID_LOG_DIR, 'cache.log'),
+        'store': os.path.join(SQUID_LOG_DIR, 'store.log'),
+        'system': os.path.join(SQUID_LOG_DIR, 'store.log')
+    }
+    path = log_files.get(log_type)
+    if path and os.path.exists(path):
+        return send_file(path, as_attachment=True, download_name=f"{log_type}.log")
+    return jsonify({'status':'error','message':'Log file not found'}), 404
+
+@app.route('/api/logs/<log_type>/clear', methods=['POST'])
+def clear_log_file(log_type):
+    """Clear the contents of the specified log file"""
+    log_files = {
+        'access': os.path.join(SQUID_LOG_DIR, 'access.log'),
+        'cache': os.path.join(SQUID_LOG_DIR, 'cache.log'),
+        'store': os.path.join(SQUID_LOG_DIR, 'store.log'),
+        'system': os.path.join(SQUID_LOG_DIR, 'store.log')
+    }
+    path = log_files.get(log_type)
+    if path:
+        try:
+            open(path, 'w').close()
+            return jsonify({'status':'success','message':'Log cleared successfully'})
+        except Exception as e:
+            return jsonify({'status':'error','message': str(e)}), 500
+    return jsonify({'status':'error','message':'Log file not found'}), 404
 
 if __name__ == '__main__':
     # Use environment variable for port with fallback to 8001 for local development

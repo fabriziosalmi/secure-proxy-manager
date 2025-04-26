@@ -178,6 +178,4 @@ This project is released under the MIT License. See LICENSE file for details.
 
 ## Version History
 
-- **v2.1.0** (Current): Added dark mode, real-time monitoring, and enhanced security controls
-- **v2.0.0**: Redesigned dashboard with Tailwind CSS and improved API
-- **v1.0.0**: Initial release with basic monitoring capabilities
+- **v0.0.1**: Initial release with basic monitoring capabilities
