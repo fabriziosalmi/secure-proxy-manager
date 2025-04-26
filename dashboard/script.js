@@ -2677,36 +2677,52 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 // Update certificate details
-                if (certDetails && data.exists && data.certificate) {
-                    const cert = data.certificate;
-                    
-                    // Check certificate expiration
-                    const isExpired = new Date(cert.validTo) < new Date();
-                    
-                    certDetails.innerHTML = `
-                        <div class="mb-2 ${isExpired ? 'text-red-600' : ''}">
-                            <strong>Validity:</strong> ${isExpired ? 'EXPIRED' : 'Valid'}
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div><strong>Subject:</strong></div>
-                            <div>${cert.subject}</div>
-                            <div><strong>Issuer:</strong></div>
-                            <div>${cert.issuer}</div>
-                            <div><strong>Valid From:</strong></div>
-                            <div>${cert.validFrom}</div>
-                            <div><strong>Valid To:</strong></div>
-                            <div>${cert.validTo}</div>
-                            <div><strong>Serial Number:</strong></div>
-                            <div class="font-mono text-xs break-all">${cert.serialNumber}</div>
-                        </div>
-                    `;
-                } else if (certDetails && !data.exists) {
-                    certDetails.innerHTML = `
-                        <div class="text-yellow-600">
-                            <i class="ri-error-warning-line mr-1"></i> 
-                            No SSL certificate found. Generate a new certificate to enable HTTPS inspection.
-                        </div>
-                    `;
+                if (certDetails) {
+                    if (data.exists && data.certificate) {
+                        const cert = data.certificate;
+                        
+                        // Check certificate expiration
+                        const isExpired = new Date(cert.validTo) < new Date();
+                        
+                        certDetails.innerHTML = `
+                            <div class="mb-2 ${isExpired ? 'text-red-600' : ''}">
+                                <strong>Validity:</strong> ${isExpired ? 'EXPIRED' : 'Valid'}
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div><strong>Subject:</strong></div>
+                                <div>${cert.subject}</div>
+                                <div><strong>Issuer:</strong></div>
+                                <div>${cert.issuer}</div>
+                                <div><strong>Valid From:</strong></div>
+                                <div>${cert.validFrom}</div>
+                                <div><strong>Valid To:</strong></div>
+                                <div>${cert.validTo}</div>
+                                <div><strong>Serial Number:</strong></div>
+                                <div class="font-mono text-xs break-all">${cert.serialNumber}</div>
+                            </div>
+                        `;
+                        
+                        // Enable download button if certificate exists
+                        const downloadCertBtn = document.getElementById('download-cert-btn');
+                        if (downloadCertBtn) {
+                            downloadCertBtn.disabled = false;
+                            downloadCertBtn.classList.remove('opacity-50');
+                        }
+                    } else if (!data.exists) {
+                        certDetails.innerHTML = `
+                            <div class="text-yellow-600">
+                                <i class="ri-error-warning-line mr-1"></i> 
+                                No SSL certificate found. Generate a new certificate to enable HTTPS inspection.
+                            </div>
+                        `;
+                        
+                        // Disable download button if no certificate
+                        const downloadCertBtn = document.getElementById('download-cert-btn');
+                        if (downloadCertBtn) {
+                            downloadCertBtn.disabled = true;
+                            downloadCertBtn.classList.add('opacity-50');
+                        }
+                    }
                 }
             } else {
                 if (certStatus) {
@@ -2726,6 +2742,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (document.getElementById('cert-details')) {
                 document.getElementById('cert-details').innerHTML = `<div class="text-red-600">Failed to check certificate status: ${error.message}</div>`;
             }
+            
+            // Show toast notification
+            if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
+                toast.error('Failed to check certificate status. Please try again.');
+            }
         }
     }
 
@@ -2735,13 +2756,17 @@ document.addEventListener('DOMContentLoaded', function() {
             const certOperationMessage = document.getElementById('cert-operation-message');
             
             if (generateCertBtn) generateCertBtn.disabled = true;
-            if (certOperationMessage) showMessage(certOperationMessage, 'Generating certificate...', null);
+            if (certOperationMessage) {
+                showMessage(certOperationMessage, 'Generating certificate...', null);
+            }
             
             // Prompt for common name
             const commonName = prompt('Enter common name for the certificate (e.g., your organization name):', 'Secure Proxy CA');
             if (!commonName) {
                 if (generateCertBtn) generateCertBtn.disabled = false;
-                if (certOperationMessage) showMessage(certOperationMessage, 'Certificate generation cancelled', null);
+                if (certOperationMessage) {
+                    showMessage(certOperationMessage, 'Certificate generation cancelled', null);
+                }
                 return;
             }
             
@@ -2760,36 +2785,38 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
             
             if (data.status === 'success') {
-                if (certOperationMessage) showMessage(certOperationMessage, 'Certificate generated successfully', true);
+                if (certOperationMessage) {
+                    showMessage(certOperationMessage, 'Certificate generated successfully', true);
+                }
                 
-                // Enable the download button
-                const downloadCertBtn = document.getElementById('download-cert-btn');
-                if (downloadCertBtn) downloadCertBtn.disabled = false;
+                // Refresh certificate status display
+                setTimeout(() => fetchCertificateStatus(), 500);
                 
-                // Refresh the certificate status after a short delay to ensure the backend has processed it
-                setTimeout(() => {
-                    fetchCertificateStatus();
-                }, 500);
-                
-                // Also update the HTTPS filtering toggle if it exists
-                const httpsFilteringToggle = document.getElementById('https-filtering-toggle');
-                if (httpsFilteringToggle) {
-                    httpsFilteringToggle.checked = true;
-                    
-                    // Update the status badge
-                    const statusBadge = document.getElementById('https-filtering-status');
-                    if (statusBadge) {
-                        statusBadge.textContent = 'Enabled';
-                        statusBadge.className = 'feature-status-badge status-enabled';
-                    }
+                // Show toast notification
+                if (typeof toast !== 'undefined' && typeof toast.success === 'function') {
+                    toast.success('SSL certificate generated successfully. You can now download it for installation on client devices.');
                 }
             } else {
-                if (certOperationMessage) showMessage(certOperationMessage, data.message || 'Failed to generate certificate', false);
+                if (certOperationMessage) {
+                    showMessage(certOperationMessage, 'Failed to generate certificate: ' + (data.message || 'Unknown error'), false);
+                }
+                
+                // Show toast notification
+                if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
+                    toast.error('Failed to generate certificate: ' + (data.message || 'Unknown error'));
+                }
             }
         } catch (error) {
             console.error('Error generating certificate:', error);
             const certOperationMessage = document.getElementById('cert-operation-message');
-            if (certOperationMessage) showMessage(certOperationMessage, `Failed to generate certificate: ${error.message}`, false);
+            if (certOperationMessage) {
+                showMessage(certOperationMessage, 'Error generating certificate: ' + error.message, false);
+            }
+            
+            // Show toast notification
+            if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
+                toast.error('Error generating certificate: ' + error.message);
+            }
         } finally {
             const generateCertBtn = document.getElementById('generate-cert-btn');
             if (generateCertBtn) generateCertBtn.disabled = false;
@@ -2799,21 +2826,45 @@ document.addEventListener('DOMContentLoaded', function() {
     async function downloadCertificate() {
         try {
             const downloadCertBtn = document.getElementById('download-cert-btn');
+            const certOperationMessage = document.getElementById('cert-operation-message');
+            
             if (downloadCertBtn) downloadCertBtn.disabled = true;
+            if (certOperationMessage) {
+                showMessage(certOperationMessage, 'Preparing certificate for download...', null);
+            }
 
+            // Create an invisible download link
             const a = document.createElement('a');
             a.href = `/api/security/ssl-certificate/download`;
             a.download = 'secure-proxy-ca.crt';
+            a.style.display = 'none';
             document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
+            
+            // Give the browser time to process the download before removing the element
+            setTimeout(() => {
+                document.body.removeChild(a);
+            }, 1000);
 
-            const certOperationMessage = document.getElementById('cert-operation-message');
-            if (certOperationMessage) showMessage(certOperationMessage, 'Certificate download started', true);
+            if (certOperationMessage) {
+                showMessage(certOperationMessage, 'Certificate download started', true);
+            }
+            
+            // Show toast notification
+            if (typeof toast !== 'undefined' && typeof toast.success === 'function') {
+                toast.success('Certificate download started. Install this certificate on client devices to enable HTTPS inspection.');
+            }
         } catch (error) {
             console.error('Error downloading certificate:', error);
             const certOperationMessage = document.getElementById('cert-operation-message');
-            if (certOperationMessage) showMessage(certOperationMessage, `Failed to download certificate: ${error.message}`, false);
+            if (certOperationMessage) {
+                showMessage(certOperationMessage, 'Failed to download certificate: ' + error.message, false);
+            }
+            
+            // Show toast notification
+            if (typeof toast !== 'undefined' && typeof toast.error === 'function') {
+                toast.error('Failed to download certificate: ' + error.message);
+            }
         } finally {
             const downloadCertBtn = document.getElementById('download-cert-btn');
             if (downloadCertBtn) downloadCertBtn.disabled = false;
