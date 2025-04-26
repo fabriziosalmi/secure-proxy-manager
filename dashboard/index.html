@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="csrf-token" content="{{csrf_token}}">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <meta name="viewport" content="width=device-width, initial-scale=5.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:;">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta http-equiv="X-Frame-Options" content="DENY">
@@ -207,85 +207,90 @@
                 </div>
             
                 <!-- Real-time Monitoring Card -->
-                <div class="card mb-6 fade-in">
+                <div class="card mb-6">
                     <div class="card-header">
                         <h2 class="card-title">Real-time Monitoring</h2>
-                        <div class="flex items-center">
-                            <button id="toggle-auto-refresh" class="text-primary hover:underline text-sm mr-3">
-                                Auto-refresh: <span id="auto-refresh-status">Off</span>
-                            </button>
-                            <button id="refresh-connections-btn" class="text-gray-500 hover:text-primary transition-colors" title="Refresh Statistics">
-                                <i class="ri-refresh-line text-lg"></i>
-                            </button>
-                        </div>
                     </div>
                     
-                    <div class="p-4">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
                             <!-- Active Connections -->
-                            <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                                <div class="flex items-center justify-between mb-2">
-                                    <h3 class="text-lg font-medium text-gray-700">Active Connections</h3>
-                                    <i class="ri-link text-2xl text-primary"></i>
-                                </div>
-                                <div class="flex items-end">
-                                    <div id="connections-count" class="text-3xl font-bold text-gray-800">0</div>
-                                    <div class="text-sm text-gray-500 ml-2 mb-1">connections</div>
-                                </div>
-                                <div class="mt-2">
-                                    <div class="h-1 bg-gray-200 rounded-full">
-                                        <div id="connections-bar" class="h-1 bg-primary rounded-full" style="width: 0%"></div>
-                                    </div>
-                                    <div class="flex justify-between mt-1 text-xs text-gray-500">
-                                        <span>0</span>
+                            <div class="mb-4">
+                                <div class="flex justify-between mb-1">
+                                    <div class="font-medium">Active Connections</div>
+                                    <div class="text-sm text-gray-600">
+                                        <span id="connections-count">0</span> / 
                                         <span id="connections-limit">1000</span>
                                     </div>
                                 </div>
+                                <div class="progress-bar-container">
+                                    <div id="connections-bar" class="progress-bar progress-low" style="width: 0%"></div>
+                                </div>
                             </div>
                             
-                            <!-- Active Clients -->
-                            <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                                <div class="flex items-center justify-between mb-2">
-                                    <h3 class="text-lg font-medium text-gray-700">Active Clients</h3>
-                                    <i class="ri-user-3-line text-2xl text-primary"></i>
-                                </div>
-                                <div class="flex items-end">
-                                    <div id="clients-count" class="text-3xl font-bold text-gray-800">0</div>
-                                    <div class="text-sm text-gray-500 ml-2 mb-1">clients</div>
-                                </div>
-                                <div class="mt-2">
-                                    <div class="h-1 bg-gray-200 rounded-full">
-                                        <div id="clients-bar" class="h-1 bg-primary rounded-full" style="width: 0%"></div>
-                                    </div>
-                                    <div class="flex justify-between mt-1 text-xs text-gray-500">
-                                        <span>0</span>
+                            <!-- Connected Clients -->
+                            <div class="mb-4">
+                                <div class="flex justify-between mb-1">
+                                    <div class="font-medium">Connected Clients</div>
+                                    <div class="text-sm text-gray-600">
+                                        <span id="clients-count">0</span> / 
                                         <span id="clients-limit">100</span>
                                     </div>
                                 </div>
+                                <div class="progress-bar-container">
+                                    <div id="clients-bar" class="progress-bar progress-low" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Peak values -->
+                            <div class="flex justify-between text-sm text-gray-600 mb-4">
+                                <div>Peak Connections: <span id="peak-connections">0</span></div>
+                                <div>Peak Clients: <span id="peak-clients">0</span></div>
+                            </div>
+                            
+                            <!-- Auto-refresh toggle -->
+                            <div class="flex justify-between items-center mt-4">
+                                <div class="text-sm">
+                                    Last updated: <span id="last-update-time">Never</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <span class="text-sm mr-2">Auto-refresh:</span>
+                                    <span id="auto-refresh-status" class="text-sm mr-2">Off</span>
+                                    <button id="toggle-auto-refresh" class="btn btn-sm btn-outline" title="Toggle auto-refresh">
+                                        <i class="ri-refresh-line"></i>
+                                    </button>
+                                    <button id="refresh-connections-btn" class="btn btn-sm btn-outline ml-2" title="Refresh now">
+                                        <i class="ri-restart-line"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         
-                        <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
-                            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                                <div class="text-sm text-gray-500">Peak Connections</div>
-                                <div id="peak-connections" class="font-medium">0</div>
+                        <div>
+                            <table class="w-full border-collapse">
+                                <tr>
+                                    <td class="py-2 font-medium">CPU Usage</td>
+                                    <td class="py-2 text-right" id="cpu-usage">0%</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2 font-medium">Memory Usage</td>
+                                    <td class="py-2 text-right" id="memory-usage">0% (0 MB)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2 font-medium">Cache Usage</td>
+                                    <td class="py-2 text-right" id="disk-usage">0 MB</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2 font-medium">Process ID</td>
+                                    <td class="py-2 text-right" id="process-id">Not running</td>
+                                </tr>
+                            </table>
+                            
+                            <div class="mt-4 flex justify-end">
+                                <button id="view-advanced-stats-btn" class="btn btn-sm btn-outline">
+                                    <i class="ri-bar-chart-line mr-1"></i> Advanced Statistics
+                                </button>
                             </div>
-                            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                                <div class="text-sm text-gray-500">Peak Clients</div>
-                                <div id="peak-clients" class="font-medium">0</div>
-                            </div>
-                            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                                <div class="text-sm text-gray-500">HTTP Requests</div>
-                                <div id="http-requests" class="font-medium">0</div>
-                            </div>
-                            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                                <div class="text-sm text-gray-500">Cache Hit Ratio</div>
-                                <div id="cache-hit-ratio" class="font-medium">0%</div>
-                            </div>
-                        </div>
-                        
-                        <div class="mt-4 text-center text-sm text-gray-500">
-                            Last updated: <span id="last-update-time">Never</span>
                         </div>
                     </div>
                 </div>

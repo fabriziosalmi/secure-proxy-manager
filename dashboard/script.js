@@ -656,29 +656,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const reloadBtn = document.getElementById('reload-btn');
         const refreshStatusBtn = document.getElementById('refresh-status-btn');
         
-        // Real-time Monitoring Elements
-        const connectionsCount = document.getElementById('connections-count');
-        const connectionsBar = document.getElementById('connections-bar');
-        const connectionsLimit = document.getElementById('connections-limit');
-        const clientsCount = document.getElementById('clients-count');
-        const clientsBar = document.getElementById('clients-bar');
-        const clientsLimit = document.getElementById('clients-limit');
-        const peakConnections = document.getElementById('peak-connections');
-        const peakClients = document.getElementById('peak-clients');
-        const lastUpdateTime = document.getElementById('last-update-time');
-        const toggleAutoRefresh = document.getElementById('toggle-auto-refresh');
-        const autoRefreshStatus = document.getElementById('auto-refresh-status');
-        const refreshConnectionsBtn = document.getElementById('refresh-connections-btn');
-        
-        // State variables for real-time monitoring
-        let connectionsAutoRefresh = false;
-        let connectionsRefreshInterval = null;
-        let peakConnectionsValue = 0;
-        let peakClientsValue = 0;
-        
         // Initialize
         fetchStatus();
-        fetchRealTimeStats();
         
         // Event listeners for basic controls
         if (startBtn) startBtn.addEventListener('click', () => controlSquid('start'));
@@ -687,118 +666,264 @@ document.addEventListener('DOMContentLoaded', function() {
         if (reloadBtn) reloadBtn.addEventListener('click', () => controlSquid('reload'));
         if (refreshStatusBtn) refreshStatusBtn.addEventListener('click', () => fetchStatus());
         
-        // Event listeners for real-time monitoring
-        if (refreshConnectionsBtn) refreshConnectionsBtn.addEventListener('click', fetchRealTimeStats);
-        if (toggleAutoRefresh) toggleAutoRefresh.addEventListener('click', toggleConnectionsAutoRefresh);
+        // Real-time Monitoring - Initialize if elements exist
+        initRealTimeMonitoring();
         
-        // Functions for real-time monitoring
-        function toggleConnectionsAutoRefresh() {
-            connectionsAutoRefresh = !connectionsAutoRefresh;
+        // Initialize security features
+        initSecurityFeatures();
+        
+        // Initialize log controls
+        initLogControls();
+        
+        // Initialize tab navigation
+        initTabNavigation();
+        
+        // Component initialization functions
+        function initRealTimeMonitoring() {
+            // Real-time Monitoring Elements
+            const connectionsCount = document.getElementById('connections-count');
+            const connectionsBar = document.getElementById('connections-bar');
+            const connectionsLimit = document.getElementById('connections-limit');
+            const clientsCount = document.getElementById('clients-count');
+            const clientsBar = document.getElementById('clients-bar');
+            const clientsLimit = document.getElementById('clients-limit');
+            const peakConnections = document.getElementById('peak-connections');
+            const peakClients = document.getElementById('peak-clients');
+            const lastUpdateTime = document.getElementById('last-update-time');
+            const toggleAutoRefresh = document.getElementById('toggle-auto-refresh');
+            const autoRefreshStatus = document.getElementById('auto-refresh-status');
+            const refreshConnectionsBtn = document.getElementById('refresh-connections-btn');
             
-            if (autoRefreshStatus) {
-                autoRefreshStatus.textContent = connectionsAutoRefresh ? 'On' : 'Off';
+            // State variables for real-time monitoring
+            let connectionsAutoRefresh = false;
+            let connectionsRefreshInterval = null;
+            let peakConnectionsValue = 0;
+            let peakClientsValue = 0;
+            
+            if (!connectionsCount) return; // Exit if elements don't exist
+            
+            // Initialize
+            fetchRealTimeStats();
+            
+            // Event listeners for real-time monitoring
+            if (refreshConnectionsBtn) refreshConnectionsBtn.addEventListener('click', fetchRealTimeStats);
+            if (toggleAutoRefresh) toggleAutoRefresh.addEventListener('click', toggleConnectionsAutoRefresh);
+            
+            function toggleConnectionsAutoRefresh() {
+                connectionsAutoRefresh = !connectionsAutoRefresh;
+                
+                if (autoRefreshStatus) {
+                    autoRefreshStatus.textContent = connectionsAutoRefresh ? 'On' : 'Off';
+                }
+                
+                if (connectionsAutoRefresh) {
+                    // Start auto-refresh (every 5 seconds)
+                    connectionsRefreshInterval = setInterval(fetchRealTimeStats, 5000);
+                } else {
+                    // Stop auto-refresh
+                    if (connectionsRefreshInterval) {
+                        clearInterval(connectionsRefreshInterval);
+                        connectionsRefreshInterval = null;
+                    }
+                }
             }
             
-            if (connectionsAutoRefresh) {
-                // Start auto-refresh (every 5 seconds)
-                connectionsRefreshInterval = setInterval(fetchRealTimeStats, 5000);
-            } else {
-                // Stop auto-refresh
-                if (connectionsRefreshInterval) {
-                    clearInterval(connectionsRefreshInterval);
-                    connectionsRefreshInterval = null;
+            async function fetchRealTimeStats() {
+                if (!connectionsCount || !clientsCount) return;
+                
+                try {
+                    if (refreshConnectionsBtn) refreshConnectionsBtn.classList.add('animate-spin');
+                    
+                    const response = await safeFetch('/api/stats/realtime');
+                    const data = await response.json();
+                    
+                    // Update connections count
+                    const connections = data.connections || 0;
+                    const maxConnections = data.maxConnections || 1000;
+                    const connectionPercentage = Math.min(100, Math.round((connections / maxConnections) * 100));
+                    
+                    if (connectionsCount) connectionsCount.textContent = connections;
+                    if (connectionsBar) connectionsBar.style.width = `${connectionPercentage}%`;
+                    if (connectionsLimit) connectionsLimit.textContent = maxConnections;
+                    
+                    // Update clients count
+                    const clients = data.clients || 0;
+                    const maxClients = data.maxClients || 100;
+                    const clientPercentage = Math.min(100, Math.round((clients / maxClients) * 100));
+                    
+                    if (clientsCount) clientsCount.textContent = clients;
+                    if (clientsBar) clientsBar.style.width = `${clientPercentage}%`;
+                    if (clientsLimit) clientsLimit.textContent = maxClients;
+                    
+                    // Update peak values
+                    peakConnectionsValue = Math.max(peakConnectionsValue, connections);
+                    peakClientsValue = Math.max(peakClientsValue, clients);
+                    
+                    if (peakConnections) peakConnections.textContent = peakConnectionsValue;
+                    if (peakClients) peakClients.textContent = peakClientsValue;
+                    
+                    // Update system info if elements exist
+                    const cpuUsageEl = document.getElementById('cpu-usage');
+                    const memoryUsageEl = document.getElementById('memory-usage');
+                    const diskUsageEl = document.getElementById('disk-usage');
+                    const processIdEl = document.getElementById('process-id');
+                    
+                    if (cpuUsageEl) cpuUsageEl.textContent = `${data.cpu || 0}%`;
+                    if (memoryUsageEl) memoryUsageEl.textContent = `${data.memory || 0}% (${data.memoryMB || 0} MB)`;
+                    if (diskUsageEl) diskUsageEl.textContent = `${data.diskUsageMB || 0} MB`;
+                    if (processIdEl) processIdEl.textContent = data.pid || 'Not running';
+                    
+                    // Update last updated time
+                    if (lastUpdateTime) {
+                        const now = new Date();
+                        lastUpdateTime.textContent = now.toLocaleTimeString();
+                    }
+                    
+                    // Handle color changes based on usage
+                    updateBarColors(connectionsBar, connectionPercentage);
+                    updateBarColors(clientsBar, clientPercentage);
+                    
+                } catch (error) {
+                    console.error('Error fetching real-time stats:', error);
+                    
+                    // Show error state
+                    if (connectionsCount) connectionsCount.textContent = '0';
+                    if (clientsCount) clientsCount.textContent = '0';
+                    
+                } finally {
+                    if (refreshConnectionsBtn) refreshConnectionsBtn.classList.remove('animate-spin');
+                }
+            }
+            
+            function updateBarColors(barElement, percentage) {
+                if (!barElement) return;
+                
+                // Remove existing color classes
+                barElement.classList.remove('bg-primary', 'bg-warning', 'bg-danger');
+                
+                // Add appropriate color class based on usage percentage
+                if (percentage < 70) {
+                    barElement.classList.add('bg-primary');
+                } else if (percentage < 90) {
+                    barElement.classList.add('bg-warning');
+                } else {
+                    barElement.classList.add('bg-danger');
                 }
             }
         }
         
-        async function fetchRealTimeStats() {
-            if (!connectionsCount || !clientsCount) return;
+        function initSecurityFeatures() {
+            // Security Feature Elements
+            const ipBlacklistToggle = document.getElementById('ip-blacklist-toggle');
+            const domainBlacklistToggle = document.getElementById('domain-blacklist-toggle');
+            const directIpToggle = document.getElementById('direct-ip-toggle');
+            const userAgentToggle = document.getElementById('user-agent-toggle');
+            const malwareToggle = document.getElementById('malware-toggle');
+            const httpsFilteringToggle = document.getElementById('https-filtering-toggle');
+            const saveFeaturesBtn = document.getElementById('save-features-btn');
+            const featuresMessage = document.getElementById('features-message');
             
-            try {
-                if (refreshConnectionsBtn) refreshConnectionsBtn.classList.add('animate-spin');
-                
-                const response = await safeFetch('/api/stats/realtime');
-                const data = await response.json();
-                
-                // Update connections count
-                const connections = data.connections || 0;
-                const maxConnections = data.maxConnections || 1000;
-                const connectionPercentage = Math.min(100, Math.round((connections / maxConnections) * 100));
-                
-                if (connectionsCount) connectionsCount.textContent = connections;
-                if (connectionsBar) connectionsBar.style.width = `${connectionPercentage}%`;
-                if (connectionsLimit) connectionsLimit.textContent = maxConnections;
-                
-                // Update clients count
-                const clients = data.clients || 0;
-                const maxClients = data.maxClients || 100;
-                const clientPercentage = Math.min(100, Math.round((clients / maxClients) * 100));
-                
-                if (clientsCount) clientsCount.textContent = clients;
-                if (clientsBar) clientsBar.style.width = `${clientPercentage}%`;
-                if (clientsLimit) clientsLimit.textContent = maxClients;
-                
-                // Update peak values
-                peakConnectionsValue = Math.max(peakConnectionsValue, connections);
-                peakClientsValue = Math.max(peakClientsValue, clients);
-                
-                if (peakConnections) peakConnections.textContent = peakConnectionsValue;
-                if (peakClients) peakClients.textContent = peakClientsValue;
-                
-                // Update system info if elements exist
-                const cpuUsageEl = document.getElementById('cpu-usage');
-                const memoryUsageEl = document.getElementById('memory-usage');
-                const diskUsageEl = document.getElementById('disk-usage');
-                const processIdEl = document.getElementById('process-id');
-                
-                if (cpuUsageEl) cpuUsageEl.textContent = `${data.cpu || 0}%`;
-                if (memoryUsageEl) memoryUsageEl.textContent = `${data.memory || 0}% (${data.memoryMB || 0} MB)`;
-                if (diskUsageEl) diskUsageEl.textContent = `${data.diskUsageMB || 0} MB`;
-                if (processIdEl) processIdEl.textContent = data.pid || 'Not running';
-                
-                // Update last updated time
-                if (lastUpdateTime) {
-                    const now = new Date();
-                    lastUpdateTime.textContent = now.toLocaleTimeString();
-                }
-                
-                // Handle color changes based on usage
-                updateBarColors(connectionsBar, connectionPercentage);
-                updateBarColors(clientsBar, clientPercentage);
-                
-            } catch (error) {
-                console.error('Error fetching real-time stats:', error);
-                
-                // Show error state
-                if (connectionsCount) connectionsCount.textContent = '0';
-                if (clientsCount) clientsCount.textContent = '0';
-                
-            } finally {
-                if (refreshConnectionsBtn) refreshConnectionsBtn.classList.remove('animate-spin');
-            }
+            // IP Blacklist Tab
+            const ipBlacklistTextarea = document.getElementById('ip-blacklist-textarea');
+            const saveIpBlacklistBtn = document.getElementById('save-ip-blacklist-btn');
+            const ipBlacklistMessage = document.getElementById('ip-blacklist-message');
+            
+            // Domain Blacklist Tab
+            const domainBlacklistTextarea = document.getElementById('domain-blacklist-textarea');
+            const saveDomainBlacklistBtn = document.getElementById('save-domain-blacklist-btn');
+            const domainBlacklistMessage = document.getElementById('domain-blacklist-message');
+            
+            // Allowed Direct IPs Tab
+            const allowedDirectIpsTextarea = document.getElementById('allowed-direct-ips-textarea');
+            const saveAllowedDirectIpsBtn = document.getElementById('save-allowed-direct-ips-btn');
+            const allowedDirectIpsMessage = document.getElementById('allowed-direct-ips-message');
+            
+            if (!ipBlacklistToggle) return; // Exit if elements don't exist
+            
+            fetchSecurityFeatures();
+            
+            // Event listeners
+            if (saveFeaturesBtn) saveFeaturesBtn.addEventListener('click', saveFeatureToggles);
+            if (saveIpBlacklistBtn) saveIpBlacklistBtn.addEventListener('click', saveIpBlacklist);
+            if (saveDomainBlacklistBtn) saveDomainBlacklistBtn.addEventListener('click', saveDomainBlacklist);
+            if (saveAllowedDirectIpsBtn) saveAllowedDirectIpsBtn.addEventListener('click', saveAllowedDirectIps);
         }
         
-        function updateBarColors(barElement, percentage) {
-            if (!barElement) return;
+        function initLogControls() {
+            // Log Controls
+            const downloadLogsBtn = document.getElementById('download-logs-btn');
+            const clearLogsBtn = document.getElementById('clear-logs-btn');
             
-            // Remove existing color classes
-            barElement.classList.remove('bg-primary', 'bg-warning', 'bg-danger');
+            if (!downloadLogsBtn && !clearLogsBtn) return; // Exit if elements don't exist
             
-            // Add appropriate color class based on usage percentage
-            if (percentage < 70) {
-                barElement.classList.add('bg-primary');
-            } else if (percentage < 90) {
-                barElement.classList.add('bg-warning');
-            } else {
-                barElement.classList.add('bg-danger');
-            }
+            // Event listeners
+            if (downloadLogsBtn) downloadLogsBtn.addEventListener('click', downloadLogs);
+            if (clearLogsBtn) clearLogsBtn.addEventListener('click', clearLogs);
         }
         
-        // Log Controls
-        const downloadLogsBtn = document.getElementById('download-logs-btn');
-        const clearLogsBtn = document.getElementById('clear-logs-btn');
+        function initTabNavigation() {
+            // Tab Navigation
+            const tabButtons = document.querySelectorAll('.tab-btn');
+            
+            if (!tabButtons.length) return; // Exit if elements don't exist
+            
+            // Tab navigation event listeners
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    // Remove active class from all buttons
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    
+                    // Add active class to clicked button
+                    button.classList.add('active');
+                    
+                    // Show corresponding content
+                    const tabName = button.getAttribute('data-tab');
+                    
+                    // Hide all tab content sections
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.add('hidden');
+                        content.classList.remove('active');
+                    });
+                    
+                    // Show the selected tab content
+                    const activeTab = document.getElementById(tabName + '-tab');
+                    if (activeTab) {
+                        activeTab.classList.remove('hidden');
+                        activeTab.classList.add('active');
+                    }
+                    
+                    // Fetch data for the active tab
+                    if (tabName === 'ip-blacklist') {
+                        fetchIpBlacklist();
+                    } else if (tabName === 'domain-blacklist') {
+                        fetchDomainBlacklist();
+                    } else if (tabName === 'allowed-direct-ips') {
+                        fetchAllowedDirectIps();
+                    }
+                });
+            });
+        }
+    }
+    
+    // Initialize Settings Page
+    function initSettingsPage() {
+        // System info elements
+        const squidVersionSpan = document.getElementById('squid-version');
         
-        // Security Feature Elements
+        // Configuration editor elements
+        const configEditor = document.getElementById('config-editor');
+        const reloadConfigBtn = document.getElementById('reload-config-btn');
+        const saveConfigBtn = document.getElementById('save-config-btn');
+        const configEditorMessage = document.getElementById('config-editor-message');
+        
+        // Cache Settings
+        const cacheSizeInput = document.getElementById('cache-size');
+        const maxObjectSizeValueInput = document.getElementById('max-object-size-value');
+        const maxObjectSizeUnitSelect = document.getElementById('max-object-size-unit');
+        const saveCacheSettingsBtn = document.getElementById('save-cache-settings-btn');
+        const cacheSettingsMessage = document.getElementById('cache-settings-message');
+        
+        // Security Feature Elements (already defined in initSettingsPage)
         const ipBlacklistToggle = document.getElementById('ip-blacklist-toggle');
         const domainBlacklistToggle = document.getElementById('domain-blacklist-toggle');
         const directIpToggle = document.getElementById('direct-ip-toggle');
@@ -823,25 +948,34 @@ document.addEventListener('DOMContentLoaded', function() {
         const saveAllowedDirectIpsBtn = document.getElementById('save-allowed-direct-ips-btn');
         const allowedDirectIpsMessage = document.getElementById('allowed-direct-ips-message');
         
+        // Dashboard settings elements
+        const refreshIntervalInput = document.getElementById('refresh-interval');
+        const themeButtons = document.querySelectorAll('.theme-btn');
+        const saveDashboardSettingsBtn = document.getElementById('save-dashboard-settings-btn');
+        const dashboardSettingsMessage = document.getElementById('dashboard-settings-message');
+        
+        // User agent elements
+        const badUserAgentsTextarea = document.getElementById('bad-user-agents-textarea');
+        const saveBadUserAgentsBtn = document.getElementById('save-bad-user-agents-btn');
+        const badUserAgentsMessage = document.getElementById('bad-user-agents-message');
+        
         // Tab Navigation
         const tabButtons = document.querySelectorAll('.tab-btn');
-        const tabContents = document.querySelectorAll('.tab-content');
         
         // Initialize
-        fetchStatus();
+        fetchSystemInfo();
+        fetchRawConfig();
+        fetchBadUserAgents();
+        loadDashboardSettings();
         fetchConfig();
         fetchSecurityFeatures();
         
-        // Event listeners for basic controls
-        if (startBtn) startBtn.addEventListener('click', () => controlSquid('start'));
-        if (stopBtn) stopBtn.addEventListener('click', () => controlSquid('stop'));
-        if (restartBtn) restartBtn.addEventListener('click', () => controlSquid('restart'));
-        if (reloadBtn) reloadBtn.addEventListener('click', () => controlSquid('reload'));
-        if (refreshStatusBtn) refreshStatusBtn.addEventListener('click', () => fetchStatus());
-        
-        // Log control event listeners
-        if (downloadLogsBtn) downloadLogsBtn.addEventListener('click', downloadLogs);
-        if (clearLogsBtn) clearLogsBtn.addEventListener('click', clearLogs);
+        // Add event listeners
+        if (reloadConfigBtn) reloadConfigBtn.addEventListener('click', fetchRawConfig);
+        if (saveConfigBtn) saveConfigBtn.addEventListener('click', saveRawConfig);
+        if (saveDashboardSettingsBtn) saveDashboardSettingsBtn.addEventListener('click', saveDashboardSettings);
+        if (saveBadUserAgentsBtn) saveBadUserAgentsBtn.addEventListener('click', saveBadUserAgents);
+        if (saveCacheSettingsBtn) saveCacheSettingsBtn.addEventListener('click', saveCacheSettings);
         
         // Event listeners for security features
         if (saveFeaturesBtn) saveFeaturesBtn.addEventListener('click', saveFeatureToggles);
@@ -864,15 +998,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Hide all tab content sections
                     document.querySelectorAll('.tab-content').forEach(content => {
-                        content.classList.remove('active');
                         content.classList.add('hidden');
+                        content.classList.remove('active');
                     });
                     
                     // Show the selected tab content
                     const activeTab = document.getElementById(tabName + '-tab');
                     if (activeTab) {
-                        activeTab.classList.add('active');
                         activeTab.classList.remove('hidden');
+                        activeTab.classList.add('active');
                     }
                     
                     // Fetch data for the active tab
@@ -887,15 +1021,46 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
         
-        // Functions for basic controls
+        // Add theme button listeners
+        if (themeButtons) {
+            themeButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const theme = button.getAttribute('data-theme');
+                    
+                    // Update button appearance
+                    themeButtons.forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
+                    
+                    // Update theme in localStorage
+                    localStorage.setItem('theme', theme);
+                    
+                    // Apply theme to document
+                    setTheme(theme);
+                });
+            });
+        }
+        
+        // Functions for settings page
+        async function fetchSystemInfo() {
+            try {
+                const response = await safeFetch('/api/system/info');
+                const data = await response.json();
+                
+                if (squidVersionSpan && data.squidVersion) {
+                    squidVersionSpan.textContent = data.squidVersion;
+                }
+            } catch (error) {
+                console.error('Error fetching system info:', error);
+                if (squidVersionSpan) {
+                    squidVersionSpan.textContent = 'Error loading version';
+                }
+            }
+        }
+        
         async function fetchConfig() {
             try {
                 const response = await safeFetch('/api/config');
                 const data = await response.json();
-                
-                if (data.port && portInput) {
-                    portInput.value = data.port;
-                }
                 
                 // Load cache settings if available
                 if (data.cacheSize && cacheSizeInput) {
@@ -910,101 +1075,107 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
             } catch (error) {
-                if (configMessage) {
-                    showMessage(configMessage, 'Failed to fetch configuration: ' + error.message, false);
+                if (cacheSettingsMessage) {
+                    showMessage(cacheSettingsMessage, 'Failed to fetch configuration: ' + error.message, false);
                 }
             }
         }
         
-        async function updatePort() {
-            if (!portInput) return;
-            const port = portInput.value;
+        async function fetchRawConfig() {
+            if (!configEditor) return;
             
-            if (!validateInput(port, 'port')) {
-                showMessage(configMessage, 'Please enter a valid port number (1-65535)', false);
+            try {
+                configEditor.disabled = true;
+                configEditor.value = 'Loading...';
+                
+                const response = await safeFetch('/api/config/raw');
+                const data = await response.json();
+                
+                if (data.content) {
+                    configEditor.value = data.content;
+                } else {
+                    configEditor.value = '# No configuration found';
+                }
+            } catch (error) {
+                showMessage(configEditorMessage, 'Failed to fetch configuration: ' + error.message, false);
+                configEditor.value = '# Error loading configuration';
+            } finally {
+                configEditor.disabled = false;
+            }
+        }
+        
+        async function saveRawConfig() {
+            if (!configEditor) return;
+            
+            const content = configEditor.value;
+            if (!content.trim()) {
+                showMessage(configEditorMessage, 'Configuration cannot be empty', false);
+                return;
+            }
+            
+            if (!confirm('Are you sure you want to save this configuration? Invalid configurations may break your proxy.')) {
                 return;
             }
             
             try {
-                if (updatePortBtn) updatePortBtn.disabled = true;
-                showMessage(configMessage, 'Updating...', null);
+                if (saveConfigBtn) saveConfigBtn.disabled = true;
+                if (configEditorMessage) showMessage(configEditorMessage, 'Saving...', null);
                 
-                const response = await safeFetch('/api/config', {
+                const response = await safeFetch('/api/config/raw', {
                     method: 'POST',
                     headers: addCSRFToken({
                         'Content-Type': 'application/json'
                     }),
-                    body: JSON.stringify({ port })
+                    body: JSON.stringify({ content })
                 });
                 
                 const data = await response.json();
                 
                 if (data.status === 'success') {
-                    showMessage(configMessage, data.message || 'Port updated successfully', true);
-                    // Refresh status after updating port
-                    setTimeout(fetchStatus, 1000);
+                    showMessage(configEditorMessage, 'Configuration saved successfully. A backup was created at ' + data.backupPath, true);
+                    // Reload the proxy to apply changes
+                    setTimeout(() => controlSquid('reload'), 1000);
                 } else {
-                    showMessage(configMessage, data.message || 'Failed to update port', false);
+                    showMessage(configEditorMessage, data.message || 'Failed to save configuration', false);
                 }
             } catch (error) {
-                showMessage(configMessage, 'Failed to update port: ' + error.message, false);
+                showMessage(configEditorMessage, 'Failed to save configuration: ' + error.message, false);
             } finally {
-                if (updatePortBtn) updatePortBtn.disabled = false;
+                if (saveConfigBtn) saveConfigBtn.disabled = false;
             }
         }
         
-        // Functions for log management
-        async function downloadLogs() {
-            try {
-                if (downloadLogsBtn) downloadLogsBtn.classList.add('animate-spin');
-                
-                const response = await safeFetch('/api/logs/download');
-                const blob = await response.blob();
-                
-                // Create download link
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = 'squid-logs.txt';
-                document.body.appendChild(a);
-                a.click();
-                
-                // Clean up
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-            } catch (error) {
-                alert('Failed to download logs: ' + error.message);
-            } finally {
-                if (downloadLogsBtn) downloadLogsBtn.classList.remove('animate-spin');
-            }
-        }
-        
-        async function clearLogs() {
-            if (!confirm('Are you sure you want to clear the logs? This action cannot be undone.')) {
-                return;
-            }
+        async function saveCacheSettings() {
+            if (!cacheSizeInput || !maxObjectSizeValueInput || !maxObjectSizeUnitSelect) return;
             
             try {
-                if (clearLogsBtn) clearLogsBtn.classList.add('animate-spin');
+                if (saveCacheSettingsBtn) saveCacheSettingsBtn.disabled = true;
+                if (cacheSettingsMessage) showMessage(cacheSettingsMessage, 'Saving...', null);
                 
-                const response = await safeFetch('/api/logs/clear', {
+                const cacheSize = cacheSizeInput.value;
+                const maxObjectSize = `${maxObjectSizeValueInput.value} ${maxObjectSizeUnitSelect.value}`;
+                
+                const response = await safeFetch('/api/security/cache-settings', {
                     method: 'POST',
-                    headers: addCSRFToken()
+                    headers: addCSRFToken({
+                        'Content-Type': 'application/json'
+                    }),
+                    body: JSON.stringify({ cacheSize, maxObjectSize })
                 });
                 
                 const data = await response.json();
                 
                 if (data.status === 'success') {
-                    if (statusDetails) statusDetails.textContent = '';
-                    fetchStatus();
+                    showMessage(cacheSettingsMessage, 'Cache settings updated successfully', true);
                 } else {
-                    alert('Failed to clear logs: ' + (data.message || 'Unknown error'));
+                    showMessage(cacheSettingsMessage, data.message || 'Failed to update cache settings', false);
                 }
             } catch (error) {
-                alert('Failed to clear logs: ' + error.message);
+                if (cacheSettingsMessage) {
+                    showMessage(cacheSettingsMessage, 'Failed to save cache settings: ' + error.message, false);
+                }
             } finally {
-                if (clearLogsBtn) clearLogsBtn.classList.remove('animate-spin');
+                if (saveCacheSettingsBtn) saveCacheSettingsBtn.disabled = false;
             }
         }
         
@@ -1014,7 +1185,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const response = await safeFetch('/api/security/feature-status');
                 const features = await response.json();
                 
-                // Update toggle states
+                // Update toggle states with default HTTPS filtering OFF
                 if (ipBlacklistToggle) ipBlacklistToggle.checked = features.ipBlacklist;
                 if (domainBlacklistToggle) domainBlacklistToggle.checked = features.domainBlacklist;
                 if (directIpToggle) directIpToggle.checked = features.directIpBlocking;
@@ -1298,1082 +1469,132 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        async function saveCacheSettings() {
-            if (!cacheSizeInput || !maxObjectSizeValueInput || !maxObjectSizeUnitSelect) return;
+        async function fetchBadUserAgents() {
+            if (!badUserAgentsTextarea) return;
             
             try {
-                if (saveCacheSettingsBtn) saveCacheSettingsBtn.disabled = true;
-                if (cacheSettingsMessage) showMessage(cacheSettingsMessage, 'Saving...', null);
+                badUserAgentsTextarea.disabled = true;
+                badUserAgentsTextarea.placeholder = 'Loading...';
                 
-                const cacheSize = cacheSizeInput.value;
-                const maxObjectSize = `${maxObjectSizeValueInput.value} ${maxObjectSizeUnitSelect.value}`;
+                const response = await safeFetch('/api/security/bad-user-agents');
+                const data = await response.json();
                 
-                const response = await safeFetch('/api/security/cache-settings', {
+                if (data.userAgents) {
+                    badUserAgentsTextarea.value = data.userAgents.join('\n');
+                    
+                    // Update the count display if it exists
+                    const countElement = document.getElementById('bad-user-agents-count');
+                    if (countElement) {
+                        countElement.textContent = data.userAgents.length;
+                    }
+                } else {
+                    badUserAgentsTextarea.value = '';
+                    const countElement = document.getElementById('bad-user-agents-count');
+                    if (countElement) {
+                        countElement.textContent = '0';
+                    }
+                }
+            } catch (error) {
+                showMessage(badUserAgentsMessage, 'Failed to fetch bad user agents: ' + error.message, false);
+            } finally {
+                badUserAgentsTextarea.disabled = false;
+                badUserAgentsTextarea.placeholder = 'Enter user agents to block, one per line';
+            }
+        }
+        
+        async function saveBadUserAgents() {
+            if (!badUserAgentsTextarea) return;
+            
+            try {
+                if (saveBadUserAgentsBtn) saveBadUserAgentsBtn.disabled = true;
+                if (badUserAgentsMessage) showMessage(badUserAgentsMessage, 'Saving...', null);
+                
+                const userAgents = badUserAgentsTextarea.value
+                    .split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line !== '');
+                
+                const response = await safeFetch('/api/security/bad-user-agents', {
                     method: 'POST',
                     headers: addCSRFToken({
                         'Content-Type': 'application/json'
                     }),
-                    body: JSON.stringify({ cacheSize, maxObjectSize })
+                    body: JSON.stringify({ userAgents })
                 });
                 
                 const data = await response.json();
                 
                 if (data.status === 'success') {
-                    showMessage(cacheSettingsMessage, 'Cache settings updated successfully', true);
+                    showMessage(badUserAgentsMessage, 'Bad user agents updated successfully', true);
+                    
+                    // Update count on success
+                    const countElement = document.getElementById('bad-user-agents-count');
+                    if (countElement) {
+                        countElement.textContent = userAgents.length;
+                    }
                 } else {
-                    showMessage(cacheSettingsMessage, data.message || 'Failed to update cache settings', false);
+                    showMessage(badUserAgentsMessage, data.message || 'Failed to update bad user agents', false);
                 }
             } catch (error) {
-                if (cacheSettingsMessage) {
-                    showMessage(cacheSettingsMessage, 'Failed to save cache settings: ' + error.message, false);
-                }
+                showMessage(badUserAgentsMessage, 'Failed to save bad user agents: ' + error.message, false);
             } finally {
-                if (saveCacheSettingsBtn) saveCacheSettingsBtn.disabled = false;
+                if (saveBadUserAgentsBtn) saveBadUserAgentsBtn.disabled = false;
             }
         }
         
-        // SSL Certificate Management
-        const certStatusElem = document.getElementById('cert-status');
-        const certDetailsElem = document.getElementById('cert-details');
-        const generateCertBtn = document.getElementById('generate-cert-btn');
-        const downloadCertBtn = document.getElementById('download-cert-btn');
-        const refreshCertBtn = document.getElementById('refresh-cert-btn');
-        const certOperationMessage = document.getElementById('cert-operation-message');
-        
-        // OS-specific certificate installation tab navigation
-        const osTabButtons = document.querySelectorAll('.tab-btn[data-os-tab]');
-        const osTabContents = document.querySelectorAll('.os-tab-content');
-        
-        // Initialize certificate status
-        fetchCertificateStatus();
-        
-        // Add event listeners for certificate operations
-        if (generateCertBtn) generateCertBtn.addEventListener('click', generateCertificate);
-        if (downloadCertBtn) downloadCertBtn.addEventListener('click', downloadCertificate);
-        if (refreshCertBtn) refreshCertBtn.addEventListener('click', fetchCertificateStatus);
-        
-        // OS-specific tabs event listeners
-        if (osTabButtons) {
-            osTabButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    // Remove active class from all buttons
-                    osTabButtons.forEach(btn => btn.classList.remove('active'));
-                    
-                    // Add active class to clicked button
-                    button.classList.add('active');
-                    
-                    // Show corresponding content
-                    const osTabName = button.getAttribute('data-os-tab');
-                    
-                    // Hide all tab content sections
-                    osTabContents.forEach(content => {
-                        content.classList.add('hidden');
-                    });
-                    
-                    // Show the selected tab content
-                    const activeOsTab = document.getElementById(osTabName + '-tab');
-                    if (activeOsTab) {
-                        activeOsTab.classList.remove('hidden');
-                        activeOsTab.classList.add('active');
+        async function saveDashboardSettings() {
+            if (!refreshIntervalInput || !themeButtons) return;
+            
+            try {
+                const refreshInterval = refreshIntervalInput.value;
+                let theme = 'light'; // Default
+                
+                themeButtons.forEach(btn => {
+                    if (btn.classList.contains('active')) {
+                        theme = btn.getAttribute('data-theme');
                     }
                 });
-            });
-        }
-        
-        async function fetchCertificateStatus() {
-            if (!certStatusElem || !certDetailsElem) return;
-            
-            try {
-                if (refreshCertBtn) refreshCertBtn.classList.add('animate-spin');
-                certStatusElem.textContent = 'Checking...';
-                certStatusElem.className = 'text-sm px-2 py-1 rounded bg-gray-200';
-                certDetailsElem.innerHTML = '<div>Loading certificate details...</div>';
                 
-                const response = await safeFetch('/api/security/ssl-certificate');
-                const data = await response.json();
-                
-                if (data.status === 'success' && data.certificate) {
-                    // Certificate exists
-                    certStatusElem.textContent = 'Certificate Available';
-                    certStatusElem.className = 'text-sm px-2 py-1 rounded bg-green-100 text-green-800';
-                    
-                    // Format and display certificate details
-                    const cert = data.certificate;
-                    let detailsHtml = `
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            <div class="text-gray-600">Subject:</div>
-                            <div>${cert.subject || 'N/A'}</div>
-                            
-                            <div class="text-gray-600">Issuer:</div>
-                            <div>${cert.issuer || 'N/A'}</div>
-                            
-                            <div class="text-gray-600">Valid From:</div>
-                            <div>${cert.validFrom || 'N/A'}</div>
-                            
-                            <div class="text-gray-600">Valid To:</div>
-                            <div>${cert.validTo || 'N/A'}</div>
-                            
-                            <div class="text-gray-600">Serial Number:</div>
-                            <div class="font-mono text-xs overflow-hidden text-ellipsis">${cert.serialNumber || 'N/A'}</div>
-                        </div>
-                    `;
-                    
-                    certDetailsElem.innerHTML = detailsHtml;
-                    
-                    // Enable download button
-                    if (downloadCertBtn) downloadCertBtn.disabled = false;
-                } else {
-                    // No certificate
-                    certStatusElem.textContent = 'No Certificate';
-                    certStatusElem.className = 'text-sm px-2 py-1 rounded bg-yellow-100 text-yellow-800';
-                    certDetailsElem.innerHTML = '<div class="text-center text-gray-500">No SSL certificate has been generated yet.</div>';
-                    
-                    // Disable download button
-                    if (downloadCertBtn) downloadCertBtn.disabled = true;
-                }
-            } catch (error) {
-                certStatusElem.textContent = 'Error';
-                certStatusElem.className = 'text-sm px-2 py-1 rounded bg-red-100 text-red-800';
-                certDetailsElem.innerHTML = `<div class="text-red-500">Failed to fetch certificate status: ${error.message}</div>`;
-                
-                // Disable download button
-                if (downloadCertBtn) downloadCertBtn.disabled = true;
-            } finally {
-                if (refreshCertBtn) refreshCertBtn.classList.remove('animate-spin');
-            }
-        }
-        
-        async function generateCertificate() {
-            if (!generateCertBtn || !certOperationMessage) return;
-            
-            try {
-                generateCertBtn.disabled = true;
-                generateCertBtn.innerHTML = '<i class="ri-loader-4-line animate-spin mr-1"></i> Generating...';
-                showMessage(certOperationMessage, 'Generating SSL certificate...', null);
-                
-                // Optional fields for certificate customization
-                const hostname = window.location.hostname;
-                const certData = {
-                    commonName: hostname !== 'localhost' ? hostname : 'secure-proxy.local',
-                    organization: 'Secure Proxy',
-                    validDays: 3650 // 10 years
+                const settings = {
+                    refreshInterval,
+                    theme
                 };
                 
-                const response = await safeFetch('/api/security/ssl-certificate/generate', {
-                    method: 'POST',
-                    headers: addCSRFToken({
-                        'Content-Type': 'application/json'
-                    }),
-                    body: JSON.stringify(certData)
-                });
+                // Save to localStorage
+                localStorage.setItem('dashboardSettings', JSON.stringify(settings));
                 
-                const data = await response.json();
+                // Apply settings
+                document.documentElement.setAttribute('data-theme', theme);
                 
-                if (data.status === 'success') {
-                    showMessage(certOperationMessage, 'SSL certificate generated successfully', true);
-                    
-                    // Refresh the certificate status
-                    fetchCertificateStatus();
-                    
-                    // Reload squid to apply changes - ask user first
-                    if (confirm('Certificate generated successfully. Reload proxy to apply changes?')) {
-                        await controlSquid('reload');
-                    }
-                } else {
-                    showMessage(certOperationMessage, data.message || 'Failed to generate SSL certificate', false);
-                }
+                showMessage(dashboardSettingsMessage, 'Dashboard settings saved successfully', true);
             } catch (error) {
-                showMessage(certOperationMessage, 'Failed to generate SSL certificate: ' + error.message, false);
-            } finally {
-                generateCertBtn.disabled = false;
-                generateCertBtn.innerHTML = '<i class="ri-key-line mr-1"></i> Generate New Certificate';
+                showMessage(dashboardSettingsMessage, 'Failed to save dashboard settings: ' + error.message, false);
             }
         }
         
-        async function downloadCertificate() {
-            if (!downloadCertBtn) return;
+        function loadDashboardSettings() {
+            if (!refreshIntervalInput || !themeButtons) return;
             
-            try {
-                downloadCertBtn.disabled = true;
-                downloadCertBtn.innerHTML = '<i class="ri-loader-4-line animate-spin mr-1"></i> Downloading...';
-                
-                // Create download link
-                const a = document.createElement('a');
-                a.href = '/api/security/ssl-certificate/download';
-                a.download = 'secure-proxy-ca.crt';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                
-                showMessage(certOperationMessage, 'Download initiated. Install the certificate on your devices.', true);
-            } catch (error) {
-                showMessage(certOperationMessage, 'Failed to download certificate: ' + error.message, false);
-            } finally {
-                downloadCertBtn.disabled = false;
-                downloadCertBtn.innerHTML = '<i class="ri-download-line mr-1"></i> Download Certificate';
+            // Load from localStorage if available
+            const settings = JSON.parse(localStorage.getItem('dashboardSettings') || '{}');
+            
+            if (settings.refreshInterval) {
+                refreshIntervalInput.value = settings.refreshInterval;
+            } else {
+                refreshIntervalInput.value = '30'; // Default
             }
-        }
-    }
-    
-    // Initialize Settings Page
-    function initSettingsPage() {
-        // System info elements
-        const squidVersionSpan = document.getElementById('squid-version');
-        
-        // Configuration editor elements
-        const configEditor = document.getElementById('config-editor');
-        const reloadConfigBtn = document.getElementById('reload-config-btn');
-        const saveConfigBtn = document.getElementById('save-config-btn');
-        const configEditorMessage = document.getElementById('config-editor-message');
-        
-        // Port Configuration
-        const portInput = document.getElementById('port');
-        const updatePortBtn = document.getElementById('update-port-btn');
-        const configMessage = document.getElementById('config-message');
-        
-        // Cache Settings
-        const cacheSizeInput = document.getElementById('cache-size');
-        const maxObjectSizeValueInput = document.getElementById('max-object-size-value');
-        const maxObjectSizeUnitSelect = document.getElementById('max-object-size-unit');
-        const saveCacheSettingsBtn = document.getElementById('save-cache-settings-btn');
-        const cacheSettingsMessage = document.getElementById('cache-settings-message');
-        
-        // Security Feature Elements
-        const ipBlacklistToggle = document.getElementById('ip-blacklist-toggle');
-        const domainBlacklistToggle = document.getElementById('domain-blacklist-toggle');
-        const directIpToggle = document.getElementById('direct-ip-toggle');
-        const userAgentToggle = document.getElementById('user-agent-toggle');
-        const malwareToggle = document.getElementById('malware-toggle');
-        const httpsFilteringToggle = document.getElementById('https-filtering-toggle');
-        const saveFeaturesBtn = document.getElementById('save-features-btn');
-        const featuresMessage = document.getElementById('features-message');
-        
-        // IP Blacklist Tab
-        const ipBlacklistTextarea = document.getElementById('ip-blacklist-textarea');
-        const saveIpBlacklistBtn = document.getElementById('save-ip-blacklist-btn');
-        const ipBlacklistMessage = document.getElementById('ip-blacklist-message');
-        
-        // Domain Blacklist Tab
-        const domainBlacklistTextarea = document.getElementById('domain-blacklist-textarea');
-        const saveDomainBlacklistBtn = document.getElementById('save-domain-blacklist-btn');
-        const domainBlacklistMessage = document.getElementById('domain-blacklist-message');
-        
-        // Allowed Direct IPs Tab
-        const allowedDirectIpsTextarea = document.getElementById('allowed-direct-ips-textarea');
-        const saveAllowedDirectIpsBtn = document.getElementById('save-allowed-direct-ips-btn');
-        const allowedDirectIpsMessage = document.getElementById('allowed-direct-ips-message');
-        
-        // System settings elements
-        const squidPathInput = document.getElementById('squid-path');
-        const configPathInput = document.getElementById('config-path');
-        const cacheDirInput = document.getElementById('cache-dir');
-        const saveSystemSettingsBtn = document.getElementById('save-system-settings-btn');
-        const systemSettingsMessage = document.getElementById('system-settings-message');
-        
-        // Dashboard settings elements
-        const refreshIntervalInput = document.getElementById('refresh-interval');
-        const themeButtons = document.querySelectorAll('.theme-btn');
-        const saveDashboardSettingsBtn = document.getElementById('save-dashboard-settings-btn');
-        const dashboardSettingsMessage = document.getElementById('dashboard-settings-message');
-        
-        // User agent elements
-        const badUserAgentsTextarea = document.getElementById('bad-user-agents-textarea');
-        const saveBadUserAgentsBtn = document.getElementById('save-bad-user-agents-btn');
-        const badUserAgentsMessage = document.getElementById('bad-user-agents-message');
-        
-        // Tab Navigation
-        const tabButtons = document.querySelectorAll('.tab-btn');
-        const tabContents = document.querySelectorAll('.tab-content');
-        
-        // Initialize
-        fetchSystemInfo();
-        fetchRawConfig();
-        fetchBadUserAgents();
-        loadDashboardSettings();
-        fetchConfig();
-        fetchSecurityFeatures();
-        
-        // Add event listeners
-        if (reloadConfigBtn) reloadConfigBtn.addEventListener('click', fetchRawConfig);
-        if (saveConfigBtn) saveConfigBtn.addEventListener('click', saveRawConfig);
-        if (saveSystemSettingsBtn) saveSystemSettingsBtn.addEventListener('click', saveSystemSettings);
-        if (saveDashboardSettingsBtn) saveDashboardSettingsBtn.addEventListener('click', saveDashboardSettings);
-        if (saveBadUserAgentsBtn) saveBadUserAgentsBtn.addEventListener('click', saveBadUserAgents);
-        if (updatePortBtn) updatePortBtn.addEventListener('click', updatePort);
-        if (saveCacheSettingsBtn) saveCacheSettingsBtn.addEventListener('click', saveCacheSettings);
-        
-        // Event listeners for security features
-        if (saveFeaturesBtn) saveFeaturesBtn.addEventListener('click', saveFeatureToggles);
-        if (saveIpBlacklistBtn) saveIpBlacklistBtn.addEventListener('click', saveIpBlacklist);
-        if (saveDomainBlacklistBtn) saveDomainBlacklistBtn.addEventListener('click', saveDomainBlacklist);
-        if (saveAllowedDirectIpsBtn) saveAllowedDirectIpsBtn.addEventListener('click', saveAllowedDirectIps);
-        
-        // Tab navigation event listeners
-        if (tabButtons) {
-            tabButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    // Remove active class from all buttons
-                    tabButtons.forEach(btn => btn.classList.remove('active'));
-                    
-                    // Add active class to clicked button
-                    button.classList.add('active');
-                    
-                    // Show corresponding content
-                    const tabName = button.getAttribute('data-tab');
-                    
-                    // Hide all tab content sections
-                    document.querySelectorAll('.tab-content').forEach(content => {
-                        content.classList.remove('active');
-                        content.classList.add('hidden');
-                    });
-                    
-                    // Show the selected tab content
-                    const activeTab = document.getElementById(tabName + '-tab');
-                    if (activeTab) {
-                        activeTab.classList.add('active');
-                        activeTab.classList.remove('hidden');
-                    }
-                    
-                    // Fetch data for the active tab
-                    if (tabName === 'ip-blacklist') {
-                        fetchIpBlacklist();
-                    } else if (tabName === 'domain-blacklist') {
-                        fetchDomainBlacklist();
-                    } else if (tabName === 'allowed-direct-ips') {
-                        fetchAllowedDirectIps();
+            
+            if (settings.theme) {
+                themeButtons.forEach(btn => {
+                    if (btn.getAttribute('data-theme') === settings.theme) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
                     }
                 });
-            });
-        }
-        
-        // Add theme button listeners
-        if (themeButtons) {
-            themeButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    themeButtons.forEach(btn => btn.classList.remove('active'));
-                    button.classList.add('active');
-                });
-            });
-        }
-        
-        // Functions for settings page
-        async function fetchSystemInfo() {
-            try {
-                const response = await safeFetch('/api/system/info');
-                const data = await response.json();
-                
-                if (squidVersionSpan) {
-                    squidVersionSpan.textContent = data.squidVersion || 'Unknown';
-                }
-                
-                if (squidPathInput && configPathInput && cacheDirInput) {
-                    squidPathInput.value = data.currentPaths?.squidPath || '';
-                    configPathInput.value = data.currentPaths?.configPath || '';
-                    cacheDirInput.value = data.currentPaths?.cacheDir || '';
-                }
-            } catch (error) {
-                console.error('Error fetching system info:', error);
-                if (squidVersionSpan) squidVersionSpan.textContent = 'Error';
-            }
-        }
-        
-        async function fetchRawConfig() {
-            if (!configEditor) return;
-            
-            try {
-                configEditor.disabled = true;
-                configEditor.value = 'Loading...';
-                
-                const response = await safeFetch('/api/config/raw');
-                const data = await response.json();
-                
-                if (data.content) {
-                    configEditor.value = data.content;
-                } else {
-                    configEditor.value = '# No configuration found';
-                }
-            } catch (error) {
-                showMessage(configEditorMessage, 'Failed to fetch configuration: ' + error.message, false);
-                configEditor.value = '# Error loading configuration';
-            } finally {
-                configEditor.disabled = false;
-            }
-        }
-        
-        async function fetchConfig() {
-            try {
-                const response = await safeFetch('/api/config');
-                const data = await response.json();
-                
-                if (data.port && portInput) {
-                    portInput.value = data.port;
-                }
-                
-                // Load cache settings if available
-                if (data.cacheSize && cacheSizeInput) {
-                    cacheSizeInput.value = data.cacheSize;
-                }
-                
-                if (data.maxObjectSize && maxObjectSizeValueInput && maxObjectSizeUnitSelect) {
-                    const [value, unit] = data.maxObjectSize.split(' ');
-                    maxObjectSizeValueInput.value = value;
-                    if (unit) {
-                        maxObjectSizeUnitSelect.value = unit;
-                    }
-                }
-            } catch (error) {
-                if (configMessage) {
-                    showMessage(configMessage, 'Failed to fetch configuration: ' + error.message, false);
-                }
-            }
-        }
-        
-        async function updatePort() {
-            if (!portInput) return;
-            const port = portInput.value;
-            
-            if (!validateInput(port, 'port')) {
-                showMessage(configMessage, 'Please enter a valid port number (1-65535)', false);
-                return;
-            }
-            
-            try {
-                if (updatePortBtn) updatePortBtn.disabled = true;
-                showMessage(configMessage, 'Updating...', null);
-                
-                const response = await safeFetch('/api/config', {
-                    method: 'POST',
-                    headers: addCSRFToken({
-                        'Content-Type': 'application/json'
-                    }),
-                    body: JSON.stringify({ port })
-                });
-                
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    showMessage(configMessage, data.message || 'Port updated successfully', true);
-                    // Refresh status after updating port
-                    setTimeout(fetchStatus, 1000);
-                } else {
-                    showMessage(configMessage, data.message || 'Failed to update port', false);
-                }
-            } catch (error) {
-                showMessage(configMessage, 'Failed to update port: ' + error.message, false);
-            } finally {
-                if (updatePortBtn) updatePortBtn.disabled = false;
-        }
-    }
-    
-    async function saveCacheSettings() {
-        if (!cacheSizeInput || !maxObjectSizeValueInput || !maxObjectSizeUnitSelect) return;
-        
-        try {
-            if (saveCacheSettingsBtn) saveCacheSettingsBtn.disabled = true;
-            if (cacheSettingsMessage) showMessage(cacheSettingsMessage, 'Saving...', null);
-            
-            const cacheSize = cacheSizeInput.value;
-            const maxObjectSize = `${maxObjectSizeValueInput.value} ${maxObjectSizeUnitSelect.value}`;
-            
-            const response = await safeFetch('/api/security/cache-settings', {
-                method: 'POST',
-                headers: addCSRFToken({
-                    'Content-Type': 'application/json'
-                }),
-                body: JSON.stringify({ cacheSize, maxObjectSize })
-            });
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                showMessage(cacheSettingsMessage, 'Cache settings updated successfully', true);
-            } else {
-                showMessage(cacheSettingsMessage, data.message || 'Failed to update cache settings', false);
-            }
-        } catch (error) {
-            if (cacheSettingsMessage) {
-                showMessage(cacheSettingsMessage, 'Failed to save cache settings: ' + error.message, false);
-            }
-        } finally {
-            if (saveCacheSettingsBtn) saveCacheSettingsBtn.disabled = false;
-        }
-    }
-    
-    async function saveRawConfig() {
-        if (!configEditor) return;
-        
-        const content = configEditor.value;
-        if (!content.trim()) {
-            showMessage(configEditorMessage, 'Configuration cannot be empty', false);
-            return;
-        }
-        
-        if (!confirm('Are you sure you want to save this configuration? Invalid configurations may break your proxy.')) {
-            return;
-        }
-        
-        try {
-            if (saveConfigBtn) saveConfigBtn.disabled = true;
-            if (configEditorMessage) showMessage(configEditorMessage, 'Saving...', null);
-            
-            const response = await safeFetch('/api/config/raw', {
-                method: 'POST',
-                headers: addCSRFToken({
-                    'Content-Type': 'application/json'
-                }),
-                body: JSON.stringify({ content })
-            });
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                showMessage(configEditorMessage, 'Configuration saved successfully. A backup was created at ' + data.backupPath, true);
-                // Reload the proxy to apply changes
-                setTimeout(() => controlSquid('reload'), 1000);
-            } else {
-                showMessage(configEditorMessage, data.message || 'Failed to save configuration', false);
-            }
-        } catch (error) {
-            showMessage(configEditorMessage, 'Failed to save configuration: ' + error.message, false);
-        } finally {
-            if (saveConfigBtn) saveConfigBtn.disabled = false;
-        }
-    }
-    
-    // Functions for security features
-    async function fetchSecurityFeatures() {
-        try {
-            const response = await safeFetch('/api/security/feature-status');
-            const features = await response.json();
-            
-            // Update toggle states with default HTTPS filtering OFF
-            if (ipBlacklistToggle) ipBlacklistToggle.checked = features.ipBlacklist;
-            if (domainBlacklistToggle) domainBlacklistToggle.checked = features.domainBlacklist;
-            if (directIpToggle) directIpToggle.checked = features.directIpBlocking;
-            if (userAgentToggle) userAgentToggle.checked = features.userAgentFiltering;
-            if (malwareToggle) malwareToggle.checked = features.malwareBlocking;
-            if (httpsFilteringToggle) httpsFilteringToggle.checked = features.httpsFiltering === true ? true : false;
-            
-            // Also fetch the initial data for the first tab
-            fetchIpBlacklist();
-        } catch (error) {
-            if (featuresMessage) {
-                showMessage(featuresMessage, 'Failed to fetch security features: ' + error.message, false);
             }
         }
     }
-    
-    async function saveFeatureToggles() {
-        if (!ipBlacklistToggle) return;
-        
-        try {
-            if (saveFeaturesBtn) saveFeaturesBtn.disabled = true;
-            if (featuresMessage) showMessage(featuresMessage, 'Saving...', null);
-            
-            const features = {
-                ipBlacklist: ipBlacklistToggle.checked,
-                domainBlacklist: domainBlacklistToggle.checked,
-                directIpBlocking: directIpToggle.checked,
-                userAgentFiltering: userAgentToggle.checked,
-                malwareBlocking: malwareToggle.checked,
-                httpsFiltering: httpsFilteringToggle.checked
-            };
-            
-            const response = await safeFetch('/api/security/feature-status', {
-                method: 'POST',
-                headers: addCSRFToken({
-                    'Content-Type': 'application/json'
-                }),
-                body: JSON.stringify(features)
-            });
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                showMessage(featuresMessage, 'Security features updated successfully', true);
-                // Reload the proxy to apply changes
-                setTimeout(() => controlSquid('reload'), 1000);
-            } else {
-                showMessage(featuresMessage, data.message || 'Failed to update security features', false);
-            }
-        } catch (error) {
-            if (featuresMessage) {
-                showMessage(featuresMessage, 'Failed to save security features: ' + error.message, false);
-            }
-        } finally {
-            if (saveFeaturesBtn) saveFeaturesBtn.disabled = false;
-        }
-    }
-    
-    async function fetchIpBlacklist() {
-        if (!ipBlacklistTextarea) return;
-        
-        try {
-            ipBlacklistTextarea.disabled = true;
-            ipBlacklistTextarea.placeholder = 'Loading...';
-            
-            const response = await safeFetch('/api/security/blacklist-ips');
-            const data = await response.json();
-            
-            if (data.ips) {
-                ipBlacklistTextarea.value = data.ips.join('\n');
-                
-                // Update the count display if it exists
-                const countElement = document.getElementById('ip-blacklist-count');
-                if (countElement) {
-                    countElement.textContent = data.ips.length;
-                }
-            } else {
-                ipBlacklistTextarea.value = '';
-                const countElement = document.getElementById('ip-blacklist-count');
-                if (countElement) {
-                    countElement.textContent = '0';
-                }
-            }
-        } catch (error) {
-            if (ipBlacklistMessage) {
-                showMessage(ipBlacklistMessage, 'Failed to fetch IP blacklist: ' + error.message, false);
-            }
-        } finally {
-            ipBlacklistTextarea.disabled = false;
-            ipBlacklistTextarea.placeholder = 'Enter IPs to blacklist, one per line\nExample:\n192.168.1.100\n10.0.0.5';
-        }
-    }
-    
-    async function saveIpBlacklist() {
-        if (!ipBlacklistTextarea) return;
-        
-        try {
-            if (saveIpBlacklistBtn) saveIpBlacklistBtn.disabled = true;
-            if (ipBlacklistMessage) showMessage(ipBlacklistMessage, 'Saving...', null);
-            
-            const ips = ipBlacklistTextarea.value
-                .split('\n')
-                .map(line => line.trim())
-                .filter(line => line !== '');
-            
-            const response = await safeFetch('/api/security/blacklist-ips', {
-                method: 'POST',
-                headers: addCSRFToken({
-                    'Content-Type': 'application/json'
-                }),
-                body: JSON.stringify({ ips })
-            });
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                showMessage(ipBlacklistMessage, 'IP blacklist updated successfully', true);
-                
-                // Update count on success
-                const countElement = document.getElementById('ip-blacklist-count');
-                if (countElement) {
-                    countElement.textContent = ips.length;
-                }
-            } else {
-                showMessage(ipBlacklistMessage, data.message || 'Failed to update IP blacklist', false);
-            }
-        } catch (error) {
-            if (ipBlacklistMessage) {
-                showMessage(ipBlacklistMessage, 'Failed to save IP blacklist: ' + error.message, false);
-            }
-        } finally {
-            if (saveIpBlacklistBtn) saveIpBlacklistBtn.disabled = false;
-        }
-    }
-    
-    async function fetchDomainBlacklist() {
-        if (!domainBlacklistTextarea) return;
-        
-        try {
-            domainBlacklistTextarea.disabled = true;
-            domainBlacklistTextarea.placeholder = 'Loading...';
-            
-            const response = await safeFetch('/api/security/blacklist-domains');
-            const data = await response.json();
-            
-            if (data.domains) {
-                domainBlacklistTextarea.value = data.domains.join('\n');
-                
-                // Update the count display if it exists
-                const countElement = document.getElementById('domain-blacklist-count');
-                if (countElement) {
-                    countElement.textContent = data.domains.length;
-                }
-            } else {
-                domainBlacklistTextarea.value = '';
-                const countElement = document.getElementById('domain-blacklist-count');
-                if (countElement) {
-                    countElement.textContent = '0';
-                }
-            }
-        } catch (error) {
-            if (domainBlacklistMessage) {
-                showMessage(domainBlacklistMessage, 'Failed to fetch domain blacklist: ' + error.message, false);
-            }
-        } finally {
-            domainBlacklistTextarea.disabled = false;
-            domainBlacklistTextarea.placeholder = 'Enter domains to blacklist, one per line\nExample:\nexample.com\nads.example.org';
-        }
-    }
-    
-    async function saveDomainBlacklist() {
-        if (!domainBlacklistTextarea) return;
-        
-        try {
-            if (saveDomainBlacklistBtn) saveDomainBlacklistBtn.disabled = true;
-            if (domainBlacklistMessage) showMessage(domainBlacklistMessage, 'Saving...', null);
-            
-            const domains = domainBlacklistTextarea.value
-                .split('\n')
-                .map(line => line.trim())
-                .filter(line => line !== '');
-            
-            const response = await safeFetch('/api/security/blacklist-domains', {
-                method: 'POST',
-                headers: addCSRFToken({
-                    'Content-Type': 'application/json'
-                }),
-                body: JSON.stringify({ domains })
-            });
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                showMessage(domainBlacklistMessage, 'Domain blacklist updated successfully', true);
-                
-                // Update count on success
-                const countElement = document.getElementById('domain-blacklist-count');
-                if (countElement) {
-                    countElement.textContent = domains.length;
-                }
-            } else {
-                showMessage(domainBlacklistMessage, data.message || 'Failed to update domain blacklist', false);
-            }
-        } catch (error) {
-            if (domainBlacklistMessage) {
-                showMessage(domainBlacklistMessage, 'Failed to save domain blacklist: ' + error.message, false);
-            }
-        } finally {
-            if (saveDomainBlacklistBtn) saveDomainBlacklistBtn.disabled = false;
-        }
-    }
-    
-    async function fetchAllowedDirectIps() {
-        if (!allowedDirectIpsTextarea) return;
-        
-        try {
-            allowedDirectIpsTextarea.disabled = true;
-            allowedDirectIpsTextarea.placeholder = 'Loading...';
-            
-            const response = await safeFetch('/api/security/allowed-direct-ips');
-            const data = await response.json();
-            
-            if (data.ips) {
-                allowedDirectIpsTextarea.value = data.ips.join('\n');
-                
-                // Update the count display if it exists
-                const countElement = document.getElementById('allowed-direct-ips-count');
-                if (countElement) {
-                    countElement.textContent = data.ips.length;
-                }
-            } else {
-                allowedDirectIpsTextarea.value = '';
-                const countElement = document.getElementById('allowed-direct-ips-count');
-                if (countElement) {
-                    countElement.textContent = '0';
-                }
-            }
-        } catch (error) {
-            if (allowedDirectIpsMessage) {
-                showMessage(allowedDirectIpsMessage, 'Failed to fetch allowed direct IPs: ' + error.message, false);
-            }
-        } finally {
-            allowedDirectIpsTextarea.disabled = false;
-            allowedDirectIpsTextarea.placeholder = 'Enter IPs to allow direct access, one per line\nExample:\n192.168.1.1\n10.0.0.0/24';
-        }
-    }
-    
-    async function saveAllowedDirectIps() {
-        if (!allowedDirectIpsTextarea) return;
-        
-        try {
-            if (saveAllowedDirectIpsBtn) saveAllowedDirectIpsBtn.disabled = true;
-            if (allowedDirectIpsMessage) showMessage(allowedDirectIpsMessage, 'Saving...', null);
-            
-            const ips = allowedDirectIpsTextarea.value
-                .split('\n')
-                .map(line => line.trim())
-                .filter(line => validateInput(line, 'ip'));
-            
-            const response = await safeFetch('/api/security/allowed-direct-ips', {
-                method: 'POST',
-                headers: addCSRFToken({
-                    'Content-Type': 'application/json'
-                }),
-                body: JSON.stringify({ ips })
-            });
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                showMessage(allowedDirectIpsMessage, 'Allowed direct IPs updated successfully', true);
-            } else {
-                showMessage(allowedDirectIpsMessage, data.message || 'Failed to update allowed direct IPs', false);
-            }
-        } catch (error) {
-            if (allowedDirectIpsMessage) {
-                showMessage(allowedDirectIpsMessage, 'Failed to save allowed direct IPs: ' + error.message, false);
-            }
-        } finally {
-            if (saveAllowedDirectIpsBtn) saveAllowedDirectIpsBtn.disabled = false;
-        }
-    }
-    
-    async function fetchBadUserAgents() {
-        if (!badUserAgentsTextarea) return;
-        
-        try {
-            badUserAgentsTextarea.disabled = true;
-            badUserAgentsTextarea.placeholder = 'Loading...';
-            
-            const response = await safeFetch('/api/security/bad-user-agents');
-            const data = await response.json();
-            
-            if (data.userAgents) {
-                badUserAgentsTextarea.value = data.userAgents.join('\n');
-                
-                // Update the count display if it exists
-                const countElement = document.getElementById('bad-user-agents-count');
-                if (countElement) {
-                    countElement.textContent = data.userAgents.length;
-                }
-            } else {
-                badUserAgentsTextarea.value = '';
-                const countElement = document.getElementById('bad-user-agents-count');
-                if (countElement) {
-                    countElement.textContent = '0';
-                }
-            }
-        } catch (error) {
-            showMessage(badUserAgentsMessage, 'Failed to fetch bad user agents: ' + error.message, false);
-        } finally {
-            badUserAgentsTextarea.disabled = false;
-            badUserAgentsTextarea.placeholder = 'Enter user agents to block, one per line';
-        }
-    }
-    
-    async function saveBadUserAgents() {
-        if (!badUserAgentsTextarea) return;
-        
-        try {
-            if (saveBadUserAgentsBtn) saveBadUserAgentsBtn.disabled = true;
-            if (badUserAgentsMessage) showMessage(badUserAgentsMessage, 'Saving...', null);
-            
-            const userAgents = badUserAgentsTextarea.value
-                .split('\n')
-                .map(line => line.trim())
-                .filter(line => line !== '');
-            
-            const response = await safeFetch('/api/security/bad-user-agents', {
-                method: 'POST',
-                headers: addCSRFToken({
-                    'Content-Type': 'application/json'
-                }),
-                body: JSON.stringify({ userAgents })
-            });
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                showMessage(badUserAgentsMessage, 'Bad user agents updated successfully', true);
-                
-                // Update count on success
-                const countElement = document.getElementById('bad-user-agents-count');
-                if (countElement) {
-                    countElement.textContent = userAgents.length;
-                }
-            } else {
-                showMessage(badUserAgentsMessage, data.message || 'Failed to update bad user agents', false);
-            }
-        } catch (error) {
-            showMessage(badUserAgentsMessage, 'Failed to save bad user agents: ' + error.message, false);
-        } finally {
-            if (saveBadUserAgentsBtn) saveBadUserAgentsBtn.disabled = false;
-        }
-    }
-    
-    async function saveSystemSettings() {
-        if (!squidPathInput || !configPathInput || !cacheDirInput) return;
-        
-        try {
-            if (saveSystemSettingsBtn) saveSystemSettingsBtn.disabled = true;
-            if (systemSettingsMessage) showMessage(systemSettingsMessage, 'Saving...', null);
-            
-            const paths = {
-                squidPath: squidPathInput.value.trim(),
-                configPath: configPathInput.value.trim(),
-                cacheDir: cacheDirInput.value.trim()
-            };
-            
-            const response = await safeFetch('/api/system/paths', {
-                method: 'POST',
-                headers: addCSRFToken({
-                    'Content-Type': 'application/json'
-                }),
-                body: JSON.stringify(paths)
-            });
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                showMessage(systemSettingsMessage, 'System settings updated successfully', true);
-            } else {
-                showMessage(systemSettingsMessage, data.message || 'Failed to update system settings', false);
-            }
-        } catch (error) {
-            showMessage(systemSettingsMessage, 'Failed to save system settings: ' + error.message, false);
-        } finally {
-            if (saveSystemSettingsBtn) saveSystemSettingsBtn.disabled = false;
-        }
-    }
-    
-    function loadDashboardSettings() {
-        if (!refreshIntervalInput || !themeButtons) return;
-        
-        // Load from localStorage if available
-        const settings = JSON.parse(localStorage.getItem('dashboardSettings') || '{}');
-        
-        if (settings.refreshInterval) {
-            refreshIntervalInput.value = settings.refreshInterval;
-        } else {
-            refreshIntervalInput.value = '30'; // Default
-        }
-        
-        if (settings.theme) {
-            themeButtons.forEach(btn => {
-                if (btn.getAttribute('data-theme') === settings.theme) {
-                    btn.classList.add('active');
-                } else {
-                    btn.classList.remove('active');
-                }
-            });
-        }
-    }
-    
-    function saveDashboardSettings() {
-        if (!refreshIntervalInput || !themeButtons) return;
-        
-        try {
-            const refreshInterval = refreshIntervalInput.value;
-            let theme = 'light'; // Default
-            
-            themeButtons.forEach(btn => {
-                if (btn.classList.contains('active')) {
-                    theme = btn.getAttribute('data-theme');
-                }
-            });
-            
-            const settings = {
-                refreshInterval,
-                theme
-            };
-            
-            // Save to localStorage
-            localStorage.setItem('dashboardSettings', JSON.stringify(settings));
-            
-            // Apply settings
-            document.documentElement.setAttribute('data-theme', theme);
-            
-            showMessage(dashboardSettingsMessage, 'Dashboard settings saved successfully', true);
-        } catch (error) {
-            showMessage(dashboardSettingsMessage, 'Failed to save dashboard settings: ' + error.message, false);
-        }
-    }
-    
-    // Add event listeners for import buttons
-    const importIpBlacklistBtn = document.getElementById('import-ip-blacklist-btn');
-    const importDomainBlacklistBtn = document.getElementById('import-domain-blacklist-btn');
-    const importAllowedIpsBtn = document.getElementById('import-allowed-ips-btn');
-    const importUserAgentsBtn = document.getElementById('import-user-agents-btn');
-    
-    if (importIpBlacklistBtn) importIpBlacklistBtn.addEventListener('click', () => importList('ip'));
-    if (importDomainBlacklistBtn) importDomainBlacklistBtn.addEventListener('click', () => importList('domain'));
-    if (importAllowedIpsBtn) importAllowedIpsBtn.addEventListener('click', () => importList('allowed'));
-    if (importUserAgentsBtn) importUserAgentsBtn.addEventListener('click', () => importList('useragent'));
-    
-    // Function to handle file import for blacklists
-    function importList(type) {
-        // Create file input element
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.accept = '.txt,.csv,.list';
-        fileInput.style.display = 'none';
-        document.body.appendChild(fileInput);
-        
-        // Handle file selection
-        fileInput.addEventListener('change', async (event) => {
-            if (!event.target.files.length) return;
-            
-            const file = event.target.files[0];
-            try {
-                const content = await readFileContent(file);
-                
-                // Update appropriate textarea based on type
-                if (type === 'ip' && ipBlacklistTextarea) {
-                    ipBlacklistTextarea.value = content;
-                    // Show message about saving
-                    showMessage(ipBlacklistMessage, `Imported ${file.name}. Click "Save IP Blacklist" to apply changes.`, true);
-                } else if (type === 'domain' && domainBlacklistTextarea) {
-                    domainBlacklistTextarea.value = content;
-                    showMessage(domainBlacklistMessage, `Imported ${file.name}. Click "Save Domain Blacklist" to apply changes.`, true);
-                } else if (type === 'allowed' && allowedDirectIpsTextarea) {
-                    allowedDirectIpsTextarea.value = content;
-                    showMessage(allowedDirectIpsMessage, `Imported ${file.name}. Click "Save Allowed IPs" to apply changes.`, true);
-                } else if (type === 'useragent' && badUserAgentsTextarea) {
-                    badUserAgentsTextarea.value = content;
-                    showMessage(badUserAgentsMessage, `Imported ${file.name}. Click "Save User Agents" to apply changes.`, true);
-                }
-                
-                // Update count elements
-                const lines = content.split('\n').filter(line => line.trim() !== '').length;
-                
-                if (type === 'ip') {
-                    const countElement = document.getElementById('ip-blacklist-count');
-                    if (countElement) countElement.textContent = lines;
-                } else if (type === 'domain') {
-                    const countElement = document.getElementById('domain-blacklist-count');
-                    if (countElement) countElement.textContent = lines;
-                } else if (type === 'allowed') {
-                    const countElement = document.getElementById('allowed-direct-ips-count');
-                    if (countElement) countElement.textContent = lines;
-                } else if (type === 'useragent') {
-                    const countElement = document.getElementById('bad-user-agents-count');
-                    if (countElement) countElement.textContent = lines;
-                }
-                
-            } catch (error) {
-                alert('Error reading file: ' + error.message);
-            }
-            
-            // Clean up
-            document.body.removeChild(fileInput);
-        });
-        
-        // Trigger file dialog
-        fileInput.click();
-    }
-    
-    // Helper to read file content
-    function readFileContent(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (event) => resolve(event.target.result);
-            reader.onerror = (error) => reject(error);
-            reader.readAsText(file);
-        });
-    }
-}
     
     // Initialize Logs Page
     function initLogsPage() {
@@ -2824,6 +2045,173 @@ document.addEventListener('DOMContentLoaded', function() {
         // Helper function to escape regex special characters
         function escapeRegExp(string) {
             return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+    }
+    
+    // SSL Certificate functions
+    async function fetchCertificateStatus() {
+        try {
+            const certStatus = document.getElementById('cert-status');
+            const certDetails = document.getElementById('cert-details');
+            
+            if (certStatus) certStatus.textContent = "Checking...";
+            if (certDetails) certDetails.innerHTML = "<div>Loading certificate details...</div>";
+            
+            const response = await safeFetch('/api/security/ssl-certificate');
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                // Update certificate status
+                if (certStatus) {
+                    if (data.exists) {
+                        certStatus.textContent = "Certificate Installed";
+                        certStatus.className = "text-sm px-2 py-1 rounded cert-valid";
+                    } else {
+                        certStatus.textContent = "Certificate Not Found";
+                        certStatus.className = "text-sm px-2 py-1 rounded cert-missing";
+                    }
+                }
+                
+                // Update certificate details
+                if (certDetails && data.exists && data.certificate) {
+                    const cert = data.certificate;
+                    
+                    // Check certificate expiration
+                    const isExpired = new Date(cert.validTo) < new Date();
+                    
+                    certDetails.innerHTML = `
+                        <div class="mb-2 ${isExpired ? 'text-red-600' : ''}">
+                            <strong>Validity:</strong> ${isExpired ? 'EXPIRED' : 'Valid'}
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><strong>Subject:</strong></div>
+                            <div>${cert.subject}</div>
+                            <div><strong>Issuer:</strong></div>
+                            <div>${cert.issuer}</div>
+                            <div><strong>Valid From:</strong></div>
+                            <div>${cert.validFrom}</div>
+                            <div><strong>Valid To:</strong></div>
+                            <div>${cert.validTo}</div>
+                            <div><strong>Serial Number:</strong></div>
+                            <div class="font-mono text-xs break-all">${cert.serialNumber}</div>
+                        </div>
+                    `;
+                } else if (certDetails && !data.exists) {
+                    certDetails.innerHTML = `
+                        <div class="text-yellow-600">
+                            <i class="ri-error-warning-line mr-1"></i> 
+                            No SSL certificate found. Generate a new certificate to enable HTTPS inspection.
+                        </div>
+                    `;
+                }
+            } else {
+                if (certStatus) {
+                    certStatus.textContent = "Error";
+                    certStatus.className = "text-sm px-2 py-1 rounded bg-red-100 text-red-800";
+                }
+                if (certDetails) {
+                    certDetails.innerHTML = `<div class="text-red-600">Failed to check certificate status: ${data.message || 'Unknown error'}</div>`;
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching certificate status:', error);
+            if (document.getElementById('cert-status')) {
+                document.getElementById('cert-status').textContent = "Error";
+                document.getElementById('cert-status').className = "text-sm px-2 py-1 rounded bg-red-100 text-red-800";
+            }
+            if (document.getElementById('cert-details')) {
+                document.getElementById('cert-details').innerHTML = `<div class="text-red-600">Failed to check certificate status: ${error.message}</div>`;
+            }
+        }
+    }
+
+    async function generateCertificate() {
+        try {
+            const generateCertBtn = document.getElementById('generate-cert-btn');
+            const certOperationMessage = document.getElementById('cert-operation-message');
+            
+            if (generateCertBtn) generateCertBtn.disabled = true;
+            if (certOperationMessage) showMessage(certOperationMessage, 'Generating certificate...', null);
+            
+            // Prompt for common name
+            const commonName = prompt('Enter common name for the certificate (e.g., your organization name):', 'Secure Proxy CA');
+            if (!commonName) {
+                if (generateCertBtn) generateCertBtn.disabled = false;
+                if (certOperationMessage) showMessage(certOperationMessage, 'Certificate generation cancelled', false);
+                return;
+            }
+            
+            const response = await safeFetch('/api/security/ssl-certificate/generate', {
+                method: 'POST',
+                headers: addCSRFToken({
+                    'Content-Type': 'application/json'
+                }),
+                body: JSON.stringify({
+                    commonName,
+                    organization: 'Secure Proxy',
+                    validDays: 3650 // 10 years
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                if (certOperationMessage) showMessage(certOperationMessage, 'Certificate generated successfully', true);
+                
+                // Enable the download button
+                const downloadCertBtn = document.getElementById('download-cert-btn');
+                if (downloadCertBtn) downloadCertBtn.disabled = false;
+                
+                // Refresh the certificate status
+                fetchCertificateStatus();
+                
+                // Also update the HTTPS filtering toggle if it exists
+                const httpsFilteringToggle = document.getElementById('https-filtering-toggle');
+                if (httpsFilteringToggle) {
+                    httpsFilteringToggle.checked = true;
+                    
+                    // Optionally save the feature toggle state
+                    const saveBtn = document.getElementById('save-features-btn');
+                    if (saveBtn && confirm('Do you want to enable HTTPS filtering with the new certificate?')) {
+                        saveBtn.click();
+                    }
+                }
+            } else {
+                if (certOperationMessage) showMessage(certOperationMessage, `Failed to generate certificate: ${data.message || 'Unknown error'}`, false);
+            }
+        } catch (error) {
+            console.error('Error generating certificate:', error);
+            const certOperationMessage = document.getElementById('cert-operation-message');
+            if (certOperationMessage) showMessage(certOperationMessage, `Failed to generate certificate: ${error.message}`, false);
+        } finally {
+            const generateCertBtn = document.getElementById('generate-cert-btn');
+            if (generateCertBtn) generateCertBtn.disabled = false;
+        }
+    }
+
+    async function downloadCertificate() {
+        try {
+            const downloadCertBtn = document.getElementById('download-cert-btn');
+            if (downloadCertBtn) downloadCertBtn.disabled = true;
+            
+            // Create a hidden download link
+            const a = document.createElement('a');
+            a.href = `/api/security/ssl-certificate/download`;
+            a.download = 'secure-proxy-ca.crt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            // Show success message
+            const certOperationMessage = document.getElementById('cert-operation-message');
+            if (certOperationMessage) showMessage(certOperationMessage, 'Certificate download started', true);
+        } catch (error) {
+            console.error('Error downloading certificate:', error);
+            const certOperationMessage = document.getElementById('cert-operation-message');
+            if (certOperationMessage) showMessage(certOperationMessage, `Failed to download certificate: ${error.message}`, false);
+        } finally {
+            const downloadCertBtn = document.getElementById('download-cert-btn');
+            if (downloadCertBtn) downloadCertBtn.disabled = false;
         }
     }
 });
