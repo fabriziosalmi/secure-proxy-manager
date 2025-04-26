@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     procps \
     curl \
     nano \
+    supervisor \
     && rm -rf /var/lib/apt/lists/*
 
 # Create directories for blacklists
@@ -22,6 +23,9 @@ RUN mkdir -p /usr/share/squid/icons
 # Copy config files
 COPY squid.conf /etc/squid/squid.conf
 COPY startup.sh /startup.sh
+
+# Configure supervisor
+COPY squid-supervisor.conf /etc/supervisor/conf.d/
 
 # Make startup script executable
 RUN chmod +x /startup.sh

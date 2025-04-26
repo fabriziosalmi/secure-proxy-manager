@@ -5,8 +5,11 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from flask_basicauth import BasicAuth
 import os
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import json
 import logging
+import time
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'secure-proxy-default-key')
@@ -31,6 +34,75 @@ logger = logging.getLogger(__name__)
 # Backend API configuration
 BACKEND_URL = os.environ.get('BACKEND_URL', 'http://backend:5000')
 API_AUTH = (app.config['BASIC_AUTH_USERNAME'], app.config['BASIC_AUTH_PASSWORD'])
+REQUEST_TIMEOUT = int(os.environ.get('REQUEST_TIMEOUT', 30))  # Increased timeout from 10 to 30 seconds
+MAX_RETRIES = int(os.environ.get('MAX_RETRIES', 5))  # Increased from 3 to 5 maximum retries
+BACKOFF_FACTOR = float(os.environ.get('BACKOFF_FACTOR', 1.0))  # Increased from 0.5 to 1.0 backoff factor
+RETRY_WAIT_AFTER_STARTUP = int(os.environ.get('RETRY_WAIT_AFTER_STARTUP', 10))  # Wait time after startup
+
+# Startup flag to ensure backend is available
+backend_available = False
+
+# Configure requests session with retry logic
+def get_requests_session():
+    session = requests.Session()
+    
+    # Configure retry strategy with exponential backoff
+    retry_strategy = Retry(
+        total=MAX_RETRIES,
+        backoff_factor=BACKOFF_FACTOR,
+        status_forcelist=[429, 500, 502, 503, 504],  # Retry on these HTTP status codes
+        allowed_methods=["GET", "POST", "PUT", "DELETE"],  # Retry for these methods
+        raise_on_status=False  # Don't raise exception on status codes that are not retry-able
+    )
+    
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    
+    return session
+
+# Function to check backend availability with exponential backoff
+def wait_for_backend(max_attempts=10):
+    """
+    Wait for backend to become available with exponential backoff
+    """
+    global backend_available
+    
+    if backend_available:
+        return True
+        
+    session = get_requests_session()
+    wait_time = 1  # Initial wait time in seconds
+    
+    for attempt in range(1, max_attempts + 1):
+        try:
+            logger.info(f"Attempting to connect to backend (attempt {attempt}/{max_attempts})")
+            resp = session.get(f"{BACKEND_URL}/health", timeout=REQUEST_TIMEOUT)
+            if resp.status_code == 200:
+                logger.info("Backend service is available")
+                backend_available = True
+                return True
+            else:
+                logger.warning(f"Backend returned status code {resp.status_code}, retrying...")
+        except requests.RequestException as e:
+            logger.warning(f"Backend connection attempt {attempt} failed: {str(e)}")
+        
+        # Wait with exponential backoff before next attempt
+        if attempt < max_attempts:
+            logger.info(f"Waiting {wait_time} seconds before next attempt...")
+            time.sleep(wait_time)
+            wait_time = min(wait_time * 2, 60)  # Double the wait time, max 60 seconds
+    
+    logger.error(f"Failed to connect to backend after {max_attempts} attempts")
+    return False
+
+# Try to connect to backend at startup
+if RETRY_WAIT_AFTER_STARTUP > 0:
+    logger.info(f"Waiting {RETRY_WAIT_AFTER_STARTUP} seconds before initial backend connection attempt...")
+    time.sleep(RETRY_WAIT_AFTER_STARTUP)
+
+# Initial backend connection attempt
+wait_for_backend()
 
 # Add security headers to all responses
 @app.after_request
@@ -107,18 +179,31 @@ def favicon():
 @app.route('/api/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @basic_auth.required
 def api_proxy(path):
-    """Proxy requests to the backend API"""
+    """Proxy requests to the backend API with retry logic"""
+    global backend_available
+    
     url = f"{BACKEND_URL}/api/{path}"
+    session = get_requests_session()
+    
+    # Ensure backend is available before proceeding
+    if not backend_available and not wait_for_backend(max_attempts=3):
+        # If backend is still not available after retrying, return a user-friendly error
+        logger.error(f"Backend service unavailable when attempting to access {path}")
+        return jsonify({
+            "status": "error",
+            "message": "Backend service is currently unavailable. Please try again later.",
+            "retry_info": "The system will automatically retry connecting to the backend service."
+        }), 503
     
     try:
         if request.method == 'GET':
-            resp = requests.get(url, auth=API_AUTH, params=request.args)
+            resp = session.get(url, auth=API_AUTH, params=request.args, timeout=REQUEST_TIMEOUT)
         elif request.method == 'POST':
-            resp = requests.post(url, auth=API_AUTH, json=request.get_json())
+            resp = session.post(url, auth=API_AUTH, json=request.get_json(), timeout=REQUEST_TIMEOUT)
         elif request.method == 'PUT':
-            resp = requests.put(url, auth=API_AUTH, json=request.get_json())
+            resp = session.put(url, auth=API_AUTH, json=request.get_json(), timeout=REQUEST_TIMEOUT)
         elif request.method == 'DELETE':
-            resp = requests.delete(url, auth=API_AUTH)
+            resp = session.delete(url, auth=API_AUTH, timeout=REQUEST_TIMEOUT)
         
         # Handle 401 Unauthorized responses explicitly
         if resp.status_code == 401:
@@ -143,18 +228,57 @@ def api_proxy(path):
                 "status_code": resp.status_code
             }), 500
             
+    except requests.exceptions.ConnectionError as e:
+        # Mark backend as unavailable to trigger a check on next request
+        backend_available = False
+        
+        logger.error(f"Connection error with backend: {str(e)}")
+        return jsonify({
+            "status": "error", 
+            "message": "Backend service is temporarily unavailable. The system will automatically retry.",
+            "error_details": str(e)
+        }), 503
+    except requests.exceptions.Timeout as e:
+        logger.error(f"Timeout connecting to backend: {str(e)}")
+        return jsonify({
+            "status": "error", 
+            "message": "Request to backend service timed out. Please try again later.",
+            "error_details": str(e)
+        }), 504  # Gateway Timeout
     except requests.RequestException as e:
         logger.error(f"Error connecting to backend: {str(e)}")
         return jsonify({
             "status": "error", 
-            "message": f"Error connecting to backend: {str(e)}"
-        }), 500
+            "message": f"Error connecting to backend: {str(e)}",
+            "retry_info": f"Attempted {MAX_RETRIES} retries with {BACKOFF_FACTOR} backoff factor"
+        }), 503  # Return 503 Service Unavailable
     except Exception as e:
         logger.error(f"Unexpected error proxying request to backend: {str(e)}")
         return jsonify({
             "status": "error", 
             "message": f"Unexpected error proxying request to backend: {str(e)}"
         }), 500
+
+# Health check endpoint
+@app.route('/health')
+def health_check():
+    """Health check endpoint for container orchestration"""
+    # Simple health check that doesn't require authentication
+    return jsonify({"status": "healthy", "service": "secure-proxy-ui"}), 200
+
+# Backend availability check
+@app.route('/api/check-backend')
+def check_backend():
+    """Check if backend service is available"""
+    session = get_requests_session()
+    try:
+        resp = session.get(f"{BACKEND_URL}/health", timeout=REQUEST_TIMEOUT)
+        if resp.status_code == 200:
+            return jsonify({"status": "available", "message": "Backend service is available"}), 200
+        else:
+            return jsonify({"status": "unavailable", "message": f"Backend service returned status {resp.status_code}"}), 503
+    except requests.RequestException as e:
+        return jsonify({"status": "unavailable", "message": f"Backend service is not available: {str(e)}"}), 503
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8011)

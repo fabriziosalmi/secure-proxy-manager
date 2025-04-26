@@ -398,8 +398,9 @@ fi
 echo "Verifying access control rules..."
 grep "http_access" /etc/squid/squid.conf
 
-# Start Squid in foreground mode
-echo "Starting Squid proxy service with config:"
-cat /etc/squid/squid.conf
-echo "-------------------------------------"
-exec /usr/sbin/squid -N -d 1
+# Create supervisor log directory
+mkdir -p /var/log/supervisor
+
+# Start supervisor in the foreground instead of Squid directly
+echo "Starting supervisor to manage Squid service..."
+exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf
