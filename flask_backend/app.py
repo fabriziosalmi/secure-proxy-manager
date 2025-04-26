@@ -360,6 +360,22 @@ def control_squid():
                 status_result = subprocess.run("pgrep -x squid > /dev/null", shell=True)
                 success = status_result.returncode == 0  # Return code 0 means process found
                 
+                # If failure on start/restart, try to get more detailed error information
+                if not success and (action == 'start' or action == 'restart'):
+                    # Check Squid logs for errors
+                    try:
+                        log_cmd = "tail -n 20 /var/log/squid/cache.log"
+                        log_result = subprocess.run(log_cmd, shell=True, capture_output=True, text=True, timeout=2)
+                        error_details = log_result.stdout.strip() if log_result.returncode == 0 else "No log details available"
+                    except:
+                        error_details = "Failed to retrieve log details"
+                        
+                    return jsonify({
+                        'status': 'error',
+                        'message': f'Failed to {action} Squid. Check logs for details.',
+                        'details': error_details
+                    })
+                
             if success:
                 return jsonify({
                     'status': 'success',

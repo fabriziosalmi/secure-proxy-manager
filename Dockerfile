@@ -9,6 +9,7 @@ RUN apk update && \
     py3-pip \
     supervisor \
     curl \
+    openssl \
     # Additional dependencies for potential Python module compilation
     gcc \
     python3-dev \
@@ -20,9 +21,9 @@ COPY flask_backend/requirements.txt /tmp/requirements.txt
 RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
 # Create necessary directories and set permissions
-RUN mkdir -p /var/log/squid /var/cache/squid /etc/squid && \
-    chown -R squid:squid /var/log/squid /var/cache/squid && \
-    chmod -R 750 /var/log/squid /var/cache/squid
+RUN mkdir -p /var/log/squid /var/cache/squid /etc/squid /var/lib/ssl_db && \
+    chown -R squid:squid /var/log/squid /var/cache/squid /var/lib/ssl_db && \
+    chmod -R 750 /var/log/squid /var/cache/squid /var/lib/ssl_db
 
 # Create empty blacklist files if they don't exist
 RUN touch /etc/squid/blacklist_domains.txt /etc/squid/blacklist_ips.txt \
