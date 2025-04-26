@@ -2,6 +2,13 @@
 
 This project provides a Docker-based Squid proxy server with a web-based monitoring dashboard. The application allows you to easily run a Squid proxy and manage it through a modern, responsive user interface.
 
+## Screenshots
+![screenshot1](https://github.com/fabriziosalmi/secure-proxy/blob/main/screenshot_1.png?raw=true)
+![screenshot2](https://github.com/fabriziosalmi/secure-proxy/blob/main/screenshot_2.png?raw=true)
+![screenshot3](https://github.com/fabriziosalmi/secure-proxy/blob/main/screenshot_3.png?raw=true)
+
+> UI looking is temporary and will be updated soon :)
+
 ## Features
 
 - Dockerized Squid proxy server
