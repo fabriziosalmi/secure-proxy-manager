@@ -99,10 +99,39 @@ def init_db():
     
     # Insert default settings if not exists
     default_settings = [
+        # Basic settings
         ('block_direct_ip', 'true', 'Block direct IP access'),
         ('enable_ip_blacklist', 'true', 'Enable IP blacklist filtering'),
         ('enable_domain_blacklist', 'true', 'Enable domain blacklist filtering'),
-        ('log_level', 'info', 'Logging level')
+        ('log_level', 'info', 'Logging level'),
+        
+        # Cache settings
+        ('cache_size', '1000', 'Cache size in megabytes'),
+        ('max_object_size', '50', 'Maximum size of cached objects in megabytes'),
+        ('enable_compression', 'false', 'Enable HTTP compression'),
+        
+        # Advanced filtering settings
+        ('enable_content_filtering', 'false', 'Enable content type filtering'),
+        ('blocked_file_types', 'exe,bat,cmd,dll,js', 'Blocked file extensions'),
+        ('enable_https_filtering', 'false', 'Enable HTTPS filtering'),
+        ('enable_time_restrictions', 'false', 'Enable time-based access restrictions'),
+        ('time_restriction_start', '09:00', 'Time restrictions start time'),
+        ('time_restriction_end', '17:00', 'Time restrictions end time'),
+        
+        # Authentication settings
+        ('enable_proxy_auth', 'false', 'Enable proxy authentication'),
+        ('auth_method', 'basic', 'Authentication method'),
+        ('enable_user_management', 'false', 'Enable user management'),
+        
+        # Performance settings
+        ('connection_timeout', '30', 'Connection timeout in seconds'),
+        ('dns_timeout', '5', 'DNS lookup timeout in seconds'),
+        ('max_connections', '100', 'Maximum number of connections'),
+        
+        # Logging settings
+        ('enable_extended_logging', 'false', 'Enable extended logging'),
+        ('log_retention', '30', 'Log retention period in days'),
+        ('enable_alerts', 'false', 'Enable email alerts')
     ]
     
     for setting in default_settings:
@@ -330,6 +359,120 @@ def import_logs():
     except Exception as e:
         logger.error(f"Error importing logs: {str(e)}")
         return jsonify({"status": "error", "message": f"Error importing logs: {str(e)}"}), 500
+
+# New maintenance endpoints
+@app.route('/api/maintenance/clear-cache', methods=['POST'])
+@auth.login_required
+def clear_cache():
+    """Clear the Squid cache"""
+    try:
+        # Execute squid command to clear cache
+        result = subprocess.run(
+            ['docker', 'exec', 'secure-proxy-proxy-1', 'squidclient', '-h', 'localhost', 'mgr:shutdown'],
+            capture_output=True, text=True, check=True
+        )
+        logger.info("Cache cleared successfully")
+        return jsonify({"status": "success", "message": "Cache cleared successfully"})
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error clearing cache: {str(e)}")
+        return jsonify({"status": "error", "message": f"Error clearing cache: {str(e)}"}), 500
+
+@app.route('/api/maintenance/backup-config', methods=['GET'])
+@auth.login_required
+def backup_config():
+    """Create a backup of all configuration settings"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get all settings
+        cursor.execute("SELECT * FROM settings")
+        settings = [dict(row) for row in cursor.fetchall()]
+        
+        # Get IP blacklist
+        cursor.execute("SELECT * FROM ip_blacklist")
+        ip_blacklist = [dict(row) for row in cursor.fetchall()]
+        
+        # Get domain blacklist
+        cursor.execute("SELECT * FROM domain_blacklist")
+        domain_blacklist = [dict(row) for row in cursor.fetchall()]
+        
+        # Compile everything into a backup object
+        backup = {
+            "timestamp": datetime.now().isoformat(),
+            "version": "1.0.0",
+            "settings": settings,
+            "ip_blacklist": ip_blacklist,
+            "domain_blacklist": domain_blacklist
+        }
+        
+        return jsonify({"status": "success", "data": backup})
+    except Exception as e:
+        logger.error(f"Error creating backup: {str(e)}")
+        return jsonify({"status": "error", "message": f"Error creating backup: {str(e)}"}), 500
+
+@app.route('/api/maintenance/restore-config', methods=['POST'])
+@auth.login_required
+def restore_config():
+    """Restore configuration from a backup file"""
+    try:
+        data = request.get_json()
+        if not data or 'backup' not in data:
+            return jsonify({"status": "error", "message": "No backup data provided"}), 400
+        
+        backup = data['backup']
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Start a transaction
+        conn.execute("BEGIN TRANSACTION")
+        
+        try:
+            # Restore settings
+            if 'settings' in backup:
+                for setting in backup['settings']:
+                    cursor.execute(
+                        "UPDATE settings SET setting_value = ? WHERE setting_name = ?", 
+                        (setting['setting_value'], setting['setting_name'])
+                    )
+            
+            # Restore IP blacklist
+            if 'ip_blacklist' in backup:
+                cursor.execute("DELETE FROM ip_blacklist")
+                for entry in backup['ip_blacklist']:
+                    cursor.execute(
+                        "INSERT INTO ip_blacklist (ip, description) VALUES (?, ?)",
+                        (entry['ip'], entry['description'])
+                    )
+            
+            # Restore domain blacklist
+            if 'domain_blacklist' in backup:
+                cursor.execute("DELETE FROM domain_blacklist")
+                for entry in backup['domain_blacklist']:
+                    cursor.execute(
+                        "INSERT INTO domain_blacklist (domain, description) VALUES (?, ?)",
+                        (entry['domain'], entry['description'])
+                    )
+            
+            # Commit the transaction
+            conn.commit()
+            
+            # Update blacklist files
+            update_ip_blacklist()
+            update_domain_blacklist()
+            
+            # Apply settings
+            apply_settings()
+            
+            return jsonify({"status": "success", "message": "Configuration restored successfully"})
+        except Exception as e:
+            # Rollback in case of error
+            conn.rollback()
+            raise e
+            
+    except Exception as e:
+        logger.error(f"Error restoring backup: {str(e)}")
+        return jsonify({"status": "error", "message": f"Error restoring backup: {str(e)}"}), 500
 
 # Helper functions
 def update_ip_blacklist():
