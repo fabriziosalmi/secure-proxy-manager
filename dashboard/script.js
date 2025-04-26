@@ -906,9 +906,27 @@ document.addEventListener('DOMContentLoaded', function() {
             let peakClientsValue = 0;
             
             // Check if we're on the right page with required elements
+            console.log("Checking real-time monitoring elements...");
+            console.log("Elements found:", {
+                connectionsCount: !!connectionsCount,
+                connectionsBar: !!connectionsBar,
+                clientsCount: !!clientsCount,
+                clientsBar: !!clientsBar,
+                peakConnections: !!peakConnections,
+                peakClients: !!peakClients,
+                lastUpdateTime: !!lastUpdateTime,
+                toggleAutoRefresh: !!toggleAutoRefresh,
+                autoRefreshStatus: !!autoRefreshStatus,
+                refreshConnectionsBtn: !!refreshConnectionsBtn,
+                cpuUsage: !!document.getElementById('cpu-usage'),
+                memoryUsage: !!document.getElementById('memory-usage'),
+                diskUsage: !!document.getElementById('disk-usage'),
+                processId: !!document.getElementById('process-id')
+            });
+            
             const isMonitoringPage = connectionsCount && connectionsBar && clientsCount;
             if (!isMonitoringPage) {
-                console.log("Not on monitoring page or elements not found");
+                console.warn("Not on monitoring page or required elements not found");
                 return; // Exit if elements don't exist or not on dashboard page
             }
             
@@ -918,45 +936,65 @@ document.addEventListener('DOMContentLoaded', function() {
             fetchRealTimeStats();
             
             // Event listeners for real-time monitoring
-            if (refreshConnectionsBtn) refreshConnectionsBtn.addEventListener('click', fetchRealTimeStats);
-            if (toggleAutoRefresh) toggleAutoRefresh.addEventListener('click', toggleConnectionsAutoRefresh);
+            if (refreshConnectionsBtn) {
+                console.log("Adding click listener to refresh button");
+                refreshConnectionsBtn.addEventListener('click', fetchRealTimeStats);
+            }
+            
+            if (toggleAutoRefresh) {
+                console.log("Adding click listener to auto-refresh toggle");
+                toggleAutoRefresh.addEventListener('click', toggleConnectionsAutoRefresh);
+            }
             
             function toggleConnectionsAutoRefresh() {
                 connectionsAutoRefresh = !connectionsAutoRefresh;
+                console.log("Auto-refresh toggled:", connectionsAutoRefresh);
                 
                 if (autoRefreshStatus) {
                     autoRefreshStatus.textContent = connectionsAutoRefresh ? 'On' : 'Off';
+                    console.log("Auto-refresh status updated in UI");
                 }
                 
                 if (connectionsAutoRefresh) {
                     // Start auto-refresh (every 5 seconds)
+                    console.log("Starting auto-refresh interval (5 seconds)");
                     connectionsRefreshInterval = setInterval(fetchRealTimeStats, 5000);
-                    console.log("Auto-refresh started");
                 } else {
                     // Stop auto-refresh
                     if (connectionsRefreshInterval) {
+                        console.log("Stopping auto-refresh interval");
                         clearInterval(connectionsRefreshInterval);
                         connectionsRefreshInterval = null;
-                        console.log("Auto-refresh stopped");
                     }
                 }
             }
             
             async function fetchRealTimeStats() {
-                if (!connectionsCount || !clientsCount) return;
+                console.log("fetchRealTimeStats called at", new Date().toISOString());
+                
+                if (!connectionsCount || !clientsCount) {
+                    console.warn("Required DOM elements missing, aborting stats update");
+                    return;
+                }
                 
                 try {
-                    console.log("Fetching real-time stats...");
+                    console.log("Starting API request for real-time stats");
                     if (refreshConnectionsBtn) refreshConnectionsBtn.classList.add('animate-spin');
                     
                     // Add force refresh parameter to avoid cached data
+                    console.time("realtime-stats-api-call");
                     const response = await safeFetch('/api/stats/realtime?refresh=true');
+                    console.timeEnd("realtime-stats-api-call");
+                    
                     if (!response.ok) {
                         throw new Error(`Server returned ${response.status}: ${response.statusText}`);
                     }
                     
+                    console.time("realtime-stats-json-parse");
                     const data = await response.json();
-                    console.log("Real-time stats received:", data);
+                    console.timeEnd("realtime-stats-json-parse");
+                    
+                    console.log("Real-time stats received:", JSON.stringify(data));
                     
                     if (data.status === 'error') {
                         throw new Error(data.message || 'Unknown error fetching stats');
@@ -966,6 +1004,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     const connections = parseInt(data.connections) || 0;
                     const maxConnections = parseInt(data.maxConnections) || 1000;
                     const connectionPercentage = Math.min(100, Math.round((connections / maxConnections) * 100));
+                    
+                    console.log("Updating connections UI:", { 
+                        connections, 
+                        maxConnections, 
+                        connectionPercentage 
+                    });
                     
                     if (connectionsCount) connectionsCount.textContent = connections;
                     if (connectionsBar) {
@@ -979,6 +1023,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     const maxClients = parseInt(data.maxClients) || 100;
                     const clientPercentage = Math.min(100, Math.round((clients / maxClients) * 100));
                     
+                    console.log("Updating clients UI:", { 
+                        clients, 
+                        maxClients, 
+                        clientPercentage 
+                    });
+                    
                     if (clientsCount) clientsCount.textContent = clients;
                     if (clientsBar) {
                         clientsBar.style.width = `${clientPercentage}%`;
@@ -987,8 +1037,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (clientsLimit) clientsLimit.textContent = maxClients;
                     
                     // Update peak values
+                    const oldPeakConnections = peakConnectionsValue;
+                    const oldPeakClients = peakClientsValue;
                     peakConnectionsValue = Math.max(peakConnectionsValue, connections);
                     peakClientsValue = Math.max(peakClientsValue, clients);
+                    
+                    console.log("Updating peak values:", {
+                        oldPeakConnections, 
+                        newPeakConnections: peakConnectionsValue,
+                        oldPeakClients,
+                        newPeakClients: peakClientsValue
+                    });
                     
                     if (peakConnections) peakConnections.textContent = peakConnectionsValue;
                     if (peakClients) peakClients.textContent = peakClientsValue;
@@ -999,6 +1058,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     const diskUsageEl = document.getElementById('disk-usage');
                     const processIdEl = document.getElementById('process-id');
                     
+                    console.log("Updating system info UI:", {
+                        cpu: parseFloat(data.cpu).toFixed(1),
+                        memory: parseFloat(data.memory).toFixed(1),
+                        memoryMB: data.memoryMB,
+                        diskUsageMB: data.diskUsageMB,
+                        pid: data.pid
+                    });
+                    
                     if (cpuUsageEl) cpuUsageEl.textContent = `${parseFloat(data.cpu).toFixed(1) || 0}%`;
                     if (memoryUsageEl) memoryUsageEl.textContent = `${parseFloat(data.memory).toFixed(1) || 0}% (${data.memoryMB || 0} MB)`;
                     if (diskUsageEl) diskUsageEl.textContent = `${data.diskUsageMB || 0} MB`;
@@ -1008,10 +1075,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (lastUpdateTime) {
                         const now = new Date();
                         lastUpdateTime.textContent = now.toLocaleTimeString();
+                        console.log("Updated last update time:", now.toLocaleTimeString());
                     }
+                    
+                    console.log("Real-time stats update completed successfully");
                     
                 } catch (error) {
                     console.error('Error fetching real-time stats:', error);
+                    console.trace("Stack trace for real-time stats error");
                     
                     // Show error state in a more informative way
                     if (connectionsCount) connectionsCount.textContent = '?';
@@ -1041,10 +1112,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Show toast notification about the error
                     if (typeof toast !== 'undefined') {
-                        toast.show('Error fetching monitoring data. Check console for details.', 'error');
+                        toast.show({
+                            title: 'Monitoring Error',
+                            message: 'Error fetching monitoring data. Check console for details.',
+                            type: 'error'
+                        });
                     }
                 } finally {
-                    if (refreshConnectionsBtn) refreshConnectionsBtn.classList.remove('animate-spin');
+                    if (refreshConnectionsBtn) {
+                        refreshConnectionsBtn.classList.remove('animate-spin');
+                        console.log("Removed spinner from refresh button");
+                    }
                 }
             }
             
@@ -2471,16 +2549,14 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const downloadCertBtn = document.getElementById('download-cert-btn');
             if (downloadCertBtn) downloadCertBtn.disabled = true;
-            
-            // Create a hidden download link
+
             const a = document.createElement('a');
             a.href = `/api/security/ssl-certificate/download`;
             a.download = 'secure-proxy-ca.crt';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            
-            // Show success message
+
             const certOperationMessage = document.getElementById('cert-operation-message');
             if (certOperationMessage) showMessage(certOperationMessage, 'Certificate download started', true);
         } catch (error) {
@@ -2491,20 +2567,5 @@ document.addEventListener('DOMContentLoaded', function() {
             const downloadCertBtn = document.getElementById('download-cert-btn');
             if (downloadCertBtn) downloadCertBtn.disabled = false;
         }
-    }
-});
-
-// Ensure the page initialization happens after DOM is fully loaded
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize pages based on the current path
-    const currentPath = window.location.pathname;
-    
-    if (currentPath.endsWith('/') || currentPath.endsWith('index.html') || currentPath.includes('/dashboard/') && !currentPath.includes('settings.html') && !currentPath.includes('logs.html')) {
-        console.log("Initializing Dashboard Page");
-        initDashboardPage();
-    } else if (currentPath.includes('settings.html')) {
-        initSettingsPage();
-    } else if (currentPath.includes('logs.html')) {
-        initLogsPage();
     }
 });

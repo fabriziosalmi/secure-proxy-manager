@@ -96,18 +96,12 @@ def serve_static(filename):
 
 # Squid Monitoring Utility Functions
 def get_squid_metrics(force_refresh=False):
-    """
-    Get Squid metrics using squidclient utility
-    Returns cached values if called frequently
-    """
     current_time = time.time()
-    
-    # Return cached data if still valid
+
     if not force_refresh and metrics_cache['last_update'] > 0:
         if current_time - metrics_cache['last_update'] < metrics_cache['cache_duration']:
             return metrics_cache['data']
-    
-    # Default metrics in case of failure
+
     default_metrics = {
         'clients': 0,
         'connections': 0,
@@ -122,9 +116,8 @@ def get_squid_metrics(force_refresh=False):
         'status': 'error',
         'error': 'Failed to fetch Squid metrics'
     }
-    
+
     try:
-        # Check if squid is running first
         status_result = subprocess.run(SQUID_STATUS_COMMAND, shell=True, capture_output=True, text=True)
         if status_result.returncode != 0:
             default_metrics['status'] = 'stopped'
@@ -133,18 +126,16 @@ def get_squid_metrics(force_refresh=False):
             metrics_cache['last_update'] = current_time
             return default_metrics
 
-        # Run squidclient to get metrics
         cmd = f"{SQUID_CLIENT_BIN} -h {SQUID_HOST} -p {SQUID_PORT} mgr:info"
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
-        
+
         if result.returncode != 0:
             metrics_cache['data'] = default_metrics
             metrics_cache['last_update'] = current_time
             return default_metrics
-        
+
         output = result.stdout
-        
-        # Parse the output to extract metrics
+
         metrics = {
             'clients': 0,
             'connections': 0,
@@ -159,62 +150,42 @@ def get_squid_metrics(force_refresh=False):
             'status': 'running',
             'error': None
         }
-        
-        # Extract client count
-        client_match = re.search(r'Number of HTTP clients: (\d+)', output)
+
+        client_match = re.search(r'Number of HTTP clients:\s+(\d+)', output)
         if client_match:
             metrics['clients'] = int(client_match.group(1))
-        
-        # Extract connection count
-        conn_match = re.search(r'Number of active connections: (\d+)', output)
+
+        conn_match = re.search(r'Number of active connections:\s+(\d+)', output)
         if conn_match:
             metrics['connections'] = int(conn_match.group(1))
-        
-        # Extract memory usage
-        mem_match = re.search(r'Total memory accounted: (\d+)', output)
+
+        mem_match = re.search(r'Total memory accounted:\s+(\d+)', output)
         if mem_match:
             mem_kb = int(mem_match.group(1))
-            metrics['memoryMB'] = mem_kb // 1024  # Convert KB to MB
-            
-            # Get total system memory to calculate percentage
-            mem_info_cmd = "free -m | grep 'Mem:' | awk '{print $2}'"
-            mem_info = subprocess.run(mem_info_cmd, shell=True, capture_output=True, text=True)
-            if mem_info.returncode == 0 and mem_info.stdout.strip():
-                total_mem = int(mem_info.stdout.strip())
-                if total_mem > 0:
-                    metrics['memory'] = (metrics['memoryMB'] / total_mem) * 100
-        
-        # Extract disk usage (cache)
-        disk_match = re.search(r'Storage Swap size:\s+(\d+) KB', output)
+            metrics['memoryMB'] = mem_kb // 1024
+
+        disk_match = re.search(r'Storage Swap size:\s+(\d+)\s+KB', output)
         if disk_match:
-            metrics['diskUsageMB'] = int(disk_match.group(1)) // 1024  # Convert KB to MB
-        
-        # Extract PID
-        pid_match = re.search(r'Process id: (\d+)', output)
+            metrics['diskUsageMB'] = int(disk_match.group(1)) // 1024
+
+        pid_match = re.search(r'Process id:\s+(\d+)', output)
         if pid_match:
             metrics['pid'] = int(pid_match.group(1))
-        
-        # Extract uptime
-        uptime_match = re.search(r'Service Up Time: ([\d\.\s]+)', output)
+
+        uptime_match = re.search(r'Service Up Time:\s+(.+)', output)
         if uptime_match:
             metrics['uptime'] = uptime_match.group(1).strip()
-        
-        # Extract CPU usage
-        # This is more complex and might need a separate command
+
         cpu_cmd = f"ps -p {metrics['pid']} -o %cpu | tail -1" if metrics['pid'] > 0 else "echo 0"
         cpu_result = subprocess.run(cpu_cmd, shell=True, capture_output=True, text=True)
         if cpu_result.returncode == 0:
-            try:
-                metrics['cpu'] = float(cpu_result.stdout.strip())
-            except ValueError:
-                metrics['cpu'] = 0.0
-        
-        # Update the cache
+            metrics['cpu'] = float(cpu_result.stdout.strip())
+
         metrics_cache['data'] = metrics
         metrics_cache['last_update'] = current_time
-        
+
         return metrics
-    
+
     except subprocess.TimeoutExpired:
         default_metrics['error'] = 'Squid metrics query timed out'
         metrics_cache['data'] = default_metrics

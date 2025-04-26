@@ -6,8 +6,8 @@ chown -R squid:squid /var/log/squid /var/cache/squid /var/lib/ssl_db
 chmod -R 750 /var/log/squid /var/cache/squid /var/lib/ssl_db
 
 # Comment out SSL bumping directives to avoid startup failures
-for f in ssl_bump sslproxy_cert_error sslcrtd_program sslcrtd_children; do
-  sed -i "/^$f /s/^/#/" /etc/squid/squid.conf || true
+for file in ssl_bump sslproxy_cert_error sslcrtd_program sslcrtd_children; do
+  sed -i "/^$file /s/^/#/" /etc/squid/squid.conf || true
 done
 
 # Add debug output for troubleshooting
