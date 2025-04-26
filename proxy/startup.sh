@@ -4,6 +4,34 @@
 mkdir -p /etc/squid/blacklists/ip
 mkdir -p /etc/squid/blacklists/domain
 
+# Create SSL certificate and SSL DB directories for HTTPS filtering
+mkdir -p /config/ssl_db
+chmod 700 /config/ssl_db
+
+# Check if SSL certificates exist, if not create them
+if [ ! -f /config/ssl_cert.pem ] || [ ! -f /config/ssl_key.pem ]; then
+    echo "Generating SSL certificates for HTTPS filtering..."
+    # Create a private key
+    openssl genrsa -out /config/ssl_key.pem 2048
+    # Create a self-signed certificate valid for 10 years
+    openssl req -new -key /config/ssl_key.pem -x509 -days 3650 -out /config/ssl_cert.pem -subj "/C=US/ST=CA/L=SanFrancisco/O=SecureProxy/CN=secure-proxy.local"
+    # Set proper permissions for the certificate files
+    chmod 400 /config/ssl_key.pem
+    chmod 444 /config/ssl_cert.pem
+    echo "✅ SSL certificates generated successfully"
+else
+    echo "✅ Using existing SSL certificates"
+fi
+
+# Initialize SSL certificate database for Squid
+if [ ! -d /config/ssl_db/db ] || [ -z "$(ls -A /config/ssl_db)" ]; then
+    echo "Initializing SSL certificate database for HTTPS filtering..."
+    /usr/lib/squid/security_file_certgen -c -s /config/ssl_db -M 4MB
+    echo "✅ SSL certificate database initialized"
+else
+    echo "✅ Using existing SSL certificate database"
+fi
+
 # Create empty blacklist files if they don't exist
 touch /etc/squid/blacklists/ip/local.txt
 touch /etc/squid/blacklists/domain/local.txt

@@ -109,6 +109,13 @@
                                 <label class="form-check-label" for="enable_https_filtering">HTTPS Filtering</label>
                                 <div class="form-text">Decrypt and inspect HTTPS traffic (requires certificate setup)</div>
                             </div>
+                            
+                            <div class="mb-3" id="download-cert-container">
+                                <button type="button" class="btn btn-outline-secondary" id="download-cert-btn">
+                                    <i class="fas fa-download me-1"></i> Download CA Certificate
+                                </button>
+                                <div class="form-text">Install this certificate on your clients to trust HTTPS filtering</div>
+                            </div>
                         </div>
                     </div>
                     
@@ -177,22 +184,6 @@
                                     <option value="ntlm">NTLM Authentication</option>
                                 </select>
                             </div>
-                        </div>
-                    </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-12">
-                            <h6 class="border-bottom pb-2 mb-3">User Management</h6>
-                            
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="enable_user_management">
-                                <label class="form-check-label" for="enable_user_management">Enable User Management</label>
-                                <div class="form-text">Enable individual user accounts with separate permissions</div>
-                            </div>
-                            
-                            <button type="button" class="btn btn-outline-primary mb-3" id="manage-users-btn">
-                                <i class="fas fa-users me-1"></i> Manage Users
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -341,14 +332,15 @@
             }
         });
         
-        // Manage users button
-        $('#manage-users-btn').click(function() {
-            showUserManagementModal();
-        });
-        
         // Initialize hidden elements based on checkbox states
         $('#enable_content_filtering').trigger('change');
         $('#enable_time_restrictions').trigger('change');
+        
+        // Toggle download cert button based on HTTPS filtering state
+        $('#download-cert-container').toggle($('#enable_https_filtering').is(':checked'));
+        $('#download-cert-btn').click(function() {
+            window.location = '/api/maintenance/download-cert';
+        });
     });
     
     function loadSettings() {
@@ -385,7 +377,6 @@
                     // Update auth settings
                     $('#enable_proxy_auth').prop('checked', settings.enable_proxy_auth === 'true');
                     $('#auth_method').val(settings.auth_method || 'basic');
-                    $('#enable_user_management').prop('checked', settings.enable_user_management === 'true');
                     
                     // Update logging settings
                     $('#enable_extended_logging').prop('checked', settings.enable_extended_logging === 'true');
@@ -399,6 +390,7 @@
                     // Trigger change events to update UI
                     $('#enable_content_filtering').trigger('change');
                     $('#enable_time_restrictions').trigger('change');
+                    $('#enable_https_filtering').trigger('change');
                 }
             })
             .catch(function(error) {
@@ -434,7 +426,6 @@
             // Auth settings
             enable_proxy_auth: $('#enable_proxy_auth').is(':checked') ? 'true' : 'false',
             auth_method: $('#auth_method').val(),
-            enable_user_management: $('#enable_user_management').is(':checked') ? 'true' : 'false',
             
             // Logging settings
             enable_extended_logging: $('#enable_extended_logging').is(':checked') ? 'true' : 'false',
@@ -509,7 +500,6 @@
         
         $('#enable_proxy_auth').prop('checked', false);
         $('#auth_method').val('basic');
-        $('#enable_user_management').prop('checked', false);
         
         $('#enable_extended_logging').prop('checked', false);
         $('#log_retention').val('30');
@@ -518,6 +508,7 @@
         // Trigger change events to update UI
         $('#enable_content_filtering').trigger('change');
         $('#enable_time_restrictions').trigger('change');
+        $('#enable_https_filtering').trigger('change');
         
         // Save all settings
         saveSettings();
@@ -550,12 +541,6 @@
             .catch(function(error) {
                 showToast('Failed to backup configuration: ' + error.message, 'danger');
             });
-    }
-    
-    function showUserManagementModal() {
-        // Show a modal for managing users
-        // This is a placeholder - in a real app, you'd implement a full user management interface
-        alert("User management would be implemented here");
     }
 </script>
 {% endblock %}

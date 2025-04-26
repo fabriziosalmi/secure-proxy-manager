@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="">
     <title>Secure Proxy - {% block title %}Dashboard{% endblock %}</title>
     
     <!-- Bootstrap 5 CSS from CDN -->
@@ -211,24 +212,38 @@
             showLoading();
             
             return new Promise((resolve, reject) => {
+                // Get CSRF token from headers if available
+                const csrfToken = $('meta[name="csrf-token"]').attr('content');
+                
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                
+                // Add CSRF token if available
+                if (csrfToken) {
+                    headers['X-CSRF-Token'] = csrfToken;
+                }
+                
                 $.ajax({
                     url: '/api/' + endpoint,
                     type: method,
                     data: data ? JSON.stringify(data) : null,
                     contentType: 'application/json',
                     dataType: 'json',
+                    headers: headers,
                     success: function(response) {
                         hideLoading();
+                        
+                        // If the response contains a CSRF token, update the meta tag
+                        if (response.csrf_token) {
+                            $('meta[name="csrf-token"]').attr('content', response.csrf_token);
+                        }
+                        
                         resolve(response);
                     },
                     error: function(xhr, status, error) {
                         hideLoading();
-                        console.error('API Error:', error);
-                        try {
-                            reject(xhr.responseJSON || { status: 'error', message: 'Unknown error occurred' });
-                        } catch (e) {
-                            reject({ status: 'error', message: 'Unknown error occurred' });
-                        }
+                        handleApiError(xhr.responseJSON || { status: 'error', message: 'Unknown error occurred' });
                     }
                 });
             });
@@ -261,6 +276,32 @@
             $(toastElement).on('hidden.bs.toast', function() {
                 $(this).parent().remove();
             });
+        }
+        
+        // Enhanced error handling for API calls
+        function handleApiError(error, defaultMessage = 'An error occurred') {
+            // If error is a known error object from our API
+            if (error && error.message) {
+                showToast(error.message, 'danger');
+            } 
+            // If error is a string
+            else if (typeof error === 'string') {
+                showToast(error, 'danger');
+            } 
+            // If we have no information, use the default message
+            else {
+                showToast(defaultMessage, 'danger');
+            }
+            
+            // Log the full error to console for debugging
+            console.error('API Error:', error);
+            
+            // If unauthorized error, redirect to login page after short delay
+            if (error && (error.status === 401 || error.statusCode === 401)) {
+                setTimeout(() => {
+                    window.location.href = '/login';
+                }, 2000);
+            }
         }
     </script>
     
