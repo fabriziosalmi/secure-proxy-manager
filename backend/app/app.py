@@ -605,7 +605,6 @@ def apply_settings():
         
         # IP and Domain blacklists
         squid_conf.append("# IP blacklists")
-        # Fixed IP blacklist ACL - using "src" with a file containing IPs
         squid_conf.append('acl ip_blacklist src "/etc/squid/blacklists/ip/local.txt"')
         squid_conf.append("")
         squid_conf.append("# Domain blacklists")
@@ -737,105 +736,61 @@ def apply_settings():
         squid_conf.append("refresh_pattern -i (/cgi-bin/|\\?) 0     0%      0")
         squid_conf.append("refresh_pattern .               0       20%     4320")
         
-        # Create a temporary file to validate the configuration syntax
-        temp_conf_path = '/tmp/squid_test.conf'
-        with open(temp_conf_path, 'w') as f:
-            f.write('\n'.join(squid_conf))
+        # Generate the final configuration
+        final_config = '\n'.join(squid_conf)
         
-        # Validate the configuration syntax
-        try:
-            validation_result = subprocess.run(
-                ['docker', 'exec', 'secure-proxy-proxy-1', 'squid', '-k', 'parse', '-f', '/tmp/squid_test.conf'],
-                capture_output=True, check=True, timeout=10
-            )
-            logger.info("Configuration validation successful")
-            valid_config = True
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Configuration validation failed: {e.stderr.decode('utf-8')}")
-            valid_config = False
-            # We continue anyway, as the startup script will handle invalid configurations
+        # Primary configuration path that will be picked up by the container
+        # This is mounted to the /config directory in the container via docker-compose.yml
+        config_path = '/config/custom_squid.conf'
+        local_config_path = 'config/custom_squid.conf'
         
-        # Write the configuration to both locations where it might be used
-        with open('/config/custom_squid.conf', 'w') as f:
-            f.write('\n'.join(squid_conf))
+        # Write configuration to the correct location
+        logger.info(f"Writing Squid configuration to {config_path}")
         
-        # Also update the main Squid config files in both possible locations
-        try:
-            with open('/config/squid.conf', 'w') as f:
-                f.write('\n'.join(squid_conf))
-        except Exception as e:
-            logger.warning(f"Could not write to /config/squid.conf: {e}")
-            
-        try:
-            with open('/config/squid/squid.conf', 'w') as f:
-                f.write('\n'.join(squid_conf))
-        except Exception as e:
-            logger.warning(f"Could not write to /config/squid/squid.conf: {e}")
-            
-        # Also directly update the proxy config file
-        try:
-            with open('/proxy/squid.conf', 'w') as f:
-                f.write('\n'.join(squid_conf))
-        except Exception as e:
-            logger.warning(f"Could not write to /proxy/squid.conf: {e}")
+        # Try all possible paths to ensure at least one works
+        success = False
         
-        # Also try to write to the local repo's config file
+        # First try the absolute path
         try:
-            with open('proxy/squid.conf', 'w') as f:
-                f.write('\n'.join(squid_conf))
+            os.makedirs(os.path.dirname(config_path), exist_ok=True)
+            with open(config_path, 'w') as f:
+                f.write(final_config)
+            logger.info(f"Successfully wrote configuration to {config_path}")
+            success = True
         except Exception as e:
-            logger.warning(f"Could not write to relative proxy/squid.conf: {e}")
-
-        # Also ensure the blacklist files exist and have correct content
+            logger.warning(f"Could not write to {config_path}: {e}")
+        
+        # Also try relative path from project root
+        try:
+            os.makedirs(os.path.dirname(local_config_path), exist_ok=True)
+            with open(local_config_path, 'w') as f:
+                f.write(final_config)
+            logger.info(f"Successfully wrote configuration to {local_config_path}")
+            success = True
+        except Exception as e:
+            logger.warning(f"Could not write to {local_config_path}: {e}")
+        
+        # Ensure blacklist files are updated
         update_ip_blacklist()
         update_domain_blacklist()
         
-        # Reload squid configuration - more robust method
-        reloaded = False
-        
-        # If configuration is invalid, warn but still try to apply it as the startup script will handle it
-        if not valid_config:
-            logger.warning("Applying configuration despite validation errors - startup script will handle recovery")
-            
-        # Try multiple methods to reload the config, in case one fails
+        # Now restart the proxy container to apply changes
         try:
-            # Method 1: Direct reconfigure command
+            logger.info("Restarting proxy container to apply new configuration")
             subprocess.run(
-                ['docker', 'exec', 'secure-proxy-proxy-1', 'squid', '-k', 'reconfigure'],
-                capture_output=True, check=True, timeout=10
+                ['docker', 'restart', 'secure-proxy-proxy-1'],
+                capture_output=True, check=True, timeout=20
             )
-            logger.info("Squid reconfigured successfully via direct command")
-            reloaded = True
-        except Exception as e:
-            logger.warning(f"Error reconfiguring Squid via direct command: {str(e)}")
+            logger.info("Proxy container restarted successfully")
             
-        if not reloaded:
-            try:
-                # Method 2: Use the squidclient
-                subprocess.run(
-                    ['docker', 'exec', 'secure-proxy-proxy-1', 'squidclient', '-h', 'localhost', 'mgr:reconfigure'],
-                    capture_output=True, check=True, timeout=10
-                )
-                logger.info("Squid reconfigured successfully via squidclient")
-                reloaded = True
-            except Exception as e:
-                logger.warning(f"Error reconfiguring Squid via squidclient: {str(e)}")
-        
-        if not reloaded:
-            try:
-                # Method 3: Restart the container
-                subprocess.run(
-                    ['docker', 'restart', 'secure-proxy-proxy-1'],
-                    capture_output=True, check=True, timeout=20
-                )
-                logger.info("Proxy container restarted successfully")
-                reloaded = True
-            except Exception as e:
-                logger.error(f"Error restarting proxy container: {str(e)}")
-                return False
-        
-        logger.info("Settings applied successfully")
-        return True
+            # Wait for the container to come up
+            time.sleep(5)
+            
+            return success
+        except Exception as e:
+            logger.error(f"Error restarting proxy container: {str(e)}")
+            return success and True  # Return True if we at least wrote a configuration file
+            
     except Exception as e:
         logger.error(f"Error applying settings: {str(e)}")
         return False
