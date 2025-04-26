@@ -38,7 +38,7 @@ services:
     ports:
       - "3128:3128"
     volumes:
-      - ./proxy/squid.conf:/etc/squid/squid.conf
+      # Removed the direct mount of squid.conf
       - ./config:/config
       - ./data:/data
       - ./logs:/var/log/squid
