@@ -29,6 +29,11 @@ for directory in [SQUID_CONFIG_DIR]:
         os.makedirs(directory, exist_ok=True)
         print(f"Created directory: {directory}")
 
+# Health check endpoint for Docker
+@app.route('/health')
+def health_check():
+    return jsonify({'status': 'ok'}), 200
+
 # Add route for root URL - now serve index.html directly
 @app.route('/')
 def index():
@@ -482,4 +487,6 @@ def download_certificate():
     return send_file(os.path.join(BASE_DIR, 'README.md'), as_attachment=True, download_name='secure-proxy-ca.crt')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8001, debug=True)
+    # Use environment variable for port with fallback to 8001 for local development
+    port = int(os.environ.get('FLASK_PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
