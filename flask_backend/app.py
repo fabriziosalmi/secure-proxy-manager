@@ -26,11 +26,13 @@ SQUID_CONF_PATH = os.path.join(SQUID_CONFIG_DIR, 'squid.conf')
 IN_DOCKER = os.environ.get('RUNNING_IN_DOCKER', 'false').lower() == 'true'
 
 if IN_DOCKER:
-    SQUID_RELOAD_COMMAND = "squid -k reconfigure"
-    SQUID_RESTART_COMMAND = "squid -k shutdown && squid -N"
-    SQUID_START_COMMAND = "squid -N"
-    SQUID_STOP_COMMAND = "squid -k shutdown"
-    SQUID_STATUS_COMMAND = "pgrep -x squid > /dev/null && echo 'running' || echo 'stopped'"
+    # In Docker, we should use supervisor to control Squid instead of direct commands
+    # The -N flag can cause issues in a container environment
+    SQUID_RELOAD_COMMAND = "supervisorctl signal HUP squid"
+    SQUID_RESTART_COMMAND = "supervisorctl restart squid"
+    SQUID_START_COMMAND = "supervisorctl start squid"
+    SQUID_STOP_COMMAND = "supervisorctl stop squid"
+    SQUID_STATUS_COMMAND = "supervisorctl status squid | grep -q RUNNING && echo 'running' || echo 'stopped'"
 else:
     # Traditional systemctl commands for non-Docker environments
     SQUID_RELOAD_COMMAND = "sudo systemctl reload squid"
@@ -38,6 +40,10 @@ else:
     SQUID_START_COMMAND = "sudo systemctl start squid"
     SQUID_STOP_COMMAND = "sudo systemctl stop squid"
     SQUID_STATUS_COMMAND = "sudo systemctl status squid"
+
+# Add debugging to see which commands are being used
+print(f"SQUID_START_COMMAND: {SQUID_START_COMMAND}")
+print(f"SQUID_STATUS_COMMAND: {SQUID_STATUS_COMMAND}")
 
 # Squid monitoring configuration
 SQUID_HOST = os.environ.get('SQUID_HOST', 'localhost')
