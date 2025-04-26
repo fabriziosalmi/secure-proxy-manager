@@ -1,4 +1,1 @@
 example.com
-blocked-test-domain.com
-
-blocked-test-domain.com

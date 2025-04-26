@@ -6,7 +6,7 @@ import os
 import subprocess
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import threading
 import time
@@ -797,45 +797,128 @@ def apply_settings():
 
 def parse_squid_logs():
     """Parse Squid access logs and import to database"""
-    log_path = '/logs/access.log'
+    # Try multiple potential log paths
+    log_paths = [
+        '/logs/access.log',
+        'logs/access.log',
+        '/var/log/squid/access.log',
+        './logs/access.log',
+        '../logs/access.log'
+    ]
     
-    if not os.path.exists(log_path):
-        logger.warning(f"Log file not found: {log_path}")
-        return
+    # Find the first log file that exists and is readable
+    log_path = None
+    for path in log_paths:
+        if os.path.exists(path) and os.access(path, os.R_OK):
+            log_path = path
+            logger.info(f"Found Squid access log at: {log_path}")
+            break
     
-    conn = get_db()
-    cursor = conn.cursor()
+    if not log_path:
+        error_msg = f"Log file not found in any of the expected locations: {', '.join(log_paths)}"
+        logger.error(error_msg)
+        raise FileNotFoundError(error_msg)
     
-    # Clear existing logs before importing
-    cursor.execute("DELETE FROM proxy_logs")
-    
-    # Parse Squid log format matching your actual log format
-    with open(log_path, 'r') as f:
-        for line in f:
-            parts = line.strip().split()
-            if len(parts) >= 9:
+    try:
+        # Get file stats to see if it's readable and has content
+        file_stats = os.stat(log_path)
+        if file_stats.st_size == 0:
+            logger.warning(f"Log file {log_path} is empty")
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Instead of clearing all logs, only clear logs that we'll be reimporting
+        # This keeps historical data while avoiding duplicates
+        logger.info("Preparing database for log import")
+        
+        # Parse Squid log format matching your actual log format
+        imported_count = 0
+        error_count = 0
+        with open(log_path, 'r') as f:
+            for line_number, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue  # Skip empty lines
+                    
                 try:
+                    parts = line.split()
+                    if len(parts) < 7:
+                        logger.warning(f"Line {line_number} has insufficient fields: {line}")
+                        error_count += 1
+                        continue
+                        
                     timestamp = float(parts[0])  # Convert timestamp to human-readable format
                     elapsed = parts[1]
                     source_ip = parts[2]
                     status_code = parts[3]
-                    bytes = int(parts[4])
+                    
+                    # Handle non-numeric bytes values
+                    try:
+                        bytes_value = int(parts[4])
+                    except ValueError:
+                        bytes_value = 0
+                        logger.warning(f"Line {line_number} has non-numeric bytes value: {parts[4]}")
+                    
                     method = parts[5]
                     url = parts[6]
                     
                     # Convert Unix timestamp to datetime
                     readable_time = datetime.fromtimestamp(timestamp).isoformat()
                     
+                    # Use INSERT OR IGNORE to avoid duplicates if reimporting
                     cursor.execute("""
-                    INSERT INTO proxy_logs (timestamp, source_ip, destination, status, bytes)
+                    INSERT OR IGNORE INTO proxy_logs (timestamp, source_ip, destination, status, bytes)
                     VALUES (?, ?, ?, ?, ?)
-                    """, (readable_time, source_ip, url, status_code, bytes))
+                    """, (readable_time, source_ip, url, status_code, bytes_value))
+                    
+                    imported_count += 1
+                    if imported_count % 1000 == 0:
+                        # Commit periodically for large files
+                        conn.commit()
+                        logger.info(f"Imported {imported_count} log entries so far...")
+                        
                 except (ValueError, IndexError) as e:
-                    logger.error(f"Error parsing log line: {line.strip()} - {str(e)}")
+                    error_count += 1
+                    logger.error(f"Error parsing log line {line_number}: {line} - {str(e)}")
                     continue
-    
-    conn.commit()
-    logger.info("Squid logs imported to database")
+        
+        # Final commit
+        conn.commit()
+        
+        logger.info(f"Squid logs import completed: {imported_count} entries imported, {error_count} errors")
+        
+        # Update log stats table to record last import time
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS log_stats (
+            id INTEGER PRIMARY KEY,
+            last_import TIMESTAMP,
+            import_count INTEGER,
+            error_count INTEGER
+        )
+        """)
+        
+        cursor.execute("""
+        INSERT OR REPLACE INTO log_stats (id, last_import, import_count, error_count)
+        VALUES (1, ?, ?, ?)
+        """, (datetime.now().isoformat(), imported_count, error_count))
+        
+        conn.commit()
+        
+        return {
+            "imported_count": imported_count,
+            "error_count": error_count,
+            "log_path": log_path
+        }
+        
+    except PermissionError as e:
+        error_msg = f"Permission denied when accessing log file {log_path}: {str(e)}"
+        logger.error(error_msg)
+        raise PermissionError(error_msg)
+    except Exception as e:
+        error_msg = f"Error importing logs from {log_path}: {str(e)}"
+        logger.error(error_msg)
+        raise Exception(error_msg)
 
 # Add background log parser
 def background_log_parser():
@@ -865,6 +948,140 @@ try:
     logger.info("Initial settings applied")
 except Exception as e:
     logger.error(f"Error applying initial settings: {str(e)}")
+
+@app.route('/api/logs/stats', methods=['GET'])
+@auth.login_required
+def get_log_stats():
+    """Get statistics about logs including blocked requests and direct IP blocks"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get total log count
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs")
+        total_count = cursor.fetchone()[0]
+        
+        # Get blocked requests count (TCP_DENIED, 403, etc.)
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%'")
+        blocked_count = cursor.fetchone()[0]
+        
+        # Get direct IP blocks count (specific to your use case - looking for IPs in destination)
+        cursor.execute("""
+            SELECT COUNT(*) FROM proxy_logs 
+            WHERE (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%')
+            AND (destination REGEXP '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' 
+                 OR destination LIKE 'http://%[0-9]%.[0-9]%.[0-9]%.[0-9]%' 
+                 OR destination LIKE 'https://%[0-9]%.[0-9]%.[0-9]%.[0-9]%')
+        """)
+        
+        # In case REGEXP is not supported, fallback to simpler check
+        try:
+            ip_blocks_count = cursor.fetchone()[0]
+        except sqlite3.OperationalError:
+            # Fallback for SQLite without REGEXP
+            cursor.execute("""
+                SELECT COUNT(*) FROM proxy_logs 
+                WHERE (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%')
+                AND (destination LIKE 'http://%' OR destination LIKE 'https://%')
+                AND (
+                    destination LIKE '%.[0-9]%.%' 
+                    AND destination NOT LIKE '%.com%' 
+                    AND destination NOT LIKE '%.org%'
+                    AND destination NOT LIKE '%.net%'
+                    AND destination NOT LIKE '%.io%'
+                )
+            """)
+            ip_blocks_count = cursor.fetchone()[0]
+        
+        # Get timestamp of last import
+        cursor.execute("SELECT MAX(timestamp) FROM proxy_logs")
+        last_import = cursor.fetchone()[0]
+        
+        # Get count of errors (500+ status codes)
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '%500%' OR status LIKE '%501%' OR status LIKE '%502%' OR status LIKE '%503%' OR status LIKE '%504%' OR status LIKE '%505%'")
+        error_count = cursor.fetchone()[0]
+        
+        # Get count by status code groups
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '%200%' OR status LIKE '%206%'")
+        success_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '%30%'")
+        redirect_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '%40%' AND status NOT LIKE '%403%'")
+        client_error_count = cursor.fetchone()[0]
+        
+        # Get hourly stats for last 24 hours
+        hourly_stats = []
+        current_time = datetime.now()
+        for hour in range(24):
+            hour_ago = current_time - timedelta(hours=hour)
+            hour_start = hour_ago.replace(minute=0, second=0, microsecond=0)
+            hour_end = hour_start + timedelta(hours=1)
+            
+            cursor.execute("""
+                SELECT COUNT(*) FROM proxy_logs 
+                WHERE timestamp >= ? AND timestamp < ?
+            """, (hour_start.isoformat(), hour_end.isoformat()))
+            
+            hour_count = cursor.fetchone()[0]
+            hourly_stats.append({
+                "hour": hour_start.isoformat(),
+                "count": hour_count
+            })
+        
+        # Get most blocked domains (top 5)
+        cursor.execute("""
+            SELECT destination, COUNT(*) as count 
+            FROM proxy_logs 
+            WHERE status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%'
+            GROUP BY destination 
+            ORDER BY count DESC 
+            LIMIT 5
+        """)
+        top_blocked_domains = []
+        for row in cursor.fetchall():
+            top_blocked_domains.append({
+                "domain": row[0],
+                "count": row[1]
+            })
+            
+        # Get most active source IPs (top 5)
+        cursor.execute("""
+            SELECT source_ip, COUNT(*) as count 
+            FROM proxy_logs 
+            GROUP BY source_ip 
+            ORDER BY count DESC 
+            LIMIT 5
+        """)
+        top_source_ips = []
+        for row in cursor.fetchall():
+            top_source_ips.append({
+                "ip": row[0],
+                "count": row[1]
+            })
+        
+        stats = {
+            "total_count": total_count,
+            "blocked_count": blocked_count,
+            "ip_blocks_count": ip_blocks_count,
+            "last_import": last_import,
+            "error_count": error_count,
+            "success_count": success_count,
+            "redirect_count": redirect_count,
+            "client_error_count": client_error_count,
+            "hourly_stats": hourly_stats,
+            "top_blocked_domains": top_blocked_domains,
+            "top_source_ips": top_source_ips
+        }
+        
+        return jsonify({
+            "status": "success", 
+            "data": stats
+        })
+    except Exception as e:
+        logger.error(f"Error retrieving log statistics: {str(e)}")
+        return jsonify({"status": "error", "message": f"Error retrieving log statistics: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
