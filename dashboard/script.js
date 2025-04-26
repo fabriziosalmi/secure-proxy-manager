@@ -905,7 +905,14 @@ document.addEventListener('DOMContentLoaded', function() {
             let peakConnectionsValue = 0;
             let peakClientsValue = 0;
             
-            if (!connectionsCount) return; // Exit if elements don't exist
+            // Check if we're on the right page with required elements
+            const isMonitoringPage = connectionsCount && connectionsBar && clientsCount;
+            if (!isMonitoringPage) {
+                console.log("Not on monitoring page or elements not found");
+                return; // Exit if elements don't exist or not on dashboard page
+            }
+            
+            console.log("Initializing real-time monitoring");
             
             // Initialize
             fetchRealTimeStats();
@@ -924,11 +931,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (connectionsAutoRefresh) {
                     // Start auto-refresh (every 5 seconds)
                     connectionsRefreshInterval = setInterval(fetchRealTimeStats, 5000);
+                    console.log("Auto-refresh started");
                 } else {
                     // Stop auto-refresh
                     if (connectionsRefreshInterval) {
                         clearInterval(connectionsRefreshInterval);
                         connectionsRefreshInterval = null;
+                        console.log("Auto-refresh stopped");
                     }
                 }
             }
@@ -937,11 +946,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!connectionsCount || !clientsCount) return;
                 
                 try {
+                    console.log("Fetching real-time stats...");
                     if (refreshConnectionsBtn) refreshConnectionsBtn.classList.add('animate-spin');
                     
                     // Add force refresh parameter to avoid cached data
                     const response = await safeFetch('/api/stats/realtime?refresh=true');
+                    if (!response.ok) {
+                        throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                    }
+                    
                     const data = await response.json();
+                    console.log("Real-time stats received:", data);
                     
                     if (data.status === 'error') {
                         throw new Error(data.message || 'Unknown error fetching stats');
@@ -1014,29 +1029,36 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     
                     // Clear system metrics
+                    const cpuUsageEl = document.getElementById('cpu-usage');
+                    const memoryUsageEl = document.getElementById('memory-usage');
+                    const diskUsageEl = document.getElementById('disk-usage');
+                    const processIdEl = document.getElementById('process-id');
+                    
                     if (cpuUsageEl) cpuUsageEl.textContent = 'N/A';
                     if (memoryUsageEl) memoryUsageEl.textContent = 'N/A';
                     if (diskUsageEl) diskUsageEl.textContent = 'N/A';
                     if (processIdEl) processIdEl.textContent = 'Not running';
                     
+                    // Show toast notification about the error
+                    if (typeof toast !== 'undefined') {
+                        toast.show('Error fetching monitoring data. Check console for details.', 'error');
+                    }
                 } finally {
                     if (refreshConnectionsBtn) refreshConnectionsBtn.classList.remove('animate-spin');
                 }
             }
             
             function updateBarColors(barElement, percentage) {
-                if (!barElement) return;
+                barElement.classList.remove('progress-low', 'progress-medium', 'progress-high', 'progress-critical');
                 
-                // Remove existing color classes
-                barElement.classList.remove('bg-primary', 'bg-warning', 'bg-danger');
-                
-                // Add appropriate color class based on usage percentage
-                if (percentage < 70) {
-                    barElement.classList.add('bg-primary');
+                if (percentage < 50) {
+                    barElement.classList.add('progress-low');
+                } else if (percentage < 75) {
+                    barElement.classList.add('progress-medium');
                 } else if (percentage < 90) {
-                    barElement.classList.add('bg-warning');
+                    barElement.classList.add('progress-high');
                 } else {
-                    barElement.classList.add('bg-danger');
+                    barElement.classList.add('progress-critical');
                 }
             }
         }
@@ -2292,7 +2314,7 @@ document.addEventListener('DOMContentLoaded', function() {
         function escapeHtml(unsafe) {
             return unsafe
                 .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
+                .replace(/<//g, "&lt;")
                 .replace(/>/g, "&gt;")
                 .replace(/"/g, "&quot;")
                 .replace(/'/g, "&#039;");
@@ -2469,5 +2491,20 @@ document.addEventListener('DOMContentLoaded', function() {
             const downloadCertBtn = document.getElementById('download-cert-btn');
             if (downloadCertBtn) downloadCertBtn.disabled = false;
         }
+    }
+});
+
+// Ensure the page initialization happens after DOM is fully loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize pages based on the current path
+    const currentPath = window.location.pathname;
+    
+    if (currentPath.endsWith('/') || currentPath.endsWith('index.html') || currentPath.includes('/dashboard/') && !currentPath.includes('settings.html') && !currentPath.includes('logs.html')) {
+        console.log("Initializing Dashboard Page");
+        initDashboardPage();
+    } else if (currentPath.includes('settings.html')) {
+        initSettingsPage();
+    } else if (currentPath.includes('logs.html')) {
+        initLogsPage();
     }
 });
