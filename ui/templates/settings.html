@@ -442,6 +442,62 @@
         
         // Restore configuration
         $('#restore-config-btn').click(function() {
+            // Create a hidden file input if it doesn't exist
+            if ($('#file-upload').length === 0) {
+                $('body').append('<input type="file" id="file-upload" style="display:none" accept=".json">');
+            }
+            
+            // Set up the file input event handler
+            $('#file-upload').off('change').on('change', function(e) {
+                if (e.target.files.length === 0) return;
+                
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    try {
+                        const config = JSON.parse(e.target.result);
+                        
+                        // Confirm restore
+                        if (confirm('Are you sure you want to restore this configuration? Current settings will be overwritten.')) {
+                            // Include CSRF token in the form data
+                            const formData = new FormData();
+                            formData.append('config', JSON.stringify(config));
+                            formData.append('csrf_token', $('meta[name="csrf-token"]').attr('content'));
+                            
+                            $.ajax({
+                                url: '/api/maintenance/restore-config',
+                                type: 'POST',
+                                data: formData,
+                                processData: false,
+                                contentType: false,
+                                beforeSend: function(xhr) {
+                                    // Add CSRF token in header as well
+                                    const csrfToken = $('meta[name="csrf-token"]').attr('content');
+                                    if (csrfToken) {
+                                        xhr.setRequestHeader("X-CSRF-Token", csrfToken);
+                                    }
+                                    showLoading();
+                                },
+                                success: function(response) {
+                                    hideLoading();
+                                    showToast('Configuration restored successfully');
+                                    loadSettings(); // Reload settings to show the restored values
+                                },
+                                error: function(xhr, status, error) {
+                                    hideLoading();
+                                    showToast('Failed to restore configuration: ' + error, 'danger');
+                                }
+                            });
+                        }
+                    } catch (error) {
+                        showToast('Invalid configuration file: ' + error.message, 'danger');
+                    }
+                };
+                
+                reader.readAsText(file);
+            });
+            
             $('#file-upload').click();
         });
         
@@ -727,10 +783,25 @@
         // Handle authentication changes if password was updated
         const newPassword = $('#admin_password').val();
         if (newPassword) {
-            // This is just a placeholder - in a real app, you'd have a proper API for changing password
-            console.log("Password would be updated");
-            // Clear password field after submit
-            $('#admin_password').val('');
+            // Validate password on submission
+            const validation = validatePassword(newPassword);
+            if (!validation.valid) {
+                showToast('Password does not meet security requirements', 'danger');
+                return;
+            }
+            
+            // Submit password change request
+            apiRequest('POST', 'change-password', {
+                current_password: 'admin', // In a real app, you'd prompt for current password
+                new_password: newPassword
+            })
+            .then(function(response) {
+                showToast('Password changed successfully', 'success');
+                $('#admin_password').val(''); // Clear password field
+            })
+            .catch(function(error) {
+                showToast('Failed to change password: ' + error.message, 'danger');
+            });
         }
         
         // Wait for all settings to be updated
@@ -874,6 +945,32 @@
                 feedback.html('<i class="fas fa-exclamation-circle"></i> ' + validation.errors.join('<br>')).removeClass('text-success').addClass('text-danger');
             }
         });
+
+        // Add change password functionality
+        $('#save-settings').click(function() {
+            const newPassword = $('#admin_password').val();
+            if (newPassword) {
+                // Validate password on submission
+                const validation = validatePassword(newPassword);
+                if (!validation.valid) {
+                    showToast('Password does not meet security requirements', 'danger');
+                    return;
+                }
+                
+                // Submit password change request
+                apiRequest('POST', 'change-password', {
+                    current_password: 'admin', // In a real app, you'd prompt for current password
+                    new_password: newPassword
+                })
+                .then(function(response) {
+                    showToast('Password changed successfully', 'success');
+                    $('#admin_password').val(''); // Clear password field
+                })
+                .catch(function(error) {
+                    showToast('Failed to change password: ' + error.message, 'danger');
+                });
+            }
+        });
     });
 
     // Database tab functions
@@ -932,7 +1029,9 @@
     }
     
     function clearAllLogs() {
-        return apiRequest('POST', 'logs/clear', {})
+        return apiRequest('POST', 'logs/clear', {
+            csrf_token: $('meta[name="csrf-token"]').attr('content')
+        })
             .then(function(response) {
                 if (response.status === 'success') {
                     showToast('All logs cleared successfully');
@@ -951,7 +1050,10 @@
     }
     
     function clearOldLogs(days) {
-        return apiRequest('POST', 'logs/clear-old', { days: days })
+        return apiRequest('POST', 'logs/clear-old', { 
+            days: days,
+            csrf_token: $('meta[name="csrf-token"]').attr('content')
+        })
             .then(function(response) {
                 if (response.status === 'success') {
                     showToast(`Logs older than ${days} days cleared successfully`);
