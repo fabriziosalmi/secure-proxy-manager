@@ -144,31 +144,49 @@ def add_security_headers(response):
 @basic_auth.required
 def index():
     """Dashboard page"""
-    return render_template('index.html', active_page='dashboard')
+    csrf_token = get_csrf_token()
+    return render_template('index.html', active_page='dashboard', csrf_token=csrf_token)
 
 @app.route('/settings')
 @basic_auth.required
 def settings():
     """Settings page"""
-    return render_template('settings.html', active_page='settings')
+    # Get CSRF token from backend
+    csrf_token = get_csrf_token()
+    return render_template('settings.html', active_page='settings', csrf_token=csrf_token)
+
+def get_csrf_token():
+    """Get CSRF token from backend"""
+    session = get_requests_session()
+    try:
+        resp = session.get(f"{BACKEND_URL}/api/status", auth=API_AUTH, timeout=REQUEST_TIMEOUT)
+        # Extract CSRF token from response headers
+        csrf_token = resp.headers.get('X-CSRF-Token', '')
+        return csrf_token
+    except Exception as e:
+        logger.error(f"Error getting CSRF token: {str(e)}")
+        return ''
 
 @app.route('/blacklists')
 @basic_auth.required
 def blacklists():
     """Blacklists page"""
-    return render_template('blacklists.html', active_page='blacklists')
+    csrf_token = get_csrf_token()
+    return render_template('blacklists.html', active_page='blacklists', csrf_token=csrf_token)
 
 @app.route('/logs')
 @basic_auth.required
 def logs():
     """Logs page"""
-    return render_template('logs.html', active_page='logs')
+    csrf_token = get_csrf_token()
+    return render_template('logs.html', active_page='logs', csrf_token=csrf_token)
 
 @app.route('/about')
 @basic_auth.required
 def about():
     """About page"""
-    return render_template('about.html', active_page='about')
+    csrf_token = get_csrf_token()
+    return render_template('about.html', active_page='about', csrf_token=csrf_token)
 
 @app.route('/favicon.ico')
 def favicon():
@@ -196,14 +214,21 @@ def api_proxy(path):
         }), 503
     
     try:
+        # Set up headers to include in the request
+        headers = {}
+        
+        # Forward CSRF token if it exists in the original request
+        if 'X-CSRF-Token' in request.headers:
+            headers['X-CSRF-Token'] = request.headers['X-CSRF-Token']
+        
         if request.method == 'GET':
-            resp = session.get(url, auth=API_AUTH, params=request.args, timeout=REQUEST_TIMEOUT)
+            resp = session.get(url, auth=API_AUTH, params=request.args, headers=headers, timeout=REQUEST_TIMEOUT)
         elif request.method == 'POST':
-            resp = session.post(url, auth=API_AUTH, json=request.get_json(), timeout=REQUEST_TIMEOUT)
+            resp = session.post(url, auth=API_AUTH, json=request.get_json(), headers=headers, timeout=REQUEST_TIMEOUT)
         elif request.method == 'PUT':
-            resp = session.put(url, auth=API_AUTH, json=request.get_json(), timeout=REQUEST_TIMEOUT)
+            resp = session.put(url, auth=API_AUTH, json=request.get_json(), headers=headers, timeout=REQUEST_TIMEOUT)
         elif request.method == 'DELETE':
-            resp = session.delete(url, auth=API_AUTH, timeout=REQUEST_TIMEOUT)
+            resp = session.delete(url, auth=API_AUTH, headers=headers, timeout=REQUEST_TIMEOUT)
         
         # Handle 401 Unauthorized responses explicitly
         if resp.status_code == 401:
