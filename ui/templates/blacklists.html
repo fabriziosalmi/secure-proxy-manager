@@ -89,7 +89,6 @@
             </div>
             <div class="modal-body">
                 <form id="add-ip-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="mb-3">
                         <label for="ip-address" class="form-label">IP Address</label>
                         <input type="text" class="form-control" id="ip-address" placeholder="e.g. 192.168.1.1" required>
@@ -119,7 +118,6 @@
             </div>
             <div class="modal-body">
                 <form id="add-domain-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="mb-3">
                         <label for="domain-name" class="form-label">Domain Name</label>
                         <input type="text" class="form-control" id="domain-name" placeholder="e.g. example.com" required>
