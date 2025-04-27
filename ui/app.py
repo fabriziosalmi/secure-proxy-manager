@@ -181,13 +181,6 @@ def logs():
     csrf_token = get_csrf_token()
     return render_template('logs.html', active_page='logs', csrf_token=csrf_token)
 
-@app.route('/about')
-@basic_auth.required
-def about():
-    """About page"""
-    csrf_token = get_csrf_token()
-    return render_template('about.html', active_page='about', csrf_token=csrf_token)
-
 @app.route('/favicon.ico')
 def favicon():
     """Serve the favicon"""
