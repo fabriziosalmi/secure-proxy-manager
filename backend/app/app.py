@@ -55,7 +55,7 @@ if not os.path.exists('/logs'):
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levellevelname)s - %(message)s',
     handlers=[
         logging.FileHandler(log_path),
         logging.StreamHandler()
@@ -803,30 +803,33 @@ def restore_config():
                 # Restore settings
                 if 'settings' in backup:
                     for setting in backup['settings']:
-                        cursor.execute(
-                            "UPDATE settings SET setting_value = ? WHERE setting_name = ?", 
-                            (setting['setting_value'], setting['setting_name'])
-                        )
+                        if 'setting_name' in setting and 'setting_value' in setting:
+                            cursor.execute(
+                                "UPDATE settings SET setting_value = ? WHERE setting_name = ?", 
+                                (setting['setting_value'], setting['setting_name'])
+                            )
                 
                 # Restore IP blacklist
                 if 'ip_blacklist' in backup:
                     cursor.execute("DELETE FROM ip_blacklist")
                     for entry in backup['ip_blacklist']:
-                        cursor.execute(
-                            "INSERT INTO ip_blacklist (ip, description) VALUES (?, ?)",
-                            (entry['ip'], entry['description'])
-                        )
+                        if 'ip' in entry:
+                            description = entry.get('description', '')
+                            cursor.execute(
+                                "INSERT INTO ip_blacklist (ip, description) VALUES (?, ?)",
+                                (entry['ip'], description)
+                            )
                 
                 # Restore domain blacklist
                 if 'domain_blacklist' in backup:
                     cursor.execute("DELETE FROM domain_blacklist")
                     for entry in backup['domain_blacklist']:
-                        cursor.execute(
-                            "INSERT INTO domain_blacklist (domain, description) VALUES (?, ?)",
-                            (entry['domain'], entry['description'])
-                        )
-                
-                # Commit the transaction (handled by context manager)
+                        if 'domain' in entry and validate_domain(entry['domain']):
+                            description = entry.get('description', '')
+                            cursor.execute(
+                                "INSERT INTO domain_blacklist (domain, description) VALUES (?, ?)",
+                                (entry['domain'], description)
+                            )
                 
                 # Update blacklist files
                 update_ip_blacklist()
@@ -838,6 +841,7 @@ def restore_config():
                 return jsonify({"status": "success", "message": "Configuration restored successfully"})
             except Exception as e:
                 # Rollback in case of error (handled by context manager)
+                logger.error(f"Error in restore transaction: {str(e)}")
                 raise e
                 
     except Exception as e:
@@ -2444,115 +2448,77 @@ def get_cache_statistics():
         cache_size_row = cursor.fetchone()
         cache_size = int(cache_size_row['setting_value']) if cache_size_row else 1000  # Default to 1GB
         
-        # Try to get actual cache statistics
-        has_real_data = False
+        # Try to get actual cache statistics from Squid
+        container_name = os.environ.get('PROXY_CONTAINER_NAME', 'secure-proxy-proxy-1')
         
-        # Variables to hold the statistics
-        cache_usage = "N/A"
-        hit_ratio = "N/A"
+        # Validate container name to prevent command injection
+        if not re.match(r'^[a-zA-Z0-9_-]+$', container_name):
+            raise ValueError(f"Invalid container name format: {container_name}")
+        
+        # Variables to hold the statistics with proper defaults
+        cache_usage = 0
+        hit_ratio = 0
         avg_response_time = "N/A"
-        cache_usage_percentage = "N/A"
+        cache_usage_percentage = 0
         
-        # Try to query the Squid cache manager for actual stats
         try:
-            proxy_host = os.environ.get('PROXY_HOST', 'proxy')
-            proxy_port = os.environ.get('PROXY_PORT', '3128')
-            container_name = os.environ.get('PROXY_CONTAINER_NAME', 'secure-proxy-proxy-1')
-            
-            # Validate container name to prevent command injection
-            if not re.match(r'^[a-zA-Z0-9_-]+$', container_name):
-                raise ValueError(f"Invalid container name format: {container_name}")
-                
             # Try to get real cache information using squidclient
-            try:
-                result = subprocess.run(
-                    ['docker', 'exec', container_name, 'squidclient', '-h', 'localhost', 'mgr:info'],
-                    capture_output=True, text=True, check=False, timeout=5
-                )
-                
-                if result.returncode == 0:
-                    info_output = result.stdout
-                    
-                    # Parse the relevant cache information from squidclient output
-                    # Example patterns to look for:
-                    storage_pattern = r'Storage Swap size:\s+(\d+)\s+KB'
-                    mem_pattern = r'Storage Mem size:\s+(\d+)\s+KB'
-                    usage_pattern = r'Storage Swap capacity:\s+(\d+\.\d+)%'
-                    hits_pattern = r'Request Hit Ratios:\s+5min: (\d+\.\d+)%'
-                    
-                    # Extract storage info
-                    storage_match = re.search(storage_pattern, info_output)
-                    if storage_match:
-                        storage_kb = int(storage_match.group(1))
-                        cache_usage = int(storage_kb / 1024)  # Convert KB to MB
-                        has_real_data = True
-                    
-                    # Extract usage percentage
-                    usage_match = re.search(usage_pattern, info_output)
-                    if usage_match:
-                        cache_usage_percentage = float(usage_match.group(1))
-                        has_real_data = True
-                    
-                    # Extract hit ratio
-                    hits_match = re.search(hits_pattern, info_output)
-                    if hits_match:
-                        hit_ratio = float(hits_match.group(1)) / 100  # Convert percentage to ratio
-                        has_real_data = True
-            except Exception as e:
-                logger.warning(f"Error executing squidclient: {e}")
+            result = subprocess.run(
+                ['docker', 'exec', container_name, 'squidclient', '-h', 'localhost', 'mgr:info'],
+                capture_output=True, text=True, check=False, timeout=5
+            )
             
-            # If we couldn't get real cache stats, try to get hit ratio from logs
-            if not has_real_data:
-                try:
-                    cursor.execute("""
-                        SELECT 
-                            COUNT(CASE WHEN status LIKE '%HIT%' THEN 1 END) as hits,
-                            COUNT(*) as total
-                        FROM proxy_logs
-                        WHERE timestamp > datetime('now', '-1 day')
-                    """)
-                    result = cursor.fetchone()
-                    if result and result['total'] > 0:
-                        hit_ratio = result['hits'] / result['total']
-                        has_real_data = True
-                except Exception as e:
-                    logger.warning(f"Error getting hit ratio from logs: {e}")
-            
-            # For average response time, use log data if available
-            try:
-                # In real logs, you'd have response time data
-                # Here we're just checking if we have any logs
-                cursor.execute("SELECT COUNT(*) FROM proxy_logs")
-                log_count = cursor.fetchone()[0]
-                if log_count > 0:
-                    # Set a realistic response time (in production, calculate from logs)
-                    avg_response_time = "N/A"  # We don't have actual response time data
-                else:
-                    avg_response_time = "N/A"
-            except Exception as e:
-                logger.warning(f"Error checking logs for response time: {e}")
-                avg_response_time = "N/A"
+            if result.returncode == 0:
+                info_output = result.stdout
                 
+                # Parse the relevant cache information from squidclient output
+                storage_pattern = r'Storage Swap size:\s+(\d+)\s+KB'
+                usage_pattern = r'Storage Swap capacity:\s+(\d+\.\d+)%'
+                hits_pattern = r'Request Hit Ratios:\s+5min: (\d+\.\d+)%'
+                
+                # Extract storage info
+                storage_match = re.search(storage_pattern, info_output)
+                if storage_match:
+                    storage_kb = int(storage_match.group(1))
+                    cache_usage = int(storage_kb / 1024)  # Convert KB to MB
+                
+                # Extract usage percentage
+                usage_match = re.search(usage_pattern, info_output)
+                if usage_match:
+                    cache_usage_percentage = float(usage_match.group(1))
+                
+                # Extract hit ratio
+                hits_match = re.search(hits_pattern, info_output)
+                if hits_match:
+                    hit_ratio = float(hits_match.group(1))
         except Exception as e:
-            logger.warning(f"Error getting cache statistics: {e}")
-            has_real_data = False
+            logger.warning(f"Error getting direct cache statistics: {e}")
+            
+            # Fall back to database for hit ratio if available
+            try:
+                cursor.execute("""
+                    SELECT 
+                        COUNT(CASE WHEN status LIKE '%HIT%' THEN 1 END) as hits,
+                        COUNT(*) as total
+                    FROM proxy_logs
+                    WHERE timestamp > datetime('now', '-1 day')
+                """)
+                result = cursor.fetchone()
+                if result and result['total'] > 0:
+                    hit_ratio = round((result['hits'] / result['total']) * 100, 1)
+            except Exception as log_error:
+                logger.warning(f"Error getting hit ratio from logs: {log_error}")
         
-        # Format the response with available data
-        response_data = {
-            'cache_size': cache_size,
-            'cache_usage': cache_usage,
-            'cache_usage_percentage': cache_usage_percentage,
-            'hit_ratio': hit_ratio,
-            'avg_response_time': avg_response_time
-        }
-        
-        # Add a message if we don't have real data
-        if not has_real_data:
-            response_data['message'] = "No real cache statistics available"
-        
+        # Format the response
         return jsonify({
             'status': 'success',
-            'data': response_data
+            'data': {
+                'cache_size': cache_size,
+                'cache_usage': cache_usage,
+                'cache_usage_percentage': cache_usage_percentage,
+                'hit_ratio': hit_ratio,
+                'avg_response_time': avg_response_time
+            }
         })
     except Exception as e:
         logger.error(f"Error retrieving cache statistics: {str(e)}")
@@ -2562,13 +2528,17 @@ def get_cache_statistics():
         }), 500
 
 @app.route('/api/security/score', methods=['GET'])
+@auth.login_required
 def get_security_score():
+    """Get the security score based on current security settings"""
     db = get_db()
     cursor = db.cursor()
     
     # Get relevant security settings
-    cursor.execute('SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?, ?, ?, ?, ?)',
-                 ('enable_ip_blacklist', 'enable_domain_blacklist', 'block_direct_ip', 'enable_content_filtering', 'enable_https_filtering'))
+    cursor.execute('SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?, ?, ?, ?, ?, ?, ?)',
+                 ('enable_ip_blacklist', 'enable_domain_blacklist', 'block_direct_ip', 
+                  'enable_content_filtering', 'enable_https_filtering', 'default_password_changed',
+                  'enable_time_restrictions'))
     
     settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
     
@@ -2576,30 +2546,61 @@ def get_security_score():
     score = 0
     recommendations = []
     
+    # IP Blacklisting (20 points)
     if settings.get('enable_ip_blacklist') == 'true':
         score += 20
     else:
         recommendations.append('Enable IP blacklisting to block known malicious IP addresses')
     
+    # Domain Blacklisting (20 points)
     if settings.get('enable_domain_blacklist') == 'true':
         score += 20
     else:
         recommendations.append('Enable domain blacklisting to block malicious websites')
     
+    # Direct IP Blocking (20 points)
     if settings.get('block_direct_ip') == 'true':
         score += 20
     else:
         recommendations.append('Enable direct IP access blocking to prevent bypassing domain filters')
     
+    # Content Filtering (15 points)
     if settings.get('enable_content_filtering') == 'true':
         score += 15
     else:
         recommendations.append('Enable content filtering to block risky file types')
     
+    # HTTPS Filtering (15 points)
     if settings.get('enable_https_filtering') == 'true':
-        score += 25
+        score += 15
     else:
         recommendations.append('Consider enabling HTTPS filtering for complete security coverage')
+    
+    # Default Password Changed (5 points)
+    if settings.get('default_password_changed') == 'true':
+        score += 5
+    else:
+        recommendations.append('Change the default admin password to improve security')
+    
+    # Time Restrictions (5 points)
+    if settings.get('enable_time_restrictions') == 'true':
+        score += 5
+    else:
+        recommendations.append('Consider enabling time restrictions for controlled access')
+    
+    # Check if any blacklists are actually populated
+    cursor.execute('SELECT COUNT(*) FROM ip_blacklist')
+    ip_count = cursor.fetchone()[0]
+    
+    cursor.execute('SELECT COUNT(*) FROM domain_blacklist')
+    domain_count = cursor.fetchone()[0]
+    
+    # Add recommendations if blacklists are enabled but empty
+    if settings.get('enable_ip_blacklist') == 'true' and ip_count == 0:
+        recommendations.append('Add entries to your IP blacklist for better protection')
+    
+    if settings.get('enable_domain_blacklist') == 'true' and domain_count == 0:
+        recommendations.append('Add entries to your domain blacklist for better protection')
     
     # Determine security status
     if score >= 80:
@@ -2607,10 +2608,10 @@ def get_security_score():
         message = 'Your proxy is well-secured'
     elif score >= 50:
         status = 'adequate'
-        message = 'Your proxy security is adequate'
+        message = 'Your proxy security is adequate but could be improved'
     else:
         status = 'vulnerable'
-        message = 'Your proxy security needs improvement'
+        message = 'Your proxy security needs significant improvement'
     
     return jsonify({
         'status': 'success',
@@ -2940,6 +2941,87 @@ def export_database():
     except Exception as e:
         logger.error(f"Error exporting database: {str(e)}")
         return jsonify({"status": "error", "message": f"Error exporting database: {str(e)}"}), 500
+
+@app.route('/api/security/scan', methods=['POST'])
+@auth.login_required
+def run_security_scan():
+    """Run a comprehensive security scan of the proxy configuration"""
+    try:
+        # Collect all security-related settings
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Update security score data in response to the scan
+        cursor.execute('SELECT setting_name, setting_value FROM settings')
+        settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
+        
+        # Check if direct IP blocking is enabled
+        if settings.get('block_direct_ip') != 'true':
+            cursor.execute("UPDATE settings SET setting_value = ? WHERE setting_name = ?", 
+                         ('true', 'block_direct_ip'))
+            logger.info("Security scan: Enabled direct IP blocking (critical security feature)")
+        
+        # Check blacklist functionality
+        security_issues = []
+        
+        # IP blacklist check
+        cursor.execute("SELECT COUNT(*) FROM ip_blacklist")
+        ip_count = cursor.fetchone()[0]
+        
+        if settings.get('enable_ip_blacklist') != 'true':
+            security_issues.append("IP blacklisting is disabled")
+        elif ip_count == 0:
+            security_issues.append("IP blacklist is enabled but empty")
+            
+        # Domain blacklist check
+        cursor.execute("SELECT COUNT(*) FROM domain_blacklist")
+        domain_count = cursor.fetchone()[0]
+        
+        if settings.get('enable_domain_blacklist') != 'true':
+            security_issues.append("Domain blacklisting is disabled")
+        elif domain_count == 0:
+            security_issues.append("Domain blacklist is enabled but empty")
+            
+        # Check HTTPS filtering
+        if settings.get('enable_https_filtering') != 'true':
+            security_issues.append("HTTPS filtering is disabled, cannot inspect encrypted traffic")
+        else:
+            # Verify certificate configuration if HTTPS filtering is enabled
+            cert_paths = ['/config/ssl_cert.pem', 'config/ssl_cert.pem']
+            cert_found = False
+            
+            for cert_path in cert_paths:
+                if os.path.exists(cert_path):
+                    cert_found = True
+                    break
+                    
+            if not cert_found:
+                security_issues.append("HTTPS filtering is enabled but certificate is missing")
+                
+        # Check for content filtering
+        if settings.get('enable_content_filtering') != 'true':
+            security_issues.append("Content filtering is disabled, risky file types are not blocked")
+            
+        # Check for admin password change from default
+        if settings.get('default_password_changed') != 'true':
+            security_issues.append("Default admin password has not been changed")
+            
+        # Apply settings to ensure security changes take effect
+        conn.commit()
+        apply_settings()
+        
+        return jsonify({
+            "status": "success",
+            "message": "Security scan completed successfully",
+            "issues_found": len(security_issues),
+            "security_issues": security_issues
+        })
+    except Exception as e:
+        logger.error(f"Error during security scan: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error during security scan: {str(e)}"
+        }), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
