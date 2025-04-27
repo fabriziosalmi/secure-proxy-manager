@@ -40,8 +40,8 @@ login_manager.init_app(app)
 CORS(app, supports_credentials=True, resources={
     r"/api/*": {
         "origins": "*",
-        "allow_headers": ["Content-Type", "Authorization", "X-CSRF-Token"],
-        "expose_headers": ["X-CSRF-Token"]
+        "allow_headers": ["Content-Type", "Authorization"],
+        "expose_headers": []
     }
 })
 auth = HTTPBasicAuth()

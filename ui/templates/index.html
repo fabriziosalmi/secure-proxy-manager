@@ -445,9 +445,7 @@
         $('#optimize-cache-btn').click(function() {
             $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Optimizing...');
             
-            apiRequest('POST', 'maintenance/optimize-cache', {
-                csrf_token: $('meta[name="csrf-token"]').attr('content')
-            })
+            apiRequest('POST', 'maintenance/optimize-cache')
                 .then(function(response) {
                     showToast('Cache optimized successfully. ' + response.data.space_saved + ' of space saved.');
                     loadCacheStatistics();
@@ -465,9 +463,7 @@
             $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Scanning...');
             
             // Add CSRF token to the security scan request
-            apiRequest('POST', 'security/scan', {
-                csrf_token: $('meta[name="csrf-token"]').attr('content')
-            })
+            apiRequest('POST', 'security/scan')
             .then(function() {
                 loadSecurityScore();
                 showToast('Security scan completed');
