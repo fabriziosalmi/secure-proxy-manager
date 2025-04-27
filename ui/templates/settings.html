@@ -20,6 +20,9 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced" type="button" role="tab" aria-controls="advanced" aria-selected="false">Advanced</button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="database-tab" data-bs-toggle="tab" data-bs-target="#database" type="button" role="tab" aria-controls="database" aria-selected="false">Database</button>
+                </li>
             </ul>
             
             <div class="tab-content p-3 border border-top-0 rounded-bottom" id="settingsTabContent">
@@ -261,6 +264,131 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Database Operations Tab -->
+                <div class="tab-pane fade" id="database" role="tabpanel" aria-labelledby="database-tab">
+                    <h5 class="mb-3">Database Management</h5>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <h6 class="border-bottom pb-2 mb-3">Logs Management</h6>
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>This section allows you to manage the proxy logs stored in the database.
+                            </div>
+                            
+                            <div class="card mb-3">
+                                <div class="card-header bg-light">
+                                    <strong>Clear Logs</strong>
+                                </div>
+                                <div class="card-body">
+                                    <p>Remove all proxy access logs from the database.</p>
+                                    <div class="d-flex align-items-center">
+                                        <button type="button" class="btn btn-danger me-3" id="clear-logs-btn">
+                                            <i class="fas fa-trash-alt me-1"></i> Clear All Logs
+                                        </button>
+                                        <span class="text-muted small">This action cannot be undone.</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="card mb-3">
+                                <div class="card-header bg-light">
+                                    <strong>Log Retention</strong>
+                                </div>
+                                <div class="card-body">
+                                    <p>Remove logs older than a specific time period.</p>
+                                    <div class="row g-3 align-items-center mb-3">
+                                        <div class="col-auto">
+                                            <label for="retention-period" class="col-form-label">Remove logs older than</label>
+                                        </div>
+                                        <div class="col-auto">
+                                            <select class="form-select" id="retention-period">
+                                                <option value="1">1 day</option>
+                                                <option value="7">7 days</option>
+                                                <option value="30" selected>30 days</option>
+                                                <option value="90">90 days</option>
+                                                <option value="180">180 days</option>
+                                                <option value="365">1 year</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-auto">
+                                            <button type="button" class="btn btn-warning" id="clear-old-logs-btn">
+                                                <i class="fas fa-broom me-1"></i> Clear Old Logs
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <h6 class="border-bottom pb-2 mb-3">Database Statistics</h6>
+                            
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="card text-center mb-3">
+                                        <div class="card-body">
+                                            <h6 class="card-title">Total Logs</h6>
+                                            <h3 id="db-total-logs">Loading...</h3>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card text-center mb-3">
+                                        <div class="card-body">
+                                            <h6 class="card-title">Database Size</h6>
+                                            <h3 id="db-size">Loading...</h3>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card text-center mb-3">
+                                        <div class="card-body">
+                                            <h6 class="card-title">Last Log Entry</h6>
+                                            <h3 id="db-last-entry">Loading...</h3>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button type="button" class="btn btn-outline-primary mt-2" id="refresh-db-stats-btn">
+                                <i class="fas fa-sync-alt me-1"></i> Refresh Statistics
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <h6 class="border-bottom pb-2 mb-3">Database Maintenance</h6>
+                            
+                            <div class="card mb-3">
+                                <div class="card-header bg-light">
+                                    <strong>Database Optimization</strong>
+                                </div>
+                                <div class="card-body">
+                                    <p>Optimize the database to improve performance and reduce size.</p>
+                                    <button type="button" class="btn btn-primary" id="optimize-db-btn">
+                                        <i class="fas fa-database me-1"></i> Optimize Database
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="card mb-3">
+                                <div class="card-header bg-light">
+                                    <strong>Export Database</strong>
+                                </div>
+                                <div class="card-body">
+                                    <p>Export the database for backup or analysis purposes.</p>
+                                    <button type="button" class="btn btn-outline-secondary" id="export-db-btn">
+                                        <i class="fas fa-file-export me-1"></i> Export Database
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-3">
@@ -439,6 +567,54 @@
                     modal.hide();
                 });
             }
+        });
+
+        // Database tab initialization
+        loadDatabaseStats();
+        
+        // Clear all logs button
+        $('#clear-logs-btn').click(function() {
+            if (confirm('WARNING: This will delete ALL proxy logs from the database. This action cannot be undone. Continue?')) {
+                clearAllLogs();
+            }
+        });
+        
+        // Clear old logs button
+        $('#clear-old-logs-btn').click(function() {
+            const days = $('#retention-period').val();
+            if (confirm(`Are you sure you want to remove logs older than ${days} days? This action cannot be undone.`)) {
+                clearOldLogs(days);
+            }
+        });
+        
+        // Refresh database stats button
+        $('#refresh-db-stats-btn').click(function() {
+            $(this).find('i').addClass('fa-spin');
+            loadDatabaseStats().finally(() => {
+                $(this).find('i').removeClass('fa-spin');
+            });
+        });
+        
+        // Optimize database button
+        $('#optimize-db-btn').click(function() {
+            $(this).prop('disabled', true);
+            $(this).html('<i class="fas fa-spinner fa-spin me-1"></i> Optimizing...');
+            
+            optimizeDatabase().finally(() => {
+                $(this).prop('disabled', false);
+                $(this).html('<i class="fas fa-database me-1"></i> Optimize Database');
+            });
+        });
+        
+        // Export database button
+        $('#export-db-btn').click(function() {
+            $(this).prop('disabled', true);
+            $(this).html('<i class="fas fa-spinner fa-spin me-1"></i> Exporting...');
+            
+            exportDatabase().finally(() => {
+                $(this).prop('disabled', false);
+                $(this).html('<i class="fas fa-file-export me-1"></i> Export Database');
+            });
         });
     });
     
@@ -696,5 +872,143 @@
             }
         });
     });
+
+    // Database tab functions
+    function loadDatabaseStats() {
+        return apiRequest('GET', 'logs/stats')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    // Update statistics
+                    const totalLogs = response.data.total_count || 0;
+                    $('#db-total-logs').text(totalLogs.toLocaleString());
+                    
+                    // Format the last log entry as a date if available
+                    if (response.data.last_import) {
+                        try {
+                            const lastEntry = new Date(response.data.last_import);
+                            $('#db-last-entry').text(lastEntry.toLocaleString());
+                        } catch (e) {
+                            $('#db-last-entry').text(response.data.last_import || 'None');
+                        }
+                    } else {
+                        $('#db-last-entry').text('None');
+                    }
+                    
+                    // Get database size estimation (this is an approximation)
+                    apiRequest('GET', 'database/size')
+                        .then(function(sizeResponse) {
+                            if (sizeResponse.status === 'success') {
+                                $('#db-size').text(sizeResponse.data.size || 'Unknown');
+                            } else {
+                                // Fallback size estimation based on logs
+                                const estimatedSize = Math.round(totalLogs * 0.5); // rough estimate: 0.5KB per log entry
+                                if (estimatedSize < 1024) {
+                                    $('#db-size').text(estimatedSize + ' KB');
+                                } else {
+                                    $('#db-size').text(Math.round(estimatedSize / 1024 * 10) / 10 + ' MB');
+                                }
+                            }
+                        })
+                        .catch(function() {
+                            // Fallback on error
+                            $('#db-size').text('Unknown');
+                        });
+                } else {
+                    $('#db-total-logs').text('Error');
+                    $('#db-size').text('Error');
+                    $('#db-last-entry').text('Error');
+                }
+            })
+            .catch(function(error) {
+                console.error('Failed to load database statistics:', error);
+                $('#db-total-logs').text('Error');
+                $('#db-size').text('Error');
+                $('#db-last-entry').text('Error');
+                return Promise.reject(error);
+            });
+    }
+    
+    function clearAllLogs() {
+        return apiRequest('POST', 'logs/clear', {})
+            .then(function(response) {
+                if (response.status === 'success') {
+                    showToast('All logs cleared successfully');
+                    // Refresh the statistics
+                    loadDatabaseStats();
+                    return true;
+                } else {
+                    showToast('Failed to clear logs: ' + response.message, 'danger');
+                    return false;
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to clear logs: ' + error.message, 'danger');
+                return Promise.reject(error);
+            });
+    }
+    
+    function clearOldLogs(days) {
+        return apiRequest('POST', 'logs/clear-old', { days: days })
+            .then(function(response) {
+                if (response.status === 'success') {
+                    showToast(`Logs older than ${days} days cleared successfully`);
+                    // Refresh the statistics
+                    loadDatabaseStats();
+                    return true;
+                } else {
+                    showToast('Failed to clear old logs: ' + response.message, 'danger');
+                    return false;
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to clear old logs: ' + error.message, 'danger');
+                return Promise.reject(error);
+            });
+    }
+    
+    function optimizeDatabase() {
+        return apiRequest('POST', 'database/optimize', {})
+            .then(function(response) {
+                if (response.status === 'success') {
+                    showToast('Database optimized successfully');
+                    // Refresh the statistics
+                    loadDatabaseStats();
+                    return true;
+                } else {
+                    showToast('Failed to optimize database: ' + response.message, 'danger');
+                    return false;
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to optimize database: ' + error.message, 'danger');
+                return Promise.reject(error);
+            });
+    }
+    
+    function exportDatabase() {
+        return apiRequest('GET', 'database/export')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    // Create a download link for the database export
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(response.data));
+                    const downloadAnchorNode = document.createElement('a');
+                    downloadAnchorNode.setAttribute("href", dataStr);
+                    downloadAnchorNode.setAttribute("download", "secure-proxy-db-export-" + new Date().toISOString().slice(0, 10) + ".json");
+                    document.body.appendChild(downloadAnchorNode);
+                    downloadAnchorNode.click();
+                    downloadAnchorNode.remove();
+                    
+                    showToast('Database exported successfully');
+                    return true;
+                } else {
+                    showToast('Failed to export database: ' + response.message, 'danger');
+                    return false;
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to export database: ' + error.message, 'danger');
+                return Promise.reject(error);
+            });
+    }
 </script>
 {% endblock %}
