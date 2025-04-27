@@ -444,10 +444,36 @@
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     
+    <!-- Tailwind Config -->
+    <script>
+        // This helps prevent certain conflicts between Bootstrap and Tailwind
+        tailwind.config = {
+            important: false, // We don't want Tailwind to override Bootstrap with !important
+            corePlugins: {
+                preflight: false, // Disable Tailwind's base styles to prevent conflicts with Bootstrap
+            },
+            prefix: 'tw-', // Optional: Add a prefix to all Tailwind classes to prevent conflicts
+        }
+    </script>
+    
     <!-- Common JavaScript -->
     <script>
-        // Dark mode toggle functionality
+        // CSRF Token setup for all AJAX requests
         $(document).ready(function() {
+            // Set up CSRF token for all AJAX requests
+            $.ajaxSetup({
+                beforeSend: function(xhr, settings) {
+                    // Only add the CSRF token for state-changing methods (not GET)
+                    if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type)) {
+                        const csrfToken = $('meta[name="csrf-token"]').attr('content');
+                        if (csrfToken) {
+                            xhr.setRequestHeader("X-CSRF-Token", csrfToken);
+                        }
+                    }
+                }
+            });
+            
+            // Dark mode toggle functionality
             // Check for saved theme preference or respect OS theme setting
             const savedTheme = localStorage.getItem('theme');
             const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
