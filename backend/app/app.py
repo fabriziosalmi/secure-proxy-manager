@@ -2834,5 +2834,179 @@ def logout():
     logout_user()
     return jsonify({"status": "success", "message": "Logout successful"})
 
+@app.route('/api/logs/clear-old', methods=['POST'])
+@auth.login_required
+@csrf_protected
+def clear_old_logs():
+    """Clear logs older than a specified number of days"""
+    try:
+        data = request.get_json()
+        if not data or 'days' not in data:
+            return jsonify({"status": "error", "message": "Missing days parameter"}), 400
+        
+        days = int(data['days'])
+        if days <= 0:
+            return jsonify({"status": "error", "message": "Days parameter must be a positive integer"}), 400
+        
+        # Calculate cutoff date
+        cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get count of logs to be deleted for reporting
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE timestamp < ?", (cutoff_date,))
+        count_to_delete = cursor.fetchone()[0]
+        
+        # Delete logs older than cutoff date
+        cursor.execute("DELETE FROM proxy_logs WHERE timestamp < ?", (cutoff_date,))
+        conn.commit()
+        
+        logger.info(f"Cleared {count_to_delete} logs older than {days} days")
+        return jsonify({
+            "status": "success", 
+            "message": f"Successfully cleared {count_to_delete} logs older than {days} days",
+            "deleted_count": count_to_delete
+        })
+    except Exception as e:
+        logger.error(f"Error clearing old logs: {str(e)}")
+        return jsonify({"status": "error", "message": f"Error clearing old logs: {str(e)}"}), 500
+
+@app.route('/api/database/size', methods=['GET'])
+@auth.login_required
+def get_database_size():
+    """Get the size of the database file"""
+    try:
+        # Get the database file size
+        db_path = DATABASE_PATH
+        if os.path.exists(db_path):
+            size_bytes = os.path.getsize(db_path)
+            
+            # Format size for display
+            if size_bytes < 1024:
+                formatted_size = f"{size_bytes} bytes"
+            elif size_bytes < 1024 * 1024:
+                formatted_size = f"{size_bytes / 1024:.1f} KB"
+            elif size_bytes < 1024 * 1024 * 1024:
+                formatted_size = f"{size_bytes / (1024 * 1024):.1f} MB"
+            else:
+                formatted_size = f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+            
+            return jsonify({
+                "status": "success",
+                "data": {
+                    "size": formatted_size,
+                    "size_bytes": size_bytes
+                }
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": f"Database file not found at {db_path}"
+            }), 404
+    except Exception as e:
+        logger.error(f"Error getting database size: {str(e)}")
+        return jsonify({"status": "error", "message": f"Error getting database size: {str(e)}"}), 500
+
+@app.route('/api/database/optimize', methods=['POST'])
+@auth.login_required
+@csrf_protected
+def optimize_database():
+    """Optimize the SQLite database by vacuuming"""
+    try:
+        conn = get_db()
+        
+        # Get size before optimization
+        db_path = DATABASE_PATH
+        size_before = os.path.getsize(db_path) if os.path.exists(db_path) else 0
+        
+        # Run VACUUM to optimize the database
+        conn.execute("VACUUM")
+        conn.commit()
+        
+        # Get size after optimization
+        size_after = os.path.getsize(db_path) if os.path.exists(db_path) else 0
+        
+        # Calculate space saved
+        space_saved = size_before - size_after
+        percentage_saved = (space_saved / size_before * 100) if size_before > 0 else 0
+        
+        # Format sizes for display
+        def format_size(bytes):
+            if bytes < 1024:
+                return f"{bytes} bytes"
+            elif bytes < 1024 * 1024:
+                return f"{bytes / 1024:.1f} KB"
+            elif bytes < 1024 * 1024 * 1024:
+                return f"{bytes / (1024 * 1024):.1f} MB"
+            else:
+                return f"{bytes / (1024 * 1024 * 1024):.2f} GB"
+        
+        logger.info(f"Database optimized. Size reduced from {format_size(size_before)} to {format_size(size_after)}")
+        
+        return jsonify({
+            "status": "success", 
+            "message": "Database optimized successfully",
+            "details": {
+                "size_before": format_size(size_before),
+                "size_after": format_size(size_after),
+                "space_saved": format_size(space_saved),
+                "percentage_saved": f"{percentage_saved:.1f}%"
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error optimizing database: {str(e)}")
+        return jsonify({"status": "error", "message": f"Error optimizing database: {str(e)}"}), 500
+
+@app.route('/api/database/export', methods=['GET'])
+@auth.login_required
+def export_database():
+    """Export the database contents as JSON"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get logs with a reasonable limit to prevent memory issues
+        cursor.execute("SELECT * FROM proxy_logs ORDER BY timestamp DESC LIMIT 10000")
+        logs = [dict(row) for row in cursor.fetchall()]
+        
+        # Get IP blacklist
+        cursor.execute("SELECT * FROM ip_blacklist")
+        ip_blacklist = [dict(row) for row in cursor.fetchall()]
+        
+        # Get domain blacklist
+        cursor.execute("SELECT * FROM domain_blacklist")
+        domain_blacklist = [dict(row) for row in cursor.fetchall()]
+        
+        # Get settings
+        cursor.execute("SELECT * FROM settings")
+        settings = [dict(row) for row in cursor.fetchall()]
+        
+        # Compile everything into an export object
+        export_data = {
+            "metadata": {
+                "version": "1.0.0",
+                "timestamp": datetime.now().isoformat(),
+                "record_counts": {
+                    "logs": len(logs),
+                    "ip_blacklist": len(ip_blacklist),
+                    "domain_blacklist": len(domain_blacklist),
+                    "settings": len(settings)
+                }
+            },
+            "logs": logs,
+            "ip_blacklist": ip_blacklist,
+            "domain_blacklist": domain_blacklist,
+            "settings": settings
+        }
+        
+        return jsonify({
+            "status": "success",
+            "data": export_data
+        })
+    except Exception as e:
+        logger.error(f"Error exporting database: {str(e)}")
+        return jsonify({"status": "error", "message": f"Error exporting database: {str(e)}"}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
