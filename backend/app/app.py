@@ -2854,43 +2854,40 @@ def optimize_database():
         db_path = DATABASE_PATH
         size_before = os.path.getsize(db_path) if os.path.exists(db_path) else 0
         
-        # Run VACUUM to optimize the database
-        conn.execute("VACUUM")
+        # Execute VACUUM command to optimize the database
+        # This rebuilds the database file, reclaiming unused space
+        cursor = conn.cursor()
+        cursor.execute("VACUUM")
         conn.commit()
+        
+        # Provide a moment for filesystem to update
+        time.sleep(0.5)
         
         # Get size after optimization
         size_after = os.path.getsize(db_path) if os.path.exists(db_path) else 0
         
         # Calculate space saved
-        space_saved = size_before - size_after
-        percentage_saved = (space_saved / size_before * 100) if size_before > 0 else 0
+        space_saved = max(0, size_before - size_after)
+        space_saved_mb = round(space_saved / (1024 * 1024), 2)
         
-        # Format sizes for display
-        def format_size(bytes):
-            if bytes < 1024:
-                return f"{bytes} bytes"
-            elif bytes < 1024 * 1024:
-                return f"{bytes / 1024:.1f} KB"
-            elif bytes < 1024 * 1024 * 1024:
-                return f"{bytes / (1024 * 1024):.1f} MB"
-            else:
-                return f"{bytes / (1024 * 1024 * 1024):.2f} GB"
-        
-        logger.info(f"Database optimized. Size reduced from {format_size(size_before)} to {format_size(size_after)}")
+        logger.info(f"Database optimized successfully. Space saved: {space_saved_mb} MB")
         
         return jsonify({
-            "status": "success", 
+            "status": "success",
             "message": "Database optimized successfully",
-            "details": {
-                "size_before": format_size(size_before),
-                "size_after": format_size(size_after),
-                "space_saved": format_size(space_saved),
-                "percentage_saved": f"{percentage_saved:.1f}%"
+            "data": {
+                "size_before": size_before,
+                "size_after": size_after,
+                "space_saved": space_saved,
+                "space_saved_mb": f"{space_saved_mb} MB"
             }
         })
     except Exception as e:
         logger.error(f"Error optimizing database: {str(e)}")
-        return jsonify({"status": "error", "message": f"Error optimizing database: {str(e)}"}), 500
+        return jsonify({
+            "status": "error",
+            "message": f"Error optimizing database: {str(e)}"
+        }), 500
 
 @app.route('/api/database/export', methods=['GET'])
 @auth.login_required
