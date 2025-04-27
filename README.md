@@ -1,162 +1,374 @@
 # Secure Proxy
 
-A Dockerized transparent proxy solution with a modern web UI for configuration and monitoring, providing enhanced security features through IP and domain blacklisting.
+<div align="center">
+  <img src="ui/static/favicon.ico" alt="Secure Proxy Logo" width="120" height="120">
+  <br>
+  <h3>Enterprise-Grade HTTP/HTTPS Filtering Proxy Solution</h3>
+  <p>A containerized secure proxy solution with advanced filtering capabilities, real-time monitoring, and a modern web UI.</p>
+  
+  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+  [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://www.docker.com/)
+  [![Python](https://img.shields.io/badge/Python-3.9+-yellow?logo=python)](https://www.python.org/)
+  [![Flask](https://img.shields.io/badge/Flask-2.0+-green?logo=flask)](https://flask.palletsprojects.com/)
+  [![Bootstrap](https://img.shields.io/badge/Bootstrap-5.0-purple?logo=bootstrap)](https://getbootstrap.com/)
+</div>
 
-## Features
+## 🚀 Features
 
-- **Transparent HTTP/HTTPS Proxy**: Built on Squid proxy for reliable performance
-- **IP Blacklisting**: Block traffic from specific IP addresses or ranges
-- **Domain Blacklisting**: Block access to specific domains
-- **Direct IP Access Control**: Block direct IP requests with configurable exceptions
-- **Modern Web Interface**: Clean, Bootstrap-based UI for configuration and monitoring
-- **Detailed Logging**: Track and analyze all proxy traffic
-- **Dockerized Deployment**: Easy setup and management with Docker and Docker Compose
+- **High-Performance Proxy Engine**: Built on Squid with optimized caching capabilities
+- **Advanced Filtering**:
+  - IP Blacklisting with CIDR support
+  - Domain Blacklisting with wildcard support
+  - Content Type Filtering
+  - Direct IP Access Control
+  - Time-based Access Restrictions
+- **Comprehensive Security**:
+  - HTTPS Filtering with proper certificate management
+  - Rate Limiting protection against brute force attacks
+  - Security scoring and recommendations
+  - Configurable content policies
+- **Modern Dashboard**:
+  - Real-time traffic monitoring
+  - Resource usage statistics
+  - Cache performance metrics
+  - Security status visualization
+- **Detailed Analytics**:
+  - Full request logging and analysis
+  - Traffic pattern visualization
+  - Blocked request reporting
+  - Exportable reports
+- **Enterprise Management**:
+  - Configuration backup and restore
+  - Role-based access control
+  - API for automation and integration
+  - Health monitoring endpoints
 
-## Architecture
+## 🏗️ Architecture
 
-The application consists of three main components:
+The application consists of three main containerized components:
 
-1. **Proxy Service**: Squid-based transparent proxy with custom configurations
-2. **Backend API**: Python Flask RESTful API for proxy management
-3. **Web UI**: Modern Bootstrap-based interface for administration
+1. **Proxy Service**: Squid-based proxy with customized configurations for enhanced security
+2. **Backend API**: RESTful API built with Flask providing management capabilities
+3. **Web UI**: Modern Bootstrap 5 interface for administration and monitoring
 
-## Prerequisites
+<div align="center">
+  <pre>
+  ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+  │             │      │             │      │             │
+  │  Web UI     │◄────►│  Backend    │◄────►│  Proxy      │
+  │  (Flask)    │      │  API        │      │  (Squid)    │
+  │             │      │  (Flask)    │      │             │
+  └─────────────┘      └─────────────┘      └─────────────┘
+         │                    │                    │
+         │                    │                    │
+         ▼                    ▼                    ▼
+  ┌─────────────────────────────────────────────────────┐
+  │                                                     │
+  │                 Shared Volumes                      │
+  │  (Configuration, Logs, Database, Certificates)      │
+  │                                                     │
+  └─────────────────────────────────────────────────────┘
+  </pre>
+</div>
 
-- [Docker](https://docs.docker.com/get-docker/)
-- [Docker Compose](https://docs.docker.com/compose/install/)
+## 📋 Prerequisites
 
-## Quick Start
+- [Docker](https://docs.docker.com/get-docker/) (v20.10.0+)
+- [Docker Compose](https://docs.docker.com/compose/install/) (v2.0.0+)
+- Minimum System Requirements:
+  - 1 CPU core
+  - 1GB RAM
+  - 5GB disk space
+- Network Requirements:
+  - Open ports for HTTP (8011) and Proxy (3128)
 
-1. Clone this repository:
-   ```
+## 🚦 Quick Start
+
+1. **Clone the repository**:
+   ```bash
    git clone https://github.com/yourusername/secure-proxy.git
    cd secure-proxy
    ```
 
-2. Start the application:
-   ```
+2. **Start the application**:
+   ```bash
    docker-compose up -d
    ```
 
-3. Access the web interface:
+3. **Access the web interface**:
    ```
    http://localhost:8011
    ```
    Default credentials: username: `admin`, password: `admin`
 
-## Configuration
+4. **Configure your client devices**:
+   - Set proxy server to your host's IP address, port 3128
+   - For transparent proxying, see the Network Configuration section
 
-### Using the Web Interface
+## ⚙️ Configuration Options
 
-After starting the application, you can configure all aspects of the proxy through the web interface:
+### Environment Variables
 
-1. **Dashboard**: View proxy status and recent logs
-2. **Blacklists**: Manage IP and domain blacklists
-3. **Settings**: Configure proxy behavior and security features
-4. **Logs**: View and search detailed proxy access logs
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PROXY_HOST` | Proxy service hostname | `proxy` |
+| `PROXY_PORT` | Proxy service port | `3128` |
+| `BASIC_AUTH_USERNAME` | Basic auth username | `admin` |
+| `BASIC_AUTH_PASSWORD` | Basic auth password | `admin` |
+| `SECRET_KEY` | Flask secret key | Auto-generated |
+| `LOG_LEVEL` | Logging level | `INFO` |
 
-### Network Configuration
+### Security Features
 
-To use as a transparent proxy, configure your network devices to use this server (port 3128) as their proxy server, or set up your router to redirect all HTTP/HTTPS traffic through this proxy.
+| Feature | Description | Configuration |
+|---------|-------------|--------------|
+| IP Blacklisting | Block specific IP addresses or ranges | Web UI > Blacklists > IP |
+| Domain Blacklisting | Block specific domains (wildcard support) | Web UI > Blacklists > Domains |
+| Content Filtering | Block specific file types | Web UI > Settings > Filtering |
+| HTTPS Filtering | Inspect and filter HTTPS traffic | Web UI > Settings > Security |
+| Rate Limiting | Prevent brute force attacks | Auto-configured |
 
-### Docker Compose Configuration
+### Performance Tuning
 
-You can adjust the ports, volumes, and environment variables in the `docker-compose.yml` file:
+| Setting | Description | Default | Recommended |
+|---------|-------------|---------|------------|
+| Cache Size | Disk space allocated for caching | 1GB | 5-10GB for production |
+| Max Object Size | Maximum size of cached objects | 50MB | 100MB for media-heavy usage |
+| Connection Timeout | Timeout for stalled connections | 30s | 15-60s based on network |
+| DNS Timeout | Timeout for DNS lookups | 5s | 3-10s based on DNS infrastructure |
+| Max Connections | Maximum concurrent connections | 100 | 100-500 based on hardware |
 
-```yaml
-version: '3.8'
+## 🛠️ Advanced Configuration
 
-services:
-  web:
-    # UI service configuration
-    ports:
-      - "8011:8011"  # Change the host port if needed
-    # ...additional configuration...
+### Custom SSL Certificate
 
-  backend:
-    # Backend API service configuration
-    # ...
+For HTTPS filtering with your own certificate:
 
-  proxy:
-    # Squid proxy service configuration
-    ports:
-      - "3128:3128"  # Change the host port if needed
-    # ...additional configuration...
+1. Place your certificate and key in the `/config` directory:
+   - `ssl_cert.pem`: Your SSL certificate
+   - `ssl_key.pem`: Your private key
+
+2. Enable HTTPS filtering in the web interface:
+   - Settings > Security > Enable HTTPS Filtering
+
+3. Install the certificate on client devices to avoid warnings
+
+### Transparent Proxy Setup
+
+To use Secure Proxy as a transparent proxy:
+
+1. Configure iptables on your router/gateway:
+   ```bash
+   iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 -j REDIRECT --to-port 3128
+   iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j REDIRECT --to-port 3129
+   ```
+
+2. Enable transparent proxy mode in the web interface:
+   - Settings > Advanced > Transparent Mode
+
+### Extending Blacklists
+
+Integrate with external threat intelligence:
+
+1. Import blacklists via the API:
+   ```bash
+   curl -X POST http://localhost:8011/api/blacklists/import \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+     -d '{"url": "https://example.com/blacklist.txt", "type": "ip"}'
+   ```
+
+2. Schedule automatic updates with the maintenance endpoint:
+   ```bash
+   curl -X POST http://localhost:8011/api/maintenance/update-blacklists \
+     -H "Authorization: Basic $(echo -n admin:admin | base64)"
+   ```
+
+## 📊 Monitoring and Analytics
+
+### Dashboard Metrics
+
+- **Proxy Status**: Real-time operational status
+- **Traffic Statistics**: Request volume over time
+- **Resource Usage**: Memory and CPU consumption
+- **Cache Performance**: Hit ratio and response time
+- **Security Score**: Overall security assessment
+
+### Logging and Analysis
+
+All proxy traffic is logged and can be analyzed in the web interface:
+
+- **Access Logs**: All requests with filtering and search
+- **Security Events**: Authentication attempts and blocked requests
+- **System Logs**: Application and service events
+
+### Health Checks
+
+Health status endpoints are available for monitoring:
+
+```bash
+curl -I http://localhost:8011/health
 ```
 
-## Directory Structure
+## 🔄 Backup and Restore
 
-- `/config`: Contains configuration files
-- `/data`: Stores the SQLite database and other persistent data
-- `/logs`: Contains proxy and application logs
-- `/proxy`: Squid proxy configuration and scripts
-- `/backend`: Flask API backend code
-- `/ui`: Web interface code
+### Configuration Backup
 
-## Security Considerations
+Create a full system backup:
 
-- **Default Credentials**: Change the default admin credentials immediately
-- **Network Exposure**: Consider your network setup when exposing the proxy port
-- **Regular Updates**: Keep the system updated for security patches
+1. Via Web UI:
+   - Maintenance > Backup Configuration > Download Backup
 
-## Development
+2. Via API:
+   ```bash
+   curl -X GET http://localhost:8011/api/maintenance/backup-config \
+     -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+     > secure-proxy-backup.json
+   ```
 
-### Building from Source
+### Configuration Restore
 
+Restore from a previous backup:
+
+1. Via Web UI:
+   - Maintenance > Restore Configuration > Upload Backup
+
+2. Via API:
+   ```bash
+   curl -X POST http://localhost:8011/api/maintenance/restore-config \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+     -d @secure-proxy-backup.json
+   ```
+
+## 🧪 Testing and Validation
+
+### Basic Connectivity Test
+
+```bash
+curl -x http://localhost:3128 http://example.com
 ```
-git clone https://github.com/yourusername/secure-proxy.git
-cd secure-proxy
-docker-compose build
-docker-compose up -d
+
+### SSL Inspection Test
+
+```bash
+curl -x http://localhost:3128 https://example.com --insecure
 ```
 
-### Adding Custom Features
+### Blacklist Testing
 
-- Squid configuration can be modified in `/proxy/squid.conf`
-- Backend API logic is in `/backend/app/app.py`
-- UI templates are in `/ui/templates/`
+To test if blacklisting works:
+1. Add an IP or domain to the blacklist
+2. Attempt to access a resource from that IP or domain
+3. Verify the request is blocked (check logs)
 
-## Troubleshooting
+## 🔍 Troubleshooting
 
 ### Common Issues
 
-1. **Proxy not working**:
-   - Check if Squid service is running: `docker-compose logs proxy`
-   - Verify network configuration
+| Issue | Possible Cause | Resolution |
+|-------|---------------|------------|
+| Cannot access web UI | Port conflict | Change port mapping in docker-compose.yml |
+| Proxy not filtering | Incorrect network configuration | Verify client proxy settings |
+| SSL warnings | Certificate not trusted | Install certificate on client devices |
+| Performance issues | Insufficient resources | Increase container resource limits |
+| Database errors | Permission issues | Check volume permissions |
 
-2. **Cannot access web UI**:
-   - Check if web service is running: `docker-compose logs web`
-   - Verify the exposed port configuration
+### Diagnostic Tools
 
-3. **Database errors**:
-   - Check permissions on the `/data` directory
+1. **Service Logs**:
+   ```bash
+   docker-compose logs -f backend
+   docker-compose logs -f ui
+   docker-compose logs -f proxy
+   ```
 
-### Logs
+2. **Database Check**:
+   ```bash
+   docker-compose exec backend sqlite3 /data/secure_proxy.db .tables
+   ```
 
-Access application logs:
+3. **Network Validation**:
+   ```bash
+   docker-compose exec proxy ping -c 3 google.com
+   ```
+
+4. **Cache Analysis**:
+   ```bash
+   docker-compose exec proxy squidclient -h localhost mgr:info
+   ```
+
+## 📘 API Documentation
+
+Secure Proxy provides a comprehensive RESTful API for integration and automation:
+
+### Authentication
+
+```bash
+curl -X POST http://localhost:8011/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin"}'
 ```
-docker-compose logs -f
-```
 
-For specific service logs:
-```
-docker-compose logs -f proxy
-docker-compose logs -f backend
-docker-compose logs -f web
-```
+### Available Endpoints
 
-## License
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/status` | GET | Get proxy service status |
+| `/api/settings` | GET | Get all proxy settings |
+| `/api/ip-blacklist` | GET/POST | Manage IP blacklist |
+| `/api/domain-blacklist` | GET/POST | Manage domain blacklist |
+| `/api/logs` | GET | Get proxy access logs |
+| `/api/logs/import` | POST | Import logs from Squid |
+| `/api/maintenance/clear-cache` | POST | Clear the proxy cache |
+| `/api/security/score` | GET | Get security assessment |
+
+Full API documentation is available at `/api/docs` when the service is running.
+
+## 🔒 Security Best Practices
+
+1. **Change default credentials** immediately after installation
+2. **Enable HTTPS** for the admin interface in production
+3. **Restrict access** to the admin interface to trusted IPs
+4. **Regular backups** of configuration and database
+5. **Keep the system updated** with security patches
+6. **Monitor logs** for suspicious activity
+7. **Use strong certificates** for HTTPS filtering
+
+## 🌱 Future Roadmap
+
+- **Authentication Integration**: LDAP/Active Directory support
+- **Advanced Analytics**: ML-based traffic pattern analysis
+- **Threat Intelligence**: Integration with external threat feeds
+- **Clustering**: Multi-node deployment for high availability
+- **Content Inspection**: DLP capabilities for data protection
+- **Mobile Support**: Improved UI for mobile administration
+- **Notification System**: Alerts via email, Slack, etc.
+
+## 🤝 Contributing
+
+Contributions are welcome and appreciated!
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Commit your changes: `git commit -m 'Add some feature'`
+4. Push to the branch: `git push origin feature-name`
+5. Open a Pull Request
+
+## 📜 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Future Improvements
+## 🙏 Acknowledgements
 
-- Add support for authentication in proxy
-- Implement more advanced traffic analysis
-- Add custom filtering rules
-- Support for SSL inspection (with proper security considerations)
-- Integration with external threat intelligence feeds
+- [Squid Proxy](http://www.squid-cache.org/) for the core proxy engine
+- [Flask](https://flask.palletsprojects.com/) for the web framework
+- [Bootstrap](https://getbootstrap.com/) for the UI components
+- [Docker](https://www.docker.com/) for containerization
+- All our contributors who have helped shape this project
 
-## Contributing
+## 📞 Support
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+- Create an issue in the GitHub repository
+- Contact the maintainers at: [your-email@example.com]
+- Community forum: [https://community.example.com]
