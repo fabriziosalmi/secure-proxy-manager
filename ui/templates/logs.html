@@ -280,6 +280,7 @@
                     <div class="d-flex flex-wrap gap-3">
                         <div class="toggle-container">
                             <div class="form-check form-switch mb-0">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <input class="form-check-input" type="checkbox" id="auto-refresh" checked>
                                 <label class="toggle-label" for="auto-refresh">Auto Refresh</label>
                             </div>

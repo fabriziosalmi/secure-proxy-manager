@@ -7,394 +7,397 @@
     
     <div class="row">
         <div class="col-md-12">
-            <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general" type="button" role="tab" aria-controls="general" aria-selected="true">General</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="filtering-tab" data-bs-toggle="tab" data-bs-target="#filtering" type="button" role="tab" aria-controls="filtering" aria-selected="false">Filtering</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="authentication-tab" data-bs-toggle="tab" data-bs-target="#authentication" type="button" role="tab" aria-controls="authentication" aria-selected="false">Authentication</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced" type="button" role="tab" aria-controls="advanced" aria-selected="false">Advanced</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="database-tab" data-bs-toggle="tab" data-bs-target="#database" type="button" role="tab" aria-controls="database" aria-selected="false">Database</button>
-                </li>
-            </ul>
-            
-            <div class="tab-content p-3 border border-top-0 rounded-bottom" id="settingsTabContent">
-                <!-- General Settings Tab -->
-                <div class="tab-pane fade show active" id="general" role="tabpanel" aria-labelledby="general-tab">
-                    <h5 class="mb-3">Proxy Configuration</h5>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="cache_size" class="form-label">Cache Size (MB)</label>
-                                <input type="number" class="form-control" id="cache_size" min="100" max="10000">
-                                <div class="form-text">Amount of disk space used for caching (in MB)</div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="log_level" class="form-label">Log Level</label>
-                                <select class="form-select" id="log_level">
-                                    <option value="debug">Debug</option>
-                                    <option value="info">Info</option>
-                                    <option value="warning">Warning</option>
-                                    <option value="error">Error</option>
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="max_object_size" class="form-label">Max Object Size (MB)</label>
-                                <input type="number" class="form-control" id="max_object_size" min="1" max="1000">
-                                <div class="form-text">Maximum size of objects to cache</div>
-                            </div>
-                            
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="enable_compression">
-                                <label class="form-check-label" for="enable_compression">Enable Compression</label>
-                                <div class="form-text">Compress HTTP responses to save bandwidth</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <form id="settings-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general" type="button" role="tab" aria-controls="general" aria-selected="true">General</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="filtering-tab" data-bs-toggle="tab" data-bs-target="#filtering" type="button" role="tab" aria-controls="filtering" aria-selected="false">Filtering</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="authentication-tab" data-bs-toggle="tab" data-bs-target="#authentication" type="button" role="tab" aria-controls="authentication" aria-selected="false">Authentication</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced" type="button" role="tab" aria-controls="advanced" aria-selected="false">Advanced</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="database-tab" data-bs-toggle="tab" data-bs-target="#database" type="button" role="tab" aria-controls="database" aria-selected="false">Database</button>
+                    </li>
+                </ul>
                 
-                <!-- Filtering Settings Tab -->
-                <div class="tab-pane fade" id="filtering" role="tabpanel" aria-labelledby="filtering-tab">
-                    <h5 class="mb-3">Access Control & Filtering</h5>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <h6 class="border-bottom pb-2 mb-3">Blacklist Settings</h6>
-                            
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="enable_ip_blacklist">
-                                <label class="form-check-label" for="enable_ip_blacklist">Enable IP Blacklist</label>
-                                <div class="form-text">Block requests from blacklisted IP addresses</div>
-                            </div>
-                            
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="enable_domain_blacklist">
-                                <label class="form-check-label" for="enable_domain_blacklist">Enable Domain Blacklist</label>
-                                <div class="form-text">Block requests to blacklisted domains</div>
-                            </div>
-                            
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="block_direct_ip">
-                                <label class="form-check-label" for="block_direct_ip">Block Direct IP Access</label>
-                                <div class="form-text">Block requests to direct IP addresses</div>
-                            </div>
-                        </div>
+                <div class="tab-content p-3 border border-top-0 rounded-bottom" id="settingsTabContent">
+                    <!-- General Settings Tab -->
+                    <div class="tab-pane fade show active" id="general" role="tabpanel" aria-labelledby="general-tab">
+                        <h5 class="mb-3">Proxy Configuration</h5>
                         
-                        <div class="col-md-6">
-                            <h6 class="border-bottom pb-2 mb-3">Advanced Filtering</h6>
-                            
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="enable_content_filtering">
-                                <label class="form-check-label" for="enable_content_filtering">Enable Content Filtering</label>
-                                <div class="form-text">Filter requests based on content type</div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="cache_size" class="form-label">Cache Size (MB)</label>
+                                    <input type="number" class="form-control" id="cache_size" min="100" max="10000">
+                                    <div class="form-text">Amount of disk space used for caching (in MB)</div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="log_level" class="form-label">Log Level</label>
+                                    <select class="form-select" id="log_level">
+                                        <option value="debug">Debug</option>
+                                        <option value="info">Info</option>
+                                        <option value="warning">Warning</option>
+                                        <option value="error">Error</option>
+                                    </select>
+                                </div>
                             </div>
                             
-                            <div class="mb-3">
-                                <label for="blocked_file_types" class="form-label">Blocked File Extensions</label>
-                                <input type="text" class="form-control" id="blocked_file_types" placeholder="exe,bat,dll,jar">
-                                <div class="form-text">Comma-separated list of file extensions to block</div>
-                            </div>
-                            
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="enable_https_filtering">
-                                <label class="form-check-label" for="enable_https_filtering">HTTPS Filtering</label>
-                                <div class="form-text">Decrypt and inspect HTTPS traffic (requires certificate setup)</div>
-                            </div>
-                            
-                            <div class="mb-3" id="download-cert-container">
-                                <button type="button" class="btn btn-outline-secondary" id="download-cert-btn">
-                                    <i class="fas fa-download me-1"></i> Download CA Certificate
-                                </button>
-                                <div class="form-text">Install this certificate on your clients to trust HTTPS filtering</div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="max_object_size" class="form-label">Max Object Size (MB)</label>
+                                    <input type="number" class="form-control" id="max_object_size" min="1" max="1000">
+                                    <div class="form-text">Maximum size of objects to cache</div>
+                                </div>
+                                
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="enable_compression">
+                                    <label class="form-check-label" for="enable_compression">Enable Compression</label>
+                                    <div class="form-text">Compress HTTP responses to save bandwidth</div>
+                                </div>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="row mb-3">
-                        <div class="col-md-12">
-                            <h6 class="border-bottom pb-2 mb-3">Time Restrictions</h6>
-                            
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="enable_time_restrictions">
-                                <label class="form-check-label" for="enable_time_restrictions">Enable Time Restrictions</label>
-                                <div class="form-text">Enable access restrictions based on time of day</div>
+                    <!-- Filtering Settings Tab -->
+                    <div class="tab-pane fade" id="filtering" role="tabpanel" aria-labelledby="filtering-tab">
+                        <h5 class="mb-3">Access Control & Filtering</h5>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <h6 class="border-bottom pb-2 mb-3">Blacklist Settings</h6>
+                                
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="enable_ip_blacklist">
+                                    <label class="form-check-label" for="enable_ip_blacklist">Enable IP Blacklist</label>
+                                    <div class="form-text">Block requests from blacklisted IP addresses</div>
+                                </div>
+                                
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="enable_domain_blacklist">
+                                    <label class="form-check-label" for="enable_domain_blacklist">Enable Domain Blacklist</label>
+                                    <div class="form-text">Block requests to blacklisted domains</div>
+                                </div>
+                                
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="block_direct_ip">
+                                    <label class="form-check-label" for="block_direct_ip">Block Direct IP Access</label>
+                                    <div class="form-text">Block requests to direct IP addresses</div>
+                                </div>
                             </div>
                             
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="time_restriction_start" class="form-label">Allowed Start Time</label>
-                                        <input type="time" class="form-control" id="time_restriction_start">
+                            <div class="col-md-6">
+                                <h6 class="border-bottom pb-2 mb-3">Advanced Filtering</h6>
+                                
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="enable_content_filtering">
+                                    <label class="form-check-label" for="enable_content_filtering">Enable Content Filtering</label>
+                                    <div class="form-text">Filter requests based on content type</div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="blocked_file_types" class="form-label">Blocked File Extensions</label>
+                                    <input type="text" class="form-control" id="blocked_file_types" placeholder="exe,bat,dll,jar">
+                                    <div class="form-text">Comma-separated list of file extensions to block</div>
+                                </div>
+                                
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="enable_https_filtering">
+                                    <label class="form-check-label" for="enable_https_filtering">HTTPS Filtering</label>
+                                    <div class="form-text">Decrypt and inspect HTTPS traffic (requires certificate setup)</div>
+                                </div>
+                                
+                                <div class="mb-3" id="download-cert-container">
+                                    <button type="button" class="btn btn-outline-secondary" id="download-cert-btn">
+                                        <i class="fas fa-download me-1"></i> Download CA Certificate
+                                    </button>
+                                    <div class="form-text">Install this certificate on your clients to trust HTTPS filtering</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <h6 class="border-bottom pb-2 mb-3">Time Restrictions</h6>
+                                
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="enable_time_restrictions">
+                                    <label class="form-check-label" for="enable_time_restrictions">Enable Time Restrictions</label>
+                                    <div class="form-text">Enable access restrictions based on time of day</div>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="time_restriction_start" class="form-label">Allowed Start Time</label>
+                                            <input type="time" class="form-control" id="time_restriction_start">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="time_restriction_end" class="form-label">Allowed End Time</label>
+                                            <input type="time" class="form-control" id="time_restriction_end">
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="time_restriction_end" class="form-label">Allowed End Time</label>
-                                        <input type="time" class="form-control" id="time_restriction_end">
-                                    </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Authentication Tab -->
+                    <div class="tab-pane fade" id="authentication" role="tabpanel" aria-labelledby="authentication-tab">
+                        <h5 class="mb-3">Authentication Settings</h5>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <h6 class="border-bottom pb-2 mb-3">Admin Authentication</h6>
+                                
+                                <div class="mb-3">
+                                    <label for="admin_username" class="form-label">Admin Username</label>
+                                    <input type="text" class="form-control" id="admin_username" placeholder="admin">
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="admin_password" class="form-label">Admin Password</label>
+                                    <input type="password" class="form-control" id="admin_password" placeholder="********">
+                                    <div class="form-text">Leave blank to keep current password</div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <h6 class="border-bottom pb-2 mb-3">Proxy Authentication</h6>
+                                
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="enable_proxy_auth">
+                                    <label class="form-check-label" for="enable_proxy_auth">Enable Proxy Authentication</label>
+                                    <div class="form-text">Require authentication for proxy access</div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="auth_method" class="form-label">Authentication Method</label>
+                                    <select class="form-select" id="auth_method">
+                                        <option value="basic">Basic Authentication</option>
+                                        <option value="digest">Digest Authentication</option>
+                                        <option value="ntlm">NTLM Authentication</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-                
-                <!-- Authentication Tab -->
-                <div class="tab-pane fade" id="authentication" role="tabpanel" aria-labelledby="authentication-tab">
-                    <h5 class="mb-3">Authentication Settings</h5>
                     
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <h6 class="border-bottom pb-2 mb-3">Admin Authentication</h6>
-                            
-                            <div class="mb-3">
-                                <label for="admin_username" class="form-label">Admin Username</label>
-                                <input type="text" class="form-control" id="admin_username" placeholder="admin">
+                    <!-- Advanced Tab -->
+                    <div class="tab-pane fade" id="advanced" role="tabpanel" aria-labelledby="advanced-tab">
+                        <h5 class="mb-3">Advanced Settings</h5>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <h6 class="border-bottom pb-2 mb-3">Performance</h6>
+                                
+                                <div class="mb-3">
+                                    <label for="connection_timeout" class="form-label">Connection Timeout (seconds)</label>
+                                    <input type="number" class="form-control" id="connection_timeout" min="1" max="300">
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="dns_timeout" class="form-label">DNS Timeout (seconds)</label>
+                                    <input type="number" class="form-control" id="dns_timeout" min="1" max="60">
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="max_connections" class="form-label">Maximum Connections</label>
+                                    <input type="number" class="form-control" id="max_connections" min="10" max="10000">
+                                </div>
                             </div>
                             
-                            <div class="mb-3">
-                                <label for="admin_password" class="form-label">Admin Password</label>
-                                <input type="password" class="form-control" id="admin_password" placeholder="********">
-                                <div class="form-text">Leave blank to keep current password</div>
+                            <div class="col-md-6">
+                                <h6 class="border-bottom pb-2 mb-3">Logging & Monitoring</h6>
+                                
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="enable_extended_logging">
+                                    <label class="form-check-label" for="enable_extended_logging">Enable Extended Logging</label>
+                                    <div class="form-text">Log additional details about requests</div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="log_retention" class="form-label">Log Retention (days)</label>
+                                    <input type="number" class="form-control" id="log_retention" min="1" max="365">
+                                </div>
+                                
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="enable_alerts">
+                                    <label class="form-check-label" for="enable_alerts">Enable Email Alerts</label>
+                                    <div class="form-text">Send email alerts for security events</div>
+                                </div>
                             </div>
                         </div>
                         
-                        <div class="col-md-6">
-                            <h6 class="border-bottom pb-2 mb-3">Proxy Authentication</h6>
-                            
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="enable_proxy_auth">
-                                <label class="form-check-label" for="enable_proxy_auth">Enable Proxy Authentication</label>
-                                <div class="form-text">Require authentication for proxy access</div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="auth_method" class="form-label">Authentication Method</label>
-                                <select class="form-select" id="auth_method">
-                                    <option value="basic">Basic Authentication</option>
-                                    <option value="digest">Digest Authentication</option>
-                                    <option value="ntlm">NTLM Authentication</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Advanced Tab -->
-                <div class="tab-pane fade" id="advanced" role="tabpanel" aria-labelledby="advanced-tab">
-                    <h5 class="mb-3">Advanced Settings</h5>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <h6 class="border-bottom pb-2 mb-3">Performance</h6>
-                            
-                            <div class="mb-3">
-                                <label for="connection_timeout" class="form-label">Connection Timeout (seconds)</label>
-                                <input type="number" class="form-control" id="connection_timeout" min="1" max="300">
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="dns_timeout" class="form-label">DNS Timeout (seconds)</label>
-                                <input type="number" class="form-control" id="dns_timeout" min="1" max="60">
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="max_connections" class="form-label">Maximum Connections</label>
-                                <input type="number" class="form-control" id="max_connections" min="10" max="10000">
-                            </div>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <h6 class="border-bottom pb-2 mb-3">Logging & Monitoring</h6>
-                            
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="enable_extended_logging">
-                                <label class="form-check-label" for="enable_extended_logging">Enable Extended Logging</label>
-                                <div class="form-text">Log additional details about requests</div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="log_retention" class="form-label">Log Retention (days)</label>
-                                <input type="number" class="form-control" id="log_retention" min="1" max="365">
-                            </div>
-                            
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="enable_alerts">
-                                <label class="form-check-label" for="enable_alerts">Enable Email Alerts</label>
-                                <div class="form-text">Send email alerts for security events</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-12">
-                            <h6 class="border-bottom pb-2 mb-3">System Maintenance</h6>
-                            
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <button type="button" class="btn btn-outline-secondary mb-3 me-2" id="clear-cache-btn">
-                                        <i class="fas fa-broom me-1"></i> Clear Cache
-                                    </button>
-                                    
-                                    <button type="button" class="btn btn-outline-secondary mb-3 me-2" id="backup-config-btn">
-                                        <i class="fas fa-download me-1"></i> Backup Configuration
-                                    </button>
-                                </div>
-                                <div class="col-md-6">
-                                    <button type="button" class="btn btn-outline-secondary mb-3 me-2" id="restore-config-btn">
-                                        <i class="fas fa-upload me-1"></i> Restore Configuration
-                                    </button>
-                                    
-                                    <button type="button" class="btn btn-outline-danger mb-3" id="reset-all-btn">
-                                        <i class="fas fa-exclamation-triangle me-1"></i> Reset All Settings
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Database Operations Tab -->
-                <div class="tab-pane fade" id="database" role="tabpanel" aria-labelledby="database-tab">
-                    <h5 class="mb-3">Database Management</h5>
-                    
-                    <div class="row mb-4">
-                        <div class="col-md-12">
-                            <h6 class="border-bottom pb-2 mb-3">Logs Management</h6>
-                            <div class="alert alert-info">
-                                <i class="fas fa-info-circle me-2"></i>This section allows you to manage the proxy logs stored in the database.
-                            </div>
-                            
-                            <div class="card mb-3">
-                                <div class="card-header bg-light">
-                                    <strong>Clear Logs</strong>
-                                </div>
-                                <div class="card-body">
-                                    <p>Remove all proxy access logs from the database.</p>
-                                    <div class="d-flex align-items-center">
-                                        <button type="button" class="btn btn-danger me-3" id="clear-logs-btn">
-                                            <i class="fas fa-trash-alt me-1"></i> Clear All Logs
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <h6 class="border-bottom pb-2 mb-3">System Maintenance</h6>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <button type="button" class="btn btn-outline-secondary mb-3 me-2" id="clear-cache-btn">
+                                            <i class="fas fa-broom me-1"></i> Clear Cache
                                         </button>
-                                        <span class="text-muted small">This action cannot be undone.</span>
+                                        
+                                        <button type="button" class="btn btn-outline-secondary mb-3 me-2" id="backup-config-btn">
+                                            <i class="fas fa-download me-1"></i> Backup Configuration
+                                        </button>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <button type="button" class="btn btn-outline-secondary mb-3 me-2" id="restore-config-btn">
+                                            <i class="fas fa-upload me-1"></i> Restore Configuration
+                                        </button>
+                                        
+                                        <button type="button" class="btn btn-outline-danger mb-3" id="reset-all-btn">
+                                            <i class="fas fa-exclamation-triangle me-1"></i> Reset All Settings
+                                        </button>
                                     </div>
                                 </div>
                             </div>
-                            
-                            <div class="card mb-3">
-                                <div class="card-header bg-light">
-                                    <strong>Log Retention</strong>
+                        </div>
+                    </div>
+                    
+                    <!-- Database Operations Tab -->
+                    <div class="tab-pane fade" id="database" role="tabpanel" aria-labelledby="database-tab">
+                        <h5 class="mb-3">Database Management</h5>
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-12">
+                                <h6 class="border-bottom pb-2 mb-3">Logs Management</h6>
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle me-2"></i>This section allows you to manage the proxy logs stored in the database.
                                 </div>
-                                <div class="card-body">
-                                    <p>Remove logs older than a specific time period.</p>
-                                    <div class="row g-3 align-items-center mb-3">
-                                        <div class="col-auto">
-                                            <label for="retention-period" class="col-form-label">Remove logs older than</label>
-                                        </div>
-                                        <div class="col-auto">
-                                            <select class="form-select" id="retention-period">
-                                                <option value="1">1 day</option>
-                                                <option value="7">7 days</option>
-                                                <option value="30" selected>30 days</option>
-                                                <option value="90">90 days</option>
-                                                <option value="180">180 days</option>
-                                                <option value="365">1 year</option>
-                                            </select>
-                                        </div>
-                                        <div class="col-auto">
-                                            <button type="button" class="btn btn-warning" id="clear-old-logs-btn">
-                                                <i class="fas fa-broom me-1"></i> Clear Old Logs
+                                
+                                <div class="card mb-3">
+                                    <div class="card-header bg-light">
+                                        <strong>Clear Logs</strong>
+                                    </div>
+                                    <div class="card-body">
+                                        <p>Remove all proxy access logs from the database.</p>
+                                        <div class="d-flex align-items-center">
+                                            <button type="button" class="btn btn-danger me-3" id="clear-logs-btn">
+                                                <i class="fas fa-trash-alt me-1"></i> Clear All Logs
                                             </button>
+                                            <span class="text-muted small">This action cannot be undone.</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="card mb-3">
+                                    <div class="card-header bg-light">
+                                        <strong>Log Retention</strong>
+                                    </div>
+                                    <div class="card-body">
+                                        <p>Remove logs older than a specific time period.</p>
+                                        <div class="row g-3 align-items-center mb-3">
+                                            <div class="col-auto">
+                                                <label for="retention-period" class="col-form-label">Remove logs older than</label>
+                                            </div>
+                                            <div class="col-auto">
+                                                <select class="form-select" id="retention-period">
+                                                    <option value="1">1 day</option>
+                                                    <option value="7">7 days</option>
+                                                    <option value="30" selected>30 days</option>
+                                                    <option value="90">90 days</option>
+                                                    <option value="180">180 days</option>
+                                                    <option value="365">1 year</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-auto">
+                                                <button type="button" class="btn btn-warning" id="clear-old-logs-btn">
+                                                    <i class="fas fa-broom me-1"></i> Clear Old Logs
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    
-                    <div class="row mb-4">
-                        <div class="col-md-12">
-                            <h6 class="border-bottom pb-2 mb-3">Database Statistics</h6>
-                            
-                            <div class="row">
-                                <div class="col-md-4">
-                                    <div class="card text-center mb-3">
-                                        <div class="card-body">
-                                            <h6 class="card-title">Total Logs</h6>
-                                            <h3 id="db-total-logs">Loading...</h3>
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-12">
+                                <h6 class="border-bottom pb-2 mb-3">Database Statistics</h6>
+                                
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="card text-center mb-3">
+                                            <div class="card-body">
+                                                <h6 class="card-title">Total Logs</h6>
+                                                <h3 id="db-total-logs">Loading...</h3>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="card text-center mb-3">
+                                            <div class="card-body">
+                                                <h6 class="card-title">Database Size</h6>
+                                                <h3 id="db-size">Loading...</h3>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="card text-center mb-3">
+                                            <div class="card-body">
+                                                <h6 class="card-title">Last Log Entry</h6>
+                                                <h3 id="db-last-entry">Loading...</h3>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-4">
-                                    <div class="card text-center mb-3">
-                                        <div class="card-body">
-                                            <h6 class="card-title">Database Size</h6>
-                                            <h3 id="db-size">Loading...</h3>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="card text-center mb-3">
-                                        <div class="card-body">
-                                            <h6 class="card-title">Last Log Entry</h6>
-                                            <h3 id="db-last-entry">Loading...</h3>
-                                        </div>
-                                    </div>
-                                </div>
+                                
+                                <button type="button" class="btn btn-outline-primary mt-2" id="refresh-db-stats-btn">
+                                    <i class="fas fa-sync-alt me-1"></i> Refresh Statistics
+                                </button>
                             </div>
-                            
-                            <button type="button" class="btn btn-outline-primary mt-2" id="refresh-db-stats-btn">
-                                <i class="fas fa-sync-alt me-1"></i> Refresh Statistics
-                            </button>
                         </div>
-                    </div>
-                    
-                    <div class="row mb-4">
-                        <div class="col-md-12">
-                            <h6 class="border-bottom pb-2 mb-3">Database Maintenance</h6>
-                            
-                            <div class="card mb-3">
-                                <div class="card-header bg-light">
-                                    <strong>Database Optimization</strong>
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-12">
+                                <h6 class="border-bottom pb-2 mb-3">Database Maintenance</h6>
+                                
+                                <div class="card mb-3">
+                                    <div class="card-header bg-light">
+                                        <strong>Database Optimization</strong>
+                                    </div>
+                                    <div class="card-body">
+                                        <p>Optimize the database to improve performance and reduce size.</p>
+                                        <button type="button" class="btn btn-primary" id="optimize-db-btn">
+                                            <i class="fas fa-database me-1"></i> Optimize Database
+                                        </button>
+                                    </div>
                                 </div>
-                                <div class="card-body">
-                                    <p>Optimize the database to improve performance and reduce size.</p>
-                                    <button type="button" class="btn btn-primary" id="optimize-db-btn">
-                                        <i class="fas fa-database me-1"></i> Optimize Database
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div class="card mb-3">
-                                <div class="card-header bg-light">
-                                    <strong>Export Database</strong>
-                                </div>
-                                <div class="card-body">
-                                    <p>Export the database for backup or analysis purposes.</p>
-                                    <button type="button" class="btn btn-outline-secondary" id="export-db-btn">
-                                        <i class="fas fa-file-export me-1"></i> Export Database
-                                    </button>
+                                
+                                <div class="card mb-3">
+                                    <div class="card-header bg-light">
+                                        <strong>Export Database</strong>
+                                    </div>
+                                    <div class="card-body">
+                                        <p>Export the database for backup or analysis purposes.</p>
+                                        <button type="button" class="btn btn-outline-secondary" id="export-db-btn">
+                                            <i class="fas fa-file-export me-1"></i> Export Database
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-            
-            <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-3">
-                <button type="button" class="btn btn-secondary me-md-2" id="reset-settings">Reset to Defaults</button>
-                <button type="button" class="btn btn-primary" id="save-settings">Save Settings</button>
-            </div>
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-3">
+                    <button type="button" class="btn btn-secondary me-md-2" id="reset-settings">Reset to Defaults</button>
+                    <button type="button" class="btn btn-primary" id="save-settings">Save Settings</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
