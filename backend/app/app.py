@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import requests
 import threading
 import time
+import random  # Add missing random module import
 from werkzeug.security import generate_password_hash, check_password_hash
 import functools
 import ipaddress
@@ -2421,8 +2422,9 @@ def get_traffic_statistics():
         # Get count of allowed traffic by interval
         allowed_data = []
         blocked_data = []
+        has_data = False
         
-        # Try to get real log data first
+        # Try to get real log data
         try:
             # Query for allowed traffic (non-blocked requests)
             for interval_label in intervals:
@@ -2445,41 +2447,45 @@ def get_traffic_statistics():
                 """, (f"{interval_label}%",))
                 blocked_count = cursor.fetchone()[0]
                 blocked_data.append(blocked_count)
+                
+                # Check if we have any data
+                if allowed_count > 0 or blocked_count > 0:
+                    has_data = True
         except Exception as e:
-            logger.warning(f"Error getting traffic statistics from logs: {e}. Using simulated data.")
-            # Fall back to simulated data if there's an error
-            for _ in intervals:
-                allowed_data.append(random.randint(10, 100))
-                blocked_data.append(random.randint(0, 20))
+            logger.warning(f"Error getting traffic statistics from logs: {e}")
+            has_data = False
         
-        # If we got no data or very little data, fill in with simulated data
-        if sum(allowed_data) < 10 and sum(blocked_data) < 5:
-            logger.info("Insufficient traffic data in logs, using simulated data")
-            allowed_data = []
-            blocked_data = []
-            for _ in intervals:
-                allowed_data.append(random.randint(10, 100))
-                blocked_data.append(random.randint(0, 20))
-        
-        # Calculate totals
-        total_allowed = sum(allowed_data)
-        total_blocked = sum(blocked_data)
-        
-        # Get active connections (using a random value as proxy systems don't typically expose this)
-        # In a production system, this would query the proxy server's status
-        active_connections = random.randint(1, 10)
-        
-        return jsonify({
-            'status': 'success',
-            'data': {
-                'labels': intervals,
-                'allowed_traffic': allowed_data,
-                'blocked_traffic': blocked_data,
-                'total_allowed': total_allowed,
-                'total_blocked': total_blocked,
-                'active_connections': active_connections
-            }
-        })
+        # Calculate totals if we have data
+        if has_data:
+            total_allowed = sum(allowed_data)
+            total_blocked = sum(blocked_data)
+            active_connections = "N/A"  # We don't have real-time connection data
+            
+            return jsonify({
+                'status': 'success',
+                'data': {
+                    'labels': intervals,
+                    'allowed_traffic': allowed_data,
+                    'blocked_traffic': blocked_data,
+                    'total_allowed': total_allowed,
+                    'total_blocked': total_blocked,
+                    'active_connections': active_connections
+                }
+            })
+        else:
+            # Return N/A values instead of random data
+            return jsonify({
+                'status': 'success',
+                'data': {
+                    'labels': intervals,
+                    'allowed_traffic': [],
+                    'blocked_traffic': [],
+                    'total_allowed': 0,
+                    'total_blocked': 0,
+                    'active_connections': "N/A",
+                    'message': "No traffic data available for the selected period"
+                }
+            })
     except Exception as e:
         logger.error(f"Error generating traffic statistics: {str(e)}")
         return jsonify({
@@ -2500,72 +2506,115 @@ def get_cache_statistics():
         cache_size_row = cursor.fetchone()
         cache_size = int(cache_size_row['setting_value']) if cache_size_row else 1000  # Default to 1GB
         
-        # Try to get actual cache statistics from Squid
-        proxy_host = os.environ.get('PROXY_HOST', 'proxy')
-        proxy_port = os.environ.get('PROXY_PORT', '3128')
+        # Try to get actual cache statistics
+        has_real_data = False
         
         # Variables to hold the statistics
-        cache_usage = 0
-        hit_ratio = 0
-        avg_response_time = 0
+        cache_usage = "N/A"
+        hit_ratio = "N/A"
+        avg_response_time = "N/A"
+        cache_usage_percentage = "N/A"
         
         # Try to query the Squid cache manager for actual stats
         try:
-            # This is where we would query Squid for actual cache statistics
-            # In a real implementation, we would parse the output of squidclient mgr:info command
-            # For now, use more realistic simulated data based on settings
+            proxy_host = os.environ.get('PROXY_HOST', 'proxy')
+            proxy_port = os.environ.get('PROXY_PORT', '3128')
+            container_name = os.environ.get('PROXY_CONTAINER_NAME', 'secure-proxy-proxy-1')
             
-            # Get cache usage - try to make this more realistic
-            # In real implementation, this would come from Squid's cache manager
-            cache_usage = int(cache_size * random.uniform(0.1, 0.8))
-            
-            # Try to get hit ratio from logs
+            # Validate container name to prevent command injection
+            if not re.match(r'^[a-zA-Z0-9_-]+$', container_name):
+                raise ValueError(f"Invalid container name format: {container_name}")
+                
+            # Try to get real cache information using squidclient
             try:
-                cursor.execute("""
-                    SELECT 
-                        COUNT(CASE WHEN status LIKE '%HIT%' THEN 1 END) as hits,
-                        COUNT(*) as total
-                    FROM proxy_logs
-                    WHERE timestamp > datetime('now', '-1 day')
-                """)
-                result = cursor.fetchone()
-                if result and result['total'] > 0:
-                    hit_ratio = result['hits'] / result['total']
+                result = subprocess.run(
+                    ['docker', 'exec', container_name, 'squidclient', '-h', 'localhost', 'mgr:info'],
+                    capture_output=True, text=True, check=False, timeout=5
+                )
+                
+                if result.returncode == 0:
+                    info_output = result.stdout
+                    
+                    # Parse the relevant cache information from squidclient output
+                    # Example patterns to look for:
+                    storage_pattern = r'Storage Swap size:\s+(\d+)\s+KB'
+                    mem_pattern = r'Storage Mem size:\s+(\d+)\s+KB'
+                    usage_pattern = r'Storage Swap capacity:\s+(\d+\.\d+)%'
+                    hits_pattern = r'Request Hit Ratios:\s+5min: (\d+\.\d+)%'
+                    
+                    # Extract storage info
+                    storage_match = re.search(storage_pattern, info_output)
+                    if storage_match:
+                        storage_kb = int(storage_match.group(1))
+                        cache_usage = int(storage_kb / 1024)  # Convert KB to MB
+                        has_real_data = True
+                    
+                    # Extract usage percentage
+                    usage_match = re.search(usage_pattern, info_output)
+                    if usage_match:
+                        cache_usage_percentage = float(usage_match.group(1))
+                        has_real_data = True
+                    
+                    # Extract hit ratio
+                    hits_match = re.search(hits_pattern, info_output)
+                    if hits_match:
+                        hit_ratio = float(hits_match.group(1)) / 100  # Convert percentage to ratio
+                        has_real_data = True
+            except Exception as e:
+                logger.warning(f"Error executing squidclient: {e}")
+            
+            # If we couldn't get real cache stats, try to get hit ratio from logs
+            if not has_real_data:
+                try:
+                    cursor.execute("""
+                        SELECT 
+                            COUNT(CASE WHEN status LIKE '%HIT%' THEN 1 END) as hits,
+                            COUNT(*) as total
+                        FROM proxy_logs
+                        WHERE timestamp > datetime('now', '-1 day')
+                    """)
+                    result = cursor.fetchone()
+                    if result and result['total'] > 0:
+                        hit_ratio = result['hits'] / result['total']
+                        has_real_data = True
+                except Exception as e:
+                    logger.warning(f"Error getting hit ratio from logs: {e}")
+            
+            # For average response time, use log data if available
+            try:
+                # In real logs, you'd have response time data
+                # Here we're just checking if we have any logs
+                cursor.execute("SELECT COUNT(*) FROM proxy_logs")
+                log_count = cursor.fetchone()[0]
+                if log_count > 0:
+                    # Set a realistic response time (in production, calculate from logs)
+                    avg_response_time = "N/A"  # We don't have actual response time data
                 else:
-                    # Fallback to simulated data
-                    hit_ratio = random.uniform(0.3, 0.8)
+                    avg_response_time = "N/A"
             except Exception as e:
-                logger.warning(f"Error getting hit ratio from logs: {e}")
-                hit_ratio = random.uniform(0.3, 0.8)
-            
-            # Get average response time from logs
-            try:
-                # This is where we would get actual response times from the logs
-                # For now, use simulated data
-                avg_response_time = random.uniform(0.05, 0.25)
-            except Exception as e:
-                logger.warning(f"Error getting response time data: {e}")
-                avg_response_time = random.uniform(0.05, 0.25)
+                logger.warning(f"Error checking logs for response time: {e}")
+                avg_response_time = "N/A"
                 
         except Exception as e:
-            logger.warning(f"Error getting cache statistics from Squid: {e}")
-            # Fallback to simulated data
-            cache_usage = int(cache_size * random.uniform(0.1, 0.8))
-            hit_ratio = random.uniform(0.3, 0.8)
-            avg_response_time = random.uniform(0.05, 0.25)
+            logger.warning(f"Error getting cache statistics: {e}")
+            has_real_data = False
         
-        # Calculate cache usage percentage
-        cache_usage_percentage = (cache_usage / cache_size) * 100
+        # Format the response with available data
+        response_data = {
+            'cache_size': cache_size,
+            'cache_usage': cache_usage,
+            'cache_usage_percentage': cache_usage_percentage,
+            'hit_ratio': hit_ratio,
+            'avg_response_time': avg_response_time
+        }
+        
+        # Add a message if we don't have real data
+        if not has_real_data:
+            response_data['message'] = "No real cache statistics available"
         
         return jsonify({
             'status': 'success',
-            'data': {
-                'cache_size': cache_size,
-                'cache_usage': cache_usage,
-                'cache_usage_percentage': cache_usage_percentage,
-                'hit_ratio': hit_ratio,
-                'avg_response_time': avg_response_time
-            }
+            'data': response_data
         })
     except Exception as e:
         logger.error(f"Error retrieving cache statistics: {str(e)}")
