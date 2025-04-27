@@ -254,6 +254,7 @@ def verify_password(username, password):
     # Check for rate limiting only for external traffic
     if not is_internal:
         now = datetime.now()
+        # Keep only attempts within the rate limit window
         auth_attempts[client_ip] = [t for t in auth_attempts[client_ip] if (now - t).total_seconds() < RATE_LIMIT_WINDOW]
         
         # If too many attempts, reject this request
