@@ -504,7 +504,7 @@
         
         // Function to import logs
         function importLogs() {
-            return apiRequest('POST', 'logs/import')
+            return apiRequest('POST', 'logs/import', {})  // Send empty JSON object
                 .then(function(response) {
                     if (response.status === 'success') {
                         showToast('Logs imported successfully');
@@ -520,7 +520,7 @@
         
         // Function to clear logs
         function clearLogs() {
-            return apiRequest('POST', 'logs/clear')
+            return apiRequest('POST', 'logs/clear', {})  // Send empty JSON object
                 .then(function(response) {
                     if (response.status === 'success') {
                         showToast('Logs cleared successfully');
