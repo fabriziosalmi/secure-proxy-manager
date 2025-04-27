@@ -543,6 +543,11 @@
                 if (csrfToken) {
                     headers['X-CSRF-Token'] = csrfToken;
                 }
+
+                // For non-GET requests, ensure csrf_token is included in the data
+                if (method !== 'GET' && data && !data.csrf_token && csrfToken) {
+                    data = {...data, csrf_token: csrfToken};
+                }
                 
                 $.ajax({
                     url: '/api/' + endpoint,
