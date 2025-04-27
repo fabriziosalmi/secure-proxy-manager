@@ -1,17 +1,13 @@
-# Secure Proxy
+# Secure Proxy Manager
 
-<div align="center">
-  <img src="ui/static/favicon.ico" alt="Secure Proxy Logo" width="120" height="120">
-  <br>
-  <h3>Enterprise-Grade HTTP/HTTPS Filtering Proxy Solution</h3>
-  <p>A containerized secure proxy solution with advanced filtering capabilities, real-time monitoring, and a modern web UI.</p>
+A containerized secure proxy solution with advanced filtering capabilities, real-time monitoring, and a modern web UI.
   
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
   [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://www.docker.com/)
   [![Python](https://img.shields.io/badge/Python-3.9+-yellow?logo=python)](https://www.python.org/)
   [![Flask](https://img.shields.io/badge/Flask-2.0+-green?logo=flask)](https://flask.palletsprojects.com/)
   [![Bootstrap](https://img.shields.io/badge/Bootstrap-5.0-purple?logo=bootstrap)](https://getbootstrap.com/)
-</div>
+
 
 ## 🚀 Features
 
