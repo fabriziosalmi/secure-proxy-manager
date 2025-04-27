@@ -7,396 +7,391 @@
     
     <div class="row">
         <div class="col-md-12">
-            <form id="settings-form">
-                <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general" type="button" role="tab" aria-controls="general" aria-selected="true">General</button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="filtering-tab" data-bs-toggle="tab" data-bs-target="#filtering" type="button" role="tab" aria-controls="filtering" aria-selected="false">Filtering</button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="authentication-tab" data-bs-toggle="tab" data-bs-target="#authentication" type="button" role="tab" aria-controls="authentication" aria-selected="false">Authentication</button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced" type="button" role="tab" aria-controls="advanced" aria-selected="false">Advanced</button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="database-tab" data-bs-toggle="tab" data-bs-target="#database" type="button" role="tab" aria-controls="database" aria-selected="false">Database</button>
-                    </li>
-                </ul>
-                
-                <div class="tab-content p-3 border border-top-0 rounded-bottom" id="settingsTabContent">
-                    <!-- General Settings Tab -->
-                    <div class="tab-pane fade show active" id="general" role="tabpanel" aria-labelledby="general-tab">
-                        <h5 class="mb-3">Proxy Configuration</h5>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="cache_size" class="form-label">Cache Size (MB)</label>
-                                    <input type="number" class="form-control" id="cache_size" min="100" max="10000">
-                                    <div class="form-text">Amount of disk space used for caching (in MB)</div>
+            <div class="card">
+                <div class="card-header">
+                    <ul class="nav nav-tabs card-header-tabs" id="settingsTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general" type="button" role="tab" aria-controls="general" aria-selected="true">General</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="proxy-tab" data-bs-toggle="tab" data-bs-target="#proxy" type="button" role="tab" aria-controls="proxy" aria-selected="false">Proxy</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="security-tab" data-bs-toggle="tab" data-bs-target="#security" type="button" role="tab" aria-controls="security" aria-selected="false">Security</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="auth-tab" data-bs-toggle="tab" data-bs-target="#auth" type="button" role="tab" aria-controls="auth" aria-selected="false">Authentication</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="logs-tab" data-bs-toggle="tab" data-bs-target="#logs" type="button" role="tab" aria-controls="logs" aria-selected="false">Logs</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="database-tab" data-bs-toggle="tab" data-bs-target="#database" type="button" role="tab" aria-controls="database" aria-selected="false">Database</button>
+                        </li>
+                    </ul>
+                </div>
+                <div class="card-body">
+                    <div class="tab-content" id="settingsTabsContent">
+                        <!-- General Settings Tab -->
+                        <div class="tab-pane fade show active" id="general" role="tabpanel" aria-labelledby="general-tab">
+                            <h5 class="mb-4">General Settings</h5>
+                            
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="enable_ip_blacklist" checked>
+                                        <label class="form-check-label" for="enable_ip_blacklist">Enable IP Blacklist</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="When enabled, access from IPs in the blacklist will be blocked. Useful for preventing access from known malicious IP addresses."></span>
+                                    </div>
+                                    <div class="helper-text">Blocks access from blacklisted IP addresses and CIDR ranges.</div>
                                 </div>
                                 
-                                <div class="mb-3">
-                                    <label for="log_level" class="form-label">Log Level</label>
-                                    <select class="form-select" id="log_level">
-                                        <option value="debug">Debug</option>
-                                        <option value="info">Info</option>
-                                        <option value="warning">Warning</option>
-                                        <option value="error">Error</option>
-                                    </select>
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="enable_domain_blacklist" checked>
+                                        <label class="form-check-label" for="enable_domain_blacklist">Enable Domain Blacklist</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="When enabled, requests to domains in the blacklist will be blocked. Effective for restricting access to unwanted websites."></span>
+                                    </div>
+                                    <div class="helper-text">Blocks access to blacklisted domains and subdomains.</div>
                                 </div>
                             </div>
                             
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="max_object_size" class="form-label">Max Object Size (MB)</label>
-                                    <input type="number" class="form-control" id="max_object_size" min="1" max="1000">
-                                    <div class="form-text">Maximum size of objects to cache</div>
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="block_direct_ip" checked>
+                                        <label class="form-check-label" for="block_direct_ip">Block Direct IP Access</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="When enabled, blocks requests using direct IP addresses. This can prevent bypassing domain filters and improve security."></span>
+                                    </div>
+                                    <div class="helper-text">Blocks requests that use raw IP addresses instead of domain names.</div>
                                 </div>
                                 
-                                <div class="form-check form-switch mb-3">
-                                    <input class="form-check-input" type="checkbox" id="enable_compression">
-                                    <label class="form-check-label" for="enable_compression">Enable Compression</label>
-                                    <div class="form-text">Compress HTTP responses to save bandwidth</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Filtering Settings Tab -->
-                    <div class="tab-pane fade" id="filtering" role="tabpanel" aria-labelledby="filtering-tab">
-                        <h5 class="mb-3">Access Control & Filtering</h5>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <h6 class="border-bottom pb-2 mb-3">Blacklist Settings</h6>
-                                
-                                <div class="form-check form-switch mb-3">
-                                    <input class="form-check-input" type="checkbox" id="enable_ip_blacklist">
-                                    <label class="form-check-label" for="enable_ip_blacklist">Enable IP Blacklist</label>
-                                    <div class="form-text">Block requests from blacklisted IP addresses</div>
-                                </div>
-                                
-                                <div class="form-check form-switch mb-3">
-                                    <input class="form-check-input" type="checkbox" id="enable_domain_blacklist">
-                                    <label class="form-check-label" for="enable_domain_blacklist">Enable Domain Blacklist</label>
-                                    <div class="form-text">Block requests to blacklisted domains</div>
-                                </div>
-                                
-                                <div class="form-check form-switch mb-3">
-                                    <input class="form-check-input" type="checkbox" id="block_direct_ip">
-                                    <label class="form-check-label" for="block_direct_ip">Block Direct IP Access</label>
-                                    <div class="form-text">Block requests to direct IP addresses</div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="log_level" class="form-label">Log Level</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Controls the detail level of logs. Debug provides the most information but generates larger log files."></span>
+                                        <select class="form-select" id="log_level">
+                                            <option value="debug">Debug</option>
+                                            <option value="info" selected>Info</option>
+                                            <option value="warning">Warning</option>
+                                            <option value="error">Error</option>
+                                        </select>
+                                    </div>
+                                    <div class="helper-text">Info is recommended for normal operation, Debug for troubleshooting.</div>
                                 </div>
                             </div>
                             
-                            <div class="col-md-6">
-                                <h6 class="border-bottom pb-2 mb-3">Advanced Filtering</h6>
-                                
-                                <div class="form-check form-switch mb-3">
-                                    <input class="form-check-input" type="checkbox" id="enable_content_filtering">
-                                    <label class="form-check-label" for="enable_content_filtering">Enable Content Filtering</label>
-                                    <div class="form-text">Filter requests based on content type</div>
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label for="blocked_file_types" class="form-label">Blocked File Extensions</label>
-                                    <input type="text" class="form-control" id="blocked_file_types" placeholder="exe,bat,dll,jar">
-                                    <div class="form-text">Comma-separated list of file extensions to block</div>
-                                </div>
-                                
-                                <div class="form-check form-switch mb-3">
-                                    <input class="form-check-input" type="checkbox" id="enable_https_filtering">
-                                    <label class="form-check-label" for="enable_https_filtering">HTTPS Filtering</label>
-                                    <div class="form-text">Decrypt and inspect HTTPS traffic (requires certificate setup)</div>
-                                </div>
-                                
-                                <div class="mb-3" id="download-cert-container">
-                                    <button type="button" class="btn btn-outline-secondary" id="download-cert-btn">
-                                        <i class="fas fa-download me-1"></i> Download CA Certificate
-                                    </button>
-                                    <div class="form-text">Install this certificate on your clients to trust HTTPS filtering</div>
-                                </div>
+                            <div class="d-grid d-md-flex gap-2 justify-content-md-end mt-4">
+                                <button id="reset-settings" class="btn btn-outline-secondary">Reset Settings</button>
+                                <button id="save-settings" class="btn btn-primary">Save Settings</button>
                             </div>
                         </div>
                         
-                        <div class="row mb-3">
-                            <div class="col-md-12">
-                                <h6 class="border-bottom pb-2 mb-3">Time Restrictions</h6>
-                                
-                                <div class="form-check form-switch mb-3">
-                                    <input class="form-check-input" type="checkbox" id="enable_time_restrictions">
-                                    <label class="form-check-label" for="enable_time_restrictions">Enable Time Restrictions</label>
-                                    <div class="form-text">Enable access restrictions based on time of day</div>
-                                </div>
-                                
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="time_restriction_start" class="form-label">Allowed Start Time</label>
-                                            <input type="time" class="form-control" id="time_restriction_start">
-                                        </div>
+                        <!-- Proxy Settings Tab -->
+                        <div class="tab-pane fade" id="proxy" role="tabpanel" aria-labelledby="proxy-tab">
+                            <h5 class="mb-4">Proxy Configuration</h5>
+                            
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="cache_size" class="form-label">Cache Size (MB)</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Size of the Squid disk cache in megabytes. Larger cache can improve performance but uses more disk space."></span>
+                                        <input type="number" class="form-control" id="cache_size" value="1000" min="100" max="10000">
                                     </div>
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="time_restriction_end" class="form-label">Allowed End Time</label>
-                                            <input type="time" class="form-control" id="time_restriction_end">
-                                        </div>
+                                    <div class="helper-text">Default: 1000 MB. Recommended: 500-5000 MB based on disk space.</div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="max_object_size" class="form-label">Max Object Size (MB)</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Maximum size of individual objects to store in the cache. Affects what content types can be cached."></span>
+                                        <input type="number" class="form-control" id="max_object_size" value="50" min="1" max="500">
                                     </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Authentication Tab -->
-                    <div class="tab-pane fade" id="authentication" role="tabpanel" aria-labelledby="authentication-tab">
-                        <h5 class="mb-3">Authentication Settings</h5>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <h6 class="border-bottom pb-2 mb-3">Admin Authentication</h6>
-                                
-                                <div class="mb-3">
-                                    <label for="admin_username" class="form-label">Admin Username</label>
-                                    <input type="text" class="form-control" id="admin_username" placeholder="admin">
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label for="admin_password" class="form-label">Admin Password</label>
-                                    <input type="password" class="form-control" id="admin_password" placeholder="********">
-                                    <div class="form-text">Leave blank to keep current password</div>
+                                    <div class="helper-text">Limits size of cacheable objects. Higher values cache more content.</div>
                                 </div>
                             </div>
                             
-                            <div class="col-md-6">
-                                <h6 class="border-bottom pb-2 mb-3">Proxy Authentication</h6>
-                                
-                                <div class="form-check form-switch mb-3">
-                                    <input class="form-check-input" type="checkbox" id="enable_proxy_auth">
-                                    <label class="form-check-label" for="enable_proxy_auth">Enable Proxy Authentication</label>
-                                    <div class="form-text">Require authentication for proxy access</div>
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="enable_compression">
+                                        <label class="form-check-label" for="enable_compression">Enable Compression</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="When enabled, Squid will compress HTTP responses when possible, reducing bandwidth usage."></span>
+                                    </div>
+                                    <div class="helper-text">Reduces bandwidth usage but increases CPU load.</div>
                                 </div>
                                 
-                                <div class="mb-3">
-                                    <label for="auth_method" class="form-label">Authentication Method</label>
-                                    <select class="form-select" id="auth_method">
-                                        <option value="basic">Basic Authentication</option>
-                                        <option value="digest">Digest Authentication</option>
-                                        <option value="ntlm">NTLM Authentication</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Advanced Tab -->
-                    <div class="tab-pane fade" id="advanced" role="tabpanel" aria-labelledby="advanced-tab">
-                        <h5 class="mb-3">Advanced Settings</h5>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <h6 class="border-bottom pb-2 mb-3">Performance</h6>
-                                
-                                <div class="mb-3">
-                                    <label for="connection_timeout" class="form-label">Connection Timeout (seconds)</label>
-                                    <input type="number" class="form-control" id="connection_timeout" min="1" max="300">
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label for="dns_timeout" class="form-label">DNS Timeout (seconds)</label>
-                                    <input type="number" class="form-control" id="dns_timeout" min="1" max="60">
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label for="max_connections" class="form-label">Maximum Connections</label>
-                                    <input type="number" class="form-control" id="max_connections" min="10" max="10000">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="connection_timeout" class="form-label">Connection Timeout (seconds)</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Maximum time Squid waits for a connection to be established. Lower values improve responsiveness but can cause issues with slow servers."></span>
+                                        <input type="number" class="form-control" id="connection_timeout" value="30" min="5" max="120">
+                                    </div>
+                                    <div class="helper-text">Default: 30 seconds. Lower for better responsiveness.</div>
                                 </div>
                             </div>
                             
-                            <div class="col-md-6">
-                                <h6 class="border-bottom pb-2 mb-3">Logging & Monitoring</h6>
-                                
-                                <div class="form-check form-switch mb-3">
-                                    <input class="form-check-input" type="checkbox" id="enable_extended_logging">
-                                    <label class="form-check-label" for="enable_extended_logging">Enable Extended Logging</label>
-                                    <div class="form-text">Log additional details about requests</div>
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="dns_timeout" class="form-label">DNS Timeout (seconds)</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Maximum time Squid waits for DNS lookups to complete. Affects how quickly failed domain lookups are reported."></span>
+                                        <input type="number" class="form-control" id="dns_timeout" value="5" min="1" max="30">
+                                    </div>
+                                    <div class="helper-text">Default: 5 seconds. Too low may cause DNS failures.</div>
                                 </div>
                                 
-                                <div class="mb-3">
-                                    <label for="log_retention" class="form-label">Log Retention (days)</label>
-                                    <input type="number" class="form-control" id="log_retention" min="1" max="365">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="max_connections" class="form-label">Maximum Connections</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Maximum number of concurrent connections Squid will handle. Higher values support more users but increase resource usage."></span>
+                                        <input type="number" class="form-control" id="max_connections" value="100" min="10" max="1000">
+                                    </div>
+                                    <div class="helper-text">Adjust based on number of users and available system resources.</div>
                                 </div>
-                                
-                                <div class="form-check form-switch mb-3">
-                                    <input class="form-check-input" type="checkbox" id="enable_alerts">
-                                    <label class="form-check-label" for="enable_alerts">Enable Email Alerts</label>
-                                    <div class="form-text">Send email alerts for security events</div>
-                                </div>
+                            </div>
+                            
+                            <div class="d-grid d-md-flex gap-2 justify-content-md-end mt-4">
+                                <button id="reload-proxy" class="btn btn-outline-secondary">Reload Proxy</button>
+                                <button id="save-proxy-settings" class="btn btn-primary">Save Settings</button>
                             </div>
                         </div>
                         
-                        <div class="row mb-3">
-                            <div class="col-md-12">
-                                <h6 class="border-bottom pb-2 mb-3">System Maintenance</h6>
-                                
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <button type="button" class="btn btn-outline-secondary mb-3 me-2" id="clear-cache-btn">
-                                            <i class="fas fa-broom me-1"></i> Clear Cache
-                                        </button>
-                                        
-                                        <button type="button" class="btn btn-outline-secondary mb-3 me-2" id="backup-config-btn">
-                                            <i class="fas fa-download me-1"></i> Backup Configuration
-                                        </button>
+                        <!-- Security Settings Tab -->
+                        <div class="tab-pane fade" id="security" role="tabpanel" aria-labelledby="security-tab">
+                            <h5 class="mb-4">Security Settings</h5>
+                            
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="enable_content_filtering">
+                                        <label class="form-check-label" for="enable_content_filtering">Enable Content Filtering</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Enables filtering based on content type and file extensions. Useful for blocking potentially harmful files."></span>
                                     </div>
-                                    <div class="col-md-6">
-                                        <button type="button" class="btn btn-outline-secondary mb-3 me-2" id="restore-config-btn">
-                                            <i class="fas fa-upload me-1"></i> Restore Configuration
-                                        </button>
-                                        
-                                        <button type="button" class="btn btn-outline-danger mb-3" id="reset-all-btn">
-                                            <i class="fas fa-exclamation-triangle me-1"></i> Reset All Settings
-                                        </button>
+                                    <div class="helper-text">Blocks potentially dangerous file types like executables.</div>
+                                    
+                                    <div id="file-type-block-container" class="mt-3">
+                                        <label for="blocked_file_types" class="form-label">Blocked File Types</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="List of file extensions to block. Use comma-separated values (e.g., exe,bat,js)."></span>
+                                        <input type="text" class="form-control" id="blocked_file_types" value="exe,bat,cmd,dll,js">
+                                        <div class="helper-text">Common values: exe, bat, js, vbs, ps1, msi</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="enable_https_filtering">
+                                        <label class="form-check-label" for="enable_https_filtering">Enable HTTPS Filtering</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Enables SSL/TLS interception to filter HTTPS traffic. Requires deploying a CA certificate to client devices."></span>
+                                    </div>
+                                    <div class="helper-text">Allows inspecting encrypted traffic but requires certificate installation.</div>
+                                    
+                                    <div id="download-cert-container" class="mt-3">
+                                        <button id="download-cert-btn" class="btn btn-outline-info">Download CA Certificate</button>
+                                        <div class="helper-text mt-2">This certificate must be trusted on all client devices.</div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Database Operations Tab -->
-                    <div class="tab-pane fade" id="database" role="tabpanel" aria-labelledby="database-tab">
-                        <h5 class="mb-3">Database Management</h5>
-                        
-                        <div class="row mb-4">
-                            <div class="col-md-12">
-                                <h6 class="border-bottom pb-2 mb-3">Logs Management</h6>
-                                <div class="alert alert-info">
-                                    <i class="fas fa-info-circle me-2"></i>This section allows you to manage the proxy logs stored in the database.
-                                </div>
-                                
-                                <div class="card mb-3">
-                                    <div class="card-header bg-light">
-                                        <strong>Clear Logs</strong>
+                            
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="enable_time_restrictions">
+                                        <label class="form-check-label" for="enable_time_restrictions">Enable Time Restrictions</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Enables time-based access controls. Useful for limiting proxy usage to specific hours."></span>
                                     </div>
-                                    <div class="card-body">
-                                        <p>Remove all proxy access logs from the database.</p>
-                                        <div class="d-flex align-items-center">
-                                            <button type="button" class="btn btn-danger me-3" id="clear-logs-btn">
-                                                <i class="fas fa-trash-alt me-1"></i> Clear All Logs
-                                            </button>
-                                            <span class="text-muted small">This action cannot be undone.</span>
+                                    <div class="helper-text">Restrict proxy access to certain hours of the day.</div>
+                                    
+                                    <div id="time-restriction-container" class="mt-3 row">
+                                        <div class="col-6">
+                                            <label for="time_restriction_start" class="form-label">Start Time</label>
+                                            <input type="time" class="form-control" id="time_restriction_start" value="09:00">
                                         </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="card mb-3">
-                                    <div class="card-header bg-light">
-                                        <strong>Log Retention</strong>
-                                    </div>
-                                    <div class="card-body">
-                                        <p>Remove logs older than a specific time period.</p>
-                                        <div class="row g-3 align-items-center mb-3">
-                                            <div class="col-auto">
-                                                <label for="retention-period" class="col-form-label">Remove logs older than</label>
-                                            </div>
-                                            <div class="col-auto">
-                                                <select class="form-select" id="retention-period">
-                                                    <option value="1">1 day</option>
-                                                    <option value="7">7 days</option>
-                                                    <option value="30" selected>30 days</option>
-                                                    <option value="90">90 days</option>
-                                                    <option value="180">180 days</option>
-                                                    <option value="365">1 year</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-auto">
-                                                <button type="button" class="btn btn-warning" id="clear-old-logs-btn">
-                                                    <i class="fas fa-broom me-1"></i> Clear Old Logs
-                                                </button>
-                                            </div>
+                                        <div class="col-6">
+                                            <label for="time_restriction_end" class="form-label">End Time</label>
+                                            <input type="time" class="form-control" id="time_restriction_end" value="17:00">
+                                        </div>
+                                        <div class="col-12">
+                                            <div class="helper-text mt-2">Proxy will only be accessible between these hours.</div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
+                            
+                            <div class="d-grid d-md-flex gap-2 justify-content-md-end mt-4">
+                                <button id="scan-security" class="btn btn-outline-warning">Security Scan</button>
+                                <button id="save-security-settings" class="btn btn-primary">Save Settings</button>
+                            </div>
                         </div>
                         
-                        <div class="row mb-4">
-                            <div class="col-md-12">
-                                <h6 class="border-bottom pb-2 mb-3">Database Statistics</h6>
+                        <!-- Authentication Tab -->
+                        <div class="tab-pane fade" id="auth" role="tabpanel" aria-labelledby="auth-tab">
+                            <h5 class="mb-4">Authentication Settings</h5>
+                            
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="enable_proxy_auth">
+                                        <label class="form-check-label" for="enable_proxy_auth">Enable Proxy Authentication</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Requires users to authenticate before using the proxy. Essential for user tracking and access control."></span>
+                                    </div>
+                                    <div class="helper-text">Requires username/password to use the proxy.</div>
+                                </div>
                                 
-                                <div class="row">
-                                    <div class="col-md-4">
-                                        <div class="card text-center mb-3">
-                                            <div class="card-body">
-                                                <h6 class="card-title">Total Logs</h6>
-                                                <h3 id="db-total-logs">Loading...</h3>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="auth_method" class="form-label">Authentication Method</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="The authentication mechanism to use. Basic is simplest but sends credentials in clear text."></span>
+                                        <select class="form-select" id="auth_method">
+                                            <option value="basic" selected>Basic</option>
+                                            <option value="digest">Digest</option>
+                                            <option value="ntlm">NTLM</option>
+                                            <option value="negotiate">Negotiate</option>
+                                        </select>
+                                    </div>
+                                    <div class="helper-text">Basic is simplest, Digest/NTLM more secure but complex.</div>
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="admin_username" class="form-label">Admin Username</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Username for the admin interface login. Default is 'admin'."></span>
+                                        <input type="text" class="form-control" id="admin_username" value="admin">
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="admin_password" class="form-label">Admin Password</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Password for the admin interface login. Leave empty to keep current password."></span>
+                                        <input type="password" class="form-control" id="admin_password" placeholder="Leave blank to keep current">
+                                    </div>
+                                    <div id="password-feedback" class="mt-2"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="d-grid d-md-flex gap-2 justify-content-md-end mt-4">
+                                <button id="save-auth-settings" class="btn btn-primary">Save Settings</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Logs Tab -->
+                        <div class="tab-pane fade" id="logs" role="tabpanel" aria-labelledby="logs-tab">
+                            <h5 class="mb-4">Log Settings</h5>
+                            
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="enable_extended_logging">
+                                        <label class="form-check-label" for="enable_extended_logging">Enable Extended Logging</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Enables more detailed logging including full URLs, user agents, and response times."></span>
+                                    </div>
+                                    <div class="helper-text">Provides detailed logs but increases log file size significantly.</div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="log_retention" class="form-label">Log Retention (days)</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Number of days to keep logs before automatic deletion. Balances disk usage with historical data needs."></span>
+                                        <input type="number" class="form-control" id="log_retention" value="30" min="1" max="365">
+                                    </div>
+                                    <div class="helper-text">Older logs are automatically purged to save disk space.</div>
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="enable_alerts">
+                                        <label class="form-check-label" for="enable_alerts">Enable Security Alerts</label>
+                                        <span class="info-badge" data-bs-toggle="tooltip" title="Enables email notifications for security events like blacklist hits or authentication failures."></span>
+                                    </div>
+                                    <div class="helper-text">Send email alerts for security incidents and errors.</div>
+                                </div>
+                            </div>
+                            
+                            <div class="d-grid d-md-flex gap-2 justify-content-md-end mt-4">
+                                <button id="clear-logs-btn" class="btn btn-outline-danger me-2">Clear All Logs</button>
+                                <button id="clear-old-logs-btn" class="btn btn-outline-warning me-2">Clear Old Logs</button>
+                                <button id="save-log-settings" class="btn btn-primary">Save Settings</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Database Tab -->
+                        <div class="tab-pane fade" id="database" role="tabpanel" aria-labelledby="database-tab">
+                            <h5 class="mb-4">Database Management</h5>
+                            
+                            <div class="card mb-4">
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-3">Database Statistics</h6>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="d-flex justify-content-between mb-2">
+                                                <span>Database Size:</span>
+                                                <span class="fw-bold" id="db-size">Loading...</span>
+                                            </div>
+                                            <div class="d-flex justify-content-between mb-2">
+                                                <span>Total Records:</span>
+                                                <span class="fw-bold" id="db-records">Loading...</span>
+                                            </div>
+                                            <div class="d-flex justify-content-between mb-2">
+                                                <span>Last Optimization:</span>
+                                                <span class="fw-bold" id="last-optimization">Loading...</span>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="card text-center mb-3">
-                                            <div class="card-body">
-                                                <h6 class="card-title">Database Size</h6>
-                                                <h3 id="db-size">Loading...</h3>
+                                        <div class="col-md-6">
+                                            <div class="d-flex justify-content-between mb-2">
+                                                <span>Log Entries:</span>
+                                                <span class="fw-bold" id="log-entries">Loading...</span>
                                             </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="card text-center mb-3">
-                                            <div class="card-body">
-                                                <h6 class="card-title">Last Log Entry</h6>
-                                                <h3 id="db-last-entry">Loading...</h3>
+                                            <div class="d-flex justify-content-between mb-2">
+                                                <span>Blacklist Entries:</span>
+                                                <span class="fw-bold" id="blacklist-entries">Loading...</span>
+                                            </div>
+                                            <div class="d-flex justify-content-between mb-2">
+                                                <span>Database Health:</span>
+                                                <span class="fw-bold" id="db-health">Loading...</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                                
-                                <button type="button" class="btn btn-outline-primary mt-2" id="refresh-db-stats-btn">
-                                    <i class="fas fa-sync-alt me-1"></i> Refresh Statistics
+                            </div>
+                            
+                            <div class="d-grid d-md-flex gap-2 justify-content-md-end mt-4">
+                                <button id="refresh-db-stats-btn" class="btn btn-outline-secondary me-2">
+                                    <i class="fas fa-sync-alt me-1"></i> Refresh Stats
+                                </button>
+                                <button id="optimize-db-btn" class="btn btn-outline-primary me-2">
+                                    <i class="fas fa-database me-1"></i> Optimize Database
+                                </button>
+                                <button id="export-db-btn" class="btn btn-outline-success me-2">
+                                    <i class="fas fa-file-export me-1"></i> Export Database
+                                </button>
+                                <button id="backup-config-btn" class="btn btn-primary">
+                                    <i class="fas fa-save me-1"></i> Backup All Settings
                                 </button>
                             </div>
                         </div>
-                        
-                        <div class="row mb-4">
-                            <div class="col-md-12">
-                                <h6 class="border-bottom pb-2 mb-3">Database Maintenance</h6>
-                                
-                                <div class="card mb-3">
-                                    <div class="card-header bg-light">
-                                        <strong>Database Optimization</strong>
-                                    </div>
-                                    <div class="card-body">
-                                        <p>Optimize the database to improve performance and reduce size.</p>
-                                        <button type="button" class="btn btn-primary" id="optimize-db-btn">
-                                            <i class="fas fa-database me-1"></i> Optimize Database
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                <div class="card mb-3">
-                                    <div class="card-header bg-light">
-                                        <strong>Export Database</strong>
-                                    </div>
-                                    <div class="card-body">
-                                        <p>Export the database for backup or analysis purposes.</p>
-                                        <button type="button" class="btn btn-outline-secondary" id="export-db-btn">
-                                            <i class="fas fa-file-export me-1"></i> Export Database
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </div>
-                
-                <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-3">
-                    <button type="button" class="btn btn-secondary me-md-2" id="reset-settings">Reset to Defaults</button>
-                    <button type="button" class="btn btn-primary" id="save-settings">Save Settings</button>
+            </div>
+            
+            <!-- Reset All Settings Confirmation -->
+            <div class="card mt-4">
+                <div class="card-header bg-warning text-white">
+                    <h5 class="mb-0">Reset All Settings</h5>
                 </div>
-            </form>
+                <div class="card-body">
+                    <p class="text-danger fw-bold">Warning: This will reset all settings to their default values.</p>
+                    <p>This action cannot be undone. It's recommended to backup your configuration first.</p>
+                    <div class="d-flex justify-content-end">
+                        <button id="backup-config-btn2" class="btn btn-outline-primary me-2">Backup Configuration</button>
+                        <button id="reset-all-btn" class="btn btn-danger">Reset All Settings</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -409,20 +404,20 @@
         loadSettings();
         
         // Save settings
-        $('#save-settings').click(function() {
+        $('#save-settings, #save-proxy-settings, #save-security-settings, #save-auth-settings, #save-log-settings').click(function() {
             saveSettings();
         });
         
         // Reset settings
         $('#reset-settings').click(function() {
-            if (confirm('Are you sure you want to reset all settings to default values?')) {
+            if (confirm('Are you sure you want to reset to default settings?')) {
                 resetSettings();
             }
         });
         
         // Reset all settings
         $('#reset-all-btn').click(function() {
-            if (confirm('WARNING: This will reset ALL settings to factory defaults. This action cannot be undone. Continue?')) {
+            if (confirm('WARNING: Are you absolutely sure you want to reset ALL settings to factory defaults? This cannot be undone.')) {
                 resetAllSettings();
             }
         });
@@ -435,81 +430,23 @@
         });
         
         // Backup configuration
-        $('#backup-config-btn').click(function() {
+        $('#backup-config-btn, #backup-config-btn2').click(function() {
             backupConfiguration();
         });
         
         // Restore configuration
         $('#restore-config-btn').click(function() {
-            // Create a hidden file input if it doesn't exist
-            if ($('#file-upload').length === 0) {
-                $('body').append('<input type="file" id="file-upload" style="display:none" accept=".json">');
-            }
-            
-            // Set up the file input event handler
-            $('#file-upload').off('change').on('change', function(e) {
-                if (e.target.files.length === 0) return;
-                
-                const file = e.target.files[0];
-                const reader = new FileReader();
-                
-                reader.onload = function(e) {
-                    try {
-                        const config = JSON.parse(e.target.result);
-                        
-                        // Confirm restore
-                        if (confirm('Are you sure you want to restore this configuration? Current settings will be overwritten.')) {
-                            // Include CSRF token in the form data
-                            const formData = new FormData();
-                            formData.append('config', JSON.stringify(config));
-                            
-                            $.ajax({
-                                url: '/api/maintenance/restore-config',
-                                type: 'POST',
-                                data: formData,
-                                processData: false,
-                                contentType: false,
-                                beforeSend: function(xhr) {
-                                    showLoading();
-                                },
-                                success: function(response) {
-                                    hideLoading();
-                                    showToast('Configuration restored successfully');
-                                    loadSettings(); // Reload settings to show the restored values
-                                },
-                                error: function(xhr, status, error) {
-                                    hideLoading();
-                                    showToast('Failed to restore configuration: ' + error, 'danger');
-                                }
-                            });
-                        }
-                    } catch (error) {
-                        showToast('Invalid configuration file: ' + error.message, 'danger');
-                    }
-                };
-                
-                reader.readAsText(file);
-            });
-            
             $('#file-upload').click();
         });
         
         // Hide/show file type blocking based on content filtering state
         $('#enable_content_filtering').change(function() {
-            if ($(this).is(':checked')) {
-                $('#blocked_file_types').closest('.mb-3').show();
-            } else {
-                $('#blocked_file_types').closest('.mb-3').hide();
-            }
+            $('#file-type-block-container').toggle($(this).is(':checked'));
         });
         
         // Hide/show time restriction inputs based on checkbox
         $('#enable_time_restrictions').change(function() {
-            if ($(this).is(':checked')) {
-                $('#time_restriction_start, #time_restriction_end').closest('.mb-3').parent().parent().show();
-            } else {
-                $('#time_restriction_start, #time_restriction_end').closest('.mb-3').parent().parent().hide();
-            }
+            $('#time-restriction-container').toggle($(this).is(':checked'));
         });
         
         // Initialize hidden elements based on checkbox states
@@ -524,100 +461,10 @@
         
         // Add HTTPS filtering validation when enabling the feature
         $('#enable_https_filtering').change(function() {
-            const httpsEnabled = $(this).is(':checked');
-            $('#download-cert-container').toggle(httpsEnabled);
+            $('#download-cert-container').toggle($(this).is(':checked'));
             
-            if (httpsEnabled) {
-                // Check certificate health when enabling
-                apiRequest('GET', 'maintenance/check-cert-security')
-                    .then(function(response) {
-                        if (response.status === 'warning') {
-                            // Show warning about certificate issues
-                            const warningModal = `
-                                <div class="modal fade" id="https-warning-modal" tabindex="-1" aria-hidden="true">
-                                    <div class="modal-dialog">
-                                        <div class="modal-content">
-                                            <div class="modal-header bg-warning text-dark">
-                                                <h5 class="modal-title">HTTPS Filtering Certificate Warning</h5>
-                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                            </div>
-                                            <div class="modal-body">
-                                                <p><strong>Warning:</strong> The following issues were detected with your SSL certificates:</p>
-                                                <ul>
-                                                    ${response.details.map(issue => `<li>${issue}</li>`).join('')}
-                                                </ul>
-                                                <p>These issues may affect the functionality of HTTPS filtering. Please address them before enabling this feature.</p>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Understand</button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                            
-                            // Remove any existing modal
-                            $('#https-warning-modal').remove();
-                            
-                            // Add the modal to the DOM and show it
-                            $('body').append(warningModal);
-                            new bootstrap.Modal(document.getElementById('https-warning-modal')).show();
-                        }
-                        else if (response.status === 'error') {
-                            showToast('Error checking certificate security: ' + response.message, 'danger');
-                        }
-                        else if (response.status === 'success') {
-                            showToast('Certificate security checks passed', 'success');
-                        }
-                    })
-                    .catch(function(error) {
-                        showToast('Failed to check certificate security: ' + error.message, 'danger');
-                    });
-                    
-                // Show privacy implications modal
-                const privacyModal = `
-                    <div class="modal fade" id="https-privacy-modal" tabindex="-1" aria-hidden="true">
-                        <div class="modal-dialog">
-                            <div class="modal-content">
-                                <div class="modal-header bg-info text-white">
-                                    <h5 class="modal-title">HTTPS Filtering Privacy Notice</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <p><strong>Important Privacy Consideration:</strong></p>
-                                    <p>Enabling HTTPS filtering means this proxy will:</p>
-                                    <ul>
-                                        <li>Decrypt and inspect all HTTPS traffic passing through it</li>
-                                        <li>Generate certificates on-the-fly for secure websites</li>
-                                        <li>Potentially have access to sensitive information in HTTPS sessions</li>
-                                    </ul>
-                                    <p>Users must install the proxy's CA certificate on their devices to avoid security warnings.</p>
-                                    <p>Please ensure you understand the privacy and legal implications before enabling this feature.</p>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" id="https-privacy-disable">Disable HTTPS Filtering</button>
-                                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">I Understand</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                
-                // Remove any existing modal
-                $('#https-privacy-modal').remove();
-                
-                // Add the modal to the DOM
-                $('body').append(privacyModal);
-                
-                // Show the privacy modal
-                const modal = new bootstrap.Modal(document.getElementById('https-privacy-modal'));
-                modal.show();
-                
-                // Handle "Disable HTTPS Filtering" button
-                $('#https-privacy-disable').click(function() {
-                    $('#enable_https_filtering').prop('checked', false).trigger('change');
-                    modal.hide();
-                });
+            if ($(this).is(':checked')) {
+                showToast('HTTPS filtering requires installing the CA certificate on all client devices', 'warning');
             }
         });
 
@@ -626,47 +473,85 @@
         
         // Clear all logs button
         $('#clear-logs-btn').click(function() {
-            if (confirm('WARNING: This will delete ALL proxy logs from the database. This action cannot be undone. Continue?')) {
+            if (confirm('Are you sure you want to clear ALL logs? This action cannot be undone.')) {
                 clearAllLogs();
             }
         });
         
         // Clear old logs button
         $('#clear-old-logs-btn').click(function() {
-            const days = $('#retention-period').val();
-            if (confirm(`Are you sure you want to remove logs older than ${days} days? This action cannot be undone.`)) {
+            const days = prompt('Clear logs older than how many days?', '30');
+            if (days !== null) {
                 clearOldLogs(days);
             }
         });
         
         // Refresh database stats button
         $('#refresh-db-stats-btn').click(function() {
-            $(this).find('i').addClass('fa-spin');
+            $(this).html('<i class="fas fa-spinner fa-spin me-1"></i> Refreshing...');
             loadDatabaseStats().finally(() => {
-                $(this).find('i').removeClass('fa-spin');
+                $(this).html('<i class="fas fa-sync-alt me-1"></i> Refresh Stats');
             });
         });
         
         // Optimize database button
         $('#optimize-db-btn').click(function() {
-            $(this).prop('disabled', true);
             $(this).html('<i class="fas fa-spinner fa-spin me-1"></i> Optimizing...');
-            
             optimizeDatabase().finally(() => {
-                $(this).prop('disabled', false);
                 $(this).html('<i class="fas fa-database me-1"></i> Optimize Database');
             });
         });
         
         // Export database button
         $('#export-db-btn').click(function() {
-            $(this).prop('disabled', true);
             $(this).html('<i class="fas fa-spinner fa-spin me-1"></i> Exporting...');
-            
             exportDatabase().finally(() => {
-                $(this).prop('disabled', false);
                 $(this).html('<i class="fas fa-file-export me-1"></i> Export Database');
             });
+        });
+        
+        // Reload proxy button
+        $('#reload-proxy').click(function() {
+            $(this).html('<i class="fas fa-spinner fa-spin me-1"></i> Reloading...');
+            
+            apiRequest('POST', 'maintenance/reload-config')
+                .then(function(response) {
+                    showToast('Proxy configuration reloaded successfully', 'success');
+                })
+                .catch(function(error) {
+                    showToast('Failed to reload proxy configuration', 'danger');
+                })
+                .finally(() => {
+                    $('#reload-proxy').html('Reload Proxy');
+                });
+        });
+        
+        // Security scan button
+        $('#scan-security').click(function() {
+            $(this).html('<i class="fas fa-spinner fa-spin me-1"></i> Scanning...');
+            
+            apiRequest('POST', 'security/scan')
+                .then(function(response) {
+                    showToast('Security scan completed', 'success');
+                    if (response.data && response.data.recommendations) {
+                        if (response.data.recommendations.length > 0) {
+                            let message = 'Security recommendations:<br><ul>';
+                            response.data.recommendations.forEach(rec => {
+                                message += `<li>${rec}</li>`;
+                            });
+                            message += '</ul>';
+                            showToast(message, 'warning');
+                        } else {
+                            showToast('No security issues found!', 'success');
+                        }
+                    }
+                })
+                .catch(function(error) {
+                    showToast('Security scan failed', 'danger');
+                })
+                .finally(() => {
+                    $('#scan-security').html('Security Scan');
+                });
         });
     });
     
@@ -675,25 +560,25 @@
             .then(function(response) {
                 if (response.status === 'success') {
                     const settings = {};
+                    
+                    // Convert array of settings to object for easier access
                     response.data.forEach(setting => {
                         settings[setting.setting_name] = setting.setting_value;
                     });
                     
-                    // Update basic settings
+                    // Update UI with settings values
                     $('#enable_ip_blacklist').prop('checked', settings.enable_ip_blacklist === 'true');
                     $('#enable_domain_blacklist').prop('checked', settings.enable_domain_blacklist === 'true');
                     $('#block_direct_ip').prop('checked', settings.block_direct_ip === 'true');
-                    $('#log_level').val(settings.log_level);
+                    $('#log_level').val(settings.log_level || 'info');
                     
-                    // Update advanced settings (with defaults if not present)
-                    $('#cache_size').val(settings.cache_size || '1000');
-                    $('#max_object_size').val(settings.max_object_size || '50');
+                    $('#cache_size').val(settings.cache_size || 1000);
+                    $('#max_object_size').val(settings.max_object_size || 50);
                     $('#enable_compression').prop('checked', settings.enable_compression === 'true');
-                    $('#connection_timeout').val(settings.connection_timeout || '30');
-                    $('#dns_timeout').val(settings.dns_timeout || '5');
-                    $('#max_connections').val(settings.max_connections || '100');
+                    $('#connection_timeout').val(settings.connection_timeout || 30);
+                    $('#dns_timeout').val(settings.dns_timeout || 5);
+                    $('#max_connections').val(settings.max_connections || 100);
                     
-                    // Update filtering settings
                     $('#enable_content_filtering').prop('checked', settings.enable_content_filtering === 'true');
                     $('#blocked_file_types').val(settings.blocked_file_types || 'exe,bat,cmd,dll,js');
                     $('#enable_https_filtering').prop('checked', settings.enable_https_filtering === 'true');
@@ -701,63 +586,61 @@
                     $('#time_restriction_start').val(settings.time_restriction_start || '09:00');
                     $('#time_restriction_end').val(settings.time_restriction_end || '17:00');
                     
-                    // Update auth settings
                     $('#enable_proxy_auth').prop('checked', settings.enable_proxy_auth === 'true');
                     $('#auth_method').val(settings.auth_method || 'basic');
+                    $('#admin_username').val(settings.admin_username || 'admin');
                     
-                    // Update logging settings
                     $('#enable_extended_logging').prop('checked', settings.enable_extended_logging === 'true');
-                    $('#log_retention').val(settings.log_retention || '30');
+                    $('#log_retention').val(settings.log_retention || 30);
                     $('#enable_alerts').prop('checked', settings.enable_alerts === 'true');
                     
-                    // For demonstration, we're not actually loading the username/password from backend
-                    // as that would be a security risk
-                    $('#admin_username').val('admin');
-                    
-                    // Trigger change events to update UI
+                    // Trigger change events to update dependent UI elements
                     $('#enable_content_filtering').trigger('change');
                     $('#enable_time_restrictions').trigger('change');
                     $('#enable_https_filtering').trigger('change');
+                    
+                    showToast('Settings loaded successfully', 'success');
                 }
             })
             .catch(function(error) {
-                showToast('Failed to load settings: ' + error.message, 'danger');
+                showToast('Failed to load settings', 'danger');
             });
     }
     
     function saveSettings() {
         // Collect all settings
         const settings = {
-            // Basic settings
-            enable_ip_blacklist: $('#enable_ip_blacklist').is(':checked') ? 'true' : 'false',
-            enable_domain_blacklist: $('#enable_domain_blacklist').is(':checked') ? 'true' : 'false',
-            block_direct_ip: $('#block_direct_ip').is(':checked') ? 'true' : 'false',
+            // General
+            enable_ip_blacklist: $('#enable_ip_blacklist').is(':checked'),
+            enable_domain_blacklist: $('#enable_domain_blacklist').is(':checked'),
+            block_direct_ip: $('#block_direct_ip').is(':checked'),
             log_level: $('#log_level').val(),
             
-            // Advanced settings
+            // Proxy
             cache_size: $('#cache_size').val(),
             max_object_size: $('#max_object_size').val(),
-            enable_compression: $('#enable_compression').is(':checked') ? 'true' : 'false',
+            enable_compression: $('#enable_compression').is(':checked'),
             connection_timeout: $('#connection_timeout').val(),
             dns_timeout: $('#dns_timeout').val(),
             max_connections: $('#max_connections').val(),
             
-            // Filtering settings
-            enable_content_filtering: $('#enable_content_filtering').is(':checked') ? 'true' : 'false',
+            // Security
+            enable_content_filtering: $('#enable_content_filtering').is(':checked'),
             blocked_file_types: $('#blocked_file_types').val(),
-            enable_https_filtering: $('#enable_https_filtering').is(':checked') ? 'true' : 'false',
-            enable_time_restrictions: $('#enable_time_restrictions').is(':checked') ? 'true' : 'false',
+            enable_https_filtering: $('#enable_https_filtering').is(':checked'),
+            enable_time_restrictions: $('#enable_time_restrictions').is(':checked'),
             time_restriction_start: $('#time_restriction_start').val(),
             time_restriction_end: $('#time_restriction_end').val(),
             
-            // Auth settings
-            enable_proxy_auth: $('#enable_proxy_auth').is(':checked') ? 'true' : 'false',
+            // Authentication
+            enable_proxy_auth: $('#enable_proxy_auth').is(':checked'),
             auth_method: $('#auth_method').val(),
+            admin_username: $('#admin_username').val(),
             
-            // Logging settings
-            enable_extended_logging: $('#enable_extended_logging').is(':checked') ? 'true' : 'false',
+            // Logs
+            enable_extended_logging: $('#enable_extended_logging').is(':checked'),
             log_retention: $('#log_retention').val(),
-            enable_alerts: $('#enable_alerts').is(':checked') ? 'true' : 'false'
+            enable_alerts: $('#enable_alerts').is(':checked')
         };
         
         // Save each setting
@@ -766,9 +649,9 @@
         for (const [name, value] of Object.entries(settings)) {
             promises.push(
                 apiRequest('PUT', `settings/${name}`, { value: value })
-                    .catch(function(error) {
-                        showToast(`Failed to update ${name}: ${error.message}`, 'danger');
-                        throw error;
+                    .catch(error => {
+                        console.error(`Failed to save setting ${name}:`, error);
+                        return Promise.reject(error);
                     })
             );
         }
@@ -776,35 +659,38 @@
         // Handle authentication changes if password was updated
         const newPassword = $('#admin_password').val();
         if (newPassword) {
-            // Validate password on submission
-            const validation = validatePassword(newPassword);
-            if (!validation.valid) {
-                showToast('Password does not meet security requirements', 'danger');
+            const validationResults = validatePassword(newPassword);
+            if (!validationResults.valid) {
+                showToast('Password validation failed: ' + validationResults.errors.join(', '), 'danger');
                 return;
             }
             
-            // Submit password change request
-            apiRequest('POST', 'change-password', {
-                current_password: 'admin', // In a real app, you'd prompt for current password
-                new_password: newPassword
-            })
-            .then(function(response) {
-                showToast('Password changed successfully', 'success');
-                $('#admin_password').val(''); // Clear password field
-            })
-            .catch(function(error) {
-                showToast('Failed to change password: ' + error.message, 'danger');
-            });
+            promises.push(
+                apiRequest('PUT', 'settings/admin_password', { value: newPassword })
+                    .catch(error => {
+                        console.error('Failed to update admin password:', error);
+                        return Promise.reject(error);
+                    })
+            );
         }
         
         // Wait for all settings to be updated
         Promise.all(promises)
-            .then(function() {
-                showToast('Settings saved successfully');
+            .then(() => {
+                showToast('Settings saved successfully', 'success');
+                
+                // Clear the password field
+                $('#admin_password').val('');
+                $('#password-feedback').html('');
+                
+                // Reload proxy configuration if needed for certain settings
+                return apiRequest('POST', 'maintenance/reload-config');
             })
-            .catch(function(error) {
-                // Individual errors are already handled above
-                console.error('Some settings failed to save:', error);
+            .then(() => {
+                showToast('Proxy configuration reloaded', 'info');
+            })
+            .catch(error => {
+                showToast('Some settings could not be saved. Please check the logs.', 'warning');
             });
     }
     
@@ -859,7 +745,9 @@
     function clearCache() {
         apiRequest('POST', 'maintenance/clear-cache')
             .then(function(response) {
-                showToast('Cache cleared successfully');
+                if (response.status === 'success') {
+                    showToast('Cache cleared successfully', 'success');
+                }
             })
             .catch(function(error) {
                 showToast('Failed to clear cache: ' + error.message, 'danger');
@@ -869,16 +757,22 @@
     function backupConfiguration() {
         apiRequest('GET', 'maintenance/backup-config')
             .then(function(response) {
-                // Create a download link for the configuration
-                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(response.data));
-                const downloadAnchorNode = document.createElement('a');
-                downloadAnchorNode.setAttribute("href", dataStr);
-                downloadAnchorNode.setAttribute("download", "secure-proxy-config-" + new Date().toISOString().slice(0, 10) + ".json");
-                document.body.appendChild(downloadAnchorNode);
-                downloadAnchorNode.click();
-                downloadAnchorNode.remove();
-                
-                showToast('Configuration backup created');
+                if (response.status === 'success') {
+                    // Create a download link for the configuration
+                    const date = new Date().toISOString().slice(0, 10);
+                    const filename = `secure-proxy-config-${date}.json`;
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(response.data));
+                    
+                    const downloadLink = document.createElement('a');
+                    downloadLink.setAttribute("href", dataStr);
+                    downloadLink.setAttribute("download", filename);
+                    downloadLink.style.display = "none";
+                    document.body.appendChild(downloadLink);
+                    downloadLink.click();
+                    document.body.removeChild(downloadLink);
+                    
+                    showToast('Configuration backup downloaded', 'success');
+                }
             })
             .catch(function(error) {
                 showToast('Failed to backup configuration: ' + error.message, 'danger');
@@ -894,17 +788,17 @@
         
         // Check length
         if (password.length < 8) {
-            validationResults.errors.push("Password must be at least 8 characters long");
+            validationResults.errors.push('Password must be at least 8 characters long');
         }
         
         // Check for at least one number
         if (!/\d/.test(password)) {
-            validationResults.errors.push("Password must contain at least one number");
+            validationResults.errors.push('Password must contain at least one number');
         }
         
         // Check for at least one special character
         if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-            validationResults.errors.push("Password must contain at least one special character");
+            validationResults.errors.push('Password must contain at least one special character');
         }
         
         // Set valid flag if no errors
@@ -915,170 +809,102 @@
     
     // Add validation to password field
     $(document).ready(function() {
-        // Create feedback element for password validation
-        $('<div id="password-feedback" class="mt-2"></div>').insertAfter('#admin_password');
-        
         // Add keyup event for live validation feedback
         $('#admin_password').keyup(function() {
             const password = $(this).val();
-            const feedback = $('#password-feedback');
             
-            // Clear feedback if empty
             if (!password) {
-                feedback.html('').removeClass('text-danger text-success');
+                $('#password-feedback').html('');
                 return;
             }
             
-            // Validate password
-            const validation = validatePassword(password);
+            const validationResults = validatePassword(password);
             
-            if (validation.valid) {
-                feedback.html('<i class="fas fa-check-circle"></i> Password meets security requirements').removeClass('text-danger').addClass('text-success');
+            if (validationResults.valid) {
+                $('#password-feedback').html('<div class="text-success"><i class="fas fa-check-circle me-1"></i>Password meets requirements</div>');
             } else {
-                feedback.html('<i class="fas fa-exclamation-circle"></i> ' + validation.errors.join('<br>')).removeClass('text-success').addClass('text-danger');
-            }
-        });
-
-        // Add change password functionality
-        $('#save-settings').click(function() {
-            const newPassword = $('#admin_password').val();
-            if (newPassword) {
-                // Validate password on submission
-                const validation = validatePassword(newPassword);
-                if (!validation.valid) {
-                    showToast('Password does not meet security requirements', 'danger');
-                    return;
-                }
-                
-                // Submit password change request
-                apiRequest('POST', 'change-password', {
-                    current_password: 'admin', // In a real app, you'd prompt for current password
-                    new_password: newPassword
-                })
-                .then(function(response) {
-                    showToast('Password changed successfully', 'success');
-                    $('#admin_password').val(''); // Clear password field
-                })
-                .catch(function(error) {
-                    showToast('Failed to change password: ' + error.message, 'danger');
+                let html = '<div class="text-danger"><i class="fas fa-exclamation-circle me-1"></i>Password requirements:</div><ul class="text-danger small mb-0">';
+                validationResults.errors.forEach(error => {
+                    html += `<li>${error}</li>`;
                 });
+                html += '</ul>';
+                $('#password-feedback').html(html);
             }
         });
+        
+        // Initialize tooltips
+        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
+        const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
     });
 
     // Database tab functions
     function loadDatabaseStats() {
-        return apiRequest('GET', 'logs/stats')
+        return apiRequest('GET', 'database/stats')
             .then(function(response) {
                 if (response.status === 'success') {
-                    // Update statistics
-                    const totalLogs = response.data.total_count || 0;
-                    $('#db-total-logs').text(totalLogs.toLocaleString());
+                    const data = response.data;
                     
-                    // Format the last log entry as a date if available
-                    if (response.data.last_import) {
-                        try {
-                            const lastEntry = new Date(response.data.last_import);
-                            $('#db-last-entry').text(lastEntry.toLocaleString());
-                        } catch (e) {
-                            $('#db-last-entry').text(response.data.last_import || 'None');
-                        }
-                    } else {
-                        $('#db-last-entry').text('None');
+                    $('#db-size').text(data.db_size || '0 KB');
+                    $('#db-records').text(data.total_records || '0');
+                    $('#last-optimization').text(data.last_optimization || 'Never');
+                    
+                    $('#log-entries').text(data.log_entries || '0');
+                    $('#blacklist-entries').text(data.blacklist_entries || '0');
+                    
+                    // Set health status with appropriate color
+                    const healthElement = $('#db-health');
+                    healthElement.text(data.health_status || 'Unknown');
+                    
+                    if (data.health_status === 'Good') {
+                        healthElement.removeClass('text-danger text-warning').addClass('text-success');
+                    } else if (data.health_status === 'Fair') {
+                        healthElement.removeClass('text-danger text-success').addClass('text-warning');
+                    } else if (data.health_status === 'Poor') {
+                        healthElement.removeClass('text-success text-warning').addClass('text-danger');
                     }
-                    
-                    // Get database size estimation (this is an approximation)
-                    apiRequest('GET', 'database/size')
-                        .then(function(sizeResponse) {
-                            if (sizeResponse.status === 'success') {
-                                $('#db-size').text(sizeResponse.data.size || 'Unknown');
-                            } else {
-                                // Fallback size estimation based on logs
-                                const estimatedSize = Math.round(totalLogs * 0.5); // rough estimate: 0.5KB per log entry
-                                if (estimatedSize < 1024) {
-                                    $('#db-size').text(estimatedSize + ' KB');
-                                } else {
-                                    $('#db-size').text(Math.round(estimatedSize / 1024 * 10) / 10 + ' MB');
-                                }
-                            }
-                        })
-                        .catch(function() {
-                            // Fallback on error
-                            $('#db-size').text('Unknown');
-                        });
-                } else {
-                    $('#db-total-logs').text('Error');
-                    $('#db-size').text('Error');
-                    $('#db-last-entry').text('Error');
                 }
             })
             .catch(function(error) {
-                console.error('Failed to load database statistics:', error);
-                $('#db-total-logs').text('Error');
-                $('#db-size').text('Error');
-                $('#db-last-entry').text('Error');
-                return Promise.reject(error);
+                showToast('Failed to load database statistics', 'danger');
             });
     }
     
     function clearAllLogs() {
-        return apiRequest('POST', 'logs/clear', {
-            csrf_token: $('meta[name="csrf-token"]').attr('content')
-        })
+        return apiRequest('POST', 'logs/clear')
             .then(function(response) {
                 if (response.status === 'success') {
-                    showToast('All logs cleared successfully');
-                    // Refresh the statistics
+                    showToast('All logs cleared successfully', 'success');
                     loadDatabaseStats();
-                    return true;
-                } else {
-                    showToast('Failed to clear logs: ' + response.message, 'danger');
-                    return false;
                 }
             })
             .catch(function(error) {
                 showToast('Failed to clear logs: ' + error.message, 'danger');
-                return Promise.reject(error);
             });
     }
     
     function clearOldLogs(days) {
-        return apiRequest('POST', 'logs/clear-old', { 
-            days: days
-        })
+        return apiRequest('POST', 'logs/clear-old', { days: parseInt(days) })
             .then(function(response) {
                 if (response.status === 'success') {
-                    showToast(`Logs older than ${days} days cleared successfully`);
-                    // Refresh the statistics
+                    showToast(`Logs older than ${days} days cleared successfully`, 'success');
                     loadDatabaseStats();
-                    return true;
-                } else {
-                    showToast('Failed to clear old logs: ' + response.message, 'danger');
-                    return false;
                 }
             })
             .catch(function(error) {
                 showToast('Failed to clear old logs: ' + error.message, 'danger');
-                return Promise.reject(error);
             });
     }
     
     function optimizeDatabase() {
-        return apiRequest('POST', 'database/optimize', {})
+        return apiRequest('POST', 'database/optimize')
             .then(function(response) {
                 if (response.status === 'success') {
-                    showToast('Database optimized successfully');
-                    // Refresh the statistics
+                    showToast('Database optimized successfully', 'success');
                     loadDatabaseStats();
-                    return true;
-                } else {
-                    showToast('Failed to optimize database: ' + response.message, 'danger');
-                    return false;
                 }
             })
             .catch(function(error) {
                 showToast('Failed to optimize database: ' + error.message, 'danger');
-                return Promise.reject(error);
             });
     }
     
@@ -1086,25 +912,27 @@
         return apiRequest('GET', 'database/export')
             .then(function(response) {
                 if (response.status === 'success') {
-                    // Create a download link for the database export
-                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(response.data));
-                    const downloadAnchorNode = document.createElement('a');
-                    downloadAnchorNode.setAttribute("href", dataStr);
-                    downloadAnchorNode.setAttribute("download", "secure-proxy-db-export-" + new Date().toISOString().slice(0, 10) + ".json");
-                    document.body.appendChild(downloadAnchorNode);
-                    downloadAnchorNode.click();
-                    downloadAnchorNode.remove();
+                    // Create a download link for the database
+                    const date = new Date().toISOString().slice(0, 10);
+                    const filename = `secure-proxy-db-${date}.sql`;
                     
-                    showToast('Database exported successfully');
-                    return true;
-                } else {
-                    showToast('Failed to export database: ' + response.message, 'danger');
-                    return false;
+                    // Create a blob and download it
+                    const blob = new Blob([response.data.sql], { type: 'text/plain' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    showToast('Database exported successfully', 'success');
                 }
             })
             .catch(function(error) {
                 showToast('Failed to export database: ' + error.message, 'danger');
-                return Promise.reject(error);
             });
     }
 </script>

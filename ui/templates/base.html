@@ -82,7 +82,6 @@
         .navbar-brand {
             font-weight: 700;
             color: var(--primary-color) !important;
-            padding-left: 20px;
             transition: color var(--transition-speed);
             letter-spacing: 0.5px;
         }
@@ -93,74 +92,77 @@
             -webkit-text-fill-color: transparent;
         }
         
-        .sidebar {
-            min-height: calc(100vh - var(--header-height));
-            background: linear-gradient(180deg, var(--secondary-color), var(--accent-color));
-            color: white;
-            transition: all var(--transition-speed);
-            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
-            padding-top: 1.5rem;
-            position: sticky;
-            top: var(--header-height);
-            height: calc(100vh - var(--header-height));
-            overflow-y: auto;
-        }
-        
-        [data-bs-theme="dark"] .sidebar {
-            background: linear-gradient(180deg, #2b2d42, #1a1a2e);
-        }
-        
-        .sidebar .nav-link {
-            color: rgba(255, 255, 255, 0.8);
-            margin: 0.5rem 1rem;
+        /* Navbar nav links styling */
+        .navbar .nav-link {
+            color: rgba(255, 255, 255, 0.8) !important;
+            margin: 0 0.25rem;
             border-radius: var(--border-radius-sm);
             transition: all var(--transition-speed);
-            padding: 0.75rem 1.25rem;
+            padding: 0.5rem 0.75rem;
             position: relative;
             overflow: hidden;
-            z-index: 1;
         }
         
-        .sidebar .nav-link::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: rgba(255, 255, 255, 0.1);
-            transition: transform 0.5s ease;
-            z-index: -1;
-            border-radius: var(--border-radius-sm);
-        }
-        
-        .sidebar .nav-link:hover::before {
-            transform: translateX(100%);
-        }
-        
-        .sidebar .nav-link:hover, 
-        .sidebar .nav-link.active {
+        .navbar .nav-link:hover, 
+        .navbar .nav-link.active {
             background-color: rgba(255, 255, 255, 0.15);
-            color: white;
-            transform: translateX(5px);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            color: white !important;
+            transform: translateY(-2px);
         }
         
-        .sidebar .nav-link i {
-            margin-right: 10px;
-            width: 20px;
+        .navbar .nav-link i {
+            margin-right: 6px;
+            width: 16px;
             text-align: center;
-            transition: transform 0.3s ease;
         }
         
-        .sidebar .nav-link:hover i {
-            transform: scale(1.2);
+        /* Info tooltip for nav items */
+        .nav-tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .nav-tooltip .tooltip-text {
+            visibility: hidden;
+            width: 200px;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 8px;
+            position: absolute;
+            z-index: 1060;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.8rem;
+            font-weight: normal;
+            pointer-events: none;
+            text-transform: none;
+            letter-spacing: normal;
+        }
+        
+        .nav-tooltip .tooltip-text::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
+        }
+        
+        .nav-tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
         }
         
         .main-content {
             padding: 2rem;
-            height: calc(100vh - var(--header-height));
-            overflow-y: auto;
+            min-height: calc(100vh - var(--header-height));
         }
         
         .card {
@@ -510,6 +512,36 @@
             font-weight: 600;
             border-radius: 30px;
         }
+
+        /* Helper text styles */
+        .helper-text {
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-top: 0.25rem;
+        }
+        
+        [data-bs-theme="dark"] .helper-text {
+            color: #adb5bd;
+        }
+        
+        /* Info badges and icons */
+        .info-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background-color: rgba(58, 134, 255, 0.15);
+            color: var(--primary-color);
+            font-size: 10px;
+            margin-left: 5px;
+            cursor: help;
+        }
+        
+        [data-bs-theme="dark"] .info-badge {
+            background-color: rgba(58, 134, 255, 0.25);
+        }
         
         /* Scrollbar styling */
         ::-webkit-scrollbar {
@@ -547,23 +579,14 @@
             .main-content {
                 padding: 1.5rem;
             }
+            
+            .navbar-nav.ms-auto {
+                padding-top: 0.5rem;
+                padding-bottom: 0.5rem;
+            }
         }
         
         @media (max-width: 768px) {
-            .sidebar {
-                position: fixed;
-                top: var(--header-height);
-                left: -100%;
-                width: 250px;
-                z-index: 1030;
-                transition: left 0.3s ease;
-                min-height: calc(100vh - var(--header-height));
-            }
-            
-            .sidebar.show {
-                left: 0;
-            }
-            
             .main-content {
                 padding: 1rem 0.75rem;
             }
@@ -574,6 +597,17 @@
             
             .navbar-brand {
                 padding-left: 10px;
+            }
+            
+            .navbar .nav-link {
+                padding: 0.5rem 1rem;
+                margin: 0.25rem 0;
+            }
+            
+            .nav-tooltip .tooltip-text {
+                width: 180px;
+                left: 50%;
+                transform: translateX(-50%);
             }
         }
     </style>
@@ -594,17 +628,57 @@
     <!-- Toast container -->
     <div class="toast-container" id="toast-container"></div>
 
-    <!-- Top navbar -->
+    <!-- Top navbar with navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="/">
                 <i class="fas fa-shield-alt me-2"></i>Secure Proxy
             </a>
-            <button class="navbar-toggler" type="button" id="sidebar-toggle">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
+                <!-- Main Navigation Items -->
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item nav-tooltip">
+                        <a href="/" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">
+                            <i class="fas fa-tachometer-alt"></i> Dashboard
+                        </a>
+                        <span class="tooltip-text">Monitor proxy performance, view system status and activity</span>
+                    </li>
+                    <li class="nav-item nav-tooltip">
+                        <a href="/blacklists" class="nav-link {% if active_page == 'blacklists' %}active{% endif %}">
+                            <i class="fas fa-ban"></i> Blacklists
+                        </a>
+                        <span class="tooltip-text">Manage IP and domain blacklists to block unwanted traffic</span>
+                    </li>
+                    <li class="nav-item nav-tooltip">
+                        <a href="/logs" class="nav-link {% if active_page == 'logs' %}active{% endif %}">
+                            <i class="fas fa-list-alt"></i> Logs
+                        </a>
+                        <span class="tooltip-text">View and analyze proxy access logs and system events</span>
+                    </li>
+                    <li class="nav-item nav-tooltip">
+                        <a href="/settings" class="nav-link {% if active_page == 'settings' %}active{% endif %}">
+                            <i class="fas fa-sliders-h"></i> Settings
+                        </a>
+                        <span class="tooltip-text">Configure proxy settings, security options, and system preferences</span>
+                    </li>
+                </ul>
+                
+                <!-- Right-aligned items -->
                 <ul class="navbar-nav ms-auto align-items-center">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-info-circle me-1"></i> Help
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                            <li><a class="dropdown-item" href="#" id="show-help"><i class="fas fa-question-circle me-2"></i>Squid Documentation</a></li>
+                            <li><a class="dropdown-item" href="#" id="show-keyboard-shortcuts"><i class="fas fa-keyboard me-2"></i>Keyboard Shortcuts</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" id="about-proxy"><i class="fas fa-info me-2"></i>About Secure Proxy</a></li>
+                        </ul>
+                    </li>
                     <li class="nav-item">
                         <div class="d-flex align-items-center">
                             <label class="theme-switch me-2">
@@ -614,9 +688,9 @@
                                     <i class="fas fa-moon theme-icon moon"></i>
                                 </span>
                             </label>
-                            <span class="nav-link d-none d-md-block">
+                            <a class="nav-link d-none d-md-block" href="#">
                                 <i class="fas fa-user-shield me-1"></i>Admin
-                            </span>
+                            </a>
                         </div>
                     </li>
                 </ul>
@@ -624,39 +698,121 @@
         </div>
     </nav>
 
+    <!-- Main content -->
     <div class="container-fluid">
         <div class="row">
-            <!-- Sidebar -->
-            <div class="col-md-3 col-lg-2 sidebar p-0" id="sidebar">
-                <div class="d-flex flex-column p-3">
-                    <ul class="nav flex-column">
-                        <li class="nav-item">
-                            <a href="/" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">
-                                <i class="fas fa-tachometer-alt"></i> Dashboard
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a href="/blacklists" class="nav-link {% if active_page == 'blacklists' %}active{% endif %}">
-                                <i class="fas fa-ban"></i> Blacklists
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a href="/logs" class="nav-link {% if active_page == 'logs' %}active{% endif %}">
-                                <i class="fas fa-list-alt"></i> Logs
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a href="/settings" class="nav-link {% if active_page == 'settings' %}active{% endif %}">
-                                <i class="fas fa-sliders-h"></i> Settings
-                            </a>
-                        </li>
-                    </ul>
+            <div class="col-12 main-content">
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal fade" id="helpModal" tabindex="-1" aria-labelledby="helpModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="helpModalLabel">Squid Proxy Documentation</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-4">
+                        <h6 class="fw-bold">What is Squid Proxy?</h6>
+                        <p>Squid is a caching and forwarding HTTP web proxy. It has a wide variety of uses, including speeding up a web server by caching repeated requests, caching web, DNS and other computer network lookups for a group of people sharing network resources, and aiding security by filtering traffic.</p>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <h6 class="fw-bold">Common Configuration Files</h6>
+                        <ul>
+                            <li><strong>squid.conf</strong> - Main configuration file for Squid</li>
+                            <li><strong>domain_blacklist.txt</strong> - List of blocked domains</li>
+                            <li><strong>ip_blacklist.txt</strong> - List of blocked IP addresses</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <h6 class="fw-bold">Official Documentation</h6>
+                        <p>For more detailed information, please refer to the <a href="http://www.squid-cache.org/Doc/" target="_blank">official Squid documentation</a>.</p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
+        </div>
+    </div>
 
-            <!-- Main content -->
-            <div class="col-md-9 col-lg-10 main-content">
-                {% block content %}{% endblock %}
+    <!-- About Modal -->
+    <div class="modal fade" id="aboutModal" tabindex="-1" aria-labelledby="aboutModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="aboutModalLabel">About Secure Proxy</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <i class="fas fa-shield-alt fa-4x mb-3" style="color: var(--primary-color);"></i>
+                    <h4>Secure Proxy</h4>
+                    <p class="text-muted">Version 1.0.0</p>
+                    <p>A modern web interface for managing Squid Proxy with enhanced security features.</p>
+                    <hr>
+                    <div class="d-flex justify-content-between">
+                        <span>Squid Version:</span>
+                        <span id="squid-version">Loading...</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Last Updated:</span>
+                        <span>April 27, 2025</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="modal fade" id="shortcutsModal" tabindex="-1" aria-labelledby="shortcutsModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="shortcutsModalLabel">Keyboard Shortcuts</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-2">
+                        <div class="col-5"><kbd>Alt</kbd> + <kbd>D</kbd></div>
+                        <div class="col-7">Go to Dashboard</div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-5"><kbd>Alt</kbd> + <kbd>B</kbd></div>
+                        <div class="col-7">Go to Blacklists</div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-5"><kbd>Alt</kbd> + <kbd>L</kbd></div>
+                        <div class="col-7">Go to Logs</div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-5"><kbd>Alt</kbd> + <kbd>S</kbd></div>
+                        <div class="col-7">Go to Settings</div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-5"><kbd>Alt</kbd> + <kbd>T</kbd></div>
+                        <div class="col-7">Toggle Dark/Light Theme</div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-5"><kbd>Alt</kbd> + <kbd>R</kbd></div>
+                        <div class="col-7">Refresh Current Page</div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-5"><kbd>/</kbd></div>
+                        <div class="col-7">Focus Search (on pages with search)</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
             </div>
         </div>
     </div>
@@ -691,28 +847,69 @@
                 }
             });
             
-            // Mobile sidebar toggle
-            $('#sidebar-toggle').click(function() {
-                $('#sidebar').toggleClass('show');
+            // Help modal
+            $('#show-help').click(function(e) {
+                e.preventDefault();
+                $('#helpModal').modal('show');
             });
             
-            // Close sidebar when clicking on a link (mobile)
-            $('#sidebar .nav-link').click(function() {
-                if (window.innerWidth < 768) {
-                    $('#sidebar').removeClass('show');
+            // About modal
+            $('#about-proxy').click(function(e) {
+                e.preventDefault();
+                $('#aboutModal').modal('show');
+                
+                // Load Squid version
+                apiRequest('GET', 'status')
+                    .then(function(response) {
+                        if (response.status === 'success') {
+                            $('#squid-version').text(response.data.version || 'Unknown');
+                        }
+                    })
+                    .catch(function() {
+                        $('#squid-version').text('Unknown');
+                    });
+            });
+            
+            // Keyboard shortcuts modal
+            $('#show-keyboard-shortcuts').click(function(e) {
+                e.preventDefault();
+                $('#shortcutsModal').modal('show');
+            });
+            
+            // Keyboard shortcuts
+            $(document).keydown(function(e) {
+                if (e.altKey) {
+                    switch (e.key.toLowerCase()) {
+                        case 'd': 
+                            window.location.href = '/'; 
+                            break;
+                        case 'b': 
+                            window.location.href = '/blacklists'; 
+                            break;
+                        case 'l': 
+                            window.location.href = '/logs'; 
+                            break;
+                        case 's': 
+                            window.location.href = '/settings'; 
+                            break;
+                        case 't': 
+                            $('#theme-toggle').click(); 
+                            break;
+                        case 'r': 
+                            location.reload(); 
+                            break;
+                    }
+                } else if (e.key === '/' && !$(e.target).is('input, textarea')) {
+                    if ($('#log-search').length) {
+                        e.preventDefault();
+                        $('#log-search').focus();
+                    }
                 }
             });
             
-            // Close sidebar when clicking outside (mobile)
-            $(document).click(function(event) {
-                const $target = $(event.target);
-                if (!$target.closest('#sidebar').length && 
-                    !$target.closest('#sidebar-toggle').length && 
-                    $('#sidebar').hasClass('show') &&
-                    window.innerWidth < 768) {
-                    $('#sidebar').removeClass('show');
-                }
-            });
+            // Initialize tooltips for dynamically added elements
+            const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
+            const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
         });
         
         // Show/hide loading spinner
@@ -831,12 +1028,10 @@
             }
         }
         
-        // Add viewport resize handler for responsive design
-        window.addEventListener('resize', function() {
-            if (window.innerWidth >= 768 && $('#sidebar').hasClass('show')) {
-                $('#sidebar').removeClass('show');
-            }
-        });
+        // Add info badge with tooltip to any element
+        function addInfoBadge(selector, tooltip) {
+            $(selector).append(`<span class="info-badge" data-bs-toggle="tooltip" data-bs-placement="top" title="${tooltip}"><i class="fas fa-info"></i></span>`);
+        }
     </script>
     
     {% block extra_scripts %}{% endblock %}
