@@ -5,6 +5,52 @@
 <div class="container-fluid">
     <h1 class="mb-4">Proxy Logs</h1>
     
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Logs Status</h5>
+            <div>
+                <span class="badge bg-success" id="logs-status">Connected</span>
+                <span class="text-muted ms-2" id="last-update-time"></span>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Total Log Entries</h6>
+                            <h3 class="mb-0" id="total-log-count">0</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Blocked Requests</h6>
+                            <h3 class="mb-0" id="blocked-count">0</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Direct IP Blocks</h6>
+                            <h3 class="mb-0" id="ip-blocks-count">0</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Last Import</h6>
+                            <h3 class="mb-0" id="last-import-time">Never</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Access Logs</h5>
@@ -29,8 +75,7 @@
                     <label class="form-check-label" for="auto-import">Auto Import</label>
                 </div>
                 <button id="import-logs" class="btn btn-primary me-2">
-                    <i class="fas fa-download me-1"></i>Import Logs
-                </button>
+                    <i class="fas fa-download me-1"></i>Import Logs</button>
                 <button id="clear-logs" class="btn btn-danger">
                     <i class="fas fa-trash-alt me-1"></i>Clear Logs
                 </button>
@@ -96,52 +141,6 @@
                         </li>
                     </ul>
                 </nav>
-            </div>
-        </div>
-    </div>
-    
-    <div class="card mt-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Logs Status</h5>
-            <div>
-                <span class="badge bg-success" id="logs-status">Connected</span>
-                <span class="text-muted ms-2" id="last-update-time"></span>
-            </div>
-        </div>
-        <div class="card-body">
-            <div class="row">
-                <div class="col-md-3">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h6 class="card-title">Total Log Entries</h6>
-                            <h3 class="mb-0" id="total-log-count">0</h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h6 class="card-title">Blocked Requests</h6>
-                            <h3 class="mb-0" id="blocked-count">0</h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h6 class="card-title">Direct IP Blocks</h6>
-                            <h3 class="mb-0" id="ip-blocks-count">0</h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h6 class="card-title">Last Import</h6>
-                            <h3 class="mb-0" id="last-import-time">Never</h3>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
