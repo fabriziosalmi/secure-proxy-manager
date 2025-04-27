@@ -117,13 +117,12 @@ def add_security_headers(response):
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     
-    # Add Content Security Policy with allowances for CDN resources
     csp_directives = [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com",  # Allow CDN scripts
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",  # Allow CDN styles
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com",  
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com",  
         "img-src 'self' data:",
-        "font-src 'self' https://cdnjs.cloudflare.com",  # Allow Font Awesome fonts
+        "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com",  
         "connect-src 'self'",
         "frame-ancestors 'self'",
         "form-action 'self'",
