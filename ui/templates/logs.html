@@ -1,50 +1,314 @@
 {% extends "base.html" %}
 {% block title %}Logs{% endblock %}
 
+{% block extra_styles %}
+<style>
+    .stats-card {
+        border-radius: 10px;
+        transition: all 0.2s ease;
+        height: 100%;
+    }
+    
+    .stats-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .stats-card .card-body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 1.25rem;
+    }
+    
+    .stats-card h3 {
+        font-size: 2rem;
+        font-weight: 600;
+        margin-top: 0.5rem;
+    }
+    
+    .stats-card .card-title {
+        font-size: 0.9rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #6c757d;
+    }
+    
+    .stats-icon {
+        font-size: 1.5rem;
+        height: 2.5rem;
+        width: 2.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        margin-bottom: 0.75rem;
+    }
+    
+    .icon-primary {
+        background-color: rgba(67, 97, 238, 0.1);
+        color: var(--primary-color);
+    }
+    
+    .icon-danger {
+        background-color: rgba(249, 65, 68, 0.1);
+        color: var(--danger-color);
+    }
+    
+    .icon-warning {
+        background-color: rgba(248, 150, 30, 0.1);
+        color: var(--warning-color);
+    }
+    
+    .icon-info {
+        background-color: rgba(76, 201, 240, 0.1);
+        color: var(--success-color);
+    }
+    
+    .table-container {
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+    }
+    
+    #logs-table {
+        margin-bottom: 0;
+    }
+    
+    #logs-table thead th {
+        background-color: rgba(0, 0, 0, 0.02);
+        border-bottom: 2px solid rgba(0, 0, 0, 0.05);
+        padding: 0.75rem 1rem;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }
+    
+    [data-bs-theme="dark"] #logs-table thead th {
+        background-color: rgba(255, 255, 255, 0.05);
+        border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+    }
+    
+    #logs-table tbody td {
+        padding: 0.75rem 1rem;
+        vertical-align: middle;
+    }
+    
+    /* Sortable column styles */
+    .sortable {
+        cursor: pointer;
+        position: relative;
+        transition: background-color 0.2s;
+        user-select: none;
+    }
+    
+    .sortable:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+    }
+    
+    [data-bs-theme="dark"] .sortable:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+    
+    .sortable i {
+        margin-left: 5px;
+        font-size: 0.8rem;
+        transition: transform 0.2s;
+    }
+    
+    /* Filter and search section */
+    .filters-section {
+        background-color: rgba(0, 0, 0, 0.02);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    [data-bs-theme="dark"] .filters-section {
+        background-color: rgba(255, 255, 255, 0.02);
+    }
+    
+    /* Action buttons */
+    .action-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        transition: all 0.2s;
+    }
+    
+    .action-btn:active {
+        transform: scale(0.95);
+    }
+    
+    .action-btn i {
+        transition: transform 0.3s;
+    }
+    
+    .action-btn:hover i.fa-sync-alt,
+    #refresh-logs:hover i.fa-sync-alt {
+        transform: rotate(180deg);
+    }
+    
+    /* Toggle switches */
+    .toggle-container {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .toggle-label {
+        font-size: 0.9rem;
+        font-weight: 500;
+        margin-bottom: 0;
+    }
+    
+    /* Status badge */
+    .status-badge {
+        font-weight: 500;
+        border-radius: 20px;
+        padding: 0.25rem 0.75rem;
+        font-size: 0.85rem;
+    }
+    
+    /* Pagination enhancements */
+    .pagination {
+        margin-bottom: 0;
+    }
+    
+    .page-link {
+        border-radius: 6px;
+        margin: 0 2px;
+        min-width: 36px;
+        text-align: center;
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 992px) {
+        .card-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        
+        .card-header .d-flex {
+            margin-top: 1rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        
+        .stats-card h3 {
+            font-size: 1.5rem;
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .row-cols-md-4 > * {
+            margin-bottom: 1rem;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
-    <h1 class="mb-4">Proxy Logs</h1>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">Proxy Logs</h1>
+        <div>
+            <span class="status-badge badge" id="logs-status-badge">
+                <i class="fas fa-circle me-1"></i>
+                <span id="logs-status">Connected</span>
+            </span>
+            <span class="text-muted ms-2" id="last-update-time"></span>
+        </div>
+    </div>
     
-    <div class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Logs Status</h5>
-            <div>
-                <span class="badge bg-success" id="logs-status">Connected</span>
-                <span class="text-muted ms-2" id="last-update-time"></span>
+    <div class="row row-cols-1 row-cols-md-4 g-4 mb-4">
+        <div class="col">
+            <div class="card stats-card">
+                <div class="card-body">
+                    <div class="stats-icon icon-primary">
+                        <i class="fas fa-clipboard-list"></i>
+                    </div>
+                    <h6 class="card-title">Total Logs</h6>
+                    <h3 id="total-log-count">0</h3>
+                </div>
             </div>
         </div>
+        <div class="col">
+            <div class="card stats-card">
+                <div class="card-body">
+                    <div class="stats-icon icon-danger">
+                        <i class="fas fa-ban"></i>
+                    </div>
+                    <h6 class="card-title">Blocked Requests</h6>
+                    <h3 id="blocked-count">0</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card stats-card">
+                <div class="card-body">
+                    <div class="stats-icon icon-warning">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <h6 class="card-title">IP Blocks</h6>
+                    <h3 id="ip-blocks-count">0</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card stats-card">
+                <div class="card-body">
+                    <div class="stats-icon icon-info">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <h6 class="card-title">Last Import</h6>
+                    <h3 id="last-import-time" class="fs-5">Never</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Log Controls</h5>
+        </div>
         <div class="card-body">
-            <div class="row">
-                <div class="col-md-3">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h6 class="card-title">Total Log Entries</h6>
-                            <h3 class="mb-0" id="total-log-count">0</h3>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="d-flex flex-wrap gap-3">
+                        <div class="toggle-container">
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="auto-refresh" checked>
+                                <label class="toggle-label" for="auto-refresh">Auto Refresh</label>
+                            </div>
+                            <select class="form-select form-select-sm" id="refresh-interval" style="width: 90px;">
+                                <option value="5000">5 sec</option>
+                                <option value="10000" selected>10 sec</option>
+                                <option value="30000">30 sec</option>
+                                <option value="60000">1 min</option>
+                            </select>
+                        </div>
+                        <div class="toggle-container">
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="auto-import" checked>
+                                <label class="toggle-label" for="auto-import">Auto Import</label>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h6 class="card-title">Blocked Requests</h6>
-                            <h3 class="mb-0" id="blocked-count">0</h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h6 class="card-title">Direct IP Blocks</h6>
-                            <h3 class="mb-0" id="ip-blocks-count">0</h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h6 class="card-title">Last Import</h6>
-                            <h3 class="mb-0" id="last-import-time">Never</h3>
-                        </div>
+                <div class="col-md-6">
+                    <div class="d-flex justify-content-md-end gap-2">
+                        <button id="refresh-logs" class="btn btn-outline-secondary action-btn">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                        <button id="import-logs" class="btn btn-primary action-btn">
+                            <i class="fas fa-download"></i> Import Logs
+                        </button>
+                        <button id="clear-logs" class="btn btn-danger action-btn">
+                            <i class="fas fa-trash-alt"></i> Clear Logs
+                        </button>
                     </div>
                 </div>
             </div>
@@ -52,56 +316,25 @@
     </div>
     
     <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="card-header">
             <h5 class="mb-0">Access Logs</h5>
-            <div class="d-flex align-items-center">
-                <div class="form-check form-switch me-3">
-                    <input class="form-check-input" type="checkbox" id="auto-refresh" checked>
-                    <label class="form-check-label" for="auto-refresh">Auto Refresh</label>
-                </div>
-                <div class="me-3">
-                    <select class="form-select form-select-sm" id="refresh-interval">
-                        <option value="5000">5 sec</option>
-                        <option value="10000" selected>10 sec</option>
-                        <option value="30000">30 sec</option>
-                        <option value="60000">1 min</option>
-                    </select>
-                </div>
-                <button id="refresh-logs" class="btn btn-outline-secondary me-2">
-                    <i class="fas fa-sync-alt me-1"></i>Refresh
-                </button>
-                <div class="form-check form-switch me-3">
-                    <input class="form-check-input" type="checkbox" id="auto-import" checked>
-                    <label class="form-check-label" for="auto-import">Auto Import</label>
-                </div>
-                <button id="import-logs" class="btn btn-primary me-2">
-                    <i class="fas fa-download me-1"></i>Import Logs</button>
-                <button id="clear-logs" class="btn btn-danger">
-                    <i class="fas fa-trash-alt me-1"></i>Clear Logs
-                </button>
-            </div>
         </div>
         <div class="card-body">
-            <div class="mb-3">
+            <div class="filters-section mb-4">
                 <div class="row g-3 align-items-center">
-                    <div class="col-auto">
-                        <label for="logs-per-page" class="col-form-label">Show</label>
-                    </div>
-                    <div class="col-auto">
-                        <select class="form-select" id="logs-per-page">
+                    <div class="col-md-6 d-flex align-items-center gap-2">
+                        <label for="logs-per-page" class="mb-0">Show</label>
+                        <select class="form-select form-select-sm" id="logs-per-page" style="width: 80px;">
                             <option value="10">10</option>
                             <option value="25" selected>25</option>
                             <option value="50">50</option>
-                            <option value="100">100</option>
-                        </select>
+                            <option value="100">100</select>
+                        <span>entries</span>
                     </div>
-                    <div class="col-auto">
-                        <span class="form-text">entries</span>
-                    </div>
-                    <div class="col-md-4 ms-auto">
+                    <div class="col-md-6">
                         <div class="input-group">
                             <input type="text" class="form-control" id="log-search" placeholder="Search logs...">
-                            <button class="btn btn-outline-secondary" type="button" id="search-logs">
+                            <button class="btn btn-primary" type="button" id="search-logs">
                                 <i class="fas fa-search"></i>
                             </button>
                         </div>
@@ -109,27 +342,36 @@
                 </div>
             </div>
             
-            <div class="table-responsive">
-                <table class="table table-hover" id="logs-table">
-                    <thead>
-                        <tr>
-                            <th class="sortable" data-sort="timestamp">Timestamp <i class="fas fa-sort"></i></th>
-                            <th class="sortable" data-sort="source_ip">Source IP <i class="fas fa-sort"></i></th>
-                            <th class="sortable" data-sort="destination">Destination <i class="fas fa-sort"></i></th>
-                            <th class="sortable" data-sort="status">Status <i class="fas fa-sort"></i></th>
-                            <th class="sortable" data-sort="bytes">Bytes <i class="fas fa-sort"></i></th>
-                        </tr>
-                    </thead>
-                    <tbody id="logs-data">
-                        <tr>
-                            <td colspan="5" class="text-center">Loading logs...</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="table-container">
+                <div class="table-responsive" style="max-height: 500px;">
+                    <table class="table table-hover" id="logs-table">
+                        <thead>
+                            <tr>
+                                <th class="sortable" data-sort="timestamp">Timestamp <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="source_ip">Source IP <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="destination">Destination <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="status">Status <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="bytes">Bytes <i class="fas fa-sort"></i></th>
+                            </tr>
+                        </thead>
+                        <tbody id="logs-data">
+                            <tr>
+                                <td colspan="5" class="text-center">
+                                    <div class="py-4">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                        <p class="mt-2 mb-0">Loading logs...</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
             
-            <div class="d-flex justify-content-between align-items-center mt-3">
-                <div id="logs-showing-info">Showing 0 to 0 of 0 entries</div>
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mt-3 gap-2">
+                <div id="logs-showing-info" class="text-muted">Showing 0 to 0 of 0 entries</div>
                 <nav aria-label="Logs pagination">
                     <ul class="pagination" id="logs-pagination">
                         <li class="page-item disabled">
@@ -180,6 +422,9 @@
         let currentSortColumn = 'timestamp'; // Default sort by timestamp
         let currentSortOrder = 'desc'; // Default sort order is descending (latest first)
         
+        // Update the status badge style
+        updateStatusBadge(true);
+        
         // Start auto refresh if enabled
         updateAutoRefresh();
         
@@ -196,10 +441,11 @@
         $('#auto-refresh').change(function() {
             isAutoRefreshEnabled = $(this).is(':checked');
             updateAutoRefresh();
+            updateStatusBadge(isAutoRefreshEnabled);
             
             // Show toast notification
             const status = isAutoRefreshEnabled ? 'enabled' : 'disabled';
-            showToast(`Auto refresh ${status}`, 'info');
+            showToast(`Auto refresh ${status}`, isAutoRefreshEnabled ? 'success' : 'info');
         });
         
         // Change refresh interval
@@ -218,7 +464,7 @@
             
             // Show toast notification
             const status = isAutoImportEnabled ? 'enabled' : 'disabled';
-            showToast(`Auto import ${status}`, 'info');
+            showToast(`Auto import ${status}`, isAutoImportEnabled ? 'success' : 'info');
         });
         
         // Refresh logs button
@@ -232,22 +478,27 @@
         // Import logs button
         $('#import-logs').click(function() {
             $(this).prop('disabled', true);
-            $(this).html('<i class="fas fa-spinner fa-spin me-1"></i>Importing...');
+            $(this).html('<i class="fas fa-spinner fa-spin"></i> Importing...');
             
             importLogs().finally(() => {
                 $(this).prop('disabled', false);
-                $(this).html('<i class="fas fa-download me-1"></i>Import Logs');
+                $(this).html('<i class="fas fa-download"></i> Import Logs');
             });
         });
         
         // Clear logs button
         $('#clear-logs').click(function() {
+            // Show confirmation dialog
+            if (!confirm('Are you sure you want to clear all logs? This action cannot be undone.')) {
+                return;
+            }
+            
             $(this).prop('disabled', true);
-            $(this).html('<i class="fas fa-spinner fa-spin me-1"></i>Clearing...');
+            $(this).html('<i class="fas fa-spinner fa-spin"></i> Clearing...');
             
             clearLogs().finally(() => {
                 $(this).prop('disabled', false);
-                $(this).html('<i class="fas fa-trash-alt me-1"></i>Clear Logs');
+                $(this).html('<i class="fas fa-trash-alt"></i> Clear Logs');
             });
         });
         
@@ -292,6 +543,20 @@
             loadLogs();
         });
         
+        // Function to update status badge
+        function updateStatusBadge(isConnected) {
+            const $badge = $('#logs-status-badge');
+            const $status = $('#logs-status');
+            
+            if (isConnected) {
+                $badge.removeClass('bg-danger bg-warning').addClass('bg-success');
+                $status.text('Connected');
+            } else {
+                $badge.removeClass('bg-success bg-warning').addClass('bg-danger');
+                $status.text('Paused');
+            }
+        }
+        
         // Function to update sort icons
         function updateSortIcons() {
             // Reset all icons
@@ -318,12 +583,12 @@
             if (isAutoRefreshEnabled) {
                 autoRefreshInterval = setInterval(function() {
                     loadLogs();
-                    $('#logs-status').removeClass('bg-danger').addClass('bg-success').text('Connected');
+                    updateStatusBadge(true);
                 }, refreshInterval);
                 
-                $('#logs-status').removeClass('bg-danger').addClass('bg-success').text('Connected');
+                updateStatusBadge(true);
             } else {
-                $('#logs-status').removeClass('bg-success').addClass('bg-danger').text('Paused');
+                updateStatusBadge(false);
             }
         }
         
@@ -355,6 +620,20 @@
             // Add sort parameters
             params += `&sort=${encodeURIComponent(currentSortColumn)}&order=${encodeURIComponent(currentSortOrder)}`;
             
+            // Show loading state
+            $('#logs-data').html(`
+                <tr>
+                    <td colspan="5" class="text-center">
+                        <div class="py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 mb-0">Loading logs...</p>
+                        </div>
+                    </td>
+                </tr>
+            `);
+            
             return apiRequest('GET', `logs?${params}`)
                 .then(function(response) {
                     if (response.status === 'success') {
@@ -370,14 +649,14 @@
                         // Update info
                         const start = totalLogs === 0 ? 0 : offset + 1;
                         const end = Math.min(offset + logsPerPage, totalLogs);
-                        $('#logs-showing-info').text(`Showing ${start} to ${end} of ${totalLogs} entries`);
+                        $('#logs-showing-info').text(`Showing ${start.toLocaleString()} to ${end.toLocaleString()} of ${totalLogs.toLocaleString()} entries${searchTerm ? ` (filtered from ${response.meta.total_unfiltered.toLocaleString()} total entries)` : ''}`);
                         
                         // Update total log count
                         $('#total-log-count').text(totalLogs.toLocaleString());
                         
                         // Update last update time
                         lastUpdateTime = new Date();
-                        $('#last-update-time').text(`Last updated: ${lastUpdateTime.toLocaleTimeString()}`);
+                        $('#last-update-time').text(`Updated: ${lastUpdateTime.toLocaleTimeString()}`);
                         
                         // Get log statistics
                         getLogStats();
@@ -387,16 +666,41 @@
                     }
                 })
                 .catch(function(error) {
-                    $('#logs-data').html('<tr><td colspan="5" class="text-center text-danger">Failed to load logs</td></tr>');
+                    $('#logs-data').html(`
+                        <tr>
+                            <td colspan="5" class="text-center text-danger">
+                                <div class="py-4">
+                                    <i class="fas fa-exclamation-circle fa-2x mb-3"></i>
+                                    <p class="mb-0">Failed to load logs: ${error.message || 'Unknown error'}</p>
+                                    <button class="btn btn-sm btn-outline-danger mt-3" id="retry-load">Retry</button>
+                                </div>
+                            </td>
+                        </tr>
+                    `);
+                    
+                    // Add retry handler
+                    $('#retry-load').click(function() {
+                        loadLogs();
+                    });
+                    
                     showToast('Failed to load logs: ' + error.message, 'danger');
-                    $('#logs-status').removeClass('bg-success').addClass('bg-danger').text('Error');
+                    updateStatusBadge(false);
                 });
         }
         
         // Function to update the logs table
         function updateLogsTable(logs) {
             if (logs.length === 0) {
-                $('#logs-data').html('<tr><td colspan="5" class="text-center">No logs found</td></tr>');
+                $('#logs-data').html(`
+                    <tr>
+                        <td colspan="5" class="text-center">
+                            <div class="py-4">
+                                <i class="fas fa-info-circle fa-2x mb-3 text-muted"></i>
+                                <p class="mb-0">No logs found</p>
+                            </div>
+                        </td>
+                    </tr>
+                `);
                 return;
             }
             
@@ -411,16 +715,30 @@
                 
                 // Determine row class based on status code
                 let rowClass = '';
+                let statusBadgeClass = 'bg-secondary';
+                
                 if (typeof status === 'number') {
-                    if (status >= 400 && status < 500) {
-                        rowClass = 'table-warning';  // Client errors
+                    if (status >= 200 && status < 300) {
+                        statusBadgeClass = 'bg-success';
+                    } else if (status >= 300 && status < 400) {
+                        statusBadgeClass = 'bg-info';
+                        rowClass = 'table-info';
+                    } else if (status >= 400 && status < 500) {
+                        statusBadgeClass = 'bg-warning';
+                        rowClass = 'table-warning';
                     } else if (status >= 500) {
-                        rowClass = 'table-danger';   // Server errors
+                        statusBadgeClass = 'bg-danger';
+                        rowClass = 'table-danger';
                     }
                 } else if (status === 0 || status === 'TCP_DENIED' || 
                           (typeof status === 'string' && 
                            (status.includes('DENIED') || status.includes('BLOCKED')))) {
-                    rowClass = 'table-danger';   // Blocked requests
+                    statusBadgeClass = 'bg-danger';
+                    rowClass = 'table-danger';
+                } else if (typeof status === 'string' && status.includes('TCP_MISS')) {
+                    statusBadgeClass = 'bg-primary';
+                } else if (typeof status === 'string' && status.includes('TCP_HIT')) {
+                    statusBadgeClass = 'bg-success';
                 }
                 
                 // Safe date formatting with fallback
@@ -435,18 +753,45 @@
                     formattedDate = timestamp;
                 }
                 
+                // Format bytes value
+                let formattedBytes;
+                if (bytes === 'Unknown') {
+                    formattedBytes = bytes;
+                } else {
+                    formattedBytes = formatBytes(bytes);
+                }
+                
                 html += `
                     <tr class="${rowClass}">
                         <td>${escapeHtml(formattedDate)}</td>
                         <td>${escapeHtml(source_ip)}</td>
-                        <td>${escapeHtml(destination)}</td>
-                        <td>${escapeHtml(status)}</td>
-                        <td>${escapeHtml(bytes)}</td>
+                        <td title="${escapeHtml(destination)}">${escapeHtml(truncateText(destination, 50))}</td>
+                        <td><span class="badge ${statusBadgeClass}">${escapeHtml(status)}</span></td>
+                        <td>${escapeHtml(formattedBytes)}</td>
                     </tr>
                 `;
             });
             
             $('#logs-data').html(html);
+        }
+        
+        // Helper function to truncate text with ellipsis
+        function truncateText(text, maxLength) {
+            if (text.length <= maxLength) return text;
+            return text.slice(0, maxLength) + '...';
+        }
+        
+        // Helper function to format bytes
+        function formatBytes(bytes, decimals = 1) {
+            if (bytes === 0) return '0 Bytes';
+            
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+            
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
         }
         
         // Function to update pagination
@@ -457,7 +802,9 @@
             // Previous button
             paginationHtml += `
                 <li class="page-item ${currentPage === 0 ? 'disabled' : ''}">
-                    <a class="page-link" href="#" data-page="${currentPage - 1}">Previous</a>
+                    <a class="page-link" href="#" data-page="${currentPage - 1}" aria-label="Previous">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
                 </li>
             `;
             
@@ -471,6 +818,24 @@
                 startPage = Math.max(0, endPage - maxPagesToShow + 1);
             }
             
+            // First page if not visible
+            if (startPage > 0) {
+                paginationHtml += `
+                    <li class="page-item">
+                        <a class="page-link" href="#" data-page="0">1</a>
+                    </li>
+                `;
+                
+                if (startPage > 1) {
+                    paginationHtml += `
+                        <li class="page-item disabled">
+                            <a class="page-link" href="#">...</a>
+                        </li>
+                    `;
+                }
+            }
+            
+            // Main page numbers
             for (let i = startPage; i <= endPage; i++) {
                 paginationHtml += `
                     <li class="page-item ${i === currentPage ? 'active' : ''}">
@@ -479,10 +844,29 @@
                 `;
             }
             
+            // Last page if not visible
+            if (endPage < totalPages - 1) {
+                if (endPage < totalPages - 2) {
+                    paginationHtml += `
+                        <li class="page-item disabled">
+                            <a class="page-link" href="#">...</a>
+                        </li>
+                    `;
+                }
+                
+                paginationHtml += `
+                    <li class="page-item">
+                        <a class="page-link" href="#" data-page="${totalPages - 1}">${totalPages}</a>
+                    </li>
+                `;
+            }
+            
             // Next button
             paginationHtml += `
                 <li class="page-item ${currentPage >= totalPages - 1 ? 'disabled' : ''}">
-                    <a class="page-link" href="#" data-page="${currentPage + 1}">Next</a>
+                    <a class="page-link" href="#" data-page="${currentPage + 1}" aria-label="Next">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
                 </li>
             `;
             
@@ -496,8 +880,16 @@
                     return;
                 }
                 
-                currentPage = parseInt($(this).data('page'));
-                loadLogs();
+                const dataPage = $(this).data('page');
+                if (dataPage !== undefined) {
+                    currentPage = parseInt(dataPage);
+                    loadLogs();
+                    
+                    // Scroll back to top of table
+                    $('html, body').animate({
+                        scrollTop: $("#logs-table").offset().top - 20
+                    }, 200);
+                }
             });
         }
         
@@ -506,7 +898,7 @@
             return apiRequest('POST', 'logs/import', {})  // Send empty JSON object
                 .then(function(response) {
                     if (response.status === 'success') {
-                        showToast('Logs imported successfully');
+                        showToast('Logs imported successfully', 'success');
                         lastImportTime = new Date();
                         $('#last-import-time').text(lastImportTime.toLocaleTimeString());
                         loadLogs(); // Refresh logs
@@ -522,7 +914,7 @@
             return apiRequest('POST', 'logs/clear', {})  // Send empty JSON object
                 .then(function(response) {
                     if (response.status === 'success') {
-                        showToast('Logs cleared successfully');
+                        showToast('Logs cleared successfully', 'success');
                         loadLogs(); // Refresh logs
                     }
                 })
@@ -544,8 +936,13 @@
                         $('#ip-blocks-count').text(ipBlocksCount.toLocaleString());
                         
                         if (response.data.last_import) {
-                            lastImportTime = new Date(response.data.last_import);
-                            $('#last-import-time').text(lastImportTime.toLocaleTimeString());
+                            try {
+                                lastImportTime = new Date(response.data.last_import);
+                                $('#last-import-time').text(lastImportTime.toLocaleTimeString());
+                            } catch (e) {
+                                // If date parsing fails, just show the raw value
+                                $('#last-import-time').text(response.data.last_import);
+                            }
                         }
                     }
                 })
@@ -569,19 +966,3 @@
     });
 </script>
 {% endblock %}
-
-<style>
-/* Add styles for sortable columns */
-.sortable {
-    cursor: pointer;
-    position: relative;
-}
-
-.sortable:hover {
-    background-color: rgba(0,0,0,0.05);
-}
-
-.sortable i {
-    margin-left: 5px;
-}
-</style>

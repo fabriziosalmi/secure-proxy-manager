@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,41 +15,72 @@
     <!-- Custom styles -->
     <style>
         :root {
-            --primary-color: #3498db;
-            --secondary-color: #2c3e50;
-            --accent-color: #e74c3c;
+            --primary-color: #4361ee;
+            --secondary-color: #3a0ca3;
+            --accent-color: #f72585;
+            --success-color: #4cc9f0;
+            --warning-color: #f8961e;
+            --danger-color: #f94144;
             --light-bg: #f8f9fa;
-            --dark-bg: #343a40;
+            --dark-bg: #212529;
+            --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --transition-speed: 0.3s;
+        }
+        
+        [data-bs-theme="dark"] {
+            --primary-color: #4895ef;
+            --secondary-color: #3f37c9;
+            --accent-color: #f72585;
+            --success-color: #4cc9f0;
+            --warning-color: #f9c74f;
+            --danger-color: #f94144;
+            --light-bg: #121212;
+            --dark-bg: #1e1e1e;
+            --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
         }
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f5f5f5;
+            background-color: var(--light-bg);
+            transition: background-color var(--transition-speed);
+        }
+        
+        [data-bs-theme="dark"] body {
+            background-color: var(--dark-bg);
+            color: #e9ecef;
         }
         
         .navbar-brand {
             font-weight: bold;
             color: var(--primary-color) !important;
             padding-left: 20px;
+            transition: color var(--transition-speed);
         }
         
         .sidebar {
             min-height: calc(100vh - 56px);
             background-color: var(--secondary-color);
             color: white;
+            transition: background-color var(--transition-speed);
+        }
+        
+        [data-bs-theme="dark"] .sidebar {
+            background-color: #2b2b2b;
         }
         
         .sidebar .nav-link {
             color: rgba(255, 255, 255, 0.8);
             margin-bottom: 5px;
             border-radius: 5px;
-            transition: all 0.3s;
+            transition: all var(--transition-speed);
+            padding: 10px 15px;
         }
         
         .sidebar .nav-link:hover, 
         .sidebar .nav-link.active {
-            background-color: rgba(255, 255, 255, 0.1);
+            background-color: rgba(255, 255, 255, 0.15);
             color: white;
+            transform: translateX(5px);
         }
         
         .sidebar .nav-link i {
@@ -64,32 +95,78 @@
         
         .card {
             border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--card-shadow);
             margin-bottom: 20px;
             border: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+            overflow: hidden;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        [data-bs-theme="dark"] .card {
+            background-color: #2b2b2b;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        
+        [data-bs-theme="dark"] .card:hover {
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.4);
         }
         
         .card-header {
             font-weight: 600;
-            background-color: white;
+            background-color: rgba(255, 255, 255, 0.05);
             border-bottom: 1px solid rgba(0, 0, 0, 0.1);
             padding: 15px 20px;
         }
         
+        [data-bs-theme="dark"] .card-header {
+            background-color: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
         .status-indicator {
-            width: 10px;
-            height: 10px;
+            width: 12px;
+            height: 12px;
             border-radius: 50%;
             display: inline-block;
-            margin-right: 5px;
+            margin-right: 8px;
+            position: relative;
         }
         
         .status-active {
-            background-color: #2ecc71;
+            background-color: var(--success-color);
+            box-shadow: 0 0 0 rgba(76, 201, 240, 0.4);
+            animation: pulse 2s infinite;
         }
         
         .status-inactive {
-            background-color: #e74c3c;
+            background-color: var(--danger-color);
+        }
+        
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(76, 201, 240, 0.4);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(76, 201, 240, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(76, 201, 240, 0);
+            }
+        }
+        
+        .btn {
+            border-radius: 6px;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        
+        .btn:active {
+            transform: scale(0.96);
         }
         
         .btn-primary {
@@ -98,8 +175,54 @@
         }
         
         .btn-danger {
-            background-color: var(--accent-color);
-            border-color: var(--accent-color);
+            background-color: var(--danger-color);
+            border-color: var(--danger-color);
+        }
+        
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1055;
+        }
+        
+        .custom-toast {
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: white;
+            border-left: 5px solid;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.15);
+            opacity: 0;
+            transform: translateY(20px);
+            animation: slide-in 0.3s forwards;
+        }
+        
+        [data-bs-theme="dark"] .custom-toast {
+            background-color: #2b2b2b;
+            color: #e9ecef;
+        }
+        
+        .toast-success {
+            border-left-color: var(--success-color);
+        }
+        
+        .toast-danger {
+            border-left-color: var(--danger-color);
+        }
+        
+        .toast-warning {
+            border-left-color: var(--warning-color);
+        }
+        
+        .toast-info {
+            border-left-color: var(--primary-color);
+        }
+        
+        @keyframes slide-in {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
         
         /* Loading spinner */
@@ -114,7 +237,121 @@
             justify-content: center;
             align-items: center;
             z-index: 9999;
-            display: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+        
+        .spinner-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .spinner-container {
+            background-color: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(5px);
+            padding: 30px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .spinner-text {
+            color: white;
+            margin-top: 15px;
+            font-weight: 500;
+        }
+        
+        /* Theme toggle switch */
+        .theme-switch {
+            position: relative;
+            width: 60px;
+            height: 34px;
+            margin-left: 10px;
+        }
+        
+        .theme-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .theme-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        
+        .theme-slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .theme-slider {
+            background-color: #2196F3;
+        }
+        
+        input:checked + .theme-slider:before {
+            transform: translateX(26px);
+        }
+        
+        .theme-icon {
+            position: absolute;
+            top: 8px;
+            font-size: 14px;
+            color: #333;
+            z-index: 1;
+        }
+        
+        .theme-icon.sun {
+            left: 8px;
+        }
+        
+        .theme-icon.moon {
+            right: 8px;
+        }
+        
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                top: 56px;
+                left: -100%;
+                width: 250px;
+                z-index: 1030;
+                transition: left 0.3s ease;
+                min-height: calc(100vh - 56px);
+            }
+            
+            .sidebar.show {
+                left: 0;
+            }
+            
+            .main-content {
+                padding: 15px 10px;
+            }
+            
+            .card {
+                margin-bottom: 15px;
+            }
+            
+            .navbar-brand {
+                padding-left: 10px;
+            }
         }
     </style>
     
@@ -123,10 +360,16 @@
 <body>
     <!-- Loading spinner -->
     <div class="spinner-overlay" id="loading-spinner">
-        <div class="spinner-border text-light" role="status">
-            <span class="visually-hidden">Loading...</span>
+        <div class="spinner-container">
+            <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <div class="spinner-text">Loading...</div>
         </div>
     </div>
+
+    <!-- Toast container -->
+    <div class="toast-container" id="toast-container"></div>
 
     <!-- Top navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
@@ -134,15 +377,24 @@
             <a class="navbar-brand" href="/">
                 <i class="fas fa-shield-alt me-2"></i>Secure Proxy
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler" type="button" id="sidebar-toggle">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav ms-auto align-items-center">
                     <li class="nav-item">
-                        <span class="nav-link">
-                            <i class="fas fa-user me-1"></i>Admin
-                        </span>
+                        <div class="d-flex align-items-center">
+                            <label class="theme-switch me-2">
+                                <input type="checkbox" id="theme-toggle">
+                                <span class="theme-slider">
+                                    <i class="fas fa-sun theme-icon sun"></i>
+                                    <i class="fas fa-moon theme-icon moon"></i>
+                                </span>
+                            </label>
+                            <span class="nav-link d-none d-md-block">
+                                <i class="fas fa-user me-1"></i>Admin
+                            </span>
+                        </div>
                     </li>
                 </ul>
             </div>
@@ -152,7 +404,7 @@
     <div class="container-fluid">
         <div class="row">
             <!-- Sidebar -->
-            <div class="col-md-3 col-lg-2 sidebar p-0">
+            <div class="col-md-3 col-lg-2 sidebar p-0" id="sidebar">
                 <div class="d-flex flex-column p-3">
                     <ul class="nav flex-column">
                         <li class="nav-item">
@@ -199,13 +451,59 @@
     
     <!-- Common JavaScript -->
     <script>
+        // Dark mode toggle functionality
+        $(document).ready(function() {
+            // Check for saved theme preference or respect OS theme setting
+            const savedTheme = localStorage.getItem('theme');
+            const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            if (savedTheme === 'dark' || (!savedTheme && prefersDarkMode)) {
+                document.documentElement.setAttribute('data-bs-theme', 'dark');
+                $('#theme-toggle').prop('checked', true);
+            }
+            
+            // Toggle theme
+            $('#theme-toggle').change(function() {
+                if ($(this).is(':checked')) {
+                    document.documentElement.setAttribute('data-bs-theme', 'dark');
+                    localStorage.setItem('theme', 'dark');
+                } else {
+                    document.documentElement.setAttribute('data-bs-theme', 'light');
+                    localStorage.setItem('theme', 'light');
+                }
+            });
+            
+            // Mobile sidebar toggle
+            $('#sidebar-toggle').click(function() {
+                $('#sidebar').toggleClass('show');
+            });
+            
+            // Close sidebar when clicking on a link (mobile)
+            $('#sidebar .nav-link').click(function() {
+                if (window.innerWidth < 768) {
+                    $('#sidebar').removeClass('show');
+                }
+            });
+            
+            // Close sidebar when clicking outside (mobile)
+            $(document).click(function(event) {
+                const $target = $(event.target);
+                if (!$target.closest('#sidebar').length && 
+                    !$target.closest('#sidebar-toggle').length && 
+                    $('#sidebar').hasClass('show') &&
+                    window.innerWidth < 768) {
+                    $('#sidebar').removeClass('show');
+                }
+            });
+        });
+        
         // Show/hide loading spinner
         function showLoading() {
-            $('#loading-spinner').show();
+            $('#loading-spinner').addClass('active');
         }
         
         function hideLoading() {
-            $('#loading-spinner').hide();
+            $('#loading-spinner').removeClass('active');
         }
         
         // API helper function
@@ -250,32 +548,53 @@
             });
         }
         
-        // Toast notification function
+        // Enhanced toast notification function
         function showToast(message, type = 'success') {
+            const icon = type === 'success' ? 'check-circle' 
+                       : type === 'danger' ? 'exclamation-circle'
+                       : type === 'warning' ? 'exclamation-triangle'
+                       : 'info-circle';
+                       
             const toastHtml = `
-                <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
-                    <div class="toast align-items-center text-white bg-${type == 'success' ? 'success' : 'danger'}" role="alert" aria-live="assertive" aria-atomic="true">
-                        <div class="d-flex">
-                            <div class="toast-body">
-                                ${message}
-                            </div>
-                            <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-                        </div>
+                <div class="custom-toast toast-${type} mb-3" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header">
+                        <i class="fas fa-${icon} me-2" style="color: var(--${type === 'success' ? 'success' : type === 'danger' ? 'danger' : type === 'warning' ? 'warning' : 'primary'}-color);"></i>
+                        <strong class="me-auto">${type.charAt(0).toUpperCase() + type.slice(1)}</strong>
+                        <small>Just now</small>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">
+                        ${message}
                     </div>
                 </div>
             `;
             
-            // Add toast to body
-            $('body').append(toastHtml);
+            // Add toast to container
+            $('#toast-container').append(toastHtml);
             
-            // Initialize and show toast
-            const toastElement = document.querySelector('.toast');
-            const toast = new bootstrap.Toast(toastElement, { delay: 3000 });
-            toast.show();
+            // Get the toast element
+            const $toast = $('#toast-container .custom-toast').last();
             
-            // Remove toast after it's hidden
-            $(toastElement).on('hidden.bs.toast', function() {
-                $(this).parent().remove();
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                $toast.css({
+                    'opacity': '0',
+                    'transform': 'translateY(20px)'
+                });
+                setTimeout(() => {
+                    $toast.remove();
+                }, 300);
+            }, 5000);
+            
+            // Handle close button
+            $toast.find('.btn-close').click(function() {
+                $toast.css({
+                    'opacity': '0',
+                    'transform': 'translateY(20px)'
+                });
+                setTimeout(() => {
+                    $toast.remove();
+                }, 300);
             });
         }
         
@@ -304,6 +623,13 @@
                 }, 2000);
             }
         }
+        
+        // Add viewport resize handler for responsive design
+        window.addEventListener('resize', function() {
+            if (window.innerWidth >= 768 && $('#sidebar').hasClass('show')) {
+                $('#sidebar').removeClass('show');
+            }
+        });
     </script>
     
     {% block extra_scripts %}{% endblock %}
