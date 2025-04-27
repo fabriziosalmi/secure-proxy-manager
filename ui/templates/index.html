@@ -445,7 +445,9 @@
         $('#optimize-cache-btn').click(function() {
             $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Optimizing...');
             
-            apiRequest('POST', 'maintenance/optimize-cache')
+            apiRequest('POST', 'maintenance/optimize-cache', {
+                csrf_token: $('meta[name="csrf-token"]').attr('content')
+            })
                 .then(function(response) {
                     showToast('Cache optimized successfully. ' + response.data.space_saved + ' of space saved.');
                     loadCacheStatistics();
@@ -462,12 +464,20 @@
         $('#scan-security-btn').click(function() {
             $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Scanning...');
             
-            // Simulate a scan (in a real app, this would be an actual security scan)
-            setTimeout(function() {
+            // Add CSRF token to the security scan request
+            apiRequest('POST', 'security/scan', {
+                csrf_token: $('meta[name="csrf-token"]').attr('content')
+            })
+            .then(function() {
                 loadSecurityScore();
-                $('#scan-security-btn').prop('disabled', false).html('<i class="fas fa-shield-alt me-2"></i>Security Scan');
                 showToast('Security scan completed');
-            }, 1500);
+            })
+            .catch(function(error) {
+                showToast('Security scan failed: ' + error.message, 'danger');
+            })
+            .finally(function() {
+                $(this).prop('disabled', false).html('<i class="fas fa-shield-alt me-2"></i>Security Scan');
+            });
         });
         
         // Refresh security score button
