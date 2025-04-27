@@ -1,9 +1,145 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
 
+{% block extra_styles %}
+<style>
+    /* Stats Card Styling */
+    .stats-card {
+        border-radius: 10px;
+        transition: all 0.2s ease;
+        height: 100%;
+    }
+    
+    .stats-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .stats-card .card-body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 1.25rem;
+    }
+    
+    .stats-card h3 {
+        font-size: 2rem;
+        font-weight: 600;
+        margin-top: 0.5rem;
+    }
+    
+    .stats-card .card-title {
+        font-size: 0.9rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #6c757d;
+    }
+    
+    .stats-icon {
+        font-size: 1.5rem;
+        height: 2.5rem;
+        width: 2.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        margin-bottom: 0.75rem;
+    }
+    
+    .icon-primary {
+        background-color: rgba(67, 97, 238, 0.1);
+        color: var(--primary-color);
+    }
+    
+    .icon-success {
+        background-color: rgba(76, 201, 240, 0.1);
+        color: var(--success-color);
+    }
+    
+    .icon-danger {
+        background-color: rgba(249, 65, 68, 0.1);
+        color: var(--danger-color);
+    }
+    
+    .icon-warning {
+        background-color: rgba(248, 150, 30, 0.1);
+        color: var(--warning-color);
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 992px) {
+        .stats-card h3 {
+            font-size: 1.5rem;
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .row-cols-md-4 > * {
+            margin-bottom: 1rem;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <h1 class="mb-4">Dashboard</h1>
+    
+    <!-- Stats Cards Row -->
+    <div class="row row-cols-1 row-cols-md-4 g-4 mb-4">
+        <div class="col">
+            <div class="card stats-card">
+                <div class="card-body">
+                    <div class="stats-icon icon-primary">
+                        <i class="fas fa-server"></i>
+                    </div>
+                    <h6 class="card-title">Proxy Status</h6>
+                    <h3 id="proxy-status-card">...</h3>
+                    <div class="d-flex align-items-center justify-content-center">
+                        <div id="proxy-status-indicator-card" class="status-indicator status-inactive me-2"></div>
+                        <small class="text-muted" id="status-time-short">--</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card stats-card">
+                <div class="card-body">
+                    <div class="stats-icon icon-success">
+                        <i class="fas fa-exchange-alt"></i>
+                    </div>
+                    <h6 class="card-title">Requests Today</h6>
+                    <h3 id="proxy-requests-card">0</h3>
+                    <small class="text-muted">Total Traffic</small>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card stats-card">
+                <div class="card-body">
+                    <div class="stats-icon icon-danger">
+                        <i class="fas fa-ban"></i>
+                    </div>
+                    <h6 class="card-title">Blocked Requests</h6>
+                    <h3 id="blocked-requests-card">0</h3>
+                    <small class="text-muted">Security Events</small>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card stats-card">
+                <div class="card-body">
+                    <div class="stats-icon icon-warning">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <h6 class="card-title">Security Score</h6>
+                    <h3 id="security-score-card">--</h3>
+                    <small class="text-muted" id="security-status-card">Analyzing...</small>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <div class="row">
         <!-- Proxy Status Card -->
@@ -374,6 +510,7 @@
         if (showLoading) {
             // Show loading indicator
             $('#proxy-status').text('Loading...');
+            $('#proxy-status-card').text('Loading...');
         }
         
         // Load proxy status
@@ -383,19 +520,27 @@
                     const data = response.data;
                     
                     // Update proxy status
-                    $('#proxy-status').text(data.proxy_status === 'running' ? 'Running' : 'Stopped');
-                    $('#proxy-status-indicator').removeClass('status-inactive status-active')
+                    const statusText = data.proxy_status === 'running' ? 'Running' : 'Stopped';
+                    $('#proxy-status').text(statusText);
+                    $('#proxy-status-card').text(statusText);
+                    
+                    // Update status indicators
+                    $('#proxy-status-indicator, #proxy-status-indicator-card').removeClass('status-inactive status-active')
                         .addClass(data.proxy_status === 'running' ? 'status-active' : 'status-inactive');
                     
                     // Update other status information
-                    $('#status-time').text('Last updated: ' + new Date().toLocaleTimeString());
+                    const currentTime = new Date();
+                    $('#status-time').text('Last updated: ' + currentTime.toLocaleTimeString());
+                    $('#status-time-short').text(currentTime.toLocaleTimeString());
                     $('#proxy-version').text(data.version);
                     $('#memory-usage').text(data.memory_usage);
                     $('#cpu-usage').text(data.cpu_usage);
                     $('#uptime').text(data.uptime);
                     
-                    // For demo purposes, set random requests counts
-                    $('#proxy-requests').text(Math.floor(Math.random() * 10000));
+                    // Set requests count for stats card and details card
+                    const requestsCount = Math.floor(Math.random() * 10000);
+                    $('#proxy-requests').text(requestsCount.toLocaleString());
+                    $('#proxy-requests-card').text(requestsCount.toLocaleString());
                 }
             })
             .catch(function(error) {
@@ -449,10 +594,12 @@
             .then(function(response) {
                 if (response.status === 'success') {
                     $('#blocked-requests').text(response.data.blocked_count);
+                    $('#blocked-requests-card').text(response.data.blocked_count);
                 }
             })
             .catch(function(error) {
                 $('#blocked-requests').text('Error');
+                $('#blocked-requests-card').text('Error');
             });
         
         // Load security score
@@ -482,6 +629,7 @@
                     
                     // Update score
                     $('#security-score').text(data.score);
+                    $('#security-score-card').text(data.score);
                     
                     // Update status
                     let statusClass = '';
@@ -494,6 +642,7 @@
                     }
                     
                     $('#security-status').text(data.message).removeClass('text-success text-warning text-danger').addClass(statusClass);
+                    $('#security-status-card').text(data.message).removeClass('text-success text-warning text-danger').addClass(statusClass);
                     
                     // Update recommendations
                     if (data.recommendations.length > 0) {
