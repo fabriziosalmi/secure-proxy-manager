@@ -144,42 +144,25 @@ def add_security_headers(response):
 @basic_auth.required
 def index():
     """Dashboard page"""
-    csrf_token = get_csrf_token()
-    return render_template('index.html', active_page='dashboard', csrf_token=csrf_token)
+    return render_template('index.html', active_page='dashboard')
 
 @app.route('/settings')
 @basic_auth.required
 def settings():
     """Settings page"""
-    # Get CSRF token from backend
-    csrf_token = get_csrf_token()
-    return render_template('settings.html', active_page='settings', csrf_token=csrf_token)
-
-def get_csrf_token():
-    """Get CSRF token from backend"""
-    session = get_requests_session()
-    try:
-        resp = session.get(f"{BACKEND_URL}/api/status", auth=API_AUTH, timeout=REQUEST_TIMEOUT)
-        # Extract CSRF token from response headers
-        csrf_token = resp.headers.get('X-CSRF-Token', '')
-        return csrf_token
-    except Exception as e:
-        logger.error(f"Error getting CSRF token: {str(e)}")
-        return ''
+    return render_template('settings.html', active_page='settings')
 
 @app.route('/blacklists')
 @basic_auth.required
 def blacklists():
     """Blacklists page"""
-    csrf_token = get_csrf_token()
-    return render_template('blacklists.html', active_page='blacklists', csrf_token=csrf_token)
+    return render_template('blacklists.html', active_page='blacklists')
 
 @app.route('/logs')
 @basic_auth.required
 def logs():
     """Logs page"""
-    csrf_token = get_csrf_token()
-    return render_template('logs.html', active_page='logs', csrf_token=csrf_token)
+    return render_template('logs.html', active_page='logs')
 
 @app.route('/favicon.ico')
 def favicon():
@@ -210,9 +193,7 @@ def api_proxy(path):
         # Set up headers to include in the request
         headers = {}
         
-        # Forward CSRF token if it exists in the original request
-        if 'X-CSRF-Token' in request.headers:
-            headers['X-CSRF-Token'] = request.headers['X-CSRF-Token']
+        # CSRF token forwarding removed
         
         if request.method == 'GET':
             resp = session.get(url, auth=API_AUTH, params=request.args, headers=headers, timeout=REQUEST_TIMEOUT)
