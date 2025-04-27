@@ -443,18 +443,6 @@
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     
-    <!-- Tailwind Config -->
-    <script>
-        // This helps prevent certain conflicts between Bootstrap and Tailwind
-        tailwind.config = {
-            important: false, // We don't want Tailwind to override Bootstrap with !important
-            corePlugins: {
-                preflight: false, // Disable Tailwind's base styles to prevent conflicts with Bootstrap
-            },
-            prefix: 'tw-', // Optional: Add a prefix to all Tailwind classes to prevent conflicts
-        }
-    </script>
-    
     <!-- Common JavaScript -->
     <script>
         $(document).ready(function() {
