@@ -293,50 +293,6 @@ def verify_password(username, password):
     
     return None
 
-# CSRF protection functions
-def generate_csrf_token():
-    """Generate a CSRF token for the current session"""
-    if 'csrf_token' not in session:
-        session['csrf_token'] = secrets.token_hex(32)
-    return session['csrf_token']
-
-def validate_csrf_token():
-    """Validate that the CSRF token in the request matches the session token"""
-    token = request.headers.get('X-CSRF-Token')
-    if not token or token != session.get('csrf_token'):
-        return False
-    return True
-
-# Add CSRF token to all API responses
-@app.after_request
-def add_csrf_token(response):
-    if request.endpoint != 'static':
-        token = generate_csrf_token()
-        response.headers['X-CSRF-Token'] = token
-    return response
-
-# CSRF protection decorator for state-changing endpoints
-def csrf_protected(func):
-    """Decorator to protect routes from CSRF attacks"""
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        if request.method not in ['GET', 'HEAD', 'OPTIONS']:
-            if not validate_csrf_token():
-                return jsonify({
-                    "status": "error", 
-                    "message": "CSRF token validation failed"
-                }), 403
-            
-            # Rotate CSRF token after state-changing operations
-            if hasattr(g, 'rotate_csrf') and g.rotate_csrf:
-                session.pop('csrf_token', None)
-                generate_csrf_token()
-                
-        # Flag to rotate the token after this request
-        g.rotate_csrf = True if request.method not in ['GET', 'HEAD', 'OPTIONS'] else False
-        return func(*args, **kwargs)
-    return wrapper
-
 # Enhance security headers function
 @app.after_request
 def add_security_headers(response):
@@ -370,11 +326,6 @@ def add_security_headers(response):
     # Add Feature Policy / Permissions Policy
     response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
     
-    # Add CSRF token if applicable
-    if request.endpoint != 'static':
-        token = generate_csrf_token()
-        response.headers['X-CSRF-Token'] = token
-        
     return response
 
 # Routes
@@ -465,7 +416,6 @@ def get_settings():
 
 @app.route('/api/settings/<setting_name>', methods=['PUT'])
 @auth.login_required
-@csrf_protected
 def update_setting(setting_name):
     """Update a specific setting"""
     data = request.get_json()
@@ -499,7 +449,6 @@ def get_ip_blacklist():
 
 @app.route('/api/ip-blacklist', methods=['POST'])
 @auth.login_required
-@csrf_protected
 def add_ip_to_blacklist():
     """Add an IP to the blacklist"""
     data = request.get_json()
@@ -533,7 +482,6 @@ def add_ip_to_blacklist():
 
 @app.route('/api/ip-blacklist/<int:id>', methods=['DELETE'])
 @auth.login_required
-@csrf_protected
 def remove_ip_from_blacklist(id):
     """Remove an IP from the blacklist"""
     conn = get_db()
@@ -559,7 +507,6 @@ def get_domain_blacklist():
 
 @app.route('/api/domain-blacklist', methods=['POST'])
 @auth.login_required
-@csrf_protected
 def add_domain_to_blacklist():
     """Add a domain to the blacklist"""
     data = request.get_json()
@@ -591,7 +538,6 @@ def add_domain_to_blacklist():
 
 @app.route('/api/domain-blacklist/<int:id>', methods=['DELETE'])
 @auth.login_required
-@csrf_protected
 def remove_domain_from_blacklist(id):
     """Remove a domain from the blacklist"""
     conn = get_db()
@@ -709,7 +655,6 @@ def get_logs():
 
 @app.route('/api/logs/import', methods=['POST'])
 @auth.login_required
-@csrf_protected
 def import_logs():
     """Import logs from Squid access.log"""
     try:
@@ -768,7 +713,6 @@ def download_cert():
 
 @app.route('/api/maintenance/clear-cache', methods=['POST'])
 @auth.login_required
-@csrf_protected
 def clear_cache():
     """Clear the Squid cache"""
     try:
@@ -838,7 +782,6 @@ def backup_config():
 
 @app.route('/api/maintenance/restore-config', methods=['POST'])
 @auth.login_required
-@csrf_protected
 def restore_config():
     """Restore configuration from a backup file"""
     try:
@@ -938,7 +881,6 @@ def update_ip_blacklist():
 
 @app.route('/api/logs/clear', methods=['POST'])
 @auth.login_required
-@csrf_protected
 def clear_logs():
     """Clear all proxy logs"""
     try:
@@ -954,7 +896,6 @@ def clear_logs():
 
 @app.route('/api/maintenance/reload-config', methods=['POST'])
 @auth.login_required
-@csrf_protected
 def reload_proxy_config():
     """Reload the proxy configuration"""
     try:
@@ -1651,7 +1592,6 @@ def validate_setting(setting_name, setting_value):
 
 @app.route('/api/change-password', methods=['POST'])
 @auth.login_required
-@csrf_protected
 def change_password():
     """Change user password with proper validation"""
     data = request.get_json()
@@ -1853,7 +1793,6 @@ def get_rate_limits():
 
 @app.route('/api/security/rate-limits/<ip>', methods=['DELETE'])
 @auth.login_required
-@csrf_protected
 def clear_rate_limit(ip):
     """Reset rate limiting for a specific IP"""
     try:
@@ -2228,7 +2167,6 @@ def get_api_docs():
                 "method": "PUT",
                 "description": "Update a specific setting",
                 "auth_required": True,
-                "csrf_protected": True,
                 "parameters": [
                     {
                         "name": "value",
@@ -2266,7 +2204,6 @@ def get_api_docs():
                 "method": "POST",
                 "description": "Add an IP to the blacklist",
                 "auth_required": True,
-                "csrf_protected": True,
                 "parameters": [
                     {
                         "name": "ip",
@@ -2686,7 +2623,6 @@ def get_security_score():
 
 @app.route('/api/maintenance/optimize-cache', methods=['POST'])
 @auth.login_required
-@csrf_protected
 def optimize_cache():
     """Optimize the Squid cache to improve performance"""
     try:
@@ -2816,12 +2752,10 @@ def login():
         user = User(user_data['id'], user_data['username'])
         login_user(user)
         
-        token = generate_csrf_token()
         return jsonify({
             "status": "success", 
             "message": "Login successful",
-            "user": {"username": username},
-            "csrf_token": token
+            "user": {"username": username}
         })
     
     return jsonify({"status": "error", "message": "Invalid username or password"}), 401
@@ -2836,7 +2770,6 @@ def logout():
 
 @app.route('/api/logs/clear-old', methods=['POST'])
 @auth.login_required
-@csrf_protected
 def clear_old_logs():
     """Clear logs older than a specified number of days"""
     try:
@@ -2910,7 +2843,6 @@ def get_database_size():
 
 @app.route('/api/database/optimize', methods=['POST'])
 @auth.login_required
-@csrf_protected
 def optimize_database():
     """Optimize the SQLite database by vacuuming"""
     try:

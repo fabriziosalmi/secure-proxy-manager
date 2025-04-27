@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>Secure Proxy - {% block title %}Dashboard{% endblock %}</title>
     
     <!-- Bootstrap 5 CSS from CDN -->
@@ -458,20 +457,8 @@
     
     <!-- Common JavaScript -->
     <script>
-        // CSRF Token setup for all AJAX requests
         $(document).ready(function() {
-            // Set up CSRF token for all AJAX requests
-            $.ajaxSetup({
-                beforeSend: function(xhr, settings) {
-                    // Only add the CSRF token for state-changing methods (not GET)
-                    if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type)) {
-                        const csrfToken = $('meta[name="csrf-token"]').attr('content');
-                        if (csrfToken) {
-                            xhr.setRequestHeader("X-CSRF-Token", csrfToken);
-                        }
-                    }
-                }
-            });
+            // CSRF Token setup removed
             
             // Dark mode toggle functionality
             // Check for saved theme preference or respect OS theme setting
@@ -532,22 +519,11 @@
             showLoading();
             
             return new Promise((resolve, reject) => {
-                // Get CSRF token from headers if available
-                const csrfToken = $('meta[name="csrf-token"]').attr('content');
+                // CSRF token handling removed
                 
                 const headers = {
                     'Content-Type': 'application/json'
                 };
-                
-                // Add CSRF token if available
-                if (csrfToken) {
-                    headers['X-CSRF-Token'] = csrfToken;
-                }
-
-                // For non-GET requests, ensure csrf_token is included in the data
-                if (method !== 'GET' && data && !data.csrf_token && csrfToken) {
-                    data = {...data, csrf_token: csrfToken};
-                }
                 
                 $.ajax({
                     url: '/api/' + endpoint,
@@ -558,12 +534,6 @@
                     headers: headers,
                     success: function(response) {
                         hideLoading();
-                        
-                        // If the response contains a CSRF token, update the meta tag
-                        if (response.csrf_token) {
-                            $('meta[name="csrf-token"]').attr('content', response.csrf_token);
-                        }
-                        
                         resolve(response);
                     },
                     error: function(xhr, status, error) {
