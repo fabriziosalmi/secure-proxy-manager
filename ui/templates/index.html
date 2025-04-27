@@ -254,6 +254,78 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Client Stats Card -->
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Client Statistics</h5>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-outline-secondary client-data-toggle active" data-view="clients">Clients</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary client-data-toggle" data-view="domains">Domains</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Client List View -->
+                    <div id="client-list-view">
+                        <div class="d-flex justify-content-between mb-3 align-items-center">
+                            <h6 class="mb-0">Top Active Clients</h6>
+                            <span class="badge bg-primary" id="total-clients-count">0</span>
+                        </div>
+                        <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+                            <table class="table table-sm table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>IP Address</th>
+                                        <th>Requests</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="client-list-table">
+                                    <tr>
+                                        <td colspan="3" class="text-center py-3">
+                                            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <span class="ms-2">Loading client data...</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Popular Domains View (Hidden by default) -->
+                    <div id="domain-list-view" style="display: none;">
+                        <div class="d-flex justify-content-between mb-3 align-items-center">
+                            <h6 class="mb-0">Most Requested Domains</h6>
+                            <span class="badge bg-primary" id="total-domains-count">0</span>
+                        </div>
+                        <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+                            <table class="table table-sm table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Domain</th>
+                                        <th>Requests</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="domain-list-table">
+                                    <tr>
+                                        <td colspan="3" class="text-center py-3">
+                                            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <span class="ms-2">Loading domain data...</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- New Row: Additional Cards -->
@@ -508,6 +580,20 @@
             loadTrafficStatistics(currentTrafficPeriod);
         });
         
+        // Client data toggle buttons
+        $('.client-data-toggle').click(function() {
+            $('.client-data-toggle').removeClass('active');
+            $(this).addClass('active');
+            const view = $(this).data('view');
+            if (view === 'clients') {
+                $('#client-list-view').show();
+                $('#domain-list-view').hide();
+            } else {
+                $('#client-list-view').hide();
+                $('#domain-list-view').show();
+            }
+        });
+        
         // Set up automatic refresh every 30 seconds
         setInterval(function() {
             loadDashboardData(false);
@@ -618,6 +704,12 @@
         
         // Load cache statistics
         loadCacheStatistics();
+        
+        // Load client statistics
+        loadClientStatistics();
+        
+        // Load domain statistics
+        loadDomainStatistics();
     }
     
     function formatBytes(bytes, decimals = 2) {
@@ -762,6 +854,58 @@
             })
             .catch(function(error) {
                 showToast('Failed to load cache statistics: ' + error.message, 'danger');
+            });
+    }
+    
+    function loadClientStatistics() {
+        apiRequest('GET', 'clients/statistics')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    const data = response.data;
+                    
+                    // Update client count
+                    $('#total-clients-count').text(data.total_clients);
+                    
+                    // Update client list
+                    let html = '';
+                    data.clients.forEach(client => {
+                        html += `<tr>
+                                    <td>${client.ip_address}</td>
+                                    <td>${client.requests}</td>
+                                    <td>${client.status}</td>
+                                </tr>`;
+                    });
+                    $('#client-list-table').html(html);
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to load client statistics: ' + error.message, 'danger');
+            });
+    }
+    
+    function loadDomainStatistics() {
+        apiRequest('GET', 'domains/statistics')
+            .then(function(response) {
+                if (response.status === 'success') {
+                    const data = response.data;
+                    
+                    // Update domain count
+                    $('#total-domains-count').text(data.total_domains);
+                    
+                    // Update domain list
+                    let html = '';
+                    data.domains.forEach(domain => {
+                        html += `<tr>
+                                    <td>${domain.name}</td>
+                                    <td>${domain.requests}</td>
+                                    <td>${domain.status}</td>
+                                </tr>`;
+                    });
+                    $('#domain-list-table').html(html);
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to load domain statistics: ' + error.message, 'danger');
             });
     }
 </script>
