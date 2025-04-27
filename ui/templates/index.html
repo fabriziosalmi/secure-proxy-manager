@@ -868,18 +868,34 @@
                     
                     // Update client list
                     let html = '';
-                    data.clients.forEach(client => {
-                        html += `<tr>
-                                    <td>${client.ip_address}</td>
-                                    <td>${client.requests}</td>
-                                    <td>${client.status}</td>
-                                </tr>`;
-                    });
+                    if (data.clients && data.clients.length > 0) {
+                        data.clients.forEach(client => {
+                            // Determine status badge class
+                            let statusClass = client.status === 'Active' ? 'bg-success' : 'bg-secondary';
+                            
+                            html += `<tr>
+                                        <td>${client.ip_address}</td>
+                                        <td>${client.requests}</td>
+                                        <td><span class="badge ${statusClass}">${client.status}</span></td>
+                                    </tr>`;
+                        });
+                    } else {
+                        html = `<tr><td colspan="3" class="text-center">No active clients found</td></tr>`;
+                    }
                     $('#client-list-table').html(html);
                 }
             })
             .catch(function(error) {
-                showToast('Failed to load client statistics: ' + error.message, 'danger');
+                console.error('Failed to load client statistics:', error);
+                $('#client-list-table').html(`
+                    <tr>
+                        <td colspan="3" class="text-center">
+                            <div class="alert alert-warning mb-0">
+                                <i class="fas fa-exclamation-triangle me-2"></i>Could not load client data
+                            </div>
+                        </td>
+                    </tr>
+                `);
             });
     }
     
@@ -894,18 +910,34 @@
                     
                     // Update domain list
                     let html = '';
-                    data.domains.forEach(domain => {
-                        html += `<tr>
-                                    <td>${domain.name}</td>
-                                    <td>${domain.requests}</td>
-                                    <td>${domain.status}</td>
-                                </tr>`;
-                    });
+                    if (data.domains && data.domains.length > 0) {
+                        data.domains.forEach(domain => {
+                            // Determine status badge class
+                            let statusClass = domain.status === 'Blocked' ? 'bg-danger' : 'bg-success';
+                            
+                            html += `<tr>
+                                        <td>${domain.name}</td>
+                                        <td>${domain.requests}</td>
+                                        <td><span class="badge ${statusClass}">${domain.status}</span></td>
+                                    </tr>`;
+                        });
+                    } else {
+                        html = `<tr><td colspan="3" class="text-center">No domain statistics available</td></tr>`;
+                    }
                     $('#domain-list-table').html(html);
                 }
             })
             .catch(function(error) {
-                showToast('Failed to load domain statistics: ' + error.message, 'danger');
+                console.error('Failed to load domain statistics:', error);
+                $('#domain-list-table').html(`
+                    <tr>
+                        <td colspan="3" class="text-center">
+                            <div class="alert alert-warning mb-0">
+                                <i class="fas fa-exclamation-triangle me-2"></i>Could not load domain data
+                            </div>
+                        </td>
+                    </tr>
+                `);
             });
     }
 </script>
