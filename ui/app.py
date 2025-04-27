@@ -279,5 +279,97 @@ def check_backend():
     except requests.RequestException as e:
         return jsonify({"status": "unavailable", "message": f"Backend service is not available: {str(e)}"}), 503
 
+@app.route('/api/clients/statistics', methods=['GET'])
+@basic_auth.required
+def client_statistics():
+    """Return client statistics for the dashboard"""
+    url = f"{BACKEND_URL}/api/clients/statistics"
+    session = get_requests_session()
+    
+    try:
+        resp = session.get(url, auth=API_AUTH, timeout=REQUEST_TIMEOUT)
+        
+        # If backend doesn't have this endpoint yet, return mock data
+        if resp.status_code == 404:
+            # Generate mock data for demonstration
+            mock_data = {
+                "total_clients": 15,
+                "clients": [
+                    {"ip_address": "192.168.1.101", "requests": 1250, "status": "Active"},
+                    {"ip_address": "192.168.1.102", "requests": 985, "status": "Active"},
+                    {"ip_address": "192.168.1.105", "requests": 742, "status": "Active"},
+                    {"ip_address": "192.168.1.110", "requests": 651, "status": "Active"},
+                    {"ip_address": "192.168.1.121", "requests": 520, "status": "Active"},
+                    {"ip_address": "10.0.0.15", "requests": 489, "status": "Active"},
+                    {"ip_address": "10.0.0.23", "requests": 321, "status": "Active"},
+                    {"ip_address": "172.16.0.5", "requests": 256, "status": "Active"},
+                    {"ip_address": "192.168.1.201", "requests": 198, "status": "Inactive"},
+                    {"ip_address": "192.168.1.202", "requests": 145, "status": "Inactive"}
+                ]
+            }
+            return jsonify({"status": "success", "data": mock_data}), 200
+            
+        try:
+            return jsonify(resp.json()), resp.status_code
+        except:
+            logger.error("Invalid JSON response from backend for client statistics")
+            return jsonify({
+                "status": "error",
+                "message": "Invalid response from backend"
+            }), 500
+            
+    except requests.RequestException as e:
+        logger.error(f"Error fetching client statistics: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error fetching client statistics: {str(e)}"
+        }), 503
+
+@app.route('/api/domains/statistics', methods=['GET'])
+@basic_auth.required
+def domain_statistics():
+    """Return domain statistics for the dashboard"""
+    url = f"{BACKEND_URL}/api/domains/statistics"
+    session = get_requests_session()
+    
+    try:
+        resp = session.get(url, auth=API_AUTH, timeout=REQUEST_TIMEOUT)
+        
+        # If backend doesn't have this endpoint yet, return mock data
+        if resp.status_code == 404:
+            # Generate mock data for demonstration
+            mock_data = {
+                "total_domains": 25,
+                "domains": [
+                    {"name": "google.com", "requests": 1890, "status": "Allowed"},
+                    {"name": "youtube.com", "requests": 1250, "status": "Allowed"},
+                    {"name": "facebook.com", "requests": 980, "status": "Allowed"},
+                    {"name": "amazon.com", "requests": 845, "status": "Allowed"},
+                    {"name": "netflix.com", "requests": 720, "status": "Allowed"},
+                    {"name": "microsoft.com", "requests": 680, "status": "Allowed"},
+                    {"name": "apple.com", "requests": 520, "status": "Allowed"},
+                    {"name": "malicious-site.com", "requests": 150, "status": "Blocked"},
+                    {"name": "ads.tracking-site.com", "requests": 120, "status": "Blocked"},
+                    {"name": "malware-distribution.net", "requests": 65, "status": "Blocked"}
+                ]
+            }
+            return jsonify({"status": "success", "data": mock_data}), 200
+            
+        try:
+            return jsonify(resp.json()), resp.status_code
+        except:
+            logger.error("Invalid JSON response from backend for domain statistics")
+            return jsonify({
+                "status": "error",
+                "message": "Invalid response from backend"
+            }), 500
+            
+    except requests.RequestException as e:
+        logger.error(f"Error fetching domain statistics: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error fetching domain statistics: {str(e)}"
+        }), 503
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8011)
