@@ -4,3 +4,4 @@ secureproxy.db
 *.sqlite
 __pycache__
 *.pyc
+data/secure_proxy.db
