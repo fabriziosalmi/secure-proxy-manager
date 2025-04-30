@@ -1,6 +1,6 @@
 # Secure Proxy Manager
 
-A containerized secure proxy solution with advanced filtering capabilities, real-time monitoring, and a modern web UI.
+A containerized secure proxy with advanced filtering capabilities, real-time monitoring, and a modern web UI.
   
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
   [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://www.docker.com/)
