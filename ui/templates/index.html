@@ -94,7 +94,7 @@
                     <div class="stats-icon icon-primary">
                         <i class="fas fa-server"></i>
                     </div>
-                    <h6 class="card-title">Proxy Status</h6>
+                    <h6 class="card-title">Proxy Info</h6>
                     <h3 id="proxy-status-card">...</h3>
                     <div class="d-flex align-items-center justify-content-center">
                         <div id="proxy-status-indicator-card" class="status-indicator status-inactive me-2"></div>
@@ -626,10 +626,13 @@
                 if (response.status === 'success') {
                     const data = response.data;
                     
-                    // Update proxy status
+                    // Update proxy status card to show IP:PORT
+                    const proxyInfoText = data.proxy_host && data.proxy_port ? `${data.proxy_host}:${data.proxy_port}` : 'N/A';
+                    $('#proxy-status-card').text(proxyInfoText);
+
+                    // Update detailed proxy status text (Running/Stopped)
                     const statusText = data.proxy_status === 'running' ? 'Running' : 'Stopped';
                     $('#proxy-status').text(statusText);
-                    $('#proxy-status-card').text(statusText);
                     
                     // Update status indicators
                     $('#proxy-status-indicator, #proxy-status-indicator-card').removeClass('status-inactive status-active')
@@ -887,7 +890,7 @@
                             let statusClass = client.status === 'Active' ? 'bg-success' : 'bg-secondary';
                             
                             html += `<tr>
-                                        <td>${client.ip_address}</td>
+                                        <td>${client.ip_address || 'N/A'}</td>
                                         <td>${client.requests}</td>
                                         <td><span class="badge ${statusClass}">${client.status}</span></td>
                                     </tr>`;

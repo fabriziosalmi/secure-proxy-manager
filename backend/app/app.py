@@ -347,8 +347,10 @@ def get_status():
     # Get system stats
     stats = {
         "proxy_status": proxy_status,
+        "proxy_host": PROXY_HOST,
+        "proxy_port": PROXY_PORT,
         "timestamp": datetime.now().isoformat(),
-        "version": "1.0.0"
+        "version": "0.0.2"
     }
     
     # Add memory usage, CPU usage, and uptime
@@ -3033,7 +3035,7 @@ def client_statistics():
             # A more sophisticated status could be based on last seen timestamp.
             cursor.execute("""
                 SELECT 
-                    source_ip, 
+                    source_ip as ip_address, 
                     COUNT(*) as requests,
                     'Active' as status 
                 FROM proxy_logs
