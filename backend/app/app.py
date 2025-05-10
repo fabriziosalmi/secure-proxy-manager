@@ -3020,5 +3020,82 @@ def run_security_scan():
             "message": f"Error during security scan: {str(e)}"
         }), 500
 
+@app.route('/api/clients/statistics', methods=['GET'])
+@auth.login_required
+def client_statistics():
+    """Return client statistics for the dashboard based on proxy logs"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Query to get client IP, request count, and determine status
+            # For now, status is hardcoded to "Active" if they have logs.
+            # A more sophisticated status could be based on last seen timestamp.
+            cursor.execute("""
+                SELECT 
+                    source_ip, 
+                    COUNT(*) as requests,
+                    'Active' as status 
+                FROM proxy_logs
+                WHERE source_ip IS NOT NULL AND source_ip != ''
+                GROUP BY source_ip
+                ORDER BY requests DESC
+                LIMIT 50  -- Limit to top 50 clients for performance
+            """)
+            clients = [dict(row) for row in cursor.fetchall()]
+            
+            # Get total unique clients
+            cursor.execute("SELECT COUNT(DISTINCT source_ip) FROM proxy_logs WHERE source_ip IS NOT NULL AND source_ip != ''")
+            total_clients_row = cursor.fetchone()
+            total_clients = total_clients_row[0] if total_clients_row else 0
+            
+            data = {
+                "total_clients": total_clients,
+                "clients": clients
+            }
+            return jsonify({"status": "success", "data": data})
+            
+    except Exception as e:
+        logger.error(f"Error fetching client statistics: {str(e)}")
+        return jsonify({"status": "error", "message": f"Error fetching client statistics: {str(e)}"}), 500
+
+@app.route('/api/domains/statistics', methods=['GET'])
+@auth.login_required
+def domain_statistics():
+    """Return domain statistics for the dashboard based on proxy logs"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Query to get domain, request count. 
+            # Category is not directly available in logs, so it's omitted or could be hardcoded/mapped if needed.
+            cursor.execute("""
+                SELECT 
+                    destination as domain_name, 
+                    COUNT(*) as requests,
+                    'Unknown' as category  -- Category is not in logs, defaulting to 'Unknown'
+                FROM proxy_logs
+                WHERE destination IS NOT NULL AND destination != ''
+                GROUP BY destination
+                ORDER BY requests DESC
+                LIMIT 50  -- Limit to top 50 domains for performance
+            """)
+            domains = [dict(row) for row in cursor.fetchall()]
+            
+            # Get total unique domains
+            cursor.execute("SELECT COUNT(DISTINCT destination) FROM proxy_logs WHERE destination IS NOT NULL AND destination != ''")
+            total_domains_row = cursor.fetchone()
+            total_domains = total_domains_row[0] if total_domains_row else 0
+            
+            data = {
+                "total_domains": total_domains,
+                "domains": domains
+            }
+            return jsonify({"status": "success", "data": data})
+            
+    except Exception as e:
+        logger.error(f"Error fetching domain statistics: {str(e)}")
+        return jsonify({"status": "error", "message": f"Error fetching domain statistics: {str(e)}"}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
