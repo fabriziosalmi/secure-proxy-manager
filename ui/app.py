@@ -316,36 +316,16 @@ def domain_statistics():
     try:
         resp = session.get(url, auth=API_AUTH, timeout=REQUEST_TIMEOUT)
         
-        # If backend doesn't have this endpoint yet, return mock data
-        if resp.status_code == 404:
-            # Generate mock data for demonstration
-            mock_data = {
-                "total_domains": 25,
-                "domains": [
-                    {"name": "google.com", "requests": 1890, "status": "Allowed"},
-                    {"name": "youtube.com", "requests": 1250, "status": "Allowed"},
-                    {"name": "facebook.com", "requests": 980, "status": "Allowed"},
-                    {"name": "amazon.com", "requests": 845, "status": "Allowed"},
-                    {"name": "netflix.com", "requests": 720, "status": "Allowed"},
-                    {"name": "microsoft.com", "requests": 680, "status": "Allowed"},
-                    {"name": "apple.com", "requests": 520, "status": "Allowed"},
-                    {"name": "malicious-site.com", "requests": 150, "status": "Blocked"},
-                    {"name": "ads.tracking-site.com", "requests": 120, "status": "Blocked"},
-                    {"name": "malware-distribution.net", "requests": 65, "status": "Blocked"}
-                ]
-            }
-            return jsonify({"status": "success", "data": mock_data}), 200
+        # MODIFICATION: Remove mock data generation block
             
         try:
+            # Attempt to parse the response as JSON, regardless of status code initially
             return jsonify(resp.json()), resp.status_code
-        except:
-            logger.error("Invalid JSON response from backend for domain statistics")
-            return jsonify({
-                "status": "error",
-                "message": "Invalid response from backend"
-            }), 500
+        except ValueError: # Handles cases where resp.json() fails
+            app.logger.error(f"Failed to parse JSON response from backend for {url}. Status: {resp.status_code}, Response: {resp.text[:200]}")
+            return jsonify({"status": "error", "message": "Failed to parse backend response"}), 500
             
-    except requests.RequestException as e:
+    except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching domain statistics: {str(e)}")
         return jsonify({
             "status": "error",
