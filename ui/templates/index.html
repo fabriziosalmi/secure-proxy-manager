@@ -534,11 +534,24 @@
         $('#scan-security-btn').click(function() {
             $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Scanning...');
             
-            // Add CSRF token to the security scan request
-            apiRequest('POST', 'security/scan')
-            .then(function() {
-                loadSecurityScore();
-                showToast('Security scan completed');
+            apiRequest('POST', 'security/scan') // Ensure this endpoint exists and is POST
+            .then(function(response) {
+                showToast(response.message || 'Security scan completed', 'success');
+                // Reload security score and recommendations after scan
+                if (typeof loadSecurityScore === 'function') {
+                    loadSecurityScore(); 
+                }
+                // Optionally, display more details from response.security_issues
+                if (response.issues_found > 0) {
+                    let issuesHtml = '<ul>';
+                    response.security_issues.forEach(issue => {
+                        issuesHtml += `<li>${issue}</li>`;
+                    });
+                    issuesHtml += '</ul>';
+                    // You might want to display these issues in a modal or a dedicated section
+                    console.warn('Security issues found:', response.security_issues);
+                    // Example: showToast(`Scan found ${response.issues_found} issues. Check console for details.`, 'warning');
+                }
             })
             .catch(function(error) {
                 showToast('Security scan failed: ' + error.message, 'danger');

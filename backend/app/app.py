@@ -310,8 +310,8 @@ def add_security_headers(response):
     # Add Content Security Policy
     csp_directives = [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline'",  # Unsafe-inline needed for Bootstrap JS
-        "style-src 'self' 'unsafe-inline'",   # Unsafe-inline needed for Bootstrap CSS
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com",  # Added CDNs
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",   # Added CDNs
         "img-src 'self' data:",                # Allow data: for simple images
         "font-src 'self'",
         "connect-src 'self'",
@@ -3096,6 +3096,54 @@ def domain_statistics():
     except Exception as e:
         logger.error(f"Error fetching domain statistics: {str(e)}")
         return jsonify({"status": "error", "message": f"Error fetching domain statistics: {str(e)}"}), 500
+
+@app.route('/api/database/reset', methods=['POST'])
+@auth.login_required
+def reset_database():
+    """Reset the database to its initial state."""
+    try:
+        logger.info("Attempting to reset database.")
+        # Close any existing database connection for the current context
+        db = getattr(g, '_database', None)
+        if db is not None:
+            db.close()
+            g._database = None
+            logger.info("Closed existing database connection.")
+
+        # Delete the database file
+        if os.path.exists(DATABASE_PATH):
+            os.remove(DATABASE_PATH)
+            logger.info(f"Database file {DATABASE_PATH} removed.")
+        else:
+            logger.info(f"Database file {DATABASE_PATH} not found, proceeding with initialization.")
+
+        # Re-initialize the database
+        init_db()
+        logger.info("Database re-initialized successfully.")
+
+        # Optionally, re-apply settings and update blacklist files if init_db doesn't cover it
+        # or if a completely fresh start for config files is desired.
+        # These functions should ideally be robust enough to run on an empty/fresh DB.
+        apply_settings()
+        logger.info("Applied default settings to proxy configuration.")
+        update_ip_blacklist()
+        logger.info("IP blacklist file updated.")
+        update_domain_blacklist()
+        logger.info("Domain blacklist file updated.")
+        
+        # Re-establish a database connection for the current context if needed by subsequent operations
+        # get_db()
+
+        return jsonify({"status": "success", "message": "Database reset successfully. Please refresh your UI."}), 200
+    except Exception as e:
+        logger.error(f"Error resetting database: {str(e)}")
+        # Attempt to re-initialize DB even on error to prevent a broken state
+        try:
+            init_db()
+            logger.warning("Attempted to re-initialize database after reset error to prevent broken state.")
+        except Exception as init_e:
+            logger.error(f"Failed to re-initialize database after reset error: {str(init_e)}")
+        return jsonify({"status": "error", "message": f"Error resetting database: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
