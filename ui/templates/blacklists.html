@@ -141,11 +141,9 @@
 {% block extra_scripts %}
 <script>
     $(document).ready(function() {
-        // Load initial data
         loadIpBlacklist();
         loadDomainBlacklist();
         
-        // Set up tab change event
         $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
             const targetTab = $(e.target).attr('id');
             if (targetTab === 'ip-tab') {
@@ -153,178 +151,278 @@
             } else if (targetTab === 'domain-tab') {
                 loadDomainBlacklist();
             }
+            // Re-initialize tooltips if any were added dynamically by table rendering
+            initializeAllTooltips();
         });
-        
-        // Add IP to blacklist
-        $('#add-ip-btn').click(function() {
-            const ip = $('#ip-address').val().trim();
-            const description = $('#ip-description').val().trim();
+
+        // --- IP Blacklist --- 
+        const $addIpModal = $('#addIpModal');
+        const $addIpForm = $('#add-ip-form');
+        const $ipAddressInput = $('#ip-address');
+        const $ipDescriptionInput = $('#ip-description');
+        const $addIpBtn = $('#add-ip-btn');
+
+        $addIpBtn.click(function() {
+            const ip = $ipAddressInput.val().trim();
+            const description = $ipDescriptionInput.val().trim();
             
-            if (!ip) {
-                showToast('Please enter an IP address', 'danger');
+            if (!isValidIpOrCidr(ip)) {
+                showToast('Please enter a valid IP address or CIDR notation (e.g., 192.168.1.1 or 192.168.1.0/24)', 'danger');
+                $ipAddressInput.addClass('is-invalid');
                 return;
             }
+            $ipAddressInput.removeClass('is-invalid');
+
+            const originalButtonText = $addIpBtn.html();
+            $addIpBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Adding...');
             
-            apiRequest('POST', 'ip-blacklist', {
-                ip: ip,
-                description: description
-            })
+            apiRequest('POST', 'ip-blacklist', { ip: ip, description: description })
             .then(function(response) {
                 if (response.status === 'success') {
-                    showToast('IP added to blacklist successfully');
-                    $('#addIpModal').modal('hide');
-                    $('#add-ip-form')[0].reset();
+                    showToast(response.message || 'IP added to blacklist successfully', 'success');
+                    $addIpModal.modal('hide');
+                    $addIpForm[0].reset();
                     loadIpBlacklist();
                 }
             })
             .catch(function(error) {
-                showToast('Failed to add IP to blacklist: ' + error.message, 'danger');
+                showToast('Failed to add IP: ' + (error.message || 'Unknown error'), 'danger');
+            })
+            .finally(function() {
+                $addIpBtn.prop('disabled', false).html(originalButtonText);
             });
         });
-        
-        // Add domain to blacklist
-        $('#add-domain-btn').click(function() {
-            const domain = $('#domain-name').val().trim();
-            const description = $('#domain-description').val().trim();
+
+        // --- Domain Blacklist --- 
+        const $addDomainModal = $('#addDomainModal');
+        const $addDomainForm = $('#add-domain-form');
+        const $domainNameInput = $('#domain-name');
+        const $domainDescriptionInput = $('#domain-description');
+        const $addDomainBtn = $('#add-domain-btn');
+
+        $addDomainBtn.click(function() {
+            const domain = $domainNameInput.val().trim();
+            const description = $domainDescriptionInput.val().trim();
             
-            if (!domain) {
-                showToast('Please enter a domain name', 'danger');
+            if (!isValidDomain(domain)) {
+                showToast('Please enter a valid domain name (e.g., example.com or *.example.com)', 'danger');
+                $domainNameInput.addClass('is-invalid');
                 return;
             }
-            
-            apiRequest('POST', 'domain-blacklist', {
-                domain: domain,
-                description: description
-            })
+            $domainNameInput.removeClass('is-invalid');
+
+            const originalButtonText = $addDomainBtn.html();
+            $addDomainBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Adding...');
+
+            apiRequest('POST', 'domain-blacklist', { domain: domain, description: description })
             .then(function(response) {
                 if (response.status === 'success') {
-                    showToast('Domain added to blacklist successfully');
-                    $('#addDomainModal').modal('hide');
-                    $('#add-domain-form')[0].reset();
+                    showToast(response.message || 'Domain added to blacklist successfully', 'success');
+                    $addDomainModal.modal('hide');
+                    $addDomainForm[0].reset();
                     loadDomainBlacklist();
                 }
             })
             .catch(function(error) {
-                showToast('Failed to add domain to blacklist: ' + error.message, 'danger');
+                showToast('Failed to add domain: ' + (error.message || 'Unknown error'), 'danger');
+            })
+            .finally(function(){
+                $addDomainBtn.prop('disabled', false).html(originalButtonText);
             });
         });
-    });
-    
-    // Load IP blacklist
+
+        // Search/Filter functionality
+        $('#ip-search').on('keyup', function() {
+            filterTableRows($('#ip-blacklist-table tbody tr'), $(this).val());
+        });
+
+        $('#domain-search').on('keyup', function() {
+            filterTableRows($('#domain-blacklist-table tbody tr'), $(this).val());
+        });
+
+        // Clear modal validation on hide
+        $addIpModal.on('hidden.bs.modal', function () {
+            $ipAddressInput.removeClass('is-invalid');
+            $addIpForm[0].reset();
+        });
+        $addDomainModal.on('hidden.bs.modal', function () {
+            $domainNameInput.removeClass('is-invalid');
+            $addDomainForm[0].reset();
+        });
+
+    }); // End of $(document).ready()
+
+    function isValidIpOrCidr(ip) {
+        if (!ip) return false;
+        // Regex for IPv4
+        const ipv4Regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+        // Regex for CIDR
+        const cidrRegex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(3[0-2]|[12]?[0-9])$/;
+        return ipv4Regex.test(ip) || cidrRegex.test(ip);
+    }
+
+    function isValidDomain(domain) {
+        if (!domain) return false;
+        // Basic domain validation: allows for hostname, subdomains, and optional wildcard at the start.
+        // Allows internationalized domain names (IDNs) by not restricting characters too much beyond basic structure.
+        // This is a simplified regex. For true RFC compliance, a more complex regex or library would be needed.
+        const domainRegex = /^(\*\.)?([a-zA-Z0-9\-_]+(\.[a-zA-Z0-9\-_]+)+)$/i;
+        // Check for common invalid patterns like multiple wildcards or wildcards not at the beginning.
+        if (domain.indexOf('*') !== domain.lastIndexOf('*') || (domain.indexOf('*') > 0 && domain.indexOf('*') !== 0)) {
+            return false;
+        }
+        if (domain.startsWith('*.') && domain.length < 3) return false; // e.g. "*." is invalid
+        return domainRegex.test(domain);
+    }
+
+    function filterTableRows($rows, searchTerm) {
+        const term = searchTerm.toLowerCase();
+        let visibleCount = 0;
+        $rows.each(function() {
+            const rowText = $(this).text().toLowerCase();
+            if (rowText.includes(term)) {
+                $(this).show();
+                visibleCount++;
+            } else {
+                $(this).hide();
+            }
+        });
+        // You could update a counter here if needed, e.g., $('#ip-visible-count').text(visibleCount);
+    }
+
     function loadIpBlacklist() {
+        const $tableBody = $('#ip-blacklist-table tbody');
+        $tableBody.html('<tr><td colspan="4" class="text-center"><i class="fas fa-spinner fa-spin me-2"></i>Loading IP blacklist...</td></tr>');
+        
         apiRequest('GET', 'ip-blacklist')
             .then(function(response) {
                 if (response.status === 'success') {
                     const blacklist = response.data;
+                    $('#ip-blacklist-count').text(blacklist.length); // Update count
                     
                     if (blacklist.length === 0) {
-                        $('#ip-blacklist-table tbody').html('<tr><td colspan="4" class="text-center">No IPs in blacklist</td></tr>');
+                        $tableBody.html('<tr><td colspan="4" class="text-center">No IPs in blacklist.</td></tr>');
                         return;
                     }
                     
                     let html = '';
                     blacklist.forEach(item => {
                         html += `
-                            <tr>
+                            <tr data-id="${item.id}">
                                 <td>${item.ip}</td>
                                 <td>${item.description || '<em>No description</em>'}</td>
                                 <td>${new Date(item.added_date).toLocaleString()}</td>
                                 <td>
-                                    <button class="btn btn-sm btn-danger delete-ip" data-id="${item.id}">
+                                    <button class="btn btn-sm btn-danger delete-ip" title="Remove IP">
                                         <i class="fas fa-trash-alt"></i>
                                     </button>
                                 </td>
                             </tr>
                         `;
                     });
+                    $tableBody.html(html);
+                    initializeAllTooltips($tableBody[0]); // Initialize tooltips for new buttons
                     
-                    $('#ip-blacklist-table tbody').html(html);
-                    
-                    // Set up delete handlers
                     $('.delete-ip').click(function() {
-                        const id = $(this).data('id');
+                        const $button = $(this);
+                        const id = $button.closest('tr').data('id');
                         if (confirm('Are you sure you want to remove this IP from the blacklist?')) {
-                            deleteIpFromBlacklist(id);
+                            deleteIpFromBlacklist(id, $button);
                         }
                     });
+                } else {
+                     $tableBody.html('<tr><td colspan="4" class="text-center text-danger">Failed to load IP blacklist.</td></tr>');
+                     showToast(response.message || 'Failed to load IP blacklist', 'danger');
                 }
             })
             .catch(function(error) {
-                $('#ip-blacklist-table tbody').html('<tr><td colspan="4" class="text-center text-danger">Failed to load IP blacklist</td></tr>');
-                showToast('Failed to load IP blacklist: ' + error.message, 'danger');
+                $tableBody.html('<tr><td colspan="4" class="text-center text-danger">Failed to load IP blacklist: ' + (error.message || 'Unknown error') + '</td></tr>');
+                showToast('Failed to load IP blacklist: ' + (error.message || 'Unknown error'), 'danger');
             });
     }
     
-    // Load domain blacklist
     function loadDomainBlacklist() {
+        const $tableBody = $('#domain-blacklist-table tbody');
+        $tableBody.html('<tr><td colspan="4" class="text-center"><i class="fas fa-spinner fa-spin me-2"></i>Loading domain blacklist...</td></tr>');
+
         apiRequest('GET', 'domain-blacklist')
             .then(function(response) {
                 if (response.status === 'success') {
                     const blacklist = response.data;
-                    
+                    $('#domain-blacklist-count').text(blacklist.length); // Update count
+
                     if (blacklist.length === 0) {
-                        $('#domain-blacklist-table tbody').html('<tr><td colspan="4" class="text-center">No domains in blacklist</td></tr>');
+                        $tableBody.html('<tr><td colspan="4" class="text-center">No domains in blacklist.</td></tr>');
                         return;
                     }
                     
                     let html = '';
                     blacklist.forEach(item => {
                         html += `
-                            <tr>
+                            <tr data-id="${item.id}">
                                 <td>${item.domain}</td>
                                 <td>${item.description || '<em>No description</em>'}</td>
                                 <td>${new Date(item.added_date).toLocaleString()}</td>
                                 <td>
-                                    <button class="btn btn-sm btn-danger delete-domain" data-id="${item.id}">
+                                    <button class="btn btn-sm btn-danger delete-domain" title="Remove Domain">
                                         <i class="fas fa-trash-alt"></i>
                                     </button>
                                 </td>
                             </tr>
                         `;
                     });
-                    
-                    $('#domain-blacklist-table tbody').html(html);
-                    
-                    // Set up delete handlers
+                    $tableBody.html(html);
+                    initializeAllTooltips($tableBody[0]); // Initialize tooltips for new buttons
+
                     $('.delete-domain').click(function() {
-                        const id = $(this).data('id');
+                        const $button = $(this);
+                        const id = $button.closest('tr').data('id');
                         if (confirm('Are you sure you want to remove this domain from the blacklist?')) {
-                            deleteDomainFromBlacklist(id);
+                            deleteDomainFromBlacklist(id, $button);
                         }
                     });
+                } else {
+                    $tableBody.html('<tr><td colspan="4" class="text-center text-danger">Failed to load domain blacklist.</td></tr>');
+                    showToast(response.message || 'Failed to load domain blacklist', 'danger');
                 }
             })
             .catch(function(error) {
-                $('#domain-blacklist-table tbody').html('<tr><td colspan="4" class="text-center text-danger">Failed to load domain blacklist</td></tr>');
-                showToast('Failed to load domain blacklist: ' + error.message, 'danger');
+                $tableBody.html('<tr><td colspan="4" class="text-center text-danger">Failed to load domain blacklist: ' + (error.message || 'Unknown error') + '</td></tr>');
+                showToast('Failed to load domain blacklist: ' + (error.message || 'Unknown error'), 'danger');
             });
     }
     
-    // Delete IP from blacklist
-    function deleteIpFromBlacklist(id) {
+    function deleteIpFromBlacklist(id, $button) {
+        const originalButtonContent = $button.html();
+        $button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
         apiRequest('DELETE', `ip-blacklist/${id}`)
             .then(function(response) {
                 if (response.status === 'success') {
-                    showToast('IP removed from blacklist successfully');
-                    loadIpBlacklist();
+                    showToast(response.message || 'IP removed from blacklist successfully', 'success');
+                    loadIpBlacklist(); // Reloads the list, button state will be reset
                 }
             })
             .catch(function(error) {
-                showToast('Failed to remove IP from blacklist: ' + error.message, 'danger');
+                showToast('Failed to remove IP: ' + (error.message || 'Unknown error'), 'danger');
+                $button.prop('disabled', false).html(originalButtonContent);
             });
     }
     
-    // Delete domain from blacklist
-    function deleteDomainFromBlacklist(id) {
+    function deleteDomainFromBlacklist(id, $button) {
+        const originalButtonContent = $button.html();
+        $button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
         apiRequest('DELETE', `domain-blacklist/${id}`)
             .then(function(response) {
                 if (response.status === 'success') {
-                    showToast('Domain removed from blacklist successfully');
-                    loadDomainBlacklist();
+                    showToast(response.message || 'Domain removed from blacklist successfully', 'success');
+                    loadDomainBlacklist(); // Reloads the list, button state will be reset
                 }
             })
             .catch(function(error) {
-                showToast('Failed to remove domain from blacklist: ' + error.message, 'danger');
+                showToast('Failed to remove domain: ' + (error.message || 'Unknown error'), 'danger');
+                $button.prop('disabled', false).html(originalButtonContent);
             });
     }
 </script>

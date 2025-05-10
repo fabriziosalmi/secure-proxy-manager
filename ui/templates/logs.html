@@ -306,8 +306,8 @@
                         <button id="import-logs" class="btn btn-primary action-btn">
                             <i class="fas fa-download"></i> Import Logs
                         </button>
-                        <button id="clear-logs" class="btn btn-danger action-btn">
-                            <i class="fas fa-trash-alt"></i> Clear Logs
+                        <button id="clear-displayed-logs-btn" class="btn btn-outline-warning action-btn">
+                            <i class="fas fa-eraser"></i> Clear Display
                         </button>
                     </div>
                 </div>
@@ -404,6 +404,16 @@
             .replace(/'/g, '&#039;');
     }
 
+    // Debounce function
+    function debounce(func, delay) {
+        let timeout;
+        return function(...args) {
+            const context = this;
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(context, args), delay);
+        };
+    }
+
     $(document).ready(function() {
         // Initial data
         let currentPage = 0;
@@ -483,22 +493,6 @@
             importLogs().finally(() => {
                 $(this).prop('disabled', false);
                 $(this).html('<i class="fas fa-download"></i> Import Logs');
-            });
-        });
-        
-        // Clear logs button
-        $('#clear-logs').click(function() {
-            // Show confirmation dialog
-            if (!confirm('Are you sure you want to clear all logs? This action cannot be undone.')) {
-                return;
-            }
-            
-            $(this).prop('disabled', true);
-            $(this).html('<i class="fas fa-spinner fa-spin"></i> Clearing...');
-            
-            clearLogs().finally(() => {
-                $(this).prop('disabled', false);
-                $(this).html('<i class="fas fa-trash-alt"></i> Clear Logs');
             });
         });
         
@@ -963,6 +957,13 @@
         
         // Initialize sort icons
         updateSortIcons();
+
+        // Debounced search
+        $('#log-search').on('input', debounce(function() {
+            searchTerm = $('#log-search').val().trim();
+            currentPage = 0; // Reset to first page
+            loadLogs();
+        }, 300)); // Apply debounce with 300ms delay
     });
 </script>
 {% endblock %}
