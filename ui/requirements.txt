@@ -1,5 +1,5 @@
-Flask==2.2.3
-requests==2.28.2
+Flask==2.2.5
+requests==2.32.2
 python-dotenv==1.0.0
 flask-basicauth==0.2.0
-werkzeug==2.2.3
+werkzeug==3.0.6
