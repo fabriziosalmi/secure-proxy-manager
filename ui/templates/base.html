@@ -926,17 +926,10 @@
             showLoading();
             
             return new Promise((resolve, reject) => {
-                const headers = {
-                    'Content-Type': 'application/json'
-                };
-                
-                $.ajax({
+                const ajaxOptions = {
                     url: '/api/' + endpoint,
                     type: method,
-                    data: data ? JSON.stringify(data) : null,
-                    contentType: 'application/json',
                     dataType: 'json',
-                    headers: headers,
                     success: function(response) {
                         hideLoading();
                         resolve(response);
@@ -946,7 +939,14 @@
                         handleApiError(xhr.responseJSON || { status: 'error', message: 'Unknown error occurred' });
                         reject(xhr.responseJSON || { status: 'error', message: 'Unknown error occurred' });
                     }
-                });
+                };
+                
+                if (data) {
+                    ajaxOptions.data = JSON.stringify(data);
+                    ajaxOptions.contentType = 'application/json';
+                }
+                
+                $.ajax(ajaxOptions);
             });
         }
         
