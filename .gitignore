@@ -5,3 +5,4 @@ secureproxy.db
 __pycache__
 *.pyc
 data/secure_proxy.db
+data/secure_proxy.db
