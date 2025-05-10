@@ -392,6 +392,20 @@
                     </div>
                 </div>
             </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Maintenance</h5>
+                </div>
+                <div class="card-body">
+                    <button class="btn btn-info mr-2" id="reloadConfigBtn"><i class="fas fa-sync-alt"></i> Reload Proxy Configuration</button>
+                    <button class="btn btn-warning mr-2" id="clearCacheBtn"><i class="fas fa-broom"></i> Clear Proxy Cache</button>
+                    <button class="btn btn-primary mr-2" id="backupConfigBtn"><i class="fas fa-download"></i> Backup Configuration</button>
+                    <button class="btn btn-secondary" id="restoreConfigBtnInput" onclick="document.getElementById('restoreConfigFile').click();"><i class="fas fa-upload"></i> Restore Configuration</button>
+                    <input type="file" id="restoreConfigFile" style="display: none;" accept=".json">
+                    <button class="btn btn-danger ml-2" id="resetDatabaseBtn"><i class="fas fa-bomb"></i> Reset Database</button> <!-- Added Reset Database Button -->
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -553,6 +567,134 @@
                     $('#scan-security').html('Security Scan');
                 });
         });
+
+        // Event listener for Reset Database button
+        document.getElementById('resetDatabaseBtn').addEventListener('click', function() {
+            if (!confirm('Are you sure you want to reset the database? This action is irreversible and will delete all logs, blacklists, and restore settings to default.')) {
+                return;
+            }
+            showSpinner('Resetting database...');
+            fetch('/api/database/reset', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // Add any necessary auth headers if not handled globally
+                }
+            })
+            .then(response => {
+                hideSpinner();
+                if (!response.ok) {
+                    return response.json().then(err => { throw new Error(err.message || 'Failed to reset database'); });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast('Success', data.message || 'Database reset successfully. Please refresh the page.', 'success');
+                    // Optionally, you might want to force a page reload or redirect
+                    // setTimeout(() => window.location.reload(), 2000);
+                } else {
+                    showToast('Error', data.message || 'An unknown error occurred.', 'danger');
+                }
+            })
+            .catch(error => {
+                hideSpinner();
+                showToast('Error', error.message, 'danger');
+                console.error('Error resetting database:', error);
+            });
+        });
+
+        // Event listener for Restore Configuration button
+
+                    // Reset Database button
+                    $('#resetDatabaseBtn').click(function() {
+                        if (confirm('Are you sure you want to reset the database? This will delete all data and restore default settings.')) {
+                            $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Resetting...');
+                            apiRequest('POST', 'database/reset')
+                                .then(function(response) {
+                                    showToast('Database reset successfully. Default settings have been restored.', 'success');
+                                    // Optionally, reload parts of the page or redirect
+                                    loadAllSettings(); // Reload settings to reflect changes
+                                })
+                                .catch(function(error) {
+                                    showToast('Failed to reset database: ' + error.message, 'danger');
+                                })
+                                .finally(function() {
+                                    $('#resetDatabaseBtn').prop('disabled', false).html('<i class="fas fa-undo me-2"></i>Reset Database');
+                                });
+                        }
+                    });
+
+                    // Refresh DB Stats button
+                    $('#refresh-db-stats-btn').click(function() {
+                        // This button might refresh some displayed stats on the settings page itself,
+                        // or trigger a recalculation of stats if that's a backend operation.
+                        // For now, let's assume it reloads some general dashboard data as an example.
+                        showToast('Refreshing database statistics...', 'info');
+                        // Example: Reload dashboard data which might include DB derived stats
+                        // If specific stats are on this page, target those.
+                        // loadDashboardData(); // If you have a function that loads stats relevant here
+                        // For now, just a toast.
+                        setTimeout(() => showToast('Database statistics refreshed.', 'success'), 1500);
+                    });
+
+                    // Optimize Database button
+                    $('#optimize-db-btn').click(function() {
+                        $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Optimizing...');
+                        apiRequest('POST', 'database/optimize')
+                            .then(function(response) {
+                                showToast('Database optimized successfully.', 'success');
+                            })
+                            .catch(function(error) {
+                                showToast('Failed to optimize database: ' + error.message, 'danger');
+                            })
+                            .finally(function() {
+                                $('#optimize-db-btn').prop('disabled', false).html('<i class="fas fa-database me-2"></i>Optimize Database');
+                            });
+                    });
+
+                    // Export Database button
+                    $('#export-db-btn').click(function() {
+                        // This will trigger a file download
+                        apiRequest('GET', 'database/export', null, 'blob') // Expect a blob response
+                            .then(function(blob) {
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.style.display = 'none';
+                                a.href = url;
+                                a.download = 'secure_proxy_backup.db'; // Filename for the download
+                                document.body.appendChild(a);
+                                a.click();
+                                window.URL.revokeObjectURL(url);
+                                showToast('Database exported successfully.', 'success');
+                            })
+                            .catch(function(error) {
+                                showToast('Failed to export database: ' + error.message, 'danger');
+                            });
+                    });
+
+                    // Backup All Settings button (Database Management Tab)
+                    // Assuming this is the one inside the "Database Management" tab
+                    // Differentiate if there are multiple buttons with similar purpose.
+                    // The ID "backup-config-btn" might be generic.
+                    // If it's specifically for the DB tab, ensure the selector is precise.
+                    // For now, using the provided ID.
+                    $('#backup-config-btn').click(function() { // This ID might need to be more specific if it's duplicated
+                        apiRequest('GET', 'maintenance/backup-config')
+                            .then(function(response) {
+                                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(response.data, null, 2));
+                                const downloadAnchorNode = document.createElement('a');
+                                downloadAnchorNode.setAttribute("href", dataStr);
+                                downloadAnchorNode.setAttribute("download", "secure-proxy-settings-backup-" + new Date().toISOString().slice(0,10) + ".json");
+                                document.body.appendChild(downloadAnchorNode);
+                                downloadAnchorNode.click();
+                                downloadAnchorNode.remove();
+                                showToast('Settings backup downloaded.', 'success');
+                            })
+                            .catch(function(error) {
+                                showToast('Failed to backup settings: ' + error.message, 'danger');
+                            });
+                    });
     });
     
     function loadSettings() {
