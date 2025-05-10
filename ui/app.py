@@ -288,41 +288,23 @@ def client_statistics():
     try:
         resp = session.get(url, auth=API_AUTH, timeout=REQUEST_TIMEOUT)
         
-        # If backend doesn't have this endpoint yet, return mock data
-        if resp.status_code == 404:
-            # Generate mock data for demonstration
-            mock_data = {
-                "total_clients": 15,
-                "clients": [
-                    {"ip_address": "192.168.1.101", "requests": 1250, "status": "Active"},
-                    {"ip_address": "192.168.1.102", "requests": 985, "status": "Active"},
-                    {"ip_address": "192.168.1.105", "requests": 742, "status": "Active"},
-                    {"ip_address": "192.168.1.110", "requests": 651, "status": "Active"},
-                    {"ip_address": "192.168.1.121", "requests": 520, "status": "Active"},
-                    {"ip_address": "10.0.0.15", "requests": 489, "status": "Active"},
-                    {"ip_address": "10.0.0.23", "requests": 321, "status": "Active"},
-                    {"ip_address": "172.16.0.5", "requests": 256, "status": "Active"},
-                    {"ip_address": "192.168.1.201", "requests": 198, "status": "Inactive"},
-                    {"ip_address": "192.168.1.202", "requests": 145, "status": "Inactive"}
-                ]
-            }
-            return jsonify({"status": "success", "data": mock_data}), 200
+        # MODIFICATION: Removed mock data generation block
+        # The original block that checked for resp.status_code == 404 and returned mock data has been removed.
             
         try:
+            # Attempt to parse the response as JSON, regardless of status code initially
+            # The frontend will handle non-200 responses appropriately
             return jsonify(resp.json()), resp.status_code
-        except:
-            logger.error("Invalid JSON response from backend for client statistics")
-            return jsonify({
-                "status": "error",
-                "message": "Invalid response from backend"
-            }), 500
+        except ValueError: # Handles cases where resp.json() fails (e.g., empty or non-JSON response)
+            # If parsing fails, and it was a 404 or other client/server error,
+            # return a generic error.
+            # For successful status codes with unparsable content, this also provides a clear error.
+            app.logger.error(f"Failed to parse JSON response from backend for {url}. Status: {resp.status_code}, Response: {resp.text[:200]}")
+            return jsonify({"status": "error", "message": "Failed to parse backend response"}), 500
             
-    except requests.RequestException as e:
-        logger.error(f"Error fetching client statistics: {str(e)}")
-        return jsonify({
-            "status": "error",
-            "message": f"Error fetching client statistics: {str(e)}"
-        }), 503
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Request to backend failed for {url}: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 503
 
 @app.route('/api/domains/statistics', methods=['GET'])
 @basic_auth.required
