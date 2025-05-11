@@ -407,8 +407,8 @@
                 <div class="card-body">
                     <div class="mb-3">
                         <label class="form-label">Cache Usage</label>
-                        <div class="progress mb-2">
-                            <div id="cache-usage-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        <div class="progress mb-2" style="height: 15px;">
+                            <div id="cache-usage-bar" class="progress-bar bg-info" role="progressbar" style="width: 0%"></div>
                         </div>
                         <div class="small text-end"><span id="cache-used">0</span> / <span id="cache-total">0</span> MB</div>
                     </div>
@@ -870,19 +870,45 @@
                     const data = response.data;
                     
                     // Update cache usage bar
-                    $('#cache-usage-bar').css('width', data.cache_usage_percentage + '%');
+                    const usagePercentage = data.cache_usage_percentage || 0;
+                    $('#cache-usage-bar').css('width', usagePercentage + '%');
+                    
+                    // Change color based on usage percentage
+                    if (usagePercentage >= 90) {
+                        $('#cache-usage-bar').removeClass('bg-info bg-warning bg-success').addClass('bg-danger');
+                    } else if (usagePercentage >= 70) {
+                        $('#cache-usage-bar').removeClass('bg-info bg-danger bg-success').addClass('bg-warning');
+                    } else if (usagePercentage > 0) {
+                        $('#cache-usage-bar').removeClass('bg-info bg-warning bg-danger').addClass('bg-success');
+                    } else {
+                        $('#cache-usage-bar').removeClass('bg-success bg-warning bg-danger').addClass('bg-info');
+                    }
                     
                     // Update cache size text
-                    $('#cache-used').text(data.cache_usage);
-                    $('#cache-total').text(data.cache_size);
+                    $('#cache-used').text(data.cache_usage || 0);
+                    $('#cache-total').text(data.cache_size || 0);
                     
                     // Update hit ratio
-                    $('#hit-ratio').text((data.hit_ratio || 0).toFixed(1) + '%');
+                    $('#hit-ratio').text(((data.hit_ratio || 0).toFixed(1)) + '%');
                     
                     // Update average response time
-                    $('#avg-response-time').text(typeof data.avg_response_time === 'number' 
-                        ? (data.avg_response_time * 1000).toFixed(0) + ' ms' 
-                        : data.avg_response_time || '-- ms');
+                    if (typeof data.avg_response_time === 'number') {
+                        // Convert seconds to milliseconds for display
+                        const responseTimeMs = (data.avg_response_time * 1000).toFixed(0);
+                        $('#avg-response-time').text(responseTimeMs + ' ms');
+                        
+                        // Style based on performance
+                        if (responseTimeMs < 100) {
+                            $('#avg-response-time').removeClass('text-warning text-danger').addClass('text-success');
+                        } else if (responseTimeMs < 500) {
+                            $('#avg-response-time').removeClass('text-success text-danger').addClass('text-warning');
+                        } else {
+                            $('#avg-response-time').removeClass('text-success text-warning').addClass('text-danger');
+                        }
+                    } else {
+                        $('#avg-response-time').text(data.avg_response_time || '-- ms');
+                        $('#avg-response-time').removeClass('text-success text-warning text-danger');
+                    }
                 }
             })
             .catch(function(error) {
