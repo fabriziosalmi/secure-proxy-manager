@@ -87,7 +87,7 @@ The application consists of three main containerized components:
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/secure-proxy.git
+   git clone https://github.com/fabriziosalmi/secure-proxy.git
    cd secure-proxy
    ```
 
