@@ -878,7 +878,13 @@
         $('#enable_https_filtering').trigger('change');
         $('#enable_time_restrictions').trigger('change');
         
-        saveSettings(true); 
+        try {
+            saveSettings(true);
+            showToast('All settings reset to defaults. Applying changes...', 'info');
+        } catch (error) {
+            showToast('Failed to reset settings: ' + (error.message || 'Unknown error'), 'danger');
+            loadSettings(captureInitialSettings); // Reload from backend
+        } 
     }
     
     function clearCache() {
