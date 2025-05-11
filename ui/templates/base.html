@@ -725,19 +725,6 @@
     <!-- Toast container -->
     <div class="toast-container" id="toast-container"></div>
     
-    <!-- Tour indicator -->
-    <div id="tour-indicator" class="position-fixed" style="display: none; bottom: 20px; left: 20px; z-index: 1060; background-color: var(--primary-color); color: white; padding: 10px 15px; border-radius: var(--border-radius); box-shadow: 0 3px 10px rgba(0,0,0,0.2);">
-        <div class="d-flex align-items-center">
-            <i class="fas fa-map-signs me-2"></i>
-            <span>Guided Tour</span>
-            <div class="ms-3 d-flex">
-                <button id="prev-tour-step" class="btn btn-sm btn-light me-1" title="Previous Step"><i class="fas fa-chevron-left"></i></button>
-                <button id="next-tour-step" class="btn btn-sm btn-light me-1" title="Next Step"><i class="fas fa-chevron-right"></i></button>
-                <button id="end-tour-btn" class="btn btn-sm btn-light" title="Exit Tour"><i class="fas fa-times"></i></button>
-            </div>
-        </div>
-    </div>
-
     <!-- Top navbar with navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
@@ -785,7 +772,6 @@
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
                             <li><a class="dropdown-item" href="#" id="show-help"><i class="fas fa-question-circle me-2"></i>Squid Documentation</a></li>
                             <li><a class="dropdown-item" href="#" id="show-keyboard-shortcuts"><i class="fas fa-keyboard me-2"></i>Keyboard Shortcuts</a></li>
-                            <li><a class="dropdown-item" href="#" id="start-guided-tour"><i class="fas fa-map-signs me-2"></i>Start Guided Tour</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="#" id="about-proxy"><i class="fas fa-info me-2"></i>About Secure Proxy</a></li>
                         </ul>
@@ -960,9 +946,6 @@
     
     <!-- jQuery (local) -->
     <script src="/static/js/jquery.min.js"></script>
-    
-    <!-- User guidance script for first-time users -->
-    <script src="/static/js/user-guidance.js"></script>
     
     <!-- Common JavaScript -->
     <script>
