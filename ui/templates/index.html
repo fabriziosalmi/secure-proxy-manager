@@ -111,7 +111,7 @@
                     </div>
                     <h6 class="card-title">Requests Today</h6>
                     <h3 id="proxy-requests-card">0</h3>
-                    <small class="text-muted">Total Traffic</small>
+                    <small class="text-muted" id="proxy-requests-subtitle">Loading...</small>
                 </div>
             </div>
         </div>
@@ -648,8 +648,24 @@
                     $('#uptime').text(data.uptime);
                     
                     // Set requests count for stats card and details card
-                    $('#proxy-requests').text(data.requests_count || 0);
-                    $('#proxy-requests-card').text(data.requests_count || 0);
+                    if (data.hasOwnProperty('requests_count')) {
+                        const requestCount = data.requests_count || 0;
+                        $('#proxy-requests').text(requestCount);
+                        $('#proxy-requests-card').text(requestCount);
+                        
+                        // Update subtitle based on count
+                        if (requestCount === 0) {
+                            $('#proxy-requests-subtitle').text('No traffic yet today');
+                        } else if (requestCount === 1) {
+                            $('#proxy-requests-subtitle').text('1 request today');
+                        } else {
+                            $('#proxy-requests-subtitle').text('Today\'s traffic');
+                        }
+                    } else {
+                        $('#proxy-requests').text('N/A');
+                        $('#proxy-requests-card').text('N/A');
+                        $('#proxy-requests-subtitle').text('Data unavailable');
+                    }
                 }
             })
             .catch(function(error) {
