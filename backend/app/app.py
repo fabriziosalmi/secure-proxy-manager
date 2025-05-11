@@ -3116,11 +3116,14 @@ def domain_statistics():
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # Query to get domain, request count
+            # Query to get domain, request count, and check if any requests were actually blocked
             cursor.execute("""
                 SELECT 
                     destination as domain_name, 
-                    COUNT(*) as requests
+                    COUNT(*) as requests,
+                    SUM(CASE 
+                        WHEN status LIKE '%DENIED%' OR status LIKE '%BLOCKED%' OR status LIKE '%403%' 
+                        THEN 1 ELSE 0 END) as blocked_requests
                 FROM proxy_logs
                 WHERE destination IS NOT NULL AND destination != ''
                 GROUP BY destination
@@ -3136,20 +3139,22 @@ def domain_statistics():
             # Determine if each domain is allowed or blocked
             domains = []
             for domain in domains_raw:
-                is_blocked = False
+                is_in_blacklist = False
+                has_blocked_requests = domain.get('blocked_requests', 0) > 0
                 domain_name = domain['domain_name']
                 
                 # Check exact match
                 if domain_name in blacklisted_domains:
-                    is_blocked = True
+                    is_in_blacklist = True
                 else:
                     # Check wildcard matches (*.example.com)
                     for blacklisted in blacklisted_domains:
                         if blacklisted.startswith('*.') and domain_name.endswith(blacklisted[1:]):
-                            is_blocked = True
+                            is_in_blacklist = True
                             break
                 
-                domain['category'] = 'Blocked' if is_blocked else 'Allowed'
+                # A domain is considered blocked if it's either in the blacklist OR has actual blocked requests
+                domain['category'] = 'Blocked' if (is_in_blacklist or has_blocked_requests) else 'Allowed'
                 domains.append(domain)
             
             # Get total unique domains

@@ -37,6 +37,22 @@
             --header-height: 64px;
         }
         
+        /* Page Transition Effect */
+        .page-transition {
+            animation: pageFadeIn 0.5s ease-in-out;
+        }
+        
+        @keyframes pageFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
         [data-bs-theme="dark"] {
             --primary-color: #4895ef;
             --primary-hover: #6aabe7;
@@ -591,6 +607,22 @@
                 padding-top: 0.5rem;
                 padding-bottom: 0.5rem;
             }
+            
+            .card-header {
+                padding: 0.75rem 1rem;
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .card-header .d-flex {
+                width: 100%;
+                margin-top: 0.5rem;
+                justify-content: space-between !important;
+            }
+            
+            .stats-card h3 {
+                font-size: 1.5rem;
+            }
         }
         
         @media (max-width: 768px) {
@@ -616,6 +648,64 @@
                 left: 50%;
                 transform: translateX(-50%);
             }
+            
+            .row-cols-md-4 > * {
+                margin-bottom: 1rem;
+            }
+            
+            .btn-responsive-sm {
+                padding: 0.25rem 0.5rem;
+                font-size: 0.875rem;
+            }
+            
+            .table-responsive {
+                max-height: 70vh;
+            }
+        }
+
+        /* Tour guidance styles */
+        .tour-highlight {
+            position: relative;
+            z-index: 1050;
+            box-shadow: 0 0 0 4px rgba(58, 134, 255, 0.4);
+            border-radius: var(--border-radius-sm);
+            animation: pulse-highlight 2s infinite;
+        }
+        
+        @keyframes pulse-highlight {
+            0% {
+                box-shadow: 0 0 0 0 rgba(58, 134, 255, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 6px rgba(58, 134, 255, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(58, 134, 255, 0);
+            }
+        }
+        
+        .tour-popover .popover-header {
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: 600;
+        }
+        
+        [data-bs-theme="dark"] .tour-popover .popover-header {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .tour-popover .popover-body {
+            padding: 1rem;
+        }
+        
+        .tour-content p {
+            margin-bottom: 0.5rem;
+        }
+        
+        .tour-popover .btn-sm {
+            padding: 0.25rem 0.75rem;
+            font-size: 0.875rem;
         }
     </style>
     
@@ -628,12 +718,21 @@
             <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
                 <span class="visually-hidden">Loading...</span>
             </div>
-            <div class="spinner-text">Loading...</div>
+            <div class="spinner-text" id="loading-text">Loading...</div>
         </div>
     </div>
 
     <!-- Toast container -->
     <div class="toast-container" id="toast-container"></div>
+    
+    <!-- Tour indicator -->
+    <div id="tour-indicator" class="position-fixed" style="display: none; bottom: 20px; left: 20px; z-index: 1060; background-color: var(--primary-color); color: white; padding: 10px 15px; border-radius: var(--border-radius); box-shadow: 0 3px 10px rgba(0,0,0,0.2);">
+        <div class="d-flex align-items-center">
+            <i class="fas fa-map-signs me-2"></i>
+            <span>Guided Tour</span>
+            <button id="end-tour-btn" class="btn btn-sm btn-light ms-3 py-0 px-2">Exit</button>
+        </div>
+    </div>
 
     <!-- Top navbar with navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
@@ -682,6 +781,7 @@
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
                             <li><a class="dropdown-item" href="#" id="show-help"><i class="fas fa-question-circle me-2"></i>Squid Documentation</a></li>
                             <li><a class="dropdown-item" href="#" id="show-keyboard-shortcuts"><i class="fas fa-keyboard me-2"></i>Keyboard Shortcuts</a></li>
+                            <li><a class="dropdown-item" href="#" id="start-guided-tour"><i class="fas fa-map-signs me-2"></i>Start Guided Tour</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="#" id="about-proxy"><i class="fas fa-info me-2"></i>About Secure Proxy</a></li>
                         </ul>
@@ -694,7 +794,7 @@
     <!-- Main content -->
     <div class="container-fluid">
         <div class="row">
-            <div class="col-12 main-content">
+            <div class="col-12 main-content page-transition">
                 {% block content %}{% endblock %}
             </div>
         </div>
@@ -748,9 +848,63 @@
                     <h4>Secure Proxy</h4>
                     <p class="text-muted">Version 0.0.7</p>
                     <p>A modern web interface for managing Squid Proxy with enhanced security features.</p>
+                    
+                    <div class="mt-4 mb-3">
+                        <div class="d-flex align-items-center justify-content-between px-4 mb-2">
+                            <span>Squid Version:</span>
+                            <span id="squid-version" class="badge bg-secondary">Loading...</span>
+                        </div>
+                        <div class="d-flex align-items-center justify-content-between px-4 mb-2">
+                            <span>Status:</span>
+                            <span class="badge bg-success">Active</span>
+                        </div>
+                        <div class="d-flex align-items-center justify-content-between px-4">
+                            <span>Last Updated:</span>
+                            <span class="badge bg-light text-dark">May 11, 2025</span>
+                        </div>
+                    </div>
+                    
+                    <div class="text-start mt-4">
+                        <h6 class="fw-bold">Key Features:</h6>
+                        <ul class="list-unstyled ps-2">
+                            <li><i class="fas fa-check-circle text-success me-2"></i> Advanced security monitoring</li>
+                            <li><i class="fas fa-check-circle text-success me-2"></i> IP & domain blacklisting</li>
+                            <li><i class="fas fa-check-circle text-success me-2"></i> Detailed traffic analytics</li>
+                            <li><i class="fas fa-check-circle text-success me-2"></i> HTTPS filtering capabilities</li>
+                        </ul>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Welcome Modal for First-time Users -->
+    <div class="modal fade" id="welcomeModal" tabindex="-1" aria-labelledby="welcomeModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="welcomeModalLabel">Welcome to Secure Proxy Manager</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-4">
+                        <i class="fas fa-shield-alt fa-4x mb-3" style="color: var(--primary-color);"></i>
+                        <h4>Hello there!</h4>
+                        <p>Welcome to the Secure Proxy Manager interface. Would you like a quick tour to help you get started?</p>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="dontShowAgain">
+                        <label class="form-check-label" for="dontShowAgain">
+                            Don't show this message again
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Skip for now</button>
+                    <button type="button" class="btn btn-primary" id="startTour">Take the tour</button>
                 </div>
             </div>
         </div>
@@ -802,6 +956,9 @@
     
     <!-- jQuery (local) -->
     <script src="/static/js/jquery.min.js"></script>
+    
+    <!-- User guidance script for first-time users -->
+    <script src="/static/js/user-guidance.js"></script>
     
     <!-- Common JavaScript -->
     <script>
@@ -880,7 +1037,8 @@
         });
         
         // Show/hide loading spinner
-        function showLoading() {
+        function showLoading(message = 'Loading...') {
+            $('#loading-text').text(message);
             $('#loading-spinner').addClass('active');
         }
         
@@ -890,7 +1048,33 @@
         
         // API helper function
         function apiRequest(method, endpoint, data = null) {
-            showLoading();
+            // Set contextual loading message based on the endpoint and method
+            let loadingMessage = 'Loading...';
+            
+            if (method === 'GET') {
+                if (endpoint.includes('blacklist')) {
+                    loadingMessage = 'Loading blacklist data...';
+                } else if (endpoint.includes('logs')) {
+                    loadingMessage = 'Loading log data...';
+                } else if (endpoint.includes('settings')) {
+                    loadingMessage = 'Loading settings...';
+                } else if (endpoint.includes('status')) {
+                    loadingMessage = 'Checking system status...';
+                }
+            } else if (method === 'POST') {
+                loadingMessage = 'Submitting data...';
+                if (endpoint.includes('clear')) {
+                    loadingMessage = 'Clearing data...';
+                } else if (endpoint.includes('reload')) {
+                    loadingMessage = 'Reloading configuration...';
+                } else if (endpoint.includes('optimize')) {
+                    loadingMessage = 'Optimizing...';
+                }
+            } else if (method === 'DELETE') {
+                loadingMessage = 'Deleting data...';
+            }
+            
+            showLoading(loadingMessage);
             
             return new Promise((resolve, reject) => {
                 const ajaxOptions = {
