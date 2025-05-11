@@ -333,5 +333,45 @@ def domain_statistics():
             "message": f"Error fetching domain statistics: {str(e)}"
         }), 503
 
+@app.route('/api/maintenance/download-cert', methods=['GET'])
+@basic_auth.required
+def download_certificate():
+    """Special handler for certificate download that properly passes through the file"""
+    url = f"{BACKEND_URL}/api/maintenance/download-cert"
+    session = get_requests_session()
+    
+    try:
+        # Get the certificate file from the backend as raw bytes (stream=True)
+        resp = session.get(url, auth=API_AUTH, timeout=REQUEST_TIMEOUT, stream=True)
+        
+        if resp.status_code == 200:
+            # Forward the response with the same headers
+            from flask import Response
+            response = Response(resp.iter_content(chunk_size=1024))
+            
+            # Copy relevant headers from the backend response
+            response.headers['Content-Type'] = resp.headers.get('Content-Type', 'application/x-pem-file')
+            response.headers['Content-Disposition'] = resp.headers.get('Content-Disposition', 'attachment; filename=secure-proxy-ca.pem')
+            
+            return response
+        else:
+            # If the backend returned an error, convert it to a user-friendly message
+            logger.error(f"Error downloading certificate. Status: {resp.status_code}, Response: {resp.text[:200]}")
+            try:
+                error_data = resp.json()
+                return jsonify(error_data), resp.status_code
+            except:
+                return jsonify({
+                    "status": "error",
+                    "message": f"Error downloading certificate. Status code: {resp.status_code}"
+                }), resp.status_code
+                
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error downloading certificate: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error downloading certificate: {str(e)}"
+        }), 503
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8011)
