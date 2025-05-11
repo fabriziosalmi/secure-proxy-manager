@@ -3147,5 +3147,61 @@ def reset_database():
             logger.error(f"Failed to re-initialize database after reset error: {str(init_e)}")
         return jsonify({"status": "error", "message": f"Error resetting database: {str(e)}"}), 500
 
+@app.route('/api/database/stats', methods=['GET'])
+@auth.login_required
+def get_database_stats():
+    """Get comprehensive database statistics"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get database file size
+        db_size_bytes = os.path.getsize(DATABASE_PATH)
+        db_size_mb = round(db_size_bytes / (1024 * 1024), 2)  # Convert to MB
+        
+        # Get total records across major tables
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs")
+        log_entries = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM ip_blacklist")
+        ip_blacklist_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM domain_blacklist")
+        domain_blacklist_count = cursor.fetchone()[0]
+        
+        # Calculate total records
+        total_records = log_entries + ip_blacklist_count + domain_blacklist_count
+        
+        # Check database health
+        cursor.execute("PRAGMA integrity_check")
+        integrity_result = cursor.fetchone()[0]
+        
+        # Calculate health status
+        health_status = "Good"
+        if integrity_result != "ok":
+            health_status = "Error"
+        elif db_size_mb > 500:  # If DB is over 500MB, suggest optimization
+            health_status = "Needs Optimization"
+        elif log_entries > 1000000:  # If over 1M log entries, warn about performance
+            health_status = "Warning"
+            
+        # Get last optimization time (might not be stored, so we'll use a placeholder)
+        last_optimization = "Never"  # Ideally, you'd store this in a settings table
+        
+        stats = {
+            "db_size": f"{db_size_mb} MB",
+            "total_records": total_records,
+            "log_entries": log_entries,
+            "blacklist_entries": ip_blacklist_count + domain_blacklist_count,
+            "health_status": health_status,
+            "last_optimization": last_optimization,
+            "integrity_check": integrity_result
+        }
+        
+        return jsonify({"status": "success", "data": stats})
+    except Exception as e:
+        logger.error(f"Error fetching database stats: {str(e)}")
+        return jsonify({"status": "error", "message": f"Error fetching database stats: {str(e)}"}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
