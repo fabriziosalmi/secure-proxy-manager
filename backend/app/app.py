@@ -350,8 +350,31 @@ def get_status():
         "proxy_host": PROXY_HOST,
         "proxy_port": PROXY_PORT,
         "timestamp": datetime.now().isoformat(),
-        "version": "0.0.5"
+        "version": "0.0.6"
     }
+    
+    # Add today's request count
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get today's date in YYYY-MM-DD format
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Query to count logs from today
+        cursor.execute("""
+            SELECT COUNT(*) FROM proxy_logs 
+            WHERE timestamp >= ? AND timestamp < date(?, '+1 day')
+        """, (today, today))
+        
+        result = cursor.fetchone()
+        if result:
+            stats["requests_count"] = result[0]
+        else:
+            stats["requests_count"] = 0
+    except Exception as e:
+        logger.error(f"Error getting today's request count: {str(e)}")
+        stats["requests_count"] = 0
     
     # Add memory usage, CPU usage, and uptime
     try:
