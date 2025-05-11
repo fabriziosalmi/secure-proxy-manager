@@ -187,8 +187,27 @@
                                     <div class="helper-text">Allows inspecting encrypted traffic but requires certificate installation.</div>
                                     
                                     <div id="download-cert-container" class="mt-3">
-                                        <button id="download-cert-btn" class="btn btn-outline-info">Download CA Certificate</button>
-                                        <div class="helper-text mt-2">This certificate must be trusted on all client devices.</div>
+                                        <div class="row">
+                                            <div class="col-md-12 mb-3">
+                                                <button id="download-cert-btn" class="btn btn-outline-info">Download CA Certificate</button>
+                                                <div class="helper-text mt-2">This certificate must be trusted on all client devices.</div>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-12">
+                                                <div class="card">
+                                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                                        <h5 class="mb-0">Certificate Content</h5>
+                                                        <button id="copy-cert-btn" class="btn btn-sm btn-outline-secondary">
+                                                            <i class="fas fa-copy"></i> Copy
+                                                        </button>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <pre id="cert-content" class="bg-light p-3 code-block rounded" style="max-height: 300px; overflow-y: auto;">Loading certificate...</pre>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1004,4 +1023,5 @@
             .catch(err => showToast('Failed to clear old logs: ' + (err.message || 'Unknown error'), 'danger'));
     }
 </script>
+<script src="/static/js/cert-handling.js"></script>
 {% endblock %}
