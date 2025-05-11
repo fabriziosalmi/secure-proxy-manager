@@ -350,7 +350,7 @@ def get_status():
         "proxy_host": PROXY_HOST,
         "proxy_port": PROXY_PORT,
         "timestamp": datetime.now().isoformat(),
-        "version": "0.0.4"
+        "version": "0.0.5"
     }
     
     # Add memory usage, CPU usage, and uptime
@@ -3069,20 +3069,41 @@ def domain_statistics():
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # Query to get domain, request count. 
-            # Category is not directly available in logs, so it's omitted or could be hardcoded/mapped if needed.
+            # Query to get domain, request count
             cursor.execute("""
                 SELECT 
                     destination as domain_name, 
-                    COUNT(*) as requests,
-                    'Unknown' as category  -- Category is not in logs, defaulting to 'Unknown'
+                    COUNT(*) as requests
                 FROM proxy_logs
                 WHERE destination IS NOT NULL AND destination != ''
                 GROUP BY destination
                 ORDER BY requests DESC
                 LIMIT 50  -- Limit to top 50 domains for performance
             """)
-            domains = [dict(row) for row in cursor.fetchall()]
+            domains_raw = [dict(row) for row in cursor.fetchall()]
+            
+            # Get domain blacklist to determine status
+            cursor.execute("SELECT domain FROM domain_blacklist")
+            blacklisted_domains = [row['domain'] for row in cursor.fetchall()]
+            
+            # Determine if each domain is allowed or blocked
+            domains = []
+            for domain in domains_raw:
+                is_blocked = False
+                domain_name = domain['domain_name']
+                
+                # Check exact match
+                if domain_name in blacklisted_domains:
+                    is_blocked = True
+                else:
+                    # Check wildcard matches (*.example.com)
+                    for blacklisted in blacklisted_domains:
+                        if blacklisted.startswith('*.') and domain_name.endswith(blacklisted[1:]):
+                            is_blocked = True
+                            break
+                
+                domain['category'] = 'Blocked' if is_blocked else 'Allowed'
+                domains.append(domain)
             
             # Get total unique domains
             cursor.execute("SELECT COUNT(DISTINCT destination) FROM proxy_logs WHERE destination IS NOT NULL AND destination != ''")
