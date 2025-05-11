@@ -350,7 +350,7 @@ def get_status():
         "proxy_host": PROXY_HOST,
         "proxy_port": PROXY_PORT,
         "timestamp": datetime.now().isoformat(),
-        "version": "0.0.6"
+        "version": "0.0.7"
     }
     
     # Add today's request count

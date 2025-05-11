@@ -537,6 +537,15 @@
             cursor: help;
         }
         
+        /* Add default info icon to all .info-badge elements */
+        .info-badge::before {
+            content: "i";
+            font-style: normal;
+            font-weight: bold;
+            font-size: 11px;
+            line-height: 1;
+        }
+        
         [data-bs-theme="dark"] .info-badge {
             background-color: rgba(58, 134, 255, 0.25);
         }
@@ -737,13 +746,8 @@
                 <div class="modal-body text-center">
                     <i class="fas fa-shield-alt fa-4x mb-3" style="color: var(--primary-color);"></i>
                     <h4>Secure Proxy</h4>
-                    <p class="text-muted">Version 1.0.0</p>
+                    <p class="text-muted">Version 0.0.7</p>
                     <p>A modern web interface for managing Squid Proxy with enhanced security features.</p>
-                    <hr>
-                    <div class="d-flex justify-content-between">
-                        <span>Squid Version:</span>
-                        <span id="squid-version">Loading...</span>
-                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
