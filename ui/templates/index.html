@@ -946,10 +946,18 @@
                     
                     let html = '';
                     domainsData.forEach(domain => {
+                        // Determine badge color based on status
+                        let badgeClass = 'bg-info';
+                        if (domain.category === 'Allowed') {
+                            badgeClass = 'bg-success';
+                        } else if (domain.category === 'Blocked') {
+                            badgeClass = 'bg-danger';
+                        }
+                        
                         html += `<tr>
                                     <td>${domain.domain_name || 'N/A'}</td>
                                     <td>${domain.requests || 0}</td>
-                                    <td><span class="badge bg-info">${domain.category || 'Unknown'}</span></td>
+                                    <td><span class="badge ${badgeClass}">${domain.category || 'Unknown'}</span></td>
                                  </tr>`;
                     });
                     domainListTable.html(html);

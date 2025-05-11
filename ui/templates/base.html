@@ -677,17 +677,6 @@
                             <li><a class="dropdown-item" href="#" id="about-proxy"><i class="fas fa-info me-2"></i>About Secure Proxy</a></li>
                         </ul>
                     </li>
-                    <li class="nav-item">
-                        <div class="d-flex align-items-center">
-                            <label class="theme-switch me-2">
-                                <input type="checkbox" id="theme-toggle">
-                                <span class="theme-slider">
-                                    <i class="fas fa-sun theme-icon sun"></i>
-                                    <i class="fas fa-moon theme-icon moon"></i>
-                                </span>
-                            </label>
-                        </div>
-                    </li>
                 </ul>
             </div>
         </div>
@@ -789,10 +778,6 @@
                         <div class="col-7">Go to Settings</div>
                     </div>
                     <div class="row mb-2">
-                        <div class="col-5"><kbd>Alt</kbd> + <kbd>T</kbd></div>
-                        <div class="col-7">Toggle Dark/Light Theme</div>
-                    </div>
-                    <div class="row mb-2">
                         <div class="col-5"><kbd>Alt</kbd> + <kbd>R</kbd></div>
                         <div class="col-7">Refresh Current Page</div>
                     </div>
@@ -817,26 +802,17 @@
     <!-- Common JavaScript -->
     <script>
         $(document).ready(function() {
-            // Dark mode toggle functionality
-            // Check for saved theme preference or respect OS theme setting
-            const savedTheme = localStorage.getItem('theme');
-            const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            
-            if (savedTheme === 'dark' || (!savedTheme && prefersDarkMode)) {
-                document.documentElement.setAttribute('data-bs-theme', 'dark');
-                $('#theme-toggle').prop('checked', true);
+            // Apply system/browser theme preference automatically
+            function applySystemTheme() {
+                const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                document.documentElement.setAttribute('data-bs-theme', prefersDarkMode ? 'dark' : 'light');
             }
             
-            // Toggle theme
-            $('#theme-toggle').change(function() {
-                if ($(this).is(':checked')) {
-                    document.documentElement.setAttribute('data-bs-theme', 'dark');
-                    localStorage.setItem('theme', 'dark');
-                } else {
-                    document.documentElement.setAttribute('data-bs-theme', 'light');
-                    localStorage.setItem('theme', 'light');
-                }
-            });
+            // Apply theme on initial load
+            applySystemTheme();
+            
+            // Listen for system theme changes
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applySystemTheme);
             
             // Help modal
             $('#show-help').click(function(e) {
@@ -882,9 +858,6 @@
                             break;
                         case 's': 
                             window.location.href = '/settings'; 
-                            break;
-                        case 't': 
-                            $('#theme-toggle').click(); 
                             break;
                         case 'r': 
                             location.reload(); 
