@@ -712,7 +712,31 @@ def download_cert():
      cert_path = '/config/ssl_cert.pem'
      if not os.path.exists(cert_path):
          return jsonify({"status": "error", "message": "Certificate not found"}), 404
-     return send_file(cert_path, as_attachment=True, download_name='secure-proxy-ca.pem', mimetype='application/x-pem-file')
+     
+     # Force download by setting content-disposition header
+     return send_file(
+         cert_path, 
+         as_attachment=True, 
+         download_name='secure-proxy-ca.pem', 
+         mimetype='application/x-pem-file'
+     )
+
+@app.route('/api/maintenance/view-cert', methods=['GET'])
+@auth.login_required
+def view_cert():
+     """Get the CA certificate content for HTTPS filtering to display in UI"""
+     cert_path = '/config/ssl_cert.pem'
+     if not os.path.exists(cert_path):
+         return jsonify({"status": "error", "message": "Certificate not found"}), 404
+     
+     # Read the certificate file
+     try:
+         with open(cert_path, 'r') as cert_file:
+             cert_content = cert_file.read()
+         return jsonify({"status": "success", "data": {"certificate": cert_content}})
+     except Exception as e:
+         logger.error(f"Error reading certificate: {str(e)}")
+         return jsonify({"status": "error", "message": f"Error reading certificate: {str(e)}"}), 500
 
 @app.route('/api/maintenance/clear-cache', methods=['POST'])
 @auth.login_required
