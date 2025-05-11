@@ -1003,7 +1003,7 @@
     }
     
     function clearAllLogs() { 
-        return apiRequest('POST', 'logs/clear-all') 
+        return apiRequest('POST', 'logs/clear') 
             .then(res => {
                 showToast(res.message || 'All logs cleared successfully.', 'success');
                 loadDatabaseStats(); 

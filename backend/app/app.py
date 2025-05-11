@@ -2524,6 +2524,7 @@ def get_cache_statistics():
                 storage_pattern = r'Storage Swap size:\s+(\d+)\s+KB'
                 usage_pattern = r'Storage Swap capacity:\s+(\d+\.\d+)%'
                 hits_pattern = r'Request Hit Ratios:\s+5min: (\d+\.\d+)%'
+                response_time_pattern = r'Average HTTP Service Time:\s+(\d+\.\d+) seconds'
                 
                 # Extract storage info
                 storage_match = re.search(storage_pattern, info_output)
@@ -2540,23 +2541,45 @@ def get_cache_statistics():
                 hits_match = re.search(hits_pattern, info_output)
                 if hits_match:
                     hit_ratio = float(hits_match.group(1))
+                
+                # Extract average response time
+                response_time_match = re.search(response_time_pattern, info_output)
+                if response_time_match:
+                    avg_response_time = float(response_time_match.group(1))
         except Exception as e:
             logger.warning(f"Error getting direct cache statistics: {e}")
             
-            # Fall back to database for hit ratio if available
+            # Fall back to database calculations
             try:
+                # Calculate hit ratio from logs
                 cursor.execute("""
                     SELECT 
                         COUNT(CASE WHEN status LIKE '%HIT%' THEN 1 END) as hits,
-                        COUNT(*) as total
+                        COUNT(*) as total,
+                        AVG(CASE WHEN bytes > 0 THEN bytes ELSE NULL END) as avg_bytes
                     FROM proxy_logs
                     WHERE timestamp > datetime('now', '-1 day')
                 """)
                 result = cursor.fetchone()
                 if result and result['total'] > 0:
                     hit_ratio = round((result['hits'] / result['total']) * 100, 1)
+                    
+                # Calculate response time - estimate based on bytes transferred
+                if result and result['avg_bytes'] is not None and result['avg_bytes'] > 0:
+                    # Estimate: 1MB = 0.1 seconds (very rough approximation)
+                    avg_bytes_mb = result['avg_bytes'] / (1024 * 1024)
+                    avg_response_time = round(max(0.05, min(5.0, avg_bytes_mb * 0.1)), 3)
+                    
+                # Estimate cache usage based on logs volume
+                cursor.execute("SELECT COUNT(*) as count FROM proxy_logs")
+                log_count = cursor.fetchone()['count']
+                if log_count > 0:
+                    # Very rough estimation: assume each log entry corresponds to ~10KB in cache
+                    estimated_cache_kb = log_count * 10
+                    cache_usage = min(cache_size, int(estimated_cache_kb / 1024))  # Convert to MB, cap at cache_size
+                    cache_usage_percentage = min(100, round((cache_usage / cache_size) * 100, 1))
             except Exception as log_error:
-                logger.warning(f"Error getting hit ratio from logs: {log_error}")
+                logger.warning(f"Error getting cache metrics from logs: {log_error}")
         
         # Format the response
         return jsonify({
