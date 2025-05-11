@@ -350,7 +350,7 @@ def get_status():
         "proxy_host": PROXY_HOST,
         "proxy_port": PROXY_PORT,
         "timestamp": datetime.now().isoformat(),
-        "version": "0.0.2"
+        "version": "0.0.4"
     }
     
     # Add memory usage, CPU usage, and uptime
