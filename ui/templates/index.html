@@ -648,9 +648,8 @@
                     $('#uptime').text(data.uptime);
                     
                     // Set requests count for stats card and details card
-                    const requestsCount = Math.floor(Math.random() * 10000);
-                    $('#proxy-requests').text(requestsCount.toLocaleString());
-                    $('#proxy-requests-card').text(requestsCount.toLocaleString());
+                    $('#proxy-requests').text(data.requests_count || 0);
+                    $('#proxy-requests-card').text(data.requests_count || 0);
                 }
             })
             .catch(function(error) {
@@ -862,10 +861,12 @@
                     $('#cache-total').text(data.cache_size);
                     
                     // Update hit ratio
-                    $('#hit-ratio').text((data.hit_ratio * 100).toFixed(1) + '%');
+                    $('#hit-ratio').text((data.hit_ratio || 0).toFixed(1) + '%');
                     
                     // Update average response time
-                    $('#avg-response-time').text((data.avg_response_time * 1000).toFixed(0) + ' ms');
+                    $('#avg-response-time').text(typeof data.avg_response_time === 'number' 
+                        ? (data.avg_response_time * 1000).toFixed(0) + ' ms' 
+                        : data.avg_response_time || '-- ms');
                 }
             })
             .catch(function(error) {
@@ -876,44 +877,49 @@
     function loadClientStatistics() {
         apiRequest('GET', 'clients/statistics')
             .then(function(response) {
-                const clientListView = $('#client-list-view');
-                clientListView.empty(); // Clear previous entries
+                const clientListTable = $('#client-list-table');
+                clientListTable.empty(); // Clear previous entries
+                
+                // Update total count badge
+                if (response.status === 'success' && response.data && response.data.total_clients) {
+                    $('#total-clients-count').text(response.data.total_clients);
+                }
 
                 if (response.status === 'success' && response.data) {
                     // Access the clients array inside the data object
                     const clientsData = response.data.clients;
                     
                     if (!clientsData || !Array.isArray(clientsData) || clientsData.length === 0) {
-                        clientListView.html('<p class="text-muted text-center">No client data available.</p>');
+                        clientListTable.html('<tr><td colspan="3" class="text-center">No client data available.</td></tr>');
                         return;
                     }
                     
-                    let html = '<ul class="list-group list-group-flush">';
+                    let html = '';
                     clientsData.forEach(client => {
-                        html += `<li class="list-group-item d-flex justify-content-between align-items-center">
-                                    ${client.ip_address || 'N/A'}
-                                    <span class="badge bg-primary rounded-pill">${client.requests || 0}</span>
-                                 </li>`;
+                        html += `<tr>
+                                    <td>${client.ip_address || 'N/A'}</td>
+                                    <td>${client.requests || 0}</td>
+                                    <td><span class="badge bg-success">${client.status || 'Active'}</span></td>
+                                 </tr>`;
                     });
-                    html += '</ul>';
-                    clientListView.html(html);
+                    clientListTable.html(html);
+                    clientListTable.html(html);
                 } else {
                     if (response.status !== 'success') {
-                        clientListView.html('<p class="text-danger text-center">Failed to load client data.</p>');
+                        clientListTable.html('<tr><td colspan="3" class="text-center text-danger">Failed to load client data.</td></tr>');
                         showToast('Failed to load client statistics: ' + (response.message || 'Unknown error'), 'danger');
                     } else if (!response.data) {
-                        clientListView.html('<p class="text-muted text-center">No data received for client statistics.</p>');
+                        clientListTable.html('<tr><td colspan="3" class="text-center text-muted">No data received for client statistics.</td></tr>');
                     } else { // Data is present but not an array
-                        clientListView.html('<p class="text-danger text-center">Invalid data format for client statistics.</p>');
+                        clientListTable.html('<tr><td colspan="3" class="text-center text-danger">Invalid data format for client statistics.</td></tr>');
                         console.error("Client statistics data format:", response.data);
                         showToast('Client statistics data format error.', 'danger');
                     }
                 }
             })
             .catch(function(error) {
-                const clientListView = $('#client-list-view');
-                clientListView.empty();
-                clientListView.html('<p class="text-danger text-center">Error loading client data.</p>');
+                const clientListTable = $('#client-list-table');
+                clientListTable.html('<tr><td colspan="3" class="text-center text-danger">Error loading client data.</td></tr>');
                 showToast('Failed to load client statistics: ' + error.message, 'danger');
             });
     }
@@ -921,44 +927,49 @@
     function loadDomainStatistics() {
         apiRequest('GET', 'domains/statistics')
             .then(function(response) {
-                const domainListView = $('#domain-list-view');
-                domainListView.empty(); // Clear previous entries
+                const domainListTable = $('#domain-list-table');
+                domainListTable.empty(); // Clear previous entries
+
+                // Update total count badge
+                if (response.status === 'success' && response.data && response.data.total_domains) {
+                    $('#total-domains-count').text(response.data.total_domains);
+                }
 
                 if (response.status === 'success' && response.data) {
                     // Access the domains array inside the data object
                     const domainsData = response.data.domains;
                     
                     if (!domainsData || !Array.isArray(domainsData) || domainsData.length === 0) {
-                        domainListView.html('<p class="text-muted text-center">No domain data available.</p>');
+                        domainListTable.html('<tr><td colspan="3" class="text-center">No domain data available.</td></tr>');
                         return;
                     }
                     
-                    let html = '<ul class="list-group list-group-flush">';
+                    let html = '';
                     domainsData.forEach(domain => {
-                        html += `<li class="list-group-item d-flex justify-content-between align-items-center">
-                                    ${domain.domain_name || 'N/A'}
-                                    <span class="badge bg-info rounded-pill">${domain.requests || 0}</span>
-                                 </li>`;
+                        html += `<tr>
+                                    <td>${domain.domain_name || 'N/A'}</td>
+                                    <td>${domain.requests || 0}</td>
+                                    <td><span class="badge bg-info">${domain.category || 'Unknown'}</span></td>
+                                 </tr>`;
                     });
-                    html += '</ul>';
-                    domainListView.html(html);
+                    domainListTable.html(html);
+                    domainListTable.html(html);
                 } else {
                     if (response.status !== 'success') {
-                        domainListView.html('<p class="text-danger text-center">Failed to load domain data.</p>');
+                        domainListTable.html('<tr><td colspan="3" class="text-center text-danger">Failed to load domain data.</td></tr>');
                         showToast('Failed to load domain statistics: ' + (response.message || 'Unknown error'), 'danger');
                     } else if (!response.data) {
-                        domainListView.html('<p class="text-muted text-center">No data received for domain statistics.</p>');
+                        domainListTable.html('<tr><td colspan="3" class="text-center text-muted">No data received for domain statistics.</td></tr>');
                     } else { // Data is present but not expected format
-                        domainListView.html('<p class="text-danger text-center">Invalid data format for domain statistics.</p>');
+                        domainListTable.html('<tr><td colspan="3" class="text-center text-danger">Invalid data format for domain statistics.</td></tr>');
                         console.error("Domain statistics data format:", response.data);
                         showToast('Domain statistics data format error.', 'danger');
                     }
                 }
             })
             .catch(function(error) {
-                const domainListView = $('#domain-list-view');
-                domainListView.empty();
-                domainListView.html('<p class="text-danger text-center">Error loading domain data.</p>');
+                const domainListTable = $('#domain-list-table');
+                domainListTable.html('<tr><td colspan="3" class="text-center text-danger">Error loading domain data.</td></tr>');
                 showToast('Failed to load domain statistics: ' + error.message, 'danger');
             });
     }

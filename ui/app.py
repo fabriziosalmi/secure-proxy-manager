@@ -10,9 +10,10 @@ from urllib3.util.retry import Retry
 import json
 import logging
 import time
+import secrets
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'secure-proxy-default-key')
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 
 # Configure Basic Auth
 app.config['BASIC_AUTH_USERNAME'] = os.environ.get('BASIC_AUTH_USERNAME', 'admin')

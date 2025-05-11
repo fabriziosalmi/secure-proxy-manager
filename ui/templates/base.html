@@ -922,14 +922,25 @@
                     url: '/api/' + endpoint,
                     type: method,
                     dataType: 'json',
+                    timeout: 30000, // 30 seconds timeout
                     success: function(response) {
                         hideLoading();
                         resolve(response);
                     },
                     error: function(xhr, status, error) {
                         hideLoading();
-                        handleApiError(xhr.responseJSON || { status: 'error', message: 'Unknown error occurred' });
-                        reject(xhr.responseJSON || { status: 'error', message: 'Unknown error occurred' });
+                        // Special handling for timeout errors
+                        if (status === 'timeout') {
+                            const timeoutError = { 
+                                status: 'error', 
+                                message: 'Request timed out. The server might be busy or unavailable.' 
+                            };
+                            handleApiError(timeoutError);
+                            reject(timeoutError);
+                        } else {
+                            handleApiError(xhr.responseJSON || { status: 'error', message: 'Unknown error occurred' });
+                            reject(xhr.responseJSON || { status: 'error', message: 'Unknown error occurred' });
+                        }
                     }
                 };
                 
