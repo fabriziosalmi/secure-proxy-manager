@@ -120,10 +120,10 @@ def add_security_headers(response):
     
     csp_directives = [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com",  
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com",  
+        "script-src 'self' 'unsafe-inline'",  
+        "style-src 'self' 'unsafe-inline'",  
         "img-src 'self' data:",
-        "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com",  
+        "font-src 'self'",  
         "connect-src 'self'",
         "frame-ancestors 'self'",
         "form-action 'self'",

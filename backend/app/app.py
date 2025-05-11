@@ -310,8 +310,8 @@ def add_security_headers(response):
     # Add Content Security Policy
     csp_directives = [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com",  # Added CDNs
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",   # Added CDNs
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data:",                # Allow data: for simple images
         "font-src 'self'",
         "connect-src 'self'",
