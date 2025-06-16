@@ -576,326 +576,205 @@ def remove_domain_from_blacklist(id):
     
     return jsonify({"status": "success", "message": "Domain removed from blacklist"})
 
-@app.route('/api/logs', methods=['GET'])
+@app.route('/api/blacklists/import', methods=['POST'])
 @auth.login_required
-def get_logs():
-    """Get proxy logs"""
-    limit = request.args.get('limit', 100, type=int)
-    offset = request.args.get('offset', 0, type=int)
-    search = request.args.get('search', '')
-    sort = request.args.get('sort', 'timestamp')  # Default sort by timestamp
-    order = request.args.get('order', 'desc')     # Default order is descending (latest first)
-    
-    # Validate and sanitize input parameters
+def import_blacklist():
+    """Import blacklist entries from URL or direct content"""
     try:
-        # Ensure limit and offset are positive integers
-        limit = max(1, min(1000, int(limit)))  # Cap at 1000 records
-        offset = max(0, int(offset))
-    except (ValueError, TypeError):
-        limit = 100
-        offset = 0
-    
-    # Define a mapping of allowed sort columns to their actual DB counterparts
-    valid_sort_mappings = {
-        'timestamp': 'timestamp',
-        'unix_timestamp': 'unix_timestamp', 
-        'source_ip': 'source_ip',
-        'destination': 'destination',
-        'status': 'status',
-        'bytes': 'bytes'
-    }
-
-    # Define allowed order directions
-    valid_orders = {'asc': 'ASC', 'desc': 'DESC'}
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Check if the unix_timestamp column exists
-    cursor.execute("PRAGMA table_info(proxy_logs)")
-    columns = [column[1] for column in cursor.fetchall()]
-    
-    # Validate sorting parameters
-    if sort not in valid_sort_mappings:
-        sort = 'timestamp'  # Default to timestamp if invalid
-    
-    if order.lower() not in valid_orders:
-        order = 'desc'  # Default to descending if invalid
-    
-    # Determine the correct column name for sorting
-    column_name = valid_sort_mappings[sort]
-    
-    # Special case for timestamp
-    if sort == 'timestamp' and 'unix_timestamp' in columns:
-        column_name = 'unix_timestamp'
-    
-    # Get the direction
-    direction = valid_orders[order.lower()]
-    
-    # Base query with parameters
-    if search:
-        # Apply search to multiple fields with proper parameter binding
-        query = f"""
-            SELECT * FROM proxy_logs 
-            WHERE source_ip LIKE ? 
-            OR destination LIKE ? 
-            OR status LIKE ?
-            ORDER BY {column_name} {direction} LIMIT ? OFFSET ?
-        """
-        search_param = f"%{search}%"
-        cursor.execute(query, (search_param, search_param, search_param, limit, offset))
-    else:
-        query = f"""
-            SELECT * FROM proxy_logs 
-            ORDER BY {column_name} {direction} LIMIT ? OFFSET ?
-        """
-        cursor.execute(query, (limit, offset))
-                      
-    logs = [dict(row) for row in cursor.fetchall()]
-    
-    # Get total count that matches the search
-    if search:
-        search_param = f"%{search}%"
-        cursor.execute("""
-            SELECT COUNT(*) FROM proxy_logs 
-            WHERE source_ip LIKE ? 
-            OR destination LIKE ? 
-            OR status LIKE ?
-        """, (search_param, search_param, search_param))
-    else:
-        cursor.execute("SELECT COUNT(*) FROM proxy_logs")
-    
-    total = cursor.fetchone()[0]
-    
-    return jsonify({
-        "status": "success", 
-        "data": logs,
-        "meta": {
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "sort": sort,
-            "order": order
-        }
-    })
-
-@app.route('/api/logs/import', methods=['POST'])
-@auth.login_required
-def import_logs():
-    """Import logs from Squid access.log"""
-    try:
-        result = parse_squid_logs()
+        data = request.get_json()
+        if not data:
+            return jsonify({"status": "error", "message": "No data provided"}), 400
         
-        # Check the status of the operation
-        if result["status"] == "success":
-            return jsonify({
-                "status": "success", 
-                "message": f"Logs imported successfully. Imported {result['imported_count']} entries with {result['error_count']} errors."
-            })
-        elif result["status"] == "warning":
-            # Return a warning but with a 200 status code
-            return jsonify({
-                "status": "warning", 
-                "message": result.get("message", "Warning during log import")
-            })
+        blacklist_type = data.get('type', '').lower()
+        if blacklist_type not in ['ip', 'domain']:
+            return jsonify({"status": "error", "message": "Type must be 'ip' or 'domain'"}), 400
+        
+        content = None
+        
+        # Check if URL is provided
+        if 'url' in data:
+            try:
+                url = data['url']
+                logger.info(f"Fetching blacklist from URL: {url}")
+                
+                # Fetch content from URL with timeout
+                response = requests.get(url, timeout=30, headers={'User-Agent': 'SecureProxyManager/1.0'})
+                response.raise_for_status()
+                content = response.text
+                
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Failed to fetch blacklist from URL {url}: {str(e)}")
+                return jsonify({"status": "error", "message": f"Failed to fetch from URL: {str(e)}"}), 400
+        
+        # Check if direct content is provided
+        elif 'content' in data:
+            content = data['content']
+        
         else:
-            # This is an error
-            logger.error(f"Error importing logs: {result.get('message', 'Unknown error')}")
-            return jsonify({
-                "status": "error", 
-                "message": result.get("message", "Error importing logs")
-            }), 500
-    except Exception as e:
-        logger.error(f"Error importing logs: {str(e)}")
-        return jsonify({"status": "error", "message": f"Error importing logs: {str(e)}"}), 500
-
-@app.route('/api/logs/blocked-count', methods=['GET'])
-@auth.login_required
-def get_blocked_count():
-    """Get count of blocked requests from logs"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Count logs with status codes that indicate blocked requests
-    # Typically in Squid: TCP_DENIED/403 indicates a denied request
-    cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%'")
-    blocked_count = cursor.fetchone()[0]
-    
-    return jsonify({
-        "status": "success", 
-        "data": {
-            "blocked_count": blocked_count
-        }
-    })
-
-@app.route('/api/maintenance/download-cert', methods=['GET'])
-@auth.login_required
-def download_cert():
-     """Download the CA certificate for HTTPS filtering"""
-     cert_path = '/config/ssl_cert.pem'
-     if not os.path.exists(cert_path):
-         return jsonify({"status": "error", "message": "Certificate not found"}), 404
-     
-     # Force download by setting content-disposition header
-     return send_file(
-         cert_path, 
-         as_attachment=True, 
-         download_name='secure-proxy-ca.pem', 
-         mimetype='application/x-pem-file'
-     )
-
-@app.route('/api/maintenance/view-cert', methods=['GET'])
-@auth.login_required
-def view_cert():
-     """Get the CA certificate content for HTTPS filtering to display in UI"""
-     cert_path = '/config/ssl_cert.pem'
-     if not os.path.exists(cert_path):
-         return jsonify({"status": "error", "message": "Certificate not found"}), 404
-     
-     # Read the certificate file
-     try:
-         with open(cert_path, 'r') as cert_file:
-             cert_content = cert_file.read()
-         return jsonify({"status": "success", "data": {"certificate": cert_content}})
-     except Exception as e:
-         logger.error(f"Error reading certificate: {str(e)}")
-         return jsonify({"status": "error", "message": f"Error reading certificate: {str(e)}"}), 500
-
-@app.route('/api/maintenance/clear-cache', methods=['POST'])
-@auth.login_required
-def clear_cache():
-    """Clear the Squid cache"""
-    try:
-        # Safer execution of the squid command with validated container name
-        container_name = os.environ.get('PROXY_CONTAINER_NAME', 'secure-proxy-proxy-1')
-        # Validate container name to prevent command injection
-        if not re.match(r'^[a-zA-Z0-9_-]+$', container_name):
-            raise ValueError(f"Invalid container name format: {container_name}")
-            
-        result = subprocess.run(
-            ['docker', 'exec', container_name, 'squidclient', '-h', 'localhost', 'mgr:shutdown'],
-            capture_output=True, text=True, check=False
-        )
+            return jsonify({"status": "error", "message": "Either 'url' or 'content' must be provided"}), 400
         
-        if result.returncode != 0:
-            logger.error(f"Error clearing cache: {result.stderr}")
-            return jsonify({
-                "status": "error", 
-                "message": f"Error clearing cache: {result.stderr}"
-            }), 500
-            
-        logger.info("Cache cleared successfully")
-        return jsonify({"status": "success", "message": "Cache cleared successfully"})
-    except ValueError as e:
-        logger.error(f"Validation error: {str(e)}")
-        return jsonify({"status": "error", "message": f"Validation error: {str(e)}"}), 400
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Error clearing cache: {str(e)}")
-        return jsonify({"status": "error", "message": f"Error clearing cache: {str(e)}"}), 500
-    except Exception as e:
-        logger.error(f"Unexpected error clearing cache: {str(e)}")
-        return jsonify({"status": "error", "message": f"Unexpected error clearing cache: {str(e)}"}), 500
-
-@app.route('/api/maintenance/backup-config', methods=['GET'])
-@auth.login_required
-def backup_config():
-    """Create a backup of all configuration settings"""
-    try:
+        if not content:
+            return jsonify({"status": "error", "message": "No content to import"}), 400
+        
+        # Parse content - support both plain text (one entry per line) and JSON formats
+        entries = []
+        try:
+            # Try to parse as JSON first
+            json_data = json.loads(content)
+            if isinstance(json_data, list):
+                entries = json_data
+            elif isinstance(json_data, dict) and 'entries' in json_data:
+                entries = json_data['entries']
+            else:
+                return jsonify({"status": "error", "message": "Invalid JSON format. Expected array or object with 'entries' field"}), 400
+        except json.JSONDecodeError:
+            # Parse as plain text - one entry per line
+            lines = content.strip().split('\n')
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith('#'):  # Skip empty lines and comments
+                    entries.append(line)
+        
+        if not entries:
+            return jsonify({"status": "error", "message": "No valid entries found to import"}), 400
+        
+        # Import entries to database
+        imported_count = 0
+        error_count = 0
+        errors = []
+        
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get all settings
-        cursor.execute("SELECT * FROM settings")
-        settings = [dict(row) for row in cursor.fetchall()]
+        for entry in entries:
+            try:
+                # Handle both string entries and object entries
+                if isinstance(entry, dict):
+                    if blacklist_type == 'ip':
+                        ip_addr = entry.get('ip', entry.get('address', ''))
+                        description = entry.get('description', entry.get('reason', ''))
+                    else:  # domain
+                        ip_addr = entry.get('domain', entry.get('hostname', ''))
+                        description = entry.get('description', entry.get('reason', ''))
+                else:
+                    ip_addr = str(entry).strip()
+                    description = f"Imported from {'URL' if 'url' in data else 'direct content'}"
+                
+                if not ip_addr:
+                    error_count += 1
+                    continue
+                
+                # Validate entry based on type
+                if blacklist_type == 'ip':
+                    try:
+                        # Validate IP address or CIDR notation
+                        ipaddress.ip_network(ip_addr, strict=False)
+                    except ValueError:
+                        error_count += 1
+                        errors.append(f"Invalid IP format: {ip_addr}")
+                        continue
+                    
+                    # Insert IP to database
+                    try:
+                        cursor.execute("INSERT INTO ip_blacklist (ip, description) VALUES (?, ?)", 
+                                     (ip_addr, description))
+                        imported_count += 1
+                    except sqlite3.IntegrityError:
+                        # Entry already exists, skip
+                        pass
+                
+                else:  # domain
+                    # Basic domain validation
+                    domain_pattern = r'^(\*\.)?(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)+([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
+                    if not re.match(domain_pattern, ip_addr):
+                        error_count += 1
+                        errors.append(f"Invalid domain format: {ip_addr}")
+                        continue
+                    
+                    # Insert domain to database
+                    try:
+                        cursor.execute("INSERT INTO domain_blacklist (domain, description) VALUES (?, ?)", 
+                                     (ip_addr, description))
+                        imported_count += 1
+                    except sqlite3.IntegrityError:
+                        # Entry already exists, skip
+                        pass
+                        
+            except Exception as e:
+                error_count += 1
+                errors.append(f"Error processing entry '{entry}': {str(e)}")
+                continue
         
-        # Get IP blacklist
-        cursor.execute("SELECT * FROM ip_blacklist")
-        ip_blacklist = [dict(row) for row in cursor.fetchall()]
+        # Commit all changes
+        conn.commit()
         
-        # Get domain blacklist
-        cursor.execute("SELECT * FROM domain_blacklist")
-        domain_blacklist = [dict(row) for row in cursor.fetchall()]
+        # Update blacklist files
+        if blacklist_type == 'ip':
+            update_ip_blacklist()
+        else:
+            update_domain_blacklist()
         
-        # Compile everything into a backup object
-        backup = {
-            "timestamp": datetime.now().isoformat(),
-            "version": "1.0.0",
-            "settings": settings,
-            "ip_blacklist": ip_blacklist,
-            "domain_blacklist": domain_blacklist
+        # Prepare response
+        message = f"Import completed: {imported_count} entries imported"
+        if error_count > 0:
+            message += f", {error_count} errors"
+        
+        response_data = {
+            "status": "success",
+            "message": message,
+            "imported_count": imported_count,
+            "error_count": error_count
         }
         
-        return jsonify({"status": "success", "data": backup})
+        if errors:
+            response_data["errors"] = errors[:10]  # Limit to first 10 errors
+            if len(errors) > 10:
+                response_data["errors"].append(f"... and {len(errors) - 10} more errors")
+        
+        logger.info(f"Blacklist import completed: {imported_count} {blacklist_type} entries imported, {error_count} errors")
+        return jsonify(response_data)
+        
     except Exception as e:
-        logger.error(f"Error creating backup: {str(e)}")
-        return jsonify({"status": "error", "message": f"Error creating backup: {str(e)}"}), 500
+        logger.error(f"Error during blacklist import: {str(e)}")
+        return jsonify({"status": "error", "message": f"Import failed: {str(e)}"}), 500
 
-@app.route('/api/maintenance/restore-config', methods=['POST'])
-@auth.login_required
-def restore_config():
-    """Restore configuration from a backup file"""
+@app.route('/api/ip-blacklist/import', methods=['POST'])
+@auth.login_required  
+def import_ip_blacklist():
+    """Import IP blacklist entries from URL or direct content"""
     try:
         data = request.get_json()
-        if not data or 'backup' not in data:
-            return jsonify({"status": "error", "message": "No backup data provided"}), 400
+        if not data:
+            return jsonify({"status": "error", "message": "No data provided"}), 400
         
-        backup = data['backup']
+        # Add type to data for unified processing
+        data['type'] = 'ip'
         
-        # Use the context manager for safer database operations
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Start a transaction
-            conn.execute("BEGIN TRANSACTION")
-            
-            try:
-                # Restore settings
-                if 'settings' in backup:
-                    for setting in backup['settings']:
-                        if 'setting_name' in setting and 'setting_value' in setting:
-                            cursor.execute(
-                                "UPDATE settings SET setting_value = ? WHERE setting_name = ?", 
-                                (setting['setting_value'], setting['setting_name'])
-                            )
-                
-                # Restore IP blacklist
-                if 'ip_blacklist' in backup:
-                    cursor.execute("DELETE FROM ip_blacklist")
-                    for entry in backup['ip_blacklist']:
-                        if 'ip' in entry:
-                            description = entry.get('description', '')
-                            cursor.execute(
-                                "INSERT INTO ip_blacklist (ip, description) VALUES (?, ?)",
-                                (entry['ip'], description)
-                            )
-                
-                # Restore domain blacklist
-                if 'domain_blacklist' in backup:
-                    cursor.execute("DELETE FROM domain_blacklist")
-                    for entry in backup['domain_blacklist']:
-                        if 'domain' in entry and validate_domain(entry['domain']):
-                            description = entry.get('description', '')
-                            cursor.execute(
-                                "INSERT INTO domain_blacklist (domain, description) VALUES (?, ?)",
-                                (entry['domain'], description)
-                            )
-                
-                # Update blacklist files
-                update_ip_blacklist()
-                update_domain_blacklist()
-                
-                # Apply settings
-                apply_settings()
-                
-                return jsonify({"status": "success", "message": "Configuration restored successfully"})
-            except Exception as e:
-                # Rollback in case of error (handled by context manager)
-                logger.error(f"Error in restore transaction: {str(e)}")
-                raise e
-                
+        # Use the main import function
+        return import_blacklist()
+        
     except Exception as e:
-        logger.error(f"Error restoring backup: {str(e)}")
-        return jsonify({"status": "error", "message": f"Error restoring backup: {str(e)}"}), 500
+        logger.error(f"Error during IP blacklist import: {str(e)}")
+        return jsonify({"status": "error", "message": f"Import failed: {str(e)}"}), 500
+
+@app.route('/api/domain-blacklist/import', methods=['POST'])
+@auth.login_required
+def import_domain_blacklist():
+    """Import domain blacklist entries from URL or direct content"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"status": "error", "message": "No data provided"}), 400
+        
+        # Add type to data for unified processing
+        data['type'] = 'domain'
+        
+        # Use the main import function
+        return import_blacklist()
+        
+    except Exception as e:
+        logger.error(f"Error during domain blacklist import: {str(e)}")
+        return jsonify({"status": "error", "message": f"Import failed: {str(e)}"}), 500
 
 # Helper functions
 def update_ip_blacklist():
@@ -2277,6 +2156,92 @@ def get_api_docs():
                     "message": "Result message"
                 }
             },
+            # Add documentation for import endpoints
+            {
+                "path": "/blacklists/import",
+                "method": "POST",
+                "description": "Import blacklist entries from URL or direct content",
+                "auth_required": True,
+                "parameters": [
+                    {
+                        "name": "type",
+                        "type": "string",
+                        "description": "Type of blacklist: 'ip' or 'domain'",
+                        "required": True
+                    },
+                    {
+                        "name": "url",
+                        "type": "string",
+                        "description": "URL to fetch blacklist from (alternative to content)",
+                        "required": False
+                    },
+                    {
+                        "name": "content",
+                        "type": "string",
+                        "description": "Direct content to import (alternative to url)",
+                        "required": False
+                    }
+                ],
+                "response": {
+                    "status": "Success status",
+                    "message": "Import result message",
+                    "imported_count": "Number of entries imported",
+                    "error_count": "Number of errors encountered",
+                    "errors": "Array of error messages (if any)"
+                }
+            },
+            {
+                "path": "/ip-blacklist/import",
+                "method": "POST",
+                "description": "Import IP blacklist entries from URL or direct content",
+                "auth_required": True,
+                "parameters": [
+                    {
+                        "name": "url",
+                        "type": "string",
+                        "description": "URL to fetch IP blacklist from (alternative to content)",
+                        "required": False
+                    },
+                    {
+                        "name": "content",
+                        "type": "string",
+                        "description": "Direct content to import (alternative to url)",
+                        "required": False
+                    }
+                ],
+                "response": {
+                    "status": "Success status",
+                    "message": "Import result message",
+                    "imported_count": "Number of IPs imported",
+                    "error_count": "Number of errors encountered"
+                }
+            },
+            {
+                "path": "/domain-blacklist/import",
+                "method": "POST",
+                "description": "Import domain blacklist entries from URL or direct content",
+                "auth_required": True,
+                "parameters": [
+                    {
+                        "name": "url",
+                        "type": "string",
+                        "description": "URL to fetch domain blacklist from (alternative to content)",
+                        "required": False
+                    },
+                    {
+                        "name": "content",
+                        "type": "string",
+                        "description": "Direct content to import (alternative to url)",
+                        "required": False
+                    }
+                ],
+                "response": {
+                    "status": "Success status",
+                    "message": "Import result message",
+                    "imported_count": "Number of domains imported",
+                    "error_count": "Number of errors encountered"
+                }
+            },
             # Add documentation for logs endpoints
             {
                 "path": "/logs",
@@ -3016,7 +2981,7 @@ def export_database():
 def run_security_scan():
     """Run a comprehensive security scan of the proxy configuration"""
     try:
-        # Collect all security-related settings
+        # Collect all security-relevant settings
         conn = get_db()
         cursor = conn.cursor()
         
@@ -3112,7 +3077,7 @@ def client_statistics():
                 WHERE source_ip IS NOT NULL AND source_ip != ''
                 GROUP BY source_ip
                 ORDER BY requests DESC
-                LIMIT 50  -- Limit to top 50 clients for performance
+                LIMIT 50  # Limit to top 50 clients for performance
             """)
             clients = [dict(row) for row in cursor.fetchall()]
             
@@ -3151,7 +3116,7 @@ def domain_statistics():
                 WHERE destination IS NOT NULL AND destination != ''
                 GROUP BY destination
                 ORDER BY requests DESC
-                LIMIT 50  -- Limit to top 50 domains for performance
+                LIMIT 50  # Limit to top 50 domains for performance
             """)
             domains_raw = [dict(row) for row in cursor.fetchall()]
             
@@ -3298,6 +3263,3 @@ def get_database_stats():
     except Exception as e:
         logger.error(f"Error fetching database stats: {str(e)}")
         return jsonify({"status": "error", "message": f"Error fetching database stats: {str(e)}"}), 500
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)

@@ -169,21 +169,53 @@ To use Secure Proxy as a transparent proxy:
 
 ### Extending Blacklists
 
-Integrate with external threat intelligence:
+Integrate with external threat intelligence sources. The system supports importing plain text files (one entry per line) and JSON formats.
 
-1. Import blacklists via the API:
-   ```bash
-   curl -X POST http://localhost:8011/api/blacklists/import \
-     -H "Content-Type: application/json" \
-     -H "Authorization: Basic $(echo -n admin:admin | base64)" \
-     -d '{"url": "https://example.com/blacklist.txt", "type": "ip"}'
-   ```
+#### Import Domain Blacklists
 
-2. Schedule automatic updates with the maintenance endpoint:
-   ```bash
-   curl -X POST http://localhost:8011/api/maintenance/update-blacklists \
-     -H "Authorization: Basic $(echo -n admin:admin | base64)"
-   ```
+```bash
+# Import from URL - supports plain text files with one domain per line
+curl -X POST http://localhost:8011/api/domain-blacklist/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -d '{"url": "https://example.com/domain-blacklist.txt"}'
+
+# Import direct content
+curl -X POST http://localhost:8011/api/domain-blacklist/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -d '{"content": "example.com\n*.badsite.org\nmalicious.net"}'
+```
+
+#### Import IP Blacklists
+
+```bash
+# Import from URL - supports plain text files with one IP per line
+curl -X POST http://localhost:8011/api/ip-blacklist/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -d '{"url": "https://example.com/ip-blacklist.txt"}'
+
+# Import direct content with CIDR notation support
+curl -X POST http://localhost:8011/api/ip-blacklist/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -d '{"content": "192.168.1.100\n10.0.0.5\n172.16.0.0/24"}'
+```
+
+#### Supported File Formats
+
+- **Plain Text**: One entry per line (recommended for most blacklists)
+- **JSON Array**: `["example.com", "malicious.net"]`  
+- **JSON Objects**: `[{"domain": "example.com", "description": "Blocked site"}]`
+- **Comments**: Lines starting with `#` are ignored
+
+#### Schedule Automatic Updates
+
+```bash
+curl -X POST http://localhost:8011/api/maintenance/update-blacklists \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)"
+```
 
 ## 📊 Monitoring and Analytics
 
@@ -301,30 +333,130 @@ To test if blacklisting works:
 
 ## 📘 API Documentation
 
-Secure Proxy provides a comprehensive RESTful API for integration and automation:
+Secure Proxy provides a comprehensive RESTful API for integration and automation with support for plain text and JSON blacklist imports.
 
 ### Authentication
 
+All API endpoints require Basic Authentication:
+
 ```bash
+# Login to get session (optional)
 curl -X POST http://localhost:8011/api/login \
   -H "Content-Type: application/json" \
   -d '{"username": "admin", "password": "admin"}'
+
+# Or use Basic Auth directly (recommended for scripts)
+AUTH_HEADER="Authorization: Basic $(echo -n admin:admin | base64)"
 ```
 
-### Available Endpoints
+### 🚫 Blacklist Management
+
+#### Import Domain Blacklists
+
+Perfect for importing standard text files with one domain per line:
+
+```bash
+# Import from URL (plain text file)
+curl -X POST http://localhost:8011/api/domain-blacklist/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -d '{"url": "https://example.com/domain-blacklist.txt"}'
+
+# Import direct content
+curl -X POST http://localhost:8011/api/domain-blacklist/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -d '{"content": "malicious.com\n*.ads.example\nbadsite.org"}'
+```
+
+**Example domain-blacklist.txt:**
+```
+malicious.com
+badsite.org
+*.ads.network
+phishing-site.net
+# Comments are ignored
+unwanted.domain
+```
+
+#### Import IP Blacklists
+
+```bash
+# Import from URL (plain text file)
+curl -X POST http://localhost:8011/api/ip-blacklist/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -d '{"url": "https://example.com/ip-blacklist.txt"}'
+
+# Import with CIDR notation support
+curl -X POST http://localhost:8011/api/ip-blacklist/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -d '{"content": "192.168.1.100\n10.0.0.0/8\n172.16.0.0/12"}'
+```
+
+**Example ip-blacklist.txt:**
+```
+192.168.1.100
+10.0.0.5
+203.0.113.0/24
+# Malicious IP range
+198.51.100.0/24
+```
+
+#### Supported File Formats
+
+- ✅ **Plain Text**: One entry per line (most common)
+- ✅ **JSON Array**: `["entry1", "entry2"]`
+- ✅ **JSON Objects**: `[{"domain": "example.com", "description": "Blocked"}]`
+- ✅ **Comments**: Lines starting with `#` are ignored
+- ✅ **CIDR Notation**: For IP ranges (`192.168.1.0/24`)
+- ✅ **Wildcards**: For domains (`*.example.com`)
+
+### 📋 Available Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/status` | GET | Get proxy service status |
-| `/api/settings` | GET | Get all proxy settings |
-| `/api/ip-blacklist` | GET/POST | Manage IP blacklist |
-| `/api/domain-blacklist` | GET/POST | Manage domain blacklist |
-| `/api/logs` | GET | Get proxy access logs |
+| `/api/settings` | GET/POST | Manage proxy settings |
+| `/api/ip-blacklist` | GET/POST/DELETE | Manage individual IP entries |
+| `/api/ip-blacklist/import` | POST | **Import IP blacklist from URL/content** |
+| `/api/domain-blacklist` | GET/POST/DELETE | Manage individual domain entries |
+| `/api/domain-blacklist/import` | POST | **Import domain blacklist from URL/content** |
+| `/api/blacklists/import` | POST | Generic import (requires type parameter) |
+| `/api/logs` | GET | Get proxy access logs with filtering |
 | `/api/logs/import` | POST | Import logs from Squid |
 | `/api/maintenance/clear-cache` | POST | Clear the proxy cache |
-| `/api/security/score` | GET | Get security assessment |
+| `/api/maintenance/reload-config` | POST | Reload proxy configuration |
+| `/api/security/score` | GET | Get security assessment score |
 
-Full API documentation is available at `/api/docs` when the service is running.
+### 📊 Example API Responses
+
+**Successful Import:**
+```json
+{
+  "status": "success",
+  "message": "Import completed: 150 entries imported",
+  "imported_count": 150,
+  "error_count": 0
+}
+```
+
+**Import with Errors:**
+```json
+{
+  "status": "success", 
+  "message": "Import completed: 145 entries imported, 5 errors",
+  "imported_count": 145,
+  "error_count": 5,
+  "errors": [
+    "Invalid domain format: not-a-domain",
+    "Invalid IP format: 999.999.999.999"
+  ]
+}
+```
+
+Full interactive API documentation is available at `/api/docs` when the service is running.
 
 ## 🔒 Security Best Practices
 

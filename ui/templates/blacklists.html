@@ -20,9 +20,14 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">IP Blacklist</h5>
-                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addIpModal">
-                        <i class="fas fa-plus me-2"></i>Add IP
-                    </button>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addIpModal">
+                            <i class="fas fa-plus me-2"></i>Add IP
+                        </button>
+                        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#importIpModal">
+                            <i class="fas fa-file-import me-2"></i>Import
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
@@ -51,8 +56,14 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Domain Blacklist</h5>
-                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addDomainModal">
-                        <i class="fas fa-plus me-2"></i>Add Domain
+                    <div class="btn-group">
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addDomainModal">
+                            <i class="fas fa-plus me-2"></i>Add Domain
+                        </button>
+                        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#importDomainModal">
+                            <i class="fas fa-file-import me-2"></i>Import
+                        </button>
+                    </div>
                     </button>
                 </div>
                 <div class="card-body">
@@ -132,6 +143,116 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="add-domain-btn">Add to Blacklist</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Import IP Blacklist Modal -->
+<div class="modal fade" id="importIpModal" tabindex="-1" aria-labelledby="importIpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="importIpModalLabel">Import IP Blacklist</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="import-ip-form">
+                    <ul class="nav nav-tabs mb-3" id="importIpTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="url-ip-tab" data-bs-toggle="tab" data-bs-target="#url-ip-content" type="button" role="tab">From URL</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="direct-ip-tab" data-bs-toggle="tab" data-bs-target="#direct-ip-content" type="button" role="tab">Direct Input</button>
+                        </li>
+                    </ul>
+                    
+                    <div class="tab-content" id="importIpTabsContent">
+                        <div class="tab-pane fade show active" id="url-ip-content" role="tabpanel">
+                            <div class="mb-3">
+                                <label for="ip-import-url" class="form-label">Blacklist URL</label>
+                                <input type="url" class="form-control" id="ip-import-url" placeholder="https://example.com/ip-blacklist.txt">
+                                <div class="form-text">Enter URL to a plain text file with one IP address per line</div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="direct-ip-content" role="tabpanel">
+                            <div class="mb-3">
+                                <label for="ip-import-content" class="form-label">IP Addresses</label>
+                                <textarea class="form-control" id="ip-import-content" rows="8" placeholder="192.168.1.100&#10;10.0.0.5&#10;172.16.0.1/24&#10;# Comments are ignored"></textarea>
+                                <div class="form-text">Enter one IP address or CIDR notation per line. Lines starting with # are ignored.</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Supported formats:
+                        <ul class="mb-0 mt-2">
+                            <li>Plain text (one IP per line)</li>
+                            <li>JSON array: <code>["192.168.1.1", "10.0.0.1"]</code></li>
+                            <li>JSON objects: <code>[{"ip": "192.168.1.1", "description": "Blocked"}]</code></li>
+                        </ul>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="import-ip-btn">Import IPs</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Import Domain Blacklist Modal -->
+<div class="modal fade" id="importDomainModal" tabindex="-1" aria-labelledby="importDomainModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="importDomainModalLabel">Import Domain Blacklist</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="import-domain-form">
+                    <ul class="nav nav-tabs mb-3" id="importDomainTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="url-domain-tab" data-bs-toggle="tab" data-bs-target="#url-domain-content" type="button" role="tab">From URL</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="direct-domain-tab" data-bs-toggle="tab" data-bs-target="#direct-domain-content" type="button" role="tab">Direct Input</button>
+                        </li>
+                    </ul>
+                    
+                    <div class="tab-content" id="importDomainTabsContent">
+                        <div class="tab-pane fade show active" id="url-domain-content" role="tabpanel">
+                            <div class="mb-3">
+                                <label for="domain-import-url" class="form-label">Blacklist URL</label>
+                                <input type="url" class="form-control" id="domain-import-url" placeholder="https://example.com/domain-blacklist.txt">
+                                <div class="form-text">Enter URL to a plain text file with one domain per line</div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="direct-domain-content" role="tabpanel">
+                            <div class="mb-3">
+                                <label for="domain-import-content" class="form-label">Domains</label>
+                                <textarea class="form-control" id="domain-import-content" rows="8" placeholder="example.com&#10;*.badsite.org&#10;malicious.net&#10;# Comments are ignored"></textarea>
+                                <div class="form-text">Enter one domain per line. Wildcards (*.example.com) are supported. Lines starting with # are ignored.</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Supported formats:
+                        <ul class="mb-0 mt-2">
+                            <li>Plain text (one domain per line)</li>
+                            <li>JSON array: <code>["example.com", "*.badsite.org"]</code></li>
+                            <li>JSON objects: <code>[{"domain": "example.com", "description": "Blocked"}]</code></li>
+                        </ul>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="import-domain-btn">Import Domains</button>
             </div>
         </div>
     </div>
@@ -228,6 +349,124 @@
             })
             .finally(function(){
                 $addDomainBtn.prop('disabled', false).html(originalButtonText);
+            });
+        });
+
+        // --- IP Blacklist Import ---
+        const $importIpModal = $('#importIpModal');
+        const $importIpForm = $('#import-ip-form');
+        const $ipImportUrlInput = $('#ip-import-url');
+        const $ipImportContentInput = $('#ip-import-content');
+        const $importIpBtn = $('#import-ip-btn');
+
+        $importIpBtn.click(function() {
+            const activeTab = $('#importIpTabs .nav-link.active').attr('id');
+            let requestData = { type: 'ip' };
+            
+            if (activeTab === 'url-ip-tab') {
+                const url = $ipImportUrlInput.val().trim();
+                if (!url) {
+                    showToast('Please enter a valid URL', 'danger');
+                    $ipImportUrlInput.addClass('is-invalid');
+                    return;
+                }
+                requestData.url = url;
+                $ipImportUrlInput.removeClass('is-invalid');
+            } else {
+                const content = $ipImportContentInput.val().trim();
+                if (!content) {
+                    showToast('Please enter content to import', 'danger');
+                    $ipImportContentInput.addClass('is-invalid');
+                    return;
+                }
+                requestData.content = content;
+                $ipImportContentInput.removeClass('is-invalid');
+            }
+
+            const originalButtonText = $importIpBtn.html();
+            $importIpBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Importing...');
+
+            apiRequest('POST', 'blacklists/import', requestData)
+            .then(function(response) {
+                if (response.status === 'success') {
+                    let message = response.message;
+                    if (response.errors && response.errors.length > 0) {
+                        message += '<br><strong>Errors:</strong><ul>';
+                        response.errors.forEach(error => {
+                            message += `<li>${error}</li>`;
+                        });
+                        message += '</ul>';
+                    }
+                    showToast(message, response.error_count > 0 ? 'warning' : 'success', response.error_count > 0 ? 8000 : 4000);
+                    $importIpModal.modal('hide');
+                    $importIpForm[0].reset();
+                    loadIpBlacklist();
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to import IPs: ' + (error.message || 'Unknown error'), 'danger');
+            })
+            .finally(function() {
+                $importIpBtn.prop('disabled', false).html(originalButtonText);
+            });
+        });
+
+        // --- Domain Blacklist Import ---
+        const $importDomainModal = $('#importDomainModal');
+        const $importDomainForm = $('#import-domain-form');
+        const $domainImportUrlInput = $('#domain-import-url');
+        const $domainImportContentInput = $('#domain-import-content');
+        const $importDomainBtn = $('#import-domain-btn');
+
+        $importDomainBtn.click(function() {
+            const activeTab = $('#importDomainTabs .nav-link.active').attr('id');
+            let requestData = { type: 'domain' };
+            
+            if (activeTab === 'url-domain-tab') {
+                const url = $domainImportUrlInput.val().trim();
+                if (!url) {
+                    showToast('Please enter a valid URL', 'danger');
+                    $domainImportUrlInput.addClass('is-invalid');
+                    return;
+                }
+                requestData.url = url;
+                $domainImportUrlInput.removeClass('is-invalid');
+            } else {
+                const content = $domainImportContentInput.val().trim();
+                if (!content) {
+                    showToast('Please enter content to import', 'danger');
+                    $domainImportContentInput.addClass('is-invalid');
+                    return;
+                }
+                requestData.content = content;
+                $domainImportContentInput.removeClass('is-invalid');
+            }
+
+            const originalButtonText = $importDomainBtn.html();
+            $importDomainBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Importing...');
+
+            apiRequest('POST', 'blacklists/import', requestData)
+            .then(function(response) {
+                if (response.status === 'success') {
+                    let message = response.message;
+                    if (response.errors && response.errors.length > 0) {
+                        message += '<br><strong>Errors:</strong><ul>';
+                        response.errors.forEach(error => {
+                            message += `<li>${error}</li>`;
+                        });
+                        message += '</ul>';
+                    }
+                    showToast(message, response.error_count > 0 ? 'warning' : 'success', response.error_count > 0 ? 8000 : 4000);
+                    $importDomainModal.modal('hide');
+                    $importDomainForm[0].reset();
+                    loadDomainBlacklist();
+                }
+            })
+            .catch(function(error) {
+                showToast('Failed to import domains: ' + (error.message || 'Unknown error'), 'danger');
+            })
+            .finally(function() {
+                $importDomainBtn.prop('disabled', false).html(originalButtonText);
             });
         });
 
