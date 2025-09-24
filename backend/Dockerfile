@@ -43,5 +43,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:5000/health || exit 1
 
-# Run the API server
-CMD ["python", "app/app.py"]
+# Run the API server with Gunicorn (production-ready WSGI server)
+# Bind to 0.0.0.0:5000 to match healthcheck and docker-compose expectations
+# Use 2 workers and 2 threads for light concurrency; adjust as needed
+CMD ["gunicorn", "-w", "2", "--threads", "2", "-b", "0.0.0.0:5000", "app.app:app", "--timeout", "90"]
