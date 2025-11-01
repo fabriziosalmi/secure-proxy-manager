@@ -503,5 +503,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## 📞 Support
 
 - Create an issue in the GitHub repository
-- Contact the maintainers at: [your-email@example.com]
+- Contact the maintainers at: [fabrizio.salmi@gmail.com]
 - Community forum: [https://community.example.com]
