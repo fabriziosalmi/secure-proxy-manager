@@ -2,11 +2,32 @@
 
 A containerized secure proxy with advanced filtering capabilities, real-time monitoring, and a modern web UI.
   
-  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-  [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://www.docker.com/)
-  [![Python](https://img.shields.io/badge/Python-3.9+-yellow?logo=python)](https://www.python.org/)
-  [![Flask](https://img.shields.io/badge/Flask-2.0+-green?logo=flask)](https://flask.palletsprojects.com/)
-  [![Bootstrap](https://img.shields.io/badge/Bootstrap-5.0-purple?logo=bootstrap)](https://getbootstrap.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://www.docker.com/)
+[![Python](https://img.shields.io/badge/Python-3.9+-yellow?logo=python)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-3.0+-green?logo=flask)](https://flask.palletsprojects.com/)
+[![Bootstrap](https://img.shields.io/badge/Bootstrap-5.0-purple?logo=bootstrap)](https://getbootstrap.com/)
+
+## 📑 Table of Contents
+
+- [Screenshots](#screenshots)
+- [Features](#-features)
+- [Architecture](#️-architecture)
+- [Prerequisites](#-prerequisites)
+- [Quick Start](#-quick-start)
+- [Configuration Options](#️-configuration-options)
+- [Advanced Configuration](#️-advanced-configuration)
+- [Monitoring and Analytics](#-monitoring-and-analytics)
+- [Backup and Restore](#-backup-and-restore)
+- [Testing and Validation](#-testing-and-validation)
+- [Troubleshooting](#-troubleshooting)
+- [API Documentation](#-api-documentation)
+- [Security Best Practices](#-security-best-practices)
+- [Future Roadmap](#-future-roadmap)
+- [Contributing](#-contributing)
+- [License](#-license)
+- [Acknowledgements](#-acknowledgements)
+- [Support](#-support)
 
 ## Screenshots
 
@@ -72,6 +93,43 @@ The application consists of three main containerized components:
   </pre>
 </div>
 
+### 📁 Project Structure
+
+```
+secure-proxy-manager/
+├── backend/              # Backend API service
+│   ├── app/
+│   │   ├── app.py       # Main Flask application with REST API
+│   │   └── tests/       # Backend unit tests
+│   ├── Dockerfile       # Backend container configuration
+│   └── requirements.txt # Python dependencies
+├── ui/                  # Web UI service
+│   ├── static/          # CSS, JS, and static assets
+│   ├── templates/       # HTML templates
+│   ├── app.py          # Flask UI application
+│   ├── Dockerfile      # UI container configuration
+│   └── requirements.txt # Python dependencies
+├── proxy/               # Squid proxy service
+│   ├── squid.conf      # Squid configuration template
+│   ├── startup.sh      # Container startup script
+│   └── Dockerfile      # Proxy container configuration
+├── config/              # Shared configuration files
+│   ├── ip_blacklist.txt
+│   ├── domain_blacklist.txt
+│   └── ssl_cert.pem    # SSL certificates
+├── data/                # Database and persistent data
+│   └── secure_proxy.db # SQLite database
+├── tests/               # End-to-end tests
+│   └── e2e_test.py     # Comprehensive test suite
+├── examples/            # Usage examples and scripts
+│   └── import_blacklists.md
+├── docker-compose.yml   # Service orchestration
+├── CONTRIBUTING.md      # Contribution guidelines
+├── LICENSE             # MIT License
+├── CHANGELOG.md        # Version history
+└── README.md           # This file
+```
+
 ## 📋 Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) (v20.10.0+)
@@ -81,14 +139,16 @@ The application consists of three main containerized components:
   - 1GB RAM
   - 5GB disk space
 - Network Requirements:
-  - Open ports for HTTP (8011) and Proxy (3128)
+  - Port 8011: Web UI (HTTP)
+  - Port 3128: Proxy service
+  - Port 5001: Backend API (optional, for direct API access)
 
 ## 🚦 Quick Start
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/fabriziosalmi/secure-proxy.git
-   cd secure-proxy
+   git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
+   cd secure-proxy-manager
    ```
 
 2. **Start the application**:
@@ -101,6 +161,8 @@ The application consists of three main containerized components:
    http://localhost:8011
    ```
    Default credentials: username: `admin`, password: `admin`
+
+   **Note**: The backend API is also accessible directly at `http://localhost:5001` for advanced users or automation scripts.
 
 4. **Configure your client devices**:
    - Set proxy server to your host's IP address, port 3128
@@ -333,7 +395,13 @@ To test if blacklisting works:
 
 ## 📘 API Documentation
 
-Secure Proxy provides a comprehensive RESTful API for integration and automation with support for plain text and JSON blacklist imports.
+Secure Proxy Manager provides a comprehensive RESTful API for integration and automation with support for plain text and JSON blacklist imports.
+
+**API Base URLs:**
+- Via Web UI: `http://localhost:8011/api`
+- Direct Backend Access: `http://localhost:5001/api`
+
+**Note:** When accessing the API directly through the backend (port 5001), you bypass the Web UI layer. This can be useful for automation scripts and monitoring tools.
 
 ### Authentication
 
@@ -415,20 +483,73 @@ curl -X POST http://localhost:8011/api/ip-blacklist/import \
 
 ### 📋 Available Endpoints
 
+#### Authentication & Session Management
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/login` | POST | User login with credentials |
+| `/api/logout` | POST | User logout |
+| `/api/change-password` | POST | Change user password |
+
+#### Proxy Status & Settings
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/status` | GET | Get proxy service status |
-| `/api/settings` | GET/POST | Manage proxy settings |
-| `/api/ip-blacklist` | GET/POST/DELETE | Manage individual IP entries |
+| `/api/settings` | GET | Get all proxy settings |
+| `/api/settings/<setting_name>` | PUT | Update a specific setting |
+| `/health` | GET | Health check endpoint |
+
+#### Blacklist Management
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/ip-blacklist` | GET | Get all IP blacklist entries |
+| `/api/ip-blacklist` | POST | Add a single IP blacklist entry |
+| `/api/ip-blacklist/<id>` | DELETE | Delete an IP blacklist entry |
 | `/api/ip-blacklist/import` | POST | **Import IP blacklist from URL/content** |
-| `/api/domain-blacklist` | GET/POST/DELETE | Manage individual domain entries |
+| `/api/domain-blacklist` | GET | Get all domain blacklist entries |
+| `/api/domain-blacklist` | POST | Add a single domain blacklist entry |
+| `/api/domain-blacklist/<id>` | DELETE | Delete a domain blacklist entry |
 | `/api/domain-blacklist/import` | POST | **Import domain blacklist from URL/content** |
 | `/api/blacklists/import` | POST | Generic import (requires type parameter) |
-| `/api/logs` | GET | Get proxy access logs with filtering |
-| `/api/logs/import` | POST | Import logs from Squid |
-| `/api/maintenance/clear-cache` | POST | Clear the proxy cache |
-| `/api/maintenance/reload-config` | POST | Reload proxy configuration |
+
+#### Logs & Analytics
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/logs/stats` | GET | Get proxy access logs with filtering |
+| `/api/logs/clear` | POST | Clear all proxy logs |
+| `/api/logs/clear-old` | POST | Clear old proxy logs |
+| `/api/traffic/statistics` | GET | Get traffic statistics |
+| `/api/clients/statistics` | GET | Get client statistics |
+| `/api/domains/statistics` | GET | Get domain statistics |
+
+#### Cache Management
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/cache/statistics` | GET | Get cache performance metrics |
+| `/api/maintenance/optimize-cache` | POST | Optimize the proxy cache |
+
+#### Security
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/api/security/score` | GET | Get security assessment score |
+| `/api/security/scan` | POST | Perform security scan |
+| `/api/security/rate-limits` | GET | Get rate limit information |
+| `/api/security/rate-limits/<ip>` | DELETE | Remove rate limit for specific IP |
+| `/api/maintenance/check-cert-security` | GET | Check SSL certificate security |
+
+#### Database & Maintenance
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/database/size` | GET | Get database size |
+| `/api/database/stats` | GET | Get database statistics |
+| `/api/database/optimize` | POST | Optimize database |
+| `/api/database/export` | GET | Export database |
+| `/api/database/reset` | POST | Reset database |
+| `/api/maintenance/reload-config` | POST | Reload proxy configuration |
+
+#### API Documentation
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/docs` | GET | Interactive API documentation |
 
 ### 📊 Example API Responses
 
@@ -480,17 +601,29 @@ Full interactive API documentation is available at `/api/docs` when the service 
 
 ## 🤝 Contributing
 
-Contributions are welcome and appreciated!
+Contributions are welcome and appreciated! Please read our [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on:
+
+- Setting up your development environment
+- Coding standards and best practices
+- Testing requirements
+- Pull request process
+- Branch naming conventions
+
+Quick contribution steps:
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Commit your changes: `git commit -m 'Add some feature'`
-4. Push to the branch: `git push origin feature-name`
-5. Open a Pull Request
+2. Create a feature branch: `git checkout -b feature/your-feature-name`
+3. Make your changes following our coding standards
+4. Run tests to ensure everything works
+5. Commit your changes: `git commit -m 'feat: Add some feature'`
+6. Push to your fork: `git push origin feature/your-feature-name`
+7. Open a Pull Request with a clear description
+
+For more details, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 📜 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgements
 
