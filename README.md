@@ -18,7 +18,7 @@ A containerized secure proxy with advanced filtering capabilities, real-time mon
 - [Configuration Options](#️-configuration-options)
 - [Advanced Configuration](#️-advanced-configuration)
 - [Monitoring and Analytics](#-monitoring-and-analytics)
-- [Backup and Restore](#-backup-and-restore)
+- [Database Export and Backup](#-database-export-and-backup)
 - [Testing and Validation](#-testing-and-validation)
 - [Troubleshooting](#-troubleshooting)
 - [API Documentation](#-api-documentation)
@@ -166,20 +166,33 @@ secure-proxy-manager/
 
 4. **Configure your client devices**:
    - Set proxy server to your host's IP address, port 3128
-   - For transparent proxying, see the Network Configuration section
+   - For transparent proxying, see the [Transparent Proxy Setup](#transparent-proxy-setup) section
 
 ## ⚙️ Configuration Options
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PROXY_HOST` | Proxy service hostname | `proxy` |
-| `PROXY_PORT` | Proxy service port | `3128` |
-| `BASIC_AUTH_USERNAME` | Basic auth username | `admin` |
-| `BASIC_AUTH_PASSWORD` | Basic auth password | `admin` |
-| `SECRET_KEY` | Flask secret key | Auto-generated |
-| `LOG_LEVEL` | Logging level | `INFO` |
+#### Backend Service Variables
+| Variable | Description | Default | Used By |
+|----------|-------------|---------|---------|
+| `FLASK_ENV` | Flask environment mode | `production` | Backend, UI |
+| `PROXY_HOST` | Proxy service hostname | `proxy` | Backend |
+| `PROXY_PORT` | Proxy service port | `3128` | Backend |
+| `BASIC_AUTH_USERNAME` | Basic auth username | `admin` | Backend, UI |
+| `BASIC_AUTH_PASSWORD` | Basic auth password | `admin` | Backend, UI |
+| `SECRET_KEY` | Flask secret key for sessions | Auto-generated | Backend, UI |
+| `PROXY_CONTAINER_NAME` | Docker container name for proxy | `secure-proxy-proxy-1` | Backend |
+
+#### Web UI Service Variables
+| Variable | Description | Default | Notes |
+|----------|-------------|---------|-------|
+| `BACKEND_URL` | Backend API URL | `http://backend:5000` | Internal Docker network |
+| `REQUEST_TIMEOUT` | API request timeout (seconds) | `30` | Increase for slow networks |
+| `MAX_RETRIES` | Maximum API retry attempts | `5` | For backend connection |
+| `BACKOFF_FACTOR` | Retry backoff multiplier | `1.0` | Exponential backoff |
+| `RETRY_WAIT_AFTER_STARTUP` | Wait time after startup (seconds) | `10` | Initial backend wait |
+
+**Note:** To customize these values, modify them in `docker-compose.yml` before starting the services.
 
 ### Security Features
 
@@ -207,14 +220,20 @@ secure-proxy-manager/
 
 For HTTPS filtering with your own certificate:
 
-1. Place your certificate and key in the `/config` directory:
+1. Place your certificate and key in the `config/` directory:
    - `ssl_cert.pem`: Your SSL certificate
    - `ssl_key.pem`: Your private key
 
 2. Enable HTTPS filtering in the web interface:
    - Settings > Security > Enable HTTPS Filtering
 
-3. Install the certificate on client devices to avoid warnings
+3. **Important:** Install the certificate on all client devices to avoid browser security warnings
+   - **Windows**: Import to Trusted Root Certification Authorities
+   - **macOS**: Add to Keychain and trust for SSL
+   - **Linux**: Copy to `/usr/local/share/ca-certificates/` and run `update-ca-certificates`
+   - **Mobile**: Email the certificate and install via device settings
+
+**Note:** HTTPS filtering performs man-in-the-middle inspection. Only use this feature in environments where you have authorization to inspect traffic (e.g., corporate networks, your own devices).
 
 ### Transparent Proxy Setup
 
@@ -272,12 +291,7 @@ curl -X POST http://localhost:8011/api/ip-blacklist/import \
 - **JSON Objects**: `[{"domain": "example.com", "description": "Blocked site"}]`
 - **Comments**: Lines starting with `#` are ignored
 
-#### Schedule Automatic Updates
-
-```bash
-curl -X POST http://localhost:8011/api/maintenance/update-blacklists \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)"
-```
+**Note:** For scheduled automatic blacklist updates, consider setting up a cron job or scheduled task that calls the import endpoints with your preferred blacklist sources.
 
 ## 📊 Monitoring and Analytics
 
@@ -305,36 +319,79 @@ Health status endpoints are available for monitoring:
 curl -I http://localhost:8011/health
 ```
 
-## 🔄 Backup and Restore
+## 🔄 Database Export and Backup
 
-### Configuration Backup
+### Database Export
 
-Create a full system backup:
+Export database contents including blacklists, settings, and logs (limited to 10,000 most recent entries):
 
-1. Via Web UI:
-   - Maintenance > Backup Configuration > Download Backup
-
-2. Via API:
+1. Via API:
    ```bash
-   curl -X GET http://localhost:8011/api/maintenance/backup-config \
+   curl -X GET http://localhost:8011/api/database/export \
      -H "Authorization: Basic $(echo -n admin:admin | base64)" \
-     > secure-proxy-backup.json
+     > secure-proxy-export.json
    ```
 
-### Configuration Restore
-
-Restore from a previous backup:
-
-1. Via Web UI:
-   - Maintenance > Restore Configuration > Upload Backup
-
-2. Via API:
+2. Via Direct Backend Access:
    ```bash
-   curl -X POST http://localhost:8011/api/maintenance/restore-config \
-     -H "Content-Type: application/json" \
+   curl -X GET http://localhost:5001/api/database/export \
      -H "Authorization: Basic $(echo -n admin:admin | base64)" \
-     -d @secure-proxy-backup.json
+     > secure-proxy-export.json
    ```
+
+### Manual Database Backup
+
+For complete database backup including all logs:
+
+```bash
+# Stop the services
+docker-compose down
+
+# Backup the database file
+cp data/secure_proxy.db data/secure_proxy.db.backup
+
+# Backup configuration files
+tar -czf config-backup.tar.gz config/
+
+# Restart services
+docker-compose up -d
+```
+
+### Database Restore
+
+To restore from a manual backup:
+
+```bash
+# Stop the services
+docker-compose down
+
+# Restore the database file
+cp data/secure_proxy.db.backup data/secure_proxy.db
+
+# Restore configuration files
+tar -xzf config-backup.tar.gz
+
+# Restart services
+docker-compose up -d
+```
+
+### Database Optimization
+
+Optimize database performance:
+
+```bash
+curl -X POST http://localhost:8011/api/database/optimize \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)"
+```
+
+### Database Statistics
+
+Get database size and statistics:
+
+```bash
+curl -X GET http://localhost:8011/api/database/stats \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)"
+```
 
 ## 🧪 Testing and Validation
 
@@ -635,4 +692,19 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- Create an issue in the GitHub repository
+If you need help or have questions:
+
+- **Bug Reports**: [Create an issue](https://github.com/fabriziosalmi/secure-proxy-manager/issues/new) with detailed information
+- **Feature Requests**: [Open an issue](https://github.com/fabriziosalmi/secure-proxy-manager/issues/new) describing your idea
+- **Questions**: Check [existing issues](https://github.com/fabriziosalmi/secure-proxy-manager/issues) or create a new one
+- **Documentation**: Review this README and [CONTRIBUTING.md](CONTRIBUTING.md)
+
+When reporting issues, please include:
+- Your environment (OS, Docker version, etc.)
+- Steps to reproduce the problem
+- Expected vs actual behavior
+- Relevant logs from `docker-compose logs`
+
+---
+
+**Made with ❤️ by the Secure Proxy Manager community**
