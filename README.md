@@ -8,6 +8,14 @@ A containerized secure proxy with advanced filtering capabilities, real-time mon
 [![Flask](https://img.shields.io/badge/Flask-3.0+-green?logo=flask)](https://flask.palletsprojects.com/)
 [![Bootstrap](https://img.shields.io/badge/Bootstrap-5.0-purple?logo=bootstrap)](https://getbootstrap.com/)
 
+## 🚀 Quick Links
+
+- [**Getting Started**](#-quick-start) - Get up and running in 5 minutes
+- [**API Documentation**](#-api-documentation) - Complete API reference
+- [**FAQ**](#-frequently-asked-questions-faq) - Common questions answered
+- [**Contributing**](CONTRIBUTING.md) - How to contribute to the project
+- [**Changelog**](CHANGELOG.md) - Version history and updates
+
 ## 📑 Table of Contents
 
 - [Screenshots](#screenshots)
@@ -20,6 +28,7 @@ A containerized secure proxy with advanced filtering capabilities, real-time mon
 - [Monitoring and Analytics](#-monitoring-and-analytics)
 - [Database Export and Backup](#-database-export-and-backup)
 - [Testing and Validation](#-testing-and-validation)
+- [FAQ](#-frequently-asked-questions-faq)
 - [Troubleshooting](#-troubleshooting)
 - [API Documentation](#-api-documentation)
 - [Security Best Practices](#-security-best-practices)
@@ -193,6 +202,25 @@ secure-proxy-manager/
 | `RETRY_WAIT_AFTER_STARTUP` | Wait time after startup (seconds) | `10` | Initial backend wait |
 
 **Note:** To customize these values, modify them in `docker-compose.yml` before starting the services.
+
+### 🔐 Security Configuration
+
+**Important Security Considerations:**
+
+1. **Change Default Credentials**: The default username and password (`admin`/`admin`) should be changed immediately in production:
+   ```yaml
+   # In docker-compose.yml, update both backend and web services:
+   - BASIC_AUTH_USERNAME=your_secure_username
+   - BASIC_AUTH_PASSWORD=your_secure_password
+   ```
+
+2. **HTTPS for Web UI**: For production deployments, use a reverse proxy (e.g., nginx, Traefik) with SSL/TLS to secure the web interface.
+
+3. **Network Isolation**: Consider running the proxy in an isolated network segment with strict firewall rules.
+
+4. **Regular Updates**: Keep the system and Docker images updated with security patches.
+
+5. **Audit Logs**: Regularly review access logs and security events for suspicious activity.
 
 ### Security Features
 
@@ -413,6 +441,102 @@ To test if blacklisting works:
 1. Add an IP or domain to the blacklist
 2. Attempt to access a resource from that IP or domain
 3. Verify the request is blocked (check logs)
+
+### Running the Test Suite
+
+Execute the comprehensive end-to-end test suite:
+
+```bash
+# Make sure services are running
+docker-compose up -d
+
+# Run tests
+cd tests
+python3 e2e_test.py
+
+# Run with verbose output
+python3 e2e_test.py -v
+```
+
+## ❓ Frequently Asked Questions (FAQ)
+
+### General Questions
+
+**Q: What is Secure Proxy Manager?**  
+A: It's a containerized web proxy solution built on Squid with a modern management interface for filtering, monitoring, and controlling web traffic.
+
+**Q: Is this suitable for production use?**  
+A: Yes, but ensure you follow security best practices, change default credentials, and properly configure SSL certificates for HTTPS filtering.
+
+**Q: Can I use this in a corporate environment?**  
+A: Yes, it's designed for enterprise use with features like blacklisting, authentication, and detailed logging. Ensure compliance with your organization's policies.
+
+### Installation & Setup
+
+**Q: Which ports need to be open?**  
+A: Port 8011 (Web UI), 3128 (Proxy), and optionally 5001 (Backend API for direct access).
+
+**Q: Can I change the default credentials?**  
+A: Yes! Modify `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` in `docker-compose.yml` before starting the services.
+
+**Q: How do I update to the latest version?**  
+A:
+```bash
+git pull
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+### Features & Usage
+
+**Q: How do I import a large blacklist?**  
+A: Use the import API endpoints with a URL pointing to your blacklist file:
+```bash
+curl -X POST http://localhost:8011/api/domain-blacklist/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -d '{"url": "https://example.com/blacklist.txt"}'
+```
+
+**Q: Does it support IPv6?**  
+A: Yes, IPv6 addresses can be added to the IP blacklist, including CIDR notation.
+
+**Q: Can I filter HTTPS traffic?**  
+A: Yes, by enabling HTTPS filtering and installing the SSL certificate on client devices. Note: This performs man-in-the-middle inspection.
+
+**Q: How do I view blocked requests?**  
+A: Check the logs in the Web UI dashboard or query via API: `http://localhost:8011/api/logs/stats`
+
+### Performance & Scaling
+
+**Q: What are the resource requirements?**  
+A: Minimum 1 CPU core and 1GB RAM. For production with heavy traffic, 2+ CPU cores and 4GB+ RAM recommended.
+
+**Q: Can I run multiple instances?**  
+A: Yes, you can deploy multiple instances behind a load balancer for high availability.
+
+**Q: How much disk space does caching use?**  
+A: Default is 1GB. Adjust the cache size in performance tuning settings based on your needs (5-10GB recommended for production).
+
+### Troubleshooting
+
+**Q: Services won't start - what should I check?**  
+A:
+1. Ensure Docker and Docker Compose are installed and running
+2. Check for port conflicts: `docker-compose logs`
+3. Verify volumes have correct permissions
+4. Wait for backend health check (may take 10-15 seconds)
+
+**Q: Why am I getting SSL certificate warnings?**  
+A: The SSL certificate needs to be installed on each client device. See [Custom SSL Certificate](#custom-ssl-certificate) section.
+
+**Q: Import is failing - what's wrong?**  
+A: Common causes:
+- Invalid format (ensure one entry per line or valid JSON)
+- Network issues (URL not accessible)
+- Authentication failure (check credentials)
+- Check logs: `docker-compose logs backend`
 
 ## 🔍 Troubleshooting
 
