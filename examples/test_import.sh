@@ -1,4 +1,21 @@
 #!/bin/bash
+#
+# Blacklist Import Test Script
+# 
+# This script tests the blacklist import functionality of Secure Proxy Manager.
+# It demonstrates importing both domain and IP blacklists using different methods.
+#
+# Prerequisites:
+# - Secure Proxy Manager running (docker-compose up -d)
+# - curl installed
+# - Default credentials (admin/admin) or update AUTH_HEADER below
+#
+# Usage:
+#   ./test_import.sh
+#
+# Author: Secure Proxy Manager Contributors
+# License: MIT
+#
 
 # Test script for blacklist import functionality
 # This script demonstrates that the API already supports plain text files

@@ -2,11 +2,41 @@
 
 A containerized secure proxy with advanced filtering capabilities, real-time monitoring, and a modern web UI.
   
-  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-  [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://www.docker.com/)
-  [![Python](https://img.shields.io/badge/Python-3.9+-yellow?logo=python)](https://www.python.org/)
-  [![Flask](https://img.shields.io/badge/Flask-2.0+-green?logo=flask)](https://flask.palletsprojects.com/)
-  [![Bootstrap](https://img.shields.io/badge/Bootstrap-5.0-purple?logo=bootstrap)](https://getbootstrap.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://www.docker.com/)
+[![Python](https://img.shields.io/badge/Python-3.9+-yellow?logo=python)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-3.0+-green?logo=flask)](https://flask.palletsprojects.com/)
+[![Bootstrap](https://img.shields.io/badge/Bootstrap-5.0-purple?logo=bootstrap)](https://getbootstrap.com/)
+
+## 🚀 Quick Links
+
+- [**Getting Started**](#-quick-start) - Get up and running in 5 minutes
+- [**API Documentation**](#-api-documentation) - Complete API reference
+- [**FAQ**](#-frequently-asked-questions-faq) - Common questions answered
+- [**Contributing**](CONTRIBUTING.md) - How to contribute to the project
+- [**Changelog**](CHANGELOG.md) - Version history and updates
+
+## 📑 Table of Contents
+
+- [Screenshots](#screenshots)
+- [Features](#-features)
+- [Architecture](#️-architecture)
+- [Prerequisites](#-prerequisites)
+- [Quick Start](#-quick-start)
+- [Configuration Options](#️-configuration-options)
+- [Advanced Configuration](#️-advanced-configuration)
+- [Monitoring and Analytics](#-monitoring-and-analytics)
+- [Database Export and Backup](#-database-export-and-backup)
+- [Testing and Validation](#-testing-and-validation)
+- [FAQ](#-frequently-asked-questions-faq)
+- [Troubleshooting](#-troubleshooting)
+- [API Documentation](#-api-documentation)
+- [Security Best Practices](#-security-best-practices)
+- [Future Roadmap](#-future-roadmap)
+- [Contributing](#-contributing)
+- [License](#-license)
+- [Acknowledgements](#-acknowledgements)
+- [Support](#-support)
 
 ## Screenshots
 
@@ -72,6 +102,43 @@ The application consists of three main containerized components:
   </pre>
 </div>
 
+### 📁 Project Structure
+
+```
+secure-proxy-manager/
+├── backend/              # Backend API service
+│   ├── app/
+│   │   ├── app.py       # Main Flask application with REST API
+│   │   └── tests/       # Backend unit tests
+│   ├── Dockerfile       # Backend container configuration
+│   └── requirements.txt # Python dependencies
+├── ui/                  # Web UI service
+│   ├── static/          # CSS, JS, and static assets
+│   ├── templates/       # HTML templates
+│   ├── app.py          # Flask UI application
+│   ├── Dockerfile      # UI container configuration
+│   └── requirements.txt # Python dependencies
+├── proxy/               # Squid proxy service
+│   ├── squid.conf      # Squid configuration template
+│   ├── startup.sh      # Container startup script
+│   └── Dockerfile      # Proxy container configuration
+├── config/              # Shared configuration files
+│   ├── ip_blacklist.txt
+│   ├── domain_blacklist.txt
+│   └── ssl_cert.pem    # SSL certificates
+├── data/                # Database and persistent data
+│   └── secure_proxy.db # SQLite database
+├── tests/               # End-to-end tests
+│   └── e2e_test.py     # Comprehensive test suite
+├── examples/            # Usage examples and scripts
+│   └── import_blacklists.md
+├── docker-compose.yml   # Service orchestration
+├── CONTRIBUTING.md      # Contribution guidelines
+├── LICENSE             # MIT License
+├── CHANGELOG.md        # Version history
+└── README.md           # This file
+```
+
 ## 📋 Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) (v20.10.0+)
@@ -81,14 +148,16 @@ The application consists of three main containerized components:
   - 1GB RAM
   - 5GB disk space
 - Network Requirements:
-  - Open ports for HTTP (8011) and Proxy (3128)
+  - Port 8011: Web UI (HTTP)
+  - Port 3128: Proxy service
+  - Port 5001: Backend API (optional, for direct API access)
 
 ## 🚦 Quick Start
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/fabriziosalmi/secure-proxy.git
-   cd secure-proxy
+   git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
+   cd secure-proxy-manager
    ```
 
 2. **Start the application**:
@@ -102,22 +171,56 @@ The application consists of three main containerized components:
    ```
    Default credentials: username: `admin`, password: `admin`
 
+   **Note**: The backend API is also accessible directly at `http://localhost:5001` for advanced users or automation scripts.
+
 4. **Configure your client devices**:
    - Set proxy server to your host's IP address, port 3128
-   - For transparent proxying, see the Network Configuration section
+   - For transparent proxying, see the [Transparent Proxy Setup](#transparent-proxy-setup) section
 
 ## ⚙️ Configuration Options
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PROXY_HOST` | Proxy service hostname | `proxy` |
-| `PROXY_PORT` | Proxy service port | `3128` |
-| `BASIC_AUTH_USERNAME` | Basic auth username | `admin` |
-| `BASIC_AUTH_PASSWORD` | Basic auth password | `admin` |
-| `SECRET_KEY` | Flask secret key | Auto-generated |
-| `LOG_LEVEL` | Logging level | `INFO` |
+#### Backend Service Variables
+| Variable | Description | Default | Used By |
+|----------|-------------|---------|---------|
+| `FLASK_ENV` | Flask environment mode | `production` | Backend, UI |
+| `PROXY_HOST` | Proxy service hostname | `proxy` | Backend |
+| `PROXY_PORT` | Proxy service port | `3128` | Backend |
+| `BASIC_AUTH_USERNAME` | Basic auth username | `admin` | Backend, UI |
+| `BASIC_AUTH_PASSWORD` | Basic auth password | `admin` | Backend, UI |
+| `SECRET_KEY` | Flask secret key for sessions | Auto-generated | Backend, UI |
+| `PROXY_CONTAINER_NAME` | Docker container name for proxy | `secure-proxy-proxy-1` | Backend |
+
+#### Web UI Service Variables
+| Variable | Description | Default | Notes |
+|----------|-------------|---------|-------|
+| `BACKEND_URL` | Backend API URL | `http://backend:5000` | Internal Docker network |
+| `REQUEST_TIMEOUT` | API request timeout (seconds) | `30` | Increase for slow networks |
+| `MAX_RETRIES` | Maximum API retry attempts | `5` | For backend connection |
+| `BACKOFF_FACTOR` | Retry backoff multiplier | `1.0` | Exponential backoff |
+| `RETRY_WAIT_AFTER_STARTUP` | Wait time after startup (seconds) | `10` | Initial backend wait |
+
+**Note:** To customize these values, modify them in `docker-compose.yml` before starting the services.
+
+### 🔐 Security Configuration
+
+**Important Security Considerations:**
+
+1. **Change Default Credentials**: The default username and password (`admin`/`admin`) should be changed immediately in production:
+   ```yaml
+   # In docker-compose.yml, update both backend and web services:
+   - BASIC_AUTH_USERNAME=your_secure_username
+   - BASIC_AUTH_PASSWORD=your_secure_password
+   ```
+
+2. **HTTPS for Web UI**: For production deployments, use a reverse proxy (e.g., nginx, Traefik) with SSL/TLS to secure the web interface.
+
+3. **Network Isolation**: Consider running the proxy in an isolated network segment with strict firewall rules.
+
+4. **Regular Updates**: Keep the system and Docker images updated with security patches.
+
+5. **Audit Logs**: Regularly review access logs and security events for suspicious activity.
 
 ### Security Features
 
@@ -145,14 +248,20 @@ The application consists of three main containerized components:
 
 For HTTPS filtering with your own certificate:
 
-1. Place your certificate and key in the `/config` directory:
+1. Place your certificate and key in the `config/` directory:
    - `ssl_cert.pem`: Your SSL certificate
    - `ssl_key.pem`: Your private key
 
 2. Enable HTTPS filtering in the web interface:
    - Settings > Security > Enable HTTPS Filtering
 
-3. Install the certificate on client devices to avoid warnings
+3. **Important:** Install the certificate on all client devices to avoid browser security warnings
+   - **Windows**: Import to Trusted Root Certification Authorities
+   - **macOS**: Add to Keychain and trust for SSL
+   - **Linux**: Copy to `/usr/local/share/ca-certificates/` and run `update-ca-certificates`
+   - **Mobile**: Email the certificate and install via device settings
+
+**Note:** HTTPS filtering performs man-in-the-middle inspection. Only use this feature in environments where you have authorization to inspect traffic (e.g., corporate networks, your own devices).
 
 ### Transparent Proxy Setup
 
@@ -210,12 +319,7 @@ curl -X POST http://localhost:8011/api/ip-blacklist/import \
 - **JSON Objects**: `[{"domain": "example.com", "description": "Blocked site"}]`
 - **Comments**: Lines starting with `#` are ignored
 
-#### Schedule Automatic Updates
-
-```bash
-curl -X POST http://localhost:8011/api/maintenance/update-blacklists \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)"
-```
+**Note:** For scheduled automatic blacklist updates, consider setting up a cron job or scheduled task that calls the import endpoints with your preferred blacklist sources.
 
 ## 📊 Monitoring and Analytics
 
@@ -243,36 +347,79 @@ Health status endpoints are available for monitoring:
 curl -I http://localhost:8011/health
 ```
 
-## 🔄 Backup and Restore
+## 🔄 Database Export and Backup
 
-### Configuration Backup
+### Database Export
 
-Create a full system backup:
+Export database contents including blacklists, settings, and logs (limited to 10,000 most recent entries):
 
-1. Via Web UI:
-   - Maintenance > Backup Configuration > Download Backup
-
-2. Via API:
+1. Via API:
    ```bash
-   curl -X GET http://localhost:8011/api/maintenance/backup-config \
+   curl -X GET http://localhost:8011/api/database/export \
      -H "Authorization: Basic $(echo -n admin:admin | base64)" \
-     > secure-proxy-backup.json
+     > secure-proxy-export.json
    ```
 
-### Configuration Restore
-
-Restore from a previous backup:
-
-1. Via Web UI:
-   - Maintenance > Restore Configuration > Upload Backup
-
-2. Via API:
+2. Via Direct Backend Access:
    ```bash
-   curl -X POST http://localhost:8011/api/maintenance/restore-config \
-     -H "Content-Type: application/json" \
+   curl -X GET http://localhost:5001/api/database/export \
      -H "Authorization: Basic $(echo -n admin:admin | base64)" \
-     -d @secure-proxy-backup.json
+     > secure-proxy-export.json
    ```
+
+### Manual Database Backup
+
+For complete database backup including all logs:
+
+```bash
+# Stop the services
+docker-compose down
+
+# Backup the database file
+cp data/secure_proxy.db data/secure_proxy.db.backup
+
+# Backup configuration files
+tar -czf config-backup.tar.gz config/
+
+# Restart services
+docker-compose up -d
+```
+
+### Database Restore
+
+To restore from a manual backup:
+
+```bash
+# Stop the services
+docker-compose down
+
+# Restore the database file
+cp data/secure_proxy.db.backup data/secure_proxy.db
+
+# Restore configuration files
+tar -xzf config-backup.tar.gz
+
+# Restart services
+docker-compose up -d
+```
+
+### Database Optimization
+
+Optimize database performance:
+
+```bash
+curl -X POST http://localhost:8011/api/database/optimize \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)"
+```
+
+### Database Statistics
+
+Get database size and statistics:
+
+```bash
+curl -X GET http://localhost:8011/api/database/stats \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)"
+```
 
 ## 🧪 Testing and Validation
 
@@ -294,6 +441,102 @@ To test if blacklisting works:
 1. Add an IP or domain to the blacklist
 2. Attempt to access a resource from that IP or domain
 3. Verify the request is blocked (check logs)
+
+### Running the Test Suite
+
+Execute the comprehensive end-to-end test suite:
+
+```bash
+# Make sure services are running
+docker-compose up -d
+
+# Run tests
+cd tests
+python3 e2e_test.py
+
+# Run with verbose output
+python3 e2e_test.py -v
+```
+
+## ❓ Frequently Asked Questions (FAQ)
+
+### General Questions
+
+**Q: What is Secure Proxy Manager?**  
+A: It's a containerized web proxy solution built on Squid with a modern management interface for filtering, monitoring, and controlling web traffic.
+
+**Q: Is this suitable for production use?**  
+A: Yes, but ensure you follow security best practices, change default credentials, and properly configure SSL certificates for HTTPS filtering.
+
+**Q: Can I use this in a corporate environment?**  
+A: Yes, it's designed for enterprise use with features like blacklisting, authentication, and detailed logging. Ensure compliance with your organization's policies.
+
+### Installation & Setup
+
+**Q: Which ports need to be open?**  
+A: Port 8011 (Web UI), 3128 (Proxy), and optionally 5001 (Backend API for direct access).
+
+**Q: Can I change the default credentials?**  
+A: Yes! Modify `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` in `docker-compose.yml` before starting the services.
+
+**Q: How do I update to the latest version?**  
+A:
+```bash
+git pull
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+### Features & Usage
+
+**Q: How do I import a large blacklist?**  
+A: Use the import API endpoints with a URL pointing to your blacklist file:
+```bash
+curl -X POST http://localhost:8011/api/domain-blacklist/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -d '{"url": "https://example.com/blacklist.txt"}'
+```
+
+**Q: Does it support IPv6?**  
+A: Yes, IPv6 addresses can be added to the IP blacklist, including CIDR notation.
+
+**Q: Can I filter HTTPS traffic?**  
+A: Yes, by enabling HTTPS filtering and installing the SSL certificate on client devices. Note: This performs man-in-the-middle inspection.
+
+**Q: How do I view blocked requests?**  
+A: Check the logs in the Web UI dashboard or query via API: `http://localhost:8011/api/logs/stats`
+
+### Performance & Scaling
+
+**Q: What are the resource requirements?**  
+A: Minimum 1 CPU core and 1GB RAM. For production with heavy traffic, 2+ CPU cores and 4GB+ RAM recommended.
+
+**Q: Can I run multiple instances?**  
+A: Yes, you can deploy multiple instances behind a load balancer for high availability.
+
+**Q: How much disk space does caching use?**  
+A: Default is 1GB. Adjust the cache size in performance tuning settings based on your needs (5-10GB recommended for production).
+
+### Troubleshooting
+
+**Q: Services won't start - what should I check?**  
+A:
+1. Ensure Docker and Docker Compose are installed and running
+2. Check for port conflicts: `docker-compose logs`
+3. Verify volumes have correct permissions
+4. Wait for backend health check (may take 10-15 seconds)
+
+**Q: Why am I getting SSL certificate warnings?**  
+A: The SSL certificate needs to be installed on each client device. See [Custom SSL Certificate](#custom-ssl-certificate) section.
+
+**Q: Import is failing - what's wrong?**  
+A: Common causes:
+- Invalid format (ensure one entry per line or valid JSON)
+- Network issues (URL not accessible)
+- Authentication failure (check credentials)
+- Check logs: `docker-compose logs backend`
 
 ## 🔍 Troubleshooting
 
@@ -333,7 +576,13 @@ To test if blacklisting works:
 
 ## 📘 API Documentation
 
-Secure Proxy provides a comprehensive RESTful API for integration and automation with support for plain text and JSON blacklist imports.
+Secure Proxy Manager provides a comprehensive RESTful API for integration and automation with support for plain text and JSON blacklist imports.
+
+**API Base URLs:**
+- Via Web UI: `http://localhost:8011/api`
+- Direct Backend Access: `http://localhost:5001/api`
+
+**Note:** When accessing the API directly through the backend (port 5001), you bypass the Web UI layer. This can be useful for automation scripts and monitoring tools.
 
 ### Authentication
 
@@ -415,20 +664,73 @@ curl -X POST http://localhost:8011/api/ip-blacklist/import \
 
 ### 📋 Available Endpoints
 
+#### Authentication & Session Management
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/login` | POST | User login with credentials |
+| `/api/logout` | POST | User logout |
+| `/api/change-password` | POST | Change user password |
+
+#### Proxy Status & Settings
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/status` | GET | Get proxy service status |
-| `/api/settings` | GET/POST | Manage proxy settings |
-| `/api/ip-blacklist` | GET/POST/DELETE | Manage individual IP entries |
+| `/api/settings` | GET | Get all proxy settings |
+| `/api/settings/<setting_name>` | PUT | Update a specific setting |
+| `/health` | GET | Health check endpoint |
+
+#### Blacklist Management
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/ip-blacklist` | GET | Get all IP blacklist entries |
+| `/api/ip-blacklist` | POST | Add a single IP blacklist entry |
+| `/api/ip-blacklist/<id>` | DELETE | Delete an IP blacklist entry |
 | `/api/ip-blacklist/import` | POST | **Import IP blacklist from URL/content** |
-| `/api/domain-blacklist` | GET/POST/DELETE | Manage individual domain entries |
+| `/api/domain-blacklist` | GET | Get all domain blacklist entries |
+| `/api/domain-blacklist` | POST | Add a single domain blacklist entry |
+| `/api/domain-blacklist/<id>` | DELETE | Delete a domain blacklist entry |
 | `/api/domain-blacklist/import` | POST | **Import domain blacklist from URL/content** |
 | `/api/blacklists/import` | POST | Generic import (requires type parameter) |
-| `/api/logs` | GET | Get proxy access logs with filtering |
-| `/api/logs/import` | POST | Import logs from Squid |
-| `/api/maintenance/clear-cache` | POST | Clear the proxy cache |
-| `/api/maintenance/reload-config` | POST | Reload proxy configuration |
+
+#### Logs & Analytics
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/logs/stats` | GET | Get proxy access logs with filtering |
+| `/api/logs/clear` | POST | Clear all proxy logs |
+| `/api/logs/clear-old` | POST | Clear old proxy logs |
+| `/api/traffic/statistics` | GET | Get traffic statistics |
+| `/api/clients/statistics` | GET | Get client statistics |
+| `/api/domains/statistics` | GET | Get domain statistics |
+
+#### Cache Management
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/cache/statistics` | GET | Get cache performance metrics |
+| `/api/maintenance/optimize-cache` | POST | Optimize the proxy cache |
+
+#### Security
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/api/security/score` | GET | Get security assessment score |
+| `/api/security/scan` | POST | Perform security scan |
+| `/api/security/rate-limits` | GET | Get rate limit information |
+| `/api/security/rate-limits/<ip>` | DELETE | Remove rate limit for specific IP |
+| `/api/maintenance/check-cert-security` | GET | Check SSL certificate security |
+
+#### Database & Maintenance
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/database/size` | GET | Get database size |
+| `/api/database/stats` | GET | Get database statistics |
+| `/api/database/optimize` | POST | Optimize database |
+| `/api/database/export` | GET | Export database |
+| `/api/database/reset` | POST | Reset database |
+| `/api/maintenance/reload-config` | POST | Reload proxy configuration |
+
+#### API Documentation
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/docs` | GET | Interactive API documentation |
 
 ### 📊 Example API Responses
 
@@ -480,17 +782,29 @@ Full interactive API documentation is available at `/api/docs` when the service 
 
 ## 🤝 Contributing
 
-Contributions are welcome and appreciated!
+Contributions are welcome and appreciated! Please read our [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on:
+
+- Setting up your development environment
+- Coding standards and best practices
+- Testing requirements
+- Pull request process
+- Branch naming conventions
+
+Quick contribution steps:
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Commit your changes: `git commit -m 'Add some feature'`
-4. Push to the branch: `git push origin feature-name`
-5. Open a Pull Request
+2. Create a feature branch: `git checkout -b feature/your-feature-name`
+3. Make your changes following our coding standards
+4. Run tests to ensure everything works
+5. Commit your changes: `git commit -m 'feat: Add some feature'`
+6. Push to your fork: `git push origin feature/your-feature-name`
+7. Open a Pull Request with a clear description
+
+For more details, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 📜 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgements
 
@@ -502,4 +816,19 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 📞 Support
 
-- Create an issue in the GitHub repository
+If you need help or have questions:
+
+- **Bug Reports**: [Create an issue](https://github.com/fabriziosalmi/secure-proxy-manager/issues/new) with detailed information
+- **Feature Requests**: [Open an issue](https://github.com/fabriziosalmi/secure-proxy-manager/issues/new) describing your idea
+- **Questions**: Check [existing issues](https://github.com/fabriziosalmi/secure-proxy-manager/issues) or create a new one
+- **Documentation**: Review this README and [CONTRIBUTING.md](CONTRIBUTING.md)
+
+When reporting issues, please include:
+- Your environment (OS, Docker version, etc.)
+- Steps to reproduce the problem
+- Expected vs actual behavior
+- Relevant logs from `docker-compose logs`
+
+---
+
+**Made with ❤️ by the Secure Proxy Manager community**
