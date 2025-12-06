@@ -68,9 +68,9 @@ A containerized secure proxy with advanced filtering capabilities, real-time mon
   - Traffic pattern visualization
   - Blocked request reporting
   - Exportable reports
-- **Enterprise Management**:
+- **Proxy Management**:
   - Configuration backup and restore
-  - Role-based access control
+  - Basic authentication for UI access
   - API for automation and integration
   - Health monitoring endpoints
 

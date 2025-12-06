@@ -350,7 +350,7 @@ def get_status():
         "proxy_host": PROXY_HOST,
         "proxy_port": PROXY_PORT,
         "timestamp": datetime.now().isoformat(),
-        "version": "0.0.8"
+        "version": "0.0.9"
     }
     
     # Add today's request count
@@ -376,56 +376,13 @@ def get_status():
         logger.error(f"Error getting today's request count: {str(e)}")
         stats["requests_count"] = 0
     
-    # Add memory usage, CPU usage, and uptime
-    try:
-        container_name = os.environ.get('PROXY_CONTAINER_NAME', 'secure-proxy-proxy-1')
-        # Validate container name to prevent command injection
-        if not re.match(r'^[a-zA-Z0-9_-]+$', container_name):
-            raise ValueError(f"Invalid container name format: {container_name}")
-        
-        # Get container stats using docker stats
-        stats_cmd = subprocess.run(
-            ['docker', 'stats', container_name, '--no-stream', '--format', '{{.MemPerc}}|{{.CPUPerc}}'],
-            capture_output=True, text=True, check=False
-        )
-        
-        if stats_cmd.returncode == 0 and stats_cmd.stdout:
-            parts = stats_cmd.stdout.strip().split('|')
-            if len(parts) >= 2:
-                stats["memory_usage"] = parts[0].strip()
-                stats["cpu_usage"] = parts[1].strip()
-            
-        # Get container uptime
-        uptime_cmd = subprocess.run(
-            ['docker', 'inspect', '--format', '{{.State.StartedAt}}', container_name],
-            capture_output=True, text=True, check=False
-        )
-        
-        if uptime_cmd.returncode == 0 and uptime_cmd.stdout:
-            started_at = uptime_cmd.stdout.strip()
-            start_time = datetime.fromisoformat(started_at.replace('Z', '+00:00'))
-            now = datetime.now(start_time.tzinfo)
-            uptime_seconds = (now - start_time).total_seconds()
-            
-            # Format uptime as days, hours, minutes
-            days, remainder = divmod(uptime_seconds, 86400)
-            hours, remainder = divmod(remainder, 3600)
-            minutes, _ = divmod(remainder, 60)
-            
-            if days > 0:
-                uptime_str = f"{int(days)}d {int(hours)}h {int(minutes)}m"
-            elif hours > 0:
-                uptime_str = f"{int(hours)}h {int(minutes)}m"
-            else:
-                uptime_str = f"{int(minutes)}m"
-                
-            stats["uptime"] = uptime_str
-    except Exception as e:
-        logger.error(f"Error getting system stats: {str(e)}")
-        # Provide default values if unable to get real stats
-        stats["memory_usage"] = "N/A"
-        stats["cpu_usage"] = "N/A"
-        stats["uptime"] = "N/A"
+    # Container stats (memory, CPU, uptime) - Docker CLI access removed for security
+    # These stats are not available without Docker socket access
+    # Future: Could be replaced with Prometheus metrics from proxy container
+    stats["memory_usage"] = "N/A"
+    stats["cpu_usage"] = "N/A"
+    stats["uptime"] = "N/A"
+    logger.debug("Container stats unavailable - Docker socket access removed for security")
     
     return jsonify({"status": "success", "data": stats})
 
@@ -2475,76 +2432,42 @@ def get_cache_statistics():
         avg_response_time = "N/A"
         cache_usage_percentage = 0
         
+        # NOTE: Docker exec to squidclient removed for security (no Docker socket access)
+        # Cache statistics are now calculated from database logs only
+        # Future: Could use HTTP-based squidclient or Prometheus metrics
+        logger.debug("Cache statistics from squidclient unavailable - using database fallback")
+        
+        # Database-based calculations only
         try:
-            # Try to get real cache information using squidclient
-            result = subprocess.run(
-                ['docker', 'exec', container_name, 'squidclient', '-h', 'localhost', 'mgr:info'],
-                capture_output=True, text=True, check=False, timeout=5
-            )
-            
-            if result.returncode == 0:
-                info_output = result.stdout
+            # Calculate hit ratio from logs
+            cursor.execute("""
+                SELECT 
+                    COUNT(CASE WHEN status LIKE '%HIT%' THEN 1 END) as hits,
+                    COUNT(*) as total,
+                    AVG(CASE WHEN bytes > 0 THEN bytes ELSE NULL END) as avg_bytes
+                FROM proxy_logs
+                WHERE timestamp > datetime('now', '-1 day')
+            """)
+            result = cursor.fetchone()
+            if result and result['total'] > 0:
+                hit_ratio = round((result['hits'] / result['total']) * 100, 1)
                 
-                # Parse the relevant cache information from squidclient output
-                storage_pattern = r'Storage Swap size:\s+(\d+)\s+KB'
-                usage_pattern = r'Storage Swap capacity:\s+(\d+\.\d+)%'
-                hits_pattern = r'Request Hit Ratios:\s+5min: (\d+\.\d+)%'
-                response_time_pattern = r'Average HTTP Service Time:\s+(\d+\.\d+) seconds'
+            # Calculate response time - estimate based on bytes transferred
+            if result and result['avg_bytes'] is not None and result['avg_bytes'] > 0:
+                # Estimate: 1MB = 0.1 seconds (very rough approximation)
+                avg_bytes_mb = result['avg_bytes'] / (1024 * 1024)
+                avg_response_time = round(max(0.05, min(5.0, avg_bytes_mb * 0.1)), 3)
                 
-                # Extract storage info
-                storage_match = re.search(storage_pattern, info_output)
-                if storage_match:
-                    storage_kb = int(storage_match.group(1))
-                    cache_usage = int(storage_kb / 1024)  # Convert KB to MB
-                
-                # Extract usage percentage
-                usage_match = re.search(usage_pattern, info_output)
-                if usage_match:
-                    cache_usage_percentage = float(usage_match.group(1))
-                
-                # Extract hit ratio
-                hits_match = re.search(hits_pattern, info_output)
-                if hits_match:
-                    hit_ratio = float(hits_match.group(1))
-                
-                # Extract average response time
-                response_time_match = re.search(response_time_pattern, info_output)
-                if response_time_match:
-                    avg_response_time = float(response_time_match.group(1))
-        except Exception as e:
-            logger.warning(f"Error getting direct cache statistics: {e}")
-            
-            # Fall back to database calculations
-            try:
-                # Calculate hit ratio from logs
-                cursor.execute("""
-                    SELECT 
-                        COUNT(CASE WHEN status LIKE '%HIT%' THEN 1 END) as hits,
-                        COUNT(*) as total,
-                        AVG(CASE WHEN bytes > 0 THEN bytes ELSE NULL END) as avg_bytes
-                    FROM proxy_logs
-                    WHERE timestamp > datetime('now', '-1 day')
-                """)
-                result = cursor.fetchone()
-                if result and result['total'] > 0:
-                    hit_ratio = round((result['hits'] / result['total']) * 100, 1)
-                    
-                # Calculate response time - estimate based on bytes transferred
-                if result and result['avg_bytes'] is not None and result['avg_bytes'] > 0:
-                    # Estimate: 1MB = 0.1 seconds (very rough approximation)
-                    avg_bytes_mb = result['avg_bytes'] / (1024 * 1024)
-                    avg_response_time = round(max(0.05, min(5.0, avg_bytes_mb * 0.1)), 3)
-                    
-                # Estimate cache usage based on logs volume
-                cursor.execute("SELECT COUNT(*) as count FROM proxy_logs")
-                log_count = cursor.fetchone()['count']
-                if log_count > 0:
-                    # Very rough estimation: assume each log entry corresponds to ~10KB in cache
-                    estimated_cache_kb = log_count * 10
-                    cache_usage = min(cache_size, int(estimated_cache_kb / 1024))  # Convert to MB, cap at cache_size
-                    cache_usage_percentage = min(100, round((cache_usage / cache_size) * 100, 1))
-            except Exception as log_error:
-                logger.warning(f"Error getting cache metrics from logs: {log_error}")
+            # Estimate cache usage based on logs volume
+            cursor.execute("SELECT COUNT(*) as count FROM proxy_logs")
+            log_count = cursor.fetchone()['count']
+            if log_count > 0:
+                # Very rough estimation: assume each log entry corresponds to ~10KB in cache
+                estimated_cache_kb = log_count * 10
+                cache_usage = min(cache_size, int(estimated_cache_kb / 1024))  # Convert to MB, cap at cache_size
+                cache_usage_percentage = min(100, round((cache_usage / cache_size) * 100, 1))
+        except Exception as log_error:
+            logger.warning(f"Error getting cache metrics from logs: {log_error}")
         
         # Format the response
         return jsonify({

@@ -6,8 +6,7 @@ This script performs comprehensive testing of the Squid proxy configuration,
 with a focus on validating direct IP blocking and other security settings.
 
 Requirements:
-- rich (pip install rich)
-- requests (pip install requests)
+    Install dependencies with: pip install -r requirements-test.txt
 """
 
 import os
@@ -21,24 +20,13 @@ import argparse
 import urllib.parse
 from datetime import datetime
 
-try:
-    import requests
-    from rich.console import Console
-    from rich.table import Table
-    from rich.panel import Panel
-    from rich.progress import Progress, SpinnerColumn, TextColumn
-    from rich.syntax import Syntax
-    from rich.text import Text
-except ImportError:
-    print("Required packages not found. Installing them now...")
-    subprocess.run(["pip", "install", "rich", "requests"], check=True)
-    import requests
-    from rich.console import Console
-    from rich.table import Table
-    from rich.panel import Panel
-    from rich.progress import Progress, SpinnerColumn, TextColumn
-    from rich.syntax import Syntax
-    from rich.text import Text
+import requests
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.syntax import Syntax
+from rich.text import Text
 
 # Initialize rich console
 console = Console()

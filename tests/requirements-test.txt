@@ -1,0 +1,5 @@
+# Test dependencies for secure-proxy-manager
+# Install with: pip install -r requirements-test.txt
+
+requests>=2.31.0
+rich>=13.0.0
