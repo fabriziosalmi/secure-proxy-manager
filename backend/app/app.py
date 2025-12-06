@@ -350,7 +350,7 @@ def get_status():
         "proxy_host": PROXY_HOST,
         "proxy_port": PROXY_PORT,
         "timestamp": datetime.now().isoformat(),
-        "version": "0.0.9"
+        "version": "0.12.2"
     }
     
     # Add today's request count
@@ -561,7 +561,7 @@ def import_blacklist():
                 
             except requests.exceptions.RequestException as e:
                 logger.error(f"Failed to fetch blacklist from URL {url}: {str(e)}")
-                return jsonify({"status": "error", "message": f"Failed to fetch from URL: {str(e)}"}), 400
+                return jsonify({"status": "error", "message": "Failed to fetch from URL"}), 400
         
         # Check if direct content is provided
         elif 'content' in data:
@@ -693,7 +693,7 @@ def import_blacklist():
         
     except Exception as e:
         logger.error(f"Error during blacklist import: {str(e)}")
-        return jsonify({"status": "error", "message": f"Import failed: {str(e)}"}), 500
+        return jsonify({"status": "error", "message": "Import operation failed"}), 500
 
 @app.route('/api/ip-blacklist/import', methods=['POST'])
 @auth.login_required  
@@ -712,7 +712,7 @@ def import_ip_blacklist():
         
     except Exception as e:
         logger.error(f"Error during IP blacklist import: {str(e)}")
-        return jsonify({"status": "error", "message": f"Import failed: {str(e)}"}), 500
+        return jsonify({"status": "error", "message": "Import operation failed"}), 500
 
 @app.route('/api/domain-blacklist/import', methods=['POST'])
 @auth.login_required
@@ -731,7 +731,7 @@ def import_domain_blacklist():
         
     except Exception as e:
         logger.error(f"Error during domain blacklist import: {str(e)}")
-        return jsonify({"status": "error", "message": f"Import failed: {str(e)}"}), 500
+        return jsonify({"status": "error", "message": "Import operation failed"}), 500
 
 # Helper functions
 def update_ip_blacklist():
@@ -781,8 +781,8 @@ def clear_logs():
         logger.info("All logs cleared successfully")
         return jsonify({"status": "success", "message": "All logs cleared successfully"})
     except Exception as e:
-        logger.error(f"Error clearing logs: {str(e)}")
-        return jsonify({"status": "error", "message": f"Error clearing logs: {str(e)}"}), 500
+        logger.error("An error occurred while clearing logs")
+        return jsonify({"status": "error", "message": "An error occurred while clearing logs"}), 500
 
 @app.route('/api/maintenance/reload-config', methods=['POST'])
 @auth.login_required
@@ -795,8 +795,8 @@ def reload_proxy_config():
         else:
             return jsonify({"status": "error", "message": "Failed to reload proxy configuration"}), 500
     except Exception as e:
-        logger.error(f"Error reloading proxy configuration: {str(e)}")
-        return jsonify({"status": "error", "message": f"Error reloading proxy configuration: {str(e)}"}), 500
+        logger.error("An error occurred while reloading proxy configuration")
+        return jsonify({"status": "error", "message": "An error occurred while reloading proxy configuration"}), 500
 
 def update_domain_blacklist():
     """Update the domain blacklist file"""
@@ -2641,11 +2641,11 @@ def optimize_cache():
             }
         })
     except ValueError as e:
-        logger.error(f"Validation error: {str(e)}")
-        return jsonify({"status": "error", "message": f"Validation error: {str(e)}"}), 400
+        logger.error("Validation error occurred")
+        return jsonify({"status": "error", "message": "Validation error occurred"}), 400
     except Exception as e:
-        logger.error(f"Error optimizing cache: {str(e)}")
-        return jsonify({"status": "error", "message": f"Error optimizing cache: {str(e)}"}), 500
+        logger.error("An error occurred while optimizing cache")
+        return jsonify({"status": "error", "message": "An error occurred while optimizing cache"}), 500
 
 # Health check endpoint for container orchestration
 @app.route('/health', methods=['GET'])
@@ -2764,8 +2764,8 @@ def clear_old_logs():
             "deleted_count": count_to_delete
         })
     except Exception as e:
-        logger.error(f"Error clearing old logs: {str(e)}")
-        return jsonify({"status": "error", "message": f"Error clearing old logs: {str(e)}"}), 500
+        logger.error("An error occurred while clearing old logs")
+        return jsonify({"status": "error", "message": "An error occurred while clearing old logs"}), 500
 
 @app.route('/api/database/size', methods=['GET'])
 @auth.login_required
@@ -2800,8 +2800,8 @@ def get_database_size():
                 "message": f"Database file not found at {db_path}"
             }), 404
     except Exception as e:
-        logger.error(f"Error getting database size: {str(e)}")
-        return jsonify({"status": "error", "message": f"Error getting database size: {str(e)}"}), 500
+        logger.error("An error occurred while getting database size")
+        return jsonify({"status": "error", "message": "An error occurred while getting database size"}), 500
 
 @app.route('/api/database/optimize', methods=['POST'])
 @auth.login_required
@@ -2896,8 +2896,8 @@ def export_database():
             "data": export_data
         })
     except Exception as e:
-        logger.error(f"Error exporting database: {str(e)}")
-        return jsonify({"status": "error", "message": f"Error exporting database: {str(e)}"}), 500
+        logger.error("An error occurred while exporting database")
+        return jsonify({"status": "error", "message": "An error occurred while exporting database"}), 500
 
 @app.route('/api/security/scan', methods=['POST'])
 @auth.login_required
@@ -3016,8 +3016,8 @@ def client_statistics():
             return jsonify({"status": "success", "data": data})
             
     except Exception as e:
-        logger.error(f"Error fetching client statistics: {str(e)}")
-        return jsonify({"status": "error", "message": f"Error fetching client statistics: {str(e)}"}), 500
+        logger.error("An error occurred while fetching client statistics")
+        return jsonify({"status": "error", "message": "An error occurred while fetching client statistics"}), 500
 
 @app.route('/api/domains/statistics', methods=['GET'])
 @auth.login_required
@@ -3080,8 +3080,8 @@ def domain_statistics():
             return jsonify({"status": "success", "data": data})
             
     except Exception as e:
-        logger.error(f"Error fetching domain statistics: {str(e)}")
-        return jsonify({"status": "error", "message": f"Error fetching domain statistics: {str(e)}"}), 500
+        logger.error("An error occurred while fetching domain statistics")
+        return jsonify({"status": "error", "message": "An error occurred while fetching domain statistics"}), 500
 
 @app.route('/api/database/reset', methods=['POST'])
 @auth.login_required
@@ -3122,14 +3122,14 @@ def reset_database():
 
         return jsonify({"status": "success", "message": "Database reset successfully. Please refresh your UI."}), 200
     except Exception as e:
-        logger.error(f"Error resetting database: {str(e)}")
+        logger.error("An error occurred while resetting database")
         # Attempt to re-initialize DB even on error to prevent a broken state
         try:
             init_db()
             logger.warning("Attempted to re-initialize database after reset error to prevent broken state.")
         except Exception as init_e:
             logger.error(f"Failed to re-initialize database after reset error: {str(init_e)}")
-        return jsonify({"status": "error", "message": f"Error resetting database: {str(e)}"}), 500
+        return jsonify({"status": "error", "message": "An error occurred while resetting database"}), 500
 
 @app.route('/api/database/stats', methods=['GET'])
 @auth.login_required
@@ -3184,5 +3184,5 @@ def get_database_stats():
         
         return jsonify({"status": "success", "data": stats})
     except Exception as e:
-        logger.error(f"Error fetching database stats: {str(e)}")
-        return jsonify({"status": "error", "message": f"Error fetching database stats: {str(e)}"}), 500
+        logger.error("An error occurred while fetching database statistics")
+        return jsonify({"status": "error", "message": "An error occurred while fetching database statistics"}), 500
