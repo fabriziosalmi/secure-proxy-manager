@@ -12,7 +12,7 @@ This document explains the security architecture of Secure Proxy Manager and the
 
 **Rationale**: Mounting the Docker socket into a web-facing container creates a critical vulnerability. If an attacker compromises the backend application, they gain root-level access to the host system. This risk was deemed unacceptable for a security-focused proxy manager.
 
-**Impact**: Container statistics (memory, CPU, uptime) now show "N/A" in the dashboard. Cache statistics are calculated from database logs instead.
+**Impact**: Container statistics (memory, CPU, uptime) have been removed from the dashboard. Cache statistics are calculated from database logs instead.
 
 **Future**: We may implement a Prometheus metrics endpoint on the proxy container for safer metrics collection.
 
