@@ -1,19 +1,20 @@
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="light">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secure Proxy - {% block title %}Dashboard{% endblock %}</title>
-    
+
     <!-- Bootstrap 5 CSS (local) -->
     <link href="/static/css/bootstrap.min.css" rel="stylesheet">
-    
+
     <!-- Font Awesome for icons (local) -->
     <link rel="stylesheet" href="/static/css/fontawesome.min.css">
-    
+
     <!-- Inter Font (local) -->
     <link href="/static/fonts/inter.css" rel="stylesheet">
-    
+
     <!-- Custom styles -->
     <style>
         :root {
@@ -36,23 +37,24 @@
             --border-radius-sm: 6px;
             --header-height: 64px;
         }
-        
+
         /* Page Transition Effect */
         .page-transition {
             animation: pageFadeIn 0.5s ease-in-out;
         }
-        
+
         @keyframes pageFadeIn {
             from {
                 opacity: 0;
                 transform: translateY(10px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
             }
         }
-        
+
         [data-bs-theme="dark"] {
             --primary-color: #4895ef;
             --primary-hover: #6aabe7;
@@ -68,7 +70,7 @@
             --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
             --hover-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
         }
-        
+
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
             background-color: var(--light-subtle);
@@ -77,12 +79,12 @@
             line-height: 1.5;
             letter-spacing: 0.01em;
         }
-        
+
         [data-bs-theme="dark"] body {
             background-color: var(--dark-bg);
             color: #e9ecef;
         }
-        
+
         .navbar {
             backdrop-filter: blur(10px);
             height: var(--header-height);
@@ -92,20 +94,20 @@
             z-index: 1030;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
-        
+
         .navbar-brand {
             font-weight: 700;
             color: var(--primary-color) !important;
             transition: color var(--transition-speed);
             letter-spacing: 0.5px;
         }
-        
+
         .navbar-brand i {
             background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-        
+
         /* Navbar nav links styling */
         .navbar .nav-link {
             color: rgba(255, 255, 255, 0.8) !important;
@@ -116,26 +118,26 @@
             position: relative;
             overflow: hidden;
         }
-        
-        .navbar .nav-link:hover, 
+
+        .navbar .nav-link:hover,
         .navbar .nav-link.active {
             background-color: rgba(255, 255, 255, 0.15);
             color: white !important;
             transform: translateY(-2px);
         }
-        
+
         .navbar .nav-link i {
             margin-right: 6px;
             width: 16px;
             text-align: center;
         }
-        
+
         /* Info tooltip for nav items */
         .nav-tooltip {
             position: relative;
             display: inline-block;
         }
-        
+
         .nav-tooltip .tooltip-text {
             visibility: hidden;
             width: 200px;
@@ -157,7 +159,7 @@
             text-transform: none;
             letter-spacing: normal;
         }
-        
+
         .nav-tooltip .tooltip-text::after {
             content: "";
             position: absolute;
@@ -168,17 +170,17 @@
             border-style: solid;
             border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
         }
-        
+
         .nav-tooltip:hover .tooltip-text {
             visibility: visible;
             opacity: 1;
         }
-        
+
         .main-content {
             padding: 2rem;
             min-height: calc(100vh - var(--header-height));
         }
-        
+
         .card {
             border-radius: var(--border-radius);
             box-shadow: var(--card-shadow);
@@ -188,21 +190,21 @@
             overflow: hidden;
             background-color: #ffffff;
         }
-        
+
         .card:hover {
             transform: translateY(-5px);
             box-shadow: var(--hover-shadow);
         }
-        
+
         [data-bs-theme="dark"] .card {
             background-color: var(--dark-subtle);
             box-shadow: var(--card-shadow);
         }
-        
+
         [data-bs-theme="dark"] .card:hover {
             box-shadow: var(--hover-shadow);
         }
-        
+
         .card-header {
             font-weight: 600;
             background-color: rgba(255, 255, 255, 0.05);
@@ -211,16 +213,16 @@
             display: flex;
             align-items: center;
         }
-        
+
         [data-bs-theme="dark"] .card-header {
             background-color: rgba(0, 0, 0, 0.2);
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
-        
+
         .card-body {
             padding: 1.5rem;
         }
-        
+
         .status-indicator {
             width: 12px;
             height: 12px;
@@ -229,29 +231,31 @@
             margin-right: 8px;
             position: relative;
         }
-        
+
         .status-active {
             background-color: var(--success-color);
             box-shadow: 0 0 0 rgba(76, 201, 240, 0.4);
             animation: pulse 2s infinite;
         }
-        
+
         .status-inactive {
             background-color: var(--danger-color);
         }
-        
+
         @keyframes pulse {
             0% {
                 box-shadow: 0 0 0 0 rgba(56, 176, 0, 0.4);
             }
+
             70% {
                 box-shadow: 0 0 0 10px rgba(56, 176, 0, 0);
             }
+
             100% {
                 box-shadow: 0 0 0 0 rgba(56, 176, 0, 0);
             }
         }
-        
+
         .btn {
             border-radius: var(--border-radius-sm);
             transition: all 0.3s;
@@ -260,100 +264,102 @@
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
             border: none;
         }
-        
+
         .btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
         }
-        
+
         .btn:active {
             transform: translateY(1px);
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
         }
-        
+
         .btn-primary {
             background-color: var(--primary-color);
             border-color: var(--primary-color);
         }
-        
+
         .btn-primary:hover {
             background-color: var(--primary-hover);
         }
-        
+
         .btn-danger {
             background-color: var(--danger-color);
             border-color: var(--danger-color);
         }
-        
+
         .btn-sm {
             padding: 0.25rem 0.75rem;
             font-size: 0.875rem;
             border-radius: var(--border-radius-sm);
         }
-        
+
         /* Form controls */
-        .form-control, .form-select {
+        .form-control,
+        .form-select {
             border-radius: var(--border-radius-sm);
             padding: 0.5rem 0.75rem;
             border: 1px solid rgba(0, 0, 0, 0.1);
             transition: all 0.3s;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         }
-        
-        [data-bs-theme="dark"] .form-control, 
+
+        [data-bs-theme="dark"] .form-control,
         [data-bs-theme="dark"] .form-select {
             background-color: rgba(255, 255, 255, 0.05);
             border-color: rgba(255, 255, 255, 0.1);
             color: #e9ecef;
         }
-        
-        .form-control:focus, .form-select:focus {
+
+        .form-control:focus,
+        .form-select:focus {
             border-color: var(--primary-color);
             box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.25);
         }
-        
+
         /* Tables */
         .table {
             border-collapse: separate;
             border-spacing: 0;
             width: 100%;
         }
-        
+
         .table th {
             font-weight: 600;
             padding: 1rem;
             border-bottom: 2px solid rgba(0, 0, 0, 0.05);
         }
-        
+
         .table td {
             padding: 1rem;
             border-bottom: 1px solid rgba(0, 0, 0, 0.05);
             vertical-align: middle;
         }
-        
+
         [data-bs-theme="dark"] .table td {
             border-color: rgba(255, 255, 255, 0.05);
         }
-        
+
         .table-hover tbody tr {
             transition: background-color 0.3s;
         }
-        
+
         .table-hover tbody tr:hover {
             background-color: rgba(0, 0, 0, 0.02);
         }
-        
+
         [data-bs-theme="dark"] .table-hover tbody tr:hover {
             background-color: rgba(255, 255, 255, 0.05);
         }
-        
+
         .toast-container {
             position: fixed;
             bottom: 20px;
             right: 20px;
             z-index: 1055;
         }
-        
+
         .custom-toast {
             border-radius: var(--border-radius);
             overflow: hidden;
@@ -365,57 +371,57 @@
             animation: slide-in 0.3s forwards;
             min-width: 300px;
         }
-        
+
         [data-bs-theme="dark"] .custom-toast {
             background-color: var(--dark-subtle);
             color: #e9ecef;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
         }
-        
+
         .toast-success {
             border-left-color: var(--success-color);
         }
-        
+
         .toast-danger {
             border-left-color: var(--danger-color);
         }
-        
+
         .toast-warning {
             border-left-color: var(--warning-color);
         }
-        
+
         .toast-info {
             border-left-color: var(--primary-color);
         }
-        
+
         .toast-header {
             border-bottom: 1px solid rgba(0, 0, 0, 0.05);
             padding: 0.75rem 1rem;
         }
-        
+
         [data-bs-theme="dark"] .toast-header {
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
             background-color: rgba(0, 0, 0, 0.2);
         }
-        
+
         .toast-body {
             padding: 1rem;
         }
-        
+
         @keyframes slide-in {
             to {
                 opacity: 1;
                 transform: translateY(0);
             }
         }
-        
+
         @keyframes slide-out {
             to {
                 opacity: 0;
                 transform: translateY(20px);
             }
         }
-        
+
         /* Loading spinner */
         .spinner-overlay {
             position: fixed;
@@ -433,12 +439,12 @@
             visibility: hidden;
             transition: opacity 0.3s, visibility 0.3s;
         }
-        
+
         .spinner-overlay.active {
             opacity: 1;
             visibility: visible;
         }
-        
+
         .spinner-container {
             background-color: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
@@ -449,13 +455,13 @@
             align-items: center;
             box-shadow: 0 5px 25px rgba(0, 0, 0, 0.2);
         }
-        
+
         .spinner-text {
             color: white;
             margin-top: 1rem;
             font-weight: 500;
         }
-        
+
         /* Theme toggle switch */
         .theme-switch {
             position: relative;
@@ -463,13 +469,13 @@
             height: 30px;
             margin-left: 10px;
         }
-        
+
         .theme-switch input {
             opacity: 0;
             width: 0;
             height: 0;
         }
-        
+
         .theme-slider {
             position: absolute;
             cursor: pointer;
@@ -481,7 +487,7 @@
             transition: .4s;
             border-radius: 30px;
         }
-        
+
         .theme-slider:before {
             position: absolute;
             content: "";
@@ -493,15 +499,15 @@
             transition: .4s;
             border-radius: 50%;
         }
-        
-        input:checked + .theme-slider {
+
+        input:checked+.theme-slider {
             background-color: var(--primary-color);
         }
-        
-        input:checked + .theme-slider:before {
+
+        input:checked+.theme-slider:before {
             transform: translateX(30px);
         }
-        
+
         .theme-icon {
             position: absolute;
             top: 7px;
@@ -509,16 +515,16 @@
             color: rgba(0, 0, 0, 0.5);
             z-index: 1;
         }
-        
+
         .theme-icon.sun {
             left: 8px;
         }
-        
+
         .theme-icon.moon {
             right: 8px;
             color: white;
         }
-        
+
         /* Badges and status indicators */
         .badge {
             padding: 0.35em 0.65em;
@@ -533,11 +539,11 @@
             color: #6c757d;
             margin-top: 0.25rem;
         }
-        
+
         [data-bs-theme="dark"] .helper-text {
             color: #adb5bd;
         }
-        
+
         /* Info badges and icons */
         .info-badge {
             display: inline-flex;
@@ -552,7 +558,7 @@
             margin-left: 5px;
             cursor: help;
         }
-        
+
         /* Add default info icon to all .info-badge elements */
         .info-badge::before {
             content: "i";
@@ -561,103 +567,103 @@
             font-size: 11px;
             line-height: 1;
         }
-        
+
         [data-bs-theme="dark"] .info-badge {
             background-color: rgba(58, 134, 255, 0.25);
         }
-        
+
         /* Scrollbar styling */
         ::-webkit-scrollbar {
             width: 8px;
             height: 8px;
         }
-        
+
         ::-webkit-scrollbar-track {
             background: rgba(0, 0, 0, 0.05);
         }
-        
+
         ::-webkit-scrollbar-thumb {
             background: rgba(0, 0, 0, 0.2);
             border-radius: 10px;
         }
-        
+
         ::-webkit-scrollbar-thumb:hover {
             background: rgba(0, 0, 0, 0.3);
         }
-        
+
         [data-bs-theme="dark"] ::-webkit-scrollbar-track {
             background: rgba(255, 255, 255, 0.05);
         }
-        
+
         [data-bs-theme="dark"] ::-webkit-scrollbar-thumb {
             background: rgba(255, 255, 255, 0.2);
         }
-        
+
         [data-bs-theme="dark"] ::-webkit-scrollbar-thumb:hover {
             background: rgba(255, 255, 255, 0.3);
         }
-        
+
         /* Mobile optimizations */
         @media (max-width: 992px) {
             .main-content {
                 padding: 1.5rem;
             }
-            
+
             .navbar-nav.ms-auto {
                 padding-top: 0.5rem;
                 padding-bottom: 0.5rem;
             }
-            
+
             .card-header {
                 padding: 0.75rem 1rem;
                 flex-direction: column;
                 align-items: flex-start;
             }
-            
+
             .card-header .d-flex {
                 width: 100%;
                 margin-top: 0.5rem;
                 justify-content: space-between !important;
             }
-            
+
             .stats-card h3 {
                 font-size: 1.5rem;
             }
         }
-        
+
         @media (max-width: 768px) {
             .main-content {
                 padding: 1rem 0.75rem;
             }
-            
+
             .card {
                 margin-bottom: 1rem;
             }
-            
+
             .navbar-brand {
                 padding-left: 10px;
             }
-            
+
             .navbar .nav-link {
                 padding: 0.5rem 1rem;
                 margin: 0.25rem 0;
             }
-            
+
             .nav-tooltip .tooltip-text {
                 width: 180px;
                 left: 50%;
                 transform: translateX(-50%);
             }
-            
-            .row-cols-md-4 > * {
+
+            .row-cols-md-4>* {
                 margin-bottom: 1rem;
             }
-            
+
             .btn-responsive-sm {
                 padding: 0.25rem 0.5rem;
                 font-size: 0.875rem;
             }
-            
+
             .table-responsive {
                 max-height: 70vh;
             }
@@ -671,46 +677,49 @@
             border-radius: var(--border-radius-sm);
             animation: pulse-highlight 2s infinite;
         }
-        
+
         @keyframes pulse-highlight {
             0% {
                 box-shadow: 0 0 0 0 rgba(58, 134, 255, 0.7);
             }
+
             70% {
                 box-shadow: 0 0 0 6px rgba(58, 134, 255, 0);
             }
+
             100% {
                 box-shadow: 0 0 0 0 rgba(58, 134, 255, 0);
             }
         }
-        
+
         .tour-popover .popover-header {
             background-color: var(--primary-color);
             color: white;
             font-weight: 600;
         }
-        
+
         [data-bs-theme="dark"] .tour-popover .popover-header {
             background-color: var(--primary-color);
             color: white;
         }
-        
+
         .tour-popover .popover-body {
             padding: 1rem;
         }
-        
+
         .tour-content p {
             margin-bottom: 0.5rem;
         }
-        
+
         .tour-popover .btn-sm {
             padding: 0.25rem 0.75rem;
             font-size: 0.875rem;
         }
     </style>
-    
+
     {% block extra_styles %}{% endblock %}
 </head>
+
 <body>
     <!-- Loading spinner -->
     <div class="spinner-overlay" id="loading-spinner">
@@ -724,7 +733,7 @@
 
     <!-- Toast container -->
     <div class="toast-container" id="toast-container"></div>
-    
+
     <!-- Top navbar with navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
@@ -759,21 +768,28 @@
                         <a href="/settings" class="nav-link {% if active_page == 'settings' %}active{% endif %}">
                             <i class="fas fa-sliders-h"></i> Settings
                         </a>
-                        <span class="tooltip-text">Configure proxy settings, security options, and system preferences</span>
+                        <span class="tooltip-text">Configure proxy settings, security options, and system
+                            preferences</span>
                     </li>
                 </ul>
-                
+
                 <!-- Right-aligned items -->
                 <ul class="navbar-nav ms-auto align-items-center">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button"
+                            data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fas fa-info-circle me-1"></i> Help
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
-                            <li><a class="dropdown-item" href="#" id="show-help"><i class="fas fa-question-circle me-2"></i>Squid Documentation</a></li>
-                            <li><a class="dropdown-item" href="#" id="show-keyboard-shortcuts"><i class="fas fa-keyboard me-2"></i>Keyboard Shortcuts</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="#" id="about-proxy"><i class="fas fa-info me-2"></i>About Secure Proxy</a></li>
+                            <li><a class="dropdown-item" href="#" id="show-help"><i
+                                        class="fas fa-question-circle me-2"></i>Squid Documentation</a></li>
+                            <li><a class="dropdown-item" href="#" id="show-keyboard-shortcuts"><i
+                                        class="fas fa-keyboard me-2"></i>Keyboard Shortcuts</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#" id="about-proxy"><i class="fas fa-info me-2"></i>About
+                                    Secure Proxy</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -801,9 +817,12 @@
                 <div class="modal-body">
                     <div class="mb-4">
                         <h6 class="fw-bold">What is Squid Proxy?</h6>
-                        <p>Squid is a caching and forwarding HTTP web proxy. It has a wide variety of uses, including speeding up a web server by caching repeated requests, caching web, DNS and other computer network lookups for a group of people sharing network resources, and aiding security by filtering traffic.</p>
+                        <p>Squid is a caching and forwarding HTTP web proxy. It has a wide variety of uses, including
+                            speeding up a web server by caching repeated requests, caching web, DNS and other computer
+                            network lookups for a group of people sharing network resources, and aiding security by
+                            filtering traffic.</p>
                     </div>
-                    
+
                     <div class="mb-4">
                         <h6 class="fw-bold">Common Configuration Files</h6>
                         <ul>
@@ -812,10 +831,11 @@
                             <li><strong>ip_blacklist.txt</strong> - List of blocked IP addresses</li>
                         </ul>
                     </div>
-                    
+
                     <div class="mb-3">
                         <h6 class="fw-bold">Official Documentation</h6>
-                        <p>For more detailed information, please refer to the <a href="http://www.squid-cache.org/Doc/" target="_blank">official Squid documentation</a>.</p>
+                        <p>For more detailed information, please refer to the <a href="http://www.squid-cache.org/Doc/"
+                                target="_blank">official Squid documentation</a>.</p>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -836,9 +856,9 @@
                 <div class="modal-body text-center">
                     <i class="fas fa-shield-alt fa-4x mb-3" style="color: var(--primary-color);"></i>
                     <h4>Secure Proxy</h4>
-                    <p class="text-muted">Version 0.0.8</p>
+                    <p class="text-muted">Version 0.0.9</p>
                     <p>A modern web interface for managing Squid Proxy with enhanced security features.</p>
-                    
+
                     <div class="mt-4 mb-3">
                         <div class="d-flex align-items-center justify-content-between px-4 mb-2">
                             <span>Squid Version:</span>
@@ -853,7 +873,7 @@
                             <span class="badge bg-light text-dark">May 11, 2025</span>
                         </div>
                     </div>
-                    
+
                     <div class="text-start mt-4">
                         <h6 class="fw-bold">Key Features:</h6>
                         <ul class="list-unstyled ps-2">
@@ -883,7 +903,8 @@
                     <div class="text-center mb-4">
                         <i class="fas fa-shield-alt fa-4x mb-3" style="color: var(--primary-color);"></i>
                         <h4>Hello there!</h4>
-                        <p>Welcome to the Secure Proxy Manager interface. Would you like a quick tour to help you get started?</p>
+                        <p>Welcome to the Secure Proxy Manager interface. Would you like a quick tour to help you get
+                            started?</p>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="dontShowAgain">
@@ -943,72 +964,72 @@
 
     <!-- Bootstrap JS Bundle with Popper (local) -->
     <script src="/static/js/bootstrap.bundle.min.js"></script>
-    
+
     <!-- jQuery (local) -->
     <script src="/static/js/jquery.min.js"></script>
-    
+
     <!-- Common JavaScript -->
     <script>
-        $(document).ready(function() {
+        $(document).ready(function () {
             // Apply system/browser theme preference automatically
             function applySystemTheme() {
                 const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
                 document.documentElement.setAttribute('data-bs-theme', prefersDarkMode ? 'dark' : 'light');
             }
-            
+
             // Apply theme on initial load
             applySystemTheme();
-            
+
             // Listen for system theme changes
             window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applySystemTheme);
-            
+
             // Help modal
-            $('#show-help').click(function(e) {
+            $('#show-help').click(function (e) {
                 e.preventDefault();
                 $('#helpModal').modal('show');
             });
-            
+
             // About modal
-            $('#about-proxy').click(function(e) {
+            $('#about-proxy').click(function (e) {
                 e.preventDefault();
                 $('#aboutModal').modal('show');
-                
+
                 // Load Squid version
                 apiRequest('GET', 'status')
-                    .then(function(response) {
+                    .then(function (response) {
                         if (response.status === 'success') {
                             $('#squid-version').text(response.data.version || 'Unknown');
                         }
                     })
-                    .catch(function() {
+                    .catch(function () {
                         $('#squid-version').text('Unknown');
                     });
             });
-            
+
             // Keyboard shortcuts modal
-            $('#show-keyboard-shortcuts').click(function(e) {
+            $('#show-keyboard-shortcuts').click(function (e) {
                 e.preventDefault();
                 $('#shortcutsModal').modal('show');
             });
-            
+
             // Keyboard shortcuts
-            $(document).keydown(function(e) {
+            $(document).keydown(function (e) {
                 if (e.altKey) {
                     switch (e.key.toLowerCase()) {
-                        case 'd': 
-                            window.location.href = '/'; 
+                        case 'd':
+                            window.location.href = '/';
                             break;
-                        case 'b': 
-                            window.location.href = '/blacklists'; 
+                        case 'b':
+                            window.location.href = '/blacklists';
                             break;
-                        case 'l': 
-                            window.location.href = '/logs'; 
+                        case 'l':
+                            window.location.href = '/logs';
                             break;
-                        case 's': 
-                            window.location.href = '/settings'; 
+                        case 's':
+                            window.location.href = '/settings';
                             break;
-                        case 'r': 
-                            location.reload(); 
+                        case 'r':
+                            location.reload();
                             break;
                     }
                 } else if (e.key === '/' && !$(e.target).is('input, textarea')) {
@@ -1018,26 +1039,26 @@
                     }
                 }
             });
-            
+
             // Initialize tooltips on page load
             initializeAllTooltips(); // Replaces the previous direct initialization
         });
-        
+
         // Show/hide loading spinner
         function showLoading(message = 'Loading...') {
             $('#loading-text').text(message);
             $('#loading-spinner').addClass('active');
         }
-        
+
         function hideLoading() {
             $('#loading-spinner').removeClass('active');
         }
-        
+
         // API helper function
         function apiRequest(method, endpoint, data = null) {
             // Set contextual loading message based on the endpoint and method
             let loadingMessage = 'Loading...';
-            
+
             if (method === 'GET') {
                 if (endpoint.includes('blacklist')) {
                     loadingMessage = 'Loading blacklist data...';
@@ -1060,26 +1081,26 @@
             } else if (method === 'DELETE') {
                 loadingMessage = 'Deleting data...';
             }
-            
+
             showLoading(loadingMessage);
-            
+
             return new Promise((resolve, reject) => {
                 const ajaxOptions = {
                     url: '/api/' + endpoint,
                     type: method,
                     dataType: 'json',
                     timeout: 30000, // 30 seconds timeout
-                    success: function(response) {
+                    success: function (response) {
                         hideLoading();
                         resolve(response);
                     },
-                    error: function(xhr, status, error) {
+                    error: function (xhr, status, error) {
                         hideLoading();
                         // Special handling for timeout errors
                         if (status === 'timeout') {
-                            const timeoutError = { 
-                                status: 'error', 
-                                message: 'Request timed out. The server might be busy or unavailable.' 
+                            const timeoutError = {
+                                status: 'error',
+                                message: 'Request timed out. The server might be busy or unavailable.'
                             };
                             handleApiError(timeoutError);
                             reject(timeoutError);
@@ -1089,23 +1110,23 @@
                         }
                     }
                 };
-                
+
                 if (data) {
                     ajaxOptions.data = JSON.stringify(data);
                     ajaxOptions.contentType = 'application/json';
                 }
-                
+
                 $.ajax(ajaxOptions);
             });
         }
-        
+
         // Enhanced toast notification function
         function showToast(message, type = 'success') {
-            const icon = type === 'success' ? 'check-circle' 
-                       : type === 'danger' ? 'exclamation-circle'
-                       : type === 'warning' ? 'exclamation-triangle'
-                       : 'info-circle';
-                       
+            const icon = type === 'success' ? 'check-circle'
+                : type === 'danger' ? 'exclamation-circle'
+                    : type === 'warning' ? 'exclamation-triangle'
+                        : 'info-circle';
+
             const toastHtml = `
                 <div class="custom-toast toast-${type} mb-3" role="alert" aria-live="assertive" aria-atomic="true">
                     <div class="toast-header">
@@ -1119,13 +1140,13 @@
                     </div>
                 </div>
             `;
-            
+
             // Add toast to container
             $('#toast-container').append(toastHtml);
-            
+
             // Get the toast element
             const $toast = $('#toast-container .custom-toast').last();
-            
+
             // Auto-remove after 5 seconds
             setTimeout(() => {
                 $toast.css({
@@ -1137,9 +1158,9 @@
                     $toast.remove();
                 }, 300);
             }, 5000);
-            
+
             // Handle close button
-            $toast.find('.btn-close').click(function() {
+            $toast.find('.btn-close').click(function () {
                 $toast.css({
                     'opacity': '0',
                     'transform': 'translateY(20px)',
@@ -1150,25 +1171,25 @@
                 }, 300);
             });
         }
-        
+
         // Enhanced error handling for API calls
         function handleApiError(error, defaultMessage = 'An error occurred') {
             // If error is a known error object from our API
             if (error && error.message) {
                 showToast(error.message, 'danger');
-            } 
+            }
             // If error is a string
             else if (typeof error === 'string') {
                 showToast(error, 'danger');
-            } 
+            }
             // If we have no information, use the default message
             else {
                 showToast(defaultMessage, 'danger');
             }
-            
+
             // Log the full error to console for debugging
             console.error('API Error:', error);
-            
+
             // If unauthorized error, redirect to login page after short delay
             if (error && (error.status === 401 || error.statusCode === 401)) {
                 setTimeout(() => {
@@ -1176,7 +1197,7 @@
                 }, 2000);
             }
         }
-        
+
         // Add info badge with tooltip to any element
         function addInfoBadge(selector, tooltipText) { // Renamed 'tooltip' parameter to 'tooltipText'
             const badgeHtml = `<span class="info-badge" data-bs-toggle="tooltip" data-bs-placement="top" title="${tooltipText}"><i class="fas fa-info"></i></span>`;
@@ -1201,7 +1222,8 @@
             }
         }
     </script>
-    
+
     {% block extra_scripts %}{% endblock %}
 </body>
+
 </html>
