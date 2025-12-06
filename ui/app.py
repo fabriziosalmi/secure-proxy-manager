@@ -275,7 +275,7 @@ def check_backend():
         else:
             return jsonify({"status": "unavailable", "message": f"Backend service returned status {resp.status_code}"}), 503
     except requests.RequestException as e:
-        return jsonify({"status": "unavailable", "message": f"Backend service is not available: {str(e)}"}), 503
+        return jsonify({"status": "unavailable", "message": "Backend service is temporarily unavailable"}), 503
 
 @app.route('/api/clients/statistics', methods=['GET'])
 @basic_auth.required
@@ -303,7 +303,7 @@ def client_statistics():
             
     except requests.exceptions.RequestException as e:
         app.logger.error(f"Request to backend failed for {url}: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 503
+        return jsonify({"status": "error", "message": "An error occurred"}), 503
 
 @app.route('/api/domains/statistics', methods=['GET'])
 @basic_auth.required
