@@ -1,7 +1,4 @@
-# Import workaround for Werkzeug compatibility issue
 from markupsafe import escape
-from flask import redirect, url_for
-
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_basicauth import BasicAuth
 import os
