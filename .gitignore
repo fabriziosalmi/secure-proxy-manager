@@ -7,3 +7,4 @@ __pycache__
 data/secure_proxy.db
 secure_proxy.db
 data/secure_proxy.db
+.env

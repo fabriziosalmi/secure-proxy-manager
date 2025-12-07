@@ -86,7 +86,7 @@ PROXY_PORT = os.environ.get('PROXY_PORT', '3128')
 def init_db():
     # Create data directory if it doesn't exist
     data_dir = os.path.dirname(DATABASE_PATH)
-    if not os.path.exists(data_dir):
+    if data_dir and not os.path.exists(data_dir):
         os.makedirs(data_dir, exist_ok=True)
     
     conn = sqlite3.connect(DATABASE_PATH)
@@ -1353,6 +1353,52 @@ try:
         logger.info("Initial settings applied")
 except Exception as e:
     logger.error(f"Error applying initial settings: {str(e)}")
+
+@app.route('/api/logs', methods=['GET'])
+@auth.login_required
+def get_logs():
+    """Get proxy logs with pagination and sorting"""
+    try:
+        # Get query parameters
+        limit = request.args.get('limit', 25, type=int)
+        offset = request.args.get('offset', 0, type=int)
+        sort_by = request.args.get('sort', 'timestamp')
+        order = request.args.get('order', 'desc')
+        
+        # Validate sort column to prevent SQL injection
+        valid_columns = ['timestamp', 'source_ip', 'destination', 'status', 'bytes', 'method']
+        if sort_by not in valid_columns:
+            sort_by = 'timestamp'
+            
+        # Validate order
+        if order.lower() not in ['asc', 'desc']:
+            order = 'desc'
+            
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get total count
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs")
+        total_count = cursor.fetchone()[0]
+        
+        # Get logs
+        query = f"SELECT * FROM proxy_logs ORDER BY {sort_by} {order.upper()} LIMIT ? OFFSET ?"
+        cursor.execute(query, (limit, offset))
+        
+        logs = [dict(row) for row in cursor.fetchall()]
+        
+        return jsonify({
+            "status": "success",
+            "data": logs,
+            "pagination": {
+                "total": total_count,
+                "limit": limit,
+                "offset": offset
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error fetching logs: {str(e)}")
+        return jsonify({"status": "error", "message": "Failed to fetch logs"}), 500
 
 @app.route('/api/logs/stats', methods=['GET'])
 @auth.login_required
@@ -3016,7 +3062,7 @@ def client_statistics():
                 WHERE source_ip IS NOT NULL AND source_ip != ''
                 GROUP BY source_ip
                 ORDER BY requests DESC
-                LIMIT 50  # Limit to top 50 clients for performance
+                LIMIT 50
             """)
             clients = [dict(row) for row in cursor.fetchall()]
             
@@ -3055,7 +3101,7 @@ def domain_statistics():
                 WHERE destination IS NOT NULL AND destination != ''
                 GROUP BY destination
                 ORDER BY requests DESC
-                LIMIT 50  # Limit to top 50 domains for performance
+                LIMIT 50
             """)
             domains_raw = [dict(row) for row in cursor.fetchall()]
             
