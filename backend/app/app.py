@@ -22,6 +22,16 @@ from collections import defaultdict
 from contextlib import contextmanager
 import signal
 import sys
+from pythonjsonlogger import jsonlogger
+from marshmallow import Schema, fields, validate, ValidationError
+
+class IPSchema(Schema):
+    ip = fields.String(required=True)
+    description = fields.String(missing='')
+
+class DomainSchema(Schema):
+    domain = fields.String(required=True, validate=validate.Regexp(r'^(\*\.)?(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)+([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'))
+    description = fields.String(missing='')
 
 # Rate limiting setup
 auth_attempts = defaultdict(list)
@@ -53,15 +63,13 @@ if not os.path.exists('/logs'):
     os.makedirs('logs', exist_ok=True)
     log_path = 'logs/backend.log'
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_path),
-        logging.StreamHandler()
-    ]
-)
 logger = logging.getLogger(__name__)
+logHandler = logging.FileHandler(log_path)
+formatter = jsonlogger.JsonFormatter('%(asctime)s %(name)s %(levelname)s %(message)s')
+logHandler.setFormatter(formatter)
+logger.addHandler(logHandler)
+logger.setLevel(logging.INFO)
+logger.addHandler(logging.StreamHandler())
 
 # Database configuration
 DATABASE_PATH = '/data/secure_proxy.db'
@@ -146,19 +154,31 @@ def init_db():
     )
     ''')
     
-    # Insert default admin user if not exists
-    cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
-    if cursor.fetchone()[0] == 0:
-        # Use a known password hash for 'admin' to ensure UI can authenticate
-        admin_password_hash = generate_password_hash('admin')
-        logger.info(f"Creating default admin user with password hash")
-        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", 
-                      ('admin', admin_password_hash))
+    # Handle admin user creation/update based on environment variables
+    env_username = os.environ.get('BASIC_AUTH_USERNAME')
+    env_password = os.environ.get('BASIC_AUTH_PASSWORD')
+
+    if env_username and env_password:
+        # Check if user exists
+        cursor.execute("SELECT COUNT(*) FROM users WHERE username = ?", (env_username,))
+        if cursor.fetchone()[0] == 0:
+            logger.info(f"Creating admin user '{env_username}' from environment variables")
+            cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", 
+                          (env_username, generate_password_hash(env_password)))
+        else:
+            logger.info(f"Updating admin user '{env_username}' from environment variables")
+            cursor.execute("UPDATE users SET password = ? WHERE username = ?", 
+                         (generate_password_hash(env_password), env_username))
     else:
-        # For existing installations, ensure the admin password hash is correct
-        cursor.execute("UPDATE users SET password = ? WHERE username = ?", 
-                     (generate_password_hash('admin'), 'admin'))
-        logger.info("Updated admin password hash to ensure authentication works")
+        # Check if any user exists
+        cursor.execute("SELECT COUNT(*) FROM users")
+        if cursor.fetchone()[0] == 0:
+            # No users and no env vars - generate random credentials
+            gen_username = 'admin'
+            gen_password = secrets.token_urlsafe(16)
+            logger.warning(f"No credentials provided. Created default user '{gen_username}' with password: {gen_password}")
+            cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", 
+                          (gen_username, generate_password_hash(gen_password)))
     
     # Insert default settings if not exists
     default_settings = [
@@ -434,13 +454,14 @@ def get_ip_blacklist():
 @auth.login_required
 def add_ip_to_blacklist():
     """Add an IP to the blacklist"""
-    data = request.get_json()
-    if not data or 'ip' not in data:
-        return jsonify({"status": "error", "message": "No IP provided"}), 400
+    try:
+        data = IPSchema().load(request.get_json())
+    except ValidationError as err:
+        return jsonify({"status": "error", "message": err.messages}), 400
     
     # Validate IP address format
     ip = data['ip'].strip()
-    description = data.get('description', '')
+    description = data['description']
     
     # Validate CIDR notation or single IP address
     try:
@@ -492,18 +513,13 @@ def get_domain_blacklist():
 @auth.login_required
 def add_domain_to_blacklist():
     """Add a domain to the blacklist"""
-    data = request.get_json()
-    if not data or 'domain' not in data:
-        return jsonify({"status": "error", "message": "No domain provided"}), 400
+    try:
+        data = DomainSchema().load(request.get_json())
+    except ValidationError as err:
+        return jsonify({"status": "error", "message": err.messages}), 400
     
     domain = data['domain'].strip()
-    description = data.get('description', '')
-    
-    # Basic domain validation
-    # Allow wildcard domains (*.example.com) and regular domains
-    domain_pattern = r'^(\*\.)?(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)+([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
-    if not re.match(domain_pattern, domain):
-        return jsonify({"status": "error", "message": "Invalid domain format"}), 400
+    description = data['description']
     
     conn = get_db()
     cursor = conn.cursor()

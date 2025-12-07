@@ -1,6 +1,9 @@
 from markupsafe import escape
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_basicauth import BasicAuth
+from flask_wtf.csrf import CSRFProtect
+from flask_talisman import Talisman
+from pythonjsonlogger import jsonlogger
 import os
 import requests
 from requests.adapters import HTTPAdapter
@@ -13,22 +16,38 @@ import secrets
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 
+# Configure CSRF
+csrf = CSRFProtect(app)
+
+# Configure CSP
+csp = {
+    'default-src': "'self'",
+    'script-src': "'self'",
+    'style-src': "'self'",
+    'img-src': "'self' data:",
+    'font-src': "'self'"
+}
+talisman = Talisman(app, content_security_policy=csp, force_https=False)
+
 # Configure Basic Auth
-app.config['BASIC_AUTH_USERNAME'] = os.environ.get('BASIC_AUTH_USERNAME', 'admin')
-app.config['BASIC_AUTH_PASSWORD'] = os.environ.get('BASIC_AUTH_PASSWORD', 'admin')
+app.config['BASIC_AUTH_USERNAME'] = os.environ.get('BASIC_AUTH_USERNAME')
+app.config['BASIC_AUTH_PASSWORD'] = os.environ.get('BASIC_AUTH_PASSWORD')
+
+if not app.config['BASIC_AUTH_USERNAME'] or not app.config['BASIC_AUTH_PASSWORD']:
+    # Fail fast if credentials are not set
+    raise ValueError("BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD environment variables must be set.")
+
 app.config['BASIC_AUTH_FORCE'] = True
 basic_auth = BasicAuth(app)
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('/logs/ui.log'),
-        logging.StreamHandler()
-    ]
-)
 logger = logging.getLogger(__name__)
+logHandler = logging.FileHandler('/logs/ui.log')
+formatter = jsonlogger.JsonFormatter('%(asctime)s %(name)s %(levelname)s %(message)s')
+logHandler.setFormatter(formatter)
+logger.addHandler(logHandler)
+logger.setLevel(logging.INFO)
+logger.addHandler(logging.StreamHandler())
 
 # Backend API configuration
 BACKEND_URL = os.environ.get('BACKEND_URL', 'http://backend:5000')
@@ -37,9 +56,6 @@ REQUEST_TIMEOUT = int(os.environ.get('REQUEST_TIMEOUT', 30))  # Increased timeou
 MAX_RETRIES = int(os.environ.get('MAX_RETRIES', 5))  # Increased from 3 to 5 maximum retries
 BACKOFF_FACTOR = float(os.environ.get('BACKOFF_FACTOR', 1.0))  # Increased from 0.5 to 1.0 backoff factor
 RETRY_WAIT_AFTER_STARTUP = int(os.environ.get('RETRY_WAIT_AFTER_STARTUP', 10))  # Wait time after startup
-
-# Startup flag to ensure backend is available
-backend_available = False
 
 # Configure requests session with retry logic
 def get_requests_session():
@@ -59,49 +75,7 @@ def get_requests_session():
     session.mount("https://", adapter)
     
     return session
-
-# Function to check backend availability with exponential backoff
-def wait_for_backend(max_attempts=10):
-    """
-    Wait for backend to become available with exponential backoff
-    """
-    global backend_available
-    
-    if backend_available:
-        return True
-        
-    session = get_requests_session()
-    wait_time = 1  # Initial wait time in seconds
-    
-    for attempt in range(1, max_attempts + 1):
-        try:
-            logger.info(f"Attempting to connect to backend (attempt {attempt}/{max_attempts})")
-            resp = session.get(f"{BACKEND_URL}/health", timeout=REQUEST_TIMEOUT)
-            if resp.status_code == 200:
-                logger.info("Backend service is available")
-                backend_available = True
-                return True
-            else:
-                logger.warning(f"Backend returned status code {resp.status_code}, retrying...")
-        except requests.RequestException as e:
-            logger.warning(f"Backend connection attempt {attempt} failed: {str(e)}")
-        
-        # Wait with exponential backoff before next attempt
-        if attempt < max_attempts:
-            logger.info(f"Waiting {wait_time} seconds before next attempt...")
-            time.sleep(wait_time)
-            wait_time = min(wait_time * 2, 60)  # Double the wait time, max 60 seconds
-    
-    logger.error(f"Failed to connect to backend after {max_attempts} attempts")
-    return False
-
-# Try to connect to backend at startup
-if RETRY_WAIT_AFTER_STARTUP > 0:
-    logger.info(f"Waiting {RETRY_WAIT_AFTER_STARTUP} seconds before initial backend connection attempt...")
     time.sleep(RETRY_WAIT_AFTER_STARTUP)
-
-# Initial backend connection attempt
-wait_for_backend()
 
 # Add security headers to all responses
 @app.after_request
@@ -116,18 +90,7 @@ def add_security_headers(response):
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     
-    csp_directives = [
-        "default-src 'self'",
-        "script-src 'self' 'unsafe-inline'",  
-        "style-src 'self' 'unsafe-inline'",  
-        "img-src 'self' data:",
-        "font-src 'self'",  
-        "connect-src 'self'",
-        "frame-ancestors 'self'",
-        "form-action 'self'",
-        "base-uri 'self'"
-    ]
-    response.headers['Content-Security-Policy'] = "; ".join(csp_directives)
+    # CSP is handled by Flask-Talisman
     
     # Add Referrer Policy
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
@@ -172,26 +135,13 @@ def favicon():
 @basic_auth.required
 def api_proxy(path):
     """Proxy requests to the backend API with retry logic"""
-    global backend_available
     
     url = f"{BACKEND_URL}/api/{path}"
     session = get_requests_session()
     
-    # Ensure backend is available before proceeding
-    if not backend_available and not wait_for_backend(max_attempts=3):
-        # If backend is still not available after retrying, return a user-friendly error
-        logger.error(f"Backend service unavailable when attempting to access {path}")
-        return jsonify({
-            "status": "error",
-            "message": "Backend service is currently unavailable. Please try again later.",
-            "retry_info": "The system will automatically retry connecting to the backend service."
-        }), 503
-    
     try:
         # Set up headers to include in the request
         headers = {}
-        
-        # CSRF token forwarding removed
         
         if request.method == 'GET':
             resp = session.get(url, auth=API_AUTH, params=request.args, headers=headers, timeout=REQUEST_TIMEOUT)
@@ -226,9 +176,6 @@ def api_proxy(path):
             }), 500
             
     except requests.exceptions.ConnectionError as e:
-        # Mark backend as unavailable to trigger a check on next request
-        backend_available = False
-        
         logger.error(f"Connection error with backend: {str(e)}")
         return jsonify({
             "status": "error", 

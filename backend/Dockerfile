@@ -4,8 +4,7 @@ WORKDIR /app
 
 # Install dependencies with specific order to handle dependencies correctly
 COPY requirements.txt .
-RUN pip install --no-cache-dir werkzeug==2.2.3 && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Install curl for healthcheck (Docker CLI removed for security)
 RUN apt-get update && \

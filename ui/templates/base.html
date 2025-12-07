@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Secure Proxy - {% block title %}Dashboard{% endblock %}</title>
 
     <!-- Bootstrap 5 CSS (local) -->
@@ -969,7 +970,7 @@
     <script src="/static/js/jquery.min.js"></script>
 
     <!-- Common JavaScript -->
-    <script>
+    <script nonce="{{ csp_nonce() }}">
         $(document).ready(function () {
             // Apply system/browser theme preference automatically
             function applySystemTheme() {
@@ -1221,6 +1222,18 @@
                 });
             }
         }
+    </script>
+
+    <!-- CSRF Protection Setup -->
+    <script nonce="{{ csp_nonce() }}">
+        var csrf_token = "{{ csrf_token() }}";
+        $.ajaxSetup({
+            beforeSend: function(xhr, settings) {
+                if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
+                    xhr.setRequestHeader("X-CSRFToken", csrf_token);
+                }
+            }
+        });
     </script>
 
     {% block extra_scripts %}{% endblock %}
