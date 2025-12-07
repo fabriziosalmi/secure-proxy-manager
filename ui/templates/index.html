@@ -431,7 +431,7 @@
 
 {% block extra_scripts %}
 <script src="/static/js/chart.min.js"></script>
-<script>
+<script nonce="{{ csp_nonce() }}">
     let trafficChart = null;
     let currentTrafficPeriod = 'day';
     
