@@ -2,6 +2,7 @@ import unittest
 import json
 import os
 import sys
+import tempfile
 from unittest.mock import patch, MagicMock
 
 # Add backend to path
@@ -13,17 +14,31 @@ os.environ['BASIC_AUTH_PASSWORD'] = 'admin'
 os.environ['SECRET_KEY'] = 'test_secret'
 
 from app.app import app, init_db, get_db
+import app.app as backend_app
 
 class SecurityTests(unittest.TestCase):
     def setUp(self):
         app.config['TESTING'] = True
         self.client = app.test_client()
         
-        # Setup in-memory db
+        # Create a temporary file for the database
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        
+        # Patch the DATABASE_PATH in the backend app module
+        self.original_db_path = backend_app.DATABASE_PATH
+        backend_app.DATABASE_PATH = self.db_path
+        
+        # Initialize the database
         with app.app_context():
-            # Mock database path to use in-memory
-            with patch('app.app.DATABASE_PATH', ':memory:'):
-                init_db()
+            init_db()
+
+    def tearDown(self):
+        # Close and remove the temporary database
+        os.close(self.db_fd)
+        os.unlink(self.db_path)
+        
+        # Restore original DATABASE_PATH
+        backend_app.DATABASE_PATH = self.original_db_path
 
     def test_input_validation_ip(self):
         # Test invalid IP
@@ -53,6 +68,8 @@ class SecurityTests(unittest.TestCase):
             headers={'Authorization': 'Basic YWRtaW46YWRtaW4='},
             json={'domain': 'example.com', 'description': 'test'}
         )
+        if response.status_code != 200:
+            print(f"Domain validation failed: {response.get_json()}")
         self.assertEqual(response.status_code, 200)
 
     def test_settings_update(self):
