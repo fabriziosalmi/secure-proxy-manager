@@ -775,10 +775,8 @@ Full interactive API documentation is available at `/api/docs` when the service 
 - **Authentication Integration**: LDAP/Active Directory support
 - **Advanced Analytics**: ML-based traffic pattern analysis
 - **Threat Intelligence**: Integration with external threat feeds
-- **Clustering**: Multi-node deployment for high availability
-- **Content Inspection**: DLP capabilities for data protection
 - **Mobile Support**: Improved UI for mobile administration
-- **Notification System**: Alerts via email, Slack, etc.
+- **Notification System**: Alerts via webhook
 
 ## 🤝 Contributing
 
