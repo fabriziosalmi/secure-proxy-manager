@@ -431,7 +431,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
     $(document).ready(function() {
         let initialSettings = {};
         let hasUnsavedChanges = false;

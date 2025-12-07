@@ -4,7 +4,6 @@ services:
     ports:
       - "8011:8011"
     volumes:
-      - ./ui:/app
       - ./config:/config
       - ./data:/data
       - ./logs:/logs
@@ -14,12 +13,19 @@ services:
     environment:
       - FLASK_ENV=production
       - BACKEND_URL=http://backend:5000
-      - BASIC_AUTH_USERNAME=admin
-      - BASIC_AUTH_PASSWORD=admin
       - REQUEST_TIMEOUT=30
       - MAX_RETRIES=5
       - BACKOFF_FACTOR=1.0
       - RETRY_WAIT_AFTER_STARTUP=10
+      # Credentials must be provided via .env file or environment variables
+      - BASIC_AUTH_USERNAME
+      - BASIC_AUTH_PASSWORD
+      - SECRET_KEY
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
     networks:
       - proxy-network
     restart: unless-stopped
@@ -27,20 +33,25 @@ services:
   backend:
     build: ./backend
     ports:
-      - "5001:5000"  # Map container port 5000 to host port 5001
+      - "5001:5000"
     volumes:
-      - ./backend:/app
       - ./config:/config
       - ./data:/data
       - ./logs:/logs
-      # Docker socket mount removed for security - see SECURITY.md
     environment:
       - FLASK_ENV=production
       - PROXY_HOST=proxy
       - PROXY_PORT=3128
-      - BASIC_AUTH_USERNAME=admin
-      - BASIC_AUTH_PASSWORD=admin
-      - PROXY_CONTAINER_NAME=secure-proxy-proxy-1  # Add container name for restart commands
+      - PROXY_CONTAINER_NAME=secure-proxy-proxy-1
+      # Credentials must be provided via .env file or environment variables
+      - BASIC_AUTH_USERNAME
+      - BASIC_AUTH_PASSWORD
+      - SECRET_KEY
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 5s
@@ -56,11 +67,15 @@ services:
     ports:
       - "3128:3128"
     volumes:
-      # Removed the direct mount of squid.conf
       - ./config:/config
       - ./data:/data
       - ./logs:/var/log/squid
       - squid-cache:/var/spool/squid
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
     networks:
       - proxy-network
     restart: unless-stopped
