@@ -94,14 +94,24 @@ if [ ! -f .env ]; then
         cp .env.example .env
         print_success "Created .env file from .env.example"
         echo ""
-        print_warning "IMPORTANT: The .env file contains default credentials (admin/admin)"
-        print_warning "Please edit .env and change the credentials before deploying to production!"
+        print_error "=============================================="
+        print_error "SECURITY WARNING: Default Credentials in Use"
+        print_error "=============================================="
+        print_warning "The .env file contains default credentials:"
+        print_warning "  Username: admin"
+        print_warning "  Password: admin"
         echo ""
-        read -p "Press Enter to continue or Ctrl+C to exit and edit .env now..."
+        print_warning "These MUST be changed before production deployment!"
+        print_warning "Edit .env file now or press Ctrl+C to exit."
+        echo ""
+        read -p "Press Enter to continue with default credentials (NOT RECOMMENDED) or Ctrl+C to exit and edit .env now..."
     else
         print_error ".env.example file not found. Creating minimal .env file..."
         cat > .env << 'EOF'
 # Minimal environment configuration
+# WARNING: This file was auto-generated with INSECURE default credentials!
+# CHANGE THESE IMMEDIATELY before deploying to production!
+
 BASIC_AUTH_USERNAME=admin
 BASIC_AUTH_PASSWORD=admin
 SECRET_KEY=
@@ -116,14 +126,23 @@ PROXY_PORT=3128
 PROXY_CONTAINER_NAME=secure-proxy-proxy-1
 EOF
         print_success "Created minimal .env file with default values"
-        print_warning "IMPORTANT: Using default credentials (admin/admin)"
-        print_warning "Please change these before deploying to production!"
+        echo ""
+        print_error "=============================================="
+        print_error "SECURITY WARNING: Default Credentials in Use"
+        print_error "=============================================="
+        print_warning "The .env file contains INSECURE default credentials:"
+        print_warning "  Username: admin"
+        print_warning "  Password: admin"
+        echo ""
+        print_warning "These MUST be changed before production deployment!"
+        print_warning "Edit .env file now: nano .env"
+        echo ""
     fi
 else
     print_success ".env file already exists"
     
-    # Check if credentials are set
-    if grep -q "BASIC_AUTH_USERNAME=admin" .env && grep -q "BASIC_AUTH_PASSWORD=admin" .env; then
+    # Check if credentials are set to defaults (exact match on uncommented lines)
+    if grep -q "^BASIC_AUTH_USERNAME=admin$" .env && grep -q "^BASIC_AUTH_PASSWORD=admin$" .env; then
         echo ""
         print_warning "WARNING: You are using default credentials (admin/admin)"
         print_warning "It is strongly recommended to change these in the .env file"

@@ -33,10 +33,6 @@ talisman = Talisman(app, content_security_policy=csp, force_https=False)
 app.config['BASIC_AUTH_USERNAME'] = os.environ.get('BASIC_AUTH_USERNAME', 'admin')
 app.config['BASIC_AUTH_PASSWORD'] = os.environ.get('BASIC_AUTH_PASSWORD', 'admin')
 
-# Warn if using default credentials
-if app.config['BASIC_AUTH_USERNAME'] == 'admin' and app.config['BASIC_AUTH_PASSWORD'] == 'admin':
-    logger.warning("⚠️  WARNING: Using default credentials (admin/admin). Please change these in production!")
-
 app.config['BASIC_AUTH_FORCE'] = True
 basic_auth = BasicAuth(app)
 
@@ -58,6 +54,10 @@ logHandler.setFormatter(formatter)
 logger.addHandler(logHandler)
 logger.setLevel(logging.INFO)
 logger.addHandler(logging.StreamHandler())
+
+# Warn if using default credentials (after logger is initialized)
+if app.config['BASIC_AUTH_USERNAME'] == 'admin' and app.config['BASIC_AUTH_PASSWORD'] == 'admin':
+    logger.warning("⚠️  WARNING: Using default credentials (admin/admin). Please change these in production!")
 
 # Backend API configuration
 BACKEND_URL = os.environ.get('BACKEND_URL', 'http://backend:5000')
@@ -85,7 +85,6 @@ def get_requests_session():
     session.mount("https://", adapter)
     
     return session
-    time.sleep(RETRY_WAIT_AFTER_STARTUP)
 
 # Add security headers to all responses
 @app.after_request
