@@ -11,16 +11,16 @@ services:
       backend:
         condition: service_healthy
     environment:
-      - FLASK_ENV=production
-      - BACKEND_URL=http://backend:5000
-      - REQUEST_TIMEOUT=30
-      - MAX_RETRIES=5
-      - BACKOFF_FACTOR=1.0
-      - RETRY_WAIT_AFTER_STARTUP=10
-      # Credentials must be provided via .env file or environment variables
-      - BASIC_AUTH_USERNAME
-      - BASIC_AUTH_PASSWORD
-      - SECRET_KEY
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - BACKEND_URL=${BACKEND_URL:-http://backend:5000}
+      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-30}
+      - MAX_RETRIES=${MAX_RETRIES:-5}
+      - BACKOFF_FACTOR=${BACKOFF_FACTOR:-1.0}
+      - RETRY_WAIT_AFTER_STARTUP=${RETRY_WAIT_AFTER_STARTUP:-10}
+      # Credentials - defaults to admin/admin if not set in .env file
+      - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME:-admin}
+      - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD:-admin}
+      - SECRET_KEY=${SECRET_KEY:-}
     deploy:
       resources:
         limits:
@@ -39,14 +39,14 @@ services:
       - ./data:/data
       - ./logs:/logs
     environment:
-      - FLASK_ENV=production
-      - PROXY_HOST=proxy
-      - PROXY_PORT=3128
-      - PROXY_CONTAINER_NAME=secure-proxy-proxy-1
-      # Credentials must be provided via .env file or environment variables
-      - BASIC_AUTH_USERNAME
-      - BASIC_AUTH_PASSWORD
-      - SECRET_KEY
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - PROXY_HOST=${PROXY_HOST:-proxy}
+      - PROXY_PORT=${PROXY_PORT:-3128}
+      - PROXY_CONTAINER_NAME=${PROXY_CONTAINER_NAME:-secure-proxy-proxy-1}
+      # Credentials - defaults to admin/admin if not set in .env file
+      - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME:-admin}
+      - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD:-admin}
+      - SECRET_KEY=${SECRET_KEY:-}
     deploy:
       resources:
         limits:
