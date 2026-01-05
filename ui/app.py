@@ -41,17 +41,26 @@ log_dir = '/logs'
 if not os.path.exists(log_dir):
     try:
         os.makedirs(log_dir, exist_ok=True)
-    except PermissionError:
+    except (PermissionError, OSError):
         # Fallback to current directory if /logs is not writable
         log_dir = './logs'
-        os.makedirs(log_dir, exist_ok=True)
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+        except (PermissionError, OSError):
+            # Final fallback to temp directory
+            import tempfile
+            log_dir = tempfile.gettempdir()
 
 logger = logging.getLogger(__name__)
 log_file = os.path.join(log_dir, 'ui.log')
-logHandler = logging.FileHandler(log_file)
-formatter = jsonlogger.JsonFormatter('%(asctime)s %(name)s %(levelname)s %(message)s')
-logHandler.setFormatter(formatter)
-logger.addHandler(logHandler)
+try:
+    logHandler = logging.FileHandler(log_file)
+    formatter = jsonlogger.JsonFormatter('%(asctime)s %(name)s %(levelname)s %(message)s')
+    logHandler.setFormatter(formatter)
+    logger.addHandler(logHandler)
+except (PermissionError, OSError):
+    # If file logging fails, only use console logging
+    pass
 logger.setLevel(logging.INFO)
 logger.addHandler(logging.StreamHandler())
 
