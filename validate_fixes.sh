@@ -32,8 +32,9 @@ check_dir() {
 }
 
 # Function to check if a string exists in a file
+# Uses literal string matching (-F) for safety with special characters
 check_content() {
-    if grep -q "$2" "$1"; then
+    if grep -qF "$2" "$1"; then
         echo "✓ PASS: $1 contains '$2'"
         PASS=$((PASS + 1))
     else

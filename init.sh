@@ -141,10 +141,10 @@ EOF
 else
     print_success ".env file already exists"
     
-    # Check if credentials are set to defaults (match with or without quotes)
-    # Matches: BASIC_AUTH_USERNAME=admin, BASIC_AUTH_USERNAME="admin", BASIC_AUTH_USERNAME='admin'
-    if grep -qE "^BASIC_AUTH_USERNAME=['\"]?admin['\"]?$" .env && \
-       grep -qE "^BASIC_AUTH_PASSWORD=['\"]?admin['\"]?$" .env; then
+    # Check if credentials are set to defaults (match with or without quotes and spaces)
+    # Matches: BASIC_AUTH_USERNAME=admin, BASIC_AUTH_USERNAME = "admin", etc.
+    if grep -qE "^BASIC_AUTH_USERNAME\s*=\s*['\"]?admin['\"]?\s*$" .env && \
+       grep -qE "^BASIC_AUTH_PASSWORD\s*=\s*['\"]?admin['\"]?\s*$" .env; then
         echo ""
         print_warning "WARNING: You are using default credentials (admin/admin)"
         print_warning "It is strongly recommended to change these in the .env file"
