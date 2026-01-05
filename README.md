@@ -11,8 +11,10 @@ A containerized secure proxy with advanced filtering capabilities, real-time mon
 ## 🚀 Quick Links
 
 - [**Getting Started**](#-quick-start) - Get up and running in 5 minutes
+- [**Deployment Guide**](DEPLOYMENT.md) - Comprehensive step-by-step deployment instructions
 - [**API Documentation**](#-api-documentation) - Complete API reference
 - [**FAQ**](#-frequently-asked-questions-faq) - Common questions answered
+- [**Troubleshooting**](#-troubleshooting) - Solutions to common issues
 - [**Contributing**](CONTRIBUTING.md) - How to contribute to the project
 - [**Changelog**](CHANGELOG.md) - Version history and updates
 
@@ -154,28 +156,69 @@ secure-proxy-manager/
 
 ## 🚦 Quick Start
 
+### For First-Time Users
+
+If this is your first time deploying Secure Proxy Manager, we recommend using the **initialization script** for a guided setup:
+
 1. **Clone the repository**:
    ```bash
    git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
    cd secure-proxy-manager
    ```
 
-2. **Start the application**:
+2. **Run the initialization script**:
+   ```bash
+   chmod +x init.sh
+   ./init.sh
+   ```
+   
+   This script will:
+   - Check prerequisites (Docker, Docker Compose)
+   - Create required directories (`config`, `data`, `logs`)
+   - Set up environment variables with default credentials
+   - Guide you through the setup process
+
+3. **Start the application**:
    ```bash
    docker-compose up -d
    ```
 
-3. **Access the web interface**:
+4. **Access the web interface**:
    ```
    http://localhost:8011
    ```
    Default credentials: username: `admin`, password: `admin`
+   
+   **⚠️ Important**: Change these default credentials immediately in production! Edit the `.env` file and restart the services.
 
    **Note**: The backend API is also accessible directly at `http://localhost:5001` for advanced users or automation scripts.
 
-4. **Configure your client devices**:
+5. **Configure your client devices**:
    - Set proxy server to your host's IP address, port 3128
    - For transparent proxying, see the [Transparent Proxy Setup](#transparent-proxy-setup) section
+
+### For Experienced Users
+
+If you're familiar with Docker and prefer manual setup:
+
+1. Clone the repository and create required directories:
+   ```bash
+   git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
+   cd secure-proxy-manager
+   mkdir -p config data logs
+   cp .env.example .env
+   ```
+
+2. Edit `.env` to set your credentials, then start:
+   ```bash
+   docker-compose up -d
+   ```
+
+### Need Help?
+
+- **New to Docker?** See our comprehensive [DEPLOYMENT.md](DEPLOYMENT.md) guide
+- **Encountering issues?** Check the [Troubleshooting](#-troubleshooting) section below
+- **Want detailed setup instructions?** Read the full [Deployment Guide](DEPLOYMENT.md)
 
 ## ⚙️ Configuration Options
 
@@ -523,10 +566,26 @@ A: Default is 1GB. Adjust the cache size in performance tuning settings based on
 
 **Q: Services won't start - what should I check?**  
 A:
-1. Ensure Docker and Docker Compose are installed and running
-2. Check for port conflicts: `docker-compose logs`
-3. Verify volumes have correct permissions
-4. Wait for backend health check (may take 10-15 seconds)
+1. Run the initialization script: `./init.sh`
+2. Ensure Docker and Docker Compose are installed and running
+3. Check for port conflicts: `docker-compose logs`
+4. Verify volumes have correct permissions: `chmod 755 config data logs`
+5. Wait for backend health check (may take 10-15 seconds)
+6. See the comprehensive [Deployment Guide](DEPLOYMENT.md#troubleshooting) for detailed solutions
+
+**Q: Getting permission errors with config/data/logs directories?**
+A: Run the initialization script (`./init.sh`) or manually create directories with proper permissions:
+```bash
+mkdir -p config data logs
+chmod 755 config data logs
+```
+
+**Q: Authentication is failing between services?**
+A: Ensure you have a `.env` file with credentials set. Copy from `.env.example`:
+```bash
+cp .env.example .env
+docker-compose restart
+```
 
 **Q: Why am I getting SSL certificate warnings?**  
 A: The SSL certificate needs to be installed on each client device. See [Custom SSL Certificate](#custom-ssl-certificate) section.
@@ -540,15 +599,25 @@ A: Common causes:
 
 ## 🔍 Troubleshooting
 
+### Quick Fixes
+
+**First-Time Setup Issues?** 
+- Run the initialization script: `./init.sh`
+- Or manually: `mkdir -p config data logs && cp .env.example .env && docker-compose up -d`
+
+**For detailed troubleshooting and step-by-step solutions, see the [Deployment Guide](DEPLOYMENT.md#troubleshooting).**
+
 ### Common Issues
 
 | Issue | Possible Cause | Resolution |
 |-------|---------------|------------|
-| Cannot access web UI | Port conflict | Change port mapping in docker-compose.yml |
+| Cannot access web UI | Port conflict or service not started | Run `./init.sh`, check `docker-compose ps` |
+| Permission denied errors | Missing directories or wrong permissions | Run `./init.sh` or `mkdir -p config data logs && chmod 755 config data logs` |
+| Authentication failures | Missing .env file | Copy `.env.example` to `.env` and restart |
 | Proxy not filtering | Incorrect network configuration | Verify client proxy settings |
 | SSL warnings | Certificate not trusted | Install certificate on client devices |
 | Performance issues | Insufficient resources | Increase container resource limits |
-| Database errors | Permission issues | Check volume permissions |
+| Database errors | Permission issues | Check volume permissions with `ls -la data/` |
 
 ### Diagnostic Tools
 

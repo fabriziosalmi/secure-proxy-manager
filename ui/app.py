@@ -12,6 +12,7 @@ import json
 import logging
 import time
 import secrets
+import tempfile
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
@@ -30,24 +31,42 @@ csp = {
 talisman = Talisman(app, content_security_policy=csp, force_https=False)
 
 # Configure Basic Auth
-app.config['BASIC_AUTH_USERNAME'] = os.environ.get('BASIC_AUTH_USERNAME')
-app.config['BASIC_AUTH_PASSWORD'] = os.environ.get('BASIC_AUTH_PASSWORD')
-
-if not app.config['BASIC_AUTH_USERNAME'] or not app.config['BASIC_AUTH_PASSWORD']:
-    # Fail fast if credentials are not set
-    raise ValueError("BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD environment variables must be set.")
+app.config['BASIC_AUTH_USERNAME'] = os.environ.get('BASIC_AUTH_USERNAME', 'admin')
+app.config['BASIC_AUTH_PASSWORD'] = os.environ.get('BASIC_AUTH_PASSWORD', 'admin')
 
 app.config['BASIC_AUTH_FORCE'] = True
 basic_auth = BasicAuth(app)
 
-# Configure logging
+# Configure logging with error handling for directory creation
+log_dir = '/logs'
+if not os.path.exists(log_dir):
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+    except (PermissionError, OSError):
+        # Fallback to current directory if /logs is not writable
+        log_dir = './logs'
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+        except (PermissionError, OSError):
+            # Final fallback to temp directory
+            log_dir = tempfile.gettempdir()
+
 logger = logging.getLogger(__name__)
-logHandler = logging.FileHandler('/logs/ui.log')
-formatter = jsonlogger.JsonFormatter('%(asctime)s %(name)s %(levelname)s %(message)s')
-logHandler.setFormatter(formatter)
-logger.addHandler(logHandler)
+log_file = os.path.join(log_dir, 'ui.log')
+try:
+    logHandler = logging.FileHandler(log_file)
+    formatter = jsonlogger.JsonFormatter('%(asctime)s %(name)s %(levelname)s %(message)s')
+    logHandler.setFormatter(formatter)
+    logger.addHandler(logHandler)
+except (PermissionError, OSError):
+    # If file logging fails, only use console logging
+    pass
 logger.setLevel(logging.INFO)
 logger.addHandler(logging.StreamHandler())
+
+# Warn if using default credentials (after logger is initialized)
+if app.config['BASIC_AUTH_USERNAME'] == 'admin' and app.config['BASIC_AUTH_PASSWORD'] == 'admin':
+    logger.warning("⚠️  WARNING: Using default credentials (admin/admin). Please change these in production!")
 
 # Backend API configuration
 BACKEND_URL = os.environ.get('BACKEND_URL', 'http://backend:5000')
@@ -75,7 +94,6 @@ def get_requests_session():
     session.mount("https://", adapter)
     
     return session
-    time.sleep(RETRY_WAIT_AFTER_STARTUP)
 
 # Add security headers to all responses
 @app.after_request
