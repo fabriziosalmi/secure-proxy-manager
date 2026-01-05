@@ -30,19 +30,29 @@ csp = {
 talisman = Talisman(app, content_security_policy=csp, force_https=False)
 
 # Configure Basic Auth
-app.config['BASIC_AUTH_USERNAME'] = os.environ.get('BASIC_AUTH_USERNAME')
-app.config['BASIC_AUTH_PASSWORD'] = os.environ.get('BASIC_AUTH_PASSWORD')
+app.config['BASIC_AUTH_USERNAME'] = os.environ.get('BASIC_AUTH_USERNAME', 'admin')
+app.config['BASIC_AUTH_PASSWORD'] = os.environ.get('BASIC_AUTH_PASSWORD', 'admin')
 
-if not app.config['BASIC_AUTH_USERNAME'] or not app.config['BASIC_AUTH_PASSWORD']:
-    # Fail fast if credentials are not set
-    raise ValueError("BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD environment variables must be set.")
+# Warn if using default credentials
+if app.config['BASIC_AUTH_USERNAME'] == 'admin' and app.config['BASIC_AUTH_PASSWORD'] == 'admin':
+    logger.warning("⚠️  WARNING: Using default credentials (admin/admin). Please change these in production!")
 
 app.config['BASIC_AUTH_FORCE'] = True
 basic_auth = BasicAuth(app)
 
-# Configure logging
+# Configure logging with error handling for directory creation
+log_dir = '/logs'
+if not os.path.exists(log_dir):
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+    except PermissionError:
+        # Fallback to current directory if /logs is not writable
+        log_dir = './logs'
+        os.makedirs(log_dir, exist_ok=True)
+
 logger = logging.getLogger(__name__)
-logHandler = logging.FileHandler('/logs/ui.log')
+log_file = os.path.join(log_dir, 'ui.log')
+logHandler = logging.FileHandler(log_file)
 formatter = jsonlogger.JsonFormatter('%(asctime)s %(name)s %(levelname)s %(message)s')
 logHandler.setFormatter(formatter)
 logger.addHandler(logHandler)
