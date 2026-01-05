@@ -12,6 +12,7 @@ import json
 import logging
 import time
 import secrets
+import tempfile
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
@@ -48,7 +49,6 @@ if not os.path.exists(log_dir):
             os.makedirs(log_dir, exist_ok=True)
         except (PermissionError, OSError):
             # Final fallback to temp directory
-            import tempfile
             log_dir = tempfile.gettempdir()
 
 logger = logging.getLogger(__name__)
