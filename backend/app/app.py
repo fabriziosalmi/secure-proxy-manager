@@ -209,6 +209,11 @@ def init_db():
         ('time_restriction_start', '09:00', 'Time restrictions start time'),
         ('time_restriction_end', '17:00', 'Time restrictions end time'),
         
+        # Bandwidth Limits (Delay Pools)
+        ('enable_bandwidth_limits', 'false', 'Enable bandwidth throttling'),
+        ('bandwidth_limit_mbps', '10', 'Max total bandwidth in Mbps'),
+        ('bandwidth_limit_per_user_kbps', '500', 'Max bandwidth per user in Kbps'),
+        
         # Authentication settings
         ('enable_proxy_auth', 'false', 'Enable proxy authentication'),
         ('auth_method', 'basic', 'Authentication method'),
@@ -1132,6 +1137,18 @@ def apply_settings():
             squid_conf.append("")
             squid_conf.append("# Apply time restrictions")
             squid_conf.append("http_access deny !allowed_hours")
+            
+        # Bandwidth Limits (Delay Pools)
+        if settings.get('enable_bandwidth_limits') == 'true':
+            mbps_total = int(settings.get('bandwidth_limit_mbps', '10')) * 125000  # Convert Mbps to Bytes/sec
+            kbps_user = int(settings.get('bandwidth_limit_per_user_kbps', '500')) * 125  # Convert Kbps to Bytes/sec
+            
+            squid_conf.append("")
+            squid_conf.append("# Bandwidth Throttling (Delay Pools)")
+            squid_conf.append("delay_pools 1")
+            squid_conf.append("delay_class 1 2")  # Class 2: Aggregate limit + Per-IP limit
+            squid_conf.append(f"delay_parameters 1 {mbps_total}/{mbps_total} {kbps_user}/{kbps_user}")
+            squid_conf.append("delay_access 1 allow all")
         
         # Allow local access
         squid_conf.append("")
@@ -1772,6 +1789,7 @@ def validate_setting(setting_name, setting_value):
         'enable_youtube_restricted': lambda x: x in ['true', 'false'],
         'enable_https_filtering': lambda x: x in ['true', 'false'],
         'enable_time_restrictions': lambda x: x in ['true', 'false'],
+        'enable_bandwidth_limits': lambda x: x in ['true', 'false'],
         'enable_proxy_auth': lambda x: x in ['true', 'false'],
         'enable_user_management': lambda x: x in ['true', 'false'],
         'enable_extended_logging': lambda x: x in ['true', 'false'],
@@ -1785,6 +1803,8 @@ def validate_setting(setting_name, setting_value):
         'dns_timeout': lambda x: x.isdigit() and 1 <= int(x) <= 60,
         'max_connections': lambda x: x.isdigit() and 10 <= int(x) <= 1000,
         'log_retention': lambda x: x.isdigit() and 1 <= int(x) <= 365,
+        'bandwidth_limit_mbps': lambda x: x.isdigit() and 1 <= int(x) <= 10000,
+        'bandwidth_limit_per_user_kbps': lambda x: x.isdigit() and 10 <= int(x) <= 100000,
         
         # String settings with specific formats
         'log_level': lambda x: x.lower() in ['debug', 'info', 'warning', 'error'],
