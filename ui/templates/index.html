@@ -704,7 +704,7 @@
             });
         
         // Load blocked requests count
-        apiRequest('GET', 'logs/blocked-count')
+        apiRequest('GET', 'logs/stats')
             .then(function(response) {
                 if (response.status === 'success') {
                     $('#blocked-requests').text(response.data.blocked_count);
