@@ -28,13 +28,15 @@ csp = {
     'img-src': ["'self'", "data:"],
     'font-src': ["'self'", "data:"]
 }
-talisman = Talisman(app, content_security_policy=csp, force_https=False)
+talisman = Talisman(app, content_security_policy=csp, force_https=False, session_cookie_secure=False)
 
 # Configure Basic Auth
 app.config['BASIC_AUTH_USERNAME'] = os.environ.get('BASIC_AUTH_USERNAME', 'admin')
 app.config['BASIC_AUTH_PASSWORD'] = os.environ.get('BASIC_AUTH_PASSWORD', 'admin')
 
 app.config['BASIC_AUTH_FORCE'] = True
+app.config['SESSION_COOKIE_SECURE'] = False
+app.config['SESSION_COOKIE_HTTPONLY'] = False
 basic_auth = BasicAuth(app)
 
 # Configure logging with error handling for directory creation
@@ -106,7 +108,7 @@ def add_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-XSS-Protection'] = '1; mode=block'
-    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    # response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     
     # CSP is handled by Flask-Talisman
     
@@ -179,9 +181,20 @@ def api_proxy(path):
                 "backend_response": resp.text[:200]  # Limit response size
             }), 500
             
+        # Handle 404 Not Found explicitly
+        if resp.status_code == 404:
+            return jsonify({
+                "status": "error",
+                "message": f"API endpoint not found: {path}",
+                "status_code": 404
+            }), 404
+            
         # Check if the response is valid JSON before trying to parse it
         try:
-            response_data = resp.json()
+            if resp.content:
+                response_data = resp.json()
+            else:
+                response_data = {"status": "success", "message": "Empty response"}
             return jsonify(response_data), resp.status_code
         except json.JSONDecodeError as json_err:
             logger.error(f"Backend returned invalid JSON: {str(json_err)}")
