@@ -435,6 +435,41 @@ export function Settings() {
                 <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
               </label>
             </div>
+
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+              <div className="space-y-0.5">
+                <label className="text-sm font-medium">SafeSearch Enforcement</label>
+                <p className="text-xs text-muted-foreground">Force SafeSearch for all users on Google, Bing, and DuckDuckGo (Requires HTTPS Inspection).</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  name="enable_safesearch"
+                  checked={formData.enable_safesearch === 'true' || formData.enable_safesearch === true}
+                  onChange={(e) => setFormData({ ...formData, enable_safesearch: e.target.checked ? 'true' : 'false' })}
+                  className="sr-only peer" 
+                />
+                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+              <div className="space-y-0.5">
+                <label className="text-sm font-medium">YouTube Restricted Mode</label>
+                <p className="text-xs text-muted-foreground">Force Strict Restricted Mode on YouTube to hide mature content (Requires HTTPS Inspection).</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  name="enable_youtube_restricted"
+                  checked={formData.enable_youtube_restricted === 'true' || formData.enable_youtube_restricted === true}
+                  onChange={(e) => setFormData({ ...formData, enable_youtube_restricted: e.target.checked ? 'true' : 'false' })}
+                  className="sr-only peer" 
+                />
+                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+              </label>
+            </div>
+            
             <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
               <div className="space-y-0.5 w-full">
                 <div className="flex items-center justify-between mb-2">

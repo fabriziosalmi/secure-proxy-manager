@@ -202,6 +202,8 @@ def init_db():
         ('enable_content_filtering', 'false', 'Enable content type filtering'),
         ('blocked_file_types', 'exe,bat,cmd,dll,js', 'Blocked file extensions'),
         ('enable_https_filtering', 'false', 'Enable HTTPS filtering'),
+        ('enable_safesearch', 'false', 'Force SafeSearch on Google, Bing, DuckDuckGo, etc.'),
+        ('enable_youtube_restricted', 'false', 'Force YouTube Restricted Mode'),
         ('enable_time_restrictions', 'false', 'Enable time-based access restrictions'),
         ('time_restriction_start', '09:00', 'Time restrictions start time'),
         ('time_restriction_end', '17:00', 'Time restrictions end time'),
@@ -1015,6 +1017,25 @@ def apply_settings():
             squid_conf.append("acl step1 at_step SslBump1")
             squid_conf.append("ssl_bump peek step1")
             squid_conf.append("ssl_bump bump all")
+            
+        # SafeSearch Enforcement (via DNS override)
+        if settings.get('enable_safesearch') == 'true':
+            squid_conf.append("")
+            squid_conf.append("# Force SafeSearch")
+            squid_conf.append("acl google_domains dstdomain .google.com .google.it")
+            squid_conf.append("acl bing_domains dstdomain .bing.com")
+            squid_conf.append("acl duck_domains dstdomain .duckduckgo.com")
+            
+            # Use request_header_add to enforce SafeSearch
+            squid_conf.append("request_header_add Cookie \"PREF=f1=50000000;\" google_domains")
+            squid_conf.append("request_header_add Cookie \"SRCHHPGUSR=ADLT=STRICT;\" bing_domains")
+
+        # YouTube Restricted Mode Enforcement
+        if settings.get('enable_youtube_restricted') == 'true':
+            squid_conf.append("")
+            squid_conf.append("# Force YouTube Restricted Mode")
+            squid_conf.append("acl youtube_domains dstdomain .youtube.com .m.youtube.com .youtubei.googleapis.com .youtube.googleapis.com .www.youtube-nocookie.com")
+            squid_conf.append("request_header_add YouTube-Restrict \"Strict\" youtube_domains")
         
         # IP and Domain blacklists
         squid_conf.append("")
@@ -1721,6 +1742,8 @@ def validate_setting(setting_name, setting_value):
         'aggressive_caching': lambda x: x in ['true', 'false'],
         'enable_waf': lambda x: x in ['true', 'false'],
         'enable_content_filtering': lambda x: x in ['true', 'false'],
+        'enable_safesearch': lambda x: x in ['true', 'false'],
+        'enable_youtube_restricted': lambda x: x in ['true', 'false'],
         'enable_https_filtering': lambda x: x in ['true', 'false'],
         'enable_time_restrictions': lambda x: x in ['true', 'false'],
         'enable_proxy_auth': lambda x: x in ['true', 'false'],
