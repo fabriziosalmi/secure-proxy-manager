@@ -3,6 +3,8 @@ Flask-RESTful==0.3.10
 Flask-HTTPAuth==4.8.0
 Flask-Cors==6.0.1
 Flask-Login==0.6.3
+Flask-SocketIO==5.3.6
+eventlet==0.35.2
 requests==2.32.4
 gunicorn==23.0.0
 sqlalchemy==2.0.36

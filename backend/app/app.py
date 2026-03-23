@@ -2,12 +2,15 @@ from flask import Flask, request, jsonify, g, send_file, session
 from flask_cors import CORS
 from flask_httpauth import HTTPBasicAuth
 from flask_login import LoginManager, login_required
+from flask_socketio import SocketIO, emit
 import sqlite3
 import os
 import subprocess
 import logging
 import json
 import secrets
+import threading
+import time
 from datetime import datetime, timedelta
 import requests
 import threading
@@ -54,6 +57,9 @@ CORS(app, supports_credentials=True, resources={
         "expose_headers": []
     }
 })
+
+# Initialize SocketIO
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 auth = HTTPBasicAuth()
 
 # Configure logging
@@ -3598,3 +3604,49 @@ def get_database_stats():
     except Exception as e:
         logger.error("An error occurred while fetching database statistics")
         return jsonify({"status": "error", "message": "An error occurred while fetching database statistics"}), 500
+
+# WebSocket Log Tailer
+import subprocess
+import eventlet
+eventlet.monkey_patch()
+
+def tail_logs():
+    """Background task to tail squid logs and emit via websocket"""
+    log_file = '/logs/access.log'
+    while True:
+        try:
+            if os.path.exists(log_file):
+                process = subprocess.Popen(['tail', '-F', log_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                for line in process.stdout:
+                    # Basic parsing of squid log format
+                    parts = line.split()
+                    if len(parts) >= 10:
+                        timestamp_sec = float(parts[0])
+                        dt = datetime.fromtimestamp(timestamp_sec)
+                        
+                        log_entry = {
+                            "timestamp": dt.strftime('%Y-%m-%d %H:%M:%S'),
+                            "client_ip": parts[2],
+                            "status": parts[3],
+                            "bytes": int(parts[4]) if parts[4].isdigit() else 0,
+                            "method": parts[5],
+                            "destination": parts[6]
+                        }
+                        socketio.emit('new_log', log_entry, namespace='/logs')
+            else:
+                eventlet.sleep(5)
+        except Exception as e:
+            logger.error(f"Error tailing logs: {e}")
+            eventlet.sleep(5)
+
+@socketio.on('connect', namespace='/logs')
+def test_connect():
+    emit('status', {'data': 'Connected to log stream'})
+
+if __name__ == '__main__':
+    # Start the log tailer thread
+    eventlet.spawn(tail_logs)
+    
+    # Run the application with socketio
+    port = int(os.environ.get('PORT', 5000))
+    socketio.run(app, host='0.0.0.0', port=port, debug=False)
