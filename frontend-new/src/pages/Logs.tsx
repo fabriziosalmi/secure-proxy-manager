@@ -1,12 +1,46 @@
 import { Card, CardContent } from '../components/ui/card';
 import { useApi } from '../hooks/useApi';
-import { Search, Filter, RefreshCw, FileText } from 'lucide-react';
-import { useState } from 'react';
+import { api } from '../lib/api';
+import { Search, RefreshCw, FileText, Trash2, Clock } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 
 export function Logs() {
   const [searchTerm, setSearchTerm] = useState('');
-  const { data, loading, execute: refreshLogs } = useApi<any>('logs?limit=50');
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const { data, loading, execute: refreshLogs } = useApi<any>('logs?limit=100');
+  
   const logs = data?.logs || [];
+
+  // Filter logs based on search
+  const filteredLogs = logs.filter((log: any) => 
+    log.destination?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    log.client_ip?.includes(searchTerm) ||
+    log.status?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Auto refresh
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (autoRefresh) {
+      interval = setInterval(() => {
+        refreshLogs();
+      }, 5000); // 5 seconds
+    }
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshLogs]);
+
+  const handleClearLogs = async () => {
+    if (!confirm('Are you sure you want to clear all logs?')) return;
+    const loadingToast = toast.loading('Clearing logs...');
+    try {
+      await api.post('logs/clear');
+      toast.success('Logs cleared successfully', { id: loadingToast });
+      refreshLogs();
+    } catch (err) {
+      toast.error('Failed to clear logs', { id: loadingToast });
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -17,15 +51,25 @@ export function Logs() {
         </div>
         <div className="flex items-center space-x-2">
           <button 
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className={`flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${autoRefresh ? 'bg-primary/20 text-primary' : 'bg-secondary text-foreground hover:bg-secondary/80'}`}
+          >
+            <Clock className={`w-4 h-4 mr-2 ${autoRefresh ? 'animate-pulse' : ''}`} />
+            Auto-refresh
+          </button>
+          <button 
             onClick={() => refreshLogs()}
             className="flex items-center px-3 py-2 bg-secondary text-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading && !autoRefresh ? 'animate-spin' : ''}`} />
             Refresh
           </button>
-          <button className="flex items-center px-3 py-2 bg-secondary text-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors">
-            <Filter className="w-4 h-4 mr-2" />
-            Filter
+          <button 
+            onClick={handleClearLogs}
+            className="flex items-center px-3 py-2 bg-destructive/10 text-destructive rounded-md text-sm font-medium hover:bg-destructive/20 transition-colors"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Clear All
           </button>
         </div>
       </div>
@@ -42,11 +86,14 @@ export function Logs() {
               className="w-full bg-background border border-border rounded-md pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
             />
           </div>
+          <div className="ml-auto text-sm text-muted-foreground">
+            Showing {filteredLogs.length} entries
+          </div>
         </div>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-muted-foreground uppercase bg-secondary/50 border-b border-border">
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+            <table className="w-full text-sm text-left relative">
+              <thead className="text-xs text-muted-foreground uppercase bg-secondary/80 border-b border-border sticky top-0 backdrop-blur-sm z-10">
                 <tr>
                   <th className="px-6 py-4 font-medium">Timestamp</th>
                   <th className="px-6 py-4 font-medium">Client IP</th>
@@ -57,7 +104,7 @@ export function Logs() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {logs.map((log: any, i: number) => (
+                {filteredLogs.map((log: any, i: number) => (
                   <tr key={i} className="hover:bg-secondary/20 transition-colors font-mono text-xs">
                     <td className="px-6 py-3 text-muted-foreground whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleString()}
@@ -82,11 +129,11 @@ export function Logs() {
                   </tr>
                 ))}
 
-                {logs.length === 0 && !loading && (
+                {filteredLogs.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
                       <FileText className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                      No logs available
+                      No logs match your search
                     </td>
                   </tr>
                 )}

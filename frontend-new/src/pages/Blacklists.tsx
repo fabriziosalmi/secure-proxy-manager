@@ -1,15 +1,58 @@
 import { Card, CardContent } from '../components/ui/card';
 import { useApi } from '../hooks/useApi';
+import { api } from '../lib/api';
 import { Ban, Globe, Server, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import toast from 'react-hot-toast';
 
 export function Blacklists() {
   const [activeTab, setActiveTab] = useState<'ip' | 'domain'>('ip');
-  const { data: ipData } = useApi<any>('ip-blacklist');
-  const { data: domainData } = useApi<any>('domain-blacklist');
+  const [isAdding, setIsAdding] = useState(false);
+  const [newItem, setNewItem] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  
+  const { data: ipData, execute: refreshIps } = useApi<any>('ip-blacklist');
+  const { data: domainData, execute: refreshDomains } = useApi<any>('domain-blacklist');
 
   const ips = ipData?.blacklist || [];
   const domains = domainData?.blacklist || [];
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newItem) return;
+
+    const endpoint = activeTab === 'ip' ? 'ip-blacklist' : 'domain-blacklist';
+    const payload = activeTab === 'ip' 
+      ? { ip_address: newItem, description: newDesc }
+      : { domain: newItem, description: newDesc };
+
+    const loadingToast = toast.loading(`Adding ${activeTab}...`);
+    try {
+      await api.post(endpoint, payload);
+      toast.success('Rule added successfully', { id: loadingToast });
+      setNewItem('');
+      setNewDesc('');
+      setIsAdding(false);
+      activeTab === 'ip' ? refreshIps() : refreshDomains();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to add rule', { id: loadingToast });
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this rule?')) return;
+    
+    const endpoint = activeTab === 'ip' ? `ip-blacklist/${id}` : `domain-blacklist/${id}`;
+    const loadingToast = toast.loading(`Deleting ${activeTab}...`);
+    
+    try {
+      await api.delete(endpoint);
+      toast.success('Rule deleted successfully', { id: loadingToast });
+      activeTab === 'ip' ? refreshIps() : refreshDomains();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to delete rule', { id: loadingToast });
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -18,11 +61,47 @@ export function Blacklists() {
           <h1 className="text-2xl font-bold tracking-tight">Blacklists</h1>
           <p className="text-muted-foreground">Manage IP and Domain blocking rules</p>
         </div>
-        <button className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors">
-          <Plus className="w-4 h-4 mr-2" />
-          Add Rule
+        <button 
+          onClick={() => setIsAdding(!isAdding)}
+          className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors"
+        >
+          <Plus className={`w-4 h-4 mr-2 transition-transform ${isAdding ? 'rotate-45' : ''}`} />
+          {isAdding ? 'Cancel' : 'Add Rule'}
         </button>
       </div>
+
+      {isAdding && (
+        <Card className="bg-card/50 border-primary/50">
+          <CardContent className="pt-6">
+            <form onSubmit={handleAdd} className="flex gap-4 items-end">
+              <div className="flex-1 space-y-2">
+                <label className="text-sm font-medium">{activeTab === 'ip' ? 'IP Address' : 'Domain'}</label>
+                <input 
+                  type="text" 
+                  value={newItem}
+                  onChange={(e) => setNewItem(e.target.value)}
+                  placeholder={activeTab === 'ip' ? 'e.g. 192.168.1.100' : 'e.g. bad-domain.com'}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  required
+                />
+              </div>
+              <div className="flex-1 space-y-2">
+                <label className="text-sm font-medium">Description (Optional)</label>
+                <input 
+                  type="text" 
+                  value={newDesc}
+                  onChange={(e) => setNewDesc(e.target.value)}
+                  placeholder="Why is this blocked?"
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors h-10">
+                Save Rule
+              </button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex space-x-1 bg-card/50 p-1 rounded-lg w-fit border border-border">
         <button 
@@ -61,7 +140,10 @@ export function Blacklists() {
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
                   <td className="px-6 py-4 text-muted-foreground">{new Date(item.created_at).toLocaleDateString()}</td>
                   <td className="px-6 py-4 text-right">
-                    <button className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10">
+                    <button 
+                      onClick={() => handleDelete(item.id)}
+                      className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10"
+                    >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </td>
@@ -74,7 +156,10 @@ export function Blacklists() {
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
                   <td className="px-6 py-4 text-muted-foreground">{new Date(item.created_at).toLocaleDateString()}</td>
                   <td className="px-6 py-4 text-right">
-                    <button className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10">
+                    <button 
+                      onClick={() => handleDelete(item.id)}
+                      className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10"
+                    >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </td>
