@@ -265,6 +265,55 @@ export function Settings() {
                 <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
               </label>
             </div>
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+              <div className="space-y-0.5">
+                <label className="text-sm font-medium">Block Direct IP Access</label>
+                <p className="text-xs text-muted-foreground">Prevent bypassing DNS blacklists by directly entering IP addresses in the browser.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  name="block_direct_ip"
+                  checked={formData.block_direct_ip === 'true' || formData.block_direct_ip === true}
+                  onChange={(e) => setFormData({ ...formData, block_direct_ip: e.target.checked ? 'true' : 'false' })}
+                  className="sr-only peer" 
+                />
+                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+              </label>
+            </div>
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+              <div className="space-y-0.5 w-full">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="text-sm font-medium">Content Filtering (Block File Extensions)</label>
+                    <p className="text-xs text-muted-foreground">Block downloads of potentially dangerous file types.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      name="enable_content_filtering"
+                      checked={formData.enable_content_filtering === 'true' || formData.enable_content_filtering === true}
+                      onChange={(e) => setFormData({ ...formData, enable_content_filtering: e.target.checked ? 'true' : 'false' })}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+                {formData.enable_content_filtering === 'true' && (
+                  <div className="mt-2 pt-2 border-t border-border/50">
+                    <input 
+                      type="text" 
+                      name="blocked_file_types"
+                      value={formData.blocked_file_types || 'exe,bat,cmd,dll,js'}
+                      onChange={handleChange}
+                      placeholder="e.g. exe,bat,mp4,zip"
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Comma-separated list of extensions without the dot.</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </CardContent>
         </Card>
 

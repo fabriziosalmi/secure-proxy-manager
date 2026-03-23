@@ -3,15 +3,28 @@ import urllib.parse
 import socketserver
 from pyicap import ICAPServer, BaseICAPRequestHandler
 
-# Simple rules for Outbound WAF (Content Inspection)
-BLOCK_RULES = [
-    # Block basic SQL injection payloads
-    re.compile(b'(?i)(UNION\s+SELECT|DROP\s+TABLE|INSERT\s+INTO)'),
-    # Block basic XSS payloads
-    re.compile(b'(?i)(<script>|javascript:)'),
-    # Block simulated sensitive data leak (e.g. "CONFIDENTIAL_SECRET_123")
-    re.compile(b'CONFIDENTIAL_SECRET_[0-9]+'),
-]
+# Extended WAF Rules for Content Inspection
+BLOCK_RULES = {
+    "SQL_INJECTION": [
+        re.compile(b'(?i)(UNION\s+SELECT|DROP\s+TABLE|INSERT\s+INTO|UPDATE\s+.*SET|DELETE\s+FROM)'),
+        re.compile(b'(?i)(\%27|\'|--|\%23|#)(.*)(OR|AND)\s+([0-9=a-zA-Z]+)'),
+    ],
+    "XSS_ATTACKS": [
+        re.compile(b'(?i)(<script>|javascript:|onerror=|onload=|eval\()'),
+        re.compile(b'(?i)(document\.cookie|window\.location)'),
+    ],
+    "DATA_LEAK_PREVENTION": [
+        re.compile(b'CONFIDENTIAL_SECRET_[0-9]+'),
+        re.compile(b'(?i)(password|passwd|pwd)=([^\&]+)'),  # Block plain-text passwords in query strings
+        # re.compile(b'\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b', re.I), # Optional: Block Emails
+    ],
+    "DIRECTORY_TRAVERSAL": [
+        re.compile(b'(?i)(\.\./\.\./|\.\.\\\.\.\\|/etc/passwd|/etc/shadow)'),
+    ],
+    "COMMAND_INJECTION": [
+        re.compile(b'(?i)(;\s*ls\s+-|;\s*cat\s+|;\s*wget\s+|;\s*curl\s+|;\s*rm\s+-rf)'),
+    ]
+}
 
 class ThreadingSimpleServer(socketserver.ThreadingMixIn, ICAPServer):
     pass
@@ -43,11 +56,12 @@ class WAFICAPHandler(BaseICAPRequestHandler):
             
         print(f"INSPECTING URL: {decoded_url}")
         
-        for rule in BLOCK_RULES:
-            if rule.search(decoded_url):
-                print(f"WAF BLOCKED OUTBOUND REQUEST URL: Matched rule {rule.pattern}")
-                self.send_block_response()
-                return
+        for category, rules in BLOCK_RULES.items():
+            for rule in rules:
+                if rule.search(decoded_url):
+                    print(f"WAF BLOCKED [{category}] - Matched rule {rule.pattern}")
+                    self.send_block_response(category)
+                    return
 
         # If safe, tell Squid no adaptation is required
         self.no_adaptation_required()
@@ -56,9 +70,9 @@ class WAFICAPHandler(BaseICAPRequestHandler):
         # We can implement inbound inspection here (e.g. malware scanning)
         self.no_adaptation_required()
 
-    def send_block_response(self):
+    def send_block_response(self, category="UNKNOWN"):
         # Create a HTTP 403 response
-        http_body = b"<html><body><h1>403 Forbidden - Blocked by WAF</h1><p>Your request contains prohibited content.</p></body></html>"
+        http_body = f"<html><body><h1>403 Forbidden - Blocked by WAF</h1><p>Your request contains prohibited content. Category: <b>{category}</b></p></body></html>".encode()
         
         self.set_icap_response(200)
         self.set_enc_status(b"HTTP/1.1 403 Forbidden")
