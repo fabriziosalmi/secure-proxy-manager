@@ -492,8 +492,8 @@ export function Settings() {
               <div className="space-y-0.5 w-full">
                 <div className="flex items-center justify-between mb-2">
                   <div>
-                    <label className="text-sm font-medium">Content Filtering (Block File Extensions)</label>
-                    <p className="text-xs text-muted-foreground">Block downloads of potentially dangerous file types.</p>
+                    <label className="text-sm font-medium">Content Filtering (Block File Extensions & MIME Types)</label>
+                    <p className="text-xs text-muted-foreground">Block downloads of potentially dangerous file types (e.g. exe, bat). Uses both URL matching and actual MIME-Type inspection to prevent bypass via file renaming.</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input 
