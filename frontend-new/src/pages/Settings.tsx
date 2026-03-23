@@ -184,6 +184,113 @@ export function Settings() {
               />
               <p className="text-xs text-muted-foreground">Space-separated list of CIDR subnets allowed to use the proxy.</p>
             </div>
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+              <div className="space-y-0.5">
+                <label className="text-sm font-medium">HTTPS Inspection (SSL Bump)</label>
+                <p className="text-xs text-muted-foreground">Decrypt and inspect HTTPS traffic. Required for WAF to work on secure sites.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  name="enable_https_filtering"
+                  checked={formData.enable_https_filtering === 'true' || formData.enable_https_filtering === true}
+                  onChange={(e) => setFormData({ ...formData, enable_https_filtering: e.target.checked ? 'true' : 'false' })}
+                  className="sr-only peer" 
+                />
+                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+              </label>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/50">
+          <CardHeader>
+            <div className="flex items-center space-x-2">
+              <Shield className="w-5 h-5 text-indigo-500" />
+              <CardTitle>Access Control</CardTitle>
+            </div>
+            <CardDescription>Manage who and when can use the proxy</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+              <div className="space-y-0.5 w-full">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="text-sm font-medium">Time-based Restrictions</label>
+                    <p className="text-xs text-muted-foreground">Only allow internet access during specific hours.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      name="enable_time_restrictions"
+                      checked={formData.enable_time_restrictions === 'true' || formData.enable_time_restrictions === true}
+                      onChange={(e) => setFormData({ ...formData, enable_time_restrictions: e.target.checked ? 'true' : 'false' })}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+                {formData.enable_time_restrictions === 'true' && (
+                  <div className="flex gap-4 mt-2 pt-2 border-t border-border/50">
+                    <div className="flex-1 space-y-1">
+                      <label className="text-xs text-muted-foreground">Start Time</label>
+                      <input 
+                        type="time" 
+                        name="time_restriction_start"
+                        value={formData.time_restriction_start || '09:00'}
+                        onChange={handleChange}
+                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <label className="text-xs text-muted-foreground">End Time</label>
+                      <input 
+                        type="time" 
+                        name="time_restriction_end"
+                        value={formData.time_restriction_end || '17:00'}
+                        onChange={handleChange}
+                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+              <div className="space-y-0.5 w-full">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="text-sm font-medium">Proxy Authentication</label>
+                    <p className="text-xs text-muted-foreground">Require username/password to use the proxy.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      name="enable_proxy_auth"
+                      checked={formData.enable_proxy_auth === 'true' || formData.enable_proxy_auth === true}
+                      onChange={(e) => setFormData({ ...formData, enable_proxy_auth: e.target.checked ? 'true' : 'false' })}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+                {formData.enable_proxy_auth === 'true' && (
+                  <div className="mt-2 pt-2 border-t border-border/50">
+                    <label className="text-xs text-muted-foreground">Authentication Method</label>
+                    <select 
+                      name="auth_method"
+                      value={formData.auth_method || 'basic'}
+                      onChange={handleChange}
+                      className="w-full mt-1 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    >
+                      <option value="basic">Basic (Standard)</option>
+                      <option value="digest">Digest (More Secure)</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
           </CardContent>
         </Card>
 
