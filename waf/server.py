@@ -1,4 +1,5 @@
 import re
+import urllib.parse
 import socketserver
 from pyicap import ICAPServer, BaseICAPRequestHandler
 
@@ -32,10 +33,18 @@ class WAFICAPHandler(BaseICAPRequestHandler):
     def waf_REQMOD(self):
         # Inspect URL for malicious patterns
         url = self.enc_req[1] if len(self.enc_req) > 1 else b""
-        print(f"INSPECTING URL: {url}")
+        
+        # Decode URL for accurate regex matching (e.g. %20 -> space)
+        try:
+            # Replace + with space for query strings, then decode
+            decoded_url = urllib.parse.unquote_to_bytes(url.replace(b'+', b' '))
+        except:
+            decoded_url = url
+            
+        print(f"INSPECTING URL: {decoded_url}")
         
         for rule in BLOCK_RULES:
-            if rule.search(url):
+            if rule.search(decoded_url):
                 print(f"WAF BLOCKED OUTBOUND REQUEST URL: Matched rule {rule.pattern}")
                 self.send_block_response()
                 return
