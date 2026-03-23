@@ -1,5 +1,5 @@
 from markupsafe import escape
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
 from flask_basicauth import BasicAuth
 from flask_wtf.csrf import CSRFProtect
 from flask_talisman import Talisman
@@ -14,7 +14,7 @@ import time
 import secrets
 import tempfile
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='../frontend-new/dist', static_url_path='/')
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 
 # Configure CSRF
@@ -120,35 +120,26 @@ def add_security_headers(response):
     
     return response
 
-# Routes
-@app.route('/')
-@basic_auth.required
-def index():
-    """Dashboard page"""
-    return render_template('index.html', active_page='dashboard')
-
-@app.route('/settings')
-@basic_auth.required
-def settings():
-    """Settings page"""
-    return render_template('settings.html', active_page='settings')
-
-@app.route('/blacklists')
-@basic_auth.required
-def blacklists():
-    """Blacklists page"""
-    return render_template('blacklists.html', active_page='blacklists')
-
-@app.route('/logs')
-@basic_auth.required
-def logs():
-    """Logs page"""
-    return render_template('logs.html', active_page='logs')
-
-@app.route('/favicon.ico')
-def favicon():
-    """Serve the favicon"""
-    return app.send_static_file('favicon.ico')
+# Web Routes
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_react_app(path):
+    """Serve the compiled React application or static files"""
+    # If the path is empty, serve index.html
+    if path == '':
+        return send_from_directory(app.static_folder, 'index.html')
+        
+    # Check if the requested file exists in the static folder
+    full_path = os.path.join(app.static_folder, path)
+    if os.path.exists(full_path) and os.path.isfile(full_path):
+        return send_from_directory(app.static_folder, path)
+        
+    # If file doesn't exist and doesn't look like an API call, 
+    # fall back to index.html (React Router handles the routing)
+    if not path.startswith('api/'):
+        return send_from_directory(app.static_folder, 'index.html')
+        
+    return jsonify({"error": "Not found"}), 404
 
 # API Proxy routes
 @app.route('/api/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])

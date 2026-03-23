@@ -1,12 +1,15 @@
 services:
   web:
-    build: ./ui
+    build: 
+      context: .
+      dockerfile: ./ui/Dockerfile
     ports:
       - "8011:8011"
     volumes:
       - ./config:/config
       - ./data:/data
       - ./logs:/logs
+      - ./frontend-new/dist:/frontend-new/dist
     depends_on:
       backend:
         condition: service_healthy

@@ -3,7 +3,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Copy requirements first to leverage Docker cache
-COPY requirements.txt .
+COPY ./ui/requirements.txt .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
@@ -19,7 +19,8 @@ RUN mkdir -p /logs /data /config && \
     chown -R appuser:appuser /logs /data /config /app
 
 # Copy application code
-COPY --chown=appuser:appuser . .
+COPY --chown=appuser:appuser ./ui /app
+COPY --chown=appuser:appuser ./frontend-new/dist /frontend-new/dist
 
 # Switch to non-root user
 USER appuser
