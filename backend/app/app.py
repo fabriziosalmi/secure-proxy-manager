@@ -1077,8 +1077,8 @@ def apply_settings():
             file_types = settings.get('blocked_file_types').split(',')
             squid_conf.append("")
             squid_conf.append("# File type blocking (by URL extension)")
-            # Remove quotes around the regex to prevent Squid parsing error
-            squid_conf.append(r'acl blocked_extensions urlpath_regex -i \.(' + '|'.join(file_types) + r')$')
+            # Remove quotes and use proper regex syntax for Squid
+            squid_conf.append(f'acl blocked_extensions urlpath_regex -i \\.({"|".join(file_types)})$')
             
             squid_conf.append("# File type blocking (by MIME Type)")
             # Create a basic mapping of common dangerous extensions to mime types
