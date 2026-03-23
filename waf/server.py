@@ -23,6 +23,17 @@ BLOCK_RULES = {
     ],
     "COMMAND_INJECTION": [
         re.compile(b'(?i)(;\s*ls\s+-|;\s*cat\s+|;\s*wget\s+|;\s*curl\s+|;\s*rm\s+-rf)'),
+    ],
+    "UNICODE_HOMOGRAPH_OBFUSCATION": [
+        # Block Zero-Width Characters (Space, Non-Joiner, Joiner)
+        re.compile(b'(\xe2\x80\x8b|\xe2\x80\x8c|\xe2\x80\x8d)'),
+        # Block Direction Overrides (RTL, LTR)
+        re.compile(b'(\xe2\x80\xae|\xe2\x80\xad)'),
+        # Block Cyrillic/Greek letters commonly used in homograph attacks mixed with standard ASCII
+        # Note: This is a basic heuristic. A full homograph detector requires Punycode analysis.
+        re.compile(b'(?i)[a-z]+[\xd0\xb0\xd0\xb5\xd0\xbe\xd1\x80\xd1\x81\xd1\x83\xd1\x96\xd1\x98]+[a-z]+'),
+        re.compile(b'(?i)[\xd0\xb0\xd0\xb5\xd0\xbe\xd1\x80\xd1\x81\xd1\x83\xd1\x96\xd1\x98]+[a-z]+'),
+        re.compile(b'(?i)[a-z]+[\xce\xbf\xce\xbd\xcf\x81\xcf\x84]+[a-z]+'),
     ]
 }
 
