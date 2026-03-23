@@ -17,7 +17,7 @@ class ThreadingSimpleServer(socketserver.ThreadingMixIn, ICAPServer):
 
 class WAFICAPHandler(BaseICAPRequestHandler):
 
-    def waf_options(self):
+    def waf_OPTIONS(self):
         self.set_icap_response(200)
         self.set_icap_header('Methods', 'REQMOD, RESPMOD')
         self.set_icap_header('Service', 'SecureProxy-WAF-1.0')
@@ -28,7 +28,7 @@ class WAFICAPHandler(BaseICAPRequestHandler):
         self.set_icap_header('Max-Connections', '100')
         self.send_headers(False)
 
-    def waf_reqmod(self):
+    def waf_REQMOD(self):
         # We only inspect requests that have a body (e.g., POST/PUT)
         if self.has_body:
             body_data = b""
@@ -58,7 +58,7 @@ class WAFICAPHandler(BaseICAPRequestHandler):
         else:
             self.no_adaptation_required()
 
-    def waf_respmod(self):
+    def waf_RESPMOD(self):
         # We can implement inbound inspection here (e.g. malware scanning)
         self.no_adaptation_required()
 

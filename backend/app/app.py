@@ -1077,7 +1077,7 @@ def apply_settings():
             squid_conf.append("icap_client_username_header X-Client-Username")
             squid_conf.append("icap_preview_enable on")
             squid_conf.append("icap_preview_size 1024")
-            squid_conf.append("icap_service service_req reqmod_precache bypass=0 icap://waf:1344/")
+            squid_conf.append("icap_service service_req reqmod_precache bypass=0 icap://waf:1344/waf")
             squid_conf.append("adaptation_access service_req allow all")
         
         # Compression if enabled
