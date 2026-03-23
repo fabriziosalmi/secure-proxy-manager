@@ -1545,6 +1545,59 @@ def get_log_stats():
             }
         })
 
+@app.route('/api/logs/timeline', methods=['GET'])
+@auth.login_required
+def get_log_timeline():
+    """Get log timeline for the last 24 hours to render charts"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        query = """
+            SELECT 
+                strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
+                COUNT(*) as total,
+                SUM(CASE WHEN status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%' THEN 1 ELSE 0 END) as blocked
+            FROM proxy_logs
+            WHERE timestamp >= datetime('now', '-24 hours')
+            GROUP BY hour
+            ORDER BY hour ASC
+        """
+        cursor.execute(query)
+        db_results = cursor.fetchall()
+        
+        results_map = {row['hour']: {'total': row['total'], 'blocked': row['blocked']} for row in db_results}
+        
+        from datetime import datetime, timedelta
+        
+        now = datetime.utcnow()
+        timeline = []
+        
+        for i in range(23, -1, -1):
+            hour_dt = now - timedelta(hours=i)
+            hour_str = hour_dt.strftime('%Y-%m-%d %H:00:00')
+            display_time = hour_dt.strftime('%H:00')
+            
+            data = results_map.get(hour_str, {'total': 0, 'blocked': 0})
+            
+            total = data['total']
+            blocked = data['blocked']
+            rate = 0
+            if total > 0:
+                rate = round(((total - blocked) / total) * 100, 1)
+                
+            timeline.append({
+                'time': display_time,
+                'total': total,
+                'blocked': blocked,
+                'rate': rate
+            })
+            
+        return jsonify({"status": "success", "data": timeline})
+    except Exception as e:
+        logger.error(f"Error getting log timeline: {e}")
+        return jsonify({"status": "error", "message": "Failed to get log timeline"}), 500
+
 # Helper function to check if a string is an IP address
 def is_ip_address(text):
     """Check if a string represents an IP address"""
