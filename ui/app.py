@@ -127,6 +127,7 @@ def add_security_headers(response):
 # Web Routes
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
+@basic_auth.required
 def serve_react_app(path):
     """Serve the compiled React application or static files"""
     # If the path is empty, serve index.html
