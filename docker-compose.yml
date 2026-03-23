@@ -6,7 +6,6 @@ services:
     ports:
       - "8011:8011"
     volumes:
-      - ./ui:/app
       - ./config:/config
       - ./data:/data
       - ./logs:/logs
