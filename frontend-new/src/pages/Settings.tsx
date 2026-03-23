@@ -263,6 +263,51 @@ export function Settings() {
               <div className="space-y-0.5 w-full">
                 <div className="flex items-center justify-between mb-2">
                   <div>
+                    <label className="text-sm font-medium">Bandwidth Throttling (Delay Pools)</label>
+                    <p className="text-xs text-muted-foreground">Limit download speeds to prevent network congestion.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      name="enable_bandwidth_limits"
+                      checked={formData.enable_bandwidth_limits === 'true' || formData.enable_bandwidth_limits === true}
+                      onChange={(e) => setFormData({ ...formData, enable_bandwidth_limits: e.target.checked ? 'true' : 'false' })}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+                {formData.enable_bandwidth_limits === 'true' && (
+                  <div className="flex gap-4 mt-2 pt-2 border-t border-border/50">
+                    <div className="flex-1 space-y-1">
+                      <label className="text-xs text-muted-foreground">Total Bandwidth (Mbps)</label>
+                      <input 
+                        type="number" 
+                        name="bandwidth_limit_mbps"
+                        value={formData.bandwidth_limit_mbps || '10'}
+                        onChange={handleChange}
+                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <label className="text-xs text-muted-foreground">Per-User Limit (Kbps)</label>
+                      <input 
+                        type="number" 
+                        name="bandwidth_limit_per_user_kbps"
+                        value={formData.bandwidth_limit_per_user_kbps || '500'}
+                        onChange={handleChange}
+                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+              <div className="space-y-0.5 w-full">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
                     <label className="text-sm font-medium">Time-based Restrictions</label>
                     <p className="text-xs text-muted-foreground">Only allow internet access during specific hours.</p>
                   </div>
