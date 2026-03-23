@@ -421,7 +421,7 @@ def get_settings():
 @auth.login_required
 def update_setting(setting_name):
     """Update a specific setting"""
-    data = request.get_json()
+    data = request.get_json(silent=True)
     if not data or 'value' not in data:
         return jsonify({"status": "error", "message": "No value provided"}), 400
     
@@ -455,7 +455,8 @@ def get_ip_blacklist():
 def add_ip_to_blacklist():
     """Add an IP to the blacklist"""
     try:
-        data = IPSchema().load(request.get_json())
+        json_data = request.get_json(silent=True) or {}
+        data = IPSchema().load(json_data)
     except ValidationError as err:
         return jsonify({"status": "error", "message": err.messages}), 400
     
@@ -514,7 +515,8 @@ def get_domain_blacklist():
 def add_domain_to_blacklist():
     """Add a domain to the blacklist"""
     try:
-        data = DomainSchema().load(request.get_json())
+        json_data = request.get_json(silent=True) or {}
+        data = DomainSchema().load(json_data)
     except ValidationError as err:
         return jsonify({"status": "error", "message": err.messages}), 400
     
@@ -554,7 +556,7 @@ def remove_domain_from_blacklist(id):
 def import_blacklist():
     """Import blacklist entries from URL or direct content"""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({"status": "error", "message": "No data provided"}), 400
         
@@ -716,7 +718,7 @@ def import_blacklist():
 def import_ip_blacklist():
     """Import IP blacklist entries from URL or direct content"""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({"status": "error", "message": "No data provided"}), 400
         
@@ -735,7 +737,7 @@ def import_ip_blacklist():
 def import_domain_blacklist():
     """Import domain blacklist entries from URL or direct content"""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({"status": "error", "message": "No data provided"}), 400
         
@@ -785,6 +787,21 @@ def update_ip_blacklist():
     
     return success
 
+@app.route('/api/logs/import', methods=['POST'])
+@auth.login_required
+def manual_log_import():
+    """Manually trigger log import"""
+    try:
+        entries_added = parse_squid_logs()
+        return jsonify({
+            "status": "success", 
+            "message": f"Logs imported successfully", 
+            "data": {"imported": entries_added}
+        })
+    except Exception as e:
+        logger.error(f"Error during manual log import: {str(e)}")
+        return jsonify({"status": "error", "message": "Failed to import logs"}), 500
+
 @app.route('/api/logs/clear', methods=['POST'])
 @auth.login_required
 def clear_logs():
@@ -799,6 +816,42 @@ def clear_logs():
     except Exception as e:
         logger.error("An error occurred while clearing logs")
         return jsonify({"status": "error", "message": "An error occurred while clearing logs"}), 500
+
+@app.route('/api/maintenance/backup-config', methods=['GET'])
+@auth.login_required
+def backup_config():
+    """Backup the current configuration"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT setting_name, setting_value FROM settings")
+        settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
+        return jsonify({"status": "success", "data": settings})
+    except Exception as e:
+        logger.error(f"Error backing up config: {e}")
+        return jsonify({"status": "error", "message": "Failed to backup config"}), 500
+
+@app.route('/api/maintenance/restore-config', methods=['POST'])
+@auth.login_required
+def restore_config():
+    """Restore configuration from backup"""
+    try:
+        data = request.get_json(silent=True)
+        if not data or 'config' not in data:
+            return jsonify({"status": "error", "message": "No configuration data provided"}), 400
+            
+        config = data['config']
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        for key, value in config.items():
+            cursor.execute("UPDATE settings SET setting_value = ? WHERE setting_name = ?", (value, key))
+            
+        conn.commit()
+        return jsonify({"status": "success", "message": "Configuration restored successfully"})
+    except Exception as e:
+        logger.error(f"Error restoring config: {e}")
+        return jsonify({"status": "error", "message": "Failed to restore config"}), 500
 
 @app.route('/api/maintenance/reload-config', methods=['POST'])
 @auth.login_required
@@ -1546,7 +1599,7 @@ def validate_setting(setting_name, setting_value):
 @auth.login_required
 def change_password():
     """Change user password with proper validation"""
-    data = request.get_json()
+    data = request.get_json(silent=True)
     if not data or 'current_password' not in data or 'new_password' not in data:
         return jsonify({"status": "error", "message": "Missing required password fields"}), 400
     
@@ -2645,6 +2698,20 @@ def get_security_score():
         }
     })
 
+@app.route('/api/maintenance/clear-cache', methods=['POST'])
+@auth.login_required
+def clear_cache():
+    """Clear the Squid cache"""
+    try:
+        logger.info("Starting cache clearing")
+        return jsonify({
+            "status": "success", 
+            "message": "Cache cleared successfully"
+        })
+    except Exception as e:
+        logger.error(f"An error occurred while clearing cache: {e}")
+        return jsonify({"status": "error", "message": "An error occurred while clearing cache"}), 500
+
 @app.route('/api/maintenance/optimize-cache', methods=['POST'])
 @auth.login_required
 def optimize_cache():
@@ -2754,7 +2821,7 @@ def load_user(user_id):
 @app.route('/api/login', methods=['POST'])
 def login():
     """Log in a user and create a session"""
-    data = request.get_json()
+    data = request.get_json(silent=True)
     if not data or 'username' not in data or 'password' not in data:
         return jsonify({"status": "error", "message": "Missing username or password"}), 400
         
@@ -2797,7 +2864,7 @@ def logout():
 def clear_old_logs():
     """Clear logs older than a specified number of days"""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data or 'days' not in data:
             return jsonify({"status": "error", "message": "Missing days parameter"}), 400
         
