@@ -2700,10 +2700,10 @@ def get_security_score():
     cursor = db.cursor()
     
     # Get relevant security settings
-    cursor.execute('SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?, ?, ?, ?, ?, ?, ?)',
+    cursor.execute('SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?, ?, ?, ?, ?, ?, ?, ?)',
                  ('enable_ip_blacklist', 'enable_domain_blacklist', 'block_direct_ip', 
                   'enable_content_filtering', 'enable_https_filtering', 'default_password_changed',
-                  'enable_time_restrictions'))
+                  'enable_time_restrictions', 'enable_waf'))
     
     settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
     
@@ -2711,29 +2711,35 @@ def get_security_score():
     score = 0
     recommendations = []
     
-    # IP Blacklisting (20 points)
+    # IP Blacklisting (15 points)
     if settings.get('enable_ip_blacklist') == 'true':
-        score += 20
+        score += 15
     else:
         recommendations.append('Enable IP blacklisting to block known malicious IP addresses')
     
-    # Domain Blacklisting (20 points)
+    # Domain Blacklisting (15 points)
     if settings.get('enable_domain_blacklist') == 'true':
-        score += 20
+        score += 15
     else:
         recommendations.append('Enable domain blacklisting to block malicious websites')
     
-    # Direct IP Blocking (20 points)
+    # Direct IP Blocking (10 points)
     if settings.get('block_direct_ip') == 'true':
-        score += 20
+        score += 10
     else:
         recommendations.append('Enable direct IP access blocking to prevent bypassing domain filters')
     
-    # Content Filtering (15 points)
+    # Content Filtering (10 points)
     if settings.get('enable_content_filtering') == 'true':
-        score += 15
+        score += 10
     else:
         recommendations.append('Enable content filtering to block risky file types')
+        
+    # WAF Content Inspection (25 points)
+    if settings.get('enable_waf') == 'true':
+        score += 25
+    else:
+        recommendations.append('Enable Outbound WAF (ICAP) to block SQLi, XSS, and Data Leaks')
     
     # HTTPS Filtering (15 points)
     if settings.get('enable_https_filtering') == 'true':
