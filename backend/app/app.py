@@ -199,6 +199,7 @@ def init_db():
         
         # Advanced filtering settings
         ('enable_waf', 'true', 'Enable ICAP Content Inspection (WAF)'),
+        ('waf_custom_rules', '# Example: block specific keyword\n# \\b(secret_project_x)\\b\n', 'Custom regex rules for WAF'),
         ('enable_content_filtering', 'false', 'Enable content type filtering'),
         ('blocked_file_types', 'exe,bat,cmd,dll,js', 'Blocked file extensions'),
         ('enable_https_filtering', 'false', 'Enable HTTPS filtering'),
@@ -1221,6 +1222,15 @@ def apply_settings():
         squid_conf.append("refresh_pattern -i (/cgi-bin/|\\?) 0     0%      0")
         squid_conf.append("refresh_pattern .               0       20%     4320")
         
+        # Generate WAF Custom Rules file if WAF is enabled
+        if settings.get('enable_waf') == 'true':
+            custom_rules = settings.get('waf_custom_rules', '')
+            try:
+                with open('/config/waf_custom_rules.txt', 'w') as f:
+                    f.write(custom_rules)
+            except Exception as e:
+                logger.error(f"Failed to write WAF custom rules: {e}")
+                
         # Generate the final configuration
         final_config = '\n'.join(squid_conf)
         
