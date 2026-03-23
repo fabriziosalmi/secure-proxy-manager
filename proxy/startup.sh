@@ -120,9 +120,28 @@ http_access allow localhost
 http_access deny all
 
 # Caching options
-cache_dir ufs /var/spool/squid 1000 16 256
-maximum_object_size 50 MB
+# Memory Cache (L1)
+cache_mem 256 MB
+maximum_object_size_in_memory 512 KB
+memory_replacement_policy lru
+
+# Disk Cache (L2)
+cache_replacement_policy heap LFUDA
+cache_dir ufs /var/spool/squid 2000 16 256
+maximum_object_size 100 MB
 coredump_dir /var/spool/squid
+
+# ICAP WAF Configuration
+icap_enable on
+icap_send_client_ip on
+icap_send_client_username on
+icap_client_username_encode off
+icap_client_username_header X-Client-Username
+icap_preview_enable on
+icap_preview_size 1024
+
+icap_service service_req reqmod_precache bypass=0 icap://waf:1344/
+adaptation_access service_req allow all
 
 # Log settings
 debug_options ALL,2
