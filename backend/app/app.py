@@ -715,6 +715,57 @@ def import_blacklist():
         logger.error(f"Error during blacklist import: {str(e)}")
         return jsonify({"status": "error", "message": "Import operation failed"}), 500
 
+@app.route('/api/blacklists/import-geo', methods=['POST'])
+@auth.login_required
+def import_geo_blacklist():
+    """Import IP blocks for specific countries"""
+    try:
+        data = request.get_json(silent=True)
+        if not data or not data.get('countries'):
+            return jsonify({"status": "error", "message": "No countries provided"}), 400
+            
+        countries = data.get('countries', [])
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        total_imported = 0
+        
+        for country in countries:
+            country = country.lower()
+            url = f"https://www.ipdeny.com/ipv4/root/blocks/{country}.zone"
+            logger.info(f"Fetching GeoIP block for {country} from {url}")
+            
+            try:
+                response = requests.get(url, timeout=30)
+                if response.status_code == 200:
+                    lines = response.text.strip().split('\n')
+                    # Batch insert
+                    for line in lines:
+                        ip = line.strip()
+                        if is_valid_ip(ip) or '/' in ip:
+                            # Try to insert, ignore if exists
+                            try:
+                                cursor.execute('INSERT INTO ip_blacklist (ip_address, description) VALUES (?, ?)', 
+                                            (ip, f"GeoBlock: {country.upper()}"))
+                                total_imported += 1
+                            except sqlite3.IntegrityError:
+                                pass
+            except Exception as e:
+                logger.error(f"Failed to fetch/import GeoIP for {country}: {e}")
+                
+        conn.commit()
+        update_ip_blacklist()
+        
+        return jsonify({
+            "status": "success", 
+            "message": f"Successfully imported {total_imported} GeoIP blocks",
+            "imported_count": total_imported
+        })
+        
+    except Exception as e:
+        logger.error(f"Error during GeoIP blacklist import: {str(e)}")
+        return jsonify({"status": "error", "message": "Import operation failed"}), 500
+
 @app.route('/api/ip-blacklist/import', methods=['POST'])
 @auth.login_required  
 def import_ip_blacklist():
@@ -1734,6 +1785,21 @@ def change_password():
     
     logger.info(f"Password changed successfully for user {username}")
     return jsonify({"status": "success", "message": "Password changed successfully"})
+
+@app.route('/api/security/download-ca', methods=['GET'])
+@auth.login_required
+def download_ca_cert():
+    """Download the CA certificate for client installation"""
+    cert_path = '/config/ssl_cert.pem'
+    if not os.path.exists(cert_path):
+        return jsonify({"status": "error", "message": "Certificate not found. It may not have been generated yet."}), 404
+        
+    return send_file(
+        cert_path,
+        as_attachment=True,
+        download_name='secure-proxy-ca.pem',
+        mimetype='application/x-x509-ca-cert'
+    )
 
 @app.route('/api/maintenance/check-cert-security', methods=['GET'])
 @auth.login_required
