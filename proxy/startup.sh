@@ -140,7 +140,7 @@ icap_client_username_header X-Client-Username
 icap_preview_enable on
 icap_preview_size 1024
 
-icap_service service_req reqmod_precache bypass=0 icap://waf:1344/
+icap_service service_req reqmod_precache bypass=0 icap://waf:1344/waf
 adaptation_access service_req allow all
 
 # Log settings
