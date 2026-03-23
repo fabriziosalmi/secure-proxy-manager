@@ -36,6 +36,8 @@ services:
     build: ./waf
     ports:
       - "1344:1344"
+    volumes:
+      - ./config:/config
     deploy:
       resources:
         limits:

@@ -1,9 +1,10 @@
 import re
+import os
 import urllib.parse
 import socketserver
 from pyicap import ICAPServer, BaseICAPRequestHandler
 
-# Extended WAF Rules for Content Inspection
+# Core WAF Rules for Content Inspection
 BLOCK_RULES = {
     "SQL_INJECTION": [
         re.compile(b'(?i)(UNION\s+SELECT|DROP\s+TABLE|INSERT\s+INTO|UPDATE\s+.*SET|DELETE\s+FROM)'),
@@ -16,7 +17,6 @@ BLOCK_RULES = {
     "DATA_LEAK_PREVENTION": [
         re.compile(b'CONFIDENTIAL_SECRET_[0-9]+'),
         re.compile(b'(?i)(password|passwd|pwd)=([^\&]+)'),  # Block plain-text passwords in query strings
-        # re.compile(b'\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b', re.I), # Optional: Block Emails
     ],
     "DIRECTORY_TRAVERSAL": [
         re.compile(b'(?i)(\.\./\.\./|\.\.\\\.\.\\|/etc/passwd|/etc/shadow)'),
@@ -25,6 +25,31 @@ BLOCK_RULES = {
         re.compile(b'(?i)(;\s*ls\s+-|;\s*cat\s+|;\s*wget\s+|;\s*curl\s+|;\s*rm\s+-rf)'),
     ]
 }
+
+def load_custom_rules():
+    """Load custom rules from environment or file"""
+    custom_rules_file = '/config/waf_custom_rules.txt'
+    if os.path.exists(custom_rules_file):
+        try:
+            with open(custom_rules_file, 'r') as f:
+                rules = f.readlines()
+                compiled_rules = []
+                for rule in rules:
+                    rule = rule.strip()
+                    if rule and not rule.startswith('#'):
+                        try:
+                            compiled_rules.append(re.compile(rule.encode(), re.IGNORECASE))
+                        except Exception as e:
+                            print(f"Error compiling custom rule {rule}: {e}")
+                
+                if compiled_rules:
+                    BLOCK_RULES["CUSTOM_USER_RULES"] = compiled_rules
+                    print(f"Loaded {len(compiled_rules)} custom WAF rules.")
+        except Exception as e:
+            print(f"Error reading custom rules: {e}")
+
+# Load custom rules on startup
+load_custom_rules()
 
 class ThreadingSimpleServer(socketserver.ThreadingMixIn, ICAPServer):
     pass
