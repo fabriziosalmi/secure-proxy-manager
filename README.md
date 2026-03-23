@@ -48,53 +48,42 @@ A containerized secure proxy with advanced filtering capabilities, real-time mon
 
 ## 🚀 Features
 
-- **High-Performance Proxy Engine**: Built on Squid with optimized caching capabilities
-- **Advanced Filtering**:
-  - IP Blacklisting with CIDR support
-  - Domain Blacklisting with wildcard support
-  - Content Type Filtering
-  - Direct IP Access Control
-  - Time-based Access Restrictions
-- **Comprehensive Security**:
-  - HTTPS Filtering with proper certificate management
-  - Rate Limiting protection against brute force attacks
-  - Security scoring and recommendations
-  - Configurable content policies
-- **Modern Dashboard**:
-  - Real-time traffic monitoring
-  - Resource usage statistics
-  - Cache performance metrics
-  - Security status visualization
-- **Detailed Analytics**:
-  - Full request logging and analysis
-  - Traffic pattern visualization
-  - Blocked request reporting
-  - Exportable reports
-- **Proxy Management**:
-  - Configuration backup and restore
-  - Basic authentication for UI access
-  - API for automation and integration
-  - Health monitoring endpoints
+- **SSL/TLS Inspection**: Decrypt and inspect HTTPS traffic (SSL Bump) with automated CA certificate generation
+- **Content Inspection WAF**: Zero-latency ICAP Python engine that blocks SQL Injection, XSS, Data Leaks (DLP), Command Injections, and Unicode Homograph obfuscation attacks
+- **Advanced Caching Engine**: L1 (RAM) + L2 (Disk) intelligent caching with Aggressive Mode, Cache Bypass domains, and Offline Mode (serve stale cache if backend is down)
+- **Bandwidth Throttling**: Configure global and per-user speed limits using Squid Delay Pools
+- **Content Filtering**: Block downloads based on actual MIME-type inspection, not just file extensions
+- **Access Control**: Enforce Time-based access restrictions and Proxy Authentication (Basic/Digest)
+- **Safe Browsing**: Enforce SafeSearch on search engines and Restricted Mode on YouTube
+- **Dynamic Blacklisting**: Manage IP and Domain rules via Web UI, with automatic Geo-Blocking and bulk URL importing
+- **Real-Time Analytics**: Monitor traffic with live WebSocket log streaming and interactive dashboards
+- **Docker Ready**: Easy deployment with Docker and Docker Compose
+- **RESTful API**: Fully documented API for integration and automation
 
 ## 🏗️ Architecture
 
-The application consists of three main containerized components:
+The application consists of four main containerized components:
 
-1. **Proxy Service**: Squid-based proxy with customized configurations for enhanced security
-2. **Backend API**: RESTful API built with Flask providing management capabilities
-3. **Web UI**: Modern Bootstrap 5 interface for administration and monitoring
+- **Proxy**: The core Squid proxy engine handling traffic and caching.
+- **WAF**: A custom zero-latency ICAP server written in Python to perform deep packet inspection.
+- **Backend**: Flask REST API managing configuration, sqlite database, and WebSocket log streams.
+- **UI**: Modern React-based frontend built with Vite and TailwindCSS for intuitive management.
 
 <div align="center">
   <pre>
   ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
   │             │      │             │      │             │
   │  Web UI     │◄────►│  Backend    │◄────►│  Proxy      │
-  │  (Flask)    │      │  API        │      │  (Squid)    │
+  │  (React)    │      │  API        │      │  (Squid)    │
   │             │      │  (Flask)    │      │             │
   └─────────────┘      └─────────────┘      └─────────────┘
          │                    │                    │
-         │                    │                    │
-         ▼                    ▼                    ▼
+         │                    │                    ▼
+         │                    │             ┌─────────────┐
+         │                    │             │  WAF Engine │
+         │                    │             │  (ICAP Py)  │
+         │                    │             └─────────────┘
+         ▼                    ▼                    
   ┌─────────────────────────────────────────────────────┐
   │                                                     │
   │                 Shared Volumes                      │
