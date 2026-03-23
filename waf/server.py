@@ -18,45 +18,30 @@ class ThreadingSimpleServer(socketserver.ThreadingMixIn, ICAPServer):
 class WAFICAPHandler(BaseICAPRequestHandler):
 
     def waf_OPTIONS(self):
+        print("Received OPTIONS request")
         self.set_icap_response(200)
-        self.set_icap_header('Methods', 'REQMOD, RESPMOD')
-        self.set_icap_header('Service', 'SecureProxy-WAF-1.0')
-        self.set_icap_header('Preview', '1024')
-        self.set_icap_header('Transfer-Preview', '*')
-        self.set_icap_header('Transfer-Ignore', 'jpg,jpeg,gif,png,swf,flv')
-        self.set_icap_header('Transfer-Complete', '')
-        self.set_icap_header('Max-Connections', '100')
+        self.set_icap_header(b'Methods', b'REQMOD, RESPMOD')
+        self.set_icap_header(b'Service', b'SecureProxy-WAF-1.0')
+        self.set_icap_header(b'Preview', b'1024')
+        self.set_icap_header(b'Transfer-Preview', b'*')
+        self.set_icap_header(b'Transfer-Ignore', b'jpg,jpeg,gif,png,swf,flv')
+        self.set_icap_header(b'Transfer-Complete', b'')
+        self.set_icap_header(b'Max-Connections', b'100')
         self.send_headers(False)
 
     def waf_REQMOD(self):
-        # We only inspect requests that have a body (e.g., POST/PUT)
-        if self.has_body:
-            body_data = b""
-            while True:
-                chunk = self.read_chunk()
-                if chunk == b"":
-                    break
-                body_data += chunk
-            
-            # Check against WAF rules
-            for rule in BLOCK_RULES:
-                if rule.search(body_data):
-                    print(f"WAF BLOCKED OUTBOUND REQUEST: Matched rule {rule.pattern}")
-                    # Send a 403 Forbidden HTTP response
-                    self.send_block_response()
-                    return
-            
-            # If safe, reconstruct the request and send it back
-            self.set_icap_response(200)
-            self.set_enc_status(b' '.join(self.enc_req))
-            for h, v in self.enc_req_headers.items():
-                for i in v:
-                    self.set_enc_header(h, i)
-            self.send_headers(True)
-            self.send_chunk(body_data)
-            self.send_chunk(b"")
-        else:
-            self.no_adaptation_required()
+        # Inspect URL for malicious patterns
+        url = self.enc_req[1] if len(self.enc_req) > 1 else b""
+        print(f"INSPECTING URL: {url}")
+        
+        for rule in BLOCK_RULES:
+            if rule.search(url):
+                print(f"WAF BLOCKED OUTBOUND REQUEST URL: Matched rule {rule.pattern}")
+                self.send_block_response()
+                return
+
+        # If safe, tell Squid no adaptation is required
+        self.no_adaptation_required()
 
     def waf_RESPMOD(self):
         # We can implement inbound inspection here (e.g. malware scanning)
