@@ -1065,8 +1065,22 @@ def apply_settings():
         if settings.get('enable_content_filtering') == 'true' and settings.get('blocked_file_types'):
             file_types = settings.get('blocked_file_types').split(',')
             squid_conf.append("")
-            squid_conf.append("# File type blocking")
+            squid_conf.append("# File type blocking (by URL extension)")
             squid_conf.append(r'acl blocked_extensions urlpath_regex -i "\.(' + '|'.join(file_types) + r')$"')
+            
+            squid_conf.append("# File type blocking (by MIME Type)")
+            # Create a basic mapping of common dangerous extensions to mime types
+            mime_types = []
+            for ext in file_types:
+                if ext == 'exe' or ext == 'dll': mime_types.append('application/x-msdownload')
+                if ext == 'bat' or ext == 'cmd': mime_types.append('application/x-bat')
+                if ext == 'vbs': mime_types.append('application/x-vbs')
+                if ext == 'js': mime_types.append('application/javascript')
+                if ext == 'zip': mime_types.append('application/zip')
+                if ext == 'mp4': mime_types.append('video/mp4')
+            
+            if mime_types:
+                squid_conf.append(r'acl blocked_mimetypes rep_mime_type -i ^(' + '|'.join(mime_types) + r')$')
         
         # Time restrictions if enabled
         if settings.get('enable_time_restrictions') == 'true':
@@ -1110,6 +1124,8 @@ def apply_settings():
             squid_conf.append("")
             squid_conf.append("# Block banned file extensions")
             squid_conf.append("http_access deny blocked_extensions")
+            squid_conf.append("# Block banned MIME types (requires http_reply_access)")
+            squid_conf.append("http_reply_access deny blocked_mimetypes")
         
         # Apply time restrictions if enabled
         if settings.get('enable_time_restrictions') == 'true':
