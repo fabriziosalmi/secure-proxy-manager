@@ -20,7 +20,7 @@ RUN mkdir -p /logs /data /config && \
 
 # Copy application code
 COPY --chown=appuser:appuser ./ui /app
-COPY --chown=appuser:appuser ./frontend-new/dist /frontend-new/dist
+COPY --chown=appuser:appuser ./frontend-new /frontend-new
 
 # Switch to non-root user
 USER appuser
