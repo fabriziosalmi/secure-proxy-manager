@@ -1077,7 +1077,8 @@ def apply_settings():
             file_types = settings.get('blocked_file_types').split(',')
             squid_conf.append("")
             squid_conf.append("# File type blocking (by URL extension)")
-            squid_conf.append(r'acl blocked_extensions urlpath_regex -i "\.(' + '|'.join(file_types) + r')$"')
+            # Remove quotes around the regex to prevent Squid parsing error
+            squid_conf.append(r'acl blocked_extensions urlpath_regex -i \.(' + '|'.join(file_types) + r')$')
             
             squid_conf.append("# File type blocking (by MIME Type)")
             # Create a basic mapping of common dangerous extensions to mime types
@@ -1216,12 +1217,11 @@ def apply_settings():
         # Compression if enabled
         if settings.get('enable_compression') == 'true':
             squid_conf.append("")
-            squid_conf.append("# Compression settings")
-            squid_conf.append("zph_mode off")
-            squid_conf.append("zph_local tos local-hit=0x30")
-            squid_conf.append("zph_sibling tos sibling-hit=0x31")
-            squid_conf.append("zph_parent tos parent-hit=0x32")
-            squid_conf.append("zph_option 136 tos miss=0x33")
+            squid_conf.append("# Compression settings (obsolete ZPH replaced by QoS)")
+            squid_conf.append("qos_flows local-hit=0x30")
+            squid_conf.append("qos_flows sibling-hit=0x31")
+            squid_conf.append("qos_flows parent-hit=0x32")
+            squid_conf.append("qos_flows miss=0x33")
         
         # Timeout settings
         conn_timeout = settings.get('connection_timeout', '30')
