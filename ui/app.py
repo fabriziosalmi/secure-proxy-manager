@@ -166,9 +166,18 @@ def api_proxy(path):
         if request.method == 'GET':
             resp = session.get(url, auth=API_AUTH, params=request.args, headers=headers, timeout=REQUEST_TIMEOUT)
         elif request.method == 'POST':
-            resp = session.post(url, auth=API_AUTH, json=request.get_json(), headers=headers, timeout=REQUEST_TIMEOUT)
+            # Use silent=True to avoid 415 errors when no JSON body is provided
+            json_data = request.get_json(silent=True)
+            if json_data is not None:
+                resp = session.post(url, auth=API_AUTH, json=json_data, headers=headers, timeout=REQUEST_TIMEOUT)
+            else:
+                resp = session.post(url, auth=API_AUTH, headers=headers, timeout=REQUEST_TIMEOUT)
         elif request.method == 'PUT':
-            resp = session.put(url, auth=API_AUTH, json=request.get_json(), headers=headers, timeout=REQUEST_TIMEOUT)
+            json_data = request.get_json(silent=True)
+            if json_data is not None:
+                resp = session.put(url, auth=API_AUTH, json=json_data, headers=headers, timeout=REQUEST_TIMEOUT)
+            else:
+                resp = session.put(url, auth=API_AUTH, headers=headers, timeout=REQUEST_TIMEOUT)
         elif request.method == 'DELETE':
             resp = session.delete(url, auth=API_AUTH, headers=headers, timeout=REQUEST_TIMEOUT)
         
@@ -190,21 +199,32 @@ def api_proxy(path):
             }), 404
             
         # Check if the response is valid JSON before trying to parse it
-        try:
-            if resp.content:
-                response_data = resp.json()
-            else:
-                response_data = {"status": "success", "message": "Empty response"}
-            return jsonify(response_data), resp.status_code
-        except json.JSONDecodeError as json_err:
-            logger.error(f"Backend returned invalid JSON: {str(json_err)}")
-            # Return the raw response and status code for debugging
-            return jsonify({
-                "status": "error", 
-                "message": f"Backend returned invalid JSON: {str(json_err)}",
-                "raw_response": resp.text[:500],  # Include start of raw response for debugging
-                "status_code": resp.status_code
-            }), 500
+        content_type = resp.headers.get('Content-Type', '')
+        if 'application/json' in content_type:
+            try:
+                if resp.content:
+                    response_data = resp.json()
+                else:
+                    response_data = {"status": "success", "message": "Empty response"}
+                return jsonify(response_data), resp.status_code
+            except ValueError as json_err:
+                logger.error(f"Backend returned invalid JSON: {str(json_err)}")
+                # Return the raw response and status code for debugging
+                return jsonify({
+                    "status": "error", 
+                    "message": f"Backend returned invalid JSON: {str(json_err)}",
+                    "raw_response": resp.text[:500],  # Include start of raw response for debugging
+                    "status_code": resp.status_code
+                }), 500
+        else:
+            # For non-JSON responses (like file downloads), return the raw response
+            from flask import Response
+            return Response(
+                resp.content,
+                status=resp.status_code,
+                headers={k: v for k, v in resp.headers.items() if k.lower() not in ('content-encoding', 'content-length', 'transfer-encoding', 'connection')}
+            )
+            
             
     except requests.exceptions.ConnectionError as e:
         logger.error(f"Connection error with backend: {str(e)}")
