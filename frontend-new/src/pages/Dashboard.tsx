@@ -9,6 +9,7 @@ export function Dashboard() {
   const { data: logStats, execute: refreshLogStats } = useApi<any>('logs/stats');
   const { data: recentLogs, execute: refreshRecentLogs } = useApi<any>('logs?limit=5');
   const { data: timelineData, execute: refreshTimeline } = useApi<any[]>('logs/timeline');
+  const { data: securityData, execute: refreshSecurity } = useApi<any>('security/score');
 
   // Auto-refresh dashboard data every 10 seconds
   useEffect(() => {
@@ -17,21 +18,25 @@ export function Dashboard() {
       refreshLogStats();
       refreshRecentLogs();
       refreshTimeline();
+      refreshSecurity();
     }, 10000);
     return () => clearInterval(interval);
-  }, [refreshCache, refreshLogStats, refreshRecentLogs, refreshTimeline]);
+  }, [refreshCache, refreshLogStats, refreshRecentLogs, refreshTimeline, refreshSecurity]);
 
   // Format chart data based on timeline or fallback to mock
   const chartData = timelineData || [
-    { time: '13:43', rate: 0 }, { time: '14:43', rate: 0 }, { time: '15:43', rate: 0 },
-    { time: '16:43', rate: 0 }, { time: '17:43', rate: 0 }, { time: '18:43', rate: 0 },
-    { time: '19:43', rate: 0 }, { time: '20:43', rate: 0 }, { time: '21:43', rate: 0 },
-    { time: '22:43', rate: 0 }, { time: '23:43', rate: 0 }, { time: '00:43', rate: 0 },
-    { time: '01:43', rate: 0 }, { time: '02:43', rate: 0 }, { time: '03:43', rate: 0 },
-    { time: '04:43', rate: 0 }, { time: '05:43', rate: 0 }, { time: '06:43', rate: 0 },
-    { time: '07:43', rate: 0 }, { time: '08:43', rate: 0 }, { time: '09:43', rate: 0 },
-    { time: '10:43', rate: 0 }, { time: '11:43', rate: 0 }, 
-    { time: '12:43', rate: cacheStats?.hit_ratio || 0 },
+    { time: '13:43', total: 0, blocked: 0 }, { time: '14:43', total: 0, blocked: 0 },
+    { time: '15:43', total: 0, blocked: 0 }, { time: '16:43', total: 0, blocked: 0 },
+    { time: '17:43', total: 0, blocked: 0 }, { time: '18:43', total: 0, blocked: 0 },
+    { time: '19:43', total: 0, blocked: 0 }, { time: '20:43', total: 0, blocked: 0 },
+    { time: '21:43', total: 0, blocked: 0 }, { time: '22:43', total: 0, blocked: 0 },
+    { time: '23:43', total: 0, blocked: 0 }, { time: '00:43', total: 0, blocked: 0 },
+    { time: '01:43', total: 0, blocked: 0 }, { time: '02:43', total: 0, blocked: 0 },
+    { time: '03:43', total: 0, blocked: 0 }, { time: '04:43', total: 0, blocked: 0 },
+    { time: '05:43', total: 0, blocked: 0 }, { time: '06:43', total: 0, blocked: 0 },
+    { time: '07:43', total: 0, blocked: 0 }, { time: '08:43', total: 0, blocked: 0 },
+    { time: '09:43', total: 0, blocked: 0 }, { time: '10:43', total: 0, blocked: 0 },
+    { time: '11:43', total: 0, blocked: 0 }, { time: '12:43', total: 0, blocked: 0 },
   ];
 
   return (
@@ -55,12 +60,20 @@ export function Dashboard() {
         
         <Card className="bg-card/50">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium uppercase text-muted-foreground">Cache Hit Rate</CardTitle>
+            <CardTitle className="text-sm font-medium uppercase text-muted-foreground">Security Score</CardTitle>
             <ShieldCheck className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{cacheStats?.hit_ratio?.toFixed(1) || '0.0'}%</div>
-            <p className="text-xs text-emerald-500 mt-1">cache performance</p>
+            <div className="text-3xl font-bold">{securityData?.score || 0}/100</div>
+            <div className="w-full bg-secondary h-2 mt-2 rounded-full overflow-hidden">
+              <div 
+                className={`h-full ${
+                  (securityData?.score || 0) > 80 ? 'bg-emerald-500' : 
+                  (securityData?.score || 0) > 50 ? 'bg-yellow-500' : 'bg-destructive'
+                }`}
+                style={{ width: `${securityData?.score || 0}%` }}
+              ></div>
+            </div>
           </CardContent>
         </Card>
 
@@ -90,17 +103,21 @@ export function Dashboard() {
       <div className="grid gap-4 md:grid-cols-7">
         <Card className="col-span-4 bg-card/50">
           <CardHeader>
-            <CardTitle>Cache Hit Rate - 24 h</CardTitle>
-            <p className="text-sm text-muted-foreground">Rolling proxy success rate per hour</p>
+            <CardTitle>Traffic - 24h</CardTitle>
+            <p className="text-sm text-muted-foreground">Proxy requests and blocked attempts</p>
           </CardHeader>
           <CardContent className="pl-0">
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="colorRate" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
                       <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorBlocked" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   <XAxis 
@@ -116,7 +133,6 @@ export function Dashboard() {
                     fontSize={12}
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={(value) => `${value}%`}
                     tick={{ fill: '#64748b' }}
                   />
                   <Tooltip 
@@ -125,11 +141,21 @@ export function Dashboard() {
                   />
                   <Area
                     type="monotone"
-                    dataKey="rate"
+                    dataKey="total"
+                    name="Total Requests"
                     stroke="#3b82f6"
                     strokeWidth={2}
                     fillOpacity={1}
-                    fill="url(#colorRate)"
+                    fill="url(#colorTotal)"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="blocked"
+                    name="Blocked"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorBlocked)"
                   />
                 </AreaChart>
               </ResponsiveContainer>
