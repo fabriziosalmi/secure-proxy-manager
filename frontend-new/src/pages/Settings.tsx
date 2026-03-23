@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { useApi } from '../hooks/useApi';
-import { Save, Download, Upload, Shield, Database, Network, Trash2 } from 'lucide-react';
+import { Save, Download, Upload, Shield, Database, Network, Trash2, Key } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
@@ -98,6 +98,22 @@ export function Settings() {
     input.click();
   };
 
+  const handleDownloadCa = async () => {
+    try {
+      const response = await api.get('security/download-ca', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'secure-proxy-ca.pem');
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      toast.success("CA Certificate downloaded!");
+    } catch (e) {
+      toast.error("Failed to download CA certificate. Ensure HTTPS filtering is enabled.");
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex justify-between items-center">
@@ -167,6 +183,39 @@ export function Settings() {
                 className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               />
               <p className="text-xs text-muted-foreground">Space-separated list of CIDR subnets allowed to use the proxy.</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/50">
+          <CardHeader>
+            <div className="flex items-center space-x-2">
+              <Key className="w-5 h-5 text-yellow-500" />
+              <CardTitle>Certificates & HTTPS</CardTitle>
+            </div>
+            <CardDescription>Manage SSL/TLS certificates for HTTPS Inspection</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="p-4 border border-border rounded-lg bg-background/50">
+              <h3 className="text-sm font-medium mb-2">Root CA Certificate</h3>
+              <p className="text-xs text-muted-foreground mb-4">
+                To prevent security warnings when HTTPS inspection is enabled, you must install this Root CA Certificate on all client devices (Windows, macOS, Linux, iOS, Android) and mark it as trusted.
+              </p>
+              <button 
+                onClick={handleDownloadCa}
+                className="flex items-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download CA Certificate (.pem)
+              </button>
+            </div>
+            <div className="text-xs text-muted-foreground p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
+              <p className="font-semibold text-blue-400 mb-1">Installation Instructions:</p>
+              <ul className="list-disc pl-4 space-y-1">
+                <li><strong>Windows:</strong> Double-click the file and install to "Trusted Root Certification Authorities".</li>
+                <li><strong>macOS:</strong> Open in Keychain Access, select the cert, Get Info, and set "Always Trust".</li>
+                <li><strong>Linux (Ubuntu):</strong> Copy to <code>/usr/local/share/ca-certificates/</code> and run <code>update-ca-certificates</code>.</li>
+              </ul>
             </div>
           </CardContent>
         </Card>
