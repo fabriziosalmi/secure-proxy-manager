@@ -16,7 +16,7 @@ export function Settings() {
     }
   }, [settingsData]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
@@ -394,20 +394,38 @@ export function Settings() {
               </label>
             </div>
             <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
-              <div className="space-y-0.5">
-                <label className="text-sm font-medium">Outbound WAF (Content Inspection)</label>
-                <p className="text-xs text-muted-foreground">Inspect request bodies to block sensitive data leaks and injection attacks.</p>
+              <div className="space-y-0.5 w-full">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="text-sm font-medium">Outbound WAF (Content Inspection)</label>
+                    <p className="text-xs text-muted-foreground">Inspect request bodies to block sensitive data leaks and injection attacks.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      name="enable_waf"
+                      checked={formData.enable_waf === 'true' || formData.enable_waf === true}
+                      onChange={(e) => setFormData({ ...formData, enable_waf: e.target.checked ? 'true' : 'false' })}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+                {formData.enable_waf === 'true' && (
+                  <div className="mt-2 pt-2 border-t border-border/50">
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Custom WAF Rules (Regex format). One rule per line. Lines starting with # are ignored.
+                    </p>
+                    <textarea 
+                      name="waf_custom_rules"
+                      value={formData.waf_custom_rules || '# Example: block specific keyword\n# \\b(secret_project_x)\\b\n'}
+                      onChange={handleChange}
+                      rows={4}
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary font-mono text-xs"
+                    />
+                  </div>
+                )}
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  name="enable_waf"
-                  checked={formData.enable_waf === 'true' || formData.enable_waf === true}
-                  onChange={(e) => setFormData({ ...formData, enable_waf: e.target.checked ? 'true' : 'false' })}
-                  className="sr-only peer" 
-                />
-                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-              </label>
             </div>
             <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
               <div className="space-y-0.5">
