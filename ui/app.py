@@ -13,8 +13,12 @@ import logging
 import time
 import secrets
 import tempfile
+import os
 
-app = Flask(__name__, static_folder='../frontend-new/dist', static_url_path='/')
+# Get frontend distribution directory
+dist_dir = os.environ.get('FRONTEND_DIST', os.path.abspath(os.path.join(os.path.dirname(__file__), '../frontend-new/dist')))
+
+app = Flask(__name__, static_folder=dist_dir, static_url_path='/')
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 
 # Configure CSRF

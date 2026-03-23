@@ -9,7 +9,6 @@ services:
       - ./config:/config
       - ./data:/data
       - ./logs:/logs
-      - ./frontend-new:/frontend-new
     depends_on:
       backend:
         condition: service_healthy
