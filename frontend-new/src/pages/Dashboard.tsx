@@ -2,14 +2,27 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Activity, Clock, ShieldCheck, Zap } from 'lucide-react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useApi } from '../hooks/useApi';
+import { useEffect } from 'react';
 
 export function Dashboard() {
-  const { data: cacheStats } = useApi<any>('cache/statistics');
-  const { data: logStats } = useApi<any>('logs/stats');
-  const { data: recentLogs } = useApi<any>('logs?limit=5');
+  const { data: cacheStats, execute: refreshCache } = useApi<any>('cache/statistics');
+  const { data: logStats, execute: refreshLogStats } = useApi<any>('logs/stats');
+  const { data: recentLogs, execute: refreshRecentLogs } = useApi<any>('logs?limit=5');
+  const { data: timelineData, execute: refreshTimeline } = useApi<any[]>('logs/timeline');
 
-  // Format chart data based on some mock history since backend doesn't provide timeline yet
-  const chartData = [
+  // Auto-refresh dashboard data every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshCache();
+      refreshLogStats();
+      refreshRecentLogs();
+      refreshTimeline();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [refreshCache, refreshLogStats, refreshRecentLogs, refreshTimeline]);
+
+  // Format chart data based on timeline or fallback to mock
+  const chartData = timelineData || [
     { time: '13:43', rate: 0 }, { time: '14:43', rate: 0 }, { time: '15:43', rate: 0 },
     { time: '16:43', rate: 0 }, { time: '17:43', rate: 0 }, { time: '18:43', rate: 0 },
     { time: '19:43', rate: 0 }, { time: '20:43', rate: 0 }, { time: '21:43', rate: 0 },

@@ -1,11 +1,14 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { useApi } from '../hooks/useApi';
-import { Save, Download, Upload, Shield, Database, Network } from 'lucide-react';
+import { Save, Download, Upload, Shield, Database, Network, Trash2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
+import { api } from '../lib/api';
 
 export function Settings() {
-  const { data: settingsData } = useApi<any>('settings');
+  const { data: settingsData, execute: refreshSettings } = useApi<any>('settings');
   const [formData, setFormData] = useState<any>({});
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (settingsData) {
@@ -18,22 +21,81 @@ export function Settings() {
   };
 
   const handleSave = async () => {
+    setIsSaving(true);
+    const loadingToast = toast.loading('Saving settings...');
     try {
-      const response = await fetch('/api/settings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData)
-      });
-      if (response.ok) {
-        alert("Settings saved successfully!");
-      } else {
-        alert("Failed to save settings");
-      }
+      await api.post('settings', formData);
+      toast.success('Settings saved successfully!', { id: loadingToast });
+      
+      // Auto reload config after saving
+      toast.promise(
+        api.post('maintenance/reload-config'),
+        {
+          loading: 'Applying new configuration to Proxy...',
+          success: 'Proxy restarted with new settings!',
+          error: 'Failed to restart proxy.',
+        }
+      );
     } catch (err) {
-      alert("Error saving settings");
+      toast.error('Failed to save settings', { id: loadingToast });
+    } finally {
+      setIsSaving(false);
     }
+  };
+
+  const handleClearCache = async () => {
+    toast.promise(
+      api.post('maintenance/clear-cache'),
+      {
+        loading: 'Clearing proxy cache...',
+        success: 'Cache cleared successfully!',
+        error: 'Failed to clear cache.',
+      }
+    );
+  };
+
+  const handleBackup = async () => {
+    try {
+      const response = await api.get('maintenance/backup-config');
+      if (response.data && response.data.data) {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(response.data.data, null, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href",     dataStr);
+        downloadAnchorNode.setAttribute("download", "proxy_backup.json");
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+        toast.success("Backup downloaded!");
+      }
+    } catch (e) {
+      toast.error("Failed to generate backup");
+    }
+  };
+
+  const handleRestore = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = e => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.readAsText(file, "UTF-8");
+      reader.onload = async readerEvent => {
+        try {
+          const content = readerEvent.target?.result as string;
+          const config = JSON.parse(content);
+          
+          const loadingToast = toast.loading('Restoring configuration...');
+          await api.post('maintenance/restore-config', { config });
+          toast.success('Configuration restored!', { id: loadingToast });
+          refreshSettings();
+        } catch (error) {
+          toast.error('Invalid backup file');
+        }
+      }
+    }
+    input.click();
   };
 
   return (
@@ -45,10 +107,11 @@ export function Settings() {
         </div>
         <button 
           onClick={handleSave}
-          className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors"
+          disabled={isSaving}
+          className={`flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium transition-colors ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-primary/90'}`}
         >
           <Save className="w-4 h-4 mr-2" />
-          Save Changes
+          {isSaving ? 'Saving...' : 'Save Changes'}
         </button>
       </div>
 
@@ -166,15 +229,29 @@ export function Settings() {
           </CardHeader>
           <CardContent>
             <div className="flex gap-4">
-              <button className="flex-1 flex flex-col items-center justify-center p-6 border border-border rounded-lg bg-background/50 hover:bg-secondary/50 transition-colors">
+              <button 
+                onClick={handleBackup}
+                className="flex-1 flex flex-col items-center justify-center p-6 border border-border rounded-lg bg-background/50 hover:bg-secondary/50 transition-colors"
+              >
                 <Download className="w-6 h-6 mb-2 text-primary" />
                 <span className="text-sm font-medium">Backup Config</span>
                 <span className="text-xs text-muted-foreground mt-1">Download settings JSON</span>
               </button>
-              <button className="flex-1 flex flex-col items-center justify-center p-6 border border-border rounded-lg bg-background/50 hover:bg-secondary/50 transition-colors">
+              <button 
+                onClick={handleRestore}
+                className="flex-1 flex flex-col items-center justify-center p-6 border border-border rounded-lg bg-background/50 hover:bg-secondary/50 transition-colors"
+              >
                 <Upload className="w-6 h-6 mb-2 text-emerald-500" />
                 <span className="text-sm font-medium">Restore Config</span>
                 <span className="text-xs text-muted-foreground mt-1">Upload settings JSON</span>
+              </button>
+              <button 
+                onClick={handleClearCache}
+                className="flex-1 flex flex-col items-center justify-center p-6 border border-border rounded-lg bg-background/50 hover:bg-destructive/10 transition-colors group"
+              >
+                <Trash2 className="w-6 h-6 mb-2 text-destructive group-hover:text-red-400" />
+                <span className="text-sm font-medium text-destructive group-hover:text-red-400">Clear Cache</span>
+                <span className="text-xs text-muted-foreground mt-1">Free up proxy memory/disk</span>
               </button>
             </div>
           </CardContent>
