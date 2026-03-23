@@ -32,6 +32,19 @@ services:
       - proxy-network
     restart: unless-stopped
 
+  waf:
+    build: ./waf
+    ports:
+      - "1344:1344"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+    networks:
+      - proxy-network
+    restart: unless-stopped
+
   backend:
     build: ./backend
     ports:
@@ -73,6 +86,8 @@ services:
       - ./data:/data
       - ./logs:/var/log/squid
       - squid-cache:/var/spool/squid
+    depends_on:
+      - waf
     deploy:
       resources:
         limits:
