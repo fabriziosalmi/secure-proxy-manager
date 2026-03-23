@@ -1,34 +1,62 @@
 import { Card, CardContent } from '../components/ui/card';
 import { useApi } from '../hooks/useApi';
 import { api } from '../lib/api';
-import { Search, RefreshCw, FileText, Trash2, Clock } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { Search, RefreshCw, FileText, Trash2, Activity } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
+import { io, Socket } from 'socket.io-client';
 
 export function Logs() {
   const [searchTerm, setSearchTerm] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [realtimeLogs, setRealtimeLogs] = useState<any[]>([]);
   const { data, loading, execute: refreshLogs } = useApi<any>('logs?limit=100');
-  
-  const logs = data?.logs || [];
+  const socketRef = useRef<Socket | null>(null);
+
+  // Initialize logs from API
+  useEffect(() => {
+    if (data?.logs) {
+      setRealtimeLogs(data.logs);
+    }
+  }, [data]);
+
+  // Setup WebSocket connection for real-time logs
+  useEffect(() => {
+    if (autoRefresh) {
+      const backendUrl = import.meta.env.VITE_API_URL || window.location.origin;
+      // Convert /api URL to base URL for socket.io
+      const socketUrl = backendUrl.replace('/api', '');
+      
+      socketRef.current = io(`${socketUrl}/logs`, {
+        transports: ['websocket', 'polling']
+      });
+
+      socketRef.current.on('connect', () => {
+        console.log('Connected to real-time log stream');
+      });
+
+      socketRef.current.on('new_log', (newLog: any) => {
+        setRealtimeLogs(prevLogs => {
+          // Keep only the latest 200 logs to prevent memory issues
+          const updatedLogs = [newLog, ...prevLogs].slice(0, 200);
+          return updatedLogs;
+        });
+      });
+
+      return () => {
+        if (socketRef.current) {
+          socketRef.current.disconnect();
+        }
+      };
+    }
+  }, [autoRefresh]);
 
   // Filter logs based on search
-  const filteredLogs = logs.filter((log: any) => 
+  const filteredLogs = realtimeLogs.filter((log: any) => 
     log.destination?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     log.client_ip?.includes(searchTerm) ||
     log.status?.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  // Auto refresh
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (autoRefresh) {
-      interval = setInterval(() => {
-        refreshLogs();
-      }, 5000); // 5 seconds
-    }
-    return () => clearInterval(interval);
-  }, [autoRefresh, refreshLogs]);
 
   const handleClearLogs = async () => {
     if (!confirm('Are you sure you want to clear all logs?')) return;
@@ -36,6 +64,7 @@ export function Logs() {
     try {
       await api.post('logs/clear');
       toast.success('Logs cleared successfully', { id: loadingToast });
+      setRealtimeLogs([]);
       refreshLogs();
     } catch (err) {
       toast.error('Failed to clear logs', { id: loadingToast });
@@ -54,8 +83,8 @@ export function Logs() {
             onClick={() => setAutoRefresh(!autoRefresh)}
             className={`flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${autoRefresh ? 'bg-primary/20 text-primary' : 'bg-secondary text-foreground hover:bg-secondary/80'}`}
           >
-            <Clock className={`w-4 h-4 mr-2 ${autoRefresh ? 'animate-pulse' : ''}`} />
-            Auto-refresh
+            <Activity className={`w-4 h-4 mr-2 ${autoRefresh ? 'animate-pulse' : ''}`} />
+            Live Stream
           </button>
           <button 
             onClick={() => refreshLogs()}
