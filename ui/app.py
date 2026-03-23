@@ -143,7 +143,8 @@ def serve_react_app(path):
     if not path.startswith('api/'):
         return send_from_directory(app.static_folder, 'index.html')
         
-    return jsonify({"error": "Not found"}), 404
+    # If it is an API call that wasn't caught by other routes, return 404
+    return jsonify({"status": "error", "message": "Not found"}), 404
 
 # API Proxy routes
 @app.route('/api/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])

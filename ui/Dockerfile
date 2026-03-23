@@ -1,9 +1,9 @@
 # Stage 1: Build React Frontend
 FROM node:20-alpine AS frontend-builder
 WORKDIR /frontend
-COPY ./frontend-new/package*.json ./
+COPY ./ui/package*.json ./
 RUN npm ci
-COPY ./frontend-new/ ./
+COPY ./ui/ ./
 RUN npm run build
 
 # Stage 2: Python Backend
