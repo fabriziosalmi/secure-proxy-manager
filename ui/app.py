@@ -16,7 +16,7 @@ import tempfile
 import os
 
 # Get frontend distribution directory
-dist_dir = os.environ.get('FRONTEND_DIST', os.path.abspath(os.path.join(os.path.dirname(__file__), '../frontend-new/dist')))
+dist_dir = os.environ.get('FRONTEND_DIST', os.path.abspath(os.path.join(os.path.dirname(__file__), 'dist')))
 
 app = Flask(__name__, static_folder=dist_dir, static_url_path='/')
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
