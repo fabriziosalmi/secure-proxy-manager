@@ -190,10 +190,12 @@ def init_db():
         
         # Cache settings
         ('cache_size', '1000', 'Cache size in megabytes'),
+        ('cache_mem_size', '256', 'Memory cache size in megabytes'),
         ('max_object_size', '50', 'Maximum size of cached objects in megabytes'),
         ('enable_compression', 'false', 'Enable HTTP compression'),
         
         # Advanced filtering settings
+        ('enable_waf', 'true', 'Enable ICAP Content Inspection (WAF)'),
         ('enable_content_filtering', 'false', 'Enable content type filtering'),
         ('blocked_file_types', 'exe,bat,cmd,dll,js', 'Blocked file extensions'),
         ('enable_https_filtering', 'false', 'Enable HTTPS filtering'),
@@ -1052,12 +1054,31 @@ def apply_settings():
         
         # Caching options
         cache_size = settings.get('cache_size', '1000')  # Default 1GB
+        cache_mem_size = settings.get('cache_mem_size', '256')  # Default 256MB
         max_obj_size = settings.get('max_object_size', '50')  # Default 50MB
         squid_conf.append("")
         squid_conf.append("# Caching options")
+        squid_conf.append(f"cache_mem {cache_mem_size} MB")
+        squid_conf.append("maximum_object_size_in_memory 512 KB")
+        squid_conf.append("memory_replacement_policy lru")
+        squid_conf.append("cache_replacement_policy heap LFUDA")
         squid_conf.append(f"cache_dir ufs /var/spool/squid {cache_size} 16 256")
         squid_conf.append(f"maximum_object_size {max_obj_size} MB")
         squid_conf.append("coredump_dir /var/spool/squid")
+        
+        # WAF Content Inspection (ICAP)
+        if settings.get('enable_waf', 'true') == 'true':
+            squid_conf.append("")
+            squid_conf.append("# ICAP WAF Configuration")
+            squid_conf.append("icap_enable on")
+            squid_conf.append("icap_send_client_ip on")
+            squid_conf.append("icap_send_client_username on")
+            squid_conf.append("icap_client_username_encode off")
+            squid_conf.append("icap_client_username_header X-Client-Username")
+            squid_conf.append("icap_preview_enable on")
+            squid_conf.append("icap_preview_size 1024")
+            squid_conf.append("icap_service service_req reqmod_precache bypass=0 icap://waf:1344/")
+            squid_conf.append("adaptation_access service_req allow all")
         
         # Compression if enabled
         if settings.get('enable_compression') == 'true':
@@ -1558,6 +1579,7 @@ def validate_setting(setting_name, setting_value):
         'enable_ip_blacklist': lambda x: x in ['true', 'false'],
         'enable_domain_blacklist': lambda x: x in ['true', 'false'],
         'enable_compression': lambda x: x in ['true', 'false'],
+        'enable_waf': lambda x: x in ['true', 'false'],
         'enable_content_filtering': lambda x: x in ['true', 'false'],
         'enable_https_filtering': lambda x: x in ['true', 'false'],
         'enable_time_restrictions': lambda x: x in ['true', 'false'],
@@ -1568,6 +1590,7 @@ def validate_setting(setting_name, setting_value):
         
         # Numeric settings
         'cache_size': lambda x: x.isdigit() and 100 <= int(x) <= 10000,
+        'cache_mem_size': lambda x: x.isdigit() and 64 <= int(x) <= 4096,
         'max_object_size': lambda x: x.isdigit() and 1 <= int(x) <= 1000,
         'connection_timeout': lambda x: x.isdigit() and 1 <= int(x) <= 300,
         'dns_timeout': lambda x: x.isdigit() and 1 <= int(x) <= 60,
