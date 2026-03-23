@@ -193,6 +193,9 @@ def init_db():
         ('cache_mem_size', '256', 'Memory cache size in megabytes'),
         ('max_object_size', '50', 'Maximum size of cached objects in megabytes'),
         ('enable_compression', 'false', 'Enable HTTP compression'),
+        ('enable_offline_mode', 'false', 'Enable offline mode (serve stale cache if backend is down)'),
+        ('cache_bypass_domains', '', 'Domains that should never be cached (comma-separated)'),
+        ('aggressive_caching', 'false', 'Cache dynamic content and ignore some cache-control headers'),
         
         # Advanced filtering settings
         ('enable_waf', 'true', 'Enable ICAP Content Inspection (WAF)'),
@@ -1117,6 +1120,24 @@ def apply_settings():
         squid_conf.append(f"maximum_object_size {max_obj_size} MB")
         squid_conf.append("coredump_dir /var/spool/squid")
         
+        # Cache Bypass Domains
+        bypass_domains = settings.get('cache_bypass_domains', '')
+        if bypass_domains:
+            squid_conf.append("")
+            squid_conf.append("# Cache bypass domains")
+            for domain in bypass_domains.split(','):
+                domain = domain.strip()
+                if domain:
+                    squid_conf.append(f"acl bypass_cache dstdomain {domain}")
+            squid_conf.append("cache deny bypass_cache")
+            
+        # Offline Mode (serve stale cache if backend is down)
+        if settings.get('enable_offline_mode') == 'true':
+            squid_conf.append("")
+            squid_conf.append("# Offline Mode (Stale Cache)")
+            squid_conf.append("offline_mode on")
+            squid_conf.append("max_stale 1 week")
+        
         # WAF Content Inspection (ICAP)
         if settings.get('enable_waf', 'true') == 'true':
             squid_conf.append("")
@@ -1161,6 +1182,19 @@ def apply_settings():
         # Add standard refresh patterns
         squid_conf.append("")
         squid_conf.append("# Refresh patterns")
+        
+        # Smart Refresh Patterns
+        if settings.get('aggressive_caching') == 'true':
+            squid_conf.append("# Aggressive Refresh Patterns")
+            # Ignore cache-control: no-cache headers for static assets
+            squid_conf.append("refresh_pattern -i \\.(gif|png|jpg|jpeg|ico|webp)$ 1440 90% 10080 ignore-no-cache ignore-no-store ignore-private")
+            squid_conf.append("refresh_pattern -i \\.(css|js|swf|pdf|xml)$ 1440 90% 10080 ignore-no-cache ignore-no-store ignore-private")
+            squid_conf.append("refresh_pattern -i \\.(zip|gz|rar|bz2|tar|exe|mp3|mp4|avi)$ 4320 100% 43200 ignore-no-cache ignore-no-store ignore-private")
+        else:
+            squid_conf.append("# Standard Refresh Patterns")
+            squid_conf.append("refresh_pattern -i \\.(gif|png|jpg|jpeg|ico|webp)$ 1440 50% 10080")
+            squid_conf.append("refresh_pattern -i \\.(css|js|swf|pdf|xml)$ 1440 50% 10080")
+            
         squid_conf.append("refresh_pattern ^ftp:           1440    20%     10080")
         squid_conf.append("refresh_pattern ^gopher:        1440    0%      1440")
         squid_conf.append("refresh_pattern -i (/cgi-bin/|\\?) 0     0%      0")
@@ -1683,6 +1717,8 @@ def validate_setting(setting_name, setting_value):
         'enable_ip_blacklist': lambda x: x in ['true', 'false'],
         'enable_domain_blacklist': lambda x: x in ['true', 'false'],
         'enable_compression': lambda x: x in ['true', 'false'],
+        'enable_offline_mode': lambda x: x in ['true', 'false'],
+        'aggressive_caching': lambda x: x in ['true', 'false'],
         'enable_waf': lambda x: x in ['true', 'false'],
         'enable_content_filtering': lambda x: x in ['true', 'false'],
         'enable_https_filtering': lambda x: x in ['true', 'false'],

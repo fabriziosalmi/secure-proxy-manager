@@ -200,6 +200,53 @@ export function Settings() {
                 <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
               </label>
             </div>
+
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+              <div className="space-y-0.5">
+                <label className="text-sm font-medium">Aggressive Caching</label>
+                <p className="text-xs text-muted-foreground">Ignore cache-control headers for static files (images, css, js) to force caching. Great for bandwidth saving.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  name="aggressive_caching"
+                  checked={formData.aggressive_caching === 'true' || formData.aggressive_caching === true}
+                  onChange={(e) => setFormData({ ...formData, aggressive_caching: e.target.checked ? 'true' : 'false' })}
+                  className="sr-only peer" 
+                />
+                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+              <div className="space-y-0.5">
+                <label className="text-sm font-medium">Offline Mode (Stale Cache)</label>
+                <p className="text-xs text-muted-foreground">Serve expired cached pages if the destination server is offline.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  name="enable_offline_mode"
+                  checked={formData.enable_offline_mode === 'true' || formData.enable_offline_mode === true}
+                  onChange={(e) => setFormData({ ...formData, enable_offline_mode: e.target.checked ? 'true' : 'false' })}
+                  className="sr-only peer" 
+                />
+                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+              </label>
+            </div>
+
+            <div className="p-4 border border-border rounded-lg bg-background/50">
+              <label className="text-sm font-medium">Cache Bypass Domains</label>
+              <p className="text-xs text-muted-foreground mb-2">Domains that should NEVER be cached (comma-separated).</p>
+              <input 
+                type="text" 
+                name="cache_bypass_domains"
+                value={formData.cache_bypass_domains || ''}
+                onChange={handleChange}
+                placeholder="e.g. banking.com, api.internal.local"
+                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
           </CardContent>
         </Card>
 
