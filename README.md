@@ -46,28 +46,27 @@ A containerized secure proxy with advanced filtering capabilities, real-time mon
 ![screenshot2](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/screenshot_2.png?raw=true)
 ![screenshot3](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/screenshot_3.png?raw=true)
 
-## 🚀 Features
+## 🌟 Key Features
 
-- **SSL/TLS Inspection**: Decrypt and inspect HTTPS traffic (SSL Bump) with automated CA certificate generation
-- **Content Inspection WAF**: Zero-latency ICAP Python engine that blocks SQL Injection, XSS, Data Leaks (DLP), Command Injections, and Unicode Homograph obfuscation attacks
-- **Advanced Caching Engine**: L1 (RAM) + L2 (Disk) intelligent caching with Aggressive Mode, Cache Bypass domains, and Offline Mode (serve stale cache if backend is down)
-- **Bandwidth Throttling**: Configure global and per-user speed limits using Squid Delay Pools
-- **Content Filtering**: Block downloads based on actual MIME-type inspection, not just file extensions
-- **Access Control**: Enforce Time-based access restrictions and Proxy Authentication (Basic/Digest)
-- **Safe Browsing**: Enforce SafeSearch on search engines and Restricted Mode on YouTube
-- **Dynamic Blacklisting**: Manage IP and Domain rules via Web UI, with automatic Geo-Blocking and bulk URL importing
-- **Real-Time Analytics**: Monitor traffic with live WebSocket log streaming and interactive dashboards
-- **Docker Ready**: Easy deployment with Docker and Docker Compose
-- **RESTful API**: Fully documented API for integration and automation
+- **Modern Architecture**: Fast, asynchronous Python backend powered by **FastAPI** with SQLite WAL mode.
+- **Real-Time Interface**: Lightning-fast, reactive frontend built with **React, Vite, and Tailwind CSS**, featuring native WebSockets for instant log streaming.
+- **Traffic Filtering**: Domain and IP-based blacklisting with regular expression support and automatic IP Geo-Blocking.
+- **One-Click Threat Intelligence**: Import popular global blocklists (Spamhaus, Firehol, Pi-hole lists) directly from the UI.
+- **Advanced WAF**: Integrated Python ICAP server for Deep Packet Inspection with memory-leak protection and multi-threading limits.
+- **SSL Bump**: Inspect and filter encrypted HTTPS traffic with auto-generated certificates.
+- **Caching & Optimization**: Bandwidth saving through configurable content caching.
+- **Visual Analytics**: Interactive Recharts dashboards for monitoring bandwidth, cache hit rates, and blocked requests.
+- **Docker Ready**: Fully containerized multi-tier architecture (React, FastAPI, Squid, WAF) deployed via a single `docker-compose` command.
 
 ## 🏗️ Architecture
 
-The application consists of four main containerized components:
+Secure Proxy Manager employs a modern microservices architecture, completely revamped from its original monolithic Flask design:
 
-- **Proxy**: The core Squid proxy engine handling traffic and caching.
-- **WAF**: A custom zero-latency ICAP server written in Python to perform deep packet inspection.
-- **Backend**: Flask REST API managing configuration, sqlite database, and WebSocket log streams.
-- **UI**: Modern React-based frontend built with Vite and TailwindCSS for intuitive management.
+1. **Frontend (React/Vite)**: A reactive Single Page Application built with React, Tailwind CSS, and Recharts, providing real-time data visualization and instant WebSocket log streaming.
+2. **Backend (FastAPI)**: A high-performance, asynchronous Python backend using FastAPI and Uvicorn. It manages the SQLite database (in WAL mode for concurrency), handles REST APIs, and streams logs via native WebSockets.
+3. **UI Proxy (Flask)**: A lightweight reverse proxy serving the React static assets and routing API/WebSocket traffic to the backend, secured with Talisman CSP.
+4. **Proxy Engine (Squid)**: The core caching and filtering engine handling HTTP/HTTPS traffic.
+5. **WAF Engine (Python ICAP)**: A custom ICAP server that inspects payloads for threats (SQLi, XSS) before they reach the user, equipped with anti-DoS thread pooling and memory-leak prevention.
 
 <div align="center">
   <pre>
@@ -321,7 +320,21 @@ To use Secure Proxy as a transparent proxy:
 
 Integrate with external threat intelligence sources. The system supports importing plain text files (one entry per line) and JSON formats.
 
-#### Import Domain Blacklists
+#### 1-Click Popular Lists Import
+
+We introduced a "Popular Lists" feature directly in the Web UI that allows you to instantly import thousands of known threats with a single click:
+
+**For Domains:**
+- *StevenBlack Ad/Malware*: Consolidated host files from multiple sources
+- *MalwareDomainList*: Domains known to host malware
+- *Phishing Army*: Domains actively involved in phishing
+
+**For IPs:**
+- *Firehol Level 1*: A general purpose blocklist protecting against active threats
+- *Spamhaus DROP*: Don't Route Or Peer Lists (Direct malware/botnets)
+- *Emerging Threats*: Known compromised hosts and botnet C&C
+
+#### Manual Import from URL
 
 ```bash
 # Import from URL - supports plain text files with one domain per line
@@ -329,6 +342,7 @@ curl -X POST http://localhost:8011/api/domain-blacklist/import \
   -H "Content-Type: application/json" \
   -H "Authorization: Basic $(echo -n admin:admin | base64)" \
   -d '{"url": "https://example.com/domain-blacklist.txt"}'
+
 
 # Import direct content
 curl -X POST http://localhost:8011/api/domain-blacklist/import \
@@ -376,9 +390,10 @@ curl -X POST http://localhost:8011/api/ip-blacklist/import \
 
 All proxy traffic is logged and can be analyzed in the web interface:
 
-- **Access Logs**: All requests with filtering and search
-- **Security Events**: Authentication attempts and blocked requests
-- **System Logs**: Application and service events
+- **Real-Time WebSockets**: View access logs streaming live from Squid to the UI via FastAPI WebSockets.
+- **Persistent Storage**: Logs are automatically written to the SQLite database (in WAL mode for concurrency) allowing historical search and pagination.
+- **Quick Stats**: Instant metric cards showing Total Requests, Success rates, Blocked traffic, and Errors directly above the logs table.
+- **Security Events**: Authentication attempts and blocked requests by the WAF.
 
 ### Health Checks
 
@@ -833,9 +848,15 @@ Full interactive API documentation is available at `/api/docs` when the service 
 2. **Enable HTTPS** for the admin interface in production
 3. **Restrict access** to the admin interface to trusted IPs
 4. **Regular backups** of configuration and database
-5. **Keep the system updated** with security patches
-6. **Monitor logs** for suspicious activity
-7. **Use strong certificates** for HTTPS filtering
+5. **Monitor logs** for suspicious activity
+6. **Use strong certificates** for HTTPS filtering
+
+**Recent Security Hardening:**
+- Replaced vulnerable string interpolations in SQL queries with strict parameter binding (SQLi mitigated).
+- Implemented robust SSRF (Server-Side Request Forgery) protection on blacklist import URLs, blocking localhost and private IP scanning.
+- Memory leak protection on the WAF engine via aggressive dictionary garbage collection.
+- DoS protection against high-concurrency attacks via a custom `ThreadPoolExecutor` limiting background Python threads.
+- De-escalated Squid proxy privileges from `root` to a dedicated `proxy` user.
 
 ## 🌱 Future Roadmap
 
