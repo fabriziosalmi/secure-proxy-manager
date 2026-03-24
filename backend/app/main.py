@@ -153,7 +153,12 @@ def init_db():
         
     conn = get_db()
     # Enable WAL mode for concurrent reads/writes without locking the database
-    conn.execute('PRAGMA journal_mode=WAL;')
+    # Handle read-only error if permissions haven't propagated correctly yet
+    try:
+        conn.execute('PRAGMA journal_mode=WAL;')
+    except sqlite3.OperationalError as e:
+        logger.warning(f"Could not set WAL mode (might be read-only mount): {e}")
+        
     cursor = conn.cursor()
     
     # Create tables
