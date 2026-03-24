@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Activity, Clock, ShieldCheck, Zap } from 'lucide-react';
+import { Activity, Clock, ShieldCheck, Zap, Download } from 'lucide-react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useApi } from '../hooks/useApi';
 import { useEffect } from 'react';
@@ -41,9 +41,20 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">Real-time overview of the proxy pipeline</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground">Real-time overview of the proxy pipeline</p>
+        </div>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => window.open('/api/analytics/report/pdf', '_blank')}
+            className="flex items-center px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-md text-sm font-medium transition-colors"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export PDF Report
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

@@ -251,7 +251,14 @@ def init_db():
         ('ddns_provider', 'cloudflare', 'DDNS Provider (cloudflare, duckdns, custom)'),
         ('ddns_domain', '', 'Domain to update (e.g. proxy.mydomain.com)'),
         ('ddns_token', '', 'API Token / Password for DDNS'),
-        ('ddns_zone_id', '', 'Zone ID (Cloudflare only)')
+        ('ddns_zone_id', '', 'Zone ID (Cloudflare only)'),
+        
+        # Analytics settings
+        ('enable_pdf_reports', 'false', 'Enable automated PDF reporting'),
+        ('report_frequency', 'weekly', 'Reporting frequency (daily, weekly, monthly)'),
+        ('enable_siem_forwarding', 'false', 'Enable SIEM log forwarding (Syslog/CEF)'),
+        ('siem_host', '', 'SIEM Host (e.g. splunk.internal.local)'),
+        ('siem_port', '514', 'SIEM Port')
     ]
     
     for setting in default_settings:
@@ -1837,6 +1844,8 @@ def validate_setting(setting_name, setting_value):
         'enable_notifications': lambda x: x in ['true', 'false'],
         'enable_tailscale': lambda x: x in ['true', 'false'],
         'enable_ddns': lambda x: x in ['true', 'false'],
+        'enable_pdf_reports': lambda x: x in ['true', 'false'],
+        'enable_siem_forwarding': lambda x: x in ['true', 'false'],
         
         # Numeric settings
         'cache_size': lambda x: x.isdigit() and 100 <= int(x) <= 10000,
@@ -1848,6 +1857,7 @@ def validate_setting(setting_name, setting_value):
         'log_retention': lambda x: x.isdigit() and 1 <= int(x) <= 365,
         'bandwidth_limit_mbps': lambda x: x.isdigit() and 1 <= int(x) <= 10000,
         'bandwidth_limit_per_user_kbps': lambda x: x.isdigit() and 10 <= int(x) <= 100000,
+        'siem_port': lambda x: x.isdigit() and 1 <= int(x) <= 65535,
         
         # String settings with specific formats
         'log_level': lambda x: x.lower() in ['debug', 'info', 'warning', 'error'],
@@ -1861,6 +1871,8 @@ def validate_setting(setting_name, setting_value):
         'ddns_domain': lambda x: True,
         'ddns_token': lambda x: True,
         'ddns_zone_id': lambda x: True,
+        'report_frequency': lambda x: x.lower() in ['daily', 'weekly', 'monthly'],
+        'siem_host': lambda x: True,
         
         # Time format settings
         'time_restriction_start': lambda x: re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', x) is not None,
@@ -2428,6 +2440,109 @@ def update_ddns():
     except Exception as e:
         logger.error(f"Error updating DDNS: {e}")
 
+import logging
+import logging.handlers
+from pythonjsonlogger import jsonlogger
+
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+import io
+
+def generate_pdf_report():
+    """Generate a PDF report of proxy analytics"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        elements.append(Paragraph("Secure Proxy Manager - Security Report", styles['Title']))
+        elements.append(Spacer(1, 12))
+        
+        # Get basic stats
+        cursor.execute("SELECT COUNT(*) FROM access_logs WHERE date(timestamp) >= date('now', '-7 days')")
+        total_reqs = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM access_logs WHERE status LIKE '403%' AND date(timestamp) >= date('now', '-7 days')")
+        total_blocks = cursor.fetchone()[0]
+        
+        elements.append(Paragraph(f"Summary (Last 7 Days)", styles['Heading2']))
+        data = [
+            ["Metric", "Value"],
+            ["Total Requests", str(total_reqs)],
+            ["Blocked Requests", str(total_blocks)]
+        ]
+        t = Table(data, colWidths=[200, 100])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        elements.append(t)
+        
+        doc.build(elements)
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        return pdf_data
+    except Exception as e:
+        logger.error(f"Error generating PDF report: {e}")
+        return None
+
+@app.route('/api/analytics/report/pdf', methods=['GET'])
+@auth.login_required
+def download_pdf_report():
+    """Endpoint to download PDF report"""
+    pdf_data = generate_pdf_report()
+    if pdf_data:
+        return send_file(
+            io.BytesIO(pdf_data),
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f'security_report_{datetime.now().strftime("%Y%m%d")}.pdf'
+        )
+    return jsonify({"status": "error", "message": "Failed to generate report"}), 500
+
+# SIEM Syslog Logger setup
+siem_logger = logging.getLogger('siem_logger')
+siem_logger.setLevel(logging.INFO)
+
+def setup_siem_logger():
+    """Configure SIEM syslog forwarding based on settings"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT setting_name, setting_value FROM settings WHERE setting_name IN ('enable_siem_forwarding', 'siem_host', 'siem_port')")
+        settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
+        
+        # Clear existing handlers
+        siem_logger.handlers = []
+        
+        if settings.get('enable_siem_forwarding') == 'true' and settings.get('siem_host'):
+            host = settings.get('siem_host')
+            port = int(settings.get('siem_port', 514))
+            
+            # Send as JSON to Syslog (CEF alternative)
+            syslog_handler = logging.handlers.SysLogHandler(address=(host, port))
+            formatter = jsonlogger.JsonFormatter('%(timestamp)s %(level)s %(name)s %(message)s')
+            syslog_handler.setFormatter(formatter)
+            siem_logger.addHandler(syslog_handler)
+            logger.info(f"SIEM forwarding configured to {host}:{port}")
+            
+    except Exception as e:
+        logger.error(f"Failed to setup SIEM logger: {e}")
+
+# Call on startup
+setup_siem_logger()
+
 def send_security_notification(event):
     """Send security notifications to configured providers"""
     try:
@@ -2591,6 +2706,15 @@ def log_security_event(event_type, message, details=None, level="warning"):
         "message": message,
         **details
     }
+    
+    # Forward to SIEM if enabled
+    if siem_logger.handlers:
+        if level == "error":
+            siem_logger.error(message, extra=event)
+        elif level == "warning":
+            siem_logger.warning(message, extra=event)
+        else:
+            siem_logger.info(message, extra=event)
     
     # Log using appropriate level
     log_message = f"SECURITY EVENT [{event_type.upper()}]: {message} - {json.dumps(details)}"
