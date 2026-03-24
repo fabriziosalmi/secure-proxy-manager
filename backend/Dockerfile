@@ -34,9 +34,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Healthcheck to ensure service is running properly
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:5000/health || exit 1
+    CMD curl -f http://localhost:5000/api/health || exit 1
 
-# Run the API server with Gunicorn (production-ready WSGI server)
-# Bind to 0.0.0.0:5000 to match healthcheck and docker-compose expectations
-# Use eventlet worker class for WebSocket support
-CMD ["gunicorn", "-k", "eventlet", "-w", "1", "-b", "0.0.0.0:5000", "app.app:app", "--timeout", "90"]
+# Run the API server with Uvicorn (production-ready ASGI server)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5000", "--proxy-headers", "--forwarded-allow-ips", "*"]
