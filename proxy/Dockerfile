@@ -35,6 +35,9 @@ COPY squid-supervisor.conf /etc/supervisor/conf.d/
 # Make startup script executable
 RUN chmod +x /startup.sh
 
+# Ensure proper squid permissions on run directories
+RUN mkdir -p /run/squid /var/run/squid && chown -R proxy:proxy /run/squid /var/run/squid
+
 # Expose Squid proxy port
 EXPOSE 3128
 
