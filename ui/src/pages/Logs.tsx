@@ -1,8 +1,8 @@
 import { Card, CardContent } from '../components/ui/card';
 import { useApi } from '../hooks/useApi';
 import { api } from '../lib/api';
-import { Search, RefreshCw, FileText, Trash2, Activity } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { Search, RefreshCw, FileText, Trash2, Activity, ShieldAlert, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 
 export function Logs() {
@@ -27,6 +27,8 @@ export function Logs() {
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const hostname = window.location.hostname;
       // Connect directly to the FastAPI port (5001 exposed on host)
+      // Since Talisman CSP might be blocking custom ports, let's use the UI's port but 
+      // rely on the proxy to handle it if possible, or fallback to direct port.
       const socketUrl = `${wsProtocol}//${hostname}:5001/api/ws/logs`;
       
       const ws = new WebSocket(socketUrl);
@@ -83,6 +85,26 @@ export function Logs() {
     log.status?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Compute stats from current logs
+  const stats = useMemo(() => {
+    const total = realtimeLogs.length;
+    const blocked = realtimeLogs.filter((l: any) => 
+      l.status?.includes('DENIED') || 
+      l.status?.includes('403') || 
+      l.destination?.includes('blocked')
+    ).length;
+    const errors = realtimeLogs.filter((l: any) => 
+      l.status?.includes('500') || 
+      l.status?.includes('502') || 
+      l.status?.includes('503') || 
+      l.status?.includes('504') ||
+      l.status?.includes('ERR_') && !l.status?.includes('ERR_ACCESS_DENIED')
+    ).length;
+    const success = total - blocked - errors;
+    
+    return { total, blocked, errors, success };
+  }, [realtimeLogs]);
+
   const handleClearLogs = async () => {
     if (!confirm('Are you sure you want to clear all logs?')) return;
     const loadingToast = toast.loading('Clearing logs...');
@@ -126,6 +148,57 @@ export function Logs() {
             Clear All
           </button>
         </div>
+      </div>
+      
+      {/* Quick Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Total Requests</p>
+              <h3 className="text-2xl font-bold">{stats.total}</h3>
+            </div>
+            <div className="p-3 bg-primary/10 rounded-full text-primary">
+              <Activity className="w-5 h-5" />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Success</p>
+              <h3 className="text-2xl font-bold text-green-500">{stats.success}</h3>
+            </div>
+            <div className="p-3 bg-green-500/10 rounded-full text-green-500">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Blocked</p>
+              <h3 className="text-2xl font-bold text-orange-500">{stats.blocked}</h3>
+            </div>
+            <div className="p-3 bg-orange-500/10 rounded-full text-orange-500">
+              <ShieldAlert className="w-5 h-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Errors</p>
+              <h3 className="text-2xl font-bold text-red-500">{stats.errors}</h3>
+            </div>
+            <div className="p-3 bg-red-500/10 rounded-full text-red-500">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Card className="bg-card/50">
