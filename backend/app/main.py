@@ -35,6 +35,10 @@ import urllib.parse
 from datetime import datetime, timedelta
 import sqlite3
 
+import subprocess
+import threading
+from contextlib import asynccontextmanager
+
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -44,8 +48,22 @@ DATABASE_PATH = os.environ.get('DATABASE_PATH', '/data/secure_proxy.db')
 PROXY_HOST = os.environ.get('PROXY_HOST', 'proxy')
 PROXY_PORT = os.environ.get('PROXY_PORT', '3128')
 
+# FastAPI App Lifespan
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    init_db()
+    
+    # Start the log tailer thread
+    log_thread = threading.Thread(target=tail_logs_sync, daemon=True)
+    log_thread.start()
+    
+    yield
+    # Shutdown
+    pass
+
 # FastAPI App
-app = FastAPI(title="Secure Proxy Manager API")
+app = FastAPI(title="Secure Proxy Manager API", lifespan=lifespan)
 
 # Security
 security = HTTPBasic()
@@ -115,9 +133,9 @@ def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
         )
     return credentials.username
 
-@app.on_event("startup")
-async def startup_event():
-    init_db()
+# @app.on_event("startup")
+# async def startup_event():
+#     init_db()
 
 # WebSocket Connection Manager
 class ConnectionManager:
@@ -140,6 +158,45 @@ class ConnectionManager:
                 pass
 
 manager = ConnectionManager()
+
+def tail_logs_sync():
+    """Background task to tail squid logs and emit via websocket"""
+    log_file = '/logs/access.log'
+    import time
+    
+    # Create an event loop for this thread to run async broadcasts
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    while True:
+        try:
+            if os.path.exists(log_file):
+                process = subprocess.Popen(['tail', '-F', log_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                for line in process.stdout:
+                    parts = line.split()
+                    if len(parts) >= 10:
+                        try:
+                            timestamp_sec = float(parts[0])
+                            dt = datetime.fromtimestamp(timestamp_sec)
+                            
+                            log_entry = {
+                                "timestamp": dt.strftime('%Y-%m-%d %H:%M:%S'),
+                                "client_ip": parts[2],
+                                "status": parts[3],
+                                "bytes": int(parts[4]) if parts[4].isdigit() else 0,
+                                "method": parts[5],
+                                "destination": parts[6]
+                            }
+                            # Send to all connected clients
+                            if manager.active_connections:
+                                loop.run_until_complete(manager.broadcast(log_entry))
+                        except Exception as e:
+                            logger.debug(f"Log parse error: {e}")
+            else:
+                time.sleep(5)
+        except Exception as e:
+            logger.error(f"Error tailing logs: {e}")
+            time.sleep(5)
 
 @app.websocket("/ws/logs")
 async def websocket_logs(websocket: WebSocket):
