@@ -34,7 +34,7 @@ export function Blacklists() {
     
     if (activeTab === 'ip') {
       endpoint = 'ip-blacklist';
-      payload = { ip_address: newItem, description: newDesc };
+      payload = { ip: newItem, description: newDesc };
     } else if (activeTab === 'domain') {
       endpoint = 'domain-blacklist';
       payload = { domain: newItem, description: newDesc };
