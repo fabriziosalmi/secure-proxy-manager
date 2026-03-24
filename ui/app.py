@@ -258,12 +258,17 @@ def api_proxy(path):
                     "status_code": resp.status_code
                 }), 500
         else:
-            # For non-JSON responses (like file downloads), return the raw response
+            # Stream the response back to avoid memory pressure on large responses (e.g. PDF or text logs)
             from flask import Response
+            def generate():
+                for chunk in resp.iter_content(chunk_size=8192):
+                    if chunk:
+                        yield chunk
+            
             return Response(
-                resp.content,
+                generate(),
                 status=resp.status_code,
-                headers={k: v for k, v in resp.headers.items() if k.lower() not in ('content-encoding', 'content-length', 'transfer-encoding', 'connection')}
+                content_type=resp.headers.get('Content-Type', 'text/plain')
             )
             
             
