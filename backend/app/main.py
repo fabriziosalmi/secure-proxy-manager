@@ -6,6 +6,7 @@ import secrets
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from fastapi import FastAPI, Depends, HTTPException, status, Request, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -38,6 +39,15 @@ import sqlite3
 import subprocess
 import threading
 from contextlib import asynccontextmanager
+import asyncio
+import time
+import io
+import logging.handlers
+from pythonjsonlogger import jsonlogger
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
 
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -48,15 +58,64 @@ DATABASE_PATH = os.environ.get('DATABASE_PATH', '/data/secure_proxy.db')
 PROXY_HOST = os.environ.get('PROXY_HOST', 'proxy')
 PROXY_PORT = os.environ.get('PROXY_PORT', '3128')
 
+def ddns_scheduler_sync():
+    """Background task to update DDNS periodically"""
+    while True:
+        try:
+            # Note: The actual logic will be fully ported later. This ensures the thread is running.
+            logger.debug("Running DDNS scheduler check...")
+        except Exception as e:
+            logger.error(f"DDNS scheduler error: {e}")
+        time.sleep(3600)  # Sleep for 1 hour
+
+# SIEM Syslog Logger setup
+siem_logger = logging.getLogger('siem_logger')
+siem_logger.setLevel(logging.INFO)
+
+def setup_siem_logger():
+    """Configure SIEM syslog forwarding based on settings"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("SELECT setting_name, setting_value FROM settings WHERE setting_name IN ('enable_siem_forwarding', 'siem_host', 'siem_port')")
+            settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
+            
+            # Clear existing handlers
+            siem_logger.handlers = []
+            
+            if settings.get('enable_siem_forwarding') == 'true' and settings.get('siem_host'):
+                host = settings.get('siem_host')
+                port = int(settings.get('siem_port', 514))
+                
+                # Send as JSON to Syslog (CEF alternative)
+                syslog_handler = logging.handlers.SysLogHandler(address=(host, port))
+                formatter = jsonlogger.JsonFormatter('%(timestamp)s %(level)s %(name)s %(message)s')
+                syslog_handler.setFormatter(formatter)
+                siem_logger.addHandler(syslog_handler)
+                logger.info(f"SIEM forwarding configured to {host}:{port}")
+        except sqlite3.OperationalError:
+            pass # DB not ready yet
+            
+        conn.close()
+    except Exception as e:
+        logger.error(f"Failed to setup SIEM logger: {e}")
+
 # FastAPI App Lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     init_db()
+    setup_siem_logger()
     
     # Start the log tailer thread
     log_thread = threading.Thread(target=tail_logs_sync, daemon=True)
     log_thread.start()
+    
+    # Start DDNS scheduler thread
+    ddns_thread = threading.Thread(target=ddns_scheduler_sync, daemon=True)
+    ddns_thread.start()
     
     yield
     # Shutdown
@@ -504,6 +563,411 @@ def get_traffic_statistics(period: str = 'day'):
     except Exception as e:
         logger.error(f"Error getting traffic statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+@app.get("/api/logs", dependencies=[Depends(authenticate)])
+def get_logs(
+    limit: int = 25, 
+    offset: int = 0, 
+    sort: str = 'timestamp', 
+    order: str = 'desc'
+):
+    """Get proxy logs with pagination and sorting"""
+    try:
+        # Validate sort column to prevent SQL injection
+        valid_columns = ['timestamp', 'source_ip', 'destination', 'status', 'bytes', 'method']
+        if sort not in valid_columns:
+            sort = 'timestamp'
+            
+        # Validate order
+        if order.lower() not in ['asc', 'desc']:
+            order = 'desc'
+            
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # In a real scenario we query proxy_logs table. For this migration we test if table exists first.
+        try:
+            cursor.execute("SELECT COUNT(*) FROM proxy_logs")
+            total_count = cursor.fetchone()[0]
+            
+            query = f"SELECT * FROM proxy_logs ORDER BY {sort} {order.upper()} LIMIT ? OFFSET ?"
+            cursor.execute(query, (limit, offset))
+            logs = [dict(row) for row in cursor.fetchall()]
+        except sqlite3.OperationalError:
+            # Fallback if proxy_logs doesn't exist yet
+            total_count = 0
+            logs = []
+            
+        conn.close()
+        
+        return {
+            "status": "success",
+            "data": logs,
+            "pagination": {
+                "total": total_count,
+                "limit": limit,
+                "offset": offset
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching logs: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch logs")
+
+@app.get("/api/logs/stats", dependencies=[Depends(authenticate)])
+def get_log_stats():
+    """Get statistics about logs including blocked requests and direct IP blocks"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("SELECT COUNT(*) FROM proxy_logs")
+            total_requests = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '403%' OR status LIKE '500%'")
+            blocked_requests = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM ip_blacklist")
+            blacklisted_ips = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM domain_blacklist")
+            blacklisted_domains = cursor.fetchone()[0]
+        except sqlite3.OperationalError:
+            total_requests = 0
+            blocked_requests = 0
+            blacklisted_ips = 0
+            blacklisted_domains = 0
+            
+        conn.close()
+        
+        return {
+            "status": "success",
+            "data": {
+                "total_requests": total_requests,
+                "blocked_requests": blocked_requests,
+                "blacklisted_ips": blacklisted_ips,
+                "blacklisted_domains": blacklisted_domains,
+                "block_rate": round((blocked_requests / total_requests * 100) if total_requests > 0 else 0, 2)
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error getting log stats: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get log statistics")
+
+@app.get("/api/logs/timeline", dependencies=[Depends(authenticate)])
+def get_log_timeline(hours: int = 24):
+    """Get log timeline for charts"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # We need a query that groups by hour for the chart
+        # We generate a generic timeline if proxy_logs doesn't exist yet
+        timeline_data = []
+        try:
+            query = """
+                SELECT strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
+                       COUNT(*) as total,
+                       SUM(CASE WHEN status LIKE '403%' THEN 1 ELSE 0 END) as blocked
+                FROM proxy_logs
+                WHERE timestamp >= datetime('now', ?)
+                GROUP BY hour
+                ORDER BY hour ASC
+            """
+            cursor.execute(query, (f'-{hours} hours',))
+            rows = cursor.fetchall()
+            for row in rows:
+                timeline_data.append({
+                    "time": row['hour'],
+                    "total": row['total'],
+                    "blocked": row['blocked'] or 0
+                })
+        except sqlite3.OperationalError:
+            # Table doesn't exist
+            pass
+            
+        conn.close()
+        
+        return {
+            "status": "success",
+            "data": timeline_data
+        }
+    except Exception as e:
+        logger.error(f"Error getting log timeline: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get log timeline")
+
+class InternalAlert(BaseModel):
+    event_type: str = 'unknown'
+    message: str = 'No message'
+    details: Dict[str, Any] = {}
+    level: str = 'warning'
+
+@app.post("/api/internal/alert", dependencies=[Depends(authenticate)])
+def receive_internal_alert(alert: InternalAlert, background_tasks: BackgroundTasks):
+    """Receive alerts from internal services like WAF"""
+    event = {
+        "timestamp": datetime.now().isoformat(),
+        "client_ip": alert.details.get('client_ip', 'unknown'),
+        "event_type": alert.event_type,
+        "message": alert.message,
+        "level": alert.level,
+        **{k:v for k,v in alert.details.items() if k != 'client_ip'}
+    }
+    
+    # We use BackgroundTasks to not block the WAF
+    background_tasks.add_task(send_security_notification, event)
+    
+    return {"status": "success"}
+
+def send_security_notification(event):
+    """Send security notifications to configured providers"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT setting_name, setting_value FROM settings WHERE setting_name IN ('enable_notifications', 'webhook_url', 'gotify_url', 'gotify_token', 'teams_webhook_url', 'telegram_bot_token', 'telegram_chat_id')")
+        settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
+        conn.close()
+        
+        if settings.get('enable_notifications') != 'true':
+            return
+            
+        # Prepare standard message format
+        emoji = "🔴" if event.get('level') == 'error' else "⚠️" if event.get('level') == 'warning' else "ℹ️"
+        title = f"{emoji} Secure Proxy Alert: {event.get('event_type', 'Unknown').replace('_', ' ').title()}"
+        
+        message_lines = [
+            f"**Message:** {event.get('message', 'No details')}",
+            f"**Time:** {event.get('timestamp')}",
+            f"**Client IP:** {event.get('client_ip', 'Unknown')}"
+        ]
+        
+        if event.get('username'):
+            message_lines.append(f"**User:** {event.get('username')}")
+            
+        # Add details if any (excluding the ones already handled)
+        for key, value in event.items():
+            if key not in ['timestamp', 'client_ip', 'username', 'event_type', 'message', 'level']:
+                message_lines.append(f"**{key.title()}:** {value}")
+                
+        plain_text = f"{title}\n\n" + "\n".join(message_lines)
+        
+        # 1. Custom Webhook
+        webhook_url = settings.get('webhook_url')
+        if webhook_url:
+            try:
+                requests.post(webhook_url, json=event, timeout=5)
+            except Exception as e:
+                logger.error(f"Failed to send webhook notification: {e}")
+                
+        # 2. Gotify
+        gotify_url = settings.get('gotify_url')
+        gotify_token = settings.get('gotify_token')
+        if gotify_url and gotify_token:
+            try:
+                if not gotify_url.endswith('/'):
+                    gotify_url += '/'
+                requests.post(
+                    f"{gotify_url}message?token={gotify_token}",
+                    json={
+                        "title": title,
+                        "message": plain_text,
+                        "priority": 8 if event.get('level') == 'error' else 5
+                    },
+                    timeout=5
+                )
+            except Exception as e:
+                logger.error(f"Failed to send Gotify notification: {e}")
+                
+        # 3. Microsoft Teams
+        teams_url = settings.get('teams_webhook_url')
+        if teams_url:
+            try:
+                teams_payload = {
+                    "@type": "MessageCard",
+                    "@context": "http://schema.org/extensions",
+                    "themeColor": "FF0000" if event.get('level') == 'error' else "FFA500",
+                    "summary": title,
+                    "sections": [{
+                        "activityTitle": title,
+                        "facts": [{"name": line.split(':**')[0].replace('**', '') + ":", "value": line.split(':**')[1].strip() if ':**' in line else line} for line in message_lines],
+                        "markdown": True
+                    }]
+                }
+                requests.post(teams_url, json=teams_payload, timeout=5)
+            except Exception as e:
+                logger.error(f"Failed to send MS Teams notification: {e}")
+                
+        # 4. Telegram
+        telegram_token = settings.get('telegram_bot_token')
+        telegram_chat_id = settings.get('telegram_chat_id')
+        if telegram_token and telegram_chat_id:
+            try:
+                telegram_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+                tg_text = f"*{title}*\n\n" + "\n".join(message_lines)
+                requests.post(
+                    telegram_url,
+                    json={
+                        "chat_id": telegram_chat_id,
+                        "text": tg_text,
+                        "parse_mode": "Markdown"
+                    },
+                    timeout=5
+                )
+            except Exception as e:
+                logger.error(f"Failed to send Telegram notification: {e}")
+                
+    except Exception as e:
+        logger.error(f"Error in notification system: {e}")
+
+@app.get("/api/analytics/report/pdf", dependencies=[Depends(authenticate)])
+def download_pdf_report():
+    """Endpoint to download PDF report"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        elements.append(Paragraph("Secure Proxy Manager - Security Report", styles['Title']))
+        elements.append(Spacer(1, 12))
+        
+        # Get basic stats
+        try:
+            cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE timestamp >= date('now', '-7 days')")
+            total_reqs = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '403%' AND timestamp >= date('now', '-7 days')")
+            total_blocks = cursor.fetchone()[0]
+        except sqlite3.OperationalError:
+            total_reqs = 0
+            total_blocks = 0
+            
+        elements.append(Paragraph(f"Summary (Last 7 Days)", styles['Heading2']))
+        data = [
+            ["Metric", "Value"],
+            ["Total Requests", str(total_reqs)],
+            ["Blocked Requests", str(total_blocks)]
+        ]
+        t = Table(data, colWidths=[200, 100])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        elements.append(t)
+        
+        doc.build(elements)
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        conn.close()
+        
+        return Response(
+            content=pdf_data,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=security_report_{datetime.now().strftime('%Y%m%d')}.pdf"}
+        )
+    except Exception as e:
+        logger.error(f"Error generating PDF report: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate report")
+
+@app.get("/api/database/size", dependencies=[Depends(authenticate)])
+def get_database_size():
+    """Get the size of the database file"""
+    try:
+        if os.path.exists(DATABASE_PATH):
+            size_bytes = os.path.getsize(DATABASE_PATH)
+            
+            # Format size for display
+            if size_bytes < 1024:
+                formatted_size = f"{size_bytes} bytes"
+            elif size_bytes < 1024 * 1024:
+                formatted_size = f"{size_bytes / 1024:.1f} KB"
+            elif size_bytes < 1024 * 1024 * 1024:
+                formatted_size = f"{size_bytes / (1024 * 1024):.1f} MB"
+            else:
+                formatted_size = f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+            
+            return {
+                "status": "success",
+                "data": {
+                    "size": formatted_size,
+                    "size_bytes": size_bytes
+                }
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"Database file not found at {DATABASE_PATH}")
+    except Exception as e:
+        logger.error(f"An error occurred while getting database size: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while getting database size")
+
+@app.post("/api/database/optimize", dependencies=[Depends(authenticate)])
+def optimize_database():
+    """Optimize the SQLite database by vacuuming"""
+    try:
+        conn = get_db()
+        size_before = os.path.getsize(DATABASE_PATH) if os.path.exists(DATABASE_PATH) else 0
+        
+        cursor = conn.cursor()
+        cursor.execute("VACUUM")
+        conn.commit()
+        
+        time.sleep(0.5)
+        
+        size_after = os.path.getsize(DATABASE_PATH) if os.path.exists(DATABASE_PATH) else 0
+        space_saved = max(0, size_before - size_after)
+        space_saved_mb = round(space_saved / (1024 * 1024), 2)
+        
+        conn.close()
+        logger.info(f"Database optimized successfully. Space saved: {space_saved_mb} MB")
+        
+        return {
+            "status": "success",
+            "message": "Database optimized successfully",
+            "data": {
+                "size_before": size_before,
+                "size_after": size_after,
+                "space_saved": space_saved,
+                "space_saved_mb": f"{space_saved_mb} MB"
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error optimizing database: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error optimizing database: {str(e)}")
+
+@app.get("/api/database/stats", dependencies=[Depends(authenticate)])
+def get_database_stats():
+    """Get statistics about database tables"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get list of all tables
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = cursor.fetchall()
+        
+        stats = {}
+        for table in tables:
+            table_name = table['name']
+            if table_name != 'sqlite_sequence':  # Skip internal table
+                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                stats[table_name] = cursor.fetchone()[0]
+                
+        conn.close()
+        
+        return {
+            "status": "success",
+            "data": stats
+        }
+    except Exception as e:
+        logger.error(f"Error getting database stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting database stats: {str(e)}")
+
 @app.get("/api/settings", dependencies=[Depends(authenticate)])
 def get_settings():
     conn = get_db()
@@ -530,4 +994,80 @@ def update_setting(setting_name: str, setting: SettingUpdate, background_tasks: 
     background_tasks.add_task(logger.info, f"Applied setting {setting_name}={setting.value}")
     
     return {"status": "success", "message": f"Setting {setting_name} updated"}
+
+@app.get("/api/security/score", dependencies=[Depends(authenticate)])
+def get_security_score():
+    """Get the security score based on current security settings"""
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Get relevant security settings
+    cursor.execute('SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?, ?, ?, ?, ?, ?, ?, ?)',
+                 ('enable_ip_blacklist', 'enable_domain_blacklist', 'block_direct_ip', 
+                  'enable_content_filtering', 'enable_https_filtering', 'default_password_changed',
+                  'enable_time_restrictions', 'enable_waf'))
+    
+    settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
+    db.close()
+    
+    # Calculate security score based on enabled security features
+    score = 0
+    recommendations = []
+    
+    # IP Blacklisting (15 points)
+    if settings.get('enable_ip_blacklist') == 'true':
+        score += 15
+    else:
+        recommendations.append('Enable IP blacklisting to block known malicious IP addresses')
+    
+    # Domain Blacklisting (15 points)
+    if settings.get('enable_domain_blacklist') == 'true':
+        score += 15
+    else:
+        recommendations.append('Enable domain blacklisting to block malicious websites')
+    
+    # Direct IP Blocking (10 points)
+    if settings.get('block_direct_ip') == 'true':
+        score += 10
+    else:
+        recommendations.append('Enable direct IP access blocking to prevent bypassing domain filters')
+    
+    # Content Filtering (10 points)
+    if settings.get('enable_content_filtering') == 'true':
+        score += 10
+    else:
+        recommendations.append('Enable content filtering to block risky file types')
+        
+    # WAF Content Inspection (25 points)
+    if settings.get('enable_waf') == 'true':
+        score += 25
+    else:
+        recommendations.append('Enable Outbound WAF (ICAP) to block SQLi, XSS, and Data Leaks')
+    
+    # HTTPS Filtering (15 points)
+    if settings.get('enable_https_filtering') == 'true':
+        score += 15
+    else:
+        recommendations.append('Consider enabling HTTPS filtering for complete security coverage')
+    
+    # Default Password Changed (5 points)
+    if settings.get('default_password_changed') == 'true':
+        score += 5
+    else:
+        recommendations.append('Change the default admin password to improve security')
+    
+    # Time Restrictions (5 points)
+    if settings.get('enable_time_restrictions') == 'true':
+        score += 5
+    else:
+        recommendations.append('Enable time restrictions to limit proxy usage to working hours')
+        
+    return {
+        "status": "success",
+        "data": {
+            "score": score,
+            "max_score": 100,
+            "recommendations": recommendations
+        }
+    }
 
