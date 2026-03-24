@@ -1240,8 +1240,14 @@ def apply_settings():
             squid_conf.append("icap_client_username_header X-Client-Username")
             squid_conf.append("icap_preview_enable on")
             squid_conf.append("icap_preview_size 1024")
+            
+            # REQMOD: Outbound filtering (SQLi, XSS, etc.)
             squid_conf.append("icap_service service_req reqmod_precache bypass=0 icap://waf:1344/waf")
             squid_conf.append("adaptation_access service_req allow all")
+            
+            # RESPMOD: Inbound filtering (Antivirus/Malware)
+            squid_conf.append("icap_service service_resp respmod_precache bypass=0 icap://waf:1344/waf")
+            squid_conf.append("adaptation_access service_resp allow all")
         
         # Compression if enabled
         if settings.get('enable_compression') == 'true':
