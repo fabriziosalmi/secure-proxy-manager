@@ -184,7 +184,7 @@ export function Dashboard() {
           </CardHeader>
           <CardContent className="flex-1 overflow-y-auto">
             <div className="space-y-4">
-              {(recentLogs?.logs || []).map((log: any, i: number) => (
+              {(recentLogs?.data || recentLogs?.logs || []).map((log: any, i: number) => (
                 <div key={i} className="flex items-center justify-between border-b border-border/50 pb-4 last:border-0 last:pb-0">
                   <div className="space-y-1 overflow-hidden pr-4">
                     <p className="text-sm font-medium leading-none truncate" title={log.destination}>
@@ -195,16 +195,16 @@ export function Dashboard() {
                   <div className="flex items-center gap-4 shrink-0">
                     <div className="text-sm text-muted-foreground">{log.method}</div>
                     <div className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                      log.status.includes('DENIED') 
+                      log.status?.includes('DENIED') 
                         ? 'bg-destructive/10 text-destructive border-destructive/20' 
                         : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                     }`}>
-                      {log.status.includes('DENIED') ? 'Blocked' : 'Success'}
+                      {log.status?.includes('DENIED') ? 'Blocked' : 'Success'}
                     </div>
                   </div>
                 </div>
               ))}
-              {(!recentLogs || recentLogs.logs?.length === 0) && (
+              {(!recentLogs || (recentLogs.data || recentLogs.logs || []).length === 0) && (
                 <div className="text-center py-8 text-muted-foreground text-sm">
                   No recent logs available.
                 </div>
