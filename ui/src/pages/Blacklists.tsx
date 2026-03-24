@@ -1,7 +1,7 @@
 import { Card, CardContent } from '../components/ui/card';
 import { useApi } from '../hooks/useApi';
 import { api } from '../lib/api';
-import { Ban, Globe, Server, Plus, Trash2, Download, Map } from 'lucide-react';
+import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
@@ -10,6 +10,7 @@ export function Blacklists() {
   const [isAdding, setIsAdding] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isGeoBlocking, setIsGeoBlocking] = useState(false);
+  const [isPopularLists, setIsPopularLists] = useState(false);
   
   const [newItem, setNewItem] = useState('');
   const [newDesc, setNewDesc] = useState('');
@@ -84,8 +85,8 @@ export function Blacklists() {
 
     const loadingToast = toast.loading(`Importing IP blocks for ${geoCountry}...`);
     try {
-      const response = await api.post('blacklists/import-geo', {
-        countries: [geoCountry]
+      const response = await api.post('/api/blacklist/import-geo', {
+        country_code: geoCountry
       });
       toast.success(`Imported ${response.data.imported_count || 0} IPs successfully`, { id: loadingToast });
       setGeoCountry('');
@@ -95,6 +96,34 @@ export function Blacklists() {
       toast.error(err.response?.data?.message || 'Failed to import GeoIP blocks', { id: loadingToast });
     }
   };
+
+  const handlePopularListImport = async (listUrl: string, listName: string) => {
+    const loadingToast = toast.loading(`Downloading and importing ${listName}... This may take a minute.`);
+    try {
+      const response = await api.post('/api/blacklist/import', {
+        url: listUrl,
+        type: activeTab
+      });
+      toast.success(`Imported ${response.data.imported_count || 0} items from ${listName}`, { id: loadingToast });
+      setIsPopularLists(false);
+      activeTab === 'ip' ? refreshIps() : refreshDomains();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || `Failed to import ${listName}`, { id: loadingToast });
+    }
+  };
+
+  const popularIpLists = [
+    { name: 'Firehol Level 1 (High Threat)', url: 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset', desc: 'A general purpose blocklist protecting against active threats' },
+    { name: 'Spamhaus DROP', url: 'https://www.spamhaus.org/drop/drop.txt', desc: 'Don\'t Route Or Peer Lists (Direct malware/botnets)' },
+    { name: 'Emerging Threats', url: 'https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt', desc: 'Known compromised hosts and botnet C&C' },
+    { name: 'CINS Army List', url: 'https://cinsarmy.com/list/ci-badguys.txt', desc: 'High-confidence malicious IP addresses' }
+  ];
+
+  const popularDomainLists = [
+    { name: 'StevenBlack Ad/Malware', url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', desc: 'Consolidated host files from multiple sources' },
+    { name: 'MalwareDomainList', url: 'https://mirror1.malwaredomains.com/files/justdomains', desc: 'Domains known to host malware' },
+    { name: 'Phishing Army', url: 'https://phishing.army/download/phishing_army_blocklist_extended.txt', desc: 'Domains actively involved in phishing' }
+  ];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -106,23 +135,32 @@ export function Blacklists() {
         <div className="flex gap-2">
           {activeTab === 'ip' && (
             <button 
-              onClick={() => { setIsGeoBlocking(!isGeoBlocking); setIsAdding(false); setIsImporting(false); }}
-              className="flex items-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors"
+              onClick={() => { setIsGeoBlocking(!isGeoBlocking); setIsAdding(false); setIsImporting(false); setIsPopularLists(false); }}
+              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isGeoBlocking ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
             >
               <Map className="w-4 h-4 mr-2" />
               Geo-Block
             </button>
           )}
+          
           <button 
-            onClick={() => { setIsImporting(!isImporting); setIsAdding(false); setIsGeoBlocking(false); }}
-            className="flex items-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors"
+            onClick={() => { setIsPopularLists(!isPopularLists); setIsAdding(false); setIsGeoBlocking(false); setIsImporting(false); }}
+            className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isPopularLists ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
+          >
+            <Database className="w-4 h-4 mr-2" />
+            Popular Lists
+          </button>
+
+          <button 
+            onClick={() => { setIsImporting(!isImporting); setIsAdding(false); setIsGeoBlocking(false); setIsPopularLists(false); }}
+            className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isImporting ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
           >
             <Download className="w-4 h-4 mr-2" />
             Import URL
           </button>
           <button 
-            onClick={() => { setIsAdding(!isAdding); setIsImporting(false); setIsGeoBlocking(false); }}
-            className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors"
+            onClick={() => { setIsAdding(!isAdding); setIsImporting(false); setIsGeoBlocking(false); setIsPopularLists(false); }}
+            className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isAdding ? 'bg-destructive/90 text-destructive-foreground' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}
           >
             <Plus className={`w-4 h-4 mr-2 transition-transform ${isAdding ? 'rotate-45' : ''}`} />
             {isAdding ? 'Cancel' : 'Add Rule'}
@@ -185,6 +223,31 @@ export function Blacklists() {
             <p className="text-xs text-muted-foreground mt-3">The URL must point to a plain text file with one {activeTab} per line. Comments starting with # are ignored.</p>
           </CardContent>
         </Card>
+      )}
+
+      {isPopularLists && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          {(activeTab === 'ip' ? popularIpLists : popularDomainLists).map((list, idx) => (
+            <Card key={idx} className="bg-card/50 border-primary/20 hover:border-primary/50 transition-colors">
+              <CardContent className="p-4 flex flex-col h-full justify-between">
+                <div>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Shield className="w-4 h-4 text-primary" />
+                    <h4 className="font-semibold">{list.name}</h4>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-4">{list.desc}</p>
+                </div>
+                <button 
+                  onClick={() => handlePopularListImport(list.url, list.name)}
+                  className="w-full flex items-center justify-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors mt-auto"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Import List
+                </button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
 
       {isGeoBlocking && activeTab === 'ip' && (
