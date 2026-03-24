@@ -242,15 +242,9 @@ chown -R proxy:proxy /var/spool/squid
 # Run as proxy user to ensure permissions are correct
 su - proxy -s /bin/bash -c "/usr/sbin/squid -z"
 
-# Fix run permissions
-# Squid typically writes its pid to /run/squid.pid directly in Debian-based systems
-touch /run/squid.pid
-chown proxy:proxy /run/squid.pid
-chmod 644 /run/squid.pid
-
-# Also create /var/run/squid directory just in case
-mkdir -p /var/run/squid
-chown -R proxy:proxy /var/run/squid
+# Ensure run directories exist with correct permissions for squid dropping privileges
+mkdir -p /run/squid
+chown -R proxy:proxy /run/squid
 
 # Wait a moment to ensure initialization completes
 sleep 2
