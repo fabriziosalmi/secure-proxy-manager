@@ -1723,6 +1723,21 @@ def update_setting(setting_name: str, setting: SettingUpdate, background_tasks: 
     
     return {"status": "success", "message": f"Setting {setting_name} updated"}
 
+@app.post("/api/settings", dependencies=[Depends(authenticate)])
+def update_settings(settings: Dict[str, Any], background_tasks: BackgroundTasks):
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    for key, value in settings.items():
+        cursor.execute("UPDATE settings SET setting_value = ? WHERE setting_name = ?", 
+                      (str(value), key))
+        
+    conn.commit()
+    conn.close()
+    
+    background_tasks.add_task(logger.info, "Applied multiple settings")
+    return {"status": "success", "message": "Settings updated successfully"}
+
 @app.get("/api/security/score", dependencies=[Depends(authenticate)])
 def get_security_score():
     """Get the security score based on current security settings"""
