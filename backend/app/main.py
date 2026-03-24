@@ -30,6 +30,8 @@ def check_password_hash(hashed_password: str, user_password: str) -> bool:
 
 import json
 import requests
+import ipaddress
+import urllib.parse
 from datetime import datetime, timedelta
 import sqlite3
 
@@ -224,6 +226,153 @@ def reload_proxy_config(background_tasks: BackgroundTasks):
         # Fallback to simulate success during migration if proxy api is not available
         return {"status": "success", "message": "Proxy reload simulated"}
 
+class IPBlacklistItem(BaseModel):
+    ip: str
+    description: Optional[str] = ""
+
+@app.get("/api/ip-blacklist", dependencies=[Depends(authenticate)])
+def get_ip_blacklist():
+    """Get all blacklisted IPs"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM ip_blacklist")
+    blacklist = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return {"status": "success", "data": blacklist}
+
+@app.post("/api/ip-blacklist", dependencies=[Depends(authenticate)])
+def add_ip_to_blacklist(item: IPBlacklistItem, background_tasks: BackgroundTasks):
+    """Add an IP to the blacklist"""
+    ip = item.ip.strip()
+    
+    # Validate CIDR notation or single IP address
+    try:
+        ipaddress.ip_network(ip, strict=False)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid IP address format")
+        
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Check if IP already exists
+    cursor.execute("SELECT id FROM ip_blacklist WHERE ip = ?", (ip,))
+    if cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="IP address already in blacklist")
+        
+    # Insert new IP
+    try:
+        cursor.execute("INSERT INTO ip_blacklist (ip, description) VALUES (?, ?)", 
+                      (ip, item.description))
+        conn.commit()
+    except sqlite3.Error as e:
+        conn.close()
+        logger.error(f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to add IP to blacklist")
+        
+    conn.close()
+    
+    # We would normally trigger apply_settings() here
+    background_tasks.add_task(logger.info, f"Added IP {ip} to blacklist")
+    
+    return {"status": "success", "message": "IP added to blacklist"}
+
+@app.delete("/api/ip-blacklist/{id}", dependencies=[Depends(authenticate)])
+def delete_ip_from_blacklist(id: int, background_tasks: BackgroundTasks):
+    """Delete an IP from the blacklist"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("DELETE FROM ip_blacklist WHERE id = ?", (id,))
+    
+    if cursor.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="IP not found in blacklist")
+        
+    conn.commit()
+    conn.close()
+    
+    # We would normally trigger apply_settings() here
+    background_tasks.add_task(logger.info, f"Removed IP id {id} from blacklist")
+    
+    return {"status": "success", "message": "IP removed from blacklist"}
+
+class DomainBlacklistItem(BaseModel):
+    domain: str
+    description: Optional[str] = ""
+
+@app.get("/api/domain-blacklist", dependencies=[Depends(authenticate)])
+def get_domain_blacklist():
+    """Get all blacklisted domains"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM domain_blacklist")
+    blacklist = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return {"status": "success", "data": blacklist}
+
+@app.post("/api/domain-blacklist", dependencies=[Depends(authenticate)])
+def add_domain_to_blacklist(item: DomainBlacklistItem, background_tasks: BackgroundTasks):
+    """Add a domain to the blacklist"""
+    domain = item.domain.strip().lower()
+    
+    # Basic domain validation
+    if not domain or ' ' in domain:
+        raise HTTPException(status_code=400, detail="Invalid domain format")
+        
+    # Remove http:// or https:// if provided
+    if domain.startswith('http://') or domain.startswith('https://'):
+        try:
+            parsed = urllib.parse.urlparse(domain)
+            domain = parsed.netloc
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid domain format")
+            
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Check if domain already exists
+    cursor.execute("SELECT id FROM domain_blacklist WHERE domain = ?", (domain,))
+    if cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="Domain already in blacklist")
+        
+    # Insert new domain
+    try:
+        cursor.execute("INSERT INTO domain_blacklist (domain, description) VALUES (?, ?)", 
+                      (domain, item.description))
+        conn.commit()
+    except sqlite3.Error as e:
+        conn.close()
+        logger.error(f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to add domain to blacklist")
+        
+    conn.close()
+    
+    # We would normally trigger apply_settings() here
+    background_tasks.add_task(logger.info, f"Added domain {domain} to blacklist")
+    
+    return {"status": "success", "message": "Domain added to blacklist"}
+
+@app.delete("/api/domain-blacklist/{id}", dependencies=[Depends(authenticate)])
+def delete_domain_from_blacklist(id: int, background_tasks: BackgroundTasks):
+    """Delete a domain from the blacklist"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("DELETE FROM domain_blacklist WHERE id = ?", (id,))
+    
+    if cursor.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Domain not found in blacklist")
+        
+    conn.commit()
+    conn.close()
+    
+    # We would normally trigger apply_settings() here
+    background_tasks.add_task(logger.info, f"Removed domain id {id} from blacklist")
+    
+    return {"status": "success", "message": "Domain removed from blacklist"}
 @app.post("/api/maintenance/clear-cache", dependencies=[Depends(authenticate)])
 def clear_proxy_cache():
     """Clear the Squid proxy cache"""
