@@ -241,7 +241,17 @@ def init_db():
         ('gotify_token', '', 'Gotify App Token'),
         ('teams_webhook_url', '', 'Microsoft Teams Webhook URL'),
         ('telegram_bot_token', '', 'Telegram Bot Token'),
-        ('telegram_chat_id', '', 'Telegram Chat ID')
+        ('telegram_chat_id', '', 'Telegram Chat ID'),
+        
+        # Overlay Network settings
+        ('enable_tailscale', 'false', 'Enable Tailscale Sidecar'),
+        ('tailscale_auth_key', '', 'Tailscale Auth Key'),
+        # Optional DDNS config
+        ('enable_ddns', 'false', 'Enable Dynamic DNS update'),
+        ('ddns_provider', 'cloudflare', 'DDNS Provider (cloudflare, duckdns, custom)'),
+        ('ddns_domain', '', 'Domain to update (e.g. proxy.mydomain.com)'),
+        ('ddns_token', '', 'API Token / Password for DDNS'),
+        ('ddns_zone_id', '', 'Zone ID (Cloudflare only)')
     ]
     
     for setting in default_settings:
@@ -938,6 +948,8 @@ def reload_proxy_config():
     try:
         # Apply settings to regenerate the config
         if apply_settings():
+            # Trigger DDNS update if enabled
+            threading.Thread(target=update_ddns).start()
             return jsonify({"status": "success", "message": "Proxy configuration reloaded successfully"})
         else:
             return jsonify({"status": "error", "message": "Failed to reload proxy configuration"}), 500
@@ -997,6 +1009,10 @@ def apply_settings():
         
         # Base configuration
         squid_conf.append("http_port 3128")
+        if settings.get('enable_tailscale') == 'true':
+            # Listen on Tailscale interface explicitly if desired, though 3128 listens on all by default
+            squid_conf.append("# Tailscale active: proxy will be available on the overlay network")
+        
         squid_conf.append("visible_hostname secure-proxy")
         squid_conf.append("")
         
@@ -1007,6 +1023,11 @@ def apply_settings():
         squid_conf.append("acl localnet src 192.168.0.0/16")
         squid_conf.append("acl localnet src fc00::/7")
         squid_conf.append("acl localnet src fe80::/10")
+        
+        # Add Tailscale subnet if enabled
+        if settings.get('enable_tailscale') == 'true':
+            squid_conf.append("acl localnet src 100.64.0.0/10")
+            
         squid_conf.append("")
         
         # SSL/HTTPS related ACLs
@@ -1808,6 +1829,8 @@ def validate_setting(setting_name, setting_value):
         'enable_user_management': lambda x: x in ['true', 'false'],
         'enable_extended_logging': lambda x: x in ['true', 'false'],
         'enable_notifications': lambda x: x in ['true', 'false'],
+        'enable_tailscale': lambda x: x in ['true', 'false'],
+        'enable_ddns': lambda x: x in ['true', 'false'],
         
         # Numeric settings
         'cache_size': lambda x: x.isdigit() and 100 <= int(x) <= 10000,
@@ -1826,6 +1849,12 @@ def validate_setting(setting_name, setting_value):
         'webhook_url': lambda x: x == '' or x.startswith('http://') or x.startswith('https://'),
         'gotify_url': lambda x: x == '' or x.startswith('http://') or x.startswith('https://'),
         'teams_webhook_url': lambda x: x == '' or x.startswith('http://') or x.startswith('https://'),
+        'tailscale_auth_key': lambda x: True,  # Any string is valid until checked by API
+        'tailscale_hostname': lambda x: re.match(r'^[a-zA-Z0-9-]+$', x) is not None if x else True,
+        'ddns_provider': lambda x: x.lower() in ['cloudflare', 'duckdns', 'noip', 'custom'],
+        'ddns_domain': lambda x: True,
+        'ddns_token': lambda x: True,
+        'ddns_zone_id': lambda x: True,
         
         # Time format settings
         'time_restriction_start': lambda x: re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', x) is not None,
@@ -2305,6 +2334,93 @@ def safe_write_file(target_path, content, mode="w"):
         return False
 
 import requests
+import socket
+
+def get_public_ip():
+    try:
+        response = requests.get('https://api.ipify.org?format=json', timeout=5)
+        return response.json()['ip']
+    except:
+        return None
+
+def update_ddns():
+    """Update Dynamic DNS if enabled"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT setting_name, setting_value FROM settings WHERE setting_name IN ('enable_ddns', 'ddns_provider', 'ddns_domain', 'ddns_token', 'ddns_zone_id')")
+        settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
+        
+        if settings.get('enable_ddns') != 'true':
+            return
+            
+        provider = settings.get('ddns_provider')
+        domain = settings.get('ddns_domain')
+        token = settings.get('ddns_token')
+        
+        if not domain or not token:
+            logger.warning("DDNS enabled but domain or token missing")
+            return
+            
+        public_ip = get_public_ip()
+        if not public_ip:
+            logger.error("Failed to determine public IP for DDNS update")
+            return
+            
+        logger.info(f"Attempting DDNS update for {domain} with IP {public_ip} via {provider}")
+        
+        if provider == 'cloudflare':
+            zone_id = settings.get('ddns_zone_id')
+            if not zone_id:
+                logger.error("Cloudflare DDNS requires a Zone ID")
+                return
+                
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+            
+            # First get the record ID
+            resp = requests.get(
+                f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?name={domain}",
+                headers=headers, timeout=10
+            )
+            data = resp.json()
+            
+            if data.get('success') and len(data.get('result', [])) > 0:
+                record_id = data['result'][0]['id']
+                # Update the record
+                update_resp = requests.put(
+                    f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/{record_id}",
+                    headers=headers,
+                    json={"type": "A", "name": domain, "content": public_ip, "proxied": False},
+                    timeout=10
+                )
+                if update_resp.json().get('success'):
+                    logger.info("Cloudflare DDNS updated successfully")
+                else:
+                    logger.error(f"Cloudflare DDNS update failed: {update_resp.text}")
+            else:
+                logger.error("Cloudflare DDNS failed: Record not found")
+                
+        elif provider == 'duckdns':
+            resp = requests.get(
+                f"https://www.duckdns.org/update?domains={domain}&token={token}&ip={public_ip}",
+                timeout=10
+            )
+            if resp.text.strip() == "OK":
+                logger.info("DuckDNS updated successfully")
+            else:
+                logger.error(f"DuckDNS update failed: {resp.text}")
+                
+        elif provider == 'custom':
+            # Assuming custom webhook replaces {ip} and {domain} in the token/url
+            url = token.replace('{ip}', public_ip).replace('{domain}', domain)
+            resp = requests.get(url, timeout=10)
+            logger.info(f"Custom DDNS called, status: {resp.status_code}")
+            
+    except Exception as e:
+        logger.error(f"Error updating DDNS: {e}")
 
 def send_security_notification(event):
     """Send security notifications to configured providers"""
@@ -3786,6 +3902,16 @@ def tail_logs():
             logger.error(f"Error tailing logs: {e}")
             eventlet.sleep(5)
 
+def ddns_scheduler():
+    """Background task to update DDNS periodically"""
+    while True:
+        try:
+            update_ddns()
+        except Exception as e:
+            logger.error(f"DDNS scheduler error: {e}")
+        # Sleep for 1 hour (3600 seconds)
+        eventlet.sleep(3600)
+
 @socketio.on('connect', namespace='/logs')
 def test_connect():
     emit('status', {'data': 'Connected to log stream'})
@@ -3793,6 +3919,9 @@ def test_connect():
 if __name__ == '__main__':
     # Start the log tailer thread
     eventlet.spawn(tail_logs)
+    
+    # Start DDNS scheduler thread
+    eventlet.spawn(ddns_scheduler)
     
     # Run the application with socketio
     port = int(os.environ.get('PORT', 5000))

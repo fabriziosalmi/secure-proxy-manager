@@ -100,6 +100,28 @@ services:
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
+    # Tailscale proxy sidecar network
+    network_mode: ${PROXY_NETWORK_MODE:-bridge}
+
+  # Optional Tailscale sidecar for secure remote access
+  tailscale:
+    build: ./overlay/tailscale
+    hostname: ${TAILSCALE_HOSTNAME:-secure-proxy}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_EXTRA_ARGS=--advertise-tags=tag:proxy
+    volumes:
+      - tailscale-data:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    networks:
+      - proxy-network
+    restart: unless-stopped
+    profiles:
+      - tailscale
 
 networks:
   proxy-network:
@@ -107,4 +129,6 @@ networks:
 
 volumes:
   squid-cache:
+    driver: local
+  tailscale-data:
     driver: local
