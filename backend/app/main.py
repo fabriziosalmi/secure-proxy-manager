@@ -243,6 +243,7 @@ def tail_logs_sync():
     while True:
         try:
             if os.path.exists(log_file):
+                logger.info(f"Starting to tail log file: {log_file}")
                 process = subprocess.Popen(['tail', '-F', log_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 for line in process.stdout:
                     parts = line.split()
@@ -264,7 +265,10 @@ def tail_logs_sync():
                                 loop.run_until_complete(manager.broadcast(log_entry))
                         except Exception as e:
                             logger.debug(f"Log parse error: {e}")
+                    # Also log to file for debugging
+                    logger.debug(f"Tailed line: {line.strip()}")
             else:
+                logger.warning(f"Log file {log_file} does not exist yet. Waiting...")
                 time.sleep(5)
         except Exception as e:
             logger.error(f"Error tailing logs: {e}")
