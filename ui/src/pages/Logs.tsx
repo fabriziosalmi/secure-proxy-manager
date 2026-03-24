@@ -22,11 +22,12 @@ export function Logs() {
   // Setup native WebSocket connection for real-time logs (migrated from Socket.IO to FastAPI native WS)
   useEffect(() => {
     if (autoRefresh) {
-      const backendUrl = import.meta.env.VITE_API_URL || window.location.origin;
-      // Convert http/https to ws/wss for WebSocket URL
+      // Connect to WebSocket via the same domain and port, assuming a reverse proxy (like the Flask app.py) handles the upgrade, 
+      // or we hit the backend directly. For this architecture, we use the UI's port.
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsHost = backendUrl.replace(/^https?:\/\//, '');
-      const socketUrl = `${wsProtocol}//${wsHost}/ws/logs`;
+      const hostname = window.location.hostname;
+      const port = window.location.port ? `:${window.location.port}` : '';
+      const socketUrl = `${wsProtocol}//${hostname}${port}/api/ws/logs`;
       
       const ws = new WebSocket(socketUrl);
       socketRef.current = ws as any; // Cast for now, would need a proper ref type
