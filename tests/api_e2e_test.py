@@ -3,11 +3,14 @@ import requests
 import json
 import sys
 import time
+import os
 from rich.console import Console
 
 console = Console()
-BASE_URL = "http://localhost:5001/api"
-AUTH = ('admin', 'admin')
+BASE_URL = os.environ.get("API_URL", "http://localhost:5001/api")
+AUTH_USER = os.environ.get("API_USER", "admin")
+AUTH_PASS = os.environ.get("API_PASS", "admin")
+AUTH = (AUTH_USER, AUTH_PASS)
 
 def test_endpoint(name, method, url, expected_status=200, **kwargs):
     console.print(f"Testing [bold blue]{name}[/bold blue] ({method} {url})...", end=" ")
