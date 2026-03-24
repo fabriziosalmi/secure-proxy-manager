@@ -25,13 +25,14 @@ app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 # Configure CSRF
 csrf = CSRFProtect(app)
 
-# Configure CSP
+# Content Security Policy configured securely
 csp = {
-    'default-src': "'self'",
+    'default-src': ["'self'"],
     'script-src': ["'self'", "'unsafe-inline'"],
     'style-src': ["'self'", "'unsafe-inline'"],
     'img-src': ["'self'", "data:"],
-    'font-src': ["'self'", "data:"]
+    'font-src': ["'self'", "data:"],
+    'connect-src': ["'self'", "ws:", "wss:", "http:", "https:"]
 }
 talisman = Talisman(app, content_security_policy=csp, force_https=False, session_cookie_secure=False)
 
