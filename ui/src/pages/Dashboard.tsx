@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Activity, Clock, ShieldCheck, Zap, Download } from 'lucide-react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useApi } from '../hooks/useApi';
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 
 export function Dashboard() {
   const { data: cacheStats, execute: refreshCache } = useApi<any>('cache/statistics');
@@ -24,20 +24,23 @@ export function Dashboard() {
   }, [refreshCache, refreshLogStats, refreshRecentLogs, refreshTimeline, refreshSecurity]);
 
   // Format chart data based on timeline or fallback to mock
-  const chartData = timelineData || [
-    { time: '13:43', total: 0, blocked: 0 }, { time: '14:43', total: 0, blocked: 0 },
-    { time: '15:43', total: 0, blocked: 0 }, { time: '16:43', total: 0, blocked: 0 },
-    { time: '17:43', total: 0, blocked: 0 }, { time: '18:43', total: 0, blocked: 0 },
-    { time: '19:43', total: 0, blocked: 0 }, { time: '20:43', total: 0, blocked: 0 },
-    { time: '21:43', total: 0, blocked: 0 }, { time: '22:43', total: 0, blocked: 0 },
-    { time: '23:43', total: 0, blocked: 0 }, { time: '00:43', total: 0, blocked: 0 },
-    { time: '01:43', total: 0, blocked: 0 }, { time: '02:43', total: 0, blocked: 0 },
-    { time: '03:43', total: 0, blocked: 0 }, { time: '04:43', total: 0, blocked: 0 },
-    { time: '05:43', total: 0, blocked: 0 }, { time: '06:43', total: 0, blocked: 0 },
-    { time: '07:43', total: 0, blocked: 0 }, { time: '08:43', total: 0, blocked: 0 },
-    { time: '09:43', total: 0, blocked: 0 }, { time: '10:43', total: 0, blocked: 0 },
-    { time: '11:43', total: 0, blocked: 0 }, { time: '12:43', total: 0, blocked: 0 },
-  ];
+  // Use useMemo to prevent unnecessary re-renders of the chart when polling other endpoints
+  const chartData = React.useMemo(() => {
+    return timelineData || [
+      { time: '13:43', total: 0, blocked: 0 }, { time: '14:43', total: 0, blocked: 0 },
+      { time: '15:43', total: 0, blocked: 0 }, { time: '16:43', total: 0, blocked: 0 },
+      { time: '17:43', total: 0, blocked: 0 }, { time: '18:43', total: 0, blocked: 0 },
+      { time: '19:43', total: 0, blocked: 0 }, { time: '20:43', total: 0, blocked: 0 },
+      { time: '21:43', total: 0, blocked: 0 }, { time: '22:43', total: 0, blocked: 0 },
+      { time: '23:43', total: 0, blocked: 0 }, { time: '00:43', total: 0, blocked: 0 },
+      { time: '01:43', total: 0, blocked: 0 }, { time: '02:43', total: 0, blocked: 0 },
+      { time: '03:43', total: 0, blocked: 0 }, { time: '04:43', total: 0, blocked: 0 },
+      { time: '05:43', total: 0, blocked: 0 }, { time: '06:43', total: 0, blocked: 0 },
+      { time: '07:43', total: 0, blocked: 0 }, { time: '08:43', total: 0, blocked: 0 },
+      { time: '09:43', total: 0, blocked: 0 }, { time: '10:43', total: 0, blocked: 0 },
+      { time: '11:43', total: 0, blocked: 0 }, { time: '12:43', total: 0, blocked: 0 }
+    ];
+  }, [timelineData]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">

@@ -152,6 +152,8 @@ def init_db():
         os.makedirs(data_dir, exist_ok=True)
         
     conn = get_db()
+    # Enable WAL mode for concurrent reads/writes without locking the database
+    conn.execute('PRAGMA journal_mode=WAL;')
     cursor = conn.cursor()
     
     # Create tables
@@ -697,7 +699,21 @@ def get_logs(
             cursor.execute("SELECT COUNT(*) FROM proxy_logs")
             total_count = cursor.fetchone()[0]
             
-            query = f"SELECT * FROM proxy_logs ORDER BY {sort} {order.upper()} LIMIT ? OFFSET ?"
+            # Using mapped variables instead of f-string injection
+            sort_map = {
+                'timestamp': 'timestamp',
+                'source_ip': 'source_ip',
+                'destination': 'destination',
+                'status': 'status',
+                'bytes': 'bytes',
+                'method': 'method'
+            }
+            order_map = {'asc': 'ASC', 'desc': 'DESC'}
+            
+            safe_sort = sort_map.get(sort, 'timestamp')
+            safe_order = order_map.get(order.lower(), 'DESC')
+            
+            query = f"SELECT * FROM proxy_logs ORDER BY {safe_sort} {safe_order} LIMIT ? OFFSET ?"
             cursor.execute(query, (limit, offset))
             logs = [dict(row) for row in cursor.fetchall()]
         except sqlite3.OperationalError:
@@ -956,9 +972,19 @@ def import_blacklist(request_data: ImportBlacklistRequest, background_tasks: Bac
         
         # Check if URL is provided
         if request_data.url:
+            # SSRF Protection: Ensure it's an HTTP/HTTPS URL and not pointing to local/private networks
+            parsed_url = urllib.parse.urlparse(request_data.url)
+            if parsed_url.scheme not in ['http', 'https']:
+                raise HTTPException(status_code=400, detail="Only HTTP/HTTPS URLs are allowed")
+            
             try:
+                # Basic check for localhost or loopback to prevent basic SSRF
+                # A complete solution would resolve the DNS and check the IP against private ranges
+                if parsed_url.hostname in ['localhost', '127.0.0.1', '0.0.0.0'] or parsed_url.hostname.startswith('192.168.') or parsed_url.hostname.startswith('10.'):
+                    raise HTTPException(status_code=403, detail="Requests to local or private networks are blocked for security reasons")
+                    
                 logger.info(f"Fetching blacklist from URL: {request_data.url}")
-                response = requests.get(request_data.url, timeout=30, headers={'User-Agent': 'SecureProxyManager/1.0'})
+                response = requests.get(request_data.url, timeout=15, headers={'User-Agent': 'SecureProxyManager/1.0'})
                 if response.status_code == 200:
                     content = response.text
                 else:
@@ -1280,9 +1306,11 @@ def get_database_stats():
         tables = cursor.fetchall()
         
         stats = {}
+        # Securely check tables against known schema tables
+        known_tables = ['users', 'settings', 'ip_blacklist', 'domain_blacklist', 'proxy_logs']
         for table in tables:
             table_name = table['name']
-            if table_name != 'sqlite_sequence':  # Skip internal table
+            if table_name in known_tables:
                 cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
                 stats[table_name] = cursor.fetchone()[0]
                 
