@@ -47,8 +47,8 @@ if [ -f /run/squid.pid ]; then
   rm -f /run/squid.pid
 fi
 
-# Kill any squid processes that might be running
-pkill -9 squid || true
+# Kill any squid processes that might be running gracefully
+pkill -15 squid || true
 sleep 2
 
 # Configure iptables for transparent proxy
@@ -400,7 +400,7 @@ else
 fi
 
 # Check for HTTP compression
-if grep -q "zph_mode" /etc/squid/squid.conf; then
+if grep -q "qos_flows" /etc/squid/squid.conf; then
     echo "✅ HTTP compression configuration found"
 else
     echo "⚠️ HTTP compression may be disabled"
