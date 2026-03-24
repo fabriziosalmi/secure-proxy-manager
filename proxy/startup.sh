@@ -239,7 +239,14 @@ mkdir -p /var/spool/squid
 chown -R proxy:proxy /var/spool/squid
 
 # Initialize swap directories
-/usr/sbin/squid -z
+# Run as proxy user to ensure permissions are correct
+su - proxy -s /bin/bash -c "/usr/sbin/squid -z"
+
+# Fix run permissions
+mkdir -p /run/squid
+chown -R proxy:proxy /run/squid
+touch /run/squid.pid
+chown proxy:proxy /run/squid.pid
 
 # Wait a moment to ensure initialization completes
 sleep 2
