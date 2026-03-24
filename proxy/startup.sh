@@ -3,6 +3,7 @@
 # Create directories for blacklists if they don't exist
 mkdir -p /etc/squid/blacklists/ip
 mkdir -p /etc/squid/blacklists/domain
+mkdir -p /etc/squid/whitelists/ip
 
 # Create SSL certificate and SSL DB directories for HTTPS filtering
 mkdir -p /config/ssl_db
@@ -35,6 +36,7 @@ fi
 # Create empty blacklist files if they don't exist
 touch /etc/squid/blacklists/ip/local.txt
 touch /etc/squid/blacklists/domain/local.txt
+touch /etc/squid/whitelists/ip/local.txt
 
 # Make sure Squid is not running
 if [ -f /run/squid.pid ]; then
@@ -81,8 +83,9 @@ acl Safe_ports port 488
 acl Safe_ports port 591
 acl Safe_ports port 777
 
-# IP blacklists
+# IP blacklists and whitelists
 acl ip_blacklist src "/etc/squid/blacklists/ip/local.txt"
+acl ip_whitelist dst "/etc/squid/whitelists/ip/local.txt"
 
 # Domain blacklists
 acl domain_blacklist dstdomain "/etc/squid/blacklists/domain/local.txt"
@@ -115,6 +118,9 @@ http_access deny domain_blacklist
 # Allow local network access
 http_access allow localnet
 http_access allow localhost
+
+# Explicitly allow whitelisted IP destinations (bypasses direct IP block if matched)
+http_access allow ip_whitelist
 
 # Default deny
 http_access deny all
@@ -216,6 +222,11 @@ cat /etc/squid/squid.conf
 if [ -f /config/ip_blacklist.txt ]; then
     echo "Applying IP blacklist..."
     cp /config/ip_blacklist.txt /etc/squid/blacklists/ip/local.txt
+fi
+
+if [ -f /config/ip_whitelist.txt ]; then
+    echo "Applying IP whitelist..."
+    cp /config/ip_whitelist.txt /etc/squid/whitelists/ip/local.txt
 fi
 
 if [ -f /config/domain_blacklist.txt ]; then
