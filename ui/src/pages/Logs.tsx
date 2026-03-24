@@ -4,14 +4,13 @@ import { api } from '../lib/api';
 import { Search, RefreshCw, FileText, Trash2, Activity } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { io, Socket } from 'socket.io-client';
 
 export function Logs() {
   const [searchTerm, setSearchTerm] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [realtimeLogs, setRealtimeLogs] = useState<any[]>([]);
   const { data, loading, execute: refreshLogs } = useApi<any>('logs?limit=100');
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
 
   // Initialize logs from API
   useEffect(() => {
@@ -20,34 +19,55 @@ export function Logs() {
     }
   }, [data]);
 
-  // Setup WebSocket connection for real-time logs
+  // Setup native WebSocket connection for real-time logs (migrated from Socket.IO to FastAPI native WS)
   useEffect(() => {
     if (autoRefresh) {
       const backendUrl = import.meta.env.VITE_API_URL || window.location.origin;
-      // Convert /api URL to base URL for socket.io
-      const socketUrl = backendUrl.replace('/api', '');
+      // Convert http/https to ws/wss for WebSocket URL
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsHost = backendUrl.replace(/^https?:\/\//, '');
+      const socketUrl = `${wsProtocol}//${wsHost}/ws/logs`;
       
-      socketRef.current = io(`${socketUrl}/logs`, {
-        transports: ['websocket', 'polling']
-      });
+      const ws = new WebSocket(socketUrl);
+      socketRef.current = ws as any; // Cast for now, would need a proper ref type
 
-      socketRef.current.on('connect', () => {
-        console.log('Connected to real-time log stream');
-      });
+      ws.onopen = () => {
+        console.log('Connected to real-time log stream via FastAPI WebSocket');
+        // Keep alive ping
+        setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send('ping');
+          }
+        }, 30000);
+      };
 
-      socketRef.current.on('new_log', (newLog: any) => {
-        setRealtimeLogs(prevLogs => {
-          // Keep only the latest 200 logs to prevent memory issues
-          const updatedLogs = [newLog, ...prevLogs].slice(0, 200);
-          return updatedLogs;
-        });
-      });
-
-      return () => {
-        if (socketRef.current) {
-          socketRef.current.disconnect();
+      ws.onmessage = (event) => {
+        if (event.data === 'pong') return;
+        try {
+          const newLog = JSON.parse(event.data);
+          setRealtimeLogs(prev => [newLog, ...prev].slice(0, 200)); // Keep last 200 logs
+        } catch (e) {
+          console.error('Failed to parse incoming log', e);
         }
       };
+
+      ws.onclose = () => {
+        console.log('Disconnected from real-time log stream');
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      return () => {
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close();
+        }
+      };
+    } else {
+      if (socketRef.current) {
+        (socketRef.current as any).close();
+      }
     }
   }, [autoRefresh]);
 
