@@ -265,14 +265,43 @@ def tail_logs_sync():
                                 timestamp_sec = float(parts[0])
                                 dt = datetime.fromtimestamp(timestamp_sec)
                                 
+                                client_ip = parts[2]
+                                status = parts[3]
+                                bytes_sent = int(parts[4]) if parts[4].isdigit() else 0
+                                method = parts[5]
+                                destination = parts[6]
+                                
                                 log_entry = {
                                     "timestamp": dt.strftime('%Y-%m-%d %H:%M:%S'),
-                                    "client_ip": parts[2],
-                                    "status": parts[3],
-                                    "bytes": int(parts[4]) if parts[4].isdigit() else 0,
-                                    "method": parts[5],
-                                    "destination": parts[6]
+                                    "client_ip": client_ip,
+                                    "status": status,
+                                    "bytes": bytes_sent,
+                                    "method": method,
+                                    "destination": destination
                                 }
+                                
+                                # Persist log to database
+                                try:
+                                    # Create a local connection for this thread
+                                    local_conn = sqlite3.connect(DATABASE_PATH)
+                                    local_cursor = local_conn.cursor()
+                                    
+                                    # Check if the column 'method' exists in proxy_logs, if not add it
+                                    try:
+                                        local_cursor.execute("ALTER TABLE proxy_logs ADD COLUMN method TEXT")
+                                        local_conn.commit()
+                                    except sqlite3.OperationalError:
+                                        pass # Column already exists
+                                        
+                                    local_cursor.execute(
+                                        "INSERT INTO proxy_logs (timestamp, source_ip, destination, status, bytes, unix_timestamp, method) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                        (log_entry["timestamp"], client_ip, destination, status, bytes_sent, timestamp_sec, method)
+                                    )
+                                    local_conn.commit()
+                                    local_conn.close()
+                                except Exception as db_err:
+                                    logger.error(f"Error saving log to DB: {db_err}")
+                                
                                 # Send to all connected clients
                                 if manager.active_connections:
                                     loop.run_until_complete(manager.broadcast(log_entry))
@@ -737,7 +766,21 @@ def get_logs(
             
             query = f"SELECT * FROM proxy_logs ORDER BY {safe_sort} {safe_order} LIMIT ? OFFSET ?"
             cursor.execute(query, (limit, offset))
-            logs = [dict(row) for row in cursor.fetchall()]
+            
+            # Map sqlite rows to matching format for frontend
+            raw_logs = cursor.fetchall()
+            logs = []
+            for row in raw_logs:
+                row_dict = dict(row)
+                logs.append({
+                    "id": row_dict.get("id"),
+                    "timestamp": row_dict.get("timestamp"),
+                    "client_ip": row_dict.get("source_ip"),
+                    "destination": row_dict.get("destination"),
+                    "status": row_dict.get("status"),
+                    "bytes": row_dict.get("bytes"),
+                    "method": row_dict.get("method", "CONNECT") # Fallback to CONNECT if method column didn't exist
+                })
         except sqlite3.OperationalError:
             # Fallback if proxy_logs doesn't exist yet
             total_count = 0
