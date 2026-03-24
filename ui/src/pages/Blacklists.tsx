@@ -1,7 +1,7 @@
 import { Card, CardContent } from '../components/ui/card';
 import { useApi } from '../hooks/useApi';
 import { api } from '../lib/api';
-import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield } from 'lucide-react';
+import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, CheckCircle } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
@@ -19,18 +19,29 @@ export function Blacklists() {
   
   const { data: ipData, execute: refreshIps } = useApi<any>('ip-blacklist');
   const { data: domainData, execute: refreshDomains } = useApi<any>('domain-blacklist');
+  const { data: whitelistData, execute: refreshWhitelists } = useApi<any>('ip-whitelist');
 
   const ips = ipData?.blacklist || [];
   const domains = domainData?.blacklist || [];
+  const whitelists = whitelistData?.data || [];
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItem) return;
 
-    const endpoint = activeTab === 'ip' ? 'ip-blacklist' : 'domain-blacklist';
-    const payload = activeTab === 'ip' 
-      ? { ip_address: newItem, description: newDesc }
-      : { domain: newItem, description: newDesc };
+    let endpoint = '';
+    let payload = {};
+    
+    if (activeTab === 'ip') {
+      endpoint = 'ip-blacklist';
+      payload = { ip_address: newItem, description: newDesc };
+    } else if (activeTab === 'domain') {
+      endpoint = 'domain-blacklist';
+      payload = { domain: newItem, description: newDesc };
+    } else {
+      endpoint = 'ip-whitelist';
+      payload = { ip: newItem, description: newDesc };
+    }
 
     const loadingToast = toast.loading(`Adding ${activeTab}...`);
     try {
@@ -39,7 +50,10 @@ export function Blacklists() {
       setNewItem('');
       setNewDesc('');
       setIsAdding(false);
-      activeTab === 'ip' ? refreshIps() : refreshDomains();
+      
+      if (activeTab === 'ip') refreshIps();
+      else if (activeTab === 'domain') refreshDomains();
+      else refreshWhitelists();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to add rule', { id: loadingToast });
     }
@@ -48,13 +62,20 @@ export function Blacklists() {
   const handleDelete = async (id: number) => {
     if (!confirm('Are you sure you want to delete this rule?')) return;
     
-    const endpoint = activeTab === 'ip' ? `ip-blacklist/${id}` : `domain-blacklist/${id}`;
+    let endpoint = '';
+    if (activeTab === 'ip') endpoint = `ip-blacklist/${id}`;
+    else if (activeTab === 'domain') endpoint = `domain-blacklist/${id}`;
+    else endpoint = `ip-whitelist/${id}`;
+
     const loadingToast = toast.loading(`Deleting ${activeTab}...`);
     
     try {
-      await api.delete(endpoint);
+      await api.delete(`/api/${endpoint}`);
       toast.success('Rule deleted successfully', { id: loadingToast });
-      activeTab === 'ip' ? refreshIps() : refreshDomains();
+      
+      if (activeTab === 'ip') refreshIps();
+      else if (activeTab === 'domain') refreshDomains();
+      else refreshWhitelists();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to delete rule', { id: loadingToast });
     }
@@ -173,12 +194,14 @@ export function Blacklists() {
           <CardContent className="pt-6">
             <form onSubmit={handleAdd} className="flex gap-4 items-end">
               <div className="flex-1 space-y-2">
-                <label className="text-sm font-medium">{activeTab === 'ip' ? 'IP Address' : 'Domain'}</label>
+                <label className="text-sm font-medium">
+                  {activeTab === 'ip' ? 'IP Address' : activeTab === 'domain' ? 'Domain' : 'IP / CIDR Network'}
+                </label>
                 <input 
                   type="text" 
                   value={newItem}
                   onChange={(e) => setNewItem(e.target.value)}
-                  placeholder={activeTab === 'ip' ? 'e.g. 192.168.1.100' : 'e.g. bad-domain.com'}
+                  placeholder={activeTab === 'ip' ? 'e.g. 192.168.1.100' : activeTab === 'domain' ? 'e.g. bad-domain.com' : 'e.g. 192.168.0.0/16'}
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                   required
                 />
@@ -292,6 +315,14 @@ export function Blacklists() {
           Domains
           <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{domains.length}</span>
         </button>
+        <button 
+          onClick={() => setActiveTab('whitelist')}
+          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/20 text-green-500 shadow-sm' : 'text-muted-foreground hover:text-green-500'}`}
+        >
+          <CheckCircle className="w-4 h-4 mr-2" />
+          IP Whitelist
+          <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{whitelists.length}</span>
+        </button>
       </div>
 
       <Card className="bg-card/50">
@@ -338,11 +369,27 @@ export function Blacklists() {
                 </tr>
               ))}
 
-              {((activeTab === 'ip' && ips.length === 0) || (activeTab === 'domain' && domains.length === 0)) && (
+              {activeTab === 'whitelist' && whitelists.map((item: any, i: number) => (
+                <tr key={i} className="hover:bg-secondary/20 transition-colors">
+                  <td className="px-6 py-4 font-medium text-green-500">{item.ip}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{new Date(item.added_date).toLocaleDateString()}</td>
+                  <td className="px-6 py-4 text-right">
+                    <button 
+                      onClick={() => handleDelete(item.id)}
+                      className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+
+              {((activeTab === 'ip' && ips.length === 0) || (activeTab === 'domain' && domains.length === 0) || (activeTab === 'whitelist' && whitelists.length === 0)) && (
                 <tr>
                   <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
                     <Ban className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                    No {activeTab === 'ip' ? 'IP addresses' : 'domains'} in blacklist
+                    No {activeTab === 'ip' ? 'IP addresses' : activeTab === 'domain' ? 'domains' : 'whitelisted networks'} found
                   </td>
                 </tr>
               )}
