@@ -32,7 +32,7 @@ csp = {
     'style-src': ["'self'", "'unsafe-inline'"],
     'img-src': ["'self'", "data:"],
     'font-src': ["'self'", "data:"],
-    'connect-src': ["'self'", "ws:", "wss:", "http:", "https:"]
+    'connect-src': ["'self'", "ws:", "wss:", "http:", "https:", "*"]
 }
 talisman = Talisman(app, content_security_policy=csp, force_https=False, session_cookie_secure=False)
 
