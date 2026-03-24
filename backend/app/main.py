@@ -325,6 +325,108 @@ def get_status():
     
     return {"status": "success", "data": stats}
 
+@app.get("/api/maintenance/backup-config", dependencies=[Depends(authenticate)])
+def backup_config():
+    """Backup the current configuration"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT setting_name, setting_value FROM settings")
+        settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
+        conn.close()
+        return {"status": "success", "data": settings}
+    except Exception as e:
+        logger.error(f"Error backing up config: {e}")
+        raise HTTPException(status_code=500, detail="Failed to backup config")
+
+class RestoreConfigRequest(BaseModel):
+    config: Dict[str, str]
+
+@app.post("/api/maintenance/restore-config", dependencies=[Depends(authenticate)])
+def restore_config(request_data: RestoreConfigRequest, background_tasks: BackgroundTasks):
+    """Restore configuration from backup"""
+    try:
+        if not request_data.config:
+            raise HTTPException(status_code=400, detail="No configuration data provided")
+            
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        for key, value in request_data.config.items():
+            cursor.execute("UPDATE settings SET setting_value = ? WHERE setting_name = ?", (value, key))
+            
+        conn.commit()
+        conn.close()
+        
+        background_tasks.add_task(logger.info, "Configuration restored from backup")
+        return {"status": "success", "message": "Configuration restored successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error restoring config: {e}")
+        raise HTTPException(status_code=500, detail="Failed to restore config")
+
+@app.get("/api/security/download-ca", dependencies=[Depends(authenticate)])
+def download_ca_cert():
+    """Download the CA certificate for client installation"""
+    cert_path = '/config/ssl_cert.pem'
+    if not os.path.exists(cert_path):
+        raise HTTPException(status_code=404, detail="Certificate not found. It may not have been generated yet.")
+        
+    return FileResponse(
+        path=cert_path,
+        filename='secure-proxy-ca.pem',
+        media_type='application/x-x509-ca-cert'
+    )
+
+@app.get("/api/maintenance/check-cert-security", dependencies=[Depends(authenticate)])
+def check_cert_security():
+    """Check the security of SSL certificates used for HTTPS filtering"""
+    try:
+        cert_issues = []
+        
+        # Check for certificate existence
+        cert_paths = ['/config/ssl_cert.pem', 'config/ssl_cert.pem']
+        cert_found = False
+        
+        for cert_path in cert_paths:
+            if os.path.exists(cert_path):
+                cert_found = True
+                logger.info(f"Found SSL certificate at {cert_path}")
+                break
+        
+        if not cert_found:
+            cert_issues.append("SSL certificate not found at any expected location")
+        
+        # Check for certificate database existence
+        db_paths = ['/config/ssl_db', 'config/ssl_db']
+        db_found = False
+        
+        for db_path in db_paths:
+            if os.path.exists(db_path) and os.path.isdir(db_path) and os.listdir(db_path):
+                db_found = True
+                logger.info(f"Found SSL database at {db_path}")
+                break
+                
+        if not db_found:
+            cert_issues.append("SSL certificate database not found or empty")
+            
+        status = "error" if cert_issues else "success"
+        message = "Certificate security check completed"
+        
+        return {
+            "status": status,
+            "message": message,
+            "data": {
+                "issues": cert_issues,
+                "cert_found": cert_found,
+                "db_found": db_found
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error checking cert security: {e}")
+        raise HTTPException(status_code=500, detail="Failed to check certificate security")
+
 @app.post("/api/maintenance/reload-config", dependencies=[Depends(authenticate)])
 def reload_proxy_config(background_tasks: BackgroundTasks):
     """Reload the proxy configuration"""
@@ -818,6 +920,215 @@ def send_security_notification(event):
     except Exception as e:
         logger.error(f"Error in notification system: {e}")
 
+import re
+
+class ImportBlacklistRequest(BaseModel):
+    type: str # 'ip' or 'domain'
+    url: Optional[str] = None
+    content: Optional[str] = None
+
+@app.post("/api/blacklists/import", dependencies=[Depends(authenticate)])
+def import_blacklist(request_data: ImportBlacklistRequest, background_tasks: BackgroundTasks):
+    """Import blacklist entries from URL or direct content"""
+    try:
+        blacklist_type = request_data.type.lower()
+        if blacklist_type not in ['ip', 'domain']:
+            raise HTTPException(status_code=400, detail="Type must be 'ip' or 'domain'")
+        
+        content = None
+        
+        # Check if URL is provided
+        if request_data.url:
+            try:
+                logger.info(f"Fetching blacklist from URL: {request_data.url}")
+                response = requests.get(request_data.url, timeout=30, headers={'User-Agent': 'SecureProxyManager/1.0'})
+                if response.status_code == 200:
+                    content = response.text
+                else:
+                    raise HTTPException(status_code=400, detail=f"Failed to fetch URL. Status code: {response.status_code}")
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Error fetching URL: {str(e)}")
+                raise HTTPException(status_code=400, detail=f"Error fetching URL: {str(e)}")
+        # Check if content is provided directly
+        elif request_data.content:
+            content = request_data.content
+        else:
+            raise HTTPException(status_code=400, detail="Either 'url' or 'content' must be provided")
+            
+        if not content:
+            raise HTTPException(status_code=400, detail="No content to process")
+            
+        # Process the content
+        lines = content.splitlines()
+        entries_added = 0
+        entries_skipped = 0
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        table_name = "ip_blacklist" if blacklist_type == "ip" else "domain_blacklist"
+        column_name = "ip" if blacklist_type == "ip" else "domain"
+        
+        # Prepare for batch insert
+        to_insert = []
+        existing_entries = set()
+        
+        # Get existing entries to avoid duplicates
+        cursor.execute(f"SELECT {column_name} FROM {table_name}")
+        for row in cursor.fetchall():
+            existing_entries.add(row[column_name])
+            
+        for line in lines:
+            line = line.strip()
+            # Skip empty lines and comments
+            if not line or line.startswith('#'):
+                continue
+                
+            # Extract entry (handle formats like '127.0.0.1 domain.com' or just 'domain.com')
+            parts = line.split()
+            if not parts:
+                continue
+                
+            entry = parts[-1]  # Take the last part (works for both hosts files and plain lists)
+            
+            if blacklist_type == 'ip':
+                # Basic IP/CIDR validation
+                try:
+                    ipaddress.ip_network(entry, strict=False)
+                    if entry not in existing_entries:
+                        to_insert.append((entry, f"Imported on {datetime.now().strftime('%Y-%m-%d')}"))
+                        existing_entries.add(entry)
+                        entries_added += 1
+                    else:
+                        entries_skipped += 1
+                except ValueError:
+                    entries_skipped += 1
+            else:
+                # Basic domain validation
+                # Remove http:// or https:// if present
+                if entry.startswith('http://') or entry.startswith('https://'):
+                    try:
+                        parsed = urllib.parse.urlparse(entry)
+                        entry = parsed.netloc
+                    except Exception:
+                        entries_skipped += 1
+                        continue
+                        
+                if '.' in entry and not entry.startswith('.') and not entry.endswith('.'):
+                    if entry not in existing_entries:
+                        to_insert.append((entry, f"Imported on {datetime.now().strftime('%Y-%m-%d')}"))
+                        existing_entries.add(entry)
+                        entries_added += 1
+                    else:
+                        entries_skipped += 1
+                else:
+                    entries_skipped += 1
+                    
+        # Batch insert
+        if to_insert:
+            cursor.executemany(
+                f"INSERT INTO {table_name} ({column_name}, description) VALUES (?, ?)", 
+                to_insert
+            )
+            conn.commit()
+            
+        conn.close()
+        
+        # We would normally trigger apply_settings() here
+        background_tasks.add_task(logger.info, f"Imported {entries_added} {blacklist_type}s")
+        
+        return {
+            "status": "success",
+            "message": f"Successfully imported {entries_added} entries ({entries_skipped} skipped/invalid)",
+            "data": {
+                "added": entries_added,
+                "skipped": entries_skipped
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error during import: {str(e)}")
+        raise HTTPException(status_code=500, detail="Import operation failed")
+
+class ImportGeoBlacklistRequest(BaseModel):
+    countries: List[str]
+
+@app.post("/api/blacklists/import-geo", dependencies=[Depends(authenticate)])
+def import_geo_blacklist(request_data: ImportGeoBlacklistRequest, background_tasks: BackgroundTasks):
+    """Import IP blocks for specific countries"""
+    try:
+        if not request_data.countries:
+            raise HTTPException(status_code=400, detail="No countries provided")
+            
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        total_imported = 0
+        
+        # Get existing entries to avoid duplicates
+        existing_ips = set()
+        cursor.execute("SELECT ip FROM ip_blacklist")
+        for row in cursor.fetchall():
+            existing_ips.add(row['ip'])
+            
+        for country in request_data.countries:
+            country = country.lower()
+            url = f"https://www.ipdeny.com/ipv4/root/blocks/{country}.zone"
+            logger.info(f"Fetching GeoIP block for {country} from {url}")
+            
+            try:
+                response = requests.get(url, timeout=30)
+                if response.status_code == 200:
+                    lines = response.text.splitlines()
+                    to_insert = []
+                    
+                    for line in lines:
+                        ip = line.strip()
+                        if ip and ip not in existing_ips:
+                            to_insert.append((ip, f"GeoIP: {country.upper()}"))
+                            existing_ips.add(ip)
+                            total_imported += 1
+                            
+                    if to_insert:
+                        cursor.executemany(
+                            "INSERT INTO ip_blacklist (ip, description) VALUES (?, ?)",
+                            to_insert
+                        )
+                        conn.commit()
+            except Exception as e:
+                logger.error(f"Error fetching GeoIP for {country}: {e}")
+                
+        conn.close()
+        
+        background_tasks.add_task(logger.info, f"Imported {total_imported} GeoIP blocks")
+        
+        return {
+            "status": "success",
+            "message": f"Successfully imported {total_imported} IP blocks for {len(request_data.countries)} countries",
+            "data": {
+                "imported": total_imported
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error during GeoIP import: {str(e)}")
+        raise HTTPException(status_code=500, detail="GeoIP import operation failed")
+
+@app.post("/api/ip-blacklist/import", dependencies=[Depends(authenticate)])
+def import_ip_blacklist(request_data: ImportBlacklistRequest, background_tasks: BackgroundTasks):
+    """Import IP blacklist entries (Legacy endpoint)"""
+    request_data.type = 'ip'
+    return import_blacklist(request_data, background_tasks)
+
+@app.post("/api/domain-blacklist/import", dependencies=[Depends(authenticate)])
+def import_domain_blacklist(request_data: ImportBlacklistRequest, background_tasks: BackgroundTasks):
+    """Import domain blacklist entries (Legacy endpoint)"""
+    request_data.type = 'domain'
+    return import_blacklist(request_data, background_tasks)
+
 @app.get("/api/analytics/report/pdf", dependencies=[Depends(authenticate)])
 def download_pdf_report():
     """Endpoint to download PDF report"""
@@ -967,6 +1278,391 @@ def get_database_stats():
     except Exception as e:
         logger.error(f"Error getting database stats: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting database stats: {str(e)}")
+
+# Simple rate limiting in memory
+auth_attempts = {}
+MAX_ATTEMPTS = 5
+RATE_LIMIT_WINDOW = 300  # 5 minutes
+
+@app.get("/api/security/rate-limits", dependencies=[Depends(authenticate)])
+def get_rate_limits():
+    """Get current rate limit status for all IPs"""
+    try:
+        now = datetime.now()
+        rate_limit_data = []
+        
+        for ip, attempts in list(auth_attempts.items()):
+            # Clean up expired attempts first
+            valid_attempts = [t for t in attempts if (now - t).total_seconds() < RATE_LIMIT_WINDOW]
+            auth_attempts[ip] = valid_attempts
+            
+            # Only include IPs with active attempts
+            if valid_attempts:
+                rate_limit_data.append({
+                    'ip': ip,
+                    'attempt_count': len(valid_attempts),
+                    'is_blocked': len(valid_attempts) >= MAX_ATTEMPTS,
+                    'oldest_attempt': valid_attempts[0].isoformat() if valid_attempts else None,
+                    'newest_attempt': valid_attempts[-1].isoformat() if valid_attempts else None,
+                    'time_remaining': int(RATE_LIMIT_WINDOW - (now - valid_attempts[0]).total_seconds()) if valid_attempts else 0
+                })
+        
+        return {
+            "status": "success",
+            "data": rate_limit_data,
+            "meta": {
+                "max_attempts": MAX_ATTEMPTS,
+                "window_seconds": RATE_LIMIT_WINDOW
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving rate limit data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving rate limit data: {str(e)}")
+
+@app.delete("/api/security/rate-limits/{ip}", dependencies=[Depends(authenticate)])
+def clear_rate_limit(ip: str):
+    """Clear rate limit for a specific IP"""
+    try:
+        if ip in auth_attempts:
+            del auth_attempts[ip]
+            return {
+                "status": "success",
+                "message": f"Rate limit cleared for IP {ip}"
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"No active rate limit found for IP {ip}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error clearing rate limit for IP {ip}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error clearing rate limit: {str(e)}")
+
+@app.get("/api/database/export", dependencies=[Depends(authenticate)])
+def export_database():
+    """Export the database contents as JSON"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # We wrap in try/except for graceful fallback if tables don't exist yet
+        try:
+            cursor.execute("SELECT * FROM proxy_logs ORDER BY timestamp DESC LIMIT 10000")
+            logs = [dict(row) for row in cursor.fetchall()]
+        except sqlite3.OperationalError:
+            logs = []
+            
+        try:
+            cursor.execute("SELECT * FROM ip_blacklist")
+            ip_blacklist = [dict(row) for row in cursor.fetchall()]
+        except sqlite3.OperationalError:
+            ip_blacklist = []
+            
+        try:
+            cursor.execute("SELECT * FROM domain_blacklist")
+            domain_blacklist = [dict(row) for row in cursor.fetchall()]
+        except sqlite3.OperationalError:
+            domain_blacklist = []
+            
+        try:
+            cursor.execute("SELECT * FROM settings")
+            settings = [dict(row) for row in cursor.fetchall()]
+        except sqlite3.OperationalError:
+            settings = []
+            
+        conn.close()
+        
+        export_data = {
+            "metadata": {
+                "version": "1.1.0",
+                "timestamp": datetime.now().isoformat(),
+                "record_counts": {
+                    "logs": len(logs),
+                    "ip_blacklist": len(ip_blacklist),
+                    "domain_blacklist": len(domain_blacklist),
+                    "settings": len(settings)
+                }
+            },
+            "logs": logs,
+            "ip_blacklist": ip_blacklist,
+            "domain_blacklist": domain_blacklist,
+            "settings": settings
+        }
+        
+        # Use StreamingResponse or just return dict directly (FastAPI handles JSON conversion)
+        return {
+            "status": "success",
+            "message": "Database exported successfully",
+            "data": export_data
+        }
+    except Exception as e:
+        logger.error(f"Error exporting database: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error exporting database: {str(e)}")
+
+@app.post("/api/database/reset", dependencies=[Depends(authenticate)])
+def reset_database():
+    """Reset the database to default state"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Clear tables
+        tables_to_clear = ['proxy_logs', 'ip_blacklist', 'domain_blacklist', 'settings']
+        cleared_tables = []
+        
+        for table in tables_to_clear:
+            try:
+                cursor.execute(f"DELETE FROM {table}")
+                cleared_tables.append(table)
+            except sqlite3.OperationalError:
+                pass # Table might not exist
+                
+        # We don't delete users table to maintain admin access
+        
+        conn.commit()
+        conn.close()
+        
+        # Re-initialize to populate default settings
+        init_db()
+        
+        return {
+            "status": "success",
+            "message": "Database reset successfully",
+            "data": {
+                "cleared_tables": cleared_tables
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error resetting database: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error resetting database: {str(e)}")
+
+@app.post("/api/logs/clear", dependencies=[Depends(authenticate)])
+def clear_logs():
+    """Clear all proxy logs"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM proxy_logs")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass # Table might not exist yet
+            
+        conn.close()
+        logger.info("All logs cleared successfully")
+        return {"status": "success", "message": "All logs cleared successfully"}
+    except Exception as e:
+        logger.error(f"An error occurred while clearing logs: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while clearing logs")
+
+@app.post("/api/logs/clear-old", dependencies=[Depends(authenticate)])
+def clear_old_logs(days: int = 30):
+    """Clear logs older than specified days"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("DELETE FROM proxy_logs WHERE timestamp < datetime('now', ?)", (f'-{days} days',))
+            deleted_count = cursor.rowcount
+            conn.commit()
+        except sqlite3.OperationalError:
+            deleted_count = 0
+            
+        conn.close()
+        logger.info(f"Cleared {deleted_count} old logs successfully")
+        return {"status": "success", "message": f"Cleared {deleted_count} logs older than {days} days"}
+    except Exception as e:
+        logger.error(f"An error occurred while clearing old logs: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while clearing old logs")
+
+@app.get("/api/clients/statistics", dependencies=[Depends(authenticate)])
+def client_statistics():
+    """Return client statistics for the dashboard based on proxy logs"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                SELECT 
+                    source_ip as ip_address, 
+                    COUNT(*) as requests,
+                    'Active' as status 
+                FROM proxy_logs
+                WHERE source_ip IS NOT NULL AND source_ip != ''
+                GROUP BY source_ip
+                ORDER BY requests DESC
+                LIMIT 50
+            """)
+            clients = [dict(row) for row in cursor.fetchall()]
+            
+            cursor.execute("SELECT COUNT(DISTINCT source_ip) FROM proxy_logs WHERE source_ip IS NOT NULL AND source_ip != ''")
+            total_clients_row = cursor.fetchone()
+            total_clients = total_clients_row[0] if total_clients_row else 0
+        except sqlite3.OperationalError:
+            clients = []
+            total_clients = 0
+            
+        conn.close()
+        
+        data = {
+            "total_clients": total_clients,
+            "clients": clients
+        }
+        return {"status": "success", "data": data}
+            
+    except Exception as e:
+        logger.error(f"An error occurred while fetching client statistics: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while fetching client statistics")
+
+@app.get("/api/domains/statistics", dependencies=[Depends(authenticate)])
+def domain_statistics():
+    """Return domain statistics for the dashboard based on proxy logs"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                SELECT 
+                    destination as domain_name, 
+                    COUNT(*) as requests,
+                    SUM(CASE 
+                        WHEN status LIKE '%DENIED%' OR status LIKE '%BLOCKED%' OR status LIKE '%403%' 
+                        THEN 1 ELSE 0 END) as blocked_requests
+                FROM proxy_logs
+                WHERE destination IS NOT NULL AND destination != ''
+                GROUP BY destination
+                ORDER BY requests DESC
+                LIMIT 50
+            """)
+            domains_raw = [dict(row) for row in cursor.fetchall()]
+            
+            cursor.execute("SELECT domain FROM domain_blacklist")
+            blacklisted_domains = [row['domain'] for row in cursor.fetchall()]
+        except sqlite3.OperationalError:
+            domains_raw = []
+            blacklisted_domains = []
+            
+        conn.close()
+        
+        # Determine if each domain is allowed or blocked
+        domains = []
+        for domain in domains_raw:
+            is_in_blacklist = False
+            has_blocked_requests = domain.get('blocked_requests', 0) > 0
+            domain_name = domain['domain_name']
+            
+            # Check exact match
+            if domain_name in blacklisted_domains:
+                is_in_blacklist = True
+            else:
+                # Check wildcard matches (*.example.com)
+                for blacklisted in blacklisted_domains:
+                    if blacklisted.startswith('*.') and domain_name.endswith(blacklisted[2:]):
+                        is_in_blacklist = True
+                        break
+            
+            status = 'Blocked' if (is_in_blacklist or has_blocked_requests) else 'Allowed'
+            
+            domains.append({
+                'domain_name': domain_name,
+                'requests': domain['requests'],
+                'status': status
+            })
+            
+        return {"status": "success", "data": domains}
+            
+    except Exception as e:
+        logger.error(f"An error occurred while fetching domain statistics: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while fetching domain statistics")
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+@app.post("/api/change-password", dependencies=[Depends(authenticate)])
+def change_password(request_data: ChangePasswordRequest, request: Request):
+    """Change user password with proper validation"""
+    current_password = request_data.current_password
+    new_password = request_data.new_password
+    
+    # Basic password complexity validation
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
+        
+    # Check for complexity (at least one number and one special character)
+    if not re.search(r'\d', new_password) or not re.search(r'[!@#$%^&*(),.?":{}|<>]', new_password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one number and one special character")
+    
+    # Get the current user from auth header
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Basic '):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    import base64
+    try:
+        decoded_auth = base64.b64decode(auth_header[6:]).decode('utf-8')
+        username, _ = decoded_auth.split(':', 1)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid authentication header")
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+    user = cursor.fetchone()
+    
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Verify current password
+    if not check_password_hash(user['password'], current_password):
+        conn.close()
+        logger.warning(f"Failed password change attempt for user {username} - incorrect current password")
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
+    
+    # Update password
+    new_password_hash = generate_password_hash(new_password)
+    cursor.execute("UPDATE users SET password = ? WHERE username = ?", (new_password_hash, username))
+    
+    # Record that default password was changed
+    cursor.execute("UPDATE settings SET setting_value = 'true' WHERE setting_name = 'default_password_changed'")
+    
+    conn.commit()
+    conn.close()
+    
+    logger.info(f"Password changed successfully for user {username}")
+    
+    return {"status": "success", "message": "Password updated successfully"}
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/login")
+def login(request_data: LoginRequest):
+    """Log in a user (Note: FastAPI handles auth via HTTPBasic header for every request in this architecture. This is maintained for compatibility with UI state)"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ?", (request_data.username,))
+    user_data = cursor.fetchone()
+    conn.close()
+    
+    if user_data and check_password_hash(user_data['password'], request_data.password):
+        return {
+            "status": "success", 
+            "message": "Login successful",
+            "user": {"username": request_data.username}
+        }
+    
+    raise HTTPException(status_code=401, detail="Invalid username or password")
+
+@app.post("/api/logout")
+def logout():
+    """Log out the current user"""
+    # Since we use HTTP Basic auth, logout is handled client-side by clearing the auth headers
+    return {"status": "success", "message": "Logout successful"}
 
 @app.get("/api/settings", dependencies=[Depends(authenticate)])
 def get_settings():
