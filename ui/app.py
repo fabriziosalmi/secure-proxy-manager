@@ -201,6 +201,44 @@ def api_proxy(path):
                 "status_code": 404
             }), 404
             
+        # Handle 400 Bad Request
+        if resp.status_code == 400:
+            try:
+                # Try to pass through the JSON error from FastAPI
+                return jsonify(resp.json()), 400
+            except:
+                return jsonify({
+                    "status": "error",
+                    "message": "Bad request",
+                    "backend_response": resp.text[:200]
+                }), 400
+            
+        # Handle 422 Unprocessable Entity (FastAPI validation errors)
+        if resp.status_code == 422:
+            try:
+                # Try to pass through the JSON error from FastAPI
+                error_data = resp.json()
+                # Format FastAPI validation errors to be more readable
+                if "detail" in error_data and isinstance(error_data["detail"], list):
+                    error_msgs = []
+                    for err in error_data["detail"]:
+                        loc = ".".join([str(x) for x in err.get("loc", [])])
+                        msg = err.get("msg", "Validation error")
+                        error_msgs.append(f"{loc}: {msg}")
+                    
+                    return jsonify({
+                        "status": "error",
+                        "message": "Validation Error",
+                        "details": error_msgs
+                    }), 400
+                return jsonify(error_data), 400
+            except:
+                return jsonify({
+                    "status": "error",
+                    "message": "Validation Error",
+                    "backend_response": resp.text[:200]
+                }), 400
+            
         # Check if the response is valid JSON before trying to parse it
         content_type = resp.headers.get('Content-Type', '')
         if 'application/json' in content_type:
