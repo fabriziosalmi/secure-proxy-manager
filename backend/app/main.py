@@ -170,6 +170,15 @@ def init_db():
     )
     ''')
     
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS ip_whitelist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip TEXT UNIQUE NOT NULL,
+        description TEXT,
+        added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+    
     # Check credentials
     env_username = os.environ.get('BASIC_AUTH_USERNAME')
     env_password = os.environ.get('BASIC_AUTH_PASSWORD')
@@ -486,12 +495,46 @@ def check_cert_security():
         logger.error(f"Error checking cert security: {e}")
         raise HTTPException(status_code=500, detail="Failed to check certificate security")
 
+def export_blacklists_to_files():
+    """Export current database blacklists and whitelists to the text files used by squid"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Ensure config directory exists
+        os.makedirs('/config', exist_ok=True)
+        
+        # Export IP Blacklist
+        cursor.execute("SELECT ip FROM ip_blacklist")
+        with open('/config/ip_blacklist.txt', 'w') as f:
+            for row in cursor.fetchall():
+                f.write(f"{row['ip']}\n")
+                
+        # Export IP Whitelist
+        cursor.execute("SELECT ip FROM ip_whitelist")
+        with open('/config/ip_whitelist.txt', 'w') as f:
+            for row in cursor.fetchall():
+                f.write(f"{row['ip']}\n")
+                
+        # Export Domain Blacklist
+        cursor.execute("SELECT domain FROM domain_blacklist")
+        with open('/config/domain_blacklist.txt', 'w') as f:
+            for row in cursor.fetchall():
+                f.write(f"{row['domain']}\n")
+                
+        conn.close()
+        logger.info("Successfully exported database lists to config files")
+    except Exception as e:
+        logger.error(f"Failed to export lists to files: {e}")
+
 @app.post("/api/maintenance/reload-config", dependencies=[Depends(authenticate)])
 def reload_proxy_config(background_tasks: BackgroundTasks):
     """Reload the proxy configuration"""
     try:
-        # In a complete migration, we would call apply_settings() here
-        # For now, we simulate the proxy restart API call
+        # First export current database state to the text files used by squid
+        export_blacklists_to_files()
+        
+        # Then reload proxy
         response = requests.post(f"http://{PROXY_HOST}:5000/api/reload", timeout=5)
         
         if response.status_code == 200:
@@ -573,6 +616,71 @@ def delete_ip_from_blacklist(id: int, background_tasks: BackgroundTasks):
     background_tasks.add_task(logger.info, f"Removed IP id {id} from blacklist")
     
     return {"status": "success", "message": "IP removed from blacklist"}
+
+@app.get("/api/ip-whitelist", dependencies=[Depends(authenticate)])
+def get_ip_whitelist():
+    """Get all whitelisted IPs/Networks"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM ip_whitelist")
+    whitelist = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return {"status": "success", "data": whitelist}
+
+@app.post("/api/ip-whitelist", dependencies=[Depends(authenticate)])
+def add_ip_to_whitelist(item: IPBlacklistItem, background_tasks: BackgroundTasks):
+    """Add an IP/Network to the whitelist"""
+    ip = item.ip.strip()
+    
+    # Validate CIDR notation or single IP address
+    try:
+        ipaddress.ip_network(ip, strict=False)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid IP/Network format")
+        
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Check if IP already exists
+    cursor.execute("SELECT id FROM ip_whitelist WHERE ip = ?", (ip,))
+    if cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="IP network already in whitelist")
+        
+    # Insert new IP
+    try:
+        cursor.execute("INSERT INTO ip_whitelist (ip, description) VALUES (?, ?)", 
+                      (ip, item.description))
+        conn.commit()
+    except sqlite3.Error as e:
+        conn.close()
+        logger.error(f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to add IP to whitelist")
+        
+    conn.close()
+    
+    background_tasks.add_task(logger.info, f"Added IP/Network {ip} to whitelist")
+    
+    return {"status": "success", "message": "IP added to whitelist"}
+
+@app.delete("/api/ip-whitelist/{id}", dependencies=[Depends(authenticate)])
+def delete_ip_from_whitelist(id: int, background_tasks: BackgroundTasks):
+    """Delete an IP from the whitelist"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("DELETE FROM ip_whitelist WHERE id = ?", (id,))
+    
+    if cursor.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="IP not found in whitelist")
+        
+    conn.commit()
+    conn.close()
+    
+    background_tasks.add_task(logger.info, f"Removed IP id {id} from whitelist")
+    
+    return {"status": "success", "message": "IP removed from whitelist"}
 
 class DomainBlacklistItem(BaseModel):
     domain: str
