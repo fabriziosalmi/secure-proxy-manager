@@ -2,15 +2,22 @@ import re
 import os
 import urllib.parse
 import socketserver
-import requests
-import json
+import re
+import socket
+import urllib.parse
 import threading
 import time
+import requests
+import json
 from pyicap import ICAPServer, BaseICAPRequestHandler
+from concurrent.futures import ThreadPoolExecutor
 
 # Rate limiting / Tar-pitting dictionary
 IP_BLOCK_TRACKER = {}
 TAR_PIT_DELAY = 10  # Seconds to delay responses for repeated offenders
+
+# Thread pool for backend notifications to prevent thread exhaustion DoS
+notification_pool = ThreadPoolExecutor(max_workers=10)
 
 # Core WAF Rules for Content Inspection
 BLOCK_RULES = {
@@ -117,11 +124,25 @@ class WAFICAPHandler(BaseICAPRequestHandler):
                         if client_ip not in IP_BLOCK_TRACKER:
                             IP_BLOCK_TRACKER[client_ip] = []
                         # Keep only blocks from last 60 seconds
-                        IP_BLOCK_TRACKER[client_ip] = [t for t in IP_BLOCK_TRACKER[client_ip] if current_time - t < 60]
-                        IP_BLOCK_TRACKER[client_ip].append(current_time)
+                        valid_blocks = [t for t in IP_BLOCK_TRACKER[client_ip] if current_time - t < 60]
+                        valid_blocks.append(current_time)
+                        
+                        # Memory leak prevention: clear out IPs that have no recent blocks
+                        keys_to_delete = []
+                        for ip, times in IP_BLOCK_TRACKER.items():
+                            IP_BLOCK_TRACKER[ip] = [t for t in times if current_time - t < 60]
+                            if not IP_BLOCK_TRACKER[ip]:
+                                keys_to_delete.append(ip)
+                        
+                        for ip in keys_to_delete:
+                            del IP_BLOCK_TRACKER[ip]
+                            
+                        # Update the current IP after cleanup
+                        if valid_blocks:
+                            IP_BLOCK_TRACKER[client_ip] = valid_blocks
                         
                         # If more than 3 blocks in 60s, activate tar-pit
-                        if len(IP_BLOCK_TRACKER[client_ip]) > 3:
+                        if client_ip in IP_BLOCK_TRACKER and len(IP_BLOCK_TRACKER[client_ip]) > 3:
                             print(f"TAR-PITTING IP {client_ip} for {TAR_PIT_DELAY}s")
                             time.sleep(TAR_PIT_DELAY)
                         
@@ -137,8 +158,8 @@ class WAFICAPHandler(BaseICAPRequestHandler):
                             },
                             "level": "error"
                         }
-                        # We use threading to not block the ICAP response
-                        threading.Thread(target=self.notify_backend, args=(alert_data,)).start()
+                        # Use thread pool to not block the ICAP response and prevent thread exhaustion DoS
+                        notification_pool.submit(self.notify_backend, alert_data)
                     except Exception as e:
                         print(f"Failed to trigger alert: {e}")
                         

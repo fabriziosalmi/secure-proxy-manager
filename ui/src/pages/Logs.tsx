@@ -32,10 +32,12 @@ export function Logs() {
       const ws = new WebSocket(socketUrl);
       socketRef.current = ws as any; // Cast for now, would need a proper ref type
 
+      let pingInterval: ReturnType<typeof setInterval>;
+      
       ws.onopen = () => {
         console.log('Connected to real-time log stream via FastAPI WebSocket');
         // Keep alive ping
-        setInterval(() => {
+        pingInterval = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send('ping');
           }
@@ -54,6 +56,7 @@ export function Logs() {
 
       ws.onclose = () => {
         console.log('Disconnected from real-time log stream');
+        if (pingInterval) clearInterval(pingInterval);
       };
       
       ws.onerror = (error) => {
@@ -61,6 +64,7 @@ export function Logs() {
       };
 
       return () => {
+        if (pingInterval) clearInterval(pingInterval);
         if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
           ws.close();
         }
