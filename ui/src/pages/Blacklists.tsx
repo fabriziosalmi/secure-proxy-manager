@@ -6,7 +6,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 
 export function Blacklists() {
-  const [activeTab, setActiveTab] = useState<'ip' | 'domain'>('ip');
+  const [activeTab, setActiveTab] = useState<'ip' | 'domain' | 'whitelist'>('ip');
   const [isAdding, setIsAdding] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isGeoBlocking, setIsGeoBlocking] = useState(false);
