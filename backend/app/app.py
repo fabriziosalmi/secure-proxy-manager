@@ -176,15 +176,10 @@ def init_db():
             cursor.execute("UPDATE users SET password = ? WHERE username = ?", 
                          (generate_password_hash(env_password), env_username))
     else:
-        # Check if any user exists
-        cursor.execute("SELECT COUNT(*) FROM users")
-        if cursor.fetchone()[0] == 0:
-            # No users and no env vars - generate random credentials
-            gen_username = 'admin'
-            gen_password = secrets.token_urlsafe(16)
-            logger.warning(f"No credentials provided. Created default user '{gen_username}' with password: {gen_password}")
-            cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", 
-                          (gen_username, generate_password_hash(gen_password)))
+        logger.error("CRITICAL SECURITY ERROR: BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD environment variables are not set.")
+        logger.error("The system cannot start without explicitly configured strong credentials.")
+        logger.error("Please create a .env file based on .env.example and set these variables.")
+        sys.exit(1)
     
     # Insert default settings if not exists
     default_settings = [

@@ -110,10 +110,10 @@ if [ ! -f .env ]; then
         cat > .env << 'EOF'
 # Minimal environment configuration
 # WARNING: This file was auto-generated with INSECURE default credentials!
-# CHANGE THESE IMMEDIATELY before deploying to production!
+# Provide your own secure credentials! Containers WILL CRASH if left empty.
 
-BASIC_AUTH_USERNAME=admin
-BASIC_AUTH_PASSWORD=admin
+BASIC_AUTH_USERNAME=
+BASIC_AUTH_PASSWORD=
 SECRET_KEY=
 FLASK_ENV=production
 BACKEND_URL=http://backend:5000
@@ -141,13 +141,14 @@ EOF
 else
     print_success ".env file already exists"
     
-    # Check if credentials are set to defaults (match with or without quotes and spaces)
-    # Matches: BASIC_AUTH_USERNAME=admin, BASIC_AUTH_USERNAME = "admin", etc.
-    if grep -qE "^BASIC_AUTH_USERNAME\s*=\s*['\"]?admin['\"]?\s*$" .env && \
-       grep -qE "^BASIC_AUTH_PASSWORD\s*=\s*['\"]?admin['\"]?\s*$" .env; then
+    # Check if credentials are empty or set to insecure defaults
+    if grep -qE "^BASIC_AUTH_USERNAME\s*=\s*['\"]?(admin)?['\"]?\s*$" .env || \
+       grep -qE "^BASIC_AUTH_PASSWORD\s*=\s*['\"]?(admin)?['\"]?\s*$" .env; then
         echo ""
-        print_warning "WARNING: You are using default credentials (admin/admin)"
-        print_warning "It is strongly recommended to change these in the .env file"
+        print_error "CRITICAL ERROR: You are using empty or default 'admin' credentials in .env!"
+        print_error "The containers will crash on startup for security reasons."
+        print_error "Please edit your .env file and set strong values for BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD."
+        exit 1
     fi
 fi
 
