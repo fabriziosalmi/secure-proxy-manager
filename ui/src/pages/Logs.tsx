@@ -22,12 +22,12 @@ export function Logs() {
   // Setup native WebSocket connection for real-time logs (migrated from Socket.IO to FastAPI native WS)
   useEffect(() => {
     if (autoRefresh) {
-      // Connect to WebSocket via the same domain and port, assuming a reverse proxy (like the Flask app.py) handles the upgrade, 
-      // or we hit the backend directly. For this architecture, we use the UI's port.
+      // Connect directly to the backend port (5000) for WebSockets since the UI proxy (8011) doesn't handle WS upgrading
+      // For production we should use a proper Nginx reverse proxy
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const hostname = window.location.hostname;
-      const port = window.location.port ? `:${window.location.port}` : '';
-      const socketUrl = `${wsProtocol}//${hostname}${port}/api/ws/logs`;
+      // Connect directly to the FastAPI port (5001 exposed on host)
+      const socketUrl = `${wsProtocol}//${hostname}:5001/api/ws/logs`;
       
       const ws = new WebSocket(socketUrl);
       socketRef.current = ws as any; // Cast for now, would need a proper ref type
