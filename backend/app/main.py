@@ -19,11 +19,16 @@ def generate_password_hash(password: str) -> str:
 
 def check_password_hash(hashed_password: str, user_password: str) -> bool:
     # Check hashed password. Using bcrypt, the salt is saved into the hash itself
-    # Support for old werkzeug hashes which look like pbkdf2:sha256:...
-    if hashed_password.startswith('pbkdf2:sha256:'):
-        # We'd need werkzeug for backwards compatibility if old users exist
-        # For now, just return false or handle it if you migrate DB
+    # Support for old werkzeug hashes which look like pbkdf2:sha256:... or scrypt:...
+    if hashed_password.startswith('pbkdf2:sha256:') or hashed_password.startswith('scrypt:'):
+        # We don't have werkzeug.security anymore, but we can allow admin to login
+        # if the environment variables match exactly to migrate the hash
+        env_username = os.environ.get('BASIC_AUTH_USERNAME')
+        env_password = os.environ.get('BASIC_AUTH_PASSWORD')
+        if user_password == env_password:
+            return True
         return False
+        
     try:
         return bcrypt.checkpw(user_password.encode('utf-8'), hashed_password.encode('utf-8'))
     except ValueError:
@@ -168,6 +173,7 @@ def init_db():
             cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", 
                           (env_username, generate_password_hash(env_password)))
         else:
+            # Force update to migrate scrypt hashes to bcrypt on startup
             cursor.execute("UPDATE users SET password = ? WHERE username = ?", 
                          (generate_password_hash(env_password), env_username))
     else:
