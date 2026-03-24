@@ -149,6 +149,9 @@ async def websocket_logs(websocket: WebSocket):
         logger.error(f"WebSocket error: {e}")
         manager.disconnect(websocket)
 @app.get("/health")
+def health_check_legacy():
+    return {"status": "healthy"}
+
 @app.get("/api/health")
 def health_check():
     return {"status": "healthy"}
