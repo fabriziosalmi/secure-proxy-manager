@@ -244,30 +244,42 @@ def tail_logs_sync():
         try:
             if os.path.exists(log_file):
                 logger.info(f"Starting to tail log file: {log_file}")
+                # Wait for the file to be non-empty to ensure squid has actually initialized it
+                if os.path.getsize(log_file) == 0:
+                    time.sleep(2)
+                
                 # Use subprocess.Popen with unbuffered output
-                process = subprocess.Popen(['tail', '-F', log_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
-                for line in process.stdout:
-                    parts = line.split()
-                    if len(parts) >= 10:
-                        try:
-                            timestamp_sec = float(parts[0])
-                            dt = datetime.fromtimestamp(timestamp_sec)
+                # Instead of standard tail, use a python approach for reliable line reading
+                with open(log_file, 'r') as f:
+                    # Seek to the end of file
+                    f.seek(0, 2)
+                    while True:
+                        line = f.readline()
+                        if not line:
+                            time.sleep(0.1)
+                            continue
                             
-                            log_entry = {
-                                "timestamp": dt.strftime('%Y-%m-%d %H:%M:%S'),
-                                "client_ip": parts[2],
-                                "status": parts[3],
-                                "bytes": int(parts[4]) if parts[4].isdigit() else 0,
-                                "method": parts[5],
-                                "destination": parts[6]
-                            }
-                            # Send to all connected clients
-                            if manager.active_connections:
-                                loop.run_until_complete(manager.broadcast(log_entry))
-                        except Exception as e:
-                            logger.debug(f"Log parse error: {e}")
-                    # Also log to file for debugging
-                    logger.debug(f"Tailed line: {line.strip()}")
+                        parts = line.split()
+                        if len(parts) >= 10:
+                            try:
+                                timestamp_sec = float(parts[0])
+                                dt = datetime.fromtimestamp(timestamp_sec)
+                                
+                                log_entry = {
+                                    "timestamp": dt.strftime('%Y-%m-%d %H:%M:%S'),
+                                    "client_ip": parts[2],
+                                    "status": parts[3],
+                                    "bytes": int(parts[4]) if parts[4].isdigit() else 0,
+                                    "method": parts[5],
+                                    "destination": parts[6]
+                                }
+                                # Send to all connected clients
+                                if manager.active_connections:
+                                    loop.run_until_complete(manager.broadcast(log_entry))
+                            except Exception as e:
+                                logger.debug(f"Log parse error: {e}")
+                        # Also log to file for debugging
+                        logger.debug(f"Tailed line: {line.strip()}")
             else:
                 logger.warning(f"Log file {log_file} does not exist yet. Waiting...")
                 time.sleep(5)
