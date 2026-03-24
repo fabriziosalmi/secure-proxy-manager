@@ -723,32 +723,43 @@ def get_log_stats():
         
         try:
             cursor.execute("SELECT COUNT(*) FROM proxy_logs")
-            total_requests = cursor.fetchone()[0]
+            total_count = cursor.fetchone()[0]
             
-            cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '403%' OR status LIKE '500%'")
-            blocked_requests = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE ? OR status LIKE ? OR status LIKE ?", 
+                          ('%DENIED%', '%403%', '%BLOCKED%'))
+            blocked_count = cursor.fetchone()[0]
             
-            cursor.execute("SELECT COUNT(*) FROM ip_blacklist")
-            blacklisted_ips = cursor.fetchone()[0]
+            # Simple fallback for direct IP blocks
+            cursor.execute("""
+                SELECT COUNT(*) FROM proxy_logs 
+                WHERE (status LIKE ? OR status LIKE ? OR status LIKE ?)
+                AND (
+                    (destination LIKE 'http://%.%.%.%' AND destination NOT LIKE 'http://%.%.%.%.%')
+                    OR
+                    (destination LIKE 'https://%.%.%.%' AND destination NOT LIKE 'https://%.%.%.%.%')
+                    OR
+                    destination LIKE '%.%.%.%'
+                )
+            """, ('%DENIED%', '%403%', '%BLOCKED%'))
+            ip_blocks_count = cursor.fetchone()[0]
             
-            cursor.execute("SELECT COUNT(*) FROM domain_blacklist")
-            blacklisted_domains = cursor.fetchone()[0]
+            cursor.execute("SELECT MAX(timestamp) FROM proxy_logs")
+            last_import = cursor.fetchone()[0]
         except sqlite3.OperationalError:
-            total_requests = 0
-            blocked_requests = 0
-            blacklisted_ips = 0
-            blacklisted_domains = 0
+            total_count = 0
+            blocked_count = 0
+            ip_blocks_count = 0
+            last_import = None
             
         conn.close()
         
         return {
             "status": "success",
             "data": {
-                "total_requests": total_requests,
-                "blocked_requests": blocked_requests,
-                "blacklisted_ips": blacklisted_ips,
-                "blacklisted_domains": blacklisted_domains,
-                "block_rate": round((blocked_requests / total_requests * 100) if total_requests > 0 else 0, 2)
+                "total_count": total_count,
+                "blocked_count": blocked_count,
+                "ip_blocks_count": ip_blocks_count,
+                "last_import": last_import
             }
         }
     except Exception as e:
