@@ -148,6 +148,7 @@ async def websocket_logs(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         manager.disconnect(websocket)
+@app.get("/health")
 @app.get("/api/health")
 def health_check():
     return {"status": "healthy"}
