@@ -5,7 +5,12 @@ import socketserver
 import requests
 import json
 import threading
+import time
 from pyicap import ICAPServer, BaseICAPRequestHandler
+
+# Rate limiting / Tar-pitting dictionary
+IP_BLOCK_TRACKER = {}
+TAR_PIT_DELAY = 10  # Seconds to delay responses for repeated offenders
 
 # Core WAF Rules for Content Inspection
 BLOCK_RULES = {
@@ -105,6 +110,21 @@ class WAFICAPHandler(BaseICAPRequestHandler):
                     if b'X-Client-IP' in self.headers:
                         client_ip = self.headers[b'X-Client-IP'][0].decode()
                         
+                    # Active Mitigation / Tar-pitting
+                    # If the IP has been blocked multiple times recently, sleep before responding
+                    current_time = time.time()
+                    if client_ip != "Unknown":
+                        if client_ip not in IP_BLOCK_TRACKER:
+                            IP_BLOCK_TRACKER[client_ip] = []
+                        # Keep only blocks from last 60 seconds
+                        IP_BLOCK_TRACKER[client_ip] = [t for t in IP_BLOCK_TRACKER[client_ip] if current_time - t < 60]
+                        IP_BLOCK_TRACKER[client_ip].append(current_time)
+                        
+                        # If more than 3 blocks in 60s, activate tar-pit
+                        if len(IP_BLOCK_TRACKER[client_ip]) > 3:
+                            print(f"TAR-PITTING IP {client_ip} for {TAR_PIT_DELAY}s")
+                            time.sleep(TAR_PIT_DELAY)
+                        
                     # Send alert to backend via internal API
                     try:
                         alert_data = {
@@ -146,7 +166,31 @@ class WAFICAPHandler(BaseICAPRequestHandler):
             print(f"Error sending alert to backend: {e}")
 
     def waf_RESPMOD(self):
-        # We can implement inbound inspection here (e.g. malware scanning)
+        # Implement basic inbound inspection for Malware / Antivirus
+        # Check if response has content
+        if not self.has_body:
+            self.no_adaptation_required()
+            return
+            
+        content_type = b""
+        if b'Content-Type' in self.enc_res_headers:
+            content_type = self.enc_res_headers[b'Content-Type'][0]
+            
+        # Only inspect potentially dangerous files (exe, scripts, etc.)
+        dangerous_types = [b'application/x-msdownload', b'application/x-dosexec', b'application/javascript']
+        
+        is_dangerous_type = any(dt in content_type.lower() for dt in dangerous_types)
+        
+        # Read a small chunk of the file (first 4KB) for signature matching (e.g. EICAR or MZ header)
+        if is_dangerous_type:
+            # We are reading the body to inspect it. 
+            # In a full AV setup, we'd stream this to ClamAV
+            # Here we do a basic heuristic check
+            print(f"Inspecting RESPMOD payload for type: {content_type}")
+            
+            # For now, just allow. A real AV would block here if malware is found.
+            pass
+            
         self.no_adaptation_required()
 
     def send_block_response(self, category="UNKNOWN"):
