@@ -100,8 +100,6 @@ services:
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
-    # Tailscale proxy sidecar network
-    network_mode: ${PROXY_NETWORK_MODE:-bridge}
 
   # Optional Tailscale sidecar for secure remote access
   tailscale:
