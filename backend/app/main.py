@@ -244,7 +244,8 @@ def tail_logs_sync():
         try:
             if os.path.exists(log_file):
                 logger.info(f"Starting to tail log file: {log_file}")
-                process = subprocess.Popen(['tail', '-F', log_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                # Use subprocess.Popen with unbuffered output
+                process = subprocess.Popen(['tail', '-F', log_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
                 for line in process.stdout:
                     parts = line.split()
                     if len(parts) >= 10:
