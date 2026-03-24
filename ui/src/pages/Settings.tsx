@@ -185,6 +185,116 @@ export function Settings() {
               <p className="text-xs text-muted-foreground">Space-separated list of CIDR subnets allowed to use the proxy.</p>
             </div>
             <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+              <div className="space-y-0.5 w-full">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="text-sm font-medium text-blue-400 flex items-center">
+                      <Shield className="w-4 h-4 mr-2" /> Tailscale Sidecar (Overlay Network)
+                    </label>
+                    <p className="text-xs text-muted-foreground">Access your proxy from anywhere securely via Tailscale. No port forwarding needed.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      name="enable_tailscale"
+                      checked={formData.enable_tailscale === 'true' || formData.enable_tailscale === true}
+                      onChange={(e) => setFormData({ ...formData, enable_tailscale: e.target.checked ? 'true' : 'false' })}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+                {formData.enable_tailscale === 'true' && (
+                  <div className="grid gap-4 mt-2 pt-2 border-t border-border/50">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Tailscale Auth Key</label>
+                      <input 
+                        type="password" 
+                        name="tailscale_auth_key"
+                        value={formData.tailscale_auth_key || ''}
+                        onChange={handleChange}
+                        placeholder="tskey-auth-..."
+                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Machine Hostname</label>
+                      <input 
+                        type="text" 
+                        name="tailscale_hostname"
+                        value={formData.tailscale_hostname || 'secure-proxy'}
+                        onChange={handleChange}
+                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+              <div className="space-y-0.5 w-full">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="text-sm font-medium text-emerald-400 flex items-center">
+                      <Network className="w-4 h-4 mr-2" /> Dynamic DNS (DDNS)
+                    </label>
+                    <p className="text-xs text-muted-foreground">Automatically update your public IP to a domain name.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      name="enable_ddns"
+                      checked={formData.enable_ddns === 'true' || formData.enable_ddns === true}
+                      onChange={(e) => setFormData({ ...formData, enable_ddns: e.target.checked ? 'true' : 'false' })}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+                {formData.enable_ddns === 'true' && (
+                  <div className="grid grid-cols-2 gap-4 mt-2 pt-2 border-t border-border/50">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Provider</label>
+                      <select 
+                        name="ddns_provider"
+                        value={formData.ddns_provider || 'cloudflare'}
+                        onChange={handleChange}
+                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      >
+                        <option value="cloudflare">Cloudflare</option>
+                        <option value="duckdns">DuckDNS</option>
+                        <option value="noip">No-IP</option>
+                        <option value="custom">Custom Webhook</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Domain</label>
+                      <input 
+                        type="text" 
+                        name="ddns_domain"
+                        value={formData.ddns_domain || ''}
+                        onChange={handleChange}
+                        placeholder="proxy.example.com"
+                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <label className="text-xs text-muted-foreground">API Token / Token</label>
+                      <input 
+                        type="password" 
+                        name="ddns_token"
+                        value={formData.ddns_token || ''}
+                        onChange={handleChange}
+                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
               <div className="space-y-0.5">
                 <label className="text-sm font-medium">HTTPS Inspection (SSL Bump)</label>
                 <p className="text-xs text-muted-foreground">Decrypt and inspect HTTPS traffic. Required for WAF to work on secure sites.</p>
