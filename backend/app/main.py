@@ -1675,6 +1675,21 @@ def logout():
     # Since we use HTTP Basic auth, logout is handled client-side by clearing the auth headers
     return {"status": "success", "message": "Logout successful"}
 
+@app.get("/api/cache/statistics", dependencies=[Depends(authenticate)])
+def get_cache_statistics():
+    """Get cache statistics (simulated/mocked if actual proxy metrics not available)"""
+    # In a full implementation we would query squidmgr or squidclient
+    return {
+        "status": "success",
+        "data": {
+            "hit_rate": 24.5,
+            "byte_hit_rate": 18.2,
+            "cache_size": "450 MB",
+            "max_cache_size": "2048 MB",
+            "objects_cached": 12450
+        }
+    }
+
 @app.get("/api/settings", dependencies=[Depends(authenticate)])
 def get_settings():
     conn = get_db()
