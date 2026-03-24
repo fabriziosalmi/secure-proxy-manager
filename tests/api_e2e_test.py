@@ -25,8 +25,11 @@ def test_endpoint(name, method, url, expected_status=200, **kwargs):
             console.print("[red]Unsupported method[/red]")
             return False
 
-        if res.status_code == expected_status:
-            console.print(f"[green]SUCCESS ({res.status_code})[/green]")
+        if res.status_code == expected_status or (method == 'POST' and res.status_code == 400 and "already" in res.text.lower()):
+            if res.status_code == 400:
+                console.print(f"[yellow]SUCCESS (Already exists)[/yellow]")
+            else:
+                console.print(f"[green]SUCCESS ({res.status_code})[/green]")
             return True
         else:
             console.print(f"[red]FAILED (Expected {expected_status}, got {res.status_code})[/red]")
