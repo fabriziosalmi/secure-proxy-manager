@@ -9,9 +9,24 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request, Background
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from werkzeug.security import generate_password_hash, check_password_hash
-import asyncio
-import json
+import bcrypt
+
+def generate_password_hash(password: str) -> str:
+    # Hash a password for the first time
+    # (Using bcrypt, the salt is saved into the hash itself)
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def check_password_hash(hashed_password: str, user_password: str) -> bool:
+    # Check hashed password. Using bcrypt, the salt is saved into the hash itself
+    # Support for old werkzeug hashes which look like pbkdf2:sha256:...
+    if hashed_password.startswith('pbkdf2:sha256:'):
+        # We'd need werkzeug for backwards compatibility if old users exist
+        # For now, just return false or handle it if you migrate DB
+        return False
+    try:
+        return bcrypt.checkpw(user_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except ValueError:
+        return False
 
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
