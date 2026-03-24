@@ -233,7 +233,15 @@ def init_db():
         # Logging settings
         ('enable_extended_logging', 'false', 'Enable extended logging'),
         ('log_retention', '30', 'Log retention period in days'),
-        ('enable_alerts', 'false', 'Enable email alerts')
+        
+        # Notification settings
+        ('enable_notifications', 'false', 'Enable webhook notifications for critical events'),
+        ('webhook_url', '', 'Custom Webhook URL'),
+        ('gotify_url', '', 'Gotify Server URL'),
+        ('gotify_token', '', 'Gotify App Token'),
+        ('teams_webhook_url', '', 'Microsoft Teams Webhook URL'),
+        ('telegram_bot_token', '', 'Telegram Bot Token'),
+        ('telegram_chat_id', '', 'Telegram Chat ID')
     ]
     
     for setting in default_settings:
@@ -1799,7 +1807,7 @@ def validate_setting(setting_name, setting_value):
         'enable_proxy_auth': lambda x: x in ['true', 'false'],
         'enable_user_management': lambda x: x in ['true', 'false'],
         'enable_extended_logging': lambda x: x in ['true', 'false'],
-        'enable_alerts': lambda x: x in ['true', 'false'],
+        'enable_notifications': lambda x: x in ['true', 'false'],
         
         # Numeric settings
         'cache_size': lambda x: x.isdigit() and 100 <= int(x) <= 10000,
@@ -1815,6 +1823,9 @@ def validate_setting(setting_name, setting_value):
         # String settings with specific formats
         'log_level': lambda x: x.lower() in ['debug', 'info', 'warning', 'error'],
         'auth_method': lambda x: x.lower() in ['basic', 'digest', 'ntlm'],
+        'webhook_url': lambda x: x == '' or x.startswith('http://') or x.startswith('https://'),
+        'gotify_url': lambda x: x == '' or x.startswith('http://') or x.startswith('https://'),
+        'teams_webhook_url': lambda x: x == '' or x.startswith('http://') or x.startswith('https://'),
         
         # Time format settings
         'time_restriction_start': lambda x: re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', x) is not None,
@@ -2293,6 +2304,138 @@ def safe_write_file(target_path, content, mode="w"):
         logger.error(f"Failed to safely write to {target_path}: {e}")
         return False
 
+import requests
+
+def send_security_notification(event):
+    """Send security notifications to configured providers"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT setting_name, setting_value FROM settings WHERE setting_name IN ('enable_notifications', 'webhook_url', 'gotify_url', 'gotify_token', 'teams_webhook_url', 'telegram_bot_token', 'telegram_chat_id')")
+        settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
+        
+        if settings.get('enable_notifications') != 'true':
+            return
+            
+        # Prepare standard message format
+        emoji = "🔴" if event.get('level') == 'error' else "⚠️" if event.get('level') == 'warning' else "ℹ️"
+        title = f"{emoji} Secure Proxy Alert: {event.get('event_type', 'Unknown').replace('_', ' ').title()}"
+        
+        message_lines = [
+            f"**Message:** {event.get('message', 'No details')}",
+            f"**Time:** {event.get('timestamp')}",
+            f"**Client IP:** {event.get('client_ip', 'Unknown')}"
+        ]
+        
+        if event.get('username'):
+            message_lines.append(f"**User:** {event.get('username')}")
+            
+        # Add details if any (excluding the ones already handled)
+        for key, value in event.items():
+            if key not in ['timestamp', 'client_ip', 'username', 'event_type', 'message', 'level']:
+                message_lines.append(f"**{key.title()}:** {value}")
+                
+        plain_text = f"{title}\n\n" + "\n".join(message_lines)
+        
+        # 1. Custom Webhook
+        webhook_url = settings.get('webhook_url')
+        if webhook_url:
+            try:
+                requests.post(webhook_url, json=event, timeout=5)
+            except Exception as e:
+                logger.error(f"Failed to send webhook notification: {e}")
+                
+        # 2. Gotify
+        gotify_url = settings.get('gotify_url')
+        gotify_token = settings.get('gotify_token')
+        if gotify_url and gotify_token:
+            try:
+                if not gotify_url.endswith('/'):
+                    gotify_url += '/'
+                requests.post(
+                    f"{gotify_url}message?token={gotify_token}",
+                    json={
+                        "title": title,
+                        "message": plain_text,
+                        "priority": 8 if event.get('level') == 'error' else 5
+                    },
+                    timeout=5
+                )
+            except Exception as e:
+                logger.error(f"Failed to send Gotify notification: {e}")
+                
+        # 3. Microsoft Teams
+        teams_url = settings.get('teams_webhook_url')
+        if teams_url:
+            try:
+                teams_payload = {
+                    "@type": "MessageCard",
+                    "@context": "http://schema.org/extensions",
+                    "themeColor": "FF0000" if event.get('level') == 'error' else "FFA500",
+                    "summary": title,
+                    "sections": [{
+                        "activityTitle": title,
+                        "facts": [{"name": line.split(':**')[0].replace('**', '') + ":", "value": line.split(':**')[1].strip() if ':**' in line else line} for line in message_lines],
+                        "markdown": True
+                    }]
+                }
+                requests.post(teams_url, json=teams_payload, timeout=5)
+            except Exception as e:
+                logger.error(f"Failed to send MS Teams notification: {e}")
+                
+        # 4. Telegram
+        telegram_token = settings.get('telegram_bot_token')
+        telegram_chat_id = settings.get('telegram_chat_id')
+        if telegram_token and telegram_chat_id:
+            try:
+                telegram_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+                # Format for Telegram Markdown
+                tg_text = f"*{title}*\n\n" + "\n".join(message_lines)
+                requests.post(
+                    telegram_url,
+                    json={
+                        "chat_id": telegram_chat_id,
+                        "text": tg_text,
+                        "parse_mode": "Markdown"
+                    },
+                    timeout=5
+                )
+            except Exception as e:
+                logger.error(f"Failed to send Telegram notification: {e}")
+                
+    except Exception as e:
+        logger.error(f"Error in notification system: {e}")
+
+# Internal API endpoint for WAF to send alerts
+@app.route('/api/internal/alert', methods=['POST'])
+@auth.login_required
+def receive_internal_alert():
+    """Receive alerts from internal services like WAF"""
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"status": "error", "message": "No data provided"}), 400
+        
+    event_type = data.get('event_type', 'unknown')
+    message = data.get('message', 'No message')
+    details = data.get('details', {})
+    level = data.get('level', 'warning')
+    
+    # Send notification asynchronously to not block the WAF
+    event = {
+        "timestamp": datetime.now().isoformat(),
+        "client_ip": details.get('client_ip', 'unknown'),
+        "event_type": event_type,
+        "message": message,
+        "level": level,
+        **{k:v for k,v in details.items() if k != 'client_ip'}
+    }
+    
+    # We use eventlet/threading here if possible, or just call directly since 
+    # we already handled timeout in the WAF side
+    threading.Thread(target=send_security_notification, args=(event,)).start()
+    
+    return jsonify({"status": "success"})
+
 # Security event logging
 def log_security_event(event_type, message, details=None, level="warning"):
     """
@@ -2335,6 +2478,10 @@ def log_security_event(event_type, message, details=None, level="warning"):
         logger.error(log_message)
     else:
         logger.warning(log_message)
+        
+    # Trigger notifications if enabled and level is warning or error
+    if level in ["warning", "error"] or event_type in ["waf_block", "threat_detected"]:
+        send_security_notification(event)
         
     # In a more advanced system, we might want to:
     # 1. Write to a dedicated security log file
