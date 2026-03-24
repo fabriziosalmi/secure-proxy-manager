@@ -242,9 +242,14 @@ chown -R proxy:proxy /var/spool/squid
 # Run as proxy user to ensure permissions are correct
 su - proxy -s /bin/bash -c "/usr/sbin/squid -z"
 
-# Ensure run directories exist with correct permissions for squid dropping privileges
-mkdir -p /run/squid
-chown -R proxy:proxy /run/squid
+# Fix run permissions
+# We run supervisord as root, but squid drops privileges to proxy user
+# Make sure the proxy user can write its PID file
+mkdir -p /run/squid /var/run/squid
+chown -R proxy:proxy /run/squid /var/run/squid
+chmod 755 /run/squid /var/run/squid
+touch /run/squid/squid.pid
+chown proxy:proxy /run/squid/squid.pid
 
 # Wait a moment to ensure initialization completes
 sleep 2
