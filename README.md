@@ -1,44 +1,6 @@
 # Secure Proxy Manager
 
-A containerized secure proxy with advanced filtering capabilities, real-time monitoring, and a modern web UI.
-  
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://www.docker.com/)
-[![Python](https://img.shields.io/badge/Python-3.9+-yellow?logo=python)](https://www.python.org/)
-[![Flask](https://img.shields.io/badge/Flask-3.0+-green?logo=flask)](https://flask.palletsprojects.com/)
-[![Bootstrap](https://img.shields.io/badge/Bootstrap-5.0-purple?logo=bootstrap)](https://getbootstrap.com/)
-
-## 🚀 Quick Links
-
-- [**Getting Started**](#-quick-start) - Get up and running in 5 minutes
-- [**Deployment Guide**](DEPLOYMENT.md) - Comprehensive step-by-step deployment instructions
-- [**API Documentation**](#-api-documentation) - Complete API reference
-- [**FAQ**](#-frequently-asked-questions-faq) - Common questions answered
-- [**Troubleshooting**](#-troubleshooting) - Solutions to common issues
-- [**Contributing**](CONTRIBUTING.md) - How to contribute to the project
-- [**Changelog**](CHANGELOG.md) - Version history and updates
-
-## 📑 Table of Contents
-
-- [Screenshots](#screenshots)
-- [Features](#-features)
-- [Architecture](#️-architecture)
-- [Prerequisites](#-prerequisites)
-- [Quick Start](#-quick-start)
-- [Configuration Options](#️-configuration-options)
-- [Advanced Configuration](#️-advanced-configuration)
-- [Monitoring and Analytics](#-monitoring-and-analytics)
-- [Database Export and Backup](#-database-export-and-backup)
-- [Testing and Validation](#-testing-and-validation)
-- [FAQ](#-frequently-asked-questions-faq)
-- [Troubleshooting](#-troubleshooting)
-- [API Documentation](#-api-documentation)
-- [Security Best Practices](#-security-best-practices)
-- [Future Roadmap](#-future-roadmap)
-- [Contributing](#-contributing)
-- [License](#-license)
-- [Acknowledgements](#-acknowledgements)
-- [Support](#-support)
+A containerized web proxy management system based on Squid, featuring a web interface for managing blacklists, monitoring traffic, and enforcing security policies. Suitable for homelab and self-hosted environments.
 
 ## Screenshots
 
@@ -46,50 +8,30 @@ A containerized secure proxy with advanced filtering capabilities, real-time mon
 ![screenshot2](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/screenshot_2.png?raw=true)
 ![screenshot3](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/screenshot_3.png?raw=true)
 
-## 🌟 Key Features
+## Key Features
 
-- **Modern Architecture**: Fast, asynchronous Python backend powered by **FastAPI** with SQLite WAL mode.
-- **Real-Time Interface**: Lightning-fast, reactive frontend built with **React, Vite, and Tailwind CSS**, featuring native WebSockets for instant log streaming.
+- **Architecture**: Python backend using FastAPI with SQLite WAL mode.
+- **Web Interface**: React-based frontend built with Vite and Tailwind CSS, using WebSockets for log streaming.
 - **Traffic Filtering**: Domain and IP-based blacklisting with regular expression support and automatic IP Geo-Blocking.
-- **One-Click Threat Intelligence**: Import popular global blocklists (Spamhaus, Firehol, Pi-hole lists) directly from the UI.
-- **Advanced WAF**: Integrated Python ICAP server for Deep Packet Inspection with memory-leak protection and multi-threading limits.
-- **SSL Bump**: Inspect and filter encrypted HTTPS traffic with auto-generated certificates.
-- **Caching & Optimization**: Bandwidth saving through configurable content caching.
-- **Visual Analytics**: Interactive Recharts dashboards for monitoring bandwidth, cache hit rates, and blocked requests.
-- **Docker Ready**: Fully containerized multi-tier architecture (React, FastAPI, Squid, WAF) deployed via a single `docker-compose` command.
+- **Blocklists Import**: Import public blocklists (Spamhaus, Firehol, Pi-hole lists) directly from the UI.
+- **WAF**: Python ICAP server for payload inspection with memory management and thread pooling.
+- **SSL Bump**: Inspect and filter HTTPS traffic with auto-generated certificates.
+- **Caching**: Configurable content caching via Squid.
+- **Analytics**: Recharts dashboards for monitoring bandwidth, cache hit rates, and blocked requests.
+- **Deployment**: Containerized multi-tier architecture via docker-compose.
 
-## 🏗️ Architecture
+## Architecture
 
-Secure Proxy Manager employs a modern microservices architecture, completely revamped from its original monolithic Flask design:
+The project employs a microservices architecture:
 
-1. **Frontend (React/Vite)**: A reactive Single Page Application built with React, Tailwind CSS, and Recharts, providing real-time data visualization and instant WebSocket log streaming.
-2. **Backend (FastAPI)**: A high-performance, asynchronous Python backend using FastAPI and Uvicorn. It manages the SQLite database (in WAL mode for concurrency), handles REST APIs, and streams logs via native WebSockets.
-3. **UI Proxy (Flask)**: A lightweight reverse proxy serving the React static assets and routing API/WebSocket traffic to the backend, secured with Talisman CSP.
+1. **Frontend (React/Vite)**: Single Page Application built with React, Tailwind CSS, and Recharts, providing data visualization and WebSocket log streaming.
+2. **Backend (FastAPI)**: Asynchronous Python backend using FastAPI and Uvicorn. It manages the SQLite database, handles REST APIs, and streams logs via WebSockets.
+3. **UI Proxy (Flask)**: Reverse proxy serving the React static assets and routing API/WebSocket traffic to the backend, secured with Talisman CSP.
 4. **Proxy Engine (Squid)**: The core caching and filtering engine handling HTTP/HTTPS traffic.
-5. **WAF Engine (Python ICAP)**: A custom ICAP server that inspects payloads for threats (SQLi, XSS) before they reach the user, equipped with anti-DoS thread pooling and memory-leak prevention.
+5. **WAF Engine (Python ICAP)**: Custom ICAP server that inspects payloads.
 
 <div align="center">
-  <pre>
-  ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-  │             │      │             │      │             │
-  │  Web UI     │◄────►│  Backend    │◄────►│  Proxy      │
-  │  (React)    │      │  API        │      │  (Squid)    │
-  │             │      │  (Flask)    │      │             │
-  └─────────────┘      └─────────────┘      └─────────────┘
-         │                    │                    │
-         │                    │                    ▼
-         │                    │             ┌─────────────┐
-         │                    │             │  WAF Engine │
-         │                    │             │  (ICAP Py)  │
-         │                    │             └─────────────┘
-         ▼                    ▼                    
-  ┌─────────────────────────────────────────────────────┐
-  │                                                     │
-  │                 Shared Volumes                      │
-  │  (Configuration, Logs, Database, Certificates)      │
-  │                                                     │
-  └─────────────────────────────────────────────────────┘
-  </pre>
+  <img src="https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/docs/architecture.svg" alt="Secure Proxy Manager Architecture" width="800"/>
 </div>
 
 ### 📁 Project Structure
@@ -376,15 +318,15 @@ curl -X POST http://localhost:8011/api/ip-blacklist/import \
 
 **Note:** For scheduled automatic blacklist updates, consider setting up a cron job or scheduled task that calls the import endpoints with your preferred blacklist sources.
 
-## 📊 Monitoring and Analytics
+## Monitoring and Analytics
 
 ### Dashboard Metrics
 
-- **Proxy Status**: Real-time operational status
+- **Proxy Status**: Operational status
 - **Traffic Statistics**: Request volume over time
 - **Resource Usage**: Memory and CPU consumption
 - **Cache Performance**: Hit ratio and response time
-- **Security Score**: Overall security assessment
+- **Security Score**: Security assessment
 
 ### Logging and Analysis
 
@@ -477,7 +419,7 @@ curl -X GET http://localhost:8011/api/database/stats \
   -H "Authorization: Basic $(echo -n admin:admin | base64)"
 ```
 
-## 🧪 Testing and Validation
+## Testing and Validation
 
 ### Basic Connectivity Test
 
@@ -500,7 +442,7 @@ To test if blacklisting works:
 
 ### Running the Test Suite
 
-Execute the comprehensive end-to-end test suite:
+Execute the end-to-end test suite:
 
 ```bash
 # Make sure services are running
@@ -514,7 +456,7 @@ python3 e2e_test.py
 python3 e2e_test.py -v
 ```
 
-## ❓ Frequently Asked Questions (FAQ)
+## Frequently Asked Questions (FAQ)
 
 ### General Questions
 
@@ -610,7 +552,7 @@ A: Common causes:
 - Authentication failure (check credentials)
 - Check logs: `docker-compose logs backend`
 
-## 🔍 Troubleshooting
+## Troubleshooting
 
 ### Quick Fixes
 
@@ -656,9 +598,9 @@ A: Common causes:
    docker-compose exec proxy squidclient -h localhost mgr:info
    ```
 
-## 📘 API Documentation
+## API Documentation
 
-Secure Proxy Manager provides a comprehensive RESTful API for integration and automation with support for plain text and JSON blacklist imports.
+Secure Proxy Manager provides a RESTful API for integration and automation with support for plain text and JSON blacklist imports.
 
 **API Base URLs:**
 - Via Web UI: `http://localhost:8011/api`
@@ -680,11 +622,11 @@ curl -X POST http://localhost:8011/api/login \
 AUTH_HEADER="Authorization: Basic $(echo -n admin:admin | base64)"
 ```
 
-### 🚫 Blacklist Management
+### Blacklist Management
 
 #### Import Domain Blacklists
 
-Perfect for importing standard text files with one domain per line:
+Importing standard text files with one domain per line:
 
 ```bash
 # Import from URL (plain text file)
@@ -744,7 +686,7 @@ curl -X POST http://localhost:8011/api/ip-blacklist/import \
 - ✅ **CIDR Notation**: For IP ranges (`192.168.1.0/24`)
 - ✅ **Wildcards**: For domains (`*.example.com`)
 
-### 📋 Available Endpoints
+### Available Endpoints
 
 #### Authentication & Session Management
 | Endpoint | Method | Description |
@@ -814,7 +756,7 @@ curl -X POST http://localhost:8011/api/ip-blacklist/import \
 |----------|--------|-------------|
 | `/api/docs` | GET | Interactive API documentation |
 
-### 📊 Example API Responses
+### Example API Responses
 
 **Successful Import:**
 ```json
@@ -858,7 +800,7 @@ Full interactive API documentation is available at `/api/docs` when the service 
 - DoS protection against high-concurrency attacks via a custom `ThreadPoolExecutor` limiting background Python threads.
 - De-escalated Squid proxy privileges from `root` to a dedicated `proxy` user.
 
-## 🌱 Future Roadmap
+## Future Roadmap
 
 - **Authentication Integration**: LDAP/Active Directory support
 - **Advanced Analytics**: ML-based traffic pattern analysis
@@ -866,7 +808,7 @@ Full interactive API documentation is available at `/api/docs` when the service 
 - **Mobile Support**: Improved UI for mobile administration
 - **Notification System**: Alerts via webhook
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome and appreciated! Please read our [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on:
 
@@ -888,11 +830,11 @@ Quick contribution steps:
 
 For more details, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## 📜 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgements
+## Acknowledgements
 
 - [Squid Proxy](http://www.squid-cache.org/) for the core proxy engine
 - [Flask](https://flask.palletsprojects.com/) for the web framework
@@ -900,7 +842,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Docker](https://www.docker.com/) for containerization
 - All our contributors who have helped shape this project
 
-## 📞 Support
+## Support
 
 If you need help or have questions:
 
@@ -917,4 +859,4 @@ When reporting issues, please include:
 
 ---
 
-**Made with ❤️ by the Secure Proxy Manager community**
+**Made by the Secure Proxy Manager community**
