@@ -10,6 +10,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import json
 import logging
+import sys
 import time
 import secrets
 import tempfile
@@ -35,8 +36,17 @@ csp = {
 talisman = Talisman(app, content_security_policy=csp, force_https=False, session_cookie_secure=False)
 
 # Configure Basic Auth
-app.config['BASIC_AUTH_USERNAME'] = os.environ.get('BASIC_AUTH_USERNAME', 'admin')
-app.config['BASIC_AUTH_PASSWORD'] = os.environ.get('BASIC_AUTH_PASSWORD', 'admin')
+auth_user = os.environ.get('BASIC_AUTH_USERNAME')
+auth_pass = os.environ.get('BASIC_AUTH_PASSWORD')
+
+if not auth_user or not auth_pass:
+    print("CRITICAL SECURITY ERROR: BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD environment variables are not set.", file=sys.stderr)
+    print("The system cannot start without explicitly configured strong credentials.", file=sys.stderr)
+    print("Please create a .env file based on .env.example and set these variables.", file=sys.stderr)
+    sys.exit(1)
+
+app.config['BASIC_AUTH_USERNAME'] = auth_user
+app.config['BASIC_AUTH_PASSWORD'] = auth_pass
 
 app.config['BASIC_AUTH_FORCE'] = True
 app.config['SESSION_COOKIE_SECURE'] = False
@@ -69,10 +79,6 @@ except (PermissionError, OSError):
     pass
 logger.setLevel(logging.INFO)
 logger.addHandler(logging.StreamHandler())
-
-# Warn if using default credentials (after logger is initialized)
-if app.config['BASIC_AUTH_USERNAME'] == 'admin' and app.config['BASIC_AUTH_PASSWORD'] == 'admin':
-    logger.warning("⚠️  WARNING: Using default credentials (admin/admin). Please change these in production!")
 
 # Backend API configuration
 BACKEND_URL = os.environ.get('BACKEND_URL', 'http://backend:5000')

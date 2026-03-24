@@ -164,10 +164,19 @@ If this is your first time deploying Secure Proxy Manager, we recommend using th
    This script will:
    - Check prerequisites (Docker, Docker Compose)
    - Create required directories (`config`, `data`, `logs`)
-   - Set up environment variables with default credentials
+   - **Require you to set up strong credentials (no more default `admin:admin`)**
    - Guide you through the setup process
 
-3. **Start the application**:
+3. **Provide `.env` file explicitly (Manual setup)**:
+   If you don't use `init.sh`, you **MUST** create a `.env` file before starting.
+   ```bash
+   cp .env.example .env
+   # Edit .env and change BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD
+   nano .env
+   ```
+   *Note: The containers will crash on startup if these credentials are not provided.*
+
+4. **Start the application**:
    ```bash
    docker-compose up -d
    ```
