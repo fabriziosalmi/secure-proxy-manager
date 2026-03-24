@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { useApi } from '../hooks/useApi';
-import { Save, Download, Upload, Shield, Database, Network, Trash2, Key } from 'lucide-react';
+import { Save, Download, Upload, Shield, Database, Network, Trash2, Key, Bell } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
@@ -246,6 +246,114 @@ export function Settings() {
                 placeholder="e.g. banking.com, api.internal.local"
                 className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/50">
+          <CardHeader>
+            <div className="flex items-center space-x-2">
+              <Bell className="w-5 h-5 text-orange-500" />
+              <CardTitle>Notifications & Alerts</CardTitle>
+            </div>
+            <CardDescription>Configure alerts for critical security events and WAF blocks</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+              <div className="space-y-0.5 w-full">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="text-sm font-medium">Enable Notifications</label>
+                    <p className="text-xs text-muted-foreground">Receive real-time alerts via your preferred providers.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      name="enable_notifications"
+                      checked={formData.enable_notifications === 'true' || formData.enable_notifications === true}
+                      onChange={(e) => setFormData({ ...formData, enable_notifications: e.target.checked ? 'true' : 'false' })}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+                
+                {formData.enable_notifications === 'true' && (
+                  <div className="mt-4 pt-4 border-t border-border/50 space-y-4">
+                    {/* Telegram */}
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium text-blue-400">Telegram Bot</h4>
+                      <div className="grid gap-2">
+                        <input 
+                          type="text" 
+                          name="telegram_bot_token"
+                          value={formData.telegram_bot_token || ''}
+                          onChange={handleChange}
+                          placeholder="Bot Token (e.g. 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11)"
+                          className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        <input 
+                          type="text" 
+                          name="telegram_chat_id"
+                          value={formData.telegram_chat_id || ''}
+                          onChange={handleChange}
+                          placeholder="Chat ID (e.g. -1001234567890)"
+                          className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Gotify */}
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium text-green-400">Gotify Server</h4>
+                      <div className="grid gap-2">
+                        <input 
+                          type="text" 
+                          name="gotify_url"
+                          value={formData.gotify_url || ''}
+                          onChange={handleChange}
+                          placeholder="Gotify URL (e.g. https://gotify.yourdomain.com)"
+                          className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        <input 
+                          type="text" 
+                          name="gotify_token"
+                          value={formData.gotify_token || ''}
+                          onChange={handleChange}
+                          placeholder="App Token"
+                          className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                    </div>
+
+                    {/* MS Teams */}
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium text-purple-400">Microsoft Teams</h4>
+                      <input 
+                        type="text" 
+                        name="teams_webhook_url"
+                        value={formData.teams_webhook_url || ''}
+                        onChange={handleChange}
+                        placeholder="Teams Webhook URL"
+                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+
+                    {/* Custom Webhook */}
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium text-orange-400">Custom Webhook (JSON)</h4>
+                      <input 
+                        type="text" 
+                        name="webhook_url"
+                        value={formData.webhook_url || ''}
+                        onChange={handleChange}
+                        placeholder="https://your-webhook-endpoint.com/receive"
+                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
