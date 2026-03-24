@@ -2,6 +2,9 @@ import re
 import os
 import urllib.parse
 import socketserver
+import requests
+import json
+import threading
 from pyicap import ICAPServer, BaseICAPRequestHandler
 
 # Core WAF Rules for Content Inspection
@@ -96,11 +99,51 @@ class WAFICAPHandler(BaseICAPRequestHandler):
             for rule in rules:
                 if rule.search(decoded_url):
                     print(f"WAF BLOCKED [{category}] - Matched rule {rule.pattern}")
+                    
+                    # Try to extract client IP from headers if passed by squid
+                    client_ip = "Unknown"
+                    if b'X-Client-IP' in self.headers:
+                        client_ip = self.headers[b'X-Client-IP'][0].decode()
+                        
+                    # Send alert to backend via internal API
+                    try:
+                        alert_data = {
+                            "event_type": "waf_block",
+                            "message": f"WAF Blocked URL matching category {category}",
+                            "details": {
+                                "category": category,
+                                "url": decoded_url.decode('utf-8', errors='replace'),
+                                "client_ip": client_ip
+                            },
+                            "level": "error"
+                        }
+                        # We use threading to not block the ICAP response
+                        threading.Thread(target=self.notify_backend, args=(alert_data,)).start()
+                    except Exception as e:
+                        print(f"Failed to trigger alert: {e}")
+                        
                     self.send_block_response(category)
                     return
 
         # If safe, tell Squid no adaptation is required
         self.no_adaptation_required()
+
+    def notify_backend(self, data):
+        try:
+            # Backend is usually accessible on 'backend' container within docker network
+            backend_url = os.environ.get('BACKEND_URL', 'http://backend:5000')
+            # Use basic auth from environment if needed, or open internal endpoint
+            auth_user = os.environ.get('BASIC_AUTH_USERNAME', 'admin')
+            auth_pass = os.environ.get('BASIC_AUTH_PASSWORD', 'admin')
+            
+            requests.post(
+                f"{backend_url}/api/internal/alert", 
+                json=data,
+                auth=(auth_user, auth_pass),
+                timeout=2
+            )
+        except Exception as e:
+            print(f"Error sending alert to backend: {e}")
 
     def waf_RESPMOD(self):
         # We can implement inbound inspection here (e.g. malware scanning)
