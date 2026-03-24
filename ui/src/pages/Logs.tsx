@@ -14,7 +14,10 @@ export function Logs() {
 
   // Initialize logs from API
   useEffect(() => {
-    if (data?.logs) {
+    if (data?.data) {
+      setRealtimeLogs(data.data);
+    } else if (data?.logs) {
+      // Fallback for older API versions
       setRealtimeLogs(data.logs);
     }
   }, [data]);
