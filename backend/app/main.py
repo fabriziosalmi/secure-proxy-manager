@@ -263,8 +263,8 @@ def tail_logs_sync():
             logger.error(f"Error tailing logs: {e}")
             time.sleep(5)
 
-@app.websocket("/ws/logs")
-async def websocket_logs(websocket: WebSocket):
+@app.websocket("/api/ws/logs")
+async def websocket_endpoint(websocket: WebSocket):
     # Notice: In a real app we should pass auth tokens via WS query params, 
     # but for simplicity we accept the connection first.
     await manager.connect(websocket)
