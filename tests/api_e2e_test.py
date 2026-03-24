@@ -48,7 +48,7 @@ def run_tests():
     
     # 3. Test IP Blacklist
     success &= test_endpoint("Get IP Blacklist", "GET", "/ip-blacklist")
-    success &= test_endpoint("Add IP Blacklist", "POST", "/ip-blacklist", json={"ip_address": "1.2.3.4", "description": "Test IP"})
+    success &= test_endpoint("Add IP Blacklist", "POST", "/ip-blacklist", json={"ip": "1.2.3.4", "description": "Test IP"})
     
     # 4. Test Domain Blacklist
     success &= test_endpoint("Get Domain Blacklist", "GET", "/domain-blacklist")
