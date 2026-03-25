@@ -1,7 +1,7 @@
 import { Card, CardContent } from '../components/ui/card';
 import { useApi } from '../hooks/useApi';
 import { api } from '../lib/api';
-import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, CheckCircle } from 'lucide-react';
+import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, CheckCircle, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
@@ -13,6 +13,7 @@ export function Blacklists() {
   const [isGeoBlocking, setIsGeoBlocking] = useState(false);
   const [isPopularLists, setIsPopularLists] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [importingList, setImportingList] = useState<string | null>(null);
 
   const [newItem, setNewItem] = useState('');
   const [newDesc, setNewDesc] = useState('');
@@ -150,17 +151,25 @@ export function Blacklists() {
   };
 
   const handlePopularListImport = async (listUrl: string, listName: string) => {
-    const loadingToast = toast.loading(`Downloading and importing ${listName}... This may take a minute.`);
+    setImportingList(listName);
+    const loadingToast = toast.loading(`Downloading ${listName}… this may take 1-2 minutes for large lists.`);
     try {
       const response = await api.post('blacklists/import', {
         url: listUrl,
-        type: activeTab
+        type: activeTab === 'whitelist' ? 'ip' : activeTab
       });
-      toast.success(`Imported ${response.data.data?.added || 0} items from ${listName}`, { id: loadingToast });
-      setIsPopularLists(false);
+      const added = response.data.data?.added || 0;
+      const skipped = response.data.data?.skipped || 0;
+      toast.success(
+        `${listName}: added ${added.toLocaleString()} entries${skipped > 0 ? `, ${skipped.toLocaleString()} skipped` : ''}`,
+        { id: loadingToast, duration: 6000 }
+      );
       activeTab === 'ip' ? refreshIps() : refreshDomains();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || `Failed to import ${listName}`, { id: loadingToast });
+      const detail = err.response?.data?.detail || err.response?.data?.message || `Failed to import ${listName}`;
+      toast.error(detail, { id: loadingToast, duration: 8000 });
+    } finally {
+      setImportingList(null);
     }
   };
 
@@ -338,12 +347,16 @@ export function Blacklists() {
                   </div>
                   <p className="text-xs text-muted-foreground mb-4">{list.desc}</p>
                 </div>
-                <button 
+                <button
                   onClick={() => handlePopularListImport(list.url, list.name)}
-                  className="w-full flex items-center justify-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors mt-auto"
+                  disabled={importingList !== null}
+                  className="w-full flex items-center justify-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors mt-auto disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <Download className="w-4 h-4 mr-2" />
-                  Import List
+                  {importingList === list.name ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importing…</>
+                  ) : (
+                    <><Download className="w-4 h-4 mr-2" />Import List</>
+                  )}
                 </button>
               </CardContent>
             </Card>
