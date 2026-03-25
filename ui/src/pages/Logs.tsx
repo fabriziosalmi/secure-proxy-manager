@@ -22,28 +22,36 @@ export function Logs() {
     }
   }, [data]);
 
-  // Setup native WebSocket connection for real-time logs (migrated from Socket.IO to FastAPI native WS)
+  // Setup WebSocket connection for real-time logs
+  // Fetches a one-time auth token first since browsers cannot send auth headers on WS upgrades
   useEffect(() => {
-    if (autoRefresh) {
-      // Connect directly to the backend port (5000) for WebSockets since the UI proxy (8011) doesn't handle WS upgrading
-      // For production we should use a proper Nginx reverse proxy
+    if (!autoRefresh) {
+      if (socketRef.current) {
+        socketRef.current.close();
+        socketRef.current = null;
+      }
+      return;
+    }
+
+    let ws: WebSocket | null = null;
+    let pingInterval: ReturnType<typeof setInterval>;
+    let cancelled = false;
+
+    api.get('/ws-token').then(({ data }) => {
+      if (cancelled) return;
+
+      const token = data.token;
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const hostname = window.location.hostname;
-      // Connect directly to the FastAPI port (5001 exposed on host)
-      // Since Talisman CSP might be blocking custom ports, let's use the UI's port but 
-      // rely on the proxy to handle it if possible, or fallback to direct port.
-      const socketUrl = `${wsProtocol}//${hostname}:5001/api/ws/logs`;
-      
-      const ws = new WebSocket(socketUrl);
-      socketRef.current = ws as any; // Cast for now, would need a proper ref type
+      const socketUrl = `${wsProtocol}//${hostname}:5001/api/ws/logs?token=${encodeURIComponent(token)}`;
 
-      let pingInterval: ReturnType<typeof setInterval>;
-      
+      ws = new WebSocket(socketUrl);
+      socketRef.current = ws;
+
       ws.onopen = () => {
-        console.log('Connected to real-time log stream via FastAPI WebSocket');
-        // Keep alive ping
+        console.log('Connected to real-time log stream');
         pingInterval = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
+          if (ws?.readyState === WebSocket.OPEN) {
             ws.send('ping');
           }
         }, 30000);
@@ -53,7 +61,7 @@ export function Logs() {
         if (event.data === 'pong') return;
         try {
           const newLog = JSON.parse(event.data);
-          setRealtimeLogs(prev => [newLog, ...prev].slice(0, 200)); // Keep last 200 logs
+          setRealtimeLogs(prev => [newLog, ...prev].slice(0, 200));
         } catch (e) {
           console.error('Failed to parse incoming log', e);
         }
@@ -63,22 +71,21 @@ export function Logs() {
         console.log('Disconnected from real-time log stream');
         if (pingInterval) clearInterval(pingInterval);
       };
-      
+
       ws.onerror = (error) => {
         console.error('WebSocket error:', error);
       };
+    }).catch((err) => {
+      console.error('Failed to obtain WS token:', err);
+    });
 
-      return () => {
-        if (pingInterval) clearInterval(pingInterval);
-        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-          ws.close();
-        }
-      };
-    } else {
-      if (socketRef.current) {
-        (socketRef.current as any).close();
+    return () => {
+      cancelled = true;
+      if (pingInterval) clearInterval(pingInterval);
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close();
       }
-    }
+    };
   }, [autoRefresh]);
 
   // Filter logs based on search
