@@ -1,26 +1,34 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Activity, Clock, ShieldCheck, Zap, Download } from 'lucide-react';
+// Clock is retained for the Direct IP Blocks card icon
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useApi } from '../hooks/useApi';
 import React, { useEffect } from 'react';
 
 export function Dashboard() {
-  const { data: cacheStats, execute: refreshCache } = useApi<any>('cache/statistics');
+  const { execute: refreshCache } = useApi<any>('cache/statistics');
   const { data: logStats, execute: refreshLogStats } = useApi<any>('logs/stats');
   const { data: recentLogs, execute: refreshRecentLogs } = useApi<any>('logs?limit=5');
   const { data: timelineData, execute: refreshTimeline } = useApi<any[]>('logs/timeline');
   const { data: securityData, execute: refreshSecurity } = useApi<any>('security/score');
 
-  // Auto-refresh dashboard data every 10 seconds
+  // Auto-refresh dashboard data every 10 seconds, skip when tab is hidden
   useEffect(() => {
-    const interval = setInterval(() => {
-      refreshCache();
-      refreshLogStats();
-      refreshRecentLogs();
-      refreshTimeline();
-      refreshSecurity();
-    }, 10000);
-    return () => clearInterval(interval);
+    const refreshAll = () => {
+      if (document.visibilityState !== 'hidden') {
+        refreshCache();
+        refreshLogStats();
+        refreshRecentLogs();
+        refreshTimeline();
+        refreshSecurity();
+      }
+    };
+    const interval = setInterval(refreshAll, 10000);
+    document.addEventListener('visibilitychange', refreshAll);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshAll);
+    };
   }, [refreshCache, refreshLogStats, refreshRecentLogs, refreshTimeline, refreshSecurity]);
 
   // Format chart data based on timeline or fallback to mock
@@ -50,7 +58,8 @@ export function Dashboard() {
           <p className="text-muted-foreground">Real-time overview of the proxy pipeline</p>
         </div>
         <div className="flex gap-2">
-          <button 
+          <button
+            type="button"
             onClick={() => window.open('/api/analytics/report/pdf', '_blank')}
             className="flex items-center px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-md text-sm font-medium transition-colors"
           >
@@ -67,7 +76,7 @@ export function Dashboard() {
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{logStats?.total_logs?.toLocaleString() || '0'}</div>
+            <div className="text-3xl font-bold">{logStats?.total_count?.toLocaleString() || '0'}</div>
             <p className="text-xs text-muted-foreground mt-1">all time</p>
           </CardContent>
         </Card>
@@ -93,12 +102,12 @@ export function Dashboard() {
 
         <Card className="bg-card/50">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium uppercase text-muted-foreground">Avg Response</CardTitle>
+            <CardTitle className="text-sm font-medium uppercase text-muted-foreground">Direct IP Blocks</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{cacheStats?.avg_response_time || 'N/A'}s</div>
-            <p className="text-xs text-muted-foreground mt-1">estimated duration</p>
+            <div className="text-3xl font-bold">{logStats?.ip_blocks_count?.toLocaleString() || '0'}</div>
+            <p className="text-xs text-muted-foreground mt-1">by IP address rules</p>
           </CardContent>
         </Card>
 
@@ -108,7 +117,7 @@ export function Dashboard() {
             <Zap className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-destructive">{logStats?.blocked_requests?.toLocaleString() || '0'}</div>
+            <div className="text-3xl font-bold text-destructive">{logStats?.blocked_count?.toLocaleString() || '0'}</div>
             <p className="text-xs text-destructive/80 mt-1">requests denied</p>
           </CardContent>
         </Card>

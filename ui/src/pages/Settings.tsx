@@ -11,8 +11,11 @@ export function Settings() {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (settingsData) {
-      setFormData(settingsData);
+    if (Array.isArray(settingsData)) {
+      // API returns [{setting_name, setting_value}, ...] — convert to {key: value} map
+      const map: Record<string, string> = {};
+      settingsData.forEach((s: any) => { map[s.setting_name] = s.setting_value; });
+      setFormData(map);
     }
   }, [settingsData]);
 
