@@ -1228,7 +1228,7 @@ def import_blacklist(request_data: ImportBlacklistRequest, background_tasks: Bac
                     )
 
                 logger.info(f"Fetching blacklist from URL: {request_data.url}")
-                response = requests.get(request_data.url, timeout=15, headers={'User-Agent': 'SecureProxyManager/1.0'})
+                response = requests.get(request_data.url, timeout=60, headers={'User-Agent': 'SecureProxyManager/1.0'})
                 if response.status_code == 200:
                     content = response.text
                 else:
