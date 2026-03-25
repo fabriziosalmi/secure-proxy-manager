@@ -34,8 +34,7 @@ services:
 
   waf:
     build: ./waf
-    ports:
-      - "1344:1344"
+    # Port 1344 (ICAP) is internal only — not exposed on the host
     volumes:
       - ./config:/config
     deploy:
@@ -50,13 +49,13 @@ services:
   backend:
     build: ./backend
     ports:
-      - "127.0.0.1:5001:5000"  # Bind to localhost only; WebSocket from browser requires this port
+      - "5001:5000"  # LAN-accessible: browser WebSocket (logs page) connects here directly.
+                     # Restrict with firewall rules if internet-facing (e.g. ufw deny 5001).
     volumes:
       - ./config:/config
       - ./data:/data
       - ./logs:/logs
     environment:
-      - FLASK_ENV=${FLASK_ENV:-production}
       - PROXY_HOST=${PROXY_HOST:-proxy}
       - PROXY_PORT=${PROXY_PORT:-3128}
       - PROXY_CONTAINER_NAME=${PROXY_CONTAINER_NAME:-secure-proxy-manager-proxy-1}
@@ -81,6 +80,7 @@ services:
 
   proxy:
     build: ./proxy
+    container_name: secure-proxy-manager-proxy
     ports:
       - "3128:3128"
     volumes:

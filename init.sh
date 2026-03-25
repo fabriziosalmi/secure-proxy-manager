@@ -95,16 +95,14 @@ if [ ! -f .env ]; then
         print_success "Created .env file from .env.example"
         echo ""
         print_error "=============================================="
-        print_error "SECURITY WARNING: Default Credentials in Use"
+        print_error "ACTION REQUIRED: Set your credentials in .env"
         print_error "=============================================="
-        print_warning "The .env file contains default credentials:"
-        print_warning "  Username: admin"
-        print_warning "  Password: admin"
+        print_warning "BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD are empty."
+        print_warning "The services will refuse to start until they are set."
         echo ""
-        print_warning "These MUST be changed before production deployment!"
-        print_warning "Edit .env file now or press Ctrl+C to exit."
+        print_info "Edit .env now: nano .env"
         echo ""
-        read -p "Press Enter to continue with default credentials (NOT RECOMMENDED) or Ctrl+C to exit and edit .env now..."
+        read -p "Press Enter once you have set your credentials, or Ctrl+C to exit..."
     else
         print_error ".env.example file not found. Creating minimal .env file..."
         cat > .env << 'EOF'
@@ -142,12 +140,13 @@ else
     print_success ".env file already exists"
     
     # Check if credentials are empty or set to insecure defaults
-    if grep -qE "^BASIC_AUTH_USERNAME\s*=\s*['\"]?(admin)?['\"]?\s*$" .env || \
-       grep -qE "^BASIC_AUTH_PASSWORD\s*=\s*['\"]?(admin)?['\"]?\s*$" .env; then
+    if grep -qE "^BASIC_AUTH_USERNAME\s*=\s*$" .env || \
+       grep -qE "^BASIC_AUTH_PASSWORD\s*=\s*$" .env || \
+       grep -qE "^BASIC_AUTH_USERNAME\s*=\s*['\"]?admin['\"]?\s*$" .env || \
+       grep -qE "^BASIC_AUTH_PASSWORD\s*=\s*['\"]?admin['\"]?\s*$" .env; then
         echo ""
-        print_error "CRITICAL ERROR: You are using empty or default 'admin' credentials in .env!"
-        print_error "The containers will crash on startup for security reasons."
-        print_error "Please edit your .env file and set strong values for BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD."
+        print_error "CRITICAL: BASIC_AUTH_USERNAME or BASIC_AUTH_PASSWORD is empty or set to 'admin'."
+        print_error "Edit .env and set strong credentials before starting the services."
         exit 1
     fi
 fi
@@ -180,7 +179,7 @@ echo "   ${GREEN}docker-compose logs -f${NC}"
 echo ""
 echo "4. Access the web interface:"
 echo "   ${GREEN}http://localhost:8011${NC}"
-echo "   Default credentials: admin / admin (change these!)"
+echo "   Log in with the credentials you set in .env"
 echo ""
 echo "5. Configure your proxy client to use:"
 echo "   Host: ${GREEN}localhost${NC} (or your server IP)"
