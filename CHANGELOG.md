@@ -5,62 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
-- Comprehensive CONTRIBUTING.md with detailed contribution guidelines
-- LICENSE file (MIT License)
-- This CHANGELOG.md file to track project changes
-- Expanded API documentation with all available endpoints organized by category
-  - Authentication & Session Management endpoints
-  - Proxy Status & Settings endpoints  
-  - Blacklist Management endpoints
-  - Logs & Analytics endpoints
-  - Cache Management endpoints
-  - Security endpoints
-  - Database & Maintenance endpoints
-- Database management endpoints for optimization and statistics
-- Client and domain statistics endpoints
-- Security scanning endpoints
-- Table of Contents in README for better navigation
-- Quick Links section for easy access to key resources
-- Project structure diagram showing directory layout
-- FAQ section answering common questions
-- Security Configuration section with best practices
-- Enhanced Support section with detailed guidance
-- README files for examples/ and tests/ directories
-- Improved documentation for test scripts
+## [0.14.0] - 2026-03-25
 
 ### Changed
-- Fixed repository URL in README.md (corrected from secure-proxy to secure-proxy-manager)
-- Improved API endpoint documentation with better categorization
-- Enhanced documentation structure and formatting
-- Updated Flask version badge (2.0+ → 3.0+)
-- Expanded environment variables documentation with all docker-compose variables
-- Renamed "Backup and Restore" section to "Database Export and Backup" for accuracy
-- Improved SSL certificate installation instructions with OS-specific details
-- Enhanced Contributing section with link to CONTRIBUTING.md
-- Updated License section with link to LICENSE file
-- Fixed internal link to Transparent Proxy Setup section
-- Improved test_import.sh script with comprehensive header documentation
-- Made test_import.sh executable
+- Complete backend rewrite from Flask to FastAPI with Uvicorn and SQLite WAL mode
+- Frontend rewritten from Bootstrap/Jinja2 to React 18 + Vite + TypeScript + Tailwind CSS
+- UI proxy layer (Flask) now only serves static React assets and reverse-proxies API/WebSocket traffic
+- README project structure, API paths, env vars, and acknowledgements updated to match actual code
+
+### Added
+- WebSocket log streaming with one-time token authentication (`/api/ws-token` + `/api/ws/logs`)
+- IP whitelist management UI and backend (`/api/ip-whitelist` CRUD) — bypass direct-IP block for trusted LAN IPs
+- Geo-based IP blocklist import (`/api/blacklists/import-geo`)
+- PDF analytics report export (`/api/analytics/report/pdf`)
+- SIEM syslog forwarding with JSON formatter
+- CORS origin restriction via `CORS_ALLOWED_ORIGINS` env var
+- Rate limiting on authentication (5 attempts per 5 minutes, per IP)
+- Real traffic timeline endpoint (`/api/logs/timeline`) powering the 24h dashboard chart
+- Security score endpoint (`/api/security/score`)
+- End-to-end API test suite (`tests/e2e_test.py`) configurable via env vars
 
 ### Fixed
-- Repository clone URL inconsistency in Quick Start guide
-- Removed non-existent API endpoints from documentation:
-  - `/api/maintenance/backup-config`
-  - `/api/maintenance/restore-config`
-  - `/api/maintenance/update-blacklists`
-  - `/api/maintenance/clear-cache`
-- Corrected network requirements with all actual ports (8011, 3128, 5001)
-- Fixed Backup and Restore section to reflect actual database export functionality
-- Updated environment variables table to match docker-compose.yml
+- Squid `http_access allow ip_whitelist` rule now correctly precedes `http_access deny direct_ip_*` rules so whitelisted destination IPs are not blocked by the direct-IP block
+- Dashboard stat fields aligned to actual API response keys (`total_count`, `blocked_count`, `ip_blocks_count`)
+- Blacklists page field names aligned to API response (`ip`, `added_date` instead of `ip_address`, `created_at`)
+- Settings page initialization now correctly converts the API's array format to a key/value map
+- Sidebar API health indicator now polls `/health` and shows real connected/disconnected state
+- Backend API port bound to `127.0.0.1:5001` only — no external exposure
 
 ### Security
-- Added security warning about HTTPS filtering and man-in-the-middle inspection
-- Documented importance of changing default credentials
-- Added guidance for HTTPS deployment with reverse proxy
-- Included security best practices section
+- SSRF protection on import URLs using `ipaddress` module (blocks all private, loopback, link-local, reserved ranges)
+- Database export redacts sensitive settings (tokens, webhook URLs, SIEM credentials)
+- WebSocket endpoint requires a single-use token fetched through the authenticated HTTP proxy
+- `cache/statistics` endpoint no longer returns fabricated numbers; returns `simulated: true` when Squid mgr interface is unavailable
+- Replaced `admin:admin` defaults in all README curl examples with `YOUR_USER:YOUR_PASS` placeholders
 
 ## [1.0.0] - 2024-11-15
 
@@ -107,5 +85,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 When contributing, please update this changelog with your changes under the `[Unreleased]` section.
 Follow the format above and be concise but descriptive.
 
-[Unreleased]: https://github.com/fabriziosalmi/secure-proxy-manager/compare/v1.0.0...HEAD
+[0.14.0]: https://github.com/fabriziosalmi/secure-proxy-manager/releases/tag/v0.14.0
 [1.0.0]: https://github.com/fabriziosalmi/secure-proxy-manager/releases/tag/v1.0.0
