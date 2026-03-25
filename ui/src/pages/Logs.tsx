@@ -44,11 +44,15 @@ export function Logs() {
       const token = data.token;
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const hostname = window.location.hostname;
-      // WS_BACKEND_PORT can be injected at build time (VITE_WS_BACKEND_PORT) or
-      // overridden at runtime via window.__WS_BACKEND_PORT__. Defaults to 5001.
+      // WS port resolution order:
+      //  1. window.__WS_BACKEND_PORT__  (runtime injection via <script> in index.html)
+      //  2. VITE_WS_BACKEND_PORT        (build-time env var, e.g. for direct-port deployments)
+      //  3. window.location.port        (same port as UI — works when nginx proxies /api/ws/)
+      //  4. protocol default (443/80)
       const wsPort = (window as Window & { __WS_BACKEND_PORT__?: string }).__WS_BACKEND_PORT__
         ?? import.meta.env.VITE_WS_BACKEND_PORT
-        ?? '5001';
+        ?? window.location.port
+        ?? (window.location.protocol === 'https:' ? '443' : '80');
       const socketUrl = `${wsProtocol}//${hostname}:${wsPort}/api/ws/logs?token=${encodeURIComponent(token)}`;
 
       ws = new WebSocket(socketUrl);

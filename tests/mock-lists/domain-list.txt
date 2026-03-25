@@ -1,0 +1,9 @@
+# Mock domain blacklist for E2E tests
+# Using .test TLD (RFC 2606) — never resolves in production
+mock-malware-cdn.test
+mock-phishing-kit.test
+mock-adtracker.test
+mock-botnet-c2.test
+mock-spam-relay.test
+# Intentional invalid entry (should be skipped)
+not a valid domain!!

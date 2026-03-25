@@ -1,0 +1,14 @@
+# Mock IP blacklist for E2E tests
+# RFC 5737 TEST-NET addresses (never routable)
+192.0.2.201
+192.0.2.202
+192.0.2.203
+198.51.100.201
+198.51.100.202
+203.0.113.201
+203.0.113.202
+203.0.113.203
+# CIDR ranges
+192.0.2.224/28
+# Intentional invalid entry (should be skipped)
+not-an-ip
