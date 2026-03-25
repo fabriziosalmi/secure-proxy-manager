@@ -1,11 +1,21 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Activity, Clock, ShieldCheck, Zap, Download } from 'lucide-react';
+import { Activity, Clock, ShieldCheck, Zap, Download, Copy, Check } from 'lucide-react';
 // Clock is retained for the Direct IP Blocks card icon
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useApi } from '../hooks/useApi';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 export function Dashboard() {
+  const [copied, setCopied] = useState(false);
+  const proxyAddress = `${window.location.hostname}:3128`;
+
+  const handleCopyProxy = () => {
+    navigator.clipboard.writeText(proxyAddress).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   const { execute: refreshCache } = useApi<any>('cache/statistics');
   const { data: logStats, execute: refreshLogStats } = useApi<any>('logs/stats');
   const { data: recentLogs, execute: refreshRecentLogs } = useApi<any>('logs?limit=5');
@@ -68,6 +78,24 @@ export function Dashboard() {
           </button>
         </div>
       </div>
+
+      {/* Proxy address helper banner */}
+      <Card className="bg-primary/5 border-primary/20">
+        <CardContent className="py-3 px-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-muted-foreground">Configure your device to use this proxy:</div>
+            <code className="text-sm font-mono font-semibold text-primary">{proxyAddress}</code>
+          </div>
+          <button
+            type="button"
+            onClick={handleCopyProxy}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
+          >
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-card/50">

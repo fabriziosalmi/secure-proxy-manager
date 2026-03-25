@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 export function Blacklists() {
   const [activeTab, setActiveTab] = useState<'ip' | 'domain' | 'whitelist'>('ip');
   const [isAdding, setIsAdding] = useState(false);
+  const [isBulkAdding, setIsBulkAdding] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isGeoBlocking, setIsGeoBlocking] = useState(false);
   const [isPopularLists, setIsPopularLists] = useState(false);
@@ -15,6 +16,7 @@ export function Blacklists() {
 
   const [newItem, setNewItem] = useState('');
   const [newDesc, setNewDesc] = useState('');
+  const [bulkText, setBulkText] = useState('');
   const [importUrl, setImportUrl] = useState('');
   const [geoCountry, setGeoCountry] = useState('');
   
@@ -57,6 +59,29 @@ export function Blacklists() {
       else refreshWhitelists();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to add rule', { id: loadingToast });
+    }
+  };
+
+  const handleBulkAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bulkText.trim()) return;
+
+    const loadingToast = toast.loading(`Importing ${activeTab} entries...`);
+    try {
+      const response = await api.post('blacklists/import', {
+        type: activeTab === 'whitelist' ? 'ip' : activeTab,
+        content: bulkText
+      });
+      const added = response.data.data?.added || 0;
+      const skipped = response.data.data?.skipped || 0;
+      toast.success(`Added ${added} entries${skipped > 0 ? `, ${skipped} skipped` : ''}`, { id: loadingToast });
+      setBulkText('');
+      setIsBulkAdding(false);
+      if (activeTab === 'ip') refreshIps();
+      else if (activeTab === 'domain') refreshDomains();
+      else refreshWhitelists();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to import entries', { id: loadingToast });
     }
   };
 
@@ -154,7 +179,7 @@ export function Blacklists() {
         <div className="flex gap-2">
           {activeTab === 'ip' && (
             <button 
-              onClick={() => { setIsGeoBlocking(!isGeoBlocking); setIsAdding(false); setIsImporting(false); setIsPopularLists(false); }}
+              onClick={() => { setIsGeoBlocking(!isGeoBlocking); setIsAdding(false); setIsImporting(false); setIsPopularLists(false); setIsBulkAdding(false); }}
               className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isGeoBlocking ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
             >
               <Map className="w-4 h-4 mr-2" />
@@ -165,7 +190,7 @@ export function Blacklists() {
           {activeTab !== 'whitelist' && (
             <button
               type="button"
-              onClick={() => { setIsPopularLists(!isPopularLists); setIsAdding(false); setIsGeoBlocking(false); setIsImporting(false); }}
+              onClick={() => { setIsPopularLists(!isPopularLists); setIsAdding(false); setIsGeoBlocking(false); setIsImporting(false); setIsBulkAdding(false); }}
               className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isPopularLists ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
             >
               <Database className="w-4 h-4 mr-2" />
@@ -176,15 +201,23 @@ export function Blacklists() {
           {activeTab !== 'whitelist' && (
             <button
               type="button"
-              onClick={() => { setIsImporting(!isImporting); setIsAdding(false); setIsGeoBlocking(false); setIsPopularLists(false); }}
+              onClick={() => { setIsImporting(!isImporting); setIsAdding(false); setIsGeoBlocking(false); setIsPopularLists(false); setIsBulkAdding(false); }}
               className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isImporting ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
             >
               <Download className="w-4 h-4 mr-2" />
               Import URL
             </button>
           )}
-          <button 
-            onClick={() => { setIsAdding(!isAdding); setIsImporting(false); setIsGeoBlocking(false); setIsPopularLists(false); }}
+          <button
+            type="button"
+            onClick={() => { setIsBulkAdding(!isBulkAdding); setIsAdding(false); setIsImporting(false); setIsGeoBlocking(false); setIsPopularLists(false); }}
+            className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isBulkAdding ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Bulk Add
+          </button>
+          <button
+            onClick={() => { setIsAdding(!isAdding); setIsImporting(false); setIsGeoBlocking(false); setIsPopularLists(false); setIsBulkAdding(false); }}
             className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isAdding ? 'bg-destructive/90 text-destructive-foreground' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}
           >
             <Plus className={`w-4 h-4 mr-2 transition-transform ${isAdding ? 'rotate-45' : ''}`} />
@@ -223,6 +256,39 @@ export function Blacklists() {
               <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors h-10">
                 Save Rule
               </button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {isBulkAdding && (
+        <Card className="bg-card/50 border-primary/50">
+          <CardContent className="pt-6">
+            <form onSubmit={handleBulkAdd} className="space-y-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  {activeTab === 'domain' ? 'Domains' : 'IP Addresses / CIDR Networks'} — one per line
+                </label>
+                <textarea
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                  placeholder={activeTab === 'domain'
+                    ? 'bad-domain.com\nanother-domain.net\nads.example.org'
+                    : '192.168.1.100\n10.0.0.0/8\n203.0.113.50'}
+                  rows={6}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+                  required
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">Lines starting with # are ignored. Invalid entries are skipped.</p>
+              <div className="flex gap-2">
+                <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors">
+                  Add All
+                </button>
+                <button type="button" onClick={() => setIsBulkAdding(false)} className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors">
+                  Cancel
+                </button>
+              </div>
             </form>
           </CardContent>
         </Card>
@@ -321,7 +387,7 @@ export function Blacklists() {
         </button>
         <button
           type="button"
-          onClick={() => { setActiveTab('whitelist'); setIsPopularLists(false); setIsImporting(false); setIsGeoBlocking(false); }}
+          onClick={() => { setActiveTab('whitelist'); setIsPopularLists(false); setIsImporting(false); setIsGeoBlocking(false); setIsBulkAdding(false); }}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/20 text-green-500 shadow-sm' : 'text-muted-foreground hover:text-green-500'}`}
         >
           <CheckCircle className="w-4 h-4 mr-2" />

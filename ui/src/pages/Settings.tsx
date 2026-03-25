@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { useApi } from '../hooks/useApi';
-import { Save, Download, Upload, Shield, Database, Network, Trash2, Key, Bell } from 'lucide-react';
+import { Save, Download, Shield, Database, Network, Trash2, Key, Bell } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
@@ -58,47 +58,20 @@ export function Settings() {
   };
 
   const handleBackup = async () => {
+    const loadingToast = toast.loading('Generating backup...');
     try {
-      const response = await api.get('maintenance/backup-config');
-      if (response.data && response.data.data) {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(response.data.data, null, 2));
-        const downloadAnchorNode = document.createElement('a');
-        downloadAnchorNode.setAttribute("href",     dataStr);
-        downloadAnchorNode.setAttribute("download", "proxy_backup.json");
-        document.body.appendChild(downloadAnchorNode);
-        downloadAnchorNode.click();
-        downloadAnchorNode.remove();
-        toast.success("Backup downloaded!");
-      }
+      const response = await api.get('database/export');
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(response.data, null, 2));
+      const a = document.createElement('a');
+      a.setAttribute("href", dataStr);
+      a.setAttribute("download", `secure-proxy-backup-${new Date().toISOString().slice(0,10)}.json`);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success("Backup downloaded!", { id: loadingToast });
     } catch (e) {
-      toast.error("Failed to generate backup");
+      toast.error("Failed to generate backup", { id: loadingToast });
     }
-  };
-
-  const handleRestore = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = e => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.readAsText(file, "UTF-8");
-      reader.onload = async readerEvent => {
-        try {
-          const content = readerEvent.target?.result as string;
-          const config = JSON.parse(content);
-          
-          const loadingToast = toast.loading('Restoring configuration...');
-          await api.post('maintenance/restore-config', { config });
-          toast.success('Configuration restored!', { id: loadingToast });
-          refreshSettings();
-        } catch (error) {
-          toast.error('Invalid backup file');
-        }
-      }
-    }
-    input.click();
   };
 
   const handleDownloadCa = async () => {
@@ -808,15 +781,7 @@ export function Settings() {
                 <span className="text-sm font-medium">Backup Config</span>
                 <span className="text-xs text-muted-foreground mt-1">Download settings JSON</span>
               </button>
-              <button 
-                onClick={handleRestore}
-                className="flex-1 flex flex-col items-center justify-center p-6 border border-border rounded-lg bg-background/50 hover:bg-secondary/50 transition-colors"
-              >
-                <Upload className="w-6 h-6 mb-2 text-emerald-500" />
-                <span className="text-sm font-medium">Restore Config</span>
-                <span className="text-xs text-muted-foreground mt-1">Upload settings JSON</span>
-              </button>
-              <button 
+<button 
                 onClick={handleClearCache}
                 className="flex-1 flex flex-col items-center justify-center p-6 border border-border rounded-lg bg-background/50 hover:bg-destructive/10 transition-colors group"
               >
