@@ -4,6 +4,7 @@ import { Activity, Clock, ShieldCheck, Zap, Download, Copy, Check } from 'lucide
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useApi } from '../hooks/useApi';
 import React, { useEffect, useState } from 'react';
+import type { LogEntry, LogStats, TimelineEntry, SecurityScore, LogsPageData } from '../types';
 
 export function Dashboard() {
   const [copied, setCopied] = useState(false);
@@ -16,11 +17,11 @@ export function Dashboard() {
     });
   };
 
-  const { execute: refreshCache } = useApi<any>('cache/statistics');
-  const { data: logStats, execute: refreshLogStats } = useApi<any>('logs/stats');
-  const { data: recentLogs, execute: refreshRecentLogs } = useApi<any>('logs?limit=5');
-  const { data: timelineData, execute: refreshTimeline } = useApi<any[]>('logs/timeline');
-  const { data: securityData, execute: refreshSecurity } = useApi<any>('security/score');
+  const { execute: refreshCache } = useApi<unknown>('cache/statistics');
+  const { data: logStats, execute: refreshLogStats } = useApi<LogStats>('logs/stats');
+  const { data: recentLogs, execute: refreshRecentLogs } = useApi<LogsPageData>('logs?limit=5');
+  const { data: timelineData, execute: refreshTimeline } = useApi<TimelineEntry[]>('logs/timeline');
+  const { data: securityData, execute: refreshSecurity } = useApi<SecurityScore>('security/score');
 
   // Auto-refresh dashboard data every 10 seconds, skip when tab is hidden
   useEffect(() => {
@@ -221,7 +222,7 @@ export function Dashboard() {
           </CardHeader>
           <CardContent className="flex-1 overflow-y-auto">
             <div className="space-y-4">
-              {(recentLogs?.data || recentLogs?.logs || []).map((log: any, i: number) => (
+              {(recentLogs?.data ?? recentLogs?.logs ?? ([] as LogEntry[])).map((log, i: number) => (
                 <div key={i} className="flex items-center justify-between border-b border-border/50 pb-4 last:border-0 last:pb-0">
                   <div className="space-y-1 overflow-hidden pr-4">
                     <p className="text-sm font-medium leading-none truncate" title={log.destination}>
@@ -241,7 +242,7 @@ export function Dashboard() {
                   </div>
                 </div>
               ))}
-              {(!recentLogs || (recentLogs.data || recentLogs.logs || []).length === 0) && (
+              {(!recentLogs || (recentLogs.data ?? recentLogs.logs ?? []).length === 0) && (
                 <div className="text-center py-8 text-muted-foreground text-sm">
                   No recent logs available.
                 </div>

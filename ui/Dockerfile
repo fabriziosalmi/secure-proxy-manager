@@ -1,4 +1,4 @@
-# Stage 1: Build React Frontend
+# Stage 1: Build React frontend
 FROM node:20-alpine AS frontend-builder
 WORKDIR /frontend
 COPY ./ui/package*.json ./
@@ -6,43 +6,16 @@ RUN npm ci
 COPY ./ui/ ./
 RUN npm run build
 
-# Stage 2: Python Backend
-FROM python:3.11-slim
+# Stage 2: Nginx — serves the compiled SPA and reverse-proxies /api/ to FastAPI
+FROM nginx:1.27-alpine
 
-WORKDIR /app
+# envsubst is in gettext; already present in nginx:alpine
+RUN rm /etc/nginx/conf.d/default.conf
 
-# Copy requirements first to leverage Docker cache
-COPY ./ui/requirements.txt .
+COPY --from=frontend-builder /frontend/dist /usr/share/nginx/html
+COPY ./ui/nginx.conf.template            /etc/nginx/templates/default.conf.template
+COPY ./ui/docker-entrypoint.sh           /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Create non-root user for security
-RUN groupadd -r appuser && \
-    useradd -r -g appuser -s /bin/bash -d /home/appuser appuser && \
-    mkdir -p /home/appuser && \
-    chown -R appuser:appuser /home/appuser
-
-# Create necessary directories with proper permissions
-RUN mkdir -p /logs /data /config && \
-    chown -R appuser:appuser /logs /data /config /app
-
-# Copy application code
-COPY --chown=appuser:appuser ./ui /app
-
-# Copy built frontend from builder stage
-COPY --chown=appuser:appuser --from=frontend-builder /frontend/dist /app/dist
-
-# Switch to non-root user
-USER appuser
-
-# Set secure environment variables
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    FRONTEND_DIST=/app/dist
-
-# Expose the port
 EXPOSE 8011
-
-# Run the application
-CMD ["python", "app.py"]
+ENTRYPOINT ["/docker-entrypoint.sh"]

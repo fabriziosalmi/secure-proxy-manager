@@ -1,6 +1,7 @@
 import { Card, CardContent } from '../components/ui/card';
 import { useApi } from '../hooks/useApi';
-import { api } from '../lib/api';
+import { api, getErrorMessage } from '../lib/api';
+import type { IpEntry, DomainEntry, WhitelistEntry, ListResponse } from '../types';
 import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, CheckCircle, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
@@ -21,13 +22,13 @@ export function Blacklists() {
   const [importUrl, setImportUrl] = useState('');
   const [geoCountry, setGeoCountry] = useState('');
   
-  const { data: ipData, execute: refreshIps } = useApi<any>('ip-blacklist');
-  const { data: domainData, execute: refreshDomains } = useApi<any>('domain-blacklist');
-  const { data: whitelistData, execute: refreshWhitelists } = useApi<any>('ip-whitelist');
+  const { data: ipData, execute: refreshIps } = useApi<ListResponse<IpEntry>>('ip-blacklist');
+  const { data: domainData, execute: refreshDomains } = useApi<ListResponse<DomainEntry>>('domain-blacklist');
+  const { data: whitelistData, execute: refreshWhitelists } = useApi<ListResponse<WhitelistEntry>>('ip-whitelist');
 
-  const ips = ipData?.data || [];
-  const domains = domainData?.data || [];
-  const whitelists = whitelistData?.data || [];
+  const ips = ipData?.data ?? [];
+  const domains = domainData?.data ?? [];
+  const whitelists = whitelistData?.data ?? [];
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,8 +59,8 @@ export function Blacklists() {
       if (activeTab === 'ip') refreshIps();
       else if (activeTab === 'domain') refreshDomains();
       else refreshWhitelists();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to add rule', { id: loadingToast });
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to add rule'), { id: loadingToast });
     }
   };
 
@@ -81,8 +82,8 @@ export function Blacklists() {
       if (activeTab === 'ip') refreshIps();
       else if (activeTab === 'domain') refreshDomains();
       else refreshWhitelists();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to import entries', { id: loadingToast });
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to import entries'), { id: loadingToast });
     }
   };
 
@@ -100,8 +101,8 @@ export function Blacklists() {
       if (activeTab === 'ip') refreshIps();
       else if (activeTab === 'domain') refreshDomains();
       else refreshWhitelists();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to delete rule', { id: loadingToast });
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to delete rule'), { id: loadingToast });
     }
   };
 
@@ -119,8 +120,8 @@ export function Blacklists() {
       setImportUrl('');
       setIsImporting(false);
       activeTab === 'ip' ? refreshIps() : refreshDomains();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to import rules', { id: loadingToast });
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to import rules'), { id: loadingToast });
     }
   };
 
@@ -145,8 +146,8 @@ export function Blacklists() {
       setGeoCountry('');
       setIsGeoBlocking(false);
       refreshIps();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to import GeoIP blocks', { id: loadingToast });
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to import GeoIP blocks'), { id: loadingToast });
     }
   };
 
@@ -165,9 +166,8 @@ export function Blacklists() {
         { id: loadingToast, duration: 6000 }
       );
       activeTab === 'ip' ? refreshIps() : refreshDomains();
-    } catch (err: any) {
-      const detail = err.response?.data?.detail || err.response?.data?.message || `Failed to import ${listName}`;
-      toast.error(detail, { id: loadingToast, duration: 8000 });
+    } catch (err) {
+      toast.error(getErrorMessage(err, `Failed to import ${listName}`), { id: loadingToast, duration: 8000 });
     } finally {
       setImportingList(null);
     }
@@ -428,7 +428,7 @@ export function Blacklists() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {activeTab === 'ip' && ips.map((item: any) => (
+              {activeTab === 'ip' && ips.map((item) => (
                 <tr key={item.id} className="hover:bg-secondary/20 transition-colors">
                   <td className="px-6 py-4 font-medium text-white">{item.ip}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
@@ -448,7 +448,7 @@ export function Blacklists() {
                 </tr>
               ))}
               
-              {activeTab === 'domain' && domains.map((item: any) => (
+              {activeTab === 'domain' && domains.map((item) => (
                 <tr key={item.id} className="hover:bg-secondary/20 transition-colors">
                   <td className="px-6 py-4 font-medium text-white">{item.domain}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
@@ -468,7 +468,7 @@ export function Blacklists() {
                 </tr>
               ))}
 
-              {activeTab === 'whitelist' && whitelists.map((item: any) => (
+              {activeTab === 'whitelist' && whitelists.map((item) => (
                 <tr key={item.id} className="hover:bg-secondary/20 transition-colors">
                   <td className="px-6 py-4 font-medium text-green-500">{item.ip}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
