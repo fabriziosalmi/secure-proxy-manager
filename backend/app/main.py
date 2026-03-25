@@ -1360,32 +1360,56 @@ def import_geo_blacklist(request_data: ImportGeoBlacklistRequest, background_tas
         for row in cursor.fetchall():
             existing_ips.add(row['ip'])
             
+        fetch_errors = []
         for country in request_data.countries:
             country = country.lower()
-            url = f"https://www.ipdeny.com/ipv4/root/blocks/{country}.zone"
-            logger.info(f"Fetching GeoIP block for {country} from {url}")
-            
-            try:
-                response = requests.get(url, timeout=30)
-                if response.status_code == 200:
-                    lines = response.text.splitlines()
-                    to_insert = []
-                    
-                    for line in lines:
-                        ip = line.strip()
-                        if ip and ip not in existing_ips:
-                            to_insert.append((ip, f"GeoIP: {country.upper()}"))
-                            existing_ips.add(ip)
-                            total_imported += 1
-                            
-                    if to_insert:
-                        cursor.executemany(
-                            "INSERT INTO ip_blacklist (ip, description) VALUES (?, ?)",
-                            to_insert
-                        )
-                        conn.commit()
-            except Exception as e:
-                logger.error(f"Error fetching GeoIP for {country}: {e}")
+            # Primary: ipdeny.com (correct path), fallback: GitHub mirror
+            urls_to_try = [
+                f"https://www.ipdeny.com/ipblocks/data/countries/{country}.zone",
+                f"https://raw.githubusercontent.com/herrbischoff/country-ip-blocks/master/ipv4/{country}.cidr",
+            ]
+            headers = {'User-Agent': 'SecureProxyManager/1.0'}
+            content = None
+            last_error = None
+
+            for url in urls_to_try:
+                logger.info(f"Fetching GeoIP block for {country} from {url}")
+                try:
+                    resp = requests.get(url, timeout=30, headers=headers)
+                    if resp.status_code == 200:
+                        content = resp.text
+                        break
+                    else:
+                        last_error = f"HTTP {resp.status_code} from {url}"
+                        logger.warning(last_error)
+                except Exception as e:
+                    last_error = str(e)
+                    logger.warning(f"Error fetching GeoIP for {country} from {url}: {e}")
+
+            if content is None:
+                fetch_errors.append(f"{country.upper()}: {last_error}")
+                continue
+
+            to_insert = []
+            for line in content.splitlines():
+                ip = line.strip()
+                if ip and not ip.startswith('#') and ip not in existing_ips:
+                    to_insert.append((ip, f"GeoIP: {country.upper()}"))
+                    existing_ips.add(ip)
+                    total_imported += 1
+
+            if to_insert:
+                cursor.executemany(
+                    "INSERT INTO ip_blacklist (ip, description) VALUES (?, ?)",
+                    to_insert
+                )
+                conn.commit()
+
+        if fetch_errors and total_imported == 0:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to fetch GeoIP data: {'; '.join(fetch_errors)}"
+            )
                 
         conn.close()
         
