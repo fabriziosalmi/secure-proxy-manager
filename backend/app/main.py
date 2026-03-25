@@ -75,8 +75,10 @@ def ddns_scheduler_sync():
         try:
             # Note: The actual logic will be fully ported later. This ensures the thread is running.
             logger.debug("Running DDNS scheduler check...")
-        except Exception as e:
-            logger.error(f"DDNS scheduler error: {e}")
+        except sqlite3.Error as e:
+            logger.error(f"DDNS scheduler database error: {e}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"DDNS scheduler network error: {e}")
         time.sleep(3600)  # Sleep for 1 hour
 
 # SIEM Syslog Logger setup
@@ -110,8 +112,12 @@ def setup_siem_logger():
             pass # DB not ready yet
             
         conn.close()
+    except sqlite3.Error as e:
+        logger.error(f"Failed to setup SIEM logger (database error): {e}")
+    except ValueError as e:
+        logger.error(f"Failed to setup SIEM logger (invalid port configuration): {e}")
     except Exception as e:
-        logger.error(f"Failed to setup SIEM logger: {e}")
+        logger.error(f"Failed to setup SIEM logger (unexpected error): {e}")
 
 # FastAPI App Lifespan
 @asynccontextmanager
@@ -543,7 +549,7 @@ def get_status():
         "proxy_host": PROXY_HOST,
         "proxy_port": PROXY_PORT,
         "timestamp": datetime.now().isoformat(),
-        "version": "1.1.0"
+        "version": "1.2.0"
     }
     
     # Add today's request count
@@ -666,8 +672,11 @@ def check_cert_security():
                 "db_found": db_found
             }
         }
-    except Exception as e:
-        logger.error(f"Error checking cert security: {e}")
+    except sqlite3.Error as e:
+        logger.error(f"Error checking cert security (database): {e}")
+        raise HTTPException(status_code=500, detail="Failed to check certificate security")
+    except OSError as e:
+        logger.error(f"Error checking cert security (filesystem): {e}")
         raise HTTPException(status_code=500, detail="Failed to check certificate security")
 
 def export_blacklists_to_files():
@@ -699,8 +708,10 @@ def export_blacklists_to_files():
                 
         conn.close()
         logger.info("Successfully exported database lists to config files")
-    except Exception as e:
-        logger.error(f"Failed to export lists to files: {e}")
+    except sqlite3.Error as e:
+        logger.error(f"Failed to export lists to files (database error): {e}")
+    except OSError as e:
+        logger.error(f"Failed to export lists to files (filesystem error): {e}")
 
 @app.post("/api/maintenance/reload-config", dependencies=[Depends(authenticate)])
 def reload_proxy_config(background_tasks: BackgroundTasks):
@@ -877,7 +888,7 @@ def add_domain_to_blacklist(item: DomainBlacklistItem, background_tasks: Backgro
     domain = item.domain.strip().lower()
     
     # Basic domain validation
-    if not domain or ' ' in domain:
+    if not domain or ' ' in domain or domain.startswith('-'):
         raise HTTPException(status_code=400, detail="Invalid domain format")
         
     # Remove http:// or https:// if provided
@@ -1830,7 +1841,7 @@ def export_database():
 
         export_data = {
             "metadata": {
-                "version": "1.1.0",
+                "version": "1.2.0",
                 "timestamp": datetime.now().isoformat(),
                 "record_counts": {
                     "logs": len(logs),

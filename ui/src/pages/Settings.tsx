@@ -5,20 +5,38 @@ import { Save, Download, Shield, Database, Network, Trash2, Key, Bell } from 'lu
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import { z } from 'zod';
+
+// Validation schema for settings form data
+const settingsSchema = z.object({
+  proxy_port: z.string().regex(/^\d+$/, "Port must be a number").refine(val => {
+    const port = parseInt(val, 10);
+    return port > 0 && port <= 65535;
+  }, "Port must be between 1 and 65535").optional(),
+  admin_email: z.string().email("Invalid email address").optional().or(z.literal('')),
+  enable_siem_forwarding: z.enum(['true', 'false']).optional(),
+  siem_host: z.string().optional(),
+  siem_port: z.string().regex(/^\d+$/, "Port must be a number").refine(val => {
+    const port = parseInt(val, 10);
+    return port > 0 && port <= 65535;
+  }, "Port must be between 1 and 65535").optional().or(z.literal('')),
+  max_cache_size_mb: z.string().regex(/^\d+$/, "Size must be a number").optional(),
+  custom_squid_conf: z.string().optional()
+}).catchall(z.string());
 
 export function Settings() {
-  const { data: settingsData } = useApi<SettingRow[]>('settings');
+  const { data: settingsData, loading, error } = useApi<SettingRow[]>('settings');
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (Array.isArray(settingsData)) {
+    if (!loading && !error && Array.isArray(settingsData)) {
       // API returns [{setting_name, setting_value}, ...] — convert to {key: value} map
       const map: Record<string, string> = {};
       settingsData.forEach((s) => { map[s.setting_name] = s.setting_value; });
       setFormData(map);
     }
-  }, [settingsData]);
+  }, [settingsData, loading, error]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -26,14 +44,42 @@ export function Settings() {
 
   const handleSave = async () => {
     setIsSaving(true);
-    const loadingToast = toast.loading('Saving settings...');
+    
     try {
-      await api.post('settings', formData);
+      // Validate form data before submitting
+      settingsSchema.parse(formData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        // Show validation errors to the user
+        error.issues.forEach((err: any) => {
+          toast.error(`${err.path.join('.')}: ${err.message}`);
+        });
+      } else {
+        toast.error('Validation failed');
+      }
+      setIsSaving(false);
+      return;
+    }
+
+    const loadingToast = toast.loading('Saving settings...');
+    // Generate a unique idempotency key for this save operation
+    const idempotencyKey = crypto.randomUUID();
+    
+    try {
+      await api.post('settings', formData, {
+        headers: {
+          'Idempotency-Key': idempotencyKey
+        }
+      });
       toast.success('Settings saved successfully!', { id: loadingToast });
       
       // Auto reload config after saving
       toast.promise(
-        api.post('maintenance/reload-config'),
+        api.post('maintenance/reload-config', {}, {
+          headers: {
+            'Idempotency-Key': `reload-${idempotencyKey}`
+          }
+        }),
         {
           loading: 'Applying new configuration to Proxy...',
           success: 'Proxy restarted with new settings!',
@@ -49,7 +95,11 @@ export function Settings() {
 
   const handleClearCache = async () => {
     toast.promise(
-      api.post('maintenance/clear-cache'),
+      api.post('maintenance/clear-cache', {}, {
+        headers: {
+          'Idempotency-Key': crypto.randomUUID()
+        }
+      }),
       {
         loading: 'Clearing proxy cache...',
         success: 'Cache cleared successfully!',

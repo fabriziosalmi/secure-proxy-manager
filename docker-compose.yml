@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
 
   waf:
-    build: ./waf
+    build: ./waf-go
     # Port 1344 (ICAP) is internal only — not exposed on the host
     volumes:
       - ./config:/config
