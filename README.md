@@ -5,8 +5,6 @@ A containerized web proxy management system based on Squid, featuring a web inte
 ## Screenshots
 
 ![screenshot1](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/screenshot_1.png?raw=true)
-![screenshot2](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/screenshot_2.png?raw=true)
-![screenshot3](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/screenshot_3.png?raw=true)
 
 ## Key Features
 
@@ -34,41 +32,41 @@ The project employs a microservices architecture:
   <img src="https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/docs/architecture.svg" alt="Secure Proxy Manager Architecture" width="800"/>
 </div>
 
-### 📁 Project Structure
+### Project Structure
 
 ```
 secure-proxy-manager/
-├── backend/              # Backend API service
+├── backend/              # FastAPI backend service
 │   ├── app/
-│   │   ├── app.py       # Main Flask application with REST API
-│   │   └── tests/       # Backend unit tests
-│   ├── Dockerfile       # Backend container configuration
-│   └── requirements.txt # Python dependencies
-├── ui/                  # Web UI service
-│   ├── static/          # CSS, JS, and static assets
-│   ├── templates/       # HTML templates
-│   ├── app.py          # Flask UI application
-│   ├── Dockerfile      # UI container configuration
-│   └── requirements.txt # Python dependencies
-├── proxy/               # Squid proxy service
-│   ├── squid.conf      # Squid configuration template
-│   ├── startup.sh      # Container startup script
-│   └── Dockerfile      # Proxy container configuration
-├── config/              # Shared configuration files
+│   │   └── main.py      # Main FastAPI application with REST API and WebSocket endpoints
+│   ├── Dockerfile
+│   └── requirements.txt
+├── ui/                   # Web UI service
+│   ├── src/              # React/Vite SPA source (TypeScript, Tailwind CSS, Recharts)
+│   ├── app.py            # Flask reverse proxy serving static assets and routing API traffic
+│   ├── Dockerfile
+│   └── requirements.txt
+├── proxy/                # Squid proxy service
+│   ├── squid.conf        # Squid base configuration (overwritten at startup by startup.sh)
+│   ├── startup.sh        # Container startup script — generates squid.conf, validates it
+│   └── Dockerfile
+├── waf/                  # Python ICAP WAF service
+│   ├── server.py         # ICAP server with WAF rules (SQL injection, XSS, traversal, etc.)
+│   └── Dockerfile
+├── config/               # Shared configuration (mounted into containers)
 │   ├── ip_blacklist.txt
 │   ├── domain_blacklist.txt
-│   └── ssl_cert.pem    # SSL certificates
-├── data/                # Database and persistent data
-│   └── secure_proxy.db # SQLite database
-├── tests/               # End-to-end tests
-│   └── e2e_test.py     # Comprehensive test suite
-├── examples/            # Usage examples and scripts
-│   └── import_blacklists.md
-├── docker-compose.yml   # Service orchestration
-├── CONTRIBUTING.md      # Contribution guidelines
-├── LICENSE             # MIT License
-├── CHANGELOG.md        # Version history
-└── README.md           # This file
+│   └── ssl_cert.pem
+├── data/                 # Persistent volume for SQLite database
+│   └── secure_proxy.db
+├── tests/
+│   └── e2e_test.py       # End-to-end API test suite
+├── docker-compose.yml
+├── .env.example
+├── CONTRIBUTING.md
+├── LICENSE
+├── CHANGELOG.md
+└── README.md
 ```
 
 ## 📋 Prerequisites
@@ -126,11 +124,9 @@ If this is your first time deploying Secure Proxy Manager, we recommend using th
    ```
    http://localhost:8011
    ```
-   Default credentials: username: `admin`, password: `admin`
-   
-   **⚠️ Important**: Change these default credentials immediately in production! Edit the `.env` file and restart the services.
+   Log in with the credentials you set in `.env`. If you used `init.sh`, you were prompted to set them during setup.
 
-   **Note**: The backend API is also accessible directly at `http://localhost:5001` for advanced users or automation scripts.
+   **Note**: The backend API is also accessible directly at `http://localhost:5001` for advanced users or automation scripts (localhost-only by default).
 
 5. **Configure your client devices**:
    - Set proxy server to your host's IP address, port 3128
@@ -166,12 +162,12 @@ If you're familiar with Docker and prefer manual setup:
 #### Backend Service Variables
 | Variable | Description | Default | Used By |
 |----------|-------------|---------|---------|
-| `FLASK_ENV` | Flask environment mode | `production` | Backend, UI |
-| `PROXY_HOST` | Proxy service hostname | `proxy` | Backend |
-| `PROXY_PORT` | Proxy service port | `3128` | Backend |
-| `BASIC_AUTH_USERNAME` | Basic auth username | `admin` | Backend, UI |
-| `BASIC_AUTH_PASSWORD` | Basic auth password | `admin` | Backend, UI |
-| `SECRET_KEY` | Flask secret key for sessions | Auto-generated | Backend, UI |
+| `BASIC_AUTH_USERNAME` | HTTP Basic Auth username | required | Backend, UI, WAF |
+| `BASIC_AUTH_PASSWORD` | HTTP Basic Auth password | required | Backend, UI, WAF |
+| `DATABASE_PATH` | Path to SQLite database file | `/data/secure_proxy.db` | Backend |
+| `PROXY_HOST` | Squid proxy hostname (Docker service name) | `proxy` | Backend |
+| `PROXY_PORT` | Squid proxy port | `3128` | Backend |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | `http://localhost:8011,http://web:8011` | Backend |
 | `PROXY_CONTAINER_NAME` | Docker container name for proxy | `secure-proxy-proxy-1` | Backend |
 
 #### Web UI Service Variables
@@ -279,34 +275,37 @@ We introduced a "Popular Lists" feature directly in the Web UI that allows you t
 #### Manual Import from URL
 
 ```bash
-# Import from URL - supports plain text files with one domain per line
-curl -X POST http://localhost:8011/api/domain-blacklist/import \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
-  -d '{"url": "https://example.com/domain-blacklist.txt"}'
+AUTH="Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
 
-
-# Import direct content
-curl -X POST http://localhost:8011/api/domain-blacklist/import \
+# Import domains from URL (plain text, one domain per line)
+curl -X POST http://localhost:8011/api/blacklists/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
-  -d '{"content": "example.com\n*.badsite.org\nmalicious.net"}'
+  -H "$AUTH" \
+  -d '{"type": "domain", "url": "https://example.com/domain-blacklist.txt"}'
+
+# Import domains from inline content
+curl -X POST http://localhost:8011/api/blacklists/import \
+  -H "Content-Type: application/json" \
+  -H "$AUTH" \
+  -d '{"type": "domain", "content": "example.com\n*.badsite.org\nmalicious.net"}'
 ```
 
 #### Import IP Blacklists
 
 ```bash
-# Import from URL - supports plain text files with one IP per line
-curl -X POST http://localhost:8011/api/ip-blacklist/import \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
-  -d '{"url": "https://example.com/ip-blacklist.txt"}'
+AUTH="Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
 
-# Import direct content with CIDR notation support
-curl -X POST http://localhost:8011/api/ip-blacklist/import \
+# Import IPs from URL
+curl -X POST http://localhost:8011/api/blacklists/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
-  -d '{"content": "192.168.1.100\n10.0.0.5\n172.16.0.0/24"}'
+  -H "$AUTH" \
+  -d '{"type": "ip", "url": "https://example.com/ip-blacklist.txt"}'
+
+# Import IPs from inline content with CIDR notation support
+curl -X POST http://localhost:8011/api/blacklists/import \
+  -H "Content-Type: application/json" \
+  -H "$AUTH" \
+  -d '{"type": "ip", "content": "192.168.1.100\n10.0.0.5\n172.16.0.0/24"}'
 ```
 
 #### Supported File Formats
@@ -354,14 +353,14 @@ Export database contents including blacklists, settings, and logs (limited to 10
 1. Via API:
    ```bash
    curl -X GET http://localhost:8011/api/database/export \
-     -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+     -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
      > secure-proxy-export.json
    ```
 
 2. Via Direct Backend Access:
    ```bash
    curl -X GET http://localhost:5001/api/database/export \
-     -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+     -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
      > secure-proxy-export.json
    ```
 
@@ -407,7 +406,7 @@ Optimize database performance:
 
 ```bash
 curl -X POST http://localhost:8011/api/database/optimize \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)"
+  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
 ```
 
 ### Database Statistics
@@ -416,7 +415,7 @@ Get database size and statistics:
 
 ```bash
 curl -X GET http://localhost:8011/api/database/stats \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)"
+  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
 ```
 
 ## Testing and Validation
@@ -488,13 +487,13 @@ docker-compose up -d
 
 ### Features & Usage
 
-**Q: How do I import a large blacklist?**  
-A: Use the import API endpoints with a URL pointing to your blacklist file:
+**Q: How do I import a large blacklist?**
+A: Use the import endpoint with a URL pointing to your blacklist file:
 ```bash
-curl -X POST http://localhost:8011/api/domain-blacklist/import \
+curl -X POST http://localhost:8011/api/blacklists/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
-  -d '{"url": "https://example.com/blacklist.txt"}'
+  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
+  -d '{"type": "domain", "url": "https://example.com/blacklist.txt"}'
 ```
 
 **Q: Does it support IPv6?**  
@@ -610,36 +609,31 @@ Secure Proxy Manager provides a RESTful API for integration and automation with 
 
 ### Authentication
 
-All API endpoints require Basic Authentication:
+All API endpoints require HTTP Basic Authentication:
 
 ```bash
-# Login to get session (optional)
-curl -X POST http://localhost:8011/api/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "admin"}'
-
-# Or use Basic Auth directly (recommended for scripts)
-AUTH_HEADER="Authorization: Basic $(echo -n admin:admin | base64)"
+# Use Basic Auth directly (recommended for scripts)
+AUTH_HEADER="Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
 ```
 
 ### Blacklist Management
 
 #### Import Domain Blacklists
 
-Importing standard text files with one domain per line:
-
 ```bash
-# Import from URL (plain text file)
-curl -X POST http://localhost:8011/api/domain-blacklist/import \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
-  -d '{"url": "https://example.com/domain-blacklist.txt"}'
+AUTH_HEADER="Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
 
-# Import direct content
-curl -X POST http://localhost:8011/api/domain-blacklist/import \
+# Import from URL (plain text file, one domain per line)
+curl -X POST http://localhost:8011/api/blacklists/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
-  -d '{"content": "malicious.com\n*.ads.example\nbadsite.org"}'
+  -H "$AUTH_HEADER" \
+  -d '{"type": "domain", "url": "https://example.com/domain-blacklist.txt"}'
+
+# Import inline content
+curl -X POST http://localhost:8011/api/blacklists/import \
+  -H "Content-Type: application/json" \
+  -H "$AUTH_HEADER" \
+  -d '{"type": "domain", "content": "malicious.com\n*.ads.example\nbadsite.org"}'
 ```
 
 **Example domain-blacklist.txt:**
@@ -655,17 +649,19 @@ unwanted.domain
 #### Import IP Blacklists
 
 ```bash
-# Import from URL (plain text file)
-curl -X POST http://localhost:8011/api/ip-blacklist/import \
+AUTH_HEADER="Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
+
+# Import from URL
+curl -X POST http://localhost:8011/api/blacklists/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
-  -d '{"url": "https://example.com/ip-blacklist.txt"}'
+  -H "$AUTH_HEADER" \
+  -d '{"type": "ip", "url": "https://example.com/ip-blacklist.txt"}'
 
 # Import with CIDR notation support
-curl -X POST http://localhost:8011/api/ip-blacklist/import \
+curl -X POST http://localhost:8011/api/blacklists/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
-  -d '{"content": "192.168.1.100\n10.0.0.0/8\n172.16.0.0/12"}'
+  -H "$AUTH_HEADER" \
+  -d '{"type": "ip", "content": "192.168.1.100\n10.0.0.0/8\n172.16.0.0/12"}'
 ```
 
 **Example ip-blacklist.txt:**
@@ -703,28 +699,29 @@ curl -X POST http://localhost:8011/api/ip-blacklist/import \
 | `/api/settings/<setting_name>` | PUT | Update a specific setting |
 | `/health` | GET | Health check endpoint |
 
-#### Blacklist Management
+#### Blacklist and Whitelist Management
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/ip-blacklist` | GET | Get all IP blacklist entries |
-| `/api/ip-blacklist` | POST | Add a single IP blacklist entry |
-| `/api/ip-blacklist/<id>` | DELETE | Delete an IP blacklist entry |
-| `/api/ip-blacklist/import` | POST | **Import IP blacklist from URL/content** |
-| `/api/domain-blacklist` | GET | Get all domain blacklist entries |
-| `/api/domain-blacklist` | POST | Add a single domain blacklist entry |
-| `/api/domain-blacklist/<id>` | DELETE | Delete a domain blacklist entry |
-| `/api/domain-blacklist/import` | POST | **Import domain blacklist from URL/content** |
-| `/api/blacklists/import` | POST | Generic import (requires type parameter) |
+| `/api/blacklists/ip` | GET | List all IP blacklist entries |
+| `/api/blacklists/ip` | POST | Add a single IP blacklist entry |
+| `/api/blacklists/ip/<id>` | DELETE | Delete an IP blacklist entry |
+| `/api/blacklists/domains` | GET | List all domain blacklist entries |
+| `/api/blacklists/domains` | POST | Add a single domain blacklist entry |
+| `/api/blacklists/domains/<id>` | DELETE | Delete a domain blacklist entry |
+| `/api/blacklists/import` | POST | Import blacklist from URL or inline content (`type`: `ip` or `domain`) |
+| `/api/blacklists/import-geo` | POST | Import geo-based IP block by country code(s) |
+| `/api/ip-whitelist` | GET | List all IP whitelist entries (bypass direct-IP block) |
+| `/api/ip-whitelist` | POST | Add an IP/network to the whitelist |
+| `/api/ip-whitelist/<id>` | DELETE | Remove an IP from the whitelist |
 
 #### Logs & Analytics
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/logs/stats` | GET | Get proxy access logs with filtering |
+| `/api/logs` | GET | Get proxy access log entries (`limit` param, default 100) |
+| `/api/logs/stats` | GET | Get log statistics (total, blocked, IP block counts) |
+| `/api/logs/timeline` | GET | Traffic timeline data for the last 24h (used by dashboard chart) |
 | `/api/logs/clear` | POST | Clear all proxy logs |
-| `/api/logs/clear-old` | POST | Clear old proxy logs |
-| `/api/traffic/statistics` | GET | Get traffic statistics |
-| `/api/clients/statistics` | GET | Get client statistics |
-| `/api/domains/statistics` | GET | Get domain statistics |
+| `/api/analytics/report/pdf` | GET | Generate and download a PDF analytics report |
 
 #### Cache Management
 | Endpoint | Method | Description |
@@ -762,23 +759,28 @@ curl -X POST http://localhost:8011/api/ip-blacklist/import \
 ```json
 {
   "status": "success",
-  "message": "Import completed: 150 entries imported",
-  "imported_count": 150,
-  "error_count": 0
+  "message": "Import completed",
+  "data": {
+    "added": 150,
+    "skipped": 0,
+    "errors": []
+  }
 }
 ```
 
 **Import with Errors:**
 ```json
 {
-  "status": "success", 
-  "message": "Import completed: 145 entries imported, 5 errors",
-  "imported_count": 145,
-  "error_count": 5,
-  "errors": [
-    "Invalid domain format: not-a-domain",
-    "Invalid IP format: 999.999.999.999"
-  ]
+  "status": "success",
+  "message": "Import completed with errors",
+  "data": {
+    "added": 145,
+    "skipped": 0,
+    "errors": [
+      "Invalid domain format: not-a-domain",
+      "Invalid IP format: 999.999.999.999"
+    ]
+  }
 }
 ```
 
@@ -837,10 +839,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Acknowledgements
 
 - [Squid Proxy](http://www.squid-cache.org/) for the core proxy engine
-- [Flask](https://flask.palletsprojects.com/) for the web framework
-- [Bootstrap](https://getbootstrap.com/) for the UI components
+- [FastAPI](https://fastapi.tiangolo.com/) for the backend framework
+- [React](https://react.dev/) and [Tailwind CSS](https://tailwindcss.com/) for the frontend
+- [Recharts](https://recharts.org/) for dashboard data visualization
 - [Docker](https://www.docker.com/) for containerization
-- All our contributors who have helped shape this project
+- All contributors who have helped shape this project
 
 ## Support
 
