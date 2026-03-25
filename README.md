@@ -12,7 +12,7 @@ A containerized web proxy management system based on Squid, featuring a web inte
 - **Web Interface**: React-based frontend built with Vite and Tailwind CSS, using WebSockets for log streaming.
 - **Traffic Filtering**: Domain and IP-based blacklisting with regular expression support and automatic IP Geo-Blocking.
 - **Blocklists Import**: Import public blocklists (Spamhaus, Firehol, Pi-hole lists) directly from the UI.
-- **WAF**: Python ICAP server for payload inspection with memory management and thread pooling.
+- **WAF**: High-performance Go ICAP server for payload inspection with zero-downtime concurrency.
 - **SSL Bump**: Inspect and filter HTTPS traffic with auto-generated certificates.
 - **Caching**: Configurable content caching via Squid.
 - **Analytics**: Recharts dashboards for monitoring bandwidth, cache hit rates, and blocked requests.
@@ -26,7 +26,7 @@ The project employs a microservices architecture:
 2. **Backend (FastAPI)**: Asynchronous Python backend using FastAPI and Uvicorn. It manages the SQLite database, handles REST APIs, and streams logs via WebSockets.
 3. **UI Proxy (Flask)**: Reverse proxy serving the React static assets and routing API/WebSocket traffic to the backend, secured with Talisman CSP.
 4. **Proxy Engine (Squid)**: The core caching and filtering engine handling HTTP/HTTPS traffic.
-5. **WAF Engine (Python ICAP)**: Custom ICAP server that inspects payloads.
+5. **WAF Engine (Go ICAP)**: Custom high-performance ICAP server that inspects payloads.
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/docs/architecture.svg" alt="Secure Proxy Manager Architecture" width="800"/>
@@ -50,9 +50,10 @@ secure-proxy-manager/
 │   ├── squid.conf        # Squid base configuration (overwritten at startup by startup.sh)
 │   ├── startup.sh        # Container startup script — generates squid.conf, validates it
 │   └── Dockerfile
-├── waf/                  # Python ICAP WAF service
-│   ├── server.py         # ICAP server with WAF rules (SQL injection, XSS, traversal, etc.)
-│   └── Dockerfile
+├── waf-go/               # High-performance Go ICAP WAF service
+│   ├── main.go           # Go ICAP server with WAF rules and async logging
+│   ├── Dockerfile
+│   └── go.mod            # Go module dependencies
 ├── config/               # Shared configuration (mounted into containers)
 │   ├── ip_blacklist.txt
 │   ├── domain_blacklist.txt
@@ -794,8 +795,8 @@ Full interactive API documentation is available at `/api/docs` when the service 
 **Recent Security Hardening:**
 - Replaced vulnerable string interpolations in SQL queries with strict parameter binding (SQLi mitigated).
 - Implemented robust SSRF (Server-Side Request Forgery) protection on blacklist import URLs, blocking localhost and private IP scanning.
-- Memory leak protection on the WAF engine via aggressive dictionary garbage collection.
-- DoS protection against high-concurrency attacks via a custom `ThreadPoolExecutor` limiting background Python threads.
+- Memory leak and GIL bottleneck protection via replacing the WAF engine with a high-concurrency Go implementation.
+- Improved frontend resilience with strict Zod validation and Idempotency keys.
 - De-escalated Squid proxy privileges from `root` to a dedicated `proxy` user.
 
 ## Future Roadmap
