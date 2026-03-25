@@ -173,7 +173,7 @@ export function Blacklists() {
 
   const popularDomainLists = [
     { name: 'StevenBlack Ad/Malware', url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', desc: 'Consolidated host files from multiple sources' },
-    { name: 'MalwareDomainList', url: 'https://mirror1.malwaredomains.com/files/justdomains', desc: 'Domains known to host malware' },
+    { name: 'Abuse.ch URLhaus Domains', url: 'https://urlhaus.abuse.ch/downloads/hostfile/', desc: 'Active malware distribution domains from URLhaus' },
     { name: 'Phishing Army', url: 'https://phishing.army/download/phishing_army_blocklist_extended.txt', desc: 'Domains actively involved in phishing' }
   ];
 
