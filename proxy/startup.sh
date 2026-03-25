@@ -103,7 +103,10 @@ acl CONNECT method CONNECT
 http_access deny !Safe_ports
 http_access deny CONNECT !SSL_ports
 
-# First block all direct IP access (high priority)
+# Whitelisted destination IPs bypass the direct-IP block (must come first)
+http_access allow ip_whitelist
+
+# Block all direct IP access
 http_access deny direct_ip_url
 http_access deny direct_ip_host
 http_access deny direct_ipv6_url
@@ -111,16 +114,13 @@ http_access deny direct_ipv6_host
 http_access deny CONNECT direct_ip_host
 http_access deny CONNECT direct_ipv6_host
 
-# Then implement additional blocks
+# Additional blocks
 http_access deny ip_blacklist
 http_access deny domain_blacklist
 
 # Allow local network access
 http_access allow localnet
 http_access allow localhost
-
-# Explicitly allow whitelisted IP destinations (bypasses direct IP block if matched)
-http_access allow ip_whitelist
 
 # Default deny
 http_access deny all
@@ -202,6 +202,8 @@ acl direct_ip_host dstdom_regex -i ^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)$
 acl direct_ipv6_url url_regex -i ^https?://\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]
 acl direct_ipv6_host dstdom_regex -i ^\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]$
 
+# Whitelisted destination IPs bypass the direct-IP block (must precede deny rules)
+http_access allow ip_whitelist
 # Block direct IP access - added by startup script
 http_access deny direct_ip_url
 http_access deny direct_ip_host
@@ -295,6 +297,8 @@ acl direct_ip_host dstdom_regex -i ^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)$
 acl direct_ipv6_url url_regex -i ^https?://\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]
 acl direct_ipv6_host dstdom_regex -i ^\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]$
 
+# Whitelisted destination IPs bypass the direct-IP block (must precede deny rules)
+http_access allow ip_whitelist
 # Block direct IP access - added by final verification
 http_access deny direct_ip_url
 http_access deny direct_ip_host
@@ -324,6 +328,8 @@ if grep -q "acl direct_ip_url" /etc/squid/squid.conf && grep -q "acl direct_ip_h
         echo "⚠️ Direct IP access deny rules missing, adding them"
         cat >> /etc/squid/squid.conf << EOL
 
+# Whitelisted destination IPs bypass the direct-IP block (must precede deny rules)
+http_access allow ip_whitelist
 # Block direct IP access - added by verification
 http_access deny direct_ip_url
 http_access deny direct_ip_host
@@ -343,6 +349,8 @@ acl direct_ip_host dstdom_regex -i ^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)$
 acl direct_ipv6_url url_regex -i ^https?://\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]
 acl direct_ipv6_host dstdom_regex -i ^\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]$
 
+# Whitelisted destination IPs bypass the direct-IP block (must precede deny rules)
+http_access allow ip_whitelist
 # Block direct IP access - added by verification
 http_access deny direct_ip_url
 http_access deny direct_ip_host
