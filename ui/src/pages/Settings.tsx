@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 
 export function Settings() {
-  const { data: settingsData, execute: refreshSettings } = useApi<any>('settings');
+  const { data: settingsData } = useApi<any>('settings');
   const [formData, setFormData] = useState<any>({});
   const [isSaving, setIsSaving] = useState(false);
 

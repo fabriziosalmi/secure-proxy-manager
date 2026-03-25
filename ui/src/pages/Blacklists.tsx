@@ -127,10 +127,18 @@ export function Blacklists() {
     e.preventDefault();
     if (!geoCountry) return;
 
-    const loadingToast = toast.loading(`Importing IP blocks for ${geoCountry}...`);
+    // Accept space or comma separated country codes: "CN, RU KP" → ["CN","RU","KP"]
+    const countries = geoCountry
+      .split(/[\s,]+/)
+      .map(c => c.trim().toUpperCase())
+      .filter(c => c.length === 2);
+
+    if (countries.length === 0) return;
+
+    const loadingToast = toast.loading(`Importing IP blocks for ${countries.join(', ')}...`);
     try {
       const response = await api.post('blacklists/import-geo', {
-        countries: [geoCountry]
+        countries
       });
       toast.success(`Imported ${response.data.data?.imported || 0} IPs successfully`, { id: loadingToast });
       setGeoCountry('');
@@ -348,13 +356,12 @@ export function Blacklists() {
           <CardContent className="pt-6">
             <form onSubmit={handleGeoBlock} className="flex gap-4 items-end">
               <div className="flex-1 space-y-2">
-                <label className="text-sm font-medium">Country Code (2 letters)</label>
-                <input 
-                  type="text" 
+                <label className="text-sm font-medium">Country Codes (comma or space separated)</label>
+                <input
+                  type="text"
                   value={geoCountry}
                   onChange={(e) => setGeoCountry(e.target.value.toUpperCase())}
                   placeholder="e.g. CN, RU, KP"
-                  maxLength={2}
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                   required
                 />
@@ -363,7 +370,7 @@ export function Blacklists() {
                 Download & Block IPs
               </button>
             </form>
-            <p className="text-xs text-muted-foreground mt-3">This will fetch all known IPv4 blocks for the specified country and add them to your IP Blacklist.</p>
+            <p className="text-xs text-muted-foreground mt-3">Fetches all known IPv4 blocks for each country and adds them to your IP Blacklist. Use 2-letter ISO codes: CN, RU, KP, IR…</p>
           </CardContent>
         </Card>
       )}
