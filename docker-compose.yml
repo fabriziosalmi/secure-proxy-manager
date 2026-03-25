@@ -50,7 +50,7 @@ services:
   backend:
     build: ./backend
     ports:
-      - "5001:5000"
+      - "127.0.0.1:5001:5000"  # Bind to localhost only; WebSocket from browser requires this port
     volumes:
       - ./config:/config
       - ./data:/data
