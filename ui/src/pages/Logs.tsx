@@ -115,8 +115,11 @@ export function Logs() {
     return { total, blocked, errors, success };
   }, [realtimeLogs]);
 
+  const [clearPending, setClearPending] = useState(false);
+
   const handleClearLogs = async () => {
-    if (!confirm('Are you sure you want to clear all logs?')) return;
+    if (!clearPending) { setClearPending(true); return; }
+    setClearPending(false);
     const loadingToast = toast.loading('Clearing logs...');
     try {
       await api.post('logs/clear');
@@ -150,13 +153,33 @@ export function Logs() {
             <RefreshCw className={`w-4 h-4 mr-2 ${loading && !autoRefresh ? 'animate-spin' : ''}`} />
             Refresh
           </button>
-          <button 
-            onClick={handleClearLogs}
-            className="flex items-center px-3 py-2 bg-destructive/10 text-destructive rounded-md text-sm font-medium hover:bg-destructive/20 transition-colors"
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            Clear All
-          </button>
+          {clearPending ? (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handleClearLogs}
+                className="px-3 py-2 bg-destructive text-destructive-foreground rounded-md text-sm font-medium hover:bg-destructive/90 transition-colors"
+              >
+                Confirm Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => setClearPending(false)}
+                className="px-3 py-2 bg-secondary text-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleClearLogs}
+              className="flex items-center px-3 py-2 bg-destructive/10 text-destructive rounded-md text-sm font-medium hover:bg-destructive/20 transition-colors"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Clear All
+            </button>
+          )}
         </div>
       </div>
       
@@ -241,8 +264,8 @@ export function Logs() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filteredLogs.map((log: any, i: number) => (
-                  <tr key={i} className="hover:bg-secondary/20 transition-colors font-mono text-xs">
+                {filteredLogs.map((log: any) => (
+                  <tr key={log.id ?? log.timestamp} className="hover:bg-secondary/20 transition-colors font-mono text-xs">
                     <td className="px-6 py-3 text-muted-foreground whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleString()}
                     </td>
@@ -253,15 +276,15 @@ export function Logs() {
                     </td>
                     <td className="px-6 py-3">
                       <span className={`px-2 py-1 rounded-full text-[10px] font-medium border ${
-                        log.status.includes('DENIED') || log.status.includes('403')
-                          ? 'bg-destructive/10 text-destructive border-destructive/20' 
+                        log.status?.includes('DENIED') || log.status?.includes('403')
+                          ? 'bg-destructive/10 text-destructive border-destructive/20'
                           : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                       }`}>
-                        {log.status}
+                        {log.status ?? '-'}
                       </span>
                     </td>
                     <td className="px-6 py-3 text-right text-muted-foreground">
-                      {(log.bytes / 1024).toFixed(1)} KB
+                      {log.bytes != null ? `${(log.bytes / 1024).toFixed(1)} KB` : '-'}
                     </td>
                   </tr>
                 ))}
