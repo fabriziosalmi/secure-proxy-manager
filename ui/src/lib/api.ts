@@ -3,7 +3,7 @@ import axios from 'axios';
 // Create an Axios instance
 export const api = axios.create({
   baseURL: '/api',
-  timeout: 30000,
+  timeout: 120000,
 });
 
 // Add a response interceptor to handle common errors
