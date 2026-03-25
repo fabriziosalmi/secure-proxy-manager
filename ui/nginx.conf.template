@@ -17,6 +17,20 @@ server {
         return 200 '{"status":"healthy","service":"secure-proxy-ui"}';
     }
 
+    # WebSocket upgrade — must come before the generic /api/ block
+    location /api/ws/ {
+        proxy_pass            http://${BACKEND_HOST}:${BACKEND_PORT}/api/ws/;
+        proxy_http_version    1.1;
+        proxy_set_header      Upgrade           $http_upgrade;
+        proxy_set_header      Connection        "upgrade";
+        proxy_set_header      Host              $host;
+        proxy_set_header      X-Real-IP         $remote_addr;
+        proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_read_timeout    86400s;
+        proxy_send_timeout    86400s;
+        proxy_buffering       off;
+    }
+
     # API reverse proxy → FastAPI backend
     # The Authorization header (Bearer JWT) is forwarded as-is so the backend can validate it.
     location /api/ {
