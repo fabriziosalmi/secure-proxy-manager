@@ -25,15 +25,14 @@ export default defineConfig({
     },
   },
 
-  globalSetup: './global-setup.ts',
+  // No globalSetup / storageState: auth is injected per-test via addInitScript
+  // (Playwright storageState only persists localStorage, not sessionStorage,
+  //  and the app uses sessionStorage for the JWT token)
 
   projects: [
     {
       name: 'chromium',
-      use: {
-        ...devices['Desktop Chrome'],
-        storageState: '/tmp/e2e-auth.json',
-      },
+      use: { ...devices['Desktop Chrome'] },
     },
   ],
 

@@ -14,13 +14,17 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// On 401, clear the stale token and reload so the Login page appears
+// On 401, clear the stale token and reload so the Login page appears.
+// Guard: only reload if we had a token — otherwise the user is on the login page
+// and a wrong-password attempt would reload the page before the error can be shown.
 api.interceptors.response.use(
   (response) => response,
   (error: unknown) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      sessionStorage.removeItem('auth_token');
-      window.location.reload();
+      if (sessionStorage.getItem('auth_token')) {
+        sessionStorage.removeItem('auth_token');
+        window.location.reload();
+      }
     }
     return Promise.reject(error);
   }
