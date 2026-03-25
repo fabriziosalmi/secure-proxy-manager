@@ -60,10 +60,10 @@ docker-compose logs -f
 
 # 5. Access the web interface
 # Open your browser to: http://localhost:8011
-# Default credentials: admin / admin
+# Log in with the credentials you set in .env
 ```
 
-**⚠️ Important**: The default credentials are `admin` / `admin`. Change these immediately in production!
+**Note**: `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` must be set in `.env` before starting. The services refuse to start if these are empty or set to `admin`.
 
 ## Step-by-Step Deployment
 
@@ -122,16 +122,13 @@ nano .env
 **Critical settings to review:**
 
 ```bash
-# Change these default credentials!
-BASIC_AUTH_USERNAME=admin
-BASIC_AUTH_PASSWORD=admin
+# Set credentials before starting — no defaults are provided
+BASIC_AUTH_USERNAME=your_username
+BASIC_AUTH_PASSWORD=your_password
 
-# Generate a strong secret key (optional but recommended)
-# Run: python3 -c "import secrets; print(secrets.token_hex(32))"
+# Optional: set an explicit session secret for stable sessions across restarts
+# Generate with: python3 -c "import secrets; print(secrets.token_hex(32))"
 SECRET_KEY=your-generated-secret-key-here
-
-# Set the environment (production for deployment)
-FLASK_ENV=production
 ```
 
 For a complete list of configuration options, see the [Configuration](#configuration) section.
@@ -233,8 +230,8 @@ All configuration is done through the `.env` file. Here are the key variables:
 #### Authentication
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BASIC_AUTH_USERNAME` | `admin` | Username for web UI and API access |
-| `BASIC_AUTH_PASSWORD` | `admin` | Password for web UI and API access |
+| `BASIC_AUTH_USERNAME` | required | Username for web UI and API access |
+| `BASIC_AUTH_PASSWORD` | required | Password for web UI and API access |
 | `SECRET_KEY` | Auto-generated | Flask session secret (generate with `secrets.token_hex(32)`) |
 
 #### Backend API
@@ -250,12 +247,7 @@ All configuration is done through the `.env` file. Here are the key variables:
 |----------|---------|-------------|
 | `PROXY_HOST` | `proxy` | Proxy service hostname |
 | `PROXY_PORT` | `3128` | Proxy service port |
-| `PROXY_CONTAINER_NAME` | `secure-proxy-proxy-1` | Docker container name |
-
-#### Application
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `FLASK_ENV` | `production` | Flask environment (`development` or `production`) |
+| `PROXY_CONTAINER_NAME` | `secure-proxy-manager-proxy` | Docker container name |
 
 ### Directory Structure
 
@@ -380,16 +372,14 @@ services:
    docker-compose exec web env | grep BASIC_AUTH
    ```
 
-4. Reset to default credentials:
-   - Edit `.env` and set:
-     ```
-     BASIC_AUTH_USERNAME=admin
-     BASIC_AUTH_PASSWORD=admin
-     ```
-   - Restart services:
-     ```bash
-     docker-compose restart
-     ```
+4. Verify credentials are set in `.env`:
+   ```bash
+   grep BASIC_AUTH .env
+   ```
+   Restart services after any change:
+   ```bash
+   docker-compose restart
+   ```
 
 #### Issue 4: "Database errors"
 

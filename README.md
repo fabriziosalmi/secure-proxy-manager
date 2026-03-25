@@ -69,7 +69,7 @@ secure-proxy-manager/
 └── README.md
 ```
 
-## 📋 Prerequisites
+## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) (v20.10.0+)
 - [Docker Compose](https://docs.docker.com/compose/install/) (v2.0.0+)
@@ -82,11 +82,11 @@ secure-proxy-manager/
   - Port 3128: Proxy service
   - Port 5001: Backend API (optional, for direct API access)
 
-## 🚦 Quick Start
+## Quick Start
 
 ### For First-Time Users
 
-If this is your first time deploying Secure Proxy Manager, we recommend using the **initialization script** for a guided setup:
+If this is your first time deploying Secure Proxy Manager, use the **initialization script**:
 
 1. **Clone the repository**:
    ```bash
@@ -152,10 +152,10 @@ If you're familiar with Docker and prefer manual setup:
 ### Need Help?
 
 - **New to Docker?** See our comprehensive [DEPLOYMENT.md](DEPLOYMENT.md) guide
-- **Encountering issues?** Check the [Troubleshooting](#-troubleshooting) section below
+- **Encountering issues?** Check the [Troubleshooting](#troubleshooting) section below
 - **Want detailed setup instructions?** Read the full [Deployment Guide](DEPLOYMENT.md)
 
-## ⚙️ Configuration Options
+## Configuration Options
 
 ### Environment Variables
 
@@ -168,7 +168,7 @@ If you're familiar with Docker and prefer manual setup:
 | `PROXY_HOST` | Squid proxy hostname (Docker service name) | `proxy` | Backend |
 | `PROXY_PORT` | Squid proxy port | `3128` | Backend |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | `http://localhost:8011,http://web:8011` | Backend |
-| `PROXY_CONTAINER_NAME` | Docker container name for proxy | `secure-proxy-proxy-1` | Backend |
+| `PROXY_CONTAINER_NAME` | Docker container name for proxy | `secure-proxy-manager-proxy` | Backend |
 
 #### Web UI Service Variables
 | Variable | Description | Default | Notes |
@@ -181,15 +181,15 @@ If you're familiar with Docker and prefer manual setup:
 
 **Note:** To customize these values, modify them in `docker-compose.yml` before starting the services.
 
-### 🔐 Security Configuration
+### Security Configuration
 
-**Important Security Considerations:**
+**Security Considerations:**
 
-1. **Change Default Credentials**: The default username and password (`admin`/`admin`) should be changed immediately in production:
+1. **Set Credentials**: `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` must be set before starting. There are no built-in defaults — the services refuse to start if these are empty or set to `admin`.
    ```yaml
-   # In docker-compose.yml, update both backend and web services:
-   - BASIC_AUTH_USERNAME=your_secure_username
-   - BASIC_AUTH_PASSWORD=your_secure_password
+   # In .env:
+   BASIC_AUTH_USERNAME=your_username
+   BASIC_AUTH_PASSWORD=your_password
    ```
 
 2. **HTTPS for Web UI**: For production deployments, use a reverse proxy (e.g., nginx, Traefik) with SSL/TLS to secure the web interface.
@@ -220,7 +220,7 @@ If you're familiar with Docker and prefer manual setup:
 | DNS Timeout | Timeout for DNS lookups | 5s | 3-10s based on DNS infrastructure |
 | Max Connections | Maximum concurrent connections | 100 | 100-500 based on hardware |
 
-## 🛠️ Advanced Configuration
+## Advanced Configuration
 
 ### Custom SSL Certificate
 
@@ -260,7 +260,7 @@ Integrate with external threat intelligence sources. The system supports importi
 
 #### 1-Click Popular Lists Import
 
-We introduced a "Popular Lists" feature directly in the Web UI that allows you to instantly import thousands of known threats with a single click:
+The "Popular Lists" button in the Web UI imports well-known public blocklists directly:
 
 **For Domains:**
 - *StevenBlack Ad/Malware*: Consolidated host files from multiple sources
@@ -344,7 +344,7 @@ Health status endpoints are available for monitoring:
 curl -I http://localhost:8011/health
 ```
 
-## 🔄 Database Export and Backup
+## Database Export and Backup
 
 ### Database Export
 
@@ -441,18 +441,14 @@ To test if blacklisting works:
 
 ### Running the Test Suite
 
-Execute the end-to-end test suite:
+Execute the Playwright end-to-end test suite (requires Docker):
 
 ```bash
-# Make sure services are running
-docker-compose up -d
+# Build and run the full test stack (backend + UI + test-runner)
+docker compose -f docker-compose.test.yml up --build --exit-code-from test-runner
 
-# Run tests
-cd tests
-python3 e2e_test.py
-
-# Run with verbose output
-python3 e2e_test.py -v
+# Tear down and reset volumes between runs
+docker compose -f docker-compose.test.yml down -v
 ```
 
 ## Frequently Asked Questions (FAQ)
@@ -466,7 +462,7 @@ A: It's a containerized web proxy solution built on Squid with a modern manageme
 A: Yes, but ensure you follow security best practices, change default credentials, and properly configure SSL certificates for HTTPS filtering.
 
 **Q: Can I use this in a corporate environment?**  
-A: Yes, it's designed for enterprise use with features like blacklisting, authentication, and detailed logging. Ensure compliance with your organization's policies.
+A: Yes. It supports authentication, IP/domain blacklisting, and detailed logging. Ensure compliance with your organization's acceptable-use policies before deployment.
 
 ### Installation & Setup
 
@@ -675,21 +671,21 @@ curl -X POST http://localhost:8011/api/blacklists/import \
 
 #### Supported File Formats
 
-- ✅ **Plain Text**: One entry per line (most common)
-- ✅ **JSON Array**: `["entry1", "entry2"]`
-- ✅ **JSON Objects**: `[{"domain": "example.com", "description": "Blocked"}]`
-- ✅ **Comments**: Lines starting with `#` are ignored
-- ✅ **CIDR Notation**: For IP ranges (`192.168.1.0/24`)
-- ✅ **Wildcards**: For domains (`*.example.com`)
+- **Plain Text**: One entry per line (most common)
+- **JSON Array**: `["entry1", "entry2"]`
+- **JSON Objects**: `[{"domain": "example.com", "description": "Blocked"}]`
+- **Comments**: Lines starting with `#` are ignored
+- **CIDR Notation**: For IP ranges (`192.168.1.0/24`)
+- **Wildcards**: For domains (`*.example.com`)
 
 ### Available Endpoints
 
 #### Authentication & Session Management
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/login` | POST | User login with credentials |
-| `/api/logout` | POST | User logout |
-| `/api/change-password` | POST | Change user password |
+| `/api/auth/login` | POST | User login, returns JWT token |
+| `/api/auth/logout` | POST | User logout |
+| `/api/auth/change-password` | POST | Change user password |
 
 #### Proxy Status & Settings
 | Endpoint | Method | Description |
@@ -702,12 +698,12 @@ curl -X POST http://localhost:8011/api/blacklists/import \
 #### Blacklist and Whitelist Management
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/blacklists/ip` | GET | List all IP blacklist entries |
-| `/api/blacklists/ip` | POST | Add a single IP blacklist entry |
-| `/api/blacklists/ip/<id>` | DELETE | Delete an IP blacklist entry |
-| `/api/blacklists/domains` | GET | List all domain blacklist entries |
-| `/api/blacklists/domains` | POST | Add a single domain blacklist entry |
-| `/api/blacklists/domains/<id>` | DELETE | Delete a domain blacklist entry |
+| `/api/ip-blacklist` | GET | List all IP blacklist entries |
+| `/api/ip-blacklist` | POST | Add a single IP blacklist entry |
+| `/api/ip-blacklist/<id>` | DELETE | Delete an IP blacklist entry |
+| `/api/domain-blacklist` | GET | List all domain blacklist entries |
+| `/api/domain-blacklist` | POST | Add a single domain blacklist entry |
+| `/api/domain-blacklist/<id>` | DELETE | Delete a domain blacklist entry |
 | `/api/blacklists/import` | POST | Import blacklist from URL or inline content (`type`: `ip` or `domain`) |
 | `/api/blacklists/import-geo` | POST | Import geo-based IP block by country code(s) |
 | `/api/ip-whitelist` | GET | List all IP whitelist entries (bypass direct-IP block) |
@@ -786,7 +782,7 @@ curl -X POST http://localhost:8011/api/blacklists/import \
 
 Full interactive API documentation is available at `/api/docs` when the service is running.
 
-## 🔒 Security Best Practices
+## Security Best Practices
 
 1. **Change default credentials** immediately after installation
 2. **Enable HTTPS** for the admin interface in production
