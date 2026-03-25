@@ -1,4 +1,4 @@
-
+import { Component } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { Layout } from './components/layout/Layout';
@@ -7,20 +7,62 @@ import { Blacklists } from './pages/Blacklists';
 import { Logs } from './pages/Logs';
 import { Settings } from './pages/Settings';
 
+class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex items-center justify-center h-screen bg-background text-foreground">
+          <div className="text-center space-y-3 max-w-md px-4">
+            <p className="text-lg font-semibold text-destructive">Something went wrong</p>
+            <p className="text-sm text-muted-foreground font-mono">{this.state.error.message}</p>
+            <button
+              type="button"
+              onClick={() => this.setState({ error: null })}
+              className="mt-4 px-4 py-2 bg-secondary rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function NotFound() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center gap-2 py-24">
+      <span className="text-5xl font-bold text-muted-foreground/30">404</span>
+      <p className="text-sm text-muted-foreground">Page not found</p>
+    </div>
+  );
+}
+
 function App() {
   return (
     <>
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Layout />}>
-            <Route index element={<Dashboard />} />
-            <Route path="blacklists" element={<Blacklists />} />
-            <Route path="logs" element={<Logs />} />
-            <Route path="settings" element={<Settings />} />
-          </Route>
-        </Routes>
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/" element={<Layout />}>
+              <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+              <Route path="blacklists" element={<ErrorBoundary><Blacklists /></ErrorBoundary>} />
+              <Route path="logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
+              <Route path="settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
+              <Route path="*" element={<NotFound />} />
+            </Route>
+          </Routes>
+        </ErrorBoundary>
       </BrowserRouter>
-      <Toaster 
+      <Toaster
         position="bottom-right"
         toastOptions={{
           style: {
@@ -34,7 +76,7 @@ function App() {
               secondary: '#fff',
             },
           },
-        }} 
+        }}
       />
     </>
   );

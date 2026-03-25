@@ -11,7 +11,8 @@ export function Blacklists() {
   const [isImporting, setIsImporting] = useState(false);
   const [isGeoBlocking, setIsGeoBlocking] = useState(false);
   const [isPopularLists, setIsPopularLists] = useState(false);
-  
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+
   const [newItem, setNewItem] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [importUrl, setImportUrl] = useState('');
@@ -21,8 +22,8 @@ export function Blacklists() {
   const { data: domainData, execute: refreshDomains } = useApi<any>('domain-blacklist');
   const { data: whitelistData, execute: refreshWhitelists } = useApi<any>('ip-whitelist');
 
-  const ips = ipData?.blacklist || [];
-  const domains = domainData?.blacklist || [];
+  const ips = ipData?.data || [];
+  const domains = domainData?.data || [];
   const whitelists = whitelistData?.data || [];
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -60,19 +61,16 @@ export function Blacklists() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this rule?')) return;
-    
     let endpoint = '';
     if (activeTab === 'ip') endpoint = `ip-blacklist/${id}`;
     else if (activeTab === 'domain') endpoint = `domain-blacklist/${id}`;
     else endpoint = `ip-whitelist/${id}`;
 
     const loadingToast = toast.loading(`Deleting ${activeTab}...`);
-    
     try {
       await api.delete(`/api/${endpoint}`);
       toast.success('Rule deleted successfully', { id: loadingToast });
-      
+      setPendingDeleteId(null);
       if (activeTab === 'ip') refreshIps();
       else if (activeTab === 'domain') refreshDomains();
       else refreshWhitelists();
@@ -91,7 +89,7 @@ export function Blacklists() {
         type: activeTab,
         url: importUrl
       });
-      toast.success(`Imported ${response.data.imported_count || 0} rules successfully`, { id: loadingToast });
+      toast.success(`Imported ${response.data.data?.added || 0} rules successfully`, { id: loadingToast });
       setImportUrl('');
       setIsImporting(false);
       activeTab === 'ip' ? refreshIps() : refreshDomains();
@@ -106,10 +104,10 @@ export function Blacklists() {
 
     const loadingToast = toast.loading(`Importing IP blocks for ${geoCountry}...`);
     try {
-      const response = await api.post('/api/blacklist/import-geo', {
-        country_code: geoCountry
+      const response = await api.post('blacklists/import-geo', {
+        countries: [geoCountry]
       });
-      toast.success(`Imported ${response.data.imported_count || 0} IPs successfully`, { id: loadingToast });
+      toast.success(`Imported ${response.data.data?.imported || 0} IPs successfully`, { id: loadingToast });
       setGeoCountry('');
       setIsGeoBlocking(false);
       refreshIps();
@@ -121,11 +119,11 @@ export function Blacklists() {
   const handlePopularListImport = async (listUrl: string, listName: string) => {
     const loadingToast = toast.loading(`Downloading and importing ${listName}... This may take a minute.`);
     try {
-      const response = await api.post('/api/blacklist/import', {
+      const response = await api.post('blacklists/import', {
         url: listUrl,
         type: activeTab
       });
-      toast.success(`Imported ${response.data.imported_count || 0} items from ${listName}`, { id: loadingToast });
+      toast.success(`Imported ${response.data.data?.added || 0} items from ${listName}`, { id: loadingToast });
       setIsPopularLists(false);
       activeTab === 'ip' ? refreshIps() : refreshDomains();
     } catch (err: any) {
@@ -164,21 +162,27 @@ export function Blacklists() {
             </button>
           )}
           
-          <button 
-            onClick={() => { setIsPopularLists(!isPopularLists); setIsAdding(false); setIsGeoBlocking(false); setIsImporting(false); }}
-            className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isPopularLists ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
-          >
-            <Database className="w-4 h-4 mr-2" />
-            Popular Lists
-          </button>
+          {activeTab !== 'whitelist' && (
+            <button
+              type="button"
+              onClick={() => { setIsPopularLists(!isPopularLists); setIsAdding(false); setIsGeoBlocking(false); setIsImporting(false); }}
+              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isPopularLists ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
+            >
+              <Database className="w-4 h-4 mr-2" />
+              Popular Lists
+            </button>
+          )}
 
-          <button 
-            onClick={() => { setIsImporting(!isImporting); setIsAdding(false); setIsGeoBlocking(false); setIsPopularLists(false); }}
-            className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isImporting ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Import URL
-          </button>
+          {activeTab !== 'whitelist' && (
+            <button
+              type="button"
+              onClick={() => { setIsImporting(!isImporting); setIsAdding(false); setIsGeoBlocking(false); setIsPopularLists(false); }}
+              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isImporting ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Import URL
+            </button>
+          )}
           <button 
             onClick={() => { setIsAdding(!isAdding); setIsImporting(false); setIsGeoBlocking(false); setIsPopularLists(false); }}
             className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isAdding ? 'bg-destructive/90 text-destructive-foreground' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}
@@ -315,8 +319,9 @@ export function Blacklists() {
           Domains
           <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{domains.length}</span>
         </button>
-        <button 
-          onClick={() => setActiveTab('whitelist')}
+        <button
+          type="button"
+          onClick={() => { setActiveTab('whitelist'); setIsPopularLists(false); setIsImporting(false); setIsGeoBlocking(false); }}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/20 text-green-500 shadow-sm' : 'text-muted-foreground hover:text-green-500'}`}
         >
           <CheckCircle className="w-4 h-4 mr-2" />
@@ -337,50 +342,62 @@ export function Blacklists() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {activeTab === 'ip' && ips.map((item: any, i: number) => (
-                <tr key={i} className="hover:bg-secondary/20 transition-colors">
-                  <td className="px-6 py-4 font-medium text-white">{item.ip_address}</td>
+              {activeTab === 'ip' && ips.map((item: any) => (
+                <tr key={item.id} className="hover:bg-secondary/20 transition-colors">
+                  <td className="px-6 py-4 font-medium text-white">{item.ip}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{new Date(item.created_at).toLocaleDateString()}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
                   <td className="px-6 py-4 text-right">
-                    <button 
-                      onClick={() => handleDelete(item.id)}
-                      className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {pendingDeleteId === item.id ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <button type="button" onClick={() => handleDelete(item.id)} className="px-2 py-1 text-xs bg-destructive text-destructive-foreground rounded hover:bg-destructive/90 transition-colors">Confirm</button>
+                        <button type="button" onClick={() => setPendingDeleteId(null)} className="px-2 py-1 text-xs bg-secondary text-foreground rounded hover:bg-secondary/80 transition-colors">Cancel</button>
+                      </div>
+                    ) : (
+                      <button type="button" aria-label="Delete rule" onClick={() => setPendingDeleteId(item.id)} className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
               
-              {activeTab === 'domain' && domains.map((item: any, i: number) => (
-                <tr key={i} className="hover:bg-secondary/20 transition-colors">
+              {activeTab === 'domain' && domains.map((item: any) => (
+                <tr key={item.id} className="hover:bg-secondary/20 transition-colors">
                   <td className="px-6 py-4 font-medium text-white">{item.domain}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{new Date(item.created_at).toLocaleDateString()}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
                   <td className="px-6 py-4 text-right">
-                    <button 
-                      onClick={() => handleDelete(item.id)}
-                      className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {pendingDeleteId === item.id ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <button type="button" onClick={() => handleDelete(item.id)} className="px-2 py-1 text-xs bg-destructive text-destructive-foreground rounded hover:bg-destructive/90 transition-colors">Confirm</button>
+                        <button type="button" onClick={() => setPendingDeleteId(null)} className="px-2 py-1 text-xs bg-secondary text-foreground rounded hover:bg-secondary/80 transition-colors">Cancel</button>
+                      </div>
+                    ) : (
+                      <button type="button" aria-label="Delete rule" onClick={() => setPendingDeleteId(item.id)} className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
 
-              {activeTab === 'whitelist' && whitelists.map((item: any, i: number) => (
-                <tr key={i} className="hover:bg-secondary/20 transition-colors">
+              {activeTab === 'whitelist' && whitelists.map((item: any) => (
+                <tr key={item.id} className="hover:bg-secondary/20 transition-colors">
                   <td className="px-6 py-4 font-medium text-green-500">{item.ip}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{new Date(item.added_date).toLocaleDateString()}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
                   <td className="px-6 py-4 text-right">
-                    <button 
-                      onClick={() => handleDelete(item.id)}
-                      className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {pendingDeleteId === item.id ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <button type="button" onClick={() => handleDelete(item.id)} className="px-2 py-1 text-xs bg-destructive text-destructive-foreground rounded hover:bg-destructive/90 transition-colors">Confirm</button>
+                        <button type="button" onClick={() => setPendingDeleteId(null)} className="px-2 py-1 text-xs bg-secondary text-foreground rounded hover:bg-secondary/80 transition-colors">Cancel</button>
+                      </div>
+                    ) : (
+                      <button type="button" aria-label="Delete rule" onClick={() => setPendingDeleteId(item.id)} className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

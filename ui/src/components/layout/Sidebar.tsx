@@ -1,7 +1,27 @@
+import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Shield, LayoutDashboard, Ban, List, Settings } from 'lucide-react';
+import { api } from '../../lib/api';
+
+type ApiStatus = 'connected' | 'disconnected' | 'checking';
 
 export function Sidebar() {
+  const [apiStatus, setApiStatus] = useState<ApiStatus>('checking');
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        await api.get('/health');
+        setApiStatus('connected');
+      } catch {
+        setApiStatus('disconnected');
+      }
+    };
+    check();
+    const interval = setInterval(check, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/blacklists', icon: Ban, label: 'Blacklists' },
@@ -43,10 +63,18 @@ export function Sidebar() {
       <div className="mt-auto p-4 border-t border-border">
         <div className="flex items-center justify-between px-3 py-2 mb-2 rounded-md bg-[#0f172a] border border-[#1e293b]">
           <div className="flex items-center">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 mr-2"></div>
+            <div className={`w-2 h-2 rounded-full mr-2 ${
+              apiStatus === 'connected' ? 'bg-emerald-500' :
+              apiStatus === 'disconnected' ? 'bg-red-500' : 'bg-yellow-500 animate-pulse'
+            }`} />
             <span className="text-sm font-medium text-muted-foreground">API</span>
           </div>
-          <span className="text-xs text-emerald-500 font-medium">Connected</span>
+          <span className={`text-xs font-medium ${
+            apiStatus === 'connected' ? 'text-emerald-500' :
+            apiStatus === 'disconnected' ? 'text-red-500' : 'text-yellow-500'
+          }`}>
+            {apiStatus === 'connected' ? 'Connected' : apiStatus === 'disconnected' ? 'Offline' : 'Checking…'}
+          </span>
         </div>
       </div>
     </aside>
