@@ -12,12 +12,12 @@ export function useApi<T>(endpoint: string, options = { immediate: true }) {
     try {
       const response = await api.get(endpoint);
       if (response.data && response.data.data !== undefined) {
-        setData(response.data.data);
+        setData(response.data.data as T);
       } else {
-        setData(response.data);
+        setData(response.data as T);
       }
-    } catch (err: any) {
-      setError(err);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       setLoading(false);
     }

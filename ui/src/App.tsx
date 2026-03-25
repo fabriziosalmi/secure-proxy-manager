@@ -1,4 +1,4 @@
-import { Component } from 'react';
+import { Component, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { Layout } from './components/layout/Layout';
@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Blacklists } from './pages/Blacklists';
 import { Logs } from './pages/Logs';
 import { Settings } from './pages/Settings';
+import { Login } from './pages/Login';
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
   constructor(props: { children: React.ReactNode }) {
@@ -47,6 +48,14 @@ function NotFound() {
 }
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    () => !!sessionStorage.getItem('auth_token')
+  );
+
+  if (!isAuthenticated) {
+    return <Login onLogin={() => setIsAuthenticated(true)} />;
+  }
+
   return (
     <>
       <BrowserRouter>

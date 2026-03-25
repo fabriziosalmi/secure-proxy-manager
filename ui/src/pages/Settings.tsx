@@ -1,20 +1,21 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { useApi } from '../hooks/useApi';
+import type { SettingRow } from '../types';
 import { Save, Download, Shield, Database, Network, Trash2, Key, Bell } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 
 export function Settings() {
-  const { data: settingsData } = useApi<any>('settings');
-  const [formData, setFormData] = useState<any>({});
+  const { data: settingsData } = useApi<SettingRow[]>('settings');
+  const [formData, setFormData] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (Array.isArray(settingsData)) {
       // API returns [{setting_name, setting_value}, ...] — convert to {key: value} map
       const map: Record<string, string> = {};
-      settingsData.forEach((s: any) => { map[s.setting_name] = s.setting_value; });
+      settingsData.forEach((s) => { map[s.setting_name] = s.setting_value; });
       setFormData(map);
     }
   }, [settingsData]);
@@ -173,7 +174,7 @@ export function Settings() {
                     <input 
                       type="checkbox" 
                       name="enable_tailscale"
-                      checked={formData.enable_tailscale === 'true' || formData.enable_tailscale === true}
+                      checked={formData.enable_tailscale === 'true'}
                       onChange={(e) => setFormData({ ...formData, enable_tailscale: e.target.checked ? 'true' : 'false' })}
                       className="sr-only peer" 
                     />
@@ -221,7 +222,7 @@ export function Settings() {
                     <input 
                       type="checkbox" 
                       name="enable_ddns"
-                      checked={formData.enable_ddns === 'true' || formData.enable_ddns === true}
+                      checked={formData.enable_ddns === 'true'}
                       onChange={(e) => setFormData({ ...formData, enable_ddns: e.target.checked ? 'true' : 'false' })}
                       className="sr-only peer" 
                     />
@@ -279,7 +280,7 @@ export function Settings() {
                 <input 
                   type="checkbox" 
                   name="enable_https_filtering"
-                  checked={formData.enable_https_filtering === 'true' || formData.enable_https_filtering === true}
+                  checked={formData.enable_https_filtering === 'true'}
                   onChange={(e) => setFormData({ ...formData, enable_https_filtering: e.target.checked ? 'true' : 'false' })}
                   className="sr-only peer" 
                 />
@@ -296,7 +297,7 @@ export function Settings() {
                 <input 
                   type="checkbox" 
                   name="aggressive_caching"
-                  checked={formData.aggressive_caching === 'true' || formData.aggressive_caching === true}
+                  checked={formData.aggressive_caching === 'true'}
                   onChange={(e) => setFormData({ ...formData, aggressive_caching: e.target.checked ? 'true' : 'false' })}
                   className="sr-only peer" 
                 />
@@ -313,7 +314,7 @@ export function Settings() {
                 <input 
                   type="checkbox" 
                   name="enable_offline_mode"
-                  checked={formData.enable_offline_mode === 'true' || formData.enable_offline_mode === true}
+                  checked={formData.enable_offline_mode === 'true'}
                   onChange={(e) => setFormData({ ...formData, enable_offline_mode: e.target.checked ? 'true' : 'false' })}
                   className="sr-only peer" 
                 />
@@ -356,7 +357,7 @@ export function Settings() {
                     <input 
                       type="checkbox" 
                       name="enable_notifications"
-                      checked={formData.enable_notifications === 'true' || formData.enable_notifications === true}
+                      checked={formData.enable_notifications === 'true'}
                       onChange={(e) => setFormData({ ...formData, enable_notifications: e.target.checked ? 'true' : 'false' })}
                       className="sr-only peer" 
                     />
@@ -464,7 +465,7 @@ export function Settings() {
                     <input 
                       type="checkbox" 
                       name="enable_bandwidth_limits"
-                      checked={formData.enable_bandwidth_limits === 'true' || formData.enable_bandwidth_limits === true}
+                      checked={formData.enable_bandwidth_limits === 'true'}
                       onChange={(e) => setFormData({ ...formData, enable_bandwidth_limits: e.target.checked ? 'true' : 'false' })}
                       className="sr-only peer" 
                     />
@@ -509,7 +510,7 @@ export function Settings() {
                     <input 
                       type="checkbox" 
                       name="enable_time_restrictions"
-                      checked={formData.enable_time_restrictions === 'true' || formData.enable_time_restrictions === true}
+                      checked={formData.enable_time_restrictions === 'true'}
                       onChange={(e) => setFormData({ ...formData, enable_time_restrictions: e.target.checked ? 'true' : 'false' })}
                       className="sr-only peer" 
                     />
@@ -554,7 +555,7 @@ export function Settings() {
                     <input 
                       type="checkbox" 
                       name="enable_proxy_auth"
-                      checked={formData.enable_proxy_auth === 'true' || formData.enable_proxy_auth === true}
+                      checked={formData.enable_proxy_auth === 'true'}
                       onChange={(e) => setFormData({ ...formData, enable_proxy_auth: e.target.checked ? 'true' : 'false' })}
                       className="sr-only peer" 
                     />
@@ -643,7 +644,7 @@ export function Settings() {
                     <input 
                       type="checkbox" 
                       name="enable_waf"
-                      checked={formData.enable_waf === 'true' || formData.enable_waf === true}
+                      checked={formData.enable_waf === 'true'}
                       onChange={(e) => setFormData({ ...formData, enable_waf: e.target.checked ? 'true' : 'false' })}
                       className="sr-only peer" 
                     />
@@ -685,7 +686,7 @@ export function Settings() {
                 <input 
                   type="checkbox" 
                   name="block_direct_ip"
-                  checked={formData.block_direct_ip === 'true' || formData.block_direct_ip === true}
+                  checked={formData.block_direct_ip === 'true'}
                   onChange={(e) => setFormData({ ...formData, block_direct_ip: e.target.checked ? 'true' : 'false' })}
                   className="sr-only peer" 
                 />
@@ -702,7 +703,7 @@ export function Settings() {
                 <input 
                   type="checkbox" 
                   name="enable_safesearch"
-                  checked={formData.enable_safesearch === 'true' || formData.enable_safesearch === true}
+                  checked={formData.enable_safesearch === 'true'}
                   onChange={(e) => setFormData({ ...formData, enable_safesearch: e.target.checked ? 'true' : 'false' })}
                   className="sr-only peer" 
                 />
@@ -719,7 +720,7 @@ export function Settings() {
                 <input 
                   type="checkbox" 
                   name="enable_youtube_restricted"
-                  checked={formData.enable_youtube_restricted === 'true' || formData.enable_youtube_restricted === true}
+                  checked={formData.enable_youtube_restricted === 'true'}
                   onChange={(e) => setFormData({ ...formData, enable_youtube_restricted: e.target.checked ? 'true' : 'false' })}
                   className="sr-only peer" 
                 />
@@ -738,7 +739,7 @@ export function Settings() {
                     <input 
                       type="checkbox" 
                       name="enable_content_filtering"
-                      checked={formData.enable_content_filtering === 'true' || formData.enable_content_filtering === true}
+                      checked={formData.enable_content_filtering === 'true'}
                       onChange={(e) => setFormData({ ...formData, enable_content_filtering: e.target.checked ? 'true' : 'false' })}
                       className="sr-only peer" 
                     />

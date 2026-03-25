@@ -5,9 +5,10 @@ import sqlite3
 import secrets
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from fastapi import FastAPI, Depends, HTTPException, status, Request, BackgroundTasks, WebSocket, WebSocketDisconnect
+import base64
+import jwt as pyjwt
+from fastapi import FastAPI, Depends, HTTPException, Header, status, Request, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse, Response
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import bcrypt
@@ -62,6 +63,11 @@ logger = logging.getLogger(__name__)
 DATABASE_PATH = os.environ.get('DATABASE_PATH', '/data/secure_proxy.db')
 PROXY_HOST = os.environ.get('PROXY_HOST', 'proxy')
 PROXY_PORT = os.environ.get('PROXY_PORT', '3128')
+
+# JWT configuration
+JWT_SECRET = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_HOURS = 8
 
 def ddns_scheduler_sync():
     """Background task to update DDNS periodically"""
@@ -128,9 +134,6 @@ async def lifespan(app: FastAPI):
 
 # FastAPI App
 app = FastAPI(title="Secure Proxy Manager API", lifespan=lifespan)
-
-# Security
-security = HTTPBasic()
 
 # CORS — restrict to explicitly configured origins; wildcard + credentials is invalid per spec
 _cors_raw = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:8011,http://web:8011')
@@ -249,37 +252,81 @@ RATE_LIMIT_WINDOW = 300  # 5 minutes
 ws_tokens: Dict[str, tuple] = {}
 
 
-def authenticate(credentials: HTTPBasicCredentials = Depends(security), request: Request = None):
-    client_ip = request.client.host if request and request.client else "unknown"
-    now = datetime.now()
-
-    # Enforce rate limit before touching the database
-    if client_ip in auth_attempts:
-        valid = [t for t in auth_attempts[client_ip] if (now - t).total_seconds() < RATE_LIMIT_WINDOW]
-        auth_attempts[client_ip] = valid
-        if len(valid) >= MAX_ATTEMPTS:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Too many failed attempts. Try again in {RATE_LIMIT_WINDOW // 60} minutes.",
-            )
-
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT password FROM users WHERE username = ?", (credentials.username,))
-    user = cursor.fetchone()
-    conn.close()
-
-    if not user or not check_password_hash(user['password'], credentials.password):
-        auth_attempts.setdefault(client_ip, []).append(now)
+def authenticate(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+) -> str:
+    """Accept Bearer JWT (browser) or Basic Auth (backward-compat / tests)."""
+    if not authorization:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Basic"},
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": 'Bearer realm="Secure Proxy Manager"'},
         )
 
-    # Successful auth clears the counter
-    auth_attempts.pop(client_ip, None)
-    return credentials.username
+    # ── Bearer JWT path ──────────────────────────────────────────────────────
+    if authorization.startswith("Bearer "):
+        token = authorization[7:]
+        try:
+            payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            sub = payload.get("sub")
+            if not isinstance(sub, str) or not sub:
+                raise pyjwt.InvalidTokenError("missing sub")
+            return sub
+        except pyjwt.ExpiredSignatureError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token expired",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        except pyjwt.InvalidTokenError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    # ── Basic Auth path (backward-compat) ────────────────────────────────────
+    if authorization.startswith("Basic "):
+        client_ip = request.client.host if request.client else "unknown"
+        now = datetime.now()
+
+        if client_ip in auth_attempts:
+            valid = [t for t in auth_attempts[client_ip] if (now - t).total_seconds() < RATE_LIMIT_WINDOW]
+            auth_attempts[client_ip] = valid
+            if len(valid) >= MAX_ATTEMPTS:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Too many failed attempts. Try again in {RATE_LIMIT_WINDOW // 60} minutes.",
+                )
+
+        try:
+            decoded = base64.b64decode(authorization[6:]).decode("utf-8")
+            username, password = decoded.split(":", 1)
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
+        user = cursor.fetchone()
+        conn.close()
+
+        if not user or not check_password_hash(user["password"], password):
+            auth_attempts.setdefault(client_ip, []).append(now)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Basic"},
+            )
+
+        auth_attempts.pop(client_ip, None)
+        return username
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        headers={"WWW-Authenticate": 'Bearer realm="Secure Proxy Manager"'},
+    )
 
 # @app.on_event("startup")
 # async def startup_event():
@@ -302,7 +349,7 @@ class ConnectionManager:
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
-            except:
+            except Exception:
                 pass
 
 manager = ConnectionManager()
@@ -375,20 +422,20 @@ def tail_logs_sync():
                                     )
                                     local_conn.commit()
                                     local_conn.close()
-                                except Exception as db_err:
+                                except sqlite3.Error as db_err:
                                     logger.error(f"Error saving log to DB: {db_err}")
                                 
                                 # Send to all connected clients
                                 if manager.active_connections:
                                     loop.run_until_complete(manager.broadcast(log_entry))
-                            except Exception as e:
+                            except (ValueError, IndexError, OSError) as e:
                                 logger.debug(f"Log parse error: {e}")
                         # Also log to file for debugging
                         logger.debug(f"Tailed line: {line.strip()}")
             else:
                 logger.warning(f"Log file {log_file} does not exist yet. Waiting...")
                 time.sleep(5)
-        except Exception as e:
+        except (OSError, IOError) as e:
             logger.error(f"Error tailing logs: {e}")
             time.sleep(5)
 
@@ -403,6 +450,43 @@ def get_ws_token(current_user: str = Depends(authenticate)):
     for k in expired_keys:
         ws_tokens.pop(k, None)
     ws_tokens[token] = (current_user, now + timedelta(minutes=2))
+    return {"token": token}
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest, request: Request):
+    """Validate credentials and return a short-lived JWT access token."""
+    client_ip = request.client.host if request.client else "unknown"
+    now = datetime.now()
+
+    # Enforce rate limiting on the login endpoint too
+    if client_ip in auth_attempts:
+        valid = [t for t in auth_attempts[client_ip] if (now - t).total_seconds() < RATE_LIMIT_WINDOW]
+        auth_attempts[client_ip] = valid
+        if len(valid) >= MAX_ATTEMPTS:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Too many failed attempts. Try again in {RATE_LIMIT_WINDOW // 60} minutes.",
+            )
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT password FROM users WHERE username = ?", (req.username,))
+    user = cursor.fetchone()
+    conn.close()
+
+    if not user or not check_password_hash(user["password"], req.password):
+        auth_attempts.setdefault(client_ip, []).append(now)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+    auth_attempts.pop(client_ip, None)
+
+    expire = datetime.utcnow() + timedelta(hours=JWT_EXPIRE_HOURS)
+    token = pyjwt.encode({"sub": req.username, "exp": expire}, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return {"token": token}
 
 
@@ -494,7 +578,7 @@ def backup_config():
         settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
         conn.close()
         return {"status": "success", "data": settings}
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"Error backing up config: {e}")
         raise HTTPException(status_code=500, detail="Failed to backup config")
 
@@ -521,7 +605,7 @@ def restore_config(request_data: RestoreConfigRequest, background_tasks: Backgro
         return {"status": "success", "message": "Configuration restored successfully"}
     except HTTPException:
         raise
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"Error restoring config: {e}")
         raise HTTPException(status_code=500, detail="Failed to restore config")
 
@@ -928,7 +1012,7 @@ def get_traffic_statistics(period: str = 'day'):
                 "blocked": blocked
             }
         }
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"Error getting traffic statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 @app.get("/api/logs", dependencies=[Depends(authenticate)])
@@ -1004,7 +1088,7 @@ def get_logs(
                 "offset": offset
             }
         }
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"Error fetching logs: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch logs")
 
@@ -1056,7 +1140,7 @@ def get_log_stats():
                 "last_import": last_import
             }
         }
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"Error getting log stats: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get log statistics")
 
@@ -1098,7 +1182,7 @@ def get_log_timeline(hours: int = 24):
             "status": "success",
             "data": timeline_data
         }
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"Error getting log timeline: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get log timeline")
 
@@ -1162,7 +1246,7 @@ def send_security_notification(event):
         if webhook_url:
             try:
                 requests.post(webhook_url, json=event, timeout=5)
-            except Exception as e:
+            except requests.RequestException as e:
                 logger.error(f"Failed to send webhook notification: {e}")
                 
         # 2. Gotify
@@ -1181,7 +1265,7 @@ def send_security_notification(event):
                     },
                     timeout=5
                 )
-            except Exception as e:
+            except requests.RequestException as e:
                 logger.error(f"Failed to send Gotify notification: {e}")
                 
         # 3. Microsoft Teams
@@ -1200,7 +1284,7 @@ def send_security_notification(event):
                     }]
                 }
                 requests.post(teams_url, json=teams_payload, timeout=5)
-            except Exception as e:
+            except requests.RequestException as e:
                 logger.error(f"Failed to send MS Teams notification: {e}")
                 
         # 4. Telegram
@@ -1219,10 +1303,10 @@ def send_security_notification(event):
                     },
                     timeout=5
                 )
-            except Exception as e:
+            except requests.RequestException as e:
                 logger.error(f"Failed to send Telegram notification: {e}")
                 
-    except Exception as e:
+    except (sqlite3.Error, requests.RequestException) as e:
         logger.error(f"Error in notification system: {e}")
 
 import re
@@ -1389,7 +1473,7 @@ def import_blacklist(request_data: ImportBlacklistRequest, background_tasks: Bac
         
     except HTTPException:
         raise
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"Error during import: {str(e)}")
         raise HTTPException(status_code=500, detail="Import operation failed")
 
@@ -1436,7 +1520,7 @@ def import_geo_blacklist(request_data: ImportGeoBlacklistRequest, background_tas
                     else:
                         last_error = f"HTTP {resp.status_code} from {url}"
                         logger.warning(last_error)
-                except Exception as e:
+                except requests.RequestException as e:
                     last_error = str(e)
                     logger.warning(f"Error fetching GeoIP for {country} from {url}: {e}")
 
@@ -1478,7 +1562,7 @@ def import_geo_blacklist(request_data: ImportGeoBlacklistRequest, background_tas
         }
     except HTTPException:
         raise
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"Error during GeoIP import: {str(e)}")
         raise HTTPException(status_code=500, detail="GeoIP import operation failed")
 
@@ -1612,7 +1696,7 @@ def optimize_database():
                 "space_saved_mb": f"{space_saved_mb} MB"
             }
         }
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"Error optimizing database: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error optimizing database: {str(e)}")
 
@@ -1642,7 +1726,7 @@ def get_database_stats():
             "status": "success",
             "data": stats
         }
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"Error getting database stats: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting database stats: {str(e)}")
 
@@ -1767,7 +1851,7 @@ def export_database():
             "message": "Database exported successfully",
             "data": export_data
         }
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"Error exporting database: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error exporting database: {str(e)}")
 
@@ -1804,7 +1888,7 @@ def reset_database():
                 "cleared_tables": cleared_tables
             }
         }
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"Error resetting database: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error resetting database: {str(e)}")
 
@@ -1823,7 +1907,7 @@ def clear_logs():
         conn.close()
         logger.info("All logs cleared successfully")
         return {"status": "success", "message": "All logs cleared successfully"}
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"An error occurred while clearing logs: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while clearing logs")
 
@@ -1844,7 +1928,7 @@ def clear_old_logs(days: int = 30):
         conn.close()
         logger.info(f"Cleared {deleted_count} old logs successfully")
         return {"status": "success", "message": f"Cleared {deleted_count} logs older than {days} days"}
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"An error occurred while clearing old logs: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while clearing old logs")
 
@@ -1884,7 +1968,7 @@ def client_statistics():
         }
         return {"status": "success", "data": data}
             
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"An error occurred while fetching client statistics: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while fetching client statistics")
 
@@ -1946,7 +2030,7 @@ def domain_statistics():
             
         return {"status": "success", "data": domains}
             
-    except Exception as e:
+    except sqlite3.Error as e:
         logger.error(f"An error occurred while fetching domain statistics: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while fetching domain statistics")
 
