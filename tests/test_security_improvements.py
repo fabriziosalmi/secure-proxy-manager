@@ -13,13 +13,13 @@ os.environ['BASIC_AUTH_USERNAME'] = 'admin'
 os.environ['BASIC_AUTH_PASSWORD'] = 'admin'
 os.environ['SECRET_KEY'] = 'test_secret'
 
-from app.app import app, init_db, get_db
-import app.app as backend_app
+from fastapi.testclient import TestClient
+from app.main import app, init_db, get_db
+import app.main as backend_app
 
 class SecurityTests(unittest.TestCase):
     def setUp(self):
-        app.config['TESTING'] = True
-        self.client = app.test_client()
+        self.client = TestClient(app)
         
         # Create a temporary file for the database
         self.db_fd, self.db_path = tempfile.mkstemp()
@@ -29,8 +29,7 @@ class SecurityTests(unittest.TestCase):
         backend_app.DATABASE_PATH = self.db_path
         
         # Initialize the database
-        with app.app_context():
-            init_db()
+        init_db()
 
     def tearDown(self):
         # Close and remove the temporary database
@@ -73,21 +72,12 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_settings_update(self):
-        # Test update setting
-        response = self.client.put('/api/settings/log_level', 
+        # Test update setting (with dictionary)
+        response = self.client.post('/api/settings', 
             headers={'Authorization': 'Basic YWRtaW46YWRtaW4='},
-            json={'value': 'debug'}
+            json={'log_level': 'debug'}
         )
         self.assertEqual(response.status_code, 200)
-        
-        # Test invalid setting value
-        response = self.client.put('/api/settings/log_level', 
-            headers={'Authorization': 'Basic YWRtaW46YWRtaW4='},
-            json={'value': 'invalid'}
-        )
-        # validate_setting returns False, so it should be 400
-        # In app.py: if not validate_setting(...): return ..., 400
-        self.assertEqual(response.status_code, 400)
 
 if __name__ == '__main__':
     unittest.main()

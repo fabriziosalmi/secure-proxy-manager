@@ -251,10 +251,6 @@ echo "Initializing Squid cache directories..."
 mkdir -p /var/spool/squid
 chown -R proxy:proxy /var/spool/squid
 
-# Initialize swap directories
-# Run as proxy user to ensure permissions are correct
-su - proxy -s /bin/bash -c "/usr/sbin/squid -z"
-
 # Fix run permissions
 # We run supervisord as root, but squid drops privileges to proxy user
 # Make sure the proxy user can write its PID file
@@ -263,6 +259,12 @@ chown -R proxy:proxy /run/squid /var/run/squid
 chmod 755 /run/squid /var/run/squid
 touch /run/squid/squid.pid
 chown proxy:proxy /run/squid/squid.pid
+touch /run/squid.pid
+chown proxy:proxy /run/squid.pid
+
+# Initialize swap directories
+# Run as proxy user to ensure permissions are correct
+su - proxy -s /bin/bash -c "/usr/sbin/squid -z"
 
 # Wait a moment to ensure initialization completes
 sleep 2
