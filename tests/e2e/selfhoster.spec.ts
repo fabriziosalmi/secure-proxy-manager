@@ -401,8 +401,15 @@ test.describe('UI — Dashboard', () => {
     await expect(page.locator('code').filter({ hasText: '3128' }).first()).toBeVisible();
   });
 
-  test('copy button changes to "Copied!" on click', async ({ page, context, request }) => {
+  test('copy button changes to "Copied!" on click', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    // Mock clipboard so writeText resolves immediately in headless mode
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: () => Promise.resolve() },
+        writable: true, configurable: true,
+      });
+    });
     await page.goto('/');
     await page.waitForSelector('text=Configure your device');
     await page.getByRole('button', { name: /copy/i }).first().click();
@@ -412,7 +419,7 @@ test.describe('UI — Dashboard', () => {
   test('shows stats cards (Total Requests, Blocked, Direct IP, Security)', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('text=Configure your device');
-    for (const label of ['Total Requests', 'Blocked', 'Direct IP', 'Security Score']) {
+    for (const label of ['Total Requests', 'Blocked Threats', 'Direct IP Blocks', 'Security Score']) {
       await expect(page.getByText(label)).toBeVisible();
     }
   });
@@ -431,7 +438,7 @@ test.describe('UI — Navigation', () => {
 
   test('navigates to /blacklists', async ({ page }) => {
     await page.goto('/blacklists');
-    await expect(page.getByRole('button', { name: /IP Blacklist|^IP$/i }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: /IP Addresses/i }).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test('navigates to /logs', async ({ page }) => {
@@ -458,23 +465,24 @@ test.describe('UI — Blacklists (IP tab)', () => {
   test.beforeEach(async ({ page, request }) => {
     await injectAuth(page, request);
     await page.goto('/blacklists');
-    await page.waitForSelector('button:has-text("Add")', { timeout: 15_000 });
+    await page.waitForSelector('button:has-text("Add Rule")', { timeout: 15_000 });
   });
 
   test('IP tab is active by default and shows controls', async ({ page }) => {
-    await expect(page.getByRole('button', { name: /^Add$/i }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /Add Rule/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /Bulk Add/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /Import URL/i })).toBeVisible();
   });
 
   test('Add single IP — add, verify in list, delete', async ({ page }) => {
     const testIp = '192.0.2.55';
-    await page.getByRole('button', { name: /^Add$/i }).first().click();
-    // Fill the first visible input (IP address field)
-    const inputs = page.locator('input[type="text"], input:not([type])');
-    await inputs.first().fill(testIp);
-    await page.getByRole('button', { name: /^Add$/i }).last().click();
-    await page.waitForTimeout(2_000);
+    await page.getByRole('button', { name: /Add Rule/i }).click();
+    await page.getByPlaceholder('e.g. 192.168.1.100').fill(testIp);
+    const [resp] = await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/ip-blacklist') && r.request().method() === 'POST', { timeout: 15_000 }),
+      page.getByRole('button', { name: /Save Rule/i }).click(),
+    ]);
+    expect([200, 201, 400]).toContain(resp.status()); // 400 = duplicate on retry
     await expect(page.getByText(testIp)).toBeVisible({ timeout: 10_000 });
 
     // Delete it
@@ -529,7 +537,7 @@ test.describe('UI — Blacklists (Domain tab)', () => {
   test.beforeEach(async ({ page, request }) => {
     await injectAuth(page, request);
     await page.goto('/blacklists');
-    await page.waitForSelector('button:has-text("Add")', { timeout: 15_000 });
+    await page.waitForSelector('button:has-text("Add Rule")', { timeout: 15_000 });
     await page.getByRole('button', { name: /Domain/i }).first().click();
     await page.waitForTimeout(300);
   });
@@ -541,11 +549,13 @@ test.describe('UI — Blacklists (Domain tab)', () => {
 
   test('add and delete a domain entry', async ({ page }) => {
     const testDomain = 'e2e-delete-me.test';
-    await page.getByRole('button', { name: /^Add$/i }).first().click();
-    const input = page.locator('input[type="text"], input:not([type])').first();
-    await input.fill(testDomain);
-    await page.getByRole('button', { name: /^Add$/i }).last().click();
-    await page.waitForTimeout(1_500);
+    await page.getByRole('button', { name: /Add Rule/i }).click();
+    await page.getByPlaceholder('e.g. bad-domain.com').fill(testDomain);
+    const [resp] = await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/domain-blacklist') && r.request().method() === 'POST', { timeout: 15_000 }),
+      page.getByRole('button', { name: /Save Rule/i }).click(),
+    ]);
+    expect([200, 201, 400]).toContain(resp.status()); // 400 = duplicate on retry
     await expect(page.getByText(testDomain)).toBeVisible({ timeout: 10_000 });
   });
 
@@ -562,9 +572,9 @@ test.describe('UI — Blacklists (Domain tab)', () => {
     const popularBtn = page.getByRole('button', { name: /Popular/i });
     await expect(popularBtn).toBeVisible();
     await popularBtn.click();
-    // Some known list name should appear
-    const listNames = page.locator('text=Steven Black, text=Firehol, text=StevenBlack, text=Hagezi');
-    await expect(listNames.first()).toBeVisible({ timeout: 10_000 });
+    // Domain popular lists include: StevenBlack Ad/Malware, Abuse.ch URLhaus Domains, Phishing Army
+    const listName = page.getByText(/StevenBlack|URLhaus|Phishing Army/i).first();
+    await expect(listName).toBeVisible({ timeout: 10_000 });
   });
 });
 
@@ -574,7 +584,7 @@ test.describe('UI — Blacklists (Whitelist tab)', () => {
   test.beforeEach(async ({ page, request }) => {
     await injectAuth(page, request);
     await page.goto('/blacklists');
-    await page.waitForSelector('button:has-text("Add")', { timeout: 15_000 });
+    await page.waitForSelector('button:has-text("Add Rule")', { timeout: 15_000 });
     await page.getByRole('button', { name: /Whitelist/i }).first().click();
     await page.waitForTimeout(300);
   });
@@ -587,11 +597,13 @@ test.describe('UI — Blacklists (Whitelist tab)', () => {
 
   test('add whitelist entry and verify it appears', async ({ page }) => {
     const whitelistIp = '10.88.88.0/28';
-    await page.getByRole('button', { name: /^Add$/i }).first().click();
-    const input = page.locator('input[type="text"], input:not([type])').first();
-    await input.fill(whitelistIp);
-    await page.getByRole('button', { name: /^Add$/i }).last().click();
-    await page.waitForTimeout(1_500);
+    await page.getByRole('button', { name: /Add Rule/i }).click();
+    await page.getByPlaceholder('e.g. 192.168.0.0/16').fill(whitelistIp);
+    const [resp] = await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/ip-whitelist') && r.request().method() === 'POST', { timeout: 15_000 }),
+      page.getByRole('button', { name: /Save Rule/i }).click(),
+    ]);
+    expect([200, 201, 400]).toContain(resp.status()); // 400 = duplicate on retry
     await expect(page.getByText(whitelistIp)).toBeVisible({ timeout: 10_000 });
   });
 
@@ -622,7 +634,8 @@ test.describe('UI — Logs page', () => {
   });
 
   test('search input is present', async ({ page }) => {
-    const input = page.locator('input[placeholder*="search"], input[placeholder*="filter"], input[type="search"]').first();
+    // Logs page has: placeholder="Search by IP, domain, or status..."
+    const input = page.locator('input[placeholder*="Search"], input[placeholder*="IP, domain"]').first();
     await expect(input).toBeVisible({ timeout: 10_000 });
   });
 });
@@ -685,8 +698,7 @@ test.describe('UI — Error Boundary (all routes)', () => {
 
 test.describe('Full onboarding flow', () => {
   test('complete selfhoster workflow from login to backup', async ({ page }) => {
-    // 1. Login via UI
-    await page.addInitScript(() => { sessionStorage.clear(); });
+    // 1. Login via UI (page fixture starts with fresh sessionStorage — no need to clear)
     await page.goto('/');
     await expect(page.locator('h1', { hasText: 'Secure Proxy Manager' })).toBeVisible();
     await page.fill('#username', USERNAME);
@@ -700,11 +712,14 @@ test.describe('Full onboarding flow', () => {
 
     // 3. Add an IP rule
     await page.goto('/blacklists');
-    await page.waitForSelector('button:has-text("Add")');
-    await page.getByRole('button', { name: /^Add$/i }).first().click();
-    await page.locator('input[type="text"], input:not([type])').first().fill('192.0.2.200');
-    await page.getByRole('button', { name: /^Add$/i }).last().click();
-    await page.waitForTimeout(1_500);
+    await page.waitForSelector('button:has-text("Add Rule")');
+    await page.getByRole('button', { name: /Add Rule/i }).click();
+    await page.getByPlaceholder('e.g. 192.168.1.100').fill('192.0.2.200');
+    const [ipResp] = await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/ip-blacklist') && r.request().method() === 'POST', { timeout: 15_000 }),
+      page.getByRole('button', { name: /Save Rule/i }).click(),
+    ]);
+    expect([200, 201]).toContain(ipResp.status());
 
     // 4. Bulk add 3 domains
     await page.getByRole('button', { name: /Domain/i }).first().click();
