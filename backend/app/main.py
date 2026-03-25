@@ -132,13 +132,16 @@ app = FastAPI(title="Secure Proxy Manager API", lifespan=lifespan)
 # Security
 security = HTTPBasic()
 
-# CORS
+# CORS — restrict to explicitly configured origins; wildcard + credentials is invalid per spec
+_cors_raw = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:8011,http://web:8011')
+CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_raw.split(',') if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 def get_db():
@@ -199,19 +202,45 @@ def init_db():
     conn.commit()
     conn.close()
 
-def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
+# Rate limiting state — populated by authenticate() and /api/login
+auth_attempts: Dict[str, List[datetime]] = {}
+MAX_ATTEMPTS = 5
+RATE_LIMIT_WINDOW = 300  # 5 minutes
+
+# One-time tokens for WebSocket authentication: {token: (username, expiry)}
+ws_tokens: Dict[str, tuple] = {}
+
+
+def authenticate(credentials: HTTPBasicCredentials = Depends(security), request: Request = None):
+    client_ip = request.client.host if request and request.client else "unknown"
+    now = datetime.now()
+
+    # Enforce rate limit before touching the database
+    if client_ip in auth_attempts:
+        valid = [t for t in auth_attempts[client_ip] if (now - t).total_seconds() < RATE_LIMIT_WINDOW]
+        auth_attempts[client_ip] = valid
+        if len(valid) >= MAX_ATTEMPTS:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Too many failed attempts. Try again in {RATE_LIMIT_WINDOW // 60} minutes.",
+            )
+
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT password FROM users WHERE username = ?", (credentials.username,))
     user = cursor.fetchone()
     conn.close()
-    
+
     if not user or not check_password_hash(user['password'], credentials.password):
+        auth_attempts.setdefault(client_ip, []).append(now)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Basic"},
         )
+
+    # Successful auth clears the counter
+    auth_attempts.pop(client_ip, None)
     return credentials.username
 
 # @app.on_event("startup")
@@ -325,14 +354,38 @@ def tail_logs_sync():
             logger.error(f"Error tailing logs: {e}")
             time.sleep(5)
 
+@app.get("/api/ws-token")
+def get_ws_token(current_user: str = Depends(authenticate)):
+    """Issue a short-lived one-time token to authenticate the WebSocket connection.
+    Browsers cannot send auth headers on WS upgrades, so we use this token instead."""
+    token = secrets.token_urlsafe(32)
+    now = datetime.now()
+    # Purge expired tokens while we're here
+    expired_keys = [t for t, (_, exp) in list(ws_tokens.items()) if exp < now]
+    for k in expired_keys:
+        ws_tokens.pop(k, None)
+    ws_tokens[token] = (current_user, now + timedelta(minutes=2))
+    return {"token": token}
+
+
 @app.websocket("/api/ws/logs")
-async def websocket_endpoint(websocket: WebSocket):
-    # Notice: In a real app we should pass auth tokens via WS query params, 
-    # but for simplicity we accept the connection first.
+async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
+    # Validate the one-time token issued by /api/ws-token
+    if not token:
+        await websocket.close(code=4001, reason="Authentication token required")
+        return
+    token_data = ws_tokens.pop(token, None)
+    if token_data is None:
+        await websocket.close(code=4003, reason="Invalid or already-used token")
+        return
+    _username, expiry = token_data
+    if datetime.now() > expiry:
+        await websocket.close(code=4003, reason="Token expired")
+        return
+
     await manager.connect(websocket)
     try:
         while True:
-            # Wait for messages from client (e.g. ping/pong)
             data = await websocket.receive_text()
             if data == "ping":
                 await websocket.send_text("pong")
@@ -810,16 +863,24 @@ def get_traffic_statistics(period: str = 'day'):
         conn = get_db()
         cursor = conn.cursor()
         
-        # This is a simplified fallback since actual log parsing into SQLite isn't fully set up in the initial DB init
-        # Normally you would query the proxy_logs table here.
-        cursor.execute("SELECT COUNT(*) FROM users") # Just to test DB connection
-        
-        # Generate dummy data for the UI if table is missing or empty
+        try:
+            cursor.execute(f"""
+                SELECT {interval} as bucket,
+                       COUNT(*) as total,
+                       SUM(CASE WHEN status LIKE '%DENIED%' OR status LIKE '%BLOCKED%' THEN 1 ELSE 0 END) as blocked
+                FROM proxy_logs
+                WHERE timestamp >= ?
+                GROUP BY bucket
+            """, (start_time.strftime('%Y-%m-%d %H:%M:%S'),))
+            bucket_map = {row['bucket']: row for row in cursor.fetchall()}
+        except sqlite3.OperationalError:
+            bucket_map = {}
+
         labels = intervals
-        inbound = [0] * len(labels)
-        outbound = [0] * len(labels)
-        blocked = [0] * len(labels)
-        
+        inbound = [bucket_map[lbl]['total'] if lbl in bucket_map else 0 for lbl in labels]
+        outbound = [0] * len(labels)  # outbound not tracked separately in current schema
+        blocked = [bucket_map[lbl]['blocked'] if lbl in bucket_map else 0 for lbl in labels]
+
         return {
             "status": "success",
             "data": {
@@ -1145,17 +1206,27 @@ def import_blacklist(request_data: ImportBlacklistRequest, background_tasks: Bac
         
         # Check if URL is provided
         if request_data.url:
-            # SSRF Protection: Ensure it's an HTTP/HTTPS URL and not pointing to local/private networks
+            # SSRF Protection: only allow HTTP/HTTPS; resolve hostname and reject private/reserved ranges
             parsed_url = urllib.parse.urlparse(request_data.url)
             if parsed_url.scheme not in ['http', 'https']:
                 raise HTTPException(status_code=400, detail="Only HTTP/HTTPS URLs are allowed")
-            
+            if not parsed_url.hostname:
+                raise HTTPException(status_code=400, detail="Invalid URL: missing hostname")
+
             try:
-                # Basic check for localhost or loopback to prevent basic SSRF
-                # A complete solution would resolve the DNS and check the IP against private ranges
-                if parsed_url.hostname in ['localhost', '127.0.0.1', '0.0.0.0'] or parsed_url.hostname.startswith('192.168.') or parsed_url.hostname.startswith('10.'):
-                    raise HTTPException(status_code=403, detail="Requests to local or private networks are blocked for security reasons")
-                    
+                import socket as _socket
+                try:
+                    resolved_ip = _socket.gethostbyname(parsed_url.hostname)
+                except _socket.gaierror:
+                    raise HTTPException(status_code=400, detail="Unable to resolve hostname")
+                ip_obj = ipaddress.ip_address(resolved_ip)
+                if (ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local
+                        or ip_obj.is_reserved or ip_obj.is_unspecified or ip_obj.is_multicast):
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Requests to private, loopback, link-local, or reserved networks are blocked"
+                    )
+
                 logger.info(f"Fetching blacklist from URL: {request_data.url}")
                 response = requests.get(request_data.url, timeout=15, headers={'User-Agent': 'SecureProxyManager/1.0'})
                 if response.status_code == 200:
@@ -1497,10 +1568,7 @@ def get_database_stats():
         logger.error(f"Error getting database stats: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting database stats: {str(e)}")
 
-# Simple rate limiting in memory
-auth_attempts = {}
-MAX_ATTEMPTS = 5
-RATE_LIMIT_WINDOW = 300  # 5 minutes
+# auth_attempts, MAX_ATTEMPTS, RATE_LIMIT_WINDOW are declared near authenticate()
 
 @app.get("/api/security/rate-limits", dependencies=[Depends(authenticate)])
 def get_rate_limits():
@@ -1581,14 +1649,23 @@ def export_database():
         except sqlite3.OperationalError:
             domain_blacklist = []
             
+        _SENSITIVE_KEYS = {
+            'gotify_token', 'telegram_bot_token', 'webhook_url',
+            'teams_webhook_url', 'siem_host', 'siem_port',
+        }
         try:
             cursor.execute("SELECT * FROM settings")
-            settings = [dict(row) for row in cursor.fetchall()]
+            settings = []
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                if row_dict.get('setting_name') in _SENSITIVE_KEYS:
+                    row_dict['setting_value'] = '***REDACTED***'
+                settings.append(row_dict)
         except sqlite3.OperationalError:
             settings = []
-            
+
         conn.close()
-        
+
         export_data = {
             "metadata": {
                 "version": "1.1.0",
@@ -1859,21 +1936,35 @@ class LoginRequest(BaseModel):
     password: str
 
 @app.post("/api/login")
-def login(request_data: LoginRequest):
-    """Log in a user (Note: FastAPI handles auth via HTTPBasic header for every request in this architecture. This is maintained for compatibility with UI state)"""
+def login(request_data: LoginRequest, request: Request):
+    """Log in a user and validate credentials. Also enforces rate limiting."""
+    client_ip = request.client.host if request.client else "unknown"
+    now = datetime.now()
+
+    if client_ip in auth_attempts:
+        valid = [t for t in auth_attempts[client_ip] if (now - t).total_seconds() < RATE_LIMIT_WINDOW]
+        auth_attempts[client_ip] = valid
+        if len(valid) >= MAX_ATTEMPTS:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Too many failed attempts. Try again in {RATE_LIMIT_WINDOW // 60} minutes.",
+            )
+
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE username = ?", (request_data.username,))
     user_data = cursor.fetchone()
     conn.close()
-    
+
     if user_data and check_password_hash(user_data['password'], request_data.password):
+        auth_attempts.pop(client_ip, None)
         return {
-            "status": "success", 
+            "status": "success",
             "message": "Login successful",
             "user": {"username": request_data.username}
         }
-    
+
+    auth_attempts.setdefault(client_ip, []).append(now)
     raise HTTPException(status_code=401, detail="Invalid username or password")
 
 @app.post("/api/logout")
@@ -1885,15 +1976,17 @@ def logout():
 @app.get("/api/cache/statistics", dependencies=[Depends(authenticate)])
 def get_cache_statistics():
     """Get cache statistics (simulated/mocked if actual proxy metrics not available)"""
-    # In a full implementation we would query squidmgr or squidclient
+    # Cache metrics require querying squidclient/cachemgr which is not yet wired up.
+    # Values below are placeholders — the `simulated` flag signals this to the UI.
     return {
         "status": "success",
         "data": {
-            "hit_rate": 24.5,
-            "byte_hit_rate": 18.2,
-            "cache_size": "450 MB",
-            "max_cache_size": "2048 MB",
-            "objects_cached": 12450
+            "hit_rate": 0,
+            "byte_hit_rate": 0,
+            "cache_size": "N/A",
+            "max_cache_size": "N/A",
+            "objects_cached": 0,
+            "simulated": True
         }
     }
 
