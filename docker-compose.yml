@@ -15,7 +15,7 @@ services:
     environment:
       - FLASK_ENV=${FLASK_ENV:-production}
       - BACKEND_URL=${BACKEND_URL:-http://backend:5000}
-      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-30}
+      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-120}
       - MAX_RETRIES=${MAX_RETRIES:-5}
       - PROXY_CONTAINER_NAME=${PROXY_CONTAINER_NAME:-secure-proxy-manager-proxy-1}
       - RETRY_WAIT_AFTER_STARTUP=${RETRY_WAIT_AFTER_STARTUP:-10}
