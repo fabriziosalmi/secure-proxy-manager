@@ -181,7 +181,45 @@ def init_db():
         added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
-    
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS ip_blacklist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip TEXT UNIQUE NOT NULL,
+        description TEXT,
+        added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS domain_blacklist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        domain TEXT UNIQUE NOT NULL,
+        description TEXT,
+        added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS proxy_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT,
+        client_ip TEXT,
+        method TEXT,
+        destination TEXT,
+        status TEXT,
+        bytes INTEGER
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        setting_name TEXT UNIQUE NOT NULL,
+        setting_value TEXT
+    )
+    ''')
+
     # Check credentials
     env_username = os.environ.get('BASIC_AUTH_USERNAME')
     env_password = os.environ.get('BASIC_AUTH_PASSWORD')
@@ -1228,11 +1266,27 @@ def import_blacklist(request_data: ImportBlacklistRequest, background_tasks: Bac
                     )
 
                 logger.info(f"Fetching blacklist from URL: {request_data.url}")
-                response = requests.get(request_data.url, timeout=60, headers={'User-Agent': 'SecureProxyManager/1.0'})
-                if response.status_code == 200:
-                    content = response.text
-                else:
-                    raise HTTPException(status_code=400, detail=f"Failed to fetch URL. Status code: {response.status_code}")
+                headers = {'User-Agent': 'SecureProxyManager/1.0'}
+                last_exc = None
+                last_status = None
+                for attempt in range(3):
+                    try:
+                        resp = requests.get(request_data.url, timeout=60, headers=headers)
+                        if resp.status_code == 200:
+                            content = resp.text
+                            break
+                        last_status = resp.status_code
+                        logger.warning(f"Attempt {attempt+1}: HTTP {last_status} from {request_data.url}")
+                    except requests.exceptions.RequestException as exc:
+                        last_exc = exc
+                        logger.warning(f"Attempt {attempt+1} failed: {exc}")
+                    if attempt < 2:
+                        import time as _time; _time.sleep(2 ** attempt)
+                if content is None:
+                    detail = f"HTTP {last_status}" if last_status else str(last_exc)
+                    raise HTTPException(status_code=400, detail=f"Failed to fetch URL after 3 attempts: {detail}")
+            except HTTPException:
+                raise
             except requests.exceptions.RequestException as e:
                 logger.error(f"Error fetching URL: {str(e)}")
                 raise HTTPException(status_code=400, detail=f"Error fetching URL: {str(e)}")
