@@ -43,7 +43,12 @@ export function Logs() {
       const token = data.token;
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const hostname = window.location.hostname;
-      const socketUrl = `${wsProtocol}//${hostname}:5001/api/ws/logs?token=${encodeURIComponent(token)}`;
+      // WS_BACKEND_PORT can be injected at build time (VITE_WS_BACKEND_PORT) or
+      // overridden at runtime via window.__WS_BACKEND_PORT__. Defaults to 5001.
+      const wsPort = (window as any).__WS_BACKEND_PORT__
+        || import.meta.env.VITE_WS_BACKEND_PORT
+        || '5001';
+      const socketUrl = `${wsProtocol}//${hostname}:${wsPort}/api/ws/logs?token=${encodeURIComponent(token)}`;
 
       ws = new WebSocket(socketUrl);
       socketRef.current = ws;
