@@ -4,12 +4,13 @@ import { api } from '../lib/api';
 import { Search, RefreshCw, FileText, Trash2, Activity, ShieldAlert, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
+import type { LogEntry, LogsPageData } from '../types';
 
 export function Logs() {
   const [searchTerm, setSearchTerm] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [realtimeLogs, setRealtimeLogs] = useState<any[]>([]);
-  const { data, loading, execute: refreshLogs } = useApi<any>('logs?limit=100');
+  const [realtimeLogs, setRealtimeLogs] = useState<LogEntry[]>([]);
+  const { data, loading, execute: refreshLogs } = useApi<LogsPageData>('logs?limit=100');
   const socketRef = useRef<WebSocket | null>(null);
 
   // Initialize logs from API
@@ -45,9 +46,9 @@ export function Logs() {
       const hostname = window.location.hostname;
       // WS_BACKEND_PORT can be injected at build time (VITE_WS_BACKEND_PORT) or
       // overridden at runtime via window.__WS_BACKEND_PORT__. Defaults to 5001.
-      const wsPort = (window as any).__WS_BACKEND_PORT__
-        || import.meta.env.VITE_WS_BACKEND_PORT
-        || '5001';
+      const wsPort = (window as Window & { __WS_BACKEND_PORT__?: string }).__WS_BACKEND_PORT__
+        ?? import.meta.env.VITE_WS_BACKEND_PORT
+        ?? '5001';
       const socketUrl = `${wsProtocol}//${hostname}:${wsPort}/api/ws/logs?token=${encodeURIComponent(token)}`;
 
       ws = new WebSocket(socketUrl);
@@ -94,7 +95,7 @@ export function Logs() {
   }, [autoRefresh]);
 
   // Filter logs based on search
-  const filteredLogs = realtimeLogs.filter((log: any) => 
+  const filteredLogs = realtimeLogs.filter((log) =>
     log.destination?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     log.client_ip?.includes(searchTerm) ||
     log.status?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -103,17 +104,17 @@ export function Logs() {
   // Compute stats from current logs
   const stats = useMemo(() => {
     const total = realtimeLogs.length;
-    const blocked = realtimeLogs.filter((l: any) => 
-      l.status?.includes('DENIED') || 
-      l.status?.includes('403') || 
+    const blocked = realtimeLogs.filter((l) =>
+      l.status?.includes('DENIED') ||
+      l.status?.includes('403') ||
       l.destination?.includes('blocked')
     ).length;
-    const errors = realtimeLogs.filter((l: any) => 
-      l.status?.includes('500') || 
-      l.status?.includes('502') || 
-      l.status?.includes('503') || 
+    const errors = realtimeLogs.filter((l) =>
+      l.status?.includes('500') ||
+      l.status?.includes('502') ||
+      l.status?.includes('503') ||
       l.status?.includes('504') ||
-      l.status?.includes('ERR_') && !l.status?.includes('ERR_ACCESS_DENIED')
+      (l.status?.includes('ERR_') && !l.status?.includes('ERR_ACCESS_DENIED'))
     ).length;
     const success = total - blocked - errors;
     
@@ -269,7 +270,7 @@ export function Logs() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filteredLogs.map((log: any) => (
+                {filteredLogs.map((log) => (
                   <tr key={log.id ?? log.timestamp} className="hover:bg-secondary/20 transition-colors font-mono text-xs">
                     <td className="px-6 py-3 text-muted-foreground whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleString()}

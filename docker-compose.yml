@@ -1,33 +1,21 @@
 services:
   web:
-    build: 
+    build:
       context: .
       dockerfile: ./ui/Dockerfile
     ports:
       - "8011:8011"
-    volumes:
-      - ./config:/config
-      - ./data:/data
-      - ./logs:/logs
     depends_on:
       backend:
         condition: service_healthy
     environment:
-      - FLASK_ENV=${FLASK_ENV:-production}
       - BACKEND_URL=${BACKEND_URL:-http://backend:5000}
       - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-120}
-      - MAX_RETRIES=${MAX_RETRIES:-5}
-      - PROXY_CONTAINER_NAME=${PROXY_CONTAINER_NAME:-secure-proxy-manager-proxy-1}
-      - RETRY_WAIT_AFTER_STARTUP=${RETRY_WAIT_AFTER_STARTUP:-10}
-      # Strict credentials requirement
-      - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
-      - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
-      - SECRET_KEY=${SECRET_KEY}
     deploy:
       resources:
         limits:
-          cpus: '0.50'
-          memory: 512M
+          cpus: '0.25'
+          memory: 64M
     networks:
       - proxy-network
     restart: unless-stopped
@@ -59,10 +47,10 @@ services:
       - PROXY_HOST=${PROXY_HOST:-proxy}
       - PROXY_PORT=${PROXY_PORT:-3128}
       - PROXY_CONTAINER_NAME=${PROXY_CONTAINER_NAME:-secure-proxy-manager-proxy-1}
-      # Strict credentials requirement
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
       - SECRET_KEY=${SECRET_KEY}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:8011}
     deploy:
       resources:
         limits:

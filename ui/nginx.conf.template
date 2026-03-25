@@ -1,0 +1,46 @@
+server {
+    listen 8011;
+    server_tokens off;
+
+    # Security headers
+    add_header X-Content-Type-Options     "nosniff"                                always;
+    add_header X-Frame-Options            "SAMEORIGIN"                             always;
+    add_header X-XSS-Protection           "1; mode=block"                          always;
+    add_header Referrer-Policy            "strict-origin-when-cross-origin"        always;
+    add_header Permissions-Policy         "camera=(), microphone=(), geolocation=()" always;
+    add_header Content-Security-Policy    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src *" always;
+
+    # Health check — no auth, no log noise
+    location = /health {
+        access_log off;
+        default_type application/json;
+        return 200 '{"status":"healthy","service":"secure-proxy-ui"}';
+    }
+
+    # API reverse proxy → FastAPI backend
+    # The Authorization header (Bearer JWT) is forwarded as-is so the backend can validate it.
+    location /api/ {
+        proxy_pass            http://${BACKEND_HOST}:${BACKEND_PORT}/api/;
+        proxy_http_version    1.1;
+        proxy_set_header      Host              $host;
+        proxy_set_header      X-Real-IP         $remote_addr;
+        proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
+
+        proxy_read_timeout    ${REQUEST_TIMEOUT}s;
+        proxy_connect_timeout 10s;
+        proxy_send_timeout    ${REQUEST_TIMEOUT}s;
+
+        # Retry on transient backend failures (not on POST to avoid duplicate imports)
+        proxy_next_upstream       error timeout http_502 http_503 http_504;
+        proxy_next_upstream_tries 3;
+
+        # Disable buffering so large list imports stream through without waiting
+        proxy_buffering off;
+    }
+
+    # React SPA — all unmatched paths fall back to index.html
+    location / {
+        root      /usr/share/nginx/html;
+        try_files $uri $uri/ /index.html;
+    }
+}
