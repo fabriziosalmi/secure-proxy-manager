@@ -1,7 +1,7 @@
 import { Card, CardContent } from '../components/ui/card';
 import { useApi } from '../hooks/useApi';
 import { api, getErrorMessage } from '../lib/api';
-import type { IpEntry, DomainEntry, WhitelistEntry, ListResponse } from '../types';
+import type { IpEntry, DomainEntry, WhitelistEntry } from '../types';
 import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, CheckCircle, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
@@ -22,13 +22,14 @@ export function Blacklists() {
   const [importUrl, setImportUrl] = useState('');
   const [geoCountry, setGeoCountry] = useState('');
   
-  const { data: ipData, execute: refreshIps } = useApi<ListResponse<IpEntry>>('ip-blacklist');
-  const { data: domainData, execute: refreshDomains } = useApi<ListResponse<DomainEntry>>('domain-blacklist');
-  const { data: whitelistData, execute: refreshWhitelists } = useApi<ListResponse<WhitelistEntry>>('ip-whitelist');
+  // useApi unwraps response.data.data, so the resolved type is the array directly
+  const { data: ipData, execute: refreshIps } = useApi<IpEntry[]>('ip-blacklist');
+  const { data: domainData, execute: refreshDomains } = useApi<DomainEntry[]>('domain-blacklist');
+  const { data: whitelistData, execute: refreshWhitelists } = useApi<WhitelistEntry[]>('ip-whitelist');
 
-  const ips = ipData?.data ?? [];
-  const domains = domainData?.data ?? [];
-  const whitelists = whitelistData?.data ?? [];
+  const ips = ipData ?? [];
+  const domains = domainData ?? [];
+  const whitelists = whitelistData ?? [];
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
