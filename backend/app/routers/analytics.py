@@ -252,6 +252,34 @@ def get_waf_stats():
         raise HTTPException(status_code=502, detail="WAF service unreachable")
 
 
+@router.post("/api/counters/reset", dependencies=[Depends(authenticate)])
+def reset_all_counters():
+    """Reset all counters: clear proxy logs DB + reset WAF stats."""
+    import sqlite3 as _sqlite3
+    results = {}
+
+    # Clear proxy logs
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM proxy_logs")
+        deleted = cursor.rowcount
+        conn.commit()
+        conn.close()
+        results["logs_cleared"] = deleted
+    except _sqlite3.Error as e:
+        results["logs_error"] = str(e)
+
+    # Reset WAF stats
+    try:
+        resp = requests.post("http://waf:8080/reset", timeout=3)
+        results["waf_reset"] = resp.status_code == 200
+    except requests.RequestException:
+        results["waf_reset"] = False
+
+    return {"status": "success", "message": "All counters reset", "data": results}
+
+
 @router.get("/api/dashboard/summary", dependencies=[Depends(authenticate)])
 def get_dashboard_summary():
     """Aggregated dashboard data in a single API call."""
