@@ -82,13 +82,14 @@ func init() {
 		}
 	}
 	loadCustomRules()
+	initHeuristics()
 
 	// Log rule counts
 	total := 0
 	for _, cr := range blockRules {
 		total += len(cr.Rules)
 	}
-	log.Printf("WAF engine initialized: %d rules across %d categories (block threshold: %d)\n",
+	log.Printf("WAF engine initialized: %d regex rules + 7 heuristic checks across %d categories (block threshold: %d)\n",
 		total, len(blockRules), blockThreshold)
 }
 
@@ -235,6 +236,38 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 		LatencyUS:       time.Since(startTime).Microseconds(),
 	}
 
+	// ── Behavioral heuristics (stateful, time-windowed) ────────────────
+	var rawHdrs string
+	for k, vals := range req.Request.Header {
+		for _, v := range vals {
+			rawHdrs += k + ": " + v + "\n"
+		}
+	}
+	hResults, hScore := CheckRequestHeuristics(
+		clientIP, req.Request.Method, req.Request.Host, req.Request.URL.Path,
+		bodyStr, rawHdrs, bodySize, feature.BodyEntropy, feature.URLEntropy,
+	)
+	for _, hr := range hResults {
+		matches = append(matches, MatchResult{
+			Category: hr.Category,
+			RuleID:   hr.ID,
+			Pattern:  hr.Detail,
+			Score:    hr.Score,
+		})
+		ruleIDs = append(ruleIDs, hr.ID)
+		if !catSet[hr.Category] {
+			categories = append(categories, hr.Category)
+			catSet[hr.Category] = true
+		}
+	}
+	score += hScore
+	if score >= blockThreshold {
+		action = "block"
+	}
+	feature.WAFScore = score
+	feature.WAFRules = ruleIDs
+	feature.Action = action
+
 	// Non-blocking: Write() enqueues to bounded channel, record() uses atomics
 	trafficLog.Write(feature)
 	stats.record(feature, score >= blockThreshold, categories)
@@ -369,12 +402,23 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 					}
 				}
 			}
+			// H3: PII counter heuristic on response body
+			piiResults, piiScore := CheckResponseHeuristics(body)
+			for _, pr := range piiResults {
+				totalScore += pr.Score
+				matchedRules = append(matchedRules, pr.ID)
+				if matchedCat == "" {
+					matchedCat = pr.Category
+				}
+			}
+
 			if totalScore >= blockThreshold {
 				log.Printf("RESPMOD BLOCKED score=%d rules=[%s] content-type=%s\n",
 					totalScore, strings.Join(matchedRules, ","), contentType)
 				sendBlockResponse(w, matchedCat, totalScore)
 				return
 			}
+			_ = piiScore
 		}
 	}
 
@@ -472,6 +516,14 @@ func main() {
 	// Start stats recent counter reset
 	stats.startRecentCounter()
 
+	// Periodic client state cleanup (heuristics)
+	go func() {
+		for {
+			time.Sleep(60 * time.Second)
+			cleanupClientStates()
+		}
+	}()
+
 	// HTTP health + metrics endpoint
 	go func() {
 		healthMux := http.NewServeMux()
@@ -482,8 +534,14 @@ func main() {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, `{"status":"healthy","rules":%d,"categories":%d,"threshold":%d}`,
-				total, len(blockRules), blockThreshold)
+			hEnabled := 0
+			for _, on := range []bool{heuristicCfg.EntropyThreshold, heuristicCfg.BeaconingDetection, heuristicCfg.PIICounter, heuristicCfg.DestinationSharding, heuristicCfg.HeaderMorphing, heuristicCfg.ProtocolGhosting, heuristicCfg.SequenceValidation} {
+				if on {
+					hEnabled++
+				}
+			}
+			fmt.Fprintf(w, `{"status":"healthy","rules":%d,"categories":%d,"threshold":%d,"heuristics":%d}`,
+				total, len(blockRules), blockThreshold, hEnabled)
 		})
 		healthMux.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")

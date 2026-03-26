@@ -30,6 +30,15 @@ services:
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
       - WAF_BLOCK_THRESHOLD=${WAF_BLOCK_THRESHOLD:-10}
+      # Heuristic engine toggles (1=on, 0=off)
+      - WAF_H_ENTROPY=${WAF_H_ENTROPY:-1}
+      - WAF_H_ENTROPY_MAX=${WAF_H_ENTROPY_MAX:-7.5}
+      - WAF_H_BEACONING=${WAF_H_BEACONING:-1}
+      - WAF_H_PII=${WAF_H_PII:-1}
+      - WAF_H_SHARDING=${WAF_H_SHARDING:-1}
+      - WAF_H_MORPHING=${WAF_H_MORPHING:-0}
+      - WAF_H_GHOSTING=${WAF_H_GHOSTING:-1}
+      - WAF_H_SEQUENCE=${WAF_H_SEQUENCE:-0}
     deploy:
       resources:
         limits:
