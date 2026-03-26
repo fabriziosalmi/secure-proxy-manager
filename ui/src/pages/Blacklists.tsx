@@ -60,7 +60,7 @@ export function Blacklists() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (endpoint: string) => api.delete(`/api/${endpoint}`),
+    mutationFn: (endpoint: string) => api.delete(endpoint),
     onSuccess: () => {
       toast.success('Rule deleted successfully');
       setPendingDeleteId(null);
