@@ -59,9 +59,22 @@ function NotFound() {
 }
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    () => !!localStorage.getItem('auth_token')
-  );
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return false;
+    // Check JWT expiry on mount — clear stale tokens
+    try {
+      const parts = token.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        if (payload.exp && payload.exp * 1000 < Date.now()) {
+          localStorage.removeItem('auth_token');
+          return false;
+        }
+      }
+    } catch { /* malformed token — treat as valid, API will 401 */ }
+    return true;
+  });
 
   if (!isAuthenticated) {
     return <Login onLogin={() => setIsAuthenticated(true)} />;
