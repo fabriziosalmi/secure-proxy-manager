@@ -1,12 +1,13 @@
 import { Card, CardContent } from '../components/ui/card';
-import { useApi } from '../hooks/useApi';
 import { api, getErrorMessage } from '../lib/api';
 import type { IpEntry, DomainEntry, WhitelistEntry } from '../types';
 import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, CheckCircle, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 export function Blacklists() {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'ip' | 'domain' | 'whitelist'>('ip');
   const [isAdding, setIsAdding] = useState(false);
   const [isBulkAdding, setIsBulkAdding] = useState(false);
@@ -21,54 +22,67 @@ export function Blacklists() {
   const [bulkText, setBulkText] = useState('');
   const [importUrl, setImportUrl] = useState('');
   const [geoCountry, setGeoCountry] = useState('');
-  
-  // useApi unwraps response.data.data, so the resolved type is the array directly
-  const { data: ipData, execute: refreshIps } = useApi<IpEntry[]>('ip-blacklist');
-  const { data: domainData, execute: refreshDomains } = useApi<DomainEntry[]>('domain-blacklist');
-  const { data: whitelistData, execute: refreshWhitelists } = useApi<WhitelistEntry[]>('ip-whitelist');
+
+  const { data: ipData } = useQuery<IpEntry[]>({
+    queryKey: ['blacklist', 'ip'],
+    queryFn: () => api.get('ip-blacklist').then(r => r.data.data),
+  });
+  const { data: domainData } = useQuery<DomainEntry[]>({
+    queryKey: ['blacklist', 'domain'],
+    queryFn: () => api.get('domain-blacklist').then(r => r.data.data),
+  });
+  const { data: whitelistData } = useQuery<WhitelistEntry[]>({
+    queryKey: ['whitelist', 'ip'],
+    queryFn: () => api.get('ip-whitelist').then(r => r.data.data),
+  });
 
   const ips = ipData ?? [];
   const domains = domainData ?? [];
   const whitelists = whitelistData ?? [];
 
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newItem) return;
+  const invalidateActive = () => {
+    if (activeTab === 'ip') queryClient.invalidateQueries({ queryKey: ['blacklist', 'ip'] });
+    else if (activeTab === 'domain') queryClient.invalidateQueries({ queryKey: ['blacklist', 'domain'] });
+    else queryClient.invalidateQueries({ queryKey: ['whitelist', 'ip'] });
+  };
 
-    let endpoint = '';
-    let payload = {};
-    
-    if (activeTab === 'ip') {
-      endpoint = 'ip-blacklist';
-      payload = { ip: newItem, description: newDesc };
-    } else if (activeTab === 'domain') {
-      endpoint = 'domain-blacklist';
-      payload = { domain: newItem, description: newDesc };
-    } else {
-      endpoint = 'ip-whitelist';
-      payload = { ip: newItem, description: newDesc };
-    }
-
-    const loadingToast = toast.loading(`Adding ${activeTab}...`);
-    try {
-      await api.post(endpoint, payload);
-      toast.success('Rule added successfully', { id: loadingToast });
+  const addMutation = useMutation({
+    mutationFn: (vars: { endpoint: string; payload: Record<string, string> }) =>
+      api.post(vars.endpoint, vars.payload),
+    onSuccess: () => {
+      toast.success('Rule added successfully');
       setNewItem('');
       setNewDesc('');
       setIsAdding(false);
-      
-      if (activeTab === 'ip') refreshIps();
-      else if (activeTab === 'domain') refreshDomains();
-      else refreshWhitelists();
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'Failed to add rule'), { id: loadingToast });
-    }
+      invalidateActive();
+    },
+    onError: (err) => toast.error(getErrorMessage(err, 'Failed to add rule')),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (endpoint: string) => api.delete(`/api/${endpoint}`),
+    onSuccess: () => {
+      toast.success('Rule deleted successfully');
+      setPendingDeleteId(null);
+      invalidateActive();
+    },
+    onError: (err) => toast.error(getErrorMessage(err, 'Failed to delete rule')),
+  });
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newItem) return;
+    let endpoint = '';
+    let payload: Record<string, string> = {};
+    if (activeTab === 'ip') { endpoint = 'ip-blacklist'; payload = { ip: newItem, description: newDesc }; }
+    else if (activeTab === 'domain') { endpoint = 'domain-blacklist'; payload = { domain: newItem, description: newDesc }; }
+    else { endpoint = 'ip-whitelist'; payload = { ip: newItem, description: newDesc }; }
+    addMutation.mutate({ endpoint, payload });
   };
 
   const handleBulkAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bulkText.trim()) return;
-
     const loadingToast = toast.loading(`Importing ${activeTab} entries...`);
     try {
       const response = await api.post('blacklists/import', {
@@ -80,47 +94,30 @@ export function Blacklists() {
       toast.success(`Added ${added} entries${skipped > 0 ? `, ${skipped} skipped` : ''}`, { id: loadingToast });
       setBulkText('');
       setIsBulkAdding(false);
-      if (activeTab === 'ip') refreshIps();
-      else if (activeTab === 'domain') refreshDomains();
-      else refreshWhitelists();
+      invalidateActive();
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to import entries'), { id: loadingToast });
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = (id: number) => {
     let endpoint = '';
     if (activeTab === 'ip') endpoint = `ip-blacklist/${id}`;
     else if (activeTab === 'domain') endpoint = `domain-blacklist/${id}`;
     else endpoint = `ip-whitelist/${id}`;
-
-    const loadingToast = toast.loading(`Deleting ${activeTab}...`);
-    try {
-      await api.delete(`/api/${endpoint}`);
-      toast.success('Rule deleted successfully', { id: loadingToast });
-      setPendingDeleteId(null);
-      if (activeTab === 'ip') refreshIps();
-      else if (activeTab === 'domain') refreshDomains();
-      else refreshWhitelists();
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'Failed to delete rule'), { id: loadingToast });
-    }
+    deleteMutation.mutate(endpoint);
   };
 
   const handleImport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!importUrl) return;
-
     const loadingToast = toast.loading(`Importing ${activeTab}s from URL...`);
     try {
-      const response = await api.post('blacklists/import', {
-        type: activeTab,
-        url: importUrl
-      });
+      const response = await api.post('blacklists/import', { type: activeTab, url: importUrl });
       toast.success(`Imported ${response.data.data?.added || 0} rules successfully`, { id: loadingToast });
       setImportUrl('');
       setIsImporting(false);
-      activeTab === 'ip' ? refreshIps() : refreshDomains();
+      invalidateActive();
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to import rules'), { id: loadingToast });
     }
@@ -129,24 +126,15 @@ export function Blacklists() {
   const handleGeoBlock = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!geoCountry) return;
-
-    // Accept space or comma separated country codes: "CN, RU KP" → ["CN","RU","KP"]
-    const countries = geoCountry
-      .split(/[\s,]+/)
-      .map(c => c.trim().toUpperCase())
-      .filter(c => c.length === 2);
-
+    const countries = geoCountry.split(/[\s,]+/).map(c => c.trim().toUpperCase()).filter(c => c.length === 2);
     if (countries.length === 0) return;
-
     const loadingToast = toast.loading(`Importing IP blocks for ${countries.join(', ')}...`);
     try {
-      const response = await api.post('blacklists/import-geo', {
-        countries
-      });
+      const response = await api.post('blacklists/import-geo', { countries });
       toast.success(`Imported ${response.data.data?.imported || 0} IPs successfully`, { id: loadingToast });
       setGeoCountry('');
       setIsGeoBlocking(false);
-      refreshIps();
+      queryClient.invalidateQueries({ queryKey: ['blacklist', 'ip'] });
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to import GeoIP blocks'), { id: loadingToast });
     }
@@ -154,7 +142,7 @@ export function Blacklists() {
 
   const handlePopularListImport = async (listUrl: string, listName: string) => {
     setImportingList(listName);
-    const loadingToast = toast.loading(`Downloading ${listName}… this may take 1-2 minutes for large lists.`);
+    const loadingToast = toast.loading(`Downloading ${listName}...`);
     try {
       const response = await api.post('blacklists/import', {
         url: listUrl,
@@ -166,7 +154,7 @@ export function Blacklists() {
         `${listName}: added ${added.toLocaleString()} entries${skipped > 0 ? `, ${skipped.toLocaleString()} skipped` : ''}`,
         { id: loadingToast, duration: 6000 }
       );
-      activeTab === 'ip' ? refreshIps() : refreshDomains();
+      invalidateActive();
     } catch (err) {
       toast.error(getErrorMessage(err, `Failed to import ${listName}`), { id: loadingToast, duration: 8000 });
     } finally {
@@ -187,6 +175,14 @@ export function Blacklists() {
     { name: 'Phishing Army', url: 'https://phishing.army/download/phishing_army_blocklist_extended.txt', desc: 'Domains actively involved in phishing' }
   ];
 
+  const closeAllPanels = (except?: string) => {
+    if (except !== 'add') setIsAdding(false);
+    if (except !== 'bulk') setIsBulkAdding(false);
+    if (except !== 'import') setIsImporting(false);
+    if (except !== 'geo') setIsGeoBlocking(false);
+    if (except !== 'popular') setIsPopularLists(false);
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex justify-between items-center">
@@ -196,48 +192,29 @@ export function Blacklists() {
         </div>
         <div className="flex gap-2">
           {activeTab === 'ip' && (
-            <button 
-              onClick={() => { setIsGeoBlocking(!isGeoBlocking); setIsAdding(false); setIsImporting(false); setIsPopularLists(false); setIsBulkAdding(false); }}
-              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isGeoBlocking ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
-            >
-              <Map className="w-4 h-4 mr-2" />
-              Geo-Block
+            <button onClick={() => { closeAllPanels('geo'); setIsGeoBlocking(!isGeoBlocking); }}
+              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isGeoBlocking ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
+              <Map className="w-4 h-4 mr-2" />Geo-Block
             </button>
           )}
-          
           {activeTab !== 'whitelist' && (
-            <button
-              type="button"
-              onClick={() => { setIsPopularLists(!isPopularLists); setIsAdding(false); setIsGeoBlocking(false); setIsImporting(false); setIsBulkAdding(false); }}
-              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isPopularLists ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
-            >
-              <Database className="w-4 h-4 mr-2" />
-              Popular Lists
+            <button type="button" onClick={() => { closeAllPanels('popular'); setIsPopularLists(!isPopularLists); }}
+              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isPopularLists ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
+              <Database className="w-4 h-4 mr-2" />Popular Lists
             </button>
           )}
-
           {activeTab !== 'whitelist' && (
-            <button
-              type="button"
-              onClick={() => { setIsImporting(!isImporting); setIsAdding(false); setIsGeoBlocking(false); setIsPopularLists(false); setIsBulkAdding(false); }}
-              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isImporting ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Import URL
+            <button type="button" onClick={() => { closeAllPanels('import'); setIsImporting(!isImporting); }}
+              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isImporting ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
+              <Download className="w-4 h-4 mr-2" />Import URL
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => { setIsBulkAdding(!isBulkAdding); setIsAdding(false); setIsImporting(false); setIsGeoBlocking(false); setIsPopularLists(false); }}
-            className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isBulkAdding ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Bulk Add
+          <button type="button" onClick={() => { closeAllPanels('bulk'); setIsBulkAdding(!isBulkAdding); }}
+            className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isBulkAdding ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
+            <Plus className="w-4 h-4 mr-2" />Bulk Add
           </button>
-          <button
-            onClick={() => { setIsAdding(!isAdding); setIsImporting(false); setIsGeoBlocking(false); setIsPopularLists(false); setIsBulkAdding(false); }}
-            className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isAdding ? 'bg-destructive/90 text-destructive-foreground' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}
-          >
+          <button onClick={() => { closeAllPanels('add'); setIsAdding(!isAdding); }}
+            className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isAdding ? 'bg-destructive/90 text-destructive-foreground' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}>
             <Plus className={`w-4 h-4 mr-2 transition-transform ${isAdding ? 'rotate-45' : ''}`} />
             {isAdding ? 'Cancel' : 'Add Rule'}
           </button>
@@ -249,31 +226,17 @@ export function Blacklists() {
           <CardContent className="pt-6">
             <form onSubmit={handleAdd} className="flex gap-4 items-end">
               <div className="flex-1 space-y-2">
-                <label className="text-sm font-medium">
-                  {activeTab === 'ip' ? 'IP Address' : activeTab === 'domain' ? 'Domain' : 'IP / CIDR Network'}
-                </label>
-                <input 
-                  type="text" 
-                  value={newItem}
-                  onChange={(e) => setNewItem(e.target.value)}
+                <label className="text-sm font-medium">{activeTab === 'ip' ? 'IP Address' : activeTab === 'domain' ? 'Domain' : 'IP / CIDR Network'}</label>
+                <input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)}
                   placeholder={activeTab === 'ip' ? 'e.g. 192.168.1.100' : activeTab === 'domain' ? 'e.g. bad-domain.com' : 'e.g. 192.168.0.0/16'}
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  required
-                />
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" required />
               </div>
               <div className="flex-1 space-y-2">
                 <label className="text-sm font-medium">Description (Optional)</label>
-                <input 
-                  type="text" 
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                  placeholder="Why is this blocked?"
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                />
+                <input type="text" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Why is this blocked?"
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
               </div>
-              <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors h-10">
-                Save Rule
-              </button>
+              <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors h-10">Save Rule</button>
             </form>
           </CardContent>
         </Card>
@@ -284,28 +247,15 @@ export function Blacklists() {
           <CardContent className="pt-6">
             <form onSubmit={handleBulkAdd} className="space-y-3">
               <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  {activeTab === 'domain' ? 'Domains' : 'IP Addresses / CIDR Networks'} — one per line
-                </label>
-                <textarea
-                  value={bulkText}
-                  onChange={(e) => setBulkText(e.target.value)}
-                  placeholder={activeTab === 'domain'
-                    ? 'bad-domain.com\nanother-domain.net\nads.example.org'
-                    : '192.168.1.100\n10.0.0.0/8\n203.0.113.50'}
-                  rows={6}
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary resize-y"
-                  required
-                />
+                <label className="text-sm font-medium">{activeTab === 'domain' ? 'Domains' : 'IP Addresses / CIDR Networks'} — one per line</label>
+                <textarea value={bulkText} onChange={(e) => setBulkText(e.target.value)}
+                  placeholder={activeTab === 'domain' ? 'bad-domain.com\nanother-domain.net' : '192.168.1.100\n10.0.0.0/8'}
+                  rows={6} className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary resize-y" required />
               </div>
               <p className="text-xs text-muted-foreground">Lines starting with # are ignored. Invalid entries are skipped.</p>
               <div className="flex gap-2">
-                <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors">
-                  Add All
-                </button>
-                <button type="button" onClick={() => setIsBulkAdding(false)} className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors">
-                  Cancel
-                </button>
+                <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors">Add All</button>
+                <button type="button" onClick={() => setIsBulkAdding(false)} className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors">Cancel</button>
               </div>
             </form>
           </CardContent>
@@ -318,18 +268,10 @@ export function Blacklists() {
             <form onSubmit={handleImport} className="flex gap-4 items-end">
               <div className="flex-1 space-y-2">
                 <label className="text-sm font-medium">List URL (e.g. GitHub raw file)</label>
-                <input 
-                  type="url" 
-                  value={importUrl}
-                  onChange={(e) => setImportUrl(e.target.value)}
-                  placeholder="https://raw.githubusercontent.com/..."
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  required
-                />
+                <input type="url" value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="https://raw.githubusercontent.com/..."
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" required />
               </div>
-              <button type="submit" className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10">
-                Import List
-              </button>
+              <button type="submit" className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10">Import List</button>
             </form>
             <p className="text-xs text-muted-foreground mt-3">The URL must point to a plain text file with one {activeTab} per line. Comments starting with # are ignored.</p>
           </CardContent>
@@ -348,16 +290,9 @@ export function Blacklists() {
                   </div>
                   <p className="text-xs text-muted-foreground mb-4">{list.desc}</p>
                 </div>
-                <button
-                  onClick={() => handlePopularListImport(list.url, list.name)}
-                  disabled={importingList !== null}
-                  className="w-full flex items-center justify-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors mt-auto disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {importingList === list.name ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importing…</>
-                  ) : (
-                    <><Download className="w-4 h-4 mr-2" />Import List</>
-                  )}
+                <button onClick={() => handlePopularListImport(list.url, list.name)} disabled={importingList !== null}
+                  className="w-full flex items-center justify-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors mt-auto disabled:opacity-60 disabled:cursor-not-allowed">
+                  {importingList === list.name ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importing...</>) : (<><Download className="w-4 h-4 mr-2" />Import List</>)}
                 </button>
               </CardContent>
             </Card>
@@ -371,48 +306,30 @@ export function Blacklists() {
             <form onSubmit={handleGeoBlock} className="flex gap-4 items-end">
               <div className="flex-1 space-y-2">
                 <label className="text-sm font-medium">Country Codes (comma or space separated)</label>
-                <input
-                  type="text"
-                  value={geoCountry}
-                  onChange={(e) => setGeoCountry(e.target.value.toUpperCase())}
-                  placeholder="e.g. CN, RU, KP"
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  required
-                />
+                <input type="text" value={geoCountry} onChange={(e) => setGeoCountry(e.target.value.toUpperCase())} placeholder="e.g. CN, RU, KP"
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" required />
               </div>
-              <button type="submit" className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10">
-                Download & Block IPs
-              </button>
+              <button type="submit" className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10">Download & Block IPs</button>
             </form>
-            <p className="text-xs text-muted-foreground mt-3">Fetches all known IPv4 blocks for each country and adds them to your IP Blacklist. Use 2-letter ISO codes: CN, RU, KP, IR…</p>
+            <p className="text-xs text-muted-foreground mt-3">Fetches all known IPv4 blocks for each country and adds them to your IP Blacklist. Use 2-letter ISO codes: CN, RU, KP, IR...</p>
           </CardContent>
         </Card>
       )}
 
       <div className="flex space-x-1 bg-card/50 p-1 rounded-lg w-fit border border-border">
-        <button 
-          onClick={() => setActiveTab('ip')}
-          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'ip' ? 'bg-[#1f1f1f] text-white shadow-sm' : 'text-muted-foreground hover:text-white'}`}
-        >
-          <Server className="w-4 h-4 mr-2" />
-          IP Addresses
+        <button onClick={() => setActiveTab('ip')}
+          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'ip' ? 'bg-[#1f1f1f] text-white shadow-sm' : 'text-muted-foreground hover:text-white'}`}>
+          <Server className="w-4 h-4 mr-2" />IP Addresses
           <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{ips.length}</span>
         </button>
-        <button 
-          onClick={() => setActiveTab('domain')}
-          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain' ? 'bg-[#1f1f1f] text-white shadow-sm' : 'text-muted-foreground hover:text-white'}`}
-        >
-          <Globe className="w-4 h-4 mr-2" />
-          Domains
+        <button onClick={() => setActiveTab('domain')}
+          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain' ? 'bg-[#1f1f1f] text-white shadow-sm' : 'text-muted-foreground hover:text-white'}`}>
+          <Globe className="w-4 h-4 mr-2" />Domains
           <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{domains.length}</span>
         </button>
-        <button
-          type="button"
-          onClick={() => { setActiveTab('whitelist'); setIsPopularLists(false); setIsImporting(false); setIsGeoBlocking(false); setIsBulkAdding(false); }}
-          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/20 text-green-500 shadow-sm' : 'text-muted-foreground hover:text-green-500'}`}
-        >
-          <CheckCircle className="w-4 h-4 mr-2" />
-          IP Whitelist
+        <button type="button" onClick={() => { setActiveTab('whitelist'); closeAllPanels(); }}
+          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/20 text-green-500 shadow-sm' : 'text-muted-foreground hover:text-green-500'}`}>
+          <CheckCircle className="w-4 h-4 mr-2" />IP Whitelist
           <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{whitelists.length}</span>
         </button>
       </div>
@@ -448,7 +365,6 @@ export function Blacklists() {
                   </td>
                 </tr>
               ))}
-              
               {activeTab === 'domain' && domains.map((item) => (
                 <tr key={item.id} className="hover:bg-secondary/20 transition-colors">
                   <td className="px-6 py-4 font-medium text-white">{item.domain}</td>
@@ -468,7 +384,6 @@ export function Blacklists() {
                   </td>
                 </tr>
               ))}
-
               {activeTab === 'whitelist' && whitelists.map((item) => (
                 <tr key={item.id} className="hover:bg-secondary/20 transition-colors">
                   <td className="px-6 py-4 font-medium text-green-500">{item.ip}</td>
@@ -488,7 +403,6 @@ export function Blacklists() {
                   </td>
                 </tr>
               ))}
-
               {((activeTab === 'ip' && ips.length === 0) || (activeTab === 'domain' && domains.length === 0) || (activeTab === 'whitelist' && whitelists.length === 0)) && (
                 <tr>
                   <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">

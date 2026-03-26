@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
-import { useApi } from '../hooks/useApi';
+import { useQuery } from '@tanstack/react-query';
 import type { SettingRow } from '../types';
 import { Save, Download, Shield, Database, Network, Trash2, Key, Bell } from 'lucide-react';
 import { useState, useEffect } from 'react';
@@ -25,7 +25,10 @@ const settingsSchema = z.object({
 }).catchall(z.string());
 
 export function Settings() {
-  const { data: settingsData, loading, error } = useApi<SettingRow[]>('settings');
+  const { data: settingsData, isLoading: loading, error } = useQuery<SettingRow[]>({
+    queryKey: ['settings'],
+    queryFn: () => api.get('settings').then(r => r.data.data),
+  });
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
 
