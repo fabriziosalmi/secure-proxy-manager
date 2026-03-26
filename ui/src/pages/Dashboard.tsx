@@ -1,10 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Activity, Clock, ShieldCheck, Zap, Download, Copy, Check } from 'lucide-react';
-// Clock is retained for the Direct IP Blocks card icon
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { useApi } from '../hooks/useApi';
 import React, { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../lib/api';
 import type { LogEntry, LogStats, TimelineEntry, SecurityScore, LogsPageData } from '../types';
+
+const REFETCH_INTERVAL = 10_000;
 
 export function Dashboard() {
   const [copied, setCopied] = useState(false);
@@ -17,33 +19,45 @@ export function Dashboard() {
     });
   };
 
-  const { execute: refreshCache } = useApi<unknown>('cache/statistics');
-  const { data: logStats, execute: refreshLogStats } = useApi<LogStats>('logs/stats');
-  const { data: recentLogs, execute: refreshRecentLogs } = useApi<LogsPageData>('logs?limit=5');
-  const { data: timelineData, execute: refreshTimeline } = useApi<TimelineEntry[]>('logs/timeline');
-  const { data: securityData, execute: refreshSecurity } = useApi<SecurityScore>('security/score');
-
-  // Auto-refresh dashboard data every 10 seconds, skip when tab is hidden
+  // Pause polling when tab is hidden
+  const [visible, setVisible] = useState(document.visibilityState !== 'hidden');
   useEffect(() => {
-    const refreshAll = () => {
-      if (document.visibilityState !== 'hidden') {
-        refreshCache();
-        refreshLogStats();
-        refreshRecentLogs();
-        refreshTimeline();
-        refreshSecurity();
-      }
-    };
-    const interval = setInterval(refreshAll, 10000);
-    document.addEventListener('visibilitychange', refreshAll);
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', refreshAll);
-    };
-  }, [refreshCache, refreshLogStats, refreshRecentLogs, refreshTimeline, refreshSecurity]);
+    const handler = () => setVisible(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
 
-  // Format chart data based on timeline or fallback to mock
-  // Use useMemo to prevent unnecessary re-renders of the chart when polling other endpoints
+  const { data: logStats } = useQuery<LogStats>({
+    queryKey: ['logs', 'stats'],
+    queryFn: () => api.get('logs/stats').then(r => r.data.data),
+    refetchInterval: visible ? REFETCH_INTERVAL : false,
+  });
+
+  const { data: recentLogs } = useQuery<LogsPageData>({
+    queryKey: ['logs', 'recent'],
+    queryFn: () => api.get('logs?limit=5').then(r => r.data),
+    refetchInterval: visible ? REFETCH_INTERVAL : false,
+  });
+
+  const { data: timelineData } = useQuery<TimelineEntry[]>({
+    queryKey: ['logs', 'timeline'],
+    queryFn: () => api.get('logs/timeline').then(r => r.data.data),
+    refetchInterval: visible ? REFETCH_INTERVAL : false,
+  });
+
+  const { data: securityData } = useQuery<SecurityScore>({
+    queryKey: ['security', 'score'],
+    queryFn: () => api.get('security/score').then(r => r.data.data),
+    refetchInterval: visible ? REFETCH_INTERVAL : false,
+  });
+
+  // Fetch cache stats to keep the backend warm (data not displayed)
+  useQuery({
+    queryKey: ['cache', 'statistics'],
+    queryFn: () => api.get('cache/statistics'),
+    refetchInterval: visible ? REFETCH_INTERVAL : false,
+  });
+
   const chartData = React.useMemo(() => {
     return timelineData || [
       { time: '13:43', total: 0, blocked: 0 }, { time: '14:43', total: 0, blocked: 0 },
@@ -60,6 +74,8 @@ export function Dashboard() {
       { time: '11:43', total: 0, blocked: 0 }, { time: '12:43', total: 0, blocked: 0 }
     ];
   }, [timelineData]);
+
+  const logs = recentLogs?.data ?? recentLogs?.logs ?? ([] as LogEntry[]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -80,7 +96,6 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Proxy address helper banner */}
       <Card className="bg-primary/5 border-primary/20">
         <CardContent className="py-3 px-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -109,7 +124,7 @@ export function Dashboard() {
             <p className="text-xs text-muted-foreground mt-1">all time</p>
           </CardContent>
         </Card>
-        
+
         <Card className="bg-card/50">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium uppercase text-muted-foreground">Security Score</CardTitle>
@@ -118,9 +133,9 @@ export function Dashboard() {
           <CardContent>
             <div className="text-3xl font-bold">{securityData?.score || 0}/100</div>
             <div className="w-full bg-secondary h-2 mt-2 rounded-full overflow-hidden">
-              <div 
+              <div
                 className={`h-full ${
-                  (securityData?.score || 0) > 80 ? 'bg-emerald-500' : 
+                  (securityData?.score || 0) > 80 ? 'bg-emerald-500' :
                   (securityData?.score || 0) > 50 ? 'bg-yellow-500' : 'bg-destructive'
                 }`}
                 style={{ width: `${securityData?.score || 0}%` }}
@@ -172,11 +187,11 @@ export function Dashboard() {
                       <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <XAxis 
-                    dataKey="time" 
-                    stroke="#888888" 
-                    fontSize={12} 
-                    tickLine={false} 
+                  <XAxis
+                    dataKey="time"
+                    stroke="#888888"
+                    fontSize={12}
+                    tickLine={false}
                     axisLine={false}
                     tick={{ fill: '#64748b' }}
                   />
@@ -187,28 +202,12 @@ export function Dashboard() {
                     axisLine={false}
                     tick={{ fill: '#64748b' }}
                   />
-                  <Tooltip 
+                  <Tooltip
                     contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
                     itemStyle={{ color: '#e2e8f0' }}
                   />
-                  <Area
-                    type="monotone"
-                    dataKey="total"
-                    name="Total Requests"
-                    stroke="#3b82f6"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#colorTotal)"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="blocked"
-                    name="Blocked"
-                    stroke="#ef4444"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#colorBlocked)"
-                  />
+                  <Area type="monotone" dataKey="total" name="Total Requests" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorTotal)" />
+                  <Area type="monotone" dataKey="blocked" name="Blocked" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorBlocked)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -222,7 +221,7 @@ export function Dashboard() {
           </CardHeader>
           <CardContent className="flex-1 overflow-y-auto">
             <div className="space-y-4">
-              {(recentLogs?.data ?? recentLogs?.logs ?? ([] as LogEntry[])).map((log, i: number) => (
+              {logs.map((log, i: number) => (
                 <div key={i} className="flex items-center justify-between border-b border-border/50 pb-4 last:border-0 last:pb-0">
                   <div className="space-y-1 overflow-hidden pr-4">
                     <p className="text-sm font-medium leading-none truncate" title={log.destination}>
@@ -233,8 +232,8 @@ export function Dashboard() {
                   <div className="flex items-center gap-4 shrink-0">
                     <div className="text-sm text-muted-foreground">{log.method}</div>
                     <div className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                      log.status?.includes('DENIED') 
-                        ? 'bg-destructive/10 text-destructive border-destructive/20' 
+                      log.status?.includes('DENIED')
+                        ? 'bg-destructive/10 text-destructive border-destructive/20'
                         : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                     }`}>
                       {log.status?.includes('DENIED') ? 'Blocked' : 'Success'}
@@ -242,7 +241,7 @@ export function Dashboard() {
                   </div>
                 </div>
               ))}
-              {(!recentLogs || (recentLogs.data ?? recentLogs.logs ?? []).length === 0) && (
+              {logs.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground text-sm">
                   No recent logs available.
                 </div>
