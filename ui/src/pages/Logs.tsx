@@ -1,24 +1,27 @@
 import { Card, CardContent } from '../components/ui/card';
-import { useApi } from '../hooks/useApi';
 import { api } from '../lib/api';
 import { Search, RefreshCw, FileText, Trash2, Activity, ShieldAlert, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
+import { useQuery } from '@tanstack/react-query';
 import type { LogEntry, LogsPageData } from '../types';
 
 export function Logs() {
   const [searchTerm, setSearchTerm] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [realtimeLogs, setRealtimeLogs] = useState<LogEntry[]>([]);
-  const { data, loading, execute: refreshLogs } = useApi<LogsPageData>('logs?limit=100');
   const socketRef = useRef<WebSocket | null>(null);
+
+  const { data, isLoading: loading, refetch: refreshLogs } = useQuery<LogsPageData>({
+    queryKey: ['logs', 'page'],
+    queryFn: () => api.get('logs?limit=100').then(r => r.data),
+  });
 
   // Initialize logs from API
   useEffect(() => {
     if (data?.data) {
       setRealtimeLogs(data.data);
     } else if (data?.logs) {
-      // Fallback for older API versions
       setRealtimeLogs(data.logs);
     }
   }, [data]);
