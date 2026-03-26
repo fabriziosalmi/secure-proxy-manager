@@ -237,3 +237,16 @@ def download_pdf_report():
     except Exception as e:
         logger.error(f"Error generating PDF report: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate report")
+
+
+@router.get("/api/waf/stats", dependencies=[Depends(authenticate)])
+def get_waf_stats():
+    """Proxy WAF traffic intelligence stats from the Go ICAP server."""
+    try:
+        resp = requests.get("http://waf:8080/stats", timeout=3)
+        if resp.status_code == 200:
+            return {"status": "success", "data": resp.json()}
+        raise HTTPException(status_code=502, detail="WAF stats unavailable")
+    except requests.RequestException as e:
+        logger.error(f"Error fetching WAF stats: {e}")
+        raise HTTPException(status_code=502, detail="WAF service unreachable")
