@@ -4,15 +4,14 @@ import threading
 from typing import Optional
 from contextlib import asynccontextmanager
 
-import requests
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pythonjsonlogger import jsonlogger
 import logging.handlers
 
-from .config import CORS_ALLOWED_ORIGINS, DATABASE_PATH, PROXY_HOST, PROXY_PORT
+from .config import CORS_ALLOWED_ORIGINS
 from .database import init_db, get_db
-from .auth import authenticate, validate_ws_token
+from .auth import validate_ws_token
 from .websocket import manager, tail_logs_sync
 
 # Configure main logger
@@ -63,7 +62,6 @@ def ddns_scheduler_sync():
 
 def log_retention_sync():
     """Background task to delete old logs based on configurable retention."""
-    import sqlite3
     while True:
         try:
             conn = get_db()
@@ -120,7 +118,7 @@ app.add_middleware(
 )
 
 # ── Include routers ──────────────────────────────────────────────────────────
-from .routers import auth_routes, blacklists, logs, settings, maintenance, database_routes, security, analytics
+from .routers import auth_routes, blacklists, logs, settings, maintenance, database_routes, security, analytics  # noqa: E402
 
 app.include_router(auth_routes.router)
 app.include_router(blacklists.router)

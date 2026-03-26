@@ -3,11 +3,10 @@ import time
 import logging
 import sqlite3
 import asyncio
-import threading
-from typing import List, Optional
+from typing import List
 from datetime import datetime
 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 
 from . import config
 
