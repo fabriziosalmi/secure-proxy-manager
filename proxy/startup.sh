@@ -221,16 +221,17 @@ ensure_ip_blocking_rules /etc/squid/squid.conf
 
 # ── Inject dnsmasq as DNS resolver (resolve container IP dynamically) ────────
 
-# dnsmasq chains: blocked domains → 0.0.0.0, container names → Docker DNS,
-# everything else → public DNS. Squid uses ONLY dnsmasq.
+# DNS: dnsmasq first (domain blackhole), Docker DNS fallback (container names).
+# Squid queries dnsmasq for internet domains (gets 0.0.0.0 for blocked ones).
+# If dnsmasq doesn't know (e.g. "waf"), Docker DNS (127.0.0.11) resolves it.
 DNS_IP=$(getent hosts dns 2>/dev/null | awk '{print $1}')
 if [ -n "$DNS_IP" ]; then
     if ! grep -q "dns_nameservers" /etc/squid/squid.conf; then
-        echo "dns_nameservers $DNS_IP" >> /etc/squid/squid.conf
+        echo "dns_nameservers $DNS_IP 127.0.0.11" >> /etc/squid/squid.conf
     fi
-    echo "DNS resolver: dnsmasq at $DNS_IP (chains to Docker DNS + public)"
+    echo "DNS resolvers: dnsmasq=$DNS_IP (blackhole), Docker=127.0.0.11 (fallback)"
 else
-    echo "Warning: dnsmasq not reachable, using system DNS"
+    echo "Warning: dnsmasq not reachable, using Docker DNS only"
 fi
 
 # ── Custom error pages (only for ACL denies, not replacing all errors) ────────
