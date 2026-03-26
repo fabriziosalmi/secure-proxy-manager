@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-icap/icap"
@@ -20,6 +21,7 @@ import (
 
 const (
 	maxBodyInspectSize = 1 << 20 // 1 MB
+	maxNotifyWorkers   = 8       // Bounded goroutine pool for backend notifications
 )
 
 // ── Configuration ───────────────────────────────────────────────────────────
@@ -29,6 +31,10 @@ var (
 	tarPitDelay    = 10 * time.Second
 	ipBlockTracker = make(map[string][]time.Time)
 	trackerMutex   sync.Mutex
+
+	// Bounded notification channel — circuit breaker for backend alerts
+	notifyChan    = make(chan map[string]interface{}, 64)
+	notifyDropped atomic.Int64
 )
 
 // ── Custom rules loader ─────────────────────────────────────────────────────
@@ -229,11 +235,9 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 		LatencyUS:       time.Since(startTime).Microseconds(),
 	}
 
-	// Async: log to JSONL + update stats
-	go func() {
-		trafficLog.Write(feature)
-		stats.record(feature, score >= blockThreshold, categories)
-	}()
+	// Non-blocking: Write() enqueues to bounded channel, record() uses atomics
+	trafficLog.Write(feature)
+	stats.record(feature, score >= blockThreshold, categories)
 
 	// Log all matches for observability, even if below threshold
 	if len(matches) > 0 && score < blockThreshold {
@@ -308,7 +312,12 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 			},
 			"level": "error",
 		}
-		go notifyBackend(alertData)
+		// Non-blocking enqueue — drops if backend can't keep up (circuit breaker)
+		select {
+		case notifyChan <- alertData:
+		default:
+			notifyDropped.Add(1)
+		}
 
 		sendBlockResponse(w, primaryCategory, score)
 		return
@@ -414,11 +423,11 @@ func main() {
 		}
 	})
 
-	// Initialize traffic logger
+	// Initialize traffic logger (async via bounded channel)
 	trafficLog = newTrafficLogger(trafficLogPath, trafficLogMaxBytes)
 	if trafficLog != nil {
-		log.Printf("Traffic logging to %s (max %dMB)\n", trafficLogPath, trafficLogMaxBytes/(1<<20))
-		// Periodic flush
+		log.Printf("Traffic logging to %s (max %dMB, queue=%d)\n",
+			trafficLogPath, trafficLogMaxBytes/(1<<20), logQueueSize)
 		go func() {
 			for {
 				time.Sleep(5 * time.Second)
@@ -426,6 +435,42 @@ func main() {
 			}
 		}()
 	}
+
+	// Start bounded notification worker pool (circuit breaker pattern)
+	for i := 0; i < maxNotifyWorkers; i++ {
+		go func() {
+			for data := range notifyChan {
+				notifyBackend(data)
+			}
+		}()
+	}
+	log.Printf("Notification worker pool: %d workers, queue=%d\n", maxNotifyWorkers, cap(notifyChan))
+
+	// Periodic cleanup of ipBlockTracker (prevents unbounded growth from drive-by IPs)
+	go func() {
+		for {
+			time.Sleep(30 * time.Second)
+			trackerMutex.Lock()
+			now := time.Now()
+			for ip, times := range ipBlockTracker {
+				var valid []time.Time
+				for _, t := range times {
+					if now.Sub(t) < 60*time.Second {
+						valid = append(valid, t)
+					}
+				}
+				if len(valid) == 0 {
+					delete(ipBlockTracker, ip)
+				} else {
+					ipBlockTracker[ip] = valid
+				}
+			}
+			trackerMutex.Unlock()
+		}
+	}()
+
+	// Start stats recent counter reset
+	stats.startRecentCounter()
 
 	// HTTP health + metrics endpoint
 	go func() {
