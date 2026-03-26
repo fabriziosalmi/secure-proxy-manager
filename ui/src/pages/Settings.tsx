@@ -578,6 +578,30 @@ export function Settings() {
               </div>
             </div>
 
+            {/* Auto-refresh blocklists */}
+            <div className="p-4 border border-border rounded-lg bg-background/50">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <label className="text-sm font-medium">Auto-Refresh Blocklists</label>
+                  <p className="text-xs text-muted-foreground">Automatically re-download popular IP and domain blocklists. Deduplicates on import.</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" name="auto_refresh_enabled" checked={formData.auto_refresh_enabled === 'true'}
+                    onChange={(e) => setFormData({ ...formData, auto_refresh_enabled: e.target.checked ? 'true' : 'false' })}
+                    className="sr-only peer" />
+                  <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+              {formData.auto_refresh_enabled === 'true' && (
+                <div className="mt-2 pt-2 border-t border-border/50">
+                  <label className="text-xs text-muted-foreground">Refresh Interval (hours)</label>
+                  <input type="number" name="auto_refresh_hours" value={formData.auto_refresh_hours || '24'} onChange={handleChange}
+                    min={1} max={168} className="w-full mt-1 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+                  <p className="text-[10px] text-muted-foreground mt-1">Default: 24h. Lists: Firehol L1, Spamhaus DROP, fabriziosalmi/blacklists.</p>
+                </div>
+              )}
+            </div>
+
             {/* WAF Heuristics toggles */}
             <div className="p-4 border border-border rounded-lg bg-background/50">
               <label className="text-sm font-medium mb-2 block">WAF Behavioral Heuristics</label>

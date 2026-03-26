@@ -557,6 +557,16 @@ func main() {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			json.NewEncoder(w).Encode(stats.snapshot())
 		})
+		healthMux.HandleFunc("/reset", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != "POST" {
+				http.Error(w, "POST only", 405)
+				return
+			}
+			stats.reset()
+			log.Println("WAF stats reset via API")
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"status":"ok","message":"stats reset"}`))
+		})
 		log.Printf("Starting health endpoint on :8080\n")
 		if err := http.ListenAndServe(":8080", healthMux); err != nil {
 			log.Printf("Health endpoint error: %v\n", err)

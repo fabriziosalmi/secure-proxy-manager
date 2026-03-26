@@ -85,6 +85,78 @@ def log_retention_sync():
         time.sleep(3600)  # Run every hour
 
 
+def blacklist_auto_refresh_sync():
+    """Background task to re-download popular blocklists at configured interval."""
+    import requests as _requests
+    from .database import get_db, export_blacklists_to_files
+
+    # Default popular lists to auto-refresh
+    DEFAULT_IP_LISTS = [
+        ("https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset", "ip"),
+        ("https://www.spamhaus.org/drop/drop.txt", "ip"),
+    ]
+    DEFAULT_DOMAIN_LISTS = [
+        ("https://github.com/fabriziosalmi/blacklists/releases/download/latest/blacklist.txt", "domain"),
+    ]
+
+    while True:
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("SELECT setting_value FROM settings WHERE setting_name = 'auto_refresh_hours'")
+            row = cursor.fetchone()
+            interval_hours = int(row['setting_value']) if row and row['setting_value'] else 24
+            cursor.execute("SELECT setting_value FROM settings WHERE setting_name = 'auto_refresh_enabled'")
+            row2 = cursor.fetchone()
+            enabled = row2 and row2['setting_value'] == 'true'
+            conn.close()
+
+            if enabled and interval_hours > 0:
+                logger.info(f"Auto-refresh: checking blocklists (interval={interval_hours}h)")
+                headers = {'User-Agent': 'SecureProxyManager/AutoRefresh'}
+
+                for url, list_type in DEFAULT_IP_LISTS + DEFAULT_DOMAIN_LISTS:
+                    try:
+                        resp = _requests.get(url, timeout=120, headers=headers)
+                        if resp.status_code == 200:
+                            conn = get_db()
+                            cursor = conn.cursor()
+                            table = "ip_blacklist" if list_type == "ip" else "domain_blacklist"
+                            col = "ip" if list_type == "ip" else "domain"
+                            # Get existing
+                            cursor.execute(f"SELECT {col} FROM {table}")
+                            existing = {r[col] for r in cursor.fetchall()}
+                            # Parse and insert new
+                            added = 0
+                            to_insert = []
+                            for line in resp.text.splitlines():
+                                entry = line.strip()
+                                if not entry or entry.startswith('#') or entry.startswith(';'):
+                                    continue
+                                parts = entry.split()
+                                entry = parts[-1] if parts else entry
+                                if entry not in existing:
+                                    to_insert.append((entry, f"Auto-refresh {time.strftime('%Y-%m-%d')}"))
+                                    existing.add(entry)
+                                    added += 1
+                            if to_insert:
+                                cursor.executemany(f"INSERT OR IGNORE INTO {table} ({col}, description) VALUES (?, ?)", to_insert)
+                                conn.commit()
+                            conn.close()
+                            if added > 0:
+                                logger.info(f"Auto-refresh: {url[:50]}... → {added} new entries")
+                    except Exception as e:
+                        logger.warning(f"Auto-refresh failed for {url[:50]}: {e}")
+
+                # Regenerate files
+                export_blacklists_to_files()
+
+            time.sleep(interval_hours * 3600)
+        except Exception as e:
+            logger.error(f"Auto-refresh error: {e}")
+            time.sleep(3600)
+
+
 # FastAPI App Lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -100,6 +172,9 @@ async def lifespan(app: FastAPI):
 
     retention_thread = threading.Thread(target=log_retention_sync, daemon=True)
     retention_thread.start()
+
+    refresh_thread = threading.Thread(target=blacklist_auto_refresh_sync, daemon=True)
+    refresh_thread.start()
 
     yield
     # Shutdown

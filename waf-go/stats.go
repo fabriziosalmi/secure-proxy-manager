@@ -90,6 +90,20 @@ func topN(m map[string]int, n int) []topEntry {
 	return entries
 }
 
+func (s *statsCollector) reset() {
+	s.totalRequests.Store(0)
+	s.totalBlocked.Store(0)
+	s.highEntropyCount.Store(0)
+	s.recentCount.Store(0)
+	s.mu.Lock()
+	s.entropySum = 0
+	s.bodyEntropySum = 0
+	s.destCounts = make(map[string]int)
+	s.categoryCounts = make(map[string]int)
+	s.uaCounts = make(map[string]int)
+	s.mu.Unlock()
+}
+
 func (s *statsCollector) snapshot() map[string]interface{} {
 	total := s.totalRequests.Load()
 	blocked := s.totalBlocked.Load()

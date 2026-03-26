@@ -1,8 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Zap, Download, Copy, Check, Brain, AlertTriangle } from 'lucide-react';
+import { Zap, Download, Copy, Check, Brain, AlertTriangle, RotateCcw } from 'lucide-react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, PieChart, Pie } from 'recharts';
 import React, { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import type { TimelineEntry, SecurityScore } from '../types';
 
@@ -10,6 +11,7 @@ const REFETCH = 10_000;
 const C = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899'];
 
 export function Dashboard() {
+  const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
   const proxy = `${window.location.hostname}:3128`;
   const copy = () => { navigator.clipboard.writeText(proxy); setCopied(true); setTimeout(() => setCopied(false), 2000); };
@@ -37,6 +39,15 @@ export function Dashboard() {
               {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
           </div>
+          <button type="button" onClick={async () => {
+              if (!confirm('Reset all counters? This clears proxy logs and WAF stats.')) return;
+              const t = toast.loading('Resetting counters...');
+              try { await api.post('counters/reset'); toast.success('All counters reset', { id: t }); queryClient.invalidateQueries(); }
+              catch { toast.error('Reset failed', { id: t }); }
+            }}
+            className="flex items-center px-3 py-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-md text-sm font-medium">
+            <RotateCcw className="w-3.5 h-3.5 mr-1.5" />Reset
+          </button>
           <button type="button" onClick={() => window.open('/api/analytics/report/pdf', '_blank')}
             className="flex items-center px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-md text-sm font-medium">
             <Download className="w-3.5 h-3.5 mr-1.5" />PDF
