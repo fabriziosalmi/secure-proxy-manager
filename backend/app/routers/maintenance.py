@@ -119,7 +119,7 @@ def reload_dns_blocklist(background_tasks: BackgroundTasks):
                 lines.append(f"address=/{domain}/0.0.0.0")
                 lines.append(f"address=/{domain}/::")
 
-        blocklist_path = '/config/dnsmasq-blocklist.conf'
+        blocklist_path = '/config/dnsmasq.d/blocklist.conf'
         with open(blocklist_path, 'w') as f:
             f.write('\n'.join(lines) + '\n')
 
