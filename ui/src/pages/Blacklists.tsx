@@ -173,16 +173,25 @@ export function Blacklists() {
   };
 
   const popularIpLists = [
-    { name: 'Firehol Level 1 (High Threat)', url: 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset', desc: 'A general purpose blocklist protecting against active threats' },
-    { name: 'Spamhaus DROP', url: 'https://www.spamhaus.org/drop/drop.txt', desc: 'Don\'t Route Or Peer Lists (Direct malware/botnets)' },
-    { name: 'Emerging Threats', url: 'https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt', desc: 'Known compromised hosts and botnet C&C' },
-    { name: 'CINS Army List', url: 'https://cinsarmy.com/list/ci-badguys.txt', desc: 'High-confidence malicious IP addresses' }
+    { name: 'Firehol Level 1', url: 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset', desc: 'General purpose blocklist against active threats (~600 IPs)' },
+    { name: 'Spamhaus DROP', url: 'https://www.spamhaus.org/drop/drop.txt', desc: 'Don\'t Route Or Peer — direct malware/botnet infrastructure' },
+    { name: 'Spamhaus EDROP', url: 'https://www.spamhaus.org/drop/edrop.txt', desc: 'Extended DROP — sub-allocated netblocks of hijacked space' },
+    { name: 'Emerging Threats', url: 'https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt', desc: 'Known compromised hosts and botnet C&C servers' },
+    { name: 'CINS Army', url: 'https://cinsarmy.com/list/ci-badguys.txt', desc: 'High-confidence malicious IP addresses' },
+    { name: 'Stamparm Ipsum (L3+)', url: 'https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt', desc: 'Daily threat intelligence feed — IPs seen on 3+ blacklists' },
+    { name: 'Blocklist.de All', url: 'https://lists.blocklist.de/lists/all.txt', desc: 'All attack IPs reported to blocklist.de in last 48h' },
+    { name: 'Talos Intelligence', url: 'https://www.talosintelligence.com/documents/ip-blacklist', desc: 'Cisco Talos IP reputation blacklist' },
   ];
 
   const popularDomainLists = [
-    { name: 'StevenBlack Ad/Malware', url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', desc: 'Consolidated host files from multiple sources' },
-    { name: 'Abuse.ch URLhaus Domains', url: 'https://urlhaus.abuse.ch/downloads/hostfile/', desc: 'Active malware distribution domains from URLhaus' },
-    { name: 'Phishing Army', url: 'https://phishing.army/download/phishing_army_blocklist_extended.txt', desc: 'Domains actively involved in phishing' }
+    { name: 'Fabrizio Salmi Blacklists', url: 'https://github.com/fabriziosalmi/blacklists/releases/download/latest/blacklist.txt', desc: '2.9M+ domains from 61 aggregated sources, updated daily' },
+    { name: 'StevenBlack Unified', url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', desc: 'Adware + malware hosts from multiple curated sources' },
+    { name: 'URLhaus Malware', url: 'https://urlhaus.abuse.ch/downloads/hostfile/', desc: 'Active malware distribution domains from abuse.ch' },
+    { name: 'Phishing Army', url: 'https://phishing.army/download/phishing_army_blocklist_extended.txt', desc: 'Domains actively involved in phishing campaigns' },
+    { name: 'OISD Big', url: 'https://big.oisd.nl/domainswild', desc: 'Comprehensive ad/tracking/malware domain list (1M+ entries)' },
+    { name: 'HaGeZi Multi Pro', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt', desc: 'Multi-source pro blocklist — ads, tracking, malware, phishing' },
+    { name: 'NoTracking', url: 'https://raw.githubusercontent.com/notracking/hosts-blocklists/master/hostnames.txt', desc: 'Tracking and advertising hostname blocklist' },
+    { name: 'DanPollock Hosts', url: 'https://someonewhocares.org/hosts/zero/hosts', desc: 'Dan Pollock\'s hand-maintained hosts file (ads, trackers)' },
   ];
 
   const closeAllPanels = (except?: string) => {

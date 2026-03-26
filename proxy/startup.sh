@@ -156,6 +156,9 @@ http_access deny CONNECT direct_ipv6_host
 http_access deny ip_blacklist
 # domain_blacklist removed — handled by dnsmasq DNS blackhole at L3
 http_access allow localnet
+
+# Custom error pages (branded dark theme)
+error_directory /etc/squid/error-pages
 http_access allow localhost
 http_access deny all
 

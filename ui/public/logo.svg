@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <!-- Shield body -->
+  <path d="M60 8L16 28v30c0 28.5 18.8 55.1 44 62 25.2-6.9 44-33.5 44-62V28L60 8z" fill="#0f172a" stroke="#3b82f6" stroke-width="3"/>
+  <!-- Inner shield glow -->
+  <path d="M60 18L24 34v24c0 23.5 15.3 45.5 36 51 20.7-5.5 36-27.5 36-51V34L60 18z" fill="#1e293b"/>
+  <!-- Lock icon -->
+  <rect x="46" y="52" width="28" height="22" rx="4" fill="#3b82f6"/>
+  <path d="M52 52V44a8 8 0 0 1 16 0v8" stroke="#3b82f6" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <!-- Keyhole -->
+  <circle cx="60" cy="62" r="3" fill="#0f172a"/>
+  <rect x="59" y="64" width="2" height="5" rx="1" fill="#0f172a"/>
+  <!-- Signal waves (proxy traffic) -->
+  <path d="M36 38a16 16 0 0 1 0-12" stroke="#10b981" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <path d="M30 40a24 24 0 0 1 0-18" stroke="#10b981" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.4"/>
+  <path d="M84 38a16 16 0 0 0 0-12" stroke="#10b981" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <path d="M90 40a24 24 0 0 0 0-18" stroke="#10b981" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.4"/>
+</svg>

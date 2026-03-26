@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Shield, LayoutDashboard, Ban, List, Settings } from 'lucide-react';
+import { LayoutDashboard, Ban, List, Settings } from 'lucide-react';
 import { api } from '../../lib/api';
 
 type ApiStatus = 'connected' | 'disconnected' | 'checking';
@@ -32,7 +32,7 @@ export function Sidebar() {
   return (
     <aside className="w-64 border-r border-border bg-[#0a0a0a] flex flex-col h-screen">
       <div className="h-16 flex items-center px-6 border-b border-border">
-        <Shield className="w-6 h-6 text-white mr-3" />
+        <img src="/logo.svg" alt="Secure Proxy Manager" className="w-7 h-7 mr-3" />
         <span className="font-semibold text-lg tracking-tight text-white">Proxy Manager</span>
       </div>
       
