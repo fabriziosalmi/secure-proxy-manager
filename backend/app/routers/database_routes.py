@@ -128,7 +128,7 @@ def export_database():
 
         export_data = {
             "metadata": {
-                "version": "1.3.0",
+                "version": "1.4.0",
                 "timestamp": datetime.now().isoformat(),
                 "record_counts": {
                     "logs": len(logs),

@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-03-26
+
+### Added
+- WAF expanded to 171 rules across 21 categories (was 78/11) with 10 new categories: CLOUD_SECRETS, SENSITIVE_FILES, WEBSHELL_C2, CRYPTO_TUNNEL, DATA_EXFIL, POST_EXPLOIT, JAVA_DESER, PROTOCOL_ANOMALY, FINANCIAL_DATA, RANSOMWARE
+- WAF traffic intelligence: Shannon entropy calculator, per-request feature extraction, JSONL profiling (training data for future ML anomaly detection)
+- WAF /stats endpoint with real-time metrics: req/min, avg entropy, high entropy count, top destinations, top blocked categories
+- Backend /api/waf/stats proxy endpoint for UI integration
+- Dashboard "WAF Intelligence" card showing live WAF metrics
+- RESPMOD body inspection for reflected XSS and secret leaks in responses
+- BENCHMARKS.md with reproducible security and performance test results
+
+### Changed
+- WAF Go codebase modularized into 5 files: main.go, rules.go, entropy.go, stats.go, normalize.go
+- React Query migration: all 4 pages (Dashboard, Blacklists, Logs, Settings) now use @tanstack/react-query
+- Auth tokens moved from sessionStorage to localStorage (survives new tabs)
+
+### Fixed
+- CSP policy: added unsafe-eval (Recharts), ws:/wss: (WebSocket connections)
+- crypto.randomUUID fallback for non-secure HTTP contexts
+- Recharts ResponsiveContainer minWidth/minHeight to prevent -1 dimension warnings
+- Read-only database error on index creation during startup
+
+### Security
+- Fixed 7 dependency vulnerabilities: PyJWT 2.9->2.12.1, python-multipart 0.0.20->0.0.22, requests 2.32.4->2.33.0, picomatch (npm audit fix)
+- WAF benchmark: 100% attack detection (23/23), 0% false positives (5/5)
+
 ## [1.3.0] - 2026-03-26
 
 ### Added

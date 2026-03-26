@@ -31,7 +31,7 @@ def get_status():
         "proxy_host": PROXY_HOST,
         "proxy_port": "3128",
         "timestamp": datetime.now().isoformat(),
-        "version": "1.3.0"
+        "version": "1.4.0"
     }
 
     try:
