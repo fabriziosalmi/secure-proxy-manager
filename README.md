@@ -8,24 +8,27 @@ A containerized web proxy management system based on Squid, featuring a web inte
 
 ## Key Features
 
-- **Architecture**: Python backend using FastAPI with SQLite WAL mode.
-- **Web Interface**: React-based frontend built with Vite and Tailwind CSS, using WebSockets for log streaming.
-- **Traffic Filtering**: Domain and IP-based blacklisting with regular expression support and automatic IP Geo-Blocking.
-- **Blocklists Import**: Import public blocklists (Spamhaus, Firehol, Pi-hole lists) directly from the UI.
-- **WAF**: High-performance Go ICAP server for payload inspection with zero-downtime concurrency.
+- **WAF Engine**: 171 regex rules + 7 behavioral heuristics across 21 categories, anomaly scoring with configurable threshold, Shannon entropy analysis, tiered matching with early-exit.
+- **DNS Blackhole**: dnsmasq sidecar blocks 87K+ domains at L3 (DNS resolution → 0.0.0.0) with zero HTTP overhead.
+- **Traffic Intelligence**: Per-request feature extraction (entropy, timing, headers), JSONL profiling for ML training, real-time /stats dashboard.
+- **Architecture**: Modular FastAPI backend (8 routers), React 19 + @tanstack/react-query frontend, SQLite WAL.
+- **Blocklists**: 16 popular lists (8 IP + 8 domain including fabriziosalmi/blacklists with 2.9M+ domains), Geo-blocking by country, paginated UI with search.
+- **Heuristics**: Entropy thresholding, C2 beaconing detection, PII leak counter, destination sharding, protocol ghosting, header morphing, sequence validation.
+- **Custom Block Pages**: Branded dark-theme error pages with project logo and credits.
 - **SSL Bump**: Inspect and filter HTTPS traffic with auto-generated certificates.
-- **Caching**: Configurable content caching via Squid.
-- **Analytics**: Recharts dashboards for monitoring bandwidth, cache hit rates, and blocked requests.
-- **Deployment**: Containerized multi-tier architecture via docker-compose.
+- **Caching**: Configurable L1 (memory) + L2 (disk) content caching via Squid.
+- **Deployment**: Containerized 6-service architecture via docker-compose (UI, Backend, Proxy, WAF, DNS, Tailscale).
 
 ## Architecture
 
 The project employs a microservices architecture:
 
-1. **Frontend (React/Vite/Nginx)**: Single Page Application built with React, Tailwind CSS, and Recharts, served by Nginx which also reverse-proxies API traffic.
-2. **Backend (FastAPI)**: Modular Python backend using FastAPI and Uvicorn with 8 API routers, SQLite WAL database, and WebSocket log streaming.
-3. **Proxy Engine (Squid)**: The core caching and filtering engine handling HTTP/HTTPS traffic.
-4. **WAF Engine (Go ICAP)**: High-performance ICAP server that inspects both URLs and request bodies for SQL injection, XSS, command injection, and data leaks.
+1. **Frontend (React 19/Vite/Nginx)**: SPA with @tanstack/react-query, Recharts dashboards, paginated blacklists, WAF Intelligence card.
+2. **Backend (FastAPI)**: Modular Python backend (8 API routers), SQLite WAL, WebSocket log streaming, JWT auth.
+3. **Proxy Engine (Squid 5.9)**: Caching/filtering with ICAP integration, custom branded block pages, IP ACL blocking.
+4. **WAF Engine (Go ICAP)**: 171 regex rules + 7 behavioral heuristics, anomaly scoring, Shannon entropy, JSONL traffic profiling.
+5. **DNS Blackhole (dnsmasq)**: Internal DNS resolver that sinkhole-blocks 87K+ blacklisted domains at L3.
+6. **Tailscale Sidecar** (optional): Secure remote access overlay network.
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/docs/architecture.svg" alt="Secure Proxy Manager Architecture" width="800"/>
@@ -35,38 +38,42 @@ The project employs a microservices architecture:
 
 ```
 secure-proxy-manager/
-├── backend/              # FastAPI backend service
-│   ├── app/
-│   │   └── main.py      # Main FastAPI application with REST API and WebSocket endpoints
-│   ├── Dockerfile
-│   └── requirements.txt
-├── ui/                   # Web UI service
-│   ├── src/              # React/Vite SPA source (TypeScript, Tailwind CSS, Recharts)
-│   ├── app.py            # Flask reverse proxy serving static assets and routing API traffic
-│   ├── Dockerfile
-│   └── requirements.txt
-├── proxy/                # Squid proxy service
-│   ├── squid.conf        # Squid base configuration (overwritten at startup by startup.sh)
-│   ├── startup.sh        # Container startup script — generates squid.conf, validates it
+├── backend/                  # FastAPI backend service
+│   └── app/
+│       ├── main.py           # App factory, lifespan, WebSocket
+│       ├── config.py         # Environment-based configuration
+│       ├── auth.py           # JWT + Basic Auth, rate limiting
+│       ├── database.py       # SQLite WAL, schema, migrations
+│       ├── models.py         # Pydantic models
+│       ├── websocket.py      # WebSocket manager, log tailing
+│       └── routers/          # 8 API routers (auth, blacklists, logs, settings, etc.)
+├── ui/                       # React 19 frontend
+│   └── src/
+│       ├── pages/            # Dashboard, Blacklists, Logs, Settings, Login
+│       ├── lib/api.ts        # Axios + JWT expiry + react-query
+│       └── public/logo.svg   # Gear+eye SVG logo
+├── proxy/                    # Squid proxy service
+│   ├── startup.sh            # Config generator with IP blocking + dnsmasq wiring
+│   └── error-pages/          # Custom branded dark-theme block pages
+├── waf-go/                   # Go ICAP WAF engine (6 modules)
+│   ├── main.go               # ICAP handlers, notification workers
+│   ├── rules.go              # 171 regex rules across 21 categories
+│   ├── heuristics.go         # 7 behavioral anomaly detection rules
+│   ├── entropy.go            # Shannon entropy, JSONL traffic profiler
+│   ├── stats.go              # Real-time metrics collector
+│   ├── normalize.go          # Anti-evasion input normalization
+│   ├── fuzz_test.go          # Evasion + false positive + stability fuzzing
+│   └── main_test.go          # 80+ test cases + benchmarks
+├── dns/                      # dnsmasq DNS blackhole sidecar
+│   ├── dnsmasq.conf          # Upstream DNS + blocklist include
 │   └── Dockerfile
-├── waf-go/               # High-performance Go ICAP WAF service
-│   ├── main.go           # Go ICAP server with WAF rules and async logging
-│   ├── Dockerfile
-│   └── go.mod            # Go module dependencies
-├── config/               # Shared configuration (mounted into containers)
-│   ├── ip_blacklist.txt
-│   ├── domain_blacklist.txt
-│   └── ssl_cert.pem
-├── data/                 # Persistent volume for SQLite database
-│   └── secure_proxy.db
-├── tests/
-│   └── e2e_test.py       # End-to-end API test suite
-├── docker-compose.yml
-├── .env.example
-├── CONTRIBUTING.md
-├── LICENSE
+├── scripts/
+│   └── benchmark.sh          # 360-degree reproducible benchmark suite
+├── config/                   # Shared volumes (blacklists, SSL, dnsmasq)
+├── data/                     # SQLite DB + WAF traffic JSONL
+├── BENCHMARKS.md             # Live performance & security results
 ├── CHANGELOG.md
-└── README.md
+└── docker-compose.yml        # 6-service stack
 ```
 
 ## Prerequisites
