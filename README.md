@@ -139,6 +139,11 @@ If this is your first time deploying Secure Proxy Manager, use the **initializat
    - Set proxy server to your host's IP address, port 3128
    - For transparent proxying, see the [Transparent Proxy Setup](#transparent-proxy-setup) section
 
+6. **Whitelist essential domains** (important before importing blocklists):
+   - Go to **Settings > DNS & WAF Intelligence > Essential Domain Whitelist**
+   - Click the one-click buttons for services you use: GitHub, Google, Microsoft, AI, Docker, CDN
+   - This prevents critical services from being blocked by imported domain lists
+
 ### For Experienced Users
 
 If you're familiar with Docker and prefer manual setup:
