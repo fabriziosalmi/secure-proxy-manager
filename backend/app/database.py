@@ -103,8 +103,12 @@ def init_db():
     for col, col_type in [('source_ip', 'TEXT'), ('unix_timestamp', 'REAL'), ('method', 'TEXT')]:
         try:
             cursor.execute(f"ALTER TABLE proxy_logs ADD COLUMN {col} {col_type}")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
+            logger.info(f"Migration: added column proxy_logs.{col}")
+        except sqlite3.OperationalError as e:
+            if "duplicate column" in str(e).lower():
+                pass  # Already exists
+            else:
+                logger.warning(f"Migration: could not add proxy_logs.{col}: {e}")
 
     # Add index for timestamp-based queries
     try:
