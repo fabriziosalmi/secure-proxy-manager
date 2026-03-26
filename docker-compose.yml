@@ -86,6 +86,25 @@ services:
       - proxy-network
     restart: unless-stopped
 
+  dns:
+    build: ./dns
+    volumes:
+      - ./config:/config:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "nslookup", "localhost", "127.0.0.1"]
+      interval: 10s
+      timeout: 2s
+      retries: 3
+      start_period: 3s
+    networks:
+      - proxy-network
+    restart: unless-stopped
+
   proxy:
     build: ./proxy
     container_name: secure-proxy-manager-proxy
@@ -98,6 +117,8 @@ services:
       - squid-cache:/var/spool/squid
     depends_on:
       waf:
+        condition: service_healthy
+      dns:
         condition: service_healthy
     deploy:
       resources:
