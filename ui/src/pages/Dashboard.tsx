@@ -246,11 +246,11 @@ export function Dashboard() {
                   <div className="flex items-center gap-4 shrink-0">
                     <div className="text-sm text-muted-foreground">{log.method}</div>
                     <div className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                      log.status?.includes('DENIED')
+                      (log.status?.includes('DENIED') || log.status?.includes('403') || log.status?.includes('BLOCKED'))
                         ? 'bg-destructive/10 text-destructive border-destructive/20'
                         : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                     }`}>
-                      {log.status?.includes('DENIED') ? 'Blocked' : 'Success'}
+                      {(log.status?.includes('DENIED') || log.status?.includes('403') || log.status?.includes('BLOCKED')) ? 'Blocked' : 'Success'}
                     </div>
                   </div>
                 </div>

@@ -232,7 +232,8 @@ def import_blacklist(request_data: ImportBlacklistRequest, background_tasks: Bac
                         last_exc = exc
                         logger.warning(f"Attempt {attempt+1} failed: {exc}")
                     if attempt < 2:
-                        import time as _time; _time.sleep(2 ** attempt)
+                        import time as _time
+                        _time.sleep(2 ** attempt)
                 if content is None:
                     detail = f"HTTP {last_status}" if last_status else str(last_exc)
                     raise HTTPException(status_code=400, detail=f"Failed to fetch URL after 3 attempts: {detail}")
