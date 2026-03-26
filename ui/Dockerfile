@@ -1,15 +1,14 @@
-# Stage 1: Build React frontend
-FROM node:20-alpine AS frontend-builder
+# Pin: node 20.19 alpine 3.21 (2025-04)
+FROM node:20.19-alpine3.21 AS frontend-builder
 WORKDIR /frontend
 COPY ./ui/package*.json ./
 RUN npm ci
 COPY ./ui/ ./
 RUN npm run build
 
-# Stage 2: Nginx — serves the compiled SPA and reverse-proxies /api/ to FastAPI
-FROM nginx:1.27-alpine
+# Pin: nginx 1.27.4 alpine (2025-03)
+FROM nginx:1.27.4-alpine
 
-# envsubst is in gettext; already present in nginx:alpine
 RUN rm /etc/nginx/conf.d/default.conf
 
 COPY --from=frontend-builder /frontend/dist /usr/share/nginx/html
