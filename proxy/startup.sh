@@ -145,7 +145,7 @@ acl CONNECT method CONNECT
 
 # Local network destinations (proxy UI, backend — should not be blocked as "direct IP")
 acl local_dst dst 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
-acl local_dst_url url_regex -i ^https?://(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)
+acl local_dst_url url_regex -i ^https?://192\.168\. ^https?://10\. ^https?://172\.
 
 # Access rules
 http_access deny !Safe_ports
