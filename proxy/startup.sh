@@ -167,6 +167,9 @@ cache_dir ufs /var/spool/squid 2000 16 256
 maximum_object_size 100 MB
 coredump_dir /var/spool/squid
 
+# Internal DNS resolver (dnsmasq blackhole for blocked domains)
+dns_nameservers dns
+
 # ICAP WAF
 icap_enable on
 icap_send_client_ip on
