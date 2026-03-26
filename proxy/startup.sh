@@ -168,8 +168,6 @@ cache_dir ufs /var/spool/squid 2000 16 256
 maximum_object_size 100 MB
 coredump_dir /var/spool/squid
 
-# Internal DNS resolver (dnsmasq blackhole for blocked domains)
-dns_nameservers dns
 
 # Custom branded error pages
 error_directory /etc/squid/error-pages
@@ -220,6 +218,25 @@ fi
 # ── Ensure critical security rules are present ──────────────────────────────
 
 ensure_ip_blocking_rules /etc/squid/squid.conf
+
+# ── Inject dnsmasq as DNS resolver (resolve container IP dynamically) ────────
+
+DNS_IP=$(getent hosts dns 2>/dev/null | awk '{print $1}')
+if [ -n "$DNS_IP" ]; then
+    if ! grep -q "dns_nameservers" /etc/squid/squid.conf; then
+        echo "dns_nameservers $DNS_IP" >> /etc/squid/squid.conf
+    fi
+    echo "DNS resolver: dnsmasq at $DNS_IP"
+else
+    echo "Warning: dnsmasq container not reachable, using system DNS"
+fi
+
+# ── Custom error pages ───────────────────────────────────────────────────────
+
+if [ -d /etc/squid/error-pages ] && ! grep -q "error_directory" /etc/squid/squid.conf; then
+    echo "error_directory /etc/squid/error-pages" >> /etc/squid/squid.conf
+    echo "Custom error pages enabled"
+fi
 
 # ── Copy blacklists from config volume ───────────────────────────────────────
 
