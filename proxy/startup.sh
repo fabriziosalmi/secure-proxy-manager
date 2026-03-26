@@ -1,65 +1,110 @@
 #!/bin/bash
 
-# Create directories for blacklists if they don't exist
-mkdir -p /etc/squid/blacklists/ip
-mkdir -p /etc/squid/blacklists/domain
-mkdir -p /etc/squid/whitelists/ip
+# ── Helper functions ─────────────────────────────────────────────────────────
 
-# Create SSL certificate and SSL DB directories for HTTPS filtering
+ensure_ip_blocking_rules() {
+    local conf="$1"
+    local needs_acls=false
+    local needs_deny=false
+
+    if ! grep -q "acl direct_ip_url" "$conf" || ! grep -q "acl direct_ip_host" "$conf"; then
+        needs_acls=true
+    fi
+    if ! grep -q "http_access deny direct_ip_url" "$conf" || ! grep -q "http_access deny direct_ip_host" "$conf"; then
+        needs_deny=true
+    fi
+
+    if $needs_acls || $needs_deny; then
+        echo "Adding missing direct IP blocking rules..."
+        cat >> "$conf" << 'EOL'
+
+# ==== CRITICAL SECURITY RULES (auto-added by startup) ====
+acl direct_ip_url url_regex -i ^https?://([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)
+acl direct_ip_host dstdom_regex -i ^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$
+acl direct_ipv6_url url_regex -i ^https?://\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\]
+acl direct_ipv6_host dstdom_regex -i ^\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\]$
+
+http_access allow ip_whitelist
+http_access deny direct_ip_url
+http_access deny direct_ip_host
+http_access deny direct_ipv6_url
+http_access deny direct_ipv6_host
+http_access deny CONNECT direct_ip_host
+http_access deny CONNECT direct_ipv6_host
+# ==== END CRITICAL SECURITY RULES ====
+EOL
+        echo "Direct IP blocking rules added."
+    else
+        echo "Direct IP blocking rules already present."
+    fi
+}
+
+verify_config_feature() {
+    local label="$1"
+    local pattern="$2"
+    if grep -q "$pattern" /etc/squid/squid.conf; then
+        echo "  [ok] $label"
+    else
+        echo "  [--] $label (may be disabled)"
+    fi
+}
+
+# ── Directory setup ──────────────────────────────────────────────────────────
+
+mkdir -p /etc/squid/blacklists/ip /etc/squid/blacklists/domain /etc/squid/whitelists/ip
 mkdir -p /config/ssl_db
 chmod 700 /config/ssl_db
 
-# Check if SSL certificates exist, if not create them
+# ── SSL certificates ────────────────────────────────────────────────────────
+
 if [ ! -f /config/ssl_cert.pem ] || [ ! -f /config/ssl_key.pem ]; then
     echo "Generating SSL certificates for HTTPS filtering..."
-    # Create a private key
     openssl genrsa -out /config/ssl_key.pem 2048
-    # Create a self-signed certificate valid for 10 years
-    openssl req -new -key /config/ssl_key.pem -x509 -days 3650 -out /config/ssl_cert.pem -subj "/C=US/ST=CA/L=SanFrancisco/O=SecureProxy/CN=secure-proxy.local"
-    # Set proper permissions for the certificate files
+    openssl req -new -key /config/ssl_key.pem -x509 -days 3650 -out /config/ssl_cert.pem \
+        -subj "/C=US/ST=CA/L=SanFrancisco/O=SecureProxy/CN=secure-proxy.local"
     chmod 400 /config/ssl_key.pem
     chmod 444 /config/ssl_cert.pem
-    echo "✅ SSL certificates generated successfully"
+    echo "SSL certificates generated."
 else
-    echo "✅ Using existing SSL certificates"
+    echo "Using existing SSL certificates."
 fi
 
-# Initialize SSL certificate database for Squid
 if [ ! -d /config/ssl_db/db ] || [ -z "$(ls -A /config/ssl_db)" ]; then
-    echo "Initializing SSL certificate database for HTTPS filtering..."
+    echo "Initializing SSL certificate database..."
     /usr/lib/squid/security_file_certgen -c -s /config/ssl_db -M 4MB
-    echo "✅ SSL certificate database initialized"
+    echo "SSL certificate database initialized."
 else
-    echo "✅ Using existing SSL certificate database"
+    echo "Using existing SSL certificate database."
 fi
 
-# Create empty blacklist files if they don't exist
+# ── Empty blacklist placeholders ─────────────────────────────────────────────
+
 touch /etc/squid/blacklists/ip/local.txt
 touch /etc/squid/blacklists/domain/local.txt
 touch /etc/squid/whitelists/ip/local.txt
 
-# Make sure Squid is not running
-if [ -f /run/squid.pid ]; then
-  echo "Terminating existing Squid process..."
-  pid=$(cat /run/squid.pid)
-  if ps -p $pid > /dev/null; then
-    kill $pid
-    sleep 2
-  fi
-  rm -f /run/squid.pid
-fi
+# ── Stop any existing Squid ──────────────────────────────────────────────────
 
-# Kill any squid processes that might be running gracefully
-pkill -15 squid || true
+if [ -f /run/squid.pid ]; then
+    pid=$(cat /run/squid.pid)
+    if ps -p $pid > /dev/null 2>&1; then
+        kill $pid
+        sleep 2
+    fi
+    rm -f /run/squid.pid
+fi
+pkill -15 squid 2>/dev/null || true
 sleep 2
 
-# Configure iptables for transparent proxy
+# ── iptables for transparent proxy ──────────────────────────────────────────
+
 iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3128
 iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 3128
 
-# Force clear Squid configuration to ensure a clean start
-echo "Setting up clean Squid configuration..."
-cat > /etc/squid/squid.conf.base << EOL
+# ── Generate base Squid configuration ────────────────────────────────────────
+
+echo "Setting up Squid configuration..."
+cat > /etc/squid/squid.conf.base << 'EOL'
 http_port 3128
 visible_hostname secure-proxy
 
@@ -83,61 +128,46 @@ acl Safe_ports port 488
 acl Safe_ports port 591
 acl Safe_ports port 777
 
-# IP blacklists and whitelists
+# Blacklists and whitelists
 acl ip_blacklist src "/etc/squid/blacklists/ip/local.txt"
 acl ip_whitelist dst "/etc/squid/whitelists/ip/local.txt"
-
-# Domain blacklists
 acl domain_blacklist dstdomain "/etc/squid/blacklists/domain/local.txt"
 
-# Direct IP access detection - essential for security
-acl direct_ip_url url_regex -i ^https?://([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)
-acl direct_ip_host dstdom_regex -i ^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)$
-acl direct_ipv6_url url_regex -i ^https?://\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]
-acl direct_ipv6_host dstdom_regex -i ^\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]$
+# Direct IP access detection
+acl direct_ip_url url_regex -i ^https?://([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)
+acl direct_ip_host dstdom_regex -i ^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$
+acl direct_ipv6_url url_regex -i ^https?://\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\]
+acl direct_ipv6_host dstdom_regex -i ^\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\]$
 
 # HTTP method definitions
 acl CONNECT method CONNECT
 
-# Basic access control
+# Access rules
 http_access deny !Safe_ports
 http_access deny CONNECT !SSL_ports
-
-# Whitelisted destination IPs bypass the direct-IP block (must come first)
 http_access allow ip_whitelist
-
-# Block all direct IP access
 http_access deny direct_ip_url
 http_access deny direct_ip_host
 http_access deny direct_ipv6_url
 http_access deny direct_ipv6_host
 http_access deny CONNECT direct_ip_host
 http_access deny CONNECT direct_ipv6_host
-
-# Additional blocks
 http_access deny ip_blacklist
 http_access deny domain_blacklist
-
-# Allow local network access
 http_access allow localnet
 http_access allow localhost
-
-# Default deny
 http_access deny all
 
-# Caching options
-# Memory Cache (L1)
+# Caching
 cache_mem 256 MB
 maximum_object_size_in_memory 512 KB
 memory_replacement_policy lru
-
-# Disk Cache (L2)
 cache_replacement_policy heap LFUDA
 cache_dir ufs /var/spool/squid 2000 16 256
 maximum_object_size 100 MB
 coredump_dir /var/spool/squid
 
-# ICAP WAF Configuration
+# ICAP WAF
 icap_enable on
 icap_send_client_ip on
 icap_send_client_username on
@@ -145,17 +175,16 @@ icap_client_username_encode off
 icap_client_username_header X-Client-Username
 icap_preview_enable on
 icap_preview_size 1024
-
 icap_service service_req reqmod_precache bypass=0 icap://waf:1344/waf
 adaptation_access service_req allow all
 
-# Log settings
+# Logging
 debug_options ALL,2
 access_log daemon:/var/log/squid/access.log squid
 cache_log /var/log/squid/cache.log
 cache_store_log stdio:/var/log/squid/store.log
 
-# Timeout settings
+# Timeouts
 connect_timeout 30 seconds
 dns_timeout 5 seconds
 
@@ -165,292 +194,70 @@ refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
 refresh_pattern .               0       20%     4320
 EOL
 
-# Check for all possible locations of the custom Squid configuration
-echo "Checking for custom Squid configurations..."
+# ── Apply custom config or fall back to base ─────────────────────────────────
+
 if [ -f /config/custom_squid.conf ]; then
-    echo "Found /config/custom_squid.conf - applying this configuration"
+    echo "Applying custom configuration from /config/custom_squid.conf"
     cp /config/custom_squid.conf /etc/squid/squid.conf
 elif [ -f /config/squid.conf ]; then
-    echo "Found /config/squid.conf - applying this configuration"
+    echo "Applying configuration from /config/squid.conf"
     cp /config/squid.conf /etc/squid/squid.conf
 elif [ -f /config/squid/squid.conf ]; then
-    echo "Found /config/squid/squid.conf - applying this configuration"
+    echo "Applying configuration from /config/squid/squid.conf"
     cp /config/squid/squid.conf /etc/squid/squid.conf
 else
-    echo "No custom configuration found - using base configuration"
+    echo "No custom configuration found, using base configuration."
     cp /etc/squid/squid.conf.base /etc/squid/squid.conf
 fi
 
-# CRITICAL: Ensure the configuration always contains direct IP blocking, 
-# by forcing these rules regardless of the source configuration
-echo "Ensuring direct IP blocking rules are present..."
+# ── Ensure critical security rules are present ──────────────────────────────
 
-# Check for all required direct IP blocking patterns
-if ! grep -q "acl direct_ip_url" /etc/squid/squid.conf || \
-   ! grep -q "acl direct_ip_host" /etc/squid/squid.conf || \
-   ! grep -q "http_access deny direct_ip_url" /etc/squid/squid.conf || \
-   ! grep -q "http_access deny direct_ip_host" /etc/squid/squid.conf || \
-   ! grep -q "http_access deny CONNECT direct_ip_host" /etc/squid/squid.conf; then
-    
-    echo "⚠️ Critical security rules missing - adding direct IP blocking rules"
-    cat >> /etc/squid/squid.conf << EOL
+ensure_ip_blocking_rules /etc/squid/squid.conf
 
-# ==== CRITICAL SECURITY RULES - DO NOT REMOVE ====
-# Direct IP access detection - added by startup script
-acl direct_ip_url url_regex -i ^https?://([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)
-acl direct_ip_host dstdom_regex -i ^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)$
-acl direct_ipv6_url url_regex -i ^https?://\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]
-acl direct_ipv6_host dstdom_regex -i ^\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]$
+# ── Copy blacklists from config volume ───────────────────────────────────────
 
-# Whitelisted destination IPs bypass the direct-IP block (must precede deny rules)
-http_access allow ip_whitelist
-# Block direct IP access - added by startup script
-http_access deny direct_ip_url
-http_access deny direct_ip_host
-http_access deny direct_ipv6_url
-http_access deny direct_ipv6_host
-http_access deny CONNECT direct_ip_host
-http_access deny CONNECT direct_ipv6_host
-EOL
-else
-    echo "✅ Direct IP blocking rules already present in configuration"
-fi
+[ -f /config/ip_blacklist.txt ]     && cp /config/ip_blacklist.txt /etc/squid/blacklists/ip/local.txt
+[ -f /config/ip_whitelist.txt ]     && cp /config/ip_whitelist.txt /etc/squid/whitelists/ip/local.txt
+[ -f /config/domain_blacklist.txt ] && cp /config/domain_blacklist.txt /etc/squid/blacklists/domain/local.txt
 
-# Output the contents of the squid configuration
-echo "Current Squid configuration:"
-cat /etc/squid/squid.conf
+# ── Prepare directories and permissions ──────────────────────────────────────
 
-# Copy blacklists from config volume
-if [ -f /config/ip_blacklist.txt ]; then
-    echo "Applying IP blacklist..."
-    cp /config/ip_blacklist.txt /etc/squid/blacklists/ip/local.txt
-fi
-
-if [ -f /config/ip_whitelist.txt ]; then
-    echo "Applying IP whitelist..."
-    cp /config/ip_whitelist.txt /etc/squid/whitelists/ip/local.txt
-fi
-
-if [ -f /config/domain_blacklist.txt ]; then
-    echo "Applying domain blacklist..."
-    cp /config/domain_blacklist.txt /etc/squid/blacklists/domain/local.txt
-fi
-
-# Output the blacklists for debugging
-echo "IP Blacklist contents:"
-cat /etc/squid/blacklists/ip/local.txt
-echo "Domain Blacklist contents:"
-cat /etc/squid/blacklists/domain/local.txt
-
-# Create log directory if it doesn't exist
-mkdir -p /var/log/squid
-chown -R proxy:proxy /var/log/squid
-
-# Create and initialize Squid cache directories
-echo "Initializing Squid cache directories..."
-mkdir -p /var/spool/squid
-chown -R proxy:proxy /var/spool/squid
-
-# Fix run permissions
-# We run supervisord as root, but squid drops privileges to proxy user
-# Make sure the proxy user can write its PID file
-mkdir -p /run/squid /var/run/squid
-chown -R proxy:proxy /run/squid /var/run/squid
+mkdir -p /var/log/squid /var/spool/squid /run/squid /var/run/squid /var/log/supervisor
+chown -R proxy:proxy /var/log/squid /var/spool/squid /run/squid /var/run/squid
 chmod 755 /run/squid /var/run/squid
-touch /run/squid/squid.pid
-chown proxy:proxy /run/squid/squid.pid
-touch /run/squid.pid
-chown proxy:proxy /run/squid.pid
+touch /run/squid/squid.pid /run/squid.pid
+chown proxy:proxy /run/squid/squid.pid /run/squid.pid
 
-# Initialize swap directories
-# Run as proxy user to ensure permissions are correct
+# ── Initialize swap directories ─────────────────────────────────────────────
+
 su - proxy -s /bin/bash -c "/usr/sbin/squid -z"
-
-# Wait a moment to ensure initialization completes
 sleep 2
 
-# Validate Squid configuration before starting
-echo "Validating Squid configuration syntax..."
+# ── Validate configuration ──────────────────────────────────────────────────
+
+echo "Validating Squid configuration..."
 if /usr/sbin/squid -k parse; then
-    echo "✅ Squid configuration syntax is valid"
+    echo "Configuration syntax is valid."
 else
-    echo "❌ Squid configuration has syntax errors, attempting to fix..."
-    # Create a minimal working configuration if the current one is invalid
-    if [ ! -f /etc/squid/squid.conf.backup ]; then
-        cp /etc/squid/squid.conf /etc/squid/squid.conf.backup
-    fi
-    
-    # Use our base configuration (guaranteed to work)
+    echo "Configuration has errors, falling back to base..."
+    [ ! -f /etc/squid/squid.conf.backup ] && cp /etc/squid/squid.conf /etc/squid/squid.conf.backup
     cp /etc/squid/squid.conf.base /etc/squid/squid.conf
-    echo "⚠️ Applied base configuration to recover functionality"
+    ensure_ip_blocking_rules /etc/squid/squid.conf
 fi
 
-# FINAL SAFETY CHECK: Force direct IP blocking to be present
-# This is a critical security feature and must be present
-echo "*** FINAL VERIFICATION OF DIRECT IP BLOCKING ***"
-if ! grep -q "acl direct_ip_url" /etc/squid/squid.conf || ! grep -q "http_access deny direct_ip_url" /etc/squid/squid.conf; then
-    echo "⚠️ CRITICAL: Direct IP blocking rules still missing, forcing them..."
-    cat >> /etc/squid/squid.conf << EOL
+# ── Final verification ──────────────────────────────────────────────────────
 
-# ==== CRITICAL SECURITY RULES - DO NOT REMOVE ====
-# Direct IP access detection - added by final verification
-acl direct_ip_url url_regex -i ^https?://([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)
-acl direct_ip_host dstdom_regex -i ^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)$
-acl direct_ipv6_url url_regex -i ^https?://\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]
-acl direct_ipv6_host dstdom_regex -i ^\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]$
+echo "Configuration verification:"
+verify_config_feature "Direct IP blocking"      "acl direct_ip_url"
+verify_config_feature "Cache configuration"      "cache_dir ufs"
+verify_config_feature "Local network access"     "acl localnet src"
+verify_config_feature "IP blacklist"             "acl ip_blacklist"
+verify_config_feature "Domain blacklist"         "acl domain_blacklist"
+verify_config_feature "Connection timeout"       "connect_timeout"
+verify_config_feature "DNS timeout"              "dns_timeout"
+verify_config_feature "Logging"                  "debug_options"
 
-# Whitelisted destination IPs bypass the direct-IP block (must precede deny rules)
-http_access allow ip_whitelist
-# Block direct IP access - added by final verification
-http_access deny direct_ip_url
-http_access deny direct_ip_host
-http_access deny direct_ipv6_url
-http_access deny direct_ipv6_host
-http_access deny CONNECT direct_ip_host
-http_access deny CONNECT direct_ipv6_host
-# ==== END OF CRITICAL SECURITY RULES ====
-EOL
-    echo "✅ Direct IP blocking rules have been forcefully added"
-fi
+# ── Start supervisor ────────────────────────────────────────────────────────
 
-# Final ACL verification
-grep -A 10 "direct_ip" /etc/squid/squid.conf
-
-# Comprehensive configuration verification
-echo "Verifying all UI settings are properly reflected in Squid configuration..."
-
-# Verify direct IP blocking
-if grep -q "acl direct_ip_url" /etc/squid/squid.conf && grep -q "acl direct_ip_host" /etc/squid/squid.conf; then
-    echo "✅ Direct IP access blocking configuration found"
-    
-    # Also verify the http_access deny rules exist
-    if grep -q "http_access deny direct_ip_url" /etc/squid/squid.conf && grep -q "http_access deny direct_ip_host" /etc/squid/squid.conf; then
-        echo "✅ Direct IP access deny rules found"
-    else
-        echo "⚠️ Direct IP access deny rules missing, adding them"
-        cat >> /etc/squid/squid.conf << EOL
-
-# Whitelisted destination IPs bypass the direct-IP block (must precede deny rules)
-http_access allow ip_whitelist
-# Block direct IP access - added by verification
-http_access deny direct_ip_url
-http_access deny direct_ip_host
-http_access deny direct_ipv6_url
-http_access deny direct_ipv6_host
-http_access deny CONNECT direct_ip_host
-http_access deny CONNECT direct_ipv6_host
-EOL
-    fi
-else
-    echo "⚠️ Direct IP access blocking configuration missing, adding it"
-    cat >> /etc/squid/squid.conf << EOL
-
-# Direct IP access detection - added by verification
-acl direct_ip_url url_regex -i ^https?://([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)
-acl direct_ip_host dstdom_regex -i ^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)$
-acl direct_ipv6_url url_regex -i ^https?://\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]
-acl direct_ipv6_host dstdom_regex -i ^\\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\\]$
-
-# Whitelisted destination IPs bypass the direct-IP block (must precede deny rules)
-http_access allow ip_whitelist
-# Block direct IP access - added by verification
-http_access deny direct_ip_url
-http_access deny direct_ip_host
-http_access deny direct_ipv6_url
-http_access deny direct_ipv6_host
-http_access deny CONNECT direct_ip_host
-http_access deny CONNECT direct_ipv6_host
-EOL
-fi
-
-# Verify caching settings
-if grep -q "cache_dir ufs /var/spool/squid" /etc/squid/squid.conf; then
-    echo "✅ Cache size configuration found"
-else
-    echo "⚠️ Cache size configuration missing"
-fi
-
-if grep -q "maximum_object_size" /etc/squid/squid.conf; then
-    echo "✅ Maximum object size configuration found"
-else
-    echo "⚠️ Maximum object size configuration missing"
-fi
-
-# Verify network access controls
-if grep -q "acl localnet src" /etc/squid/squid.conf; then
-    echo "✅ Local network access configuration found"
-else
-    echo "⚠️ Local network access configuration missing"
-fi
-
-# Verify IP/domain blacklists
-if grep -q "acl ip_blacklist" /etc/squid/squid.conf; then
-    echo "✅ IP blacklist configuration found"
-else
-    echo "⚠️ IP blacklist configuration missing"
-fi
-
-if grep -q "acl domain_blacklist" /etc/squid/squid.conf; then
-    echo "✅ Domain blacklist configuration found"
-else
-    echo "⚠️ Domain blacklist configuration missing"
-fi
-
-# Verify direct IP blocking
-if grep -q "acl direct_ip_url" /etc/squid/squid.conf && grep -q "acl direct_ip_host" /etc/squid/squid.conf; then
-    echo "✅ Direct IP access blocking configuration found"
-else
-    echo "⚠️ Direct IP access blocking configuration missing"
-fi
-
-# Verify content filtering
-if grep -q "acl blocked_extensions" /etc/squid/squid.conf; then
-    echo "✅ Content filtering configuration found"
-else
-    echo "⚠️ Content filtering configuration may be disabled"
-fi
-
-# Verify time restrictions
-if grep -q "acl allowed_hours time" /etc/squid/squid.conf; then
-    echo "✅ Time restriction configuration found"
-else
-    echo "⚠️ Time restriction configuration may be disabled"
-fi
-
-# Verify performance settings
-if grep -q "connect_timeout" /etc/squid/squid.conf; then
-    echo "✅ Connection timeout configuration found"
-else
-    echo "⚠️ Connection timeout configuration missing"
-fi
-
-if grep -q "dns_timeout" /etc/squid/squid.conf; then
-    echo "✅ DNS timeout configuration found"
-else
-    echo "⚠️ DNS timeout configuration missing"
-fi
-
-# Check for HTTP compression
-if grep -q "qos_flows" /etc/squid/squid.conf; then
-    echo "✅ HTTP compression configuration found"
-else
-    echo "⚠️ HTTP compression may be disabled"
-fi
-
-# Verify logging settings
-if grep -q "debug_options" /etc/squid/squid.conf; then
-    echo "✅ Logging level configuration found"
-else
-    echo "⚠️ Logging level configuration missing"
-fi
-
-# Verify that all http_access rules are in the configuration
-echo "Verifying access control rules..."
-grep "http_access" /etc/squid/squid.conf
-
-# Create supervisor log directory
-mkdir -p /var/log/supervisor
-
-# Start supervisor in the foreground instead of Squid directly
-echo "Starting supervisor to manage Squid service..."
+echo "Starting supervisor..."
 exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf

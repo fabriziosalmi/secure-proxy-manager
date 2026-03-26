@@ -1,0 +1,46 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/ui"
+    schedule:
+      interval: "weekly"
+    groups:
+      ui-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    groups:
+      backend-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "pip"
+    directory: "/waf"
+    schedule:
+      interval: "weekly"
+    groups:
+      waf-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "gomod"
+    directory: "/waf-go"
+    schedule:
+      interval: "weekly"
+    groups:
+      waf-go-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      docker-dependencies:
+        patterns:
+          - "*"

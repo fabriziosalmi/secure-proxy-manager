@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-03-26
+
+### Added
+- WAF request body inspection: Go ICAP server now scans POST/PUT payloads (up to 1MB) for SQL injection, XSS, command injection, and other attack patterns
+- WAF HTTP health endpoint on port 8080 with Docker healthcheck integration
+- Backend modular architecture: main.py split into config, auth, database, models, websocket, and 8 API routers
+- Automatic log retention background task (configurable via `log_retention_days` setting, default 30 days)
+- Database index on `proxy_logs(timestamp)` for faster queries
+- CI pipeline: added `lint-backend` (ruff) and `docker-build` verification jobs
+- React Query (`@tanstack/react-query`) provider for future data fetching improvements
+
+### Fixed
+- DB schema mismatch: `proxy_logs` table now correctly declares `source_ip` and `unix_timestamp` columns matching actual INSERT usage
+- Removed per-log-line `ALTER TABLE` hack that ran on every log entry parsed
+- Password no longer re-hashed with bcrypt on every container restart (only when password actually changes)
+- Removed duplicate `LoginRequest` model and legacy `/api/login` endpoint (dead code)
+- Exception handlers restored to `except Exception` for catch-all safety (previous narrowing to `RuntimeError, ValueError, OSError` missed critical exception types)
+
+### Changed
+- WAF credentials: removed hardcoded `admin/admin` fallback; missing env vars now skip notification with a log warning
+- Auth token storage migrated from `sessionStorage` to `localStorage` (tokens survive new browser tabs)
+- Proxy `startup.sh` consolidated from 456 to 200 lines: deduplicated IP blocking rules into single `ensure_ip_blocking_rules()` function
+- Proxy service now depends on WAF healthcheck (`service_healthy`) instead of simple service start
+- WAF env vars (`BASIC_AUTH_USERNAME`, `BASIC_AUTH_PASSWORD`) passed through docker-compose
+
+### Security
+- WAF now inspects both URL and request body, closing a gap where POST-based attacks were invisible
+- Removed insecure credential defaults from WAF notification system
+
 ## [1.2.0] - 2026-03-25
 
 ### Added

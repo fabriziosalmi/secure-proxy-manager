@@ -45,7 +45,29 @@ jobs:
           DATABASE_PATH: ":memory:"
         run: pytest tests/test_imports.py -v --tb=short
 
-  # ── 3. Popular list URL health check ────────────────────────────────────
+  # ── 3. Backend lint ──────────────────────────────────────────────────────
+  lint-backend:
+    name: Backend lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check backend/app/ --select E,F,W --ignore E501
+
+  # ── 4. Docker build verification ────────────────────────────────────────
+  docker-build:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build all images
+        run: |
+          docker compose build backend web waf proxy
+
+  # ── 5. Popular list URL health check ────────────────────────────────────
   check-urls:
     name: Verify popular list URLs
     runs-on: ubuntu-latest

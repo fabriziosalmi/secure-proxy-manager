@@ -25,11 +25,20 @@ services:
     # Port 1344 (ICAP) is internal only — not exposed on the host
     volumes:
       - ./config:/config
+    environment:
+      - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
+      - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
     deploy:
       resources:
         limits:
           cpus: '0.50'
           memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     networks:
       - proxy-network
     restart: unless-stopped
@@ -77,7 +86,8 @@ services:
       - ./logs:/var/log/squid
       - squid-cache:/var/spool/squid
     depends_on:
-      - waf
+      waf:
+        condition: service_healthy
     deploy:
       resources:
         limits:

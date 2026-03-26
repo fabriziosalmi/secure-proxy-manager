@@ -14,5 +14,6 @@ WORKDIR /app
 COPY --from=builder /app/waf-server .
 
 EXPOSE 1344
+EXPOSE 8080
 
 CMD ["./waf-server"]

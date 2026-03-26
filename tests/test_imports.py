@@ -12,7 +12,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 # Add backend to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend', 'app'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 # Stub docker SDK (not available in CI)
 sys.modules.setdefault('docker', MagicMock())
@@ -20,7 +20,8 @@ sys.modules.setdefault('docker', MagicMock())
 os.environ.setdefault("BASIC_AUTH_USERNAME", "testuser")
 os.environ.setdefault("BASIC_AUTH_PASSWORD", "testpass")
 
-from main import app, authenticate  # noqa: E402
+from app.main import app  # noqa: E402
+from app.auth import authenticate  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -33,12 +34,13 @@ def _init_db():
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
 
-    import main as m
-    original = m.DATABASE_PATH
-    m.DATABASE_PATH = db_path
-    m.init_db()
+    import app.config as cfg
+    from app.database import init_db
+    original = cfg.DATABASE_PATH
+    cfg.DATABASE_PATH = db_path
+    init_db()
     yield
-    m.DATABASE_PATH = original
+    cfg.DATABASE_PATH = original
     os.unlink(db_path)
 
 
@@ -72,7 +74,7 @@ DOMAIN_LIST = "bad-domain.com\n# comment\nmalware.net\n"
 
 class TestImportUrl:
     def test_ip_list_success(self, client):
-        with patch("main.requests.get", return_value=_resp(200, IP_LIST)):
+        with patch("app.routers.blacklists.requests.get", return_value=_resp(200, IP_LIST)):
             r = client.post("/api/blacklists/import",
                             json={"type": "ip", "url": "https://example.com/list.txt"})
         assert r.status_code == 200
@@ -80,7 +82,7 @@ class TestImportUrl:
         assert r.json()["data"]["added"] >= 0
 
     def test_domain_list_success(self, client):
-        with patch("main.requests.get", return_value=_resp(200, DOMAIN_LIST)):
+        with patch("app.routers.blacklists.requests.get", return_value=_resp(200, DOMAIN_LIST)):
             r = client.post("/api/blacklists/import",
                             json={"type": "domain", "url": "https://example.com/domains.txt"})
         assert r.status_code == 200
@@ -96,7 +98,7 @@ class TestImportUrl:
                 raise reqs.exceptions.ConnectionError("transient")
             return _resp(200, IP_LIST)
 
-        with patch("main.requests.get", side_effect=flaky), patch("time.sleep"):
+        with patch("app.routers.blacklists.requests.get", side_effect=flaky), patch("time.sleep"):
             r = client.post("/api/blacklists/import",
                             json={"type": "ip", "url": "https://example.com/list.txt"})
         assert r.status_code == 200
@@ -104,14 +106,14 @@ class TestImportUrl:
 
     def test_fails_after_3_attempts(self, client):
         import requests as reqs
-        with patch("main.requests.get", side_effect=reqs.exceptions.ConnectionError("always")), patch("time.sleep"):
+        with patch("app.routers.blacklists.requests.get", side_effect=reqs.exceptions.ConnectionError("always")), patch("time.sleep"):
             r = client.post("/api/blacklists/import",
                             json={"type": "ip", "url": "https://example.com/list.txt"})
         assert r.status_code == 400
         assert "3 attempts" in r.json()["detail"]
 
     def test_non_200_returns_400_with_status(self, client):
-        with patch("main.requests.get", return_value=_resp(404)), patch("time.sleep"):
+        with patch("app.routers.blacklists.requests.get", return_value=_resp(404)), patch("time.sleep"):
             r = client.post("/api/blacklists/import",
                             json={"type": "ip", "url": "https://example.com/list.txt"})
         assert r.status_code == 400
@@ -176,7 +178,7 @@ CIDR_CONTENT = "1.2.3.0/24\n5.6.7.0/24\n# comment\n"
 
 class TestImportGeo:
     def test_success(self, client):
-        with patch("main.requests.get", return_value=_resp(200, CIDR_CONTENT)):
+        with patch("app.routers.blacklists.requests.get", return_value=_resp(200, CIDR_CONTENT)):
             r = client.post("/api/blacklists/import-geo", json={"countries": ["CN"]})
         assert r.status_code == 200
         assert r.json()["data"]["imported"] >= 0
@@ -190,13 +192,13 @@ class TestImportGeo:
                 return _resp(404)
             return _resp(200, CIDR_CONTENT)
 
-        with patch("main.requests.get", side_effect=selective):
+        with patch("app.routers.blacklists.requests.get", side_effect=selective):
             r = client.post("/api/blacklists/import-geo", json={"countries": ["CN"]})
         assert r.status_code == 200
         assert any("github" in u for u in tried)
 
     def test_all_sources_fail_returns_502(self, client):
-        with patch("main.requests.get", return_value=_resp(503)):
+        with patch("app.routers.blacklists.requests.get", return_value=_resp(503)):
             r = client.post("/api/blacklists/import-geo", json={"countries": ["XX"]})
         assert r.status_code == 502
 

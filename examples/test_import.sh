@@ -21,7 +21,7 @@
 # This script demonstrates that the API already supports plain text files
 
 BASE_URL="http://localhost:8011"
-AUTH_HEADER="Authorization: Basic $(echo -n admin:admin | base64)"
+AUTH_HEADER="Authorization: Basic $(echo -n ${PROXY_USER:-admin}:${PROXY_PASS:-admin} | base64)"
 
 echo "=== Secure Proxy Manager - Blacklist Import Test ==="
 echo ""
@@ -83,11 +83,11 @@ echo ""
 echo "For domain blacklists (like their example):"
 echo 'curl -X POST http://localhost:8011/api/domain-blacklist/import \'
 echo '  -H "Content-Type: application/json" \'
-echo '  -H "Authorization: Basic $(echo -n admin:admin | base64)" \'
+echo '  -H "Authorization: Basic $(echo -n ${PROXY_USER:-admin}:${PROXY_PASS:-admin} | base64)" \'
 echo '  -d '"'"'{"url": "https://example.com/blacklist.txt"}'"'"''
 echo ""
 echo "For IP blacklists:"
 echo 'curl -X POST http://localhost:8011/api/ip-blacklist/import \'
 echo '  -H "Content-Type: application/json" \'
-echo '  -H "Authorization: Basic $(echo -n admin:admin | base64)" \'
+echo '  -H "Authorization: Basic $(echo -n ${PROXY_USER:-admin}:${PROXY_PASS:-admin} | base64)" \'
 echo '  -d '"'"'{"url": "https://example.com/ip-blacklist.txt"}'"'"''

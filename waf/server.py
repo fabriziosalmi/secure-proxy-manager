@@ -65,13 +65,13 @@ def load_custom_rules():
                     if rule and not rule.startswith('#'):
                         try:
                             compiled_rules.append(re.compile(rule.encode(), re.IGNORECASE))
-                        except Exception as e:
+                        except re.error as e:
                             print(f"Error compiling custom rule {rule}: {e}")
                 
                 if compiled_rules:
                     BLOCK_RULES["CUSTOM_USER_RULES"] = compiled_rules
                     print(f"Loaded {len(compiled_rules)} custom WAF rules.")
-        except Exception as e:
+        except IOError as e:
             print(f"Error reading custom rules: {e}")
 
 # Load custom rules on startup
@@ -102,7 +102,7 @@ class WAFICAPHandler(BaseICAPRequestHandler):
         try:
             # Replace + with space for query strings, then decode
             decoded_url = urllib.parse.unquote_to_bytes(url.replace(b'+', b' '))
-        except:
+        except Exception:
             decoded_url = url
             
         print(f"INSPECTING URL: {decoded_url}")
@@ -183,7 +183,7 @@ class WAFICAPHandler(BaseICAPRequestHandler):
                 auth=(auth_user, auth_pass),
                 timeout=2
             )
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             print(f"Error sending alert to backend: {e}")
 
     def waf_RESPMOD(self):
