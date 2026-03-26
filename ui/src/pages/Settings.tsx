@@ -66,7 +66,9 @@ export function Settings() {
 
     const loadingToast = toast.loading('Saving settings...');
     // Generate a unique idempotency key for this save operation
-    const idempotencyKey = crypto.randomUUID();
+    const idempotencyKey = typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     
     try {
       await api.post('settings', formData, {
