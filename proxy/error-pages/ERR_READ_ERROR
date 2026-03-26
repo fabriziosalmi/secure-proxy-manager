@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Access Denied — Secure Proxy Manager</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: #0a0a0a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .container {
+    text-align: center;
+    max-width: 520px;
+    padding: 2rem;
+  }
+  .shield {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 1.5rem;
+    opacity: 0.9;
+  }
+  .shield svg { width: 100%; height: 100%; }
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin-bottom: 0.5rem;
+  }
+  .status {
+    display: inline-block;
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    margin-bottom: 1.5rem;
+  }
+  .message {
+    color: #94a3b8;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin-bottom: 1.5rem;
+  }
+  .detail-box {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    text-align: left;
+  }
+  .detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.35rem 0;
+    font-size: 0.8rem;
+  }
+  .detail-label { color: #64748b; }
+  .detail-value { color: #cbd5e1; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.75rem; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .divider {
+    border-top: 1px solid #1e293b;
+    margin: 1.5rem 0 1rem;
+  }
+  .footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: #475569;
+    font-size: 0.7rem;
+  }
+  .footer a {
+    color: #3b82f6;
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .footer a:hover { text-decoration: underline; }
+  .credits {
+    color: #334155;
+    font-size: 0.65rem;
+    margin-top: 0.75rem;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="shield">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+      <path d="M60 8L16 28v30c0 28.5 18.8 55.1 44 62 25.2-6.9 44-33.5 44-62V28L60 8z" fill="#0f172a" stroke="#3b82f6" stroke-width="3"/>
+      <path d="M60 18L24 34v24c0 23.5 15.3 45.5 36 51 20.7-5.5 36-27.5 36-51V34L60 18z" fill="#1e293b"/>
+      <rect x="46" y="52" width="28" height="22" rx="4" fill="#3b82f6"/>
+      <path d="M52 52V44a8 8 0 0 1 16 0v8" stroke="#3b82f6" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <circle cx="60" cy="62" r="3" fill="#0f172a"/>
+      <rect x="59" y="64" width="2" height="5" rx="1" fill="#0f172a"/>
+      <path d="M36 38a16 16 0 0 1 0-12" stroke="#10b981" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.6"/>
+      <path d="M30 40a24 24 0 0 1 0-18" stroke="#10b981" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.4"/>
+      <path d="M84 38a16 16 0 0 0 0-12" stroke="#10b981" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.6"/>
+      <path d="M90 40a24 24 0 0 0 0-18" stroke="#10b981" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.4"/>
+    </svg>
+  </div>
+
+  <h1>Access Denied</h1>
+  <div class="status">BLOCKED BY PROXY</div>
+
+  <p class="message">
+    This request has been blocked by the security proxy.
+    The destination is restricted by your network policy.
+  </p>
+
+  <div class="detail-box">
+    <div class="detail-row">
+      <span class="detail-label">Destination</span>
+      <span class="detail-value">%U</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Client IP</span>
+      <span class="detail-value">%a</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Time</span>
+      <span class="detail-value">%T</span>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="footer">
+    <span>Protected by</span>
+    <a href="https://github.com/fabriziosalmi/secure-proxy-manager" target="_blank">Secure Proxy Manager</a>
+  </div>
+  <div class="credits">
+    Built with care by Fabrizio Salmi, Claude &amp; Gemini
+  </div>
+</div>
+</body>
+</html>
