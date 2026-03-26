@@ -129,9 +129,10 @@ acl Safe_ports port 591
 acl Safe_ports port 777
 
 # Blacklists and whitelists
+# Domain blocking is handled at L3 by dnsmasq (DNS blackhole → 0.0.0.0)
+# Only IP blocking remains at L7 in Squid
 acl ip_blacklist src "/etc/squid/blacklists/ip/local.txt"
 acl ip_whitelist dst "/etc/squid/whitelists/ip/local.txt"
-acl domain_blacklist dstdomain "/etc/squid/blacklists/domain/local.txt"
 
 # Direct IP access detection
 acl direct_ip_url url_regex -i ^https?://([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)
@@ -153,7 +154,7 @@ http_access deny direct_ipv6_host
 http_access deny CONNECT direct_ip_host
 http_access deny CONNECT direct_ipv6_host
 http_access deny ip_blacklist
-http_access deny domain_blacklist
+# domain_blacklist removed — handled by dnsmasq DNS blackhole at L3
 http_access allow localnet
 http_access allow localhost
 http_access deny all

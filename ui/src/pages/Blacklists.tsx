@@ -22,23 +22,33 @@ export function Blacklists() {
   const [bulkText, setBulkText] = useState('');
   const [importUrl, setImportUrl] = useState('');
   const [geoCountry, setGeoCountry] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
 
-  const { data: ipData } = useQuery<IpEntry[]>({
-    queryKey: ['blacklist', 'ip'],
-    queryFn: () => api.get('ip-blacklist').then(r => r.data.data),
+  // Reset page when tab or search changes
+  const resetPage = () => setPage(0);
+
+  type PaginatedResponse<T> = { data: T[]; total: number };
+
+  const { data: ipResult } = useQuery<PaginatedResponse<IpEntry>>({
+    queryKey: ['blacklist', 'ip', page, searchTerm],
+    queryFn: () => api.get(`ip-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data.data, total: r.data.total })),
   });
-  const { data: domainData } = useQuery<DomainEntry[]>({
-    queryKey: ['blacklist', 'domain'],
-    queryFn: () => api.get('domain-blacklist').then(r => r.data.data),
+  const { data: domainResult } = useQuery<PaginatedResponse<DomainEntry>>({
+    queryKey: ['blacklist', 'domain', page, searchTerm],
+    queryFn: () => api.get(`domain-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data.data, total: r.data.total })),
   });
-  const { data: whitelistData } = useQuery<WhitelistEntry[]>({
-    queryKey: ['whitelist', 'ip'],
-    queryFn: () => api.get('ip-whitelist').then(r => r.data.data),
+  const { data: whitelistResult } = useQuery<PaginatedResponse<WhitelistEntry>>({
+    queryKey: ['whitelist', 'ip', page, searchTerm],
+    queryFn: () => api.get(`ip-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data.data, total: r.data.total })),
   });
 
-  const ips = ipData ?? [];
-  const domains = domainData ?? [];
-  const whitelists = whitelistData ?? [];
+  const ips = ipResult?.data ?? [];
+  const domains = domainResult?.data ?? [];
+  const whitelists = whitelistResult?.data ?? [];
+  const activeTotal = activeTab === 'ip' ? (ipResult?.total ?? 0) : activeTab === 'domain' ? (domainResult?.total ?? 0) : (whitelistResult?.total ?? 0);
+  const totalPages = Math.ceil(activeTotal / PAGE_SIZE);
 
   const invalidateActive = () => {
     if (activeTab === 'ip') queryClient.invalidateQueries({ queryKey: ['blacklist', 'ip'] });
@@ -320,18 +330,35 @@ export function Blacklists() {
         <button onClick={() => setActiveTab('ip')}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'ip' ? 'bg-[#1f1f1f] text-white shadow-sm' : 'text-muted-foreground hover:text-white'}`}>
           <Server className="w-4 h-4 mr-2" />IP Addresses
-          <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{ips.length}</span>
+          <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{ipResult?.total ?? 0}</span>
         </button>
         <button onClick={() => setActiveTab('domain')}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain' ? 'bg-[#1f1f1f] text-white shadow-sm' : 'text-muted-foreground hover:text-white'}`}>
           <Globe className="w-4 h-4 mr-2" />Domains
-          <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{domains.length}</span>
+          <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{domainResult?.total ?? 0}</span>
         </button>
         <button type="button" onClick={() => { setActiveTab('whitelist'); closeAllPanels(); }}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/20 text-green-500 shadow-sm' : 'text-muted-foreground hover:text-green-500'}`}>
           <CheckCircle className="w-4 h-4 mr-2" />IP Whitelist
           <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{whitelists.length}</span>
         </button>
+      </div>
+
+      {/* Search bar */}
+      <div className="flex items-center gap-4">
+        <div className="relative flex-1 max-w-sm">
+          <input
+            type="text"
+            placeholder={`Search ${activeTab === 'domain' ? 'domains' : 'IPs'}...`}
+            value={searchTerm}
+            onChange={(e) => { setSearchTerm(e.target.value); resetPage(); }}
+            className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary pl-9"
+          />
+          <Ban className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        </div>
+        <span className="text-sm text-muted-foreground">
+          {activeTotal.toLocaleString()} total | Page {page + 1}/{Math.max(totalPages, 1)}
+        </span>
       </div>
 
       <Card className="bg-card/50">
@@ -415,6 +442,43 @@ export function Blacklists() {
           </table>
         </CardContent>
       </Card>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={() => setPage(0)}
+            disabled={page === 0}
+            className="px-3 py-1.5 text-sm rounded-md bg-secondary hover:bg-secondary/80 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            First
+          </button>
+          <button
+            onClick={() => setPage(p => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="px-3 py-1.5 text-sm rounded-md bg-secondary hover:bg-secondary/80 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Prev
+          </button>
+          <span className="text-sm text-muted-foreground px-3">
+            Page {page + 1} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+            className="px-3 py-1.5 text-sm rounded-md bg-secondary hover:bg-secondary/80 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
+          <button
+            onClick={() => setPage(totalPages - 1)}
+            disabled={page >= totalPages - 1}
+            className="px-3 py-1.5 text-sm rounded-md bg-secondary hover:bg-secondary/80 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Last
+          </button>
+        </div>
+      )}
     </div>
   );
 }

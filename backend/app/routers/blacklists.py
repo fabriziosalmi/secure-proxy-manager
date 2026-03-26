@@ -18,13 +18,22 @@ router = APIRouter()
 # ── IP Blacklist ──────────────────────────────────────────────────────────────
 
 @router.get("/api/ip-blacklist", dependencies=[Depends(authenticate)])
-def get_ip_blacklist():
+def get_ip_blacklist(limit: int = 100, offset: int = 0, search: str = ""):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM ip_blacklist")
+    if search:
+        cursor.execute("SELECT COUNT(*) FROM ip_blacklist WHERE ip LIKE ? OR description LIKE ?",
+                       (f"%{search}%", f"%{search}%"))
+        total = cursor.fetchone()[0]
+        cursor.execute("SELECT * FROM ip_blacklist WHERE ip LIKE ? OR description LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                       (f"%{search}%", f"%{search}%", limit, offset))
+    else:
+        cursor.execute("SELECT COUNT(*) FROM ip_blacklist")
+        total = cursor.fetchone()[0]
+        cursor.execute("SELECT * FROM ip_blacklist ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset))
     blacklist = [dict(row) for row in cursor.fetchall()]
     conn.close()
-    return {"status": "success", "data": blacklist}
+    return {"status": "success", "data": blacklist, "total": total, "limit": limit, "offset": offset}
 
 
 @router.post("/api/ip-blacklist", dependencies=[Depends(authenticate)])
@@ -128,13 +137,22 @@ def clear_all_domains(background_tasks: BackgroundTasks):
 # ── IP Whitelist ──────────────────────────────────────────────────────────────
 
 @router.get("/api/ip-whitelist", dependencies=[Depends(authenticate)])
-def get_ip_whitelist():
+def get_ip_whitelist(limit: int = 100, offset: int = 0, search: str = ""):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM ip_whitelist")
+    if search:
+        cursor.execute("SELECT COUNT(*) FROM ip_whitelist WHERE ip LIKE ? OR description LIKE ?",
+                       (f"%{search}%", f"%{search}%"))
+        total = cursor.fetchone()[0]
+        cursor.execute("SELECT * FROM ip_whitelist WHERE ip LIKE ? OR description LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                       (f"%{search}%", f"%{search}%", limit, offset))
+    else:
+        cursor.execute("SELECT COUNT(*) FROM ip_whitelist")
+        total = cursor.fetchone()[0]
+        cursor.execute("SELECT * FROM ip_whitelist ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset))
     whitelist = [dict(row) for row in cursor.fetchall()]
     conn.close()
-    return {"status": "success", "data": whitelist}
+    return {"status": "success", "data": whitelist, "total": total, "limit": limit, "offset": offset}
 
 
 @router.post("/api/ip-whitelist", dependencies=[Depends(authenticate)])
@@ -182,13 +200,22 @@ def delete_ip_from_whitelist(id: int, background_tasks: BackgroundTasks):
 # ── Domain Blacklist ──────────────────────────────────────────────────────────
 
 @router.get("/api/domain-blacklist", dependencies=[Depends(authenticate)])
-def get_domain_blacklist():
+def get_domain_blacklist(limit: int = 100, offset: int = 0, search: str = ""):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM domain_blacklist")
+    if search:
+        cursor.execute("SELECT COUNT(*) FROM domain_blacklist WHERE domain LIKE ? OR description LIKE ?",
+                       (f"%{search}%", f"%{search}%"))
+        total = cursor.fetchone()[0]
+        cursor.execute("SELECT * FROM domain_blacklist WHERE domain LIKE ? OR description LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                       (f"%{search}%", f"%{search}%", limit, offset))
+    else:
+        cursor.execute("SELECT COUNT(*) FROM domain_blacklist")
+        total = cursor.fetchone()[0]
+        cursor.execute("SELECT * FROM domain_blacklist ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset))
     blacklist = [dict(row) for row in cursor.fetchall()]
     conn.close()
-    return {"status": "success", "data": blacklist}
+    return {"status": "success", "data": blacklist, "total": total, "limit": limit, "offset": offset}
 
 
 @router.post("/api/domain-blacklist", dependencies=[Depends(authenticate)])
