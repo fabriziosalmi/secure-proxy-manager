@@ -97,7 +97,10 @@ def init_db():
             pass  # Column already exists
 
     # Add index for timestamp-based queries
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_proxy_logs_timestamp ON proxy_logs(timestamp)")
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_proxy_logs_timestamp ON proxy_logs(timestamp)")
+    except sqlite3.OperationalError as e:
+        logger.warning(f"Could not create index (might be read-only): {e}")
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS settings (
