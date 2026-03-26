@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Activity, Clock, ShieldCheck, Zap, Download, Copy, Check } from 'lucide-react';
+import { Activity, Clock, ShieldCheck, Zap, Download, Copy, Check, Brain } from 'lucide-react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import React, { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -55,6 +55,20 @@ export function Dashboard() {
   useQuery({
     queryKey: ['cache', 'statistics'],
     queryFn: () => api.get('cache/statistics'),
+    refetchInterval: visible ? REFETCH_INTERVAL : false,
+  });
+
+  const { data: wafStats } = useQuery<{
+    total_requests: number;
+    total_blocked: number;
+    block_rate_pct: number;
+    avg_url_entropy: number;
+    high_entropy_count: number;
+    requests_last_minute: number;
+    top_blocked_categories: { key: string; count: number }[];
+  }>({
+    queryKey: ['waf', 'stats'],
+    queryFn: () => api.get('waf/stats').then(r => r.data.data),
     refetchInterval: visible ? REFETCH_INTERVAL : false,
   });
 
@@ -250,6 +264,55 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* WAF Intelligence */}
+      {wafStats && (
+        <Card className="bg-card/50">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Brain className="h-5 w-5 text-primary" />
+              <CardTitle>WAF Intelligence</CardTitle>
+            </div>
+            <p className="text-sm text-muted-foreground">Real-time traffic analysis from 171 rules</p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground uppercase">Req/min</p>
+                <p className="text-2xl font-bold">{wafStats.requests_last_minute}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground uppercase">Block Rate</p>
+                <p className="text-2xl font-bold text-destructive">{wafStats.block_rate_pct}%</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground uppercase">Avg URL Entropy</p>
+                <p className="text-2xl font-bold">{wafStats.avg_url_entropy}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground uppercase">High Entropy</p>
+                <p className={`text-2xl font-bold ${wafStats.high_entropy_count > 0 ? 'text-yellow-500' : ''}`}>{wafStats.high_entropy_count}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground uppercase">WAF Inspected</p>
+                <p className="text-2xl font-bold">{wafStats.total_requests.toLocaleString()}</p>
+              </div>
+            </div>
+            {wafStats.top_blocked_categories.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-border/50">
+                <p className="text-xs text-muted-foreground uppercase mb-2">Top Blocked Categories</p>
+                <div className="flex flex-wrap gap-2">
+                  {wafStats.top_blocked_categories.slice(0, 5).map((cat) => (
+                    <span key={cat.key} className="px-2.5 py-1 rounded-full text-xs font-medium bg-destructive/10 text-destructive border border-destructive/20">
+                      {cat.key} ({cat.count})
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

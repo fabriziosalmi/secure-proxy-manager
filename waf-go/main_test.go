@@ -309,3 +309,68 @@ func BenchmarkNormalizeInput(b *testing.B) {
 		normalizeInput(input)
 	}
 }
+
+// ── Entropy tests ───────────────────────────────────────────────────────────
+
+func TestShannonEntropy(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		minEntr float64
+		maxEntr float64
+	}{
+		{"empty", "", 0.0, 0.0},
+		{"single char", "aaaa", 0.0, 0.01},
+		{"hello world", "hello world", 2.5, 3.5},
+		{"low entropy path", "/api/v1/users/123", 3.0, 4.0},
+		{"high entropy base64", "aGVsbG8gd29ybGQgdGhpcyBpcyBhIHRlc3Q=", 4.0, 5.5},
+		{"AWS key pattern", "AKIAIOSFODNN7EXAMPLE", 3.5, 4.5},
+		{"random hex", "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6", 3.5, 4.5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shannonEntropy(tt.input)
+			if got < tt.minEntr || got > tt.maxEntr {
+				t.Errorf("shannonEntropy(%q) = %.2f, want [%.1f, %.1f]",
+					tt.input, got, tt.minEntr, tt.maxEntr)
+			}
+		})
+	}
+}
+
+func TestStatsCollector(t *testing.T) {
+	s := &statsCollector{
+		destCounts:     make(map[string]int),
+		categoryCounts: make(map[string]int),
+		uaCounts:       make(map[string]int),
+	}
+
+	f1 := TrafficFeature{Host: "example.com", URLEntropy: 3.0, BodyEntropy: 2.0, UserAgent: "curl/8"}
+	f2 := TrafficFeature{Host: "example.com", URLEntropy: 5.0, BodyEntropy: 1.0, UserAgent: "Mozilla"}
+	f3 := TrafficFeature{Host: "evil.com", URLEntropy: 4.8, BodyEntropy: 4.9, UserAgent: "curl/8"}
+
+	s.record(f1, false, nil)
+	s.record(f2, true, []string{"SQL_INJECTION"})
+	s.record(f3, true, []string{"SSRF", "DATA_EXFIL"})
+
+	snap := s.snapshot()
+
+	if snap["total_requests"].(int64) != 3 {
+		t.Errorf("total_requests = %v, want 3", snap["total_requests"])
+	}
+	if snap["total_blocked"].(int64) != 2 {
+		t.Errorf("total_blocked = %v, want 2", snap["total_blocked"])
+	}
+	if snap["high_entropy_count"].(int64) != 2 {
+		t.Errorf("high_entropy_count = %v, want 2", snap["high_entropy_count"])
+	}
+}
+
+func BenchmarkShannonEntropy(b *testing.B) {
+	input := "https://www.example.com/api/v2/search?q=hello+world&page=2&lang=en"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		shannonEntropy(input)
+	}
+}
