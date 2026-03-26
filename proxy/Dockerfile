@@ -6,17 +6,15 @@ RUN echo "Acquire::http::Pipeline-Depth 0;" > /etc/apt/apt.conf.d/99fixbadproxy 
     echo "Acquire::BrokenProxy true;" >> /etc/apt/apt.conf.d/99fixbadproxy && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
-    apt-get install -y --no-install-recommends \
+    apt-get install -y --fix-missing \
     squid \
     squid-common \
-    squid-openssl \
-    ssl-cert \
-    openssl \
     iproute2 \
     iptables \
     net-tools \
     procps \
     curl \
+    openssl \
     supervisor \
     && rm -rf /var/lib/apt/lists/*
 
