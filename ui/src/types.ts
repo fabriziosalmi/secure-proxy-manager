@@ -14,6 +14,14 @@ export interface DomainEntry {
   added_date: string;
 }
 
+export interface DomainWhitelistEntry {
+  id: number;
+  domain: string;
+  type: 'fqdn' | 'url-regex';
+  description: string | null;
+  added_date: string;
+}
+
 export interface WhitelistEntry {
   id: number;
   ip: string;
