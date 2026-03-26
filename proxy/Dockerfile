@@ -22,6 +22,7 @@ RUN mkdir -p /etc/squid/blacklists/ip /etc/squid/blacklists/domain /config /usr/
 
 COPY squid.conf /etc/squid/squid.conf
 COPY startup.sh /startup.sh
+COPY error-pages/ /etc/squid/error-pages/
 COPY squid-supervisor.conf /etc/supervisor/conf.d/
 
 RUN chmod +x /startup.sh
