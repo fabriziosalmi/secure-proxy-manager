@@ -147,6 +147,10 @@ acl CONNECT method CONNECT
 acl local_dst dst 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 acl local_dst_url url_regex -i ^https?://192\.168\. ^https?://10\. ^https?://172\.
 
+# Block dangerous HTTP methods
+acl Dangerous_methods method PUT DELETE PATCH TRACE TRACK
+http_access deny Dangerous_methods
+
 # Access rules
 http_access deny !Safe_ports
 http_access allow CONNECT local_dst
@@ -213,15 +217,6 @@ request_header_access X-Forwarded-For deny all
 # Inject HSTS on all proxied responses (force HTTPS on clients)
 reply_header_add Strict-Transport-Security "max-age=31536000; includeSubDomains" all
 
-# Normalize User-Agent to prevent stack fingerprinting
-request_header_replace User-Agent Mozilla/5.0 (compatible; SecureProxy/1.6)
-
-# Add unique request ID for log correlation
-request_header_add X-Request-ID %>{unique_id}e all
-
-# Block dangerous HTTP methods (only allow safe methods by default)
-acl Safe_methods method GET POST HEAD CONNECT OPTIONS
-http_access deny !Safe_methods
 
 # Strip Expect: 100-continue (anti-smuggling)
 request_header_access Expect deny all
