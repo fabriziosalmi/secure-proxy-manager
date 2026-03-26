@@ -22,6 +22,7 @@ export function Dashboard() {
   const { data: s } = useQuery<any>({ queryKey: ['dashboard'], queryFn: () => api.get('dashboard/summary').then(r => r.data.data), refetchInterval: vis ? REFETCH : false });
   const { data: tl } = useQuery<TimelineEntry[]>({ queryKey: ['timeline'], queryFn: () => api.get('logs/timeline').then(r => r.data.data), refetchInterval: vis ? REFETCH : false });
   const { data: sec } = useQuery<SecurityScore>({ queryKey: ['score'], queryFn: () => api.get('security/score').then(r => r.data.data), refetchInterval: vis ? 30_000 : false });
+  const { data: cache } = useQuery<any>({ queryKey: ['cache'], queryFn: () => api.get('cache/statistics').then(r => r.data.data), refetchInterval: vis ? 30_000 : false });
 
   const chart = React.useMemo(() => tl ?? [], [tl]);
   const rate = s?.total_requests ? ((s.blocked_requests / s.total_requests) * 100).toFixed(1) : '0';
@@ -173,8 +174,8 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Recent blocks + WAF categories — 2 columns */}
-      <div className="grid gap-3 lg:grid-cols-2">
+      {/* Recent blocks + WAF + Cache — 3 columns */}
+      <div className="grid gap-3 lg:grid-cols-3">
         <Card className="bg-card/50">
           <CardHeader className="p-3 pb-0">
             <CardTitle className="text-sm flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-yellow-500" />Recent Blocks</CardTitle>
@@ -218,6 +219,52 @@ export function Dashboard() {
             </CardContent>
           </Card>
         )}
+
+        {/* Cache Efficiency */}
+        <Card className="bg-card/50">
+          <CardHeader className="p-3 pb-0">
+            <CardTitle className="text-sm flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+              Cache
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-2">
+            {cache ? (() => {
+              const hitRate = cache.hit_ratio != null ? (cache.hit_ratio * 100).toFixed(1) : cache.hits && cache.requests ? ((cache.hits / cache.requests) * 100).toFixed(1) : '0';
+              const saved = cache.bytes_saved || cache.bandwidth_saved || 0;
+              const formatBytes = (b: number) => { if (b < 1024) return `${b} B`; if (b < 1048576) return `${(b/1024).toFixed(1)} KB`; if (b < 1073741824) return `${(b/1048576).toFixed(1)} MB`; return `${(b/1073741824).toFixed(2)} GB`; };
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[10px] text-muted-foreground uppercase">Hit Rate</span>
+                    <span className={`text-lg font-bold ${parseFloat(hitRate) > 50 ? 'text-emerald-500' : parseFloat(hitRate) > 20 ? 'text-yellow-500' : 'text-muted-foreground'}`}>{hitRate}%</span>
+                  </div>
+                  <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
+                    <div className="h-full bg-emerald-500 transition-all" style={{ width: `${Math.min(parseFloat(hitRate), 100)}%` }} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Hits</p>
+                      <p className="text-sm font-bold">{(cache.hits || 0).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Misses</p>
+                      <p className="text-sm font-bold">{(cache.misses || 0).toLocaleString()}</p>
+                    </div>
+                  </div>
+                  {saved > 0 && (
+                    <div className="pt-1 border-t border-border/30">
+                      <p className="text-[10px] text-muted-foreground">Bandwidth Saved</p>
+                      <p className="text-sm font-bold text-emerald-500">{formatBytes(saved)}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })() : (
+              <div className="py-6 text-center text-xs text-muted-foreground">Loading cache stats...</div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

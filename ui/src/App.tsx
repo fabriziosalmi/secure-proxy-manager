@@ -13,6 +13,7 @@ const queryClient = new QueryClient({
   },
 });
 import { Layout } from './components/layout/Layout';
+import { GlobalSearch } from './components/GlobalSearch';
 import { Dashboard } from './pages/Dashboard';
 import { Blacklists } from './pages/Blacklists';
 import { Logs } from './pages/Logs';
@@ -85,6 +86,7 @@ function App() {
     <>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
+          <GlobalSearch />
           <ErrorBoundary>
             <Routes>
               <Route path="/" element={<Layout />}>
