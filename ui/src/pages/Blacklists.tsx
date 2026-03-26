@@ -1,14 +1,14 @@
 import { Card, CardContent } from '../components/ui/card';
 import { api, getErrorMessage } from '../lib/api';
-import type { IpEntry, DomainEntry, WhitelistEntry } from '../types';
-import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, CheckCircle, Loader2 } from 'lucide-react';
+import type { IpEntry, DomainEntry, WhitelistEntry, DomainWhitelistEntry } from '../types';
+import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, CheckCircle, ShieldCheck, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 export function Blacklists() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'ip' | 'domain' | 'whitelist'>('ip');
+  const [activeTab, setActiveTab] = useState<'ip' | 'domain' | 'whitelist' | 'domain-whitelist'>('ip');
   const [isAdding, setIsAdding] = useState(false);
   const [isBulkAdding, setIsBulkAdding] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -44,16 +44,23 @@ export function Blacklists() {
     queryFn: () => api.get(`ip-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data.data, total: r.data.total })),
   });
 
+  const { data: domainWhitelistResult } = useQuery<PaginatedResponse<DomainWhitelistEntry>>({
+    queryKey: ['whitelist', 'domain', page, searchTerm],
+    queryFn: () => api.get(`domain-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data.data, total: r.data.total })),
+  });
+
   const ips = ipResult?.data ?? [];
   const domains = domainResult?.data ?? [];
   const whitelists = whitelistResult?.data ?? [];
-  const activeTotal = activeTab === 'ip' ? (ipResult?.total ?? 0) : activeTab === 'domain' ? (domainResult?.total ?? 0) : (whitelistResult?.total ?? 0);
+  const domainWhitelists = domainWhitelistResult?.data ?? [];
+  const activeTotal = activeTab === 'ip' ? (ipResult?.total ?? 0) : activeTab === 'domain' ? (domainResult?.total ?? 0) : activeTab === 'whitelist' ? (whitelistResult?.total ?? 0) : (domainWhitelistResult?.total ?? 0);
   const totalPages = Math.ceil(activeTotal / PAGE_SIZE);
 
   const invalidateActive = () => {
     if (activeTab === 'ip') queryClient.invalidateQueries({ queryKey: ['blacklist', 'ip'] });
     else if (activeTab === 'domain') queryClient.invalidateQueries({ queryKey: ['blacklist', 'domain'] });
-    else queryClient.invalidateQueries({ queryKey: ['whitelist', 'ip'] });
+    else if (activeTab === 'whitelist') queryClient.invalidateQueries({ queryKey: ['whitelist', 'ip'] });
+    else queryClient.invalidateQueries({ queryKey: ['whitelist', 'domain'] });
   };
 
   const addMutation = useMutation({
@@ -86,7 +93,8 @@ export function Blacklists() {
     let payload: Record<string, string> = {};
     if (activeTab === 'ip') { endpoint = 'ip-blacklist'; payload = { ip: newItem, description: newDesc }; }
     else if (activeTab === 'domain') { endpoint = 'domain-blacklist'; payload = { domain: newItem, description: newDesc }; }
-    else { endpoint = 'ip-whitelist'; payload = { ip: newItem, description: newDesc }; }
+    else if (activeTab === 'whitelist') { endpoint = 'ip-whitelist'; payload = { ip: newItem, description: newDesc }; }
+    else { endpoint = 'domain-whitelist'; payload = { domain: newItem, description: newDesc }; }
     addMutation.mutate({ endpoint, payload });
   };
 
@@ -114,7 +122,8 @@ export function Blacklists() {
     let endpoint = '';
     if (activeTab === 'ip') endpoint = `ip-blacklist/${id}`;
     else if (activeTab === 'domain') endpoint = `domain-blacklist/${id}`;
-    else endpoint = `ip-whitelist/${id}`;
+    else if (activeTab === 'whitelist') endpoint = `ip-whitelist/${id}`;
+    else endpoint = `domain-whitelist/${id}`;
     deleteMutation.mutate(endpoint);
   };
 
@@ -247,7 +256,7 @@ export function Blacklists() {
               <div className="flex-1 space-y-2">
                 <label className="text-sm font-medium">{activeTab === 'ip' ? 'IP Address' : activeTab === 'domain' ? 'Domain' : 'IP / CIDR Network'}</label>
                 <input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)}
-                  placeholder={activeTab === 'ip' ? 'e.g. 192.168.1.100' : activeTab === 'domain' ? 'e.g. bad-domain.com' : 'e.g. 192.168.0.0/16'}
+                  placeholder={activeTab === 'ip' ? 'e.g. 192.168.1.100' : activeTab === 'domain' ? 'e.g. bad-domain.com' : activeTab === 'domain-whitelist' ? 'e.g. ads.google.com or .*\\.example\\.com' : 'e.g. 192.168.0.0/16'}
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" required />
               </div>
               <div className="flex-1 space-y-2">
@@ -346,10 +355,15 @@ export function Blacklists() {
           <Globe className="w-4 h-4 mr-2" />Domains
           <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{domainResult?.total ?? 0}</span>
         </button>
-        <button type="button" onClick={() => { setActiveTab('whitelist'); closeAllPanels(); }}
+        <button type="button" onClick={() => { setActiveTab('whitelist'); closeAllPanels(); resetPage(); }}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/20 text-green-500 shadow-sm' : 'text-muted-foreground hover:text-green-500'}`}>
           <CheckCircle className="w-4 h-4 mr-2" />IP Whitelist
-          <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{whitelists.length}</span>
+          <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{whitelistResult?.total ?? 0}</span>
+        </button>
+        <button type="button" onClick={() => { setActiveTab('domain-whitelist'); closeAllPanels(); resetPage(); }}
+          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain-whitelist' ? 'bg-emerald-500/20 text-emerald-400 shadow-sm' : 'text-muted-foreground hover:text-emerald-400'}`}>
+          <ShieldCheck className="w-4 h-4 mr-2" />Domain Whitelist
+          <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{domainWhitelistResult?.total ?? 0}</span>
         </button>
       </div>
 
@@ -358,7 +372,7 @@ export function Blacklists() {
         <div className="relative flex-1 max-w-sm">
           <input
             type="text"
-            placeholder={`Search ${activeTab === 'domain' ? 'domains' : 'IPs'}...`}
+            placeholder={`Search ${activeTab === 'domain' ? 'domains' : activeTab === 'domain-whitelist' ? 'whitelisted domains' : 'IPs'}...`}
             value={searchTerm}
             onChange={(e) => { setSearchTerm(e.target.value); resetPage(); }}
             className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary pl-9"
@@ -439,11 +453,36 @@ export function Blacklists() {
                   </td>
                 </tr>
               ))}
-              {((activeTab === 'ip' && ips.length === 0) || (activeTab === 'domain' && domains.length === 0) || (activeTab === 'whitelist' && whitelists.length === 0)) && (
+              {activeTab === 'domain-whitelist' && domainWhitelists.map((item) => (
+                <tr key={item.id} className="hover:bg-secondary/20 transition-colors">
+                  <td className="px-6 py-4 font-medium text-emerald-400">
+                    {item.domain}
+                    <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded ${item.type === 'fqdn' ? 'bg-blue-500/20 text-blue-400' : 'bg-purple-500/20 text-purple-400'}`}>
+                      {item.type}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
+                  <td className="px-6 py-4 text-right">
+                    {pendingDeleteId === item.id ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <button type="button" onClick={() => handleDelete(item.id)} className="px-2 py-1 text-xs bg-destructive text-destructive-foreground rounded hover:bg-destructive/90 transition-colors">Confirm</button>
+                        <button type="button" onClick={() => setPendingDeleteId(null)} className="px-2 py-1 text-xs bg-secondary text-foreground rounded hover:bg-secondary/80 transition-colors">Cancel</button>
+                      </div>
+                    ) : (
+                      <button type="button" aria-label="Delete rule" onClick={() => setPendingDeleteId(item.id)} className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+
+              {((activeTab === 'ip' && ips.length === 0) || (activeTab === 'domain' && domains.length === 0) || (activeTab === 'whitelist' && whitelists.length === 0) || (activeTab === 'domain-whitelist' && domainWhitelists.length === 0)) && (
                 <tr>
                   <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
                     <Ban className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                    No {activeTab === 'ip' ? 'IP addresses' : activeTab === 'domain' ? 'domains' : 'whitelisted networks'} found
+                    No {activeTab === 'ip' ? 'IP addresses' : activeTab === 'domain' ? 'domains' : activeTab === 'whitelist' ? 'whitelisted IPs' : 'whitelisted domains'} found
                   </td>
                 </tr>
               )}
