@@ -157,6 +157,15 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	startTime := time.Now()
 
 	rawURL := req.Request.URL.String()
+
+	// Skip WAF inspection for LAN destinations (proxy UI, backend, local services)
+	// These are legitimate internal traffic, not SSRF attempts
+	host := req.Request.Host
+	if isLANHost(host) {
+		w.WriteHeader(204, nil, false)
+		return
+	}
+
 	normalizedURL := normalizeInput(rawURL)
 
 	// Also check request headers for injection (Log4Shell, SSRF)
