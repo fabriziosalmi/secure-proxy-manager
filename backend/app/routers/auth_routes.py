@@ -1,6 +1,5 @@
 import re
 import logging
-import sqlite3
 from datetime import datetime, timedelta
 
 import jwt as pyjwt

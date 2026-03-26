@@ -1,7 +1,6 @@
 import logging
 import sqlite3
 from datetime import datetime
-from typing import Dict, Any
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
