@@ -69,6 +69,62 @@ def delete_ip_from_blacklist(id: int, background_tasks: BackgroundTasks):
     return {"status": "success", "message": "IP removed from blacklist"}
 
 
+@router.post("/api/ip-blacklist/bulk-delete", dependencies=[Depends(authenticate)])
+def bulk_delete_ips(ids: list[int], background_tasks: BackgroundTasks):
+    """Delete multiple IPs from blacklist at once."""
+    conn = get_db()
+    cursor = conn.cursor()
+    placeholders = ','.join('?' * len(ids))
+    cursor.execute(f"DELETE FROM ip_blacklist WHERE id IN ({placeholders})", ids)
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+    background_tasks.add_task(logger.info, f"Bulk deleted {deleted} IPs from blacklist")
+    return {"status": "success", "message": f"Deleted {deleted} entries", "data": {"deleted": deleted}}
+
+
+@router.post("/api/domain-blacklist/bulk-delete", dependencies=[Depends(authenticate)])
+def bulk_delete_domains(ids: list[int], background_tasks: BackgroundTasks):
+    """Delete multiple domains from blacklist at once."""
+    conn = get_db()
+    cursor = conn.cursor()
+    placeholders = ','.join('?' * len(ids))
+    cursor.execute(f"DELETE FROM domain_blacklist WHERE id IN ({placeholders})", ids)
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+    background_tasks.add_task(logger.info, f"Bulk deleted {deleted} domains from blacklist")
+    return {"status": "success", "message": f"Deleted {deleted} entries", "data": {"deleted": deleted}}
+
+
+@router.delete("/api/ip-blacklist/clear-all", dependencies=[Depends(authenticate)])
+def clear_all_ips(background_tasks: BackgroundTasks):
+    """Delete ALL IPs from blacklist."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM ip_blacklist")
+    count = cursor.fetchone()[0]
+    cursor.execute("DELETE FROM ip_blacklist")
+    conn.commit()
+    conn.close()
+    background_tasks.add_task(logger.info, f"Cleared all {count} IPs from blacklist")
+    return {"status": "success", "message": f"Cleared {count} entries"}
+
+
+@router.delete("/api/domain-blacklist/clear-all", dependencies=[Depends(authenticate)])
+def clear_all_domains(background_tasks: BackgroundTasks):
+    """Delete ALL domains from blacklist."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM domain_blacklist")
+    count = cursor.fetchone()[0]
+    cursor.execute("DELETE FROM domain_blacklist")
+    conn.commit()
+    conn.close()
+    background_tasks.add_task(logger.info, f"Cleared all {count} domains from blacklist")
+    return {"status": "success", "message": f"Cleared {count} entries"}
+
+
 # ── IP Whitelist ──────────────────────────────────────────────────────────────
 
 @router.get("/api/ip-whitelist", dependencies=[Depends(authenticate)])
