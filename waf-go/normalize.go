@@ -23,6 +23,7 @@ var (
 	reDoubleEncode = regexp.MustCompile(`%25([0-9a-fA-F]{2})`)
 	reNullBytes    = regexp.MustCompile("(%00|\\\\x00|&#0+;?|\x00)")
 	reMultiSpace   = regexp.MustCompile(`\s{2,}`)
+	reAllSpace     = regexp.MustCompile(`\s+`)
 )
 
 // normalizeInput applies anti-evasion transformations to the input.
@@ -45,6 +46,12 @@ func normalizeInput(input string) string {
 	s = reMultiSpace.ReplaceAllString(s, " ")
 
 	return s
+}
+
+// compactInput strips ALL whitespace — catches evasion via space insertion
+// inside keywords (e.g. "<scr ipt>" → "<script>").
+func compactInput(s string) string {
+	return reAllSpace.ReplaceAllString(s, "")
 }
 
 func isTextContent(contentType string) bool {

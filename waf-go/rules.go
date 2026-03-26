@@ -444,9 +444,14 @@ var respRules = []CategoryRules{
 func matchRulesScored(input string) ([]MatchResult, int) {
 	var matches []MatchResult
 	totalScore := 0
+	matched := make(map[string]bool) // Deduplicate by rule ID
+
+	// Prepare a compacted version (no whitespace) lazily — only used if
+	// the normal input doesn't match, to catch evasion via space insertion.
+	var compact string
+	var compactReady bool
 
 	for tier := 1; tier <= 3; tier++ {
-		// Early exit: if we already crossed the threshold, skip expensive tiers
 		if totalScore >= blockThreshold && tier > 1 {
 			break
 		}
@@ -456,7 +461,20 @@ func matchRulesScored(input string) ([]MatchResult, int) {
 				if rule.Tier != tier {
 					continue
 				}
-				if rule.Pattern.MatchString(input) {
+				if matched[rule.ID] {
+					continue
+				}
+				hit := rule.Pattern.MatchString(input)
+				if !hit {
+					// Lazy-init compact on first miss
+					if !compactReady {
+						compact = compactInput(input)
+						compactReady = true
+					}
+					hit = rule.Pattern.MatchString(compact)
+				}
+				if hit {
+					matched[rule.ID] = true
 					matches = append(matches, MatchResult{
 						Category: cr.Category,
 						RuleID:   rule.ID,
