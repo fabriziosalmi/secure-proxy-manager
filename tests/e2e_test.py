@@ -102,7 +102,7 @@ class ProxyTester:
                 self.test_results.append(result)
                 self.total_tests += 1
                 return result
-            except Exception as e:
+            except (requests.exceptions.RequestException, socket.error, IOError) as e:
                 progress.stop_task(task)
                 error_result = {
                     'name': test_name,
@@ -135,10 +135,10 @@ class ProxyTester:
                 # Try to make a simple HTTP request through the proxy
                 try:
                     # Add proxy authentication with admin/admin
-                    proxy_auth = requests.auth.HTTPBasicAuth('admin', 'admin')
+                    proxy_auth = requests.auth.HTTPBasicAuth(os.environ.get('PROXY_USER', 'admin'), os.environ.get('PROXY_PASS', 'admin'))
                     proxies = {
-                        "http": f"http://admin:admin@{self.proxy_host}:{self.proxy_port}",
-                        "https": f"http://admin:admin@{self.proxy_host}:{self.proxy_port}"
+                        "http": f"http://{os.environ.get('PROXY_USER', 'admin')}:{os.environ.get('PROXY_PASS', 'admin')}@{self.proxy_host}:{self.proxy_port}",
+                        "https": f"http://{os.environ.get('PROXY_USER', 'admin')}:{os.environ.get('PROXY_PASS', 'admin')}@{self.proxy_host}:{self.proxy_port}"
                     }
                     
                     response = requests.get("http://example.com", 
@@ -159,7 +159,7 @@ class ProxyTester:
                             'message': f"Connected to proxy but request failed with status {response.status_code}",
                             'detail': f"Response: {response.text[:500]}"
                         }
-                except Exception as e:
+                except (requests.exceptions.RequestException, socket.error, IOError) as e:
                     return {
                         'name': 'Proxy Connectivity',
                         'passed': False,
@@ -173,7 +173,7 @@ class ProxyTester:
                     'message': f"Failed to connect to proxy at {self.proxy_host}:{self.proxy_port}",
                     'detail': f"Socket connection failed with error code: {result}"
                 }
-        except Exception as e:
+        except (requests.exceptions.RequestException, socket.error, IOError) as e:
             return {
                 'name': 'Proxy Connectivity',
                 'passed': False,
@@ -191,7 +191,7 @@ class ProxyTester:
     def _test_ui_connectivity(self):
         try:
             # Add basic authentication for UI access (admin/admin)
-            auth = ('admin', 'admin')
+            auth = (os.environ.get('UI_USER', 'admin'), os.environ.get('UI_PASS', 'admin'))
             response = requests.get(f"http://{self.ui_host}:{self.ui_port}", 
                                    timeout=10, 
                                    auth=auth)
@@ -209,7 +209,7 @@ class ProxyTester:
                     'message': f"Connected to UI but received unexpected status {response.status_code}",
                     'detail': f"Response: {response.text[:500]}"
                 }
-        except Exception as e:
+        except (requests.exceptions.RequestException, socket.error, IOError) as e:
             return {
                 'name': 'UI Connectivity',
                 'passed': False,
@@ -256,7 +256,7 @@ class ProxyTester:
                 'message': "Direct IPv4 URL access is blocked (proxy error)",
                 'detail': "Request was rejected by the proxy with a connection error"
             }
-        except Exception as e:
+        except (requests.exceptions.RequestException, socket.error, IOError) as e:
             if "connection" in str(e).lower() and "refused" in str(e).lower():
                 return {
                     'name': 'Direct IPv4 URL Blocking',
@@ -310,7 +310,7 @@ class ProxyTester:
                 'message': "Direct IPv4 Host access is blocked (proxy error)",
                 'detail': "Request was rejected by the proxy with a connection error"
             }
-        except Exception as e:
+        except (requests.exceptions.RequestException, socket.error, IOError) as e:
             return {
                 'name': 'Direct IPv4 Host Blocking',
                 'passed': False,
@@ -356,7 +356,7 @@ class ProxyTester:
                 'message': "Direct IPv6 URL access is blocked (proxy error)",
                 'detail': "Request was rejected by the proxy with a connection error"
             }
-        except Exception as e:
+        except (requests.exceptions.RequestException, socket.error, IOError) as e:
             if "connection" in str(e).lower() and "refused" in str(e).lower():
                 return {
                     'name': 'Direct IPv6 URL Blocking',
@@ -409,7 +409,7 @@ class ProxyTester:
                 'message': "CONNECT method to IPv4 appears to be blocked (SSL error)",
                 'detail': "Request resulted in SSL error, likely due to proxy interference"
             }
-        except Exception as e:
+        except (requests.exceptions.RequestException, socket.error, IOError) as e:
             if "connection" in str(e).lower() and "refused" in str(e).lower():
                 return {
                     'name': 'IPv4 CONNECT Method Blocking',
@@ -449,7 +449,7 @@ class ProxyTester:
             # Restart the proxy to apply changes
             try:
                 self._restart_proxy_container()
-            except Exception as e:
+            except (requests.exceptions.RequestException, socket.error, IOError) as e:
                 console.print(f"[yellow]Warning: Could not restart proxy container: {e}[/yellow]")
                 console.print("[yellow]Continuing with test but results may not be accurate[/yellow]")
                 
@@ -493,14 +493,14 @@ class ProxyTester:
                     'message': "Domain blacklisting appears to be working (connection error)",
                     'detail': "Request was rejected with a connection error"
                 }
-            except Exception as e:
+            except (requests.exceptions.RequestException, socket.error, IOError) as e:
                 return {
                     'name': 'Domain Blacklist',
                     'passed': False,
                     'message': "Test failed with an unexpected error during domain access",
                     'detail': str(e)
                 }
-        except Exception as e:
+        except (requests.exceptions.RequestException, socket.error, IOError) as e:
             return {
                 'name': 'Domain Blacklist',
                 'passed': False,
@@ -533,7 +533,7 @@ class ProxyTester:
             # Restart the proxy to apply changes
             try:
                 self._restart_proxy_container()
-            except Exception as e:
+            except (requests.exceptions.RequestException, socket.error, IOError) as e:
                 console.print(f"[yellow]Warning: Could not restart proxy container: {e}[/yellow]")
                 console.print("[yellow]Continuing with test but results may not be accurate[/yellow]")
             
@@ -582,14 +582,14 @@ class ProxyTester:
                     'message': "IP blacklisting appears to be working (connection error)",
                     'detail': "Request was rejected with a connection error"
                 }
-            except Exception as e:
+            except (requests.exceptions.RequestException, socket.error, IOError) as e:
                 return {
                     'name': 'IP Blacklist',
                     'passed': False,
                     'message': "Test failed with an unexpected error during IP blacklist testing",
                     'detail': str(e)
                 }
-        except Exception as e:
+        except (requests.exceptions.RequestException, socket.error, IOError) as e:
             return {
                 'name': 'IP Blacklist',
                 'passed': False,
@@ -613,7 +613,7 @@ class ProxyTester:
                     "blocked_file_types": "exe,zip,iso"
                 }
                 # Add authentication credentials
-                auth = ('admin', 'admin')
+                auth = (os.environ.get('UI_USER', 'admin'), os.environ.get('UI_PASS', 'admin'))
                 response = requests.put(
                     f"http://{self.ui_host}:{self.ui_port}/api/settings/enable_content_filtering",
                     json={"value": "true"},
@@ -678,14 +678,14 @@ class ProxyTester:
                     'message': "File type blocking appears to be working (proxy error)",
                     'detail': "Request was rejected by the proxy with a connection error"
                 }
-            except Exception as e:
+            except (requests.exceptions.RequestException, socket.error, IOError) as e:
                 return {
                     'name': 'File Type Blocking',
                     'passed': False,
                     'message': "Test failed during file access",
                     'detail': str(e)
                 }
-        except Exception as e:
+        except (requests.exceptions.RequestException, socket.error, IOError) as e:
             return {
                 'name': 'File Type Blocking',
                 'passed': False,
@@ -748,7 +748,7 @@ class ProxyTester:
                     'message': "Failed to retrieve Squid configuration",
                     'detail': result.stderr
                 }
-        except Exception as e:
+        except (requests.exceptions.RequestException, socket.error, IOError) as e:
             console.print(f"[red]Error retrieving Squid configuration: {str(e)}[/red]")
             return {
                 'name': 'Squid Configuration',
@@ -774,7 +774,7 @@ class ProxyTester:
             else:
                 console.print(f"[red]Failed to restart proxy container: {result.stderr}[/red]")
                 return False
-        except Exception as e:
+        except (requests.exceptions.RequestException, socket.error, IOError) as e:
             console.print(f"[red]Error restarting proxy container: {str(e)}[/red]")
             return False
     
@@ -872,7 +872,7 @@ def run_curl_tests(proxy_host, proxy_port):
             console.print(Panel(result.stderr, title="curl stderr", border_style="dim"))
         if result.stdout:
             console.print(Panel(result.stdout, title="curl stdout", border_style="dim"))
-    except Exception as e:
+    except (requests.exceptions.RequestException, socket.error, IOError) as e:
         console.print(f"[red]Error running curl test: {str(e)}[/red]")
     
     # Test HTTPS with direct IP
@@ -892,7 +892,7 @@ def run_curl_tests(proxy_host, proxy_port):
             console.print(Panel(result.stderr, title="curl stderr", border_style="dim"))
         if result.stdout:
             console.print(Panel(result.stdout, title="curl stdout", border_style="dim"))
-    except Exception as e:
+    except (requests.exceptions.RequestException, socket.error, IOError) as e:
         console.print(f"[red]Error running curl test: {str(e)}[/red]")
     
     # Test normal website access
@@ -910,7 +910,7 @@ def run_curl_tests(proxy_host, proxy_port):
         
         if result.stderr:
             console.print(Panel(result.stderr, title="curl stderr", border_style="dim"))
-    except Exception as e:
+    except (requests.exceptions.RequestException, socket.error, IOError) as e:
         console.print(f"[red]Error running curl test: {str(e)}[/red]")
 
 if __name__ == "__main__":
