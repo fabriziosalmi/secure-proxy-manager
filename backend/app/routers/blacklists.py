@@ -197,6 +197,70 @@ def delete_ip_from_whitelist(id: int, background_tasks: BackgroundTasks):
     return {"status": "success", "message": "IP removed from whitelist"}
 
 
+# ── Domain Whitelist ─────────────────────────────────────────────────────────
+
+@router.get("/api/domain-whitelist", dependencies=[Depends(authenticate)])
+def get_domain_whitelist(limit: int = 100, offset: int = 0, search: str = ""):
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        if search:
+            cursor.execute("SELECT COUNT(*) FROM domain_whitelist WHERE domain LIKE ? OR description LIKE ?",
+                           (f"%{search}%", f"%{search}%"))
+            total = cursor.fetchone()[0]
+            cursor.execute("SELECT * FROM domain_whitelist WHERE domain LIKE ? OR description LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                           (f"%{search}%", f"%{search}%", limit, offset))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM domain_whitelist")
+            total = cursor.fetchone()[0]
+            cursor.execute("SELECT * FROM domain_whitelist ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset))
+        whitelist = [dict(row) for row in cursor.fetchall()]
+    except sqlite3.OperationalError:
+        whitelist = []
+        total = 0
+    conn.close()
+    return {"status": "success", "data": whitelist, "total": total, "limit": limit, "offset": offset}
+
+
+@router.post("/api/domain-whitelist", dependencies=[Depends(authenticate)])
+def add_domain_to_whitelist(item: DomainBlacklistItem, background_tasks: BackgroundTasks):
+    domain = item.domain.strip().lower()
+    if not domain or ' ' in domain:
+        raise HTTPException(status_code=400, detail="Invalid domain format")
+    # Determine type: if contains regex chars, it's url-regex; otherwise fqdn
+    entry_type = 'url-regex' if any(c in domain for c in ['*', '?', '[', '(', '|', '\\']) else 'fqdn'
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM domain_whitelist WHERE domain = ?", (domain,))
+    if cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="Domain already in whitelist")
+    try:
+        cursor.execute("INSERT INTO domain_whitelist (domain, type, description) VALUES (?, ?, ?)",
+                      (domain, entry_type, item.description))
+        conn.commit()
+    except sqlite3.Error as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    conn.close()
+    background_tasks.add_task(logger.info, f"Added {entry_type} {domain} to domain whitelist")
+    return {"status": "success", "message": f"Domain added to whitelist (type: {entry_type})"}
+
+
+@router.delete("/api/domain-whitelist/{id}", dependencies=[Depends(authenticate)])
+def delete_domain_from_whitelist(id: int, background_tasks: BackgroundTasks):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM domain_whitelist WHERE id = ?", (id,))
+    if cursor.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Domain not found in whitelist")
+    conn.commit()
+    conn.close()
+    background_tasks.add_task(logger.info, f"Removed domain id {id} from whitelist")
+    return {"status": "success", "message": "Domain removed from whitelist"}
+
+
 # ── Domain Blacklist ──────────────────────────────────────────────────────────
 
 @router.get("/api/domain-blacklist", dependencies=[Depends(authenticate)])
