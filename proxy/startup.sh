@@ -149,6 +149,7 @@ acl local_dst_url url_regex -i ^https?://192\.168\. ^https?://10\. ^https?://172
 
 # Access rules
 http_access deny !Safe_ports
+http_access allow CONNECT local_dst
 http_access deny CONNECT !SSL_ports
 
 # Allow whitelisted + local network destinations before blocking direct IPs
