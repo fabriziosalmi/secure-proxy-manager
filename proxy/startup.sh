@@ -143,10 +143,17 @@ acl direct_ipv6_host dstdom_regex -i ^\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\]$
 # HTTP method definitions
 acl CONNECT method CONNECT
 
+# Local network destinations (proxy UI, backend — should not be blocked as "direct IP")
+acl local_dst dst 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+
 # Access rules
 http_access deny !Safe_ports
 http_access deny CONNECT !SSL_ports
+
+# Allow whitelisted + local network destinations before blocking direct IPs
 http_access allow ip_whitelist
+http_access allow local_dst
+
 http_access deny direct_ip_url
 http_access deny direct_ip_host
 http_access deny direct_ipv6_url
