@@ -503,6 +503,115 @@ export function Settings() {
         <Card className="bg-card/50">
           <CardHeader>
             <div className="flex items-center space-x-2">
+              <Shield className="w-5 h-5 text-cyan-500" />
+              <CardTitle>DNS & WAF Intelligence</CardTitle>
+            </div>
+            <CardDescription>DNS blackhole, WAF heuristics, and essential domain whitelist</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Essential whitelist */}
+            <div className="p-4 border border-border rounded-lg bg-background/50">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <label className="text-sm font-medium text-emerald-400">Essential Domain Whitelist</label>
+                  <p className="text-xs text-muted-foreground">Domains that should never be blocked by the DNS blackhole. Click to add common services.</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { label: 'GitHub', domains: ['github.com', 'raw.githubusercontent.com', 'api.github.com', 'gist.github.com', 'objects.githubusercontent.com'] },
+                  { label: 'Google', domains: ['google.com', 'www.google.com', 'accounts.google.com', 'apis.google.com', 'fonts.googleapis.com', 'fonts.gstatic.com'] },
+                  { label: 'Microsoft', domains: ['microsoft.com', 'login.microsoftonline.com', 'graph.microsoft.com', 'outlook.office.com'] },
+                  { label: 'AI Services', domains: ['openai.com', 'api.openai.com', 'claude.ai', 'api.anthropic.com', 'gemini.google.com', 'bard.google.com'] },
+                  { label: 'Docker', domains: ['docker.com', 'hub.docker.com', 'registry.docker.io', 'auth.docker.io', 'production.cloudflare.docker.com'] },
+                  { label: 'CDN/JS', domains: ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'unpkg.com', 'npmjs.org', 'registry.npmjs.org'] },
+                  { label: 'Cloudflare', domains: ['cloudflare.com', '1.1.1.1', 'one.one.one.one', 'dash.cloudflare.com'] },
+                ].map((group) => (
+                  <button
+                    key={group.label}
+                    type="button"
+                    onClick={async () => {
+                      const t = toast.loading(`Adding ${group.label} domains...`);
+                      let added = 0;
+                      for (const domain of group.domains) {
+                        try {
+                          await api.post('domain-whitelist', { domain, description: `Essential: ${group.label}` });
+                          added++;
+                        } catch { /* already exists */ }
+                      }
+                      toast.success(`${group.label}: ${added} domains whitelisted`, { id: t });
+                    }}
+                    className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+                  >
+                    + {group.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">After adding, go to Blacklists → Domain Whitelist tab to manage, or click "Reload DNS" to apply.</p>
+            </div>
+
+            {/* Log retention */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 border border-border rounded-lg bg-background/50 space-y-2">
+                <label className="text-sm font-medium">Log Retention (days)</label>
+                <input
+                  type="number"
+                  name="log_retention_days"
+                  value={formData.log_retention_days || '30'}
+                  onChange={handleChange}
+                  min={1} max={365}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <p className="text-[10px] text-muted-foreground">Logs older than this are automatically deleted.</p>
+              </div>
+              <div className="p-4 border border-border rounded-lg bg-background/50 space-y-2">
+                <label className="text-sm font-medium">WAF Block Threshold</label>
+                <input
+                  type="number"
+                  name="waf_block_threshold"
+                  value={formData.waf_block_threshold || '10'}
+                  onChange={handleChange}
+                  min={1} max={100}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <p className="text-[10px] text-muted-foreground">Anomaly score needed to block. Lower = stricter (default: 10).</p>
+              </div>
+            </div>
+
+            {/* WAF Heuristics toggles */}
+            <div className="p-4 border border-border rounded-lg bg-background/50">
+              <label className="text-sm font-medium mb-2 block">WAF Behavioral Heuristics</label>
+              <p className="text-xs text-muted-foreground mb-3">Advanced stateful anomaly detection. Requires container restart to apply.</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { key: 'waf_h_entropy', label: 'Entropy Detection', desc: 'Block high-entropy payloads (encrypted/compressed = exfiltration)' },
+                  { key: 'waf_h_beaconing', label: 'C2 Beaconing', desc: 'Detect regular-interval request patterns' },
+                  { key: 'waf_h_pii', label: 'PII Leak Counter', desc: 'Count emails/CC/SSN in responses' },
+                  { key: 'waf_h_sharding', label: 'Dest Sharding', desc: 'Block rapid multi-destination access' },
+                  { key: 'waf_h_ghosting', label: 'Protocol Ghosting', desc: 'Detect SSH/ELF/PE in HTTP body' },
+                  { key: 'waf_h_morphing', label: 'Header Morphing', desc: 'Detect header order changes (noisy)' },
+                ].map((h) => (
+                  <div key={h.key} className="flex items-center justify-between p-2 bg-secondary/20 rounded">
+                    <div>
+                      <p className="text-xs font-medium">{h.label}</p>
+                      <p className="text-[10px] text-muted-foreground">{h.desc}</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                      <input type="checkbox" name={h.key} checked={formData[h.key] !== 'false' && formData[h.key] !== '0'}
+                        onChange={(e) => setFormData({ ...formData, [h.key]: e.target.checked ? 'true' : 'false' })}
+                        className="sr-only peer" />
+                      <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/50">
+          <CardHeader>
+            <div className="flex items-center space-x-2">
               <Shield className="w-5 h-5 text-indigo-500" />
               <CardTitle>Access Control</CardTitle>
             </div>
