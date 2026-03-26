@@ -1,6 +1,17 @@
 import { Component, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 10_000,
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 import { Layout } from './components/layout/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Blacklists } from './pages/Blacklists';
@@ -49,7 +60,7 @@ function NotFound() {
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
-    () => !!sessionStorage.getItem('auth_token')
+    () => !!localStorage.getItem('auth_token')
   );
 
   if (!isAuthenticated) {
@@ -58,19 +69,21 @@ function App() {
 
   return (
     <>
-      <BrowserRouter>
-        <ErrorBoundary>
-          <Routes>
-            <Route path="/" element={<Layout />}>
-              <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
-              <Route path="blacklists" element={<ErrorBoundary><Blacklists /></ErrorBoundary>} />
-              <Route path="logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
-              <Route path="settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
-              <Route path="*" element={<NotFound />} />
-            </Route>
-          </Routes>
-        </ErrorBoundary>
-      </BrowserRouter>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<Layout />}>
+                <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+                <Route path="blacklists" element={<ErrorBoundary><Blacklists /></ErrorBoundary>} />
+                <Route path="logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
+                <Route path="settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
+                <Route path="*" element={<NotFound />} />
+              </Route>
+            </Routes>
+          </ErrorBoundary>
+        </BrowserRouter>
+      </QueryClientProvider>
       <Toaster
         position="bottom-right"
         toastOptions={{

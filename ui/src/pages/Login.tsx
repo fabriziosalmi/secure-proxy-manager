@@ -18,7 +18,7 @@ export function Login({ onLogin }: Props) {
     setError('');
     try {
       const res = await api.post<{ token: string }>('auth/login', { username, password });
-      sessionStorage.setItem('auth_token', res.data.token);
+      localStorage.setItem('auth_token', res.data.token);
       onLogin();
     } catch {
       setError('Invalid username or password');

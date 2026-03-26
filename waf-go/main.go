@@ -17,8 +17,10 @@ import (
 	"github.com/go-icap/icap"
 )
 
+const maxBodyInspectSize = 1 << 20 // 1 MB
+
 var (
-	tarPitDelay = 10 * time.Second
+	tarPitDelay    = 10 * time.Second
 	ipBlockTracker = make(map[string][]time.Time)
 	trackerMutex   sync.Mutex
 )
@@ -74,16 +76,25 @@ var blockRules = []CategoryRules{
 	},
 }
 
+// textContentTypes lists Content-Type prefixes for which body inspection is meaningful.
+var textContentTypes = []string{
+	"application/x-www-form-urlencoded",
+	"application/json",
+	"application/xml",
+	"text/",
+	"multipart/form-data",
+}
+
 func loadCustomRules() {
 	content, err := os.ReadFile("/config/waf_custom_rules.txt")
 	if err != nil {
 		log.Printf("Custom rules file not found or unreadable, using default rules only.\n")
 		return
 	}
-	
+
 	lines := strings.Split(string(content), "\n")
 	var customRegexes []*regexp.Regexp
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line != "" && !strings.HasPrefix(line, "#") {
@@ -95,7 +106,7 @@ func loadCustomRules() {
 			}
 		}
 	}
-	
+
 	if len(customRegexes) > 0 {
 		blockRules = append(blockRules, CategoryRules{
 			Category: "CUSTOM_USER_RULES",
@@ -115,12 +126,10 @@ func notifyBackend(data map[string]interface{}) {
 		backendURL = "http://backend:5000"
 	}
 	authUser := os.Getenv("BASIC_AUTH_USERNAME")
-	if authUser == "" {
-		authUser = "admin"
-	}
 	authPass := os.Getenv("BASIC_AUTH_PASSWORD")
-	if authPass == "" {
-		authPass = "admin"
+	if authUser == "" || authPass == "" {
+		log.Printf("BASIC_AUTH_USERNAME/PASSWORD not set, skipping backend alert notification\n")
+		return
 	}
 
 	payload, err := json.Marshal(data)
@@ -145,7 +154,7 @@ func notifyBackend(data map[string]interface{}) {
 		return
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode >= 400 {
 		log.Printf("Backend returned status %d\n", resp.StatusCode)
 	}
@@ -163,6 +172,29 @@ func handleOptions(w icap.ResponseWriter, req *icap.Request) {
 	w.WriteHeader(200, nil, false)
 }
 
+// isTextContent returns true if the Content-Type indicates a text-based body worth inspecting.
+func isTextContent(contentType string) bool {
+	ct := strings.ToLower(contentType)
+	for _, prefix := range textContentTypes {
+		if strings.HasPrefix(ct, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchRules checks input against all block rules and returns the matching category (or "").
+func matchRules(input string) (string, string) {
+	for _, cr := range blockRules {
+		for _, rule := range cr.Rules {
+			if rule.MatchString(input) {
+				return cr.Category, rule.String()
+			}
+		}
+	}
+	return "", ""
+}
+
 func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	if req.Request == nil || req.Request.URL == nil {
 		w.WriteHeader(204, nil, false)
@@ -170,82 +202,104 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	}
 
 	rawURL := req.Request.URL.String()
-	
+
 	// Decode URL
 	decodedURL, err := url.QueryUnescape(strings.ReplaceAll(rawURL, "+", " "))
 	if err != nil {
 		decodedURL = rawURL
 	}
-	
+
 	log.Printf("INSPECTING URL: %s\n", decodedURL)
-	
-	for _, cr := range blockRules {
-		for _, rule := range cr.Rules {
-			if rule.MatchString(decodedURL) {
-				log.Printf("WAF BLOCKED [%s] - Matched rule %s\n", cr.Category, rule.String())
-				
-				clientIP := "Unknown"
-				if ipHeaders := req.Header.Values("X-Client-Ip"); len(ipHeaders) > 0 {
-					clientIP = ipHeaders[0]
-				}
 
-				if clientIP != "Unknown" {
-					trackerMutex.Lock()
-					now := time.Now()
-					var validBlocks []time.Time
-					
-					for _, t := range ipBlockTracker[clientIP] {
-						if now.Sub(t) < 60*time.Second {
-							validBlocks = append(validBlocks, t)
-						}
-					}
-					validBlocks = append(validBlocks, now)
-					
-					// Cleanup old IPs
-					for ip, times := range ipBlockTracker {
-						var vBlocks []time.Time
-						for _, t := range times {
-							if now.Sub(t) < 60*time.Second {
-								vBlocks = append(vBlocks, t)
-							}
-						}
-						if len(vBlocks) == 0 {
-							delete(ipBlockTracker, ip)
-						} else {
-							ipBlockTracker[ip] = vBlocks
-						}
-					}
-					
-					ipBlockTracker[clientIP] = validBlocks
-					blockCount := len(validBlocks)
-					trackerMutex.Unlock()
-					
-					if blockCount > 3 {
-						log.Printf("TAR-PITTING IP %s for %v\n", clientIP, tarPitDelay)
-						time.Sleep(tarPitDelay)
-					}
-				}
+	// Check URL against rules
+	category, ruleStr := matchRules(decodedURL)
 
-				alertData := map[string]interface{}{
-					"event_type": "waf_block",
-					"message":    fmt.Sprintf("WAF Blocked URL matching category %s", cr.Category),
-					"details": map[string]interface{}{
-						"category":  cr.Category,
-						"url":       decodedURL,
-						"client_ip": clientIP,
-					},
-					"level": "error",
+	// Check request body against rules (POST/PUT payloads)
+	var bodyStr string
+	if category == "" && req.Request.Body != nil {
+		ct := req.Request.Header.Get("Content-Type")
+		if isTextContent(ct) {
+			bodyBytes, readErr := io.ReadAll(io.LimitReader(req.Request.Body, maxBodyInspectSize))
+			if readErr == nil && len(bodyBytes) > 0 {
+				bodyStr = string(bodyBytes)
+				// Restore body so Squid can forward it
+				req.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+				category, ruleStr = matchRules(bodyStr)
+				if category != "" {
+					log.Printf("INSPECTING BODY (%d bytes): matched\n", len(bodyBytes))
 				}
-				
-				// Async notification
-				go notifyBackend(alertData)
-
-				sendBlockResponse(w, cr.Category)
-				return
 			}
 		}
 	}
-	
+
+	if category != "" {
+		source := "URL"
+		if bodyStr != "" {
+			source = "BODY"
+		}
+		log.Printf("WAF BLOCKED [%s] in %s - Matched rule %s\n", category, source, ruleStr)
+
+		clientIP := "Unknown"
+		if ipHeaders := req.Header.Values("X-Client-Ip"); len(ipHeaders) > 0 {
+			clientIP = ipHeaders[0]
+		}
+
+		if clientIP != "Unknown" {
+			trackerMutex.Lock()
+			now := time.Now()
+			var validBlocks []time.Time
+
+			for _, t := range ipBlockTracker[clientIP] {
+				if now.Sub(t) < 60*time.Second {
+					validBlocks = append(validBlocks, t)
+				}
+			}
+			validBlocks = append(validBlocks, now)
+
+			// Cleanup old IPs
+			for ip, times := range ipBlockTracker {
+				var vBlocks []time.Time
+				for _, t := range times {
+					if now.Sub(t) < 60*time.Second {
+						vBlocks = append(vBlocks, t)
+					}
+				}
+				if len(vBlocks) == 0 {
+					delete(ipBlockTracker, ip)
+				} else {
+					ipBlockTracker[ip] = vBlocks
+				}
+			}
+
+			ipBlockTracker[clientIP] = validBlocks
+			blockCount := len(validBlocks)
+			trackerMutex.Unlock()
+
+			if blockCount > 3 {
+				log.Printf("TAR-PITTING IP %s for %v\n", clientIP, tarPitDelay)
+				time.Sleep(tarPitDelay)
+			}
+		}
+
+		alertData := map[string]interface{}{
+			"event_type": "waf_block",
+			"message":    fmt.Sprintf("WAF Blocked %s matching category %s", source, category),
+			"details": map[string]interface{}{
+				"category":  category,
+				"url":       decodedURL,
+				"client_ip": clientIP,
+				"source":    source,
+			},
+			"level": "error",
+		}
+
+		// Async notification
+		go notifyBackend(alertData)
+
+		sendBlockResponse(w, category)
+		return
+	}
+
 	w.WriteHeader(204, nil, false)
 }
 
@@ -254,10 +308,10 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 		w.WriteHeader(204, nil, false)
 		return
 	}
-	
+
 	contentType := req.Response.Header.Get("Content-Type")
 	contentTypeLower := strings.ToLower(contentType)
-	
+
 	dangerousTypes := []string{"application/x-msdownload", "application/x-dosexec", "application/javascript"}
 	isDangerous := false
 	for _, dt := range dangerousTypes {
@@ -266,18 +320,18 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 			break
 		}
 	}
-	
+
 	if isDangerous {
 		log.Printf("Inspecting RESPMOD payload for type: %s\n", contentType)
 		// For now, allow. Real AV would block here.
 	}
-	
+
 	w.WriteHeader(204, nil, false)
 }
 
 func sendBlockResponse(w icap.ResponseWriter, category string) {
 	body := fmt.Sprintf(`<html><body><h1>403 Forbidden - Blocked by WAF</h1><p>Your request contains prohibited content. Category: <b>%s</b></p></body></html>`, category)
-	
+
 	resp := &http.Response{
 		Status:        "403 Forbidden",
 		StatusCode:    403,
@@ -289,7 +343,7 @@ func sendBlockResponse(w icap.ResponseWriter, category string) {
 		ContentLength: int64(len(body)),
 	}
 	resp.Header.Set("Content-Type", "text/html")
-	
+
 	w.WriteHeader(200, resp, true)
 }
 
@@ -306,6 +360,20 @@ func main() {
 			w.WriteHeader(405, nil, false)
 		}
 	})
+
+	// HTTP health endpoint for Docker healthcheck
+	go func() {
+		healthMux := http.NewServeMux()
+		healthMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"status":"healthy"}`))
+		})
+		log.Printf("Starting health endpoint on :8080\n")
+		if err := http.ListenAndServe(":8080", healthMux); err != nil {
+			log.Printf("Health endpoint error: %v\n", err)
+		}
+	}()
 
 	port := 1344
 	log.Printf("Starting Go ICAP WAF server on port %d...\n", port)

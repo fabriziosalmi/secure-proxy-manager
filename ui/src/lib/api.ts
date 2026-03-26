@@ -5,9 +5,9 @@ export const api = axios.create({
   timeout: 120000,
 });
 
-// Attach JWT Bearer token from sessionStorage to every request
+// Attach JWT Bearer token from localStorage to every request
 api.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem('auth_token');
+  const token = localStorage.getItem('auth_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -21,8 +21,8 @@ api.interceptors.response.use(
   (response) => response,
   (error: unknown) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      if (sessionStorage.getItem('auth_token')) {
-        sessionStorage.removeItem('auth_token');
+      if (localStorage.getItem('auth_token')) {
+        localStorage.removeItem('auth_token');
         window.location.reload();
       }
     }

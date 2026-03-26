@@ -11,7 +11,7 @@ The user's example file format works perfectly:
 ```bash
 curl -X POST http://localhost:8011/api/domain-blacklist/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
   -d '{"url": "https://example.com/blacklist.txt"}'
 ```
 
@@ -34,7 +34,7 @@ curl -X POST http://localhost:8011/api/domain-blacklist/import \
 ```bash
 curl -X POST http://localhost:8011/api/domain-blacklist/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
   -d '{
     "content": "example.com\n*.badsite.org\nmalicious.net\n# Comment line"
   }'
@@ -45,7 +45,7 @@ curl -X POST http://localhost:8011/api/domain-blacklist/import \
 ```bash
 curl -X POST http://localhost:8011/api/domain-blacklist/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
   -d '{
     "content": "[\"example.com\", \"badsite.org\", \"*.malicious.com\"]"
   }'
@@ -58,7 +58,7 @@ curl -X POST http://localhost:8011/api/domain-blacklist/import \
 ```bash
 curl -X POST http://localhost:8011/api/ip-blacklist/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
   -d '{"url": "https://example.com/ip-blacklist.txt"}'
 ```
 
@@ -77,7 +77,7 @@ curl -X POST http://localhost:8011/api/ip-blacklist/import \
 ```bash
 curl -X POST http://localhost:8011/api/ip-blacklist/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
   -d '{
     "content": "192.168.1.100\n10.0.0.5\n172.16.0.0/24"
   }'
@@ -91,7 +91,7 @@ You can also use the generic endpoint with a type parameter:
 ```bash
 curl -X POST http://localhost:8011/api/blacklists/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
   -d '{"url": "https://example.com/blacklist.txt", "type": "domain"}'
 ```
 
@@ -99,7 +99,7 @@ curl -X POST http://localhost:8011/api/blacklists/import \
 ```bash
 curl -X POST http://localhost:8011/api/blacklists/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n admin:admin | base64)" \
+  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
   -d '{"url": "https://example.com/blacklist.txt", "type": "ip"}'
 ```
 

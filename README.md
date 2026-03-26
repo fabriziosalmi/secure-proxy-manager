@@ -22,11 +22,10 @@ A containerized web proxy management system based on Squid, featuring a web inte
 
 The project employs a microservices architecture:
 
-1. **Frontend (React/Vite)**: Single Page Application built with React, Tailwind CSS, and Recharts, providing data visualization and WebSocket log streaming.
-2. **Backend (FastAPI)**: Asynchronous Python backend using FastAPI and Uvicorn. It manages the SQLite database, handles REST APIs, and streams logs via WebSockets.
-3. **UI Proxy (Flask)**: Reverse proxy serving the React static assets and routing API/WebSocket traffic to the backend, secured with Talisman CSP.
-4. **Proxy Engine (Squid)**: The core caching and filtering engine handling HTTP/HTTPS traffic.
-5. **WAF Engine (Go ICAP)**: Custom high-performance ICAP server that inspects payloads.
+1. **Frontend (React/Vite/Nginx)**: Single Page Application built with React, Tailwind CSS, and Recharts, served by Nginx which also reverse-proxies API traffic.
+2. **Backend (FastAPI)**: Modular Python backend using FastAPI and Uvicorn with 8 API routers, SQLite WAL database, and WebSocket log streaming.
+3. **Proxy Engine (Squid)**: The core caching and filtering engine handling HTTP/HTTPS traffic.
+4. **WAF Engine (Go ICAP)**: High-performance ICAP server that inspects both URLs and request bodies for SQL injection, XSS, command injection, and data leaks.
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/docs/architecture.svg" alt="Secure Proxy Manager Architecture" width="800"/>
