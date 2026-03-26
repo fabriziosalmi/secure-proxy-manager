@@ -231,11 +231,13 @@ else
     echo "Warning: dnsmasq container not reachable, using system DNS"
 fi
 
-# ── Custom error pages ───────────────────────────────────────────────────────
+# ── Custom error pages (only for ACL denies, not replacing all errors) ────────
 
-if [ -d /etc/squid/error-pages ] && ! grep -q "error_directory" /etc/squid/squid.conf; then
-    echo "error_directory /etc/squid/error-pages" >> /etc/squid/squid.conf
-    echo "Custom error pages enabled"
+if [ -f /etc/squid/error-pages/ERR_ACCESS_DENIED ] && ! grep -q "deny_info" /etc/squid/squid.conf; then
+    echo "deny_info ERR_ACCESS_DENIED all" >> /etc/squid/squid.conf
+    # Copy our custom page as the default Squid error page location
+    cp /etc/squid/error-pages/ERR_ACCESS_DENIED /usr/share/squid/errors/en/ERR_ACCESS_DENIED 2>/dev/null || true
+    echo "Custom block page enabled for ACL denies"
 fi
 
 # ── Copy blacklists from config volume ───────────────────────────────────────
