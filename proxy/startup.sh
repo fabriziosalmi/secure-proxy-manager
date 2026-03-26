@@ -221,17 +221,22 @@ ensure_ip_blocking_rules /etc/squid/squid.conf
 
 # ── Inject dnsmasq as DNS resolver (resolve container IP dynamically) ────────
 
-# DNS: dnsmasq first (domain blackhole), Docker DNS fallback (container names).
-# Squid queries dnsmasq for internet domains (gets 0.0.0.0 for blocked ones).
-# If dnsmasq doesn't know (e.g. "waf"), Docker DNS (127.0.0.11) resolves it.
+# DNS: use dnsmasq for domain blackhole. Resolve WAF IP at boot time
+# and replace the hostname in ICAP config so Squid doesn't need DNS for WAF.
 DNS_IP=$(getent hosts dns 2>/dev/null | awk '{print $1}')
+WAF_IP=$(getent hosts waf 2>/dev/null | awk '{print $1}')
+
 if [ -n "$DNS_IP" ]; then
     if ! grep -q "dns_nameservers" /etc/squid/squid.conf; then
-        echo "dns_nameservers $DNS_IP 127.0.0.11" >> /etc/squid/squid.conf
+        echo "dns_nameservers $DNS_IP" >> /etc/squid/squid.conf
     fi
-    echo "DNS resolvers: dnsmasq=$DNS_IP (blackhole), Docker=127.0.0.11 (fallback)"
-else
-    echo "Warning: dnsmasq not reachable, using Docker DNS only"
+    echo "DNS resolver: dnsmasq at $DNS_IP"
+fi
+
+# Replace 'waf' hostname with resolved IP in ICAP config (avoid DNS loop)
+if [ -n "$WAF_IP" ]; then
+    sed -i "s|icap://waf:|icap://$WAF_IP:|g" /etc/squid/squid.conf
+    echo "ICAP WAF: resolved waf → $WAF_IP"
 fi
 
 # ── Custom error pages (only for ACL denies, not replacing all errors) ────────
