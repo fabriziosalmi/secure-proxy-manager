@@ -203,6 +203,40 @@ cache_store_log stdio:/var/log/squid/store.log
 connect_timeout 30 seconds
 dns_timeout 5 seconds
 
+# ── Protocol Hardening ───────────────────────────────────────────────────────
+
+# Strip internal topology from outbound requests
+via off
+forwarded_for delete
+request_header_access X-Forwarded-For deny all
+
+# Inject HSTS on all proxied responses (force HTTPS on clients)
+reply_header_add Strict-Transport-Security "max-age=31536000; includeSubDomains" all
+
+# Normalize User-Agent to prevent stack fingerprinting
+request_header_replace User-Agent Mozilla/5.0 (compatible; SecureProxy/1.6)
+
+# Add unique request ID for log correlation
+request_header_add X-Request-ID %>{unique_id}e all
+
+# Block dangerous HTTP methods (only allow safe methods by default)
+acl Safe_methods method GET POST HEAD CONNECT OPTIONS
+http_access deny !Safe_methods
+
+# Strip Expect: 100-continue (anti-smuggling)
+request_header_access Expect deny all
+
+# Strip non-standard outbound headers (reduce attack surface)
+request_header_access X-Forwarded-Host deny all
+request_header_access X-Forwarded-Proto deny all
+request_header_access Proxy-Connection deny all
+
+# Limit request body size (10MB default, prevents exfiltration of large dumps)
+request_body_max_size 10 MB
+
+# Limit request header size (prevents header-based buffer overflow/exfil)
+request_header_max_size 64 KB
+
 refresh_pattern ^ftp:           1440    20%     10080
 refresh_pattern ^gopher:        1440    0%      1440
 refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
