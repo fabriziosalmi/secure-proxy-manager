@@ -1,4 +1,5 @@
 import { Card, CardContent } from '../components/ui/card';
+import { IpBadge } from '../components/IpBadge';
 import { api } from '../lib/api';
 import { Search, RefreshCw, FileText, Trash2, Activity, ShieldAlert, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useState, useEffect, useRef, useMemo } from 'react';
@@ -282,7 +283,7 @@ export function Logs() {
                     <td className="px-6 py-3 text-muted-foreground whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleString()}
                     </td>
-                    <td className="px-6 py-3 text-white">{log.client_ip}</td>
+                    <td className="px-6 py-3 text-white"><IpBadge ip={log.client_ip} /></td>
                     <td className="px-6 py-3 text-primary">{log.method}</td>
                     <td className="px-6 py-3 text-muted-foreground truncate max-w-xs" title={log.destination}>
                       {log.destination}
