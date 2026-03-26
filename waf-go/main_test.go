@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -71,13 +72,58 @@ func TestMatchRulesScoredBlocks(t *testing.T) {
 		{"PATH phar", "phar://uploads/evil.jpg", true, "PATH_MANIPULATION"},
 
 		// DLP
-		{"DLP AWS key", "AKIAIOSFODNN7EXAMPLE", true, "DATA_LEAK_PREVENTION"},
+		{"DLP AWS key", "AKIAIOSFODNN7EXAMPLE", true, "CLOUD_SECRETS"},
 		{"DLP GitHub token", "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh", true, "DATA_LEAK_PREVENTION"},
 		{"DLP private key", "-----BEGIN RSA PRIVATE KEY-----", true, "DATA_LEAK_PREVENTION"},
 
 		// Unicode
 		{"UNI zero-width", "admin\u200b@evil.com", true, "UNICODE_OBFUSCATION"},
 		{"UNI RTL override", "file\u202egpj.exe", true, "UNICODE_OBFUSCATION"},
+
+		// Cloud Secrets (critical — always block alone)
+		{"CLOUD AWS IAM key", "AKIAIOSFODNN7EXAMPLE1", true, "CLOUD_SECRETS"},
+		{"CLOUD Google API key", "AIzaSyA1234567890abcdefghijklmnopqrstuvw", true, "CLOUD_SECRETS"},
+		{"CLOUD OpenAI key", "sk-abcdefghijklmnopqrstuvwxyz1234567890abcdefghijk", true, "CLOUD_SECRETS"},
+		{"CLOUD Stripe live", "sk_" + "live_TESTKEY0123456789abcdefgh", true, "CLOUD_SECRETS"},
+		{"CLOUD SendGrid", "SG.abcdefghijklmnopqrstuv.abcdefghijklmnopqrstuvwxyz1234567890abc_efg", true, "CLOUD_SECRETS"},
+		{"CLOUD GitHub OAuth", "gho_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij", true, "CLOUD_SECRETS"},
+
+		// Sensitive Files
+		{"FILE .git/config", "/.git/config", true, "SENSITIVE_FILES"},
+		{"FILE .env", "/.env", true, "SENSITIVE_FILES"},
+		{"FILE wp-config", "/wp-config.php", true, "SENSITIVE_FILES"},
+		{"FILE id_rsa", "/home/user/.ssh/id_rsa", true, "SENSITIVE_FILES"},
+		{"FILE .aws/credentials", "/.aws/credentials", true, "SENSITIVE_FILES"},
+		{"FILE tfstate", "/infra/terraform.tfstate", true, "SENSITIVE_FILES"},
+		{"FILE k8s secrets", "/var/run/secrets/kubernetes.io/serviceaccount/token", true, "SENSITIVE_FILES"},
+
+		// Web Shells & C2
+		{"SHELL c99.php", "/uploads/c99.php", true, "WEBSHELL_C2"},
+		{"SHELL cmd=system", "?cmd=system('id')", true, "WEBSHELL_C2"},
+		{"SHELL recon whoami", "?q=whoami", true, "WEBSHELL_C2"},
+		{"SHELL mimikatz", "sekurlsa::logonpasswords mimikatz", true, "WEBSHELL_C2"},
+		{"SHELL powershell bypass", "powershell -ExecutionPolicy Bypass -File evil.ps1", true, "WEBSHELL_C2"},
+
+		// Crypto Mining & Tunneling (critical — always block alone)
+		{"MINE stratum protocol", "stratum+tcp://pool.minexmr.com:4444", true, "CRYPTO_TUNNEL"},
+		{"MINE xmrig binary", "/download/xmrig-linux-x64", true, "CRYPTO_TUNNEL"},
+
+		// Data Exfiltration (critical — always block alone)
+		{"EXFIL discord webhook", "https://discord.com/api/webhooks/123456/ABCDEF", true, "DATA_EXFIL"},
+
+		// Post-Exploitation
+		{"PEXP net user domain", "net user /domain", true, "POST_EXPLOIT"},
+
+		// Java Deserialization
+		{"JAVA SpEL RCE", "T(java.lang.Runtime).getRuntime().exec('calc')", true, "JAVA_DESER"},
+
+		// SQLi enhanced
+		{"SQLi ORDER BY enum", "?id=1 ORDER BY 15 UNION SELECT 1", true, "SQL_INJECTION"},
+		{"SQLi INTO OUTFILE", "SELECT * INTO OUTFILE '/tmp/dump.csv'", true, "SQL_INJECTION"},
+
+		// Ransomware
+		{"RANSOM extension", "/files/report.crypted", true, "RANSOMWARE"},
+		{"RANSOM instruction", "DECRYPT_INSTRUCTION.txt", true, "RANSOMWARE"},
 	}
 
 	for _, tt := range tests {
@@ -106,6 +152,42 @@ func TestMatchRulesScoredBlocks(t *testing.T) {
 					t.Errorf("input=%q: expected category %q, got %v",
 						tt.input, tt.wantCat, cats)
 				}
+			}
+		})
+	}
+}
+
+// ── Anomaly scoring composite tests ─────────────────────────────────────────
+
+func TestAnomalyScoringComposite(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantBlock bool
+		minScore  int
+	}{
+		// Single low-severity rule should NOT block
+		{"telegram bot alone (score=7)", "api.telegram.org/bot123", false, 4},
+		// Multiple low-severity rules should combine to block
+		{"pastebin + base64 blob (score > 10)", "pastebin.com/raw/x " + strings.Repeat("A", 200) + "==", true, 10},
+		// .onion alone is severity=7, should NOT block
+		{".onion alone (score=7)", "http://site.onion/page", false, 4},
+		// password= alone is severity=4, should NOT block
+		{"password= alone (score=4)", "password=abc123", false, 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			normalized := normalizeInput(tt.input)
+			_, score := matchRulesScored(normalized)
+			blocked := score >= blockThreshold
+			if blocked != tt.wantBlock {
+				t.Errorf("input=%q: got blocked=%v (score=%d), want blocked=%v",
+					truncate(tt.input, 80), blocked, score, tt.wantBlock)
+			}
+			if score < tt.minScore {
+				t.Errorf("input=%q: got score=%d, want >= %d",
+					truncate(tt.input, 80), score, tt.minScore)
 			}
 		})
 	}
