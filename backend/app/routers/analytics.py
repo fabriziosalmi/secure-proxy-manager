@@ -364,3 +364,232 @@ def get_dashboard_summary():
         result["waf"] = None
 
     return {"status": "success", "data": result}
+
+
+# ── Sprint 2: Intelligence endpoints ─────────────────────────────────
+
+KNOWN_SAAS = {
+    "dropbox.com": "Dropbox", "wetransfer.com": "WeTransfer", "mega.nz": "Mega",
+    "mediafire.com": "MediaFire", "sendspace.com": "SendSpace",
+    "drive.google.com": "Google Drive", "onedrive.live.com": "OneDrive",
+    "icloud.com": "iCloud", "box.com": "Box",
+    "slack.com": "Slack", "discord.com": "Discord", "telegram.org": "Telegram",
+    "web.whatsapp.com": "WhatsApp Web",
+    "notion.so": "Notion", "trello.com": "Trello", "asana.com": "Asana",
+    "airtable.com": "Airtable", "monday.com": "Monday",
+    "canva.com": "Canva", "figma.com": "Figma",
+    "pastebin.com": "Pastebin", "hastebin.com": "Hastebin",
+    "ngrok.io": "ngrok", "ngrok.com": "ngrok",
+    "tailscale.com": "Tailscale", "zerotier.com": "ZeroTier",
+    "anydesk.com": "AnyDesk", "teamviewer.com": "TeamViewer",
+    "tor2web.org": "Tor2Web",
+    "chatgpt.com": "ChatGPT", "claude.ai": "Claude", "gemini.google.com": "Gemini",
+    "reddit.com": "Reddit", "facebook.com": "Facebook", "instagram.com": "Instagram",
+    "tiktok.com": "TikTok", "twitter.com": "Twitter/X", "x.com": "Twitter/X",
+    "youtube.com": "YouTube", "twitch.tv": "Twitch", "netflix.com": "Netflix",
+    "spotify.com": "Spotify",
+}
+
+
+def _extract_domain(dest: str) -> str:
+    """Extract domain from destination URL like 'http://example.com:443/path'."""
+    d = dest
+    for prefix in ("http://", "https://", "ftp://"):
+        if d.startswith(prefix):
+            d = d[len(prefix):]
+            break
+    d = d.split("/")[0].split(":")[0]
+    return d.lower()
+
+
+@router.get("/api/analytics/shadow-it", dependencies=[Depends(authenticate)])
+def shadow_it_detector():
+    """Detect SaaS/cloud services accessed through the proxy."""
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT destination, COUNT(*) as cnt FROM proxy_logs
+            WHERE destination IS NOT NULL AND destination != ''
+            AND timestamp >= datetime('now', '-7 days')
+            GROUP BY destination ORDER BY cnt DESC LIMIT 500
+        """)
+        rows = cursor.fetchall()
+    except sqlite3.OperationalError:
+        rows = []
+    conn.close()
+
+    # Aggregate by SaaS service
+    services: dict = {}
+    for row in rows:
+        domain = _extract_domain(row["destination"])
+        for saas_domain, saas_name in KNOWN_SAAS.items():
+            if domain == saas_domain or domain.endswith("." + saas_domain):
+                if saas_name not in services:
+                    services[saas_name] = {"name": saas_name, "domain": saas_domain, "requests": 0, "category": "unknown"}
+                services[saas_name]["requests"] += row["cnt"]
+                break
+
+    # Categorize
+    categories = {
+        "File Sharing": ["Dropbox", "WeTransfer", "Mega", "MediaFire", "SendSpace", "Google Drive", "OneDrive", "iCloud", "Box"],
+        "Messaging": ["Slack", "Discord", "Telegram", "WhatsApp Web"],
+        "Productivity": ["Notion", "Trello", "Asana", "Airtable", "Monday", "Canva", "Figma"],
+        "Paste/Code": ["Pastebin", "Hastebin"],
+        "Tunneling": ["ngrok", "Tailscale", "ZeroTier", "AnyDesk", "TeamViewer", "Tor2Web"],
+        "AI": ["ChatGPT", "Claude", "Gemini"],
+        "Social": ["Reddit", "Facebook", "Instagram", "TikTok", "Twitter/X", "YouTube", "Twitch"],
+        "Streaming": ["Netflix", "Spotify"],
+    }
+    for cat, names in categories.items():
+        for name in names:
+            if name in services:
+                services[name]["category"] = cat
+
+    result = sorted(services.values(), key=lambda x: x["requests"], reverse=True)
+    return {"status": "success", "data": result}
+
+
+@router.get("/api/analytics/user-agents", dependencies=[Depends(authenticate)])
+def user_agent_breakdown():
+    """Analyze User-Agent strings from proxy logs (extracted from destination patterns)."""
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        # Extract method distribution as proxy for UA (Squid logs don't store UA directly)
+        # Instead we analyze the destination patterns to infer client types
+        cursor.execute("""
+            SELECT method, COUNT(*) as cnt FROM proxy_logs
+            WHERE method IS NOT NULL AND method != '' AND method != '-'
+            AND timestamp >= datetime('now', '-7 days')
+            GROUP BY method ORDER BY cnt DESC
+        """)
+        methods = [{"name": r["method"], "count": r["cnt"]} for r in cursor.fetchall()]
+
+        # Analyze destination patterns for client type inference
+        cursor.execute("""
+            SELECT
+                CASE
+                    WHEN destination LIKE '%googleapis.com%' OR destination LIKE '%google.com%' THEN 'Google Services'
+                    WHEN destination LIKE '%microsoft.com%' OR destination LIKE '%office.com%' OR destination LIKE '%live.com%' THEN 'Microsoft'
+                    WHEN destination LIKE '%apple.com%' OR destination LIKE '%icloud.com%' THEN 'Apple'
+                    WHEN destination LIKE '%github.com%' OR destination LIKE '%gitlab%' THEN 'Dev Tools'
+                    WHEN destination LIKE '%docker%' OR destination LIKE '%registry%' THEN 'Containers'
+                    WHEN destination LIKE '%npm%' OR destination LIKE '%pypi%' OR destination LIKE '%maven%' THEN 'Package Managers'
+                    WHEN destination LIKE '%cdn%' OR destination LIKE '%cloudflare%' OR destination LIKE '%akamai%' THEN 'CDN'
+                    WHEN destination LIKE '%update%' OR destination LIKE '%patch%' THEN 'Updates'
+                    ELSE 'Other'
+                END as service_type,
+                COUNT(*) as cnt
+            FROM proxy_logs
+            WHERE timestamp >= datetime('now', '-7 days') AND destination IS NOT NULL
+            GROUP BY service_type ORDER BY cnt DESC
+        """)
+        service_types = [{"name": r["service_type"], "count": r["cnt"]} for r in cursor.fetchall()]
+
+    except sqlite3.OperationalError:
+        methods = []
+        service_types = []
+    conn.close()
+
+    return {"status": "success", "data": {"methods": methods, "service_types": service_types}}
+
+
+@router.get("/api/analytics/file-extensions", dependencies=[Depends(authenticate)])
+def file_extension_distribution():
+    """Analyze file extensions in proxied requests."""
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT destination FROM proxy_logs
+            WHERE destination IS NOT NULL AND destination != ''
+            AND timestamp >= datetime('now', '-7 days')
+        """)
+        rows = cursor.fetchall()
+    except sqlite3.OperationalError:
+        rows = []
+    conn.close()
+
+    import re
+    ext_pattern = re.compile(r'\.([a-zA-Z0-9]{1,10})(?:\?|$|#)')
+    ext_counts: dict = {}
+    for row in rows:
+        dest = row["destination"]
+        # Strip query params for cleaner matching
+        path = dest.split("?")[0].split("#")[0]
+        match = ext_pattern.search(path)
+        if match:
+            ext = match.group(1).lower()
+            # Skip common non-file extensions
+            if ext in ("com", "net", "org", "io", "dev", "app", "me", "co"):
+                continue
+            ext_counts[ext] = ext_counts.get(ext, 0) + 1
+
+    # Categorize
+    categories = {
+        "Web": ["html", "htm", "css", "js", "jsx", "ts", "tsx", "woff", "woff2", "ttf", "svg", "ico", "webmanifest"],
+        "Images": ["png", "jpg", "jpeg", "gif", "webp", "bmp", "avif", "tiff"],
+        "Documents": ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "txt", "rtf"],
+        "Archives": ["zip", "tar", "gz", "bz2", "7z", "rar", "xz"],
+        "Media": ["mp4", "mp3", "avi", "mkv", "wav", "ogg", "flac", "m4a"],
+        "Code": ["py", "go", "rs", "java", "c", "cpp", "rb", "php", "sh", "yaml", "yml", "json", "xml", "toml"],
+        "Executables": ["exe", "msi", "dmg", "deb", "rpm", "apk", "bin"],
+        "Data": ["sql", "db", "sqlite", "bak", "dump"],
+    }
+
+    result = sorted(
+        [{"ext": f".{k}", "count": v} for k, v in ext_counts.items()],
+        key=lambda x: x["count"], reverse=True,
+    )[:30]
+
+    # Also return by category
+    cat_counts: dict = {}
+    for ext, count in ext_counts.items():
+        cat = "Other"
+        for cat_name, exts in categories.items():
+            if ext in exts:
+                cat = cat_name
+                break
+        cat_counts[cat] = cat_counts.get(cat, 0) + count
+
+    cat_result = sorted(
+        [{"category": k, "count": v} for k, v in cat_counts.items()],
+        key=lambda x: x["count"], reverse=True,
+    )
+
+    return {"status": "success", "data": {"extensions": result, "categories": cat_result}}
+
+
+@router.get("/api/analytics/top-domains", dependencies=[Depends(authenticate)])
+def top_domains():
+    """Top accessed domains for word cloud / domain analysis."""
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT destination, COUNT(*) as cnt FROM proxy_logs
+            WHERE destination IS NOT NULL AND destination != ''
+            AND timestamp >= datetime('now', '-7 days')
+            GROUP BY destination ORDER BY cnt DESC LIMIT 200
+        """)
+        rows = cursor.fetchall()
+    except sqlite3.OperationalError:
+        rows = []
+    conn.close()
+
+    # Aggregate by root domain
+    domain_counts: dict = {}
+    for row in rows:
+        domain = _extract_domain(row["destination"])
+        # Get root domain (last 2 parts)
+        parts = domain.split(".")
+        root = ".".join(parts[-2:]) if len(parts) >= 2 else domain
+        domain_counts[root] = domain_counts.get(root, 0) + row["cnt"]
+
+    result = sorted(
+        [{"domain": k, "count": v} for k, v in domain_counts.items()],
+        key=lambda x: x["count"], reverse=True,
+    )[:50]
+
+    return {"status": "success", "data": result}
