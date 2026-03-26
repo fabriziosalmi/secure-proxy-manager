@@ -17,6 +17,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Blacklists } from './pages/Blacklists';
 import { Logs } from './pages/Logs';
 import { Settings } from './pages/Settings';
+import { ThreatIntel } from './pages/ThreatIntel';
 import { Login } from './pages/Login';
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
@@ -89,6 +90,7 @@ function App() {
               <Route path="/" element={<Layout />}>
                 <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
                 <Route path="blacklists" element={<ErrorBoundary><Blacklists /></ErrorBoundary>} />
+                <Route path="threats" element={<ErrorBoundary><ThreatIntel /></ErrorBoundary>} />
                 <Route path="logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
                 <Route path="settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
                 <Route path="*" element={<NotFound />} />

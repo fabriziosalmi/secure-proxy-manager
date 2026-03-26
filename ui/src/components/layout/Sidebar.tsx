@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Ban, List, Settings } from 'lucide-react';
+import { LayoutDashboard, Ban, ShieldAlert, List, Settings } from 'lucide-react';
 import { api } from '../../lib/api';
 
 type ApiStatus = 'connected' | 'disconnected' | 'checking';
@@ -25,6 +25,7 @@ export function Sidebar() {
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/blacklists', icon: Ban, label: 'Blacklists' },
+    { to: '/threats', icon: ShieldAlert, label: 'Threat Intel' },
     { to: '/logs', icon: List, label: 'Access Logs' },
     { to: '/settings', icon: Settings, label: 'Settings' },
   ];

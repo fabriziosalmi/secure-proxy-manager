@@ -1,7 +1,7 @@
 import { Card, CardContent } from '../components/ui/card';
 import { api, getErrorMessage } from '../lib/api';
 import type { IpEntry, DomainEntry, WhitelistEntry, DomainWhitelistEntry } from '../types';
-import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, CheckCircle, ShieldCheck, Loader2 } from 'lucide-react';
+import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, CheckCircle, ShieldCheck, Loader2, RefreshCw, FileDown, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -181,6 +181,46 @@ export function Blacklists() {
     }
   };
 
+  const [clearConfirm, setClearConfirm] = useState(false);
+
+  const handleClearAll = async () => {
+    if (!clearConfirm) { setClearConfirm(true); return; }
+    setClearConfirm(false);
+    const endpoint = activeTab === 'ip' ? 'ip-blacklist/clear-all' : 'domain-blacklist/clear-all';
+    const t = toast.loading('Clearing all entries...');
+    try {
+      await api.delete(endpoint);
+      toast.success('All entries cleared', { id: t });
+      invalidateActive();
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to clear'), { id: t });
+    }
+  };
+
+  const handleExport = () => {
+    const items = activeTab === 'ip' ? ips : activeTab === 'domain' ? domains : activeTab === 'whitelist' ? whitelists : domainWhitelists;
+    const field = (activeTab === 'ip' || activeTab === 'whitelist') ? 'ip' : 'domain';
+    const text = items.map((item: any) => item[field]).join('\n');
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${activeTab}-list-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${items.length} entries`);
+  };
+
+  const handleReloadDNS = async () => {
+    const t = toast.loading('Regenerating DNS blocklist...');
+    try {
+      const resp = await api.post('maintenance/reload-dns');
+      toast.success(`DNS updated: ${resp.data.data?.domains ?? 0} domains`, { id: t });
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to reload DNS'), { id: t });
+    }
+  };
+
   const popularIpLists = [
     { name: 'Firehol Level 1', url: 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset', desc: 'General purpose blocklist against active threats (~600 IPs)' },
     { name: 'Spamhaus DROP', url: 'https://www.spamhaus.org/drop/drop.txt', desc: 'Don\'t Route Or Peer — direct malware/botnet infrastructure' },
@@ -219,34 +259,68 @@ export function Blacklists() {
           <p className="text-muted-foreground">Manage IP and Domain blocking rules</p>
         </div>
         <div className="flex gap-2">
+          {/* Actions row 1: data management */}
+          <button type="button" onClick={handleExport} title="Export current list as TXT"
+            className="flex items-center px-3 py-2 rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors">
+            <FileDown className="w-4 h-4 mr-1.5" />Export
+          </button>
+          {(activeTab === 'domain') && (
+            <button type="button" onClick={handleReloadDNS} title="Regenerate DNS blocklist from database"
+              className="flex items-center px-3 py-2 rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors">
+              <RefreshCw className="w-4 h-4 mr-1.5" />Reload DNS
+            </button>
+          )}
+          {(activeTab === 'ip' || activeTab === 'domain') && (
+            clearConfirm ? (
+              <div className="flex gap-1">
+                <button type="button" onClick={handleClearAll}
+                  className="px-3 py-2 text-sm font-medium bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90">
+                  Confirm Clear All
+                </button>
+                <button type="button" onClick={() => setClearConfirm(false)}
+                  className="px-3 py-2 text-sm font-medium bg-secondary rounded-md hover:bg-secondary/80">
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={handleClearAll} title="Clear all entries"
+                className="flex items-center px-3 py-2 rounded-md text-sm font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors">
+                <XCircle className="w-4 h-4 mr-1.5" />Clear All
+              </button>
+            )
+          )}
+        </div>
+      </div>
+
+      {/* Actions row 2: import tools */}
+      <div className="flex gap-2 flex-wrap">
           {activeTab === 'ip' && (
             <button onClick={() => { closeAllPanels('geo'); setIsGeoBlocking(!isGeoBlocking); }}
-              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isGeoBlocking ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
-              <Map className="w-4 h-4 mr-2" />Geo-Block
+              className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isGeoBlocking ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
+              <Map className="w-3.5 h-3.5 mr-1.5" />Geo-Block
             </button>
           )}
-          {activeTab !== 'whitelist' && (
+          {(activeTab === 'ip' || activeTab === 'domain') && (
             <button type="button" onClick={() => { closeAllPanels('popular'); setIsPopularLists(!isPopularLists); }}
-              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isPopularLists ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
-              <Database className="w-4 h-4 mr-2" />Popular Lists
+              className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isPopularLists ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
+              <Database className="w-3.5 h-3.5 mr-1.5" />Popular Lists
             </button>
           )}
-          {activeTab !== 'whitelist' && (
+          {(activeTab === 'ip' || activeTab === 'domain') && (
             <button type="button" onClick={() => { closeAllPanels('import'); setIsImporting(!isImporting); }}
-              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isImporting ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
-              <Download className="w-4 h-4 mr-2" />Import URL
+              className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isImporting ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
+              <Download className="w-3.5 h-3.5 mr-1.5" />Import URL
             </button>
           )}
           <button type="button" onClick={() => { closeAllPanels('bulk'); setIsBulkAdding(!isBulkAdding); }}
-            className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isBulkAdding ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
-            <Plus className="w-4 h-4 mr-2" />Bulk Add
+            className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isBulkAdding ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
+            <Plus className="w-3.5 h-3.5 mr-1.5" />Bulk Add
           </button>
           <button onClick={() => { closeAllPanels('add'); setIsAdding(!isAdding); }}
-            className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${isAdding ? 'bg-destructive/90 text-destructive-foreground' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}>
-            <Plus className={`w-4 h-4 mr-2 transition-transform ${isAdding ? 'rotate-45' : ''}`} />
+            className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ml-auto ${isAdding ? 'bg-destructive/90 text-destructive-foreground' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}>
+            <Plus className={`w-3.5 h-3.5 mr-1.5 transition-transform ${isAdding ? 'rotate-45' : ''}`} />
             {isAdding ? 'Cancel' : 'Add Rule'}
           </button>
-        </div>
       </div>
 
       {isAdding && (
