@@ -54,6 +54,23 @@ func compactInput(s string) string {
 	return reAllSpace.ReplaceAllString(s, "")
 }
 
+// isLANHost returns true if the host is a private/LAN IP address.
+// These destinations should bypass WAF inspection (not SSRF).
+func isLANHost(host string) bool {
+	// Strip port
+	h := host
+	if idx := strings.LastIndex(h, ":"); idx > 0 {
+		h = h[:idx]
+	}
+	return strings.HasPrefix(h, "10.") ||
+		strings.HasPrefix(h, "192.168.") ||
+		strings.HasPrefix(h, "172.16.") || strings.HasPrefix(h, "172.17.") ||
+		strings.HasPrefix(h, "172.18.") || strings.HasPrefix(h, "172.19.") ||
+		strings.HasPrefix(h, "172.2") || strings.HasPrefix(h, "172.30.") ||
+		strings.HasPrefix(h, "172.31.") ||
+		h == "localhost" || h == "127.0.0.1" || h == "::1"
+}
+
 func isTextContent(contentType string) bool {
 	ct := strings.ToLower(contentType)
 	for _, prefix := range textContentTypes {
