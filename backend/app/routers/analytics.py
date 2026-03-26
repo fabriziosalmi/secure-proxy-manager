@@ -250,3 +250,89 @@ def get_waf_stats():
     except requests.RequestException as e:
         logger.error(f"Error fetching WAF stats: {e}")
         raise HTTPException(status_code=502, detail="WAF service unreachable")
+
+
+@router.get("/api/dashboard/summary", dependencies=[Depends(authenticate)])
+def get_dashboard_summary():
+    """Aggregated dashboard data in a single API call."""
+    conn = get_db()
+    cursor = conn.cursor()
+    result = {}
+
+    try:
+        # Total + blocked counts
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs")
+        result["total_requests"] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%'")
+        result["blocked_requests"] = cursor.fetchone()[0]
+
+        # Today's requests
+        today = datetime.now().strftime('%Y-%m-%d')
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE timestamp >= ?", (today,))
+        result["today_requests"] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE (status LIKE '%DENIED%' OR status LIKE '%403%') AND timestamp >= ?", (today,))
+        result["today_blocked"] = cursor.fetchone()[0]
+
+        # Top blocked destinations (last 24h)
+        cursor.execute("""
+            SELECT destination, COUNT(*) as cnt FROM proxy_logs
+            WHERE (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%')
+            AND timestamp >= datetime('now', '-1 day')
+            GROUP BY destination ORDER BY cnt DESC LIMIT 10
+        """)
+        result["top_blocked"] = [{"dest": r["destination"], "count": r[0] if isinstance(r[0], int) else r["cnt"]} for r in cursor.fetchall()]
+
+        # Top client IPs (last 24h)
+        cursor.execute("""
+            SELECT source_ip, COUNT(*) as cnt FROM proxy_logs
+            WHERE timestamp >= datetime('now', '-1 day') AND source_ip IS NOT NULL AND source_ip != ''
+            GROUP BY source_ip ORDER BY cnt DESC LIMIT 10
+        """)
+        result["top_clients"] = [{"ip": r["source_ip"], "count": r["cnt"]} for r in cursor.fetchall()]
+
+        # Threat categories (from WAF blocks, extract from destination patterns)
+        cursor.execute("""
+            SELECT
+                CASE
+                    WHEN destination LIKE '%.exe%' OR destination LIKE '%.dll%' THEN 'Malware'
+                    WHEN destination LIKE '%phish%' OR destination LIKE '%login%fake%' THEN 'Phishing'
+                    WHEN status LIKE '%DENIED%' AND destination LIKE '%:%' THEN 'Direct IP'
+                    WHEN status LIKE '%403%' THEN 'WAF Block'
+                    ELSE 'Policy'
+                END as category,
+                COUNT(*) as cnt
+            FROM proxy_logs
+            WHERE (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%')
+            AND timestamp >= datetime('now', '-7 days')
+            GROUP BY category ORDER BY cnt DESC
+        """)
+        result["threat_categories"] = [{"category": r["category"], "count": r["cnt"]} for r in cursor.fetchall()]
+
+        # Blacklist counts
+        cursor.execute("SELECT COUNT(*) FROM ip_blacklist")
+        result["ip_blacklist_count"] = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM domain_blacklist")
+        result["domain_blacklist_count"] = cursor.fetchone()[0]
+
+        # Recent blocks (last 10)
+        cursor.execute("""
+            SELECT timestamp, source_ip, method, destination, status FROM proxy_logs
+            WHERE status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%'
+            ORDER BY id DESC LIMIT 10
+        """)
+        result["recent_blocks"] = [dict(r) for r in cursor.fetchall()]
+
+    except sqlite3.OperationalError:
+        pass
+
+    conn.close()
+
+    # WAF stats (non-blocking)
+    try:
+        waf_resp = requests.get("http://waf:8080/stats", timeout=2)
+        if waf_resp.status_code == 200:
+            result["waf"] = waf_resp.json()
+    except requests.RequestException:
+        result["waf"] = None
+
+    return {"status": "success", "data": result}
