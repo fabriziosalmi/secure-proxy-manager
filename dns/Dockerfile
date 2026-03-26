@@ -1,7 +1,7 @@
 # Pin: alpine 3.21.3
 FROM alpine:3.21.3
 
-RUN apk --no-cache add dnsmasq
+RUN apk --no-cache add dnsmasq bind-tools
 
 # Base config
 COPY dnsmasq.conf /etc/dnsmasq.conf
