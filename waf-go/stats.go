@@ -9,18 +9,20 @@ import (
 )
 
 // ── Stats Collector ─────────────────────────────────────────────────────────
+// Thread-safe with minimal lock duration. Atomics for counters, lock only for maps.
 
 type statsCollector struct {
-	mu                sync.Mutex
-	totalRequests     int64
-	totalBlocked      int64
-	entropySum        float64
-	bodyEntropySum    float64
-	highEntropyCount  int64
-	destCounts        map[string]int
-	categoryCounts    map[string]int
-	uaCounts          map[string]int
-	recentTimestamps  []time.Time // last 60s window for req/min
+	totalRequests    atomic.Int64
+	totalBlocked     atomic.Int64
+	highEntropyCount atomic.Int64
+
+	mu             sync.Mutex
+	entropySum     float64
+	bodyEntropySum float64
+	destCounts     map[string]int
+	categoryCounts map[string]int
+	uaCounts       map[string]int
+	recentCount    atomic.Int64 // Approximate req/min via atomic counter
 }
 
 var stats = &statsCollector{
@@ -30,51 +32,45 @@ var stats = &statsCollector{
 }
 
 func (s *statsCollector) record(feature TrafficFeature, blocked bool, categories []string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	atomic.AddInt64(&s.totalRequests, 1)
+	s.totalRequests.Add(1)
+	s.recentCount.Add(1)
 	if blocked {
-		atomic.AddInt64(&s.totalBlocked, 1)
+		s.totalBlocked.Add(1)
+	}
+	if feature.URLEntropy > highEntropyThresh || feature.BodyEntropy > highEntropyThresh {
+		s.highEntropyCount.Add(1)
 	}
 
+	// Lock only for map operations (fast path)
+	s.mu.Lock()
 	s.entropySum += feature.URLEntropy
 	s.bodyEntropySum += feature.BodyEntropy
-	if feature.URLEntropy > highEntropyThresh || feature.BodyEntropy > highEntropyThresh {
-		s.highEntropyCount++
-	}
 
-	// Top destinations (cap at 500)
-	if len(s.destCounts) < 500 {
-		s.destCounts[feature.Host]++
-	} else if _, ok := s.destCounts[feature.Host]; ok {
-		s.destCounts[feature.Host]++
+	host := feature.Host
+	if len(s.destCounts) < 500 || s.destCounts[host] > 0 {
+		s.destCounts[host]++
 	}
-
 	for _, cat := range categories {
 		s.categoryCounts[cat]++
 	}
-
-	// Shorten UA for grouping
 	ua := feature.UserAgent
 	if len(ua) > 50 {
 		ua = ua[:50]
 	}
-	if len(s.uaCounts) < 200 {
-		s.uaCounts[ua]++
-	} else if _, ok := s.uaCounts[ua]; ok {
+	if len(s.uaCounts) < 200 || s.uaCounts[ua] > 0 {
 		s.uaCounts[ua]++
 	}
+	s.mu.Unlock()
+}
 
-	now := time.Now()
-	s.recentTimestamps = append(s.recentTimestamps, now)
-	// Trim to last 60s
-	cutoff := now.Add(-60 * time.Second)
-	i := 0
-	for i < len(s.recentTimestamps) && s.recentTimestamps[i].Before(cutoff) {
-		i++
-	}
-	s.recentTimestamps = s.recentTimestamps[i:]
+// startRecentCounter resets the recent counter every 60s for req/min calculation.
+func (s *statsCollector) startRecentCounter() {
+	go func() {
+		for {
+			time.Sleep(60 * time.Second)
+			s.recentCount.Store(0)
+		}
+	}()
 }
 
 type topEntry struct {
@@ -95,31 +91,34 @@ func topN(m map[string]int, n int) []topEntry {
 }
 
 func (s *statsCollector) snapshot() map[string]interface{} {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	total := atomic.LoadInt64(&s.totalRequests)
-	blocked := atomic.LoadInt64(&s.totalBlocked)
+	total := s.totalRequests.Load()
+	blocked := s.totalBlocked.Load()
 
 	blockRate := 0.0
 	avgURLEntropy := 0.0
 	avgBodyEntropy := 0.0
+
+	s.mu.Lock()
 	if total > 0 {
 		blockRate = float64(blocked) * 100 / float64(total)
 		avgURLEntropy = math.Round(s.entropySum/float64(total)*100) / 100
 		avgBodyEntropy = math.Round(s.bodyEntropySum/float64(total)*100) / 100
 	}
+	destTop := topN(s.destCounts, 10)
+	catTop := topN(s.categoryCounts, 10)
+	uaTop := topN(s.uaCounts, 10)
+	s.mu.Unlock()
 
 	return map[string]interface{}{
-		"total_requests":        total,
-		"total_blocked":         blocked,
-		"block_rate_pct":        math.Round(blockRate*100) / 100,
-		"avg_url_entropy":       avgURLEntropy,
-		"avg_body_entropy":      avgBodyEntropy,
-		"high_entropy_count":    s.highEntropyCount,
-		"requests_last_minute":  len(s.recentTimestamps),
-		"top_destinations":      topN(s.destCounts, 10),
-		"top_blocked_categories": topN(s.categoryCounts, 10),
-		"top_user_agents":       topN(s.uaCounts, 10),
+		"total_requests":         total,
+		"total_blocked":          blocked,
+		"block_rate_pct":         math.Round(blockRate*100) / 100,
+		"avg_url_entropy":        avgURLEntropy,
+		"avg_body_entropy":       avgBodyEntropy,
+		"high_entropy_count":     s.highEntropyCount.Load(),
+		"requests_last_minute":   s.recentCount.Load(),
+		"top_destinations":       destTop,
+		"top_blocked_categories": catTop,
+		"top_user_agents":        uaTop,
 	}
 }

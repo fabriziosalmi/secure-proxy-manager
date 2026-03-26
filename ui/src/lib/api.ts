@@ -5,23 +5,53 @@ export const api = axios.create({
   timeout: 120000,
 });
 
-// Attach JWT Bearer token from localStorage to every request
+/** Decode JWT payload without a library (base64url → JSON). */
+function decodeJwtPayload(token: string): { exp?: number } | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(payload));
+  } catch {
+    return null;
+  }
+}
+
+/** Check if a JWT token is expired (with 60s grace period). */
+export function isTokenExpired(token: string): boolean {
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) return false; // No exp claim = never expires
+  return payload.exp * 1000 < Date.now() - 60_000;
+}
+
+// Attach JWT Bearer token from localStorage to every request.
+// If token is expired, clear it and skip the header.
+let reloadScheduled = false;
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('auth_token');
   if (token) {
+    if (isTokenExpired(token)) {
+      localStorage.removeItem('auth_token');
+      if (!reloadScheduled) {
+        reloadScheduled = true;
+        window.location.reload();
+      }
+      return config;
+    }
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-// On 401, clear the stale token and reload so the Login page appears.
-// Guard: only reload if we had a token — otherwise the user is on the login page
-// and a wrong-password attempt would reload the page before the error can be shown.
+// On 401, clear the stale token and reload ONCE.
+// Guard: only reload if we had a token and haven't already scheduled a reload.
 api.interceptors.response.use(
   (response) => response,
   (error: unknown) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      if (localStorage.getItem('auth_token')) {
+      if (localStorage.getItem('auth_token') && !reloadScheduled) {
+        reloadScheduled = true;
         localStorage.removeItem('auth_token');
         window.location.reload();
       }

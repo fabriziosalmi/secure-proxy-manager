@@ -11,15 +11,14 @@ import (
 )
 
 const (
-	highEntropyThresh  = 4.5
 	trafficLogPath     = "/data/waf_traffic.jsonl"
 	trafficLogMaxBytes = 100 * 1 << 20 // 100 MB
+	highEntropyThresh  = 4.5
+	logQueueSize       = 4096 // Bounded channel — drops on overflow
 )
 
 // ── Shannon Entropy ─────────────────────────────────────────────────────────
 
-// shannonEntropy calculates the Shannon entropy of a string in bits per char.
-// High entropy (>4.5) suggests base64, encrypted, or obfuscated content.
 func shannonEntropy(s string) float64 {
 	if len(s) == 0 {
 		return 0
@@ -41,7 +40,6 @@ func shannonEntropy(s string) float64 {
 
 // ── Traffic Feature Extraction ──────────────────────────────────────────────
 
-// TrafficFeature captures per-request metadata for ML training.
 type TrafficFeature struct {
 	Timestamp       string   `json:"ts"`
 	ClientIP        string   `json:"client_ip"`
@@ -64,15 +62,19 @@ type TrafficFeature struct {
 	LatencyUS       int64    `json:"latency_us"`
 }
 
-// ── JSONL Traffic Logger ────────────────────────────────────────────────────
+// ── Async JSONL Traffic Logger ──────────────────────────────────────────────
+// Uses a bounded channel to decouple request handling from disk I/O.
+// If the channel is full, new entries are silently dropped (backpressure).
 
 type TrafficLogger struct {
-	mu      sync.Mutex
+	ch      chan TrafficFeature
+	mu      sync.Mutex // Protects file ops only during rotation
 	writer  *bufio.Writer
 	file    *os.File
 	path    string
 	maxSize int64
 	written int64
+	done    chan struct{}
 }
 
 var trafficLog *TrafficLogger
@@ -93,49 +95,75 @@ func newTrafficLogger(path string, maxSize int64) *TrafficLogger {
 		written = info.Size()
 	}
 
-	return &TrafficLogger{
+	tl := &TrafficLogger{
+		ch:      make(chan TrafficFeature, logQueueSize),
 		writer:  bufio.NewWriterSize(f, 64*1024),
 		file:    f,
 		path:    path,
 		maxSize: maxSize,
 		written: written,
+		done:    make(chan struct{}),
 	}
+
+	// Single writer goroutine — no lock contention on hot path
+	go tl.drainLoop()
+
+	return tl
 }
 
+// Write enqueues a feature for async writing. Non-blocking; drops if full.
 func (tl *TrafficLogger) Write(feature TrafficFeature) {
 	if tl == nil {
 		return
 	}
-	data, err := json.Marshal(feature)
-	if err != nil {
-		return
+	select {
+	case tl.ch <- feature:
+	default:
+		// Queue full — drop silently (backpressure)
 	}
-	data = append(data, '\n')
-
-	tl.mu.Lock()
-	defer tl.mu.Unlock()
-
-	// Rotate if needed
-	if tl.written+int64(len(data)) > tl.maxSize {
-		tl.writer.Flush()
-		tl.file.Close()
-		// Rename current to .1, discard .2
-		os.Remove(tl.path + ".1")
-		os.Rename(tl.path, tl.path+".1")
-		f, err := os.OpenFile(tl.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			log.Printf("Failed to rotate traffic log: %v\n", err)
-			return
-		}
-		tl.file = f
-		tl.writer = bufio.NewWriterSize(f, 64*1024)
-		tl.written = 0
-	}
-
-	n, _ := tl.writer.Write(data)
-	tl.written += int64(n)
 }
 
+// drainLoop is the single goroutine that writes to disk sequentially.
+func (tl *TrafficLogger) drainLoop() {
+	for feature := range tl.ch {
+		data, err := json.Marshal(feature)
+		if err != nil {
+			continue
+		}
+		data = append(data, '\n')
+
+		tl.mu.Lock()
+		if tl.written+int64(len(data)) > tl.maxSize {
+			tl.rotate()
+		}
+		n, _ := tl.writer.Write(data)
+		tl.written += int64(n)
+		tl.mu.Unlock()
+	}
+	close(tl.done)
+}
+
+// rotate swaps the log file. Must be called under tl.mu lock.
+func (tl *TrafficLogger) rotate() {
+	tl.writer.Flush()
+	tl.file.Close()
+	os.Remove(tl.path + ".1")
+	os.Rename(tl.path, tl.path+".1")
+	f, err := os.OpenFile(tl.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("Failed to rotate traffic log: %v\n", err)
+		// Fallback: reopen the .1 file to avoid FD leak
+		f, _ = os.OpenFile(tl.path+".1", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if f == nil {
+			f, _ = os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+		}
+	}
+	tl.file = f
+	tl.writer = bufio.NewWriterSize(f, 64*1024)
+	tl.written = 0
+}
+
+// Flush flushes the buffered writer.
 func (tl *TrafficLogger) Flush() {
 	if tl == nil {
 		return
@@ -143,4 +171,17 @@ func (tl *TrafficLogger) Flush() {
 	tl.mu.Lock()
 	defer tl.mu.Unlock()
 	tl.writer.Flush()
+}
+
+// Close gracefully shuts down the logger.
+func (tl *TrafficLogger) Close() {
+	if tl == nil {
+		return
+	}
+	close(tl.ch)
+	<-tl.done
+	tl.mu.Lock()
+	defer tl.mu.Unlock()
+	tl.writer.Flush()
+	tl.file.Close()
 }
