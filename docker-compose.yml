@@ -11,6 +11,12 @@ services:
     environment:
       - BACKEND_URL=${BACKEND_URL:-http://backend:5000}
       - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-120}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8011/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     deploy:
       resources:
         limits:
