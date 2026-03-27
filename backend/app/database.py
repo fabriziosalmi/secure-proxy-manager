@@ -140,6 +140,21 @@ def init_db():
     )
     ''')
 
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT DEFAULT (datetime('now')),
+        username TEXT,
+        action TEXT NOT NULL,
+        target TEXT,
+        details TEXT
+    )
+    ''')
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)")
+    except sqlite3.OperationalError:
+        pass
+
     # Seed admin user from environment
     env_username = os.environ.get('BASIC_AUTH_USERNAME')
     env_password = os.environ.get('BASIC_AUTH_PASSWORD')
@@ -160,6 +175,20 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+
+def audit(username: str, action: str, target: str = "", details: str = ""):
+    """Record an action in the audit log."""
+    try:
+        conn = get_db()
+        conn.execute(
+            "INSERT INTO audit_log (username, action, target, details) VALUES (?, ?, ?, ?)",
+            (username, action, target, details[:500])
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"Audit log write failed: {e}")
 
 
 def export_blacklists_to_files():

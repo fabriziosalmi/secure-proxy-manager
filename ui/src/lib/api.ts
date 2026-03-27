@@ -27,6 +27,14 @@ export function isTokenExpired(token: string): boolean {
 // Attach JWT Bearer token from localStorage to every request.
 // If token is expired, clear it and skip the header.
 let reloadScheduled = false;
+let expiryWarningShown = false;
+
+/** Check if token expires within N minutes. */
+function tokenExpiresSoon(token: string, minutes: number): boolean {
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) return false;
+  return payload.exp * 1000 < Date.now() + minutes * 60_000;
+}
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('auth_token');
@@ -38,6 +46,11 @@ api.interceptors.request.use((config) => {
         window.location.reload();
       }
       return config;
+    }
+    // Warn 5 minutes before expiry
+    if (!expiryWarningShown && tokenExpiresSoon(token, 5)) {
+      expiryWarningShown = true;
+      window.dispatchEvent(new CustomEvent('session-expiring'));
     }
     config.headers.Authorization = `Bearer ${token}`;
   }
