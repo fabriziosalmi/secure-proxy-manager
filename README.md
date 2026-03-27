@@ -1,20 +1,36 @@
 # Secure Proxy Manager
 
-A containerized web proxy management system based on Squid, featuring a web interface for managing blacklists, monitoring traffic, and enforcing security policies. Suitable for homelab and self-hosted environments.
+A containerized egress proxy + WAF solution with a Go backend, React dashboard, and 166-rule ICAP WAF engine. Blocks attacks, detects data exfiltration, and provides real-time threat intelligence. Built for homelab, self-hosted, and SMB environments.
+
+## Benchmark Results
+
+| Metric | Value |
+|--------|-------|
+| E2E Tests | **108 checks, 98+ passed** |
+| WAF Rules | **166 regex + 7 heuristic + 3 ML-lite** |
+| Attack Detection | **17/17 (100%)** |
+| False Positives | **0/7 (0%)** |
+| Evasion Resistance | **5/5 (double-encode, case-mix, null byte, unicode, long payload)** |
+| P50 Latency | **107ms** (with full ICAP inspection) |
+| Backend Memory | **~20MB** (Go binary) |
+| Backend Binary | **16MB** (single file, zero dependencies) |
 
 ## Key Features
 
-- **WAF Engine**: 171 regex rules + 7 behavioral heuristics across 21 categories, anomaly scoring with configurable threshold, Shannon entropy analysis, tiered matching with early-exit.
+- **Go Backend**: Single 16MB binary, ~20MB RAM. Replaced Python/FastAPI — 7x less memory, deterministic latency.
+- **WAF Engine (Go ICAP)**: 166 regex rules + 7 behavioral heuristics + 3 ML-lite checks across 21+ categories. Anomaly scoring, Shannon entropy, tiered matching with early-exit.
+- **ML-Lite Detection**: DGA domain detection (bigram frequency analysis), typosquatting (Levenshtein + homoglyph), safe URL cache (skip regex for known-clean URLs).
 - **DNS Blackhole**: dnsmasq sidecar blocks 87K+ domains at L3 (DNS resolution → 0.0.0.0) with zero HTTP overhead.
-- **Traffic Intelligence**: Per-request feature extraction (entropy, timing, headers), JSONL profiling for ML training, real-time /stats dashboard.
+- **Traffic Intelligence**: Per-request feature extraction (entropy, timing, headers), JSONL profiling, real-time /stats dashboard.
 - **Threat Intel Dashboard**: Shadow IT detector (35+ SaaS services), file type distribution, service type breakdown, domain cloud visualization.
 - **Protocol Hardening**: Method whitelisting (GET/POST/HEAD only), Via/XFF header stripping, HSTS injection, max header size limits, strict content-length enforcement.
-- **Consolidation**: 50+ DB connection leaks fixed, zero TypeScript `any` types, 0 Dependabot vulnerabilities, streaming import for 2.6M+ domains.
-- **Architecture**: Modular FastAPI backend (8 routers, 70+ endpoints), React 19 + @tanstack/react-query frontend, SQLite WAL.
-- **Blocklists**: 16 popular lists (8 IP + 8 domain including fabriziosalmi/blacklists with 2.9M+ domains), Geo-blocking by country, paginated UI with search.
+- **Security Audit**: 27 fixes across 5 rounds — XFF spoofing mitigation, SSRF DNS rebinding protection, atomic file writes, JWT blacklist, audit logging, body size limits, security headers (CSP, X-Frame-Options).
+- **Architecture**: Go backend (chi router, zerolog, modernc/sqlite), React 19 + @tanstack/react-query frontend, SQLite WAL.
+- **Blocklists**: 16 popular lists (8 IP + 8 domain including 2.9M+ aggregated domains), Geo-blocking by country, paginated UI with search.
 - **Heuristics**: Entropy thresholding, C2 beaconing detection, PII leak counter, destination sharding, protocol ghosting, header morphing, sequence validation.
-- **Power User UX**: Global search (⌘K), keyboard shortcuts (1-5 for pages), asset tags (name your IPs), cache efficiency gauge.
-- **Custom Block Pages**: Branded dark-theme error pages with project logo and credits.
+- **Power User UX**: Global search (⌘K), keyboard shortcuts (1-5 for pages), mobile responsive (hamburger menu), version + runtime badge in sidebar.
+- **E2E Test Suite**: 108 checks across 3 parts (Client, Admin, Advanced) — run anytime with `./tests/e2e.sh`.
+- **Custom Block Pages**: Branded dark-theme error pages with project logo.
 - **SSL Bump**: Inspect and filter HTTPS traffic with auto-generated certificates.
 - **Caching**: Configurable L1 (memory) + L2 (disk) content caching via Squid.
 - **Deployment**: Containerized 6-service architecture via docker-compose (UI, Backend, Proxy, WAF, DNS, Tailscale).
@@ -23,10 +39,10 @@ A containerized web proxy management system based on Squid, featuring a web inte
 
 The project employs a microservices architecture:
 
-1. **Frontend (React 19/Vite/Nginx)**: SPA with @tanstack/react-query, Recharts dashboards, paginated blacklists, WAF Intelligence card, Threat Intel page with Shadow IT/file types/domain cloud, global search (⌘K), keyboard shortcuts.
-2. **Backend (FastAPI)**: Modular Python backend (8 API routers, 70+ endpoints), SQLite WAL, WebSocket log streaming, JWT auth, analytics (shadow IT, file extensions, service types, top domains).
+1. **Frontend (React 19/Vite/Nginx)**: SPA with @tanstack/react-query, Recharts dashboards, paginated blacklists, Threat Intel page with Shadow IT/file types/domain cloud, global search (⌘K), mobile responsive.
+2. **Backend (Go)**: Single 16MB binary (chi router, zerolog, modernc/sqlite). 70+ endpoints, WebSocket log streaming, JWT auth + blacklist, audit logging, SSRF-safe HTTP client with DNS pinning.
 3. **Proxy Engine (Squid 5.9)**: Caching/filtering with ICAP integration, custom branded block pages, IP ACL blocking, protocol hardening (method whitelist, header stripping, HSTS).
-4. **WAF Engine (Go ICAP)**: 171 regex rules + 7 behavioral heuristics, anomaly scoring, Shannon entropy, JSONL traffic profiling.
+4. **WAF Engine (Go ICAP)**: 166 regex rules + 7 behavioral heuristics + 3 ML-lite checks (DGA, typosquatting, safe URL cache). Anomaly scoring, Shannon entropy, dual-scan (raw + normalized).
 5. **DNS Blackhole (dnsmasq)**: Internal DNS resolver that sinkhole-blocks 87K+ blacklisted domains at L3.
 6. **Tailscale Sidecar** (optional): Secure remote access overlay network.
 
@@ -38,15 +54,18 @@ The project employs a microservices architecture:
 
 ```
 secure-proxy-manager/
-├── backend/                  # FastAPI backend service
-│   └── app/
-│       ├── main.py           # App factory, lifespan, WebSocket
-│       ├── config.py         # Environment-based configuration
-│       ├── auth.py           # JWT + Basic Auth, rate limiting
-│       ├── database.py       # SQLite WAL, schema, migrations
-│       ├── models.py         # Pydantic models
-│       ├── websocket.py      # WebSocket manager, log tailing
-│       └── routers/          # 8 API routers (auth, blacklists, logs, settings, etc.)
+├── backend-go/               # Go backend (v2.0 — replaces Python)
+│   ├── cmd/server/main.go    # Entry point, router, graceful shutdown
+│   └── internal/
+│       ├── auth/             # JWT + Basic Auth, rate limiting, token blacklist
+│       ├── config/           # Environment-based configuration
+│       ├── database/         # SQLite WAL, schema, migrations, atomic exports
+│       ├── docker/           # Docker API client (Squid/dnsmasq signaling)
+│       ├── handlers/         # HTTP handlers (auth, blacklists, analytics, etc.)
+│       ├── middleware/       # CORS, RequestID, MaxBodySize, SecurityHeaders
+│       ├── websocket/        # WebSocket hub with client lifecycle
+│       └── workers/          # Background: log tailing, retention, auto-refresh
+├── backend/                  # Python backend (legacy, kept for reference)
 ├── ui/                       # React 19 frontend
 │   └── src/
 │       ├── pages/            # Dashboard, Blacklists, ThreatIntel, Logs, Settings, Login
@@ -55,13 +74,16 @@ secure-proxy-manager/
 ├── proxy/                    # Squid proxy service
 │   ├── startup.sh            # Config generator with IP blocking + dnsmasq wiring
 │   └── error-pages/          # Custom branded dark-theme block pages
-├── waf-go/                   # Go ICAP WAF engine (6 modules)
-│   ├── main.go               # ICAP handlers, notification workers
-│   ├── rules.go              # 171 regex rules across 21 categories
+├── waf-go/                   # Go ICAP WAF engine (10 modules)
+│   ├── main.go               # ICAP handlers, safe URL cache integration
+│   ├── rules.go              # 166 regex rules across 21 categories
 │   ├── heuristics.go         # 7 behavioral anomaly detection rules
+│   ├── bloom.go              # Safe URL cache (skip regex for known-clean URLs)
+│   ├── dga.go                # DGA domain detection (bigram + entropy analysis)
+│   ├── typosquat.go          # Typosquatting detection (Levenshtein + homoglyphs)
 │   ├── entropy.go            # Shannon entropy, JSONL traffic profiler
 │   ├── stats.go              # Real-time metrics collector
-│   ├── normalize.go          # Anti-evasion input normalization
+│   ├── normalize.go          # Anti-evasion input normalization (dual-scan)
 │   ├── fuzz_test.go          # Evasion + false positive + stability fuzzing
 │   └── main_test.go          # 80+ test cases + benchmarks
 ├── dns/                      # dnsmasq DNS blackhole sidecar
@@ -73,7 +95,9 @@ secure-proxy-manager/
 ├── data/                     # SQLite DB + WAF traffic JSONL
 ├── BENCHMARKS.md             # Live performance & security results
 ├── CHANGELOG.md
-└── docker-compose.yml        # 6-service stack
+├── docker-compose.yml        # 6-service stack (Python backend)
+├── docker-compose.go.yml     # Go backend overlay (recommended)
+└── tests/e2e.sh              # 108-check E2E test suite
 ```
 
 ## Prerequisites
@@ -122,9 +146,13 @@ If this is your first time deploying Secure Proxy Manager, use the **initializat
    ```
    *Note: The containers will crash on startup if these credentials are not provided.*
 
-4. **Start the application**:
+4. **Start the application** (Go backend — recommended):
    ```bash
-   docker-compose up -d
+   docker compose -f docker-compose.yml -f docker-compose.go.yml up -d --build
+   ```
+   Or with Python backend (legacy):
+   ```bash
+   docker compose up -d
    ```
 
 4. **Access the web interface**:
@@ -451,16 +479,27 @@ To test if blacklisting works:
 2. Attempt to access a resource from that IP or domain
 3. Verify the request is blocked (check logs)
 
-### Running the Test Suite
+### Running the E2E Test Suite
 
-Execute the Playwright end-to-end test suite (requires Docker):
+Run the comprehensive 108-check test suite against a live deployment:
 
 ```bash
-# Build and run the full test stack (backend + UI + test-runner)
-docker compose -f docker-compose.test.yml up --build --exit-code-from test-runner
+# Full E2E: connectivity, WAF attacks, false positives, CRUD, settings, ML detection
+./tests/e2e.sh <HOST> <USER> <PASSWORD>
 
-# Tear down and reset volumes between runs
-docker compose -f docker-compose.test.yml down -v
+# Example
+./tests/e2e.sh 192.168.100.253 admin mypassword
+```
+
+The test suite covers:
+- **Part A (Client)**: Proxy connectivity, 17 WAF attack vectors, 7 false positive checks, protocol hardening, latency
+- **Part B (Admin)**: Auth, 9 analytics endpoints, blacklist CRUD, settings, feature toggles, maintenance, database
+- **Part C (Advanced)**: Settings CRUD persistence, response body validation, WAF evasion (5 vectors), DGA/typosquatting detection, concurrent stress (10 parallel), error handling
+
+### Running WAF Unit Tests
+
+```bash
+cd waf-go && go test -v -count=1
 ```
 
 ## Frequently Asked Questions (FAQ)
@@ -843,10 +882,10 @@ Full interactive API documentation is available at `/api/docs` when the service 
 - **Regex Playground**: Test WAF rules against real traffic logs before deploying
 - **WAF False Positive Management**: Exclude rules per domain with one click
 - **ASN Blocking**: Block entire Autonomous Systems by number
-- **Authentication Integration**: LDAP/Active Directory support
-- **Advanced Analytics**: ML-based traffic pattern analysis, baseline overlays
-- **Mobile Support**: Improved UI for mobile administration
+- **Bloom Filter Tuning**: Auto-adjust cache TTL based on traffic patterns
+- **Federated Threat Intel**: Share anonymized threat data between instances
 - **Config Versioning**: Diff and rollback proxy/WAF configuration changes
+- **PDF Reports**: Re-implement in Go (removed during Python→Go migration)
 
 ## Contributing
 
@@ -877,10 +916,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Acknowledgements
 
 - [Squid Proxy](http://www.squid-cache.org/) for the core proxy engine
-- [FastAPI](https://fastapi.tiangolo.com/) for the backend framework
+- [Go](https://go.dev/) for the backend and WAF engine runtime
+- [chi](https://github.com/go-chi/chi) for HTTP routing
 - [React](https://react.dev/) and [Tailwind CSS](https://tailwindcss.com/) for the frontend
 - [Recharts](https://recharts.org/) for dashboard data visualization
 - [Docker](https://www.docker.com/) for containerization
+- [Claude Code](https://claude.ai/code) for AI-assisted development
 - All contributors who have helped shape this project
 
 ## Support
@@ -900,4 +941,4 @@ When reporting issues, please include:
 
 ---
 
-**Made by the Secure Proxy Manager community**
+**Made by Fabrizio Salmi + Claude Code + the Secure Proxy Manager community**
