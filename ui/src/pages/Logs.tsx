@@ -11,6 +11,7 @@ export function Logs() {
   const [searchTerm, setSearchTerm] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [realtimeLogs, setRealtimeLogs] = useState<LogEntry[]>([]);
+  const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
   const socketRef = useRef<WebSocket | null>(null);
 
   const { data, isLoading: loading, refetch: refreshLogs } = useQuery<LogsPageData>({
@@ -62,8 +63,9 @@ export function Logs() {
       ws = new WebSocket(socketUrl);
       socketRef.current = ws;
 
+      setWsStatus('connecting');
       ws.onopen = () => {
-        console.log('Connected to real-time log stream');
+        setWsStatus('connected');
         pingInterval = setInterval(() => {
           if (ws?.readyState === WebSocket.OPEN) {
             ws.send('ping');
@@ -76,21 +78,21 @@ export function Logs() {
         try {
           const newLog = JSON.parse(event.data);
           setRealtimeLogs(prev => [newLog, ...prev].slice(0, 200));
-        } catch (e) {
-          console.error('Failed to parse incoming log', e);
+        } catch {
+          // Malformed message — skip
         }
       };
 
       ws.onclose = () => {
-        console.log('Disconnected from real-time log stream');
+        setWsStatus('disconnected');
         if (pingInterval) clearInterval(pingInterval);
       };
 
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+      ws.onerror = () => {
+        setWsStatus('disconnected');
       };
-    }).catch((err) => {
-      console.error('Failed to obtain WS token:', err);
+    }).catch(() => {
+      setWsStatus('disconnected');
     });
 
     return () => {
@@ -157,8 +159,8 @@ export function Logs() {
             onClick={() => setAutoRefresh(!autoRefresh)}
             className={`flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${autoRefresh ? 'bg-primary/20 text-primary' : 'bg-secondary text-foreground hover:bg-secondary/80'}`}
           >
-            <Activity className={`w-4 h-4 mr-2 ${autoRefresh ? 'animate-pulse' : ''}`} />
-            Live Stream
+            <Activity className={`w-4 h-4 mr-2 ${autoRefresh && wsStatus === 'connected' ? 'animate-pulse' : ''}`} />
+            {autoRefresh ? (wsStatus === 'connected' ? 'Live' : wsStatus === 'connecting' ? 'Connecting...' : 'Reconnecting...') : 'Live Stream'}
           </button>
           <button 
             onClick={() => refreshLogs()}
