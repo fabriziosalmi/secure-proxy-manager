@@ -22,7 +22,7 @@ features:
   - title: IP Whitelist
     details: Whitelist trusted destination IPs to bypass the direct-IP block. Useful for LAN NAS, printers, and other devices accessed by IP address.
   - title: ICAP WAF
-    details: Python-based ICAP server inspects all HTTP requests for SQL injection, XSS, directory traversal, command injection, and unicode homograph attacks.
+    details: Go-based ICAP server inspects all HTTP requests using 171 regex rules across 21 categories plus 7 behavioral heuristics (entropy, beaconing, PII, sharding, ghosting, morphing, sequence). Anomaly scoring with configurable threshold.
   - title: Real-time Logs
     details: Live log streaming via WebSocket with one-time token authentication. Filter by IP, domain, or status. Search, stats, and CSV-ready table.
   - title: Security Hardening

@@ -9,7 +9,7 @@ It is designed for homelab operators, homelabbers, and small businesses who need
 - **Forward proxy** — HTTP and HTTPS (with optional SSL bump) traffic filtering via Squid
 - **Blacklists** — domain and IP blocking with wildcard, CIDR, and regex support
 - **IP whitelist** — trusted destination IPs that bypass the direct-IP block rule
-- **WAF** — Python ICAP server that inspects request payloads for common attack patterns
+- **WAF** — Go ICAP server that inspects request payloads with 171 regex rules across 21 categories and 7 behavioral heuristics
 - **Real-time logs** — WebSocket-based live log stream with search and stats
 - **Dashboard** — 24h traffic chart, security score, blocked count, recent sessions
 - **Blocklist import** — URL or inline import; one-click popular list import (Spamhaus, Firehol, Pi-hole, Phishing Army)
@@ -36,6 +36,6 @@ It is designed for homelab operators, homelabbers, and small businesses who need
 
 | Port | Service | Notes |
 |---|---|---|
-| `8011` | Web UI | HTTP, served by Flask proxy |
+| `8011` | Web UI | HTTP, served by Nginx |
 | `3128` | Squid proxy | Configure clients to use this |
-| `5001` | Backend API | Bound to `127.0.0.1` only by default |
+| `5001` | Backend API | Bound to `0.0.0.0` by default; restrict with firewall rules if internet-facing |
