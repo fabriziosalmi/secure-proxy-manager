@@ -5,7 +5,7 @@ import { api } from '../../lib/api';
 
 type ApiStatus = 'connected' | 'disconnected' | 'checking';
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking');
 
   useEffect(() => {
@@ -59,6 +59,7 @@ export function Sidebar() {
             <NavLink
               key={item.to}
               to={item.to}
+              onClick={onNavigate}
               className={({ isActive }) =>
                 `flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                   isActive

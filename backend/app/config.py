@@ -4,6 +4,9 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
+# Version — single source of truth
+APP_VERSION = "1.8.1"
+
 # Database
 DATABASE_PATH = os.environ.get('DATABASE_PATH', '/data/secure_proxy.db')
 

@@ -28,8 +28,7 @@ export function Logs() {
     }
   }, [data]);
 
-  // Setup WebSocket connection for real-time logs
-  // Fetches a one-time auth token first since browsers cannot send auth headers on WS upgrades
+  // Setup WebSocket connection for real-time logs with auto-reconnect
   useEffect(() => {
     if (!autoRefresh) {
       if (socketRef.current) {
@@ -41,63 +40,76 @@ export function Logs() {
 
     let ws: WebSocket | null = null;
     let pingInterval: ReturnType<typeof setInterval>;
+    let reconnectTimeout: ReturnType<typeof setTimeout>;
     let cancelled = false;
+    let retryCount = 0;
+    const MAX_RETRIES = 10;
 
-    api.get('/ws-token').then(({ data }) => {
+    const connect = () => {
       if (cancelled) return;
+      api.get('/ws-token').then(({ data }) => {
+        if (cancelled) return;
 
-      const token = data.token;
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const hostname = window.location.hostname;
-      // WS port resolution order:
-      //  1. window.__WS_BACKEND_PORT__  (runtime injection via <script> in index.html)
-      //  2. VITE_WS_BACKEND_PORT        (build-time env var, e.g. for direct-port deployments)
-      //  3. window.location.port        (same port as UI — works when nginx proxies /api/ws/)
-      //  4. protocol default (443/80)
-      const wsPort = (window as Window & { __WS_BACKEND_PORT__?: string }).__WS_BACKEND_PORT__
-        ?? import.meta.env.VITE_WS_BACKEND_PORT
-        ?? window.location.port
-        ?? (window.location.protocol === 'https:' ? '443' : '80');
-      const socketUrl = `${wsProtocol}//${hostname}:${wsPort}/api/ws/logs?token=${encodeURIComponent(token)}`;
+        const token = data.token;
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const hostname = window.location.hostname;
+        const wsPort = (window as Window & { __WS_BACKEND_PORT__?: string }).__WS_BACKEND_PORT__
+          ?? import.meta.env.VITE_WS_BACKEND_PORT
+          ?? window.location.port
+          ?? (window.location.protocol === 'https:' ? '443' : '80');
+        const socketUrl = `${wsProtocol}//${hostname}:${wsPort}/api/ws/logs?token=${encodeURIComponent(token)}`;
 
-      ws = new WebSocket(socketUrl);
-      socketRef.current = ws;
+        ws = new WebSocket(socketUrl);
+        socketRef.current = ws;
+        setWsStatus('connecting');
 
-      setWsStatus('connecting');
-      ws.onopen = () => {
-        setWsStatus('connected');
-        pingInterval = setInterval(() => {
-          if (ws?.readyState === WebSocket.OPEN) {
-            ws.send('ping');
+        ws.onopen = () => {
+          setWsStatus('connected');
+          retryCount = 0; // Reset on success
+          pingInterval = setInterval(() => {
+            if (ws?.readyState === WebSocket.OPEN) ws.send('ping');
+          }, 30000);
+        };
+
+        ws.onmessage = (event) => {
+          if (event.data === 'pong') return;
+          try {
+            const newLog = JSON.parse(event.data);
+            setRealtimeLogs(prev => [newLog, ...prev].slice(0, 200));
+          } catch { /* skip */ }
+        };
+
+        ws.onclose = () => {
+          setWsStatus('disconnected');
+          if (pingInterval) clearInterval(pingInterval);
+          // Auto-reconnect with exponential backoff
+          if (!cancelled && retryCount < MAX_RETRIES) {
+            const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+            retryCount++;
+            setWsStatus('connecting');
+            reconnectTimeout = setTimeout(connect, delay);
           }
-        }, 30000);
-      };
+        };
 
-      ws.onmessage = (event) => {
-        if (event.data === 'pong') return;
-        try {
-          const newLog = JSON.parse(event.data);
-          setRealtimeLogs(prev => [newLog, ...prev].slice(0, 200));
-        } catch {
-          // Malformed message — skip
+        ws.onerror = () => { /* onclose will fire */ };
+      }).catch(() => {
+        if (!cancelled && retryCount < MAX_RETRIES) {
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+          retryCount++;
+          setWsStatus('connecting');
+          reconnectTimeout = setTimeout(connect, delay);
+        } else {
+          setWsStatus('disconnected');
         }
-      };
+      });
+    };
 
-      ws.onclose = () => {
-        setWsStatus('disconnected');
-        if (pingInterval) clearInterval(pingInterval);
-      };
-
-      ws.onerror = () => {
-        setWsStatus('disconnected');
-      };
-    }).catch(() => {
-      setWsStatus('disconnected');
-    });
+    connect();
 
     return () => {
       cancelled = true;
       if (pingInterval) clearInterval(pingInterval);
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
         ws.close();
       }

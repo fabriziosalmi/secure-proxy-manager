@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Zap, Download, Copy, Check, Brain, AlertTriangle, RotateCcw } from 'lucide-react';
+import { Zap, Download, Copy, Check, Brain, AlertTriangle, RotateCcw, Loader2 } from 'lucide-react';
 import { Area, Bar, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, PieChart, Pie } from 'recharts';
 import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,7 +19,7 @@ export function Dashboard() {
   const [vis, setVis] = useState(document.visibilityState !== 'hidden');
   useEffect(() => { const h = () => setVis(document.visibilityState !== 'hidden'); document.addEventListener('visibilitychange', h); return () => document.removeEventListener('visibilitychange', h); }, []);
 
-  const { data: s } = useQuery<any>({ queryKey: ['dashboard'], queryFn: () => api.get('dashboard/summary').then(r => r.data.data), refetchInterval: vis ? REFETCH : false });
+  const { data: s, isLoading } = useQuery<any>({ queryKey: ['dashboard'], queryFn: () => api.get('dashboard/summary').then(r => r.data.data), refetchInterval: vis ? REFETCH : false });
   const { data: tl } = useQuery<TimelineEntry[]>({ queryKey: ['timeline'], queryFn: () => api.get('logs/timeline').then(r => r.data.data), refetchInterval: vis ? REFETCH : false });
   const { data: sec } = useQuery<SecurityScore>({ queryKey: ['score'], queryFn: () => api.get('security/score').then(r => r.data.data), refetchInterval: vis ? 30_000 : false });
   const { data: cache } = useQuery<any>({ queryKey: ['cache'], queryFn: () => api.get('cache/statistics').then(r => r.data.data), refetchInterval: vis ? 30_000 : false });
@@ -56,8 +56,15 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* Loading indicator */}
+      {isLoading && (
+        <div className="flex items-center gap-2 text-muted-foreground text-xs">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />Loading dashboard data...
+        </div>
+      )}
+
       {/* Compact stats row */}
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
+      <div className={`grid gap-3 grid-cols-2 lg:grid-cols-6 ${isLoading ? 'animate-pulse' : ''}`}>
         <Card className="bg-card/50">
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Today</p>
