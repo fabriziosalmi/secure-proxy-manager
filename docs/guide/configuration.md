@@ -19,7 +19,7 @@ All configuration is done via the `.env` file in the project root, which is read
 | `PROXY_HOST` | `proxy` | Squid container hostname (Docker service name) |
 | `PROXY_PORT` | `3128` | Squid proxy port |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:8011,http://web:8011` | Comma-separated list of allowed CORS origins |
-| `PROXY_CONTAINER_NAME` | `secure-proxy-proxy-1` | Docker container name used to send reconfigure signals |
+| `PROXY_CONTAINER_NAME` | `secure-proxy-manager-proxy` | Docker container name used to send reconfigure signals |
 
 ### Web UI
 
@@ -34,9 +34,25 @@ All configuration is done via the `.env` file in the project root, which is read
 
 | Variable | Default | Description |
 |---|---|---|
-| `BACKEND_URL` | `http://backend:5000` | Backend URL for sending WAF alert notifications |
 | `BASIC_AUTH_USERNAME` | — | Must match the backend credential for `/api/internal/alert` |
 | `BASIC_AUTH_PASSWORD` | — | Must match the backend credential |
+| `WAF_BLOCK_THRESHOLD` | `10` | Anomaly score threshold above which a request is blocked |
+| `WAF_H_ENTROPY` | `1` | Enable Shannon entropy heuristic (1=on, 0=off) |
+| `WAF_H_ENTROPY_MAX` | `7.5` | Maximum entropy score before blocking |
+| `WAF_H_BEACONING` | `1` | Enable C2 beaconing detection heuristic |
+| `WAF_H_PII` | `1` | Enable PII leak counter heuristic |
+| `WAF_H_SHARDING` | `1` | Enable destination sharding heuristic |
+| `WAF_H_MORPHING` | `0` | Enable header morphing heuristic (disabled by default) |
+| `WAF_H_GHOSTING` | `1` | Enable protocol ghosting heuristic |
+| `WAF_H_SEQUENCE` | `0` | Enable sequence validation heuristic (disabled by default) |
+
+### DNS
+
+| Variable | Default | Description |
+|---|---|---|
+| `DNS_UPSTREAM_1` | `1.1.1.3` | Primary upstream DNS resolver (Cloudflare malware-blocking) |
+| `DNS_UPSTREAM_2` | `9.9.9.9` | Secondary upstream DNS resolver (Quad9) |
+| `DNS_UPSTREAM_3` | `8.8.8.8` | Tertiary upstream DNS resolver (Google) |
 
 ## Squid Configuration
 
