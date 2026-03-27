@@ -24,9 +24,9 @@ skip()    { ((SKIP_COUNT++)); printf "  ${D}○${N} %-50s ${D}%s${N}\n" "$1" "$2
 section() { printf "\n${B}═══${N} ${BOLD}$1${N} ${B}═══${N}\n\n"; }
 
 TOKEN=""
-auth_get()  { curl -sf --max-time 10 -H "Authorization: Bearer $TOKEN" "${API}$1" 2>/dev/null; }
-auth_post() { curl -sf --max-time 10 -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$@" 2>/dev/null; }
-auth_del()  { curl -sf --max-time 10 -X DELETE -H "Authorization: Bearer $TOKEN" "${API}$1" 2>/dev/null; }
+auth_get()  { curl -s --max-time 10 -H "Authorization: Bearer $TOKEN" "${API}$1" 2>/dev/null; }
+auth_post() { curl -s --max-time 10 -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$@" 2>/dev/null; }
+auth_del()  { curl -s --max-time 10 -X DELETE -H "Authorization: Bearer $TOKEN" "${API}$1" 2>/dev/null; }
 http_code() { curl -s --max-time 10 -o /dev/null -w "%{http_code}" "$@" 2>/dev/null || echo "000"; }
 
 expect_api() {
@@ -139,7 +139,7 @@ section "A5. LATENCY (5 samples)"
 times=()
 for i in $(seq 1 5); do
     t=$(curl -s --max-time 15 -o /dev/null -w "%{time_total}" --proxy "$PROXY" "http://httpbin.org/get" 2>/dev/null || echo "9.999")
-    ms=$(printf "%.0f" "$(echo "$t * 1000" | bc 2>/dev/null)" 2>/dev/null || echo "?")
+    ms=$(awk "BEGIN {printf \"%.0f\", $t * 1000}" 2>/dev/null || echo "?")
     times+=("$ms")
     printf "  ${D}Sample $i:${N} ${ms}ms\n"
 done
