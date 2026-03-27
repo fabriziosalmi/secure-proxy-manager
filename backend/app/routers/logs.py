@@ -13,6 +13,7 @@ router = APIRouter()
 @router.get("/api/logs", dependencies=[Depends(authenticate)])
 def get_logs(limit: int = 25, offset: int = 0, sort: str = 'timestamp', order: str = 'desc'):
     """Get proxy logs with pagination and sorting."""
+    conn = None
     try:
         # Clamp parameters to safe ranges
         limit = max(1, min(limit, 500))
@@ -52,11 +53,10 @@ def get_logs(limit: int = 25, offset: int = 0, sort: str = 'timestamp', order: s
                     "bytes": row_dict.get("bytes"),
                     "method": row_dict.get("method", "CONNECT")
                 })
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Logs query failed: {e}")
             total_count = 0
             logs = []
-
-        conn.close()
 
         return {
             "status": "success",
@@ -66,11 +66,15 @@ def get_logs(limit: int = 25, offset: int = 0, sort: str = 'timestamp', order: s
     except sqlite3.Error as e:
         logger.error(f"Error fetching logs: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch logs")
+    finally:
+        if conn:
+            conn.close()
 
 
 @router.get("/api/logs/stats", dependencies=[Depends(authenticate)])
 def get_log_stats():
     """Get statistics about logs including blocked requests and direct IP blocks."""
+    conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -96,13 +100,12 @@ def get_log_stats():
 
             cursor.execute("SELECT MAX(timestamp) FROM proxy_logs")
             last_import = cursor.fetchone()[0]
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Log stats query failed: {e}")
             total_count = 0
             blocked_count = 0
             ip_blocks_count = 0
             last_import = None
-
-        conn.close()
 
         return {
             "status": "success",
@@ -116,11 +119,15 @@ def get_log_stats():
     except sqlite3.Error as e:
         logger.error(f"Error getting log stats: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get log statistics")
+    finally:
+        if conn:
+            conn.close()
 
 
 @router.get("/api/logs/timeline", dependencies=[Depends(authenticate)])
 def get_log_timeline(hours: int = 24):
     """Get log timeline for charts."""
+    conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -143,38 +150,44 @@ def get_log_timeline(hours: int = 24):
                     "total": row['total'],
                     "blocked": row['blocked'] or 0
                 })
-        except sqlite3.OperationalError:
-            pass
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Log timeline query failed: {e}")
 
-        conn.close()
         return {"status": "success", "data": timeline_data}
     except sqlite3.Error as e:
         logger.error(f"Error getting log timeline: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get log timeline")
+    finally:
+        if conn:
+            conn.close()
 
 
 @router.post("/api/logs/clear", dependencies=[Depends(authenticate)])
 def clear_logs():
     """Clear all proxy logs."""
+    conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
         try:
             cursor.execute("DELETE FROM proxy_logs")
             conn.commit()
-        except sqlite3.OperationalError:
-            pass
-        conn.close()
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Clear logs query failed: {e}")
         logger.info("All logs cleared successfully")
         return {"status": "success", "message": "All logs cleared successfully"}
     except sqlite3.Error as e:
         logger.error(f"An error occurred while clearing logs: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while clearing logs")
+    finally:
+        if conn:
+            conn.close()
 
 
 @router.post("/api/logs/clear-old", dependencies=[Depends(authenticate)])
 def clear_old_logs(days: int = 30):
     """Clear logs older than specified days."""
+    conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -182,11 +195,14 @@ def clear_old_logs(days: int = 30):
             cursor.execute("DELETE FROM proxy_logs WHERE timestamp < datetime('now', ?)", (f'-{days} days',))
             deleted_count = cursor.rowcount
             conn.commit()
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Clear old logs query failed: {e}")
             deleted_count = 0
-        conn.close()
         logger.info(f"Cleared {deleted_count} old logs successfully")
         return {"status": "success", "message": f"Cleared {deleted_count} logs older than {days} days"}
     except sqlite3.Error as e:
         logger.error(f"An error occurred while clearing old logs: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while clearing old logs")
+    finally:
+        if conn:
+            conn.close()

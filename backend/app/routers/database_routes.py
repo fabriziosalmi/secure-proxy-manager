@@ -37,6 +37,7 @@ def get_database_size():
 
 @router.post("/api/database/optimize", dependencies=[Depends(authenticate)])
 def optimize_database():
+    conn = None
     try:
         conn = get_db()
         size_before = os.path.getsize(config.DATABASE_PATH) if os.path.exists(config.DATABASE_PATH) else 0
@@ -47,7 +48,6 @@ def optimize_database():
         size_after = os.path.getsize(config.DATABASE_PATH) if os.path.exists(config.DATABASE_PATH) else 0
         space_saved = max(0, size_before - size_after)
         space_saved_mb = round(space_saved / (1024 * 1024), 2)
-        conn.close()
         logger.info(f"Database optimized successfully. Space saved: {space_saved_mb} MB")
         return {
             "status": "success",
@@ -62,10 +62,14 @@ def optimize_database():
     except sqlite3.Error as e:
         logger.error(f"Error optimizing database: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error optimizing database: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
 
 
 @router.get("/api/database/stats", dependencies=[Depends(authenticate)])
 def get_database_stats():
+    conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -80,15 +84,18 @@ def get_database_stats():
                 # Safe: table_name validated against whitelist above
                 cursor.execute(f"SELECT COUNT(*) FROM [{table_name}]")
                 stats[table_name] = cursor.fetchone()[0]
-        conn.close()
         return {"status": "success", "data": stats}
     except sqlite3.Error as e:
         logger.error(f"Error getting database stats: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting database stats: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
 
 
 @router.get("/api/database/export", dependencies=[Depends(authenticate)])
 def export_database():
+    conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -96,19 +103,22 @@ def export_database():
         try:
             cursor.execute("SELECT * FROM proxy_logs ORDER BY timestamp DESC LIMIT 10000")
             logs = [dict(row) for row in cursor.fetchall()]
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Export: proxy_logs query failed: {e}")
             logs = []
 
         try:
             cursor.execute("SELECT * FROM ip_blacklist")
             ip_blacklist = [dict(row) for row in cursor.fetchall()]
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Export: ip_blacklist query failed: {e}")
             ip_blacklist = []
 
         try:
             cursor.execute("SELECT * FROM domain_blacklist")
             domain_blacklist = [dict(row) for row in cursor.fetchall()]
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Export: domain_blacklist query failed: {e}")
             domain_blacklist = []
 
         _SENSITIVE_KEYS = {
@@ -123,10 +133,9 @@ def export_database():
                 if row_dict.get('setting_name') in _SENSITIVE_KEYS:
                     row_dict['setting_value'] = '***REDACTED***'
                 settings.append(row_dict)
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Export: settings query failed: {e}")
             settings = []
-
-        conn.close()
 
         export_data = {
             "metadata": {
@@ -149,10 +158,14 @@ def export_database():
     except sqlite3.Error as e:
         logger.error(f"Error exporting database: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error exporting database: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
 
 
 @router.post("/api/database/reset", dependencies=[Depends(authenticate)])
 def reset_database():
+    conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -163,12 +176,14 @@ def reset_database():
                 # Safe: table names are hardcoded constants above
                 cursor.execute(f"DELETE FROM [{table}]")
                 cleared_tables.append(table)
-            except sqlite3.OperationalError:
-                pass
+            except sqlite3.OperationalError as e:
+                logger.warning(f"Reset: could not clear table {table}: {e}")
         conn.commit()
-        conn.close()
         init_db()
         return {"status": "success", "message": "Database reset successfully", "data": {"cleared_tables": cleared_tables}}
     except sqlite3.Error as e:
         logger.error(f"Error resetting database: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error resetting database: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
