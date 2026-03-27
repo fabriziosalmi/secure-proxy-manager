@@ -369,12 +369,23 @@ def import_blacklist(request_data: ImportBlacklistRequest, background_tasks: Bac
                 last_status = None
                 for attempt in range(3):
                     try:
-                        resp = requests.get(request_data.url, timeout=60, headers=headers)
+                        resp = requests.get(request_data.url, timeout=180, headers=headers, stream=True)
                         if resp.status_code == 200:
-                            content = resp.text
+                            # Stream large files in chunks to avoid OOM
+                            chunks = []
+                            max_size = 200 * 1024 * 1024  # 200MB hard limit
+                            downloaded = 0
+                            for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                                downloaded += len(chunk)
+                                if downloaded > max_size:
+                                    raise HTTPException(status_code=400, detail="File too large (>200MB)")
+                                chunks.append(chunk)
+                            content = b''.join(chunks).decode('utf-8', errors='ignore')
                             break
                         last_status = resp.status_code
                         logger.warning(f"Attempt {attempt+1}: HTTP {last_status} from {request_data.url}")
+                    except HTTPException:
+                        raise
                     except requests.exceptions.RequestException as exc:
                         last_exc = exc
                         logger.warning(f"Attempt {attempt+1} failed: {exc}")
@@ -455,10 +466,13 @@ def import_blacklist(request_data: ImportBlacklistRequest, background_tasks: Bac
                 else:
                     entries_skipped += 1
 
-        if to_insert:
+        # Batch insert in chunks to avoid huge transactions
+        BATCH_SIZE = 5000
+        for i in range(0, len(to_insert), BATCH_SIZE):
+            batch = to_insert[i:i + BATCH_SIZE]
             cursor.executemany(
-                f"INSERT INTO {table_name} ({column_name}, description) VALUES (?, ?)",
-                to_insert
+                f"INSERT OR IGNORE INTO {table_name} ({column_name}, description) VALUES (?, ?)",
+                batch
             )
             conn.commit()
 
