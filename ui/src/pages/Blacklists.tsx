@@ -233,7 +233,7 @@ export function Blacklists() {
   ];
 
   const popularDomainLists = [
-    { name: 'Fabrizio Salmi Blacklists', url: 'https://github.com/fabriziosalmi/blacklists/releases/download/latest/blacklist.txt', desc: '2.9M+ domains from 61 aggregated sources, updated daily' },
+    { name: 'Aggregated Blacklist (Ads+Trackers+Malware)', url: 'https://github.com/fabriziosalmi/blacklists/releases/download/latest/blacklist.txt', desc: '2.9M+ domains from 61 aggregated sources, updated daily' },
     { name: 'StevenBlack Unified', url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', desc: 'Adware + malware hosts from multiple curated sources' },
     { name: 'URLhaus Malware', url: 'https://urlhaus.abuse.ch/downloads/hostfile/', desc: 'Active malware distribution domains from abuse.ch' },
     { name: 'Phishing Army', url: 'https://phishing.army/download/phishing_army_blocklist_extended.txt', desc: 'Domains actively involved in phishing campaigns' },
