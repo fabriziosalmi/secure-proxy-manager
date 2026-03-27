@@ -230,7 +230,8 @@ def health_check_legacy():
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "healthy"}
+    from .config import APP_VERSION
+    return {"status": "healthy", "version": APP_VERSION}
 
 
 # ── WebSocket ────────────────────────────────────────────────────────────────
