@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-03-27
+
+### Added
+- Version badge (v1.8.0) in sidebar footer
+- Web (nginx) container healthcheck
+- Intelligence & Analytics API endpoints documented in README
+
+### Fixed
+- **50+ DB connection leaks** across all 9 backend routers (try/finally)
+- All bare `except` clauses now log errors properly
+- Large blacklist import: streaming download + batch insert (2.6M domains supported)
+- Backend memory limit 512M → 768M for large imports
+- Search box moved from fixed overlay to sidebar (no more button overlap)
+- Blacklist naming: "Fabrizio Salmi" → "Aggregated Blacklist (Ads+Trackers+Malware)"
+
+### Security
+- SQL injection fix in database_routes.py (parameterized table names)
+- JWT secret stable across container restarts
+- Credentials stripped from debug logs
+- Database indexes on source_ip, status, timestamp
+- Unbounded query limits clamped
+- 0 Dependabot vulnerabilities
+
+### Improved
+- Zero TypeScript `any` types in entire codebase
+- All API responses properly typed with interfaces
+
 ## [1.7.1] - 2026-03-27
 
 ### Added
