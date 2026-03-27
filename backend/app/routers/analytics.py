@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
 from ..auth import authenticate
-from ..config import PROXY_HOST
+from ..config import PROXY_HOST, APP_VERSION
 from ..database import get_db
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ def get_status():
         "proxy_host": PROXY_HOST,
         "proxy_port": "3128",
         "timestamp": datetime.now().isoformat(),
-        "version": "1.5.0"
+        "version": APP_VERSION
     }
 
     conn = None

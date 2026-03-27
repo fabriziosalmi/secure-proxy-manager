@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import authenticate
 from .. import config
+from ..config import APP_VERSION
 from ..database import get_db, init_db
 
 logger = logging.getLogger(__name__)
@@ -139,7 +140,7 @@ def export_database():
 
         export_data = {
             "metadata": {
-                "version": "1.7.1",
+                "version": APP_VERSION,
                 "timestamp": datetime.now().isoformat(),
                 "record_counts": {
                     "logs": len(logs),

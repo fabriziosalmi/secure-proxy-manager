@@ -39,6 +39,16 @@ def init_db():
     except sqlite3.OperationalError as e:
         logger.warning(f"Could not set WAL mode (might be read-only mount): {e}")
 
+    # Integrity check on startup
+    try:
+        result = conn.execute('PRAGMA integrity_check;').fetchone()
+        if result and result[0] == 'ok':
+            logger.info("Database integrity check: OK")
+        else:
+            logger.error(f"Database integrity check FAILED: {result}")
+    except sqlite3.Error as e:
+        logger.error(f"Could not run integrity check: {e}")
+
     cursor = conn.cursor()
 
     cursor.execute('''
