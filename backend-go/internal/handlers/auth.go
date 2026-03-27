@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -75,7 +76,7 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
-	if len(authHeader) > 7 {
+	if strings.HasPrefix(authHeader, "Bearer ") && len(authHeader) > 7 {
 		h.svc.RevokeJWT(authHeader[7:])
 	}
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)

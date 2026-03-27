@@ -257,12 +257,37 @@ func secureToken() string {
 	return hex.EncodeToString(b)
 }
 
-func clientIP(r *http.Request) string {
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		return strings.TrimSpace(strings.SplitN(fwd, ",", 2)[0])
+// trustedProxy checks if the remote address is a private/Docker network
+// that we trust to set X-Forwarded-For correctly.
+func trustedProxy(remoteAddr string) bool {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
 	}
-	if fwd := r.Header.Get("X-Real-IP"); fwd != "" {
-		return strings.TrimSpace(fwd)
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	// Trust: loopback, Docker bridge (172.16-31.x.x), RFC1918
+	trusted := []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128", "fc00::/7"}
+	for _, cidr := range trusted {
+		_, network, _ := net.ParseCIDR(cidr)
+		if network != nil && network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func clientIP(r *http.Request) string {
+	// Only trust X-Forwarded-For from known reverse proxies (nginx, Docker network)
+	if trustedProxy(r.RemoteAddr) {
+		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+			return strings.TrimSpace(strings.SplitN(fwd, ",", 2)[0])
+		}
+		if fwd := r.Header.Get("X-Real-IP"); fwd != "" {
+			return strings.TrimSpace(fwd)
+		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
