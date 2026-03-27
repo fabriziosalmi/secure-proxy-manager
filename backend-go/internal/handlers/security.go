@@ -179,7 +179,7 @@ func sendSecurityNotification(db *sql.DB, event map[string]any) {
 		emoji = "⚠️"
 	}
 	title := fmt.Sprintf("%s Secure Proxy Alert: %s", emoji,
-		strings.Title(strings.ReplaceAll(fmt.Sprintf("%v", event["event_type"]), "_", " ")))
+		titleCase(strings.ReplaceAll(fmt.Sprintf("%v", event["event_type"]), "_", " ")))
 
 	var msgLines []string
 	msgLines = append(msgLines, fmt.Sprintf("**Message:** %v", event["message"]))
@@ -187,7 +187,7 @@ func sendSecurityNotification(db *sql.DB, event map[string]any) {
 	msgLines = append(msgLines, fmt.Sprintf("**Client IP:** %v", event["client_ip"]))
 	for k, v := range event {
 		if k != "timestamp" && k != "client_ip" && k != "event_type" && k != "message" && k != "level" {
-			msgLines = append(msgLines, fmt.Sprintf("**%s:** %v", strings.Title(k), v))
+			msgLines = append(msgLines, fmt.Sprintf("**%s:** %v", titleCase(k), v))
 		}
 	}
 	plainText := title + "\n\n" + strings.Join(msgLines, "\n")
@@ -253,4 +253,15 @@ func sendSecurityNotification(db *sql.DB, event map[string]any) {
 	}
 
 	log.Debug().Str("event_type", fmt.Sprintf("%v", event["event_type"])).Msg("security notification sent")
+}
+
+// titleCase replaces deprecated strings.Title — capitalises first letter of each word.
+func titleCase(s string) string {
+	words := strings.Fields(s)
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
 }

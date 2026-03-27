@@ -183,6 +183,16 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	combined := normalizedURL + " " + normalizedHeaders
 	matches, score := matchRulesScored(combined)
 
+	// Also check raw (pre-decoded) URL for encoded evasion patterns like %c0%af
+	// that get decoded by normalizeInput and lose their detectable pattern
+	if score < blockThreshold && rawURL != normalizedURL {
+		rawMatches, rawScore := matchRulesScored(rawURL)
+		if rawScore > 0 {
+			matches = append(matches, rawMatches...)
+			score += rawScore
+		}
+	}
+
 	// Check request body if score not yet over threshold
 	var bodyStr string
 	var bodySize int

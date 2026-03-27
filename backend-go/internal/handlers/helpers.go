@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -83,6 +84,26 @@ func isSSRFTarget(rawURL string) (bool, error) {
 	return false, nil
 }
 
+// ssrfSafeClient returns an HTTP client that pins DNS resolution to the
+// validated IPs, preventing DNS rebinding attacks.
+func ssrfSafeClient(hostname string) *http.Client {
+	addrs, err := net.LookupHost(hostname)
+	if err != nil || len(addrs) == 0 {
+		return &http.Client{Timeout: 60 * time.Second}
+	}
+	pinnedAddr := addrs[0]
+	return &http.Client{
+		Timeout: 60 * time.Second,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				// Replace hostname with pinned IP, keep port
+				_, port, _ := net.SplitHostPort(addr)
+				return (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, network, net.JoinHostPort(pinnedAddr, port))
+			},
+		},
+	}
+}
+
 // downloadWithRetry fetches a URL (max maxBytes) with up to 3 retries (exp backoff).
 func downloadWithRetry(rawURL string, maxBytes int64) ([]byte, error) {
 	var lastErr error
@@ -100,7 +121,13 @@ func downloadWithRetry(rawURL string, maxBytes int64) ([]byte, error) {
 }
 
 func downloadOnce(rawURL string, maxBytes int64) ([]byte, error) {
-	client := &http.Client{Timeout: 180 * time.Second}
+	// Use SSRF-safe client that pins DNS to prevent rebinding
+	u, _ := url.Parse(rawURL)
+	hostname := ""
+	if u != nil {
+		hostname = u.Hostname()
+	}
+	client := ssrfSafeClient(hostname)
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err

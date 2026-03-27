@@ -47,6 +47,9 @@ func TestMatchRulesScoredBlocks(t *testing.T) {
 		{"DirT windows", `C:\windows\system32\config\sam`, true, "DIRECTORY_TRAVERSAL"},
 		{"DirT double encode", "%252e%252e%252f%252e%252e%252fetc/passwd", true, "DIRECTORY_TRAVERSAL"},
 		{"DirT proc self", "/proc/self/environ", true, "DIRECTORY_TRAVERSAL"},
+		{"DirT unicode c0af", "..%c0%af..%c0%afetc/passwd", true, "DIRECTORY_TRAVERSAL"},
+		{"DirT unicode c1af", "..%c1%af..%c1%afwindows/win.ini", true, "DIRECTORY_TRAVERSAL"},
+		{"DirT overlong e0", "..%e0%80%af../etc/shadow", true, "DIRECTORY_TRAVERSAL"},
 
 		// SSRF
 		{"SSRF AWS metadata", "http://169.254.169.254/latest/meta-data/", true, "SSRF"},
@@ -130,6 +133,12 @@ func TestMatchRulesScoredBlocks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			normalized := normalizeInput(tt.input)
 			matches, score := matchRulesScored(normalized)
+			// Also check raw input for encoded evasion patterns (mirrors engine behavior)
+			if score < blockThreshold && tt.input != normalized {
+				rawMatches, rawScore := matchRulesScored(tt.input)
+				matches = append(matches, rawMatches...)
+				score += rawScore
+			}
 			blocked := score >= blockThreshold
 
 			if blocked != tt.wantBlock {

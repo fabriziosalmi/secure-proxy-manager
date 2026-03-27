@@ -118,7 +118,7 @@ var blockRules = []CategoryRules{
 			r("DirT-006", `(?i)(\\\\[a-zA-Z0-9._-]+\\[a-zA-Z0-9._$-]+)`, 4, 2),
 
 			// Tier 3
-			r("DirT-007", `(?i)(%2e%2e|%252e%252e|%c0%ae|%c0%2f|%c1%1c|%c1%9c)`, 7, 3),
+			r("DirT-007", `(?i)(%2e%2e|%252e%252e|%c0%ae|%c0%af|%c0%2f|%c0%5c|%c1%1c|%c1%9c|%c1%af|%e0%80%af)`, 10, 3),
 			r("DirT-008", `(%00|\\x00)`, 10, 3),
 			r("DirT-009", `(?i)/proc/(self|version|cpuinfo|meminfo|net/)`, 10, 3),
 		},
