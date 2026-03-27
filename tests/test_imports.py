@@ -8,6 +8,7 @@ import ipaddress
 import tempfile
 import os
 import sys
+import socket
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -61,7 +62,20 @@ def _resp(status_code=200, text=""):
     m = MagicMock()
     m.status_code = status_code
     m.text = text
+    m.iter_content.return_value = [text.encode("utf-8")] if text else []
     return m
+
+
+@pytest.fixture(autouse=True)
+def _mock_public_dns(mocker):
+    original_gethostbyname = socket.gethostbyname
+
+    def resolve(hostname):
+        if hostname == "example.com":
+            return "93.184.216.34"
+        return original_gethostbyname(hostname)
+
+    mocker.patch("socket.gethostbyname", side_effect=resolve)
 
 
 # ---------------------------------------------------------------------------
