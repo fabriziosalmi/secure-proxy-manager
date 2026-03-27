@@ -77,17 +77,32 @@ def change_password(request_data: ChangePasswordRequest, request: Request):
     if not re.search(r'\d', new_password) or not re.search(r'[!@#$%^&*(),.?":{}|<>]', new_password):
         raise HTTPException(status_code=400, detail="Password must contain at least one number and one special character")
 
-    # Extract username from auth header
+    # Extract username from auth header (supports both Basic and Bearer JWT)
     import base64
+    import jwt as _jwt
     auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Basic '):
+    if not auth_header:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    try:
-        decoded_auth = base64.b64decode(auth_header[6:]).decode('utf-8')
-        username, _ = decoded_auth.split(':', 1)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid authentication header")
+    username = None
+    if auth_header.startswith('Basic '):
+        try:
+            decoded_auth = base64.b64decode(auth_header[6:]).decode('utf-8')
+            username, _ = decoded_auth.split(':', 1)
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid Basic auth header")
+    elif auth_header.startswith('Bearer '):
+        try:
+            from ..config import JWT_SECRET, JWT_ALGORITHM
+            payload = _jwt.decode(auth_header[7:], JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            username = payload.get("sub")
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid Bearer token")
+    else:
+        raise HTTPException(status_code=401, detail="Unsupported auth scheme")
+
+    if not username:
+        raise HTTPException(status_code=401, detail="Could not extract username")
 
     conn = get_db()
     try:
