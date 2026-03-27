@@ -6,7 +6,7 @@ _fix_*.py
 /bin/
 /dist/
 secure-proxy-manager-backend
-server
+/server
 
 # Test artifacts
 *.test

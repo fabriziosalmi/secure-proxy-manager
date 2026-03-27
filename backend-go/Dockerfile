@@ -2,7 +2,6 @@
 FROM golang:1.22-alpine AS builder
 
 WORKDIR /src
-# Pure-Go SQLite driver: no CGO needed.
 ENV CGO_ENABLED=0
 
 COPY go.mod go.sum ./
@@ -12,12 +11,16 @@ COPY . .
 RUN go build -trimpath -ldflags="-s -w" -o /bin/server ./cmd/server
 
 # ── stage 2: runtime ──────────────────────────────────────────────────────────
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates docker-cli \
+    && adduser -D -u 1000 app
 
 COPY --from=builder /bin/server /server
 
-# Non-root UID (65532 = nonroot in distroless).
-USER 65532:65532
+# Create dirs that will be mounted as volumes
+RUN mkdir -p /data /config /logs && chown -R app:app /data /config /logs
 
+USER app
 EXPOSE 5000
 ENTRYPOINT ["/server"]
