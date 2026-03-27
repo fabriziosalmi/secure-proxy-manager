@@ -2,10 +2,6 @@
 
 A containerized web proxy management system based on Squid, featuring a web interface for managing blacklists, monitoring traffic, and enforcing security policies. Suitable for homelab and self-hosted environments.
 
-## Screenshots
-
-![screenshot1](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/screenshot_1.png?raw=true)
-
 ## Key Features
 
 - **WAF Engine**: 171 regex rules + 7 behavioral heuristics across 21 categories, anomaly scoring with configurable threshold, Shannon entropy analysis, tiered matching with early-exit.
