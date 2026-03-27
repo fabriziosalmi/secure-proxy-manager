@@ -1,6 +1,6 @@
 import re
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import jwt as pyjwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -55,14 +55,18 @@ def login(req: LoginRequest, request: Request):
 
     auth_attempts.pop(client_ip, None)
 
-    expire = datetime.utcnow() + timedelta(hours=JWT_EXPIRE_HOURS)
+    expire = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS)
     token = pyjwt.encode({"sub": req.username, "exp": expire}, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return {"token": token}
 
 
 @router.post("/api/logout")
-def logout():
-    """Log out the current user (client-side handled)."""
+def logout(request: Request):
+    """Log out — invalidate the JWT token server-side."""
+    from ..auth import invalidate_jwt
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        invalidate_jwt(auth_header[7:])
     return {"status": "success", "message": "Logout successful"}
 
 

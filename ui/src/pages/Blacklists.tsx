@@ -88,13 +88,31 @@ export function Blacklists() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newItem) return;
+    const val = newItem.trim();
+    if (!val) return;
+
+    // Frontend validation
+    if (activeTab === 'ip' || activeTab === 'whitelist') {
+      // Basic IP/CIDR format check
+      const ipPattern = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/;
+      if (!ipPattern.test(val)) {
+        toast.error('Invalid IP format. Use x.x.x.x or x.x.x.x/cidr');
+        return;
+      }
+    } else {
+      // Domain validation: at least one dot, no spaces, max 253 chars
+      if (val.length > 253 || val.includes(' ') || !val.includes('.')) {
+        toast.error('Invalid domain format');
+        return;
+      }
+    }
+
     let endpoint = '';
     let payload: Record<string, string> = {};
-    if (activeTab === 'ip') { endpoint = 'ip-blacklist'; payload = { ip: newItem, description: newDesc }; }
-    else if (activeTab === 'domain') { endpoint = 'domain-blacklist'; payload = { domain: newItem, description: newDesc }; }
-    else if (activeTab === 'whitelist') { endpoint = 'ip-whitelist'; payload = { ip: newItem, description: newDesc }; }
-    else { endpoint = 'domain-whitelist'; payload = { domain: newItem, description: newDesc }; }
+    if (activeTab === 'ip') { endpoint = 'ip-blacklist'; payload = { ip: val, description: newDesc }; }
+    else if (activeTab === 'domain') { endpoint = 'domain-blacklist'; payload = { domain: val, description: newDesc }; }
+    else if (activeTab === 'whitelist') { endpoint = 'ip-whitelist'; payload = { ip: val, description: newDesc }; }
+    else { endpoint = 'domain-whitelist'; payload = { domain: val, description: newDesc }; }
     addMutation.mutate({ endpoint, payload });
   };
 
@@ -338,7 +356,7 @@ export function Blacklists() {
                 <input type="text" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Why is this blocked?"
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
               </div>
-              <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors h-10">Save Rule</button>
+              <button type="submit" disabled={addMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors h-10 disabled:opacity-50 disabled:cursor-not-allowed">{addMutation.isPending ? 'Saving...' : 'Save Rule'}</button>
             </form>
           </CardContent>
         </Card>
