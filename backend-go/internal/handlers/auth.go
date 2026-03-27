@@ -143,7 +143,11 @@ func (h *AuthHandlers) HealthLegacy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandlers) Health(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "healthy", "version": config.AppVersion})
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "healthy",
+		"version": config.AppVersion,
+		"runtime": "go",
+	})
 }
 
 func basicHeader(u, p string) string {
