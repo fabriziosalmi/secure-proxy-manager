@@ -15,6 +15,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/docker"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 )
 
@@ -122,6 +123,10 @@ func deleteByIDHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 		}
 		if cfg != nil {
 			go propagate(db, cfg, kindFromTable(table))
+		}
+		// Audit log
+		if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
+			database.Audit(db, user, "delete_"+kindFromTable(table), "id="+id, table)
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "entry removed"})
 	}

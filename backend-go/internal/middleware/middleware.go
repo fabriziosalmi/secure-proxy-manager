@@ -63,7 +63,7 @@ func CORS(cfg *config.Config) func(http.Handler) http.Handler {
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get("X-Request-ID")
-		if id == "" {
+		if id == "" || len(id) > 128 {
 			id = fmt.Sprintf("%X", time.Now().UnixNano()>>20)
 		}
 		w.Header().Set("X-Request-ID", id)
