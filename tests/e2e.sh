@@ -362,7 +362,23 @@ waf_test "Unicode dir traversal"     "http://httpbin.org/get?q=..%c0%af..%c0%afe
 # Long payload
 waf_test "Long SQLi payload"         "http://httpbin.org/get?q=1%20UNION%20ALL%20SELECT%20NULL%2CNULL%2CNULL%2CNULL%2CNULL%20FROM%20information_schema.tables" "403"
 
-section "C7. CONCURRENT STRESS (10 parallel)"
+section "C7. ML-LITE DETECTION (DGA + Typosquatting)"
+
+# DGA domains — random-looking, high entropy, no real bigrams
+waf_test "DGA domain (random)"       "http://xk2mf9pq3rzytw.com/" "403"
+waf_test "DGA domain (long random)"  "http://a8f3k2m9p1q7x4z6.net/" "403"
+
+# Typosquatting — 1-2 edits from real domains
+waf_test "Typosquat g00gle"          "http://g00gle.com/" "403"
+waf_test "Typosquat gooogle"         "http://gooogle.com/" "403"
+waf_test "Typosquat facebok"         "http://facebok.com/" "403"
+waf_test "Typosquat githuh"          "http://githuh.com/" "403"
+
+# Legit domains should NOT trigger
+waf_test "Legit google.com"          "http://google.com/" "200"
+waf_test "Legit github.com"          "http://github.com/" "200"
+
+section "C8. CONCURRENT STRESS (10 parallel)"
 
 stress_ok=0
 stress_fail=0
@@ -377,7 +393,7 @@ done
 # All background jobs return 0 if curl succeeds (HTTP 200 = exit 0)
 pass "Concurrent stress (10 parallel)" "${stress_ok}/10 ok"
 
-section "C8. ERROR HANDLING"
+section "C9. ERROR HANDLING"
 
 # Invalid JSON body
 code=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" -X POST \
