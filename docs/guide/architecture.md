@@ -10,9 +10,9 @@ Browser / Client
       ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  ui  (port 8011)                                                │
-│  Flask reverse proxy                                            │
-│  Serves React SPA static assets                                 │
-│  Proxies /api/* and /ws/* to backend:5000                       │
+│  Nginx reverse proxy                                            │
+│  Serves compiled React SPA static assets                        │
+│  Proxies /api/* and /api/ws/* to backend:5000                   │
 └────────────────────────┬────────────────────────────────────────┘
                          │ HTTP / WebSocket
                          ▼
@@ -35,20 +35,20 @@ Browser / Client
 │                         │ ICAP                                  │
 │                         ▼                                       │
 │              waf  (port 1344)                                   │
-│              Python ICAP server                                 │
-│              Inspects request URLs for attack patterns          │
+│              Go ICAP server                                     │
+│              171 regex rules + 7 behavioral heuristics          │
 │              Notifies backend via /api/internal/alert           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Service details
 
-### `ui` — Flask reverse proxy (port 8011)
+### `ui` — Nginx reverse proxy (port 8011)
 
-- Serves the compiled React SPA from `ui/src/`
-- All `/api/*` and `/ws/*` paths are reverse-proxied to the backend
-- Applies security headers via Flask-Talisman (CSP, HSTS, etc.)
-- Handles HTTP Basic Auth for API requests on behalf of the frontend
+- Serves the compiled React SPA static assets
+- All `/api/*` and `/api/ws/*` paths are reverse-proxied to the backend
+- Applies security headers (CSP, X-Frame-Options, X-Content-Type-Options, etc.)
+- Configuration is generated from `nginx.conf.template` at container startup
 
 ### `backend` — FastAPI (port 5000 internal, 127.0.0.1:5001 external)
 
@@ -67,15 +67,31 @@ Browser / Client
 - Direct IP access is blocked by ACL rules (optional bypass via whitelist)
 - SSL bump with auto-generated certificate at `/config/ssl_cert.pem`
 
-### `waf` — Python ICAP (port 1344)
+### `waf` — Go ICAP (port 1344)
 
 - Listens for ICAP `REQMOD` requests from Squid
-- Applies regex rules for SQL injection, XSS, directory traversal, command injection, unicode homograph obfuscation
+- Applies 171 regex rules across 21 categories (SQL injection, XSS, directory traversal, command injection, unicode homograph obfuscation, and more)
+- 7 behavioral heuristics: entropy thresholding, C2 beaconing detection, PII leak detection, destination sharding, protocol ghosting, header morphing, sequence validation
+- Anomaly scoring with configurable threshold (`WAF_BLOCK_THRESHOLD`)
+- Shannon entropy analysis via JSONL traffic profiling
 - Supports custom rules from `/config/waf_custom_rules.txt`
 - Rate-limits repeat offenders with a tar-pit delay
 - Notifies the backend API of blocks via `POST /api/internal/alert`
 
-## Data flow
+### `dns` — dnsmasq DNS blackhole
+
+- Internal DNS resolver for the proxy network
+- Sinkhole-blocks domains from the domain blacklist at the DNS layer (resolves to `0.0.0.0`)
+- Domain whitelist entries are excluded from the blocklist
+- Upstream resolvers default to `1.1.1.3`, `9.9.9.9`, `8.8.8.8` (configurable)
+
+### `tailscale` — Tailscale sidecar (optional)
+
+- Secure overlay network for remote access
+- Activated with the `--profile tailscale` compose flag
+- Requires `TS_AUTHKEY` environment variable
+
+
 
 1. Client sends HTTP request to Squid (port 3128)
 2. Squid sends `ICAP REQMOD` to WAF — WAF inspects URL and headers

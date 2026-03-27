@@ -11,7 +11,7 @@ All endpoints require Basic Auth.
 ### List entries
 
 ```
-GET /api/blacklists/ip
+GET /api/ip-blacklist
 ```
 
 **Response:**
@@ -32,7 +32,7 @@ GET /api/blacklists/ip
 ### Add entry
 
 ```
-POST /api/blacklists/ip
+POST /api/ip-blacklist
 ```
 
 **Request body:**
@@ -46,7 +46,26 @@ POST /api/blacklists/ip
 ### Delete entry
 
 ```
-DELETE /api/blacklists/ip/{id}
+DELETE /api/ip-blacklist/{id}
+```
+
+### Bulk delete entries
+
+```
+POST /api/ip-blacklist/bulk-delete
+```
+
+**Request body:**
+```json
+{
+  "ids": [1, 2, 3]
+}
+```
+
+### Clear all entries
+
+```
+DELETE /api/ip-blacklist/clear-all
 ```
 
 ---
@@ -56,7 +75,7 @@ DELETE /api/blacklists/ip/{id}
 ### List entries
 
 ```
-GET /api/blacklists/domains
+GET /api/domain-blacklist
 ```
 
 **Response:**
@@ -77,7 +96,7 @@ GET /api/blacklists/domains
 ### Add entry
 
 ```
-POST /api/blacklists/domains
+POST /api/domain-blacklist
 ```
 
 **Request body:**
@@ -91,7 +110,26 @@ POST /api/blacklists/domains
 ### Delete entry
 
 ```
-DELETE /api/blacklists/domains/{id}
+DELETE /api/domain-blacklist/{id}
+```
+
+### Bulk delete entries
+
+```
+POST /api/domain-blacklist/bulk-delete
+```
+
+**Request body:**
+```json
+{
+  "ids": [1, 2, 3]
+}
+```
+
+### Clear all entries
+
+```
+DELETE /api/domain-blacklist/clear-all
 ```
 
 ---
@@ -207,4 +245,52 @@ POST /api/ip-whitelist
 
 ```
 DELETE /api/ip-whitelist/{id}
+```
+
+---
+
+## Domain Whitelist {#domain-whitelist}
+
+Whitelisted domains bypass the DNS blackhole (dnsmasq). Domains in this list are excluded from the dnsmasq blocklist so they resolve normally even if they appear in the domain blacklist. Useful for essential services that need DNS resolution.
+
+### List entries
+
+```
+GET /api/domain-whitelist
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": 1,
+      "domain": "github.com",
+      "type": "fqdn",
+      "description": "Essential - code hosting",
+      "added_date": "2026-03-01T12:00:00"
+    }
+  ]
+}
+```
+
+### Add entry
+
+```
+POST /api/domain-whitelist
+```
+
+**Request body:**
+```json
+{
+  "domain": "github.com",
+  "description": "Essential - code hosting"
+}
+```
+
+### Delete entry
+
+```
+DELETE /api/domain-whitelist/{id}
 ```
