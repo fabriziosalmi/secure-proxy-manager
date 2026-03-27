@@ -7,6 +7,11 @@
 services:
   backend:
     build: ./backend-go
+    volumes:
+      - ./config:/config
+      - ./data:/data
+      - ./logs:/logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # for dnsmasq/squid reload signals
     healthcheck:
       test: ["CMD", "/server", "-healthcheck"]
       interval: 5s

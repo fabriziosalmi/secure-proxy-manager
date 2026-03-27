@@ -123,11 +123,26 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 
 	// Default settings.
 	defaultSettings := [][]string{
+		// Proxy configuration
+		{"proxy_port", "3128"},
+		{"cache_size", "1000"},
+		{"memory_cache", "256"},
+		{"allowed_networks", "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"},
+		// Feature toggles
+		{"ssl_bump_enabled", "false"},
+		{"aggressive_caching_enabled", "false"},
+		{"offline_mode_enabled", "false"},
+		{"tailscale_enabled", "false"},
+		{"ddns_enabled", "false"},
+		// Security
 		{"enable_ip_blacklist", "true"},
 		{"enable_domain_blacklist", "true"},
 		{"block_direct_ip", "false"},
 		{"enable_content_filtering", "false"},
+		{"enable_waf", "false"},
+		// Logging
 		{"log_retention_days", "30"},
+		// Notifications
 		{"enable_notifications", "false"},
 		{"webhook_url", ""},
 		{"gotify_url", ""},
@@ -135,9 +150,10 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		{"teams_webhook_url", ""},
 		{"telegram_bot_token", ""},
 		{"telegram_chat_id", ""},
-		{"enable_waf", "false"},
+		// Auto-refresh
 		{"auto_refresh_enabled", "false"},
 		{"auto_refresh_hours", "24"},
+		// State
 		{"default_password_changed", "false"},
 	}
 	for _, kv := range defaultSettings {
