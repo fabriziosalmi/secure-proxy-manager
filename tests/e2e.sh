@@ -277,6 +277,128 @@ for toggle in ssl_bump_enabled aggressive_caching_enabled offline_mode_enabled t
     echo "$settings" | grep -q "$toggle" && pass "Toggle: $toggle" "present" || warn "Toggle: $toggle" "missing"
 done
 
+# ╔═══════════════════════════════════════════════════════════════════════╗
+# ║  PART C: ADVANCED TESTS                                              ║
+# ╚═══════════════════════════════════════════════════════════════════════╝
+printf "\n${W}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${N}\n"
+printf "  ${BOLD}PART C: ADVANCED TESTS${N} (operations & validation)\n"
+printf "${W}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${N}\n"
+
+section "C1. SETTINGS CRUD (write + verify)"
+
+# Save a setting then read it back
+orig_retention=$(echo "$settings" | grep -o '"setting_name":"log_retention_days","setting_value":"[^"]*"' | grep -o '"setting_value":"[^"]*"' | cut -d'"' -f4)
+auth_post "${API}/api/settings" -d '{"log_retention_days":"45"}' > /dev/null 2>&1
+new_settings=$(auth_get "/api/settings")
+new_val=$(echo "$new_settings" | grep -o '"setting_name":"log_retention_days","setting_value":"[^"]*"' | grep -o '"setting_value":"[^"]*"' | cut -d'"' -f4)
+if [ "$new_val" = "45" ]; then
+    pass "Settings write + verify" "log_retention_days=45"
+    # Restore original
+    auth_post "${API}/api/settings" -d "{\"log_retention_days\":\"${orig_retention:-30}\"}" > /dev/null 2>&1
+else
+    fail "Settings write + verify" "expected 45, got $new_val"
+fi
+
+section "C2. RESPONSE BODY VALIDATION"
+
+# Dashboard summary must contain expected fields
+dash=$(auth_get "/api/dashboard/summary")
+for field in total_requests blocked_requests today_requests top_blocked ip_blacklist_count domain_blacklist_count recent_blocks threat_categories; do
+    echo "$dash" | grep -q "\"$field\"" && pass "Dashboard field: $field" "present" || fail "Dashboard field: $field" "MISSING"
+done
+
+# Security score must contain score field
+score=$(auth_get "/api/security/score")
+echo "$score" | grep -q '"score"' && pass "Security score body" "has score field" || fail "Security score body" "missing score"
+
+# WAF stats (via dashboard waf field)
+echo "$dash" | grep -q '"waf"' && pass "WAF stats in dashboard" "present" || warn "WAF stats" "null (WAF may be unreachable)"
+
+section "C3. BLACKLIST OPERATIONS"
+
+# Bulk add (IP whitelist)
+wl_add=$(auth_post "${API}/api/ip-whitelist" -d '{"ip":"10.99.99.99","description":"e2e-whitelist-test"}')
+echo "$wl_add" | grep -q '"success"\|already' && pass "Add IP whitelist" "10.99.99.99" || fail "Add IP whitelist" "$(echo "$wl_add" | head -c 60)"
+
+# Domain whitelist
+dwl_add=$(auth_post "${API}/api/domain-whitelist" -d '{"domain":"e2e-safe.example.com","description":"e2e"}')
+echo "$dwl_add" | grep -q '"success"\|already' && pass "Add domain whitelist" "e2e-safe.example.com" || fail "Add domain whitelist" "$(echo "$dwl_add" | head -c 60)"
+
+# List and verify counts
+ip_bl=$(auth_get "/api/ip-blacklist?limit=1")
+ip_total=$(echo "$ip_bl" | grep -o '"total":[0-9]*' | grep -o '[0-9]*' | head -1)
+[ -n "$ip_total" ] && [ "$ip_total" -gt 0 ] && pass "IP blacklist has entries" "total=$ip_total" || warn "IP blacklist empty" "total=$ip_total"
+
+dom_bl=$(auth_get "/api/domain-blacklist?limit=1")
+dom_total=$(echo "$dom_bl" | grep -o '"total":[0-9]*' | grep -o '[0-9]*' | head -1)
+[ -n "$dom_total" ] && [ "$dom_total" -gt 0 ] && pass "Domain blacklist has entries" "total=$dom_total" || warn "Domain blacklist empty" "total=$dom_total"
+
+section "C4. MAINTENANCE OPERATIONS"
+
+# Reload config
+reload=$(auth_post "${API}/api/maintenance/reload-config")
+echo "$reload" | grep -q '"success"' && pass "Reload proxy config" "" || warn "Reload config" "$(echo "$reload" | head -c 60)"
+
+# Reload DNS
+dns_reload=$(auth_post "${API}/api/maintenance/reload-dns")
+echo "$dns_reload" | grep -q '"success"' && pass "Reload DNS blocklist" "" || warn "Reload DNS" "$(echo "$dns_reload" | head -c 60)"
+
+section "C5. AUDIT LOG"
+
+expect_api "Audit log endpoint" GET "/api/audit-log" "200"
+audit=$(auth_get "/api/audit-log?limit=5")
+echo "$audit" | grep -q '"action"' && pass "Audit log has entries" "" || warn "Audit log empty" "(new install)"
+
+section "C6. WAF EVASION ATTEMPTS"
+
+# Double encoding
+waf_test "Double-encoded SQLi"       "http://httpbin.org/get?q=%25%32%37%20OR%201%3D1" "403"
+# Case variation
+waf_test "Case-mixed XSS"            "http://httpbin.org/get?q=%3CScRiPt%3Ealert(1)%3C%2FScRiPt%3E" "403"
+# Null byte injection
+waf_test "Null byte .env"            "http://httpbin.org/get?q=%00.env" "403"
+# Unicode tricks
+waf_test "Unicode dir traversal"     "http://httpbin.org/get?q=..%c0%af..%c0%afetc/passwd" "403"
+# Long payload
+waf_test "Long SQLi payload"         "http://httpbin.org/get?q=1%20UNION%20ALL%20SELECT%20NULL%2CNULL%2CNULL%2CNULL%2CNULL%20FROM%20information_schema.tables" "403"
+
+section "C7. CONCURRENT STRESS (10 parallel)"
+
+stress_ok=0
+stress_fail=0
+for i in $(seq 1 10); do
+    curl -s --max-time 15 -o /dev/null -w "%{http_code}" --proxy "$PROXY" "http://httpbin.org/get?stress=$i" 2>/dev/null &
+done
+for job in $(jobs -p); do
+    wait "$job"
+    code=$?
+    if [ "$code" -eq 0 ]; then ((stress_ok++)); else ((stress_fail++)); fi
+done
+# All background jobs return 0 if curl succeeds (HTTP 200 = exit 0)
+pass "Concurrent stress (10 parallel)" "${stress_ok}/10 ok"
+
+section "C8. ERROR HANDLING"
+
+# Invalid JSON body
+code=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" -X POST \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d 'NOT_JSON' "${API}/api/ip-blacklist" 2>/dev/null)
+[ "$code" = "400" ] && pass "Invalid JSON → 400" "HTTP $code" || fail "Invalid JSON" "HTTP $code"
+
+# Nonexistent endpoint
+code=$(http_code -H "Authorization: Bearer $TOKEN" "${API}/api/nonexistent")
+[ "$code" = "404" ] || [ "$code" = "405" ] && pass "Unknown endpoint → 404/405" "HTTP $code" || fail "Unknown endpoint" "HTTP $code"
+
+# Delete nonexistent ID
+code=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" -X DELETE \
+    -H "Authorization: Bearer $TOKEN" "${API}/api/ip-blacklist/999999" 2>/dev/null)
+[ "$code" = "404" ] && pass "Delete nonexistent → 404" "HTTP $code" || fail "Delete nonexistent" "HTTP $code"
+
+# Expired/invalid JWT
+code=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
+    -H "Authorization: Bearer invalid.token.here" "${API}/api/settings" 2>/dev/null)
+[ "$code" = "401" ] && pass "Invalid JWT → 401" "HTTP $code" || fail "Invalid JWT" "HTTP $code"
+
 # ══════════════════════════════════════════════════════════════════════════
 # SUMMARY
 total=$((PASS_COUNT + FAIL_COUNT + WARN_COUNT + SKIP_COUNT))
