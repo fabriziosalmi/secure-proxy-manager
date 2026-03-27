@@ -28,6 +28,25 @@ export function Dashboard() {
   const rate = s?.total_requests ? ((s.blocked_requests / s.total_requests) * 100).toFixed(1) : '0';
   const w = s?.waf;
 
+  if (isLoading) {
+    return (
+      <div className="space-y-4 animate-in fade-in duration-500">
+        <div className="flex justify-between items-center">
+          <h1 className="text-xl font-bold tracking-tight">Dashboard</h1>
+        </div>
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="bg-card/50"><CardContent className="p-3"><div className="h-12 bg-secondary/50 rounded animate-pulse" /></CardContent></Card>
+          ))}
+        </div>
+        <div className="grid gap-3 lg:grid-cols-12">
+          <Card className="lg:col-span-7 bg-card/50"><CardContent className="p-3"><div className="h-[180px] bg-secondary/50 rounded animate-pulse" /></CardContent></Card>
+          <Card className="lg:col-span-5 bg-card/50"><CardContent className="p-3"><div className="h-[180px] bg-secondary/50 rounded animate-pulse" /></CardContent></Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 animate-in fade-in duration-500">
       {/* Header + proxy address */}
