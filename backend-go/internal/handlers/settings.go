@@ -25,11 +25,20 @@ func (h *SettingsHandlers) GetAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	settings := map[string]string{}
+	// Return as array of {setting_name, setting_value} to match Python format
+	// (frontend does .forEach on the array)
+	type settingRow struct {
+		Name  string `json:"setting_name"`
+		Value string `json:"setting_value"`
+	}
+	var settings []settingRow
 	for rows.Next() {
 		var k, v string
 		rows.Scan(&k, &v) //nolint:errcheck
-		settings[k] = v
+		settings = append(settings, settingRow{Name: k, Value: v})
+	}
+	if settings == nil {
+		settings = []settingRow{} // never return null
 	}
 	writeOK(w, settings)
 }

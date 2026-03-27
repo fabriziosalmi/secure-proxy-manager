@@ -48,33 +48,33 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 			username TEXT UNIQUE NOT NULL,
 			password TEXT NOT NULL,
 			email TEXT,
-			created_at TEXT DEFAULT (datetime('now')),
+			added_date TEXT DEFAULT (datetime('now')),
 			last_login TEXT
 		)`,
 		`CREATE TABLE IF NOT EXISTS ip_whitelist (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			ip TEXT UNIQUE NOT NULL,
 			description TEXT,
-			created_at TEXT DEFAULT (datetime('now'))
+			added_date TEXT DEFAULT (datetime('now'))
 		)`,
 		`CREATE TABLE IF NOT EXISTS ip_blacklist (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			ip TEXT UNIQUE NOT NULL,
 			description TEXT,
-			created_at TEXT DEFAULT (datetime('now'))
+			added_date TEXT DEFAULT (datetime('now'))
 		)`,
 		`CREATE TABLE IF NOT EXISTS domain_blacklist (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			domain TEXT UNIQUE NOT NULL,
 			description TEXT,
-			created_at TEXT DEFAULT (datetime('now'))
+			added_date TEXT DEFAULT (datetime('now'))
 		)`,
 		`CREATE TABLE IF NOT EXISTS domain_whitelist (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			domain TEXT UNIQUE NOT NULL,
 			type TEXT DEFAULT 'fqdn',
 			description TEXT,
-			created_at TEXT DEFAULT (datetime('now'))
+			added_date TEXT DEFAULT (datetime('now'))
 		)`,
 		`CREATE TABLE IF NOT EXISTS proxy_logs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
