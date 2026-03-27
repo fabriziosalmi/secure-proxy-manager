@@ -1,0 +1,20 @@
+# Go backend overlay — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.go.yml up -d --build
+#
+# This replaces the Python (FastAPI) backend with the Go backend.
+# Same ports, same volumes, same env vars — drop-in replacement.
+
+services:
+  backend:
+    build: ./backend-go
+    healthcheck:
+      test: ["CMD", "/server", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M  # Go uses ~20MB vs Python 150MB+

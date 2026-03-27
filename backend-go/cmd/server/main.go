@@ -26,6 +26,19 @@ import (
 )
 
 func main() {
+	// ── healthcheck mode (for Docker HEALTHCHECK in distroless) ──────────────
+	if len(os.Args) > 1 && os.Args[1] == "-healthcheck" {
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "5000"
+		}
+		resp, err := http.Get("http://127.0.0.1:" + port + "/health")
+		if err != nil || resp.StatusCode != 200 {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	// ── logging ──────────────────────────────────────────────────────────────
 	zerolog.TimeFieldFormat = time.RFC3339
 	if os.Getenv("LOG_FORMAT") == "pretty" {
