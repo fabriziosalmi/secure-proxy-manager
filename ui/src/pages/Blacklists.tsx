@@ -200,7 +200,7 @@ export function Blacklists() {
   const handleExport = () => {
     const items = activeTab === 'ip' ? ips : activeTab === 'domain' ? domains : activeTab === 'whitelist' ? whitelists : domainWhitelists;
     const field = (activeTab === 'ip' || activeTab === 'whitelist') ? 'ip' : 'domain';
-    const text = items.map((item: Record<string, string>) => item[field]).join('\n');
+    const text = items.map((item) => (item as unknown as Record<string, string>)[field]).join('\n');
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
