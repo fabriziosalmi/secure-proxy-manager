@@ -267,6 +267,8 @@ WAF_IP=$(getent hosts waf 2>/dev/null | awk '{print $1}')
 
 if [ -n "$DNS_IP" ]; then
     if ! grep -q "dns_nameservers" /etc/squid/squid.conf; then
+        # Ensure newline before appending (fixes concatenation with last line)
+        echo "" >> /etc/squid/squid.conf
         echo "dns_nameservers $DNS_IP" >> /etc/squid/squid.conf
     fi
     echo "DNS resolver: dnsmasq at $DNS_IP"
