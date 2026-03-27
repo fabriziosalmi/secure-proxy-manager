@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ArrowRight, Ban, Shield, List, Settings, LayoutDashboard, X, Command } from 'lucide-react';
+import { Search, ArrowRight, Ban, Shield, List, Settings, LayoutDashboard, X } from 'lucide-react';
 import { api } from '../lib/api';
 
 interface SearchResult {
@@ -137,19 +137,7 @@ export function GlobalSearch() {
   };
 
   if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="fixed top-4 right-4 z-40 flex items-center gap-2 px-3 py-1.5 bg-card/80 backdrop-blur border border-border/50 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:border-border transition-all"
-      >
-        <Search className="w-3 h-3" />
-        <span>Search</span>
-        <kbd className="flex items-center gap-0.5 px-1.5 py-0.5 bg-secondary rounded text-[10px] font-mono">
-          <Command className="w-2.5 h-2.5" />K
-        </kbd>
-      </button>
-    );
+    return null; // Trigger button moved to Sidebar — modal opens via ⌘K or sidebar click
   }
 
   const typeIcon = (t: string) => {
