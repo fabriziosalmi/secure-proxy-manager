@@ -14,6 +14,7 @@ import (
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/docker"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 )
 
@@ -501,10 +502,22 @@ func propagate(db *sql.DB, cfg *config.Config, kind string) {
 	if err := database.ExportBlacklistsToFiles(db, cfg.ConfigDir); err != nil {
 		log.Warn().Err(err).Msg("export blacklists failed")
 	}
+
+	// Signal Squid to reload ACLs
 	if kind == "ip" || kind == "all" {
 		client := &http.Client{Timeout: 5 * time.Second}
 		if resp, err := client.Post(fmt.Sprintf("http://%s:%s/api/reload", cfg.ProxyHost, cfg.ProxyPort), "application/json", nil); err == nil {
 			resp.Body.Close()
+		}
+	}
+
+	// Signal dnsmasq to reload blocklist (SIGHUP via Docker API)
+	if kind == "domain" || kind == "all" {
+		dc := docker.New()
+		if err := dc.KillContainer("secure-proxy-manager-dns-1", "HUP"); err != nil {
+			log.Warn().Err(err).Msg("dnsmasq SIGHUP failed (docker.sock mounted?)")
+		} else {
+			log.Info().Msg("dnsmasq reload signaled")
 		}
 	}
 }
