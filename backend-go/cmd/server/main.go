@@ -80,6 +80,8 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(appMW.RequestID)
 	r.Use(appMW.CORS(cfg))
+	r.Use(appMW.SecurityHeaders)
+	r.Use(appMW.MaxBodySize(55 * 1024 * 1024)) // 55MB max (for large blacklist imports)
 
 	authMW := appMW.Auth(authSvc)
 

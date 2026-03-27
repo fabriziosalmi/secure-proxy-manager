@@ -140,7 +140,11 @@ func bulkDeleteHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 		for i, id := range req.IDs {
 			args[i] = id
 		}
-		res, _ := db.Exec(fmt.Sprintf("DELETE FROM %s WHERE id IN (%s)", table, placeholders), args...)
+		res, err := db.Exec(fmt.Sprintf("DELETE FROM %s WHERE id IN (%s)", table, placeholders), args...)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "database error")
+			return
+		}
 		deleted, _ := res.RowsAffected()
 		if deleted > 0 && cfg != nil {
 			go propagate(db, cfg, kindFromTable(table))

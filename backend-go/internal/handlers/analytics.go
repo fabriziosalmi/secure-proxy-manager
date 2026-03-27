@@ -320,6 +320,54 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	result["ip_blacklist_count"] = ipBLCount
 	result["domain_blacklist_count"] = domainBLCount
 
+	// Top clients (last 24h)
+	var topClients []map[string]any
+	cRows, _ := h.db.Query(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE timestamp >= datetime('now','-1 day') AND source_ip IS NOT NULL AND source_ip != '' GROUP BY source_ip ORDER BY cnt DESC LIMIT 10`)
+	if cRows != nil {
+		defer cRows.Close()
+		for cRows.Next() {
+			var ip string
+			var cnt int
+			cRows.Scan(&ip, &cnt) //nolint:errcheck
+			topClients = append(topClients, map[string]any{"ip": ip, "count": cnt})
+		}
+	}
+	if topClients == nil { topClients = []map[string]any{} }
+	result["top_clients"] = topClients
+
+	// Threat categories (last 7 days)
+	var threatCats []map[string]any
+	tRows, _ := h.db.Query(`SELECT CASE WHEN destination LIKE '%.exe%' OR destination LIKE '%.dll%' THEN 'Malware' WHEN status LIKE '%DENIED%' AND destination LIKE '%:%' THEN 'Direct IP' WHEN status LIKE '%403%' THEN 'WAF Block' ELSE 'Policy' END as category, COUNT(*) as cnt FROM proxy_logs WHERE (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%') AND timestamp >= datetime('now','-7 days') GROUP BY category ORDER BY cnt DESC`)
+	if tRows != nil {
+		defer tRows.Close()
+		for tRows.Next() {
+			var cat string
+			var cnt int
+			tRows.Scan(&cat, &cnt) //nolint:errcheck
+			threatCats = append(threatCats, map[string]any{"category": cat, "count": cnt})
+		}
+	}
+	if threatCats == nil { threatCats = []map[string]any{} }
+	result["threat_categories"] = threatCats
+
+	// Recent blocks (last 10)
+	var recentBlocks []map[string]any
+	rRows, _ := h.db.Query(`SELECT timestamp, source_ip, method, destination, status FROM proxy_logs WHERE status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%' ORDER BY id DESC LIMIT 10`)
+	if rRows != nil {
+		defer rRows.Close()
+		for rRows.Next() {
+			var ts, srcIP, method, dest, status string
+			rRows.Scan(&ts, &srcIP, &method, &dest, &status) //nolint:errcheck
+			recentBlocks = append(recentBlocks, map[string]any{
+				"timestamp": ts, "source_ip": srcIP, "method": method,
+				"destination": dest, "status": status,
+			})
+		}
+	}
+	if recentBlocks == nil { recentBlocks = []map[string]any{} }
+	result["recent_blocks"] = recentBlocks
+
+	// WAF stats
 	client := &http.Client{Timeout: 2 * time.Second}
 	if resp, err := client.Get("http://waf:8080/stats"); err == nil {
 		var wafData any

@@ -113,7 +113,8 @@ func parseSquidLine(line string) map[string]any {
 
 	return map[string]any{
 		"timestamp":   timestamp,
-		"source_ip":   clientIP,
+		"client_ip":   clientIP,
+		"source_ip":   clientIP, // kept for DB insert compatibility
 		"method":      method,
 		"destination": destination,
 		"status":      statusStr,
