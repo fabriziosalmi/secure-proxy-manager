@@ -1,10 +1,10 @@
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(..., min_length=1, max_length=128)
+    password: str = Field(..., min_length=1, max_length=128)
 
 
 class RestoreConfigRequest(BaseModel):
@@ -12,36 +12,36 @@ class RestoreConfigRequest(BaseModel):
 
 
 class IPBlacklistItem(BaseModel):
-    ip: str
-    description: Optional[str] = ""
+    ip: str = Field(..., min_length=1, max_length=50)
+    description: Optional[str] = Field("", max_length=500)
 
 
 class DomainBlacklistItem(BaseModel):
-    domain: str
-    description: Optional[str] = ""
+    domain: str = Field(..., min_length=1, max_length=253)  # RFC 1035 max
+    description: Optional[str] = Field("", max_length=500)
 
 
 class InternalAlert(BaseModel):
-    event_type: str = 'unknown'
-    message: str = 'No message'
+    event_type: str = Field('unknown', max_length=100)
+    message: str = Field('No message', max_length=5000)
     details: Dict[str, Any] = {}
-    level: str = 'warning'
+    level: str = Field('warning', max_length=20)
 
 
 class ImportBlacklistRequest(BaseModel):
-    type: str  # 'ip' or 'domain'
-    url: Optional[str] = None
-    content: Optional[str] = None
+    type: str = Field(..., max_length=10)  # 'ip' or 'domain'
+    url: Optional[str] = Field(None, max_length=2048)
+    content: Optional[str] = Field(None, max_length=50_000_000)  # 50MB text max
 
 
 class ImportGeoBlacklistRequest(BaseModel):
-    countries: List[str]
+    countries: List[str] = Field(..., max_length=50)  # max 50 countries at once
 
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
 
 
 class SettingUpdate(BaseModel):
-    value: str
+    value: str = Field(..., max_length=10000)
