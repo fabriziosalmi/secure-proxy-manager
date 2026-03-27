@@ -31,6 +31,7 @@ def receive_internal_alert(alert: InternalAlert, background_tasks: BackgroundTas
 
 def send_security_notification(event):
     """Send security notifications to configured providers."""
+    conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -40,7 +41,6 @@ def send_security_notification(event):
             "'teams_webhook_url', 'telegram_bot_token', 'telegram_chat_id')"
         )
         settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
-        conn.close()
 
         if settings.get('enable_notifications') != 'true':
             return
@@ -124,6 +124,9 @@ def send_security_notification(event):
 
     except (sqlite3.Error, requests.RequestException) as e:
         logger.error(f"Error in notification system: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 
 @router.get("/api/security/rate-limits", dependencies=[Depends(authenticate)])
@@ -167,14 +170,16 @@ def clear_rate_limit(ip: str):
 @router.get("/api/security/score", dependencies=[Depends(authenticate)])
 def get_security_score():
     db = get_db()
-    cursor = db.cursor()
-    cursor.execute(
-        'SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?, ?, ?, ?, ?, ?, ?, ?)',
-        ('enable_ip_blacklist', 'enable_domain_blacklist', 'block_direct_ip',
-         'enable_content_filtering', 'enable_https_filtering', 'default_password_changed',
-         'enable_time_restrictions', 'enable_waf'))
-    settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
-    db.close()
+    try:
+        cursor = db.cursor()
+        cursor.execute(
+            'SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?, ?, ?, ?, ?, ?, ?, ?)',
+            ('enable_ip_blacklist', 'enable_domain_blacklist', 'block_direct_ip',
+             'enable_content_filtering', 'enable_https_filtering', 'default_password_changed',
+             'enable_time_restrictions', 'enable_waf'))
+        settings = {row['setting_name']: row['setting_value'] for row in cursor.fetchall()}
+    finally:
+        db.close()
 
     score = 0
     recommendations = []

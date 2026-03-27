@@ -34,6 +34,7 @@ def get_status():
         "version": "1.5.0"
     }
 
+    conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -43,9 +44,12 @@ def get_status():
             (today, today))
         result = cursor.fetchone()
         stats["requests_count"] = result[0] if result else 0
-        conn.close()
-    except sqlite3.Error:
+    except sqlite3.Error as e:
+        logger.warning(f"Could not fetch request count: {e}")
         stats["requests_count"] = 0
+    finally:
+        if conn:
+            conn.close()
 
     stats["memory_usage"] = "N/A"
     stats["cpu_usage"] = "N/A"
@@ -56,6 +60,7 @@ def get_status():
 
 @router.get("/api/traffic/statistics", dependencies=[Depends(authenticate)])
 def get_traffic_statistics(period: str = 'day'):
+    conn = None
     try:
         end_time = datetime.now()
         if period == 'hour':
@@ -97,7 +102,8 @@ def get_traffic_statistics(period: str = 'day'):
                 FROM proxy_logs WHERE timestamp >= ? GROUP BY bucket
             """, (start_time.strftime('%Y-%m-%d %H:%M:%S'),))
             bucket_map = {row['bucket']: row for row in cursor.fetchall()}
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Traffic statistics query failed: {e}")
             bucket_map = {}
 
         labels = intervals
@@ -109,10 +115,14 @@ def get_traffic_statistics(period: str = 'day'):
     except sqlite3.Error as e:
         logger.error(f"Error getting traffic statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if conn:
+            conn.close()
 
 
 @router.get("/api/clients/statistics", dependencies=[Depends(authenticate)])
 def client_statistics():
+    conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -125,18 +135,22 @@ def client_statistics():
             clients = [dict(row) for row in cursor.fetchall()]
             cursor.execute("SELECT COUNT(DISTINCT source_ip) FROM proxy_logs WHERE source_ip IS NOT NULL AND source_ip != ''")
             total_clients = cursor.fetchone()[0] or 0
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Client statistics query failed: {e}")
             clients = []
             total_clients = 0
-        conn.close()
         return {"status": "success", "data": {"total_clients": total_clients, "clients": clients}}
     except sqlite3.Error as e:
         logger.error(f"An error occurred while fetching client statistics: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while fetching client statistics")
+    finally:
+        if conn:
+            conn.close()
 
 
 @router.get("/api/domains/statistics", dependencies=[Depends(authenticate)])
 def domain_statistics():
+    conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -150,10 +164,10 @@ def domain_statistics():
             domains_raw = [dict(row) for row in cursor.fetchall()]
             cursor.execute("SELECT domain FROM domain_blacklist")
             blacklisted_domains = [row['domain'] for row in cursor.fetchall()]
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Domain statistics query failed: {e}")
             domains_raw = []
             blacklisted_domains = []
-        conn.close()
 
         # Convert blacklist to set for O(1) exact lookup + collect wildcards separately
         bl_exact = set(blacklisted_domains)
@@ -173,6 +187,9 @@ def domain_statistics():
     except sqlite3.Error as e:
         logger.error(f"An error occurred while fetching domain statistics: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while fetching domain statistics")
+    finally:
+        if conn:
+            conn.close()
 
 
 @router.get("/api/cache/statistics", dependencies=[Depends(authenticate)])
@@ -188,6 +205,7 @@ def get_cache_statistics():
 
 @router.get("/api/analytics/report/pdf", dependencies=[Depends(authenticate)])
 def download_pdf_report():
+    conn = None
     try:
         from reportlab.lib.pagesizes import letter
         from reportlab.lib import colors
@@ -209,7 +227,8 @@ def download_pdf_report():
             total_reqs = cursor.fetchone()[0]
             cursor.execute("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '403%' AND timestamp >= date('now', '-7 days')")
             total_blocks = cursor.fetchone()[0]
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
+            logger.warning(f"PDF report query failed: {e}")
             total_reqs = 0
             total_blocks = 0
 
@@ -229,7 +248,6 @@ def download_pdf_report():
         doc.build(elements)
         pdf_data = buffer.getvalue()
         buffer.close()
-        conn.close()
 
         return Response(
             content=pdf_data,
@@ -239,6 +257,9 @@ def download_pdf_report():
     except Exception as e:
         logger.error(f"Error generating PDF report: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate report")
+    finally:
+        if conn:
+            conn.close()
 
 
 @router.get("/api/waf/stats", dependencies=[Depends(authenticate)])
@@ -261,16 +282,20 @@ def reset_all_counters():
     results = {}
 
     # Clear proxy logs
+    conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM proxy_logs")
         deleted = cursor.rowcount
         conn.commit()
-        conn.close()
         results["logs_cleared"] = deleted
     except _sqlite3.Error as e:
+        logger.error(f"Error clearing proxy logs: {e}")
         results["logs_error"] = str(e)
+    finally:
+        if conn:
+            conn.close()
 
     # Reset WAF stats
     try:
@@ -285,11 +310,13 @@ def reset_all_counters():
 @router.get("/api/dashboard/summary", dependencies=[Depends(authenticate)])
 def get_dashboard_summary():
     """Aggregated dashboard data in a single API call."""
-    conn = get_db()
-    cursor = conn.cursor()
+    conn = None
     result = {}
 
     try:
+        conn = get_db()
+        cursor = conn.cursor()
+
         # Total + blocked counts
         cursor.execute("SELECT COUNT(*) FROM proxy_logs")
         result["total_requests"] = cursor.fetchone()[0]
@@ -352,10 +379,11 @@ def get_dashboard_summary():
         """)
         result["recent_blocks"] = [dict(r) for r in cursor.fetchall()]
 
-    except sqlite3.OperationalError:
-        pass
-
-    conn.close()
+    except sqlite3.OperationalError as e:
+        logger.warning(f"Dashboard summary query failed: {e}")
+    finally:
+        if conn:
+            conn.close()
 
     # WAF stats (non-blocking)
     try:
@@ -407,9 +435,10 @@ def _extract_domain(dest: str) -> str:
 @router.get("/api/analytics/shadow-it", dependencies=[Depends(authenticate)])
 def shadow_it_detector():
     """Detect SaaS/cloud services accessed through the proxy."""
-    conn = get_db()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_db()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT destination, COUNT(*) as cnt FROM proxy_logs
             WHERE destination IS NOT NULL AND destination != ''
@@ -417,9 +446,12 @@ def shadow_it_detector():
             GROUP BY destination ORDER BY cnt DESC LIMIT 500
         """)
         rows = cursor.fetchall()
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as e:
+        logger.warning(f"Shadow IT query failed: {e}")
         rows = []
-    conn.close()
+    finally:
+        if conn:
+            conn.close()
 
     # Aggregate by SaaS service
     services: dict = {}
@@ -455,9 +487,10 @@ def shadow_it_detector():
 @router.get("/api/analytics/user-agents", dependencies=[Depends(authenticate)])
 def user_agent_breakdown():
     """Analyze User-Agent strings from proxy logs (extracted from destination patterns)."""
-    conn = get_db()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_db()
+        cursor = conn.cursor()
         # Extract method distribution as proxy for UA (Squid logs don't store UA directly)
         # Instead we analyze the destination patterns to infer client types
         cursor.execute("""
@@ -489,10 +522,13 @@ def user_agent_breakdown():
         """)
         service_types = [{"name": r["service_type"], "count": r["cnt"]} for r in cursor.fetchall()]
 
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as e:
+        logger.warning(f"User agent breakdown query failed: {e}")
         methods = []
         service_types = []
-    conn.close()
+    finally:
+        if conn:
+            conn.close()
 
     return {"status": "success", "data": {"methods": methods, "service_types": service_types}}
 
@@ -500,18 +536,22 @@ def user_agent_breakdown():
 @router.get("/api/analytics/file-extensions", dependencies=[Depends(authenticate)])
 def file_extension_distribution():
     """Analyze file extensions in proxied requests."""
-    conn = get_db()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_db()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT destination FROM proxy_logs
             WHERE destination IS NOT NULL AND destination != ''
             AND timestamp >= datetime('now', '-7 days')
         """)
         rows = cursor.fetchall()
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as e:
+        logger.warning(f"File extension query failed: {e}")
         rows = []
-    conn.close()
+    finally:
+        if conn:
+            conn.close()
 
     import re
     ext_pattern = re.compile(r'\.([a-zA-Z0-9]{1,10})(?:\?|$|#)')
@@ -566,9 +606,10 @@ def file_extension_distribution():
 @router.get("/api/analytics/top-domains", dependencies=[Depends(authenticate)])
 def top_domains():
     """Top accessed domains for word cloud / domain analysis."""
-    conn = get_db()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_db()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT destination, COUNT(*) as cnt FROM proxy_logs
             WHERE destination IS NOT NULL AND destination != ''
@@ -576,9 +617,12 @@ def top_domains():
             GROUP BY destination ORDER BY cnt DESC LIMIT 200
         """)
         rows = cursor.fetchall()
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as e:
+        logger.warning(f"Top domains query failed: {e}")
         rows = []
-    conn.close()
+    finally:
+        if conn:
+            conn.close()
 
     # Aggregate by root domain
     domain_counts: dict = {}
