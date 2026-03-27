@@ -53,6 +53,12 @@ JWT_EXPIRE_HOURS = 8
 MAX_ATTEMPTS = 5
 RATE_LIMIT_WINDOW = 300  # 5 minutes
 
-# CORS
+# CORS — reject wildcard to prevent open access in production
 _cors_raw = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:8011,http://web:8011')
-CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_raw.split(',') if o.strip()]
+_cors_origins = [o.strip() for o in _cors_raw.split(',') if o.strip()]
+if '*' in _cors_origins:
+    _logger.warning("CORS_ALLOWED_ORIGINS contains '*' — rejecting wildcard for security. Use explicit origins.")
+    _cors_origins = [o for o in _cors_origins if o != '*']
+    if not _cors_origins:
+        _cors_origins = ['http://localhost:8011']
+CORS_ALLOWED_ORIGINS = _cors_origins
