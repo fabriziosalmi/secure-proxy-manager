@@ -17,4 +17,8 @@ COPY ./ui/docker-entrypoint.sh           /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 EXPOSE 8011
+
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+  CMD wget -qO- http://localhost:8011/ || exit 1
+
 ENTRYPOINT ["/docker-entrypoint.sh"]
