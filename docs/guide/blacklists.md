@@ -31,6 +31,12 @@ The IP whitelist allows traffic **to** specific destination IPs. It does not aff
 
 Manage via: **Web UI → Blacklists → Whitelist** or the [API](/api/blacklists#ip-whitelist).
 
+## Domain Whitelist
+
+Whitelisted domains bypass the DNS blackhole (dnsmasq). Even if a domain appears in the domain blacklist, a domain whitelist entry ensures it resolves normally at the DNS layer. Use this for essential services (GitHub, Google, Docker registries, etc.) before importing large blocklists.
+
+Manage via: **Web UI → Blacklists → Domain Whitelist** or the [API](/api/blacklists#domain-whitelist).
+
 ## Importing Blocklists
 
 ### Popular Lists (one-click)
@@ -90,9 +96,20 @@ curl -X POST http://localhost:8011/api/blacklists/import-geo \
   -d '{"countries": ["RU", "CN"]}'
 ```
 
-## Scheduling automatic updates
+## Automatic blocklist refresh
 
-The built-in scheduler does not yet support automatic feed refresh. Use a host cron job:
+Secure Proxy Manager includes a built-in auto-refresh scheduler. Enable it via **Settings → Auto-refresh**:
+
+- `auto_refresh_enabled`: set to `true` to enable
+- `auto_refresh_hours`: interval in hours (default: 24)
+
+When enabled, the scheduler automatically re-downloads the following feeds and adds any new entries:
+
+- Firehol Level 1 (IP)
+- Spamhaus DROP (IP)
+- fabriziosalmi/blacklists consolidated list (domain)
+
+To schedule updates for additional custom feeds, use a host cron job:
 
 ```cron
 0 3 * * * curl -s -X POST http://localhost:8011/api/blacklists/import \

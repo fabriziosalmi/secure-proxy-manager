@@ -696,8 +696,9 @@ curl -X POST http://localhost:8011/api/blacklists/import \
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/auth/login` | POST | User login, returns JWT token |
-| `/api/auth/logout` | POST | User logout |
-| `/api/auth/change-password` | POST | Change user password |
+| `/api/logout` | POST | User logout |
+| `/api/change-password` | POST | Change user password |
+| `/api/ws-token` | GET | Get a single-use WebSocket auth token |
 
 #### Proxy Status & Settings
 | Endpoint | Method | Description |
@@ -705,7 +706,9 @@ curl -X POST http://localhost:8011/api/blacklists/import \
 | `/api/status` | GET | Get proxy service status |
 | `/api/settings` | GET | Get all proxy settings |
 | `/api/settings/<setting_name>` | PUT | Update a specific setting |
+| `/api/settings` | POST | Bulk update settings |
 | `/health` | GET | Health check endpoint |
+| `/api/health` | GET | Health check endpoint (API prefix) |
 
 #### Blacklist and Whitelist Management
 | Endpoint | Method | Description |
@@ -713,14 +716,21 @@ curl -X POST http://localhost:8011/api/blacklists/import \
 | `/api/ip-blacklist` | GET | List all IP blacklist entries |
 | `/api/ip-blacklist` | POST | Add a single IP blacklist entry |
 | `/api/ip-blacklist/<id>` | DELETE | Delete an IP blacklist entry |
+| `/api/ip-blacklist/bulk-delete` | POST | Delete multiple IP blacklist entries |
+| `/api/ip-blacklist/clear-all` | DELETE | Remove all IP blacklist entries |
 | `/api/domain-blacklist` | GET | List all domain blacklist entries |
 | `/api/domain-blacklist` | POST | Add a single domain blacklist entry |
 | `/api/domain-blacklist/<id>` | DELETE | Delete a domain blacklist entry |
+| `/api/domain-blacklist/bulk-delete` | POST | Delete multiple domain blacklist entries |
+| `/api/domain-blacklist/clear-all` | DELETE | Remove all domain blacklist entries |
 | `/api/blacklists/import` | POST | Import blacklist from URL or inline content (`type`: `ip` or `domain`) |
 | `/api/blacklists/import-geo` | POST | Import geo-based IP block by country code(s) |
 | `/api/ip-whitelist` | GET | List all IP whitelist entries (bypass direct-IP block) |
 | `/api/ip-whitelist` | POST | Add an IP/network to the whitelist |
 | `/api/ip-whitelist/<id>` | DELETE | Remove an IP from the whitelist |
+| `/api/domain-whitelist` | GET | List domain whitelist entries (DNS blackhole bypass) |
+| `/api/domain-whitelist` | POST | Add a domain to the DNS whitelist |
+| `/api/domain-whitelist/<id>` | DELETE | Remove a domain from the whitelist |
 
 #### Logs & Analytics
 | Endpoint | Method | Description |
@@ -729,6 +739,7 @@ curl -X POST http://localhost:8011/api/blacklists/import \
 | `/api/logs/stats` | GET | Get log statistics (total, blocked, IP block counts) |
 | `/api/logs/timeline` | GET | Traffic timeline data for the last 24h (used by dashboard chart) |
 | `/api/logs/clear` | POST | Clear all proxy logs |
+| `/api/logs/clear-old` | POST | Delete logs older than the retention period |
 | `/api/analytics/report/pdf` | GET | Generate and download a PDF analytics report |
 
 #### Intelligence & Analytics
@@ -760,12 +771,18 @@ curl -X POST http://localhost:8011/api/blacklists/import \
 #### Database & Maintenance
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/database/size` | GET | Get database size |
+| `/api/database/size` | GET | Get database file size |
 | `/api/database/stats` | GET | Get database statistics |
 | `/api/database/optimize` | POST | Optimize database |
 | `/api/database/export` | GET | Export database |
 | `/api/database/reset` | POST | Reset database |
 | `/api/maintenance/reload-config` | POST | Reload proxy configuration |
+| `/api/maintenance/reload-dns` | POST | Reload DNS configuration |
+| `/api/maintenance/clear-cache` | POST | Clear proxy cache |
+| `/api/maintenance/backup-config` | GET | Download configuration backup |
+| `/api/maintenance/restore-config` | POST | Restore configuration from backup |
+| `/api/maintenance/check-cert-security` | GET | Check SSL certificate security |
+| `/api/security/download-ca` | GET | Download the proxy CA certificate |
 
 #### API Documentation
 | Endpoint | Method | Description |
