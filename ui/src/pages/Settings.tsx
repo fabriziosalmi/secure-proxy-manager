@@ -54,7 +54,7 @@ export function Settings() {
     } catch (error) {
       if (error instanceof z.ZodError) {
         // Show validation errors to the user
-        error.issues.forEach((err: any) => {
+        error.issues.forEach((err: z.ZodIssue) => {
           toast.error(`${err.path.join('.')}: ${err.message}`);
         });
       } else {
