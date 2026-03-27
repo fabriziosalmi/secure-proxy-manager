@@ -11,9 +11,12 @@ A containerized web proxy management system based on Squid, featuring a web inte
 - **WAF Engine**: 171 regex rules + 7 behavioral heuristics across 21 categories, anomaly scoring with configurable threshold, Shannon entropy analysis, tiered matching with early-exit.
 - **DNS Blackhole**: dnsmasq sidecar blocks 87K+ domains at L3 (DNS resolution → 0.0.0.0) with zero HTTP overhead.
 - **Traffic Intelligence**: Per-request feature extraction (entropy, timing, headers), JSONL profiling for ML training, real-time /stats dashboard.
-- **Architecture**: Modular FastAPI backend (8 routers), React 19 + @tanstack/react-query frontend, SQLite WAL.
+- **Threat Intel Dashboard**: Shadow IT detector (35+ SaaS services), file type distribution, service type breakdown, domain cloud visualization.
+- **Protocol Hardening**: Method whitelisting (GET/POST/HEAD only), Via/XFF header stripping, HSTS injection, max header size limits, strict content-length enforcement.
+- **Architecture**: Modular FastAPI backend (8 routers, 70+ endpoints), React 19 + @tanstack/react-query frontend, SQLite WAL.
 - **Blocklists**: 16 popular lists (8 IP + 8 domain including fabriziosalmi/blacklists with 2.9M+ domains), Geo-blocking by country, paginated UI with search.
 - **Heuristics**: Entropy thresholding, C2 beaconing detection, PII leak counter, destination sharding, protocol ghosting, header morphing, sequence validation.
+- **Power User UX**: Global search (⌘K), keyboard shortcuts (1-5 for pages), asset tags (name your IPs), cache efficiency gauge.
 - **Custom Block Pages**: Branded dark-theme error pages with project logo and credits.
 - **SSL Bump**: Inspect and filter HTTPS traffic with auto-generated certificates.
 - **Caching**: Configurable L1 (memory) + L2 (disk) content caching via Squid.
@@ -23,9 +26,9 @@ A containerized web proxy management system based on Squid, featuring a web inte
 
 The project employs a microservices architecture:
 
-1. **Frontend (React 19/Vite/Nginx)**: SPA with @tanstack/react-query, Recharts dashboards, paginated blacklists, WAF Intelligence card.
-2. **Backend (FastAPI)**: Modular Python backend (8 API routers), SQLite WAL, WebSocket log streaming, JWT auth.
-3. **Proxy Engine (Squid 5.9)**: Caching/filtering with ICAP integration, custom branded block pages, IP ACL blocking.
+1. **Frontend (React 19/Vite/Nginx)**: SPA with @tanstack/react-query, Recharts dashboards, paginated blacklists, WAF Intelligence card, Threat Intel page with Shadow IT/file types/domain cloud, global search (⌘K), keyboard shortcuts.
+2. **Backend (FastAPI)**: Modular Python backend (8 API routers, 70+ endpoints), SQLite WAL, WebSocket log streaming, JWT auth, analytics (shadow IT, file extensions, service types, top domains).
+3. **Proxy Engine (Squid 5.9)**: Caching/filtering with ICAP integration, custom branded block pages, IP ACL blocking, protocol hardening (method whitelist, header stripping, HSTS).
 4. **WAF Engine (Go ICAP)**: 171 regex rules + 7 behavioral heuristics, anomaly scoring, Shannon entropy, JSONL traffic profiling.
 5. **DNS Blackhole (dnsmasq)**: Internal DNS resolver that sinkhole-blocks 87K+ blacklisted domains at L3.
 6. **Tailscale Sidecar** (optional): Secure remote access overlay network.
@@ -49,7 +52,7 @@ secure-proxy-manager/
 │       └── routers/          # 8 API routers (auth, blacklists, logs, settings, etc.)
 ├── ui/                       # React 19 frontend
 │   └── src/
-│       ├── pages/            # Dashboard, Blacklists, Logs, Settings, Login
+│       ├── pages/            # Dashboard, Blacklists, ThreatIntel, Logs, Settings, Login
 │       ├── lib/api.ts        # Axios + JWT expiry + react-query
 │       └── public/logo.svg   # Gear+eye SVG logo
 ├── proxy/                    # Squid proxy service
@@ -812,11 +815,13 @@ Full interactive API documentation is available at `/api/docs` when the service 
 
 ## Future Roadmap
 
+- **Regex Playground**: Test WAF rules against real traffic logs before deploying
+- **WAF False Positive Management**: Exclude rules per domain with one click
+- **ASN Blocking**: Block entire Autonomous Systems by number
 - **Authentication Integration**: LDAP/Active Directory support
-- **Advanced Analytics**: ML-based traffic pattern analysis
-- **Threat Intelligence**: Integration with external threat feeds
+- **Advanced Analytics**: ML-based traffic pattern analysis, baseline overlays
 - **Mobile Support**: Improved UI for mobile administration
-- **Notification System**: Alerts via webhook
+- **Config Versioning**: Diff and rollback proxy/WAF configuration changes
 
 ## Contributing
 

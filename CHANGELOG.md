@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-03-27
+
+### Added
+- **Threat Intel Dashboard**: Shadow IT detector (35+ SaaS services categorized), file type distribution, service type breakdown, domain cloud
+- **Global Search (⌘K)**: Search across logs, blacklists, pages from anywhere
+- **Keyboard Shortcuts**: 1-5 for page navigation, Escape to close modals
+- **Asset Tags**: Click any IP to assign a human-readable name
+- **Cache Efficiency Gauge**: Squid cache hit rate on Dashboard
+- 4 analytics API endpoints: shadow-it, file-extensions, user-agents, top-domains
+- **Protocol Hardening**: Method whitelisting, Via/XFF stripping, HSTS injection, max header size
+- **Reset Counters**: Clear WAF stats, dashboard, and logs independently
+- Auto-refresh blocklists after import
+- LAN bypass for proxy self-access
+
+### Fixed
+- WebSocket Live Stream works through proxy (CONNECT to LAN)
+- Method blocking ACL position in Squid config
+- Volume permissions via gosu entrypoint
+
 ## [1.4.0] - 2026-03-26
 
 ### Added
