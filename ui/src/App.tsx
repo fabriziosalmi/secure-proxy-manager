@@ -1,4 +1,4 @@
-import { Component, useState } from 'react';
+import { Component, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/react-query';
 import toast, { Toaster } from 'react-hot-toast';
@@ -86,6 +86,15 @@ function App() {
     } catch { /* malformed token — treat as valid, API will 401 */ }
     return true;
   });
+
+  // Listen for session expiry warning from API interceptor
+  useEffect(() => {
+    const handler = () => {
+      toast('Session expiring soon — save your work', { icon: '⏳', duration: 10000, id: 'session-warn' });
+    };
+    window.addEventListener('session-expiring', handler);
+    return () => window.removeEventListener('session-expiring', handler);
+  }, []);
 
   if (!isAuthenticated) {
     return <Login onLogin={() => setIsAuthenticated(true)} />;

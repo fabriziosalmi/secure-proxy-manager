@@ -639,3 +639,25 @@ def top_domains():
     )[:50]
 
     return {"status": "success", "data": result}
+
+
+@router.get("/api/audit-log", dependencies=[Depends(authenticate)])
+def get_audit_log(limit: int = 50, offset: int = 0):
+    """Return recent audit log entries."""
+    limit = min(max(1, limit), 200)
+    offset = max(0, offset)
+    conn = get_db()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM audit_log")
+        total = cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT * FROM audit_log ORDER BY id DESC LIMIT ? OFFSET ?",
+            (limit, offset)
+        )
+        entries = [dict(r) for r in cursor.fetchall()]
+    except sqlite3.OperationalError:
+        total = 0
+        entries = []
+    conn.close()
+    return {"status": "success", "data": entries, "total": total, "limit": limit, "offset": offset}

@@ -57,6 +57,9 @@ def login(req: LoginRequest, request: Request):
 
     expire = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS)
     token = pyjwt.encode({"sub": req.username, "exp": expire}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+    from ..database import audit
+    audit(req.username, "login", f"from {client_ip}")
     return {"token": token}
 
 
@@ -129,5 +132,7 @@ def change_password(request_data: ChangePasswordRequest, request: Request):
     finally:
         conn.close()
 
+    from ..database import audit
+    audit(username, "password_change", username)
     logger.info(f"Password changed successfully for user {username}")
     return {"status": "success", "message": "Password updated successfully"}

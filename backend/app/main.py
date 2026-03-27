@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pythonjsonlogger import jsonlogger
 import logging.handlers
 
-from .config import CORS_ALLOWED_ORIGINS
+from .config import CORS_ALLOWED_ORIGINS, validate_environment
 from .database import init_db, get_db
 from .auth import validate_ws_token
 from .websocket import manager, tail_logs_sync
@@ -178,6 +178,7 @@ def blacklist_auto_refresh_sync():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    validate_environment()
     init_db()
     setup_siem_logger()
 

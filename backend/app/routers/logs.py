@@ -61,7 +61,7 @@ def get_logs(limit: int = 25, offset: int = 0, sort: str = 'timestamp', order: s
         return {
             "status": "success",
             "data": logs,
-            "pagination": {"total": total_count, "limit": limit, "offset": offset}
+            "total": total_count, "limit": limit, "offset": offset
         }
     except sqlite3.Error as e:
         logger.error(f"Error fetching logs: {str(e)}")

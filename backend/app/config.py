@@ -62,3 +62,26 @@ if '*' in _cors_origins:
     if not _cors_origins:
         _cors_origins = ['http://localhost:8011']
 CORS_ALLOWED_ORIGINS = _cors_origins
+
+
+# ── Startup validation ────────────────────────────────────────────────────────
+def validate_environment():
+    """Log warnings for common misconfigurations."""
+    issues = []
+    db_dir = os.path.dirname(DATABASE_PATH)
+    if db_dir and not os.path.exists(db_dir):
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+        except OSError:
+            issues.append(f"Cannot create database directory: {db_dir}")
+    if db_dir and os.path.exists(db_dir) and not os.access(db_dir, os.W_OK):
+        issues.append(f"Database directory not writable: {db_dir}")
+    if not os.environ.get('BASIC_AUTH_USERNAME'):
+        issues.append("BASIC_AUTH_USERNAME not set — backend will fail to start")
+    if not os.environ.get('BASIC_AUTH_PASSWORD'):
+        issues.append("BASIC_AUTH_PASSWORD not set — backend will fail to start")
+    if os.environ.get('SECRET_KEY', '').lower() in ('changeme', 'secret', 'password', ''):
+        _logger.warning("SECRET_KEY is weak or default — consider setting a strong value")
+    for issue in issues:
+        _logger.warning(f"Config issue: {issue}")
+    return issues
