@@ -90,6 +90,9 @@ export function Sidebar() {
             {apiStatus === 'connected' ? 'Connected' : apiStatus === 'disconnected' ? 'Offline' : 'Checking…'}
           </span>
         </div>
+        <div className="text-center mt-2">
+          <span className="text-[10px] text-muted-foreground/40 font-mono">v1.8.0</span>
+        </div>
       </div>
     </aside>
   );
