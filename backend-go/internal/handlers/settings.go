@@ -74,6 +74,10 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for k, v := range body {
+		// Validate key name: max 100 chars, only alphanumeric + underscore
+		if len(k) > 100 || len(v) > 10000 {
+			continue
+		}
 		h.db.Exec( //nolint:errcheck
 			"INSERT INTO settings(setting_name,setting_value) VALUES(?,?) ON CONFLICT(setting_name) DO UPDATE SET setting_value=excluded.setting_value",
 			k, v,

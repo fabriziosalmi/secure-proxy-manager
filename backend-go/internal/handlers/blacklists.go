@@ -158,7 +158,10 @@ func clearAllHandler(db *sql.DB, table string, cfg *config.Config, col string) h
 	return func(w http.ResponseWriter, r *http.Request) {
 		var count int
 		db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&count) //nolint:errcheck
-		db.Exec(fmt.Sprintf("DELETE FROM %s", table))                           //nolint:errcheck
+		if _, err := db.Exec(fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+			writeError(w, http.StatusInternalServerError, "database error: "+err.Error())
+			return
+		}
 		if cfg != nil {
 			go propagate(db, cfg, kindFromTable(table))
 		}
@@ -392,12 +395,20 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 			log.Error().Err(err).Msg("batch insert begin failed")
 			break
 		}
-		stmt, _ := tx.Prepare(fmt.Sprintf("INSERT OR IGNORE INTO %s (%s, description) VALUES(?,?)", table, col))
+		stmt, err := tx.Prepare(fmt.Sprintf("INSERT OR IGNORE INTO %s (%s, description) VALUES(?,?)", table, col))
+		if err != nil {
+			tx.Rollback()
+			log.Error().Err(err).Msg("batch insert prepare failed")
+			break
+		}
 		for _, pair := range toInsert[i:end] {
 			stmt.Exec(pair[0], pair[1]) //nolint:errcheck
 		}
 		stmt.Close()
-		tx.Commit() //nolint:errcheck
+		if err := tx.Commit(); err != nil {
+			tx.Rollback()
+			log.Error().Err(err).Msg("batch insert commit failed")
+		}
 	}
 	if added > 0 {
 		go propagate(h.db, h.cfg, blType)
@@ -489,15 +500,13 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Legacy aliases.
+// Legacy aliases — redirect to unified import endpoint.
 func (h *BlacklistHandlers) ImportIPLegacy(w http.ResponseWriter, r *http.Request) {
-	body, _ := json.Marshal(map[string]string{"type": "ip"})
-	_ = body
-	return
+	writeError(w, http.StatusGone, "Use POST /api/blacklists/import with type=ip instead")
 }
 
 func (h *BlacklistHandlers) ImportDomainLegacy(w http.ResponseWriter, r *http.Request) {
-	return
+	writeError(w, http.StatusGone, "Use POST /api/blacklists/import with type=domain instead")
 }
 
 // ── propagate ─────────────────────────────────────────────────────────────────
