@@ -110,11 +110,17 @@ def init_db():
             else:
                 logger.warning(f"Migration: could not add proxy_logs.{col}: {e}")
 
-    # Add index for timestamp-based queries
-    try:
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_proxy_logs_timestamp ON proxy_logs(timestamp)")
-    except sqlite3.OperationalError as e:
-        logger.warning(f"Could not create index (might be read-only): {e}")
+    # Add indexes for common query patterns
+    for idx_name, idx_sql in [
+        ("idx_proxy_logs_timestamp", "CREATE INDEX IF NOT EXISTS idx_proxy_logs_timestamp ON proxy_logs(timestamp)"),
+        ("idx_proxy_logs_source_ip", "CREATE INDEX IF NOT EXISTS idx_proxy_logs_source_ip ON proxy_logs(source_ip)"),
+        ("idx_proxy_logs_status", "CREATE INDEX IF NOT EXISTS idx_proxy_logs_status ON proxy_logs(status)"),
+        ("idx_proxy_logs_destination", "CREATE INDEX IF NOT EXISTS idx_proxy_logs_destination ON proxy_logs(destination)"),
+    ]:
+        try:
+            cursor.execute(idx_sql)
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Could not create index {idx_name} (might be read-only): {e}")
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS settings (

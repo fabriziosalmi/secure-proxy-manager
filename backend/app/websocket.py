@@ -29,8 +29,8 @@ class ConnectionManager:
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
-            except Exception:
-                pass
+            except (ConnectionError, RuntimeError, OSError):
+                pass  # Client disconnected
 
 
 manager = ConnectionManager()
@@ -96,7 +96,7 @@ def tail_logs_sync():
                                     loop.run_until_complete(manager.broadcast(log_entry))
                             except (ValueError, IndexError, OSError) as e:
                                 logger.debug(f"Log parse error: {e}")
-                        logger.debug(f"Tailed line: {line.strip()}")
+                        logger.debug("Tailed log line (len=%d)", len(line))
             else:
                 logger.warning(f"Log file {log_file} does not exist yet. Waiting...")
                 time.sleep(5)

@@ -72,11 +72,13 @@ def get_database_stats():
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = cursor.fetchall()
         stats = {}
-        known_tables = ['users', 'settings', 'ip_blacklist', 'domain_blacklist', 'proxy_logs']
+        ALLOWED_TABLES = {'users', 'settings', 'ip_blacklist', 'domain_blacklist', 'proxy_logs',
+                          'ip_whitelist', 'domain_whitelist'}
         for table in tables:
             table_name = table['name']
-            if table_name in known_tables:
-                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+            if table_name in ALLOWED_TABLES:
+                # Safe: table_name validated against whitelist above
+                cursor.execute(f"SELECT COUNT(*) FROM [{table_name}]")
                 stats[table_name] = cursor.fetchone()[0]
         conn.close()
         return {"status": "success", "data": stats}
@@ -128,7 +130,7 @@ def export_database():
 
         export_data = {
             "metadata": {
-                "version": "1.5.0",
+                "version": "1.7.1",
                 "timestamp": datetime.now().isoformat(),
                 "record_counts": {
                     "logs": len(logs),
@@ -154,11 +156,12 @@ def reset_database():
     try:
         conn = get_db()
         cursor = conn.cursor()
-        tables_to_clear = ['proxy_logs', 'ip_blacklist', 'domain_blacklist', 'settings']
+        CLEARABLE_TABLES = ('proxy_logs', 'ip_blacklist', 'domain_blacklist', 'settings')
         cleared_tables = []
-        for table in tables_to_clear:
+        for table in CLEARABLE_TABLES:
             try:
-                cursor.execute(f"DELETE FROM {table}")
+                # Safe: table names are hardcoded constants above
+                cursor.execute(f"DELETE FROM [{table}]")
                 cleared_tables.append(table)
             except sqlite3.OperationalError:
                 pass
