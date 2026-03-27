@@ -13,6 +13,7 @@ A containerized web proxy management system based on Squid, featuring a web inte
 - **Traffic Intelligence**: Per-request feature extraction (entropy, timing, headers), JSONL profiling for ML training, real-time /stats dashboard.
 - **Threat Intel Dashboard**: Shadow IT detector (35+ SaaS services), file type distribution, service type breakdown, domain cloud visualization.
 - **Protocol Hardening**: Method whitelisting (GET/POST/HEAD only), Via/XFF header stripping, HSTS injection, max header size limits, strict content-length enforcement.
+- **Consolidation**: 50+ DB connection leaks fixed, zero TypeScript `any` types, 0 Dependabot vulnerabilities, streaming import for 2.6M+ domains.
 - **Architecture**: Modular FastAPI backend (8 routers, 70+ endpoints), React 19 + @tanstack/react-query frontend, SQLite WAL.
 - **Blocklists**: 16 popular lists (8 IP + 8 domain including fabriziosalmi/blacklists with 2.9M+ domains), Geo-blocking by country, paginated UI with search.
 - **Heuristics**: Entropy thresholding, C2 beaconing detection, PII leak counter, destination sharding, protocol ghosting, header morphing, sequence validation.
@@ -733,6 +734,17 @@ curl -X POST http://localhost:8011/api/blacklists/import \
 | `/api/logs/timeline` | GET | Traffic timeline data for the last 24h (used by dashboard chart) |
 | `/api/logs/clear` | POST | Clear all proxy logs |
 | `/api/analytics/report/pdf` | GET | Generate and download a PDF analytics report |
+
+#### Intelligence & Analytics
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/analytics/shadow-it` | GET | Detect SaaS services accessed through proxy (35+ services) |
+| `/api/analytics/user-agents` | GET | Service type breakdown (Google, Microsoft, CDN, Dev...) |
+| `/api/analytics/file-extensions` | GET | File extension distribution with category grouping |
+| `/api/analytics/top-domains` | GET | Top accessed domains for cloud visualization |
+| `/api/dashboard/summary` | GET | Aggregated dashboard data in single call |
+| `/api/waf/stats` | GET | WAF engine statistics (rules, blocks, entropy) |
+| `/api/counters/reset` | POST | Reset all counters (logs, WAF, dashboard) |
 
 #### Cache Management
 | Endpoint | Method | Description |
