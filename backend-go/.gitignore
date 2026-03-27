@@ -1,0 +1,17 @@
+# Generated scripts (not part of source)
+_gen_*.py
+_fix_*.py
+
+# Build output
+/bin/
+/dist/
+secure-proxy-manager-backend
+server
+
+# Test artifacts
+*.test
+*.out
+coverage.txt
+
+# OS
+.DS_Store
