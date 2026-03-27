@@ -14,6 +14,10 @@ router = APIRouter()
 def get_logs(limit: int = 25, offset: int = 0, sort: str = 'timestamp', order: str = 'desc'):
     """Get proxy logs with pagination and sorting."""
     try:
+        # Clamp parameters to safe ranges
+        limit = max(1, min(limit, 500))
+        offset = max(0, offset)
+
         valid_columns = ['timestamp', 'source_ip', 'destination', 'status', 'bytes', 'method']
         if sort not in valid_columns:
             sort = 'timestamp'
