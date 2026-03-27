@@ -1,9 +1,18 @@
 import { Component, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Toaster } from 'react-hot-toast';
+import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/react-query';
+import toast, { Toaster } from 'react-hot-toast';
 
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error) => {
+      // Show toast for query errors (API down, 500, etc.) — but not for 401 (handled by interceptor)
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status !== 401) {
+        toast.error('Failed to load data. Check API connection.', { id: 'query-error', duration: 3000 });
+      }
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 10_000,

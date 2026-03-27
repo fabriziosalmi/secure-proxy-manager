@@ -24,6 +24,9 @@ auth_attempts: Dict[str, List[datetime]] = {}
 # One-time tokens for WebSocket authentication: {token: (username, expiry)}
 ws_tokens: Dict[str, tuple] = {}
 
+# JWT blacklist for logout (in-memory, cleared on restart — acceptable for homelab/SMB)
+_jwt_blacklist: set = set()
+
 
 def generate_password_hash(password: str) -> str:
     """Hash a password using bcrypt."""
@@ -65,6 +68,12 @@ def authenticate(
     # Bearer JWT path
     if authorization.startswith("Bearer "):
         token = authorization[7:]
+        if token in _jwt_blacklist:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         try:
             payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
             sub = payload.get("sub")
@@ -86,7 +95,11 @@ def authenticate(
 
     # Basic Auth path (backward-compat)
     if authorization.startswith("Basic "):
-        client_ip = request.client.host if request.client else "unknown"
+        # Use X-Forwarded-For if behind reverse proxy, fallback to direct IP
+        client_ip = (
+            request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            or (request.client.host if request.client else "unknown")
+        )
         now = datetime.now()
 
         if client_ip in auth_attempts:
@@ -125,6 +138,14 @@ def authenticate(
         status_code=status.HTTP_401_UNAUTHORIZED,
         headers={"WWW-Authenticate": 'Bearer realm="Secure Proxy Manager"'},
     )
+
+
+def invalidate_jwt(token: str):
+    """Add a JWT to the blacklist (called on logout)."""
+    _jwt_blacklist.add(token)
+    # Prune blacklist periodically (keep last 1000 tokens)
+    if len(_jwt_blacklist) > 1000:
+        _jwt_blacklist.clear()
 
 
 def issue_ws_token(username: str) -> str:
