@@ -1,4 +1,5 @@
 import logging
+import sqlite3
 import time
 import threading
 from typing import Optional
@@ -14,8 +15,10 @@ from .database import init_db, get_db
 from .auth import validate_ws_token
 from .websocket import manager, tail_logs_sync
 
-# Configure main logger
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Configure main logger — respect LOG_LEVEL env var, default INFO in production
+import os as _os
+_log_level = getattr(logging, _os.environ.get('LOG_LEVEL', 'INFO').upper(), logging.INFO)
+logging.basicConfig(level=_log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # SIEM Syslog Logger setup
@@ -42,8 +45,8 @@ def setup_siem_logger():
                 formatter = jsonlogger.JsonFormatter('%(timestamp)s %(level)s %(name)s %(message)s')
                 syslog_handler.setFormatter(formatter)
                 siem_logger.addHandler(syslog_handler)
-                logger.info(f"SIEM forwarding configured to {host}:{port}")
-        except Exception:
+                logger.info("SIEM forwarding configured successfully")
+        except sqlite3.OperationalError:
             pass  # DB not ready yet
         conn.close()
     except Exception as e:

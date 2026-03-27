@@ -155,17 +155,19 @@ def domain_statistics():
             blacklisted_domains = []
         conn.close()
 
+        # Convert blacklist to set for O(1) exact lookup + collect wildcards separately
+        bl_exact = set(blacklisted_domains)
+        bl_wildcards = [bl[2:] for bl in blacklisted_domains if bl.startswith('*.')]
+
         domains = []
         for domain in domains_raw:
             domain_name = domain['domain_name']
-            is_in_blacklist = domain_name in blacklisted_domains
-            if not is_in_blacklist:
-                for bl in blacklisted_domains:
-                    if bl.startswith('*.') and domain_name.endswith(bl[2:]):
-                        is_in_blacklist = True
-                        break
-            status = 'Blocked' if (is_in_blacklist or domain.get('blocked_requests', 0) > 0) else 'Allowed'
-            domains.append({'domain_name': domain_name, 'requests': domain['requests'], 'status': status})
+            is_blocked = (
+                domain_name in bl_exact
+                or any(domain_name.endswith(w) for w in bl_wildcards)
+                or domain.get('blocked_requests', 0) > 0
+            )
+            domains.append({'domain_name': domain_name, 'requests': domain['requests'], 'status': 'Blocked' if is_blocked else 'Allowed'})
 
         return {"status": "success", "data": domains}
     except sqlite3.Error as e:
