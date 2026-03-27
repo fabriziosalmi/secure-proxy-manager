@@ -28,6 +28,7 @@ siem_logger.setLevel(logging.INFO)
 
 def setup_siem_logger():
     """Configure SIEM syslog forwarding based on settings."""
+    conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -47,10 +48,12 @@ def setup_siem_logger():
                 siem_logger.addHandler(syslog_handler)
                 logger.info("SIEM forwarding configured successfully")
         except sqlite3.OperationalError:
-            pass  # DB not ready yet
-        conn.close()
+            logger.debug("SIEM setup skipped: settings table not ready yet")
     except Exception as e:
         logger.error(f"Failed to setup SIEM logger: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 
 def ddns_scheduler_sync():
@@ -66,6 +69,7 @@ def ddns_scheduler_sync():
 def log_retention_sync():
     """Background task to delete old logs based on configurable retention."""
     while True:
+        conn = None
         try:
             conn = get_db()
             cursor = conn.cursor()
@@ -82,9 +86,11 @@ def log_retention_sync():
                 if deleted > 0:
                     conn.commit()
                     logger.info(f"Log retention: deleted {deleted} logs older than {retention_days} days")
-            conn.close()
         except Exception as e:
             logger.error(f"Log retention error: {e}")
+        finally:
+            if conn:
+                conn.close()
         time.sleep(3600)  # Run every hour
 
 
@@ -103,6 +109,8 @@ def blacklist_auto_refresh_sync():
     ]
 
     while True:
+        conn = None
+        interval_hours = 24
         try:
             conn = get_db()
             cursor = conn.cursor()
@@ -112,52 +120,58 @@ def blacklist_auto_refresh_sync():
             cursor.execute("SELECT setting_value FROM settings WHERE setting_name = 'auto_refresh_enabled'")
             row2 = cursor.fetchone()
             enabled = row2 and row2['setting_value'] == 'true'
-            conn.close()
-
-            if enabled and interval_hours > 0:
-                logger.info(f"Auto-refresh: checking blocklists (interval={interval_hours}h)")
-                headers = {'User-Agent': 'SecureProxyManager/AutoRefresh'}
-
-                for url, list_type in DEFAULT_IP_LISTS + DEFAULT_DOMAIN_LISTS:
-                    try:
-                        resp = _requests.get(url, timeout=120, headers=headers)
-                        if resp.status_code == 200:
-                            conn = get_db()
-                            cursor = conn.cursor()
-                            table = "ip_blacklist" if list_type == "ip" else "domain_blacklist"
-                            col = "ip" if list_type == "ip" else "domain"
-                            # Get existing
-                            cursor.execute(f"SELECT {col} FROM {table}")
-                            existing = {r[col] for r in cursor.fetchall()}
-                            # Parse and insert new
-                            added = 0
-                            to_insert = []
-                            for line in resp.text.splitlines():
-                                entry = line.strip()
-                                if not entry or entry.startswith('#') or entry.startswith(';'):
-                                    continue
-                                parts = entry.split()
-                                entry = parts[-1] if parts else entry
-                                if entry not in existing:
-                                    to_insert.append((entry, f"Auto-refresh {time.strftime('%Y-%m-%d')}"))
-                                    existing.add(entry)
-                                    added += 1
-                            if to_insert:
-                                cursor.executemany(f"INSERT OR IGNORE INTO {table} ({col}, description) VALUES (?, ?)", to_insert)
-                                conn.commit()
-                            conn.close()
-                            if added > 0:
-                                logger.info(f"Auto-refresh: {url[:50]}... → {added} new entries")
-                    except Exception as e:
-                        logger.warning(f"Auto-refresh failed for {url[:50]}: {e}")
-
-                # Regenerate files
-                export_blacklists_to_files()
-
-            time.sleep(interval_hours * 3600)
         except Exception as e:
-            logger.error(f"Auto-refresh error: {e}")
-            time.sleep(3600)
+            logger.error(f"Auto-refresh error reading settings: {e}")
+            enabled = False
+        finally:
+            if conn:
+                conn.close()
+                conn = None
+
+        if enabled and interval_hours > 0:
+            logger.info(f"Auto-refresh: checking blocklists (interval={interval_hours}h)")
+            headers = {'User-Agent': 'SecureProxyManager/AutoRefresh'}
+
+            for url, list_type in DEFAULT_IP_LISTS + DEFAULT_DOMAIN_LISTS:
+                inner_conn = None
+                try:
+                    resp = _requests.get(url, timeout=120, headers=headers)
+                    if resp.status_code == 200:
+                        inner_conn = get_db()
+                        cursor = inner_conn.cursor()
+                        table = "ip_blacklist" if list_type == "ip" else "domain_blacklist"
+                        col = "ip" if list_type == "ip" else "domain"
+                        # Get existing
+                        cursor.execute(f"SELECT {col} FROM {table}")
+                        existing = {r[col] for r in cursor.fetchall()}
+                        # Parse and insert new
+                        added = 0
+                        to_insert = []
+                        for line in resp.text.splitlines():
+                            entry = line.strip()
+                            if not entry or entry.startswith('#') or entry.startswith(';'):
+                                continue
+                            parts = entry.split()
+                            entry = parts[-1] if parts else entry
+                            if entry not in existing:
+                                to_insert.append((entry, f"Auto-refresh {time.strftime('%Y-%m-%d')}"))
+                                existing.add(entry)
+                                added += 1
+                        if to_insert:
+                            cursor.executemany(f"INSERT OR IGNORE INTO {table} ({col}, description) VALUES (?, ?)", to_insert)
+                            inner_conn.commit()
+                        if added > 0:
+                            logger.info(f"Auto-refresh: {url[:50]}... → {added} new entries")
+                except Exception as e:
+                    logger.warning(f"Auto-refresh failed for {url[:50]}: {e}")
+                finally:
+                    if inner_conn:
+                        inner_conn.close()
+
+            # Regenerate files
+            export_blacklists_to_files()
+
+        time.sleep(interval_hours * 3600)
 
 
 # FastAPI App Lifespan

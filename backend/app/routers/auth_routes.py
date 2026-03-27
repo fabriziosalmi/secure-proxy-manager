@@ -42,10 +42,12 @@ def login(req: LoginRequest, request: Request):
             )
 
     conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT password FROM users WHERE username = ?", (req.username,))
-    user = cursor.fetchone()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT password FROM users WHERE username = ?", (req.username,))
+        user = cursor.fetchone()
+    finally:
+        conn.close()
 
     if not user or not check_password_hash(user["password"], req.password):
         auth_attempts.setdefault(client_ip, []).append(now)
@@ -88,25 +90,25 @@ def change_password(request_data: ChangePasswordRequest, request: Request):
         raise HTTPException(status_code=401, detail="Invalid authentication header")
 
     conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-    user = cursor.fetchone()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+        user = cursor.fetchone()
 
-    if not user:
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if not check_password_hash(user['password'], request_data.current_password):
+            logger.warning(f"Failed password change attempt for user {username} - incorrect current password")
+            raise HTTPException(status_code=403, detail="Current password is incorrect")
+
+        new_password_hash = generate_password_hash(new_password)
+        cursor.execute("UPDATE users SET password = ? WHERE username = ?", (new_password_hash, username))
+        cursor.execute("UPDATE settings SET setting_value = 'true' WHERE setting_name = 'default_password_changed'")
+
+        conn.commit()
+    finally:
         conn.close()
-        raise HTTPException(status_code=404, detail="User not found")
-
-    if not check_password_hash(user['password'], request_data.current_password):
-        conn.close()
-        logger.warning(f"Failed password change attempt for user {username} - incorrect current password")
-        raise HTTPException(status_code=403, detail="Current password is incorrect")
-
-    new_password_hash = generate_password_hash(new_password)
-    cursor.execute("UPDATE users SET password = ? WHERE username = ?", (new_password_hash, username))
-    cursor.execute("UPDATE settings SET setting_value = 'true' WHERE setting_name = 'default_password_changed'")
-
-    conn.commit()
-    conn.close()
 
     logger.info(f"Password changed successfully for user {username}")
     return {"status": "success", "message": "Password updated successfully"}
