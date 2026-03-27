@@ -15,7 +15,7 @@ curl -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" http://lo
 ### Login
 
 ```
-POST /api/login
+POST /api/auth/login
 ```
 
 Validates credentials. Returns 200 on success.
