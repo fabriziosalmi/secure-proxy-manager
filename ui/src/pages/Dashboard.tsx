@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Zap, Download, Copy, Check, Brain, AlertTriangle, RotateCcw } from 'lucide-react';
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, PieChart, Pie } from 'recharts';
+import { Area, Bar, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, PieChart, Pie } from 'recharts';
 import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -116,17 +116,17 @@ export function Dashboard() {
           <CardContent className="p-2">
             <div className="h-[180px]">
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                <AreaChart data={chart} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                <ComposedChart data={chart} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="cT" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
-                    <linearGradient id="cB" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/><stop offset="95%" stopColor="#ef4444" stopOpacity={0}/></linearGradient>
                   </defs>
                   <XAxis dataKey="time" stroke="#888" fontSize={9} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#888" fontSize={9} tickLine={false} axisLine={false} />
+                  <YAxis yAxisId="left" stroke="#888" fontSize={9} tickLine={false} axisLine={false} />
+                  <YAxis yAxisId="right" orientation="right" stroke="#ef4444" fontSize={9} tickLine={false} axisLine={false} />
                   <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', fontSize: '12px' }} />
-                  <Area type="monotone" dataKey="total" name="Total" stroke="#3b82f6" strokeWidth={1.5} fill="url(#cT)" />
-                  <Area type="monotone" dataKey="blocked" name="Blocked" stroke="#ef4444" strokeWidth={1.5} fill="url(#cB)" />
-                </AreaChart>
+                  <Area yAxisId="left" type="monotone" dataKey="total" name="Total" stroke="#3b82f6" strokeWidth={1.5} fill="url(#cT)" />
+                  <Bar yAxisId="right" dataKey="blocked" name="Blocked" fill="#ef4444" opacity={0.7} radius={[2, 2, 0, 0]} />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
