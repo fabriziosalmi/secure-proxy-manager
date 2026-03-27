@@ -210,6 +210,21 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
+# ── Request ID middleware ─────────────────────────────────────────────────────
+import uuid as _uuid
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as _StarletteRequest
+from starlette.responses import Response as _StarletteResponse
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: _StarletteRequest, call_next):
+        request_id = request.headers.get("x-request-id") or str(_uuid.uuid4())[:8]
+        response: _StarletteResponse = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+app.add_middleware(RequestIDMiddleware)
+
 # ── Include routers ──────────────────────────────────────────────────────────
 from .routers import auth_routes, blacklists, logs, settings, maintenance, database_routes, security, analytics  # noqa: E402
 
