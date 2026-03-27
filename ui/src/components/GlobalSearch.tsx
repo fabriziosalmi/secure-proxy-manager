@@ -85,7 +85,7 @@ export function GlobalSearch() {
 
         if (ipRes.status === 'fulfilled') {
           const ips = ipRes.value.data?.data || [];
-          ips.forEach((ip: any) => {
+          ips.forEach((ip: Record<string, string>) => {
             items.push({
               type: 'ip', label: ip.ip,
               description: ip.description || 'IP blacklist entry',
@@ -96,7 +96,7 @@ export function GlobalSearch() {
 
         if (domRes.status === 'fulfilled') {
           const doms = domRes.value.data?.data || [];
-          doms.forEach((d: any) => {
+          doms.forEach((d: Record<string, string>) => {
             items.push({
               type: 'domain', label: d.domain,
               description: d.description || 'Domain blacklist entry',
@@ -107,7 +107,7 @@ export function GlobalSearch() {
 
         if (logRes.status === 'fulfilled') {
           const logs = logRes.value.data?.data || logRes.value.data?.logs || [];
-          logs.forEach((l: any) => {
+          logs.forEach((l: Record<string, string>) => {
             items.push({
               type: 'log', label: `${l.method || '-'} ${l.destination}`,
               description: `${l.client_ip} — ${l.status}`,

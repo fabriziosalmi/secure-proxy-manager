@@ -93,7 +93,7 @@ export function ThreatIntel() {
                     <XAxis type="number" stroke="#888" fontSize={9} tickLine={false} />
                     <YAxis type="category" dataKey="key" stroke="#888" fontSize={9} tickLine={false} width={80} />
                     <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', fontSize: '11px' }} />
-                    <Bar dataKey="count" radius={[0, 3, 3, 0]}>{wafCats.slice(0, 8).map((_: any, i: number) => <Cell key={i} fill={C[i % C.length]} />)}</Bar>
+                    <Bar dataKey="count" radius={[0, 3, 3, 0]}>{wafCats.slice(0, 8).map((_: unknown, i: number) => <Cell key={i} fill={C[i % C.length]} />)}</Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -111,7 +111,7 @@ export function ThreatIntel() {
           </CardHeader>
           <CardContent className="p-2">
             <div className="space-y-0.5 max-h-[200px] overflow-y-auto">
-              {shadowIt && shadowIt.length > 0 ? shadowIt.slice(0, 15).map((svc: any, i: number) => (
+              {shadowIt && shadowIt.length > 0 ? shadowIt.slice(0, 15).map((svc, i) => (
                 <div key={i} className="flex items-center justify-between py-1 text-xs">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: CAT_COLORS[svc.category] || '#6b7280' }} />
@@ -186,7 +186,7 @@ export function ThreatIntel() {
           <CardContent className="p-2">
             {topDomains && topDomains.length > 0 ? (
               <div className="flex flex-wrap gap-1 max-h-[200px] overflow-y-auto">
-                {topDomains.slice(0, 40).map((d: any, i: number) => {
+                {topDomains.slice(0, 40).map((d, i) => {
                   const maxCount = topDomains[0].count;
                   const ratio = d.count / maxCount;
                   const size = Math.max(10, Math.min(20, 10 + ratio * 10));
@@ -212,7 +212,7 @@ export function ThreatIntel() {
           <CardHeader className="p-3 pb-0"><CardTitle className="text-sm">Top Blocked</CardTitle></CardHeader>
           <CardContent className="p-2">
             <div className="space-y-1 max-h-[200px] overflow-y-auto">
-              {s?.top_blocked?.map((item: any, i: number) => (
+              {s?.top_blocked?.map((item, i) => (
                 <div key={i} className="flex items-center gap-2 py-1 text-xs">
                   <span className="text-muted-foreground w-4 text-right font-bold">{i + 1}</span>
                   <span className="font-mono truncate flex-1" title={item.dest}>{item.dest}</span>
@@ -232,7 +232,7 @@ export function ThreatIntel() {
           <CardHeader className="p-3 pb-0"><CardTitle className="text-sm flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-yellow-500" />Live Feed</CardTitle></CardHeader>
           <CardContent className="p-2">
             <div className="space-y-0.5 max-h-[200px] overflow-y-auto">
-              {s?.recent_blocks?.map((b: any, i: number) => (
+              {s?.recent_blocks?.map((b, i) => (
                 <div key={i} className="flex items-center py-1 px-1 rounded hover:bg-secondary/20 text-xs">
                   <div className="w-1.5 h-1.5 rounded-full bg-destructive mr-2 shrink-0 animate-pulse" />
                   <span className="text-muted-foreground w-14 shrink-0 font-mono text-[10px]">{new Date(b.timestamp).toLocaleTimeString()}</span>
