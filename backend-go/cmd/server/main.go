@@ -74,6 +74,7 @@ func main() {
 	workers.StartLogTailer(db, cfg.LogPath, hub)
 	workers.StartLogRetention(db)
 	workers.StartBlacklistRefresh(db, cfg.ConfigDir)
+	workers.StartUpdateChecker("")
 
 	// ── router ───────────────────────────────────────────────────────────────
 	r := chi.NewRouter()
