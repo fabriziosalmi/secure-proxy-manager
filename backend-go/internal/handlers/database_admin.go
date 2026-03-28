@@ -29,12 +29,15 @@ func (h *DatabaseHandlers) Size(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DatabaseHandlers) Optimize(w http.ResponseWriter, r *http.Request) {
-	_, err := h.db.Exec("VACUUM")
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+	if _, err := h.db.Exec("VACUUM"); err != nil {
+		writeError(w, http.StatusInternalServerError, "VACUUM failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Database optimized"})
+	if _, err := h.db.Exec("REINDEX"); err != nil {
+		writeError(w, http.StatusInternalServerError, "REINDEX failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Database optimized (VACUUM + REINDEX)"})
 }
 
 var allowedTables = []string{"users", "ip_whitelist", "ip_blacklist", "domain_blacklist", "domain_whitelist", "proxy_logs", "settings", "audit_log"}

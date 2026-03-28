@@ -2,6 +2,7 @@ package workers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -54,6 +55,28 @@ func StartUpdateChecker(repo string) {
 	log.Info().Str("repo", repo).Msg("update checker started (every 6h)")
 }
 
+// semverGreater returns true if a > b using numeric comparison per segment.
+func semverGreater(a, b string) bool {
+	aParts := strings.Split(a, ".")
+	bParts := strings.Split(b, ".")
+	for i := 0; i < len(aParts) || i < len(bParts); i++ {
+		var av, bv int
+		if i < len(aParts) {
+			fmt.Sscanf(aParts[i], "%d", &av)
+		}
+		if i < len(bParts) {
+			fmt.Sscanf(bParts[i], "%d", &bv)
+		}
+		if av > bv {
+			return true
+		}
+		if av < bv {
+			return false
+		}
+	}
+	return false
+}
+
 func check(repo string) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	url := "https://api.github.com/repos/" + repo + "/releases/latest"
@@ -89,7 +112,7 @@ func check(repo string) {
 
 	updateMu.Lock()
 	updateInfo = UpdateInfo{
-		Available: latest != current && latest > current,
+		Available: latest != current && semverGreater(latest, current),
 		Latest:    release.TagName,
 		Current:   config.AppVersion,
 		URL:       release.HTMLURL,
