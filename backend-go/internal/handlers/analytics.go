@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -37,6 +38,7 @@ func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	r.With(authMW).Get("/api/analytics/file-extensions", h.FileExtensions)
 	r.With(authMW).Get("/api/analytics/top-domains", h.TopDomains)
 	r.With(authMW).Get("/api/audit-log", h.AuditLog)
+	r.With(authMW).Post("/api/waf/test-rule", h.TestRule)
 }
 
 func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
@@ -591,5 +593,64 @@ func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "success", "data": entries, "total": total, "limit": limit, "offset": offset,
+	})
+}
+
+// TestRule tests a regex against recent proxy logs (Regex Playground).
+func (h *AnalyticsHandlers) TestRule(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Regex string `json:"regex"`
+		Hours int    `json:"hours"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.Regex == "" {
+		writeError(w, http.StatusBadRequest, "regex is required")
+		return
+	}
+	if req.Hours <= 0 || req.Hours > 168 {
+		req.Hours = 24
+	}
+
+	// Compile regex — if invalid, return error immediately
+	re, err := regexp.Compile(req.Regex)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid regex: "+err.Error())
+		return
+	}
+
+	// Query recent destinations from logs
+	rows, err := h.db.Query(
+		"SELECT destination FROM proxy_logs WHERE timestamp >= datetime('now', ? || ' hours') AND destination IS NOT NULL AND destination != '' LIMIT 10000",
+		fmt.Sprintf("-%d", req.Hours),
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer rows.Close()
+
+	var matches []string
+	var scanned int
+	for rows.Next() {
+		var dest string
+		rows.Scan(&dest) //nolint:errcheck
+		scanned++
+		if re.MatchString(dest) {
+			if len(matches) < 50 { // cap at 50 examples
+				matches = append(matches, dest)
+			}
+		}
+	}
+
+	writeOK(w, map[string]any{
+		"regex":     req.Regex,
+		"hours":     req.Hours,
+		"scanned":   scanned,
+		"matched":   len(matches),
+		"examples":  matches,
+		"would_block": len(matches) > 0,
 	})
 }
