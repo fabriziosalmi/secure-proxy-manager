@@ -129,6 +129,41 @@
 
 **Effort**: 3h
 
+## Batch 4: Performance & Core
+
+| # | Idea | Status | Notes |
+|---|------|--------|-------|
+| 31 | Multi-Arch Docker (ARM64) | 🔵 **Do Next** | Raspberry Pi is THE homelab device. `docker buildx` with QEMU for linux/amd64 + linux/arm64 |
+| 32 | Low-RAM profile (512MB) | 🟢 Done | Stack total ~100MB (Go 20MB + WAF 15MB + dnsmasq 5MB + Squid 50MB) |
+| 33 | OS Update Caching | ⚪ Backlog | Squid refresh patterns for APT/RPM/Windows Update. A "Cache Server" preset |
+| 34 | Log Rotation | 🟢 Done | Go worker with configurable TTL |
+| 35 | Healthchecks | 🟢 Done | All containers + Dashboard status |
+| 36 | Multi-WAN Load Balancing | ❌ Rejected | Kernel-level routing, not proxy-level. Use pfSense/OPNsense |
+| 37 | Fast-Config Reload | 🟢 Done | `squid -k reconfigure` via API, zero downtime |
+| 38 | Minimal Alpine Base | 🟢 Done | 16MB Go binary on Alpine 3.20 |
+| 39 | Parallel ICAP | 🟢 Done | Native Go goroutines per request |
+| 40 | Kernel Tuning | ❌ Rejected | Requires `--privileged`, breaks container security |
+
+### Multi-Arch Docker Build
+
+**Why**: Raspberry Pi 4/5 is the #1 homelab device. Without ARM64 images, half the self-hosted community can't use us.
+
+**How**:
+- GitHub Actions workflow with `docker buildx`:
+  ```yaml
+  platforms: linux/amd64,linux/arm64
+  ```
+- All 4 images need cross-compilation:
+  - `web` (nginx): already multi-arch
+  - `backend-go`: `GOARCH=arm64` cross-compile (trivial, Go handles this natively)
+  - `waf-go`: same as backend
+  - `proxy` (Squid): Ubuntu base supports arm64
+  - `dns` (dnsmasq): Alpine supports arm64
+- Push to Docker Hub / GHCR with manifest list
+- Test on actual Pi or QEMU emulation in CI
+
+**Effort**: 4-5h (mostly CI pipeline)
+
 ### 5. Let's Encrypt Integration (renumbered)
 
 **Why**: Self-signed certs trigger browser warnings. SMB users with a domain want real HTTPS without manual cert management.
