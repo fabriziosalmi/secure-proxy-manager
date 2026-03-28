@@ -605,138 +605,94 @@ export function Settings() {
         </Card>
 
         <Card className="bg-card/50">
-          <CardHeader>
+          <CardHeader className="p-4 pb-2">
             <div className="flex items-center space-x-2">
-              <Shield className="w-5 h-5 text-indigo-500" />
-              <CardTitle>Access Control</CardTitle>
+              <Shield className="w-4 h-4 text-indigo-500" />
+              <CardTitle className="text-sm">Access Control</CardTitle>
             </div>
-            <CardDescription>Manage who and when can use the proxy</CardDescription>
+            <CardDescription className="text-xs">Manage who and when can use the proxy</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
-              <div className="space-y-0.5 w-full">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <label className="text-sm font-medium">Bandwidth Throttling (Delay Pools)</label>
-                    <p className="text-xs text-muted-foreground">Limit download speeds to prevent network congestion.</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      name="enable_bandwidth_limits"
-                      checked={formData.enable_bandwidth_limits === 'true'}
-                      onChange={(e) => setFormData({ ...formData, enable_bandwidth_limits: e.target.checked ? 'true' : 'false' })}
-                      className="sr-only peer" 
-                    />
-                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                  </label>
+          <CardContent className="p-4 pt-0">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+              {/* Bandwidth */}
+              <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+                <div>
+                  <p className="text-xs font-medium">Bandwidth Throttling</p>
+                  <p className="text-[10px] text-muted-foreground">Delay pools for congestion</p>
                 </div>
-                {formData.enable_bandwidth_limits === 'true' && (
-                  <div className="flex gap-4 mt-2 pt-2 border-t border-border/50">
-                    <div className="flex-1 space-y-1">
-                      <label className="text-xs text-muted-foreground">Total Bandwidth (Mbps)</label>
-                      <input 
-                        type="number" 
-                        name="bandwidth_limit_mbps"
-                        value={formData.bandwidth_limit_mbps || '10'}
-                        onChange={handleChange}
-                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                    <div className="flex-1 space-y-1">
-                      <label className="text-xs text-muted-foreground">Per-User Limit (Kbps)</label>
-                      <input 
-                        type="number" 
-                        name="bandwidth_limit_per_user_kbps"
-                        value={formData.bandwidth_limit_per_user_kbps || '500'}
-                        onChange={handleChange}
-                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                  </div>
-                )}
+                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                  <input type="checkbox" name="enable_bandwidth_limits" checked={formData.enable_bandwidth_limits === 'true'}
+                    onChange={(e) => setFormData({ ...formData, enable_bandwidth_limits: e.target.checked ? 'true' : 'false' })}
+                    className="sr-only peer" />
+                  <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+              {/* Time restrictions */}
+              <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+                <div>
+                  <p className="text-xs font-medium">Time-based Restrictions</p>
+                  <p className="text-[10px] text-muted-foreground">Limit access to specific hours</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                  <input type="checkbox" name="enable_time_restrictions" checked={formData.enable_time_restrictions === 'true'}
+                    onChange={(e) => setFormData({ ...formData, enable_time_restrictions: e.target.checked ? 'true' : 'false' })}
+                    className="sr-only peer" />
+                  <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+              {/* Proxy auth */}
+              <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+                <div>
+                  <p className="text-xs font-medium">Proxy Authentication</p>
+                  <p className="text-[10px] text-muted-foreground">Require login to use proxy</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                  <input type="checkbox" name="enable_proxy_auth" checked={formData.enable_proxy_auth === 'true'}
+                    onChange={(e) => setFormData({ ...formData, enable_proxy_auth: e.target.checked ? 'true' : 'false' })}
+                    className="sr-only peer" />
+                  <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                </label>
               </div>
             </div>
-
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
-              <div className="space-y-0.5 w-full">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <label className="text-sm font-medium">Time-based Restrictions</label>
-                    <p className="text-xs text-muted-foreground">Only allow internet access during specific hours.</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      name="enable_time_restrictions"
-                      checked={formData.enable_time_restrictions === 'true'}
-                      onChange={(e) => setFormData({ ...formData, enable_time_restrictions: e.target.checked ? 'true' : 'false' })}
-                      className="sr-only peer" 
-                    />
-                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                  </label>
+            {/* Expanded settings for enabled toggles */}
+            {formData.enable_bandwidth_limits === 'true' && (
+              <div className="flex gap-3 mt-3 p-3 border border-border/50 rounded-lg bg-background/20">
+                <div className="flex-1 space-y-1">
+                  <label className="text-[10px] text-muted-foreground">Total (Mbps)</label>
+                  <input type="number" name="bandwidth_limit_mbps" value={formData.bandwidth_limit_mbps || '10'} onChange={handleChange}
+                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
                 </div>
-                {formData.enable_time_restrictions === 'true' && (
-                  <div className="flex gap-4 mt-2 pt-2 border-t border-border/50">
-                    <div className="flex-1 space-y-1">
-                      <label className="text-xs text-muted-foreground">Start Time</label>
-                      <input 
-                        type="time" 
-                        name="time_restriction_start"
-                        value={formData.time_restriction_start || '09:00'}
-                        onChange={handleChange}
-                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                    <div className="flex-1 space-y-1">
-                      <label className="text-xs text-muted-foreground">End Time</label>
-                      <input 
-                        type="time" 
-                        name="time_restriction_end"
-                        value={formData.time_restriction_end || '17:00'}
-                        onChange={handleChange}
-                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
-              <div className="space-y-0.5 w-full">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <label className="text-sm font-medium">Proxy Authentication</label>
-                    <p className="text-xs text-muted-foreground">Require username/password to use the proxy.</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      name="enable_proxy_auth"
-                      checked={formData.enable_proxy_auth === 'true'}
-                      onChange={(e) => setFormData({ ...formData, enable_proxy_auth: e.target.checked ? 'true' : 'false' })}
-                      className="sr-only peer" 
-                    />
-                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                  </label>
+                <div className="flex-1 space-y-1">
+                  <label className="text-[10px] text-muted-foreground">Per-User (Kbps)</label>
+                  <input type="number" name="bandwidth_limit_per_user_kbps" value={formData.bandwidth_limit_per_user_kbps || '500'} onChange={handleChange}
+                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
                 </div>
-                {formData.enable_proxy_auth === 'true' && (
-                  <div className="mt-2 pt-2 border-t border-border/50">
-                    <label className="text-xs text-muted-foreground">Authentication Method</label>
-                    <select 
-                      name="auth_method"
-                      value={formData.auth_method || 'basic'}
-                      onChange={handleChange}
-                      className="w-full mt-1 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    >
-                      <option value="basic">Basic (Standard)</option>
-                      <option value="digest">Digest (More Secure)</option>
-                    </select>
-                  </div>
-                )}
               </div>
-            </div>
+            )}
+            {formData.enable_time_restrictions === 'true' && (
+              <div className="flex gap-3 mt-3 p-3 border border-border/50 rounded-lg bg-background/20">
+                <div className="flex-1 space-y-1">
+                  <label className="text-[10px] text-muted-foreground">Start</label>
+                  <input type="time" name="time_restriction_start" value={formData.time_restriction_start || '09:00'} onChange={handleChange}
+                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <label className="text-[10px] text-muted-foreground">End</label>
+                  <input type="time" name="time_restriction_end" value={formData.time_restriction_end || '17:00'} onChange={handleChange}
+                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                </div>
+              </div>
+            )}
+            {formData.enable_proxy_auth === 'true' && (
+              <div className="mt-3 p-3 border border-border/50 rounded-lg bg-background/20">
+                <label className="text-[10px] text-muted-foreground">Auth Method</label>
+                <select name="auth_method" value={formData.auth_method || 'basic'} onChange={handleChange}
+                  className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary">
+                  <option value="basic">Basic</option>
+                  <option value="digest">Digest</option>
+                </select>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -826,100 +782,37 @@ export function Settings() {
                 )}
               </div>
             </div>
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
-              <div className="space-y-0.5">
-                <label className="text-sm font-medium">SSL Bump (HTTPS Interception)</label>
-                <p className="text-xs text-muted-foreground">Decrypt and inspect HTTPS traffic. Requires installing CA cert on clients.</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" />
-                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-              </label>
-            </div>
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
-              <div className="space-y-0.5">
-                <label className="text-sm font-medium">Block Direct IP Access</label>
-                <p className="text-xs text-muted-foreground">Prevent bypassing DNS blacklists by directly entering IP addresses in the browser.</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  name="block_direct_ip"
-                  checked={formData.block_direct_ip === 'true'}
-                  onChange={(e) => setFormData({ ...formData, block_direct_ip: e.target.checked ? 'true' : 'false' })}
-                  className="sr-only peer" 
-                />
-                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-              </label>
-            </div>
-
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
-              <div className="space-y-0.5">
-                <label className="text-sm font-medium">SafeSearch Enforcement</label>
-                <p className="text-xs text-muted-foreground">Force SafeSearch for all users on Google, Bing, and DuckDuckGo (Requires HTTPS Inspection).</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  name="enable_safesearch"
-                  checked={formData.enable_safesearch === 'true'}
-                  onChange={(e) => setFormData({ ...formData, enable_safesearch: e.target.checked ? 'true' : 'false' })}
-                  className="sr-only peer" 
-                />
-                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-              </label>
-            </div>
-
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
-              <div className="space-y-0.5">
-                <label className="text-sm font-medium">YouTube Restricted Mode</label>
-                <p className="text-xs text-muted-foreground">Force Strict Restricted Mode on YouTube to hide mature content (Requires HTTPS Inspection).</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  name="enable_youtube_restricted"
-                  checked={formData.enable_youtube_restricted === 'true'}
-                  onChange={(e) => setFormData({ ...formData, enable_youtube_restricted: e.target.checked ? 'true' : 'false' })}
-                  className="sr-only peer" 
-                />
-                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-              </label>
-            </div>
-            
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
-              <div className="space-y-0.5 w-full">
-                <div className="flex items-center justify-between mb-2">
+            {/* Security toggles — compact grid */}
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Security & Filtering</label>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+              {[
+                { name: 'ssl_bump_enabled', label: 'SSL Bump', desc: 'HTTPS interception' },
+                { name: 'block_direct_ip', label: 'Block Direct IP', desc: 'Prevent DNS bypass' },
+                { name: 'enable_safesearch', label: 'SafeSearch', desc: 'Google/Bing/DDG' },
+                { name: 'enable_youtube_restricted', label: 'YouTube Restricted', desc: 'Hide mature content' },
+                { name: 'enable_content_filtering', label: 'Content Filtering', desc: 'Block dangerous files' },
+              ].map(t => (
+                <div key={t.name} className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
                   <div>
-                    <label className="text-sm font-medium">Content Filtering (Block File Extensions & MIME Types)</label>
-                    <p className="text-xs text-muted-foreground">Block downloads of potentially dangerous file types (e.g. exe, bat). Uses both URL matching and actual MIME-Type inspection to prevent bypass via file renaming.</p>
+                    <p className="text-xs font-medium">{t.label}</p>
+                    <p className="text-[10px] text-muted-foreground">{t.desc}</p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      name="enable_content_filtering"
-                      checked={formData.enable_content_filtering === 'true'}
-                      onChange={(e) => setFormData({ ...formData, enable_content_filtering: e.target.checked ? 'true' : 'false' })}
-                      className="sr-only peer" 
-                    />
-                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                    <input type="checkbox" name={t.name} checked={formData[t.name] === 'true'}
+                      onChange={(e) => setFormData({ ...formData, [t.name]: e.target.checked ? 'true' : 'false' })}
+                      className="sr-only peer" />
+                    <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                   </label>
                 </div>
-                {formData.enable_content_filtering === 'true' && (
-                  <div className="mt-2 pt-2 border-t border-border/50">
-                    <input 
-                      type="text" 
-                      name="blocked_file_types"
-                      value={formData.blocked_file_types || 'exe,bat,cmd,dll,js'}
-                      onChange={handleChange}
-                      placeholder="e.g. exe,bat,mp4,zip"
-                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">Comma-separated list of extensions without the dot.</p>
-                  </div>
-                )}
-              </div>
+              ))}
             </div>
+            {formData.enable_content_filtering === 'true' && (
+              <div className="mt-3 p-3 border border-border/50 rounded-lg bg-background/20">
+                <label className="text-[10px] text-muted-foreground">Blocked Extensions</label>
+                <input type="text" name="blocked_file_types" value={formData.blocked_file_types || 'exe,bat,cmd,dll,js'} onChange={handleChange}
+                  placeholder="exe,bat,mp4,zip" className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+              </div>
+            )}
           </CardContent>
         </Card>
 
