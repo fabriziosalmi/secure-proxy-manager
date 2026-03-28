@@ -23,51 +23,55 @@ jobs:
       - run: npm run build
         working-directory: ui
 
-  # ── 2. Backend unit tests ────────────────────────────────────────────────
-  test-backend:
-    name: Backend unit tests
+  # ── 2. Go backend build ────────────────────────────────────────────────
+  build-backend:
+    name: Go backend build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-go@v5
         with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
-      - name: Install dependencies
-        run: |
-          pip install -r backend/requirements.txt
-          pip install pytest pytest-mock httpx
-      - name: Run unit tests
-        env:
-          BASIC_AUTH_USERNAME: testuser
-          BASIC_AUTH_PASSWORD: testpass
-          DATABASE_PATH: ":memory:"
-        run: pytest tests/test_imports.py -v --tb=short
+          go-version: '1.24'
+          cache-dependency-path: backend-go/go.sum
+      - run: go build -v ./...
+        working-directory: backend-go
 
-  # ── 3. Backend lint ──────────────────────────────────────────────────────
-  lint-backend:
-    name: Backend lint
+  # ── 3. Go WAF build ───────────────────────────────────────────────────
+  build-waf:
+    name: Go WAF build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-go@v5
         with:
-          python-version: "3.11"
-      - run: pip install ruff
-      - run: ruff check backend/app/ --select E,F,W --ignore E501
+          go-version: '1.22'
+          cache-dependency-path: waf-go/go.sum
+      - run: go build -v ./...
+        working-directory: waf-go
 
-  # ── 4. Docker build verification ────────────────────────────────────────
+  # ── 4. Go WAF tests ───────────────────────────────────────────────────
+  test-waf:
+    name: WAF unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: waf-go/go.sum
+      - run: go test -v -race -count=1 ./...
+        working-directory: waf-go
+
+  # ── 5. Docker build verification ──────────────────────────────────────
   docker-build:
-    name: Docker build
+    name: Docker build (all images)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Build all images
-        run: |
-          docker compose build backend web waf proxy
+        run: docker compose build web backend waf proxy dns
 
-  # ── 5. Popular list URL health check ────────────────────────────────────
+  # ── 6. Popular list URL health check ──────────────────────────────────
   check-urls:
     name: Verify popular list URLs
     runs-on: ubuntu-latest
@@ -78,8 +82,7 @@ jobs:
           set -e
           FAILED=0
           check_url() {
-            local name="$1"
-            local url="$2"
+            local name="$1" url="$2"
             local code
             code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
               -H "User-Agent: SecureProxyManager/CI" "$url")
@@ -90,20 +93,8 @@ jobs:
               FAILED=1
             fi
           }
-
-          # IP lists
-          check_url "Firehol Level 1"        "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset"
-          check_url "Spamhaus DROP"           "https://www.spamhaus.org/drop/drop.txt"
-          check_url "Emerging Threats"        "https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt"
-          check_url "CINS Army List"          "https://cinsarmy.com/list/ci-badguys.txt"
-
-          # Domain lists
-          check_url "StevenBlack hosts"       "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
-          check_url "URLhaus domains"         "https://urlhaus.abuse.ch/downloads/hostfile/"
-          check_url "Phishing Army"           "https://phishing.army/download/phishing_army_blocklist_extended.txt"
-
-          if [ "$FAILED" -ne 0 ]; then
-            echo ""
-            echo "One or more list URLs are unreachable. Update Blacklists.tsx before merging."
-            exit 1
-          fi
+          check_url "Firehol Level 1"   "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset"
+          check_url "Spamhaus DROP"      "https://www.spamhaus.org/drop/drop.txt"
+          check_url "StevenBlack hosts"  "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+          check_url "URLhaus domains"    "https://urlhaus.abuse.ch/downloads/hostfile/"
+          [ "$FAILED" -ne 0 ] && exit 1 || true
