@@ -187,178 +187,98 @@ export function Settings() {
               />
               <p className="text-xs text-muted-foreground">Space-separated list of CIDR subnets allowed to use the proxy.</p>
             </div>
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
-              <div className="space-y-0.5 w-full">
-                <div className="flex items-center justify-between mb-2">
+            {/* Network overlay toggles — compact grid */}
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Network & Overlay</label>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+                <div>
+                  <p className="text-xs font-medium text-blue-400">Tailscale</p>
+                  <p className="text-[10px] text-muted-foreground">Overlay network access</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                  <input type="checkbox" name="enable_tailscale" checked={formData.enable_tailscale === 'true'}
+                    onChange={(e) => setFormData({ ...formData, enable_tailscale: e.target.checked ? 'true' : 'false' })} className="sr-only peer" />
+                  <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+              <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+                <div>
+                  <p className="text-xs font-medium text-emerald-400">Dynamic DNS</p>
+                  <p className="text-[10px] text-muted-foreground">Auto-update public IP</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                  <input type="checkbox" name="enable_ddns" checked={formData.enable_ddns === 'true'}
+                    onChange={(e) => setFormData({ ...formData, enable_ddns: e.target.checked ? 'true' : 'false' })} className="sr-only peer" />
+                  <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+            </div>
+            {/* Tailscale expanded */}
+            {formData.enable_tailscale === 'true' && (
+              <div className="flex gap-3 mt-2 p-3 border border-border/50 rounded-lg bg-background/20">
+                <div className="flex-1 space-y-1">
+                  <label className="text-[10px] text-muted-foreground">Auth Key</label>
+                  <input type="password" name="tailscale_auth_key" value={formData.tailscale_auth_key || ''} onChange={handleChange} placeholder="tskey-auth-..."
+                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <label className="text-[10px] text-muted-foreground">Hostname</label>
+                  <input type="text" name="tailscale_hostname" value={formData.tailscale_hostname || 'secure-proxy'} onChange={handleChange}
+                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                </div>
+              </div>
+            )}
+            {/* DDNS expanded */}
+            {formData.enable_ddns === 'true' && (
+              <div className="flex gap-3 mt-2 p-3 border border-border/50 rounded-lg bg-background/20">
+                <div className="flex-1 space-y-1">
+                  <label className="text-[10px] text-muted-foreground">Provider</label>
+                  <select name="ddns_provider" value={formData.ddns_provider || 'cloudflare'} onChange={handleChange}
+                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary">
+                    <option value="cloudflare">Cloudflare</option><option value="duckdns">DuckDNS</option><option value="noip">No-IP</option><option value="custom">Custom</option>
+                  </select>
+                </div>
+                <div className="flex-1 space-y-1">
+                  <label className="text-[10px] text-muted-foreground">Domain</label>
+                  <input type="text" name="ddns_domain" value={formData.ddns_domain || ''} onChange={handleChange} placeholder="proxy.example.com"
+                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <label className="text-[10px] text-muted-foreground">Token</label>
+                  <input type="password" name="ddns_token" value={formData.ddns_token || ''} onChange={handleChange}
+                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                </div>
+              </div>
+            )}
+
+            {/* Proxy behavior toggles — compact grid */}
+            <label className="text-xs font-medium text-muted-foreground mb-1 block mt-4">Proxy Behavior</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { name: 'enable_https_filtering', label: 'HTTPS Inspection', desc: 'SSL Bump for WAF' },
+                { name: 'aggressive_caching', label: 'Aggressive Cache', desc: 'Force static caching' },
+                { name: 'enable_offline_mode', label: 'Offline Mode', desc: 'Serve stale cache' },
+              ].map(t => (
+                <div key={t.name} className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
                   <div>
-                    <label className="text-sm font-medium text-blue-400 flex items-center">
-                      <Shield className="w-4 h-4 mr-2" /> Tailscale Sidecar (Overlay Network)
-                    </label>
-                    <p className="text-xs text-muted-foreground">Access your proxy from anywhere securely via Tailscale. No port forwarding needed.</p>
+                    <p className="text-xs font-medium">{t.label}</p>
+                    <p className="text-[10px] text-muted-foreground">{t.desc}</p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      name="enable_tailscale"
-                      checked={formData.enable_tailscale === 'true'}
-                      onChange={(e) => setFormData({ ...formData, enable_tailscale: e.target.checked ? 'true' : 'false' })}
-                      className="sr-only peer" 
-                    />
-                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                    <input type="checkbox" name={t.name} checked={formData[t.name] === 'true'}
+                      onChange={(e) => setFormData({ ...formData, [t.name]: e.target.checked ? 'true' : 'false' })} className="sr-only peer" />
+                    <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                   </label>
                 </div>
-                {formData.enable_tailscale === 'true' && (
-                  <div className="grid gap-4 mt-2 pt-2 border-t border-border/50">
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Tailscale Auth Key</label>
-                      <input 
-                        type="password" 
-                        name="tailscale_auth_key"
-                        value={formData.tailscale_auth_key || ''}
-                        onChange={handleChange}
-                        placeholder="tskey-auth-..."
-                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Machine Hostname</label>
-                      <input 
-                        type="text" 
-                        name="tailscale_hostname"
-                        value={formData.tailscale_hostname || 'secure-proxy'}
-                        onChange={handleChange}
-                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+              ))}
             </div>
 
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
-              <div className="space-y-0.5 w-full">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <label className="text-sm font-medium text-emerald-400 flex items-center">
-                      <Network className="w-4 h-4 mr-2" /> Dynamic DNS (DDNS)
-                    </label>
-                    <p className="text-xs text-muted-foreground">Automatically update your public IP to a domain name.</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      name="enable_ddns"
-                      checked={formData.enable_ddns === 'true'}
-                      onChange={(e) => setFormData({ ...formData, enable_ddns: e.target.checked ? 'true' : 'false' })}
-                      className="sr-only peer" 
-                    />
-                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                  </label>
-                </div>
-                {formData.enable_ddns === 'true' && (
-                  <div className="grid grid-cols-2 gap-4 mt-2 pt-2 border-t border-border/50">
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Provider</label>
-                      <select 
-                        name="ddns_provider"
-                        value={formData.ddns_provider || 'cloudflare'}
-                        onChange={handleChange}
-                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                      >
-                        <option value="cloudflare">Cloudflare</option>
-                        <option value="duckdns">DuckDNS</option>
-                        <option value="noip">No-IP</option>
-                        <option value="custom">Custom Webhook</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Domain</label>
-                      <input 
-                        type="text" 
-                        name="ddns_domain"
-                        value={formData.ddns_domain || ''}
-                        onChange={handleChange}
-                        placeholder="proxy.example.com"
-                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                    <div className="space-y-1 col-span-2">
-                      <label className="text-xs text-muted-foreground">API Token / Token</label>
-                      <input 
-                        type="password" 
-                        name="ddns_token"
-                        value={formData.ddns_token || ''}
-                        onChange={handleChange}
-                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
-              <div className="space-y-0.5">
-                <label className="text-sm font-medium">HTTPS Inspection (SSL Bump)</label>
-                <p className="text-xs text-muted-foreground">Decrypt and inspect HTTPS traffic. Required for WAF to work on secure sites.</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  name="enable_https_filtering"
-                  checked={formData.enable_https_filtering === 'true'}
-                  onChange={(e) => setFormData({ ...formData, enable_https_filtering: e.target.checked ? 'true' : 'false' })}
-                  className="sr-only peer" 
-                />
-                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-              </label>
-            </div>
-
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
-              <div className="space-y-0.5">
-                <label className="text-sm font-medium">Aggressive Caching</label>
-                <p className="text-xs text-muted-foreground">Ignore cache-control headers for static files (images, css, js) to force caching. Great for bandwidth saving.</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  name="aggressive_caching"
-                  checked={formData.aggressive_caching === 'true'}
-                  onChange={(e) => setFormData({ ...formData, aggressive_caching: e.target.checked ? 'true' : 'false' })}
-                  className="sr-only peer" 
-                />
-                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-              </label>
-            </div>
-
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
-              <div className="space-y-0.5">
-                <label className="text-sm font-medium">Offline Mode (Stale Cache)</label>
-                <p className="text-xs text-muted-foreground">Serve expired cached pages if the destination server is offline.</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  name="enable_offline_mode"
-                  checked={formData.enable_offline_mode === 'true'}
-                  onChange={(e) => setFormData({ ...formData, enable_offline_mode: e.target.checked ? 'true' : 'false' })}
-                  className="sr-only peer" 
-                />
-                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-              </label>
-            </div>
-
-            <div className="p-4 border border-border rounded-lg bg-background/50">
-              <label className="text-sm font-medium">Cache Bypass Domains</label>
-              <p className="text-xs text-muted-foreground mb-2">Domains that should NEVER be cached (comma-separated).</p>
-              <input 
-                type="text" 
-                name="cache_bypass_domains"
-                value={formData.cache_bypass_domains || ''}
-                onChange={handleChange}
-                placeholder="e.g. banking.com, api.internal.local"
-                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-              />
+            {/* Cache bypass */}
+            <div className="mt-3 p-3 border border-border/50 rounded-lg bg-background/20">
+              <label className="text-[10px] text-muted-foreground">Cache Bypass Domains (comma-separated)</label>
+              <input type="text" name="cache_bypass_domains" value={formData.cache_bypass_domains || ''} onChange={handleChange}
+                placeholder="banking.com, api.internal.local"
+                className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
             </div>
           </CardContent>
         </Card>
