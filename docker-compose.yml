@@ -5,6 +5,7 @@ services:
       dockerfile: ./ui/Dockerfile
     ports:
       - "8011:8011"
+      - "8443:8443"
     depends_on:
       backend:
         condition: service_healthy
@@ -12,7 +13,7 @@ services:
       - BACKEND_URL=${BACKEND_URL:-http://backend:5000}
       - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-120}
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8011/"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8011/health"]
       interval: 30s
       timeout: 5s
       retries: 3
