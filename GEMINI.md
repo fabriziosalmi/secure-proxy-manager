@@ -95,6 +95,52 @@
 
 **Effort**: 2h
 
+## Batch 3: Integrations (Modern Self-Hosted)
+
+| # | Idea | Status | Notes |
+|---|------|--------|-------|
+| 21 | Tailscale/Wireguard gateway | 🟢 Done | Sidecar in compose, toggle in Settings |
+| 22 | Notifications (Telegram/Discord) | 🟢 Done | Multi-provider: Telegram, Gotify, Teams, Discord, Custom webhook |
+| 23 | Pi-hole/AdGuard sync | ❌ Rejected | Built-in dnsmasq + Popular Lists URL import covers this. Native API sync is over-engineering |
+| 24 | Auto-update Feeds | 🟢 Done (partial) | Worker exists. Need UI for refresh interval config |
+| 25 | Home Assistant sensors | ❌ Rejected | Too niche. Our REST API is already consumable by HA via `rest` sensor |
+| 26 | Cloud Backup (S3/WebDAV) | ⚪ Backlog | JSON export exists. Cloud adds credential complexity. External cron `curl` works |
+| 27 | Let's Encrypt | 🔵 **Do Next** | Self-signed works but browsers complain. ACME for public-facing SMB deployments |
+| 28 | Arr-Suite template | ⚪ Backlog | A "Media Server" preset whitelisting *arr domains. No native integration needed |
+| 29 | Docker Socket Monitoring | ⚪ Backlog | Map container IP → name in logs. Privacy concern — opt-in only |
+| 30 | Easy Client Export | 🔵 **Do Next** | "Setup my device" button → PAC file + per-OS instructions (Win/Mac/Linux/iOS/Android) |
+
+### 4. Let's Encrypt Integration
+
+**Why**: Self-signed certs trigger browser warnings. SMB users with a domain want real HTTPS without manual cert management.
+
+**How**:
+- Add optional ACME client (acme.sh or certbot) to web container
+- Settings toggle: "Let's Encrypt" with domain + email fields
+- On enable: run ACME challenge via HTTP-01 (port 80 must be reachable)
+- Auto-renew via cron inside container
+- Fallback: keep self-signed if ACME fails
+
+**Effort**: 3-4h
+
+### 5. Client Setup Export (PAC + instructions)
+
+**Why**: After installing the proxy, users struggle to configure their devices. A "Setup my device" page with copy-paste instructions and auto-generated PAC file removes this friction.
+
+**How**:
+- New page or modal: "Connect Your Devices"
+- Auto-generate PAC file: `function FindProxyForURL() { return "PROXY host:3128"; }`
+- Per-OS tabs with copy-paste instructions:
+  - **Windows**: Settings → Proxy → Manual → host:3128
+  - **macOS**: System Preferences → Network → Proxies → host:3128
+  - **Linux**: `export http_proxy=http://host:3128`
+  - **iOS**: WiFi → Configure Proxy → Manual → host:3128
+  - **Android**: WiFi → Modify → Advanced → Proxy → Manual → host:3128
+- Download buttons: PAC file, CA cert, shell script
+- QR code for mobile (encode proxy URL)
+
+**Effort**: 3h
+
 ---
 
 ## Rejected Ideas (with reasoning)
@@ -106,3 +152,5 @@
 | Multi-lingua | Our users read English. i18n doubles maintenance burden for every string |
 | ClamAV | 200MB+ RAM for virus scanning that WAF already handles at the protocol level |
 | Custom Branding | Nice-to-have but zero security value. Maybe v3 |
+| Pi-hole sync | Built-in dnsmasq + URL import already covers this use case |
+| Home Assistant | Too niche. REST API already consumable by HA sensors |
