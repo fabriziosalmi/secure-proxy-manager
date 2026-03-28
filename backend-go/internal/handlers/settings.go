@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -83,5 +84,16 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 			k, v,
 		)
 	}
+
+	// SSL Bump toggle file — Squid reads this at startup/reload
+	if v, ok := body["ssl_bump_enabled"]; ok {
+		toggleFile := "/config/ssl_bump_enabled"
+		if v == "true" {
+			os.WriteFile(toggleFile, []byte("1"), 0644) //nolint:errcheck
+		} else {
+			os.Remove(toggleFile) //nolint:errcheck
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Settings updated"})
 }

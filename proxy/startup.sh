@@ -258,6 +258,41 @@ fi
 
 ensure_ip_blocking_rules /etc/squid/squid.conf
 
+# ── SSL Bump (HTTPS Inspection) — conditional on toggle file ─────────────
+
+if [ -f /config/ssl_bump_enabled ]; then
+    echo "SSL Bump ENABLED — injecting HTTPS interception config"
+
+    # Replace http_port with https_port + ssl-bump
+    sed -i 's/^http_port 3128$/http_port 3128 ssl-bump \\\n  cert=\/config\/ssl_cert.pem \\\n  key=\/config\/ssl_key.pem \\\n  generate-host-certificates=on \\\n  dynamic_cert_mem_cache_size=4MB/' /etc/squid/squid.conf
+
+    # Add ssl_bump directives before the first http_access line
+    SSL_BUMP_BLOCK=$(cat <<'SSLEOF'
+
+# ── SSL Bump (HTTPS Inspection) ────────────────────────────────────────────
+sslcrtd_program /usr/lib/squid/security_file_certgen -s /config/ssl_db -M 4MB
+sslcrtd_children 3 startup=1 idle=1
+
+# Peek at TLS ClientHello to get SNI, then bump (intercept) the connection
+acl step1 at_step SslBump1
+ssl_bump peek step1
+ssl_bump bump all
+
+# Trust the generated CA for upstream connections
+sslproxy_cert_error allow all
+sslproxy_flags DONT_VERIFY_PEER
+
+SSLEOF
+)
+    # Insert before the first "http_access" line
+    sed -i "/^http_access/i\\${SSL_BUMP_BLOCK}" /etc/squid/squid.conf 2>/dev/null || \
+        echo "$SSL_BUMP_BLOCK" >> /etc/squid/squid.conf
+
+    echo "SSL Bump config injected. WAF can now inspect HTTPS content."
+else
+    echo "SSL Bump disabled (no /config/ssl_bump_enabled file)"
+fi
+
 # ── Inject dnsmasq as DNS resolver (resolve container IP dynamically) ────────
 
 # DNS: use dnsmasq for domain blackhole. Resolve WAF IP at boot time
