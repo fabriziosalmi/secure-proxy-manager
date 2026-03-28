@@ -196,3 +196,17 @@ func extractDomain(dest string) string {
 	d = strings.SplitN(d, ":", 2)[0]
 	return strings.ToLower(d)
 }
+
+// maskIP anonymizes the last octet of an IPv4 address: 192.168.1.7 → 192.168.1.x
+func maskIP(ip string) string {
+	parts := strings.Split(ip, ".")
+	if len(parts) == 4 {
+		parts[3] = "x"
+		return strings.Join(parts, ".")
+	}
+	// IPv6 or other — mask last segment
+	if idx := strings.LastIndex(ip, ":"); idx > 0 {
+		return ip[:idx] + ":x"
+	}
+	return ip
+}

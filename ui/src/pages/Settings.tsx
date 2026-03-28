@@ -471,6 +471,57 @@ export function Settings() {
               <p className="text-[10px] text-muted-foreground mt-2">After adding, go to Blacklists → Domain Whitelist tab to manage, or click "Reload DNS" to apply.</p>
             </div>
 
+            {/* GDPR + DoH — compact row */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+                <div>
+                  <p className="text-xs font-medium text-blue-400">GDPR Mode</p>
+                  <p className="text-[10px] text-muted-foreground">Anonymize IPs in logs (last octet → x)</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                  <input type="checkbox" name="gdpr_mode" checked={formData.gdpr_mode === 'true'}
+                    onChange={(e) => setFormData({ ...formData, gdpr_mode: e.target.checked ? 'true' : 'false' })}
+                    className="sr-only peer" />
+                  <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+
+            {/* DoH Blocker */}
+            <div className="p-3 border border-border rounded-lg bg-background/30">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-xs font-medium text-red-400">Block DNS-over-HTTPS (DoH)</label>
+                  <p className="text-[10px] text-muted-foreground">Prevent devices from bypassing DNS blackhole via encrypted DNS. Blocks Google DNS, Cloudflare DNS, Quad9, etc.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const dohDomains = [
+                      'dns.google', 'dns.google.com', 'dns64.dns.google',
+                      'cloudflare-dns.com', 'mozilla.cloudflare-dns.com', 'one.one.one.one',
+                      'doh.opendns.com', 'dns.quad9.net', 'doh.cleanbrowsing.org',
+                      'dns.adguard.com', 'doh.appliedprivacy.net', 'doh.li',
+                      'dns.nextdns.io', 'dns.controld.com',
+                    ];
+                    const t = toast.loading('Blocking DoH providers...');
+                    let added = 0;
+                    for (const domain of dohDomains) {
+                      try {
+                        await api.post('domain-blacklist', { domain, description: 'DoH provider (anti-bypass)' });
+                        added++;
+                      } catch { /* already exists */ }
+                    }
+                    try { await api.post('maintenance/reload-dns'); } catch { /* ignore */ }
+                    toast.success(`Blocked ${added} DoH providers + DNS reloaded`, { id: t });
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors shrink-0"
+                >
+                  Block DoH
+                </button>
+              </div>
+            </div>
+            </div>
+
             {/* Log retention */}
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 border border-border rounded-lg bg-background/50 space-y-2">
