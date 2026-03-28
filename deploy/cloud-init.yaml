@@ -1,0 +1,21 @@
+#cloud-config
+# Secure Proxy Manager — Cloud-Init
+# Use this as "User Data" when creating a VPS on Hetzner, DigitalOcean, Linode, etc.
+# The server will be ready in ~5 minutes after boot.
+
+package_update: true
+packages:
+  - git
+  - curl
+
+runcmd:
+  # Install Docker
+  - curl -fsSL https://get.docker.com | sh
+  - systemctl enable --now docker
+
+  # Clone and install
+  - git clone --depth 1 https://github.com/fabriziosalmi/secure-proxy-manager.git /opt/secure-proxy-manager
+  - cd /opt/secure-proxy-manager && bash deploy/install.sh
+
+  # Log completion
+  - echo "Secure Proxy Manager installed at $(date)" >> /var/log/cloud-init-spm.log
