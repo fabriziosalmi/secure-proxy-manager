@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, ArrowRight, Ban, Shield, List, Settings, LayoutDashboard, X } from 'lucide-react';
 import { api } from '../lib/api';
+import type { IpEntry, DomainEntry, LogEntry } from '../types';
 
 interface SearchResult {
   type: 'page' | 'ip' | 'domain' | 'log' | 'setting';
@@ -85,7 +86,7 @@ export function GlobalSearch() {
 
         if (ipRes.status === 'fulfilled') {
           const ips = ipRes.value.data?.data || [];
-          ips.forEach((ip: Record<string, string>) => {
+          ips.forEach((ip: IpEntry) => {
             items.push({
               type: 'ip', label: ip.ip,
               description: ip.description || 'IP blacklist entry',
@@ -96,7 +97,7 @@ export function GlobalSearch() {
 
         if (domRes.status === 'fulfilled') {
           const doms = domRes.value.data?.data || [];
-          doms.forEach((d: Record<string, string>) => {
+          doms.forEach((d: DomainEntry) => {
             items.push({
               type: 'domain', label: d.domain,
               description: d.description || 'Domain blacklist entry',
@@ -107,7 +108,7 @@ export function GlobalSearch() {
 
         if (logRes.status === 'fulfilled') {
           const logs = logRes.value.data?.data || logRes.value.data?.logs || [];
-          logs.forEach((l: Record<string, string>) => {
+          logs.forEach((l: LogEntry) => {
             items.push({
               type: 'log', label: `${l.method || '-'} ${l.destination}`,
               description: `${l.client_ip} — ${l.status}`,

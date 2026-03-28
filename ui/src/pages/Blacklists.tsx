@@ -64,7 +64,7 @@ export function Blacklists() {
   };
 
   const addMutation = useMutation({
-    mutationFn: (vars: { endpoint: string; payload: Record<string, string> }) =>
+    mutationFn: (vars: { endpoint: string; payload: { ip?: string; domain?: string; description: string } }) =>
       api.post(vars.endpoint, vars.payload),
     onSuccess: () => {
       toast.success('Rule added successfully');
@@ -93,26 +93,36 @@ export function Blacklists() {
 
     // Frontend validation
     if (activeTab === 'ip' || activeTab === 'whitelist') {
-      // Basic IP/CIDR format check
-      const ipPattern = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/;
-      if (!ipPattern.test(val)) {
-        toast.error('Invalid IP format. Use x.x.x.x or x.x.x.x/cidr');
+      // Proper IP/CIDR validation — each octet 0-255, optional /0-32
+      const parts = val.split('/');
+      const octets = parts[0].split('.');
+      const cidr = parts[1] ? parseInt(parts[1], 10) : null;
+      const validOctets = octets.length === 4 && octets.every(o => {
+        const n = parseInt(o, 10);
+        return /^\d{1,3}$/.test(o) && n >= 0 && n <= 255;
+      });
+      const validCidr = cidr === null || (cidr >= 0 && cidr <= 32 && /^\d{1,2}$/.test(parts[1]));
+      if (!validOctets || !validCidr || parts.length > 2) {
+        toast.error('Invalid IP. Each octet must be 0-255, CIDR 0-32');
         return;
       }
     } else {
-      // Domain validation: at least one dot, no spaces, max 253 chars
-      if (val.length > 253 || val.includes(' ') || !val.includes('.')) {
-        toast.error('Invalid domain format');
+      // Domain validation: RFC 1035 — max 253 chars, labels max 63, valid chars
+      const labels = val.split('.');
+      const validDomain = val.length <= 253 && labels.length >= 2
+        && labels.every(l => l.length > 0 && l.length <= 63 && /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(l));
+      if (!validDomain) {
+        toast.error('Invalid domain format (RFC 1035)');
         return;
       }
     }
 
     let endpoint = '';
-    let payload: Record<string, string> = {};
-    if (activeTab === 'ip') { endpoint = 'ip-blacklist'; payload = { ip: val, description: newDesc }; }
-    else if (activeTab === 'domain') { endpoint = 'domain-blacklist'; payload = { domain: val, description: newDesc }; }
-    else if (activeTab === 'whitelist') { endpoint = 'ip-whitelist'; payload = { ip: val, description: newDesc }; }
-    else { endpoint = 'domain-whitelist'; payload = { domain: val, description: newDesc }; }
+    let payload: { ip?: string; domain?: string; description: string } = { description: newDesc };
+    if (activeTab === 'ip') { endpoint = 'ip-blacklist'; payload.ip = val; }
+    else if (activeTab === 'domain') { endpoint = 'domain-blacklist'; payload.domain = val; }
+    else if (activeTab === 'whitelist') { endpoint = 'ip-whitelist'; payload.ip = val; }
+    else { endpoint = 'domain-whitelist'; payload.domain = val; }
     addMutation.mutate({ endpoint, payload });
   };
 
@@ -217,8 +227,7 @@ export function Blacklists() {
 
   const handleExport = () => {
     const items = activeTab === 'ip' ? ips : activeTab === 'domain' ? domains : activeTab === 'whitelist' ? whitelists : domainWhitelists;
-    const field = (activeTab === 'ip' || activeTab === 'whitelist') ? 'ip' : 'domain';
-    const text = items.map((item) => (item as unknown as Record<string, string>)[field]).join('\n');
+    const text = items.map((item) => 'ip' in item ? (item as IpEntry).ip : (item as DomainEntry).domain).join('\n');
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
