@@ -140,5 +140,11 @@
     Built with care by Fabrizio Salmi, Claude &amp; Gemini
   </div>
 </div>
+<script>
+// XSS protection: sanitize any Squid-injected variables
+document.querySelectorAll('.detail-value').forEach(function(el){
+  el.textContent = el.textContent;
+});
+</script>
 </body>
 </html>

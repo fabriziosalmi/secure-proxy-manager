@@ -4,6 +4,32 @@ A containerized egress proxy + WAF solution with a Go backend, React dashboard, 
 
 Built for homelab, self-hosted, and SMB environments. Runs on **Raspberry Pi** (ARM64) and any x86 server.
 
+## Screenshots
+
+<div align="center">
+  <img src="docs/screenshots/dashboard.png" alt="Dashboard" width="800"/>
+  <p><em>Dashboard — real-time traffic, threats, WAF intelligence, cache stats</em></p>
+</div>
+
+<details>
+<summary><strong>More screenshots</strong></summary>
+
+<div align="center">
+  <img src="docs/screenshots/threat-intel.png" alt="Threat Intelligence" width="800"/>
+  <p><em>Threat Intel — Shadow IT, file types, service types, domain cloud, regex playground</em></p>
+  <br/>
+  <img src="docs/screenshots/blacklists.png" alt="Blacklists" width="800"/>
+  <p><em>Blacklists — 34K+ IPs, 87K+ domains, paginated with search</em></p>
+  <br/>
+  <img src="docs/screenshots/access-logs.png" alt="Access Logs" width="800"/>
+  <p><em>Access Logs — real-time WebSocket stream with filtering</em></p>
+  <br/>
+  <img src="docs/screenshots/settings.png" alt="Settings" width="800"/>
+  <p><em>Settings — 6 presets, client setup, notifications, WAF heuristics</em></p>
+</div>
+
+</details>
+
 ## Quick Start
 
 ```bash
@@ -131,97 +157,52 @@ secure-proxy-manager/
 ├── data/                     # SQLite DB + WAF traffic JSONL
 ├── BENCHMARKS.md             # Live performance & security results
 ├── CHANGELOG.md
-├── docker-compose.yml        # 6-service stack (Python backend)
-├── docker-compose.go.yml     # Go backend overlay (recommended)
-└── tests/e2e.sh              # 108-check E2E test suite
+├── docker-compose.yml        # 6-service stack (Go backend)
+├── deploy/install.sh         # One-command installer for any VPS
+└── tests/e2e.sh              # 104-check E2E test suite
 ```
 
-## Prerequisites
+## Installation
 
-- [Docker](https://docs.docker.com/get-docker/) (v20.10.0+)
-- [Docker Compose](https://docs.docker.com/compose/install/) (v2.0.0+)
-- Minimum System Requirements:
-  - 1 CPU core
-  - 1GB RAM
-  - 5GB disk space
-- Network Requirements:
-  - Port 8011: Web UI (HTTP)
-  - Port 3128: Proxy service
-  - Port 5001: Backend API (optional, for direct API access)
+### Requirements
+- Docker 20.10+ with Compose v2
+- 1 CPU, 512MB RAM, 2GB disk
 
-## Quick Start
+### Ports used
+| Port | Service | Required |
+|------|---------|----------|
+| 443 / 8443 | HTTPS (Web UI) | ✅ |
+| 80 / 8011 | HTTP (redirect + ACME) | ✅ |
+| 3128 | Proxy (configure clients here) | ✅ |
+| 5001 | Backend API (WebSocket) | Optional |
 
-### For First-Time Users
+### Option A: One-command install (recommended)
+```bash
+curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/deploy/install.sh | sudo bash
+```
+This installs Docker if needed, generates random credentials, builds, and starts everything.
 
-If this is your first time deploying Secure Proxy Manager, use the **initialization script**:
+### Option B: Manual setup
+```bash
+git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
+cd secure-proxy-manager
+cp .env.example .env
+nano .env                    # set BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD
+docker compose up -d --build
+```
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
-   cd secure-proxy-manager
-   ```
+### First login
+1. Open **https://localhost:8443** (accept the self-signed certificate)
+2. Log in with the credentials from `.env`
+3. The **Setup Wizard** guides you through configuration (choose preset, devices, strictness)
+4. Configure client devices: set proxy to `your-server-ip:3128`
 
-2. **Run the initialization script**:
-   ```bash
-   chmod +x init.sh
-   ./init.sh
-   ```
-   
-   This script will:
-   - Check prerequisites (Docker, Docker Compose)
-   - Create required directories (`config`, `data`, `logs`)
-   - **Require you to set up strong credentials (no more default `admin:admin`)**
-   - Guide you through the setup process
-
-3. **Provide `.env` file explicitly (Manual setup)**:
-   If you don't use `init.sh`, you **MUST** create a `.env` file before starting.
-   ```bash
-   cp .env.example .env
-   # Edit .env and change BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD
-   nano .env
-   ```
-   *Note: The containers will crash on startup if these credentials are not provided.*
-
-4. **Start the application** (Go backend — recommended):
-   ```bash
-   docker compose -f docker-compose.yml -f docker-compose.go.yml up -d --build
-   ```
-   Or with Python backend (legacy):
-   ```bash
-   docker compose up -d
-   ```
-
-4. **Access the web interface**:
-   ```
-   http://localhost:8011
-   ```
-   Log in with the credentials you set in `.env`. If you used `init.sh`, you were prompted to set them during setup.
-
-   **Note**: The backend API is also accessible directly at `http://localhost:5001` for advanced users or automation scripts (localhost-only by default).
-
-5. **Configure your client devices**:
-   - Set proxy server to your host's IP address, port 3128
-   - For transparent proxying, see the [Transparent Proxy Setup](#transparent-proxy-setup) section
-
-6. **Whitelist essential domains** (important before importing blocklists):
-   - Go to **Settings > DNS & WAF Intelligence > Essential Domain Whitelist**
-   - Click the one-click buttons for services you use: GitHub, Google, Microsoft, AI, Docker, CDN
-   - This prevents critical services from being blocked by imported domain lists
-
-### For Experienced Users
-
-If you're familiar with Docker and prefer manual setup:
-
-1. Clone the repository and create required directories:
-   ```bash
-   git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
-   cd secure-proxy-manager
-   mkdir -p config data logs
-   cp .env.example .env
-   ```
-
-2. Edit `.env` to set your credentials, then start:
-   ```bash
+### Updating
+```bash
+cd secure-proxy-manager
+git pull
+docker compose up -d --build
+```
    docker-compose up -d
    ```
 

@@ -18,7 +18,7 @@ The backend mounts `/var/run/docker.sock:ro` to send SIGHUP to Squid/dnsmasq whe
 
 - JWT Bearer tokens (8h expiry) with token blacklist on logout
 - Rate limiting: 5 attempts / 5 min per IP
-- bcrypt password hashing (cost 12)
+- bcrypt password hashing (default cost 10)
 - HTTPS by default (self-signed or Let's Encrypt)
 
 ### WAF
