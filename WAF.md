@@ -76,24 +76,35 @@ Recommendation: Review 192.168.100.7 — unusually high block rate."
 
 This is NOT an LLM — it's structured template generation from the data we already have. Covers 80% of the "daily briefing" use case with zero additional resources.
 
-### Tier 2: Local LLM (optional sidecar)
-**Effort: 8-12h | RAM: +2-4GB**
+### Tier 2: Local LLM (compiled into Go backend)
+**Effort: 8-12h | RAM: +1-2GB**
 
 For users who want natural language interaction:
-- Ollama sidecar container (opt-in via compose profile)
+- **llama.cpp via Go bindings** (`go-llama.cpp`) — compiles directly into the backend binary
+- No wrapper (Ollama is bloated and trending closed-source — rejected)
+- No Python (vLLM/MLX are overkill or non-portable)
+- No sidecar container — the LLM runs IN the Go backend process
+- Model: `qwen2.5-coder-1.5b.Q4_K_M.gguf` (~1GB file, ~1.5GB RAM)
+- Model file mounted as Docker volume: `-v ./models:/models`
 - MCP server in Go exposing read-only tools:
   - `get_recent_blocks(hours=24)` → returns JSON
   - `explain_rule(rule_id)` → returns rule description
   - `analyze_ip(ip)` → returns traffic profile
   - `suggest_whitelist(domain)` → checks if domain is safe
-- Chat widget in Dashboard (like Intercom but local)
-- Model: `qwen2.5-coder:1.5b` (smallest useful model, ~1GB RAM)
+- Chat widget in Dashboard
+- Build flag: `go build -tags llm` enables LLM support (without flag = zero overhead)
+
+**Runtime selection (auto-detected):**
+- Apple Silicon (M1+): MLX backend via cgo (fastest on Mac)
+- CUDA GPU: llama.cpp CUDA backend
+- CPU only: llama.cpp AVX2/NEON (works everywhere, slower)
 
 **Critical constraints:**
 - NO write tools (no block_ip, no restart_squid)
-- NO real-time inference (batch only)
+- NO real-time inference (batch only, async goroutine)
 - NO auto-actions (always human-in-the-loop)
-- Container only starts if `ENABLE_LLM=true` in .env
+- Only activates if model file exists in `/models/` directory
+- Without model file = zero RAM overhead, zero latency impact
 
 ### Tier 3: RAG over documentation + logs
 **Effort: 16-20h | RAM: +4GB**
@@ -111,9 +122,11 @@ For users who want natural language interaction:
 - Zero extra RAM, zero extra containers
 - Covers 80% of the LLM value proposition
 
-### Later (v3.0): Tier 2 — Optional LLM sidecar
+### Later (v3.0): Tier 2 — Embedded LLM via llama.cpp
 - Only after the product is stable and adopted
-- As a Docker compose profile: `docker compose --profile llm up -d`
+- Compiled into Go backend with build tag: `go build -tags llm`
+- User drops a GGUF model file in `./models/` → LLM activates
+- No Ollama, no Python, no sidecar — one binary, one process
 - Read-only MCP tools, advisory only
 - Chat widget in Dashboard
 
