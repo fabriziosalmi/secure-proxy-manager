@@ -62,14 +62,14 @@ services:
     restart: unless-stopped
 
   backend:
-    build: ./backend
+    build: ./backend-go
     ports:
-      - "5001:5000"  # LAN-accessible: browser WebSocket (logs page) connects here directly.
-                     # Restrict with firewall rules if internet-facing (e.g. ufw deny 5001).
+      - "5001:5000"  # LAN-accessible: browser WebSocket connects here directly
     volumes:
       - ./config:/config
       - ./data:/data
       - ./logs:/logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # for dnsmasq/squid reload signals
     environment:
       - PROXY_HOST=${PROXY_HOST:-proxy}
       - PROXY_PORT=${PROXY_PORT:-3128}
@@ -77,18 +77,18 @@ services:
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
       - SECRET_KEY=${SECRET_KEY}
-      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:8011}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://localhost:8443}
     deploy:
       resources:
         limits:
-          cpus: '0.50'
-          memory: 768M
+          cpus: '0.25'
+          memory: 128M  # Go uses ~20MB vs Python 150MB+
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "/server", "-healthcheck"]
       interval: 5s
       timeout: 3s
       retries: 5
-      start_period: 10s
+      start_period: 5s
     networks:
       - proxy-network
     restart: unless-stopped
