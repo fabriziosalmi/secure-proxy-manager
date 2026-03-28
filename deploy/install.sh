@@ -88,6 +88,16 @@ BASIC_AUTH_USERNAME=${ADMIN_USER}
 BASIC_AUTH_PASSWORD=${ADMIN_PASS}
 SECRET_KEY=${SECRET_KEY}
 CORS_ALLOWED_ORIGINS=https://localhost:8443
+
+# HTTPS: uncomment for Let's Encrypt (requires public domain + port 80)
+# LETSENCRYPT_DOMAIN=
+# LETSENCRYPT_EMAIL=
+
+# WPAD: set to server LAN IP for browser auto-proxy discovery
+# PROXY_IP=
+
+# WAF: comma-separated categories to disable
+# WAF_DISABLED_CATEGORIES=
 EOF
 
     ok "Credentials generated"
