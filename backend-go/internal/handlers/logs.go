@@ -21,11 +21,20 @@ func (h *LogHandlers) Register(r chi.Router, authMW func(http.Handler) http.Hand
 	r.With(authMW).Post("/api/logs/clear-old", h.ClearOld)
 }
 
+func (h *LogHandlers) gdprEnabled() bool {
+	var val string
+	if err := h.db.QueryRow("SELECT setting_value FROM settings WHERE setting_name = 'gdpr_mode'").Scan(&val); err != nil {
+		return false
+	}
+	return val == "true"
+}
+
 func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 	limit := clamp(queryInt(r, "limit", 25), 1, 500)
 	offset := max0(queryInt(r, "offset", 0))
 	sort := sanitiseSort(r.URL.Query().Get("sort"), []string{"timestamp", "source_ip", "destination", "status", "bytes", "method"}, "timestamp")
 	order := sanitiseOrder(r.URL.Query().Get("order"))
+	gdpr := h.gdprEnabled()
 
 	var total int
 	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&total) //nolint:errcheck
@@ -46,10 +55,14 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 		var ts, srcIP, method, dest, status sql.NullString
 		var bytes sql.NullInt64
 		rows.Scan(&id, &ts, &srcIP, &method, &dest, &status, &bytes) //nolint:errcheck
+		ip := srcIP.String
+		if gdpr {
+			ip = maskIP(ip)
+		}
 		logs = append(logs, map[string]any{
 			"id":          id,
 			"timestamp":   ts.String,
-			"client_ip":   srcIP.String,
+			"client_ip":   ip,
 			"method":      method.String,
 			"destination": dest.String,
 			"status":      status.String,
