@@ -222,7 +222,7 @@ cd secure-proxy-manager
 git pull
 docker compose up -d --build
 ```
-   docker-compose up -d
+   docker compose up -d
    ```
 
 ### Need Help?
@@ -354,13 +354,13 @@ The "Popular Lists" button in the Web UI imports well-known public blocklists di
 AUTH="Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
 
 # Import domains from URL (plain text, one domain per line)
-curl -X POST http://localhost:8011/api/blacklists/import \
+curl -X POST https://localhost:8443/api/blacklists/import \
   -H "Content-Type: application/json" \
   -H "$AUTH" \
   -d '{"type": "domain", "url": "https://example.com/domain-blacklist.txt"}'
 
 # Import domains from inline content
-curl -X POST http://localhost:8011/api/blacklists/import \
+curl -X POST https://localhost:8443/api/blacklists/import \
   -H "Content-Type: application/json" \
   -H "$AUTH" \
   -d '{"type": "domain", "content": "example.com\n*.badsite.org\nmalicious.net"}'
@@ -372,13 +372,13 @@ curl -X POST http://localhost:8011/api/blacklists/import \
 AUTH="Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
 
 # Import IPs from URL
-curl -X POST http://localhost:8011/api/blacklists/import \
+curl -X POST https://localhost:8443/api/blacklists/import \
   -H "Content-Type: application/json" \
   -H "$AUTH" \
   -d '{"type": "ip", "url": "https://example.com/ip-blacklist.txt"}'
 
 # Import IPs from inline content with CIDR notation support
-curl -X POST http://localhost:8011/api/blacklists/import \
+curl -X POST https://localhost:8443/api/blacklists/import \
   -H "Content-Type: application/json" \
   -H "$AUTH" \
   -d '{"type": "ip", "content": "192.168.1.100\n10.0.0.5\n172.16.0.0/24"}'
@@ -407,7 +407,7 @@ curl -X POST http://localhost:8011/api/blacklists/import \
 
 All proxy traffic is logged and can be analyzed in the web interface:
 
-- **Real-Time WebSockets**: View access logs streaming live from Squid to the UI via FastAPI WebSockets.
+- **Real-Time WebSockets**: View access logs streaming live from Squid to the UI via Go WebSocket server.
 - **Persistent Storage**: Logs are automatically written to the SQLite database (in WAL mode for concurrency) allowing historical search and pagination.
 - **Quick Stats**: Instant metric cards showing Total Requests, Success rates, Blocked traffic, and Errors directly above the logs table.
 - **Security Events**: Authentication attempts and blocked requests by the WAF.
@@ -428,7 +428,7 @@ Export database contents including blacklists, settings, and logs (limited to 10
 
 1. Via API:
    ```bash
-   curl -X GET http://localhost:8011/api/database/export \
+   curl -X GET https://localhost:8443/api/database/export \
      -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
      > secure-proxy-export.json
    ```
@@ -446,7 +446,7 @@ For complete database backup including all logs:
 
 ```bash
 # Stop the services
-docker-compose down
+docker compose down
 
 # Backup the database file
 cp data/secure_proxy.db data/secure_proxy.db.backup
@@ -455,7 +455,7 @@ cp data/secure_proxy.db data/secure_proxy.db.backup
 tar -czf config-backup.tar.gz config/
 
 # Restart services
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Database Restore
@@ -464,7 +464,7 @@ To restore from a manual backup:
 
 ```bash
 # Stop the services
-docker-compose down
+docker compose down
 
 # Restore the database file
 cp data/secure_proxy.db.backup data/secure_proxy.db
@@ -473,7 +473,7 @@ cp data/secure_proxy.db.backup data/secure_proxy.db
 tar -xzf config-backup.tar.gz
 
 # Restart services
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Database Optimization
@@ -481,7 +481,7 @@ docker-compose up -d
 Optimize database performance:
 
 ```bash
-curl -X POST http://localhost:8011/api/database/optimize \
+curl -X POST https://localhost:8443/api/database/optimize \
   -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
 ```
 
@@ -490,7 +490,7 @@ curl -X POST http://localhost:8011/api/database/optimize \
 Get database size and statistics:
 
 ```bash
-curl -X GET http://localhost:8011/api/database/stats \
+curl -X GET https://localhost:8443/api/database/stats \
   -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
 ```
 
@@ -563,9 +563,9 @@ A: Yes! Modify `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` in `docker-compos
 A:
 ```bash
 git pull
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
 
 ### Features & Usage
@@ -573,7 +573,7 @@ docker-compose up -d
 **Q: How do I import a large blacklist?**
 A: Use the import endpoint with a URL pointing to your blacklist file:
 ```bash
-curl -X POST http://localhost:8011/api/blacklists/import \
+curl -X POST https://localhost:8443/api/blacklists/import \
   -H "Content-Type: application/json" \
   -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
   -d '{"type": "domain", "url": "https://example.com/blacklist.txt"}'
@@ -586,7 +586,7 @@ A: Yes, IPv6 addresses can be added to the IP blacklist, including CIDR notation
 A: Yes, by enabling HTTPS filtering and installing the SSL certificate on client devices. Note: This performs man-in-the-middle inspection.
 
 **Q: How do I view blocked requests?**  
-A: Check the logs in the Web UI dashboard or query via API: `http://localhost:8011/api/logs/stats`
+A: Check the logs in the Web UI dashboard or query via API: `https://localhost:8443/api/logs/stats`
 
 ### Performance & Scaling
 
@@ -603,15 +603,15 @@ A: Default is 1GB. Adjust the cache size in performance tuning settings based on
 
 **Q: Services won't start - what should I check?**  
 A:
-1. Run the initialization script: `./init.sh`
+1. Run the initialization script: `make setup`
 2. Ensure Docker and Docker Compose are installed and running
-3. Check for port conflicts: `docker-compose logs`
+3. Check for port conflicts: `docker compose logs`
 4. Verify volumes have correct permissions: `chmod 755 config data logs`
 5. Wait for backend health check (may take 10-15 seconds)
 6. See the comprehensive [Deployment Guide](DEPLOYMENT.md#troubleshooting) for detailed solutions
 
 **Q: Getting permission errors with config/data/logs directories?**
-A: Run the initialization script (`./init.sh`) or manually create directories with proper permissions:
+A: Run the initialization script (`make setup`) or manually create directories with proper permissions:
 ```bash
 mkdir -p config data logs
 chmod 755 config data logs
@@ -621,7 +621,7 @@ chmod 755 config data logs
 A: Ensure you have a `.env` file with credentials set. Copy from `.env.example`:
 ```bash
 cp .env.example .env
-docker-compose restart
+docker compose restart
 ```
 
 **Q: Why am I getting SSL certificate warnings?**  
@@ -632,15 +632,15 @@ A: Common causes:
 - Invalid format (ensure one entry per line or valid JSON)
 - Network issues (URL not accessible)
 - Authentication failure (check credentials)
-- Check logs: `docker-compose logs backend`
+- Check logs: `docker compose logs backend`
 
 ## Troubleshooting
 
 ### Quick Fixes
 
 **First-Time Setup Issues?** 
-- Run the initialization script: `./init.sh`
-- Or manually: `mkdir -p config data logs && cp .env.example .env && docker-compose up -d`
+- Run the initialization script: `make setup`
+- Or manually: `mkdir -p config data logs && cp .env.example .env && docker compose up -d`
 
 **For detailed troubleshooting and step-by-step solutions, see the [Deployment Guide](DEPLOYMENT.md#troubleshooting).**
 
@@ -648,8 +648,8 @@ A: Common causes:
 
 | Issue | Possible Cause | Resolution |
 |-------|---------------|------------|
-| Cannot access web UI | Port conflict or service not started | Run `./init.sh`, check `docker-compose ps` |
-| Permission denied errors | Missing directories or wrong permissions | Run `./init.sh` or `mkdir -p config data logs && chmod 755 config data logs` |
+| Cannot access web UI | Port conflict or service not started | Run `make setup`, check `docker compose ps` |
+| Permission denied errors | Missing directories or wrong permissions | Run `make setup` or `mkdir -p config data logs && chmod 755 config data logs` |
 | Authentication failures | Missing .env file | Copy `.env.example` to `.env` and restart |
 | Proxy not filtering | Incorrect network configuration | Verify client proxy settings |
 | SSL warnings | Certificate not trusted | Install certificate on client devices |
@@ -660,24 +660,24 @@ A: Common causes:
 
 1. **Service Logs**:
    ```bash
-   docker-compose logs -f backend
-   docker-compose logs -f ui
-   docker-compose logs -f proxy
+   docker compose logs -f backend
+   docker compose logs -f ui
+   docker compose logs -f proxy
    ```
 
 2. **Database Check**:
    ```bash
-   docker-compose exec backend sqlite3 /data/secure_proxy.db .tables
+   docker compose exec backend sqlite3 /data/secure_proxy.db .tables
    ```
 
 3. **Network Validation**:
    ```bash
-   docker-compose exec proxy ping -c 3 google.com
+   docker compose exec proxy ping -c 3 google.com
    ```
 
 4. **Cache Analysis**:
    ```bash
-   docker-compose exec proxy squidclient -h localhost mgr:info
+   docker compose exec proxy squidclient -h localhost mgr:info
    ```
 
 ## API Documentation
@@ -685,7 +685,7 @@ A: Common causes:
 Secure Proxy Manager provides a RESTful API for integration and automation with support for plain text and JSON blacklist imports.
 
 **API Base URLs:**
-- Via Web UI: `http://localhost:8011/api`
+- Via Web UI: `https://localhost:8443/api`
 - Direct Backend Access: `http://localhost:5001/api`
 
 **Note:** When accessing the API directly through the backend (port 5001), you bypass the Web UI layer. This can be useful for automation scripts and monitoring tools.
@@ -707,13 +707,13 @@ AUTH_HEADER="Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
 AUTH_HEADER="Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
 
 # Import from URL (plain text file, one domain per line)
-curl -X POST http://localhost:8011/api/blacklists/import \
+curl -X POST https://localhost:8443/api/blacklists/import \
   -H "Content-Type: application/json" \
   -H "$AUTH_HEADER" \
   -d '{"type": "domain", "url": "https://example.com/domain-blacklist.txt"}'
 
 # Import inline content
-curl -X POST http://localhost:8011/api/blacklists/import \
+curl -X POST https://localhost:8443/api/blacklists/import \
   -H "Content-Type: application/json" \
   -H "$AUTH_HEADER" \
   -d '{"type": "domain", "content": "malicious.com\n*.ads.example\nbadsite.org"}'
@@ -735,13 +735,13 @@ unwanted.domain
 AUTH_HEADER="Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
 
 # Import from URL
-curl -X POST http://localhost:8011/api/blacklists/import \
+curl -X POST https://localhost:8443/api/blacklists/import \
   -H "Content-Type: application/json" \
   -H "$AUTH_HEADER" \
   -d '{"type": "ip", "url": "https://example.com/ip-blacklist.txt"}'
 
 # Import with CIDR notation support
-curl -X POST http://localhost:8011/api/blacklists/import \
+curl -X POST https://localhost:8443/api/blacklists/import \
   -H "Content-Type: application/json" \
   -H "$AUTH_HEADER" \
   -d '{"type": "ip", "content": "192.168.1.100\n10.0.0.0/8\n172.16.0.0/12"}'
@@ -973,7 +973,7 @@ When reporting issues, please include:
 - Your environment (OS, Docker version, etc.)
 - Steps to reproduce the problem
 - Expected vs actual behavior
-- Relevant logs from `docker-compose logs`
+- Relevant logs from `docker compose logs`
 
 ---
 

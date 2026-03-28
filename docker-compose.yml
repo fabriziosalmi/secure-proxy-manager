@@ -80,7 +80,7 @@ services:
     environment:
       - PROXY_HOST=${PROXY_HOST:-proxy}
       - PROXY_PORT=${PROXY_PORT:-3128}
-      - PROXY_CONTAINER_NAME=${PROXY_CONTAINER_NAME:-secure-proxy-manager-proxy-1}
+      - PROXY_CONTAINER_NAME=${PROXY_CONTAINER_NAME:-secure-proxy-manager-proxy}
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
       - SECRET_KEY=${SECRET_KEY}

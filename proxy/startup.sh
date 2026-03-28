@@ -107,6 +107,7 @@ echo "Setting up Squid configuration..."
 cat > /etc/squid/squid.conf.base << 'EOL'
 http_port 3128
 visible_hostname secure-proxy
+pid_filename /run/squid/squid.pid
 
 # Access control lists
 acl localnet src 10.0.0.0/8
