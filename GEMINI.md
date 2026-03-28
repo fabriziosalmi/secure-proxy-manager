@@ -159,6 +159,47 @@
 | 49 | Security Score | 🟢 Done | 0-100 score with recommendations on Dashboard |
 | 50 | LDAP/AD Auth | ⚪ Backlog | Squid supports `basic_ldap_auth` but config is complex. v3 feature |
 
+## Batch 6: Smart Features
+
+| # | Idea | Status | Notes |
+|---|------|--------|-------|
+| 51 | Auto-Learning Mode | ⚪ Backlog | Needs ML pipeline. Safe URL cache is a primitive version. v3 |
+| 52 | Device Discovery | ❌ Rejected | ARP scan from Docker sees only container IPs. Needs LAN agent — out of scope |
+| 53 | Honey-Domain Generator | ❌ Rejected | Fake traffic pollutes our own logs more than it confuses attackers |
+| 54 | UA Randomizer | 🟢 Done | Protocol hardening strips/normalizes outbound User-Agent |
+| 55 | WPAD Auto-Discovery | 🔵 **Do Next** | Serve `wpad.dat` on HTTP so browsers auto-configure proxy. Pairs with Client Export |
+| 56 | ntfy.sh notifications | 🔵 **Do Next** | Ultra-light, self-hosted push. Add as provider alongside Telegram/Gotify. ~30min |
+| 57 | Grafana/Prometheus | ⚪ Backlog | Go backend could expose `/metrics`. But adds Grafana container. REST API already scrapeable |
+| 58 | Log Sanitizer | 🟢 Done (partial) | GDPR masking covers this use case |
+| 59 | gRPC Inspection | ❌ Rejected | HTTP/2 binary — Squid can't inspect, needs Envoy. Different product |
+| 60 | Rule Simulator (what-if) | 🔵 **Do Next** | Test regex against last 24h traffic logs. This is the "Regex Playground" from Sprint 3 |
+
+### WPAD Auto-Discovery
+
+**Why**: Instead of manually configuring proxy on every device, WPAD lets browsers auto-detect and auto-configure. Combined with Client Export, this is zero-touch onboarding.
+
+**How**:
+- Nginx serves `http://wpad.<domain>/wpad.dat` on port 80
+- The PAC file content: `function FindProxyForURL(url, host) { return "PROXY <proxy-ip>:3128; DIRECT"; }`
+- Settings field: "WPAD Domain" (e.g., `wpad.local`)
+- dnsmasq adds: `address=/wpad.local/<proxy-ip>`
+- Browsers with "Auto-detect proxy" enabled → find and use it automatically
+
+**Effort**: 2h
+
+### Regex Playground (Rule Simulator)
+
+**Why**: Before deploying a new WAF rule, test it against real traffic. "Would this regex have blocked anything yesterday?" prevents false positives in production.
+
+**How**:
+- New API endpoint: `POST /api/waf/test-rule` with `{regex: "...", hours: 24}`
+- Backend reads WAF JSONL traffic log, applies regex to stored URLs/bodies
+- Returns: matches found, sample URLs, would-block count
+- Frontend: textarea for regex + "Test" button + results table
+- Could live in Threat Intel page or as a modal from Settings WAF section
+
+**Effort**: 3h
+
 ### GDPR IP Anonymization
 
 **Why**: EU law requires data minimization. Logging full client IPs when not needed for security is a compliance risk. A toggle to mask the last octet makes us GDPR-friendly out of the box.
@@ -238,3 +279,6 @@
 | Custom Branding | Nice-to-have but zero security value. Maybe v3 |
 | Home Assistant | Too niche. REST API already consumable by HA sensors |
 | Bandwidth Quota | Monthly per-IP accounting too complex for proxy-level. Use router QoS |
+| Device Discovery | ARP scan from Docker only sees container IPs. Needs LAN agent |
+| Honey-Domains | Fake traffic pollutes our own analytics |
+| gRPC Inspection | HTTP/2 binary stream, Squid can't inspect. Needs Envoy — different product |
