@@ -1,11 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { useQuery } from '@tanstack/react-query';
 import type { SettingRow } from '../types';
-import { Save, Download, Shield, Database, Network, Trash2, Key, Bell } from 'lucide-react';
+import { Save, Download, Shield, Network, Key, Bell } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { z } from 'zod';
+import { ChangePassword } from '../components/settings/ChangePassword';
+import { Maintenance } from '../components/settings/Maintenance';
 
 // Validation schema for settings form data
 const settingsSchema = z.object({
@@ -98,37 +100,6 @@ export function Settings() {
     }
   };
 
-  const handleClearCache = async () => {
-    toast.promise(
-      api.post('maintenance/clear-cache', {}, {
-        headers: {
-          'Idempotency-Key': crypto.randomUUID()
-        }
-      }),
-      {
-        loading: 'Clearing proxy cache...',
-        success: 'Cache cleared successfully!',
-        error: 'Failed to clear cache.',
-      }
-    );
-  };
-
-  const handleBackup = async () => {
-    const loadingToast = toast.loading('Generating backup...');
-    try {
-      const response = await api.get('database/export');
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(response.data, null, 2));
-      const a = document.createElement('a');
-      a.setAttribute("href", dataStr);
-      a.setAttribute("download", `secure-proxy-backup-${new Date().toISOString().slice(0,10)}.json`);
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      toast.success("Backup downloaded!", { id: loadingToast });
-    } catch (e) {
-      toast.error("Failed to generate backup", { id: loadingToast });
-    }
-  };
 
   const handleDownloadCa = async () => {
     try {
@@ -952,35 +923,11 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        <Card className="bg-card/50">
-          <CardHeader>
-            <div className="flex items-center space-x-2">
-              <Database className="w-5 h-5 text-muted-foreground" />
-              <CardTitle>Maintenance</CardTitle>
-            </div>
-            <CardDescription>System backup and state management</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4">
-              <button 
-                onClick={handleBackup}
-                className="flex-1 flex flex-col items-center justify-center p-6 border border-border rounded-lg bg-background/50 hover:bg-secondary/50 transition-colors"
-              >
-                <Download className="w-6 h-6 mb-2 text-primary" />
-                <span className="text-sm font-medium">Backup Config</span>
-                <span className="text-xs text-muted-foreground mt-1">Download settings JSON</span>
-              </button>
-<button 
-                onClick={handleClearCache}
-                className="flex-1 flex flex-col items-center justify-center p-6 border border-border rounded-lg bg-background/50 hover:bg-destructive/10 transition-colors group"
-              >
-                <Trash2 className="w-6 h-6 mb-2 text-destructive group-hover:text-red-400" />
-                <span className="text-sm font-medium text-destructive group-hover:text-red-400">Clear Cache</span>
-                <span className="text-xs text-muted-foreground mt-1">Free up proxy memory/disk</span>
-              </button>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Account & Maintenance — side by side */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <ChangePassword />
+          <Maintenance />
+        </div>
       </div>
     </div>
   );
