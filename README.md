@@ -1,39 +1,75 @@
 # Secure Proxy Manager
 
-A containerized egress proxy + WAF solution with a Go backend, React dashboard, and 166-rule ICAP WAF engine. Blocks attacks, detects data exfiltration, and provides real-time threat intelligence. Built for homelab, self-hosted, and SMB environments.
+A containerized egress proxy + WAF solution with a Go backend, React dashboard, and 166-rule ICAP WAF engine. Blocks attacks, detects data exfiltration, and provides real-time threat intelligence — with HTTPS by default, setup wizard, 6 presets, and one-click cloud deploy.
+
+Built for homelab, self-hosted, and SMB environments. Runs on **Raspberry Pi** (ARM64) and any x86 server.
+
+## Quick Start
+
+```bash
+# One-command install (any Linux VPS or server)
+curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/deploy/install.sh | sudo bash
+
+# Or manually:
+git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
+cd secure-proxy-manager
+cp .env.example .env   # edit credentials
+docker compose up -d --build
+
+# Open: https://localhost:8443 (accept self-signed cert)
+# Run E2E tests: ./tests/e2e.sh localhost admin password
+```
 
 ## Benchmark Results
 
 | Metric | Value |
 |--------|-------|
-| E2E Tests | **108 checks, 98+ passed** |
+| E2E Tests | **104 checks, 99 passed, 0 failed** |
 | WAF Rules | **166 regex + 7 heuristic + 3 ML-lite** |
+| Security Packs | **21 toggleable categories** |
 | Attack Detection | **17/17 (100%)** |
 | False Positives | **0/7 (0%)** |
 | Evasion Resistance | **5/5 (double-encode, case-mix, null byte, unicode, long payload)** |
 | P50 Latency | **107ms** (with full ICAP inspection) |
 | Backend Memory | **~20MB** (Go binary) |
 | Backend Binary | **16MB** (single file, zero dependencies) |
+| Platforms | **linux/amd64 + linux/arm64** (Raspberry Pi) |
 
 ## Key Features
 
-- **Go Backend**: Single 16MB binary, ~20MB RAM. Replaced Python/FastAPI — 7x less memory, deterministic latency.
-- **WAF Engine (Go ICAP)**: 166 regex rules + 7 behavioral heuristics + 3 ML-lite checks across 21+ categories. Anomaly scoring, Shannon entropy, tiered matching with early-exit.
-- **ML-Lite Detection**: DGA domain detection (bigram frequency analysis), typosquatting (Levenshtein + homoglyph), safe URL cache (skip regex for known-clean URLs).
-- **DNS Blackhole**: dnsmasq sidecar blocks 87K+ domains at L3 (DNS resolution → 0.0.0.0) with zero HTTP overhead.
-- **Traffic Intelligence**: Per-request feature extraction (entropy, timing, headers), JSONL profiling, real-time /stats dashboard.
-- **Threat Intel Dashboard**: Shadow IT detector (35+ SaaS services), file type distribution, service type breakdown, domain cloud visualization.
-- **Protocol Hardening**: Method whitelisting (GET/POST/HEAD only), Via/XFF header stripping, HSTS injection, max header size limits, strict content-length enforcement.
-- **Security Audit**: 27 fixes across 5 rounds — XFF spoofing mitigation, SSRF DNS rebinding protection, atomic file writes, JWT blacklist, audit logging, body size limits, security headers (CSP, X-Frame-Options).
-- **Architecture**: Go backend (chi router, zerolog, modernc/sqlite), React 19 + @tanstack/react-query frontend, SQLite WAL.
-- **Blocklists**: 16 popular lists (8 IP + 8 domain including 2.9M+ aggregated domains), Geo-blocking by country, paginated UI with search.
-- **Heuristics**: Entropy thresholding, C2 beaconing detection, PII leak counter, destination sharding, protocol ghosting, header morphing, sequence validation.
-- **Power User UX**: Global search (⌘K), keyboard shortcuts (1-5 for pages), mobile responsive (hamburger menu), version + runtime badge in sidebar.
-- **E2E Test Suite**: 108 checks across 3 parts (Client, Admin, Advanced) — run anytime with `./tests/e2e.sh`.
-- **Custom Block Pages**: Branded dark-theme error pages with project logo.
-- **SSL Bump**: Inspect and filter HTTPS traffic with auto-generated certificates.
-- **Caching**: Configurable L1 (memory) + L2 (disk) content caching via Squid.
-- **Deployment**: Containerized 6-service architecture via docker-compose (UI, Backend, Proxy, WAF, DNS, Tailscale).
+### Core
+- **Go Backend**: Single 16MB binary, ~20MB RAM. Zero Python dependencies.
+- **WAF Engine (Go ICAP)**: 166 regex + 7 heuristics + 3 ML-lite across 21 categories. Anomaly scoring, Shannon entropy, dual-scan (raw + normalized).
+- **Security Packs**: 21 toggleable WAF rule categories — enable/disable SQLi, XSS, C2, DLP packs from the API.
+- **DNS Blackhole**: dnsmasq blocks 87K+ domains at L3 (zero HTTP overhead).
+- **HTTPS by Default**: Self-signed TLS auto-generated. Optional Let's Encrypt with certbot.
+- **Multi-Arch**: Runs on x86_64 and ARM64 (Raspberry Pi 4/5).
+
+### Intelligence
+- **ML-Lite Detection**: DGA domains (bigram analysis), typosquatting (Levenshtein + homoglyph), safe URL cache.
+- **Threat Intel Dashboard**: Shadow IT (35+ SaaS), file types, service types, domain cloud, live feed.
+- **Regex Playground**: Test new WAF rules against real traffic before deploying.
+- **Squid CVE Alert**: Detects known vulnerabilities in your Squid version.
+- **Update Notifier**: Checks GitHub releases, shows badge when update available.
+
+### Onboarding & UX
+- **Setup Wizard**: First-login 3-step wizard (environment → devices → strictness).
+- **6 Presets**: Basic, Family, Standard, Paranoid, DevOps, Kiosk — one-click configuration.
+- **Client Setup Export**: Per-OS instructions (Win/Mac/Linux/iOS/Android) + PAC file download.
+- **WPAD Auto-Discovery**: Browsers auto-detect proxy via `wpad.dat` — zero client config.
+- **Pi-hole/AdGuard Detect**: Scans LAN for existing DNS providers, offers to cooperate.
+- **DoH Blocker**: Blocks 14 DNS-over-HTTPS providers to prevent blackhole bypass.
+- **GDPR Mode**: Anonymize client IPs in logs (last octet → x) for EU compliance.
+
+### Operations
+- **One-Click Deploy**: `curl | bash` installer + cloud-init YAML for Hetzner/DO/Linode.
+- **API Documentation**: `GET /api/docs` — 60+ endpoints with descriptions.
+- **E2E Test Suite**: 104 checks across 3 parts — `./tests/e2e.sh host user pass`.
+- **Notifications**: Telegram, Discord, Gotify, ntfy.sh, MS Teams, custom webhook.
+- **Protocol Hardening**: Method whitelist, header stripping, HSTS, max header size.
+- **Audit Trail**: Who changed what, when — `/api/audit-log`.
+- **Blocklists**: 16 popular sources, geo-blocking, paginated UI with search.
+- **Custom Block Pages**: Branded dark-theme error pages.
 
 ## Architecture
 

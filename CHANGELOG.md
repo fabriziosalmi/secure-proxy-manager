@@ -5,6 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-03-28
+
+### Added — 17 New Features
+- **Setup Wizard**: 3-step first-login onboarding (environment → devices → strictness)
+- **6 Presets**: Basic, Family, Standard, Paranoid, DevOps, Kiosk
+- **Security Packs**: 21 toggleable WAF categories via API
+- **Client Setup Export**: PAC file + per-OS instructions (Win/Mac/Linux/iOS/Android)
+- **Kiosk Mode**: Whitelist-only preset for public terminals
+- **DoH Blocker**: Blocks 14 DNS-over-HTTPS providers
+- **GDPR IP Masking**: Anonymize last IP octet in logs
+- **Update Notifier**: Checks GitHub releases every 6h, badge in sidebar
+- **Regex Playground**: Test WAF rules against real traffic before deploying
+- **WPAD Auto-Discovery**: Browsers auto-detect proxy via wpad.dat
+- **Pi-hole/AdGuard Detect**: Scans LAN for existing DNS providers
+- **ntfy.sh Notifications**: Self-hosted push notification provider
+- **Let's Encrypt**: Auto-HTTPS with certbot (optional, fallback to self-signed)
+- **One-Click Cloud Deploy**: install.sh + cloud-init.yaml for any VPS
+- **Squid CVE Alert**: Detects known vulnerabilities in Squid version
+- **API Documentation**: GET /api/docs — 60+ endpoints with descriptions
+- **Multi-Arch ARM64**: GitHub Actions builds for linux/amd64 + linux/arm64
+
+### Changed
+- Go backend is now the default (no overlay needed)
+- Removed legacy Python backend directory
+- CI updated: Go build + WAF tests replace Python lint
+- Docker Compose simplified: `docker compose up -d` uses Go backend
+- Memory limit 768M → 128M (Go uses ~20MB)
+- HTTPS on ports 443/8443, HTTP redirect on 80/8011
+
+### Security
+- All Dependabot vulnerabilities resolved
+- Proper IP validation (rejects 999.999.999.999)
+- Domain validation per RFC 1035
+- TypeScript typed interfaces (replaced Record<string,string>)
+- Settings compact toggle grid (consistent UI)
+
+## [2.2.1] - 2026-03-28
+
+### Fixed
+- Removed legacy Python backend (3,545 lines deleted)
+- Go backend as default in docker-compose.yml
+- Record<string,string> → typed interfaces
+- IP validation: octets 0-255, CIDR 0-32
+- Domain validation: RFC 1035
+- Memory limit 768M → 128M
+
+## [2.0.0] - 2026-03-27
+
+### Added
+- Complete Go backend port (3,551 LOC, 16MB binary)
+- 27 security audit fixes across 5 rounds
+- 104-check E2E test suite
+- HTTPS with self-signed TLS auto-generated
+- Logout button, change password form
+- Compact Settings UI with toggle grids
+
+### Changed
+- Python/FastAPI replaced by Go (chi, zerolog, modernc/sqlite)
+- Backend memory: 150MB → 20MB
+- P50 latency: 180ms → 107ms
+
 ## [1.8.0] - 2026-03-27
 
 ### Added
