@@ -90,10 +90,13 @@ export interface DashboardSummary {
 
 export interface WafStats {
   total_inspected: number;
+  total_requests: number;
   total_blocked: number;
   avg_entropy: number;
+  avg_url_entropy: number;
   high_entropy_count: number;
   requests_per_min: number;
+  requests_last_minute: number;
   top_blocked_categories: { key: string; count: number }[];
 }
 
@@ -121,7 +124,13 @@ export interface TopDomain {
 
 export interface CacheStats {
   hit_rate: number;
+  hit_ratio?: number;
   byte_hit_rate: number;
   cache_size: string;
   objects_cached: number;
+  bandwidth_saved?: string;
+  bytes_saved?: number;
+  hits?: number;
+  misses?: number;
+  requests?: number;
 }

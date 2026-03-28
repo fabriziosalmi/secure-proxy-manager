@@ -1,8 +1,27 @@
 # Secure Proxy Manager
 
-A containerized egress proxy + WAF solution with a Go backend, React dashboard, and 166-rule ICAP WAF engine. Blocks attacks, detects data exfiltration, and provides real-time threat intelligence — with HTTPS by default, setup wizard, 6 presets, and one-click cloud deploy.
+[![CI](https://github.com/fabriziosalmi/secure-proxy-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/fabriziosalmi/secure-proxy-manager/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/fabriziosalmi/secure-proxy-manager)](https://github.com/fabriziosalmi/secure-proxy-manager/releases)
+[![Go](https://img.shields.io/badge/backend-Go-00ADD8?logo=go)](backend-go/)
+[![Docker](https://img.shields.io/badge/deploy-Docker-2496ED?logo=docker)](docker-compose.yml)
 
-Built for homelab, self-hosted, and SMB environments. Runs on **Raspberry Pi** (ARM64) and any x86 server.
+**Monitor and secure all outbound traffic from your network.** Block malicious sites, detect data leaks, catch malware callbacks — with a dashboard you'll actually enjoy using.
+
+Think of it as "Pi-hole + WAF + egress firewall" in one Docker stack. No agents to install on clients — just point your devices to the proxy.
+
+Built for homelab, self-hosted, and SMB. Runs on **Raspberry Pi** (ARM64) and any x86 server.
+
+## Table of Contents
+
+- [Screenshots](#screenshots)
+- [Quick Start](#quick-start)
+- [Benchmark Results](#benchmark-results)
+- [Key Features](#key-features)
+- [Architecture](#architecture)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [FAQ](#faq)
 
 ## Screenshots
 

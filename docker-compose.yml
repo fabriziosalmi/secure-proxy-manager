@@ -71,7 +71,7 @@ services:
   backend:
     build: ./backend-go
     ports:
-      - "5001:5000"  # LAN-accessible: browser WebSocket connects here directly
+      - "127.0.0.1:5001:5000"  # Backend API — localhost only (WebSocket proxied via Nginx)
     volumes:
       - ./config:/config
       - ./data:/data

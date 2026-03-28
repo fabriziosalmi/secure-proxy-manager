@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"regexp"
@@ -166,39 +167,5 @@ func (h *AuthHandlers) Health(w http.ResponseWriter, r *http.Request) {
 }
 
 func basicHeader(u, p string) string {
-	import_enc := u + ":" + p
-	// base64 inline
-	return "Basic " + encodeBase64(import_enc)
-}
-
-func encodeBase64(s string) string {
-	import_enc := make([]byte, (len(s)+2)/3*4)
-	const table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-	src := []byte(s)
-	di, si := 0, 0
-	n := (len(src) / 3) * 3
-	for si < n {
-		val := uint(src[si+0])<<16 | uint(src[si+1])<<8 | uint(src[si+2])
-		import_enc[di+0] = table[val>>18&0x3F]
-		import_enc[di+1] = table[val>>12&0x3F]
-		import_enc[di+2] = table[val>>6&0x3F]
-		import_enc[di+3] = table[val&0x3F]
-		si += 3
-		di += 4
-	}
-	rem := len(src) - n
-	if rem == 1 {
-		val := uint(src[n]) << 16
-		import_enc[di+0] = table[val>>18&0x3F]
-		import_enc[di+1] = table[val>>12&0x3F]
-		import_enc[di+2] = '='
-		import_enc[di+3] = '='
-	} else if rem == 2 {
-		val := uint(src[n+0])<<16 | uint(src[n+1])<<8
-		import_enc[di+0] = table[val>>18&0x3F]
-		import_enc[di+1] = table[val>>12&0x3F]
-		import_enc[di+2] = table[val>>6&0x3F]
-		import_enc[di+3] = '='
-	}
-	return string(import_enc)
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte(u+":"+p))
 }
