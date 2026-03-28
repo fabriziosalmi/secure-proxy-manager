@@ -8,6 +8,7 @@ import { api } from '../lib/api';
 import { z } from 'zod';
 import { ChangePassword } from '../components/settings/ChangePassword';
 import { Maintenance } from '../components/settings/Maintenance';
+import { Presets } from '../components/settings/Presets';
 
 // Validation schema for settings form data
 const settingsSchema = z.object({
@@ -124,7 +125,7 @@ export function Settings() {
           <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
           <p className="text-muted-foreground">Configure proxy behavior and security</p>
         </div>
-        <button 
+        <button
           onClick={handleSave}
           disabled={isSaving}
           className={`flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium transition-colors ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-primary/90'}`}
@@ -133,6 +134,12 @@ export function Settings() {
           {isSaving ? 'Saving...' : 'Save Changes'}
         </button>
       </div>
+
+      {/* Quick Setup Presets */}
+      <Presets
+        formData={formData}
+        onApply={(values) => setFormData(prev => ({ ...prev, ...values }))}
+      />
 
       <div className="grid gap-6">
         <Card className="bg-card/50">
