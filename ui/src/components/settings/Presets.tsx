@@ -1,4 +1,4 @@
-import { Shield, Baby, Server, Lock } from 'lucide-react';
+import { Shield, Baby, Server, Lock, Code, MonitorOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface PresetConfig {
@@ -137,6 +137,71 @@ const PRESETS: PresetConfig[] = [
       heuristic_header_morphing: 'true',
     },
   },
+  {
+    id: 'devops',
+    name: 'DevOps',
+    icon: Code,
+    color: 'text-purple-400',
+    bgColor: 'border-purple-500/30 hover:border-purple-500/60 hover:bg-purple-500/5',
+    desc: 'Developer tools',
+    detail: 'Permissive for dev workflows. Content filter off (devs download binaries). All heuristics on.',
+    values: {
+      waf_block_threshold: '10',
+      enable_https_filtering: 'false',
+      ssl_bump_enabled: 'false',
+      block_direct_ip: 'false',
+      enable_safesearch: 'false',
+      enable_youtube_restricted: 'false',
+      enable_content_filtering: 'false',
+      enable_bandwidth_limits: 'false',
+      enable_time_restrictions: 'false',
+      enable_proxy_auth: 'false',
+      aggressive_caching: 'true',
+      enable_offline_mode: 'false',
+      heuristic_entropy: 'true',
+      heuristic_beaconing: 'true',
+      heuristic_pii_leak: 'true',
+      heuristic_dest_sharding: 'true',
+      heuristic_protocol_ghosting: 'true',
+      heuristic_header_morphing: 'false',
+    },
+  },
+  {
+    id: 'kiosk',
+    name: 'Kiosk',
+    icon: MonitorOff,
+    color: 'text-amber-400',
+    bgColor: 'border-amber-500/30 hover:border-amber-500/60 hover:bg-amber-500/5',
+    desc: 'Whitelist-only',
+    detail: 'Block everything except whitelisted domains. For public terminals, libraries, schools.',
+    values: {
+      waf_block_threshold: '5',
+      enable_https_filtering: 'false',
+      ssl_bump_enabled: 'false',
+      block_direct_ip: 'true',
+      enable_safesearch: 'true',
+      enable_youtube_restricted: 'true',
+      enable_content_filtering: 'true',
+      blocked_file_types: 'exe,bat,cmd,dll,msi,scr,ps1,vbs,js,sh,py,rb,zip,7z,rar,tar,iso',
+      enable_bandwidth_limits: 'true',
+      bandwidth_limit_mbps: '10',
+      bandwidth_limit_per_user_kbps: '500',
+      enable_time_restrictions: 'true',
+      time_restriction_start: '08:00',
+      time_restriction_end: '18:00',
+      enable_proxy_auth: 'true',
+      auth_method: 'basic',
+      aggressive_caching: 'true',
+      enable_offline_mode: 'true',
+      heuristic_entropy: 'true',
+      heuristic_beaconing: 'true',
+      heuristic_pii_leak: 'true',
+      heuristic_dest_sharding: 'true',
+      heuristic_protocol_ghosting: 'true',
+      heuristic_header_morphing: 'true',
+      kiosk_mode: 'true',
+    },
+  },
 ];
 
 interface Props {
@@ -169,7 +234,7 @@ export function Presets({ formData, onApply }: Props) {
   return (
     <div className="mb-4">
       <label className="text-xs font-medium text-muted-foreground mb-2 block">Quick Setup Presets</label>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
         {PRESETS.map((p) => {
           const Icon = p.icon;
           const isActive = active === p.id;
