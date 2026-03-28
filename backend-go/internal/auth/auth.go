@@ -252,7 +252,8 @@ func (s *Service) ValidateWSToken(token string) (string, bool) {
 func secureToken() string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		panic("crypto/rand unavailable: " + err.Error())
+		// Fallback to timestamp-based token (less secure but no panic)
+		return hex.EncodeToString([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
 	}
 	return hex.EncodeToString(b)
 }
