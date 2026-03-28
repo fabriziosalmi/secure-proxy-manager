@@ -335,6 +335,121 @@ Response: "192.168.100.5 was blocked 3 times in the last hour.
 
 ---
 
+## MCP Server: Let Users Bring Their Own LLM
+
+The right approach to LLM integration is **not running one** — it's **exposing our data** via MCP (Model Context Protocol) so users can connect their own.
+
+### What we provide (Go backend, zero extra resources):
+
+```
+┌─────────────────────────────────────────────────────┐
+│  MCP Server (built into Go backend, port 5000)       │
+│                                                       │
+│  Resources (read-only):                               │
+│  ├─ proxy://logs/recent      → last 100 log entries  │
+│  ├─ proxy://logs/blocked     → blocked requests 24h  │
+│  ├─ proxy://waf/stats        → WAF counters + cats   │
+│  ├─ proxy://waf/rules        → all 166 rules listed  │
+│  ├─ proxy://blacklist/ip     → IP blacklist entries   │
+│  ├─ proxy://blacklist/domain → domain blacklist       │
+│  ├─ proxy://analytics/shadow-it  → SaaS detected     │
+│  ├─ proxy://analytics/top-domains → domain cloud     │
+│  ├─ proxy://security/score   → 0-100 score + recs    │
+│  └─ proxy://config/settings  → current config        │
+│                                                       │
+│  Tools (read-only, no mutations):                     │
+│  ├─ search_logs(query, hours) → filtered log search  │
+│  ├─ explain_block(log_id)     → why was this blocked │
+│  ├─ analyze_ip(ip)            → traffic profile      │
+│  ├─ check_domain(domain)      → blacklisted? why?    │
+│  └─ get_recommendations()     → security suggestions │
+│                                                       │
+│  NO write tools. NO block/unblock. NO config changes. │
+│  The proxy is an oracle, not an executor.             │
+└─────────────────────────────────────────────────────┘
+```
+
+### What the user provides (their choice, their cost):
+
+```
+┌──────────────────────┐     ┌──────────────────────┐
+│  Claude Desktop       │     │  Local Llama (8B)     │
+│  (Anthropic account)  │────►│  (user's GPU/CPU)     │
+│                       │     │                       │
+│  "Why is my NAS       │     │  "Analyze last week's │
+│   being blocked?"     │     │   traffic patterns"   │
+└──────────┬───────────┘     └──────────┬───────────┘
+           │                            │
+           │         MCP Protocol       │
+           │    (stdio or HTTP/SSE)     │
+           ▼                            ▼
+┌─────────────────────────────────────────────────────┐
+│  Our Go Backend (MCP Server)                         │
+│  Responds with structured data from SQLite + WAF     │
+│  Zero LLM running. Zero extra RAM. Zero latency.    │
+└─────────────────────────────────────────────────────┘
+```
+
+### Why this is the winning move:
+
+1. **Zero cost for us**: no model to host, no GPU, no RAM. Pure Go HTTP endpoint.
+2. **User's choice**: Claude, Gemini, GPT, local Llama — whatever they have.
+3. **Privacy preserved**: MCP runs locally. If user uses local LLM, data never leaves their network.
+4. **Future-proof**: as models improve, our MCP server stays the same. We don't chase model releases.
+5. **Read-only by design**: the LLM can ask questions but never change anything. No "oops the AI blocked my server" scenarios.
+6. **Works without LLM**: the proxy is 100% functional without MCP. It's a bonus, not a dependency.
+
+### Implementation:
+
+```go
+// In the Go backend — MCP endpoint alongside REST API
+// Uses the MCP Go SDK or a minimal stdio/SSE bridge
+
+mcp.HandleResource("proxy://logs/recent", func() any {
+    return db.GetRecentLogs(100)
+})
+
+mcp.HandleTool("explain_block", func(args map[string]any) any {
+    logID := args["log_id"].(int)
+    entry := db.GetLog(logID)
+    rule := waf.GetRule(entry.RuleID)
+    return map[string]any{
+        "url":       entry.URL,
+        "rule":      rule.Pattern,
+        "category":  rule.Category,
+        "score":     entry.Score,
+        "reason":    fmt.Sprintf("Matched %s rule #%d (score %d/%d threshold)", rule.Category, rule.ID, entry.Score, waf.Threshold),
+    }
+})
+```
+
+**Effort**: 4-6h (MCP SDK integration + resource/tool handlers)
+**RAM**: 0 extra
+**Latency**: 0 (doesn't touch request path)
+
+### User experience:
+
+```
+Claude Desktop → Settings → MCP Servers → Add:
+{
+  "secure-proxy": {
+    "url": "http://192.168.100.253:5001/mcp",
+    "auth": "Bearer <jwt-token>"
+  }
+}
+
+User: "What happened on my proxy today?"
+Claude: [calls proxy://logs/blocked, proxy://waf/stats]
+Claude: "Today your proxy inspected 3,412 requests and blocked 186 (5.4%).
+         The main threat was SQL injection attempts (170 blocks) from 192.168.100.7.
+         Your security score is 78/100. I recommend reviewing the traffic from .7 —
+         it may be a compromised device."
+```
+
+The user gets the LLM experience they want. We get zero infrastructure burden. Everyone wins.
+
+---
+
 ## The Uncomfortable Truths
 
 1. **Regex is not dead.** A well-curated regex ruleset catches known attacks with 100% precision and 0 latency. No ML model beats this for known patterns.
