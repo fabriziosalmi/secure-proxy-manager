@@ -3,7 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Menu, X } from 'lucide-react';
 
-export function Layout() {
+export function Layout({ onLogout }: { onLogout?: () => void }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close sidebar on navigation
@@ -25,7 +25,7 @@ export function Layout() {
         transform transition-transform duration-200 ease-in-out
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
-        <Sidebar onNavigate={handleNav} />
+        <Sidebar onNavigate={handleNav} onLogout={onLogout} />
       </div>
 
       {/* Main content */}

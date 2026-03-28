@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Ban, ShieldAlert, List, Settings, Search, Command } from 'lucide-react';
+import { LayoutDashboard, Ban, ShieldAlert, List, Settings, Search, Command, LogOut } from 'lucide-react';
 import { api } from '../../lib/api';
 
 type ApiStatus = 'connected' | 'disconnected' | 'checking';
 
-export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onLogout?: () => void }) {
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking');
   const [backendInfo, setBackendInfo] = useState<{ version?: string; runtime?: string }>({});
 
@@ -40,9 +40,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <img src="/logo.svg" alt="Secure Proxy Manager" className="w-7 h-7 mr-3" />
         <span className="font-semibold text-lg tracking-tight text-white">Proxy Manager</span>
       </div>
-      
+
       <div className="p-4">
-        {/* Search trigger — dispatches the same event GlobalSearch listens for */}
+        {/* Search trigger */}
         <button
           type="button"
           onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
@@ -80,7 +80,20 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <div className="mt-auto p-4 border-t border-border">
-        <div className="flex items-center justify-between px-3 py-2 mb-2 rounded-md bg-[#0f172a] border border-[#1e293b]">
+        {/* Logout button */}
+        {onLogout && (
+          <button
+            type="button"
+            onClick={onLogout}
+            className="w-full flex items-center px-3 py-2 mb-3 rounded-md text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+          >
+            <LogOut className="w-4 h-4 mr-3" />
+            Sign out
+          </button>
+        )}
+
+        {/* API status */}
+        <div className="flex items-center justify-between px-3 py-2 rounded-md bg-[#0f172a] border border-[#1e293b]">
           <div className="flex items-center">
             <div className={`w-2 h-2 rounded-full mr-2 ${
               apiStatus === 'connected' ? 'bg-emerald-500' :
