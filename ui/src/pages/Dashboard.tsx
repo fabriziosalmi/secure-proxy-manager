@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
-import type { TimelineEntry, SecurityScore } from '../types';
+import type { TimelineEntry, SecurityScore, DashboardSummary, CacheStats } from '../types';
 
 const REFETCH = 10_000;
 const C = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899'];
@@ -19,10 +19,10 @@ export function Dashboard() {
   const [vis, setVis] = useState(document.visibilityState !== 'hidden');
   useEffect(() => { const h = () => setVis(document.visibilityState !== 'hidden'); document.addEventListener('visibilitychange', h); return () => document.removeEventListener('visibilitychange', h); }, []);
 
-  const { data: s, isLoading } = useQuery<any>({ queryKey: ['dashboard'], queryFn: () => api.get('dashboard/summary').then(r => r.data.data), refetchInterval: vis ? REFETCH : false });
+  const { data: s, isLoading } = useQuery<DashboardSummary>({ queryKey: ['dashboard'], queryFn: () => api.get('dashboard/summary').then(r => r.data.data), refetchInterval: vis ? REFETCH : false });
   const { data: tl } = useQuery<TimelineEntry[]>({ queryKey: ['timeline'], queryFn: () => api.get('logs/timeline').then(r => r.data.data), refetchInterval: vis ? REFETCH : false });
   const { data: sec } = useQuery<SecurityScore>({ queryKey: ['score'], queryFn: () => api.get('security/score').then(r => r.data.data), refetchInterval: vis ? 30_000 : false });
-  const { data: cache } = useQuery<any>({ queryKey: ['cache'], queryFn: () => api.get('cache/statistics').then(r => r.data.data), refetchInterval: vis ? 30_000 : false });
+  const { data: cache } = useQuery<CacheStats>({ queryKey: ['cache'], queryFn: () => api.get('cache/statistics').then(r => r.data.data), refetchInterval: vis ? 30_000 : false });
 
   const chart = React.useMemo(() => tl ?? [], [tl]);
   const rate = s?.total_requests ? ((s.blocked_requests / s.total_requests) * 100).toFixed(1) : '0';
@@ -164,16 +164,16 @@ export function Dashboard() {
             <CardTitle className="text-sm">Threats</CardTitle>
           </CardHeader>
           <CardContent className="p-2">
-            {s?.threat_categories?.length > 0 ? (
+            {(s?.threat_categories?.length ?? 0) > 0 && s ? (
               <>
                 <div className="h-[130px]">
                   <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <PieChart><Pie data={s.threat_categories} dataKey="count" nameKey="category" cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={3}>
-                      {s.threat_categories.map((_: any, i: number) => <Cell key={i} fill={C[i % C.length]} />)}
+                      {s.threat_categories.map((_: unknown, i: number) => <Cell key={i} fill={C[i % C.length]} />)}
                     </Pie><Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', fontSize: '11px' }} /></PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="flex flex-wrap gap-1 mt-1">{s.threat_categories.map((c: any, i: number) => (
+                <div className="flex flex-wrap gap-1 mt-1">{s.threat_categories.map((c: { category: string; count: number }, i: number) => (
                   <span key={c.category} className="text-[10px] px-1.5 py-0.5 rounded-full border" style={{ borderColor: C[i % C.length] + '40', color: C[i % C.length] }}>{c.category} ({c.count})</span>
                 ))}</div>
               </>
@@ -188,7 +188,7 @@ export function Dashboard() {
           </CardHeader>
           <CardContent className="p-2">
             <div className="space-y-1 max-h-[180px] overflow-y-auto">
-              {s?.top_blocked?.slice(0, 8).map((item: any, i: number) => (
+              {s?.top_blocked?.slice(0, 8).map((item: { dest: string; count: number }, i: number) => (
                 <div key={i} className="flex items-center justify-between py-1 text-xs">
                   <span className="truncate max-w-[200px] text-muted-foreground font-mono" title={item.dest}>{item.dest}</span>
                   <span className="font-bold text-destructive ml-2 shrink-0">{item.count}</span>
@@ -208,7 +208,7 @@ export function Dashboard() {
           </CardHeader>
           <CardContent className="p-2">
             <div className="space-y-0.5 max-h-[160px] overflow-y-auto">
-              {s?.recent_blocks?.slice(0, 8).map((b: any, i: number) => (
+              {s?.recent_blocks?.slice(0, 8).map((b: { timestamp: string; source_ip: string; destination: string; status: string }, i: number) => (
                 <div key={i} className="flex items-center justify-between py-1 text-xs">
                   <div className="overflow-hidden mr-2">
                     <p className="truncate max-w-[280px] font-mono">{b.destination}</p>
@@ -237,7 +237,7 @@ export function Dashboard() {
               </div>
               {w.top_blocked_categories?.length > 0 && (
                 <div className="flex flex-wrap gap-1 pt-2 border-t border-border/30">
-                  {w.top_blocked_categories.slice(0, 6).map((c: any) => (
+                  {w.top_blocked_categories.slice(0, 6).map((c: { key: string; count: number }) => (
                     <span key={c.key} className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">{c.key} ({c.count})</span>
                   ))}
                 </div>
@@ -257,7 +257,7 @@ export function Dashboard() {
           <CardContent className="p-2">
             {cache ? (() => {
               const hitRate = cache.hit_ratio != null ? (cache.hit_ratio * 100).toFixed(1) : cache.hits && cache.requests ? ((cache.hits / cache.requests) * 100).toFixed(1) : '0';
-              const saved = cache.bytes_saved || cache.bandwidth_saved || 0;
+              const saved = Number(cache.bytes_saved || 0);
               const formatBytes = (b: number) => { if (b < 1024) return `${b} B`; if (b < 1048576) return `${(b/1024).toFixed(1)} KB`; if (b < 1073741824) return `${(b/1048576).toFixed(1)} MB`; return `${(b/1073741824).toFixed(2)} GB`; };
               return (
                 <div className="space-y-2">
