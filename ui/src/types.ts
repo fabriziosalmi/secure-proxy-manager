@@ -39,21 +39,10 @@ export interface LogEntry {
   bytes: number | null;
 }
 
-export interface ListResponse<T> {
-  data: T[];
-  total: number;
-}
-
 export interface LogsPageData {
   data?: LogEntry[];
   logs?: LogEntry[];
   total?: number;
-}
-
-export interface LogStats {
-  total_count: number;
-  blocked_count: number;
-  ip_blocks_count: number;
 }
 
 export interface TimelineEntry {

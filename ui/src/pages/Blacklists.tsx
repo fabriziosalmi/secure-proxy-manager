@@ -132,7 +132,7 @@ export function Blacklists() {
     const loadingToast = toast.loading(`Importing ${activeTab} entries...`);
     try {
       const response = await api.post('blacklists/import', {
-        type: activeTab === 'whitelist' ? 'ip' : activeTab,
+        type: (activeTab === 'whitelist') ? 'ip' : (activeTab === 'domain-whitelist') ? 'domain' : activeTab,
         content: bulkText
       });
       const added = response.data.data?.added || 0;
