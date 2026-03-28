@@ -101,8 +101,17 @@ func refreshList(db *sql.DB, table, col string, urls []string) {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 200*1024*1024))
 		resp.Body.Close()
 
-		tx, _ := db.Begin()
-		stmt, _ := tx.Prepare(fmt.Sprintf("INSERT OR IGNORE INTO %s (%s, description) VALUES(?,?)", table, col))
+		tx, err := db.Begin()
+		if err != nil {
+			log.Error().Err(err).Msg("blacklist refresh: tx begin failed")
+			continue
+		}
+		stmt, err := tx.Prepare(fmt.Sprintf("INSERT OR IGNORE INTO %s (%s, description) VALUES(?,?)", table, col))
+		if err != nil {
+			tx.Rollback() //nolint:errcheck
+			log.Error().Err(err).Msg("blacklist refresh: prepare failed")
+			continue
+		}
 		for _, line := range strings.Split(string(data), "\n") {
 			parts := strings.Fields(line)
 			if len(parts) == 0 || strings.HasPrefix(parts[0], "#") {

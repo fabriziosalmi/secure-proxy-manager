@@ -202,14 +202,24 @@ func sendSecurityNotification(db *sql.DB, event map[string]any) {
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	// 1. Custom webhook.
-	if u := settings["webhook_url"]; u != "" {
-		payload, _ := json.Marshal(event)
-		req, _ := http.NewRequest(http.MethodPost, u, bytes.NewReader(payload))
-		req.Header.Set("Content-Type", "application/json")
+	// safePost sends a POST and closes the body, ignoring all errors (fire-and-forget).
+	safePost := func(url string, body []byte, headers map[string]string) {
+		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+		if err != nil {
+			return
+		}
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
 		if resp, err := client.Do(req); err == nil {
 			resp.Body.Close()
 		}
+	}
+
+	// 1. Custom webhook.
+	if u := settings["webhook_url"]; u != "" {
+		payload, _ := json.Marshal(event)
+		safePost(u, payload, map[string]string{"Content-Type": "application/json"})
 	}
 
 	// 2. Gotify.
@@ -222,11 +232,7 @@ func sendSecurityNotification(db *sql.DB, event map[string]any) {
 			prio = 8
 		}
 		payload, _ := json.Marshal(map[string]any{"title": title, "message": plainText, "priority": prio})
-		req, _ := http.NewRequest(http.MethodPost, u+"message?token="+tok, bytes.NewReader(payload))
-		req.Header.Set("Content-Type", "application/json")
-		if resp, err := client.Do(req); err == nil {
-			resp.Body.Close()
-		}
+		safePost(u+"message?token="+tok, payload, map[string]string{"Content-Type": "application/json"})
 	}
 
 	// 3. Microsoft Teams.
@@ -240,11 +246,7 @@ func sendSecurityNotification(db *sql.DB, event map[string]any) {
 			"themeColor": color, "summary": title,
 			"sections": []map[string]any{{"activityTitle": title, "text": plainText}},
 		})
-		req, _ := http.NewRequest(http.MethodPost, u, bytes.NewReader(payload))
-		req.Header.Set("Content-Type", "application/json")
-		if resp, err := client.Do(req); err == nil {
-			resp.Body.Close()
-		}
+		safePost(u, payload, map[string]string{"Content-Type": "application/json"})
 	}
 
 	// 4. Telegram.
@@ -252,12 +254,7 @@ func sendSecurityNotification(db *sql.DB, event map[string]any) {
 		payload, _ := json.Marshal(map[string]any{
 			"chat_id": chatID, "text": "*" + title + "*\n\n" + strings.Join(msgLines, "\n"), "parse_mode": "Markdown",
 		})
-		url := "https://api.telegram.org/bot" + tok + "/sendMessage"
-		req, _ := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
-		req.Header.Set("Content-Type", "application/json")
-		if resp, err := client.Do(req); err == nil {
-			resp.Body.Close()
-		}
+		safePost("https://api.telegram.org/bot"+tok+"/sendMessage", payload, map[string]string{"Content-Type": "application/json"})
 	}
 
 	// 5. ntfy.sh (self-hosted push notifications).
@@ -271,13 +268,9 @@ func sendSecurityNotification(db *sql.DB, event map[string]any) {
 		} else if event["level"] == "warning" {
 			prio = "high"
 		}
-		req, _ := http.NewRequest(http.MethodPost, u+topic, strings.NewReader(plainText))
-		req.Header.Set("Title", title)
-		req.Header.Set("Priority", prio)
-		req.Header.Set("Tags", "shield")
-		if resp, err := client.Do(req); err == nil {
-			resp.Body.Close()
-		}
+		safePost(u+topic, []byte(plainText), map[string]string{
+			"Title": title, "Priority": prio, "Tags": "shield",
+		})
 	}
 
 	log.Debug().Str("event_type", fmt.Sprintf("%v", event["event_type"])).Msg("security notification sent")

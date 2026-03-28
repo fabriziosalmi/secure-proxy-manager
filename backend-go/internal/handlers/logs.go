@@ -136,8 +136,11 @@ func (h *LogHandlers) ClearOld(w http.ResponseWriter, r *http.Request) {
 	if days < 1 {
 		days = 30
 	}
-	res, _ := h.db.Exec("DELETE FROM proxy_logs WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(days)+" days")
-	deleted, _ := res.RowsAffected()
+	res, err := h.db.Exec("DELETE FROM proxy_logs WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(days)+" days")
+	var deleted int64
+	if err == nil && res != nil {
+		deleted, _ = res.RowsAffected()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "success", "message": "Cleared old logs", "deleted": deleted,
 	})

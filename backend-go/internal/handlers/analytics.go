@@ -156,17 +156,26 @@ func (h *AnalyticsHandlers) TrafficStats(w http.ResponseWriter, r *http.Request)
 }
 
 func parseDuration(s string) time.Duration {
-	// Simple: "-1 hours" → 1h, "-7 days" → 7*24h, "-30 days" → 30*24h.
-	if strings.HasSuffix(s, "hours") {
-		return time.Hour
+	// Parse "-N hours" or "-N days" into Go duration.
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "-")
+	parts := strings.Fields(s)
+	if len(parts) != 2 {
+		return 24 * time.Hour
 	}
-	if strings.HasSuffix(s, "days") {
-		if strings.HasPrefix(s, "-7") {
-			return 7 * 24 * time.Hour
-		}
-		return 30 * 24 * time.Hour
+	n := 1
+	fmt.Sscanf(parts[0], "%d", &n)
+	if n < 1 {
+		n = 1
 	}
-	return 24 * time.Hour
+	switch {
+	case strings.HasPrefix(parts[1], "hour"):
+		return time.Duration(n) * time.Hour
+	case strings.HasPrefix(parts[1], "day"):
+		return time.Duration(n) * 24 * time.Hour
+	default:
+		return 24 * time.Hour
+	}
 }
 
 func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) {
@@ -276,8 +285,11 @@ func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request) {
-	res, _ := h.db.Exec("DELETE FROM proxy_logs")
-	deleted, _ := res.RowsAffected()
+	res, err := h.db.Exec("DELETE FROM proxy_logs")
+	var deleted int64
+	if err == nil && res != nil {
+		deleted, _ = res.RowsAffected()
+	}
 
 	client := &http.Client{Timeout: 3 * time.Second}
 	wafReset := false
@@ -601,7 +613,8 @@ func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
 
 // WAFCategories proxies GET /categories from the WAF container.
 func (h *AnalyticsHandlers) WAFCategories(w http.ResponseWriter, r *http.Request) {
-	resp, err := http.Get("http://waf:8080/categories")
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://waf:8080/categories")
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "WAF unreachable")
 		return
@@ -614,7 +627,8 @@ func (h *AnalyticsHandlers) WAFCategories(w http.ResponseWriter, r *http.Request
 
 // WAFCategoryToggle proxies POST /categories/toggle to WAF.
 func (h *AnalyticsHandlers) WAFCategoryToggle(w http.ResponseWriter, r *http.Request) {
-	resp, err := http.Post("http://waf:8080/categories/toggle", "application/json", r.Body)
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Post("http://waf:8080/categories/toggle", "application/json", r.Body)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "WAF unreachable")
 		return

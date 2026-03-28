@@ -73,9 +73,11 @@ func listHandler(db *sql.DB, table, col string) http.HandlerFunc {
 		var err error
 
 		if search != "" {
-			like := "%" + search + "%"
-			db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s LIKE ? OR description LIKE ?", table, col), like, like).Scan(&total) //nolint:errcheck
-			rows, err = db.Query(fmt.Sprintf("SELECT * FROM %s WHERE %s LIKE ? OR description LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?", table, col), like, like, limit, offset)
+			// Escape LIKE metacharacters
+			escaped := strings.NewReplacer("%", "\\%", "_", "\\_").Replace(search)
+			like := "%" + escaped + "%"
+			db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'", table, col), like, like).Scan(&total) //nolint:errcheck
+			rows, err = db.Query(fmt.Sprintf("SELECT * FROM %s WHERE %s LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT ? OFFSET ?", table, col), like, like, limit, offset)
 		} else {
 			db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&total) //nolint:errcheck
 			rows, err = db.Query(fmt.Sprintf("SELECT * FROM %s ORDER BY id DESC LIMIT ? OFFSET ?", table), limit, offset)
@@ -483,13 +485,19 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if len(toInsert) > 0 {
-			tx, _ := h.db.Begin()
-			stmt, _ := tx.Prepare("INSERT INTO ip_blacklist(ip, description) VALUES(?,?)")
-			for _, pair := range toInsert {
-				stmt.Exec(pair[0], pair[1]) //nolint:errcheck
+			tx, err := h.db.Begin()
+			if err == nil {
+				stmt, err := tx.Prepare("INSERT INTO ip_blacklist(ip, description) VALUES(?,?)")
+				if err == nil {
+					for _, pair := range toInsert {
+						stmt.Exec(pair[0], pair[1]) //nolint:errcheck
+					}
+					stmt.Close()
+					tx.Commit() //nolint:errcheck
+				} else {
+					tx.Rollback() //nolint:errcheck
+				}
 			}
-			stmt.Close()
-			tx.Commit() //nolint:errcheck
 		}
 	}
 
