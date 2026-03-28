@@ -79,12 +79,35 @@ func loadCustomRules() {
 	}
 }
 
+// disabledCategories tracks which WAF rule categories are turned off.
+var (
+	disabledCatMu sync.RWMutex
+	disabledCats  = map[string]bool{}
+)
+
+func isCategoryEnabled(cat string) bool {
+	disabledCatMu.RLock()
+	defer disabledCatMu.RUnlock()
+	return !disabledCats[cat]
+}
+
 func init() {
 	if envThreshold := os.Getenv("WAF_BLOCK_THRESHOLD"); envThreshold != "" {
 		if v, err := strconv.Atoi(envThreshold); err == nil && v > 0 {
 			blockThreshold = v
 		}
 	}
+	// Load disabled categories from env (comma-separated)
+	if disabled := os.Getenv("WAF_DISABLED_CATEGORIES"); disabled != "" {
+		for _, cat := range strings.Split(disabled, ",") {
+			cat = strings.TrimSpace(cat)
+			if cat != "" {
+				disabledCats[cat] = true
+			}
+		}
+		log.Printf("Disabled WAF categories: %v\n", disabled)
+	}
+
 	loadCustomRules()
 	initHeuristics()
 
@@ -451,6 +474,9 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 			var matchedRules []string
 			var matchedCat string
 			for _, cr := range respRules {
+				if !isCategoryEnabled(cr.Category) {
+					continue
+				}
 				for _, rule := range cr.Rules {
 					if rule.Pattern.MatchString(body) {
 						totalScore += rule.Severity
@@ -622,6 +648,56 @@ func main() {
 			log.Println("WAF stats + safe cache reset via API")
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"status":"ok","message":"stats reset"}`))
+		})
+
+		// Security Packs — list categories with rule counts and enabled status
+		healthMux.HandleFunc("/categories", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+
+			type catInfo struct {
+				Name    string `json:"name"`
+				Rules   int    `json:"rules"`
+				Enabled bool   `json:"enabled"`
+			}
+			disabledCatMu.RLock()
+			var cats []catInfo
+			for _, cr := range blockRules {
+				cats = append(cats, catInfo{
+					Name:    cr.Category,
+					Rules:   len(cr.Rules),
+					Enabled: !disabledCats[cr.Category],
+				})
+			}
+			disabledCatMu.RUnlock()
+			json.NewEncoder(w).Encode(map[string]any{"status": "ok", "data": cats})
+		})
+
+		// Toggle a category on/off
+		healthMux.HandleFunc("/categories/toggle", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != "POST" {
+				http.Error(w, "POST only", 405)
+				return
+			}
+			var req struct {
+				Category string `json:"category"`
+				Enabled  bool   `json:"enabled"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Category == "" {
+				http.Error(w, `{"error":"category required"}`, 400)
+				return
+			}
+			disabledCatMu.Lock()
+			if req.Enabled {
+				delete(disabledCats, req.Category)
+			} else {
+				disabledCats[req.Category] = true
+			}
+			disabledCatMu.Unlock()
+			safeCache.Invalidate() // Clear cache since rules changed
+			log.Printf("Category %s: enabled=%v\n", req.Category, req.Enabled)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"status":"ok","category":"%s","enabled":%v}`, req.Category, req.Enabled)
 		})
 		log.Printf("Starting health endpoint on :8080\n")
 		if err := http.ListenAndServe(":8080", healthMux); err != nil {

@@ -457,6 +457,9 @@ func matchRulesScored(input string) ([]MatchResult, int) {
 		}
 
 		for _, cr := range blockRules {
+			if !isCategoryEnabled(cr.Category) {
+				continue // Security Pack disabled
+			}
 			for _, rule := range cr.Rules {
 				if rule.Tier != tier {
 					continue
