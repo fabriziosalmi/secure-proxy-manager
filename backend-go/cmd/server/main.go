@@ -75,6 +75,7 @@ func main() {
 	workers.StartLogRetention(db)
 	workers.StartBlacklistRefresh(db, cfg.ConfigDir)
 	workers.StartUpdateChecker("")
+	workers.CheckSquidCVEs()
 
 	// ── router ───────────────────────────────────────────────────────────────
 	r := chi.NewRouter()
