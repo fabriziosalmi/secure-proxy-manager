@@ -29,6 +29,8 @@ import { Logs } from './pages/Logs';
 import { Settings } from './pages/Settings';
 import { ThreatIntel } from './pages/ThreatIntel';
 import { Login } from './pages/Login';
+import { SetupWizard } from './components/SetupWizard';
+import { api } from './lib/api';
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
   constructor(props: { children: React.ReactNode }) {
@@ -93,6 +95,8 @@ function App() {
     return true;
   });
 
+  const [wizardDone, setWizardDone] = useState<boolean | null>(null);
+
   // Listen for session expiry warning from API interceptor
   useEffect(() => {
     const handler = () => {
@@ -102,8 +106,25 @@ function App() {
     return () => window.removeEventListener('session-expiring', handler);
   }, []);
 
+  // Check wizard status after login
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    api.get('settings').then(res => {
+      const settings = res.data?.data || [];
+      const wizardSetting = Array.isArray(settings)
+        ? settings.find((s: { setting_name: string }) => s.setting_name === 'wizard_completed')
+        : null;
+      setWizardDone(wizardSetting?.setting_value === 'true');
+    }).catch(() => setWizardDone(true)); // If API fails, skip wizard
+  }, [isAuthenticated]);
+
   if (!isAuthenticated) {
     return <Login onLogin={() => setIsAuthenticated(true)} />;
+  }
+
+  // Show wizard if not completed (and we've checked)
+  if (wizardDone === false) {
+    return <SetupWizard onComplete={() => setWizardDone(true)} />;
   }
 
   return (
