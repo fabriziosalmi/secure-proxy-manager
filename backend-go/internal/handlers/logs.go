@@ -39,7 +39,8 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 	var total int
 	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&total) //nolint:errcheck
 
-	rows, err := h.db.Query(
+	// sort and order are sanitised against whitelists (sanitiseSort/sanitiseOrder) — safe for interpolation
+	rows, err := h.db.Query( //nolint:gosec
 		"SELECT id,timestamp,source_ip,method,destination,status,bytes FROM proxy_logs ORDER BY "+sort+" "+order+" LIMIT ? OFFSET ?",
 		limit, offset,
 	)
