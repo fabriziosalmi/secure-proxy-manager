@@ -17,8 +17,10 @@ export function Login({ onLogin }: Props) {
     setLoading(true);
     setError('');
     try {
-      const res = await api.post<{ token: string }>('auth/login', { username, password });
-      localStorage.setItem('auth_token', res.data.token);
+      const res = await api.post<{ access_token?: string; token?: string }>('auth/login', { username, password });
+      const token = res.data.access_token || res.data.token;
+      if (!token) throw new Error('No token received');
+      localStorage.setItem('auth_token', token);
       onLogin();
     } catch {
       setError('Invalid username or password');
