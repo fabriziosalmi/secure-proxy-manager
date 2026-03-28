@@ -154,9 +154,10 @@ func (h *SecurityHandlers) Score(w http.ResponseWriter, r *http.Request) {
 
 func sendSecurityNotification(db *sql.DB, event map[string]any) {
 	rows, err := db.Query(
-		"SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?,?,?,?,?,?,?)",
+		"SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?,?,?,?,?,?,?,?,?)",
 		"enable_notifications", "webhook_url", "gotify_url", "gotify_token",
 		"teams_webhook_url", "telegram_bot_token", "telegram_chat_id",
+		"ntfy_url", "ntfy_topic",
 	)
 	if err != nil {
 		return
@@ -247,6 +248,26 @@ func sendSecurityNotification(db *sql.DB, event map[string]any) {
 		url := "https://api.telegram.org/bot" + tok + "/sendMessage"
 		req, _ := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
 		req.Header.Set("Content-Type", "application/json")
+		if resp, err := client.Do(req); err == nil {
+			resp.Body.Close()
+		}
+	}
+
+	// 5. ntfy.sh (self-hosted push notifications).
+	if u, topic := settings["ntfy_url"], settings["ntfy_topic"]; u != "" && topic != "" {
+		if !strings.HasSuffix(u, "/") {
+			u += "/"
+		}
+		prio := "default"
+		if event["level"] == "error" {
+			prio = "urgent"
+		} else if event["level"] == "warning" {
+			prio = "high"
+		}
+		req, _ := http.NewRequest(http.MethodPost, u+topic, strings.NewReader(plainText))
+		req.Header.Set("Title", title)
+		req.Header.Set("Priority", prio)
+		req.Header.Set("Tags", "shield")
 		if resp, err := client.Do(req); err == nil {
 			resp.Body.Close()
 		}
