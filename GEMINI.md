@@ -101,7 +101,7 @@
 |---|------|--------|-------|
 | 21 | Tailscale/Wireguard gateway | 🟢 Done | Sidecar in compose, toggle in Settings |
 | 22 | Notifications (Telegram/Discord) | 🟢 Done | Multi-provider: Telegram, Gotify, Teams, Discord, Custom webhook |
-| 23 | Pi-hole/AdGuard sync | ❌ Rejected | Built-in dnsmasq + Popular Lists URL import covers this. Native API sync is over-engineering |
+| 23 | Pi-hole/AdGuard auto-detect | 🔵 **Do Next** | Scan LAN for Pi-hole/AdGuard, offer to use as upstream DNS instead of dnsmasq. Respects existing setups |
 | 24 | Auto-update Feeds | 🟢 Done (partial) | Worker exists. Need UI for refresh interval config |
 | 25 | Home Assistant sensors | ❌ Rejected | Too niche. Our REST API is already consumable by HA via `rest` sensor |
 | 26 | Cloud Backup (S3/WebDAV) | ⚪ Backlog | JSON export exists. Cloud adds credential complexity. External cron `curl` works |
@@ -110,7 +110,26 @@
 | 29 | Docker Socket Monitoring | ⚪ Backlog | Map container IP → name in logs. Privacy concern — opt-in only |
 | 30 | Easy Client Export | 🔵 **Do Next** | "Setup my device" button → PAC file + per-OS instructions (Win/Mac/Linux/iOS/Android) |
 
-### 4. Let's Encrypt Integration
+### 4. Pi-hole / AdGuard Auto-Detect
+
+**Why**: Users with existing Pi-hole/AdGuard won't uninstall them. We should cooperate, not compete. Auto-detect + offer to use as upstream DNS = zero friction adoption.
+
+**How**:
+- On first boot (or from Settings), scan common LAN IPs for:
+  - Pi-hole API: `GET http://<ip>/admin/api.php?summary` (returns JSON if Pi-hole)
+  - AdGuard Home API: `GET http://<ip>/control/status` (returns JSON if AdGuard)
+  - Common IPs to scan: gateway (.1), .2-.10, .53, .100, .200
+- If found:
+  - Show toast/banner: "Found Pi-hole at 192.168.1.2 — Use as DNS?"
+  - User confirms → set as upstream DNS for dnsmasq (or replace dnsmasq entirely)
+  - Show in Settings: "DNS Provider: Pi-hole @ 192.168.1.2" with test + change button
+- If not found:
+  - Use built-in dnsmasq (current behavior, no change)
+- Settings toggle: "Auto-detect DNS provider on LAN" (opt-in, default off for privacy)
+
+**Effort**: 3h
+
+### 5. Let's Encrypt Integration (renumbered)
 
 **Why**: Self-signed certs trigger browser warnings. SMB users with a domain want real HTTPS without manual cert management.
 
@@ -152,5 +171,4 @@
 | Multi-lingua | Our users read English. i18n doubles maintenance burden for every string |
 | ClamAV | 200MB+ RAM for virus scanning that WAF already handles at the protocol level |
 | Custom Branding | Nice-to-have but zero security value. Maybe v3 |
-| Pi-hole sync | Built-in dnsmasq + URL import already covers this use case |
 | Home Assistant | Too niche. REST API already consumable by HA sensors |
