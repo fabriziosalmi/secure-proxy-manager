@@ -281,6 +281,55 @@
 | 69 | MIT License | 🟢 Done | Already MIT — most permissive |
 | 70 | Public Roadmap | 🟢 Done | This file (GEMINI.md) IS the roadmap |
 
+## Batch 8: Vertical Use Cases
+
+| # | Idea | Status | Notes |
+|---|------|--------|-------|
+| 71 | Non-Profit Safe profile | 🟢 Done | "Family" preset covers this |
+| 72 | Privacy Paranoiac profile | 🟢 Done | "Paranoid" preset + 2.9M domain blocklist |
+| 73 | DevOps profile | 🔵 **Do Next** | Whitelist Docker Hub, GitHub, PyPI, npm, crates.io. "Allow only dev tools" mode |
+| 74 | Kiosk Mode | 🔵 **Do Next** | Block everything except whitelisted domains. "Whitelist-only" toggle |
+| 75 | IoT Isolation | 🟢 Done (partial) | Geo-block + DNS blackhole. Per-device policy needs router integration |
+| 76 | CrowdSec | ⚪ Backlog | Adds container + external API. Popular Lists covers 90% of the value |
+| 77 | IPv6 full support | ⚪ Backlog | Squid and WAF support it, but testing is complex. Few homelabs use internal IPv6 |
+| 78 | Security Headers | 🟢 Done | HSTS, CSP, X-Frame-Options, X-Content-Type-Options injected |
+| 79 | MIME-Type Filter | 🟢 Done | Content Filtering toggle with configurable extensions |
+| 80 | WebSocket Support | 🟢 Done | Squid CONNECT + Nginx upgrade. Live Stream uses WSS |
+
+### DevOps Preset
+
+**Why**: A developer's proxy should whitelist dev tools, not block npm install. A preset that auto-whitelists essential dev domains removes friction for developer homelabs.
+
+**How**:
+- New preset in Presets.tsx: "DevOps" with Server icon
+- Auto-adds to domain whitelist:
+  ```
+  github.com, *.github.com, *.githubusercontent.com,
+  registry.npmjs.org, pypi.org, files.pythonhosted.org,
+  registry.hub.docker.com, *.docker.io, *.docker.com,
+  crates.io, static.crates.io,
+  repo.maven.apache.org, dl.google.com,
+  packages.microsoft.com, apt.releases.hashicorp.com
+  ```
+- WAF threshold: 10 (moderate — devs hit more exotic URLs)
+- Content filtering: OFF (devs download executables)
+- All heuristics: ON (devs should still be protected from C2)
+
+**Effort**: 1h (just a new preset config)
+
+### Kiosk Mode (Whitelist-Only)
+
+**Why**: A library, school, or public terminal needs to allow ONLY specific domains. Everything else is blocked by default.
+
+**How**:
+- Settings toggle: "Kiosk Mode (Whitelist-Only)"
+- When enabled: Squid ACL order changes — `deny all` first, then `allow domain_whitelist`
+- The Domain Whitelist becomes the primary access list
+- Dashboard shows "KIOSK MODE" badge as warning
+- Pre-populated suggestions: "Add Google, Wikipedia, educational sites?"
+
+**Effort**: 2-3h (Squid ACL reorder + UI toggle)
+
 ### One-Click Cloud Deploy
 
 **Why**: A self-hoster on Hetzner/DO wants to run one command and have everything working. No SSH, no Docker knowledge.
