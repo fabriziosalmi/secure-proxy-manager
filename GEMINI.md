@@ -266,6 +266,37 @@
 
 **Effort**: 3h
 
+## Batch 7: Ecosystem & Community
+
+| # | Idea | Status | Notes |
+|---|------|--------|-------|
+| 61 | Plugin System | ❌ Rejected | Security and plugins are antithetical in a WAF. Custom regex rules ARE the plugin system |
+| 62 | Blacklist Marketplace | 🟢 Done (partial) | Popular Lists with 16+ sources. A community GitHub repo with curated lists could extend this |
+| 63 | Community Wiki | ⚪ Backlog | GitHub Wiki or docs/. README is already comprehensive |
+| 64 | One-Click Cloud Deploy | 🔵 **Do Next** | cloud-init script for Hetzner/DO/Linode. Docker compose already works — just need a bootstrap script |
+| 65 | GitHub Discussions | 🟢 **Done** | Activated! Community hub for questions and feature requests |
+| 66 | Bug Bounty | ⚪ Backlog | SECURITY.md with responsible disclosure + credits |
+| 67 | Video Tutorial | ⚪ Backlog | Marketing content, not code. When product is stable |
+| 68 | Public CI/CD | 🟢 Done | GitHub Actions. Multi-arch build is the missing piece |
+| 69 | MIT License | 🟢 Done | Already MIT — most permissive |
+| 70 | Public Roadmap | 🟢 Done | This file (GEMINI.md) IS the roadmap |
+
+### One-Click Cloud Deploy
+
+**Why**: A self-hoster on Hetzner/DO wants to run one command and have everything working. No SSH, no Docker knowledge.
+
+**How**:
+- `deploy/cloud-init.sh` — a curl-pipe-sh script:
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/.../deploy.sh | bash
+  ```
+- Script does: install Docker, clone repo, generate .env with random password, docker compose up
+- For Hetzner: a cloud-init YAML that runs on first boot
+- For DigitalOcean: a 1-Click App template (Marketplace submission)
+- README badge: "Deploy on Hetzner" / "Deploy on DigitalOcean"
+
+**Effort**: 2-3h
+
 ---
 
 ## Rejected Ideas (with reasoning)
@@ -282,3 +313,4 @@
 | Device Discovery | ARP scan from Docker only sees container IPs. Needs LAN agent |
 | Honey-Domains | Fake traffic pollutes our own analytics |
 | gRPC Inspection | HTTP/2 binary stream, Squid can't inspect. Needs Envoy — different product |
+| Plugin System | Security tool + arbitrary code execution = oxymoron. Custom regex rules are the extension mechanism |
