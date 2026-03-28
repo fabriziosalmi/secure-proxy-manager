@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -31,6 +32,8 @@ func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	r.With(authMW).Get("/api/domains/statistics", h.DomainStats)
 	r.With(authMW).Get("/api/cache/statistics", h.CacheStats)
 	r.With(authMW).Get("/api/waf/stats", h.WAFStats)
+	r.With(authMW).Get("/api/waf/categories", h.WAFCategories)
+	r.With(authMW).Post("/api/waf/categories/toggle", h.WAFCategoryToggle)
 	r.With(authMW).Post("/api/counters/reset", h.ResetCounters)
 	r.With(authMW).Get("/api/dashboard/summary", h.DashboardSummary)
 	r.With(authMW).Get("/api/analytics/shadow-it", h.ShadowIT)
@@ -594,6 +597,32 @@ func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "success", "data": entries, "total": total, "limit": limit, "offset": offset,
 	})
+}
+
+// WAFCategories proxies GET /categories from the WAF container.
+func (h *AnalyticsHandlers) WAFCategories(w http.ResponseWriter, r *http.Request) {
+	resp, err := http.Get("http://waf:8080/categories")
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "WAF unreachable")
+		return
+	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body) //nolint:errcheck
+}
+
+// WAFCategoryToggle proxies POST /categories/toggle to WAF.
+func (h *AnalyticsHandlers) WAFCategoryToggle(w http.ResponseWriter, r *http.Request) {
+	resp, err := http.Post("http://waf:8080/categories/toggle", "application/json", r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "WAF unreachable")
+		return
+	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body) //nolint:errcheck
 }
 
 // TestRule tests a regex against recent proxy logs (Regex Playground).
