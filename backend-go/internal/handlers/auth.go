@@ -155,6 +155,13 @@ func (h *AuthHandlers) Health(w http.ResponseWriter, r *http.Request) {
 		resp["update_available"] = upd.Latest
 		resp["update_url"] = upd.URL
 	}
+	cve := workers.GetCVEInfo()
+	if cve.Version != "" {
+		resp["squid_version"] = cve.Version
+		if len(cve.CVEs) > 0 {
+			resp["squid_cves"] = len(cve.CVEs)
+		}
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
