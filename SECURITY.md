@@ -5,7 +5,7 @@
 | Container | User | Privileges | Notes |
 |-----------|------|-----------|-------|
 | backend (Go) | `app` (UID 1000) | docker.sock:ro | Reload signals for Squid/dnsmasq |
-| waf (Go) | `app` (UID 1000) | none | ICAP server, no network access |
+| waf (Go) | `waf` (UID 1000) | none | ICAP server, internal only |
 | web (Nginx) | `nginx` | none | TLS termination, static files |
 | proxy (Squid) | `proxy` | NET_ADMIN | Transparent proxy mode |
 | dns (dnsmasq) | `root` | none | Internal DNS only |
