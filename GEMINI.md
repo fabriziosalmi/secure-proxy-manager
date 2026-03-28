@@ -1,3 +1,40 @@
+# Feature Roadmap — 100 Ideas Reviewed
+
+## Summary
+
+| Status | Count | Percentage |
+|--------|-------|------------|
+| 🟢 Done | **42** | 42% |
+| 🔵 Do Next | **17** | 17% |
+| ⚪ Backlog | 14 | 14% |
+| ❌ Rejected | **27** | 27% |
+
+**42 of 100 "innovative" ideas were already implemented.** The remaining 17 "Do Next" items represent ~35 hours of development for maximum impact.
+
+## Priority "Do Next" List (sorted by impact)
+
+| Priority | Feature | Effort | Impact |
+|----------|---------|--------|--------|
+| 1 | Setup Wizard (first-login) | 3-4h | 🔥🔥🔥 |
+| 2 | Multi-Arch ARM64 (Raspberry Pi) | 4-5h | 🔥🔥🔥 |
+| 3 | Security Packs (WAF categories) | 4-5h | 🔥🔥🔥 |
+| 4 | Client Setup Export (PAC + per-OS) | 3h | 🔥🔥🔥 |
+| 5 | Kiosk Mode (whitelist-only) | 2-3h | 🔥🔥 |
+| 6 | DevOps Preset | 1h | 🔥🔥 |
+| 7 | DoH Blocker toggle | 2h | 🔥🔥 |
+| 8 | GDPR IP masking | 2h | 🔥🔥 |
+| 9 | Update Notifier | 1-2h | 🔥🔥 |
+| 10 | Regex Playground | 3h | 🔥🔥 |
+| 11 | WPAD Auto-Discovery | 2h | 🔥 |
+| 12 | Pi-hole/AdGuard detect | 3h | 🔥 |
+| 13 | ntfy.sh notifications | 30min | 🔥 |
+| 14 | Let's Encrypt | 3-4h | 🔥 |
+| 15 | One-Click Cloud Deploy | 2-3h | 🔥 |
+| 16 | Squid CVE Alert | 2h | 🔥 |
+| 17 | API Documentation | 1-3h | 🔥 |
+
+---
+
 # Feature Roadmap — Curated from 100 Ideas
 
 > Gemini generated 100 feature ideas. We reviewed each one with brutal honesty.
@@ -346,6 +383,73 @@
 
 **Effort**: 2-3h
 
+## Batch 9: Maintainability & Stability
+
+| # | Idea | Status | Notes |
+|---|------|--------|-------|
+| 81 | Syslog/GELF export | ⚪ Backlog | Go syslog is trivial but ELK users already use `docker logs` → Filebeat |
+| 82 | Auto-diagnose iptables | ❌ Rejected | Requires `--privileged` + host networking |
+| 83 | Config Snapshot/Rollback | 🟢 Done | JSON backup + restore API. UI "previous versions" is backlog |
+| 84 | Docker Compose download | ❌ Rejected | Compose is in Git. Generating from UI causes version confusion |
+| 85 | Works Offline | 🟢 Done | Local SQLite, local dnsmasq, local WAF. Zero external deps |
+| 86 | Load Test | 🟢 Done | E2E stress test + full benchmark script |
+| 87 | Squid CVE Alert | 🔵 **Do Next** | Check Squid version vs known CVEs. Show warning badge in Dashboard |
+| 88 | API Documentation | 🔵 **Do Next** | OpenAPI spec or `/api/docs` endpoint. Essential for integrations |
+| 89 | CLI Tool (spm) | ⚪ Backlog | UI + curl + E2E covers everything. Dedicated CLI is overkill now |
+| 90 | Update Notifier | 🔵 **Do Next** | Check GitHub releases API, show "v2.3.0 available" badge in sidebar |
+
+## Batch 10: God Mode
+
+| # | Idea | Status | Notes |
+|---|------|--------|-------|
+| 91 | AI Chatbot (Ollama) | ❌ Rejected | +4GB RAM for a proxy. WAF explainability is enough |
+| 92 | Terraform Export | ❌ Rejected | Ultra-niche. Terraform users can write docker_container themselves |
+| 93 | Cloud Bandwidth Costs | ❌ Rejected | Requires pricing API per cloud provider. Too fragile |
+| 94 | Crypto-jacking Detection | 🟢 Done | WAF rules for stratum/xmrig/pools + beaconing heuristic |
+| 95 | Hardware LED/Buzzer | ❌ Rejected | Fun but useless. Telegram/ntfy notifications do the same |
+| 96 | SOCKS5 Support | ⚪ Backlog | Squid supports it but config is separate. Niche |
+| 97 | Internal IP Reputation | 🟢 Done (partial) | Top Clients analytics + dest sharding heuristic |
+| 98 | Mobile Traffic Profile | ❌ Rejected | CA cert install is documentable in Client Export. No special "profile" needed |
+| 99 | GitOps Config Backup | ⚪ Backlog | Auto-commit to Git repo. Nice but adds Git complexity in container |
+| 100 | Ghost Mode | ❌ Rejected | Hiding proxy from internal scanners — if it's your network, hiding makes no sense |
+
+### Squid CVE Alert
+
+**Why**: Running a proxy with known vulnerabilities is worse than running no proxy. A simple version check against a CVE list tells the admin "update now."
+
+**How**:
+- Go backend checks Squid version via `squid -v` on startup
+- Maintains a small embedded map of `version → [CVE-IDs]`
+- Dashboard shows amber badge: "Squid 5.9 — 2 known CVEs" with links
+- Settings section shows detailed CVE list with severity
+
+**Effort**: 2h
+
+### Update Notifier
+
+**Why**: Users don't check GitHub for updates. A small badge "v2.3.0 available" in the sidebar motivates upgrades.
+
+**How**:
+- Go backend checks `https://api.github.com/repos/fabriziosalmi/secure-proxy-manager/releases/latest` every 6h
+- Compares with current version
+- If newer: returns `update_available: "v2.3.0"` in health endpoint
+- Sidebar shows small badge next to version: "2.0.0-go ⬆ 2.3.0"
+- Click → opens GitHub release page
+
+**Effort**: 1-2h
+
+### API Documentation
+
+**Why**: Anyone wanting to integrate (Home Assistant, scripts, monitoring) needs to know the endpoints.
+
+**How**:
+- Option A: Hand-written OpenAPI 3.0 YAML in `docs/openapi.yaml` — tedious but precise
+- Option B: Auto-generate from Go chi routes with comments — less maintenance
+- Option C: Simple `/api/docs` endpoint that returns a JSON listing of all routes
+- Start with C (1h), upgrade to A later
+
+**Effort**: 1-3h depending on approach
+
 ---
 
 ## Rejected Ideas (with reasoning)
@@ -363,3 +467,11 @@
 | Honey-Domains | Fake traffic pollutes our own analytics |
 | gRPC Inspection | HTTP/2 binary stream, Squid can't inspect. Needs Envoy — different product |
 | Plugin System | Security tool + arbitrary code execution = oxymoron. Custom regex rules are the extension mechanism |
+| Auto-diagnose iptables | Requires --privileged and host networking |
+| Docker Compose download | Compose is in Git. Generating from UI causes version confusion |
+| AI Chatbot (Ollama) | +4GB RAM for a proxy is absurd. WAF explainability covers the use case |
+| Terraform Export | Ultra-niche. Terraform users write docker_container themselves |
+| Cloud Bandwidth Costs | Requires pricing API per cloud provider. Too fragile to maintain |
+| Hardware LED/Buzzer | Telegram/ntfy notifications accomplish the same without hardware |
+| Mobile Traffic Profile | CA cert install is documentable in Client Export |
+| Ghost Mode | Hiding your own proxy from your own network makes no sense |
