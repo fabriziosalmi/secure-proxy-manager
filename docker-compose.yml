@@ -4,14 +4,21 @@ services:
       context: .
       dockerfile: ./ui/Dockerfile
     ports:
-      - "8011:8011"
-      - "8443:8443"
+      - "80:8011"     # HTTP (redirect + ACME challenges)
+      - "443:8443"    # HTTPS (main UI)
+      - "8011:8011"   # HTTP alt (backward compat)
+      - "8443:8443"   # HTTPS alt (backward compat)
+    volumes:
+      - letsencrypt:/etc/letsencrypt
     depends_on:
       backend:
         condition: service_healthy
     environment:
       - BACKEND_URL=${BACKEND_URL:-http://backend:5000}
       - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-120}
+      # Let's Encrypt (optional): set both to enable auto-HTTPS with real certs
+      - LETSENCRYPT_DOMAIN=${LETSENCRYPT_DOMAIN:-}
+      - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8011/health"]
       interval: 30s
@@ -179,4 +186,6 @@ volumes:
   squid-cache:
     driver: local
   tailscale-data:
+    driver: local
+  letsencrypt:
     driver: local
