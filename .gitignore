@@ -3,14 +3,24 @@ logs/*
 !logs/.gitkeep
 
 # Database
-secureproxy.db
+data/
+*.db
 *.sqlite
-data/secure_proxy.db
-secure_proxy.db
 
-# Python
-__pycache__
+# Go build artifacts
+waf-go/secure-proxy-waf
+waf-go/waf-server
+backend-go/cmd/server/server
+*.exe
+*.test
+*.out
+
+# Python (legacy)
+__pycache__/
 *.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
 
 # Environment
 .env
@@ -18,21 +28,19 @@ __pycache__
 
 # Node.js / React UI
 node_modules/
-ui/node_modules/
 dist/
-ui/dist/
 npm-debug.log
 yarn-error.log
 .eslintcache
 
 # OS generated files
 .DS_Store
-.DS_Store?
 ._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
+
+# Docs build
+docs/node_modules/
+docs/site/
 
 # Project planning
 NEWFEATURES.md

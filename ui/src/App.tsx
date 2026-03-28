@@ -122,7 +122,16 @@ function App() {
     return <Login onLogin={() => setIsAuthenticated(true)} />;
   }
 
-  // Show wizard if not completed (and we've checked)
+  // Loading — checking wizard status
+  if (wizardDone === null) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background">
+        <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  // Show wizard if not completed
   if (wizardDone === false) {
     return <SetupWizard onComplete={() => setWizardDone(true)} />;
   }

@@ -1,63 +1,42 @@
 # Security Policy
 
-## Security Architecture Decisions
+## Architecture
 
-This document explains the security architecture of Secure Proxy Manager and the rationale behind key security decisions.
+| Container | User | Privileges | Notes |
+|-----------|------|-----------|-------|
+| backend (Go) | `app` (UID 1000) | docker.sock:ro | Reload signals for Squid/dnsmasq |
+| waf (Go) | `app` (UID 1000) | none | ICAP server, no network access |
+| web (Nginx) | `nginx` | none | TLS termination, static files |
+| proxy (Squid) | `proxy` | NET_ADMIN | Transparent proxy mode |
+| dns (dnsmasq) | `root` | none | Internal DNS only |
 
-### Docker Socket Removed
+### Docker Socket
 
-**Previous State**: The backend container had access to `/var/run/docker.sock` to query container statistics.
-
-**Current State**: Docker socket access has been **removed** as of version 0.0.9.
-
-**Rationale**: Mounting the Docker socket into a web-facing container creates a critical vulnerability. If an attacker compromises the backend application, they gain root-level access to the host system. This risk was deemed unacceptable for a security-focused proxy manager.
-
-**Impact**: Container statistics (memory, CPU, uptime) have been removed from the dashboard. Cache statistics are calculated from database logs instead.
-
-**Future**: We may implement a Prometheus metrics endpoint on the proxy container for safer metrics collection.
-
----
-
-### Non-Root Container Execution
-
-The backend container now runs as a non-root user (`proxyuser`) to limit the blast radius of any potential container compromise.
-
----
-
-### NET_ADMIN Capability
-
-The proxy container requires `NET_ADMIN` capability for:
-- Transparent proxy mode via iptables rules
-- NAT redirection of HTTP/HTTPS traffic
-
-**Risk**: This capability allows network configuration changes within the container. The proxy container does NOT have Docker socket access and is isolated from the backend.
-
-**Mitigation**: If transparent proxy mode is not needed, you can remove this capability from `docker-compose.yml`:
-
-```yaml
-proxy:
-  # Remove or comment out:
-  # cap_add:
-  #   - NET_ADMIN
-```
-
----
+The backend mounts `/var/run/docker.sock:ro` to send SIGHUP to Squid/dnsmasq when blacklists change. Read-only, non-root, no `--privileged`. Remove the mount if not needed (manual reload required).
 
 ### Authentication
 
-The application uses HTTP Basic Authentication. While Basic Auth is simple, note:
+- JWT Bearer tokens (8h expiry) with token blacklist on logout
+- Rate limiting: 5 attempts / 5 min per IP
+- bcrypt password hashing (cost 12)
+- HTTPS by default (self-signed or Let's Encrypt)
 
-- Always use HTTPS in production to protect credentials in transit
-- Change the default `admin/admin` credentials immediately
-- Credentials are stored hashed in SQLite
+### WAF
 
----
+- 166 regex + 7 heuristics + 3 ML-lite across 21 Security Packs
+- Anomaly scoring, dual-scan (raw + decoded), 55MB body limit
+- All inputs validated with max-length constraints
 
 ## Reporting Vulnerabilities
 
-If you discover a security vulnerability, please report it responsibly by opening a private security advisory on GitHub.
+1. **Do NOT** open a public issue
+2. Use [GitHub Security Advisories](https://github.com/fabriziosalmi/secure-proxy-manager/security/advisories/new)
+3. We respond within 48 hours
 
-## Version History
+## Supported Versions
 
-- **0.0.9**: Removed Docker socket mount, enabled non-root user, security hardening
-- **0.0.8**: Initial security headers and rate limiting
+| Version | Status |
+|---------|--------|
+| 3.x | ✅ Current |
+| 2.x | ⚠️ Security fixes only |
+| <2.0 | ❌ EOL |

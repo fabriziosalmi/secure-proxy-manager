@@ -99,60 +99,66 @@ func checkDNSProvider(ip string) *DetectedDNS {
 	// Check Pi-hole API
 	for _, port := range []string{"80", "8080", "443"} {
 		url := fmt.Sprintf("http://%s:%s/admin/api.php?summary", ip, port)
-		resp, err := client.Get(url)
-		if err != nil {
-			continue
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode == 200 {
-			var data map[string]any
-			if json.NewDecoder(resp.Body).Decode(&data) == nil {
-				if _, ok := data["domains_being_blocked"]; ok {
-					version := ""
-					if v, ok := data["gravity_last_updated"]; ok {
-						version = fmt.Sprintf("%v", v)
-					}
-					return &DetectedDNS{
-						IP:      ip,
-						Type:    "pihole",
-						Name:    fmt.Sprintf("Pi-hole @ %s", ip),
-						Version: version,
-						API:     url,
-					}
-				}
-			}
+		if result := tryPihole(client, ip, url); result != nil {
+			return result
 		}
 	}
 
 	// Check AdGuard Home API
 	for _, port := range []string{"80", "3000", "8080"} {
 		url := fmt.Sprintf("http://%s:%s/control/status", ip, port)
-		resp, err := client.Get(url)
-		if err != nil {
-			continue
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode == 200 {
-			var data map[string]any
-			if json.NewDecoder(resp.Body).Decode(&data) == nil {
-				if _, ok := data["dns_addresses"]; ok {
-					version := ""
-					if v, ok := data["version"]; ok {
-						version = fmt.Sprintf("%v", v)
-					}
-					return &DetectedDNS{
-						IP:      ip,
-						Type:    "adguard",
-						Name:    fmt.Sprintf("AdGuard Home @ %s", ip),
-						Version: version,
-						API:     url,
-					}
-				}
-			}
+		if result := tryAdGuard(client, ip, url); result != nil {
+			return result
 		}
 	}
 
 	return nil
+}
+
+func tryPihole(client *http.Client, ip, url string) *DetectedDNS {
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil
+	}
+	var data map[string]any
+	if json.NewDecoder(resp.Body).Decode(&data) != nil {
+		return nil
+	}
+	if _, ok := data["domains_being_blocked"]; !ok {
+		return nil
+	}
+	version := ""
+	if v, ok := data["gravity_last_updated"]; ok {
+		version = fmt.Sprintf("%v", v)
+	}
+	return &DetectedDNS{IP: ip, Type: "pihole", Name: fmt.Sprintf("Pi-hole @ %s", ip), Version: version, API: url}
+}
+
+func tryAdGuard(client *http.Client, ip, url string) *DetectedDNS {
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil
+	}
+	var data map[string]any
+	if json.NewDecoder(resp.Body).Decode(&data) != nil {
+		return nil
+	}
+	if _, ok := data["dns_addresses"]; !ok {
+		return nil
+	}
+	version := ""
+	if v, ok := data["version"]; ok {
+		version = fmt.Sprintf("%v", v)
+	}
+	return &DetectedDNS{IP: ip, Type: "adguard", Name: fmt.Sprintf("AdGuard Home @ %s", ip), Version: version, API: url}
 }
 
 func detectLocalSubnet() string {
