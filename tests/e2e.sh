@@ -8,8 +8,10 @@ set -uo pipefail
 HOST="${1:-192.168.100.253}"
 USER="${2:-fab}"
 PASS="${3:-password}"
-API="http://${HOST}:8011"
+API="https://${HOST}:8443"
 PROXY="${HOST}:3128"
+# Accept self-signed certs for all curl calls
+CURL_OPTS="-k"
 
 # ── Colors ────────────────────────────────────────────────────────────────
 R='\033[0;31m'; G='\033[0;32m'; Y='\033[0;33m'; B='\033[0;34m'
@@ -24,10 +26,10 @@ skip()    { ((SKIP_COUNT++)); printf "  ${D}○${N} %-50s ${D}%s${N}\n" "$1" "$2
 section() { printf "\n${B}═══${N} ${BOLD}$1${N} ${B}═══${N}\n\n"; }
 
 TOKEN=""
-auth_get()  { curl -s --max-time 10 -H "Authorization: Bearer $TOKEN" "${API}$1" 2>/dev/null; }
-auth_post() { curl -s --max-time 10 -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$@" 2>/dev/null; }
-auth_del()  { curl -s --max-time 10 -X DELETE -H "Authorization: Bearer $TOKEN" "${API}$1" 2>/dev/null; }
-http_code() { curl -s --max-time 10 -o /dev/null -w "%{http_code}" "$@" 2>/dev/null || echo "000"; }
+auth_get()  { curl -sk --max-time 10 -H "Authorization: Bearer $TOKEN" "${API}$1" 2>/dev/null; }
+auth_post() { curl -sk --max-time 10 -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$@" 2>/dev/null; }
+auth_del()  { curl -sk --max-time 10 -X DELETE -H "Authorization: Bearer $TOKEN" "${API}$1" 2>/dev/null; }
+http_code() { curl -sk --max-time 10 -o /dev/null -w "%{http_code}" "$@" 2>/dev/null || echo "000"; }
 
 expect_api() {
     local label="$1" method="$2" path="$3" expected="$4"
