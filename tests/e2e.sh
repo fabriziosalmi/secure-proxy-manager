@@ -34,14 +34,14 @@ http_code() { curl -sk --max-time 10 -o /dev/null -w "%{http_code}" "$@" 2>/dev/
 expect_api() {
     local label="$1" method="$2" path="$3" expected="$4"
     local code
-    code=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" -X "$method" \
+    code=$(curl -sk --max-time 10 -o /dev/null -w "%{http_code}" -X "$method" \
         -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
         "${API}${path}" 2>/dev/null || echo "000")
     [ "$code" = "$expected" ] && pass "$label" "HTTP $code" || fail "$label" "expected $expected, got $code"
 }
 
 proxy_code() {
-    curl -s --max-time 15 -o /dev/null -w "%{http_code}" --proxy "$PROXY" "$1" 2>/dev/null || echo "000"
+    curl -sk --max-time 15 -o /dev/null -w "%{http_code}" --proxy "$PROXY" "$1" 2>/dev/null || echo "000"
 }
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -126,10 +126,10 @@ waf_test "C++ query"                "http://httpbin.org/get?lang=c%2B%2B"       
 
 section "A4. PROTOCOL HARDENING"
 
-code=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" --proxy "$PROXY" -X PUT "http://httpbin.org/put" 2>/dev/null || echo "000")
+code=$(curl -sk --max-time 10 -o /dev/null -w "%{http_code}" --proxy "$PROXY" -X PUT "http://httpbin.org/put" 2>/dev/null || echo "000")
 [ "$code" = "403" ] && pass "PUT method blocked" "HTTP $code" || warn "PUT method not blocked" "HTTP $code"
 
-code=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" --proxy "$PROXY" -X DELETE "http://httpbin.org/delete" 2>/dev/null || echo "000")
+code=$(curl -sk --max-time 10 -o /dev/null -w "%{http_code}" --proxy "$PROXY" -X DELETE "http://httpbin.org/delete" 2>/dev/null || echo "000")
 [ "$code" = "403" ] && pass "DELETE method blocked" "HTTP $code" || warn "DELETE method not blocked" "HTTP $code"
 
 # Direct IP access blocked
@@ -140,7 +140,7 @@ section "A5. LATENCY (5 samples)"
 
 times=()
 for i in $(seq 1 5); do
-    t=$(curl -s --max-time 15 -o /dev/null -w "%{time_total}" --proxy "$PROXY" "http://httpbin.org/get" 2>/dev/null || echo "9.999")
+    t=$(curl -sk --max-time 15 -o /dev/null -w "%{time_total}" --proxy "$PROXY" "http://httpbin.org/get" 2>/dev/null || echo "9.999")
     ms=$(awk "BEGIN {printf \"%.0f\", $t * 1000}" 2>/dev/null || echo "?")
     times+=("$ms")
     printf "  ${D}Sample $i:${N} ${ms}ms\n"
@@ -160,7 +160,7 @@ printf "${W}━━━━━━━━━━━━━━━━━━━━━━�
 
 section "B1. HEALTH & CONNECTIVITY"
 
-health=$(curl -sf --max-time 5 "${API}/api/health" 2>/dev/null || echo '{}')
+health=$(curl -skf --max-time 5 "${API}/api/health" 2>/dev/null || echo '{}')
 h_version=$(echo "$health" | grep -o '"version":"[^"]*"' | cut -d'"' -f4)
 h_runtime=$(echo "$health" | grep -o '"runtime":"[^"]*"' | cut -d'"' -f4)
 
@@ -177,7 +177,7 @@ code=$(http_code "${API}/logo.svg")
 section "B2. AUTHENTICATION"
 
 # Login
-login_resp=$(curl -sf --max-time 5 -X POST "${API}/api/auth/login" \
+login_resp=$(curl -skf --max-time 5 -X POST "${API}/api/auth/login" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"${USER}\",\"password\":\"${PASS}\"}" 2>/dev/null || echo '{}')
 TOKEN=$(echo "$login_resp" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
@@ -190,7 +190,7 @@ code=$(http_code "${API}/api/settings")
 [ "$code" = "401" ] || [ "$code" = "403" ] && pass "Auth enforced on /api/settings" "HTTP $code" || fail "Auth NOT enforced" "HTTP $code"
 
 # Wrong credentials
-code=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" -X POST "${API}/api/auth/login" \
+code=$(curl -sk --max-time 5 -o /dev/null -w "%{http_code}" -X POST "${API}/api/auth/login" \
     -H "Content-Type: application/json" -d '{"username":"hacker","password":"wrong"}' 2>/dev/null)
 [ "$code" = "401" ] && pass "Bad credentials rejected" "HTTP $code" || fail "Bad creds" "HTTP $code"
 
@@ -375,7 +375,7 @@ section "C7. ML-LITE DETECTION (DGA + Typosquatting)"
 waf_test "DGA pattern in query"      "http://httpbin.org/get?callback=xk2mf9pq3rzytw.com" "200"
 
 # Verify WAF stats include cache metrics (proves bloom cache is active)
-waf_stats=$(curl -s --max-time 5 "http://${HOST}:8011/api/waf/stats" -H "Authorization: Bearer $TOKEN" 2>/dev/null || echo '{}')
+waf_stats=$(curl -sk --max-time 5 "${API}/api/waf/stats" -H "Authorization: Bearer $TOKEN" 2>/dev/null || echo '{}')
 echo "$waf_stats" | grep -q '"cache_size"' && pass "WAF safe URL cache active" "has cache_size" || warn "WAF cache stats" "not available"
 echo "$waf_stats" | grep -q '"total_inspected"' && pass "WAF engine stats" "has total_inspected" || warn "WAF stats" "not available"
 
@@ -388,7 +388,7 @@ section "C8. CONCURRENT STRESS (10 parallel)"
 stress_ok=0
 stress_fail=0
 for i in $(seq 1 10); do
-    curl -s --max-time 15 -o /dev/null -w "%{http_code}" --proxy "$PROXY" "http://httpbin.org/get?stress=$i" 2>/dev/null &
+    curl -sk --max-time 15 -o /dev/null -w "%{http_code}" --proxy "$PROXY" "http://httpbin.org/get?stress=$i" 2>/dev/null &
 done
 for job in $(jobs -p); do
     wait "$job"
@@ -401,7 +401,7 @@ pass "Concurrent stress (10 parallel)" "${stress_ok}/10 ok"
 section "C9. ERROR HANDLING"
 
 # Invalid JSON body
-code=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" -X POST \
+code=$(curl -sk --max-time 5 -o /dev/null -w "%{http_code}" -X POST \
     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
     -d 'NOT_JSON' "${API}/api/ip-blacklist" 2>/dev/null)
 [ "$code" = "400" ] && pass "Invalid JSON → 400" "HTTP $code" || fail "Invalid JSON" "HTTP $code"
@@ -411,12 +411,12 @@ code=$(http_code -H "Authorization: Bearer $TOKEN" "${API}/api/nonexistent")
 [ "$code" = "404" ] || [ "$code" = "405" ] && pass "Unknown endpoint → 404/405" "HTTP $code" || fail "Unknown endpoint" "HTTP $code"
 
 # Delete nonexistent ID
-code=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" -X DELETE \
+code=$(curl -sk --max-time 5 -o /dev/null -w "%{http_code}" -X DELETE \
     -H "Authorization: Bearer $TOKEN" "${API}/api/ip-blacklist/999999" 2>/dev/null)
 [ "$code" = "404" ] && pass "Delete nonexistent → 404" "HTTP $code" || fail "Delete nonexistent" "HTTP $code"
 
 # Expired/invalid JWT
-code=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
+code=$(curl -sk --max-time 5 -o /dev/null -w "%{http_code}" \
     -H "Authorization: Bearer invalid.token.here" "${API}/api/settings" 2>/dev/null)
 [ "$code" = "401" ] && pass "Invalid JWT → 401" "HTTP $code" || fail "Invalid JWT" "HTTP $code"
 
