@@ -434,6 +434,35 @@ export function Settings() {
             <CardDescription>DNS blackhole, WAF heuristics, and essential domain whitelist</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Pi-hole / AdGuard Detection */}
+            <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+              <div>
+                <p className="text-xs font-medium text-cyan-400">DNS Provider Auto-Detect</p>
+                <p className="text-[10px] text-muted-foreground">Scan LAN for Pi-hole or AdGuard Home to use as upstream DNS</p>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  const t = toast.loading('Scanning LAN for DNS providers...');
+                  try {
+                    const res = await api.post('dns/detect', {});
+                    const found = res.data?.data?.found || [];
+                    if (found.length > 0) {
+                      const names = found.map((d: { name: string }) => d.name).join(', ');
+                      toast.success(`Found: ${names}. Configure in .env DNS_UPSTREAM_1=${found[0].ip}`, { id: t, duration: 8000 });
+                    } else {
+                      toast.error('No Pi-hole or AdGuard found on LAN', { id: t });
+                    }
+                  } catch {
+                    toast.error('Scan failed — check network access', { id: t });
+                  }
+                }}
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors shrink-0"
+              >
+                Scan LAN
+              </button>
+            </div>
+
             {/* Essential whitelist */}
             <div className="p-4 border border-border rounded-lg bg-background/50">
               <div className="flex items-center justify-between mb-3">
