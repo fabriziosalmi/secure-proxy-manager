@@ -15,6 +15,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/auth"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
 // NotifyQueue is a bounded channel for fire-and-forget security notifications.
@@ -47,6 +48,12 @@ func (h *SecurityHandlers) Register(r chi.Router, authMW func(http.Handler) http
 	r.With(authMW).Get("/api/security/rate-limits", h.GetRateLimits)
 	r.With(authMW).Delete("/api/security/rate-limits/{ip}", h.ClearRateLimit)
 	r.With(authMW).Get("/api/security/score", h.Score)
+	r.With(authMW).Get("/api/security/cve", h.CVECheck)
+}
+
+func (h *SecurityHandlers) CVECheck(w http.ResponseWriter, r *http.Request) {
+	cve := workers.GetCVEInfo()
+	writeOK(w, cve)
 }
 
 func (h *SecurityHandlers) ReceiveAlert(w http.ResponseWriter, r *http.Request) {
