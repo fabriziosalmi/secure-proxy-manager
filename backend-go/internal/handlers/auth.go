@@ -13,6 +13,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 
 	"github.com/go-chi/chi/v5"
@@ -144,11 +145,17 @@ func (h *AuthHandlers) HealthLegacy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandlers) Health(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{
+	resp := map[string]any{
 		"status":  "healthy",
 		"version": config.AppVersion,
 		"runtime": "go",
-	})
+	}
+	upd := workers.GetUpdateInfo()
+	if upd.Available {
+		resp["update_available"] = upd.Latest
+		resp["update_url"] = upd.URL
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func basicHeader(u, p string) string {

@@ -7,16 +7,19 @@ type ApiStatus = 'connected' | 'disconnected' | 'checking';
 
 export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onLogout?: () => void }) {
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking');
-  const [backendInfo, setBackendInfo] = useState<{ version?: string; runtime?: string }>({});
+  const [backendInfo, setBackendInfo] = useState<{ version?: string; runtime?: string; update_available?: string; update_url?: string }>({});
 
   useEffect(() => {
     const check = async () => {
       try {
         const res = await api.get('/health');
         setApiStatus('connected');
-        if (res.data?.version || res.data?.runtime) {
-          setBackendInfo({ version: res.data.version, runtime: res.data.runtime });
-        }
+        setBackendInfo({
+          version: res.data?.version,
+          runtime: res.data?.runtime,
+          update_available: res.data?.update_available,
+          update_url: res.data?.update_url,
+        });
       } catch {
         setApiStatus('disconnected');
       }
@@ -108,16 +111,28 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
             {apiStatus === 'connected' ? 'Connected' : apiStatus === 'disconnected' ? 'Offline' : 'Checking…'}
           </span>
         </div>
-        <div className="text-center mt-2 space-y-0.5">
-          <span className="text-[10px] text-muted-foreground/40 font-mono">
-            {backendInfo.version || '...'}
-          </span>
-          {backendInfo.runtime && (
-            <span className={`text-[9px] font-mono ml-1.5 px-1.5 py-0.5 rounded-full ${
-              backendInfo.runtime === 'go' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-yellow-500/10 text-yellow-400'
-            }`}>
-              {backendInfo.runtime}
+        <div className="text-center mt-2 space-y-1">
+          <div>
+            <span className="text-[10px] text-muted-foreground/40 font-mono">
+              {backendInfo.version || '...'}
             </span>
+            {backendInfo.runtime && (
+              <span className={`text-[9px] font-mono ml-1.5 px-1.5 py-0.5 rounded-full ${
+                backendInfo.runtime === 'go' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-yellow-500/10 text-yellow-400'
+              }`}>
+                {backendInfo.runtime}
+              </span>
+            )}
+          </div>
+          {backendInfo.update_available && (
+            <a
+              href={backendInfo.update_url || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors font-mono"
+            >
+              ⬆ {backendInfo.update_available}
+            </a>
           )}
         </div>
       </div>
