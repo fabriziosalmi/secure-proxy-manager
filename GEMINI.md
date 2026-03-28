@@ -144,6 +144,36 @@
 | 39 | Parallel ICAP | 🟢 Done | Native Go goroutines per request |
 | 40 | Kernel Tuning | ❌ Rejected | Requires `--privileged`, breaks container security |
 
+## Batch 5: Compliance & Reporting
+
+| # | Idea | Status | Notes |
+|---|------|--------|-------|
+| 41 | PDF Report scheduled | 🟢 Done (partial) | Export button exists. Auto-schedule via cron + webhook would be nice |
+| 42 | GDPR IP masking | 🔵 **Do Next** | Toggle to anonymize last octet in logs/analytics/exports. Essential for EU compliance |
+| 43 | Top 100 Domains | 🟢 Done | Domain Cloud + `/api/analytics/top-domains` |
+| 44 | Exfiltration volume alert | ⚪ Backlog | Per-IP byte tracking over time windows. WAF entropy helps but volume needs persistent state |
+| 45 | Audit Trail | 🟢 Done | `/api/audit/log` tracks all admin actions |
+| 46 | Bandwidth Quota per IP | ❌ Rejected | Monthly accounting + enforcement too complex for proxy-level. Use router QoS |
+| 47 | Time-based Access | 🟢 Done | Toggle with start/end time in Settings |
+| 48 | Shadow IT Detection | 🟢 Done | 35+ SaaS services auto-detected and categorized |
+| 49 | Security Score | 🟢 Done | 0-100 score with recommendations on Dashboard |
+| 50 | LDAP/AD Auth | ⚪ Backlog | Squid supports `basic_ldap_auth` but config is complex. v3 feature |
+
+### GDPR IP Anonymization
+
+**Why**: EU law requires data minimization. Logging full client IPs when not needed for security is a compliance risk. A toggle to mask the last octet makes us GDPR-friendly out of the box.
+
+**How**:
+- Settings toggle: "GDPR Mode — Anonymize Client IPs"
+- When enabled, the Go backend masks IPs before writing to DB:
+  - `192.168.100.7` → `192.168.100.x`
+  - Applied to: proxy_logs table, analytics queries, PDF export, WebSocket stream
+- NOT applied to: blacklist/whitelist entries (those are intentional)
+- The WAF ICAP still sees full IPs for blocking — only the logging/display is masked
+- Reversible: turning off shows full IPs for new entries (old masked entries stay masked)
+
+**Effort**: 2h
+
 ### Multi-Arch Docker Build
 
 **Why**: Raspberry Pi 4/5 is the #1 homelab device. Without ARM64 images, half the self-hosted community can't use us.
@@ -207,3 +237,4 @@
 | ClamAV | 200MB+ RAM for virus scanning that WAF already handles at the protocol level |
 | Custom Branding | Nice-to-have but zero security value. Maybe v3 |
 | Home Assistant | Too niche. REST API already consumable by HA sensors |
+| Bandwidth Quota | Monthly per-IP accounting too complex for proxy-level. Use router QoS |
