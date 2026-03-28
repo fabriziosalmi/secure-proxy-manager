@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { ChangePassword } from '../components/settings/ChangePassword';
 import { Maintenance } from '../components/settings/Maintenance';
 import { Presets } from '../components/settings/Presets';
+import { ClientSetup } from '../components/ClientSetup';
 
 // Validation schema for settings form data
 const settingsSchema = z.object({
@@ -289,6 +290,9 @@ export function Settings() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Client Setup — how to connect devices */}
+        <ClientSetup />
 
         <Card className="bg-card/50">
           <CardHeader>
