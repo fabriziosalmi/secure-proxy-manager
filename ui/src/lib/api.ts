@@ -29,6 +29,16 @@ export function isTokenExpired(token: string): boolean {
 let reloadScheduled = false;
 let expiryWarningShown = false;
 
+// Reset warning flag when a new token is stored (e.g. after re-login)
+const _origSetItem = localStorage.setItem.bind(localStorage);
+localStorage.setItem = function (key: string, value: string) {
+  if (key === 'auth_token') {
+    expiryWarningShown = false;
+    reloadScheduled = false;
+  }
+  return _origSetItem(key, value);
+};
+
 /** Check if token expires within N minutes. */
 function tokenExpiresSoon(token: string, minutes: number): boolean {
   const payload = decodeJwtPayload(token);
