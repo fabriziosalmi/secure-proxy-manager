@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useEffect, useState } from 'react';
 import type { TimelineEntry, DashboardSummary, ShadowItService, FileExtData, ServiceTypeData, TopDomain } from '../types';
+import { RegexPlayground } from '../components/RegexPlayground';
 
 const C = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899', '#14b8a6', '#6366f1'];
 const CAT_COLORS: Record<string, string> = {
@@ -247,6 +248,9 @@ export function ThreatIntel() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Regex Playground */}
+      <RegexPlayground />
     </div>
   );
 }
