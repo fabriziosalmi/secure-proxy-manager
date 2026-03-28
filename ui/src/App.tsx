@@ -70,6 +70,12 @@ function NotFound() {
 }
 
 function App() {
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    setIsAuthenticated(false);
+    queryClient.clear();
+  };
+
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     const token = localStorage.getItem('auth_token');
     if (!token) return false;
@@ -107,7 +113,7 @@ function App() {
           <GlobalSearch />
           <ErrorBoundary>
             <Routes>
-              <Route path="/" element={<Layout />}>
+              <Route path="/" element={<Layout onLogout={handleLogout} />}>
                 <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
                 <Route path="blacklists" element={<ErrorBoundary><Blacklists /></ErrorBoundary>} />
                 <Route path="threats" element={<ErrorBoundary><ThreatIntel /></ErrorBoundary>} />
