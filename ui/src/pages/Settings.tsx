@@ -366,6 +366,29 @@ export function Settings() {
                       </div>
                     </div>
 
+                    {/* ntfy.sh */}
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium text-cyan-400">ntfy.sh (Self-hosted Push)</h4>
+                      <div className="grid gap-2">
+                        <input
+                          type="text"
+                          name="ntfy_url"
+                          value={formData.ntfy_url || ''}
+                          onChange={handleChange}
+                          placeholder="Server URL (e.g. https://ntfy.sh or https://ntfy.yourdomain.com)"
+                          className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        <input
+                          type="text"
+                          name="ntfy_topic"
+                          value={formData.ntfy_topic || ''}
+                          onChange={handleChange}
+                          placeholder="Topic (e.g. proxy-alerts)"
+                          className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                    </div>
+
                     {/* MS Teams */}
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium text-purple-400">Microsoft Teams</h4>
