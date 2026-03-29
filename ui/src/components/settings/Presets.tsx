@@ -23,7 +23,6 @@ const PRESETS: PresetConfig[] = [
     detail: 'Minimal filtering. WAF active with permissive threshold. No HTTPS inspection. Good starting point.',
     values: {
       waf_block_threshold: '15',
-      enable_https_filtering: 'false',
       ssl_bump_enabled: 'false',
       block_direct_ip: 'false',
       enable_safesearch: 'false',
@@ -52,7 +51,6 @@ const PRESETS: PresetConfig[] = [
     detail: 'SafeSearch enforced, YouTube restricted, dangerous downloads blocked, bandwidth limited.',
     values: {
       waf_block_threshold: '10',
-      enable_https_filtering: 'false',
       ssl_bump_enabled: 'false',
       block_direct_ip: 'true',
       enable_safesearch: 'true',
@@ -84,7 +82,6 @@ const PRESETS: PresetConfig[] = [
     detail: 'Balanced WAF, direct IP blocked, content filtering, most heuristics active. Recommended.',
     values: {
       waf_block_threshold: '8',
-      enable_https_filtering: 'false',
       ssl_bump_enabled: 'false',
       block_direct_ip: 'true',
       enable_safesearch: 'false',
@@ -114,7 +111,6 @@ const PRESETS: PresetConfig[] = [
     detail: 'Strictest WAF, all heuristics, all filters. SSL Bump requires CA cert on clients.',
     values: {
       waf_block_threshold: '5',
-      enable_https_filtering: 'true',
       ssl_bump_enabled: 'true',
       block_direct_ip: 'true',
       enable_safesearch: 'true',
@@ -147,7 +143,6 @@ const PRESETS: PresetConfig[] = [
     detail: 'Permissive for dev workflows. Content filter off (devs download binaries). All heuristics on.',
     values: {
       waf_block_threshold: '10',
-      enable_https_filtering: 'false',
       ssl_bump_enabled: 'false',
       block_direct_ip: 'false',
       enable_safesearch: 'false',
@@ -176,7 +171,6 @@ const PRESETS: PresetConfig[] = [
     detail: 'Block everything except whitelisted domains. For public terminals, libraries, schools.',
     values: {
       waf_block_threshold: '5',
-      enable_https_filtering: 'false',
       ssl_bump_enabled: 'false',
       block_direct_ip: 'true',
       enable_safesearch: 'true',

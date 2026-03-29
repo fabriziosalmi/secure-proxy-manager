@@ -15,7 +15,7 @@ Returns all settings as an array.
 **Response:**
 ```json
 [
-  { "setting_name": "enable_https_filtering", "setting_value": "false" },
+  { "setting_name": "ssl_bump_enabled", "setting_value": "false" },
   { "setting_name": "cache_size", "setting_value": "2000" }
 ]
 ```
@@ -127,7 +127,7 @@ Update multiple settings in a single request.
 ```json
 {
   "settings": [
-    { "setting_name": "enable_https_filtering", "setting_value": "true" },
+    { "setting_name": "ssl_bump_enabled", "setting_value": "true" },
     { "setting_name": "cache_size", "setting_value": "5000" }
   ]
 }

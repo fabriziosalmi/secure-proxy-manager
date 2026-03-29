@@ -106,7 +106,7 @@ func (h *SecurityHandlers) ClearRateLimit(w http.ResponseWriter, r *http.Request
 func (h *SecurityHandlers) Score(w http.ResponseWriter, r *http.Request) {
 	keys := []string{
 		"enable_ip_blacklist", "enable_domain_blacklist", "block_direct_ip",
-		"enable_content_filtering", "enable_waf", "enable_https_filtering",
+		"enable_content_filtering", "enable_waf", "ssl_bump_enabled",
 		"default_password_changed", "enable_time_restrictions",
 	}
 	placeholders := strings.Repeat("?,", len(keys))
@@ -141,7 +141,7 @@ func (h *SecurityHandlers) Score(w http.ResponseWriter, r *http.Request) {
 		{"block_direct_ip", 10, "Enable direct IP access blocking to prevent bypassing domain filters"},
 		{"enable_content_filtering", 10, "Enable content filtering to block risky file types"},
 		{"enable_waf", 25, "Enable Outbound WAF (ICAP) to block SQLi, XSS, and Data Leaks"},
-		{"enable_https_filtering", 15, "Consider enabling HTTPS filtering for complete security coverage"},
+		{"ssl_bump_enabled", 15, "Consider enabling HTTPS inspection (SSL Bump) for complete security coverage"},
 		{"default_password_changed", 5, "Change the default admin password to improve security"},
 		{"enable_time_restrictions", 5, "Enable time restrictions to limit proxy usage to working hours"},
 	}

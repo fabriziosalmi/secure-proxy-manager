@@ -261,9 +261,8 @@ export function Settings() {
 
             {/* Proxy behavior toggles — compact grid */}
             <label className="text-xs font-medium text-muted-foreground mb-1 block mt-4">Proxy Behavior</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[
-                { name: 'enable_https_filtering', label: 'HTTPS Inspection', desc: 'SSL Bump for WAF' },
                 { name: 'aggressive_caching', label: 'Aggressive Cache', desc: 'Force static caching' },
                 { name: 'enable_offline_mode', label: 'Offline Mode', desc: 'Serve stale cache' },
               ].map(t => (
@@ -739,6 +738,23 @@ export function Settings() {
             <CardDescription>Manage SSL/TLS certificates for HTTPS Inspection</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+              <div className="space-y-0.5">
+                <label className="text-sm font-medium">HTTPS Inspection (SSL Bump)</label>
+                <p className="text-xs text-muted-foreground">Intercept HTTPS traffic for WAF, content filtering, and security scanning.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
+                <input type="checkbox" name="ssl_bump_enabled" checked={formData.ssl_bump_enabled === 'true'}
+                  onChange={(e) => setFormData({ ...formData, ssl_bump_enabled: e.target.checked ? 'true' : 'false' })} className="sr-only peer" />
+                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+              </label>
+            </div>
+            {formData.ssl_bump_enabled === 'true' && (
+              <div className="text-xs text-muted-foreground p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
+                <p className="font-semibold text-yellow-400 mb-1">Important:</p>
+                <p>You must install the Root CA Certificate below on all client devices to avoid security warnings.</p>
+              </div>
+            )}
             <div className="p-4 border border-border rounded-lg bg-background/50">
               <h3 className="text-sm font-medium mb-2">Root CA Certificate</h3>
               <p className="text-xs text-muted-foreground mb-4">
@@ -820,7 +836,6 @@ export function Settings() {
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Security & Filtering</label>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
               {[
-                { name: 'ssl_bump_enabled', label: 'SSL Bump', desc: 'HTTPS interception' },
                 { name: 'block_direct_ip', label: 'Block Direct IP', desc: 'Prevent DNS bypass' },
                 { name: 'enable_safesearch', label: 'SafeSearch', desc: 'Google/Bing/DDG' },
                 { name: 'enable_youtube_restricted', label: 'YouTube Restricted', desc: 'Hide mature content' },
