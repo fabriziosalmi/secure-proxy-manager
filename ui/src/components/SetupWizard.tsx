@@ -39,7 +39,6 @@ function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): 
     heuristic_dest_sharding: 'false',
     heuristic_protocol_ghosting: 'false',
     heuristic_header_morphing: 'false',
-    enable_https_filtering: 'false',
     ssl_bump_enabled: 'false',
     block_direct_ip: 'false',
     enable_safesearch: 'false',
