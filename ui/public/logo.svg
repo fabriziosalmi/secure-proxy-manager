@@ -1,34 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <!--
-    Gear with 8 teeth (computed coordinates)
-    Outer radius: 28, Inner radius: 22, Tooth width: 6px
-    Center: 32, 32
-  -->
-  <path d="
-    M29 4 L35 4 L36.5 10.2 C38.8 10.9 40.9 11.9 42.8 13.2 L48.4 9.8 L52.2 13.6 L48.8 19.2
-    C50.1 21.1 51.1 23.2 51.8 25.5 L58 27 L58 33 L51.8 34.5 C51.1 36.8 50.1 38.9 48.8 40.8
-    L52.2 46.4 L48.4 50.2 L42.8 46.8 C40.9 48.1 38.8 49.1 36.5 49.8 L35 56 L29 56 L27.5 49.8
-    C25.2 49.1 23.1 48.1 21.2 46.8 L15.6 50.2 L11.8 46.4 L15.2 40.8 C13.9 38.9 12.9 36.8 12.2 34.5
-    L6 33 L6 27 L12.2 25.5 C12.9 23.2 13.9 21.1 15.2 19.2 L11.8 13.6 L15.6 9.8 L21.2 13.2
-    C23.1 11.9 25.2 10.9 27.5 10.2 Z
-  " fill="#1e293b" stroke="#3b82f6" stroke-width="1.2"/>
-
-  <!-- Eye white (sclera) -->
-  <circle cx="32" cy="30" r="12" fill="#0f172a" stroke="#3b82f6" stroke-width="1.2"/>
-
-  <!-- Iris -->
-  <circle cx="32" cy="30" r="8" fill="#1e3a5f"/>
-
-  <!-- Iris detail ring -->
-  <circle cx="32" cy="30" r="6" fill="none" stroke="#3b82f6" stroke-width="1" opacity="0.5"/>
-
-  <!-- Pupil -->
-  <circle cx="32" cy="30" r="4.5" fill="#3b82f6"/>
-
-  <!-- Pupil core -->
-  <circle cx="32" cy="30" r="2" fill="#0f172a"/>
-
-  <!-- Highlight (gives life to the eye) -->
-  <circle cx="34" cy="28" r="1.8" fill="#93c5fd" opacity="0.9"/>
-  <circle cx="30.5" cy="32" r="0.8" fill="#93c5fd" opacity="0.5"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <circle cx="16" cy="16" r="14" fill="#0a0a0c" stroke="#3b82f6" stroke-width="1.5"/>
+  <ellipse cx="16" cy="16" rx="10" ry="7" fill="none" stroke="#3b82f6" stroke-width="1.5"/>
+  <circle cx="16" cy="16" r="3.5" fill="#3b82f6"/>
+  <circle cx="17.2" cy="14.8" r="1.2" fill="#fff" opacity="0.9"/>
 </svg>

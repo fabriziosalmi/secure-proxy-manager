@@ -6,7 +6,7 @@ export default defineConfig({
   base: '/secure-proxy-manager/',
 
   head: [
-    ['link', { rel: 'icon', href: '/secure-proxy-manager/favicon.ico' }]
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/secure-proxy-manager/favicon.svg' }]
   ],
 
   themeConfig: {
