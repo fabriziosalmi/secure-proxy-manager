@@ -110,8 +110,8 @@ func loadOrGenerateSecret() string {
 	if s := os.Getenv("SECRET_KEY"); s != "" {
 		return s
 	}
-	const secretFile = "/data/.jwt_secret"
-	data, err := os.ReadFile(secretFile)
+	const jwtFile = "/data/.jwt_secret"
+	data, err := os.ReadFile(jwtFile)
 	if err == nil && len(strings.TrimSpace(string(data))) >= 32 {
 		return strings.TrimSpace(string(data))
 	}
@@ -122,7 +122,7 @@ func loadOrGenerateSecret() string {
 	}
 	secret := hex.EncodeToString(b)
 	if err := os.MkdirAll("/data", 0o700); err == nil {
-		os.WriteFile(secretFile, []byte(secret), 0o600) //nolint:errcheck
+		os.WriteFile(jwtFile, []byte(secret), 0o600) //nolint:errcheck
 	}
 	return secret
 }

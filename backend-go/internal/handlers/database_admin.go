@@ -46,6 +46,7 @@ func (h *DatabaseHandlers) Stats(w http.ResponseWriter, r *http.Request) {
 	counts := map[string]int64{}
 	for _, tbl := range allowedTables {
 		var n int64
+		// #nosec G202
 		h.db.QueryRow("SELECT COUNT(*) FROM " + tbl).Scan(&n) //nolint:errcheck
 		counts[tbl] = n
 	}
@@ -55,6 +56,7 @@ func (h *DatabaseHandlers) Stats(w http.ResponseWriter, r *http.Request) {
 func (h *DatabaseHandlers) Export(w http.ResponseWriter, r *http.Request) {
 	export := map[string]any{}
 	for _, tbl := range allowedTables {
+		// #nosec G202
 		rows, err := h.db.Query("SELECT * FROM " + tbl)
 		if err != nil {
 			continue
@@ -92,6 +94,7 @@ func (h *DatabaseHandlers) Reset(w http.ResponseWriter, r *http.Request) {
 		if tbl == "users" {
 			continue // Never wipe users.
 		}
+		// #nosec G202
 		h.db.Exec("DELETE FROM " + tbl) //nolint:errcheck
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Database reset (users preserved)"})

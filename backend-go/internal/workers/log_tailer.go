@@ -22,6 +22,7 @@ func StartLogTailer(db *sql.DB, logPath string, hub *websocket.Hub) {
 		var offset int64
 		for {
 			time.Sleep(500 * time.Millisecond)
+			// #nosec G304
 			f, err := os.Open(logPath)
 			if err != nil {
 				continue

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -71,11 +72,12 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *MaintenanceHandlers) DownloadCA(w http.ResponseWriter, r *http.Request) {
-	certPath := h.cfg.ConfigDir + "/ssl_cert.pem"
+	certPath := filepath.Join(h.cfg.ConfigDir, "ssl_cert.pem")
 	if _, err := os.Stat(certPath); os.IsNotExist(err) {
 		writeError(w, http.StatusNotFound, "Certificate not found. It may not have been generated yet.")
 		return
 	}
+	// #nosec G304
 	f, err := os.Open(certPath)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to open certificate")

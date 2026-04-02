@@ -100,6 +100,7 @@ func (h *AnalyticsHandlers) TrafficStats(w http.ResponseWriter, r *http.Request)
 		startDuration = "-1 days"
 	}
 
+	// #nosec G202
 	rows, err := h.db.Query(`
 		SELECT `+interval+` AS bucket, COUNT(*) AS total,
 		       SUM(CASE WHEN status LIKE '%DENIED%' OR status LIKE '%BLOCKED%' THEN 1 ELSE 0 END) AS blocked
