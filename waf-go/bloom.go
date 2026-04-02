@@ -60,8 +60,12 @@ func (c *SafeURLCache) MarkSafe(url string) {
 	h := hashURL(url)
 	c.mu.Lock()
 	if len(c.entries) >= c.maxSize {
-		// Evict oldest 10%
-		c.evictOldestLocked(c.maxSize / 10)
+		// Evict oldest 10% (at least 1)
+		evictCount := c.maxSize / 10
+		if evictCount == 0 {
+			evictCount = 1
+		}
+		c.evictOldestLocked(evictCount)
 	}
 	c.entries[h] = time.Now()
 	c.mu.Unlock()

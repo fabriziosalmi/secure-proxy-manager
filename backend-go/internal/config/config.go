@@ -33,6 +33,11 @@ type Config struct {
 	DatabasePath string
 	ConfigDir    string
 	LogPath      string
+
+	// Internal component URLs (for WAF/Proxy communication)
+	WAFURL       string
+	ProxyURL     string
+	GeoIPURL     string
 }
 
 // Load reads environment variables and returns a validated Config.
@@ -78,6 +83,9 @@ func Load() *Config {
 		DatabasePath:      envOrDefault("DATABASE_PATH", "/data/proxy_manager.db"),
 		ConfigDir:         envOrDefault("CONFIG_DIR", "/config"),
 		LogPath:           envOrDefault("LOG_PATH", "/logs/access.log"),
+		WAFURL:            envOrDefault("WAF_URL", "http://waf:8080"),
+		ProxyURL:          envOrDefault("PROXY_URL", "http://proxy:3128"),
+		GeoIPURL:          envOrDefault("GEOIP_URL", ""), // Empty means use defaults
 	}
 	return cfg
 }

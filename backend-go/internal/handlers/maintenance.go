@@ -20,10 +20,10 @@ import (
 type MaintenanceHandlers struct {
 	db     *sql.DB
 	cfg    *config.Config
-	docker *docker.Client
+	docker docker.DockerClient
 }
 
-func NewMaintenanceHandlers(db *sql.DB, cfg *config.Config, dc *docker.Client) *MaintenanceHandlers {
+func NewMaintenanceHandlers(db *sql.DB, cfg *config.Config, dc docker.DockerClient) *MaintenanceHandlers {
 	return &MaintenanceHandlers{db: db, cfg: cfg, docker: dc}
 }
 

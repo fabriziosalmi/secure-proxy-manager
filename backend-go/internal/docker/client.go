@@ -13,10 +13,17 @@ import (
 
 const dockerSock = "/var/run/docker.sock"
 
+// DockerClient defines the interface for interacting with the Docker Engine API.
+type DockerClient interface {
+	KillContainer(name, signal string) error
+}
+
 // Client is a minimal Docker Engine API client.
 type Client struct {
 	hc *http.Client
 }
+
+var _ DockerClient = (*Client)(nil)
 
 // New returns a Client that talks to the Docker socket.
 func New() *Client {

@@ -5,13 +5,20 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
 
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/go-chi/chi/v5"
 )
 
-type SettingsHandlers struct{ db *sql.DB }
+type SettingsHandlers struct {
+	db  *sql.DB
+	cfg *config.Config
+}
 
-func NewSettingsHandlers(db *sql.DB) *SettingsHandlers { return &SettingsHandlers{db: db} }
+func NewSettingsHandlers(db *sql.DB, cfg *config.Config) *SettingsHandlers {
+	return &SettingsHandlers{db: db, cfg: cfg}
+}
 
 func (h *SettingsHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {
 	r.With(authMW).Get("/api/settings", h.GetAll)
@@ -87,7 +94,7 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 
 	// SSL Bump toggle file — Squid reads this at startup/reload
 	if v, ok := body["ssl_bump_enabled"]; ok {
-		toggleFile := "/config/ssl_bump_enabled"
+		toggleFile := filepath.Join(h.cfg.ConfigDir, "ssl_bump_enabled")
 		if v == "true" {
 			os.WriteFile(toggleFile, []byte("1"), 0644) //nolint:errcheck
 		} else {
