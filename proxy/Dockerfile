@@ -7,7 +7,7 @@ RUN echo "Acquire::http::Pipeline-Depth 0;" > /etc/apt/apt.conf.d/99fixbadproxy 
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     apt-get install -y --fix-missing \
-    squid \
+    squid-openssl \
     squid-common \
     iproute2 \
     iptables \
