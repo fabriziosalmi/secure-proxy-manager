@@ -611,94 +611,14 @@ func main() {
 
 	// HTTP health + metrics endpoint
 	go func() {
+		h := &MgmtHandlers{}
 		healthMux := http.NewServeMux()
-		healthMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-			total := 0
-			for _, cr := range blockRules {
-				total += len(cr.Rules)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			hEnabled := 0
-			for _, on := range []bool{heuristicCfg.EntropyThreshold, heuristicCfg.BeaconingDetection, heuristicCfg.PIICounter, heuristicCfg.DestinationSharding, heuristicCfg.HeaderMorphing, heuristicCfg.ProtocolGhosting, heuristicCfg.SequenceValidation} {
-				if on {
-					hEnabled++
-				}
-			}
-			fmt.Fprintf(w, `{"status":"healthy","rules":%d,"categories":%d,"threshold":%d,"heuristics":%d}`,
-				total, len(blockRules), blockThreshold, hEnabled)
-		})
-		healthMux.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			snap := stats.snapshot()
-			// Merge cache stats
-			for k, v := range safeCache.Stats() {
-				snap[k] = v
-			}
-			json.NewEncoder(w).Encode(snap)
-		})
-		healthMux.HandleFunc("/reset", func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != "POST" {
-				http.Error(w, "POST only", 405)
-				return
-			}
-			stats.reset()
-			safeCache.Invalidate()
-			log.Println("WAF stats + safe cache reset via API")
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"status":"ok","message":"stats reset"}`))
-		})
+		healthMux.HandleFunc("/health", h.HealthHandler)
+		healthMux.HandleFunc("/stats", h.StatsHandler)
+		healthMux.HandleFunc("/reset", h.ResetHandler)
+		healthMux.HandleFunc("/categories", h.CategoriesHandler)
+		healthMux.HandleFunc("/categories/toggle", h.CategoriesToggleHandler)
 
-		// Security Packs — list categories with rule counts and enabled status
-		healthMux.HandleFunc("/categories", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-
-			type catInfo struct {
-				Name    string `json:"name"`
-				Rules   int    `json:"rules"`
-				Enabled bool   `json:"enabled"`
-			}
-			disabledCatMu.RLock()
-			var cats []catInfo
-			for _, cr := range blockRules {
-				cats = append(cats, catInfo{
-					Name:    cr.Category,
-					Rules:   len(cr.Rules),
-					Enabled: !disabledCats[cr.Category],
-				})
-			}
-			disabledCatMu.RUnlock()
-			json.NewEncoder(w).Encode(map[string]any{"status": "ok", "data": cats})
-		})
-
-		// Toggle a category on/off
-		healthMux.HandleFunc("/categories/toggle", func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != "POST" {
-				http.Error(w, "POST only", 405)
-				return
-			}
-			var req struct {
-				Category string `json:"category"`
-				Enabled  bool   `json:"enabled"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Category == "" {
-				http.Error(w, `{"error":"category required"}`, 400)
-				return
-			}
-			disabledCatMu.Lock()
-			if req.Enabled {
-				delete(disabledCats, req.Category)
-			} else {
-				disabledCats[req.Category] = true
-			}
-			disabledCatMu.Unlock()
-			safeCache.Invalidate() // Clear cache since rules changed
-			log.Printf("Category %s: enabled=%v\n", req.Category, req.Enabled)
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintf(w, `{"status":"ok","category":"%s","enabled":%v}`, req.Category, req.Enabled)
-		})
 		log.Printf("Starting health endpoint on :8080\n")
 		if err := http.ListenAndServe(":8080", healthMux); err != nil {
 			log.Printf("Health endpoint error: %v\n", err)
@@ -711,4 +631,96 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error starting server: %v\n", err)
 	}
+}
+
+// ── Management Handlers ─────────────────────────────────────────────────────
+
+type MgmtHandlers struct{}
+
+func (h *MgmtHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
+	total := 0
+	for _, cr := range blockRules {
+		total += len(cr.Rules)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	hEnabled := 0
+	for _, on := range []bool{heuristicCfg.EntropyThreshold, heuristicCfg.BeaconingDetection, heuristicCfg.PIICounter, heuristicCfg.DestinationSharding, heuristicCfg.HeaderMorphing, heuristicCfg.ProtocolGhosting, heuristicCfg.SequenceValidation} {
+		if on {
+			hEnabled++
+		}
+	}
+	fmt.Fprintf(w, `{"status":"healthy","rules":%d,"categories":%d,"threshold":%d,"heuristics":%d}`,
+		total, len(blockRules), blockThreshold, hEnabled)
+}
+
+func (h *MgmtHandlers) StatsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	snap := stats.snapshot()
+	// Merge cache stats
+	for k, v := range safeCache.Stats() {
+		snap[k] = v
+	}
+	json.NewEncoder(w).Encode(snap)
+}
+
+func (h *MgmtHandlers) ResetHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "POST only", 405)
+		return
+	}
+	stats.reset()
+	safeCache.Invalidate()
+	log.Println("WAF stats + safe cache reset via API")
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok","message":"stats reset"}`))
+}
+
+func (h *MgmtHandlers) CategoriesHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	type catInfo struct {
+		Name    string `json:"name"`
+		Rules   int    `json:"rules"`
+		Enabled bool   `json:"enabled"`
+	}
+	disabledCatMu.RLock()
+	var cats []catInfo
+	for _, cr := range blockRules {
+		cats = append(cats, catInfo{
+			Name:    cr.Category,
+			Rules:   len(cr.Rules),
+			Enabled: !disabledCats[cr.Category],
+		})
+	}
+	disabledCatMu.RUnlock()
+	json.NewEncoder(w).Encode(map[string]any{"status": "ok", "data": cats})
+}
+
+func (h *MgmtHandlers) CategoriesToggleHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "POST only", 405)
+		return
+	}
+	var req struct {
+		Category string `json:"category"`
+		Enabled  bool   `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Category == "" {
+		http.Error(w, `{"error":"category required"}`, 400)
+		return
+	}
+	disabledCatMu.Lock()
+	if req.Enabled {
+		delete(disabledCats, req.Category)
+	} else {
+		disabledCats[req.Category] = true
+	}
+	disabledCatMu.Unlock()
+	safeCache.Invalidate() // Clear cache since rules changed
+	log.Printf("Category %s: enabled=%v\n", req.Category, req.Enabled)
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"status":"ok","category":"%s","enabled":%v}`, req.Category, req.Enabled)
 }

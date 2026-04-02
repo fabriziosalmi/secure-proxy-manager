@@ -161,6 +161,10 @@ var homoglyphs = map[rune]rune{
 }
 
 func replaceHomoglyphs(s string) string {
+	// First handle multi-character homoglyphs
+	s = strings.ReplaceAll(s, "rn", "m")
+	s = strings.ReplaceAll(s, "vv", "w")
+
 	var b strings.Builder
 	for _, c := range s {
 		if replacement, ok := homoglyphs[c]; ok {

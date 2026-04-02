@@ -77,9 +77,11 @@ func semverGreater(a, b string) bool {
 	return false
 }
 
-func check(repo string) {
+func check(url string) {
 	client := &http.Client{Timeout: 10 * time.Second}
-	url := "https://api.github.com/repos/" + repo + "/releases/latest"
+	if !strings.Contains(url, "://") {
+		url = "https://api.github.com/repos/" + url + "/releases/latest"
+	}
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {

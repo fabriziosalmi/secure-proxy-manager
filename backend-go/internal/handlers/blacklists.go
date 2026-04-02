@@ -451,9 +451,14 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 
 	for _, country := range req.Countries {
 		cc := strings.ToLower(country)
-		urls := []string{
-			"https://www.ipdeny.com/ipblocks/data/countries/" + cc + ".zone",
-			"https://raw.githubusercontent.com/herrbischoff/country-ip-blocks/master/ipv4/" + cc + ".cidr",
+		urls := []string{}
+		if h.cfg.GeoIPURL != "" {
+			urls = append(urls, h.cfg.GeoIPURL+"?cc="+cc)
+		} else {
+			urls = append(urls,
+				"https://www.ipdeny.com/ipblocks/data/countries/"+cc+".zone",
+				"https://raw.githubusercontent.com/herrbischoff/country-ip-blocks/master/ipv4/"+cc+".cidr",
+			)
 		}
 		var content string
 		for _, u := range urls {

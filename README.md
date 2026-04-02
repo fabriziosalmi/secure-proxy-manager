@@ -3,7 +3,8 @@
 [![CI](https://github.com/fabriziosalmi/secure-proxy-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/fabriziosalmi/secure-proxy-manager/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/fabriziosalmi/secure-proxy-manager)](https://github.com/fabriziosalmi/secure-proxy-manager/releases)
-[![Go](https://img.shields.io/badge/backend-Go-00ADD8?logo=go)](backend-go/)
+[![Backend Coverage](https://img.shields.io/badge/backend--go--coverage-67%25-yellow.svg)](backend-go/)
+[![WAF Coverage](https://img.shields.io/badge/waf--go--coverage-70%25-brightgreen.svg)](waf-go/)
 [![Docker](https://img.shields.io/badge/deploy-Docker-2496ED?logo=docker)](docker-compose.yml)
 
 **Monitor and secure all outbound traffic from your network.** Block malicious sites, detect data leaks, catch malware callbacks — with a dashboard you'll actually enjoy using.

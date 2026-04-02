@@ -2,6 +2,7 @@ package workers
 
 import (
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -64,7 +65,10 @@ func CheckSquidCVEs() {
 		log.Debug().Msg("could not detect Squid version for CVE check")
 		return
 	}
+	runCheck(version)
+}
 
+func runCheck(version string) {
 	var matched []SquidCVE
 	for prefix, cves := range knownCVEs {
 		if strings.HasPrefix(version, prefix) {
@@ -102,16 +106,20 @@ func detectSquidVersion() string {
 	return ""
 }
 
+var versionRe = regexp.MustCompile(`Squid Cache: Version ([0-9.]+)`)
+
 func parseSquidVersion(output string) string {
-	// "Squid Cache: Version 5.9" or "Squid Cache: Version 6.10"
-	for _, line := range strings.Split(output, "\n") {
-		if strings.Contains(line, "Version") {
-			parts := strings.Fields(line)
-			for i, p := range parts {
-				if p == "Version" && i+1 < len(parts) {
-					return strings.TrimSpace(parts[i+1])
-				}
-			}
+	m := versionRe.FindStringSubmatch(output)
+	if len(m) > 1 {
+		return m[1]
+	}
+	// Fallback to old parsing if regex fails
+	if strings.Contains(output, "Version ") {
+		parts := strings.Split(output, "Version ")
+		if len(parts) > 1 {
+			v := strings.Split(parts[1], " ")[0]
+			v = strings.Split(v, "\n")[0]
+			return strings.TrimSpace(v)
 		}
 	}
 	return ""

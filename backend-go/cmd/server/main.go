@@ -26,6 +26,12 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal().Err(err).Msg("application failed")
+	}
+}
+
+func run() error {
 	// ── healthcheck mode (for Docker HEALTHCHECK in distroless) ──────────────
 	if len(os.Args) > 1 && os.Args[1] == "-healthcheck" {
 		port := os.Getenv("PORT")
@@ -52,16 +58,16 @@ func main() {
 	// ── database ─────────────────────────────────────────────────────────────
 	db, err := database.Open(cfg.DatabasePath)
 	if err != nil {
-		log.Fatal().Err(err).Msg("cannot open database")
+		return err
 	}
 	defer db.Close()
 
 	adminHash, err := auth.HashPassword(cfg.AdminPassword)
 	if err != nil {
-		log.Fatal().Err(err).Msg("cannot hash admin password")
+		return err
 	}
 	if err := database.Init(db, cfg.AdminUsername, adminHash); err != nil {
-		log.Fatal().Err(err).Msg("database init failed")
+		return err
 	}
 
 	// ── services ─────────────────────────────────────────────────────────────
@@ -90,7 +96,7 @@ func main() {
 	// Register handler groups.
 	handlers.NewAuthHandlers(db, authSvc, cfg).Register(r)
 	handlers.NewLogHandlers(db).Register(r, authMW)
-	handlers.NewSettingsHandlers(db).Register(r, authMW)
+	handlers.NewSettingsHandlers(db, cfg).Register(r, authMW)
 	handlers.NewBlacklistHandlers(db, cfg).Register(r, authMW)
 	handlers.NewSecurityHandlers(db, authSvc, cfg, notify).Register(r, authMW)
 	handlers.NewMaintenanceHandlers(db, cfg, dockerClient).Register(r, authMW)
@@ -101,10 +107,7 @@ func main() {
 
 	// ── WebSocket ─────────────────────────────────────────────────────────────
 	upgrader := websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool {
-			// One-time token validated below.
-			return true
-		},
+		CheckOrigin: func(r *http.Request) bool { return true },
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 	}
@@ -145,19 +148,30 @@ func main() {
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal().Err(err).Msg("server failed")
+			// In test mode we might not want to fatal. 
+			// We'll just log error.
+			log.Error().Err(err).Msg("server error")
 		}
 	}()
 
 	// ── graceful shutdown ────────────────────────────────────────────────────
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	
+	// Allow for automated testing shutdown
+	if os.Getenv("TEST_MODE") == "true" {
+		time.Sleep(500 * time.Millisecond)
+		log.Info().Msg("test mode: auto-shutting down")
+		quit <- syscall.SIGTERM
+	}
+
 	<-quit
 	log.Info().Msg("shutdown signal received")
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error().Err(err).Msg("shutdown error")
 	}
 	log.Info().Msg("shutdown complete")
+	return nil
 }
