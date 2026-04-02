@@ -47,10 +47,10 @@ func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 	proxyStatus := "error"
 	client := &http.Client{Timeout: 1 * time.Second}
-	resp, err := client.Get("http://" + h.cfg.ProxyHost + ":3128")
+	resp, err := client.Get(h.cfg.ProxyURL)
 	if err == nil {
 		resp.Body.Close()
-		if resp.StatusCode == 400 {
+		if resp.StatusCode == 400 || resp.StatusCode == 200 {
 			proxyStatus = "running"
 		}
 	}
@@ -213,37 +213,43 @@ func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) 
 		writeOK(w, []any{})
 		return
 	}
-	defer rows.Close()
 
-	blRows, _ := h.db.Query("SELECT domain FROM domain_blacklist")
-	var blExact []string
-	if blRows != nil {
-		defer blRows.Close()
-		for blRows.Next() {
-			var d string
-			blRows.Scan(&d) //nolint:errcheck
-			blExact = append(blExact, d)
-		}
+	type logEntry struct {
+		dest    string
+		reqs    int
+		blkReqs int
 	}
-	blSet := map[string]struct{}{}
-	var wildcards []string
-	for _, d := range blExact {
-		blSet[d] = struct{}{}
-		if strings.HasPrefix(d, "*.") {
-			wildcards = append(wildcards, d[2:])
-		}
-	}
-
-	var domains []map[string]any
+	var entries []logEntry
 	for rows.Next() {
 		var dest string
 		var reqs, blkReqs int
 		rows.Scan(&dest, &reqs, &blkReqs) //nolint:errcheck
-		_, inSet := blSet[dest]
-		isBlocked := inSet || blkReqs > 0
+		entries = append(entries, logEntry{dest, reqs, blkReqs})
+	}
+	rows.Close()
+
+	blRows, _ := h.db.Query("SELECT domain FROM domain_blacklist")
+	blSet := map[string]struct{}{}
+	var wildcards []string
+	if blRows != nil {
+		for blRows.Next() {
+			var d string
+			blRows.Scan(&d) //nolint:errcheck
+			blSet[d] = struct{}{}
+			if strings.HasPrefix(d, "*.") {
+				wildcards = append(wildcards, d[2:])
+			}
+		}
+		blRows.Close()
+	}
+
+	var domains []map[string]any
+	for _, e := range entries {
+		_, inSet := blSet[e.dest]
+		isBlocked := inSet || e.blkReqs > 0
 		if !isBlocked {
 			for _, w := range wildcards {
-				if strings.HasSuffix(dest, w) {
+				if strings.HasSuffix(e.dest, w) {
 					isBlocked = true
 					break
 				}
@@ -253,7 +259,7 @@ func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) 
 		if isBlocked {
 			status = "Blocked"
 		}
-		domains = append(domains, map[string]any{"domain_name": dest, "requests": reqs, "status": status})
+		domains = append(domains, map[string]any{"domain_name": e.dest, "requests": e.reqs, "status": status})
 	}
 	if domains == nil {
 		domains = []map[string]any{}
@@ -293,7 +299,7 @@ func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request
 
 	client := &http.Client{Timeout: 3 * time.Second}
 	wafReset := false
-	if resp, err := client.Post("http://waf:8080/reset", "application/json", nil); err == nil {
+	if resp, err := client.Post(h.cfg.WAFURL+"/reset", "application/json", nil); err == nil {
 		resp.Body.Close()
 		wafReset = resp.StatusCode == 200
 	}
@@ -319,13 +325,13 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	var topBlocked []map[string]any
 	rows, _ := h.db.Query(`SELECT destination, COUNT(*) AS cnt FROM proxy_logs WHERE (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%') AND timestamp >= datetime('now','-1 day') GROUP BY destination ORDER BY cnt DESC LIMIT 10`)
 	if rows != nil {
-		defer rows.Close()
 		for rows.Next() {
 			var dest string
 			var cnt int
 			rows.Scan(&dest, &cnt) //nolint:errcheck
 			topBlocked = append(topBlocked, map[string]any{"dest": dest, "count": cnt})
 		}
+		rows.Close()
 	}
 	if topBlocked == nil {
 		topBlocked = []map[string]any{}
@@ -341,13 +347,13 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	var topClients []map[string]any
 	cRows, _ := h.db.Query(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE timestamp >= datetime('now','-1 day') AND source_ip IS NOT NULL AND source_ip != '' GROUP BY source_ip ORDER BY cnt DESC LIMIT 10`)
 	if cRows != nil {
-		defer cRows.Close()
 		for cRows.Next() {
 			var ip string
 			var cnt int
 			cRows.Scan(&ip, &cnt) //nolint:errcheck
 			topClients = append(topClients, map[string]any{"ip": ip, "count": cnt})
 		}
+		cRows.Close()
 	}
 	if topClients == nil { topClients = []map[string]any{} }
 	result["top_clients"] = topClients
@@ -356,13 +362,13 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	var threatCats []map[string]any
 	tRows, _ := h.db.Query(`SELECT CASE WHEN destination LIKE '%.exe%' OR destination LIKE '%.dll%' THEN 'Malware' WHEN status LIKE '%DENIED%' AND destination LIKE '%:%' THEN 'Direct IP' WHEN status LIKE '%403%' THEN 'WAF Block' ELSE 'Policy' END as category, COUNT(*) as cnt FROM proxy_logs WHERE (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%') AND timestamp >= datetime('now','-7 days') GROUP BY category ORDER BY cnt DESC`)
 	if tRows != nil {
-		defer tRows.Close()
 		for tRows.Next() {
 			var cat string
 			var cnt int
 			tRows.Scan(&cat, &cnt) //nolint:errcheck
 			threatCats = append(threatCats, map[string]any{"category": cat, "count": cnt})
 		}
+		tRows.Close()
 	}
 	if threatCats == nil { threatCats = []map[string]any{} }
 	result["threat_categories"] = threatCats
@@ -371,7 +377,6 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	var recentBlocks []map[string]any
 	rRows, _ := h.db.Query(`SELECT timestamp, source_ip, method, destination, status FROM proxy_logs WHERE status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%' ORDER BY id DESC LIMIT 10`)
 	if rRows != nil {
-		defer rRows.Close()
 		for rRows.Next() {
 			var ts, srcIP, method, dest, status string
 			rRows.Scan(&ts, &srcIP, &method, &dest, &status) //nolint:errcheck
@@ -380,13 +385,14 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 				"destination": dest, "status": status,
 			})
 		}
+		rRows.Close()
 	}
 	if recentBlocks == nil { recentBlocks = []map[string]any{} }
 	result["recent_blocks"] = recentBlocks
 
 	// WAF stats
-	client := &http.Client{Timeout: 2 * time.Second}
-	if resp, err := client.Get("http://waf:8080/stats"); err == nil {
+	wafClient := &http.Client{Timeout: 2 * time.Second}
+	if resp, err := wafClient.Get(h.cfg.WAFURL + "/stats"); err == nil {
 		var wafData any
 		json.NewDecoder(resp.Body).Decode(&wafData) //nolint:errcheck
 		resp.Body.Close()
@@ -614,7 +620,7 @@ func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
 // WAFCategories proxies GET /categories from the WAF container.
 func (h *AnalyticsHandlers) WAFCategories(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get("http://waf:8080/categories")
+	resp, err := client.Get(h.cfg.WAFURL + "/categories")
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "WAF unreachable")
 		return
@@ -628,7 +634,7 @@ func (h *AnalyticsHandlers) WAFCategories(w http.ResponseWriter, r *http.Request
 // WAFCategoryToggle proxies POST /categories/toggle to WAF.
 func (h *AnalyticsHandlers) WAFCategoryToggle(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Post("http://waf:8080/categories/toggle", "application/json", r.Body)
+	resp, err := client.Post(h.cfg.WAFURL+"/categories/toggle", "application/json", r.Body)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "WAF unreachable")
 		return

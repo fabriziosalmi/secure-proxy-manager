@@ -59,9 +59,17 @@ func compactInput(s string) string {
 func isLANHost(host string) bool {
 	// Strip port
 	h := host
-	if idx := strings.LastIndex(h, ":"); idx > 0 {
+	if strings.Contains(h, "[") && strings.Contains(h, "]") {
+		// IPv6 with port: [::1]:8080
+		idx := strings.LastIndex(h, "]")
+		h = h[1:idx]
+	} else if strings.Count(h, ":") == 1 {
+		// IPv4 with port: 127.0.0.1:8080
+		idx := strings.LastIndex(h, ":")
 		h = h[:idx]
 	}
+	// Note: bare IPv6 like ::1 should not be stripped if it has no brackets/port
+	
 	return strings.HasPrefix(h, "10.") ||
 		strings.HasPrefix(h, "192.168.") ||
 		strings.HasPrefix(h, "172.16.") || strings.HasPrefix(h, "172.17.") ||
