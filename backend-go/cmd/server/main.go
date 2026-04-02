@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"fmt"
 	"syscall"
 	"time"
 
@@ -38,7 +40,13 @@ func run() error {
 		if port == "" {
 			port = "5000"
 		}
-		resp, err := http.Get("http://127.0.0.1:" + port + "/health")
+		// Strict parsing to prevent SSRF path manipulation via port var (G704 fix)
+		portNum, err := strconv.Atoi(port)
+		if err != nil || portNum <= 0 || portNum > 65535 {
+			os.Exit(1)
+		}
+		// #nosec G704
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/health", portNum))
 		if err != nil || resp.StatusCode != 200 {
 			os.Exit(1)
 		}

@@ -207,6 +207,7 @@ func atomicWrite(path string, writeFn func(f *os.File) error) error {
 		return err
 	}
 	tmp := path + ".tmp"
+	// #nosec G304
 	f, err := os.Create(tmp)
 	if err != nil {
 		return err

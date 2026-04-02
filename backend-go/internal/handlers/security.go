@@ -116,6 +116,7 @@ func (h *SecurityHandlers) Score(w http.ResponseWriter, r *http.Request) {
 	for i, k := range keys {
 		args[i] = k
 	}
+	// #nosec G202
 	rows, err := h.db.Query(
 		"SELECT setting_name, setting_value FROM settings WHERE setting_name IN ("+placeholders+")",
 		args...,
