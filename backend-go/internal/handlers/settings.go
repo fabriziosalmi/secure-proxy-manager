@@ -96,7 +96,7 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 	if v, ok := body["ssl_bump_enabled"]; ok {
 		toggleFile := filepath.Join(h.cfg.ConfigDir, "ssl_bump_enabled")
 		if v == "true" {
-			os.WriteFile(toggleFile, []byte("1"), 0644) //nolint:errcheck
+			os.WriteFile(toggleFile, []byte("1"), 0o600) //nolint:errcheck
 		} else {
 			os.Remove(toggleFile) //nolint:errcheck
 		}
