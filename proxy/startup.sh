@@ -259,6 +259,12 @@ fi
 
 ensure_ip_blocking_rules /etc/squid/squid.conf
 
+# ── GUI IP Whitelist Override ──────────────────────────────────────────────
+if [ -n "$GUI_IP_WHITELIST" ]; then
+    echo "Adding GUI IP whitelist for $GUI_IP_WHITELIST"
+    sed -i "/^# Access rules/i acl gui_override dst $GUI_IP_WHITELIST\nhttp_access allow gui_override\nhttp_access allow CONNECT gui_override\n" /etc/squid/squid.conf 2>/dev/null || true
+fi
+
 # ── SSL Bump (HTTPS Inspection) — conditional on toggle file ─────────────
 
 if [ -f /config/ssl_bump_enabled ]; then

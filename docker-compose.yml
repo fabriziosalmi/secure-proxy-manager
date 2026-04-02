@@ -129,6 +129,8 @@ services:
   proxy:
     build: ./proxy
     container_name: secure-proxy-manager-proxy
+    environment:
+      - GUI_IP_WHITELIST=${GUI_IP_WHITELIST:-}
     ports:
       - "3128:3128"
     volumes:
