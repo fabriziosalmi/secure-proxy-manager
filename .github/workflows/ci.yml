@@ -25,6 +25,8 @@ jobs:
         working-directory: ui
       - run: npm run build
         working-directory: ui
+      - run: npm test
+        working-directory: ui
 
   # ── 2. Go backend build ────────────────────────────────────────────────
   build-backend:
