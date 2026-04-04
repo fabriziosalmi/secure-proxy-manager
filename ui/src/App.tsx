@@ -1,4 +1,4 @@
-import { Component, useState, useEffect } from 'react';
+import { Component, Suspense, lazy, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/react-query';
 import toast, { Toaster } from 'react-hot-toast';
@@ -23,14 +23,16 @@ const queryClient = new QueryClient({
 });
 import { Layout } from './components/layout/Layout';
 import { GlobalSearch } from './components/GlobalSearch';
-import { Dashboard } from './pages/Dashboard';
-import { Blacklists } from './pages/Blacklists';
-import { Logs } from './pages/Logs';
-import { Settings } from './pages/Settings';
-import { ThreatIntel } from './pages/ThreatIntel';
 import { Login } from './pages/Login';
 import { SetupWizard } from './components/SetupWizard';
 import { api } from './lib/api';
+
+// Lazy-loaded page components for code splitting
+const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Blacklists = lazy(() => import('./pages/Blacklists').then(m => ({ default: m.Blacklists })));
+const Logs = lazy(() => import('./pages/Logs').then(m => ({ default: m.Logs })));
+const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const ThreatIntel = lazy(() => import('./pages/ThreatIntel').then(m => ({ default: m.ThreatIntel })));
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
   constructor(props: { children: React.ReactNode }) {
@@ -60,6 +62,14 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Er
     }
     return this.props.children;
   }
+}
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+    </div>
+  );
 }
 
 function NotFound() {
@@ -142,16 +152,18 @@ function App() {
         <BrowserRouter>
           <GlobalSearch />
           <ErrorBoundary>
-            <Routes>
-              <Route path="/" element={<Layout onLogout={handleLogout} />}>
-                <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
-                <Route path="blacklists" element={<ErrorBoundary><Blacklists /></ErrorBoundary>} />
-                <Route path="threats" element={<ErrorBoundary><ThreatIntel /></ErrorBoundary>} />
-                <Route path="logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
-                <Route path="settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
-                <Route path="*" element={<NotFound />} />
-              </Route>
-            </Routes>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/" element={<Layout onLogout={handleLogout} />}>
+                  <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+                  <Route path="blacklists" element={<ErrorBoundary><Blacklists /></ErrorBoundary>} />
+                  <Route path="threats" element={<ErrorBoundary><ThreatIntel /></ErrorBoundary>} />
+                  <Route path="logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
+                  <Route path="settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
+                  <Route path="*" element={<NotFound />} />
+                </Route>
+              </Routes>
+            </Suspense>
           </ErrorBoundary>
         </BrowserRouter>
       </QueryClientProvider>
