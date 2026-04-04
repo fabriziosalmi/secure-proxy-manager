@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -35,20 +36,30 @@ func GetUpdateInfo() UpdateInfo {
 }
 
 // StartUpdateChecker checks GitHub releases every 6h.
-func StartUpdateChecker(repo string) {
+func StartUpdateChecker(ctx context.Context, repo string) {
 	if repo == "" {
 		repo = "fabriziosalmi/secure-proxy-manager"
 	}
 
 	go func() {
 		// First check after 30s (let the system boot)
-		time.Sleep(30 * time.Second)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(30 * time.Second):
+		}
 		check(repo)
 
 		ticker := time.NewTicker(6 * time.Hour)
 		defer ticker.Stop()
-		for range ticker.C {
-			check(repo)
+		for {
+			select {
+			case <-ctx.Done():
+				log.Info().Msg("update checker stopping")
+				return
+			case <-ticker.C:
+				check(repo)
+			}
 		}
 	}()
 

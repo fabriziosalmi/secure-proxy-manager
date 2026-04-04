@@ -16,7 +16,7 @@ func TestSecurityHandlers_ReceiveAlert(t *testing.T) {
 	db, _, _, cleanup := setupTestDB(t)
 	defer cleanup()
 	
-	notify := NewNotifyQueue(db)
+	notify := NewNotifyQueue(db, "0000000000000000000000000000000000000000000000000000000000000000")
 	h := NewSecurityHandlers(db, nil, nil, notify)
 
 	alert := models.InternalAlert{

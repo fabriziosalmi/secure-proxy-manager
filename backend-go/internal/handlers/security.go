@@ -14,6 +14,7 @@ import (
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/auth"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
+	appcrypto "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/crypto"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
@@ -22,11 +23,11 @@ import (
 type NotifyQueue chan map[string]any
 
 // NewNotifyQueue creates a queue and starts its worker goroutine.
-func NewNotifyQueue(db *sql.DB) NotifyQueue {
+func NewNotifyQueue(db *sql.DB, encKey string) NotifyQueue {
 	q := make(NotifyQueue, 256)
 	go func() {
 		for event := range q {
-			sendSecurityNotification(db, event)
+			sendSecurityNotification(db, encKey, event)
 		}
 	}()
 	return q
@@ -160,7 +161,7 @@ func (h *SecurityHandlers) Score(w http.ResponseWriter, r *http.Request) {
 
 // ── notification dispatcher ───────────────────────────────────────────────────
 
-func sendSecurityNotification(db *sql.DB, event map[string]any) {
+func sendSecurityNotification(db *sql.DB, encKey string, event map[string]any) {
 	rows, err := db.Query(
 		"SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?,?,?,?,?,?,?,?,?)",
 		"enable_notifications", "webhook_url", "gotify_url", "gotify_token",
@@ -175,6 +176,12 @@ func sendSecurityNotification(db *sql.DB, event map[string]any) {
 	for rows.Next() {
 		var k, v string
 		rows.Scan(&k, &v) //nolint:errcheck
+		// Decrypt sensitive values transparently.
+		if appcrypto.IsSensitive(k) {
+			if dec, err := appcrypto.Decrypt(v, encKey); err == nil {
+				v = dec
+			}
+		}
 		settings[k] = v
 	}
 	if settings["enable_notifications"] != "true" {
@@ -203,18 +210,29 @@ func sendSecurityNotification(db *sql.DB, event map[string]any) {
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	// safePost sends a POST and closes the body, ignoring all errors (fire-and-forget).
+	// safePost sends a POST with up to 3 retries and exponential backoff.
 	safePost := func(url string, body []byte, headers map[string]string) {
-		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
-		if err != nil {
-			return
+		const maxRetries = 3
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+			if err != nil {
+				return
+			}
+			for k, v := range headers {
+				req.Header.Set(k, v)
+			}
+			resp, err := client.Do(req)
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode < 500 {
+					return // success or client error — don't retry
+				}
+			}
+			if attempt < maxRetries-1 {
+				time.Sleep(time.Duration(1<<uint(attempt)) * time.Second) // 1s, 2s, 4s
+			}
 		}
-		for k, v := range headers {
-			req.Header.Set(k, v)
-		}
-		if resp, err := client.Do(req); err == nil {
-			resp.Body.Close()
-		}
+		log.Warn().Str("url", url).Msg("notification delivery failed after retries")
 	}
 
 	// 1. Custom webhook.
