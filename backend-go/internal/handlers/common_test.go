@@ -46,7 +46,7 @@ func setupTestDB(t *testing.T) (*sql.DB, *auth.Service, *config.Config, func()) 
 		ProxyURL:          "http://localhost:3128",
 	}
 
-	svc := auth.NewService(cfg)
+	svc := auth.NewService(cfg, db)
 
 	cleanup := func() {
 		db.Close()

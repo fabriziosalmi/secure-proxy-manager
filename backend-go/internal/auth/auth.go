@@ -4,7 +4,9 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -15,14 +17,22 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 )
 
+// tokenHash returns a hex-encoded SHA-256 hash of a JWT string.
+func tokenHash(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
+}
+
 // Service handles all authentication concerns.
 type Service struct {
 	cfg *config.Config
+	db  *sql.DB // for persisting JWT blacklist across restarts
 
 	jwtBlacklistMu sync.RWMutex
 	jwtBlacklist   map[string]time.Time
@@ -40,15 +50,56 @@ type wsEntry struct {
 }
 
 // NewService creates a ready-to-use auth Service.
-func NewService(cfg *config.Config) *Service {
+// If db is non-nil, the JWT blacklist is persisted to SQLite for restart survival.
+func NewService(cfg *config.Config, db *sql.DB) *Service {
 	svc := &Service{
 		cfg:          cfg,
+		db:           db,
 		jwtBlacklist: make(map[string]time.Time),
 		attempts:     make(map[string][]time.Time),
 		wsTokens:     make(map[string]wsEntry),
 	}
+	svc.initBlacklistTable()
+	svc.loadBlacklistFromDB()
 	go svc.cleanupLoop()
 	return svc
+}
+
+// initBlacklistTable creates the jwt_blacklist table if it doesn't exist.
+func (s *Service) initBlacklistTable() {
+	if s.db == nil {
+		return
+	}
+	_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS jwt_blacklist (
+		token_hash TEXT PRIMARY KEY,
+		expires_at TEXT NOT NULL
+	)`)
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to create jwt_blacklist table")
+	}
+}
+
+// loadBlacklistFromDB restores revoked tokens from the database on startup.
+func (s *Service) loadBlacklistFromDB() {
+	if s.db == nil {
+		return
+	}
+	rows, err := s.db.Query("SELECT token_hash, expires_at FROM jwt_blacklist WHERE expires_at > datetime('now')")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	s.jwtBlacklistMu.Lock()
+	defer s.jwtBlacklistMu.Unlock()
+	for rows.Next() {
+		var hash, expiresAt string
+		if rows.Scan(&hash, &expiresAt) == nil {
+			if t, err := time.Parse(time.RFC3339, expiresAt); err == nil {
+				s.jwtBlacklist[hash] = t
+			}
+		}
+	}
+	log.Info().Int("count", len(s.jwtBlacklist)).Msg("JWT blacklist loaded from DB")
 }
 
 // HashPassword produces a bcrypt hash of plaintext.
@@ -70,8 +121,9 @@ func (s *Service) IssueJWT(username string) (string, error) {
 
 // ValidateJWT parses and validates a signed JWT string.
 func (s *Service) ValidateJWT(tokenStr string) (string, error) {
+	h := tokenHash(tokenStr)
 	s.jwtBlacklistMu.RLock()
-	if expiry, revoked := s.jwtBlacklist[tokenStr]; revoked && time.Now().Before(expiry) {
+	if expiry, revoked := s.jwtBlacklist[h]; revoked && time.Now().Before(expiry) {
 		s.jwtBlacklistMu.RUnlock()
 		return "", errors.New("token has been revoked")
 	}
@@ -97,7 +149,7 @@ func (s *Service) ValidateJWT(tokenStr string) (string, error) {
 	return username, nil
 }
 
-// RevokeJWT adds a token to the blacklist.
+// RevokeJWT adds a token to the blacklist (in memory + DB).
 func (s *Service) RevokeJWT(tokenStr string) {
 	parser := jwt.NewParser()
 	token, _, _ := parser.ParseUnverified(tokenStr, jwt.MapClaims{})
@@ -109,9 +161,18 @@ func (s *Service) RevokeJWT(tokenStr string) {
 			}
 		}
 	}
+	h := tokenHash(tokenStr)
 	s.jwtBlacklistMu.Lock()
-	s.jwtBlacklist[tokenStr] = exp
+	s.jwtBlacklist[h] = exp
 	s.jwtBlacklistMu.Unlock()
+
+	// Persist to DB for restart survival.
+	if s.db != nil {
+		s.db.Exec( //nolint:errcheck
+			"INSERT OR REPLACE INTO jwt_blacklist(token_hash, expires_at) VALUES(?,?)",
+			h, exp.Format(time.RFC3339),
+		)
+	}
 }
 
 // Authenticate extracts and validates credentials from r.
@@ -146,15 +207,17 @@ func (s *Service) verifyPassword(username, password string) error {
 	if subtle.ConstantTimeCompare([]byte(username), []byte(s.cfg.AdminUsername)) != 1 {
 		return errors.New("unknown user")
 	}
-	// Plaintext env-var password (legacy / werkzeug fallback).
-	if subtle.ConstantTimeCompare([]byte(password), []byte(s.cfg.AdminPassword)) == 1 {
-		return nil
-	}
-	// bcrypt stored hash.
+	// Primary: bcrypt hash stored in DB (set at startup or after password change).
 	if s.cfg.AdminPasswordHash != "" {
 		if bcrypt.CompareHashAndPassword([]byte(s.cfg.AdminPasswordHash), []byte(password)) == nil {
 			return nil
 		}
+		return errors.New("password mismatch")
+	}
+	// Fallback only when no bcrypt hash exists yet (first boot before DB seed completes).
+	// Uses constant-time comparison against the env-var password.
+	if subtle.ConstantTimeCompare([]byte(password), []byte(s.cfg.AdminPassword)) == 1 {
+		return nil
 	}
 	return errors.New("password mismatch")
 }
@@ -309,6 +372,11 @@ func (s *Service) cleanupLoop() {
 			}
 		}
 		s.jwtBlacklistMu.Unlock()
+
+		// Purge expired entries from DB.
+		if s.db != nil {
+			s.db.Exec("DELETE FROM jwt_blacklist WHERE expires_at <= datetime('now')") //nolint:errcheck
+		}
 
 		s.wsTokenMu.Lock()
 		for k, e := range s.wsTokens {

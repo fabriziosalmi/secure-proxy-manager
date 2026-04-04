@@ -107,11 +107,21 @@ docker compose up -d --build
 - **DoH Blocker**: Blocks 14 DNS-over-HTTPS providers to prevent blackhole bypass.
 - **GDPR Mode**: Anonymize client IPs in logs (last octet → x) for EU compliance.
 
+### Security Hardening (v3.1)
+- **Encryption at Rest**: Sensitive settings (webhook URLs, API tokens) encrypted with AES-256-GCM in the database.
+- **Persistent JWT Blacklist**: Revoked tokens survive container restarts via SQLite persistence.
+- **Global Rate Limiting**: Token bucket per-IP (20 req/s, burst 60) on all endpoints.
+- **Circuit Breaker**: WAF calls protected against cascading failures (auto-recovery).
+- **Notification Retry**: Failed deliveries retry 3x with exponential backoff.
+- **Tightened CSP**: Removed `unsafe-eval`, restricted `connect-src` to self + WebSocket.
+- **pprof Profiling**: Auth-protected `/debug/pprof/*` endpoints for production debugging.
+- **CI Security Scanning**: gosec + npm audit + backend test coverage threshold in GitHub Actions.
+
 ### Operations
 - **One-Click Deploy**: `curl | bash` installer + cloud-init YAML for Hetzner/DO/Linode.
 - **API Documentation**: `GET /api/docs` — 60+ endpoints with descriptions.
 - **E2E Test Suite**: 104 checks across 3 parts — `./tests/e2e.sh host user pass`.
-- **Notifications**: Telegram, Discord, Gotify, ntfy.sh, MS Teams, custom webhook.
+- **Notifications**: Telegram, Discord, Gotify, ntfy.sh, MS Teams, custom webhook — with retry and backoff.
 - **Protocol Hardening**: Method whitelist, header stripping, HSTS, max header size.
 - **Audit Trail**: Who changed what, when — `/api/audit-log`.
 - **Blocklists**: 16 popular sources, geo-blocking, paginated UI with search.
@@ -122,7 +132,7 @@ docker compose up -d --build
 The project employs a microservices architecture:
 
 1. **Frontend (React 19/Vite/Nginx)**: SPA with @tanstack/react-query, Recharts dashboards, paginated blacklists, Threat Intel page with Shadow IT/file types/domain cloud, global search (⌘K), mobile responsive.
-2. **Backend (Go)**: Single 16MB binary (chi router, zerolog, modernc/sqlite). 70+ endpoints, WebSocket log streaming, JWT auth + blacklist, audit logging, SSRF-safe HTTP client with DNS pinning.
+2. **Backend (Go)**: Single 16MB binary (chi router, zerolog, modernc/sqlite). 70+ endpoints, WebSocket log streaming, JWT auth + persistent blacklist, AES-256-GCM encrypted settings, global rate limiting, circuit breaker for WAF calls, pprof profiling, audit logging, SSRF-safe HTTP client with DNS pinning.
 3. **Proxy Engine (Squid 5.9)**: Caching/filtering with ICAP integration, custom branded block pages, IP ACL blocking, protocol hardening (method whitelist, header stripping, HSTS).
 4. **WAF Engine (Go ICAP)**: 166 regex rules + 7 behavioral heuristics + 3 ML-lite checks (DGA, typosquatting, safe URL cache). Anomaly scoring, Shannon entropy, dual-scan (raw + normalized).
 5. **DNS Blackhole (dnsmasq)**: Internal DNS resolver that sinkhole-blocks 87K+ blacklisted domains at L3.
@@ -139,14 +149,15 @@ secure-proxy-manager/
 ├── backend-go/               # Go backend (v2.0 — replaces Python)
 │   ├── cmd/server/main.go    # Entry point, router, graceful shutdown
 │   └── internal/
-│       ├── auth/             # JWT + Basic Auth, rate limiting, token blacklist
-│       ├── config/           # Environment-based configuration
+│       ├── auth/             # JWT + Basic Auth, rate limiting, persistent token blacklist
+│       ├── config/           # Environment-based configuration + key management
+│       ├── crypto/           # AES-256-GCM encryption for sensitive settings
 │       ├── database/         # SQLite WAL, schema, migrations, atomic exports
 │       ├── docker/           # Docker API client (Squid/dnsmasq signaling)
 │       ├── handlers/         # HTTP handlers (auth, blacklists, analytics, etc.)
-│       ├── middleware/       # CORS, RequestID, MaxBodySize, SecurityHeaders
+│       ├── middleware/       # CORS, rate limiting, circuit breaker, security headers
 │       ├── websocket/        # WebSocket hub with client lifecycle
-│       └── workers/          # Background: log tailing, retention, auto-refresh
+│       └── workers/          # Background: log tailing, retention, auto-refresh (context-aware)
 ├── backend/                  # Python backend (legacy, kept for reference)
 ├── ui/                       # React 19 frontend
 │   └── src/
@@ -285,7 +296,11 @@ docker compose up -d --build
 | Domain Blacklisting | Block specific domains (wildcard support) | Web UI > Blacklists > Domains |
 | Content Filtering | Block specific file types | Web UI > Settings > Filtering |
 | HTTPS Filtering | Inspect and filter HTTPS traffic | Web UI > Settings > Security |
-| Rate Limiting | Prevent brute force attacks | Auto-configured |
+| Global Rate Limiting | Token bucket per-IP (20 req/s, burst 60) | Auto-configured |
+| Encryption at Rest | Sensitive tokens/URLs encrypted with AES-256-GCM | Auto-configured |
+| JWT Blacklist | Persistent across restarts via SQLite | Auto-configured |
+| Circuit Breaker | WAF calls protected against cascading failures | Auto-configured |
+| Security Scanning | gosec + npm audit in CI pipeline | `.github/workflows/ci.yml` |
 
 ### Performance Tuning
 

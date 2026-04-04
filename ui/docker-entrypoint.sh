@@ -80,12 +80,12 @@ elif [ -f "$CERT_FILE" ] && [ -f "$KEY_FILE" ]; then
 else
     echo "[entrypoint] Generating self-signed TLS certificate..."
     apk add --no-cache openssl >/dev/null 2>&1 || true
-    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout "$KEY_FILE" -out "$CERT_FILE" \
         -subj "/C=US/ST=Local/L=Local/O=SecureProxyManager/CN=proxy-manager" \
         -addext "subjectAltName=DNS:localhost,DNS:proxy-manager,IP:127.0.0.1" \
         2>/dev/null
-    echo "[entrypoint] Self-signed certificate generated (valid 10 years)"
+    echo "[entrypoint] Self-signed certificate generated (valid 1 year)"
 fi
 
 # Substitute env vars into the nginx template

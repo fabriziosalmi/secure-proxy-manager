@@ -2,6 +2,7 @@
 package workers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"io"
@@ -17,11 +18,18 @@ import (
 
 // StartLogTailer tails the Squid access log and inserts rows into proxy_logs.
 // It also broadcasts a JSON representation to the WebSocket hub.
-func StartLogTailer(db *sql.DB, logPath string, hub *websocket.Hub) {
+func StartLogTailer(ctx context.Context, db *sql.DB, logPath string, hub *websocket.Hub) {
 	go func() {
 		var offset int64
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
 		for {
-			time.Sleep(500 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				log.Info().Msg("log tailer stopping")
+				return
+			case <-ticker.C:
+			}
 			// #nosec G304
 			f, err := os.Open(logPath)
 			if err != nil {

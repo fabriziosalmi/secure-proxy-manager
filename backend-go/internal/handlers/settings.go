@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
+	appcrypto "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/crypto"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
 )
 
 type SettingsHandlers struct {
@@ -43,6 +45,14 @@ func (h *SettingsHandlers) GetAll(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var k, v string
 		rows.Scan(&k, &v) //nolint:errcheck
+		// Decrypt sensitive settings transparently.
+		if appcrypto.IsSensitive(k) {
+			if dec, err := appcrypto.Decrypt(v, h.cfg.EncryptionKey); err == nil {
+				v = dec
+			} else {
+				log.Warn().Str("key", k).Err(err).Msg("failed to decrypt setting, returning raw")
+			}
+		}
 		settings = append(settings, settingRow{Name: k, Value: v})
 	}
 	if settings == nil {
@@ -64,9 +74,17 @@ func (h *SettingsHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "value too long")
 		return
 	}
+	val := body.Value
+	if appcrypto.IsSensitive(name) && val != "" {
+		if enc, err := appcrypto.Encrypt(val, h.cfg.EncryptionKey); err == nil {
+			val = enc
+		} else {
+			log.Warn().Str("key", name).Err(err).Msg("failed to encrypt setting")
+		}
+	}
 	_, err := h.db.Exec(
 		"INSERT INTO settings(setting_name,setting_value) VALUES(?,?) ON CONFLICT(setting_name) DO UPDATE SET setting_value=excluded.setting_value",
-		name, body.Value,
+		name, val,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -86,9 +104,15 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		if len(k) > 100 || len(v) > 10000 {
 			continue
 		}
+		val := v
+		if appcrypto.IsSensitive(k) && val != "" {
+			if enc, err := appcrypto.Encrypt(val, h.cfg.EncryptionKey); err == nil {
+				val = enc
+			}
+		}
 		h.db.Exec( //nolint:errcheck
 			"INSERT INTO settings(setting_name,setting_value) VALUES(?,?) ON CONFLICT(setting_name) DO UPDATE SET setting_value=excluded.setting_value",
-			k, v,
+			k, val,
 		)
 	}
 

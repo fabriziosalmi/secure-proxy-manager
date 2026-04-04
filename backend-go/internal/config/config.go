@@ -38,6 +38,9 @@ type Config struct {
 	WAFURL       string
 	ProxyURL     string
 	GeoIPURL     string
+
+	// Encryption key for sensitive settings (hex-encoded 32 bytes)
+	EncryptionKey string
 }
 
 // Load reads environment variables and returns a validated Config.
@@ -86,6 +89,7 @@ func Load() *Config {
 		WAFURL:            envOrDefault("WAF_URL", "http://waf:8080"),
 		ProxyURL:          envOrDefault("PROXY_URL", "http://proxy:3128"),
 		GeoIPURL:          envOrDefault("GEOIP_URL", ""), // Empty means use defaults
+		EncryptionKey:     loadOrGenerateEncKey(),
 	}
 	return cfg
 }
@@ -103,6 +107,27 @@ func envOrDefault(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// loadOrGenerateEncKey reads the encryption key from env → file → auto-generate.
+func loadOrGenerateEncKey() string {
+	if s := os.Getenv("ENCRYPTION_KEY"); s != "" && len(s) == 64 {
+		return s
+	}
+	const encFile = "/data/.enc_key"
+	data, err := os.ReadFile(encFile)
+	if err == nil && len(strings.TrimSpace(string(data))) == 64 {
+		return strings.TrimSpace(string(data))
+	}
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		log.Fatal().Err(err).Msg("cannot generate encryption key")
+	}
+	key := hex.EncodeToString(b)
+	if err := os.MkdirAll("/data", 0o700); err == nil {
+		os.WriteFile(encFile, []byte(key), 0o600) //nolint:errcheck
+	}
+	return key
 }
 
 // loadOrGenerateSecret reads the JWT secret from env → file → auto-generate.

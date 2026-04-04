@@ -103,7 +103,7 @@ func TestAuth(t *testing.T) {
 		MaxAttempts:     5,
 		RateLimitWindow: 1 * time.Minute,
 	}
-	authSvc := auth.NewService(cfg)
+	authSvc := auth.NewService(cfg, nil)
 	handler := Auth(authSvc)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))

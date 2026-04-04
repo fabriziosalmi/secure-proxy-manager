@@ -14,7 +14,11 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
+	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 )
+
+// wafBreaker protects against cascading failures when the WAF service is down.
+var wafBreaker = appMW.NewCircuitBreaker(3, 30*time.Second)
 
 type AnalyticsHandlers struct {
 	db  *sql.DB
@@ -276,13 +280,19 @@ func (h *AnalyticsHandlers) CacheStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {
+	if err := wafBreaker.Allow(); err != nil {
+		writeError(w, http.StatusServiceUnavailable, "WAF service circuit open — retrying soon")
+		return
+	}
 	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get("http://waf:8080/stats")
+	resp, err := client.Get(h.cfg.WAFURL + "/stats")
 	if err != nil {
+		wafBreaker.RecordFailure()
 		writeError(w, http.StatusBadGateway, "WAF service unreachable")
 		return
 	}
 	defer resp.Body.Close()
+	wafBreaker.RecordSuccess()
 	var data any
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		writeError(w, http.StatusBadGateway, "invalid WAF stats response")
@@ -505,7 +515,7 @@ func (h *AnalyticsHandlers) UserAgents(w http.ResponseWriter, r *http.Request) {
 		SELECT method, COUNT(*) AS cnt FROM proxy_logs
 		WHERE method IS NOT NULL AND method != '' AND method != '-'
 		AND timestamp >= datetime('now', '-7 days')
-		GROUP BY method ORDER BY cnt DESC`)
+		GROUP BY method ORDER BY cnt DESC LIMIT 50`)
 	var methods []map[string]any
 	if err == nil {
 		defer rows.Close()
@@ -525,7 +535,7 @@ func (h *AnalyticsHandlers) UserAgents(w http.ResponseWriter, r *http.Request) {
 var extRe = regexp.MustCompile(`\.([a-zA-Z0-9]{1,10})(?:\?|$|#)`)
 
 func (h *AnalyticsHandlers) FileExtensions(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.db.Query(`SELECT destination FROM proxy_logs WHERE destination IS NOT NULL AND destination != '' AND timestamp >= datetime('now', '-7 days')`)
+	rows, err := h.db.Query(`SELECT destination FROM proxy_logs WHERE destination IS NOT NULL AND destination != '' AND timestamp >= datetime('now', '-7 days') LIMIT 50000`)
 	skipTLDs := map[string]struct{}{"com": {}, "net": {}, "org": {}, "io": {}, "dev": {}, "app": {}, "me": {}, "co": {}}
 	extCounts := map[string]int{}
 	if err == nil {
@@ -620,12 +630,18 @@ func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
 
 // WAFCategories proxies GET /categories from the WAF container.
 func (h *AnalyticsHandlers) WAFCategories(w http.ResponseWriter, r *http.Request) {
+	if err := wafBreaker.Allow(); err != nil {
+		writeError(w, http.StatusServiceUnavailable, "WAF circuit open")
+		return
+	}
 	client := &http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Get(h.cfg.WAFURL + "/categories")
 	if err != nil {
+		wafBreaker.RecordFailure()
 		writeError(w, http.StatusBadGateway, "WAF unreachable")
 		return
 	}
+	wafBreaker.RecordSuccess()
 	defer resp.Body.Close()
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
@@ -634,12 +650,18 @@ func (h *AnalyticsHandlers) WAFCategories(w http.ResponseWriter, r *http.Request
 
 // WAFCategoryToggle proxies POST /categories/toggle to WAF.
 func (h *AnalyticsHandlers) WAFCategoryToggle(w http.ResponseWriter, r *http.Request) {
+	if err := wafBreaker.Allow(); err != nil {
+		writeError(w, http.StatusServiceUnavailable, "WAF circuit open")
+		return
+	}
 	client := &http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Post(h.cfg.WAFURL+"/categories/toggle", "application/json", r.Body)
 	if err != nil {
+		wafBreaker.RecordFailure()
 		writeError(w, http.StatusBadGateway, "WAF unreachable")
 		return
 	}
+	wafBreaker.RecordSuccess()
 	defer resp.Body.Close()
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)

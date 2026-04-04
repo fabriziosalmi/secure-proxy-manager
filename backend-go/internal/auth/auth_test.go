@@ -24,7 +24,7 @@ func TestJWTFlow(t *testing.T) {
 		SecretKey:         "super-secret-key-for-testing-1234567",
 		JWTExpireDuration: 1 * time.Hour,
 	}
-	s := NewService(cfg)
+	s := NewService(cfg, nil)
 
 	username := "testuser"
 	token, err := s.IssueJWT(username)
@@ -55,7 +55,7 @@ func TestAuthenticateBasic(t *testing.T) {
 		MaxAttempts:     5,
 		RateLimitWindow: 1 * time.Minute,
 	}
-	s := NewService(cfg)
+	s := NewService(cfg, nil)
 
 	// Correct
 	r := httptest.NewRequest("GET", "/", nil)
@@ -85,7 +85,7 @@ func TestRateLimit(t *testing.T) {
 		MaxAttempts:     2,
 		RateLimitWindow: 1 * time.Minute,
 	}
-	s := NewService(cfg)
+	s := NewService(cfg, nil)
 	r := httptest.NewRequest("GET", "/", nil)
 	r.RemoteAddr = "1.1.1.1:1234"
 	r.SetBasicAuth("admin", "wrong")
@@ -113,7 +113,7 @@ func TestRateLimit(t *testing.T) {
 
 func TestWSTokens(t *testing.T) {
 	cfg := &config.Config{}
-	s := NewService(cfg)
+	s := NewService(cfg, nil)
 
 	token := s.IssueWSToken("user1")
 	user, ok := s.ValidateWSToken(token)

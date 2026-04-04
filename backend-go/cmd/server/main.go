@@ -3,11 +3,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"strconv"
-	"fmt"
 	"syscall"
 	"time"
 
@@ -78,17 +79,25 @@ func run() error {
 		return err
 	}
 
+	// Load bcrypt hash from DB so auth uses it instead of plaintext env-var.
+	var dbHash string
+	if err := db.QueryRow("SELECT password FROM users WHERE username = ?", cfg.AdminUsername).Scan(&dbHash); err == nil && dbHash != "" {
+		cfg.AdminPasswordHash = dbHash
+	}
+
 	// ── services ─────────────────────────────────────────────────────────────
-	authSvc := auth.NewService(cfg)
+	authSvc := auth.NewService(cfg, db)
 	dockerClient := docker.New()
 	hub := ws.NewHub()
-	notify := handlers.NewNotifyQueue(db)
+	notify := handlers.NewNotifyQueue(db, cfg.EncryptionKey)
 
 	// ── background workers ───────────────────────────────────────────────────
-	workers.StartLogTailer(db, cfg.LogPath, hub)
-	workers.StartLogRetention(db)
-	workers.StartBlacklistRefresh(db, cfg.ConfigDir)
-	workers.StartUpdateChecker("")
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
+	workers.StartLogTailer(workerCtx, db, cfg.LogPath, hub)
+	workers.StartLogRetention(workerCtx, db)
+	workers.StartBlacklistRefresh(workerCtx, db, cfg.ConfigDir)
+	workers.StartUpdateChecker(workerCtx, "")
 	workers.CheckSquidCVEs()
 
 	// ── router ───────────────────────────────────────────────────────────────
@@ -97,6 +106,7 @@ func run() error {
 	r.Use(appMW.RequestID)
 	r.Use(appMW.CORS(cfg))
 	r.Use(appMW.SecurityHeaders)
+	r.Use(appMW.GlobalRateLimit(20, 60)) // 20 req/s sustained, 60 burst per IP
 	r.Use(appMW.MaxBodySize(55 * 1024 * 1024)) // 55MB max (for large blacklist imports)
 
 	authMW := appMW.Auth(authSvc)
@@ -113,9 +123,36 @@ func run() error {
 	handlers.NewDNSDetectHandlers(db).Register(r, authMW)
 	handlers.RegisterAPIDocs(r, authMW)
 
+	// ── pprof (auth-protected) ───────────────────────────────────────────────
+	r.Route("/debug/pprof", func(pr chi.Router) {
+		pr.Use(authMW)
+		pr.HandleFunc("/", pprof.Index)
+		pr.HandleFunc("/cmdline", pprof.Cmdline)
+		pr.HandleFunc("/profile", pprof.Profile)
+		pr.HandleFunc("/symbol", pprof.Symbol)
+		pr.HandleFunc("/trace", pprof.Trace)
+		pr.Handle("/goroutine", pprof.Handler("goroutine"))
+		pr.Handle("/heap", pprof.Handler("heap"))
+		pr.Handle("/allocs", pprof.Handler("allocs"))
+		pr.Handle("/block", pprof.Handler("block"))
+		pr.Handle("/mutex", pprof.Handler("mutex"))
+		pr.Handle("/threadcreate", pprof.Handler("threadcreate"))
+	})
+
 	// ── WebSocket ─────────────────────────────────────────────────────────────
+	wsAllowed := make(map[string]struct{}, len(cfg.CORSAllowedOrigins))
+	for _, o := range cfg.CORSAllowedOrigins {
+		wsAllowed[o] = struct{}{}
+	}
 	upgrader := websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool { return true },
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true // non-browser clients (curl, etc.)
+			}
+			_, ok := wsAllowed[origin]
+			return ok
+		},
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 	}
@@ -175,6 +212,7 @@ func run() error {
 
 	<-quit
 	log.Info().Msg("shutdown signal received")
+	workerCancel() // stop background workers first
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
