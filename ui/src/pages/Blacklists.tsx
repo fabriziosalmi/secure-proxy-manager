@@ -1,5 +1,6 @@
 import { Card, CardContent } from '../components/ui/card';
 import { api, getErrorMessage } from '../lib/api';
+import { isValidIP, isValidDomain } from '../lib/validation';
 import type { IpEntry, DomainEntry, WhitelistEntry, DomainWhitelistEntry } from '../types';
 import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, CheckCircle, ShieldCheck, Loader2, RefreshCw, FileDown, XCircle } from 'lucide-react';
 import { useState } from 'react';
@@ -91,27 +92,14 @@ export function Blacklists() {
     const val = newItem.trim();
     if (!val) return;
 
-    // Frontend validation
+    // Frontend validation using shared validators
     if (activeTab === 'ip' || activeTab === 'whitelist') {
-      // Proper IP/CIDR validation — each octet 0-255, optional /0-32
-      const parts = val.split('/');
-      const octets = parts[0].split('.');
-      const cidr = parts[1] ? parseInt(parts[1], 10) : null;
-      const validOctets = octets.length === 4 && octets.every(o => {
-        const n = parseInt(o, 10);
-        return /^\d{1,3}$/.test(o) && n >= 0 && n <= 255;
-      });
-      const validCidr = cidr === null || (cidr >= 0 && cidr <= 32 && /^\d{1,2}$/.test(parts[1]));
-      if (!validOctets || !validCidr || parts.length > 2) {
+      if (!isValidIP(val)) {
         toast.error('Invalid IP. Each octet must be 0-255, CIDR 0-32');
         return;
       }
     } else {
-      // Domain validation: RFC 1035 — max 253 chars, labels max 63, valid chars
-      const labels = val.split('.');
-      const validDomain = val.length <= 253 && labels.length >= 2
-        && labels.every(l => l.length > 0 && l.length <= 63 && /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(l));
-      if (!validDomain) {
+      if (!isValidDomain(val)) {
         toast.error('Invalid domain format (RFC 1035)');
         return;
       }

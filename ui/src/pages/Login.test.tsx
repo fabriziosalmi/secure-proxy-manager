@@ -104,4 +104,55 @@ describe('Login', () => {
       expect(localStorage.getItem('auth_token')).toBe('alt-token')
     })
   })
+
+  it('shows error when API returns no token at all', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.post).mockResolvedValueOnce({
+      data: { status: 'success' }, // no access_token or token field
+    })
+
+    renderWithProviders(<Login onLogin={onLogin} />)
+
+    await user.type(screen.getByLabelText(/username/i), 'admin')
+    await user.type(screen.getByLabelText(/password/i), 'pass')
+    await user.click(screen.getByRole('button', { name: /sign in/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/invalid username or password/i)).toBeInTheDocument()
+    })
+    expect(onLogin).not.toHaveBeenCalled()
+  })
+
+  it('does not expose backend error details', async () => {
+    const user = userEvent.setup()
+    const axiosError = new Error('Request failed')
+    Object.assign(axiosError, {
+      response: { data: { detail: 'SQL injection attempt detected' } },
+    })
+    vi.mocked(api.post).mockRejectedValueOnce(axiosError)
+
+    renderWithProviders(<Login onLogin={onLogin} />)
+
+    await user.type(screen.getByLabelText(/username/i), 'admin')
+    await user.type(screen.getByLabelText(/password/i), 'pass')
+    await user.click(screen.getByRole('button', { name: /sign in/i }))
+
+    await waitFor(() => {
+      // Should show generic error, NOT the backend detail
+      expect(screen.getByText(/invalid username or password/i)).toBeInTheDocument()
+      expect(screen.queryByText(/SQL injection/i)).not.toBeInTheDocument()
+    })
+  })
+
+  it('has required attribute on both inputs', () => {
+    renderWithProviders(<Login onLogin={onLogin} />)
+    expect(screen.getByLabelText(/username/i)).toBeRequired()
+    expect(screen.getByLabelText(/password/i)).toBeRequired()
+  })
+
+  it('has correct autocomplete attributes', () => {
+    renderWithProviders(<Login onLogin={onLogin} />)
+    expect(screen.getByLabelText(/username/i)).toHaveAttribute('autocomplete', 'username')
+    expect(screen.getByLabelText(/password/i)).toHaveAttribute('autocomplete', 'current-password')
+  })
 })
