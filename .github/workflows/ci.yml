@@ -52,7 +52,27 @@ jobs:
       - run: go build -v ./...
         working-directory: waf-go
 
-  # ── 4. Go WAF tests ───────────────────────────────────────────────────
+  # ── 4. Go backend tests ──────────────────────────────────────────────
+  test-backend:
+    name: Backend unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: backend-go/go.sum
+      - run: go test -v -race -count=1 -coverprofile=coverage.out ./...
+        working-directory: backend-go
+      - name: Check coverage threshold
+        working-directory: backend-go
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
+          echo "Backend coverage: ${COVERAGE}%"
+          # Fail if coverage drops below 60%
+          awk "BEGIN {exit ($COVERAGE < 60) ? 1 : 0}"
+
+  # ── 5. Go WAF tests ───────────────────────────────────────────────────
   test-waf:
     name: WAF unit tests
     runs-on: ubuntu-latest
@@ -65,7 +85,35 @@ jobs:
       - run: go test -v -race -count=1 ./...
         working-directory: waf-go
 
-  # ── 5. Docker build verification ──────────────────────────────────────
+  # ── 6. Security scanning (gosec) ─────────────────────────────────────
+  security-scan:
+    name: Security scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: backend-go/go.sum
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run gosec on backend-go
+        working-directory: backend-go
+        run: gosec -severity medium -confidence medium -exclude=G104 ./...
+
+      - name: Run gosec on waf-go
+        working-directory: waf-go
+        run: gosec -severity medium -confidence medium -exclude=G104 ./...
+
+      - name: npm audit (UI)
+        working-directory: ui
+        run: |
+          npm ci
+          npm audit --audit-level=high || true
+
+  # ── 7. Docker build verification ──────────────────────────────────────
   docker-build:
     name: Docker build (all images)
     runs-on: ubuntu-latest
@@ -74,7 +122,7 @@ jobs:
       - name: Build all images
         run: docker compose build web backend waf proxy dns
 
-  # ── 6. Popular list URL health check ──────────────────────────────────
+  # ── 8. Popular list URL health check ──────────────────────────────────
   check-urls:
     name: Verify popular list URLs
     runs-on: ubuntu-latest

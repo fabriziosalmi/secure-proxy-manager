@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-04-04
+
+### Security Hardening (18 improvements)
+
+#### Critical Fixes
+- **Plaintext password eliminated**: bcrypt is now the primary auth method; plaintext env-var fallback only used during first boot before DB seed completes
+- **Sensitive tokens encrypted at rest**: Webhook URLs, Gotify/Telegram/ntfy tokens stored with AES-256-GCM in the database (new `internal/crypto` package)
+- **JWT blacklist persisted**: Revoked tokens survive container restarts via new `jwt_blacklist` SQLite table with TTL-based cleanup
+- **AdminPasswordHash loaded from DB**: Previously missing — the bcrypt hash is now loaded at startup so auth uses it correctly
+
+#### New Security Infrastructure
+- **Global rate limiting**: Token bucket per-IP middleware (20 req/s sustained, 60 burst) on all endpoints, not just login
+- **Circuit breaker**: WAF service calls protected against cascading failures (3 failures → open 30s → half-open probe)
+- **Notification retry**: Failed webhook/Telegram/Gotify/ntfy deliveries retry 3x with exponential backoff (1s, 2s, 4s)
+- **WebSocket origin validation**: `CheckOrigin` now validates against CORS allowlist instead of accepting all origins
+- **CSP tightened**: Removed `unsafe-eval` from script-src, `*` from connect-src → `script-src 'self'; connect-src 'self' ws: wss:`
+- **Self-signed cert reduced**: Validity 10 years → 1 year for better security hygiene
+
+#### Performance & Reliability
+- **3 new SQLite indexes**: `idx_proxy_logs_ts_ip`, `idx_proxy_logs_ts_dest`, `idx_proxy_logs_status` — accelerates analytics queries on large DBs
+- **Query LIMIT clauses**: UserAgents (50), FileExtensions (50000) prevent unbounded result sets
+- **Worker graceful shutdown**: All 4 background workers now accept `context.Context` and stop cleanly on SIGTERM
+- **pprof endpoint**: `/debug/pprof/*` routes (auth-protected) for production CPU/memory profiling
+
+#### CI/CD Improvements
+- **Backend unit tests in CI**: New job with race detector and 60% coverage threshold
+- **gosec security scanning**: Automated vulnerability scanning for both backend-go and waf-go
+- **npm audit**: Frontend dependency audit (high severity) in CI pipeline
+
+### Added
+- `backend-go/internal/crypto/` — AES-256-GCM encryption package with tests
+- `backend-go/internal/middleware/ratelimit.go` — Per-IP token bucket rate limiter
+- `backend-go/internal/middleware/circuitbreaker.go` — Circuit breaker (closed/open/half-open)
+- `PLAN.md` — Comprehensive project analysis and action plan
+
+### Changed
+- `auth.go` — bcrypt-first password verification, JWT blacklist uses SHA-256 hashed keys
+- `main.go` — Worker context propagation, pprof routes, WS origin check, DB hash loading
+- `settings.go` — Transparent encrypt-on-write / decrypt-on-read for sensitive settings
+- `security.go` — Notification retry with backoff, encrypted settings decryption
+- `analytics.go` — Circuit breaker on WAF calls, LIMIT on queries
+- `ci.yml` — 3 new jobs (backend tests, gosec, npm audit)
+- `docker-entrypoint.sh` — Cert validity 3650 → 365 days
+- `nginx.conf.template` — CSP aligned with backend middleware
+
 ## [3.0.0] - 2026-03-28
 
 ### Added — 17 New Features

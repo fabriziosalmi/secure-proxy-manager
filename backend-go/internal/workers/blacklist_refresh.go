@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"io"
@@ -26,16 +27,26 @@ var defaultDomainLists = []string{
 }
 
 // StartBlacklistRefresh runs an auto-refresh loop based on DB settings.
-func StartBlacklistRefresh(db *sql.DB, configDir string) {
+func StartBlacklistRefresh(ctx context.Context, db *sql.DB, configDir string) {
 	go func() {
 		for {
 			// Re-read settings on each cycle so changes take effect.
 			enabled, interval := readRefreshSettings(db)
 			if !enabled || interval <= 0 {
-				time.Sleep(30 * time.Minute)
+				select {
+				case <-ctx.Done():
+					log.Info().Msg("blacklist refresh worker stopping")
+					return
+				case <-time.After(30 * time.Minute):
+				}
 				continue
 			}
-			time.Sleep(time.Duration(interval) * time.Hour)
+			select {
+			case <-ctx.Done():
+				log.Info().Msg("blacklist refresh worker stopping")
+				return
+			case <-time.After(time.Duration(interval) * time.Hour):
+			}
 			log.Info().Msg("auto-refresh blacklists starting")
 			refreshAll(db)
 			database.ExportBlacklistsToFiles(db, configDir) //nolint:errcheck

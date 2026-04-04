@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -247,13 +248,15 @@ func TestStartWorkers_Basic(t *testing.T) {
 
 	// These start goroutines that we can't easily wait for, but running them once
 	// will increase cover of the startup lines.
-	StartLogRetention(db)
-	StartBlacklistRefresh(db, tmpDir)
-	StartUpdateChecker("v1.0.0")
-	
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	StartLogRetention(ctx, db)
+	StartBlacklistRefresh(ctx, db, tmpDir)
+	StartUpdateChecker(ctx, "v1.0.0")
+
 	logFile := filepath.Join(tmpDir, "access.log")
 	os.WriteFile(logFile, []byte("test"), 0644)
-	StartLogTailer(db, logFile, hub)
-	
+	StartLogTailer(ctx, db, logFile, hub)
+
 	time.Sleep(100 * time.Millisecond)
 }

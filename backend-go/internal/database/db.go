@@ -89,6 +89,9 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_timestamp ON proxy_logs(timestamp)`,
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_source_ip ON proxy_logs(source_ip)`,
+		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_ts_ip ON proxy_logs(timestamp, source_ip)`,
+		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_ts_dest ON proxy_logs(timestamp, destination)`,
+		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_status ON proxy_logs(status)`,
 		`CREATE TABLE IF NOT EXISTS settings (
 			setting_name TEXT PRIMARY KEY,
 			setting_value TEXT

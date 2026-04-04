@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"context"
 	"database/sql"
 	"strconv"
 	"time"
@@ -9,14 +10,20 @@ import (
 )
 
 // StartLogRetention runs a daily cleanup of aged-out proxy_logs rows.
-func StartLogRetention(db *sql.DB) {
+func StartLogRetention(ctx context.Context, db *sql.DB) {
 	go func() {
 		// Run once at startup.
 		runRetention(db)
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
-		for range ticker.C {
-			runRetention(db)
+		for {
+			select {
+			case <-ctx.Done():
+				log.Info().Msg("log retention worker stopping")
+				return
+			case <-ticker.C:
+				runRetention(db)
+			}
 		}
 	}()
 	log.Info().Msg("log retention worker started")
