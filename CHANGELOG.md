@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.1] - 2026-04-08
+
+### Fixed
+
+- **Real cache statistics**: `GET /api/cache/statistics` now queries live Squid metrics via `squidclient mgr:info` (Docker exec) instead of returning hardcoded zeros
+- **Cache clear works**: `POST /api/maintenance/clear-cache` uses `squid -k purge` via Docker exec instead of posting to a non-existent HTTP endpoint
+- **Config generation no longer overridden**: `custom_squid.conf` auto-migrated to `custom_squid_extra.conf` (append-only); all cache/memory/performance settings from the UI are now applied
+- **`aggressive_caching_enabled` toggle functional**: writes override-expire refresh patterns for static assets, packages, media files
+- **`cache_bypass_domains` functional**: comma-separated domain list in Settings generates Squid ACL + `cache deny` rules
+- **`enable_offline_mode` functional**: enables `offline_mode on` + aggressive stale serving
+- **Duplicate refresh patterns removed**: single consistent set in generated squid.conf
+- **Added `cachemgr_passwd`** directive so squidclient can access cache manager stats
+
+### Added
+
+- `ExecContainer` method in Docker client (full Docker API exec flow with stream mux header stripping)
+- Settings handler writes toggle files + `cache_bypass_domains.txt` for Squid
+
+## [3.3.0] - 2026-04-08
+
+### Performance
+
+- **SQLite WAL mode fix**: `modernc.org/sqlite` driver now correctly activates WAL mode (`_pragma=` syntax), eliminating `database is locked` errors
+- **WebSocket/CORS origin fix**: IP-based access now works for WebSocket and CORS headers
+- **DashboardSummary optimized**: 8 separate COUNT queries consolidated into single aggregate query
+- **Bubble sort replaced**: `sort.Slice` in ShadowIT handler (O(n^2) to O(n log n))
+- **CIDR networks pre-compiled**: rate limiter no longer parses 4 CIDR strings per request
+- **Log tailer buffered**: `bufio.Scanner` replaces `io.ReadAll`, preventing unbounded memory usage
+- **GDPR setting cached**: 30s TTL cache eliminates per-row database query
+- **HTTP client pooling**: WAF/proxy clients reused instead of allocated per request
+- **readAll optimized**: `bytes.Buffer` for efficient memory allocation
+- **Import timestamp pre-formatted**: single format call instead of per-entry
+
+### Frontend
+
+- Reduced API polling: Dashboard 10s to 30s, ThreatIntel 15s to 30s, staleTime 10s to 60s
+- Sidebar health check skips when tab is hidden, interval 15s to 30s
+
 ## [3.2.2] - 2026-04-07
 
 ### Added

@@ -1,0 +1,45 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to trigger the issue
+      placeholder: |
+        1. Go to Settings
+        2. Enable aggressive caching
+        3. Click "Reload Config"
+        4. See error in logs
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste backend/proxy/browser console output
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of the sidebar version badge (e.g. 3.3.1 go)
+      placeholder: "3.3.1"
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment method
+      options:
+        - Docker Compose (default)
+        - Manual / bare metal
+        - Other

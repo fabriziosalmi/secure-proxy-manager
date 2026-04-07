@@ -9,21 +9,12 @@ updates:
         patterns:
           - "*"
 
-  - package-ecosystem: "pip"
-    directory: "/backend"
+  - package-ecosystem: "gomod"
+    directory: "/backend-go"
     schedule:
       interval: "weekly"
     groups:
-      backend-dependencies:
-        patterns:
-          - "*"
-
-  - package-ecosystem: "pip"
-    directory: "/waf"
-    schedule:
-      interval: "weekly"
-    groups:
-      waf-dependencies:
+      backend-go-dependencies:
         patterns:
           - "*"
 
