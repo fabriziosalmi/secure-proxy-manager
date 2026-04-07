@@ -29,8 +29,8 @@ export function ThreatIntel() {
   const [vis, setVis] = useState(document.visibilityState !== 'hidden');
   useEffect(() => { const h = () => setVis(document.visibilityState !== 'hidden'); document.addEventListener('visibilitychange', h); return () => document.removeEventListener('visibilitychange', h); }, []);
 
-  const { data: s } = useQuery<DashboardSummary>({ queryKey: ['dashboard'], queryFn: () => api.get('dashboard/summary').then(r => r.data.data), refetchInterval: vis ? 15_000 : false });
-  const { data: tl } = useQuery<TimelineEntry[]>({ queryKey: ['timeline72'], queryFn: () => api.get('logs/timeline?hours=72').then(r => r.data.data), refetchInterval: vis ? 30_000 : false });
+  const { data: s } = useQuery<DashboardSummary>({ queryKey: ['dashboard'], queryFn: () => api.get('dashboard/summary').then(r => r.data.data), refetchInterval: vis ? 30_000 : false });
+  const { data: tl } = useQuery<TimelineEntry[]>({ queryKey: ['timeline72'], queryFn: () => api.get('logs/timeline?hours=72').then(r => r.data.data), refetchInterval: vis ? 60_000 : false });
   const { data: shadowIt } = useQuery<ShadowItService[]>({ queryKey: ['shadow-it'], queryFn: () => api.get('analytics/shadow-it').then(r => r.data.data), refetchInterval: vis ? 60_000 : false });
   const { data: fileExts } = useQuery<FileExtData>({ queryKey: ['file-exts'], queryFn: () => api.get('analytics/file-extensions').then(r => r.data.data), refetchInterval: vis ? 60_000 : false });
   const { data: topDomains } = useQuery<TopDomain[]>({ queryKey: ['top-domains'], queryFn: () => api.get('analytics/top-domains').then(r => r.data.data), refetchInterval: vis ? 60_000 : false });

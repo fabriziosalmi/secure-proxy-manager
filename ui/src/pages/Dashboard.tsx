@@ -8,7 +8,7 @@ import { api } from '../lib/api';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { TimelineEntry, SecurityScore, DashboardSummary, CacheStats } from '../types';
 
-const REFETCH = 10_000;
+const REFETCH = 30_000;
 const C = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899'];
 
 const TOOLTIP_STYLE = {

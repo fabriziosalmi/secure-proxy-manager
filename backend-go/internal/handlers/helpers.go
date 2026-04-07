@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -167,21 +168,17 @@ func (lr *limitedReader) Read(p []byte) (int, error) {
 }
 
 func readAll(r interface{ Read([]byte) (int, error) }) ([]byte, error) {
-	var out []byte
-	buf := make([]byte, 1<<20) // 1 MB chunks
-	for {
-		n, err := r.Read(buf)
-		if n > 0 {
-			out = append(out, buf[:n]...)
-		}
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return out, nil
-			}
-			return out, err
-		}
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(ioReader{r}); err != nil && !errors.Is(err, io.EOF) {
+		return buf.Bytes(), err
 	}
+	return buf.Bytes(), nil
 }
+
+// ioReader wraps a minimal Read interface into io.Reader for bytes.Buffer.ReadFrom.
+type ioReader struct{ r interface{ Read([]byte) (int, error) } }
+
+func (w ioReader) Read(p []byte) (int, error) { return w.r.Read(p) }
 
 // extractDomain parses a destination like "http://example.com:443/path" → "example.com".
 func extractDomain(dest string) string {

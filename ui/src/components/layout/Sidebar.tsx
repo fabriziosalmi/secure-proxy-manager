@@ -20,6 +20,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
 
   useEffect(() => {
     const check = async () => {
+      if (document.visibilityState === 'hidden') return;
       try {
         const res = await api.get('/health');
         setApiStatus('connected');
@@ -34,7 +35,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
       }
     };
     check();
-    const interval = setInterval(check, 15000);
+    const interval = setInterval(check, 30000);
     return () => clearInterval(interval);
   }, []);
 

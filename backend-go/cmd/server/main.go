@@ -150,8 +150,19 @@ func run() error {
 			if origin == "" {
 				return true // non-browser clients (curl, etc.)
 			}
-			_, ok := wsAllowed[origin]
-			return ok
+			if _, ok := wsAllowed[origin]; ok {
+				return true
+			}
+			// Allow WebSocket from the same host the request arrived on
+			// (covers IP-based access where CORS_ALLOWED_ORIGINS lists only localhost).
+			if r.Host != "" {
+				for _, scheme := range []string{"https://", "http://"} {
+					if origin == scheme+r.Host {
+						return true
+					}
+				}
+			}
+			return false
 		},
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,

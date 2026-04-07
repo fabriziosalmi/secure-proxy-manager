@@ -104,11 +104,21 @@ func extractIP(r *http.Request) string {
 	return host
 }
 
-func isPrivate(ip net.IP) bool {
-	private := []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
-	for _, cidr := range private {
+var privateNets = func() []*net.IPNet {
+	cidrs := []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
+	nets := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
 		_, network, _ := net.ParseCIDR(cidr)
-		if network != nil && network.Contains(ip) {
+		if network != nil {
+			nets = append(nets, network)
+		}
+	}
+	return nets
+}()
+
+func isPrivate(ip net.IP) bool {
+	for _, network := range privateNets {
+		if network.Contains(ip) {
 			return true
 		}
 	}

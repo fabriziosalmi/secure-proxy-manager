@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,6 +20,12 @@ import (
 
 // wafBreaker protects against cascading failures when the WAF service is down.
 var wafBreaker = appMW.NewCircuitBreaker(3, 30*time.Second)
+
+// Shared HTTP clients — reused across requests to avoid per-request allocation.
+var (
+	wafClient   = &http.Client{Timeout: 3 * time.Second}
+	probeClient = &http.Client{Timeout: 1 * time.Second}
+)
 
 type AnalyticsHandlers struct {
 	db  *sql.DB
@@ -50,8 +57,7 @@ func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 
 func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 	proxyStatus := "error"
-	client := &http.Client{Timeout: 1 * time.Second}
-	resp, err := client.Get(h.cfg.ProxyURL)
+	resp, err := probeClient.Get(h.cfg.ProxyURL)
 	if err == nil {
 		resp.Body.Close()
 		if resp.StatusCode == 400 || resp.StatusCode == 200 {
@@ -284,8 +290,7 @@ func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "WAF service circuit open — retrying soon")
 		return
 	}
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(h.cfg.WAFURL + "/stats")
+	resp, err := wafClient.Get(h.cfg.WAFURL + "/stats")
 	if err != nil {
 		wafBreaker.RecordFailure()
 		writeError(w, http.StatusBadGateway, "WAF service unreachable")
@@ -308,9 +313,8 @@ func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request
 		deleted, _ = res.RowsAffected()
 	}
 
-	client := &http.Client{Timeout: 3 * time.Second}
 	wafReset := false
-	if resp, err := client.Post(h.cfg.WAFURL+"/reset", "application/json", nil); err == nil {
+	if resp, err := wafClient.Post(h.cfg.WAFURL+"/reset", "application/json", nil); err == nil {
 		resp.Body.Close()
 		wafReset = resp.StatusCode == 200
 	}
@@ -320,13 +324,16 @@ func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request
 func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Request) {
 	result := map[string]any{}
 
-	var totalReqs, blockedReqs, todayReqs, todayBlocked, ipBLCount, domainBLCount int
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&totalReqs)                                                                                  //nolint:errcheck
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%'").Scan(&blockedReqs) //nolint:errcheck
-
 	today := time.Now().Format("2006-01-02")
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE timestamp >= ?", today).Scan(&todayReqs)                                                        //nolint:errcheck
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE (status LIKE '%DENIED%' OR status LIKE '%403%') AND timestamp >= ?", today).Scan(&todayBlocked) //nolint:errcheck
+	var totalReqs, blockedReqs, todayReqs, todayBlocked int
+	h.db.QueryRow(`SELECT
+		COUNT(*),
+		SUM(CASE WHEN status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END),
+		SUM(CASE WHEN (status LIKE '%DENIED%' OR status LIKE '%403%') AND timestamp >= ? THEN 1 ELSE 0 END)
+		FROM proxy_logs`, today, today).Scan(&totalReqs, &blockedReqs, &todayReqs, &todayBlocked) //nolint:errcheck
+
+	var ipBLCount, domainBLCount int
 
 	result["total_requests"] = totalReqs
 	result["blocked_requests"] = blockedReqs
@@ -351,6 +358,7 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 
 	h.db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&ipBLCount)         //nolint:errcheck
 	h.db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&domainBLCount) //nolint:errcheck
+	// Note: these two are on different tables so cannot be combined into the proxy_logs query above.
 	result["ip_blacklist_count"] = ipBLCount
 	result["domain_blacklist_count"] = domainBLCount
 
@@ -408,7 +416,6 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	result["recent_blocks"] = recentBlocks
 
 	// WAF stats
-	wafClient := &http.Client{Timeout: 2 * time.Second}
 	if resp, err := wafClient.Get(h.cfg.WAFURL + "/stats"); err == nil {
 		var wafData any
 		json.NewDecoder(resp.Body).Decode(&wafData) //nolint:errcheck
@@ -502,14 +509,9 @@ func (h *AnalyticsHandlers) ShadowIT(w http.ResponseWriter, r *http.Request) {
 	for _, e := range services {
 		result = append(result, e)
 	}
-	// Simple sort by requests descending.
-	for i := 0; i < len(result); i++ {
-		for j := i + 1; j < len(result); j++ {
-			if result[j].Requests > result[i].Requests {
-				result[i], result[j] = result[j], result[i]
-			}
-		}
-	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Requests > result[j].Requests
+	})
 	if result == nil {
 		result = []*entry{}
 	}
@@ -640,8 +642,7 @@ func (h *AnalyticsHandlers) WAFCategories(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusServiceUnavailable, "WAF circuit open")
 		return
 	}
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(h.cfg.WAFURL + "/categories")
+	resp, err := wafClient.Get(h.cfg.WAFURL + "/categories")
 	if err != nil {
 		wafBreaker.RecordFailure()
 		writeError(w, http.StatusBadGateway, "WAF unreachable")
@@ -660,8 +661,7 @@ func (h *AnalyticsHandlers) WAFCategoryToggle(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusServiceUnavailable, "WAF circuit open")
 		return
 	}
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Post(h.cfg.WAFURL+"/categories/toggle", "application/json", r.Body)
+	resp, err := wafClient.Post(h.cfg.WAFURL+"/categories/toggle", "application/json", r.Body)
 	if err != nil {
 		wafBreaker.RecordFailure()
 		writeError(w, http.StatusBadGateway, "WAF unreachable")

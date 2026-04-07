@@ -4,12 +4,19 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 )
 
-type LogHandlers struct{ db *sql.DB }
+type LogHandlers struct {
+	db       *sql.DB
+	gdprMu   sync.RWMutex
+	gdprVal  bool
+	gdprTime time.Time
+}
 
 func NewLogHandlers(db *sql.DB) *LogHandlers { return &LogHandlers{db: db} }
 
@@ -22,11 +29,25 @@ func (h *LogHandlers) Register(r chi.Router, authMW func(http.Handler) http.Hand
 }
 
 func (h *LogHandlers) gdprEnabled() bool {
-	var val string
-	if err := h.db.QueryRow("SELECT setting_value FROM settings WHERE setting_name = 'gdpr_mode'").Scan(&val); err != nil {
-		return false
+	const ttl = 30 * time.Second
+	h.gdprMu.RLock()
+	if time.Since(h.gdprTime) < ttl {
+		v := h.gdprVal
+		h.gdprMu.RUnlock()
+		return v
 	}
-	return val == "true"
+	h.gdprMu.RUnlock()
+
+	var val string
+	enabled := false
+	if err := h.db.QueryRow("SELECT setting_value FROM settings WHERE setting_name = 'gdpr_mode'").Scan(&val); err == nil {
+		enabled = val == "true"
+	}
+	h.gdprMu.Lock()
+	h.gdprVal = enabled
+	h.gdprTime = time.Now()
+	h.gdprMu.Unlock()
+	return enabled
 }
 
 func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {

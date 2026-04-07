@@ -18,7 +18,8 @@ func Open(path string) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return nil, fmt.Errorf("mkdir for db: %w", err)
 	}
-	dsn := path + "?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on&_synchronous=NORMAL"
+	// modernc.org/sqlite uses _pragma= syntax (not _journal_mode= like mattn/go-sqlite3).
+	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)&_pragma=synchronous(NORMAL)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("sql.Open: %w", err)
@@ -29,6 +30,12 @@ func Open(path string) (*sql.DB, error) {
 	db.SetConnMaxLifetime(2 * time.Hour)
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("db ping: %w", err)
+	}
+
+	// Verify WAL mode is active.
+	var journalMode string
+	if err := db.QueryRow("PRAGMA journal_mode").Scan(&journalMode); err == nil {
+		log.Info().Str("journal_mode", journalMode).Msg("SQLite journal mode")
 	}
 
 	// Performance PRAGMAs — applied per-connection.

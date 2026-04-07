@@ -43,7 +43,17 @@ func CORS(cfg *config.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			if _, ok := allowed[origin]; ok {
+			_, ok := allowed[origin]
+			if !ok && origin != "" && r.Host != "" {
+				// Allow same-host origin (covers IP-based access).
+				for _, scheme := range []string{"https://", "http://"} {
+					if origin == scheme+r.Host {
+						ok = true
+						break
+					}
+				}
+			}
+			if ok {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Vary", "Origin")
 			}
