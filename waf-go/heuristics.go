@@ -18,18 +18,18 @@ import (
 
 // HeuristicConfig holds per-heuristic settings.
 type HeuristicConfig struct {
-	EntropyThreshold       bool    // H1: block high-entropy egress payloads
-	EntropyMax             float64 // H1: threshold (default 7.5)
-	BeaconingDetection     bool    // H2: detect C2 beaconing patterns
-	BeaconingWindow        int     // H2: seconds to track (default 300)
-	BeaconingMinRequests   int     // H2: min requests in window to evaluate (default 5)
-	PIICounter             bool    // H3: count PII in response bodies
-	PIIMaxPerResponse      int     // H3: max PII items before block (default 5)
-	DestinationSharding    bool    // H4: detect rapid multi-destination access
-	ShardingMaxDests       int     // H4: max unique destinations per IP per minute (default 50)
-	HeaderMorphing         bool    // H5: detect header order/case changes
-	ProtocolGhosting       bool    // H6: detect encapsulated protocols in HTTP
-	SequenceValidation     bool    // H7: detect impossible request sequences
+	EntropyThreshold     bool    // H1: block high-entropy egress payloads
+	EntropyMax           float64 // H1: threshold (default 7.5)
+	BeaconingDetection   bool    // H2: detect C2 beaconing patterns
+	BeaconingWindow      int     // H2: seconds to track (default 300)
+	BeaconingMinRequests int     // H2: min requests in window to evaluate (default 5)
+	PIICounter           bool    // H3: count PII in response bodies
+	PIIMaxPerResponse    int     // H3: max PII items before block (default 5)
+	DestinationSharding  bool    // H4: detect rapid multi-destination access
+	ShardingMaxDests     int     // H4: max unique destinations per IP per minute (default 50)
+	HeaderMorphing       bool    // H5: detect header order/case changes
+	ProtocolGhosting     bool    // H6: detect encapsulated protocols in HTTP
+	SequenceValidation   bool    // H7: detect impossible request sequences
 }
 
 // HeuristicResult is returned when a heuristic fires.
@@ -112,6 +112,13 @@ func getClientState(ip string) *clientState {
 	defer csMutex.Unlock()
 	cs, ok := clientStates[ip]
 	if !ok {
+		// Cap at 10K IPs to prevent unbounded memory growth
+		if len(clientStates) >= 10000 {
+			for k := range clientStates {
+				delete(clientStates, k)
+				break // evict one random entry
+			}
+		}
 		cs = &clientState{dests: make(map[string]time.Time)}
 		clientStates[ip] = cs
 	}
@@ -141,6 +148,65 @@ func CheckRequestHeuristics(clientIP, method, host, path, body, rawHeaders strin
 	cs := getClientState(clientIP)
 	now := time.Now()
 
+	// ── Snapshot & update client state under a single lock ─────────────
+	// This avoids 4-5 separate lock/unlock cycles per request.
+	csMutex.Lock()
+	// H2: trim old beaconing entries
+	var validTimes []time.Time
+	var validSizes []int
+	if heuristicCfg.BeaconingDetection {
+		window := time.Duration(heuristicCfg.BeaconingWindow) * time.Second
+		cutoff := now.Add(-window)
+		for i, t := range cs.reqTimes {
+			if t.After(cutoff) {
+				validTimes = append(validTimes, t)
+				if i < len(cs.reqSizes) {
+					validSizes = append(validSizes, cs.reqSizes[i])
+				}
+			}
+		}
+		validTimes = append(validTimes, now)
+		validSizes = append(validSizes, bodySize)
+		// Cap ring buffer at 1000 entries to bound memory
+		if len(validTimes) > 1000 {
+			validTimes = validTimes[len(validTimes)-1000:]
+			validSizes = validSizes[len(validSizes)-1000:]
+		}
+		cs.reqTimes = validTimes
+		cs.reqSizes = validSizes
+	}
+
+	// H4: clean old dests, record new
+	var destCount int
+	if heuristicCfg.DestinationSharding {
+		for d, t := range cs.dests {
+			if now.Sub(t) > 60*time.Second {
+				delete(cs.dests, d)
+			}
+		}
+		cs.dests[host] = now
+		cs.destLast = now
+		destCount = len(cs.dests)
+	}
+
+	// H5: snapshot header FP
+	var prevHeaderFP string
+	if heuristicCfg.HeaderMorphing {
+		prevHeaderFP = cs.lastHeaderFP
+		cs.lastHeaderFP = headerFingerprint(rawHeaders)
+	}
+
+	// H7: snapshot last method/path
+	var prevMethod, prevPath string
+	if heuristicCfg.SequenceValidation {
+		prevMethod = cs.lastMethod
+		prevPath = cs.lastPath
+		cs.lastMethod = method
+		cs.lastPath = path
+	}
+	csMutex.Unlock()
+	// ── End single-lock section ────────────────────────────────────────
+
 	// ── H1: Entropy Thresholding ────────────────────────────────────────
 	if heuristicCfg.EntropyThreshold {
 		if bodyEntropy > heuristicCfg.EntropyMax && bodySize > 256 {
@@ -167,26 +233,6 @@ func CheckRequestHeuristics(clientIP, method, host, path, body, rawHeaders strin
 
 	// ── H2: Beaconing Detection ─────────────────────────────────────────
 	if heuristicCfg.BeaconingDetection {
-		csMutex.Lock()
-		window := time.Duration(heuristicCfg.BeaconingWindow) * time.Second
-		// Trim old entries
-		cutoff := now.Add(-window)
-		validTimes := make([]time.Time, 0)
-		validSizes := make([]int, 0)
-		for i, t := range cs.reqTimes {
-			if t.After(cutoff) {
-				validTimes = append(validTimes, t)
-				if i < len(cs.reqSizes) {
-					validSizes = append(validSizes, cs.reqSizes[i])
-				}
-			}
-		}
-		validTimes = append(validTimes, now)
-		validSizes = append(validSizes, bodySize)
-		cs.reqTimes = validTimes
-		cs.reqSizes = validSizes
-		csMutex.Unlock()
-
 		if len(validTimes) >= heuristicCfg.BeaconingMinRequests {
 			// Check for regular intervals (beaconing)
 			if isBeaconing(validTimes) && isUniformSize(validSizes) {
@@ -204,18 +250,6 @@ func CheckRequestHeuristics(clientIP, method, host, path, body, rawHeaders strin
 
 	// ── H4: Destination Sharding ────────────────────────────────────────
 	if heuristicCfg.DestinationSharding {
-		csMutex.Lock()
-		// Clean old dests (>60s)
-		for d, t := range cs.dests {
-			if now.Sub(t) > 60*time.Second {
-				delete(cs.dests, d)
-			}
-		}
-		cs.dests[host] = now
-		cs.destLast = now
-		destCount := len(cs.dests)
-		csMutex.Unlock()
-
 		if destCount > heuristicCfg.ShardingMaxDests {
 			r := HeuristicResult{
 				ID:       "H4-SHARDING",
@@ -231,12 +265,8 @@ func CheckRequestHeuristics(clientIP, method, host, path, body, rawHeaders strin
 	// ── H5: Header Morphing Detection ───────────────────────────────────
 	if heuristicCfg.HeaderMorphing {
 		fp := headerFingerprint(rawHeaders)
-		csMutex.Lock()
-		prev := cs.lastHeaderFP
-		cs.lastHeaderFP = fp
-		csMutex.Unlock()
 
-		if prev != "" && fp != prev {
+		if prevHeaderFP != "" && fp != prevHeaderFP {
 			r := HeuristicResult{
 				ID:       "H5-MORPHING",
 				Category: "HEURISTIC_MORPHING",
@@ -264,13 +294,6 @@ func CheckRequestHeuristics(clientIP, method, host, path, body, rawHeaders strin
 
 	// ── H7: Sequence Validation ─────────────────────────────────────────
 	if heuristicCfg.SequenceValidation {
-		csMutex.Lock()
-		prevMethod := cs.lastMethod
-		prevPath := cs.lastPath
-		cs.lastMethod = method
-		cs.lastPath = path
-		csMutex.Unlock()
-
 		if isInvalidSequence(prevMethod, prevPath, method, path) {
 			r := HeuristicResult{
 				ID:       "H7-SEQUENCE",

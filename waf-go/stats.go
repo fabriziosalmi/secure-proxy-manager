@@ -51,7 +51,9 @@ func (s *statsCollector) record(feature TrafficFeature, blocked bool, categories
 		s.destCounts[host]++
 	}
 	for _, cat := range categories {
-		s.categoryCounts[cat]++
+		if len(s.categoryCounts) < 100 || s.categoryCounts[cat] > 0 {
+			s.categoryCounts[cat]++
+		}
 	}
 	ua := feature.UserAgent
 	if len(ua) > 50 {
