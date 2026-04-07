@@ -6,7 +6,12 @@ DNS3="${DNS_UPSTREAM_3:-8.8.8.8}"
 
 PROXY_IP="${PROXY_IP:-}"
 
-cat >> /etc/dnsmasq.conf << EOF
+# Build a single merged config in /tmp (container filesystem is read-only)
+cp /etc/dnsmasq.conf /tmp/dnsmasq.conf
+
+cat >> /tmp/dnsmasq.conf << EOF
+
+# ── Runtime (injected by entrypoint) ──
 server=${DNS1}
 server=${DNS2}
 server=${DNS3}
@@ -14,7 +19,7 @@ EOF
 
 # WPAD auto-discovery: resolve wpad.* to the proxy/web container
 if [ -n "$PROXY_IP" ]; then
-    cat >> /etc/dnsmasq.conf << EOF
+    cat >> /tmp/dnsmasq.conf << EOF
 # WPAD auto-proxy discovery
 address=/wpad/${PROXY_IP}
 address=/wpad.local/${PROXY_IP}
@@ -24,4 +29,12 @@ EOF
 fi
 
 echo "Upstream DNS: ${DNS1}, ${DNS2}, ${DNS3}"
-exec dnsmasq --no-daemon --log-facility=-
+
+# Count blocklist entries for logging
+BLOCK_COUNT=0
+if [ -f /config/dnsmasq.d/blocklist.conf ]; then
+    BLOCK_COUNT=$(grep -c "^address=" /config/dnsmasq.d/blocklist.conf 2>/dev/null || echo 0)
+fi
+echo "Blocklist: ${BLOCK_COUNT} entries"
+
+exec dnsmasq --no-daemon --log-facility=- --conf-file=/tmp/dnsmasq.conf

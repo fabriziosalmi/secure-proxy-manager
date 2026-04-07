@@ -137,30 +137,28 @@ export function GlobalSearch() {
     if (e.key === 'Enter' && results[selected]) { results[selected].action(); }
   };
 
-  if (!open) {
-    return null; // Trigger button moved to Sidebar — modal opens via ⌘K or sidebar click
-  }
+  if (!open) return null;
 
   const typeIcon = (t: string) => {
     switch (t) {
-      case 'page': return <ArrowRight className="w-3 h-3 text-primary" />;
-      case 'ip': return <Ban className="w-3 h-3 text-destructive" />;
-      case 'domain': return <Shield className="w-3 h-3 text-orange-500" />;
-      case 'log': return <List className="w-3 h-3 text-blue-500" />;
-      case 'setting': return <Settings className="w-3 h-3 text-emerald-500" />;
-      default: return <Search className="w-3 h-3" />;
+      case 'page': return <ArrowRight className="w-3.5 h-3.5 text-primary" />;
+      case 'ip': return <Ban className="w-3.5 h-3.5 text-destructive" />;
+      case 'domain': return <Shield className="w-3.5 h-3.5 text-orange-500" />;
+      case 'log': return <List className="w-3.5 h-3.5 text-blue-500" />;
+      case 'setting': return <Settings className="w-3.5 h-3.5 text-emerald-500" />;
+      default: return <Search className="w-3.5 h-3.5" />;
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]" onClick={() => setOpen(false)}>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="fixed inset-0 bg-black/50 -webkit-backdrop-blur-xl backdrop-blur-xl" />
       <div
-        className="relative w-full max-w-lg bg-[#0f1117] border border-border/60 rounded-xl shadow-2xl overflow-hidden"
+        className="relative w-full max-w-lg glass-surface rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up"
         onClick={e => e.stopPropagation()}
       >
         {/* Search input */}
-        <div className="flex items-center px-4 py-3 border-b border-border/40">
+        <div className="flex items-center px-4 py-3.5 border-b border-white/[0.06]">
           <Search className="w-4 h-4 text-muted-foreground mr-3 shrink-0" />
           <input
             ref={inputRef}
@@ -168,16 +166,16 @@ export function GlobalSearch() {
             onChange={e => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Search IPs, domains, logs, pages..."
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 outline-none"
           />
           {loading && <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />}
-          <button type="button" onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground ml-2">
+          <button type="button" onClick={() => setOpen(false)} title="Close search" className="text-muted-foreground hover:text-foreground ml-2 btn-press">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Results */}
-        <div className="max-h-[50vh] overflow-y-auto">
+        <div className="max-h-[50vh] overflow-y-auto custom-scrollbar">
           {results.length > 0 ? (
             <div className="py-1">
               {results.map((r, i) => (
@@ -186,8 +184,8 @@ export function GlobalSearch() {
                   type="button"
                   onClick={r.action}
                   onMouseEnter={() => setSelected(i)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                    i === selected ? 'bg-primary/10' : 'hover:bg-card/50'
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-all duration-150 ${
+                    i === selected ? 'bg-primary/10 border-l-2 border-l-primary' : 'border-l-2 border-l-transparent hover:bg-white/[0.03]'
                   }`}
                 >
                   {typeIcon(r.type)}
@@ -195,25 +193,25 @@ export function GlobalSearch() {
                     <p className="text-sm font-medium truncate">{r.label}</p>
                     {r.description && <p className="text-[10px] text-muted-foreground truncate">{r.description}</p>}
                   </div>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground uppercase shrink-0">{r.type}</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-white/[0.06] text-muted-foreground uppercase shrink-0 font-mono">{r.type}</span>
                 </button>
               ))}
             </div>
           ) : query.length > 0 && !loading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">No results for "{query}"</div>
           ) : (
-            <div className="py-4 px-4">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Quick Navigation</p>
+            <div className="py-3 px-4">
+              <p className="text-[10px] text-muted-foreground/60 uppercase tracking-[0.15em] mb-2">Quick Navigation</p>
               {PAGES.map((p, i) => (
                 <button
                   key={p.path}
                   type="button"
                   onClick={() => { navigate(p.path); setOpen(false); }}
-                  className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-left hover:bg-card/50 transition-colors"
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-white/[0.04] transition-all duration-150"
                 >
                   <p.icon className="w-3.5 h-3.5 text-muted-foreground" />
                   <span className="text-sm">{p.label}</span>
-                  <kbd className="ml-auto text-[10px] px-1.5 py-0.5 bg-secondary rounded font-mono text-muted-foreground">{i + 1}</kbd>
+                  <kbd className="ml-auto text-[10px] px-1.5 py-0.5 bg-white/[0.06] rounded-md font-mono text-muted-foreground">{i + 1}</kbd>
                 </button>
               ))}
             </div>
@@ -221,14 +219,14 @@ export function GlobalSearch() {
         </div>
 
         {/* Footer hints */}
-        <div className="flex items-center justify-between px-4 py-2 border-t border-border/40 text-[10px] text-muted-foreground">
+        <div className="flex items-center justify-between px-4 py-2 border-t border-white/[0.06] text-[10px] text-muted-foreground/50">
           <div className="flex items-center gap-3">
-            <span><kbd className="px-1 py-0.5 bg-secondary rounded font-mono">↑↓</kbd> navigate</span>
-            <span><kbd className="px-1 py-0.5 bg-secondary rounded font-mono">↵</kbd> select</span>
-            <span><kbd className="px-1 py-0.5 bg-secondary rounded font-mono">esc</kbd> close</span>
+            <span><kbd className="px-1 py-0.5 bg-white/[0.06] rounded font-mono">↑↓</kbd> navigate</span>
+            <span><kbd className="px-1 py-0.5 bg-white/[0.06] rounded font-mono">↵</kbd> select</span>
+            <span><kbd className="px-1 py-0.5 bg-white/[0.06] rounded font-mono">esc</kbd> close</span>
           </div>
           <div className="flex items-center gap-2">
-            {PAGES.map((_, i) => <span key={i}><kbd className="px-1 py-0.5 bg-secondary rounded font-mono">{i+1}</kbd></span>)}
+            {PAGES.map((_, i) => <span key={i}><kbd className="px-1 py-0.5 bg-white/[0.06] rounded font-mono">{i+1}</kbd></span>)}
             <span>quick nav</span>
           </div>
         </div>

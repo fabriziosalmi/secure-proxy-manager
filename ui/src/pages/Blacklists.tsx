@@ -267,10 +267,10 @@ export function Blacklists() {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Blacklists</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">Blacklists</h1>
           <p className="text-muted-foreground">Manage IP and Domain blocking rules</p>
         </div>
         <div className="flex gap-2">
@@ -339,19 +339,19 @@ export function Blacklists() {
       </div>
 
       {isAdding && (
-        <Card className="bg-card/50 border-primary/50">
+        <Card className="border-primary/30">
           <CardContent className="pt-6">
             <form onSubmit={handleAdd} className="flex gap-4 items-end">
               <div className="flex-1 space-y-2">
                 <label className="text-sm font-medium">{activeTab === 'ip' ? 'IP Address' : activeTab === 'domain' ? 'Domain' : 'IP / CIDR Network'}</label>
                 <input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)}
                   placeholder={activeTab === 'ip' ? 'e.g. 192.168.1.100' : activeTab === 'domain' ? 'e.g. bad-domain.com' : activeTab === 'domain-whitelist' ? 'e.g. ads.google.com or .*\\.example\\.com' : 'e.g. 192.168.0.0/16'}
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" required />
+                  className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
               </div>
               <div className="flex-1 space-y-2">
                 <label className="text-sm font-medium">Description (Optional)</label>
                 <input type="text" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Why is this blocked?"
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+                  className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" />
               </div>
               <button type="submit" disabled={addMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors h-10 disabled:opacity-50 disabled:cursor-not-allowed">{addMutation.isPending ? 'Saving...' : 'Save Rule'}</button>
             </form>
@@ -360,7 +360,7 @@ export function Blacklists() {
       )}
 
       {isBulkAdding && (
-        <Card className="bg-card/50 border-primary/50">
+        <Card className="border-primary/30">
           <CardContent className="pt-6">
             <form onSubmit={handleBulkAdd} className="space-y-3">
               <div className="space-y-2">
@@ -380,13 +380,13 @@ export function Blacklists() {
       )}
 
       {isImporting && (
-        <Card className="bg-card/50 border-secondary">
+        <Card className="border-white/[0.08]">
           <CardContent className="pt-6">
             <form onSubmit={handleImport} className="flex gap-4 items-end">
               <div className="flex-1 space-y-2">
                 <label className="text-sm font-medium">List URL (e.g. GitHub raw file)</label>
                 <input type="url" value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="https://raw.githubusercontent.com/..."
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" required />
+                  className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
               </div>
               <button type="submit" className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10">Import List</button>
             </form>
@@ -398,7 +398,7 @@ export function Blacklists() {
       {isPopularLists && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           {(activeTab === 'ip' ? popularIpLists : popularDomainLists).map((list, idx) => (
-            <Card key={idx} className="bg-card/50 border-primary/20 hover:border-primary/50 transition-colors">
+            <Card key={idx} className="border-primary/20 hover:border-primary/40 transition-colors">
               <CardContent className="p-4 flex flex-col h-full justify-between">
                 <div>
                   <div className="flex items-center space-x-2 mb-2">
@@ -418,13 +418,13 @@ export function Blacklists() {
       )}
 
       {isGeoBlocking && activeTab === 'ip' && (
-        <Card className="bg-card/50 border-secondary">
+        <Card className="border-white/[0.08]">
           <CardContent className="pt-6">
             <form onSubmit={handleGeoBlock} className="flex gap-4 items-end">
               <div className="flex-1 space-y-2">
                 <label className="text-sm font-medium">Country Codes (comma or space separated)</label>
                 <input type="text" value={geoCountry} onChange={(e) => setGeoCountry(e.target.value.toUpperCase())} placeholder="e.g. CN, RU, KP"
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" required />
+                  className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
               </div>
               <button type="submit" className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10">Download & Block IPs</button>
             </form>
@@ -433,7 +433,7 @@ export function Blacklists() {
         </Card>
       )}
 
-      <div className="flex space-x-1 bg-card/50 p-1 rounded-lg w-fit border border-border">
+      <div className="flex space-x-1 glass-surface p-1 rounded-lg w-fit">
         <button onClick={() => setActiveTab('ip')}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'ip' ? 'bg-[#1f1f1f] text-white shadow-sm' : 'text-muted-foreground hover:text-white'}`}>
           <Server className="w-4 h-4 mr-2" />IP Addresses
@@ -464,7 +464,7 @@ export function Blacklists() {
             placeholder={`Search ${activeTab === 'domain' ? 'domains' : activeTab === 'domain-whitelist' ? 'whitelisted domains' : 'IPs'}...`}
             value={searchTerm}
             onChange={(e) => { setSearchTerm(e.target.value); resetPage(); }}
-            className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary pl-9"
+            className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all pl-9"
           />
           <Ban className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         </div>
@@ -473,10 +473,10 @@ export function Blacklists() {
         </span>
       </div>
 
-      <Card className="bg-card/50">
+      <Card className="bg-transparent">
         <CardContent className="p-0">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground uppercase bg-secondary/50 border-b border-border">
+            <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-white/[0.02] border-b border-white/[0.06]">
               <tr>
                 <th className="px-6 py-4 font-medium">Target</th>
                 <th className="px-6 py-4 font-medium">Description</th>
@@ -486,7 +486,7 @@ export function Blacklists() {
             </thead>
             <tbody className="divide-y divide-border">
               {activeTab === 'ip' && ips.map((item) => (
-                <tr key={item.id} className="hover:bg-secondary/20 transition-colors">
+                <tr key={item.id} className="row-hover">
                   <td className="px-6 py-4 font-medium text-white">{item.ip}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
@@ -505,7 +505,7 @@ export function Blacklists() {
                 </tr>
               ))}
               {activeTab === 'domain' && domains.map((item) => (
-                <tr key={item.id} className="hover:bg-secondary/20 transition-colors">
+                <tr key={item.id} className="row-hover">
                   <td className="px-6 py-4 font-medium text-white">{item.domain}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
@@ -524,7 +524,7 @@ export function Blacklists() {
                 </tr>
               ))}
               {activeTab === 'whitelist' && whitelists.map((item) => (
-                <tr key={item.id} className="hover:bg-secondary/20 transition-colors">
+                <tr key={item.id} className="row-hover">
                   <td className="px-6 py-4 font-medium text-green-500">{item.ip}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
@@ -543,7 +543,7 @@ export function Blacklists() {
                 </tr>
               ))}
               {activeTab === 'domain-whitelist' && domainWhitelists.map((item) => (
-                <tr key={item.id} className="hover:bg-secondary/20 transition-colors">
+                <tr key={item.id} className="row-hover">
                   <td className="px-6 py-4 font-medium text-emerald-400">
                     {item.domain}
                     <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded ${item.type === 'fqdn' ? 'bg-blue-500/20 text-blue-400' : 'bg-purple-500/20 text-purple-400'}`}>
