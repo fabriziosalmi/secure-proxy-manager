@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.2] - 2026-04-07
+
+### Added
+
+- **Glass morphism UI**: Full design system overhaul — `backdrop-blur` glass surfaces, animated number counters (rAF with ease-out cubic), staggered card entrance animations, progress bar glow effects with color-matched `box-shadow`, frosted ⌘K search modal, ambient login glow, custom 4px themed scrollbars, and gradient typography across all pages
+- **Sidebar active pill indicator**: Animated sliding bar with `transition-all duration-300` that follows the active nav item
+- **Status panel redesign**: Sidebar footer rebuilt with concentric pulse ring indicator, hierarchical status text, version/runtime/update row, and deprioritized sign-out
+- **`useAnimatedNumber` hook**: `requestAnimationFrame`-based counter interpolation with ease-out cubic, used on Dashboard, ThreatIntel, and Logs pages
+- **Extra SSL/HTTPS Ports setting**: New `extra_ssl_ports` setting in Settings → Proxy Configuration for HTTPS CONNECT on non-standard ports (e.g. Proxmox 8006, Grafana 3000); validated and injected into Squid `SSL_ports` ACL at startup
+- **Chart tooltip glass style**: All Recharts tooltips upgraded with `backdrop-filter: blur(12px)`, translucent borders, and `tabular-nums`
+- **Page transitions**: `fade-in-up` entrance animation on route change via `key={location.pathname}` in Layout
+- **Button micro-interactions**: `active:scale(0.97)` press effect and `translateX(2px)` row hover across all interactive elements
+
+### Fixed
+
+- **DNS crash-loop**: Fixed double `--conf-file` flag in entrypoint (second silently overwrote the first, dropping base config including `listen-address`, `bind-interfaces`, and `conf-dir` for blocklists). Now merges base + runtime into single `/tmp/dnsmasq.conf`
+- **DNS memory exhaustion**: Increased container memory limit from 64M to 256M for large blocklists (600K+ domains); reduced `cache-size` from 100K to 10K to prevent memory pressure alongside address-based blocklists
+- **DNS healthcheck timing**: Relaxed from `start_period: 3s, timeout: 2s, retries: 3` to `start_period: 15s, timeout: 5s, retries: 6` for reliable cold-start with large blocklists
+- **Web container crash**: `mkdir /etc/nginx/ssl` failed on read-only filesystem; added tmpfs mounts for `/etc/nginx/ssl`, `/etc/nginx/conf.d`, `/var/www/certbot`
+- **Web container permissions**: `chown("/var/cache/nginx/client_temp")` failed due to `cap_drop: ALL`; added `CHOWN`, `SETUID`, `SETGID`, `NET_BIND_SERVICE` capabilities required by nginx master process
+- **Proxy healthcheck**: Replaced external `curl http://example.com` probe (DNS + network dependent, unreliable) with local `squidclient mgr:info` with `curl gstatic.com/generate_204` fallback; increased `start_period` to 30s and `retries` to 5
+
 ## [3.2.1] - 2026-04-07
 
 ### Fixed
