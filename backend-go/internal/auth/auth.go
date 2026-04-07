@@ -86,6 +86,7 @@ func (s *Service) loadBlacklistFromDB() {
 	}
 	rows, err := s.db.Query("SELECT token_hash, expires_at FROM jwt_blacklist WHERE expires_at > datetime('now')")
 	if err != nil {
+		log.Warn().Err(err).Msg("failed to load JWT blacklist from DB")
 		return
 	}
 	defer rows.Close()
@@ -315,8 +316,8 @@ func (s *Service) ValidateWSToken(token string) (string, bool) {
 func secureToken() string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		// Fallback to timestamp-based token (less secure but no panic)
-		return hex.EncodeToString([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
+		// crypto/rand failure is catastrophic — panic is safer than predictable tokens
+		panic("crypto/rand.Read failed: " + err.Error())
 	}
 	return hex.EncodeToString(b)
 }

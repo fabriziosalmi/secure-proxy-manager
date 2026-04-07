@@ -14,7 +14,7 @@ export function Dashboard() {
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
   const proxy = `${window.location.hostname}:3128`;
-  const copy = () => { navigator.clipboard.writeText(proxy); setCopied(true); setTimeout(() => setCopied(false), 2000); };
+  const copy = () => { navigator.clipboard.writeText(proxy).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }).catch(() => toast.error('Clipboard access denied')); };
 
   const [vis, setVis] = useState(document.visibilityState !== 'hidden');
   useEffect(() => { const h = () => setVis(document.visibilityState !== 'hidden'); document.addEventListener('visibilitychange', h); return () => document.removeEventListener('visibilitychange', h); }, []);
