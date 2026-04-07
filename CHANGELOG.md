@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.1] - 2026-04-07
+
+### Fixed
+
+- Settings save failure caused by key mismatches, stale closures, and missing Zod schema validation across frontend and backend
+- Proxy GUI inaccessible when browser configured to use the proxy (port 8443 missing from SSL_ports, LAN destinations blocked by direct IP rules)
+- Docker healthchecks failing due to missing tools in containers (replaced squidclient/wget with curl)
+- SSRF to Docker internal containers via proxy ACL allowing 172.16.0.0/12 destinations (removed, restricted to 10.0.0.0/8 and 192.168.0.0/16)
+
+### Security
+
+- ReDoS protection: regex length capped at 1024 characters with client-side and server-side validation
+- Country code injection blocked with strict two-letter alpha validation on geo-import
+- crypto/rand failure now panics instead of falling back to a predictable math/rand token
+- IP address validation uses net.ParseIP instead of trusting raw header values
+- Custom WAF rules reject null bytes and enforce 512-character limit
+- Clipboard API errors handled properly (non-HTTPS contexts)
+- Unbounded analytics queries capped (file extensions, user agents, shadow IT)
+- Docker compose: no-new-privileges, read-only root filesystem, cap_drop ALL, log rotation on all services
+- Nginx rate limiting (20 req/s API, 5 req/min login), TLS cipher suite restricted to ECDHE-only
+
+### Added
+
+- Login failure alerting: failed authentication attempts broadcast via WebSocket and notification pipeline (webhook, Gotify, Telegram, ntfy)
+
+### Performance
+
+- SQLite: MaxOpenConns increased from 1 to 4 for concurrent WAL readers; PRAGMA cache_size 50 MB, mmap_size 512 MB, temp_store in memory; ANALYZE on startup
+- SQLite indexes added on proxy_logs(unix_timestamp), proxy_logs(destination), audit_log(timestamp)
+- WAF heuristic engine: consolidated five mutex lock/unlock cycles per request into one; capped client state map at 10K entries
+- WAF rule matching: early threshold exit skips remaining tiers once score is met
+- WAF DGA detection cached per domain (10K entries, 10-minute TTL)
+- Shannon entropy calculation uses fixed-size array instead of map allocation
+- WAF tar-pit delay moved to background goroutine (was blocking ICAP handler for 10 seconds)
+- WAF ipBlockTracker capped at 10K IPs with amortized eviction (was O(n) full-map scan per block)
+- WAF backend notification uses pooled HTTP client (was allocating a new client per call)
+- Nginx: gzip compression on text types, HTTP/2, SSL session cache 50 MB, static asset caching with immutable headers
+- DNS resolver: cache-size increased from 10K to 100K entries; negative caching enabled; TTL clamping 300s-3600s
+- Squid: persistent connections, pipeline prefetch, aggressive refresh patterns for static assets, ICAP preview size 1K to 4K
+- Frontend: Vite manual chunk splitting (react, recharts, tanstack-query); log filter memoized with useMemo
+
 ## [3.2.0] - 2026-04-04
 
 ### Security Hardening (18 improvements)
