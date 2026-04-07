@@ -160,8 +160,9 @@ acl direct_ipv6_host dstdom_regex -i ^\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\]$
 acl CONNECT method CONNECT
 
 # Local network destinations (proxy UI, backend — should not be blocked as "direct IP")
-acl local_dst dst 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
-acl local_dst_url url_regex -i ^https?://192\.168\. ^https?://10\. ^https?://172\.
+# NOTE: 172.16.0.0/12 intentionally excluded — Docker internal networks use that range
+acl local_dst dst 10.0.0.0/8 192.168.0.0/16
+acl local_dst_url url_regex -i ^https?://192\.168\. ^https?://10\.
 
 # Block dangerous HTTP methods
 acl Dangerous_methods method PUT DELETE PATCH TRACE TRACK
