@@ -157,7 +157,8 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		// Feature toggles
 		{"ssl_bump_enabled", "false"},
 		{"aggressive_caching_enabled", "false"},
-		{"offline_mode_enabled", "false"},
+		{"cache_bypass_domains", ""},
+		{"enable_offline_mode", "false"},
 		{"tailscale_enabled", "false"},
 		{"ddns_enabled", "false"},
 		// Security
