@@ -2,6 +2,7 @@
 package workers
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -52,15 +53,10 @@ func StartLogTailer(ctx context.Context, db *sql.DB, logPath string, hub *websoc
 				f.Close()
 				continue
 			}
-			buf, err := io.ReadAll(f)
-			f.Close()
-			if err != nil {
-				continue
-			}
-			offset += int64(len(buf))
-			lines := strings.Split(string(buf), "\n")
-			for _, line := range lines {
-				line = strings.TrimSpace(line)
+			scanner := bufio.NewScanner(f)
+			scanner.Buffer(make([]byte, 64*1024), 256*1024) // 64KB default, 256KB max line
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
 				if line == "" {
 					continue
 				}
@@ -75,6 +71,14 @@ func StartLogTailer(ctx context.Context, db *sql.DB, logPath string, hub *websoc
 					default:
 					}
 				}
+			}
+			// Update offset to current file position.
+			newOffset, err := f.Seek(0, io.SeekCurrent)
+			f.Close()
+			if err == nil {
+				offset = newOffset
+			} else {
+				offset = fi.Size()
 			}
 		}
 	}()

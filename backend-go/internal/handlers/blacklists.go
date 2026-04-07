@@ -351,6 +351,7 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var toInsert [][2]string
+	importDesc := "Imported on " + time.Now().Format("2006-01-02")
 	added, skipped := 0, 0
 	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
@@ -387,7 +388,7 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		existing[entry] = struct{}{}
-		toInsert = append(toInsert, [2]string{entry, "Imported on " + time.Now().Format("2006-01-02")})
+		toInsert = append(toInsert, [2]string{entry, importDesc})
 		added++
 	}
 
