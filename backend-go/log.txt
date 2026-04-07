@@ -1,3 +1,0 @@
-{"level":"info","version":"3.2.0","time":"2026-04-06T19:12:06+02:00","message":"secure-proxy-manager backend starting"}
-{"level":"fatal","error":"mkdir for db: mkdir /data: read-only file system","time":"2026-04-06T19:12:06+02:00","message":"application failed"}
-exit status 1
