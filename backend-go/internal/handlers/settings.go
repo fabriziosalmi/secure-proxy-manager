@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	appcrypto "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/crypto"
@@ -123,17 +124,44 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// SSL Bump toggle file — Squid reads this at container startup
-	if v, ok := body["ssl_bump_enabled"]; ok {
-		toggleFile := filepath.Join(h.cfg.ConfigDir, "ssl_bump_enabled")
-		if v == "true" {
-			if err := os.WriteFile(toggleFile, []byte("1"), 0o600); err != nil {
-				log.Warn().Str("path", toggleFile).Err(err).Msg("ssl_bump toggle file write failed — proxy restart required after fixing permissions")
+	// Toggle files — Squid reads these at container startup.
+	toggles := []struct {
+		key  string
+		file string
+	}{
+		{"ssl_bump_enabled", "ssl_bump_enabled"},
+		{"aggressive_caching_enabled", "aggressive_caching_enabled"},
+		{"enable_offline_mode", "offline_mode_enabled"},
+	}
+	for _, tg := range toggles {
+		if v, ok := body[tg.key]; ok {
+			toggleFile := filepath.Join(h.cfg.ConfigDir, tg.file)
+			if v == "true" {
+				if err := os.WriteFile(toggleFile, []byte("1"), 0o600); err != nil {
+					log.Warn().Str("path", toggleFile).Err(err).Msg("toggle file write failed")
+				}
+			} else {
+				if err := os.Remove(toggleFile); err != nil && !os.IsNotExist(err) {
+					log.Warn().Str("path", toggleFile).Err(err).Msg("toggle file remove failed")
+				}
 			}
+		}
+	}
+
+	// Cache bypass domains — write as newline-separated file for Squid ACL.
+	if v, ok := body["cache_bypass_domains"]; ok {
+		bypassFile := filepath.Join(h.cfg.ConfigDir, "cache_bypass_domains.txt")
+		if v == "" {
+			os.Remove(bypassFile) //nolint:errcheck
 		} else {
-			if err := os.Remove(toggleFile); err != nil && !os.IsNotExist(err) {
-				log.Warn().Str("path", toggleFile).Err(err).Msg("ssl_bump toggle file remove failed")
+			var domains []string
+			for _, d := range strings.Split(v, ",") {
+				d = strings.TrimSpace(strings.ToLower(d))
+				if d != "" {
+					domains = append(domains, "."+strings.TrimPrefix(d, "."))
+				}
 			}
+			os.WriteFile(bypassFile, []byte(strings.Join(domains, "\n")+"\n"), 0o600) //nolint:errcheck
 		}
 	}
 

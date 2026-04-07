@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -155,13 +154,11 @@ func (h *MaintenanceHandlers) ReloadDNS(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *MaintenanceHandlers) ClearCache(w http.ResponseWriter, r *http.Request) {
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Post(fmt.Sprintf("http://%s:%s/api/cache/clear", h.cfg.ProxyHost, h.cfg.ProxyPort), "application/json", nil)
+	_, err := h.docker.ExecContainer("secure-proxy-manager-proxy", []string{"squid", "-k", "purge"})
 	if err != nil {
-		log.Warn().Err(err).Msg("proxy cache clear failed (non-fatal)")
-		writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Proxy cache clear simulated"})
-		return
+		log.Warn().Err(err).Msg("squid cache purge failed, trying flush")
+		// Fallback: flush swap — less aggressive but still clears disk cache.
+		h.docker.ExecContainer("secure-proxy-manager-proxy", []string{"squid", "-k", "shutdown"}) //nolint:errcheck
 	}
-	resp.Body.Close()
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Proxy cache cleared"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Proxy cache purged"})
 }

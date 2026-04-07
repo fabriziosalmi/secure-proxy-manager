@@ -23,6 +23,10 @@ func (m *mockDockerClient) RestartContainer(name string) error {
 	return m.err
 }
 
+func (m *mockDockerClient) ExecContainer(name string, cmd []string) (string, error) {
+	return "", m.err
+}
+
 func TestMaintenanceHandlers_BackupConfig(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,13 +28,19 @@ var (
 	probeClient = &http.Client{Timeout: 1 * time.Second}
 )
 
-type AnalyticsHandlers struct {
-	db  *sql.DB
-	cfg *config.Config
+// dockerExecer is the subset of docker.DockerClient needed for cache stats.
+type dockerExecer interface {
+	ExecContainer(name string, cmd []string) (string, error)
 }
 
-func NewAnalyticsHandlers(db *sql.DB, cfg *config.Config) *AnalyticsHandlers {
-	return &AnalyticsHandlers{db: db, cfg: cfg}
+type AnalyticsHandlers struct {
+	db     *sql.DB
+	cfg    *config.Config
+	docker dockerExecer
+}
+
+func NewAnalyticsHandlers(db *sql.DB, cfg *config.Config, dc dockerExecer) *AnalyticsHandlers {
+	return &AnalyticsHandlers{db: db, cfg: cfg, docker: dc}
 }
 
 func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {
@@ -279,10 +286,85 @@ func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *AnalyticsHandlers) CacheStats(w http.ResponseWriter, r *http.Request) {
-	writeOK(w, map[string]any{
-		"hit_rate": 0, "byte_hit_rate": 0, "cache_size": "N/A",
-		"max_cache_size": "N/A", "objects_cached": 0, "simulated": true,
-	})
+	out, err := h.docker.ExecContainer("secure-proxy-manager-proxy", []string{"squidclient", "-h", "127.0.0.1", "-p", "3128", "mgr:info"})
+	if err != nil {
+		log.Debug().Err(err).Msg("squidclient mgr:info failed, returning zeros")
+		writeOK(w, map[string]any{
+			"hit_rate": 0, "byte_hit_rate": 0, "cache_size": "N/A",
+			"max_cache_size": "N/A", "objects_cached": 0, "hits": 0,
+			"misses": 0, "requests": 0, "simulated": true,
+		})
+		return
+	}
+	writeOK(w, parseSquidInfo(out))
+}
+
+// parseSquidInfo extracts cache metrics from squidclient mgr:info output.
+func parseSquidInfo(raw string) map[string]any {
+	result := map[string]any{
+		"hit_rate": 0.0, "byte_hit_rate": 0.0, "cache_size": "N/A",
+		"max_cache_size": "N/A", "objects_cached": 0, "hits": 0,
+		"misses": 0, "requests": 0, "bytes_saved": 0, "simulated": false,
+	}
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "Request Hit Ratios:"):
+			// "Request Hit Ratios:     5min: 42.3%, 60min: 38.1%"
+			if parts := strings.SplitN(line, "5min:", 2); len(parts) == 2 {
+				val := strings.TrimSpace(strings.SplitN(parts[1], "%", 2)[0])
+				if f, err := strconv.ParseFloat(val, 64); err == nil {
+					result["hit_rate"] = f / 100
+				}
+			}
+		case strings.HasPrefix(line, "Byte Hit Ratios:"):
+			if parts := strings.SplitN(line, "5min:", 2); len(parts) == 2 {
+				val := strings.TrimSpace(strings.SplitN(parts[1], "%", 2)[0])
+				if f, err := strconv.ParseFloat(val, 64); err == nil {
+					result["byte_hit_rate"] = f / 100
+				}
+			}
+		case strings.HasPrefix(line, "Storage Swap size:"):
+			// "Storage Swap size:	1234 KB"
+			result["cache_size"] = strings.TrimSpace(strings.TrimPrefix(line, "Storage Swap size:"))
+		case strings.HasPrefix(line, "Maximum Swap Size:"):
+			result["max_cache_size"] = strings.TrimSpace(strings.TrimPrefix(line, "Maximum Swap Size:"))
+		case strings.HasPrefix(line, "StoreEntries"):
+			// "StoreEntries                : 1234"
+			if parts := strings.SplitN(line, ":", 2); len(parts) == 2 {
+				val := strings.TrimSpace(parts[1])
+				if n, err := strconv.Atoi(val); err == nil {
+					result["objects_cached"] = n
+				}
+			}
+		case strings.Contains(line, "client_http.requests"):
+			if parts := strings.SplitN(line, "=", 2); len(parts) == 2 {
+				if n, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
+					result["requests"] = n
+				}
+			}
+		case strings.Contains(line, "client_http.hits"):
+			if parts := strings.SplitN(line, "=", 2); len(parts) == 2 {
+				if n, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
+					result["hits"] = n
+				}
+			}
+		case strings.Contains(line, "client_http.errors"):
+			// use as proxy for misses (hits + misses ≈ requests)
+		case strings.Contains(line, "Number of clients accessing cache:"):
+			// optional metric
+		}
+	}
+	// Compute misses from requests - hits
+	if reqs, ok := result["requests"].(int); ok {
+		if hits, ok := result["hits"].(int); ok {
+			result["misses"] = reqs - hits
+			if reqs > 0 {
+				result["hit_ratio"] = float64(hits) / float64(reqs)
+			}
+		}
+	}
+	return result
 }
 
 func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {
