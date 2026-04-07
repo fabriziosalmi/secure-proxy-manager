@@ -24,8 +24,8 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/docker"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/handlers"
 	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 	ws "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/websocket"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
 func main() {
@@ -106,7 +106,7 @@ func run() error {
 	r.Use(appMW.RequestID)
 	r.Use(appMW.CORS(cfg))
 	r.Use(appMW.SecurityHeaders)
-	r.Use(appMW.GlobalRateLimit(20, 60)) // 20 req/s sustained, 60 burst per IP
+	r.Use(appMW.GlobalRateLimit(20, 60))       // 20 req/s sustained, 60 burst per IP
 	r.Use(appMW.MaxBodySize(55 * 1024 * 1024)) // 55MB max (for large blacklist imports)
 
 	authMW := appMW.Auth(authSvc)
@@ -193,7 +193,7 @@ func run() error {
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			// In test mode we might not want to fatal. 
+			// In test mode we might not want to fatal.
 			// We'll just log error.
 			log.Error().Err(err).Msg("server error")
 		}
@@ -202,7 +202,7 @@ func run() error {
 	// ── graceful shutdown ────────────────────────────────────────────────────
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-	
+
 	// Allow for automated testing shutdown
 	if os.Getenv("TEST_MODE") == "true" {
 		time.Sleep(500 * time.Millisecond)
