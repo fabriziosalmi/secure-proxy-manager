@@ -99,10 +99,12 @@ docker compose up -d --build
 - **Update Notifier**: Checks GitHub releases, shows badge when update available.
 
 ### Onboarding & UX
+- **Glass Morphism UI**: Aerospace-grade dark theme with `backdrop-blur` glass surfaces, animated number counters, staggered page transitions, progress bar glow, and frosted ⌘K search modal.
 - **Setup Wizard**: First-login 3-step wizard (environment → devices → strictness).
 - **6 Presets**: Basic, Family, Standard, Paranoid, DevOps, Kiosk — one-click configuration.
 - **Client Setup Export**: Per-OS instructions (Win/Mac/Linux/iOS/Android) + PAC file download.
 - **WPAD Auto-Discovery**: Browsers auto-detect proxy via `wpad.dat` — zero client config.
+- **Extra SSL Ports**: Allow HTTPS CONNECT on non-standard ports (e.g. Proxmox 8006, Grafana 3000) from Settings.
 - **Pi-hole/AdGuard Detect**: Scans LAN for existing DNS providers, offers to cooperate.
 - **DoH Blocker**: Blocks 14 DNS-over-HTTPS providers to prevent blackhole bypass.
 - **GDPR Mode**: Anonymize client IPs in logs (last octet → x) for EU compliance.
@@ -131,11 +133,11 @@ docker compose up -d --build
 
 The project employs a microservices architecture:
 
-1. **Frontend (React 19/Vite/Nginx)**: SPA with @tanstack/react-query, Recharts dashboards, paginated blacklists, Threat Intel page with Shadow IT/file types/domain cloud, global search (⌘K), mobile responsive.
+1. **Frontend (React 19/Vite/Nginx)**: Glass morphism design system with animated counters, staggered transitions, and frosted overlays. SPA with @tanstack/react-query, Recharts dashboards, paginated blacklists, Threat Intel page with Shadow IT/file types/domain cloud, global search (⌘K), mobile responsive.
 2. **Backend (Go)**: Single 16MB binary (chi router, zerolog, modernc/sqlite). 70+ endpoints, WebSocket log streaming, JWT auth + persistent blacklist, AES-256-GCM encrypted settings, global rate limiting, circuit breaker for WAF calls, pprof profiling, audit logging, SSRF-safe HTTP client with DNS pinning.
 3. **Proxy Engine (Squid 5.9)**: Caching/filtering with ICAP integration, custom branded block pages, IP ACL blocking, protocol hardening (method whitelist, header stripping, HSTS).
 4. **WAF Engine (Go ICAP)**: 166 regex rules + 7 behavioral heuristics + 3 ML-lite checks (DGA, typosquatting, safe URL cache). Anomaly scoring, Shannon entropy, dual-scan (raw + normalized).
-5. **DNS Blackhole (dnsmasq)**: Internal DNS resolver that sinkhole-blocks 87K+ blacklisted domains at L3.
+5. **DNS Blackhole (dnsmasq)**: Internal DNS resolver that sinkhole-blocks 87K+ blacklisted domains at L3. Supports 600K+ entry blocklists with tuned memory and healthcheck timing.
 6. **Tailscale Sidecar** (optional): Secure remote access overlay network.
 
 <div align="center">
@@ -162,6 +164,7 @@ secure-proxy-manager/
 ├── ui/                       # React 19 frontend
 │   └── src/
 │       ├── pages/            # Dashboard, Blacklists, ThreatIntel, Logs, Settings, Login
+│       ├── hooks/            # useAnimatedNumber (rAF counter interpolation)
 │       ├── lib/api.ts        # Axios + JWT expiry + react-query
 │       └── public/logo.svg   # Gear+eye SVG logo
 ├── proxy/                    # Squid proxy service
@@ -931,7 +934,6 @@ Full interactive API documentation is available at `/api/docs` when the service 
 
 ## Future Roadmap
 
-- **Regex Playground**: Test WAF rules against real traffic logs before deploying
 - **WAF False Positive Management**: Exclude rules per domain with one click
 - **ASN Blocking**: Block entire Autonomous Systems by number
 - **Bloom Filter Tuning**: Auto-adjust cache TTL based on traffic patterns
