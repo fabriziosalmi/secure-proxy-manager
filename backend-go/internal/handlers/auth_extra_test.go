@@ -11,7 +11,7 @@ import (
 func TestAuthHandlers_ChangePassword_Failures(t *testing.T) {
 	db, svc, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAuthHandlers(db, svc, cfg)
+	h := NewAuthHandlers(db, svc, cfg, nil, nil)
 
 	// Short password
 	body, _ := json.Marshal(map[string]string{
@@ -56,7 +56,7 @@ func TestAuthHandlers_ChangePassword_Failures(t *testing.T) {
 func TestAuthHandlers_Login_Failures(t *testing.T) {
 	db, svc, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAuthHandlers(db, svc, cfg)
+	h := NewAuthHandlers(db, svc, cfg, nil, nil)
 
 	// Missing credentials
 	body, _ := json.Marshal(map[string]string{"username": ""})

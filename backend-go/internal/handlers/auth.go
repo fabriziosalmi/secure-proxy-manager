@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -14,20 +15,23 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
+	ws "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/websocket"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 
 	"github.com/go-chi/chi/v5"
 )
 
 type AuthHandlers struct {
-	db  *sql.DB
-	svc *auth.Service
-	cfg *config.Config
+	db     *sql.DB
+	svc    *auth.Service
+	cfg    *config.Config
+	notify NotifyQueue
+	hub    *ws.Hub
 }
 
-func NewAuthHandlers(db *sql.DB, svc *auth.Service, cfg *config.Config) *AuthHandlers {
-	return &AuthHandlers{db: db, svc: svc, cfg: cfg}
+func NewAuthHandlers(db *sql.DB, svc *auth.Service, cfg *config.Config, notify NotifyQueue, hub *ws.Hub) *AuthHandlers {
+	return &AuthHandlers{db: db, svc: svc, cfg: cfg, notify: notify, hub: hub}
 }
 
 func (h *AuthHandlers) Register(r chi.Router) {
@@ -59,10 +63,17 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 
 	username, _, err := h.svc.Authenticate(tmpR)
 	if err != nil {
+		clientAddr := r.Header.Get("X-Forwarded-For")
+		if clientAddr == "" {
+			clientAddr = r.RemoteAddr
+		}
+
 		if err.Error() == "too many failed attempts, try again later" {
+			h.alertLoginFailure(req.Username, clientAddr, "rate_limited")
 			writeError(w, http.StatusTooManyRequests, err.Error())
 			return
 		}
+		h.alertLoginFailure(req.Username, clientAddr, "bad_credentials")
 		writeError(w, http.StatusUnauthorized, "incorrect username or password")
 		return
 	}
@@ -168,4 +179,43 @@ func (h *AuthHandlers) Health(w http.ResponseWriter, r *http.Request) {
 
 func basicHeader(u, p string) string {
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(u+":"+p))
+}
+
+// alertLoginFailure sends a login failure event to the notification pipeline
+// and broadcasts it to connected WebSocket clients (admin dashboard).
+func (h *AuthHandlers) alertLoginFailure(username, clientIP, reason string) {
+	now := time.Now().Format(time.RFC3339)
+
+	// Audit log entry for every failed attempt.
+	database.Audit(h.db, username, "login_failed", clientIP, reason)
+
+	event := map[string]any{
+		"timestamp":  now,
+		"event_type": "login_failure",
+		"message":    "Failed login attempt for user '" + username + "' from " + clientIP,
+		"level":      "warning",
+		"client_ip":  clientIP,
+		"username":   username,
+		"reason":     reason,
+	}
+
+	// Push to notification queue (webhook, Gotify, Telegram, etc.)
+	if h.notify != nil {
+		select {
+		case h.notify <- event:
+		default:
+		}
+	}
+
+	// Broadcast to WebSocket clients for real-time dashboard alert.
+	if h.hub != nil {
+		wsMsg, _ := json.Marshal(map[string]any{
+			"type": "login_failure",
+			"data": event,
+		})
+		select {
+		case h.hub.Broadcast <- wsMsg:
+		default:
+		}
+	}
 }

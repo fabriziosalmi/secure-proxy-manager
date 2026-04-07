@@ -112,7 +112,7 @@ func run() error {
 	authMW := appMW.Auth(authSvc)
 
 	// Register handler groups.
-	handlers.NewAuthHandlers(db, authSvc, cfg).Register(r)
+	handlers.NewAuthHandlers(db, authSvc, cfg, notify, hub).Register(r)
 	handlers.NewLogHandlers(db).Register(r, authMW)
 	handlers.NewSettingsHandlers(db, cfg).Register(r, authMW)
 	handlers.NewBlacklistHandlers(db, cfg).Register(r, authMW)

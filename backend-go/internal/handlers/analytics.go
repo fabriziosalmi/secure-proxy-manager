@@ -366,7 +366,9 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 		}
 		cRows.Close()
 	}
-	if topClients == nil { topClients = []map[string]any{} }
+	if topClients == nil {
+		topClients = []map[string]any{}
+	}
 	result["top_clients"] = topClients
 
 	// Threat categories (last 7 days)
@@ -381,7 +383,9 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 		}
 		tRows.Close()
 	}
-	if threatCats == nil { threatCats = []map[string]any{} }
+	if threatCats == nil {
+		threatCats = []map[string]any{}
+	}
 	result["threat_categories"] = threatCats
 
 	// Recent blocks (last 10)
@@ -398,7 +402,9 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 		}
 		rRows.Close()
 	}
-	if recentBlocks == nil { recentBlocks = []map[string]any{} }
+	if recentBlocks == nil {
+		recentBlocks = []map[string]any{}
+	}
 	result["recent_blocks"] = recentBlocks
 
 	// WAF stats
@@ -722,11 +728,11 @@ func (h *AnalyticsHandlers) TestRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeOK(w, map[string]any{
-		"regex":     req.Regex,
-		"hours":     req.Hours,
-		"scanned":   scanned,
-		"matched":   len(matches),
-		"examples":  matches,
+		"regex":       req.Regex,
+		"hours":       req.Hours,
+		"scanned":     scanned,
+		"matched":     len(matches),
+		"examples":    matches,
 		"would_block": len(matches) > 0,
 	})
 }
