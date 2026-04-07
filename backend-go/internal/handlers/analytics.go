@@ -535,7 +535,7 @@ func (h *AnalyticsHandlers) UserAgents(w http.ResponseWriter, r *http.Request) {
 var extRe = regexp.MustCompile(`\.([a-zA-Z0-9]{1,10})(?:\?|$|#)`)
 
 func (h *AnalyticsHandlers) FileExtensions(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.db.Query(`SELECT destination FROM proxy_logs WHERE destination IS NOT NULL AND destination != '' AND timestamp >= datetime('now', '-7 days') LIMIT 50000`)
+	rows, err := h.db.Query(`SELECT destination FROM proxy_logs WHERE destination IS NOT NULL AND destination != '' AND timestamp >= datetime('now', '-7 days') LIMIT 10000`)
 	skipTLDs := map[string]struct{}{"com": {}, "net": {}, "org": {}, "io": {}, "dev": {}, "app": {}, "me": {}, "co": {}}
 	extCounts := map[string]int{}
 	if err == nil {
@@ -680,6 +680,10 @@ func (h *AnalyticsHandlers) TestRule(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Regex == "" {
 		writeError(w, http.StatusBadRequest, "regex is required")
+		return
+	}
+	if len(req.Regex) > 1024 {
+		writeError(w, http.StatusBadRequest, "regex too long (max 1024 chars)")
 		return
 	}
 	if req.Hours <= 0 || req.Hours > 168 {

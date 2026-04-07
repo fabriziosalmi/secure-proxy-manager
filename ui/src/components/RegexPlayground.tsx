@@ -21,6 +21,17 @@ export function RegexPlayground() {
 
   const handleTest = async () => {
     if (!regex.trim()) return;
+    // Client-side regex validation to catch invalid patterns early
+    try {
+      new RegExp(regex.trim());
+    } catch {
+      toast.error('Invalid regex syntax');
+      return;
+    }
+    if (regex.trim().length > 1024) {
+      toast.error('Regex too long (max 1024 characters)');
+      return;
+    }
     setTesting(true);
     setResult(null);
     try {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -449,8 +450,13 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 	var fetchErrors []string
 	client := &http.Client{Timeout: 30 * time.Second}
 
+	ccRe := regexp.MustCompile(`^[a-zA-Z]{2}$`)
 	for _, country := range req.Countries {
 		cc := strings.ToLower(country)
+		if !ccRe.MatchString(cc) {
+			fetchErrors = append(fetchErrors, cc+": invalid country code")
+			continue
+		}
 		urls := []string{}
 		if h.cfg.GeoIPURL != "" {
 			urls = append(urls, h.cfg.GeoIPURL+"?cc="+cc)
