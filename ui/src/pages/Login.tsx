@@ -30,15 +30,18 @@ export function Login({ onLogin }: Props) {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
-      <div className="w-full max-w-sm space-y-6">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 ambient-glow">
+      <div className="w-full max-w-sm space-y-6 page-enter">
         <div className="text-center space-y-2">
           <div className="flex justify-center">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-              <Shield className="w-6 h-6 text-primary" />
+            <div className="relative w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+              <Shield className="w-7 h-7 text-primary" />
+              <div className="absolute inset-0 rounded-2xl bg-primary/5 animate-glow-pulse" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Secure Proxy Manager</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">
+            Secure Proxy Manager
+          </h1>
           <p className="text-sm text-muted-foreground">Sign in to continue</p>
         </div>
 
@@ -52,7 +55,7 @@ export function Login({ onLogin }: Props) {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
-              className="w-full bg-card border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full glass-surface rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
             />
           </div>
           <div className="space-y-2">
@@ -64,20 +67,25 @@ export function Login({ onLogin }: Props) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full bg-card border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full glass-surface rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
             />
           </div>
 
           {error && (
-            <p className="text-sm text-destructive">{error}</p>
+            <p className="text-sm text-destructive animate-fade-in-up">{error}</p>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed btn-press"
           >
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Signing in...
+              </span>
+            ) : 'Sign in'}
           </button>
         </form>
       </div>

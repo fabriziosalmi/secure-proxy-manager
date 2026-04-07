@@ -113,7 +113,7 @@ if [ -f /config/squid_settings.env ]; then
     . /config/squid_settings.env
 fi
 
-echo "Squid settings: port=${SQUID_PORT} cache=${SQUID_CACHE_MB}MB mem=${SQUID_MEM_MB}MB"
+echo "Squid settings: port=${SQUID_PORT} cache=${SQUID_CACHE_MB}MB mem=${SQUID_MEM_MB}MB extra_ssl=${EXTRA_SSL_PORTS:-none}"
 
 # ── Generate base Squid configuration ────────────────────────────────────────
 
@@ -288,6 +288,22 @@ fi
 # ── Ensure critical security rules are present ──────────────────────────────
 
 ensure_ip_blocking_rules /etc/squid/squid.conf
+
+# ── Extra SSL Ports (from Settings > extra_ssl_ports) ──────────────────────
+if [ -n "$EXTRA_SSL_PORTS" ]; then
+    echo "Adding extra SSL ports: $EXTRA_SSL_PORTS"
+    for p in $EXTRA_SSL_PORTS; do
+        # Validate: must be a number 1-65535
+        if echo "$p" | grep -qE '^[0-9]+$' && [ "$p" -ge 1 ] && [ "$p" -le 65535 ]; then
+            if ! grep -q "acl SSL_ports port $p" /etc/squid/squid.conf; then
+                sed -i "/^acl SSL_ports port 8443/a acl SSL_ports port $p" /etc/squid/squid.conf
+                echo "  Added SSL_port $p"
+            fi
+        else
+            echo "  Skipping invalid port: $p"
+        fi
+    done
+fi
 
 # ── GUI IP Whitelist Override ──────────────────────────────────────────────
 if [ -n "$GUI_IP_WHITELIST" ]; then

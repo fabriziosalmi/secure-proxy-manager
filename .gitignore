@@ -42,6 +42,9 @@ Thumbs.db
 docs/node_modules/
 docs/site/
 
+# Deploy (internal)
+deploy.sh
+
 # Project planning
 NEWFEATURES.md
 PLAN.md

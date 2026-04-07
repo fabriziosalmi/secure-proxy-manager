@@ -37,8 +37,16 @@ services:
       - /tmp
       - /var/run
       - /var/cache/nginx
+      - /etc/nginx/ssl
+      - /etc/nginx/conf.d
+      - /var/www/certbot
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - NET_BIND_SERVICE
     logging:
       driver: json-file
       options:
@@ -149,14 +157,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.25'
-          memory: 64M
+          cpus: '0.50'
+          memory: 256M
     healthcheck:
       test: ["CMD", "nslookup", "localhost", "127.0.0.1"]
       interval: 10s
-      timeout: 2s
-      retries: 3
-      start_period: 3s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
     security_opt:
       - no-new-privileges:true
     read_only: true
@@ -199,11 +207,11 @@ services:
           cpus: '0.50'
           memory: 512M
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf -x http://127.0.0.1:3128 http://example.com -o /dev/null || exit 1"]
+      test: ["CMD-SHELL", "(squidclient -h 127.0.0.1 -p 3128 mgr:info 2>/dev/null | grep -q 'Squid Object Cache') || curl -sf --max-time 3 -x http://127.0.0.1:3128 http://www.gstatic.com/generate_204 -o /dev/null"]
       interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 30s
     security_opt:
       - no-new-privileges:true
     logging:
