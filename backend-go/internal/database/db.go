@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite" // register pure-Go SQLite driver
 	"github.com/rs/zerolog/log"
+	_ "modernc.org/sqlite" // register pure-Go SQLite driver
 )
 
 // Open opens (or creates) a SQLite database at path with WAL mode.
@@ -23,13 +23,26 @@ func Open(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sql.Open: %w", err)
 	}
-	// Only 1 writer at a time (WAL handles readers separately).
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(8)
-	db.SetConnMaxLifetime(30 * time.Minute)
+	// WAL mode allows concurrent readers + 1 writer.
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
+	db.SetConnMaxLifetime(2 * time.Hour)
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("db ping: %w", err)
 	}
+
+	// Performance PRAGMAs — applied per-connection.
+	for _, pragma := range []string{
+		"PRAGMA cache_size = -50000",   // 50 MB page cache (vs default 2 MB)
+		"PRAGMA mmap_size = 536870912", // 512 MB memory-mapped I/O
+		"PRAGMA temp_store = MEMORY",   // temp tables in RAM, not /tmp
+		"PRAGMA page_size = 4096",      // optimal for SSD
+	} {
+		if _, err := db.Exec(pragma); err != nil {
+			log.Warn().Str("pragma", pragma).Err(err).Msg("pragma failed (non-fatal)")
+		}
+	}
+
 	log.Info().Str("path", path).Msg("database opened")
 	return db, nil
 }
@@ -92,6 +105,8 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_ts_ip ON proxy_logs(timestamp, source_ip)`,
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_ts_dest ON proxy_logs(timestamp, destination)`,
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_status ON proxy_logs(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_unix_ts ON proxy_logs(unix_timestamp)`,
+		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_dest ON proxy_logs(destination)`,
 		`CREATE TABLE IF NOT EXISTS settings (
 			setting_name TEXT PRIMARY KEY,
 			setting_value TEXT
@@ -104,6 +119,7 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 			details TEXT,
 			timestamp TEXT DEFAULT (datetime('now'))
 		)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(timestamp)`,
 	}
 
 	for _, stmt := range schema {
@@ -173,6 +189,11 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 	)
 	if err != nil {
 		return fmt.Errorf("seed admin: %w", err)
+	}
+
+	// Update query planner statistics for optimal index usage.
+	if _, err := db.Exec("ANALYZE"); err != nil {
+		log.Warn().Err(err).Msg("ANALYZE failed (non-fatal)")
 	}
 
 	log.Info().Msg("database initialised")

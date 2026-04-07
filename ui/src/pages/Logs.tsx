@@ -116,12 +116,16 @@ export function Logs() {
     };
   }, [autoRefresh]);
 
-  // Filter logs based on search
-  const filteredLogs = realtimeLogs.filter((log) =>
-    log.destination?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    log.client_ip?.includes(searchTerm) ||
-    log.status?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter logs based on search — memoized to avoid recalc on every render
+  const filteredLogs = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    if (!term) return realtimeLogs;
+    return realtimeLogs.filter((log) =>
+      log.destination?.toLowerCase().includes(term) ||
+      log.client_ip?.includes(searchTerm) ||
+      log.status?.toLowerCase().includes(term)
+    );
+  }, [realtimeLogs, searchTerm]);
 
   // Compute stats from current logs
   const stats = useMemo(() => {

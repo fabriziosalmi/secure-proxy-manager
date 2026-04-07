@@ -49,10 +49,10 @@ var blockRules = []CategoryRules{
 			r("SQLi-007", `(?i)(xp_cmdshell|sp_executesql|sp_configure|xp_regread)`, 10, 2),
 			r("SQLi-008", `(?i)(LOAD_FILE\s*\(|INTO\s+(OUT|DUMP)FILE)`, 10, 2),
 			r("SQLi-009", `(?i)(INFORMATION_SCHEMA|TABLE_SCHEMA|COLUMN_NAME|sys\.objects|mysql\.user)`, 10, 2),
-			r("SQLi-010", `(?i)ORDER\s+BY\s+[0-9]{1,2}\b`, 4, 2),           // SQLi column enumeration
-			r("SQLi-011", `(?i)GROUP\s+BY\s+.*HAVING\s+1\s*=\s*1`, 7, 2),   // SQLi bypass
-			r("SQLi-012", `(?i)SELECT\s+.*INTO\s+OUTFILE`, 10, 2),           // DB dump to file
-			r("SQLi-013", `(?i)db\.\w+\.find\(\{`, 7, 2),                    // NoSQL injection (MongoDB)
+			r("SQLi-010", `(?i)ORDER\s+BY\s+[0-9]{1,2}\b`, 4, 2),         // SQLi column enumeration
+			r("SQLi-011", `(?i)GROUP\s+BY\s+.*HAVING\s+1\s*=\s*1`, 7, 2), // SQLi bypass
+			r("SQLi-012", `(?i)SELECT\s+.*INTO\s+OUTFILE`, 10, 2),        // DB dump to file
+			r("SQLi-013", `(?i)db\.\w+\.find\(\{`, 7, 2),                 // NoSQL injection (MongoDB)
 
 			// Tier 3 — evasion-hardened
 			r("SQLi-014", `(?i)(0x[0-9a-f]{6,}|UNHEX\s*\(|CHAR\s*\(|CAST\s*\(|CONVERT\s*\()`, 4, 3),
@@ -239,20 +239,20 @@ var blockRules = []CategoryRules{
 			r("CLOUD-002", `AIza[0-9A-Za-z\-_]{35}`, 10, 1),
 
 			// Tier 2 — SaaS tokens
-			r("CLOUD-003", `sk-[a-zA-Z0-9]{20,}`, 10, 2),               // OpenAI
-			r("CLOUD-004", `sk_live_[0-9a-zA-Z]{24,}`, 10, 2),          // Stripe live
+			r("CLOUD-003", `sk-[a-zA-Z0-9]{20,}`, 10, 2),                      // OpenAI
+			r("CLOUD-004", `sk_live_[0-9a-zA-Z]{24,}`, 10, 2),                 // Stripe live
 			r("CLOUD-005", `SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}`, 10, 2), // SendGrid
-			r("CLOUD-006", `SK[0-9a-fA-F]{32}`, 7, 2),                  // Twilio
-			r("CLOUD-007", `AC[a-f0-9]{32}`, 7, 2),                     // Twilio Account SID
-			r("CLOUD-008", `gho_[a-zA-Z0-9]{36}`, 10, 2),              // GitHub OAuth
-			r("CLOUD-009", `sq0atp-[0-9A-Za-z\-_]{22}`, 10, 2),        // Square
-			r("CLOUD-010", `key-[0-9a-fA-F]{32}`, 7, 2),               // Mailgun
-			r("CLOUD-011", `[0-9a-fA-F]{32}-us[0-9]{1,2}`, 7, 2),      // Mailchimp
+			r("CLOUD-006", `SK[0-9a-fA-F]{32}`, 7, 2),                         // Twilio
+			r("CLOUD-007", `AC[a-f0-9]{32}`, 7, 2),                            // Twilio Account SID
+			r("CLOUD-008", `gho_[a-zA-Z0-9]{36}`, 10, 2),                      // GitHub OAuth
+			r("CLOUD-009", `sq0atp-[0-9A-Za-z\-_]{22}`, 10, 2),                // Square
+			r("CLOUD-010", `key-[0-9a-fA-F]{32}`, 7, 2),                       // Mailgun
+			r("CLOUD-011", `[0-9a-fA-F]{32}-us[0-9]{1,2}`, 7, 2),              // Mailchimp
 
 			// Tier 3 — patterns needing more context
-			r("CLOUD-012", `(?i)vault:v[0-9]:[a-zA-Z0-9+/=]+`, 10, 3), // HashiCorp Vault
-			r("CLOUD-013", `(?i)x-amz-security-token:\s*[a-zA-Z0-9+/=]{100,}`, 10, 3), // AWS STS
-			r("CLOUD-014", `EAACEdEose0cBA[0-9A-Za-z]+`, 7, 3),        // Facebook Graph
+			r("CLOUD-012", `(?i)vault:v[0-9]:[a-zA-Z0-9+/=]+`, 10, 3),                                            // HashiCorp Vault
+			r("CLOUD-013", `(?i)x-amz-security-token:\s*[a-zA-Z0-9+/=]{100,}`, 10, 3),                            // AWS STS
+			r("CLOUD-014", `EAACEdEose0cBA[0-9A-Za-z]+`, 7, 3),                                                   // Facebook Graph
 			r("CLOUD-015", `(?i)amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`, 10, 3), // Amazon MWS
 		},
 	},
@@ -278,7 +278,7 @@ var blockRules = []CategoryRules{
 			r("FILE-012", `(?i)/var/run/secrets/kubernetes\.io`, 10, 2),
 
 			// Tier 3
-			r("FILE-013", `(?i)\.(tfstate|tfvars)(\b|$)`, 10, 3),      // Terraform
+			r("FILE-013", `(?i)\.(tfstate|tfvars)(\b|$)`, 10, 3), // Terraform
 			r("FILE-014", `(?i)(kubeconfig|\.kube/config)`, 10, 3),
 			r("FILE-015", `(?i)backup_[0-9]{4}-[0-9]{2}-[0-9]{2}\.(tar|zip|gz)`, 4, 3),
 		},
@@ -324,7 +324,7 @@ var blockRules = []CategoryRules{
 
 			// Tier 3
 			r("MINE-007", `(?i)(iodine|dnscat2|chisel|rathole)`, 7, 3),
-			r("MINE-008", `(?i)application/dns-message`, 7, 3),  // DNS over HTTPS tunneling
+			r("MINE-008", `(?i)application/dns-message`, 7, 3), // DNS over HTTPS tunneling
 		},
 	},
 
@@ -359,7 +359,7 @@ var blockRules = []CategoryRules{
 			// Tier 3
 			r("PEXP-005", `(?i)(ansible_ssh_pass|ansible_become_pass)`, 10, 3),
 			r("PEXP-006", `(?i)\[profile\s+[a-zA-Z0-9_-]+\]`, 4, 3), // AWS CLI config
-			r("PEXP-007", `(?i)kind:\s*Secret`, 7, 3), // K8s Secret manifest
+			r("PEXP-007", `(?i)kind:\s*Secret`, 7, 3),               // K8s Secret manifest
 		},
 	},
 
@@ -382,14 +382,14 @@ var blockRules = []CategoryRules{
 		Category: "PROTOCOL_ANOMALY",
 		Rules: []Rule{
 			// Tier 2 — inspect via header string
-			r("PROTO-001", `(?i)User-Agent:\s*$`, 4, 2),                    // Empty UA
+			r("PROTO-001", `(?i)User-Agent:\s*$`, 4, 2), // Empty UA
 			r("PROTO-002", `(?i)(X-Scanner|X-Scan):\s*(Netsparker|Acunetix|Sqlmap)`, 10, 2),
-			r("PROTO-003", `(?i)Expect:\s*100-continue`, 2, 2),             // HTTP smuggling
-			r("PROTO-004", `(?i)X-Forwarded-For:.*,.*,.*,`, 4, 2),         // Proxy chain
+			r("PROTO-003", `(?i)Expect:\s*100-continue`, 2, 2),    // HTTP smuggling
+			r("PROTO-004", `(?i)X-Forwarded-For:.*,.*,.*,`, 4, 2), // Proxy chain
 
 			// Tier 3
-			r("PROTO-005", `(?i)(?:%[0-9a-fA-F]{2}){15,}`, 4, 3),         // Massive URL encoding
-			r("PROTO-006", `(?i)[a-zA-Z0-9+/]{200,}=?=?`, 4, 3),          // Large base64 blob
+			r("PROTO-005", `(?i)(?:%[0-9a-fA-F]{2}){15,}`, 4, 3), // Massive URL encoding
+			r("PROTO-006", `(?i)[a-zA-Z0-9+/]{200,}=?=?`, 4, 3),  // Large base64 blob
 		},
 	},
 
@@ -398,12 +398,12 @@ var blockRules = []CategoryRules{
 		Category: "FINANCIAL_DATA",
 		Rules: []Rule{
 			// Tier 3 — low severity, scored but rarely blocks alone
-			r("FIN-001", `\b4[0-9]{12}(?:[0-9]{3})?\b`, 2, 3),            // Visa
-			r("FIN-002", `\b5[1-5][0-9]{14}\b`, 2, 3),                     // MasterCard
-			r("FIN-003", `\b3[47][0-9]{13}\b`, 2, 3),                      // Amex
-			r("FIN-004", `\b[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}\b`, 2, 3),    // IBAN
-			r("FIN-005", `\bbc1[qp][a-z0-9]{38,58}\b`, 4, 3),             // Bitcoin SegWit
-			r("FIN-006", `\b0x[a-fA-F0-9]{40}\b`, 4, 3),                   // Ethereum address
+			r("FIN-001", `\b4[0-9]{12}(?:[0-9]{3})?\b`, 2, 3),         // Visa
+			r("FIN-002", `\b5[1-5][0-9]{14}\b`, 2, 3),                 // MasterCard
+			r("FIN-003", `\b3[47][0-9]{13}\b`, 2, 3),                  // Amex
+			r("FIN-004", `\b[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}\b`, 2, 3), // IBAN
+			r("FIN-005", `\bbc1[qp][a-z0-9]{38,58}\b`, 4, 3),          // Bitcoin SegWit
+			r("FIN-006", `\b0x[a-fA-F0-9]{40}\b`, 4, 3),               // Ethereum address
 		},
 	},
 
@@ -452,8 +452,8 @@ func matchRulesScored(input string) ([]MatchResult, int) {
 	var compactReady bool
 
 	for tier := 1; tier <= 3; tier++ {
-		if totalScore >= blockThreshold && tier > 1 {
-			break
+		if totalScore >= blockThreshold {
+			break // Early exit — score already over threshold, no need to check more rules
 		}
 
 		for _, cr := range blockRules {

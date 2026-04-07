@@ -199,6 +199,20 @@ cache_dir ufs /var/spool/squid ${SQUID_CACHE_MB} 16 256
 maximum_object_size 100 MB
 coredump_dir /var/spool/squid
 
+# Connection performance tuning
+client_persistent_connections on
+server_persistent_connections on
+pipeline_prefetch on
+dns_v4_first on
+request_body_max_size 10 MB
+reply_body_max_size 200 MB
+max_filedesc 65535
+
+# Aggressive caching for static assets
+refresh_pattern -i \\.(jpg|jpeg|png|gif|ico|svg|webp|woff|woff2|ttf|eot|css|js)$ 10080 90% 518400 override-expire
+refresh_pattern -i \\.(rpm|deb|tar|gz|bz2|xz|zip)$ 1440 90% 10080
+refresh_pattern . 0 20% 4320
+
 
 # Custom branded error pages
 error_directory /etc/squid/error-pages
@@ -210,7 +224,7 @@ icap_send_client_username on
 icap_client_username_encode off
 icap_client_username_header X-Client-Username
 icap_preview_enable on
-icap_preview_size 1024
+icap_preview_size 4096
 icap_service service_req reqmod_precache bypass=0 icap://waf:1344/waf
 adaptation_access service_req allow all
 
