@@ -16,6 +16,7 @@ const dockerSock = "/var/run/docker.sock"
 // DockerClient defines the interface for interacting with the Docker Engine API.
 type DockerClient interface {
 	KillContainer(name, signal string) error
+	RestartContainer(name string) error
 }
 
 // Client is a minimal Docker Engine API client.
@@ -50,6 +51,25 @@ func (c *Client) KillContainer(name, signal string) error {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("docker kill returned HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// RestartContainer restarts a container via the Docker Engine API.
+// Equivalent to: docker restart <name>
+func (c *Client) RestartContainer(name string) error {
+	url := fmt.Sprintf("http://localhost/v1.41/containers/%s/restart", name)
+	req, err := http.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return fmt.Errorf("docker restart %s: %w", name, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("docker restart returned HTTP %d", resp.StatusCode)
 	}
 	return nil
 }

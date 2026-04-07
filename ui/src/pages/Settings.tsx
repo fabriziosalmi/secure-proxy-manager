@@ -16,7 +16,7 @@ const settingsSchema = z.object({
   proxy_port: z.string().regex(/^\d+$/, "Port must be a number").refine(val => {
     const port = parseInt(val, 10);
     return port > 0 && port <= 65535;
-  }, "Port must be between 1 and 65535").optional(),
+  }, "Port must be between 1 and 65535").optional().or(z.literal('')),
   admin_email: z.string().email("Invalid email address").optional().or(z.literal('')),
   enable_siem_forwarding: z.enum(['true', 'false']).optional(),
   siem_host: z.string().optional(),
@@ -24,7 +24,7 @@ const settingsSchema = z.object({
     const port = parseInt(val, 10);
     return port > 0 && port <= 65535;
   }, "Port must be between 1 and 65535").optional().or(z.literal('')),
-  max_cache_size_mb: z.string().regex(/^\d+$/, "Size must be a number").optional(),
+  cache_size: z.string().regex(/^\d+$/, "Size must be a number").optional().or(z.literal('')),
   custom_squid_conf: z.string().optional()
 }).catchall(z.string());
 
@@ -46,7 +46,7 @@ export function Settings() {
   }, [settingsData, loading, error]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleSave = async () => {
@@ -177,8 +177,8 @@ export function Settings() {
                 <label className="text-sm font-medium">Memory Cache (MB)</label>
                 <input 
                   type="number" 
-                  name="cache_mem_size"
-                  value={formData.cache_mem_size || 256}
+                  name="memory_cache"
+                  value={formData.memory_cache || 256}
                   onChange={handleChange}
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                 />
@@ -204,8 +204,8 @@ export function Settings() {
                   <p className="text-[10px] text-muted-foreground">Overlay network access</p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                  <input type="checkbox" name="enable_tailscale" checked={formData.enable_tailscale === 'true'}
-                    onChange={(e) => setFormData({ ...formData, enable_tailscale: e.target.checked ? 'true' : 'false' })} className="sr-only peer" />
+                  <input type="checkbox" name="tailscale_enabled" checked={formData.tailscale_enabled === 'true'}
+                    onChange={(e) => setFormData(prev => ({ ...prev, tailscale_enabled: e.target.checked ? 'true' : 'false' }))} className="sr-only peer" />
                   <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                 </label>
               </div>
@@ -215,14 +215,14 @@ export function Settings() {
                   <p className="text-[10px] text-muted-foreground">Auto-update public IP</p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                  <input type="checkbox" name="enable_ddns" checked={formData.enable_ddns === 'true'}
-                    onChange={(e) => setFormData({ ...formData, enable_ddns: e.target.checked ? 'true' : 'false' })} className="sr-only peer" />
+                  <input type="checkbox" name="ddns_enabled" checked={formData.ddns_enabled === 'true'}
+                    onChange={(e) => setFormData(prev => ({ ...prev, ddns_enabled: e.target.checked ? 'true' : 'false' }))} className="sr-only peer" />
                   <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                 </label>
               </div>
             </div>
             {/* Tailscale expanded */}
-            {formData.enable_tailscale === 'true' && (
+            {formData.tailscale_enabled === 'true' && (
               <div className="flex gap-3 mt-2 p-3 border border-border/50 rounded-lg bg-background/20">
                 <div className="flex-1 space-y-1">
                   <label className="text-[10px] text-muted-foreground">Auth Key</label>
@@ -237,7 +237,7 @@ export function Settings() {
               </div>
             )}
             {/* DDNS expanded */}
-            {formData.enable_ddns === 'true' && (
+            {formData.ddns_enabled === 'true' && (
               <div className="flex gap-3 mt-2 p-3 border border-border/50 rounded-lg bg-background/20">
                 <div className="flex-1 space-y-1">
                   <label className="text-[10px] text-muted-foreground">Provider</label>
@@ -273,7 +273,7 @@ export function Settings() {
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
                     <input type="checkbox" name={t.name} checked={formData[t.name] === 'true'}
-                      onChange={(e) => setFormData({ ...formData, [t.name]: e.target.checked ? 'true' : 'false' })} className="sr-only peer" />
+                      onChange={(e) => setFormData(prev => ({ ...prev, [t.name]: e.target.checked ? 'true' : 'false' }))} className="sr-only peer" />
                     <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                   </label>
                 </div>
@@ -314,7 +314,7 @@ export function Settings() {
                       type="checkbox" 
                       name="enable_notifications"
                       checked={formData.enable_notifications === 'true'}
-                      onChange={(e) => setFormData({ ...formData, enable_notifications: e.target.checked ? 'true' : 'false' })}
+                      onChange={(e) => setFormData(prev => ({ ...prev, enable_notifications: e.target.checked ? 'true' : 'false' }))}
                       className="sr-only peer" 
                     />
                     <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
@@ -512,7 +512,7 @@ export function Settings() {
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
                   <input type="checkbox" name="gdpr_mode" checked={formData.gdpr_mode === 'true'}
-                    onChange={(e) => setFormData({ ...formData, gdpr_mode: e.target.checked ? 'true' : 'false' })}
+                    onChange={(e) => setFormData(prev => ({ ...prev, gdpr_mode: e.target.checked ? 'true' : 'false' }))}
                     className="sr-only peer" />
                   <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                 </label>
@@ -591,7 +591,7 @@ export function Settings() {
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input type="checkbox" name="auto_refresh_enabled" checked={formData.auto_refresh_enabled === 'true'}
-                    onChange={(e) => setFormData({ ...formData, auto_refresh_enabled: e.target.checked ? 'true' : 'false' })}
+                    onChange={(e) => setFormData(prev => ({ ...prev, auto_refresh_enabled: e.target.checked ? 'true' : 'false' }))}
                     className="sr-only peer" />
                   <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                 </label>
@@ -626,7 +626,7 @@ export function Settings() {
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
                       <input type="checkbox" name={h.key} checked={formData[h.key] !== 'false' && formData[h.key] !== '0'}
-                        onChange={(e) => setFormData({ ...formData, [h.key]: e.target.checked ? 'true' : 'false' })}
+                        onChange={(e) => setFormData(prev => ({ ...prev, [h.key]: e.target.checked ? 'true' : 'false' }))}
                         className="sr-only peer" />
                       <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                     </label>
@@ -655,7 +655,7 @@ export function Settings() {
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
                   <input type="checkbox" name="enable_bandwidth_limits" checked={formData.enable_bandwidth_limits === 'true'}
-                    onChange={(e) => setFormData({ ...formData, enable_bandwidth_limits: e.target.checked ? 'true' : 'false' })}
+                    onChange={(e) => setFormData(prev => ({ ...prev, enable_bandwidth_limits: e.target.checked ? 'true' : 'false' }))}
                     className="sr-only peer" />
                   <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                 </label>
@@ -668,7 +668,7 @@ export function Settings() {
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
                   <input type="checkbox" name="enable_time_restrictions" checked={formData.enable_time_restrictions === 'true'}
-                    onChange={(e) => setFormData({ ...formData, enable_time_restrictions: e.target.checked ? 'true' : 'false' })}
+                    onChange={(e) => setFormData(prev => ({ ...prev, enable_time_restrictions: e.target.checked ? 'true' : 'false' }))}
                     className="sr-only peer" />
                   <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                 </label>
@@ -681,7 +681,7 @@ export function Settings() {
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
                   <input type="checkbox" name="enable_proxy_auth" checked={formData.enable_proxy_auth === 'true'}
-                    onChange={(e) => setFormData({ ...formData, enable_proxy_auth: e.target.checked ? 'true' : 'false' })}
+                    onChange={(e) => setFormData(prev => ({ ...prev, enable_proxy_auth: e.target.checked ? 'true' : 'false' }))}
                     className="sr-only peer" />
                   <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                 </label>
@@ -745,7 +745,7 @@ export function Settings() {
               </div>
               <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
                 <input type="checkbox" name="ssl_bump_enabled" checked={formData.ssl_bump_enabled === 'true'}
-                  onChange={(e) => setFormData({ ...formData, ssl_bump_enabled: e.target.checked ? 'true' : 'false' })} className="sr-only peer" />
+                  onChange={(e) => setFormData(prev => ({ ...prev, ssl_bump_enabled: e.target.checked ? 'true' : 'false' }))} className="sr-only peer" />
                 <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
               </label>
             </div>
@@ -794,7 +794,9 @@ export function Settings() {
                 <p className="text-xs text-muted-foreground">Automatically download and apply community blacklists.</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" defaultChecked />
+                <input type="checkbox" name="enable_ip_blacklist" className="sr-only peer"
+                  checked={formData.enable_ip_blacklist !== 'false'}
+                  onChange={(e) => setFormData(prev => ({ ...prev, enable_ip_blacklist: e.target.checked ? 'true' : 'false' }))} />
                 <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
               </label>
             </div>
@@ -810,7 +812,7 @@ export function Settings() {
                       type="checkbox" 
                       name="enable_waf"
                       checked={formData.enable_waf === 'true'}
-                      onChange={(e) => setFormData({ ...formData, enable_waf: e.target.checked ? 'true' : 'false' })}
+                      onChange={(e) => setFormData(prev => ({ ...prev, enable_waf: e.target.checked ? 'true' : 'false' }))}
                       className="sr-only peer" 
                     />
                     <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
@@ -848,7 +850,7 @@ export function Settings() {
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
                     <input type="checkbox" name={t.name} checked={formData[t.name] === 'true'}
-                      onChange={(e) => setFormData({ ...formData, [t.name]: e.target.checked ? 'true' : 'false' })}
+                      onChange={(e) => setFormData(prev => ({ ...prev, [t.name]: e.target.checked ? 'true' : 'false' }))}
                       className="sr-only peer" />
                     <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                   </label>

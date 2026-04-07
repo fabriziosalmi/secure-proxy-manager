@@ -101,11 +101,25 @@ sleep 2
 iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3128
 iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 3128
 
+# ── Read dynamic settings from backend DB (via config files written on save) ─
+
+SQUID_PORT="${PROXY_PORT:-3128}"
+SQUID_CACHE_MB="${PROXY_CACHE_SIZE_MB:-2000}"
+SQUID_MEM_MB="${PROXY_MEMORY_CACHE_MB:-256}"
+
+# Allow override via /config/squid_settings.env (written by backend on settings save)
+if [ -f /config/squid_settings.env ]; then
+    # shellcheck source=/dev/null
+    . /config/squid_settings.env
+fi
+
+echo "Squid settings: port=${SQUID_PORT} cache=${SQUID_CACHE_MB}MB mem=${SQUID_MEM_MB}MB"
+
 # ── Generate base Squid configuration ────────────────────────────────────────
 
 echo "Setting up Squid configuration..."
-cat > /etc/squid/squid.conf.base << 'EOL'
-http_port 3128
+cat > /etc/squid/squid.conf.base << CONFEOF
+http_port ${SQUID_PORT}
 visible_hostname secure-proxy
 pid_filename /run/squid/squid.pid
 
@@ -175,11 +189,11 @@ http_access allow localhost
 http_access deny all
 
 # Caching
-cache_mem 256 MB
+cache_mem ${SQUID_MEM_MB} MB
 maximum_object_size_in_memory 512 KB
 memory_replacement_policy lru
 cache_replacement_policy heap LFUDA
-cache_dir ufs /var/spool/squid 2000 16 256
+cache_dir ufs /var/spool/squid ${SQUID_CACHE_MB} 16 256
 maximum_object_size 100 MB
 coredump_dir /var/spool/squid
 
@@ -237,7 +251,7 @@ refresh_pattern ^ftp:           1440    20%     10080
 refresh_pattern ^gopher:        1440    0%      1440
 refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
 refresh_pattern .               0       20%     4320
-EOL
+CONFEOF
 
 # ── Apply custom config or fall back to base ─────────────────────────────────
 

@@ -127,15 +127,14 @@ func (h *MaintenanceHandlers) ReloadConfig(w http.ResponseWriter, r *http.Reques
 	if err := database.ExportBlacklistsToFiles(h.db, h.cfg.ConfigDir); err != nil {
 		log.Warn().Err(err).Msg("export blacklists failed during reload")
 	}
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Post(fmt.Sprintf("http://%s:%s/api/reload", h.cfg.ProxyHost, h.cfg.ProxyPort), "application/json", nil)
-	if err != nil {
-		log.Warn().Err(err).Msg("proxy reload signal failed (non-fatal)")
-		writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Proxy reload signalled (simulated)"})
+	// Restart the proxy container so startup.sh regenerates squid.conf from the
+	// current toggle files (ssl_bump_enabled, etc.) and blacklist files.
+	if err := h.docker.RestartContainer("secure-proxy-manager-proxy-1"); err != nil {
+		log.Warn().Err(err).Msg("proxy container restart failed (non-fatal)")
+		writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Config exported — proxy restart failed, apply manually"})
 		return
 	}
-	resp.Body.Close()
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Proxy configuration reloaded"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Proxy restarted with new configuration"})
 }
 
 func (h *MaintenanceHandlers) ReloadDNS(w http.ResponseWriter, r *http.Request) {
