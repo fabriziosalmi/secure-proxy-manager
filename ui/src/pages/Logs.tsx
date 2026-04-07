@@ -5,6 +5,7 @@ import { Search, RefreshCw, FileText, Trash2, Activity, ShieldAlert, AlertTriang
 import { useState, useEffect, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { useQuery } from '@tanstack/react-query';
+import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { LogEntry, LogsPageData } from '../types';
 
 export function Logs() {
@@ -19,7 +20,6 @@ export function Logs() {
     queryFn: () => api.get('logs?limit=100').then(r => r.data),
   });
 
-  // Initialize logs from API
   useEffect(() => {
     if (data?.data) {
       setRealtimeLogs(data.data.slice(0, 200));
@@ -65,7 +65,7 @@ export function Logs() {
 
         ws.onopen = () => {
           setWsStatus('connected');
-          retryCount = 0; // Reset on success
+          retryCount = 0;
           pingInterval = setInterval(() => {
             if (ws?.readyState === WebSocket.OPEN) ws.send('ping');
           }, 30000);
@@ -82,7 +82,6 @@ export function Logs() {
         ws.onclose = () => {
           setWsStatus('disconnected');
           if (pingInterval) clearInterval(pingInterval);
-          // Auto-reconnect with exponential backoff
           if (!cancelled && retryCount < MAX_RETRIES) {
             const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
             retryCount++;
@@ -116,7 +115,6 @@ export function Logs() {
     };
   }, [autoRefresh]);
 
-  // Filter logs based on search — memoized to avoid recalc on every render
   const filteredLogs = useMemo(() => {
     const term = searchTerm.toLowerCase();
     if (!term) return realtimeLogs;
@@ -127,7 +125,6 @@ export function Logs() {
     );
   }, [realtimeLogs, searchTerm]);
 
-  // Compute stats from current logs
   const stats = useMemo(() => {
     const total = realtimeLogs.length;
     const blocked = realtimeLogs.filter((l) =>
@@ -143,9 +140,13 @@ export function Logs() {
       (l.status?.includes('ERR_') && !l.status?.includes('ERR_ACCESS_DENIED'))
     ).length;
     const success = total - blocked - errors;
-    
     return { total, blocked, errors, success };
   }, [realtimeLogs]);
+
+  const animTotal = useAnimatedNumber(stats.total);
+  const animSuccess = useAnimatedNumber(stats.success);
+  const animBlocked = useAnimatedNumber(stats.blocked);
+  const animErrors = useAnimatedNumber(stats.errors);
 
   const [clearPending, setClearPending] = useState(false);
 
@@ -158,29 +159,38 @@ export function Logs() {
       toast.success('Logs cleared successfully', { id: loadingToast });
       setRealtimeLogs([]);
       refreshLogs();
-    } catch (err) {
+    } catch {
       toast.error('Failed to clear logs', { id: loadingToast });
     }
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Access Logs</h1>
-          <p className="text-muted-foreground">Monitor real-time proxy traffic</p>
+          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">Access Logs</h1>
+          <p className="text-sm text-muted-foreground">Monitor real-time proxy traffic</p>
         </div>
-        <div className="flex items-center space-x-2">
-          <button 
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${autoRefresh ? 'bg-primary/20 text-primary' : 'bg-secondary text-foreground hover:bg-secondary/80'}`}
+            className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all btn-press ${autoRefresh ? 'bg-primary/15 text-primary border border-primary/20' : 'glass-surface text-foreground'}`}
           >
-            <Activity className={`w-4 h-4 mr-2 ${autoRefresh && wsStatus === 'connected' ? 'animate-pulse' : ''}`} />
+            <div className="relative mr-2">
+              <Activity className={`w-4 h-4 ${autoRefresh && wsStatus === 'connected' ? 'animate-pulse' : ''}`} />
+              {autoRefresh && wsStatus === 'connected' && (
+                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500">
+                  <div className="absolute inset-0 w-2 h-2 rounded-full bg-emerald-500 animate-status-ping" />
+                </div>
+              )}
+            </div>
             {autoRefresh ? (wsStatus === 'connected' ? 'Live' : wsStatus === 'connecting' ? 'Connecting...' : 'Reconnecting...') : 'Live Stream'}
           </button>
-          <button 
+          <button
+            type="button"
             onClick={() => refreshLogs()}
-            className="flex items-center px-3 py-2 bg-secondary text-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors"
+            className="flex items-center px-3 py-2 glass-surface text-foreground rounded-lg text-sm font-medium transition-all btn-press"
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${loading && !autoRefresh ? 'animate-spin' : ''}`} />
             Refresh
@@ -190,14 +200,14 @@ export function Logs() {
               <button
                 type="button"
                 onClick={handleClearLogs}
-                className="px-3 py-2 bg-destructive text-destructive-foreground rounded-md text-sm font-medium hover:bg-destructive/90 transition-colors"
+                className="px-3 py-2 bg-destructive text-destructive-foreground rounded-lg text-sm font-medium hover:bg-destructive/90 transition-colors btn-press"
               >
                 Confirm Clear
               </button>
               <button
                 type="button"
                 onClick={() => setClearPending(false)}
-                className="px-3 py-2 bg-secondary text-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors"
+                className="px-3 py-2 glass-surface text-foreground rounded-lg text-sm font-medium transition-colors btn-press"
               >
                 Cancel
               </button>
@@ -206,7 +216,7 @@ export function Logs() {
             <button
               type="button"
               onClick={handleClearLogs}
-              className="flex items-center px-3 py-2 bg-destructive/10 text-destructive rounded-md text-sm font-medium hover:bg-destructive/20 transition-colors"
+              className="flex items-center px-3 py-2 bg-destructive/10 text-destructive rounded-lg text-sm font-medium hover:bg-destructive/20 transition-colors btn-press"
             >
               <Trash2 className="w-4 h-4 mr-2" />
               Clear All
@@ -214,90 +224,90 @@ export function Logs() {
           )}
         </div>
       </div>
-      
+
       {/* Quick Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <Card className="stagger-child" style={{ '--stagger-index': 0 } as React.CSSProperties}>
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Total Requests</p>
-              <h3 className="text-2xl font-bold">{stats.total}</h3>
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Total Requests</p>
+              <h3 className="text-2xl font-bold">{animTotal.toLocaleString()}</h3>
             </div>
-            <div className="p-3 bg-primary/10 rounded-full text-primary">
+            <div className="p-2.5 bg-primary/10 rounded-xl text-primary">
               <Activity className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
-        
-        <Card>
+
+        <Card className="stagger-child" style={{ '--stagger-index': 1 } as React.CSSProperties}>
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Success</p>
-              <h3 className="text-2xl font-bold text-green-500">{stats.success}</h3>
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Success</p>
+              <h3 className="text-2xl font-bold text-emerald-500">{animSuccess.toLocaleString()}</h3>
             </div>
-            <div className="p-3 bg-green-500/10 rounded-full text-green-500">
+            <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-500">
               <CheckCircle2 className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
-        
-        <Card>
+
+        <Card className="stagger-child" style={{ '--stagger-index': 2 } as React.CSSProperties}>
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Blocked</p>
-              <h3 className="text-2xl font-bold text-orange-500">{stats.blocked}</h3>
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Blocked</p>
+              <h3 className="text-2xl font-bold text-orange-500">{animBlocked.toLocaleString()}</h3>
             </div>
-            <div className="p-3 bg-orange-500/10 rounded-full text-orange-500">
+            <div className="p-2.5 bg-orange-500/10 rounded-xl text-orange-500">
               <ShieldAlert className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="stagger-child" style={{ '--stagger-index': 3 } as React.CSSProperties}>
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Errors</p>
-              <h3 className="text-2xl font-bold text-red-500">{stats.errors}</h3>
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Errors</p>
+              <h3 className="text-2xl font-bold text-red-500">{animErrors.toLocaleString()}</h3>
             </div>
-            <div className="p-3 bg-red-500/10 rounded-full text-red-500">
+            <div className="p-2.5 bg-red-500/10 rounded-xl text-red-500">
               <AlertTriangle className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Card className="bg-card/50">
-        <div className="p-4 border-b border-border flex items-center">
+      <Card>
+        <div className="p-4 border-b border-white/[0.06] flex items-center">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input 
-              type="text" 
-              placeholder="Search by IP, domain, or status..." 
+            <input
+              type="text"
+              placeholder="Search by IP, domain, or status..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-background border border-border rounded-md pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+              className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
             />
           </div>
-          <div className="ml-auto text-sm text-muted-foreground">
-            Showing {filteredLogs.length} entries
+          <div className="ml-auto text-sm text-muted-foreground font-mono">
+            {filteredLogs.length} entries
           </div>
         </div>
         <CardContent className="p-0">
-          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
             <table className="w-full text-sm text-left relative">
-              <thead className="text-xs text-muted-foreground uppercase bg-secondary/80 border-b border-border sticky top-0 backdrop-blur-sm z-10">
+              <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-white/[0.02] border-b border-white/[0.06] sticky top-0 -webkit-backdrop-blur-sm backdrop-blur-sm z-10">
                 <tr>
-                  <th className="px-6 py-4 font-medium">Timestamp</th>
-                  <th className="px-6 py-4 font-medium">Client IP</th>
-                  <th className="px-6 py-4 font-medium">Method</th>
-                  <th className="px-6 py-4 font-medium">Destination</th>
-                  <th className="px-6 py-4 font-medium">Status</th>
-                  <th className="px-6 py-4 font-medium text-right">Size</th>
+                  <th className="px-6 py-3 font-medium">Timestamp</th>
+                  <th className="px-6 py-3 font-medium">Client IP</th>
+                  <th className="px-6 py-3 font-medium">Method</th>
+                  <th className="px-6 py-3 font-medium">Destination</th>
+                  <th className="px-6 py-3 font-medium">Status</th>
+                  <th className="px-6 py-3 font-medium text-right">Size</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-white/[0.04]">
                 {filteredLogs.map((log) => (
-                  <tr key={log.id ?? log.timestamp} className="hover:bg-secondary/20 transition-colors font-mono text-xs">
+                  <tr key={log.id ?? log.timestamp} className="row-hover font-mono text-xs">
                     <td className="px-6 py-3 text-muted-foreground whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleString()}
                     </td>
@@ -307,7 +317,7 @@ export function Logs() {
                       {log.destination}
                     </td>
                     <td className="px-6 py-3">
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-medium border ${
+                      <span className={`px-2 py-1 rounded-md text-[10px] font-medium border ${
                         log.status?.includes('DENIED') || log.status?.includes('403')
                           ? 'bg-destructive/10 text-destructive border-destructive/20'
                           : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'

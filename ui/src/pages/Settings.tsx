@@ -120,11 +120,11 @@ export function Settings() {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground">Configure proxy behavior and security</p>
+          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">Settings</h1>
+          <p className="text-sm text-muted-foreground">Configure proxy behavior and security</p>
         </div>
         <button
           onClick={handleSave}
@@ -143,7 +143,7 @@ export function Settings() {
       />
 
       <div className="grid gap-6">
-        <Card className="bg-card/50">
+        <Card className="bg-transparent">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Network className="w-5 h-5 text-primary" />
@@ -160,7 +160,7 @@ export function Settings() {
                   name="proxy_port"
                   value={formData.proxy_port || 3128}
                   onChange={handleChange}
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                 />
               </div>
               <div className="space-y-2">
@@ -170,7 +170,7 @@ export function Settings() {
                   name="cache_size"
                   value={formData.cache_size || 1000}
                   onChange={handleChange}
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                 />
               </div>
               <div className="space-y-2">
@@ -180,7 +180,7 @@ export function Settings() {
                   name="memory_cache"
                   value={formData.memory_cache || 256}
                   onChange={handleChange}
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                 />
               </div>
             </div>
@@ -191,14 +191,26 @@ export function Settings() {
                 name="allowed_networks"
                 value={formData.allowed_networks || '10.0.0.0/8 172.16.0.0/12 192.168.0.0/16'}
                 onChange={handleChange}
-                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
               />
               <p className="text-xs text-muted-foreground">Space-separated list of CIDR subnets allowed to use the proxy.</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Extra SSL/HTTPS Ports</label>
+              <input
+                type="text"
+                name="extra_ssl_ports"
+                value={formData.extra_ssl_ports || ''}
+                onChange={handleChange}
+                placeholder="8006 9090 8443"
+                className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+              />
+              <p className="text-xs text-muted-foreground">Space-separated ports for HTTPS CONNECT (e.g. Proxmox 8006, Grafana 3000). Requires proxy restart.</p>
             </div>
             {/* Network overlay toggles — compact grid */}
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Network & Overlay</label>
             <div className="grid grid-cols-2 gap-2">
-              <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+              <div className="flex items-center justify-between p-3 border border-white/[0.06] rounded-lg bg-white/[0.02]">
                 <div>
                   <p className="text-xs font-medium text-blue-400">Tailscale</p>
                   <p className="text-[10px] text-muted-foreground">Overlay network access</p>
@@ -209,7 +221,7 @@ export function Settings() {
                   <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                 </label>
               </div>
-              <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+              <div className="flex items-center justify-between p-3 border border-white/[0.06] rounded-lg bg-white/[0.02]">
                 <div>
                   <p className="text-xs font-medium text-emerald-400">Dynamic DNS</p>
                   <p className="text-[10px] text-muted-foreground">Auto-update public IP</p>
@@ -223,38 +235,38 @@ export function Settings() {
             </div>
             {/* Tailscale expanded */}
             {formData.tailscale_enabled === 'true' && (
-              <div className="flex gap-3 mt-2 p-3 border border-border/50 rounded-lg bg-background/20">
+              <div className="flex gap-3 mt-2 p-3 border border-white/[0.04] rounded-lg bg-white/[0.015]">
                 <div className="flex-1 space-y-1">
                   <label className="text-[10px] text-muted-foreground">Auth Key</label>
                   <input type="password" name="tailscale_auth_key" value={formData.tailscale_auth_key || ''} onChange={handleChange} placeholder="tskey-auth-..."
-                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                    className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
                 <div className="flex-1 space-y-1">
                   <label className="text-[10px] text-muted-foreground">Hostname</label>
                   <input type="text" name="tailscale_hostname" value={formData.tailscale_hostname || 'secure-proxy'} onChange={handleChange}
-                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                    className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
               </div>
             )}
             {/* DDNS expanded */}
             {formData.ddns_enabled === 'true' && (
-              <div className="flex gap-3 mt-2 p-3 border border-border/50 rounded-lg bg-background/20">
+              <div className="flex gap-3 mt-2 p-3 border border-white/[0.04] rounded-lg bg-white/[0.015]">
                 <div className="flex-1 space-y-1">
                   <label className="text-[10px] text-muted-foreground">Provider</label>
                   <select name="ddns_provider" value={formData.ddns_provider || 'cloudflare'} onChange={handleChange}
-                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary">
+                    className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all">
                     <option value="cloudflare">Cloudflare</option><option value="duckdns">DuckDNS</option><option value="noip">No-IP</option><option value="custom">Custom</option>
                   </select>
                 </div>
                 <div className="flex-1 space-y-1">
                   <label className="text-[10px] text-muted-foreground">Domain</label>
                   <input type="text" name="ddns_domain" value={formData.ddns_domain || ''} onChange={handleChange} placeholder="proxy.example.com"
-                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                    className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
                 <div className="flex-1 space-y-1">
                   <label className="text-[10px] text-muted-foreground">Token</label>
                   <input type="password" name="ddns_token" value={formData.ddns_token || ''} onChange={handleChange}
-                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                    className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
               </div>
             )}
@@ -266,7 +278,7 @@ export function Settings() {
                 { name: 'aggressive_caching', label: 'Aggressive Cache', desc: 'Force static caching' },
                 { name: 'enable_offline_mode', label: 'Offline Mode', desc: 'Serve stale cache' },
               ].map(t => (
-                <div key={t.name} className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+                <div key={t.name} className="flex items-center justify-between p-3 border border-white/[0.06] rounded-lg bg-white/[0.02]">
                   <div>
                     <p className="text-xs font-medium">{t.label}</p>
                     <p className="text-[10px] text-muted-foreground">{t.desc}</p>
@@ -281,7 +293,7 @@ export function Settings() {
             </div>
 
             {/* Cache bypass */}
-            <div className="mt-3 p-3 border border-border/50 rounded-lg bg-background/20">
+            <div className="mt-3 p-3 border border-white/[0.04] rounded-lg bg-white/[0.015]">
               <label className="text-[10px] text-muted-foreground">Cache Bypass Domains (comma-separated)</label>
               <input type="text" name="cache_bypass_domains" value={formData.cache_bypass_domains || ''} onChange={handleChange}
                 placeholder="banking.com, api.internal.local"
@@ -293,7 +305,7 @@ export function Settings() {
         {/* Client Setup — how to connect devices */}
         <ClientSetup />
 
-        <Card className="bg-card/50">
+        <Card className="bg-transparent">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Bell className="w-5 h-5 text-orange-500" />
@@ -302,7 +314,7 @@ export function Settings() {
             <CardDescription>Configure alerts for critical security events and WAF blocks</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+            <div className="flex items-center justify-between p-4 border border-white/[0.06] rounded-lg bg-white/[0.03]">
               <div className="space-y-0.5 w-full">
                 <div className="flex items-center justify-between mb-2">
                   <div>
@@ -322,7 +334,7 @@ export function Settings() {
                 </div>
                 
                 {formData.enable_notifications === 'true' && (
-                  <div className="mt-4 pt-4 border-t border-border/50 space-y-4">
+                  <div className="mt-4 pt-4 border-t border-white/[0.06] space-y-4">
                     {/* Telegram */}
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium text-blue-400">Telegram Bot</h4>
@@ -333,7 +345,7 @@ export function Settings() {
                           value={formData.telegram_bot_token || ''}
                           onChange={handleChange}
                           placeholder="Bot Token (e.g. 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11)"
-                          className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                          className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                         />
                         <input 
                           type="text" 
@@ -341,7 +353,7 @@ export function Settings() {
                           value={formData.telegram_chat_id || ''}
                           onChange={handleChange}
                           placeholder="Chat ID (e.g. -1001234567890)"
-                          className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                          className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                         />
                       </div>
                     </div>
@@ -356,7 +368,7 @@ export function Settings() {
                           value={formData.gotify_url || ''}
                           onChange={handleChange}
                           placeholder="Gotify URL (e.g. https://gotify.yourdomain.com)"
-                          className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                          className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                         />
                         <input 
                           type="text" 
@@ -364,7 +376,7 @@ export function Settings() {
                           value={formData.gotify_token || ''}
                           onChange={handleChange}
                           placeholder="App Token"
-                          className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                          className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                         />
                       </div>
                     </div>
@@ -379,7 +391,7 @@ export function Settings() {
                           value={formData.ntfy_url || ''}
                           onChange={handleChange}
                           placeholder="Server URL (e.g. https://ntfy.sh or https://ntfy.yourdomain.com)"
-                          className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                          className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                         />
                         <input
                           type="text"
@@ -387,7 +399,7 @@ export function Settings() {
                           value={formData.ntfy_topic || ''}
                           onChange={handleChange}
                           placeholder="Topic (e.g. proxy-alerts)"
-                          className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                          className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                         />
                       </div>
                     </div>
@@ -401,7 +413,7 @@ export function Settings() {
                         value={formData.teams_webhook_url || ''}
                         onChange={handleChange}
                         placeholder="Teams Webhook URL"
-                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                       />
                     </div>
 
@@ -414,7 +426,7 @@ export function Settings() {
                         value={formData.webhook_url || ''}
                         onChange={handleChange}
                         placeholder="https://your-webhook-endpoint.com/receive"
-                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                       />
                     </div>
                   </div>
@@ -424,7 +436,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        <Card className="bg-card/50">
+        <Card className="bg-transparent">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Shield className="w-5 h-5 text-cyan-500" />
@@ -434,7 +446,7 @@ export function Settings() {
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Pi-hole / AdGuard Detection */}
-            <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+            <div className="flex items-center justify-between p-3 border border-white/[0.06] rounded-lg bg-white/[0.02]">
               <div>
                 <p className="text-xs font-medium text-cyan-400">DNS Provider Auto-Detect</p>
                 <p className="text-[10px] text-muted-foreground">Scan LAN for Pi-hole or AdGuard Home to use as upstream DNS</p>
@@ -463,7 +475,7 @@ export function Settings() {
             </div>
 
             {/* Essential whitelist */}
-            <div className="p-4 border border-border rounded-lg bg-background/50">
+            <div className="p-4 border border-white/[0.06] rounded-lg bg-white/[0.03]">
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <label className="text-sm font-medium text-emerald-400">Essential Domain Whitelist</label>
@@ -505,7 +517,7 @@ export function Settings() {
 
             {/* GDPR + DoH — compact row */}
             <div className="grid grid-cols-2 gap-2">
-              <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+              <div className="flex items-center justify-between p-3 border border-white/[0.06] rounded-lg bg-white/[0.02]">
                 <div>
                   <p className="text-xs font-medium text-blue-400">GDPR Mode</p>
                   <p className="text-[10px] text-muted-foreground">Anonymize IPs in logs (last octet → x)</p>
@@ -519,7 +531,7 @@ export function Settings() {
               </div>
 
             {/* DoH Blocker */}
-            <div className="p-3 border border-border rounded-lg bg-background/30">
+            <div className="p-3 border border-white/[0.06] rounded-lg bg-white/[0.02]">
               <div className="flex items-center justify-between">
                 <div>
                   <label className="text-xs font-medium text-red-400">Block DNS-over-HTTPS (DoH)</label>
@@ -556,7 +568,7 @@ export function Settings() {
 
             {/* Log retention */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 border border-border rounded-lg bg-background/50 space-y-2">
+              <div className="p-4 border border-white/[0.06] rounded-lg bg-white/[0.03] space-y-2">
                 <label className="text-sm font-medium">Log Retention (days)</label>
                 <input
                   type="number"
@@ -564,11 +576,11 @@ export function Settings() {
                   value={formData.log_retention_days || '30'}
                   onChange={handleChange}
                   min={1} max={365}
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                 />
                 <p className="text-[10px] text-muted-foreground">Logs older than this are automatically deleted.</p>
               </div>
-              <div className="p-4 border border-border rounded-lg bg-background/50 space-y-2">
+              <div className="p-4 border border-white/[0.06] rounded-lg bg-white/[0.03] space-y-2">
                 <label className="text-sm font-medium">WAF Block Threshold</label>
                 <input
                   type="number"
@@ -576,14 +588,14 @@ export function Settings() {
                   value={formData.waf_block_threshold || '10'}
                   onChange={handleChange}
                   min={1} max={100}
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                 />
                 <p className="text-[10px] text-muted-foreground">Anomaly score needed to block. Lower = stricter (default: 10).</p>
               </div>
             </div>
 
             {/* Auto-refresh blocklists */}
-            <div className="p-4 border border-border rounded-lg bg-background/50">
+            <div className="p-4 border border-white/[0.06] rounded-lg bg-white/[0.03]">
               <div className="flex items-center justify-between mb-2">
                 <div>
                   <label className="text-sm font-medium">Auto-Refresh Blocklists</label>
@@ -597,7 +609,7 @@ export function Settings() {
                 </label>
               </div>
               {formData.auto_refresh_enabled === 'true' && (
-                <div className="mt-2 pt-2 border-t border-border/50">
+                <div className="mt-2 pt-2 border-t border-white/[0.06]">
                   <label className="text-xs text-muted-foreground">Refresh Interval (hours)</label>
                   <input type="number" name="auto_refresh_hours" value={formData.auto_refresh_hours || '24'} onChange={handleChange}
                     min={1} max={168} className="w-full mt-1 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
@@ -607,7 +619,7 @@ export function Settings() {
             </div>
 
             {/* WAF Heuristics toggles */}
-            <div className="p-4 border border-border rounded-lg bg-background/50">
+            <div className="p-4 border border-white/[0.06] rounded-lg bg-white/[0.03]">
               <label className="text-sm font-medium mb-2 block">WAF Behavioral Heuristics</label>
               <p className="text-xs text-muted-foreground mb-3">Advanced stateful anomaly detection. Requires container restart to apply.</p>
               <div className="grid grid-cols-2 gap-2">
@@ -637,7 +649,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        <Card className="bg-card/50">
+        <Card className="bg-transparent">
           <CardHeader className="p-4 pb-2">
             <div className="flex items-center space-x-2">
               <Shield className="w-4 h-4 text-indigo-500" />
@@ -648,7 +660,7 @@ export function Settings() {
           <CardContent className="p-4 pt-0">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
               {/* Bandwidth */}
-              <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+              <div className="flex items-center justify-between p-3 border border-white/[0.06] rounded-lg bg-white/[0.02]">
                 <div>
                   <p className="text-xs font-medium">Bandwidth Throttling</p>
                   <p className="text-[10px] text-muted-foreground">Delay pools for congestion</p>
@@ -661,7 +673,7 @@ export function Settings() {
                 </label>
               </div>
               {/* Time restrictions */}
-              <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+              <div className="flex items-center justify-between p-3 border border-white/[0.06] rounded-lg bg-white/[0.02]">
                 <div>
                   <p className="text-xs font-medium">Time-based Restrictions</p>
                   <p className="text-[10px] text-muted-foreground">Limit access to specific hours</p>
@@ -674,7 +686,7 @@ export function Settings() {
                 </label>
               </div>
               {/* Proxy auth */}
-              <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+              <div className="flex items-center justify-between p-3 border border-white/[0.06] rounded-lg bg-white/[0.02]">
                 <div>
                   <p className="text-xs font-medium">Proxy Authentication</p>
                   <p className="text-[10px] text-muted-foreground">Require login to use proxy</p>
@@ -689,35 +701,35 @@ export function Settings() {
             </div>
             {/* Expanded settings for enabled toggles */}
             {formData.enable_bandwidth_limits === 'true' && (
-              <div className="flex gap-3 mt-3 p-3 border border-border/50 rounded-lg bg-background/20">
+              <div className="flex gap-3 mt-3 p-3 border border-white/[0.04] rounded-lg bg-white/[0.015]">
                 <div className="flex-1 space-y-1">
                   <label className="text-[10px] text-muted-foreground">Total (Mbps)</label>
                   <input type="number" name="bandwidth_limit_mbps" value={formData.bandwidth_limit_mbps || '10'} onChange={handleChange}
-                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                    className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
                 <div className="flex-1 space-y-1">
                   <label className="text-[10px] text-muted-foreground">Per-User (Kbps)</label>
                   <input type="number" name="bandwidth_limit_per_user_kbps" value={formData.bandwidth_limit_per_user_kbps || '500'} onChange={handleChange}
-                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                    className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
               </div>
             )}
             {formData.enable_time_restrictions === 'true' && (
-              <div className="flex gap-3 mt-3 p-3 border border-border/50 rounded-lg bg-background/20">
+              <div className="flex gap-3 mt-3 p-3 border border-white/[0.04] rounded-lg bg-white/[0.015]">
                 <div className="flex-1 space-y-1">
                   <label className="text-[10px] text-muted-foreground">Start</label>
                   <input type="time" name="time_restriction_start" value={formData.time_restriction_start || '09:00'} onChange={handleChange}
-                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                    className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
                 <div className="flex-1 space-y-1">
                   <label className="text-[10px] text-muted-foreground">End</label>
                   <input type="time" name="time_restriction_end" value={formData.time_restriction_end || '17:00'} onChange={handleChange}
-                    className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                    className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
               </div>
             )}
             {formData.enable_proxy_auth === 'true' && (
-              <div className="mt-3 p-3 border border-border/50 rounded-lg bg-background/20">
+              <div className="mt-3 p-3 border border-white/[0.04] rounded-lg bg-white/[0.015]">
                 <label className="text-[10px] text-muted-foreground">Auth Method</label>
                 <select name="auth_method" value={formData.auth_method || 'basic'} onChange={handleChange}
                   className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary">
@@ -729,7 +741,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        <Card className="bg-card/50">
+        <Card className="bg-transparent">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Key className="w-5 h-5 text-yellow-500" />
@@ -738,7 +750,7 @@ export function Settings() {
             <CardDescription>Manage SSL/TLS certificates for HTTPS Inspection</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+            <div className="flex items-center justify-between p-4 border border-white/[0.06] rounded-lg bg-white/[0.03]">
               <div className="space-y-0.5">
                 <label className="text-sm font-medium">HTTPS Inspection (SSL Bump)</label>
                 <p className="text-xs text-muted-foreground">Intercept HTTPS traffic for WAF, content filtering, and security scanning.</p>
@@ -755,7 +767,7 @@ export function Settings() {
                 <p>You must install the Root CA Certificate below on all client devices to avoid security warnings.</p>
               </div>
             )}
-            <div className="p-4 border border-border rounded-lg bg-background/50">
+            <div className="p-4 border border-white/[0.06] rounded-lg bg-white/[0.03]">
               <h3 className="text-sm font-medium mb-2">Root CA Certificate</h3>
               <p className="text-xs text-muted-foreground mb-4">
                 To prevent security warnings when HTTPS inspection is enabled, you must install this Root CA Certificate on all client devices (Windows, macOS, Linux, iOS, Android) and mark it as trusted.
@@ -779,7 +791,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        <Card className="bg-card/50">
+        <Card className="bg-transparent">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Shield className="w-5 h-5 text-emerald-500" />
@@ -788,7 +800,7 @@ export function Settings() {
             <CardDescription>Advanced protection mechanisms</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+            <div className="flex items-center justify-between p-4 border border-white/[0.06] rounded-lg bg-white/[0.03]">
               <div className="space-y-0.5">
                 <label className="text-sm font-medium">Block Known Malicious IPs</label>
                 <p className="text-xs text-muted-foreground">Automatically download and apply community blacklists.</p>
@@ -800,7 +812,7 @@ export function Settings() {
                 <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
               </label>
             </div>
-            <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-background/50">
+            <div className="flex items-center justify-between p-4 border border-white/[0.06] rounded-lg bg-white/[0.03]">
               <div className="space-y-0.5 w-full">
                 <div className="flex items-center justify-between mb-2">
                   <div>
@@ -819,7 +831,7 @@ export function Settings() {
                   </label>
                 </div>
                 {formData.enable_waf === 'true' && (
-                  <div className="mt-2 pt-2 border-t border-border/50">
+                  <div className="mt-2 pt-2 border-t border-white/[0.06]">
                     <p className="text-xs text-muted-foreground mb-2">
                       Custom WAF Rules (Regex format). One rule per line. Lines starting with # are ignored.
                     </p>
@@ -828,7 +840,7 @@ export function Settings() {
                       value={formData.waf_custom_rules || '# Example: block specific keyword\n# \\b(secret_project_x)\\b\n'}
                       onChange={handleChange}
                       rows={4}
-                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary font-mono text-xs"
+                      className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all font-mono text-xs"
                     />
                   </div>
                 )}
@@ -843,7 +855,7 @@ export function Settings() {
                 { name: 'enable_youtube_restricted', label: 'YouTube Restricted', desc: 'Hide mature content' },
                 { name: 'enable_content_filtering', label: 'Content Filtering', desc: 'Block dangerous files' },
               ].map(t => (
-                <div key={t.name} className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/30">
+                <div key={t.name} className="flex items-center justify-between p-3 border border-white/[0.06] rounded-lg bg-white/[0.02]">
                   <div>
                     <p className="text-xs font-medium">{t.label}</p>
                     <p className="text-[10px] text-muted-foreground">{t.desc}</p>
@@ -858,7 +870,7 @@ export function Settings() {
               ))}
             </div>
             {formData.enable_content_filtering === 'true' && (
-              <div className="mt-3 p-3 border border-border/50 rounded-lg bg-background/20">
+              <div className="mt-3 p-3 border border-white/[0.04] rounded-lg bg-white/[0.015]">
                 <label className="text-[10px] text-muted-foreground">Blocked Extensions</label>
                 <input type="text" name="blocked_file_types" value={formData.blocked_file_types || 'exe,bat,cmd,dll,js'} onChange={handleChange}
                   placeholder="exe,bat,mp4,zip" className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />

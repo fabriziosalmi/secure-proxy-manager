@@ -160,7 +160,11 @@ func (h *SettingsHandlers) writeSquidSettingsEnv(body map[string]string) error {
 	if v, ok := body["memory_cache"]; ok && v != "" {
 		mem = v
 	}
-	envContent := "SQUID_PORT=" + port + "\nSQUID_CACHE_MB=" + cache + "\nSQUID_MEM_MB=" + mem + "\n"
+	extraSSL := h.dbSetting("extra_ssl_ports", "")
+	if v, ok := body["extra_ssl_ports"]; ok {
+		extraSSL = v
+	}
+	envContent := "SQUID_PORT=" + port + "\nSQUID_CACHE_MB=" + cache + "\nSQUID_MEM_MB=" + mem + "\nEXTRA_SSL_PORTS=" + extraSSL + "\n"
 	return os.WriteFile(filepath.Join(h.cfg.ConfigDir, "squid_settings.env"), []byte(envContent), 0o600)
 }
 

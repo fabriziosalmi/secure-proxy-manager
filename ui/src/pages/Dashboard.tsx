@@ -5,10 +5,22 @@ import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { TimelineEntry, SecurityScore, DashboardSummary, CacheStats } from '../types';
 
 const REFETCH = 10_000;
 const C = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899'];
+
+const TOOLTIP_STYLE = {
+  backgroundColor: 'rgba(15, 23, 42, 0.92)',
+  backdropFilter: 'blur(12px)',
+  WebkitBackdropFilter: 'blur(12px)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  borderRadius: '8px',
+  fontSize: '11px',
+  boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+  fontVariantNumeric: 'tabular-nums' as const,
+};
 
 export function Dashboard() {
   const queryClient = useQueryClient();
@@ -28,34 +40,41 @@ export function Dashboard() {
   const rate = s?.total_requests ? ((s.blocked_requests / s.total_requests) * 100).toFixed(1) : '0';
   const w = s?.waf;
 
+  // Animated numbers
+  const animToday = useAnimatedNumber(s?.today_requests ?? 0);
+  const animTotal = useAnimatedNumber(s?.total_requests ?? 0);
+  const animBlocked = useAnimatedNumber(s?.blocked_requests ?? 0);
+  const animScore = useAnimatedNumber(sec?.score ?? 0);
+  const animIpRules = useAnimatedNumber(s?.ip_blacklist_count ?? 0);
+
   if (isLoading) {
     return (
-      <div className="space-y-4 animate-in fade-in duration-500">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <h1 className="text-xl font-bold tracking-tight">Dashboard</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">Dashboard</h1>
         </div>
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="bg-card/50"><CardContent className="p-3"><div className="h-12 bg-secondary/50 rounded animate-pulse" /></CardContent></Card>
+            <Card key={i}><CardContent className="p-3"><div className="h-12 skeleton-shimmer rounded" /></CardContent></Card>
           ))}
         </div>
         <div className="grid gap-3 lg:grid-cols-12">
-          <Card className="lg:col-span-7 bg-card/50"><CardContent className="p-3"><div className="h-[180px] bg-secondary/50 rounded animate-pulse" /></CardContent></Card>
-          <Card className="lg:col-span-5 bg-card/50"><CardContent className="p-3"><div className="h-[180px] bg-secondary/50 rounded animate-pulse" /></CardContent></Card>
+          <Card className="lg:col-span-7"><CardContent className="p-3"><div className="h-[180px] skeleton-shimmer rounded" /></CardContent></Card>
+          <Card className="lg:col-span-5"><CardContent className="p-3"><div className="h-[180px] skeleton-shimmer rounded" /></CardContent></Card>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-500">
+    <div className="space-y-4">
       {/* Header + proxy address */}
       <div className="flex justify-between items-center">
-        <h1 className="text-xl font-bold tracking-tight">Dashboard</h1>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 border border-primary/20 rounded-md text-sm">
+        <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">Dashboard</h1>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-1.5 glass-surface rounded-lg text-sm">
             <code className="font-mono font-semibold text-primary">{proxy}</code>
-            <button type="button" onClick={copy} className="text-primary hover:text-primary/80">
+            <button type="button" onClick={copy} title="Copy proxy address" className="text-primary hover:text-primary/80 btn-press">
               {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
           </div>
@@ -65,57 +84,60 @@ export function Dashboard() {
               try { await api.post('counters/reset'); toast.success('All counters reset', { id: t }); queryClient.invalidateQueries(); }
               catch { toast.error('Reset failed', { id: t }); }
             }}
-            className="flex items-center px-3 py-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-md text-sm font-medium">
+            className="flex items-center px-3 py-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg text-sm font-medium btn-press transition-colors">
             <RotateCcw className="w-3.5 h-3.5 mr-1.5" />Reset
           </button>
           <button type="button" onClick={() => window.open('/api/analytics/report/pdf', '_blank')}
-            className="flex items-center px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-md text-sm font-medium">
+            className="flex items-center px-3 py-1.5 glass-surface text-foreground hover:bg-white/[0.06] rounded-lg text-sm font-medium btn-press transition-colors">
             <Download className="w-3.5 h-3.5 mr-1.5" />PDF
           </button>
         </div>
       </div>
 
-      {/* Compact stats row */}
+      {/* Compact stats row — staggered entrance */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
-        <Card className="bg-card/50">
+        <Card className="stagger-child" style={{ '--stagger-index': 0 } as React.CSSProperties}>
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Today</p>
-            <p className="text-2xl font-bold">{(s?.today_requests ?? 0).toLocaleString()}</p>
+            <p className="text-2xl font-bold">{animToday.toLocaleString()}</p>
             <p className="text-[10px] text-muted-foreground">{s?.today_blocked ?? 0} blocked</p>
           </CardContent>
         </Card>
-        <Card className="bg-card/50">
+        <Card className="stagger-child" style={{ '--stagger-index': 1 } as React.CSSProperties}>
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total</p>
-            <p className="text-2xl font-bold">{(s?.total_requests ?? 0).toLocaleString()}</p>
+            <p className="text-2xl font-bold">{animTotal.toLocaleString()}</p>
             <p className="text-[10px] text-muted-foreground">all time</p>
           </CardContent>
         </Card>
-        <Card className="bg-card/50">
+        <Card className="stagger-child" style={{ '--stagger-index': 2 } as React.CSSProperties}>
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Block Rate</p>
             <p className={`text-2xl font-bold ${parseFloat(rate) > 50 ? 'text-destructive' : parseFloat(rate) > 10 ? 'text-yellow-500' : 'text-emerald-500'}`}>{rate}%</p>
-            <p className="text-[10px] text-muted-foreground">{(s?.blocked_requests ?? 0).toLocaleString()} blocked</p>
+            <p className="text-[10px] text-muted-foreground">{animBlocked.toLocaleString()} blocked</p>
           </CardContent>
         </Card>
-        <Card className="bg-card/50">
+        <Card className="stagger-child" style={{ '--stagger-index': 3 } as React.CSSProperties}>
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Score</p>
-            <p className="text-2xl font-bold">{sec?.score || 0}<span className="text-sm text-muted-foreground">/100</span></p>
+            <p className="text-2xl font-bold">{animScore}<span className="text-sm text-muted-foreground">/100</span></p>
             <div className="w-full bg-secondary h-1.5 mt-1 rounded-full overflow-hidden">
-              <div className={`h-full ${(sec?.score || 0) > 80 ? 'bg-emerald-500' : (sec?.score || 0) > 50 ? 'bg-yellow-500' : 'bg-destructive'}`} style={{ width: `${sec?.score || 0}%` }} />
+              <div
+                className={`h-full rounded-full progress-glow ${(sec?.score || 0) > 80 ? 'bg-emerald-500 glow-emerald' : (sec?.score || 0) > 50 ? 'bg-yellow-500 glow-yellow' : 'bg-destructive glow-destructive'}`}
+                style={{ width: `${sec?.score || 0}%` }}
+              />
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-card/50">
+        <Card className="stagger-child" style={{ '--stagger-index': 4 } as React.CSSProperties}>
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">IP Rules</p>
-            <p className="text-2xl font-bold">{(s?.ip_blacklist_count ?? 0).toLocaleString()}</p>
+            <p className="text-2xl font-bold">{animIpRules.toLocaleString()}</p>
             <p className="text-[10px] text-muted-foreground">{(s?.domain_blacklist_count ?? 0).toLocaleString()} domains</p>
           </CardContent>
         </Card>
         {w && (
-          <Card className="bg-card/50">
+          <Card className="stagger-child" style={{ '--stagger-index': 5 } as React.CSSProperties}>
             <CardContent className="p-3">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">WAF</p>
               <p className="text-2xl font-bold">{w.requests_last_minute}<span className="text-sm text-muted-foreground">/min</span></p>
@@ -128,7 +150,7 @@ export function Dashboard() {
       {/* Chart + Threat categories + Top blocked — 3 columns */}
       <div className="grid gap-3 lg:grid-cols-12">
         {/* Traffic chart */}
-        <Card className="lg:col-span-5 bg-card/50">
+        <Card className="lg:col-span-5">
           <CardHeader className="p-3 pb-0">
             <CardTitle className="text-sm">Traffic 24h</CardTitle>
           </CardHeader>
@@ -139,10 +161,10 @@ export function Dashboard() {
                   <defs>
                     <linearGradient id="cT" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
                   </defs>
-                  <XAxis dataKey="time" stroke="#888" fontSize={9} tickLine={false} axisLine={false} />
-                  <YAxis yAxisId="left" stroke="#888" fontSize={9} tickLine={false} axisLine={false} />
+                  <XAxis dataKey="time" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
+                  <YAxis yAxisId="left" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
                   <YAxis yAxisId="right" orientation="right" stroke="#ef4444" fontSize={9} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', fontSize: '12px' }} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} />
                   <Area yAxisId="left" type="monotone" dataKey="total" name="Total" stroke="#3b82f6" strokeWidth={1.5} fill="url(#cT)" />
                   <Bar yAxisId="right" dataKey="blocked" name="Blocked" fill="#ef4444" opacity={0.7} radius={[2, 2, 0, 0]} />
                 </ComposedChart>
@@ -152,7 +174,7 @@ export function Dashboard() {
         </Card>
 
         {/* Threat categories pie */}
-        <Card className="lg:col-span-3 bg-card/50">
+        <Card className="lg:col-span-3">
           <CardHeader className="p-3 pb-0">
             <CardTitle className="text-sm">Threats</CardTitle>
           </CardHeader>
@@ -163,7 +185,7 @@ export function Dashboard() {
                   <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <PieChart><Pie data={s.threat_categories} dataKey="count" nameKey="category" cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={3}>
                       {s.threat_categories.map((_: unknown, i: number) => <Cell key={i} fill={C[i % C.length]} />)}
-                    </Pie><Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', fontSize: '11px' }} /></PieChart>
+                    </Pie><Tooltip contentStyle={TOOLTIP_STYLE} /></PieChart>
                   </ResponsiveContainer>
                 </div>
                 <div className="flex flex-wrap gap-1 mt-1">{s.threat_categories.map((c: { category: string; count: number }, i: number) => (
@@ -175,14 +197,14 @@ export function Dashboard() {
         </Card>
 
         {/* Top blocked */}
-        <Card className="lg:col-span-4 bg-card/50">
+        <Card className="lg:col-span-4">
           <CardHeader className="p-3 pb-0">
             <CardTitle className="text-sm flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 text-destructive" />Top Blocked (24h)</CardTitle>
           </CardHeader>
           <CardContent className="p-2">
-            <div className="space-y-1 max-h-[180px] overflow-y-auto">
+            <div className="space-y-1 max-h-[180px] overflow-y-auto custom-scrollbar">
               {s?.top_blocked?.slice(0, 8).map((item: { dest: string; count: number }, i: number) => (
-                <div key={i} className="flex items-center justify-between py-1 text-xs">
+                <div key={i} className="flex items-center justify-between py-1 text-xs row-hover rounded px-1">
                   <span className="truncate max-w-[200px] text-muted-foreground font-mono" title={item.dest}>{item.dest}</span>
                   <span className="font-bold text-destructive ml-2 shrink-0">{item.count}</span>
                 </div>
@@ -195,14 +217,14 @@ export function Dashboard() {
 
       {/* Recent blocks + WAF + Cache — 3 columns */}
       <div className="grid gap-3 lg:grid-cols-3">
-        <Card className="bg-card/50">
+        <Card>
           <CardHeader className="p-3 pb-0">
             <CardTitle className="text-sm flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-yellow-500" />Recent Blocks</CardTitle>
           </CardHeader>
           <CardContent className="p-2">
-            <div className="space-y-0.5 max-h-[160px] overflow-y-auto">
+            <div className="space-y-0.5 max-h-[160px] overflow-y-auto custom-scrollbar">
               {s?.recent_blocks?.slice(0, 8).map((b: { timestamp: string; source_ip: string; destination: string; status: string }, i: number) => (
-                <div key={i} className="flex items-center justify-between py-1 text-xs">
+                <div key={i} className="flex items-center justify-between py-1 text-xs row-hover rounded px-1">
                   <div className="overflow-hidden mr-2">
                     <p className="truncate max-w-[280px] font-mono">{b.destination}</p>
                     <p className="text-[10px] text-muted-foreground">{b.source_ip} {new Date(b.timestamp).toLocaleTimeString()}</p>
@@ -218,7 +240,7 @@ export function Dashboard() {
         </Card>
 
         {w && (
-          <Card className="bg-card/50">
+          <Card>
             <CardHeader className="p-3 pb-0">
               <CardTitle className="text-sm flex items-center gap-1.5"><Brain className="w-3.5 h-3.5 text-primary" />WAF Intelligence</CardTitle>
             </CardHeader>
@@ -229,7 +251,7 @@ export function Dashboard() {
                 <div><p className="text-[10px] text-muted-foreground uppercase">Entropy</p><p className="text-lg font-bold">{w.avg_url_entropy}</p></div>
               </div>
               {w.top_blocked_categories?.length > 0 && (
-                <div className="flex flex-wrap gap-1 pt-2 border-t border-border/30">
+                <div className="flex flex-wrap gap-1 pt-2 border-t border-white/[0.06]">
                   {w.top_blocked_categories.slice(0, 6).map((c: { key: string; count: number }) => (
                     <span key={c.key} className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">{c.key} ({c.count})</span>
                   ))}
@@ -240,7 +262,7 @@ export function Dashboard() {
         )}
 
         {/* Cache Efficiency */}
-        <Card className="bg-card/50">
+        <Card>
           <CardHeader className="p-3 pb-0">
             <CardTitle className="text-sm flex items-center gap-1.5">
               <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
@@ -259,7 +281,10 @@ export function Dashboard() {
                     <span className={`text-lg font-bold ${parseFloat(hitRate) > 50 ? 'text-emerald-500' : parseFloat(hitRate) > 20 ? 'text-yellow-500' : 'text-muted-foreground'}`}>{hitRate}%</span>
                   </div>
                   <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
-                    <div className="h-full bg-emerald-500 transition-all" style={{ width: `${Math.min(parseFloat(hitRate), 100)}%` }} />
+                    <div
+                      className={`h-full rounded-full progress-glow ${parseFloat(hitRate) > 50 ? 'bg-emerald-500 glow-emerald' : parseFloat(hitRate) > 20 ? 'bg-yellow-500 glow-yellow' : 'bg-muted-foreground'}`}
+                      style={{ width: `${Math.min(parseFloat(hitRate), 100)}%` }}
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <div>
@@ -272,7 +297,7 @@ export function Dashboard() {
                     </div>
                   </div>
                   {saved > 0 && (
-                    <div className="pt-1 border-t border-border/30">
+                    <div className="pt-1 border-t border-white/[0.06]">
                       <p className="text-[10px] text-muted-foreground">Bandwidth Saved</p>
                       <p className="text-sm font-bold text-emerald-500">{formatBytes(saved)}</p>
                     </div>

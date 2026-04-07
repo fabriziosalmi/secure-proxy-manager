@@ -35,4 +35,189 @@
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+
+  /* Tabular numbers globally on numeric elements */
+  .font-bold,
+  .font-extrabold,
+  .font-mono,
+  td,
+  th,
+  code,
+  kbd {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ── Keyframes ─────────────────────────────────────────────── */
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes status-ping {
+  0% { transform: scale(1); opacity: 0.8; }
+  75% { transform: scale(2.5); opacity: 0; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scan-line {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes bar-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* ── Utility Classes ───────────────────────────────────────── */
+
+@layer utilities {
+  /* Glass surface — the core aerospace panel */
+  .glass-surface {
+    @apply bg-white/[0.02] backdrop-blur-xl border border-white/[0.06];
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+      0 1px 2px rgba(0, 0, 0, 0.4),
+      0 0 20px rgba(59, 130, 246, 0.03);
+  }
+
+  .glass-surface:hover {
+    @apply border-white/[0.1];
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+      0 2px 8px rgba(0, 0, 0, 0.5),
+      0 0 30px rgba(59, 130, 246, 0.06);
+  }
+
+  /* Shimmer skeleton replacement */
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--secondary)) 25%,
+      hsl(var(--secondary) / 0.5) 50%,
+      hsl(var(--secondary)) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+
+  /* Status indicator with ping ring */
+  .status-dot {
+    @apply relative;
+  }
+  .status-dot::after {
+    content: '';
+    @apply absolute inset-0 rounded-full;
+    background: inherit;
+    animation: status-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+
+  /* Animated progress bar */
+  .progress-glow {
+    transform-origin: left;
+    animation: bar-fill 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* Page entrance animation */
+  .page-enter {
+    animation: fade-in-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Stagger children — set --stagger-index via style */
+  .stagger-child {
+    animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: calc(var(--stagger-index, 0) * 60ms);
+  }
+
+  /* Button micro-interaction */
+  .btn-press {
+    @apply transition-all duration-150;
+  }
+  .btn-press:active {
+    transform: scale(0.97);
+  }
+
+  /* Focus ring animation */
+  .focus-ring {
+    @apply transition-all duration-200;
+  }
+  .focus-ring:focus {
+    @apply outline-none ring-2 ring-primary/40 ring-offset-2 ring-offset-background;
+  }
+
+  /* Glow variants for progress bars */
+  .glow-emerald {
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.4), 0 0 20px rgba(16, 185, 129, 0.15);
+  }
+  .glow-yellow {
+    box-shadow: 0 0 8px rgba(234, 179, 8, 0.4), 0 0 20px rgba(234, 179, 8, 0.15);
+  }
+  .glow-destructive {
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.4), 0 0 20px rgba(239, 68, 68, 0.15);
+  }
+  .glow-primary {
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.4), 0 0 20px rgba(59, 130, 246, 0.15);
+  }
+
+  /* Table row hover slide */
+  .row-hover {
+    @apply transition-all duration-150;
+  }
+  .row-hover:hover {
+    @apply bg-white/[0.02];
+    transform: translateX(2px);
+  }
+
+  /* Ambient background glow */
+  .ambient-glow {
+    background: radial-gradient(
+      ellipse at 50% 40%,
+      rgba(59, 130, 246, 0.08) 0%,
+      transparent 70%
+    );
+  }
+
+  /* Chart tooltip glass */
+  .chart-tooltip {
+    background: rgba(15, 23, 42, 0.9) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+    font-variant-numeric: tabular-nums !important;
+  }
+
+  /* Scrollbar styling */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(var(--secondary));
+    border-radius: 2px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.3);
+  }
 }

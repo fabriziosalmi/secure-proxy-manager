@@ -157,6 +157,7 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		{"enable_ip_blacklist", "true"},
 		{"enable_domain_blacklist", "true"},
 		{"block_direct_ip", "false"},
+		{"extra_ssl_ports", ""},
 		{"enable_content_filtering", "false"},
 		{"enable_waf", "false"},
 		// Logging
