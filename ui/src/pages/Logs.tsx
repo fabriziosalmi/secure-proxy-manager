@@ -22,9 +22,9 @@ export function Logs() {
   // Initialize logs from API
   useEffect(() => {
     if (data?.data) {
-      setRealtimeLogs(data.data);
+      setRealtimeLogs(data.data.slice(0, 200));
     } else if (data?.logs) {
-      setRealtimeLogs(data.logs);
+      setRealtimeLogs(data.logs.slice(0, 200));
     }
   }, [data]);
 

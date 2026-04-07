@@ -7,6 +7,7 @@ import (
 	"html"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"regexp"
@@ -56,6 +57,14 @@ func loadCustomRules() {
 	for i, line := range lines {
 		line = strings.TrimSpace(line)
 		if line != "" && !strings.HasPrefix(line, "#") {
+			if len(line) > 512 {
+				log.Printf("Custom rule %d skipped: exceeds 512 char limit\n", i+1)
+				continue
+			}
+			if strings.ContainsRune(line, 0) {
+				log.Printf("Custom rule %d skipped: contains null byte\n", i+1)
+				continue
+			}
 			compiled, err := regexp.Compile("(?i)" + line)
 			if err != nil {
 				log.Printf("Error compiling custom rule %s: %v\n", line, err)
@@ -275,7 +284,9 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	// ── Feature extraction ──────────────────────────────────────────────
 	clientIP := "unknown"
 	if ipHeaders := req.Header.Values("X-Client-Ip"); len(ipHeaders) > 0 {
-		clientIP = ipHeaders[0]
+		if parsed := net.ParseIP(strings.TrimSpace(ipHeaders[0])); parsed != nil {
+			clientIP = parsed.String()
+		}
 	}
 
 	ruleIDs := make([]string, len(matches))
