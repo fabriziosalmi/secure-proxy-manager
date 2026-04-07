@@ -208,11 +208,14 @@ request_body_max_size 10 MB
 reply_body_max_size 200 MB
 max_filedesc 65535
 
-# Aggressive caching for static assets
-refresh_pattern -i \\.(jpg|jpeg|png|gif|ico|svg|webp|woff|woff2|ttf|eot|css|js)$ 10080 90% 518400 override-expire
-refresh_pattern -i \\.(rpm|deb|tar|gz|bz2|xz|zip)$ 1440 90% 10080
-refresh_pattern . 0 20% 4320
+# Refresh patterns — base (conservative)
+refresh_pattern ^ftp:           1440    20%     10080
+refresh_pattern ^gopher:        1440    0%      1440
+refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
+refresh_pattern .               0       20%     4320
 
+# Allow cache manager for stats (squidclient mgr:info)
+cachemgr_passwd none info menu
 
 # Custom branded error pages
 error_directory /etc/squid/error-pages
@@ -263,26 +266,23 @@ request_body_max_size 10 MB
 # Limit request header size (prevents header-based buffer overflow/exfil)
 request_header_max_size 64 KB
 
-refresh_pattern ^ftp:           1440    20%     10080
-refresh_pattern ^gopher:        1440    0%      1440
-refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
-refresh_pattern .               0       20%     4320
 CONFEOF
 
-# ── Apply custom config or fall back to base ─────────────────────────────────
+# ── Apply generated config, then append custom extras ────────────────────────
 
-if [ -f /config/custom_squid.conf ]; then
-    echo "Applying custom configuration from /config/custom_squid.conf"
-    cp /config/custom_squid.conf /etc/squid/squid.conf
-elif [ -f /config/squid.conf ]; then
-    echo "Applying configuration from /config/squid.conf"
-    cp /config/squid.conf /etc/squid/squid.conf
-elif [ -f /config/squid/squid.conf ]; then
-    echo "Applying configuration from /config/squid/squid.conf"
-    cp /config/squid/squid.conf /etc/squid/squid.conf
-else
-    echo "No custom configuration found, using base configuration."
-    cp /etc/squid/squid.conf.base /etc/squid/squid.conf
+cp /etc/squid/squid.conf.base /etc/squid/squid.conf
+
+# Append custom directives (extras only — do NOT override the entire config).
+# Migration: if old custom_squid.conf exists, rename to custom_squid_extra.conf.
+if [ -f /config/custom_squid.conf ] && [ ! -f /config/custom_squid_extra.conf ]; then
+    echo "Migrating custom_squid.conf → custom_squid_extra.conf (append-only mode)"
+    mv /config/custom_squid.conf /config/custom_squid_extra.conf
+fi
+if [ -f /config/custom_squid_extra.conf ]; then
+    echo "Appending custom directives from /config/custom_squid_extra.conf"
+    echo "" >> /etc/squid/squid.conf
+    echo "# ── Custom extras (from custom_squid_extra.conf) ──" >> /etc/squid/squid.conf
+    cat /config/custom_squid_extra.conf >> /etc/squid/squid.conf
 fi
 
 # ── Ensure critical security rules are present ──────────────────────────────
@@ -344,6 +344,44 @@ SSLEOF
     echo "SSL Bump config injected. WAF can now inspect HTTPS content."
 else
     echo "SSL Bump disabled (no /config/ssl_bump_enabled file)"
+fi
+
+# ── Aggressive Caching (toggle via settings) ────────────────────────────────
+
+if [ -f /config/aggressive_caching_enabled ]; then
+    echo "Aggressive caching ENABLED — adding override-expire refresh patterns"
+    cat >> /etc/squid/squid.conf << 'CACHEEOF'
+
+# ── Aggressive caching (override-expire for static assets) ──
+refresh_pattern -i \.(jpg|jpeg|png|gif|ico|svg|webp|woff|woff2|ttf|eot|css|js)$ 10080 90% 518400 override-expire override-lastmod reload-into-ims
+refresh_pattern -i \.(rpm|deb|tar|gz|bz2|xz|zip|tgz|pkg)$ 1440 90% 10080 override-expire
+refresh_pattern -i \.(mp4|mp3|avi|mkv|flac|ogg|webm)$ 10080 80% 518400 override-expire
+CACHEEOF
+else
+    echo "Aggressive caching disabled (default conservative refresh patterns)"
+fi
+
+# ── Cache Bypass Domains (from settings) ────────────────────────────────────
+
+if [ -f /config/cache_bypass_domains.txt ] && [ -s /config/cache_bypass_domains.txt ]; then
+    echo "Cache bypass domains found — adding no_cache rules"
+    echo "" >> /etc/squid/squid.conf
+    echo "# ── Cache bypass domains ──" >> /etc/squid/squid.conf
+    echo "acl cache_bypass_domains dstdomain \"/config/cache_bypass_domains.txt\"" >> /etc/squid/squid.conf
+    echo "cache deny cache_bypass_domains" >> /etc/squid/squid.conf
+    echo "Cache bypass configured for $(wc -l < /config/cache_bypass_domains.txt) domains"
+fi
+
+# ── Offline Mode / Serve Stale Cache ────────────────────────────────────────
+
+if [ -f /config/offline_mode_enabled ]; then
+    echo "Offline mode ENABLED — serving stale cached content"
+    cat >> /etc/squid/squid.conf << 'OFFEOF'
+
+# ── Offline mode: serve stale cache when origin is unreachable ──
+offline_mode on
+refresh_pattern . 525600 100% 525600 override-expire override-lastmod reload-into-ims ignore-reload ignore-no-store ignore-private
+OFFEOF
 fi
 
 # ── Inject dnsmasq as DNS resolver (resolve container IP dynamically) ────────
