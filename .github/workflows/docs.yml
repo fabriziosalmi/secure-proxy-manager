@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feat/fastapi-migration
     paths:
       - 'docs/**'
       - '.github/workflows/docs.yml'
