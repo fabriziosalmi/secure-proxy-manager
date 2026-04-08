@@ -68,6 +68,10 @@ func (h *SettingsHandlers) GetAll(w http.ResponseWriter, r *http.Request) {
 
 func (h *SettingsHandlers) Update(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if len(name) > 100 || !validKeyRE.MatchString(name) {
+		writeError(w, http.StatusBadRequest, "invalid setting name")
+		return
+	}
 	var body struct {
 		Value string `json:"value"`
 	}
@@ -132,6 +136,12 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		{"ssl_bump_enabled", "ssl_bump_enabled"},
 		{"aggressive_caching_enabled", "aggressive_caching_enabled"},
 		{"enable_offline_mode", "offline_mode_enabled"},
+		{"enable_content_filtering", "content_filtering_enabled"},
+		{"enable_safesearch", "safesearch_enabled"},
+		{"enable_youtube_restricted", "youtube_restricted_enabled"},
+		{"enable_proxy_auth", "proxy_auth_enabled"},
+		{"enable_bandwidth_limits", "bandwidth_limits_enabled"},
+		{"enable_time_restrictions", "time_restrictions_enabled"},
 	}
 	for _, tg := range toggles {
 		if v, ok := body[tg.key]; ok {
@@ -163,6 +173,36 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 			}
 			os.WriteFile(bypassFile, []byte(strings.Join(domains, "\n")+"\n"), 0o600) //nolint:errcheck
 		}
+	}
+
+	// Write blocked_file_types list for Squid ACL.
+	if v, ok := body["blocked_file_types"]; ok {
+		ftFile := filepath.Join(h.cfg.ConfigDir, "blocked_file_types.txt")
+		if v == "" {
+			os.Remove(ftFile) //nolint:errcheck
+		} else {
+			var exts []string
+			for _, ext := range strings.Split(v, ",") {
+				ext = strings.TrimSpace(strings.ToLower(ext))
+				if ext != "" {
+					if !strings.HasPrefix(ext, ".") {
+						ext = "." + ext
+					}
+					exts = append(exts, `\`+ext+`$`)
+				}
+			}
+			os.WriteFile(ftFile, []byte(strings.Join(exts, "\n")+"\n"), 0o600) //nolint:errcheck
+		}
+	}
+
+	// Write time restriction settings for Squid time ACL.
+	if _, ok := body["enable_time_restrictions"]; ok {
+		h.writeTimeRestrictions(body)
+	}
+
+	// Write bandwidth limit settings for Squid delay_pools.
+	if _, ok := body["enable_bandwidth_limits"]; ok {
+		h.writeBandwidthSettings(body)
 	}
 
 	// Write squid_settings.env so startup.sh can pick up port/cache changes on restart.
@@ -205,6 +245,35 @@ func (h *SettingsHandlers) writeSquidSettingsEnv(body map[string]string) error {
 	}
 	envContent := "SQUID_PORT=" + sanitize(port) + "\nSQUID_CACHE_MB=" + sanitize(cache) + "\nSQUID_MEM_MB=" + sanitize(mem) + "\nEXTRA_SSL_PORTS=" + sanitize(extraSSL) + "\n"
 	return os.WriteFile(filepath.Join(h.cfg.ConfigDir, "squid_settings.env"), []byte(envContent), 0o600)
+}
+
+// writeTimeRestrictions writes a config file with time restriction settings
+// so that startup.sh can generate Squid time ACLs.
+func (h *SettingsHandlers) writeTimeRestrictions(body map[string]string) {
+	start := h.dbSetting("time_restriction_start", "08:00")
+	if v, ok := body["time_restriction_start"]; ok && v != "" {
+		start = v
+	}
+	end := h.dbSetting("time_restriction_end", "18:00")
+	if v, ok := body["time_restriction_end"]; ok && v != "" {
+		end = v
+	}
+	content := "TIME_START=" + start + "\nTIME_END=" + end + "\n"
+	os.WriteFile(filepath.Join(h.cfg.ConfigDir, "time_restrictions.conf"), []byte(content), 0o600) //nolint:errcheck
+}
+
+// writeBandwidthSettings writes bandwidth limit config for Squid delay_pools.
+func (h *SettingsHandlers) writeBandwidthSettings(body map[string]string) {
+	limitMbps := h.dbSetting("bandwidth_limit_mbps", "100")
+	if v, ok := body["bandwidth_limit_mbps"]; ok && v != "" {
+		limitMbps = v
+	}
+	perUserKbps := h.dbSetting("bandwidth_limit_per_user_kbps", "0")
+	if v, ok := body["bandwidth_limit_per_user_kbps"]; ok && v != "" {
+		perUserKbps = v
+	}
+	content := "BW_LIMIT_MBPS=" + limitMbps + "\nBW_PER_USER_KBPS=" + perUserKbps + "\n"
+	os.WriteFile(filepath.Join(h.cfg.ConfigDir, "bandwidth_limits.conf"), []byte(content), 0o600) //nolint:errcheck
 }
 
 func (h *SettingsHandlers) dbSetting(key, def string) string {
