@@ -27,13 +27,26 @@ var (
 )
 
 // normalizeInput applies anti-evasion transformations to the input.
+// It iterates URL decoding up to maxDecodeIterations times to defeat
+// multi-layer encoding evasion (e.g. triple encoding %25252e).
 func normalizeInput(input string) string {
-	// Double-decode: %252e → %2e → .
-	s := reDoubleEncode.ReplaceAllString(input, "%$1")
+	const maxDecodeIterations = 10
 
-	// URL-decode
-	if decoded, err := url.QueryUnescape(strings.ReplaceAll(s, "+", " ")); err == nil {
-		s = decoded
+	s := input
+	for i := 0; i < maxDecodeIterations; i++ {
+		// Double-decode: %252e → %2e
+		prev := s
+		s = reDoubleEncode.ReplaceAllString(s, "%$1")
+
+		// URL-decode
+		if decoded, err := url.QueryUnescape(strings.ReplaceAll(s, "+", " ")); err == nil {
+			s = decoded
+		}
+
+		// Stop when decoding produces no further change
+		if s == prev {
+			break
+		}
 	}
 
 	// HTML entity decode
