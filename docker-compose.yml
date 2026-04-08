@@ -53,15 +53,15 @@ services:
         max-size: "10m"
         max-file: "3"
     networks:
-      - proxy-network
+      - frontend
     restart: unless-stopped
 
   waf:
     build: ./waf-go
     # Port 1344 (ICAP) is internal only — not exposed on the host
     volumes:
-      - ./config:/config
-      - ./data:/data
+      - ./config:/config:ro
+      - ./data:/data:ro
     environment:
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
@@ -99,7 +99,7 @@ services:
         max-size: "10m"
         max-file: "3"
     networks:
-      - proxy-network
+      - proxy-internal
     restart: unless-stopped
 
   backend:
@@ -140,7 +140,8 @@ services:
         max-size: "10m"
         max-file: "3"
     networks:
-      - proxy-network
+      - frontend
+      - proxy-internal
     restart: unless-stopped
 
   dns:
@@ -181,7 +182,7 @@ services:
         max-size: "10m"
         max-file: "3"
     networks:
-      - proxy-network
+      - proxy-internal
     restart: unless-stopped
 
   proxy:
@@ -190,10 +191,10 @@ services:
     environment:
       - GUI_IP_WHITELIST=${GUI_IP_WHITELIST:-}
     ports:
-      - "3128:3128"
+      - "${PROXY_BIND_IP:-0.0.0.0}:3128:3128"
     volumes:
       - ./config:/config
-      - ./data:/data
+      - ./data:/data:ro
       - ./logs:/var/log/squid
       - squid-cache:/var/spool/squid
     depends_on:
@@ -214,13 +215,19 @@ services:
       start_period: 30s
     security_opt:
       - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run
+      - /var/log/supervisor
+      - /etc/squid
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
     networks:
-      - proxy-network
+      - proxy-internal
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
@@ -240,14 +247,17 @@ services:
       - NET_ADMIN
       - NET_RAW
     networks:
-      - proxy-network
+      - proxy-internal
     restart: unless-stopped
     profiles:
       - tailscale
 
 networks:
-  proxy-network:
+  frontend:
     driver: bridge
+  proxy-internal:
+    driver: bridge
+    internal: true
 
 volumes:
   squid-cache:

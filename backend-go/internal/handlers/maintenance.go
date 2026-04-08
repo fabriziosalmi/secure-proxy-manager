@@ -15,6 +15,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/docker"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 )
 
 type MaintenanceHandlers struct {
@@ -67,6 +68,8 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 			k, v,
 		)
 	}
+	username, _ := r.Context().Value(middleware.CtxUsername).(string)
+	database.Audit(h.db, username, "restore_config", "", fmt.Sprintf("%d settings restored", len(body.Config)))
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Configuration restored successfully"})
 }
 
@@ -128,6 +131,8 @@ func (h *MaintenanceHandlers) ReloadConfig(w http.ResponseWriter, r *http.Reques
 	}
 	// Restart the proxy container so startup.sh regenerates squid.conf from the
 	// current toggle files (ssl_bump_enabled, etc.) and blacklist files.
+	username, _ := r.Context().Value(middleware.CtxUsername).(string)
+	database.Audit(h.db, username, "reload_config", "proxy", "")
 	if err := h.docker.RestartContainer("secure-proxy-manager-proxy-1"); err != nil {
 		log.Warn().Err(err).Msg("proxy container restart failed (non-fatal)")
 		writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Config exported — proxy restart failed, apply manually"})
@@ -154,6 +159,8 @@ func (h *MaintenanceHandlers) ReloadDNS(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *MaintenanceHandlers) ClearCache(w http.ResponseWriter, r *http.Request) {
+	username, _ := r.Context().Value(middleware.CtxUsername).(string)
+	database.Audit(h.db, username, "clear_cache", "proxy", "")
 	_, err := h.docker.ExecContainer("secure-proxy-manager-proxy", []string{"squid", "-k", "purge"})
 	if err != nil {
 		log.Warn().Err(err).Msg("squid cache purge failed, trying flush")
