@@ -48,6 +48,7 @@ type Config struct {
 func Load() *Config {
 	username := requireEnv("BASIC_AUTH_USERNAME")
 	password := requireEnv("BASIC_AUTH_PASSWORD")
+	validatePasswordComplexity(password)
 
 	cors := strings.Split(envOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000"), ",")
 	var cleanCors []string
@@ -100,6 +101,21 @@ func requireEnv(key string) string {
 		log.Fatal().Str("env", key).Msg("required environment variable is not set")
 	}
 	return v
+}
+
+// validatePasswordComplexity ensures the admin password meets minimum security
+// requirements at startup. Prevents deployment with trivially guessable passwords.
+func validatePasswordComplexity(password string) {
+	commonDefaults := []string{"changeme", "password", "admin", "secret", "test", "12345678", "qwerty"}
+	lower := strings.ToLower(password)
+	for _, weak := range commonDefaults {
+		if lower == weak {
+			log.Fatal().Msg("BASIC_AUTH_PASSWORD is a common default — choose a stronger password")
+		}
+	}
+	if len(password) < 8 {
+		log.Fatal().Int("length", len(password)).Msg("BASIC_AUTH_PASSWORD must be at least 8 characters")
+	}
 }
 
 func envOrDefault(key, def string) string {
