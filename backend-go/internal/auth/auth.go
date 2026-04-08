@@ -112,12 +112,59 @@ func HashPassword(plaintext string) (string, error) {
 // IssueJWT signs and returns a JWT for the given username.
 func (s *Service) IssueJWT(username string) (string, error) {
 	claims := jwt.MapClaims{
-		"sub": username,
-		"exp": time.Now().Add(s.cfg.JWTExpireDuration).Unix(),
-		"iat": time.Now().Unix(),
+		"sub":  username,
+		"exp":  time.Now().Add(s.cfg.JWTExpireDuration).Unix(),
+		"iat":  time.Now().Unix(),
+		"type": "access",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(s.cfg.SecretKey))
+}
+
+// IssueRefreshToken signs and returns a long-lived refresh token (7 days).
+func (s *Service) IssueRefreshToken(username string) (string, error) {
+	claims := jwt.MapClaims{
+		"sub":  username,
+		"exp":  time.Now().Add(7 * 24 * time.Hour).Unix(),
+		"iat":  time.Now().Unix(),
+		"type": "refresh",
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(s.cfg.SecretKey))
+}
+
+// ValidateRefreshToken parses a refresh token and returns the username.
+func (s *Service) ValidateRefreshToken(tokenStr string) (string, error) {
+	h := tokenHash(tokenStr)
+	s.jwtBlacklistMu.RLock()
+	if expiry, revoked := s.jwtBlacklist[h]; revoked && time.Now().Before(expiry) {
+		s.jwtBlacklistMu.RUnlock()
+		return "", errors.New("token has been revoked")
+	}
+	s.jwtBlacklistMu.RUnlock()
+
+	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return []byte(s.cfg.SecretKey), nil
+	})
+	if err != nil || !token.Valid {
+		return "", errors.New("invalid or expired refresh token")
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", errors.New("invalid claims")
+	}
+	tokenType, _ := claims["type"].(string)
+	if tokenType != "refresh" {
+		return "", errors.New("not a refresh token")
+	}
+	username, _ := claims["sub"].(string)
+	if username == "" {
+		return "", errors.New("missing subject")
+	}
+	return username, nil
 }
 
 // ValidateJWT parses and validates a signed JWT string.

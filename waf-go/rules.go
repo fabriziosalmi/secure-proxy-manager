@@ -153,6 +153,14 @@ var blockRules = []CategoryRules{
 			r("SSRF-003", `(?i)(http|https)://(172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+)`, 10, 2),
 			r("SSRF-004", `(?i)/latest/(meta-data|user-data|dynamic|api/token)`, 10, 2),
 			r("SSRF-005", `(?i)(file|gopher|dict|ftp)://`, 10, 2),
+			// Decimal/octal/hex IP bypass (e.g. http://2130706433 = 127.0.0.1)
+			r("SSRF-008", `(?i)(http|https)://\d{8,10}(/|$|\?)`, 10, 2),
+			// Octal IP (e.g. http://0177.0.0.1)
+			r("SSRF-009", `(?i)(http|https)://0[0-7]+\.`, 10, 2),
+			// IPv6 loopback/private (e.g. http://[::1], http://[::ffff:127.0.0.1])
+			r("SSRF-010", `(?i)(http|https)://\[(::1|::ffff:127\.|::ffff:10\.|::ffff:192\.168\.|::ffff:172\.(1[6-9]|2\d|3[01])\.|0:0:0:0:0:0:0:1)`, 10, 2),
+			// Shortened IP (e.g. http://127.1)
+			r("SSRF-011", `(?i)(http|https)://127\.1(/|$|\?)`, 10, 2),
 
 			// Tier 3
 			r("SSRF-006", `(?i)(amazonaws\.com|compute\.googleapis\.com|management\.azure\.com)`, 4, 3),
@@ -199,8 +207,8 @@ var blockRules = []CategoryRules{
 	{
 		Category: "PROTOTYPE_POLLUTION",
 		Rules: []Rule{
-			r("PP-001", `(__proto__|constructor\.prototype)`, 10, 2),
-			r("PP-002", `\[["'](constructor|__proto__|prototype)["']\]\s*=`, 10, 2),
+			r("PP-001", `(?i)(__proto__|constructor\.prototype)`, 10, 2),
+			r("PP-002", `(?i)\[["'](constructor|__proto__|prototype)["']\]\s*=`, 10, 2),
 			r("PP-003", `(?i)(Object\.(assign|create|defineProperty|setPrototypeOf))`, 4, 3),
 			r("PP-004", `(?i)(\["__proto__"\]|\['__proto__'\])`, 7, 3),
 		},

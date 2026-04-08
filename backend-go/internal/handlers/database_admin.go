@@ -6,6 +6,9 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 )
 
 type DatabaseHandlers struct{ db *sql.DB }
@@ -90,6 +93,9 @@ func (h *DatabaseHandlers) Export(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DatabaseHandlers) Reset(w http.ResponseWriter, r *http.Request) {
+	// Audit BEFORE wiping (audit_log table will be cleared too)
+	username, _ := r.Context().Value(middleware.CtxUsername).(string)
+	database.Audit(h.db, username, "database_reset", "all", "full database reset requested")
 	for _, tbl := range allowedTables {
 		if tbl == "users" {
 			continue // Never wipe users.

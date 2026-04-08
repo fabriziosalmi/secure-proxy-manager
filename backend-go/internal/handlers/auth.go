@@ -37,6 +37,7 @@ func NewAuthHandlers(db *sql.DB, svc *auth.Service, cfg *config.Config, notify N
 func (h *AuthHandlers) Register(r chi.Router) {
 	authMW := middleware.Auth(h.svc)
 	r.Post("/api/auth/login", h.Login)
+	r.Post("/api/auth/refresh", h.RefreshToken)
 	r.With(authMW).Post("/api/logout", h.Logout)
 	r.With(authMW).Post("/api/change-password", h.ChangePassword)
 	r.With(authMW).Get("/api/ws-token", h.WSToken)
@@ -83,8 +84,52 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to issue token")
 		return
 	}
+	refreshToken, err := h.svc.IssueRefreshToken(username)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to issue refresh token")
+		return
+	}
 	database.Audit(h.db, username, "login", "", "")
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "access_token": token, "token_type": "Bearer"})
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":        "success",
+		"access_token":  token,
+		"refresh_token": refreshToken,
+		"token_type":    "Bearer",
+	})
+}
+
+func (h *AuthHandlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
+		writeError(w, http.StatusBadRequest, "refresh_token required")
+		return
+	}
+	username, err := h.svc.ValidateRefreshToken(req.RefreshToken)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid or expired refresh token")
+		return
+	}
+	// Revoke old refresh token (rotation — prevents replay)
+	h.svc.RevokeJWT(req.RefreshToken)
+
+	newAccess, err := h.svc.IssueJWT(username)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to issue token")
+		return
+	}
+	newRefresh, err := h.svc.IssueRefreshToken(username)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to issue refresh token")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":        "success",
+		"access_token":  newAccess,
+		"refresh_token": newRefresh,
+		"token_type":    "Bearer",
+	})
 }
 
 func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {

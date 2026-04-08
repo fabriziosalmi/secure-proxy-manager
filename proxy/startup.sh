@@ -230,6 +230,8 @@ icap_preview_enable on
 icap_preview_size 4096
 icap_service service_req reqmod_precache bypass=0 icap://waf:1344/waf
 adaptation_access service_req allow all
+icap_service service_resp respmod_precache bypass=1 icap://waf:1344/waf
+adaptation_access service_resp allow all
 
 # Logging
 debug_options ALL,2
@@ -371,6 +373,35 @@ if [ -f /config/cache_bypass_domains.txt ] && [ -s /config/cache_bypass_domains.
     echo "acl cache_bypass_domains dstdomain \"/config/cache_bypass_domains.txt\"" >> /etc/squid/squid.conf
     echo "cache deny cache_bypass_domains" >> /etc/squid/squid.conf
     echo "Cache bypass configured for $(wc -l < /config/cache_bypass_domains.txt) domains"
+fi
+
+# ── Proxy Authentication (Basic Auth for proxy users) ──────────────────────
+
+if [ -f /config/proxy_auth_enabled ]; then
+    echo "Proxy authentication ENABLED — requiring Basic Auth for proxy access"
+    # Create password file if it doesn't exist (admin user same as dashboard)
+    if [ ! -f /config/proxy_users.htpasswd ]; then
+        if [ -n "$BASIC_AUTH_USERNAME" ] && [ -n "$BASIC_AUTH_PASSWORD" ]; then
+            htpasswd -bc /config/proxy_users.htpasswd "$BASIC_AUTH_USERNAME" "$BASIC_AUTH_PASSWORD" 2>/dev/null || \
+                echo "${BASIC_AUTH_USERNAME}:$(openssl passwd -apr1 "$BASIC_AUTH_PASSWORD")" > /config/proxy_users.htpasswd
+            echo "Created proxy auth file with admin user"
+        fi
+    fi
+    if [ -f /config/proxy_users.htpasswd ]; then
+        cat >> /etc/squid/squid.conf << 'AUTHEOF'
+
+# ── Proxy Authentication (Basic Auth) ──
+auth_param basic program /usr/lib/squid/basic_ncsa_auth /config/proxy_users.htpasswd
+auth_param basic realm Secure Proxy Manager
+auth_param basic credentialsttl 8 hours
+auth_param basic casesensitive on
+acl authenticated proxy_auth REQUIRED
+http_access deny !authenticated
+AUTHEOF
+        echo "Proxy auth configured with $(wc -l < /config/proxy_users.htpasswd) users"
+    fi
+else
+    echo "Proxy authentication disabled (open for localnet)"
 fi
 
 # ── Content Filtering (block downloads by file extension) ──────────────────
