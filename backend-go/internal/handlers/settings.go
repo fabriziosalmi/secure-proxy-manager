@@ -192,7 +192,18 @@ func (h *SettingsHandlers) writeSquidSettingsEnv(body map[string]string) error {
 	if v, ok := body["extra_ssl_ports"]; ok {
 		extraSSL = v
 	}
-	envContent := "SQUID_PORT=" + port + "\nSQUID_CACHE_MB=" + cache + "\nSQUID_MEM_MB=" + mem + "\nEXTRA_SSL_PORTS=" + extraSSL + "\n"
+	// Sanitize all values to prevent shell injection when startup.sh sources this file.
+	// Only allow alphanumeric, dots, commas, and spaces (for port lists).
+	sanitize := func(s string) string {
+		var b strings.Builder
+		for _, c := range s {
+			if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '.' || c == ',' || c == ' ' {
+				b.WriteRune(c)
+			}
+		}
+		return b.String()
+	}
+	envContent := "SQUID_PORT=" + sanitize(port) + "\nSQUID_CACHE_MB=" + sanitize(cache) + "\nSQUID_MEM_MB=" + sanitize(mem) + "\nEXTRA_SSL_PORTS=" + sanitize(extraSSL) + "\n"
 	return os.WriteFile(filepath.Join(h.cfg.ConfigDir, "squid_settings.env"), []byte(envContent), 0o600)
 }
 

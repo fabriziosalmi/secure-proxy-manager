@@ -454,12 +454,9 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 			trackerMutex.Unlock()
 
 			if blockCount > 3 {
-				log.Printf("TAR-PITTING IP %s (blocks=%d) — delaying response\n", clientIP, blockCount)
-				// Delay in background to avoid blocking ICAP handler goroutine
-				go func(ip string, delay time.Duration) {
-					time.Sleep(delay)
-					log.Printf("TAR-PIT released for %s\n", ip)
-				}(clientIP, tarPitDelay)
+				log.Printf("TAR-PITTING IP %s (blocks=%d) — delaying response %v\n", clientIP, blockCount, tarPitDelay)
+				time.Sleep(tarPitDelay)
+				log.Printf("TAR-PIT released for %s\n", clientIP)
 			}
 		}
 
@@ -662,15 +659,15 @@ func main() {
 		}
 	}()
 
-	// HTTP health + metrics endpoint
+	// HTTP health + metrics endpoint (with Basic Auth on mutating endpoints)
 	go func() {
 		h := &MgmtHandlers{}
 		healthMux := http.NewServeMux()
-		healthMux.HandleFunc("/health", h.HealthHandler)
-		healthMux.HandleFunc("/stats", h.StatsHandler)
-		healthMux.HandleFunc("/reset", h.ResetHandler)
-		healthMux.HandleFunc("/categories", h.CategoriesHandler)
-		healthMux.HandleFunc("/categories/toggle", h.CategoriesToggleHandler)
+		healthMux.HandleFunc("/health", h.HealthHandler) // unauthenticated — used by Docker healthcheck
+		healthMux.HandleFunc("/stats", mgmtAuthMiddleware(h.StatsHandler))
+		healthMux.HandleFunc("/reset", mgmtAuthMiddleware(h.ResetHandler))
+		healthMux.HandleFunc("/categories", mgmtAuthMiddleware(h.CategoriesHandler))
+		healthMux.HandleFunc("/categories/toggle", mgmtAuthMiddleware(h.CategoriesToggleHandler))
 
 		log.Printf("Starting health endpoint on :8080\n")
 		if err := http.ListenAndServe(":8080", healthMux); err != nil {
@@ -683,6 +680,30 @@ func main() {
 	err := icap.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 	if err != nil {
 		log.Fatalf("Error starting server: %v\n", err)
+	}
+}
+
+// ── Management Auth Middleware ──────────────────────────────────────────────
+
+// mgmtAuthMiddleware protects management endpoints with Basic Auth using the
+// same BASIC_AUTH_USERNAME/PASSWORD credentials as the backend. Health endpoint
+// is intentionally excluded (used by Docker healthcheck without credentials).
+func mgmtAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	user := os.Getenv("BASIC_AUTH_USERNAME")
+	pass := os.Getenv("BASIC_AUTH_PASSWORD")
+	return func(w http.ResponseWriter, r *http.Request) {
+		if user == "" || pass == "" {
+			// No credentials configured — deny all management access
+			http.Error(w, `{"error":"management auth not configured"}`, http.StatusForbidden)
+			return
+		}
+		u, p, ok := r.BasicAuth()
+		if !ok || u != user || p != pass {
+			w.Header().Set("WWW-Authenticate", `Basic realm="WAF Management"`)
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
 	}
 }
 

@@ -331,9 +331,10 @@ acl step1 at_step SslBump1
 ssl_bump peek step1
 ssl_bump bump all
 
-# Trust the generated CA for upstream connections
-sslproxy_cert_error allow all
-sslproxy_flags DONT_VERIFY_PEER
+# Upstream TLS certificate verification — only allow errors for the
+# locally-generated proxy CA, not arbitrary invalid/expired certs.
+# sslproxy_cert_error deny all   (default — Squid rejects bad upstream certs)
+# Note: removed blanket DONT_VERIFY_PEER to prevent MITM on upstream connections.
 
 SSLEOF
 )
