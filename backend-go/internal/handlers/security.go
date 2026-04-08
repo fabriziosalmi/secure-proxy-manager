@@ -50,6 +50,7 @@ func (h *SecurityHandlers) Register(r chi.Router, authMW func(http.Handler) http
 	r.With(authMW).Delete("/api/security/rate-limits/{ip}", h.ClearRateLimit)
 	r.With(authMW).Get("/api/security/score", h.Score)
 	r.With(authMW).Get("/api/security/cve", h.CVECheck)
+	r.With(authMW).Post("/api/notifications/test", h.TestNotification)
 }
 
 func (h *SecurityHandlers) CVECheck(w http.ResponseWriter, r *http.Request) {
@@ -157,6 +158,19 @@ func (h *SecurityHandlers) Score(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeOK(w, map[string]any{"score": score, "max_score": 100, "recommendations": recs})
+}
+
+func (h *SecurityHandlers) TestNotification(w http.ResponseWriter, r *http.Request) {
+	event := map[string]any{
+		"timestamp":  time.Now().Format(time.RFC3339),
+		"event_type": "notification_test",
+		"message":    "This is a test notification from Secure Proxy Manager",
+		"level":      "info",
+		"client_ip":  r.RemoteAddr,
+	}
+	// Send synchronously so we can report success/failure to the caller.
+	sendSecurityNotification(h.db, h.cfg.EncryptionKey, event)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Test notification sent to all configured channels"})
 }
 
 // ── notification dispatcher ───────────────────────────────────────────────────

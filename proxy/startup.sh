@@ -373,6 +373,66 @@ if [ -f /config/cache_bypass_domains.txt ] && [ -s /config/cache_bypass_domains.
     echo "Cache bypass configured for $(wc -l < /config/cache_bypass_domains.txt) domains"
 fi
 
+# ── Content Filtering (block downloads by file extension) ──────────────────
+
+if [ -f /config/content_filtering_enabled ] && [ -f /config/blocked_file_types.txt ] && [ -s /config/blocked_file_types.txt ]; then
+    echo "Content filtering ENABLED — blocking file types"
+    echo "" >> /etc/squid/squid.conf
+    echo "# ── Content filtering (blocked file extensions) ──" >> /etc/squid/squid.conf
+    echo "acl blocked_extensions urlpath_regex \"/config/blocked_file_types.txt\"" >> /etc/squid/squid.conf
+    echo "http_access deny blocked_extensions" >> /etc/squid/squid.conf
+    echo "Content filtering configured for $(wc -l < /config/blocked_file_types.txt) extensions"
+else
+    echo "Content filtering disabled"
+fi
+
+# ── Time-Based Access Restrictions ─────────────────────────────────────────
+
+if [ -f /config/time_restrictions_enabled ] && [ -f /config/time_restrictions.conf ]; then
+    echo "Time-based access restrictions ENABLED"
+    . /config/time_restrictions.conf
+    # Parse HH:MM into HH and MM
+    START_H=$(echo "$TIME_START" | cut -d: -f1)
+    START_M=$(echo "$TIME_START" | cut -d: -f2)
+    END_H=$(echo "$TIME_END" | cut -d: -f1)
+    END_M=$(echo "$TIME_END" | cut -d: -f2)
+    cat >> /etc/squid/squid.conf << TIMEEOF
+
+# ── Time-based access restrictions ──
+acl allowed_hours time MTWHFAS ${START_H}:${START_M}-${END_H}:${END_M}
+http_access deny !allowed_hours localnet
+TIMEEOF
+    echo "Access allowed only ${TIME_START}-${TIME_END}"
+else
+    echo "Time-based access restrictions disabled"
+fi
+
+# ── Bandwidth Throttling (Squid delay_pools) ──────────────────────────────
+
+if [ -f /config/bandwidth_limits_enabled ] && [ -f /config/bandwidth_limits.conf ]; then
+    echo "Bandwidth throttling ENABLED"
+    . /config/bandwidth_limits.conf
+    # Convert Mbps to bytes/sec for aggregate, Kbps to bytes/sec for per-user
+    AGG_BYTES=$(( ${BW_LIMIT_MBPS:-100} * 125000 ))
+    USER_BYTES=${BW_PER_USER_KBPS:-0}
+    if [ "$USER_BYTES" -gt 0 ] 2>/dev/null; then
+        USER_BYTES=$(( USER_BYTES * 125 ))
+    else
+        USER_BYTES=-1
+    fi
+    cat >> /etc/squid/squid.conf << BWEOF
+
+# ── Bandwidth throttling ──
+delay_pools 1
+delay_class 1 2
+delay_access 1 allow localnet
+delay_parameters 1 ${AGG_BYTES}/${AGG_BYTES} ${USER_BYTES}/${USER_BYTES}
+BWEOF
+    echo "Bandwidth: aggregate=${BW_LIMIT_MBPS}Mbps per-user=${BW_PER_USER_KBPS}Kbps"
+else
+    echo "Bandwidth throttling disabled"
+fi
+
 # ── Offline Mode / Serve Stale Cache ────────────────────────────────────────
 
 if [ -f /config/offline_mode_enabled ]; then
