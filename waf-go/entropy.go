@@ -82,7 +82,10 @@ var trafficLog *TrafficLogger
 
 func newTrafficLogger(path string, maxSize int64) *TrafficLogger {
 	dir := filepath.Dir(path)
-	os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		log.Printf("Failed to create traffic log dir %s: %v\n", dir, err)
+		return nil
+	}
 
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -149,7 +152,7 @@ func (tl *TrafficLogger) rotate() {
 	tl.writer.Flush()
 	tl.file.Close()
 	os.Remove(tl.path + ".1")
-	os.Rename(tl.path, tl.path+".1")
+	_ = os.Rename(tl.path, tl.path+".1")
 	f, err := os.OpenFile(tl.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Printf("Failed to rotate traffic log: %v\n", err)

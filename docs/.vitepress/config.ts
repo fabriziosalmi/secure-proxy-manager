@@ -34,6 +34,12 @@ export default defineConfig({
         ]
       },
       {
+        text: 'Reference',
+        items: [
+          { text: 'Integration Architecture', link: '/INTEGRATION_ARCHITECTURE' }
+        ]
+      },
+      {
         text: 'API Reference',
         items: [
           { text: 'Authentication', link: '/api/authentication' },

@@ -107,7 +107,7 @@ jobs:
 
       - name: Run gosec on waf-go
         working-directory: waf-go
-        run: gosec -severity medium -confidence medium -exclude=G104,G114,G301,G302,G304,G704 ./...
+        run: gosec -severity medium -confidence medium -exclude=G104,G114,G301,G302,G304 ./...
 
       - name: npm audit (UI)
         working-directory: ui

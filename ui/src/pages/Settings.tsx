@@ -95,7 +95,7 @@ export function Settings() {
           error: 'Failed to restart proxy.',
         }
       );
-    } catch (err) {
+    } catch {
       toast.error('Failed to save settings', { id: loadingToast });
     } finally {
       setIsSaving(false);
@@ -114,7 +114,7 @@ export function Settings() {
       link.click();
       link.parentNode?.removeChild(link);
       toast.success("CA Certificate downloaded!");
-    } catch (e) {
+    } catch {
       toast.error("Failed to download CA certificate. Ensure HTTPS filtering is enabled.");
     }
   };
