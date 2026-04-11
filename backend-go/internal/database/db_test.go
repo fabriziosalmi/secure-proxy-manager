@@ -51,12 +51,12 @@ func TestExportBlacklistsToFiles(t *testing.T) {
 
 	db, _ := Open(tmpDB)
 	defer db.Close()
-	Init(db, "admin", "hash")
+	_ = Init(db, "admin", "hash")
 
 	// Insert some test data
-	db.Exec("INSERT INTO ip_blacklist (ip) VALUES (?)", "1.1.1.1")
-	db.Exec("INSERT INTO domain_blacklist (domain) VALUES (?)", "evil.com")
-	db.Exec("INSERT INTO domain_whitelist (domain, type) VALUES (?, ?)", "good.com", "fqdn")
+	_, _ = db.Exec("INSERT INTO ip_blacklist (ip) VALUES (?)", "1.1.1.1")
+	_, _ = db.Exec("INSERT INTO domain_blacklist (domain) VALUES (?)", "evil.com")
+	_, _ = db.Exec("INSERT INTO domain_whitelist (domain, type) VALUES (?, ?)", "good.com", "fqdn")
 
 	err := ExportBlacklistsToFiles(db, tmpConfig)
 	if err != nil {
@@ -78,12 +78,12 @@ func TestAudit(t *testing.T) {
 
 	db, _ := Open(tmpDB)
 	defer db.Close()
-	Init(db, "admin", "hash")
+	_ = Init(db, "admin", "hash")
 
 	Audit(db, "admin", "test_action", "test_target", "test_details")
 
 	var count int
-	db.QueryRow("SELECT count(*) FROM audit_log").Scan(&count)
+	_ = db.QueryRow("SELECT count(*) FROM audit_log").Scan(&count)
 	if count != 1 {
 		t.Errorf("Expected 1 audit entry, got %d", count)
 	}
