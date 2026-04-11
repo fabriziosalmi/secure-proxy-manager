@@ -246,9 +246,9 @@ export function Dashboard() {
             </CardHeader>
             <CardContent className="p-2">
               <div className="grid grid-cols-3 gap-2 mb-2">
-                <div><p className="text-[10px] text-muted-foreground uppercase">Inspected</p><p className="text-lg font-bold">{w.total_requests.toLocaleString()}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase">Blocked</p><p className="text-lg font-bold text-destructive">{w.total_blocked}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase">Entropy</p><p className="text-lg font-bold">{w.avg_url_entropy}</p></div>
+                <div><p className="text-[10px] text-muted-foreground uppercase">Inspected</p><p className="text-lg font-bold">{(w.total_requests ?? 0).toLocaleString()}</p></div>
+                <div><p className="text-[10px] text-muted-foreground uppercase">Blocked</p><p className="text-lg font-bold text-destructive">{w.total_blocked ?? 0}</p></div>
+                <div><p className="text-[10px] text-muted-foreground uppercase">Entropy</p><p className="text-lg font-bold">{w.avg_url_entropy ?? '—'}</p></div>
               </div>
               {w.top_blocked_categories?.length > 0 && (
                 <div className="flex flex-wrap gap-1 pt-2 border-t border-white/[0.06]">

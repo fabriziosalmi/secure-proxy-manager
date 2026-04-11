@@ -28,6 +28,27 @@ var (
 	probeClient = &http.Client{Timeout: 1 * time.Second}
 )
 
+// wafGet performs a GET request to the WAF management API with Basic Auth.
+func wafGet(cfg *config.Config, path string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", cfg.WAFURL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(cfg.AdminUsername, cfg.AdminPassword)
+	return wafClient.Do(req)
+}
+
+// wafPost performs a POST request to the WAF management API with Basic Auth.
+func wafPost(cfg *config.Config, path, contentType string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest("POST", cfg.WAFURL+path, body)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(cfg.AdminUsername, cfg.AdminPassword)
+	req.Header.Set("Content-Type", contentType)
+	return wafClient.Do(req)
+}
+
 // dockerExecer is the subset of docker.DockerClient needed for cache stats.
 type dockerExecer interface {
 	ExecContainer(name string, cmd []string) (string, error)
@@ -372,7 +393,7 @@ func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "WAF service circuit open — retrying soon")
 		return
 	}
-	resp, err := wafClient.Get(h.cfg.WAFURL + "/stats")
+	resp, err := wafGet(h.cfg, "/stats")
 	if err != nil {
 		wafBreaker.RecordFailure()
 		writeError(w, http.StatusBadGateway, "WAF service unreachable")
@@ -380,6 +401,10 @@ func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 	wafBreaker.RecordSuccess()
+	if resp.StatusCode != http.StatusOK {
+		writeError(w, http.StatusBadGateway, "WAF stats returned "+resp.Status)
+		return
+	}
 	var data any
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		writeError(w, http.StatusBadGateway, "invalid WAF stats response")
@@ -396,7 +421,7 @@ func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request
 	}
 
 	wafReset := false
-	if resp, err := wafClient.Post(h.cfg.WAFURL+"/reset", "application/json", nil); err == nil {
+	if resp, err := wafPost(h.cfg, "/reset", "application/json", nil); err == nil {
 		resp.Body.Close()
 		wafReset = resp.StatusCode == 200
 	}
@@ -498,11 +523,15 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	result["recent_blocks"] = recentBlocks
 
 	// WAF stats
-	if resp, err := wafClient.Get(h.cfg.WAFURL + "/stats"); err == nil {
-		var wafData any
-		json.NewDecoder(resp.Body).Decode(&wafData) //nolint:errcheck
+	if resp, err := wafGet(h.cfg, "/stats"); err == nil {
+		if resp.StatusCode == http.StatusOK {
+			var wafData any
+			json.NewDecoder(resp.Body).Decode(&wafData) //nolint:errcheck
+			result["waf"] = wafData
+		} else {
+			result["waf"] = nil
+		}
 		resp.Body.Close()
-		result["waf"] = wafData
 	} else {
 		result["waf"] = nil
 	}
@@ -724,7 +753,7 @@ func (h *AnalyticsHandlers) WAFCategories(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusServiceUnavailable, "WAF circuit open")
 		return
 	}
-	resp, err := wafClient.Get(h.cfg.WAFURL + "/categories")
+	resp, err := wafGet(h.cfg, "/categories")
 	if err != nil {
 		wafBreaker.RecordFailure()
 		writeError(w, http.StatusBadGateway, "WAF unreachable")
@@ -743,7 +772,7 @@ func (h *AnalyticsHandlers) WAFCategoryToggle(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusServiceUnavailable, "WAF circuit open")
 		return
 	}
-	resp, err := wafClient.Post(h.cfg.WAFURL+"/categories/toggle", "application/json", r.Body)
+	resp, err := wafPost(h.cfg, "/categories/toggle", "application/json", r.Body)
 	if err != nil {
 		wafBreaker.RecordFailure()
 		writeError(w, http.StatusBadGateway, "WAF unreachable")
