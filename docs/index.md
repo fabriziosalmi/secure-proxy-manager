@@ -5,6 +5,9 @@ hero:
   name: "Secure Proxy Manager"
   text: "Containerized proxy management for homelabs and small networks"
   tagline: Squid proxy engine with FastAPI backend, React UI, and ICAP WAF — deployed in minutes with Docker Compose.
+  image:
+    src: /hero-icon.svg
+    alt: Secure Proxy Manager
   actions:
     - theme: brand
       text: Get Started
