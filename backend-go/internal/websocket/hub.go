@@ -93,9 +93,9 @@ func (c *Client) writePump() {
 // readPump reads pings/pongs and detects disconnects.
 func (c *Client) readPump() {
 	defer c.hub.Unregister(c)
-	c.conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+	_ = c.conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+		_ = c.conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 		return nil
 	})
 	for {

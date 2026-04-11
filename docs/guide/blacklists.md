@@ -111,7 +111,7 @@ When enabled, the scheduler automatically re-downloads the following feeds and a
 
 To schedule updates for additional custom feeds, use a host cron job:
 
-```cron
+```bash
 0 3 * * * curl -s -X POST http://localhost:8011/api/blacklists/import \
   -H "Content-Type: application/json" \
   -H "Authorization: Basic $(echo -n USER:PASS | base64)" \

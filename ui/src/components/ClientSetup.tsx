@@ -3,6 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Monitor, Smartphone, Apple, Terminal, Copy, Check, Download, QrCode } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+function CopyBtn({ text, label, copied, onCopy }: { text: string; label: string; copied: string; onCopy: (text: string, label: string) => void }) {
+  return (
+    <button type="button" onClick={() => onCopy(text, label)}
+      className="p-1 rounded hover:bg-secondary/50 transition-colors shrink-0">
+      {copied === label ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+    </button>
+  );
+}
+
 export function ClientSetup() {
   const [copied, setCopied] = useState('');
   const host = window.location.hostname;
@@ -15,13 +24,6 @@ export function ClientSetup() {
     toast.success(`Copied ${label}`);
     setTimeout(() => setCopied(''), 2000);
   };
-
-  const CopyBtn = ({ text, label }: { text: string; label: string }) => (
-    <button type="button" onClick={() => copy(text, label)}
-      className="p-1 rounded hover:bg-secondary/50 transition-colors shrink-0">
-      {copied === label ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
-    </button>
-  );
 
   const pacContent = `function FindProxyForURL(url, host) {
   // Direct access for local network
@@ -111,7 +113,7 @@ export function ClientSetup() {
         <div className="flex items-center gap-2 mb-3 p-2 bg-primary/5 border border-primary/20 rounded-lg">
           <span className="text-xs text-muted-foreground">Proxy:</span>
           <code className="text-sm font-bold font-mono text-primary">{proxyAddr}</code>
-          <CopyBtn text={proxyAddr} label="proxy" />
+          <CopyBtn text={proxyAddr} label="proxy" copied={copied} onCopy={copy} />
         </div>
 
         {/* PAC file download */}

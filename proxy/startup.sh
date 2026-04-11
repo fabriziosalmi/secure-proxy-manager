@@ -49,6 +49,29 @@ verify_config_feature() {
     fi
 }
 
+# Safe-source: validate a config file contains only KEY=VALUE assignments and
+# comments before sourcing it. Rejects files with shell-execution characters
+# (semicolons, backticks, $(), pipes, redirects, etc.) to prevent code injection
+# from a shared/writable /config volume.
+safe_source() {
+    local file="$1"
+    if [ ! -f "$file" ]; then
+        return 0
+    fi
+    # Reject any line that is not blank, a comment, or a simple KEY=VALUE assignment
+    if grep -Pv '^\s*(#.*)?$|^\s*[A-Za-z_][A-Za-z0-9_]*=[^;`|&<>$()\n]*\s*$' "$file" > /dev/null 2>&1; then
+        echo "WARNING: Refusing to source $file — contains unsafe content (non-assignment lines detected)"
+        return 1
+    fi
+    # Reject the presence of any dangerous shell characters anywhere in the file
+    if grep -Pq '[;`|&<>]|\$\(|\$\{' "$file" 2>/dev/null; then
+        echo "WARNING: Refusing to source $file — contains dangerous shell characters"
+        return 1
+    fi
+    # shellcheck source=/dev/null
+    . "$file"
+}
+
 # ── Directory setup ──────────────────────────────────────────────────────────
 
 mkdir -p /etc/squid/blacklists/ip /etc/squid/blacklists/domain /etc/squid/whitelists/ip
@@ -109,8 +132,7 @@ SQUID_MEM_MB="${PROXY_MEMORY_CACHE_MB:-256}"
 
 # Allow override via /config/squid_settings.env (written by backend on settings save)
 if [ -f /config/squid_settings.env ]; then
-    # shellcheck source=/dev/null
-    . /config/squid_settings.env
+    safe_source /config/squid_settings.env
 fi
 
 echo "Squid settings: port=${SQUID_PORT} cache=${SQUID_CACHE_MB}MB mem=${SQUID_MEM_MB}MB extra_ssl=${EXTRA_SSL_PORTS:-none}"
@@ -312,8 +334,16 @@ fi
 
 # ── GUI IP Whitelist Override ──────────────────────────────────────────────
 if [ -n "$GUI_IP_WHITELIST" ]; then
-    echo "Adding GUI IP whitelist for $GUI_IP_WHITELIST"
-    sed -i "/^# Access rules/i acl gui_override dst $GUI_IP_WHITELIST\nhttp_access allow gui_override\nhttp_access allow CONNECT gui_override\n" /etc/squid/squid.conf 2>/dev/null || true
+    # Sanitize: keep only characters valid in IP addresses, CIDR notation, and
+    # list separators (digits, dots, slashes, commas, spaces). This prevents
+    # injection of shell metacharacters into the sed command.
+    GUI_IP_WHITELIST_SAFE=$(printf '%s' "$GUI_IP_WHITELIST" | tr -cd '0-9./,: ')
+    if [ -z "$GUI_IP_WHITELIST_SAFE" ]; then
+        echo "WARNING: GUI_IP_WHITELIST contained no valid IP characters after sanitization — skipping"
+    else
+        echo "Adding GUI IP whitelist for $GUI_IP_WHITELIST_SAFE"
+        sed -i "/^# Access rules/i acl gui_override dst $GUI_IP_WHITELIST_SAFE\nhttp_access allow gui_override\nhttp_access allow CONNECT gui_override\n" /etc/squid/squid.conf 2>/dev/null || true
+    fi
 fi
 
 # ── SSL Bump (HTTPS Inspection) — conditional on toggle file ─────────────
@@ -424,7 +454,7 @@ fi
 
 if [ -f /config/time_restrictions_enabled ] && [ -f /config/time_restrictions.conf ]; then
     echo "Time-based access restrictions ENABLED"
-    . /config/time_restrictions.conf
+    safe_source /config/time_restrictions.conf
     # Parse HH:MM into HH and MM
     START_H=$(echo "$TIME_START" | cut -d: -f1)
     START_M=$(echo "$TIME_START" | cut -d: -f2)
@@ -445,7 +475,7 @@ fi
 
 if [ -f /config/bandwidth_limits_enabled ] && [ -f /config/bandwidth_limits.conf ]; then
     echo "Bandwidth throttling ENABLED"
-    . /config/bandwidth_limits.conf
+    safe_source /config/bandwidth_limits.conf
     # Convert Mbps to bytes/sec for aggregate, Kbps to bytes/sec for per-user
     AGG_BYTES=$(( ${BW_LIMIT_MBPS:-100} * 125000 ))
     USER_BYTES=${BW_PER_USER_KBPS:-0}

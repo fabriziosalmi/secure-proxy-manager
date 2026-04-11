@@ -329,10 +329,7 @@ func writeDnsmasqBlocklist(db *sql.DB, path string, exclusions map[string]struct
 		var domain string
 		if rows.Scan(&domain) == nil && domain != "" {
 			if _, excluded := exclusions[domain]; !excluded {
-				d := domain
-				if strings.HasPrefix(d, "*.") {
-					d = d[2:]
-				}
+				d := strings.TrimPrefix(domain, "*.")
 				entries = append(entries, entry{d})
 			}
 		}

@@ -203,7 +203,9 @@ func parseDuration(s string) time.Duration {
 		return 24 * time.Hour
 	}
 	n := 1
-	fmt.Sscanf(parts[0], "%d", &n)
+	if v, err := strconv.Atoi(parts[0]); err == nil {
+		n = v
+	}
 	if n < 1 {
 		n = 1
 	}

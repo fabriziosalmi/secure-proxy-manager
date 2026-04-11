@@ -1,7 +1,7 @@
 # docker-compose.test.yml
 #
 # Integration + E2E test stack.
-# Runs: backend (FastAPI) · web (nginx SPA) · mock-lists · Playwright test-runner
+# Runs: backend (Go) · web (nginx SPA) · mock-lists · Playwright test-runner
 # Proxy and WAF are intentionally excluded: tests cover API and UI layers only,
 # not Squid proxy behaviour. This avoids the NET_ADMIN/SSL-certgen requirements
 # that crash Squid in restricted Docker environments.
@@ -15,7 +15,7 @@ services:
   # ── Backend API ────────────────────────────────────────────────────────────
 
   backend:
-    build: ./backend
+    build: ./backend-go
     ports:
       - "5001:5000"
     volumes:

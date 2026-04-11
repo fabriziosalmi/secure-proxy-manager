@@ -736,7 +736,9 @@ func (h *MgmtHandlers) StatsHandler(w http.ResponseWriter, r *http.Request) {
 	for k, v := range safeCache.Stats() {
 		snap[k] = v
 	}
-	json.NewEncoder(w).Encode(snap)
+	if err := json.NewEncoder(w).Encode(snap); err != nil {
+		log.Printf("StatsHandler encode error: %v\n", err)
+	}
 }
 
 func (h *MgmtHandlers) ResetHandler(w http.ResponseWriter, r *http.Request) {
@@ -748,7 +750,7 @@ func (h *MgmtHandlers) ResetHandler(w http.ResponseWriter, r *http.Request) {
 	safeCache.Invalidate()
 	log.Println("WAF stats + safe cache reset via API")
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"status":"ok","message":"stats reset"}`))
+	_, _ = w.Write([]byte(`{"status":"ok","message":"stats reset"}`))
 }
 
 func (h *MgmtHandlers) CategoriesHandler(w http.ResponseWriter, r *http.Request) {
@@ -770,7 +772,9 @@ func (h *MgmtHandlers) CategoriesHandler(w http.ResponseWriter, r *http.Request)
 		})
 	}
 	disabledCatMu.RUnlock()
-	json.NewEncoder(w).Encode(map[string]any{"status": "ok", "data": cats})
+	if err := json.NewEncoder(w).Encode(map[string]any{"status": "ok", "data": cats}); err != nil {
+		log.Printf("CategoriesHandler encode error: %v\n", err)
+	}
 }
 
 func (h *MgmtHandlers) CategoriesToggleHandler(w http.ResponseWriter, r *http.Request) {

@@ -3,8 +3,8 @@ package workers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -73,10 +73,10 @@ func semverGreater(a, b string) bool {
 	for i := 0; i < len(aParts) || i < len(bParts); i++ {
 		var av, bv int
 		if i < len(aParts) {
-			fmt.Sscanf(aParts[i], "%d", &av)
+			av, _ = strconv.Atoi(aParts[i])
 		}
 		if i < len(bParts) {
-			fmt.Sscanf(bParts[i], "%d", &bv)
+			bv, _ = strconv.Atoi(bParts[i])
 		}
 		if av > bv {
 			return true

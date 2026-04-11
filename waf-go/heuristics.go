@@ -345,7 +345,6 @@ var (
 	// Protocol signatures for ghosting detection
 	sshSig  = []byte("SSH-")
 	smtpSig = []byte("220 ")
-	ftpSig  = []byte("230 ")
 )
 
 // isBeaconing checks if request timestamps follow a regular pattern.

@@ -32,12 +32,6 @@ func writeOK(w http.ResponseWriter, data any) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "success", "data": data})
 }
 
-// decode reads and JSON-decodes the request body into dst.
-func decode(r *http.Request, dst any) error {
-	r.Body = http.MaxBytesReader(nil, r.Body, 55*1024*1024)
-	return json.NewDecoder(r.Body).Decode(dst)
-}
-
 // isValidCIDR returns true if s is a valid IP address or CIDR prefix.
 func isValidCIDR(s string) bool {
 	if _, err := netip.ParsePrefix(s); err == nil {
