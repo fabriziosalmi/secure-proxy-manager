@@ -29,7 +29,7 @@ func TestAnalyticsHandlers_Status_Mocked(t *testing.T) {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
 	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp)
+	_ = json.NewDecoder(w.Body).Decode(&resp)
 	data := resp["data"].(map[string]any)
 	if data["proxy_status"] != "running" {
 		t.Errorf("Expected proxy_status running, got %v", data["proxy_status"])
@@ -101,8 +101,8 @@ func TestAnalyticsHandlers_MoreStats(t *testing.T) {
 	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
 
 	// Add some logs
-	db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status) VALUES (datetime('now'), '1.1.1.1', 'GET', 'http://dropbox.com/file', 'TCP_MISS/200')")
-	db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status) VALUES (datetime('now'), '1.1.1.1', 'POST', 'http://example.com/api', 'TCP_MISS/200')")
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status) VALUES (datetime('now'), '1.1.1.1', 'GET', 'http://dropbox.com/file', 'TCP_MISS/200')")
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status) VALUES (datetime('now'), '1.1.1.1', 'POST', 'http://example.com/api', 'TCP_MISS/200')")
 
 	// 1. ShadowIT
 	r := httptest.NewRequest("GET", "/api/analytics/shadow-it", nil)
@@ -134,7 +134,7 @@ func TestAnalyticsHandlers_TestRule_Extra(t *testing.T) {
 	defer cleanup()
 	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
 
-	db.Exec("INSERT INTO proxy_logs (timestamp, destination) VALUES (datetime('now'), 'http://malicious.com/payload')")
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, destination) VALUES (datetime('now'), 'http://malicious.com/payload')")
 
 	// Valid rule
 	body, _ := json.Marshal(map[string]any{"regex": "malicious", "hours": 24})

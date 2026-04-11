@@ -17,7 +17,7 @@ func TestCheckRequestHeuristics(t *testing.T) {
 
 	// Test heavy entropy
 	longBody := strings.Repeat("aGVsbG8gd29ybGQgdGhpcyBpcyBoZWF2aWx5IGVudHJvcGljcWF3ZWFzZGFzZGFzZGFzZGFzZGFzZGFzZA==", 5)
-	res, score = CheckRequestHeuristics("1.2.3.4", "GET", "example.com", "/index.html", longBody, "Host: example.com\n", len(longBody), 8.0, 2.0)
+	_, score = CheckRequestHeuristics("1.2.3.4", "GET", "example.com", "/index.html", longBody, "Host: example.com\n", len(longBody), 8.0, 2.0)
 	if score == 0 { t.Errorf("Expected entropy heuristic to trigger") }
 
 	// Test beaconing detection
@@ -45,7 +45,7 @@ func TestCheckRequestHeuristics(t *testing.T) {
 	// Test sharding
 	heuristicCfg.ShardingMaxDests = 1
 	CheckRequestHeuristics("1.2.3.6", "GET", "a.com", "/1", "", "", 0, 0, 0)
-	res, score = CheckRequestHeuristics("1.2.3.6", "GET", "b.com", "/2", "", "", 0, 0, 0)
+	res, _ = CheckRequestHeuristics("1.2.3.6", "GET", "b.com", "/2", "", "", 0, 0, 0)
 	found = false
 	for _, r := range res {
 		if r.ID == "H4-SHARDING" { found = true }

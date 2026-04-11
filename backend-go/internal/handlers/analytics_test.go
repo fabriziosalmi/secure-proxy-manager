@@ -30,7 +30,7 @@ func TestAnalyticsHandlers_TrafficStats(t *testing.T) {
 
 	// Add some logs in the past 24h
 	today := time.Now().Format("2006-01-02 15:04:05")
-	db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, destination, status) VALUES (?, '1.1.1.1', 'http://a.com', '200 OK')", today)
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, destination, status) VALUES (?, '1.1.1.1', 'http://a.com', '200 OK')", today)
 
 	r := httptest.NewRequest("GET", "/api/traffic/statistics?period=day", nil)
 	w := httptest.NewRecorder()
@@ -46,7 +46,7 @@ func TestAnalyticsHandlers_ClientStats(t *testing.T) {
 	defer cleanup()
 	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
 
-	db.Exec("INSERT INTO proxy_logs (source_ip, destination) VALUES ('1.2.3.4', 'http://a.com')")
+	_, _ = db.Exec("INSERT INTO proxy_logs (source_ip, destination) VALUES ('1.2.3.4', 'http://a.com')")
 
 	r := httptest.NewRequest("GET", "/api/clients/statistics", nil)
 	w := httptest.NewRecorder()
@@ -62,7 +62,7 @@ func TestAnalyticsHandlers_DomainStats(t *testing.T) {
 	defer cleanup()
 	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
 
-	db.Exec("INSERT INTO proxy_logs (destination, status) VALUES ('example.com', '200 OK')")
+	_, _ = db.Exec("INSERT INTO proxy_logs (destination, status) VALUES ('example.com', '200 OK')")
 
 	r := httptest.NewRequest("GET", "/api/domains/statistics", nil)
 	w := httptest.NewRecorder()
@@ -78,7 +78,7 @@ func TestAnalyticsHandlers_DashboardSummary(t *testing.T) {
 	defer cleanup()
 	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
 
-	db.Exec("INSERT INTO proxy_logs (timestamp, destination, status) VALUES (datetime('now'), 'evil.com', '403 Forbidden')")
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, destination, status) VALUES (datetime('now'), 'evil.com', '403 Forbidden')")
 
 	r := httptest.NewRequest("GET", "/api/dashboard/summary", nil)
 	w := httptest.NewRecorder()
@@ -94,7 +94,7 @@ func TestAnalyticsHandlers_ShadowIT(t *testing.T) {
 	defer cleanup()
 	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
 
-	db.Exec("INSERT INTO proxy_logs (timestamp, destination) VALUES (datetime('now'), 'dropbox.com')")
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, destination) VALUES (datetime('now'), 'dropbox.com')")
 
 	r := httptest.NewRequest("GET", "/api/analytics/shadow-it", nil)
 	w := httptest.NewRecorder()
@@ -110,7 +110,7 @@ func TestAnalyticsHandlers_AuditLog(t *testing.T) {
 	defer cleanup()
 	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
 
-	db.Exec("INSERT INTO audit_log (username, action) VALUES ('admin', 'test')")
+	_, _ = db.Exec("INSERT INTO audit_log (username, action) VALUES ('admin', 'test')")
 
 	r := httptest.NewRequest("GET", "/api/audit-log", nil)
 	w := httptest.NewRecorder()
@@ -126,7 +126,7 @@ func TestAnalyticsHandlers_TestRule(t *testing.T) {
 	defer cleanup()
 	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
 
-	db.Exec("INSERT INTO proxy_logs (timestamp, destination) VALUES (datetime('now'), 'malware-site.com')")
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, destination) VALUES (datetime('now'), 'malware-site.com')")
 
 	req := struct {
 		Regex string `json:"regex"`

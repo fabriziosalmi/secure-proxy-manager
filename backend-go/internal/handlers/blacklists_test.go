@@ -19,8 +19,8 @@ func TestBlacklistHandlers_List(t *testing.T) {
 	defer cleanup()
 
 	// Add test data
-	db.Exec("INSERT INTO ip_blacklist (ip, description) VALUES (?,?)", "1.1.1.1", "test ip")
-	db.Exec("INSERT INTO ip_blacklist (ip, description) VALUES (?,?)", "2.2.2.2", "other ip")
+	_, _ = db.Exec("INSERT INTO ip_blacklist (ip, description) VALUES (?,?)", "1.1.1.1", "test ip")
+	_, _ = db.Exec("INSERT INTO ip_blacklist (ip, description) VALUES (?,?)", "2.2.2.2", "other ip")
 
 	handler := listHandler(db, "ip_blacklist", "ip")
 	
@@ -37,7 +37,7 @@ func TestBlacklistHandlers_List(t *testing.T) {
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
 	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp)
+	_ = json.NewDecoder(w.Body).Decode(&resp)
 	data := resp["data"].([]any)
 	if len(data) != 1 {
 		t.Errorf("Expected 1 result for search, got %d", len(data))
@@ -60,7 +60,7 @@ func TestBlacklistHandlers_AddIP(t *testing.T) {
 	}
 
 	var count int
-	db.QueryRow("SELECT COUNT(*) FROM ip_blacklist WHERE ip='10.10.10.10'").Scan(&count)
+	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist WHERE ip='10.10.10.10'").Scan(&count)
 	if count != 1 {
 		t.Error("IP not found in database")
 	}
@@ -71,9 +71,9 @@ func TestBlacklistHandlers_Delete(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	db.Exec("INSERT INTO ip_blacklist (ip) VALUES (?)", "5.5.5.5")
+	_, _ = db.Exec("INSERT INTO ip_blacklist (ip) VALUES (?)", "5.5.5.5")
 	var id int64
-	db.QueryRow("SELECT id FROM ip_blacklist WHERE ip='5.5.5.5'").Scan(&id)
+	_ = db.QueryRow("SELECT id FROM ip_blacklist WHERE ip='5.5.5.5'").Scan(&id)
 
 	handler := deleteByIDHandler(db, "ip_blacklist", cfg)
 	
@@ -89,7 +89,7 @@ func TestBlacklistHandlers_Delete(t *testing.T) {
 	}
 
 	var count int
-	db.QueryRow("SELECT COUNT(*) FROM ip_blacklist WHERE id=?", id).Scan(&count)
+	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist WHERE id=?", id).Scan(&count)
 	if count != 0 {
 		t.Error("Entry still in database after delete")
 	}
@@ -100,12 +100,12 @@ func TestBlacklistHandlers_BulkDelete(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	db.Exec("INSERT INTO ip_blacklist (ip) VALUES (?)", "6.6.6.6")
-	db.Exec("INSERT INTO ip_blacklist (ip) VALUES (?)", "7.7.7.7")
-	
+	_, _ = db.Exec("INSERT INTO ip_blacklist (ip) VALUES (?)", "6.6.6.6")
+	_, _ = db.Exec("INSERT INTO ip_blacklist (ip) VALUES (?)", "7.7.7.7")
+
 	var id1, id2 int64
-	db.QueryRow("SELECT id FROM ip_blacklist WHERE ip='6.6.6.6'").Scan(&id1)
-	db.QueryRow("SELECT id FROM ip_blacklist WHERE ip='7.7.7.7'").Scan(&id2)
+	_ = db.QueryRow("SELECT id FROM ip_blacklist WHERE ip='6.6.6.6'").Scan(&id1)
+	_ = db.QueryRow("SELECT id FROM ip_blacklist WHERE ip='7.7.7.7'").Scan(&id2)
 
 	handler := bulkDeleteHandler(db, "ip_blacklist", cfg)
 	
@@ -125,7 +125,7 @@ func TestBlacklistHandlers_ClearAll(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	db.Exec("INSERT INTO ip_blacklist (ip) VALUES (?)", "8.8.8.8")
+	_, _ = db.Exec("INSERT INTO ip_blacklist (ip) VALUES (?)", "8.8.8.8")
 	
 	handler := clearAllHandler(db, "ip_blacklist", cfg, "ip")
 	r := httptest.NewRequest("DELETE", "/api/ip-blacklist/clear-all", nil)
@@ -137,7 +137,7 @@ func TestBlacklistHandlers_ClearAll(t *testing.T) {
 	}
 
 	var count int
-	db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&count)
+	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&count)
 	if count != 0 {
 		t.Errorf("Expected 0 entries, got %d", count)
 	}
@@ -163,7 +163,7 @@ func TestBlacklistHandlers_ImportContent(t *testing.T) {
 	}
 
 	var count int
-	db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&count)
+	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&count)
 	if count < 3 {
 		t.Errorf("Expected at least 3 entries imported, got %d", count)
 	}
