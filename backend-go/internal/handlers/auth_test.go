@@ -29,7 +29,7 @@ func TestLoginHandler(t *testing.T) {
 	}
 
 	var resp map[string]string
-	json.NewDecoder(w.Body).Decode(&resp)
+	_ = json.NewDecoder(w.Body).Decode(&resp)
 	if resp["status"] != "success" || resp["access_token"] == "" {
 		t.Errorf("Unexpected login response: %v", resp)
 	}

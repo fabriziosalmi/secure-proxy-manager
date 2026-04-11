@@ -16,7 +16,7 @@ func TestLogHandlers_GetLogs(t *testing.T) {
 	h := NewLogHandlers(db)
 
 	// Add test logs
-	db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status, bytes) VALUES (datetime('now'), '1.1.1.1', 'GET', 'http://example.com', '200 OK', 123)")
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status, bytes) VALUES (datetime('now'), '1.1.1.1', 'GET', 'http://example.com', '200 OK', 123)")
 
 	r := httptest.NewRequest("GET", "/api/logs", nil)
 	w := httptest.NewRecorder()
@@ -33,8 +33,8 @@ func TestLogHandlers_GDPR(t *testing.T) {
 	h := NewLogHandlers(db)
 
 	// Enable GDPR mode
-	db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES ('gdpr_mode', 'true')")
-	db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status, bytes) VALUES (datetime('now'), '192.168.1.5', 'GET', 'http://example.com', '200 OK', 123)")
+	_, _ = db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES ('gdpr_mode', 'true')")
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status, bytes) VALUES (datetime('now'), '192.168.1.5', 'GET', 'http://example.com', '200 OK', 123)")
 
 	r := httptest.NewRequest("GET", "/api/logs", nil)
 	w := httptest.NewRecorder()
@@ -54,7 +54,7 @@ func TestLogHandlers_Stats(t *testing.T) {
 	defer cleanup()
 	h := NewLogHandlers(db)
 
-	db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status, bytes) VALUES (datetime('now'), '1.1.1.1', 'GET', 'http://example.com', '403 Forbidden', 0)")
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status, bytes) VALUES (datetime('now'), '1.1.1.1', 'GET', 'http://example.com', '403 Forbidden', 0)")
 
 	r := httptest.NewRequest("GET", "/api/logs/stats", nil)
 	w := httptest.NewRecorder()
@@ -69,7 +69,7 @@ func TestLogHandlers_Clear(t *testing.T) {
 	defer cleanup()
 	h := NewLogHandlers(db)
 
-	db.Exec("INSERT INTO proxy_logs (source_ip) VALUES ('1.1.1.1')")
+	_, _ = db.Exec("INSERT INTO proxy_logs (source_ip) VALUES ('1.1.1.1')")
 	
 	r := httptest.NewRequest("POST", "/api/logs/clear", nil)
 	r = r.WithContext(context.WithValue(r.Context(), middleware.CtxUsername, "admin"))

@@ -10,7 +10,7 @@ func TestRun(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 	logPath := filepath.Join(tmpDir, "access.log")
-	os.WriteFile(logPath, []byte("test"), 0644)
+	_ = os.WriteFile(logPath, []byte("test"), 0644)
 
 	os.Setenv("TEST_MODE", "true")
 	os.Setenv("BASIC_AUTH_USERNAME", "admin")

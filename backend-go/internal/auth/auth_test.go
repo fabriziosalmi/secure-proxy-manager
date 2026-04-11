@@ -91,9 +91,9 @@ func TestRateLimit(t *testing.T) {
 	r.SetBasicAuth("admin", "wrong")
 
 	// 1st fail
-	s.Authenticate(r)
+	_, _, _ = s.Authenticate(r)
 	// 2nd fail
-	s.Authenticate(r)
+	_, _, _ = s.Authenticate(r)
 	
 	// 3rd attempt should be blocked
 	_, _, err := s.Authenticate(r)
@@ -122,7 +122,7 @@ func TestWSTokens(t *testing.T) {
 	}
 
 	// Should be consumed
-	user, ok = s.ValidateWSToken(token)
+	_, ok = s.ValidateWSToken(token)
 	if ok {
 		t.Error("Token should have been consumed")
 	}

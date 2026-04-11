@@ -25,7 +25,7 @@ func TestDNSDetectHandlers_Detect(t *testing.T) {
 	var resp struct {
 		Data map[string]any `json:"data"`
 	}
-	json.NewDecoder(w.Body).Decode(&resp)
+	_ = json.NewDecoder(w.Body).Decode(&resp)
 	if resp.Data["subnet"] != "127.0.0" {
 		t.Errorf("Expected subnet 127.0.0, got %v", resp.Data["subnet"])
 	}

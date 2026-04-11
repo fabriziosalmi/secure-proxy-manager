@@ -29,7 +29,7 @@ func setupTestDB(t *testing.T) (*sql.DB, *auth.Service, *config.Config, func()) 
 	}
 
 	// Wait for schema initialization.
-	db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES (?, ?)", "proxy_host", "localhost")
+	_, _ = db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES (?, ?)", "proxy_host", "localhost")
 
 	cfg := &config.Config{
 		ConfigDir:         tmpDir, // Use temporary directory for testing

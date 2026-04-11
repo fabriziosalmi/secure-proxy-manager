@@ -42,13 +42,13 @@ func TestRunRetention(t *testing.T) {
 	defer cleanup()
 
 	// Seed some logs
-	db.Exec("INSERT INTO proxy_logs (timestamp) VALUES (?)", "2020-01-01 00:00:00")
-	db.Exec("INSERT INTO settings (setting_name, setting_value) VALUES (?, ?)", "log_retention_days", "30")
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp) VALUES (?)", "2020-01-01 00:00:00")
+	_, _ = db.Exec("INSERT INTO settings (setting_name, setting_value) VALUES (?, ?)", "log_retention_days", "30")
 
 	runRetention(db)
 
 	var count int
-	db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&count)
+	_ = db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&count)
 	if count != 0 {
 		t.Errorf("Expected 0 logs after retention, got %d", count)
 	}
@@ -67,7 +67,7 @@ func TestRefreshList(t *testing.T) {
 	refreshList(db, "ip_blacklist", "ip", []string{ts.URL})
 
 	var count int
-	db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&count)
+	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&count)
 	if count != 2 {
 		t.Errorf("Expected 2 IPs, got %d", count)
 	}
@@ -77,8 +77,8 @@ func TestReadRefreshSettings(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES (?, ?)", "auto_refresh_enabled", "true")
-	db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES (?, ?)", "auto_refresh_hours", "24")
+	_, _ = db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES (?, ?)", "auto_refresh_enabled", "true")
+	_, _ = db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES (?, ?)", "auto_refresh_hours", "24")
 
 	enabled, interval := readRefreshSettings(db)
 	if !enabled || interval != 24 {
@@ -150,7 +150,7 @@ func TestInsertLogEntry(t *testing.T) {
 	insertLogEntry(db, map[string]any{"source_ip": "1.2.3.4"})
 
 	var count int
-	db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&count)
+	_ = db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&count)
 	if count != 2 {
 		t.Errorf("Expected 2 log entries, got %d", count)
 	}
@@ -233,8 +233,8 @@ func TestRefreshAll(t *testing.T) {
 	refreshAll(db)
 
 	var ipCount, domainCount int
-	db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&ipCount)
-	db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&domainCount)
+	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&ipCount)
+	_ = db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&domainCount)
 	if ipCount != 1 || domainCount != 1 {
 		t.Errorf("Expected counts (1,1), got (%d,%d)", ipCount, domainCount)
 	}
@@ -255,7 +255,7 @@ func TestStartWorkers_Basic(t *testing.T) {
 	StartUpdateChecker(ctx, "v1.0.0")
 
 	logFile := filepath.Join(tmpDir, "access.log")
-	os.WriteFile(logFile, []byte("test"), 0644)
+	_ = os.WriteFile(logFile, []byte("test"), 0644)
 	StartLogTailer(ctx, db, logFile, hub)
 
 	time.Sleep(100 * time.Millisecond)

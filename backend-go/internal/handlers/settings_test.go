@@ -28,7 +28,7 @@ func TestSettingsHandlers_GetAll(t *testing.T) {
 		Status string `json:"status"`
 		Data   []any  `json:"data"`
 	}
-	json.NewDecoder(w.Body).Decode(&resp)
+	_ = json.NewDecoder(w.Body).Decode(&resp)
 	if resp.Status != "success" {
 		t.Errorf("Expected success status, got %v", resp.Status)
 	}
@@ -57,7 +57,7 @@ func TestSettingsHandlers_Update(t *testing.T) {
 	}
 
 	var val string
-	db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='proxy_port'").Scan(&val)
+	_ = db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='proxy_port'").Scan(&val)
 	if val != "8080" {
 		t.Errorf("Expected 8080, got %s", val)
 	}
@@ -81,11 +81,11 @@ func TestSettingsHandlers_BulkUpdate(t *testing.T) {
 	}
 
 	var val string
-	db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='proxy_port'").Scan(&val)
+	_ = db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='proxy_port'").Scan(&val)
 	if val != "9090" {
 		t.Errorf("Expected 9090, got %s", val)
 	}
-	db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='cache_size'").Scan(&val)
+	_ = db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='cache_size'").Scan(&val)
 	if val != "2000" {
 		t.Errorf("Expected 2000, got %s", val)
 	}

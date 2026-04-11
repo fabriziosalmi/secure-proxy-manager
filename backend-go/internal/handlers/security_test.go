@@ -55,7 +55,7 @@ func TestSecurityHandlers_ClearRateLimit(t *testing.T) {
 	defer cleanup()
 	h := NewSecurityHandlers(db, svc, cfg, nil)
 
-	svc.Authenticate(httptest.NewRequest("GET", "/", nil)) // adds an attempt? no, fails because no auth
+	_, _, _ = svc.Authenticate(httptest.NewRequest("GET", "/", nil)) // adds an attempt? no, fails because no auth
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("ip", "1.1.1.1")
@@ -76,8 +76,8 @@ func TestSecurityHandlers_Score(t *testing.T) {
 	h := NewSecurityHandlers(db, nil, nil, nil)
 
 	// Set some settings
-	db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES ('enable_waf', 'true')")
-	db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES ('enable_ip_blacklist', 'true')")
+	_, _ = db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES ('enable_waf', 'true')")
+	_, _ = db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES ('enable_ip_blacklist', 'true')")
 
 	r := httptest.NewRequest("GET", "/api/security/score", nil)
 	w := httptest.NewRecorder()
@@ -88,7 +88,7 @@ func TestSecurityHandlers_Score(t *testing.T) {
 	}
 
 	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp)
+	_ = json.NewDecoder(w.Body).Decode(&resp)
 	data := resp["data"].(map[string]any)
 	score := data["score"].(float64)
 	if score < 40 { // 25 (WAF) + 15 (IP Blacklist) = 40

@@ -43,7 +43,7 @@ func TestMaintenanceHandlers_BackupConfig(t *testing.T) {
 		Status string            `json:"status"`
 		Data   map[string]string `json:"data"`
 	}
-	json.NewDecoder(w.Body).Decode(&resp)
+	_ = json.NewDecoder(w.Body).Decode(&resp)
 	if resp.Data["proxy_port"] != "3128" {
 		t.Errorf("Expected proxy_port 3128, got %s", resp.Data["proxy_port"])
 	}
@@ -66,7 +66,7 @@ func TestMaintenanceHandlers_RestoreConfig(t *testing.T) {
 	}
 
 	var val string
-	db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='proxy_port'").Scan(&val)
+	_ = db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='proxy_port'").Scan(&val)
 	if val != "8080" {
 		t.Errorf("Expected 8080, got %s", val)
 	}
@@ -87,8 +87,8 @@ func TestMaintenanceHandlers_DownloadCA(t *testing.T) {
 
 	// Create dummy cert
 	certPath := filepath.Join(cfg.ConfigDir, "ssl_cert.pem")
-	os.MkdirAll(cfg.ConfigDir, 0750)
-	os.WriteFile(certPath, []byte("dummy cert"), 0644)
+	_ = os.MkdirAll(cfg.ConfigDir, 0750)
+	_ = os.WriteFile(certPath, []byte("dummy cert"), 0644)
 	defer os.Remove(certPath)
 
 	w = httptest.NewRecorder()
@@ -119,7 +119,7 @@ func TestMaintenanceHandlers_CheckCertSecurity(t *testing.T) {
 			Issues []string `json:"issues"`
 		} `json:"data"`
 	}
-	json.NewDecoder(w.Body).Decode(&resp)
+	_ = json.NewDecoder(w.Body).Decode(&resp)
 	if resp.Status != "error" { // because dummy is missing initially
 		t.Errorf("Expected error status for missing cert, got %v", resp.Status)
 	}

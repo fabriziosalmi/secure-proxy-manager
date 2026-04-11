@@ -22,7 +22,7 @@ func TestDatabaseHandlers_Size(t *testing.T) {
 	var resp struct {
 		Data map[string]any `json:"data"`
 	}
-	json.NewDecoder(w.Body).Decode(&resp)
+	_ = json.NewDecoder(w.Body).Decode(&resp)
 	if _, ok := resp.Data["size_bytes"]; !ok {
 		t.Error("Expected size_bytes in data field")
 	}
@@ -79,7 +79,7 @@ func TestDatabaseHandlers_Reset(t *testing.T) {
 	h := NewDatabaseHandlers(db)
 
 	// Add some dummy data
-	db.Exec("INSERT INTO ip_blacklist (ip) VALUES ('1.1.1.1')")
+	_, _ = db.Exec("INSERT INTO ip_blacklist (ip) VALUES ('1.1.1.1')")
 
 	r := httptest.NewRequest("POST", "/api/database/reset", nil)
 	w := httptest.NewRecorder()
@@ -90,7 +90,7 @@ func TestDatabaseHandlers_Reset(t *testing.T) {
 	}
 
 	var count int
-	db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&count)
+	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&count)
 	if count != 0 {
 		t.Errorf("Expected 0 records after reset, got %d", count)
 	}
