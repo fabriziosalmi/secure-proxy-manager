@@ -101,11 +101,10 @@ func ssrfSafeClient(hostname string) *http.Client {
 
 // downloadWithRetry fetches a URL (max maxBytes) with up to 3 retries (exp backoff).
 func downloadWithRetry(rawURL string, maxBytes int64) ([]byte, error) {
+	retryDelay := [3]time.Duration{0, 1 * time.Second, 2 * time.Second}
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Duration(1<<uint(attempt-1)) * time.Second)
-		}
+		time.Sleep(retryDelay[attempt])
 		body, err := downloadOnce(rawURL, maxBytes)
 		if err == nil {
 			return body, nil
