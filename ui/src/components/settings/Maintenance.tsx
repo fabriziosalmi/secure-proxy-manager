@@ -3,6 +3,26 @@ import { Database, Download, Trash2, RotateCcw, Wrench } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 
+function Btn({ icon: Icon, label, sub, onClick, destructive }: {
+  icon: typeof Download; label: string; sub: string; onClick: () => void; destructive?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-3 p-3 border border-border rounded-lg bg-background/50 transition-colors text-left w-full ${
+        destructive ? 'hover:bg-destructive/10 group' : 'hover:bg-secondary/50'
+      }`}
+    >
+      <Icon className={`w-4 h-4 shrink-0 ${destructive ? 'text-destructive group-hover:text-red-400' : 'text-primary'}`} />
+      <div>
+        <span className={`text-xs font-medium ${destructive ? 'text-destructive group-hover:text-red-400' : ''}`}>{label}</span>
+        <p className="text-[10px] text-muted-foreground">{sub}</p>
+      </div>
+    </button>
+  );
+}
+
 export function Maintenance() {
   const action = async (label: string, fn: () => Promise<unknown>) => {
     const id = toast.loading(`${label}...`);
@@ -27,24 +47,6 @@ export function Maintenance() {
   const handleResetCounters = () => action('Reset counters', () => api.post('counters/reset'));
   const handleReloadConfig = () => action('Reload config', () => api.post('maintenance/reload-config'));
   const handleReloadDns = () => action('Reload DNS', () => api.post('maintenance/reload-dns'));
-
-  const Btn = ({ icon: Icon, label, sub, onClick, destructive }: {
-    icon: typeof Download; label: string; sub: string; onClick: () => void; destructive?: boolean;
-  }) => (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-3 p-3 border border-border rounded-lg bg-background/50 transition-colors text-left w-full ${
-        destructive ? 'hover:bg-destructive/10 group' : 'hover:bg-secondary/50'
-      }`}
-    >
-      <Icon className={`w-4 h-4 shrink-0 ${destructive ? 'text-destructive group-hover:text-red-400' : 'text-primary'}`} />
-      <div>
-        <span className={`text-xs font-medium ${destructive ? 'text-destructive group-hover:text-red-400' : ''}`}>{label}</span>
-        <p className="text-[10px] text-muted-foreground">{sub}</p>
-      </div>
-    </button>
-  );
 
   return (
     <Card className="bg-card/50">

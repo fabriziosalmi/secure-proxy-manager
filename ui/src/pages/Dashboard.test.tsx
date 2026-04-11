@@ -12,6 +12,10 @@ vi.mock('../lib/api', () => ({
   getErrorMessage: (_e: unknown, f: string) => f,
 }))
 
+vi.mock('../hooks/useAnimatedNumber', () => ({
+  useAnimatedNumber: (v: number) => v,
+}))
+
 import { api } from '../lib/api'
 
 const summaryData = {
@@ -48,7 +52,7 @@ describe('Dashboard', () => {
   it('shows loading skeleton initially', () => {
     vi.mocked(api.get).mockImplementation(() => new Promise(() => {}))
     renderWithProviders(<Dashboard />)
-    const skeletons = document.querySelectorAll('.animate-pulse')
+    const skeletons = document.querySelectorAll('.skeleton-shimmer')
     expect(skeletons.length).toBeGreaterThan(0)
   })
 

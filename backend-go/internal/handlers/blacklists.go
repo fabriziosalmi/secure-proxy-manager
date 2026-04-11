@@ -406,7 +406,7 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 		}
 		stmt, err := tx.Prepare(fmt.Sprintf("INSERT OR IGNORE INTO %s (%s, description) VALUES(?,?)", table, col))
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			log.Error().Err(err).Msg("batch insert prepare failed")
 			break
 		}
@@ -415,7 +415,7 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 		}
 		stmt.Close()
 		if err := tx.Commit(); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			log.Error().Err(err).Msg("batch insert commit failed")
 		}
 	}

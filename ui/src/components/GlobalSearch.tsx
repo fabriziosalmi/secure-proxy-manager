@@ -51,13 +51,15 @@ export function GlobalSearch() {
     return () => window.removeEventListener('keydown', handler);
   }, [open, navigate]);
 
-  // Focus input on open
+  // Focus input on open; reset state asynchronously to avoid cascading renders
   useEffect(() => {
     if (open) {
-      setQuery('');
-      setResults([]);
-      setSelected(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
+      setTimeout(() => {
+        setQuery('');
+        setResults([]);
+        setSelected(0);
+        inputRef.current?.focus();
+      }, 0);
     }
   }, [open]);
 

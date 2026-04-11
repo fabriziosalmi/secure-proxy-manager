@@ -106,7 +106,7 @@ export function Blacklists() {
     }
 
     let endpoint = '';
-    let payload: { ip?: string; domain?: string; description: string } = { description: newDesc };
+    const payload: { ip?: string; domain?: string; description: string } = { description: newDesc };
     if (activeTab === 'ip') { endpoint = 'ip-blacklist'; payload.ip = val; }
     else if (activeTab === 'domain') { endpoint = 'domain-blacklist'; payload.domain = val; }
     else if (activeTab === 'whitelist') { endpoint = 'ip-whitelist'; payload.ip = val; }
