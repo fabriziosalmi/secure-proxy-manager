@@ -117,6 +117,9 @@ echo "Squid settings: port=${SQUID_PORT} cache=${SQUID_CACHE_MB}MB mem=${SQUID_M
 
 # ── Generate base Squid configuration ────────────────────────────────────────
 
+# Ensure error-pages directory exists (in case COPY was skipped or volume mounted)
+mkdir -p /etc/squid/error-pages
+
 echo "Setting up Squid configuration..."
 cat > /etc/squid/squid.conf.base << CONFEOF
 http_port ${SQUID_PORT}
