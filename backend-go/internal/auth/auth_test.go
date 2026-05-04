@@ -48,6 +48,40 @@ func TestJWTFlow(t *testing.T) {
 	}
 }
 
+// Refresh tokens must NOT be accepted by ValidateJWT — that path is only for
+// access tokens. Otherwise a 7-day refresh token can authenticate every API
+// call for a week instead of the short-lived access window.
+func TestValidateJWTRejectsRefreshToken(t *testing.T) {
+	cfg := &config.Config{
+		SecretKey:         "super-secret-key-for-testing-1234567",
+		JWTExpireDuration: 1 * time.Hour,
+	}
+	s := NewService(cfg, nil)
+
+	refresh, err := s.IssueRefreshToken("alice")
+	if err != nil {
+		t.Fatalf("IssueRefreshToken failed: %v", err)
+	}
+
+	if _, err := s.ValidateJWT(refresh); err == nil {
+		t.Fatal("ValidateJWT accepted a refresh token — refresh tokens must be rejected on the access path")
+	}
+
+	// Sanity: refresh path still works.
+	if _, err := s.ValidateRefreshToken(refresh); err != nil {
+		t.Fatalf("ValidateRefreshToken on a refresh token failed: %v", err)
+	}
+
+	// Reverse: an access token must NOT be accepted on the refresh path.
+	access, err := s.IssueJWT("alice")
+	if err != nil {
+		t.Fatalf("IssueJWT failed: %v", err)
+	}
+	if _, err := s.ValidateRefreshToken(access); err == nil {
+		t.Fatal("ValidateRefreshToken accepted an access token")
+	}
+}
+
 func TestAuthenticateBasic(t *testing.T) {
 	cfg := &config.Config{
 		AdminUsername:   "admin",
