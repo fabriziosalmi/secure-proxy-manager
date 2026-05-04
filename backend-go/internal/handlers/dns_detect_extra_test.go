@@ -92,11 +92,35 @@ func TestDNSDetectHandlers_Detect_Empty(t *testing.T) {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
 
-	// Invalid JSON
+	// Invalid JSON — falls back to autodetection silently.
 	r = httptest.NewRequest("POST", "/api/dns/detect", bytes.NewBuffer([]byte("{invalid")))
 	w = httptest.NewRecorder()
 	h.Detect(w, r)
-	if w.Code != http.StatusOK { // It still returns 200 even with invalid JSON, just uses autodetection
+	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200 for invalid JSON (fallback to auto), got %d", w.Code)
+	}
+}
+
+// SSRF guard: callers must not be able to aim the scanner at public IP space.
+func TestDNSDetectHandlers_Detect_RejectsPublicSubnet(t *testing.T) {
+	db, _, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewDNSDetectHandlers(db)
+
+	for _, sub := range []string{"1.1.1", "8.8.8", "100.64.0", "169.254.169"} {
+		r := httptest.NewRequest("POST", "/api/dns/detect", bytes.NewBufferString(`{"subnet":"`+sub+`"}`))
+		w := httptest.NewRecorder()
+		h.Detect(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("subnet=%q expected 400, got %d", sub, w.Code)
+		}
+	}
+
+	// Sanity: a private subnet is accepted (returns 200, scan results may be empty).
+	r := httptest.NewRequest("POST", "/api/dns/detect", bytes.NewBufferString(`{"subnet":"192.168.99"}`))
+	w := httptest.NewRecorder()
+	h.Detect(w, r)
+	if w.Code != http.StatusOK {
+		t.Errorf("private subnet expected 200, got %d", w.Code)
 	}
 }

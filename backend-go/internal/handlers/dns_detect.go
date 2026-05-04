@@ -30,14 +30,38 @@ type DetectedDNS struct {
 	API     string `json:"api"`     // tested API URL
 }
 
+// dnsDetectGate caps concurrent scan requests so an authenticated user
+// cannot turn this endpoint into an outbound traffic amplifier.
+var dnsDetectGate = make(chan struct{}, 2)
+
 func (h *DNSDetectHandlers) Detect(w http.ResponseWriter, r *http.Request) {
+	select {
+	case dnsDetectGate <- struct{}{}:
+		defer func() { <-dnsDetectGate }()
+	default:
+		writeError(w, http.StatusTooManyRequests, "another scan is already in progress")
+		return
+	}
+
 	var req struct {
 		Subnet string `json:"subnet"` // e.g. "192.168.1" or auto-detect
 	}
-	json.NewDecoder(r.Body).Decode(&req) //nolint:errcheck
+	// Tolerate empty / malformed bodies — clients often POST nothing to
+	// trigger auto-detection. We only enforce JSON shape when the body is
+	// non-empty AND parsable, since the field is optional.
+	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	// Auto-detect subnet from gateway if not provided
+	// SSRF guard: when the caller supplied an explicit subnet, require it
+	// to lie inside RFC1918 / loopback. Without this an authenticated user
+	// could ask us to fan out 72 HTTP calls into any /24 they choose
+	// (e.g. "1.1.1") — turning the backend into an outbound port-scanner.
+	// The auto-detect path is trusted because it reads our own network
+	// interfaces directly.
 	subnet := req.Subnet
+	if subnet != "" && !isPrivateSubnet24(subnet) {
+		writeError(w, http.StatusBadRequest, "subnet must be a private (RFC1918 / loopback) /24 like 192.168.1 or 10.0.0")
+		return
+	}
 	if subnet == "" {
 		subnet = detectLocalSubnet()
 	}
@@ -159,6 +183,21 @@ func tryAdGuard(client *http.Client, ip, url string) *DetectedDNS {
 		version = fmt.Sprintf("%v", v)
 	}
 	return &DetectedDNS{IP: ip, Type: "adguard", Name: fmt.Sprintf("AdGuard Home @ %s", ip), Version: version, API: url}
+}
+
+// isPrivateSubnet24 returns true when the supplied "a.b.c" prefix lies inside
+// RFC1918 (10/8, 172.16/12, 192.168/16) or loopback (127/8). Used to gate the
+// DNS-provider auto-discovery scanner so it cannot be aimed at public ranges.
+func isPrivateSubnet24(prefix string) bool {
+	parts := strings.Split(prefix, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	ip := net.ParseIP(prefix + ".0")
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate()
 }
 
 func detectLocalSubnet() string {
