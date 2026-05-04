@@ -5,6 +5,102 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.3] - 2026-05-05
+
+### Security
+
+- **WAF LAN bypass fixed (CRITICAL)**: `isLANHost` previously used a naive
+  `strings.HasPrefix(host, "172.2")` check, which incorrectly classified the
+  entire `172.200.0.0/8` public range (and similar) as LAN — traffic to those
+  IPs bypassed all WAF inspection. Replaced with `net.ParseIP` +
+  `IsPrivate / IsLoopback / IsLinkLocal{Unicast,Multicast} / IsUnspecified`,
+  with regression tests for `172.200.0.1`, `172.255.255.255`, `100.64.0.0/10`
+  (CGNAT — must be inspected), `[::1]:port`, `fe80::`, and `fc00::`.
+  Verified live: 5 forced requests to `172.200.0.1` increased WAF
+  `total_requests` by 5 (previously 0); 3 SQLi probes returned HTTP 403.
+- **JWT type confusion fixed (HIGH)**: `ValidateJWT` did not check
+  `claims["type"]`, so a 7-day refresh token could authenticate every API
+  call as if it were a short-lived access token. Refresh tokens are now
+  rejected on the access path; the blacklist lookup also moved to AFTER
+  signature validation to avoid leaking revocation state via timing.
+- **WAF management endpoint OOM fixed (MEDIUM)**: `/categories/toggle`
+  now bounds request body via `http.MaxBytesReader` (4 KB).
+- **DNS auto-discovery SSRF guard (MEDIUM)**: `/api/dns/detect` now
+  rejects user-supplied subnets outside RFC1918 / loopback (`8.8.8`,
+  `100.64.0`, `169.254.169` → 400) and gates concurrent scans to 2.
+- **Docker client URL escaping**: container name and signal parameters
+  on `KillContainer` / `RestartContainer` / `ExecContainer` are now
+  passed through `url.PathEscape` / `url.QueryEscape`.
+- **WAF log injection neutralised**: log lines emitting attacker-
+  controlled hosts, URLs, domains, and typo-target/technique fields now
+  use the `%q` verb so embedded CR/LF/ANSI escape sequences cannot
+  forge or pollute log entries.
+- **Squid hardening**: positive method allowlist (`Safe_methods` =
+  GET/HEAD/POST/OPTIONS/CONNECT) added on top of the existing
+  dangerous-method denylist; outbound TLS now requires
+  `NO_SSLv3,NO_TLSv1,NO_TLSv1_1` and a cipher suite mandating ECDHE
+  forward secrecy + AEAD (AESGCM/CHACHA20).
+- **Silent-error swallowing fixed**: `RevokeJWT` DB persistence,
+  `loadOrGenerateEncKey`, and `loadOrGenerateSecret` no longer ignore
+  write errors (silent failures here would have rotated the encryption
+  key on every restart, making encrypted settings unrecoverable).
+
+### Added
+
+- **WAF Prometheus `/metrics` endpoint** — unauthenticated text-exposition
+  emitting only aggregate counters: `waf_requests_total`, `waf_blocked_total`,
+  `waf_high_entropy_total`, `waf_requests_last_minute`, `waf_rules_total`,
+  `waf_categories_total`, `waf_categories_disabled`, `waf_block_threshold`,
+  `waf_heuristics_enabled`, `waf_safe_cache_hits_total`,
+  `waf_safe_cache_size`. No rule names, destinations, or User-Agents — leak
+  surface ≤ existing `/health`.
+- New tests: `TestValidateJWTRejectsRefreshToken`,
+  `TestDNSDetectHandlers_Detect_RejectsPublicSubnet`, regression cases for
+  `isLANHost` covering CGNAT and bracketed IPv6.
+
+### Changed
+
+- **Backend `extractIP`** now uses stdlib `net.IP.IsPrivate / IsLoopback`
+  instead of a hand-maintained CIDR list; X-Forwarded-For trust boundary
+  documented inline.
+- **Backend blacklist import**: dedup cursor now surfaces query errors and
+  checks `rows.Err()`; batch insert tracks per-statement failures and the
+  response counters (`added` / `skipped`) reflect what actually landed in
+  the DB.
+- **`Makefile setup`** also creates `config/dnsmasq.d/` (without it the
+  dns container hit a restart loop on first boot).
+
+### Frontend
+
+- **Dashboard reset blast radius**: `queryClient.invalidateQueries()` was
+  invalidating every cached query (incl. settings/auth). Now scoped to
+  the seven keys the reset actually touches.
+- **Settings double-click guard**: synchronous `useRef` latch blocks the
+  second `handleSave` call within the same tick (the `disabled` prop on
+  the button only takes effect on the next render, allowing duplicate
+  POSTs from a rapid double-click).
+- **Settings race fixed**: wizard-status fetch in `App.tsx` now uses
+  `AbortController` to defeat the StrictMode double-effect and the
+  re-mount race where a stale `settings` response could overwrite a
+  fresh one.
+- **Blacklists post-unmount toasts fixed**: mutation `onSuccess` /
+  `onError` callbacks check a `mountedRef` before touching state or
+  firing toasts.
+- **Recharts is now lazy-loaded**: extracted the dashboard chart cards
+  into `components/dashboard/DashboardCharts.tsx`, lazy-imported with
+  `React.lazy`. The `vendor-charts.js` chunk (~110 KB gzip) is no longer
+  in the initial route bundle.
+- **Login**: replaced the `localStorage.setItem` global monkey-patch
+  with an exported `setAuthToken()` helper.
+- **Accessibility**: `GlobalSearch` and `SetupWizard` modals gain
+  `role="dialog"` + `aria-modal` + `aria-labelledby`; `ChangePassword`
+  inputs gain `htmlFor`/`id` association, `aria-invalid`,
+  `aria-describedby`, and live region for password rule feedback;
+  spinner elements gain `role="status"` + sr-only "Loading…" text;
+  `Blacklists` tabs now use `role="tablist"` / `role="tab"` /
+  `role="tabpanel"` with proper `aria-selected` and roving tabindex;
+  table headers in `Logs` and `Blacklists` gain `scope="col"`.
+
 ## [3.3.1] - 2026-04-08
 
 ### Fixed

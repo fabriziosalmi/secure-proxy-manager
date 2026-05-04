@@ -48,3 +48,11 @@ deploy.sh
 # Project planning
 NEWFEATURES.md
 PLAN.md
+
+# Runtime artifacts written by containers on first boot
+config/dnsmasq.d/
+config/squid_settings.env
+config/custom_squid_extra.conf
+
+# Claude Code working directory (worktrees, settings, transcripts)
+.claude/

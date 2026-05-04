@@ -2,6 +2,7 @@ import { Component, Suspense, lazy, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/react-query';
 import toast, { Toaster } from 'react-hot-toast';
+import axios from 'axios';
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
@@ -66,8 +67,9 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Er
 
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center h-64">
-      <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+    <div className="flex items-center justify-center h-64" role="status" aria-live="polite">
+      <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" aria-hidden="true" />
+      <span className="sr-only">Loading…</span>
     </div>
   );
 }
@@ -116,16 +118,25 @@ function App() {
     return () => window.removeEventListener('session-expiring', handler);
   }, []);
 
-  // Check wizard status after login
+  // Check wizard status after login.
+  // AbortController guards against the StrictMode double-effect and against
+  // a re-render mid-flight (logout → login again) where a stale settings
+  // response could overwrite the fresh one (last-wins).
   useEffect(() => {
     if (!isAuthenticated) return;
-    api.get('settings').then(res => {
+    const ctrl = new AbortController();
+    api.get('settings', { signal: ctrl.signal }).then(res => {
       const settings = res.data?.data || [];
       const wizardSetting = Array.isArray(settings)
         ? settings.find((s: { setting_name: string }) => s.setting_name === 'wizard_completed')
         : null;
       setWizardDone(wizardSetting?.setting_value === 'true');
-    }).catch(() => setWizardDone(true)); // If API fails, skip wizard
+    }).catch((err) => {
+      // Aborts are expected on cleanup — don't treat them as failures.
+      if (axios.isCancel?.(err) || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
+      setWizardDone(true); // If API fails, skip wizard
+    });
+    return () => ctrl.abort();
   }, [isAuthenticated]);
 
   if (!isAuthenticated) {
@@ -135,8 +146,9 @@ function App() {
   // Loading — checking wizard status
   if (wizardDone === null) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background">
-        <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+      <div className="flex items-center justify-center h-screen bg-background" role="status" aria-live="polite">
+        <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" aria-hidden="true" />
+        <span className="sr-only">Loading…</span>
       </div>
     );
   }

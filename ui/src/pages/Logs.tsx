@@ -297,12 +297,12 @@ export function Logs() {
             <table className="w-full text-sm text-left relative">
               <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-white/[0.02] border-b border-white/[0.06] sticky top-0 -webkit-backdrop-blur-sm backdrop-blur-sm z-10">
                 <tr>
-                  <th className="px-6 py-3 font-medium">Timestamp</th>
-                  <th className="px-6 py-3 font-medium">Client IP</th>
-                  <th className="px-6 py-3 font-medium">Method</th>
-                  <th className="px-6 py-3 font-medium">Destination</th>
-                  <th className="px-6 py-3 font-medium">Status</th>
-                  <th className="px-6 py-3 font-medium text-right">Size</th>
+                  <th scope="col" className="px-6 py-3 font-medium">Timestamp</th>
+                  <th scope="col" className="px-6 py-3 font-medium">Client IP</th>
+                  <th scope="col" className="px-6 py-3 font-medium">Method</th>
+                  <th scope="col" className="px-6 py-3 font-medium">Destination</th>
+                  <th scope="col" className="px-6 py-3 font-medium">Status</th>
+                  <th scope="col" className="px-6 py-3 font-medium text-right">Size</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.04]">

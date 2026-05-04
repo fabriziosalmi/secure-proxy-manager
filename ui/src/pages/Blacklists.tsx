@@ -3,7 +3,7 @@ import { api, getErrorMessage } from '../lib/api';
 import { isValidIP, isValidDomain } from '../lib/validation';
 import type { IpEntry, DomainEntry, WhitelistEntry, DomainWhitelistEntry } from '../types';
 import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, CheckCircle, ShieldCheck, Loader2, RefreshCw, FileDown, XCircle } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -57,6 +57,16 @@ export function Blacklists() {
   const activeTotal = activeTab === 'ip' ? (ipResult?.total ?? 0) : activeTab === 'domain' ? (domainResult?.total ?? 0) : activeTab === 'whitelist' ? (whitelistResult?.total ?? 0) : (domainWhitelistResult?.total ?? 0);
   const totalPages = Math.ceil(activeTotal / PAGE_SIZE);
 
+  // Mount flag — mutation callbacks must not touch state or fire toasts
+  // after the user has navigated away. React-query mutations keep running
+  // post-unmount (intentionally — the API write should still complete),
+  // but their onSuccess/onError shouldn't poke a vanished UI.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const invalidateActive = () => {
     if (activeTab === 'ip') queryClient.invalidateQueries({ queryKey: ['blacklist', 'ip'] });
     else if (activeTab === 'domain') queryClient.invalidateQueries({ queryKey: ['blacklist', 'domain'] });
@@ -68,23 +78,31 @@ export function Blacklists() {
     mutationFn: (vars: { endpoint: string; payload: { ip?: string; domain?: string; description: string } }) =>
       api.post(vars.endpoint, vars.payload),
     onSuccess: () => {
+      if (!mountedRef.current) return;
       toast.success('Rule added successfully');
       setNewItem('');
       setNewDesc('');
       setIsAdding(false);
       invalidateActive();
     },
-    onError: (err) => toast.error(getErrorMessage(err, 'Failed to add rule')),
+    onError: (err) => {
+      if (!mountedRef.current) return;
+      toast.error(getErrorMessage(err, 'Failed to add rule'));
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (endpoint: string) => api.delete(endpoint),
     onSuccess: () => {
+      if (!mountedRef.current) return;
       toast.success('Rule deleted successfully');
       setPendingDeleteId(null);
       invalidateActive();
     },
-    onError: (err) => toast.error(getErrorMessage(err, 'Failed to delete rule')),
+    onError: (err) => {
+      if (!mountedRef.current) return;
+      toast.error(getErrorMessage(err, 'Failed to delete rule'));
+    },
   });
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -433,25 +451,29 @@ export function Blacklists() {
         </Card>
       )}
 
-      <div className="flex space-x-1 glass-surface p-1 rounded-lg w-fit">
-        <button onClick={() => setActiveTab('ip')}
+      <div role="tablist" aria-label="Blacklist categories" className="flex space-x-1 glass-surface p-1 rounded-lg w-fit">
+        <button role="tab" aria-selected={activeTab === 'ip'} aria-controls="bl-panel-ip" id="bl-tab-ip" tabIndex={activeTab === 'ip' ? 0 : -1} type="button"
+          onClick={() => setActiveTab('ip')}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'ip' ? 'bg-[#1f1f1f] text-white shadow-sm' : 'text-muted-foreground hover:text-white'}`}>
-          <Server className="w-4 h-4 mr-2" />IP Addresses
+          <Server className="w-4 h-4 mr-2" aria-hidden="true" />IP Addresses
           <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{ipResult?.total ?? 0}</span>
         </button>
-        <button onClick={() => setActiveTab('domain')}
+        <button role="tab" aria-selected={activeTab === 'domain'} aria-controls="bl-panel-domain" id="bl-tab-domain" tabIndex={activeTab === 'domain' ? 0 : -1} type="button"
+          onClick={() => setActiveTab('domain')}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain' ? 'bg-[#1f1f1f] text-white shadow-sm' : 'text-muted-foreground hover:text-white'}`}>
-          <Globe className="w-4 h-4 mr-2" />Domains
+          <Globe className="w-4 h-4 mr-2" aria-hidden="true" />Domains
           <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{domainResult?.total ?? 0}</span>
         </button>
-        <button type="button" onClick={() => { setActiveTab('whitelist'); closeAllPanels(); resetPage(); }}
+        <button role="tab" aria-selected={activeTab === 'whitelist'} aria-controls="bl-panel-whitelist" id="bl-tab-whitelist" tabIndex={activeTab === 'whitelist' ? 0 : -1} type="button"
+          onClick={() => { setActiveTab('whitelist'); closeAllPanels(); resetPage(); }}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/20 text-green-500 shadow-sm' : 'text-muted-foreground hover:text-green-500'}`}>
-          <CheckCircle className="w-4 h-4 mr-2" />IP Whitelist
+          <CheckCircle className="w-4 h-4 mr-2" aria-hidden="true" />IP Whitelist
           <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{whitelistResult?.total ?? 0}</span>
         </button>
-        <button type="button" onClick={() => { setActiveTab('domain-whitelist'); closeAllPanels(); resetPage(); }}
+        <button role="tab" aria-selected={activeTab === 'domain-whitelist'} aria-controls="bl-panel-dwhitelist" id="bl-tab-dwhitelist" tabIndex={activeTab === 'domain-whitelist' ? 0 : -1} type="button"
+          onClick={() => { setActiveTab('domain-whitelist'); closeAllPanels(); resetPage(); }}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain-whitelist' ? 'bg-emerald-500/20 text-emerald-400 shadow-sm' : 'text-muted-foreground hover:text-emerald-400'}`}>
-          <ShieldCheck className="w-4 h-4 mr-2" />Domain Whitelist
+          <ShieldCheck className="w-4 h-4 mr-2" aria-hidden="true" />Domain Whitelist
           <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{domainWhitelistResult?.total ?? 0}</span>
         </button>
       </div>
@@ -473,15 +495,20 @@ export function Blacklists() {
         </span>
       </div>
 
-      <Card className="bg-transparent">
+      <Card
+        role="tabpanel"
+        id={`bl-panel-${activeTab === 'domain-whitelist' ? 'dwhitelist' : activeTab}`}
+        aria-labelledby={`bl-tab-${activeTab === 'domain-whitelist' ? 'dwhitelist' : activeTab}`}
+        className="bg-transparent"
+      >
         <CardContent className="p-0">
           <table className="w-full text-sm text-left">
             <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-white/[0.02] border-b border-white/[0.06]">
               <tr>
-                <th className="px-6 py-4 font-medium">Target</th>
-                <th className="px-6 py-4 font-medium">Description</th>
-                <th className="px-6 py-4 font-medium">Date Added</th>
-                <th className="px-6 py-4 font-medium text-right">Actions</th>
+                <th scope="col" className="px-6 py-4 font-medium">Target</th>
+                <th scope="col" className="px-6 py-4 font-medium">Description</th>
+                <th scope="col" className="px-6 py-4 font-medium">Date Added</th>
+                <th scope="col" className="px-6 py-4 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

@@ -51,38 +51,41 @@ export function ChangePassword() {
         <form onSubmit={handleSubmit} className="space-y-3">
           {/* Current password */}
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Current Password</label>
+            <label htmlFor="cp-current" className="text-xs font-medium text-muted-foreground">Current Password</label>
             <div className="relative mt-1">
               <input
+                id="cp-current"
                 type={showCurrent ? 'text' : 'password'}
                 value={currentPwd}
                 onChange={(e) => setCurrentPwd(e.target.value)}
                 autoComplete="current-password"
                 className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm pr-8 focus:outline-none focus:ring-1 focus:ring-primary"
               />
-              <button type="button" onClick={() => setShowCurrent(!showCurrent)} className="absolute right-2 top-1.5 text-muted-foreground hover:text-foreground">
-                {showCurrent ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              <button type="button" onClick={() => setShowCurrent(!showCurrent)} aria-label={showCurrent ? 'Hide current password' : 'Show current password'} className="absolute right-2 top-1.5 text-muted-foreground hover:text-foreground">
+                {showCurrent ? <EyeOff className="w-3.5 h-3.5" aria-hidden="true" /> : <Eye className="w-3.5 h-3.5" aria-hidden="true" />}
               </button>
             </div>
           </div>
 
           {/* New password */}
           <div>
-            <label className="text-xs font-medium text-muted-foreground">New Password</label>
+            <label htmlFor="cp-new" className="text-xs font-medium text-muted-foreground">New Password</label>
             <div className="relative mt-1">
               <input
+                id="cp-new"
                 type={showNew ? 'text' : 'password'}
                 value={newPwd}
                 onChange={(e) => setNewPwd(e.target.value)}
                 autoComplete="new-password"
+                aria-describedby="cp-new-rules"
                 className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm pr-8 focus:outline-none focus:ring-1 focus:ring-primary"
               />
-              <button type="button" onClick={() => setShowNew(!showNew)} className="absolute right-2 top-1.5 text-muted-foreground hover:text-foreground">
-                {showNew ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              <button type="button" onClick={() => setShowNew(!showNew)} aria-label={showNew ? 'Hide new password' : 'Show new password'} className="absolute right-2 top-1.5 text-muted-foreground hover:text-foreground">
+                {showNew ? <EyeOff className="w-3.5 h-3.5" aria-hidden="true" /> : <Eye className="w-3.5 h-3.5" aria-hidden="true" />}
               </button>
             </div>
             {newPwd.length > 0 && (
-              <div className="flex gap-2 mt-1.5">
+              <div id="cp-new-rules" className="flex gap-2 mt-1.5" aria-live="polite">
                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${newPwd.length >= 8 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'}`}>
                   {newPwd.length >= 8 ? '✓' : '✗'} 8+ chars
                 </span>
@@ -98,18 +101,21 @@ export function ChangePassword() {
 
           {/* Confirm */}
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Confirm New Password</label>
+            <label htmlFor="cp-confirm" className="text-xs font-medium text-muted-foreground">Confirm New Password</label>
             <input
+              id="cp-confirm"
               type="password"
               value={confirmPwd}
               onChange={(e) => setConfirmPwd(e.target.value)}
               autoComplete="new-password"
+              aria-describedby={confirmPwd && confirmPwd !== newPwd ? 'cp-confirm-err' : undefined}
+              aria-invalid={confirmPwd !== '' && confirmPwd !== newPwd}
               className={`w-full mt-1 bg-background border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary ${
                 confirmPwd && confirmPwd !== newPwd ? 'border-destructive' : 'border-border'
               }`}
             />
             {confirmPwd && confirmPwd !== newPwd && (
-              <p className="text-[10px] text-destructive mt-0.5">Passwords do not match</p>
+              <p id="cp-confirm-err" className="text-[10px] text-destructive mt-0.5" role="alert">Passwords do not match</p>
             )}
           </div>
 

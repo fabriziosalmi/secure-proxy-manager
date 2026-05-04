@@ -153,26 +153,40 @@ export function GlobalSearch() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]" onClick={() => setOpen(false)}>
-      <div className="fixed inset-0 bg-black/50 -webkit-backdrop-blur-xl backdrop-blur-xl" />
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
+      onClick={() => setOpen(false)}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="global-search-title"
+    >
+      <h2 id="global-search-title" className="sr-only">Global search</h2>
+      <div className="fixed inset-0 bg-black/50 -webkit-backdrop-blur-xl backdrop-blur-xl" aria-hidden="true" />
       <div
         className="relative w-full max-w-lg glass-surface rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up"
         onClick={e => e.stopPropagation()}
       >
         {/* Search input */}
         <div className="flex items-center px-4 py-3.5 border-b border-white/[0.06]">
-          <Search className="w-4 h-4 text-muted-foreground mr-3 shrink-0" />
+          <Search className="w-4 h-4 text-muted-foreground mr-3 shrink-0" aria-hidden="true" />
           <input
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Search IPs, domains, logs, pages..."
+            aria-label="Search IPs, domains, logs, pages"
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 outline-none"
           />
-          {loading && <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />}
-          <button type="button" onClick={() => setOpen(false)} title="Close search" className="text-muted-foreground hover:text-foreground ml-2 btn-press">
-            <X className="w-4 h-4" />
+          {loading && (
+            <div
+              role="status"
+              aria-label="Searching"
+              className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2"
+            />
+          )}
+          <button type="button" onClick={() => setOpen(false)} aria-label="Close search" className="text-muted-foreground hover:text-foreground ml-2 btn-press">
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
 

@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { useQuery } from '@tanstack/react-query';
 import type { SettingRow } from '../types';
 import { Save, Download, Shield, Network, Key, Bell } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { z } from 'zod';
@@ -35,6 +35,11 @@ export function Settings() {
   });
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+  // Synchronous latch — React batches the isSaving state update so the
+  // disabled prop on the button doesn't reflect until the next render. A
+  // double-click within the same tick would fire handleSave twice and
+  // POST settings twice. The ref blocks the second call immediately.
+  const savingRef = useRef(false);
 
   useEffect(() => {
     if (!loading && !error && Array.isArray(settingsData)) {
@@ -50,8 +55,10 @@ export function Settings() {
   };
 
   const handleSave = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setIsSaving(true);
-    
+
     try {
       // Validate form data before submitting
       settingsSchema.parse(formData);
@@ -64,6 +71,7 @@ export function Settings() {
       } else {
         toast.error('Validation failed');
       }
+      savingRef.current = false;
       setIsSaving(false);
       return;
     }
@@ -98,6 +106,7 @@ export function Settings() {
     } catch {
       toast.error('Failed to save settings', { id: loadingToast });
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };
