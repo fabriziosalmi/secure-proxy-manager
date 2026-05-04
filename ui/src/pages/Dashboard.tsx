@@ -1,26 +1,18 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Zap, Download, Copy, Check, Brain, AlertTriangle, RotateCcw } from 'lucide-react';
-import { Area, Bar, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, PieChart, Pie } from 'recharts';
-import React, { useEffect, useState } from 'react';
+import { Zap, Download, Copy, Check, Brain, RotateCcw } from 'lucide-react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { TimelineEntry, SecurityScore, DashboardSummary, CacheStats } from '../types';
 
-const REFETCH = 30_000;
-const C = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899'];
+// Lazy-load the recharts-based chart cards. Recharts is ~110 KB gzipped
+// and was previously in the initial bundle even though the dashboard's
+// stat tiles render before the charts ever paint.
+const DashboardCharts = lazy(() => import('../components/dashboard/DashboardCharts'));
 
-const TOOLTIP_STYLE = {
-  backgroundColor: 'rgba(15, 23, 42, 0.92)',
-  backdropFilter: 'blur(12px)',
-  WebkitBackdropFilter: 'blur(12px)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  borderRadius: '8px',
-  fontSize: '11px',
-  boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-  fontVariantNumeric: 'tabular-nums' as const,
-};
+const REFETCH = 30_000;
 
 export function Dashboard() {
   const queryClient = useQueryClient();
@@ -81,8 +73,17 @@ export function Dashboard() {
           <button type="button" onClick={async () => {
               if (!confirm('Reset all counters? This clears proxy logs and WAF stats.')) return;
               const t = toast.loading('Resetting counters...');
-              try { await api.post('counters/reset'); toast.success('All counters reset', { id: t }); queryClient.invalidateQueries(); }
-              catch { toast.error('Reset failed', { id: t }); }
+              try {
+                await api.post('counters/reset');
+                toast.success('All counters reset', { id: t });
+                // Scope to data the reset actually touches — invalidating
+                // every query (incl. settings/auth/blacklist) caused a
+                // refetch storm and put auth-derived state into a brief
+                // inconsistent window.
+                ['dashboard', 'timeline', 'score', 'cache', 'logs', 'stats', 'analytics'].forEach(
+                  (key) => queryClient.invalidateQueries({ queryKey: [key] })
+                );
+              } catch { toast.error('Reset failed', { id: t }); }
             }}
             className="flex items-center px-3 py-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg text-sm font-medium btn-press transition-colors">
             <RotateCcw className="w-3.5 h-3.5 mr-1.5" />Reset
@@ -147,73 +148,16 @@ export function Dashboard() {
         )}
       </div>
 
-      {/* Chart + Threat categories + Top blocked — 3 columns */}
-      <div className="grid gap-3 lg:grid-cols-12">
-        {/* Traffic chart */}
-        <Card className="lg:col-span-5">
-          <CardHeader className="p-3 pb-0">
-            <CardTitle className="text-sm">Traffic 24h</CardTitle>
-          </CardHeader>
-          <CardContent className="p-2">
-            <div className="h-[180px]">
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                <ComposedChart data={chart} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="cT" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
-                  </defs>
-                  <XAxis dataKey="time" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
-                  <YAxis yAxisId="left" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
-                  <YAxis yAxisId="right" orientation="right" stroke="#ef4444" fontSize={9} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} />
-                  <Area yAxisId="left" type="monotone" dataKey="total" name="Total" stroke="#3b82f6" strokeWidth={1.5} fill="url(#cT)" />
-                  <Bar yAxisId="right" dataKey="blocked" name="Blocked" fill="#ef4444" opacity={0.7} radius={[2, 2, 0, 0]} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Threat categories pie */}
-        <Card className="lg:col-span-3">
-          <CardHeader className="p-3 pb-0">
-            <CardTitle className="text-sm">Threats</CardTitle>
-          </CardHeader>
-          <CardContent className="p-2">
-            {(s?.threat_categories?.length ?? 0) > 0 && s ? (
-              <>
-                <div className="h-[130px]">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                    <PieChart><Pie data={s.threat_categories} dataKey="count" nameKey="category" cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={3}>
-                      {s.threat_categories.map((_: unknown, i: number) => <Cell key={i} fill={C[i % C.length]} />)}
-                    </Pie><Tooltip contentStyle={TOOLTIP_STYLE} /></PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex flex-wrap gap-1 mt-1">{s.threat_categories.map((c: { category: string; count: number }, i: number) => (
-                  <span key={c.category} className="text-[10px] px-1.5 py-0.5 rounded-full border" style={{ borderColor: C[i % C.length] + '40', color: C[i % C.length] }}>{c.category} ({c.count})</span>
-                ))}</div>
-              </>
-            ) : <div className="h-[180px] flex items-center justify-center text-muted-foreground text-xs">No threats</div>}
-          </CardContent>
-        </Card>
-
-        {/* Top blocked */}
-        <Card className="lg:col-span-4">
-          <CardHeader className="p-3 pb-0">
-            <CardTitle className="text-sm flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 text-destructive" />Top Blocked (24h)</CardTitle>
-          </CardHeader>
-          <CardContent className="p-2">
-            <div className="space-y-1 max-h-[180px] overflow-y-auto custom-scrollbar">
-              {s?.top_blocked?.slice(0, 8).map((item: { dest: string; count: number }, i: number) => (
-                <div key={i} className="flex items-center justify-between py-1 text-xs row-hover rounded px-1">
-                  <span className="truncate max-w-[200px] text-muted-foreground font-mono" title={item.dest}>{item.dest}</span>
-                  <span className="font-bold text-destructive ml-2 shrink-0">{item.count}</span>
-                </div>
-              ))}
-              {(!s?.top_blocked?.length) && <div className="text-center py-6 text-muted-foreground text-xs">No blocks in 24h</div>}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Chart + Threat categories + Top blocked — 3 columns (lazy: recharts chunk) */}
+      <Suspense fallback={
+        <div className="grid gap-3 lg:grid-cols-12">
+          <Card className="lg:col-span-5"><CardContent className="p-2"><div className="h-[180px] animate-pulse bg-white/[0.02] rounded" role="status" aria-label="Loading traffic chart" /></CardContent></Card>
+          <Card className="lg:col-span-3"><CardContent className="p-2"><div className="h-[180px] animate-pulse bg-white/[0.02] rounded" role="status" aria-label="Loading threats chart" /></CardContent></Card>
+          <Card className="lg:col-span-4"><CardContent className="p-2"><div className="h-[180px] animate-pulse bg-white/[0.02] rounded" role="status" aria-label="Loading top blocked" /></CardContent></Card>
+        </div>
+      }>
+        <DashboardCharts chart={chart} summary={s} />
+      </Suspense>
 
       {/* Recent blocks + WAF + Cache — 3 columns */}
       <div className="grid gap-3 lg:grid-cols-3">
