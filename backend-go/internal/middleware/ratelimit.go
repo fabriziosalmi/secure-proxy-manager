@@ -87,42 +87,31 @@ func GlobalRateLimit(rate float64, burst int) func(http.Handler) http.Handler {
 	}
 }
 
+// extractIP returns the client IP used for per-IP rate limiting.
+//
+// Trust model: X-Forwarded-For is honored ONLY when the immediate peer
+// (r.RemoteAddr) is on a private/loopback network — i.e. when the request
+// came through our own front-door reverse proxy on the docker network.
+// We take the LEFT-MOST entry in X-Forwarded-For, which is the original
+// client IP per RFC 7239 / common reverse-proxy convention. If the header
+// is absent or the peer is public (no trusted hop), we fall back to
+// r.RemoteAddr's host.
 func extractIP(r *http.Request) string {
-	// Trust X-Forwarded-For only from private networks.
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
 	}
 	ip := net.ParseIP(host)
-	if ip != nil && isPrivate(ip) {
+	if ip != nil && (ip.IsPrivate() || ip.IsLoopback()) {
 		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
 			for _, part := range splitComma(fwd) {
-				return part
+				if part != "" {
+					return part
+				}
 			}
 		}
 	}
 	return host
-}
-
-var privateNets = func() []*net.IPNet {
-	cidrs := []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
-	nets := make([]*net.IPNet, 0, len(cidrs))
-	for _, cidr := range cidrs {
-		_, network, _ := net.ParseCIDR(cidr)
-		if network != nil {
-			nets = append(nets, network)
-		}
-	}
-	return nets
-}()
-
-func isPrivate(ip net.IP) bool {
-	for _, network := range privateNets {
-		if network.Contains(ip) {
-			return true
-		}
-	}
-	return false
 }
 
 func splitComma(s string) []string {

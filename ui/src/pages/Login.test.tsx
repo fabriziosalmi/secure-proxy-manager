@@ -10,6 +10,10 @@ vi.mock('../lib/api', () => ({
     get: vi.fn(),
     interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
   },
+  // Mirrors the real helper: persist the token so the existing assertions
+  // on localStorage.getItem('auth_token') keep working after Login.tsx
+  // switched from a direct setItem to setAuthToken().
+  setAuthToken: (token: string) => localStorage.setItem('auth_token', token),
 }))
 
 import { api } from '../lib/api'

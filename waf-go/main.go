@@ -307,7 +307,9 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 				Score:    10,
 			})
 			score += 10
-			log.Printf("WAF ML-DGA score=%d domain=%s dga_score=%d\n", dgaResult.Score, host, dgaResult.Score)
+			// %q quotes + escapes control bytes so an attacker-controlled Host
+			// header (newline, tab, ANSI escapes) cannot forge log entries.
+			log.Printf("WAF ML-DGA score=%d domain=%q dga_score=%d\n", dgaResult.Score, host, dgaResult.Score)
 		}
 
 		// Typosquatting detection — domains impersonating known brands
@@ -319,7 +321,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 				Score:    10,
 			})
 			score += 10
-			log.Printf("WAF ML-TYPO target=%s technique=%s distance=%d domain=%s\n",
+			log.Printf("WAF ML-TYPO target=%q technique=%q distance=%d domain=%q\n",
 				typoResult.Target, typoResult.Technique, typoResult.Distance, host)
 		}
 	}
@@ -408,7 +410,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 
 	// Log all matches for observability, even if below threshold
 	if len(matches) > 0 && score < blockThreshold {
-		log.Printf("WAF OBSERVE score=%d/%d rules=[%s] url=%s\n",
+		log.Printf("WAF OBSERVE score=%d/%d rules=[%s] url=%q\n",
 			score, blockThreshold, strings.Join(ruleIDs, ","), truncate(rawURL, 200))
 	}
 
@@ -423,7 +425,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 			primaryCategory = categories[0]
 		}
 
-		log.Printf("WAF BLOCKED score=%d/%d categories=[%s] rules=[%s] source=%s url=%s\n",
+		log.Printf("WAF BLOCKED score=%d/%d categories=[%s] rules=[%s] source=%s url=%q\n",
 			score, blockThreshold, strings.Join(categories, ","), strings.Join(ruleIDs, ","),
 			source, truncate(rawURL, 200))
 
@@ -664,6 +666,7 @@ func main() {
 		h := &MgmtHandlers{}
 		healthMux := http.NewServeMux()
 		healthMux.HandleFunc("/health", h.HealthHandler) // unauthenticated — used by Docker healthcheck
+		healthMux.HandleFunc("/metrics", h.MetricsHandler) // unauthenticated — Prometheus exposition (no sensitive data)
 		healthMux.HandleFunc("/stats", mgmtAuthMiddleware(h.StatsHandler))
 		healthMux.HandleFunc("/reset", mgmtAuthMiddleware(h.ResetHandler))
 		healthMux.HandleFunc("/categories", mgmtAuthMiddleware(h.CategoriesHandler))
@@ -710,6 +713,91 @@ func mgmtAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 // ── Management Handlers ─────────────────────────────────────────────────────
 
 type MgmtHandlers struct{}
+
+// MetricsHandler exposes a small set of operational counters in the
+// Prometheus text exposition format. It is intentionally unauthenticated
+// — only aggregate counters are emitted (no rule names, no destinations,
+// no User-Agents) so it leaks nothing more than the existing /health
+// endpoint already does. Wire to Prometheus with a scrape job pointed at
+// http://waf:8080/metrics on the internal proxy network.
+func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+
+	totalRules := 0
+	for _, cr := range blockRules {
+		totalRules += len(cr.Rules)
+	}
+
+	disabledCatMu.RLock()
+	disabledCatCount := len(disabledCats)
+	disabledCatMu.RUnlock()
+
+	heuristicsEnabled := 0
+	for _, on := range []bool{
+		heuristicCfg.EntropyThreshold, heuristicCfg.BeaconingDetection,
+		heuristicCfg.PIICounter, heuristicCfg.DestinationSharding,
+		heuristicCfg.HeaderMorphing, heuristicCfg.ProtocolGhosting,
+		heuristicCfg.SequenceValidation,
+	} {
+		if on {
+			heuristicsEnabled++
+		}
+	}
+
+	cacheStats := safeCache.Stats()
+
+	fmt.Fprintf(w,
+		"# HELP waf_requests_total Total ICAP requests inspected.\n"+
+			"# TYPE waf_requests_total counter\n"+
+			"waf_requests_total %d\n"+
+			"# HELP waf_blocked_total Requests blocked by the WAF.\n"+
+			"# TYPE waf_blocked_total counter\n"+
+			"waf_blocked_total %d\n"+
+			"# HELP waf_high_entropy_total Requests flagged as high-entropy (URL or body).\n"+
+			"# TYPE waf_high_entropy_total counter\n"+
+			"waf_high_entropy_total %d\n"+
+			"# HELP waf_requests_last_minute Approximate requests per minute (rolling reset).\n"+
+			"# TYPE waf_requests_last_minute gauge\n"+
+			"waf_requests_last_minute %d\n"+
+			"# HELP waf_rules_total Number of regex rules loaded.\n"+
+			"# TYPE waf_rules_total gauge\n"+
+			"waf_rules_total %d\n"+
+			"# HELP waf_categories_total Number of rule categories loaded.\n"+
+			"# TYPE waf_categories_total gauge\n"+
+			"waf_categories_total %d\n"+
+			"# HELP waf_categories_disabled Number of rule categories currently disabled.\n"+
+			"# TYPE waf_categories_disabled gauge\n"+
+			"waf_categories_disabled %d\n"+
+			"# HELP waf_block_threshold Score threshold at which requests are blocked.\n"+
+			"# TYPE waf_block_threshold gauge\n"+
+			"waf_block_threshold %d\n"+
+			"# HELP waf_heuristics_enabled Number of heuristic detectors currently active.\n"+
+			"# TYPE waf_heuristics_enabled gauge\n"+
+			"waf_heuristics_enabled %d\n",
+		stats.totalRequests.Load(),
+		stats.totalBlocked.Load(),
+		stats.highEntropyCount.Load(),
+		stats.recentCount.Load(),
+		totalRules,
+		len(blockRules),
+		disabledCatCount,
+		blockThreshold,
+		heuristicsEnabled,
+	)
+
+	if hits, ok := cacheStats["safe_cache_hits"]; ok {
+		fmt.Fprintf(w,
+			"# HELP waf_safe_cache_hits_total Cache hits on the safe-URL fast path.\n"+
+				"# TYPE waf_safe_cache_hits_total counter\n"+
+				"waf_safe_cache_hits_total %v\n", hits)
+	}
+	if size, ok := cacheStats["safe_cache_size"]; ok {
+		fmt.Fprintf(w,
+			"# HELP waf_safe_cache_size Number of entries currently in the safe-URL cache.\n"+
+				"# TYPE waf_safe_cache_size gauge\n"+
+				"waf_safe_cache_size %v\n", size)
+	}
+}
 
 func (h *MgmtHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	total := 0

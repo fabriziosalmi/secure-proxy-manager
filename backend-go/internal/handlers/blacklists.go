@@ -338,17 +338,30 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 		col = "domain"
 	}
 
-	// Load existing entries.
+	// Load existing entries — used for in-memory de-duplication of the
+	// import. A scan failure means we silently lose track of an existing
+	// row and may try to re-insert it (INSERT OR IGNORE saves us at the
+	// SQL layer, but the resulting "added" counter will be wrong). Log
+	// and surface a server error if we can't even open the cursor.
 	existing := map[string]struct{}{}
-	rows, _ := h.db.Query(fmt.Sprintf("SELECT %s FROM %s", col, table))
-	if rows != nil {
-		for rows.Next() {
-			var v string
-			rows.Scan(&v) //nolint:errcheck
-			existing[v] = struct{}{}
-		}
-		rows.Close()
+	rows, err := h.db.Query(fmt.Sprintf("SELECT %s FROM %s", col, table))
+	if err != nil {
+		log.Error().Err(err).Str("table", table).Msg("import: cannot read existing entries")
+		writeError(w, http.StatusInternalServerError, "database error reading existing entries")
+		return
 	}
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			log.Warn().Err(err).Str("table", table).Msg("import: skipping malformed existing row in dedup scan")
+			continue
+		}
+		existing[v] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		log.Warn().Err(err).Str("table", table).Msg("import: dedup cursor terminated with error — duplicate count may be off")
+	}
+	rows.Close()
 
 	var toInsert [][2]string
 	importDesc := "Imported on " + time.Now().Format("2006-01-02")
@@ -392,8 +405,10 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 		added++
 	}
 
-	// Batch insert: 5000 rows per transaction.
+	// Batch insert: 5000 rows per transaction. Track per-statement failures
+	// so the response counter reflects what actually landed in the DB.
 	const batchSize = 5000
+	insertFailed := 0
 	for i := 0; i < len(toInsert); i += batchSize {
 		end := i + batchSize
 		if end > len(toInsert) {
@@ -402,23 +417,31 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 		tx, err := h.db.Begin()
 		if err != nil {
 			log.Error().Err(err).Msg("batch insert begin failed")
-			break
+			insertFailed += end - i
+			continue
 		}
 		stmt, err := tx.Prepare(fmt.Sprintf("INSERT OR IGNORE INTO %s (%s, description) VALUES(?,?)", table, col))
 		if err != nil {
 			_ = tx.Rollback()
 			log.Error().Err(err).Msg("batch insert prepare failed")
-			break
+			insertFailed += end - i
+			continue
 		}
 		for _, pair := range toInsert[i:end] {
-			stmt.Exec(pair[0], pair[1]) //nolint:errcheck
+			if _, err := stmt.Exec(pair[0], pair[1]); err != nil {
+				insertFailed++
+				log.Debug().Err(err).Str("entry", pair[0]).Msg("import: row insert failed")
+			}
 		}
 		stmt.Close()
 		if err := tx.Commit(); err != nil {
 			_ = tx.Rollback()
 			log.Error().Err(err).Msg("batch insert commit failed")
+			insertFailed += end - i
 		}
 	}
+	added -= insertFailed
+	skipped += insertFailed
 	if added > 0 {
 		go propagate(h.db, h.cfg, blType)
 	}
