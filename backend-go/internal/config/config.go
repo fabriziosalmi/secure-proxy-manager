@@ -140,8 +140,15 @@ func loadOrGenerateEncKey() string {
 		log.Fatal().Err(err).Msg("cannot generate encryption key")
 	}
 	key := hex.EncodeToString(b)
-	if err := os.MkdirAll("/data", 0o700); err == nil {
-		os.WriteFile(encFile, []byte(key), 0o600) //nolint:errcheck
+	// Persist so the same key is reused across restarts. Failure here means
+	// every container restart will rotate the key, making any data encrypted
+	// with the previous key unrecoverable — that must not happen silently.
+	if err := os.MkdirAll("/data", 0o700); err != nil {
+		log.Warn().Err(err).Msg("encryption key: cannot create /data — key will not survive restart")
+		return key
+	}
+	if err := os.WriteFile(encFile, []byte(key), 0o600); err != nil {
+		log.Warn().Err(err).Msg("encryption key: cannot persist to /data/.enc_key — key will not survive restart")
 	}
 	return key
 }
@@ -162,8 +169,14 @@ func loadOrGenerateSecret() string {
 		log.Fatal().Err(err).Msg("cannot generate JWT secret")
 	}
 	secret := hex.EncodeToString(b)
-	if err := os.MkdirAll("/data", 0o700); err == nil {
-		os.WriteFile(jwtFile, []byte(secret), 0o600) //nolint:errcheck
+	// Persist so JWTs survive restart. If we can't, log it — every restart
+	// will invalidate every active session otherwise.
+	if err := os.MkdirAll("/data", 0o700); err != nil {
+		log.Warn().Err(err).Msg("JWT secret: cannot create /data — sessions will not survive restart")
+		return secret
+	}
+	if err := os.WriteFile(jwtFile, []byte(secret), 0o600); err != nil {
+		log.Warn().Err(err).Msg("JWT secret: cannot persist to /data/.jwt_secret — sessions will not survive restart")
 	}
 	return secret
 }

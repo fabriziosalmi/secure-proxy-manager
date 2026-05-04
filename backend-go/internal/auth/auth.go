@@ -168,15 +168,9 @@ func (s *Service) ValidateRefreshToken(tokenStr string) (string, error) {
 }
 
 // ValidateJWT parses and validates a signed JWT string.
+// It enforces type=="access" so refresh tokens cannot be substituted for
+// access tokens on protected endpoints.
 func (s *Service) ValidateJWT(tokenStr string) (string, error) {
-	h := tokenHash(tokenStr)
-	s.jwtBlacklistMu.RLock()
-	if expiry, revoked := s.jwtBlacklist[h]; revoked && time.Now().Before(expiry) {
-		s.jwtBlacklistMu.RUnlock()
-		return "", errors.New("token has been revoked")
-	}
-	s.jwtBlacklistMu.RUnlock()
-
 	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
@@ -190,6 +184,22 @@ func (s *Service) ValidateJWT(tokenStr string) (string, error) {
 	if !ok {
 		return "", errors.New("invalid claims")
 	}
+	// Reject refresh tokens — only "access" (or unset legacy) tokens may
+	// authenticate API requests. Refresh tokens go through ValidateRefreshToken.
+	if t, _ := claims["type"].(string); t == "refresh" {
+		return "", errors.New("refresh token not accepted on access path")
+	}
+
+	// Check revocation AFTER signature validation so we don't leak state about
+	// invalid tokens (timing oracle on blacklist membership).
+	h := tokenHash(tokenStr)
+	s.jwtBlacklistMu.RLock()
+	if expiry, revoked := s.jwtBlacklist[h]; revoked && time.Now().Before(expiry) {
+		s.jwtBlacklistMu.RUnlock()
+		return "", errors.New("token has been revoked")
+	}
+	s.jwtBlacklistMu.RUnlock()
+
 	username, _ := claims["sub"].(string)
 	if username == "" {
 		return "", errors.New("missing subject")
@@ -214,12 +224,16 @@ func (s *Service) RevokeJWT(tokenStr string) {
 	s.jwtBlacklist[h] = exp
 	s.jwtBlacklistMu.Unlock()
 
-	// Persist to DB for restart survival.
+	// Persist to DB for restart survival. Failure is non-fatal (revocation
+	// still works in-memory until restart) but must be logged so operators
+	// can detect a divergence between in-memory and DB state.
 	if s.db != nil {
-		s.db.Exec( //nolint:errcheck
+		if _, err := s.db.Exec(
 			"INSERT OR REPLACE INTO jwt_blacklist(token_hash, expires_at) VALUES(?,?)",
 			h, exp.Format(time.RFC3339),
-		)
+		); err != nil {
+			log.Warn().Err(err).Msg("failed to persist revoked JWT to blacklist DB — revocation will not survive restart")
+		}
 	}
 }
 

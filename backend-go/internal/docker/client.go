@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -43,8 +44,9 @@ func New() *Client {
 // KillContainer sends signal to a container via the Docker Engine API.
 // Equivalent to: docker kill --signal=<sig> <name>
 func (c *Client) KillContainer(name, signal string) error {
-	url := fmt.Sprintf("http://localhost/v1.41/containers/%s/kill?signal=%s", name, signal)
-	req, err := http.NewRequest(http.MethodPost, url, nil)
+	u := fmt.Sprintf("http://localhost/v1.41/containers/%s/kill?signal=%s",
+		url.PathEscape(name), url.QueryEscape(signal))
+	req, err := http.NewRequest(http.MethodPost, u, nil)
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
 	}
@@ -62,8 +64,8 @@ func (c *Client) KillContainer(name, signal string) error {
 // RestartContainer restarts a container via the Docker Engine API.
 // Equivalent to: docker restart <name>
 func (c *Client) RestartContainer(name string) error {
-	url := fmt.Sprintf("http://localhost/v1.41/containers/%s/restart", name)
-	req, err := http.NewRequest(http.MethodPost, url, nil)
+	u := fmt.Sprintf("http://localhost/v1.41/containers/%s/restart", url.PathEscape(name))
+	req, err := http.NewRequest(http.MethodPost, u, nil)
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
 	}
@@ -87,7 +89,7 @@ func (c *Client) ExecContainer(name string, cmd []string) (string, error) {
 		"AttachStderr": true,
 		"Cmd":          cmd,
 	})
-	createURL := fmt.Sprintf("http://localhost/v1.41/containers/%s/exec", name)
+	createURL := fmt.Sprintf("http://localhost/v1.41/containers/%s/exec", url.PathEscape(name))
 	createReq, err := http.NewRequest(http.MethodPost, createURL, bytes.NewReader(createBody))
 	if err != nil {
 		return "", fmt.Errorf("build exec create request: %w", err)
