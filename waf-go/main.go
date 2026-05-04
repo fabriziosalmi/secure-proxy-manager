@@ -782,6 +782,10 @@ func (h *MgmtHandlers) CategoriesToggleHandler(w http.ResponseWriter, r *http.Re
 		http.Error(w, "POST only", 405)
 		return
 	}
+	// Bound the request body — this endpoint accepts a tiny JSON object.
+	// Without a limit, an attacker (after auth) could OOM the WAF by streaming
+	// arbitrary bytes into json.Decoder.
+	r.Body = http.MaxBytesReader(w, r.Body, 4*1024)
 	var req struct {
 		Category string `json:"category"`
 		Enabled  bool   `json:"enabled"`

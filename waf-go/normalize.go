@@ -2,6 +2,7 @@ package main
 
 import (
 	"html"
+	"net"
 	"net/url"
 	"regexp"
 	"strings"
@@ -67,29 +68,34 @@ func compactInput(s string) string {
 	return reAllSpace.ReplaceAllString(s, "")
 }
 
-// isLANHost returns true if the host is a private/LAN IP address.
+// isLANHost returns true if the host is a private/LAN destination.
 // These destinations should bypass WAF inspection (not SSRF).
+//
+// SECURITY: previous implementation used naive string prefix matching like
+// strings.HasPrefix(h, "172.2") which matched public IPs in 172.20.0.0/8
+// (e.g. 172.200.0.1) and incorrectly bypassed the WAF for them. We now use
+// net.ParseIP + IsPrivate/IsLoopback/IsLinkLocalUnicast which correctly
+// covers RFC1918 (10/8, 172.16/12, 192.168/16), 127/8, ::1, fc00::/7, fe80::/10.
 func isLANHost(host string) bool {
-	// Strip port
-	h := host
-	if strings.Contains(h, "[") && strings.Contains(h, "]") {
-		// IPv6 with port: [::1]:8080
-		idx := strings.LastIndex(h, "]")
-		h = h[1:idx]
-	} else if strings.Count(h, ":") == 1 {
-		// IPv4 with port: 127.0.0.1:8080
-		idx := strings.LastIndex(h, ":")
-		h = h[:idx]
+	if host == "" {
+		return false
 	}
-	// Note: bare IPv6 like ::1 should not be stripped if it has no brackets/port
-	
-	return strings.HasPrefix(h, "10.") ||
-		strings.HasPrefix(h, "192.168.") ||
-		strings.HasPrefix(h, "172.16.") || strings.HasPrefix(h, "172.17.") ||
-		strings.HasPrefix(h, "172.18.") || strings.HasPrefix(h, "172.19.") ||
-		strings.HasPrefix(h, "172.2") || strings.HasPrefix(h, "172.30.") ||
-		strings.HasPrefix(h, "172.31.") ||
-		h == "localhost" || h == "127.0.0.1" || h == "::1"
+	h, _, err := net.SplitHostPort(host)
+	if err != nil {
+		// SplitHostPort fails on bare hostnames or bare IPv6 like "::1"
+		h = host
+	}
+	// Strip surrounding brackets from bare bracketed IPv6: "[::1]"
+	h = strings.TrimPrefix(strings.TrimSuffix(h, "]"), "[")
+	if h == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(h)
+	if ip == nil {
+		// Not an IP literal — treat as public hostname.
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
 }
 
 func isTextContent(contentType string) bool {
