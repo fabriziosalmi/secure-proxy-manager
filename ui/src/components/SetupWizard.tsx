@@ -143,14 +143,19 @@ export function SetupWizard({ onComplete }: Props) {
   const canNext = step === 0 ? env !== null : step === 1 ? true : true;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-background flex items-center justify-center p-4">
+    <div
+      className="fixed inset-0 z-[100] bg-background flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="setup-wizard-title"
+    >
       <div className="w-full max-w-2xl">
         {/* Logo + title */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
             <img src="/logo.svg" alt="" className="w-12 h-12" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Welcome to Secure Proxy Manager</h1>
+          <h1 id="setup-wizard-title" className="text-2xl font-bold tracking-tight">Welcome to Secure Proxy Manager</h1>
           <p className="text-sm text-muted-foreground mt-1">Let's configure your proxy in 30 seconds</p>
         </div>
 

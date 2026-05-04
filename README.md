@@ -124,7 +124,8 @@ docker compose up -d --build
 - **API Documentation**: `GET /api/docs` — 60+ endpoints with descriptions.
 - **E2E Test Suite**: 104 checks across 3 parts — `./tests/e2e.sh host user pass`.
 - **Notifications**: Telegram, Discord, Gotify, ntfy.sh, MS Teams, custom webhook — with retry and backoff.
-- **Protocol Hardening**: Method whitelist, header stripping, HSTS, max header size.
+- **Protocol Hardening**: Method whitelist (`Safe_methods`), header stripping, HSTS, max header size, outbound TLS hardened to 1.2+ with ECDHE-only cipher list.
+- **Prometheus metrics**: WAF exposes `/metrics` (port 8080) — `waf_requests_total`, `waf_blocked_total`, `waf_high_entropy_total`, `waf_block_threshold`, cache hits/size and more. Aggregate counters only — no rule names or destinations are leaked.
 - **Audit Trail**: Who changed what, when — `/api/audit-log`.
 - **Blocklists**: 16 popular sources, geo-blocking, paginated UI with search.
 - **Custom Block Pages**: Branded dark-theme error pages.
