@@ -29,16 +29,17 @@ export function isTokenExpired(token: string): boolean {
 let reloadScheduled = false;
 let expiryWarningShown = false;
 
-// Reset warning flag when a new token is stored (e.g. after re-login)
-if (typeof localStorage !== 'undefined' && typeof localStorage.setItem === 'function') {
-  const _origSetItem = localStorage.setItem.bind(localStorage);
-  localStorage.setItem = function (key: string, value: string) {
-    if (key === 'auth_token') {
-      expiryWarningShown = false;
-      reloadScheduled = false;
-    }
-    return _origSetItem(key, value);
-  };
+/**
+ * Persist a JWT and reset the expiry-tracking flags.
+ *
+ * Always use this helper instead of calling localStorage.setItem('auth_token', …)
+ * directly — otherwise the "session expiring" warning won't re-arm after a fresh
+ * login, and the once-per-load reload guard may stay tripped.
+ */
+export function setAuthToken(token: string): void {
+  expiryWarningShown = false;
+  reloadScheduled = false;
+  localStorage.setItem('auth_token', token);
 }
 
 /** Check if token expires within N minutes. */

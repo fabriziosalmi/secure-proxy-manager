@@ -9,7 +9,7 @@ setup:
 	else \
 		echo "ℹ️  .env already exists"; \
 	fi
-	@mkdir -p data logs config
+	@mkdir -p data logs config config/dnsmasq.d
 
 # Build and start all services
 start: setup

@@ -189,9 +189,13 @@ acl CONNECT method CONNECT
 acl local_dst dst 10.0.0.0/8 192.168.0.0/16
 acl local_dst_url url_regex -i ^https?://192\.168\. ^https?://10\.
 
-# Block dangerous HTTP methods
+# HTTP method policy: positive allowlist (Safe_methods) + explicit dangerous-method
+# denylist for clearer audit logs. Anything not in Safe_methods is denied below
+# alongside the rest of the access rules.
+acl Safe_methods method GET HEAD POST OPTIONS CONNECT
 acl Dangerous_methods method PUT DELETE PATCH TRACE TRACK
 http_access deny Dangerous_methods
+http_access deny !Safe_methods
 
 # Access rules
 http_access deny !Safe_ports
@@ -292,6 +296,13 @@ request_body_max_size 10 MB
 
 # Limit request header size (prevents header-based buffer overflow/exfil)
 request_header_max_size 64 KB
+
+# Outbound TLS hardening — disable obsolete protocols, prefer modern ciphers.
+# Applies to direct CONNECT tunneling and (when enabled) SSL-bump origin
+# connections. NO_SSLv3,NO_TLSv1,NO_TLSv1_1 covers the obsolete versions;
+# we keep TLSv1.2+TLSv1.3 for compatibility with the long tail of older
+# legitimate origins. Cipher list mandates ECDHE forward secrecy + AEAD.
+tls_outgoing_options options=NO_SSLv3,NO_TLSv1,NO_TLSv1_1 cipher=ECDHE+AESGCM:ECDHE+CHACHA20:!aNULL:!eNULL:!MD5:!3DES:!RC4
 
 CONFEOF
 

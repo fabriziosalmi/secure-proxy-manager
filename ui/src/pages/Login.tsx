@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Shield } from 'lucide-react';
-import { api } from '../lib/api';
+import { api, setAuthToken } from '../lib/api';
 
 interface Props {
   onLogin: () => void;
@@ -20,7 +20,7 @@ export function Login({ onLogin }: Props) {
       const res = await api.post<{ access_token?: string; token?: string }>('auth/login', { username, password });
       const token = res.data.access_token || res.data.token;
       if (!token) throw new Error('No token received');
-      localStorage.setItem('auth_token', token);
+      setAuthToken(token);
       onLogin();
     } catch {
       setError('Invalid username or password');
