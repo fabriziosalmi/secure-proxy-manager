@@ -1,116 +1,133 @@
 # Configuration
 
-## Environment Variables
+All configuration lives in the `.env` file in the project root, which is read by `docker-compose.yml`. A small number of additional, mostly-optional values can be overridden by exporting them in the calling shell.
 
-All configuration is done via the `.env` file in the project root, which is read by `docker-compose.yml`.
-
-### Required
+## Authentication (required)
 
 | Variable | Description |
 |---|---|
-| `BASIC_AUTH_USERNAME` | HTTP Basic Auth username for the web UI and API |
-| `BASIC_AUTH_PASSWORD` | HTTP Basic Auth password (use a strong password) |
+| `BASIC_AUTH_USERNAME` | HTTP Basic auth username for the web UI and API |
+| `BASIC_AUTH_PASSWORD` | HTTP Basic auth password (use a strong password) |
+| `SECRET_KEY` | HMAC key used to sign JWT access and refresh tokens. Auto-generated when empty, but tokens then invalidate on every restart — set a stable value in production |
 
-### Backend
+## TLS for the web UI
 
 | Variable | Default | Description |
 |---|---|---|
-| `DATABASE_PATH` | `/data/secure_proxy.db` | Path to the SQLite database inside the container |
-| `PROXY_HOST` | `proxy` | Squid container hostname (Docker service name) |
+| `LETSENCRYPT_DOMAIN` | _empty_ | When set together with `LETSENCRYPT_EMAIL`, the `web` service obtains a real certificate via Let's Encrypt |
+| `LETSENCRYPT_EMAIL` | _empty_ | Email address used for the ACME account |
+| `CORS_ALLOWED_ORIGINS` | `https://localhost:8443` | Comma-separated list of origins allowed by the backend CORS policy. Add your public hostname when fronting the UI behind your own domain. |
+
+## Networking
+
+| Variable | Default | Description |
+|---|---|---|
+| `BACKEND_URL` | `http://backend:5000` | Backend URL the `web` service uses on the internal Docker network |
+| `REQUEST_TIMEOUT` | `120` | Web UI request timeout in seconds |
+| `PROXY_HOST` | `proxy` | Squid container hostname (used by the backend to send reload requests) |
 | `PROXY_PORT` | `3128` | Squid proxy port |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:8011,http://web:8011` | Comma-separated list of allowed CORS origins |
-| `PROXY_CONTAINER_NAME` | `secure-proxy-manager-proxy` | Docker container name used to send reconfigure signals |
+| `PROXY_BIND_IP` | `0.0.0.0` | Host interface that the Squid port is bound to. Set to `127.0.0.1` to restrict access to the local machine |
+| `PROXY_CONTAINER_NAME` | `secure-proxy-manager-proxy` | Docker container name used when issuing reconfigure signals |
+| `PROXY_IP` | _empty_ | LAN IP of the host. When set, dnsmasq publishes a WPAD record for browser auto-discovery |
+| `GUI_IP_WHITELIST` | _empty_ | Comma-separated client IPs allowed to connect to the proxy on the management ports even when blocked by other rules |
 
-### Web UI
-
-| Variable | Default | Description |
-|---|---|---|
-| `BACKEND_URL` | `http://backend:5000` | Backend API URL (internal Docker network) |
-| `REQUEST_TIMEOUT` | `30` | API request timeout in seconds |
-| `MAX_RETRIES` | `5` | Maximum retry attempts for backend connection |
-| `BACKOFF_FACTOR` | `1.0` | Exponential backoff multiplier for retries |
-
-### WAF
+## WAF
 
 | Variable | Default | Description |
 |---|---|---|
-| `BASIC_AUTH_USERNAME` | — | Must match the backend credential for `/api/internal/alert` |
-| `BASIC_AUTH_PASSWORD` | — | Must match the backend credential |
-| `WAF_BLOCK_THRESHOLD` | `10` | Anomaly score threshold above which a request is blocked |
-| `WAF_H_ENTROPY` | `1` | Enable Shannon entropy heuristic (1=on, 0=off) |
-| `WAF_H_ENTROPY_MAX` | `7.5` | Maximum entropy score before blocking |
-| `WAF_H_BEACONING` | `1` | Enable C2 beaconing detection heuristic |
-| `WAF_H_PII` | `1` | Enable PII leak counter heuristic |
-| `WAF_H_SHARDING` | `1` | Enable destination sharding heuristic |
-| `WAF_H_MORPHING` | `0` | Enable header morphing heuristic (disabled by default) |
-| `WAF_H_GHOSTING` | `1` | Enable protocol ghosting heuristic |
-| `WAF_H_SEQUENCE` | `0` | Enable sequence validation heuristic (disabled by default) |
+| `BASIC_AUTH_USERNAME` / `BASIC_AUTH_PASSWORD` | (required) | Used to authenticate the WAF when it calls back to `POST /api/internal/alert` |
+| `WAF_BLOCK_THRESHOLD` | `10` | Anomaly score at or above which a request is blocked |
+| `WAF_DISABLED_CATEGORIES` | _empty_ | Comma-separated rule category names to disable globally (for example `DEBUG_LEAK,RESPONSE_ANOMALY`) |
+| `WAF_H_ENTROPY` | `1` | Toggle the Shannon entropy heuristic |
+| `WAF_H_ENTROPY_MAX` | `7.5` | Maximum allowed entropy before the heuristic contributes to the score |
+| `WAF_H_BEACONING` | `1` | Toggle C2 beaconing detection |
+| `WAF_H_PII` | `1` | Toggle the PII leak heuristic |
+| `WAF_H_SHARDING` | `1` | Toggle the destination sharding heuristic |
+| `WAF_H_MORPHING` | `0` | Toggle the header morphing heuristic (off by default; noisy) |
+| `WAF_H_GHOSTING` | `1` | Toggle the protocol ghosting heuristic |
+| `WAF_H_SEQUENCE` | `0` | Toggle the request sequence heuristic (off by default; needs tuning) |
 
-### DNS
+Each toggle accepts `1`/`0` or `true`/`false`.
+
+## DNS
 
 | Variable | Default | Description |
 |---|---|---|
-| `DNS_UPSTREAM_1` | `1.1.1.3` | Primary upstream DNS resolver (Cloudflare malware-blocking) |
-| `DNS_UPSTREAM_2` | `9.9.9.9` | Secondary upstream DNS resolver (Quad9) |
-| `DNS_UPSTREAM_3` | `8.8.8.8` | Tertiary upstream DNS resolver (Google) |
+| `DNS_UPSTREAM_1` | `1.1.1.3` | Primary upstream resolver (Cloudflare malware-blocking) |
+| `DNS_UPSTREAM_2` | `9.9.9.9` | Secondary upstream resolver (Quad9) |
+| `DNS_UPSTREAM_3` | `8.8.8.8` | Tertiary upstream resolver (Google) |
 
-## Squid Configuration
+## Tailscale (optional sidecar)
 
-The `proxy/startup.sh` script generates `squid.conf` at container start. You can provide a custom configuration by placing it at:
+| Variable | Default | Description |
+|---|---|---|
+| `TS_AUTHKEY` | _empty_ | Tailscale authentication key. The sidecar refuses to start without one |
+| `TAILSCALE_HOSTNAME` | `secure-proxy` | Hostname registered on the tailnet |
 
-- `/config/custom_squid.conf` (highest priority)
-- `/config/squid.conf`
-- `/config/squid/squid.conf`
+The sidecar only runs under `docker compose --profile tailscale`.
 
-If none of these exist, the base configuration in `startup.sh` is used.
+## Squid configuration
+
+The `proxy/startup.sh` script generates `squid.conf` at container start. You cannot replace the base configuration entirely — the startup script enforces certain protections (direct-IP block ACLs, ICAP integration, log paths) regardless. You can append custom directives by placing them at:
+
+```
+/config/custom_squid_extra.conf
+```
+
+The file is concatenated to the generated `squid.conf` at startup. If a legacy `/config/custom_squid.conf` exists, it is renamed to `custom_squid_extra.conf` automatically.
 
 ::: warning
-The startup script enforces direct-IP blocking rules regardless of your custom config. If they are missing, they are appended automatically.
+Custom directives are appended after the base configuration; later directives override earlier ones in Squid only for a subset of options. Test your additions with `docker compose exec proxy squid -k parse` before relying on them.
 :::
 
-### Key Squid defaults
+### Default Squid settings
 
-| Setting | Value |
+| Setting | Default |
 |---|---|
-| Proxy port | `3128` |
-| Memory cache | 256 MB |
-| Disk cache | 2 GB at `/var/spool/squid` |
-| Max object size | 100 MB |
-| Connect timeout | 30 seconds |
-| DNS timeout | 5 seconds |
+| Listening port | `3128` |
+| Memory cache (`PROXY_MEMORY_CACHE_MB`) | `256` MB |
+| Disk cache (`PROXY_CACHE_SIZE_MB`) | `2000` MB at `/var/spool/squid` |
+| Maximum object size | `100` MB |
+| `connect_timeout` | `30 seconds` |
+| `dns_timeout` | `5 seconds` |
 
-## WAF Custom Rules
+These can be overridden through the **Settings** page of the web UI, which writes the values to `/config/squid_settings.env`.
 
-Create `/config/waf_custom_rules.txt` with one regex pattern per line. Lines starting with `#` are ignored. Patterns are compiled with `re.IGNORECASE`.
+## WAF custom rules
+
+Create `/config/waf_custom_rules.txt` with one regex per line. Lines starting with `#` are ignored. Each line is rejected if longer than 512 characters or if it contains a NUL byte. Restart the `waf` service to reload:
+
+```bash
+docker compose restart waf
+```
 
 Example:
+
 ```
-# Block requests containing specific keywords
-badterm
-(?i)malicious-pattern
+# Block requests containing internal codename
+project-codename
+(?i)pre-release-build
 ```
 
-The file is loaded at WAF container startup. Restart the `waf` service to reload.
+## SSL certificates (HTTPS filtering)
 
-## SSL Certificates
+If `/config/ssl_cert.pem` and `/config/ssl_key.pem` are missing, the proxy generates a self-signed RSA-2048 certificate valid for 3 650 days (ten years) at first start.
 
-If `/config/ssl_cert.pem` and `/config/ssl_key.pem` do not exist, they are auto-generated at startup (self-signed, 10-year validity, RSA 2048).
-
-To use your own certificate:
+To install your own certificate:
 
 ```bash
 cp your-cert.pem config/ssl_cert.pem
 cp your-key.pem config/ssl_key.pem
-docker-compose restart proxy
+docker compose restart proxy
 ```
 
-Clients must trust this certificate to avoid browser warnings when HTTPS filtering is enabled.
+Clients must trust this certificate to avoid browser warnings when SSL bump (HTTPS filtering) is active.
 
-### Installing the certificate on clients
+### Installing the CA on clients
 
 | Platform | Steps |
 |---|---|
-| Windows | Import to "Trusted Root Certification Authorities" via `certmgr.msc` |
-| macOS | Add to Keychain, then set trust for SSL |
+| Windows | Import to **Trusted Root Certification Authorities** via `certmgr.msc` |
+| macOS | Add to **Keychain Access**, then mark **Always Trust** for SSL |
 | Linux | Copy to `/usr/local/share/ca-certificates/` and run `update-ca-certificates` |
-| Mobile | Email the `.pem` file to the device and install via settings |
+| iOS / Android | Email the `.pem` file to the device, install via Settings → General → VPN and Device Management (iOS) or Security → Install certificate (Android) |

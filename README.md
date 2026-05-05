@@ -71,8 +71,8 @@ docker compose up -d --build
 | Metric | Value |
 |--------|-------|
 | E2E Tests | **104 checks, 99 passed, 0 failed** |
-| WAF Rules | **166 regex + 7 heuristic + 3 ML-lite** |
-| Security Packs | **21 toggleable categories** |
+| WAF Rules | **175 regex + 7 heuristic + 3 ML-lite** |
+| Security Packs | **23 toggleable categories** |
 | Attack Detection | **17/17 (100%)** |
 | False Positives | **0/7 (0%)** |
 | Evasion Resistance | **5/5 (double-encode, case-mix, null byte, unicode, long payload)** |
@@ -85,8 +85,8 @@ docker compose up -d --build
 
 ### Core
 - **Go Backend**: Single 16MB binary, ~20MB RAM. Zero Python dependencies.
-- **WAF Engine (Go ICAP)**: 166 regex + 7 heuristics + 3 ML-lite across 21 categories. Anomaly scoring, Shannon entropy, dual-scan (raw + normalized).
-- **Security Packs**: 21 toggleable WAF rule categories — enable/disable SQLi, XSS, C2, DLP packs from the API.
+- **WAF Engine (Go ICAP)**: 175 regex + 7 heuristics + 3 ML-lite across 23 categories. Anomaly scoring, Shannon entropy, dual-scan (raw + normalized).
+- **Security Packs**: 23 toggleable WAF rule categories — enable/disable SQLi, XSS, C2, DLP packs from the API.
 - **DNS Blackhole**: dnsmasq blocks 87K+ domains at L3 (zero HTTP overhead).
 - **HTTPS by Default**: Self-signed TLS auto-generated. Optional Let's Encrypt with certbot.
 - **Multi-Arch**: Runs on x86_64 and ARM64 (Raspberry Pi 4/5).
@@ -137,7 +137,7 @@ The project employs a microservices architecture:
 1. **Frontend (React 19/Vite/Nginx)**: Glass morphism design system with animated counters, staggered transitions, and frosted overlays. SPA with @tanstack/react-query, Recharts dashboards, paginated blacklists, Threat Intel page with Shadow IT/file types/domain cloud, global search (⌘K), mobile responsive.
 2. **Backend (Go)**: Single 16MB binary (chi router, zerolog, modernc/sqlite). 70+ endpoints, WebSocket log streaming, JWT auth + persistent blacklist, AES-256-GCM encrypted settings, global rate limiting, circuit breaker for WAF calls, pprof profiling, audit logging, SSRF-safe HTTP client with DNS pinning.
 3. **Proxy Engine (Squid 5.9)**: Caching/filtering with ICAP integration, custom branded block pages, IP ACL blocking, protocol hardening (method whitelist, header stripping, HSTS).
-4. **WAF Engine (Go ICAP)**: 166 regex rules + 7 behavioral heuristics + 3 ML-lite checks (DGA, typosquatting, safe URL cache). Anomaly scoring, Shannon entropy, dual-scan (raw + normalized).
+4. **WAF Engine (Go ICAP)**: 175 regex rules across 23 categories + 7 behavioral heuristics + 3 ML-lite checks (DGA, typosquatting, safe URL cache). Anomaly scoring, Shannon entropy, dual-scan (raw + normalized).
 5. **DNS Blackhole (dnsmasq)**: Internal DNS resolver that sinkhole-blocks 87K+ blacklisted domains at L3. Supports 600K+ entry blocklists with tuned memory and healthcheck timing.
 6. **Tailscale Sidecar** (optional): Secure remote access overlay network.
 
@@ -149,7 +149,7 @@ The project employs a microservices architecture:
 
 ```
 secure-proxy-manager/
-├── backend-go/               # Go backend (v2.0 — replaces Python)
+├── backend-go/               # Go backend
 │   ├── cmd/server/main.go    # Entry point, router, graceful shutdown
 │   └── internal/
 │       ├── auth/             # JWT + Basic Auth, rate limiting, persistent token blacklist
@@ -161,7 +161,6 @@ secure-proxy-manager/
 │       ├── middleware/       # CORS, rate limiting, circuit breaker, security headers
 │       ├── websocket/        # WebSocket hub with client lifecycle
 │       └── workers/          # Background: log tailing, retention, auto-refresh (context-aware)
-├── backend/                  # Python backend (legacy, kept for reference)
 ├── ui/                       # React 19 frontend
 │   └── src/
 │       ├── pages/            # Dashboard, Blacklists, ThreatIntel, Logs, Settings, Login
@@ -173,7 +172,7 @@ secure-proxy-manager/
 │   └── error-pages/          # Custom branded dark-theme block pages
 ├── waf-go/                   # Go ICAP WAF engine (10 modules)
 │   ├── main.go               # ICAP handlers, safe URL cache integration
-│   ├── rules.go              # 166 regex rules across 21 categories
+│   ├── rules.go              # 175 regex rules across 23 categories
 │   ├── heuristics.go         # 7 behavioral anomaly detection rules
 │   ├── bloom.go              # Safe URL cache (skip regex for known-clean URLs)
 │   ├── dga.go                # DGA domain detection (bigram + entropy analysis)
@@ -238,8 +237,6 @@ cd secure-proxy-manager
 git pull
 docker compose up -d --build
 ```
-   docker compose up -d
-   ```
 
 ### Need Help?
 
@@ -251,27 +248,65 @@ docker compose up -d --build
 
 ### Environment Variables
 
-#### Backend Service Variables
-| Variable | Description | Default | Used By |
-|----------|-------------|---------|---------|
-| `BASIC_AUTH_USERNAME` | HTTP Basic Auth username | required | Backend, UI, WAF |
-| `BASIC_AUTH_PASSWORD` | HTTP Basic Auth password | required | Backend, UI, WAF |
-| `DATABASE_PATH` | Path to SQLite database file | `/data/secure_proxy.db` | Backend |
-| `PROXY_HOST` | Squid proxy hostname (Docker service name) | `proxy` | Backend |
-| `PROXY_PORT` | Squid proxy port | `3128` | Backend |
-| `CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | `http://localhost:8011,http://web:8011` | Backend |
-| `PROXY_CONTAINER_NAME` | Docker container name for proxy | `secure-proxy-manager-proxy` | Backend |
+All values are read from `.env` (copy from `.env.example`). Tables list every variable wired to a service in `docker-compose.yml`; defaults match the compose file.
 
-#### Web UI Service Variables
-| Variable | Description | Default | Notes |
-|----------|-------------|---------|-------|
-| `BACKEND_URL` | Backend API URL | `http://backend:5000` | Internal Docker network |
-| `REQUEST_TIMEOUT` | API request timeout (seconds) | `30` | Increase for slow networks |
-| `MAX_RETRIES` | Maximum API retry attempts | `5` | For backend connection |
-| `BACKOFF_FACTOR` | Retry backoff multiplier | `1.0` | Exponential backoff |
-| `RETRY_WAIT_AFTER_STARTUP` | Wait time after startup (seconds) | `10` | Initial backend wait |
+#### Authentication
 
-**Note:** To customize these values, modify them in `docker-compose.yml` before starting the services.
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `BASIC_AUTH_USERNAME` | HTTP Basic auth username | required |
+| `BASIC_AUTH_PASSWORD` | HTTP Basic auth password (services refuse to start with the placeholder values) | required |
+| `SECRET_KEY` | HMAC key used to sign JWT access and refresh tokens | auto-generated when empty |
+
+#### Backend
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PROXY_HOST` | Squid container hostname used for reload requests | `proxy` |
+| `PROXY_PORT` | Squid proxy port | `3128` |
+| `PROXY_CONTAINER_NAME` | Docker container name used for reconfigure signals | `secure-proxy-manager-proxy` |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | `https://localhost:8443` |
+
+#### Web UI (`web` service)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `BACKEND_URL` | Backend API URL on the internal Docker network | `http://backend:5000` |
+| `REQUEST_TIMEOUT` | UI request timeout in seconds | `120` |
+| `LETSENCRYPT_DOMAIN` | When set with `LETSENCRYPT_EMAIL`, provisions a real certificate | empty |
+| `LETSENCRYPT_EMAIL` | ACME account email | empty |
+
+#### Proxy / DNS
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PROXY_BIND_IP` | Host interface that the Squid port is bound to | `0.0.0.0` |
+| `PROXY_IP` | LAN IP of the host. When set, dnsmasq publishes a WPAD record for browser auto-discovery | empty |
+| `GUI_IP_WHITELIST` | Comma-separated client IPs allowed to reach the management plane | empty |
+| `DNS_UPSTREAM_1` | Primary upstream resolver | `1.1.1.3` |
+| `DNS_UPSTREAM_2` | Secondary upstream resolver | `9.9.9.9` |
+| `DNS_UPSTREAM_3` | Tertiary upstream resolver | `8.8.8.8` |
+
+#### WAF
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WAF_BLOCK_THRESHOLD` | Anomaly score at or above which a request is blocked | `10` |
+| `WAF_DISABLED_CATEGORIES` | Comma-separated rule categories to disable globally | empty |
+| `WAF_H_ENTROPY` / `WAF_H_ENTROPY_MAX` | Toggle the Shannon entropy heuristic and its threshold | `1` / `7.5` |
+| `WAF_H_BEACONING` | Toggle C2 beaconing detection | `1` |
+| `WAF_H_PII` | Toggle PII leak counter | `1` |
+| `WAF_H_SHARDING` | Toggle destination sharding heuristic | `1` |
+| `WAF_H_GHOSTING` | Toggle protocol ghosting heuristic | `1` |
+| `WAF_H_MORPHING` | Toggle header morphing heuristic | `0` |
+| `WAF_H_SEQUENCE` | Toggle sequence validation heuristic | `0` |
+
+#### Tailscale (optional, `--profile tailscale`)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `TS_AUTHKEY` | Tailscale authentication key | empty (sidecar refuses to start without one) |
+| `TAILSCALE_HOSTNAME` | Hostname registered on the tailnet | `secure-proxy` |
 
 ### Security Configuration
 
@@ -310,11 +345,10 @@ docker compose up -d --build
 
 | Setting | Description | Default | Recommended |
 |---------|-------------|---------|------------|
-| Cache Size | Disk space allocated for caching | 1GB | 5-10GB for production |
-| Max Object Size | Maximum size of cached objects | 50MB | 100MB for media-heavy usage |
-| Connection Timeout | Timeout for stalled connections | 30s | 15-60s based on network |
-| DNS Timeout | Timeout for DNS lookups | 5s | 3-10s based on DNS infrastructure |
-| Max Connections | Maximum concurrent connections | 100 | 100-500 based on hardware |
+| Cache Size | Disk space allocated for caching | 2 GB | 5–10 GB for production |
+| Max Object Size | Maximum size of cached objects | 100 MB | up to 100 MB for media-heavy usage |
+| Connection Timeout | Timeout for stalled connections | 30 s | 15–60 s based on network |
+| DNS Timeout | Timeout for DNS lookups | 5 s | 3–10 s based on DNS infrastructure |
 
 ## Advanced Configuration
 
@@ -343,8 +377,8 @@ To use Secure Proxy as a transparent proxy:
 
 1. Configure iptables on your router/gateway:
    ```bash
-   iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 -j REDIRECT --to-port 3128
-   iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j REDIRECT --to-port 3129
+   iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80  -j REDIRECT --to-port 3128
+   iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j REDIRECT --to-port 3128
    ```
 
 2. Enable transparent proxy mode in the web interface:
@@ -359,14 +393,17 @@ Integrate with external threat intelligence sources. The system supports importi
 The "Popular Lists" button in the Web UI imports well-known public blocklists directly:
 
 **For Domains:**
-- *StevenBlack Ad/Malware*: Consolidated host files from multiple sources
-- *MalwareDomainList*: Domains known to host malware
-- *Phishing Army*: Domains actively involved in phishing
+- *Aggregated Blacklist* (`fabriziosalmi/blacklists`) — ~2.9 M entries, 61 aggregated sources, daily refresh
+- *StevenBlack Unified* — adware and malware hosts from multiple curated sources
+- *URLhaus Malware* — abuse.ch active malware distribution domains
+- *Phishing Army* — domains actively involved in phishing
+- *OISD Big*, *HaGeZi Multi Pro*, *NoTracking*, *DanPollock Hosts*
 
 **For IPs:**
-- *Firehol Level 1*: A general purpose blocklist protecting against active threats
-- *Spamhaus DROP*: Don't Route Or Peer Lists (Direct malware/botnets)
-- *Emerging Threats*: Known compromised hosts and botnet C&C
+- *Firehol Level 1* — general-purpose blocklist of active threats
+- *Spamhaus DROP* and *EDROP* — direct malware/botnet infrastructure
+- *Emerging Threats* — compromised hosts and botnet C2
+- *CINS Army*, *Stamparm Ipsum (L3+)*, *Blocklist.de*, *Talos Intelligence*
 
 #### Manual Import from URL
 
@@ -437,7 +474,9 @@ All proxy traffic is logged and can be analyzed in the web interface:
 Health status endpoints are available for monitoring:
 
 ```bash
-curl -I http://localhost:8011/health
+curl -kI https://localhost:8443/health
+# or, for a local cleartext check on the alt port:
+curl -I  http://localhost:8011/health
 ```
 
 ## Database Export and Backup
@@ -537,7 +576,7 @@ To test if blacklisting works:
 
 ### Running the E2E Test Suite
 
-Run the comprehensive 108-check test suite against a live deployment:
+Run the comprehensive 104-check test suite against a live deployment:
 
 ```bash
 # Full E2E: connectivity, WAF attacks, false positives, CRUD, settings, ML detection
@@ -574,10 +613,10 @@ A: Yes. It supports authentication, IP/domain blacklisting, and detailed logging
 ### Installation & Setup
 
 **Q: Which ports need to be open?**  
-A: Port 8011 (Web UI), 3128 (Proxy), and optionally 5001 (Backend API for direct access).
+A: 443 / 8443 (Web UI HTTPS), 80 / 8011 (Web UI HTTP — redirects + ACME), and 3128 (proxy). The backend API on `127.0.0.1:5001` is bound to localhost only.
 
 **Q: Can I change the default credentials?**  
-A: Yes! Modify `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` in `docker-compose.yml` before starting the services.
+A: Yes — set `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` in `.env` (copied from `.env.example`) before bringing the stack up. Containers refuse to start with the placeholder values.
 
 **Q: How do I update to the latest version?**  
 A:
@@ -617,7 +656,7 @@ A: Minimum 1 CPU core and 1GB RAM. For production with heavy traffic, 2+ CPU cor
 A: Yes, you can deploy multiple instances behind a load balancer for high availability.
 
 **Q: How much disk space does caching use?**  
-A: Default is 1GB. Adjust the cache size in performance tuning settings based on your needs (5-10GB recommended for production).
+A: Default is 2 GB. Adjust the cache size from **Settings → Proxy** (writes `/config/squid_settings.env`) — 5–10 GB is reasonable for production.
 
 ### Troubleshooting
 
@@ -712,11 +751,17 @@ Secure Proxy Manager provides a RESTful API for integration and automation with 
 
 ### Authentication
 
-All API endpoints require HTTP Basic Authentication:
+Every protected endpoint accepts either HTTP Basic or a JWT bearer token:
 
 ```bash
-# Use Basic Auth directly (recommended for scripts)
-AUTH_HEADER="Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
+# Basic auth (handy for scripts)
+AUTH_HEADER="Authorization: Basic $(printf '%s' "$USER:$PASS" | base64)"
+
+# Or exchange credentials for a JWT pair and use the access token
+TOKEN=$(curl -s -X POST https://localhost:8443/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d "{\"username\":\"$USER\",\"password\":\"$PASS\"}" | jq -r '.access_token')
+AUTH_HEADER="Authorization: Bearer $TOKEN"
 ```
 
 ### Blacklist Management
@@ -790,10 +835,11 @@ curl -X POST https://localhost:8443/api/blacklists/import \
 #### Authentication & Session Management
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/auth/login` | POST | User login, returns JWT token |
-| `/api/logout` | POST | User logout |
-| `/api/change-password` | POST | Change user password |
-| `/api/ws-token` | GET | Get a single-use WebSocket auth token |
+| `/api/auth/login` | POST | Validate credentials, return JWT access + refresh tokens |
+| `/api/auth/refresh` | POST | Exchange a refresh token for a fresh pair |
+| `/api/logout` | POST | Revoke the JWT used to authenticate the request |
+| `/api/change-password` | POST | Change the admin password |
+| `/api/ws-token` | GET | Issue a single-use WebSocket auth token |
 
 #### Proxy Status & Settings
 | Endpoint | Method | Description |
@@ -819,6 +865,8 @@ curl -X POST https://localhost:8443/api/blacklists/import \
 | `/api/domain-blacklist/bulk-delete` | POST | Delete multiple domain blacklist entries |
 | `/api/domain-blacklist/clear-all` | DELETE | Remove all domain blacklist entries |
 | `/api/blacklists/import` | POST | Import blacklist from URL or inline content (`type`: `ip` or `domain`) |
+| `/api/ip-blacklist/import` | POST | Per-type import (IP) |
+| `/api/domain-blacklist/import` | POST | Per-type import (domain) |
 | `/api/blacklists/import-geo` | POST | Import geo-based IP block by country code(s) |
 | `/api/ip-whitelist` | GET | List all IP whitelist entries (bypass direct-IP block) |
 | `/api/ip-whitelist` | POST | Add an IP/network to the whitelist |
@@ -835,7 +883,7 @@ curl -X POST https://localhost:8443/api/blacklists/import \
 | `/api/logs/timeline` | GET | Traffic timeline data for the last 24h (used by dashboard chart) |
 | `/api/logs/clear` | POST | Clear all proxy logs |
 | `/api/logs/clear-old` | POST | Delete logs older than the retention period |
-| `/api/analytics/report/pdf` | GET | Generate and download a PDF analytics report |
+| `/api/audit-log` | GET | Audit log of administrative actions |
 
 #### Intelligence & Analytics
 | Endpoint | Method | Description |
@@ -846,22 +894,26 @@ curl -X POST https://localhost:8443/api/blacklists/import \
 | `/api/analytics/top-domains` | GET | Top accessed domains for cloud visualization |
 | `/api/dashboard/summary` | GET | Aggregated dashboard data in single call |
 | `/api/waf/stats` | GET | WAF engine statistics (rules, blocks, entropy) |
+| `/api/waf/categories` | GET | List WAF rule categories with toggle state |
+| `/api/waf/categories/toggle` | POST | Enable or disable a category at runtime |
+| `/api/waf/test-rule` | POST | Evaluate a regex rule against a sample request |
 | `/api/counters/reset` | POST | Reset all counters (logs, WAF, dashboard) |
 
 #### Cache Management
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/cache/statistics` | GET | Get cache performance metrics |
-| `/api/maintenance/optimize-cache` | POST | Optimize the proxy cache |
+| `/api/maintenance/clear-cache` | POST | Clear the Squid disk cache |
 
 #### Security
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/security/score` | GET | Get security assessment score |
-| `/api/security/scan` | POST | Perform security scan |
-| `/api/security/rate-limits` | GET | Get rate limit information |
+| `/api/security/score` | GET | Get security assessment score and recommendations |
+| `/api/security/cve` | GET | CVE check for the bundled Squid version |
+| `/api/security/rate-limits` | GET | List currently rate-limited IPs |
 | `/api/security/rate-limits/<ip>` | DELETE | Remove rate limit for specific IP |
-| `/api/maintenance/check-cert-security` | GET | Check SSL certificate security |
+| `/api/maintenance/check-cert-security` | GET | Inspect SSL bump certificate strength |
+| `/api/notifications/test` | POST | Send a test notification (Gotify, Telegram, webhook, Teams, SIEM) |
 
 #### Database & Maintenance
 | Endpoint | Method | Description |
@@ -878,6 +930,8 @@ curl -X POST https://localhost:8443/api/blacklists/import \
 | `/api/maintenance/restore-config` | POST | Restore configuration from backup |
 | `/api/maintenance/check-cert-security` | GET | Check SSL certificate security |
 | `/api/security/download-ca` | GET | Download the proxy CA certificate |
+| `/api/dns/detect` | POST | Probe a target subnet for Pi-hole or AdGuard instances |
+| `/api/internal/alert` | POST | Receives WAF block notifications (used by the WAF service) |
 
 #### API Documentation
 | Endpoint | Method | Description |
@@ -886,33 +940,18 @@ curl -X POST https://localhost:8443/api/blacklists/import \
 
 ### Example API Responses
 
-**Successful Import:**
+**Successful import:**
 ```json
 {
   "status": "success",
-  "message": "Import completed",
-  "data": {
-    "added": 150,
-    "skipped": 0,
-    "errors": []
-  }
+  "message": "Successfully imported 150 entries (0 skipped/invalid)",
+  "data": { "added": 150, "skipped": 0 }
 }
 ```
 
-**Import with Errors:**
+**Error response:**
 ```json
-{
-  "status": "success",
-  "message": "Import completed with errors",
-  "data": {
-    "added": 145,
-    "skipped": 0,
-    "errors": [
-      "Invalid domain format: not-a-domain",
-      "Invalid IP format: 999.999.999.999"
-    ]
-  }
-}
+{ "status": "error", "detail": "Invalid IP format: 999.999.999.999" }
 ```
 
 Full interactive API documentation is available at `/api/docs` when the service is running.
@@ -940,7 +979,7 @@ Full interactive API documentation is available at `/api/docs` when the service 
 - **Bloom Filter Tuning**: Auto-adjust cache TTL based on traffic patterns
 - **Federated Threat Intel**: Share anonymized threat data between instances
 - **Config Versioning**: Diff and rollback proxy/WAF configuration changes
-- **PDF Reports**: Re-implement in Go (removed during Python→Go migration)
+- **PDF analytics report**: Re-implement in Go (the UI button is wired but the backend endpoint is not yet ported)
 
 ## Contributing
 

@@ -1,12 +1,15 @@
-# Blacklist & Whitelist API
+# Blacklist and Whitelist API
 
-Base URL: `http://localhost:8011/api` (via UI proxy) or `http://localhost:5001/api` (direct backend).
+Base URLs:
 
-All endpoints require Basic Auth.
+- Through the `web` reverse proxy (recommended): `https://localhost:8443/api`
+- Directly to the backend (localhost only): `http://127.0.0.1:5001/api`
+
+All endpoints require authentication (Basic or JWT). All response bodies follow the envelope `{"status": "success" | "error", "data": ..., "detail": ...}`.
 
 ---
 
-## IP Blacklist {#ip-blacklist}
+## IP blacklist {#ip-blacklist}
 
 ### List entries
 
@@ -14,7 +17,6 @@ All endpoints require Basic Auth.
 GET /api/ip-blacklist
 ```
 
-**Response:**
 ```json
 {
   "status": "success",
@@ -35,7 +37,6 @@ GET /api/ip-blacklist
 POST /api/ip-blacklist
 ```
 
-**Request body:**
 ```json
 {
   "ip": "203.0.113.0/24",
@@ -43,34 +44,41 @@ POST /api/ip-blacklist
 }
 ```
 
+`ip` accepts a single address or a CIDR range. Wildcards are not supported for IPs.
+
 ### Delete entry
 
 ```
 DELETE /api/ip-blacklist/{id}
 ```
 
-### Bulk delete entries
+### Bulk delete
 
 ```
 POST /api/ip-blacklist/bulk-delete
 ```
 
-**Request body:**
 ```json
-{
-  "ids": [1, 2, 3]
-}
+{ "ids": [1, 2, 3] }
 ```
 
-### Clear all entries
+### Clear all
 
 ```
 DELETE /api/ip-blacklist/clear-all
 ```
 
+### Import (per-type)
+
+```
+POST /api/ip-blacklist/import
+```
+
+Same body as the unified `/api/blacklists/import` endpoint, with `type` defaulted to `"ip"`.
+
 ---
 
-## Domain Blacklist {#domain-blacklist}
+## Domain blacklist {#domain-blacklist}
 
 ### List entries
 
@@ -78,14 +86,13 @@ DELETE /api/ip-blacklist/clear-all
 GET /api/domain-blacklist
 ```
 
-**Response:**
 ```json
 {
   "status": "success",
   "data": [
     {
       "id": 1,
-      "domain": "malicious.com",
+      "domain": "malicious.example",
       "description": "",
       "added_date": "2026-03-01T12:00:00"
     }
@@ -99,7 +106,6 @@ GET /api/domain-blacklist
 POST /api/domain-blacklist
 ```
 
-**Request body:**
 ```json
 {
   "domain": "*.ads.example.com",
@@ -107,34 +113,41 @@ POST /api/domain-blacklist
 }
 ```
 
+`domain` accepts an exact FQDN or a wildcard subdomain pattern (`*.example.com`).
+
 ### Delete entry
 
 ```
 DELETE /api/domain-blacklist/{id}
 ```
 
-### Bulk delete entries
+### Bulk delete
 
 ```
 POST /api/domain-blacklist/bulk-delete
 ```
 
-**Request body:**
 ```json
-{
-  "ids": [1, 2, 3]
-}
+{ "ids": [1, 2, 3] }
 ```
 
-### Clear all entries
+### Clear all
 
 ```
 DELETE /api/domain-blacklist/clear-all
 ```
 
+### Import (per-type)
+
+```
+POST /api/domain-blacklist/import
+```
+
+Same body as the unified `/api/blacklists/import` endpoint, with `type` defaulted to `"domain"`.
+
 ---
 
-## Import {#import}
+## Unified import {#import}
 
 Import multiple entries from a URL or inline content.
 
@@ -142,7 +155,8 @@ Import multiple entries from a URL or inline content.
 POST /api/blacklists/import
 ```
 
-**Request body — from URL:**
+**From URL:**
+
 ```json
 {
   "type": "domain",
@@ -150,7 +164,8 @@ POST /api/blacklists/import
 }
 ```
 
-**Request body — inline content:**
+**Inline content:**
+
 ```json
 {
   "type": "ip",
@@ -161,10 +176,10 @@ POST /api/blacklists/import
 `type` must be `"domain"` or `"ip"`.
 
 **Response:**
+
 ```json
 {
   "status": "success",
-  "message": "Import completed",
   "data": {
     "added": 150,
     "skipped": 3,
@@ -174,35 +189,33 @@ POST /api/blacklists/import
 ```
 
 **Supported file formats:**
-- Plain text, one entry per line
-- JSON array: `["entry1", "entry2"]`
-- JSON objects: `[{"domain": "example.com"}]`
-- Lines starting with `#` are ignored
+
+- Plain text, one entry per line.
+- JSON array — `["entry1", "entry2"]`.
+- JSON objects — `[{"domain": "example.com"}]`.
+- Lines beginning with `#` are ignored.
 
 ::: warning SSRF protection
-Import URLs are validated against SSRF rules. Private IP ranges, loopback, and link-local addresses are rejected.
+Import URLs are validated. Hosts that resolve to loopback, private, link-local, multicast, or other special-purpose ranges are rejected, and the resolved IP is pinned to prevent DNS rebinding mid-download. The download is capped at 200 MB.
 :::
 
 ---
 
-## Geo Import
-
-Import IP ranges for one or more countries.
+## Geo import {#geo-import}
 
 ```
 POST /api/blacklists/import-geo
 ```
 
-**Request body:**
 ```json
-{
-  "countries": ["RU", "CN", "KP"]
-}
+{ "countries": ["RU", "CN", "KP"] }
 ```
+
+Country IP ranges are fetched from `herrbischoff/country-ip-blocks` (IPv4) and added to the IP blacklist.
 
 ---
 
-## IP Whitelist {#ip-whitelist}
+## IP whitelist {#ip-whitelist}
 
 Whitelisted destination IPs bypass the direct-IP block rule in Squid.
 
@@ -212,7 +225,6 @@ Whitelisted destination IPs bypass the direct-IP block rule in Squid.
 GET /api/ip-whitelist
 ```
 
-**Response:**
 ```json
 {
   "status": "success",
@@ -233,7 +245,6 @@ GET /api/ip-whitelist
 POST /api/ip-whitelist
 ```
 
-**Request body:**
 ```json
 {
   "ip": "192.168.1.0/24",
@@ -249,9 +260,9 @@ DELETE /api/ip-whitelist/{id}
 
 ---
 
-## Domain Whitelist {#domain-whitelist}
+## Domain whitelist {#domain-whitelist}
 
-Whitelisted domains bypass the DNS blackhole (dnsmasq). Domains in this list are excluded from the dnsmasq blocklist so they resolve normally even if they appear in the domain blacklist. Useful for essential services that need DNS resolution.
+Whitelisted domains are excluded from the dnsmasq sinkhole, so they resolve normally even when present in the domain blacklist.
 
 ### List entries
 
@@ -259,7 +270,6 @@ Whitelisted domains bypass the DNS blackhole (dnsmasq). Domains in this list are
 GET /api/domain-whitelist
 ```
 
-**Response:**
 ```json
 {
   "status": "success",
@@ -268,7 +278,7 @@ GET /api/domain-whitelist
       "id": 1,
       "domain": "github.com",
       "type": "fqdn",
-      "description": "Essential - code hosting",
+      "description": "Essential — code hosting",
       "added_date": "2026-03-01T12:00:00"
     }
   ]
@@ -281,11 +291,10 @@ GET /api/domain-whitelist
 POST /api/domain-whitelist
 ```
 
-**Request body:**
 ```json
 {
   "domain": "github.com",
-  "description": "Essential - code hosting"
+  "description": "Essential — code hosting"
 }
 ```
 
