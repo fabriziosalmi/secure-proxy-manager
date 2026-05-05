@@ -2,8 +2,11 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'Secure Proxy Manager',
-  description: 'Documentation for Secure Proxy Manager — a containerized Squid-based proxy with FastAPI backend, React UI, and ICAP WAF.',
+  description: 'Documentation for Secure Proxy Manager — a containerised Squid forward proxy with a Go backend, React UI, and Go ICAP WAF.',
   base: '/secure-proxy-manager/',
+  cleanUrls: true,
+  lastUpdated: true,
+  srcExclude: ['INTEGRATION_ARCHITECTURE.md'],
 
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/secure-proxy-manager/favicon.svg' }]
@@ -30,22 +33,17 @@ export default defineConfig({
         items: [
           { text: 'Environment Variables', link: '/guide/configuration' },
           { text: 'Blacklists and Whitelists', link: '/guide/blacklists' },
-          { text: 'Security Settings', link: '/guide/security' }
-        ]
-      },
-      {
-        text: 'Reference',
-        items: [
-          { text: 'Integration Architecture', link: '/INTEGRATION_ARCHITECTURE' }
+          { text: 'Security', link: '/guide/security' }
         ]
       },
       {
         text: 'API Reference',
         items: [
+          { text: 'Overview', link: '/api/reference' },
           { text: 'Authentication', link: '/api/authentication' },
-          { text: 'Blacklist & Whitelist', link: '/api/blacklists' },
-          { text: 'Logs & Analytics', link: '/api/logs' },
-          { text: 'Settings & Maintenance', link: '/api/settings' },
+          { text: 'Blacklists and Whitelists', link: '/api/blacklists' },
+          { text: 'Logs and Analytics', link: '/api/logs' },
+          { text: 'Settings and Maintenance', link: '/api/settings' },
           { text: 'WebSocket', link: '/api/websocket' }
         ]
       }
