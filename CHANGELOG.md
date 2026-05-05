@@ -5,6 +5,77 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.4] - 2026-05-05
+
+### Security
+
+- **axios `^1.13.6` → `^1.16.0`** — patches 13 high-severity CVEs in the UI:
+  prototype pollution, CRLF injection, header injection, `no_proxy` bypass
+  SSRF, and authentication bypass. `follow-redirects` is now pinned to
+  `^1.16.0` via override (auth-header leak on cross-domain redirects).
+- **postcss `^8.5.8` → `^8.5.10`** — fixes XSS via an unescaped `</style>`
+  sequence; applied as a dependency override in both `ui/` and `docs/`.
+- **vite `^6.4.2`** — pinned via override in `docs/` (path-traversal in
+  optimised-deps `.map` handling).
+
+### Documentation
+
+- **README and VitePress site audited end-to-end against the codebase.**
+  Every numeric and structural claim was checked against `backend-go/`,
+  `waf-go/`, `proxy/`, `dns/`, `ui/`, `docker-compose.yml`, and
+  `.env.example`. 15 files updated, +882/-679 lines.
+- **WAF counters corrected**: 175 regex rules across 23 categories
+  (previously documented as 166/21) plus 7 behavioural heuristics and 3
+  ML-lite checks (DGA, typosquatting, safe-URL cache).
+- **Authentication coverage rewritten**: documented Basic and JWT bearer
+  side-by-side; `/api/auth/login` returns access + refresh tokens; added
+  reference entries for `/api/auth/refresh`, `/api/logout`, `/api/audit-log`,
+  `/api/dns/detect`, `/api/notifications/test`, `/api/security/cve`,
+  `/api/waf/categories[/toggle]`, `/api/waf/test-rule`, `/api/internal/alert`.
+- **Removed non-existent endpoints** from the reference: `/api/security/scan`,
+  `/api/maintenance/optimize-cache`, `/api/analytics/report/pdf` (the PDF
+  report is wired in the UI but not yet ported to the Go backend; tracked
+  in the roadmap).
+- **Environment variables aligned with `docker-compose.yml`**:
+  `REQUEST_TIMEOUT` default 120 (previously documented as 30);
+  `CORS_ALLOWED_ORIGINS` default `https://localhost:8443` (previously
+  `http://localhost:8011,http://web:8011`); dropped phantom
+  `MAX_RETRIES`, `BACKOFF_FACTOR`, `RETRY_WAIT_AFTER_STARTUP`,
+  `DATABASE_PATH`; added `SECRET_KEY`, `PROXY_BIND_IP`, `PROXY_IP`,
+  `GUI_IP_WHITELIST`, `WAF_DISABLED_CATEGORIES`, `TS_AUTHKEY`,
+  `TAILSCALE_HOSTNAME`, `LETSENCRYPT_*`.
+- **Bulk settings endpoint body** corrected to a flat name → value object
+  (the documentation previously claimed `{settings: [{name, value}, …]}`,
+  which the handler never accepted).
+- **Database export redaction**: documented that columns named `password`,
+  `secret`, or `token` are redacted (the docs previously listed six
+  hard-coded setting keys that did not match the implementation).
+- **Custom Squid configuration path** corrected to
+  `/config/custom_squid_extra.conf` (the legacy `custom_squid.conf` is
+  migrated automatically by `proxy/startup.sh`).
+- **Transparent-proxy iptables snippet** corrected: HTTPS (443) is now
+  redirected to `3128`, not the typo'd `3129`.
+- **Architecture page rebuilt** to match `docker-compose.yml`: service is
+  named `web` (Nginx + compiled SPA, host ports `80`, `443`, `8011`,
+  `8443`), backend is Go (chi router) bound to `127.0.0.1:5001`,
+  `proxy-internal` network is declared `internal: true`.
+- **Popular blocklist names** synchronised with the UI catalogue (Firehol
+  Level 1, Spamhaus DROP/EDROP, Emerging Threats, CINS Army, Stamparm
+  Ipsum, Blocklist.de, Talos; Aggregated Blacklist, StevenBlack Unified,
+  URLhaus, Phishing Army, OISD Big, HaGeZi Multi Pro, NoTracking,
+  DanPollock).
+- **VitePress site hygiene**: off-topic `INTEGRATION_ARCHITECTURE.md`
+  removed from the sidebar and excluded from the build via `srcExclude`;
+  `cleanUrls` and `lastUpdated` enabled. `vitepress build` completes with
+  zero errors.
+- **README cleanup**: stray broken code block in the *Updating* section
+  removed; removed the dead `backend/` (legacy Python) entry from the
+  project-structure tree (the directory no longer exists).
+
+### Build / housekeeping
+
+- All builds pass: UI build, UI tests `127/127`, VitePress docs build.
+
 ## [3.4.3] - 2026-05-05
 
 ### Security
