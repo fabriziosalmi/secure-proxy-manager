@@ -3,10 +3,10 @@
 ## Prerequisites
 
 - Docker 20.10.0+
-- Docker Compose 2.0.0+
+- Docker Compose v2 (the `docker compose` plugin)
 - `git`
 
-## Quick Start
+## Quick start
 
 ### 1. Clone the repository
 
@@ -15,82 +15,90 @@ git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
 cd secure-proxy-manager
 ```
 
-### 2. Run the initialization script
+### 2. Create the `.env` file
+
+Copy the template and edit at minimum the credentials:
 
 ```bash
-chmod +x init.sh
-./init.sh
-```
-
-The script:
-- Checks Docker and Docker Compose are available
-- Creates required directories (`config/`, `data/`, `logs/`)
-- Prompts you to set a username and password (no defaults accepted)
-- Writes a `.env` file
-
-### 3. Manual setup (alternative)
-
-If you prefer to set up without the script:
-
-```bash
-mkdir -p config data logs
 cp .env.example .env
 ```
 
-Edit `.env` and set at minimum:
+Open `.env` and set:
 
 ```bash
 BASIC_AUTH_USERNAME=your_username
 BASIC_AUTH_PASSWORD=your_strong_password
 ```
 
-### 4. Start the services
+::: warning
+The containers refuse to start with the bundled placeholder credentials. Replace both values before bringing the stack up.
+:::
+
+`SECRET_KEY` is auto-generated on first start when left empty, but tokens are then invalidated on every restart. Set a stable value in production:
 
 ```bash
-docker-compose up -d
+SECRET_KEY=$(openssl rand -hex 32)
 ```
 
-### 5. Access the web interface
+### 3. Start the services
 
-Open `http://localhost:8011` and log in with the credentials you set in `.env`.
+```bash
+docker compose up -d
+```
 
-### 6. Configure client devices
+The first build downloads images and compiles the backend, WAF, and UI. Subsequent starts are fast.
 
-Set the proxy server on your devices to:
+### 4. Open the web UI
 
-- **Host**: IP address of the machine running Secure Proxy Manager
-- **Port**: `3128`
+Open `https://localhost:8443` and accept the self-signed certificate, or `http://localhost:8011` if you do not need TLS to the UI itself. Log in with the credentials from `.env`.
 
-For transparent proxying (no manual client configuration), see [Transparent Proxy Setup](/guide/security#transparent-proxy).
+### 5. Configure clients
+
+Set the proxy on your devices to:
+
+- **Host:** the LAN IP of the machine running Secure Proxy Manager
+- **Port:** `3128`
+
+For transparent proxying without per-client configuration, see [Transparent Proxy Setup](/guide/security#transparent-proxy).
+
+## Automated installer (Linux)
+
+The repository ships an installer script that clones the project to `/opt/secure-proxy-manager`, installs Docker if missing, generates random credentials, and starts the stack:
+
+```bash
+sudo bash deploy/install.sh
+```
+
+The script is intended for fresh Linux servers (Debian, Ubuntu, RHEL family). Read the source before running.
 
 ## Updating
 
 ```bash
 git pull
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
 
-## Verifying the setup
+## Verifying the installation
 
 ```bash
-# Check all services are running
-docker-compose ps
+# All services running and healthy
+docker compose ps
+
+# Backend health (localhost only)
+curl -k https://localhost:8443/health
 
 # Test proxy connectivity
 curl -x http://localhost:3128 http://example.com
-
-# Check API health
-curl http://localhost:8011/health
 ```
 
 ## Troubleshooting
 
 | Problem | Cause | Fix |
 |---|---|---|
-| Web UI not accessible | Port conflict or service not started | `docker-compose logs ui` |
-| Authentication failing | Missing `.env` | `cp .env.example .env` then restart |
-| Proxy not filtering | Client not configured | Check client proxy settings point to port 3128 |
-| SSL certificate warnings | Certificate not trusted by client | Install `config/ssl_cert.pem` on client devices |
-| Permission errors | Missing directories | Run `./init.sh` or `mkdir -p config data logs && chmod 755 config data logs` |
+| Web UI not reachable | Port 80/443/8011/8443 already in use | `docker compose logs web` and free the port |
+| Authentication failing | `.env` not present or placeholder credentials in use | Set `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD`, then `docker compose up -d` |
+| Proxy not filtering | Client not configured to use port 3128 | Verify the client points to `<host>:3128` |
+| TLS warning when filtering HTTPS | SSL bump CA not installed on the client | Download the CA via the UI (Security → Download CA) and trust it |
+| Permission errors on `./config`, `./data`, `./logs` | Directories owned by another user | `sudo chown -R $USER:$USER config data logs` |

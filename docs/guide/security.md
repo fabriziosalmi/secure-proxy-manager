@@ -2,118 +2,126 @@
 
 ## Authentication
 
-The web UI and API use HTTP Basic Authentication. Credentials are set via `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` in `.env`.
+The web UI and API accept two authentication schemes interchangeably on every protected endpoint:
 
-Passwords are stored in the SQLite database using bcrypt. Legacy werkzeug hashes (`pbkdf2:sha256:...`) are supported for migration: if a stored hash is in werkzeug format, the supplied password is compared against the environment variable directly, then the hash is re-stored as bcrypt on first successful login.
+- **HTTP Basic.** `Authorization: Basic base64(user:pass)`. Credentials are validated against the bcrypt hash stored in the database (with a fallback to the `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` environment values during initial bootstrap).
+- **JWT bearer.** `Authorization: Bearer <token>`. Tokens are signed with HS256 using `SECRET_KEY` and carry the claims `sub`, `iat`, `exp`, and `type` (`access` or `refresh`). Refresh tokens are rejected on protected endpoints.
 
-### Rate limiting
+`POST /api/auth/login` accepts a JSON body `{username, password}` and returns both an access token and a refresh token. `POST /api/auth/refresh` exchanges a refresh token for a fresh pair. `POST /api/logout` blacklists the presented JWT (the blacklist is persisted in the `jwt_blacklist` table so it survives restarts).
 
-Authentication attempts are rate-limited per client IP:
+Passwords are stored using bcrypt. Legacy werkzeug-format hashes (`pbkdf2:sha256:...`) are detected and re-hashed as bcrypt on the first successful login.
 
-- 5 failed attempts within a 5-minute window trigger an HTTP 429 response
-- The lockout clears automatically after the window expires
+## Rate limiting
 
-## WebSocket Authentication
+Two layers of rate limiting are applied:
 
-The browser cannot send HTTP headers during a WebSocket handshake. The log streaming endpoint uses a one-time token instead:
+- **Failed login per client IP.** When `MAX_LOGIN_ATTEMPTS` failures (default `5`) occur within `RATE_LIMIT_WINDOW_SECONDS` (default `300`), further attempts return HTTP 429 with `Retry-After: 1` until the window expires. The lockout list can be inspected at `GET /api/security/rate-limits` and cleared per-IP at `DELETE /api/security/rate-limits/{ip}`.
+- **Global per-IP token bucket.** All requests are rate-limited at 20 requests per second sustained, with a 60-request burst. Requests over the limit receive HTTP 429.
 
-1. Client fetches `GET /api/ws-token` (authenticated via Basic Auth)
-2. Server generates a `secrets.token_urlsafe(32)` token valid for 2 minutes, single-use
-3. Client connects to `ws://host:5001/api/ws/logs?token=<token>`
-4. Server consumes the token on first use — replay is not possible
+When the request originates from a private or loopback address, the client IP is extracted from `X-Forwarded-For`; otherwise the direct `RemoteAddr` is used.
 
-## SSRF Protection
+## WebSocket authentication
 
-Import endpoints (`/api/blacklists/import`) that accept a URL perform DNS resolution and reject destinations that resolve to:
+Browsers cannot send custom headers during a WebSocket handshake, so the log streaming endpoint uses a single-use token:
 
-- Loopback addresses (`127.0.0.0/8`, `::1`)
-- Private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fd00::/8`)
+1. The client calls `GET /api/ws-token` with Basic or JWT authentication.
+2. The backend issues a `secrets.token_urlsafe(32)` token, valid for two minutes, single-use.
+3. The client connects to `wss://<host>/api/ws/logs?token=<token>`.
+4. The token is consumed on the first connection. A second handshake with the same token is rejected.
+
+## SSRF protection
+
+Endpoints that fetch a remote URL — `POST /api/blacklists/import`, `POST /api/ip-blacklist/import`, `POST /api/domain-blacklist/import` — perform DNS resolution before opening the connection and reject any host that resolves to:
+
+- Loopback (`127.0.0.0/8`, `::1`)
+- Private RFC1918 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`)
 - Link-local (`169.254.0.0/16`, `fe80::/10`)
-- Reserved/unspecified/multicast ranges
+- Unspecified, multicast, or reserved ranges
+- The unspecified address `0.0.0.0/8`
 
-This prevents an attacker from using the import endpoint to scan or access internal network services.
+The HTTP client used for the download pins to the IP that was resolved during the safety check, so a hostname cannot rebind to a private address between resolution and connection. Imports are capped at 200 MB.
 
 ## CORS
 
-The backend API only accepts requests from origins listed in `CORS_ALLOWED_ORIGINS`. Default: `http://localhost:8011,http://web:8011`.
-
-To allow access from an additional origin:
+The backend only accepts cross-origin requests from origins listed in `CORS_ALLOWED_ORIGINS`. The default is `https://localhost:8443`. Add additional origins as needed:
 
 ```bash
-# In .env
-CORS_ALLOWED_ORIGINS=http://localhost:8011,http://web:8011,https://proxy.yourdomain.com
+# .env
+CORS_ALLOWED_ORIGINS=https://localhost:8443,https://proxy.example.com
 ```
 
-## Direct IP Block
+A wildcard (`*`) is stripped at load time and is not accepted.
 
-Squid is configured to reject requests to raw IP addresses by default. This prevents clients from bypassing domain filtering by using IP addresses directly.
+## Direct-IP blocking
 
-To allow access to specific IP destinations (e.g., LAN NAS), add them to the **IP Whitelist** in the web UI. Whitelisted IPs are evaluated before the deny rules.
+Squid is configured to reject requests to raw IP addresses by default, preventing clients from bypassing the domain blacklist by addressing destinations directly. Add trusted destinations to the **IP whitelist** (`/config/ip_whitelist.txt`, also editable via the UI) to allow specific exceptions; whitelisted IPs are evaluated before the deny rule.
 
-## Database Export Redaction
+## Database export redaction
 
-`GET /api/database/export` redacts these settings fields before returning the export:
+`GET /api/database/export` returns a full JSON dump of the database. Any column literally named `password`, `secret`, or `token` (across every exported table) is replaced with the string `***REDACTED***` before serialisation. Sensitive settings stored under those column names are therefore never present in the export.
 
-- `gotify_token`
-- `telegram_bot_token`
-- `webhook_url`
-- `teams_webhook_url`
-- `siem_host`
-- `siem_port`
+Setting values that are encrypted at rest (those persisted in `settings` whose key contains `password`, `secret`, `token`, or `webhook`) are encrypted on write using AES with `ENCRYPTION_KEY`; their plaintext values are never returned through the export.
 
-All are replaced with `***REDACTED***`.
+## Backend API binding
 
-## Backend API Binding
-
-By default, the backend container exposes port 5001 bound to `127.0.0.1` only:
+The backend container exposes port `5000` internally; the host binding is:
 
 ```yaml
 ports:
   - "127.0.0.1:5001:5000"
 ```
 
-This means the backend API is not reachable from other machines on the network. All external access goes through the UI proxy on port 8011.
+The API is therefore only reachable from the host machine. All external access goes through the `web` reverse proxy on ports `80`, `443`, `8011`, or `8443`.
 
-## HTTPS for the Web UI
+## HTTPS for the web UI
 
-For production deployments, put a TLS-terminating reverse proxy in front of port 8011:
+The shipped `web` service can either:
 
-**Nginx example:**
+- Generate a self-signed certificate and serve HTTPS on `:443` and `:8443` directly, or
+- Provision a real certificate via Let's Encrypt when both `LETSENCRYPT_DOMAIN` and `LETSENCRYPT_EMAIL` are set.
+
+If you prefer to terminate TLS on an external reverse proxy (Caddy, Traefik, an upstream Nginx), point it at the unencrypted port `8011`:
+
 ```nginx
 server {
-    listen 443 ssl;
-    server_name proxy.yourdomain.com;
+    listen 443 ssl http2;
+    server_name proxy.example.com;
 
-    ssl_certificate /etc/letsencrypt/live/proxy.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/proxy.yourdomain.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/proxy.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/proxy.example.com/privkey.pem;
 
     location / {
         proxy_pass http://127.0.0.1:8011;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
     }
 }
 ```
 
-## Transparent Proxy Setup {#transparent-proxy}
+## Transparent proxy {#transparent-proxy}
 
-To intercept traffic without client configuration:
+To intercept client traffic without manual proxy configuration on each device, redirect ports 80 and 443 to the proxy on the gateway:
 
 ```bash
-# On the gateway machine
-iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 -j REDIRECT --to-port 3128
+iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80  -j REDIRECT --to-port 3128
 iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j REDIRECT --to-port 3128
 ```
 
-Enable transparent mode in **Settings → Advanced → Transparent Mode**.
+Then enable transparent mode in **Settings → Advanced → Transparent Mode**.
 
-## Changing the Admin Password
+## Changing the admin password
 
-Use the **Settings → Security → Change Password** section in the web UI, or via API:
+From the UI: **Settings → Security → Change Password**. From the API:
 
 ```bash
-curl -X POST http://localhost:8011/api/change-password \
+curl -X POST https://localhost:8443/api/change-password \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n USER:CURRENT_PASS | base64)" \
+  -u USER:CURRENT_PASSWORD \
   -d '{"current_password": "current", "new_password": "new_strong_password"}'
 ```
+
+The new password is hashed with bcrypt on the server and replaces the existing hash atomically.

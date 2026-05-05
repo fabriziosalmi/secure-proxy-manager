@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: "Secure Proxy Manager"
-  text: "Containerized proxy management for homelabs and small networks"
-  tagline: Squid proxy engine with FastAPI backend, React UI, and ICAP WAF — deployed in minutes with Docker Compose.
+  text: "Containerised proxy management for homelabs and small networks"
+  tagline: A Squid forward proxy with a Go backend, React UI, and Go ICAP WAF — deployed in minutes with Docker Compose.
   image:
     src: /hero-icon.svg
     alt: Secure Proxy Manager
@@ -20,16 +20,16 @@ hero:
       link: https://github.com/fabriziosalmi/secure-proxy-manager
 
 features:
-  - title: Traffic Filtering
-    details: Domain and IP blacklisting with CIDR and wildcard support. One-click import of popular blocklists (Spamhaus, Firehol, Pi-hole, Phishing Army). Geo-based IP blocking.
-  - title: IP Whitelist
-    details: Whitelist trusted destination IPs to bypass the direct-IP block. Useful for LAN NAS, printers, and other devices accessed by IP address.
+  - title: Traffic filtering
+    details: Domain and IP blocking with CIDR and wildcard subdomain support. One-click import of curated public blocklists. Geo-based IP blocking by country code.
+  - title: IP whitelist
+    details: Whitelist trusted destination IPs to bypass the direct-IP block rule. Useful for LAN devices accessed by IP address.
   - title: ICAP WAF
-    details: Go-based ICAP server inspects all HTTP requests using 171 regex rules across 21 categories plus 7 behavioral heuristics (entropy, beaconing, PII, sharding, ghosting, morphing, sequence). Anomaly scoring with configurable threshold.
-  - title: Real-time Logs
-    details: Live log streaming via WebSocket with one-time token authentication. Filter by IP, domain, or status. Search, stats, and CSV-ready table.
-  - title: Security Hardening
-    details: Rate-limited authentication, SSRF protection on import URLs, CORS restriction, bcrypt password hashing, localhost-only backend API binding.
+    details: Go-based ICAP server inspects HTTP requests with 175 regex rules across 23 categories plus 7 behavioural heuristics. Anomaly scoring with a configurable block threshold.
+  - title: Real-time logs
+    details: Live log streaming over WebSocket with one-time token authentication. Filter, search, and aggregate access events.
+  - title: Hardened by default
+    details: HTTP Basic plus JWT authentication, login rate limiting, SSRF guard on import URLs, CORS allowlist, bcrypt password hashing, backend API bound to localhost only.
   - title: Self-hosted
-    details: Runs entirely on your hardware via Docker Compose. No cloud dependency. SQLite database. Configurable via environment variables and web UI.
+    details: Runs entirely on your hardware via Docker Compose. SQLite database, no cloud dependency. Configurable via environment variables and the web UI.
 ---

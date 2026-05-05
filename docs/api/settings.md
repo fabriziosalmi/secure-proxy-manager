@@ -1,56 +1,74 @@
-# Settings & Maintenance API
+# Settings and Maintenance API
 
-All endpoints require Basic Auth.
+All endpoints require authentication (Basic or JWT). Responses use the envelope `{"status": "success", "data": ...}` unless noted.
 
 ---
 
-## Get all settings
+## List all settings
 
 ```
 GET /api/settings
 ```
 
-Returns all settings as an array.
-
-**Response:**
 ```json
-[
-  { "setting_name": "ssl_bump_enabled", "setting_value": "false" },
-  { "setting_name": "cache_size", "setting_value": "2000" }
-]
+{
+  "status": "success",
+  "data": [
+    { "setting_name": "ssl_bump_enabled", "setting_value": "false" },
+    { "setting_name": "cache_size",       "setting_value": "2000"  }
+  ]
+}
 ```
+
+Setting values that are stored encrypted at rest (those whose key contains `password`, `secret`, `token`, or `webhook`) are decrypted before being returned.
 
 ---
 
-## Update a setting
+## Update a single setting
 
 ```
 PUT /api/settings/{setting_name}
 ```
 
-**Request body:**
 ```json
-{
-  "value": "true"
-}
+{ "value": "true" }
 ```
+
+The key in the path must consist of alphanumeric characters and underscores only and be no longer than 100 characters. The value is capped at 10 000 characters.
 
 ---
 
-## Health check
+## Bulk update settings
+
+```
+POST /api/settings
+```
+
+The body is a flat object mapping setting names to their new values:
+
+```json
+{
+  "ssl_bump_enabled": "true",
+  "cache_size": "5000",
+  "auto_refresh_enabled": "true"
+}
+```
+
+All updates are applied in a single transaction. The same name and value validation applies as for the single-setting endpoint.
+
+---
+
+## Health
 
 ```
 GET /health
 GET /api/health
 ```
 
-Returns 200 if the backend is reachable. No authentication required.
+Returns 200 if the backend is reachable. Authentication is not required.
 
-**Response:**
 ```json
-{
-  "status": "healthy"
-}
+{ "status": "healthy", "version": "3.4.4" }
 ```
 
 ---
@@ -61,7 +79,7 @@ Returns 200 if the backend is reachable. No authentication required.
 GET /api/database/export
 ```
 
-Exports the database as JSON. Sensitive setting values are redacted. Log entries are limited to the 10,000 most recent.
+Returns a JSON dump of every exported table. Columns named `password`, `secret`, or `token` are replaced with `***REDACTED***`. The download is served as `Content-Disposition: attachment`.
 
 ---
 
@@ -71,67 +89,17 @@ Exports the database as JSON. Sensitive setting values are redacted. Log entries
 GET /api/database/stats
 ```
 
-Returns database size and record counts.
+Returns row counts for every exported table along with the file size.
 
 ---
 
-## Database optimize
+## Database optimise
 
 ```
 POST /api/database/optimize
 ```
 
-Runs `VACUUM` and `ANALYZE` on the SQLite database.
-
----
-
-## Reload proxy configuration
-
-```
-POST /api/maintenance/reload-config
-```
-
-Sends `squid -k reconfigure` to the proxy container. Use this after manually editing configuration files.
-
----
-
-## Cache statistics
-
-```
-GET /api/cache/statistics
-```
-
-Returns cache metrics. When the Squid cache manager is not accessible, returns `simulated: true` with zeroed values.
-
-**Response:**
-```json
-{
-  "simulated": true,
-  "hit_ratio": 0,
-  "memory_usage_mb": 0,
-  "disk_usage_mb": 0
-}
-```
-
----
-
-## Bulk update settings
-
-```
-POST /api/settings
-```
-
-Update multiple settings in a single request.
-
-**Request body:**
-```json
-{
-  "settings": [
-    { "setting_name": "ssl_bump_enabled", "setting_value": "true" },
-    { "setting_name": "cache_size", "setting_value": "5000" }
-  ]
-}
-```
+Runs `VACUUM` and `REINDEX` on the SQLite database.
 
 ---
 
@@ -151,7 +119,17 @@ Returns the database file size in bytes.
 POST /api/database/reset
 ```
 
-Resets the database, clearing all entries. Use with caution.
+Truncates every exported table except `users`. Use with care.
+
+---
+
+## Reload proxy configuration
+
+```
+POST /api/maintenance/reload-config
+```
+
+Asks the proxy to regenerate `squid.conf` from the latest blacklist/whitelist files and reload. Equivalent to `squid -k reconfigure`.
 
 ---
 
@@ -161,7 +139,17 @@ Resets the database, clearing all entries. Use with caution.
 POST /api/maintenance/reload-dns
 ```
 
-Reloads the dnsmasq DNS configuration after domain blacklist/whitelist changes.
+Regenerates the dnsmasq blocklist (with whitelist exclusions) and signals the `dns` container to reload (`SIGHUP`).
+
+---
+
+## Cache statistics
+
+```
+GET /api/cache/statistics
+```
+
+Returns Squid cache metrics (hit ratio, memory and disk usage). When the Squid cache manager is unavailable, the response is annotated with `simulated: true` and zeroed values.
 
 ---
 
@@ -171,7 +159,7 @@ Reloads the dnsmasq DNS configuration after domain blacklist/whitelist changes.
 POST /api/maintenance/clear-cache
 ```
 
-Clears the Squid proxy disk cache.
+Clears the Squid disk cache.
 
 ---
 
@@ -181,7 +169,7 @@ Clears the Squid proxy disk cache.
 GET /api/maintenance/backup-config
 ```
 
-Downloads a backup archive of the current configuration files from `/config/`.
+Downloads a backup containing the current settings, blacklists, and whitelists in JSON form.
 
 ---
 
@@ -191,7 +179,7 @@ Downloads a backup archive of the current configuration files from `/config/`.
 POST /api/maintenance/restore-config
 ```
 
-Restores configuration from a previously downloaded backup archive.
+Restores from a backup created by `/api/maintenance/backup-config`.
 
 ---
 
@@ -201,7 +189,7 @@ Restores configuration from a previously downloaded backup archive.
 GET /api/maintenance/check-cert-security
 ```
 
-Checks the strength and validity of the SSL certificate used for HTTPS filtering.
+Reports the strength and validity of the SSL bump certificate.
 
 ---
 
@@ -211,7 +199,7 @@ Checks the strength and validity of the SSL certificate used for HTTPS filtering
 GET /api/security/download-ca
 ```
 
-Downloads the proxy CA certificate (`ssl_cert.pem`). Install this on client devices to avoid browser warnings when HTTPS filtering is enabled.
+Returns `/config/ssl_cert.pem`. Install it on client devices to suppress browser warnings when SSL bump is active.
 
 ---
 
@@ -221,14 +209,10 @@ Downloads the proxy CA certificate (`ssl_cert.pem`). Install this on client devi
 GET /api/security/rate-limits
 ```
 
-Lists IPs that are currently rate-limited due to repeated failed authentication attempts.
-
----
-
-## Remove rate limit
+Lists IPs currently locked out by the login-failure rate limiter, with the time at which the lockout expires.
 
 ```
 DELETE /api/security/rate-limits/{ip}
 ```
 
-Removes the rate limit for a specific IP address, allowing it to attempt authentication again immediately.
+Removes the lockout for the given IP.

@@ -1,119 +1,140 @@
 # Blacklists and Whitelists
 
-## Domain Blacklist
+Secure Proxy Manager keeps four lists, each with its own role in the request path:
 
-Blocks HTTP and HTTPS requests to matching domains. Supports:
+| List | Layer | Effect |
+|---|---|---|
+| Domain blacklist | Squid + dnsmasq | Domain is rejected by Squid; dnsmasq sinkholes it to `0.0.0.0` |
+| IP blacklist | Squid | Squid rejects connections to the matching destination IP or CIDR range |
+| IP whitelist | Squid | Whitelisted destination IPs bypass the direct-IP block rule |
+| Domain whitelist | dnsmasq | Domains are excluded from the dnsmasq sinkhole, so they resolve normally even if blacklisted |
 
-- Exact match: `malicious.com`
+## Domain blacklist
+
+Blocks HTTP and HTTPS requests to matching destinations.
+
+- Exact match: `malicious.example`
 - Wildcard subdomain: `*.ads.example.com`
 
-Manage via: **Web UI → Blacklists → Domains** or the [API](/api/blacklists#domain-blacklist).
+Manage via **Web UI → Blacklists → Domains** or the [API](/api/blacklists#domain-blacklist).
 
-## IP Blacklist
+## IP blacklist
 
-Blocks requests originating from matching IP addresses or CIDR ranges.
+Blocks requests targeting the matching destination IP.
 
 - Single IP: `203.0.113.5`
 - CIDR range: `198.51.100.0/24`
 
-Manage via: **Web UI → Blacklists → IPs** or the [API](/api/blacklists#ip-blacklist).
+Manage via **Web UI → Blacklists → IPs** or the [API](/api/blacklists#ip-blacklist).
 
-## IP Whitelist
+## IP whitelist
 
-Whitelisted destination IPs bypass the direct-IP block rule. Use this for trusted LAN devices accessed by IP address (NAS, printers, IoT devices).
+Whitelisted destination IPs bypass the direct-IP block rule. Use this for trusted LAN devices reached by IP (NAS, printers, IoT devices).
 
 - Single IP: `192.168.1.50`
 - CIDR range: `192.168.1.0/24`
 
 ::: tip
-The IP whitelist allows traffic **to** specific destination IPs. It does not affect the source IP blacklist.
+The IP whitelist applies to **destination** IPs. It does not affect blocking of source IPs.
 :::
 
-Manage via: **Web UI → Blacklists → Whitelist** or the [API](/api/blacklists#ip-whitelist).
+Manage via **Web UI → Blacklists → Whitelist** or the [API](/api/blacklists#ip-whitelist).
 
-## Domain Whitelist
+## Domain whitelist
 
-Whitelisted domains bypass the DNS blackhole (dnsmasq). Even if a domain appears in the domain blacklist, a domain whitelist entry ensures it resolves normally at the DNS layer. Use this for essential services (GitHub, Google, Docker registries, etc.) before importing large blocklists.
+Whitelisted domains are removed from the dnsmasq blocklist, so they resolve normally even if they are also present in the domain blacklist. Use this for essential services (GitHub, Docker registries, package mirrors) before importing large blocklists that may include them.
 
-Manage via: **Web UI → Blacklists → Domain Whitelist** or the [API](/api/blacklists#domain-whitelist).
+Manage via **Web UI → Blacklists → Domain Whitelist** or the [API](/api/blacklists#domain-whitelist).
 
-## Importing Blocklists
+## Importing blocklists
 
-### Popular Lists (one-click)
+### Curated public lists (one click)
 
-In the web UI, go to **Blacklists** and click **Popular Lists** to import pre-configured feeds:
+In the web UI, open **Blacklists → Popular lists** to import any of the following:
 
-**Domains:**
-- StevenBlack (ad/malware hosts consolidated list)
-- MalwareDomainList
+**IP lists.**
+
+- Firehol Level 1
+- Spamhaus DROP and EDROP
+- Emerging Threats (compromised hosts and C2)
+- CINS Army
+- Stamparm Ipsum (level 3+)
+- Blocklist.de (last 48 hours)
+- Talos Intelligence
+
+**Domain lists.**
+
+- Aggregated Blacklist (`fabriziosalmi/blacklists`, ~2.9 M entries)
+- StevenBlack Unified hosts
+- URLhaus malware domains (abuse.ch)
 - Phishing Army
+- OISD Big
+- HaGeZi Multi Pro
+- NoTracking
+- DanPollock hosts
 
-**IPs:**
-- Firehol Level 1 (active threats)
-- Spamhaus DROP (malware/botnet ASNs)
-- Emerging Threats (C&C and compromised hosts)
+The exact list, URLs, and descriptions are defined in `ui/src/pages/Blacklists.tsx` and may evolve between releases.
 
 ### Import from URL
 
 ```bash
-AUTH="Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)"
+AUTH="Authorization: Basic $(printf '%s' "$USER:$PASS" | base64)"
 
 # Domain blocklist from URL
-curl -X POST http://localhost:8011/api/blacklists/import \
-  -H "Content-Type: application/json" \
-  -H "$AUTH" \
+curl -X POST https://localhost:8443/api/blacklists/import \
+  -H "Content-Type: application/json" -H "$AUTH" \
   -d '{"type": "domain", "url": "https://example.com/domains.txt"}'
 
 # IP blocklist from URL
-curl -X POST http://localhost:8011/api/blacklists/import \
-  -H "Content-Type: application/json" \
-  -H "$AUTH" \
+curl -X POST https://localhost:8443/api/blacklists/import \
+  -H "Content-Type: application/json" -H "$AUTH" \
   -d '{"type": "ip", "url": "https://example.com/ips.txt"}'
 ```
+
+Per-type endpoints are also accepted: `POST /api/ip-blacklist/import` and `POST /api/domain-blacklist/import`.
 
 ### Import inline content
 
 ```bash
-curl -X POST http://localhost:8011/api/blacklists/import \
-  -H "Content-Type: application/json" \
-  -H "$AUTH" \
-  -d '{"type": "domain", "content": "badsite.com\n*.ads.example\nmalicious.net"}'
+curl -X POST https://localhost:8443/api/blacklists/import \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"type": "domain", "content": "badsite.example\n*.ads.example\nmalicious.example"}'
 ```
 
 ### Supported formats
 
-- Plain text — one entry per line (most common)
-- JSON array — `["entry1", "entry2"]`
-- JSON objects — `[{"domain": "example.com"}]`
-- Lines starting with `#` are ignored
+- Plain text — one entry per line.
+- JSON array — `["entry1", "entry2"]`.
+- JSON objects — `[{"domain": "example.com"}]`.
+- Lines beginning with `#` are ignored.
 
 ### Geo-based IP blocking
 
 ```bash
-curl -X POST http://localhost:8011/api/blacklists/import-geo \
-  -H "Content-Type: application/json" \
-  -H "$AUTH" \
+curl -X POST https://localhost:8443/api/blacklists/import-geo \
+  -H "Content-Type: application/json" -H "$AUTH" \
   -d '{"countries": ["RU", "CN"]}'
 ```
 
-## Automatic blocklist refresh
+Country IP ranges are pulled from `herrbischoff/country-ip-blocks` (IPv4) and merged into the IP blacklist.
 
-Secure Proxy Manager includes a built-in auto-refresh scheduler. Enable it via **Settings → Auto-refresh**:
+## Automatic refresh
 
-- `auto_refresh_enabled`: set to `true` to enable
-- `auto_refresh_hours`: interval in hours (default: 24)
+A background worker re-imports a fixed pair of public lists when auto-refresh is enabled in **Settings → Auto-refresh**:
 
-When enabled, the scheduler automatically re-downloads the following feeds and adds any new entries:
+- `auto_refresh_enabled`: `true` to enable.
+- `auto_refresh_hours`: re-fetch interval in hours (default `24`).
 
-- Firehol Level 1 (IP)
-- Spamhaus DROP (IP)
-- fabriziosalmi/blacklists consolidated list (domain)
+The defaults imported on each cycle are:
 
-To schedule updates for additional custom feeds, use a host cron job:
+- IP: Firehol Level 1, Stamparm Ipsum (level 1).
+- Domain: StevenBlack Unified hosts, URLhaus.
+
+To schedule additional custom feeds, run a host cron job that calls the import endpoint:
 
 ```bash
-0 3 * * * curl -s -X POST http://localhost:8011/api/blacklists/import \
+0 3 * * * curl -s -X POST https://localhost:8443/api/blacklists/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n USER:PASS | base64)" \
-  -d '{"type": "domain", "url": "https://hosts.oisd.nl/"}'
+  -u USER:PASS \
+  -d '{"type": "domain", "url": "https://big.oisd.nl/domainswild"}'
 ```
