@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.5] - 2026-06-04
+
+### Fixed
+
+- **proxy: live blacklist reload** — added `blacklist_watchdog.py` (Python 3,
+  runs under supervisord) that polls `/config/{ip,domain}_blacklist.txt` every
+  2 s and calls `squid -k reconfigure` when either file changes.  Previously
+  the backend updated the database and rewrote the config files but Squid only
+  picked up the new rules on a container restart.
+- **proxy: ssl_db ownership** — `chmod 700 /config/ssl_db` replaced by
+  `chown proxy:proxy /config/ssl_db && chmod 750`.  The old mode blocked Squid
+  (running as `proxy`) from writing dynamic certificates during SSL bump.
+- **proxy: log world-readable** — added `chmod 755 /var/log/squid` so the
+  backend container (different UID) can read `access.log` for real-time
+  analytics without requiring a shared group.
+- **backend-go: version bump** `3.4.4` → `3.4.5`.
+
 ## [3.4.4] - 2026-05-05
 
 ### Security
