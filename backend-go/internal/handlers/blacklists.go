@@ -534,6 +534,11 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 			if ip == "" || strings.HasPrefix(ip, "#") {
 				continue
 			}
+			// Same guards as the regular import: valid CIDR/IP, and never a
+			// private/bogon range (the ip_blacklist is a source ACL).
+			if !isValidCIDR(ip) || isLANBogonCIDR(ip) {
+				continue
+			}
 			if _, ex := existing[ip]; !ex {
 				toInsert = append(toInsert, [2]string{ip, "GeoIP: " + strings.ToUpper(cc)})
 				existing[ip] = struct{}{}
@@ -585,13 +590,12 @@ func propagate(db *sql.DB, cfg *config.Config, kind string) {
 		log.Warn().Err(err).Msg("export blacklists failed")
 	}
 
-	// Signal Squid to reload ACLs
-	if kind == "ip" || kind == "all" {
-		client := &http.Client{Timeout: 5 * time.Second}
-		if resp, err := client.Post(fmt.Sprintf("http://%s:%s/api/reload", cfg.ProxyHost, cfg.ProxyPort), "application/json", nil); err == nil {
-			resp.Body.Close()
-		}
-	}
+	// IP/domain ACL reload for Squid is handled by the proxy-side watchdog
+	// (proxy/blacklist_watchdog.py): it polls the mtime of the /config blacklist
+	// files we just exported above, copies them into Squid's ACL dir and runs
+	// `squid -k reconfigure`. There is no Squid HTTP reload endpoint — a previous
+	// POST to proxy:3128/api/reload was a dead no-op (3128 is the forward-proxy
+	// port, which has no /api/reload).
 
 	// Signal dnsmasq to reload blocklist (SIGHUP via Docker API)
 	if kind == "domain" || kind == "all" {

@@ -125,7 +125,10 @@ func (h *AnalyticsHandlers) TrafficStats(w http.ResponseWriter, r *http.Request)
 	var startDuration string
 	switch period {
 	case "hour":
-		interval = `strftime('%Y-%m-%d %H:%M', timestamp)`
+		// Bucket into 5-minute slots (rounded down via epoch) so the keys line up
+		// with the 5-minute label grid below. A per-minute %H:%M key never matched
+		// the 5-min-stepped labels, dropping ~all points.
+		interval = `strftime('%Y-%m-%d %H:%M', datetime((strftime('%s', timestamp) / 300) * 300, 'unixepoch'))`
 		intervalFormat = "2006-01-02 15:04"
 		startDuration = "-1 hours"
 	case "week":
@@ -161,10 +164,11 @@ func (h *AnalyticsHandlers) TrafficStats(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// Build labels array from now back.
+	// Build labels array from now back. Use UTC to match the UTC timestamps that
+	// the log tailer writes (and that strftime buckets above).
 	var labels []string
 	var inbound, outbound, blocked []int
-	now := time.Now()
+	now := time.Now().UTC()
 	var step time.Duration
 	var labelFmt string
 	switch period {
@@ -182,6 +186,11 @@ func (h *AnalyticsHandlers) TrafficStats(w http.ResponseWriter, r *http.Request)
 		labelFmt = intervalFormat
 	}
 	startT := now.Add(-parseDuration(startDuration))
+	// Align the hour grid to 5-minute boundaries (:00,:05,…) so labels match the
+	// 5-minute SQL buckets.
+	if period == "hour" {
+		startT = startT.Truncate(step)
+	}
 	for t := startT; t.Before(now) || t.Equal(now); t = t.Add(step) {
 		lbl := t.Format(labelFmt)
 		labels = append(labels, lbl)

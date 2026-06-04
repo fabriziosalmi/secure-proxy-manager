@@ -232,7 +232,10 @@ http_access deny direct_ipv6_url
 http_access deny direct_ipv6_host
 http_access deny CONNECT direct_ip_host
 http_access deny CONNECT direct_ipv6_host
-http_access deny ip_blacklist
+# ip_blacklist is a SOURCE ACL. Scope the deny so it can NEVER apply to LAN
+# clients: if a bogon/RFC1918-containing feed (Firehol etc.) is ever loaded, an
+# unscoped "deny ip_blacklist" would lock out every localnet/localhost client.
+http_access deny ip_blacklist !localnet !localhost
 # domain_blacklist removed — handled by dnsmasq DNS blackhole at L3
 http_access allow localnet
 http_access allow localhost

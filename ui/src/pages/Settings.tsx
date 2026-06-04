@@ -290,7 +290,7 @@ export function Settings() {
             <label className="text-xs font-medium text-muted-foreground mb-1 block mt-4">Proxy Behavior</label>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { name: 'aggressive_caching', label: 'Aggressive Cache', desc: 'Force static caching' },
+                { name: 'aggressive_caching_enabled', label: 'Aggressive Cache', desc: 'Force static caching' },
                 { name: 'enable_offline_mode', label: 'Offline Mode', desc: 'Serve stale cache' },
               ].map(t => (
                 <div key={t.name} className="flex items-center justify-between p-3 border border-white/[0.06] rounded-lg bg-white/[0.02]">

@@ -31,6 +31,13 @@ func IsSensitive(key string) bool {
 
 const encPrefix = "enc::"
 
+// IsEncrypted reports whether a stored value is already AES-GCM encrypted
+// (carries the enc:: marker). Used to avoid double-encrypting values that are
+// restored from a backup, which exports the raw (encrypted) DB column.
+func IsEncrypted(stored string) bool {
+	return strings.HasPrefix(stored, encPrefix)
+}
+
 // Encrypt encrypts plaintext using AES-256-GCM with the given hex-encoded key.
 // Returns "enc::<hex nonce><hex ciphertext>".
 func Encrypt(plaintext, hexKey string) (string, error) {

@@ -128,7 +128,7 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		val := v
-		if appcrypto.IsSensitive(k) && val != "" {
+		if appcrypto.IsSensitive(k) && val != "" && !appcrypto.IsEncrypted(val) {
 			if enc, err := appcrypto.Encrypt(val, h.cfg.EncryptionKey); err == nil {
 				val = enc
 			}

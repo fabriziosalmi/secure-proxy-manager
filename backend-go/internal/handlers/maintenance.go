@@ -73,7 +73,10 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 			continue
 		}
 		val := v
-		if appcrypto.IsSensitive(k) && val != "" {
+		// Encrypt sensitive values, but NOT if they are already encrypted — a
+		// backup exports the raw (already-enc::) column, so re-encrypting here
+		// would double-encrypt and corrupt the value on the next decrypt.
+		if appcrypto.IsSensitive(k) && val != "" && !appcrypto.IsEncrypted(val) {
 			if enc, err := appcrypto.Encrypt(val, h.cfg.EncryptionKey); err == nil {
 				val = enc
 			}
@@ -151,7 +154,7 @@ func (h *MaintenanceHandlers) ReloadConfig(w http.ResponseWriter, r *http.Reques
 	// current toggle files (ssl_bump_enabled, etc.) and blacklist files.
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
 	database.Audit(h.db, username, "reload_config", "proxy", "")
-	if err := h.docker.RestartContainer("secure-proxy-manager-proxy-1"); err != nil {
+	if err := h.docker.RestartContainer("secure-proxy-manager-proxy"); err != nil {
 		log.Warn().Err(err).Msg("proxy container restart failed (non-fatal)")
 		writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Config exported — proxy restart failed, apply manually"})
 		return
