@@ -41,8 +41,50 @@ func isValidCIDR(s string) bool {
 	return err == nil
 }
 
+// internallyManagedSettings are written by the application itself (not the
+// operator) and must never be set through the generic bulk-update or
+// restore-config paths, where a crafted payload could otherwise rewrite trusted
+// internal state (e.g. clearing the "admin password changed" flag).
+var internallyManagedSettings = map[string]bool{
+	"default_password_changed": true,
+}
+
+// isWritableSettingKey reports whether a settings key may be written through the
+// bulk-update / restore-config endpoints: it must match the key-name convention,
+// be within the length bound, and not be an internally-managed key.
+func isWritableSettingKey(key string) bool {
+	return len(key) <= 100 && validKeyRE.MatchString(key) && !internallyManagedSettings[key]
+}
+
+// isBlockedIP reports whether an IP must not be reached by server-side fetches:
+// private, loopback, link-local, unspecified, multicast, 0.0.0.0/8 or the
+// 100.64.0.0/10 CGNAT range (commonly fronting internal infra / metadata).
+func isBlockedIP(ip net.IP) bool {
+	a, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return true
+	}
+	a = a.Unmap()
+	if a.IsPrivate() || a.IsLoopback() || a.IsLinkLocalUnicast() ||
+		a.IsLinkLocalMulticast() || a.IsUnspecified() || a.IsMulticast() {
+		return true
+	}
+	if a.Is4() {
+		b := a.As4()
+		if b[0] == 0 { // 0.0.0.0/8
+			return true
+		}
+		if b[0] == 100 && b[1] >= 64 && b[1] <= 127 { // 100.64.0.0/10 CGNAT
+			return true
+		}
+	}
+	return false
+}
+
 // isSSRFTarget resolves the hostname in rawURL and returns true if ANY resolved
-// IP is private, loopback, link-local, or otherwise non-routable.
+// IP is non-routable. This is the early pre-flight check; the actual fetch is
+// additionally guarded at dial time by ssrfSafeClient (see below), so a DNS
+// answer that changes between this check and the dial cannot bypass protection.
 func isSSRFTarget(rawURL string) (bool, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -60,40 +102,51 @@ func isSSRFTarget(rawURL string) (bool, error) {
 		return true, fmt.Errorf("cannot resolve hostname: %w", err)
 	}
 	for _, addr := range addrs {
-		ip, err := netip.ParseAddr(addr)
-		if err != nil {
-			continue
-		}
-		if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() ||
-			ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+		if ip := net.ParseIP(addr); ip != nil && isBlockedIP(ip) {
 			return true, nil
-		}
-		// Block 0.0.0.0/8
-		if ip.Is4() {
-			a := ip.As4()
-			if a[0] == 0 {
-				return true, nil
-			}
 		}
 	}
 	return false, nil
 }
 
-// ssrfSafeClient returns an HTTP client that pins DNS resolution to the
-// validated IPs, preventing DNS rebinding attacks.
-func ssrfSafeClient(hostname string) *http.Client {
-	addrs, err := net.LookupHost(hostname)
-	if err != nil || len(addrs) == 0 {
-		return &http.Client{Timeout: 60 * time.Second}
-	}
-	pinnedAddr := addrs[0]
+// ssrfSafeClient returns an HTTP client hardened against SSRF. Unlike a one-shot
+// pre-check, it validates the destination IP AT DIAL TIME — the IP it validates
+// is the exact IP it connects to — which closes the DNS-rebinding TOCTOU window
+// between resolution and connection. It also re-validates every redirect hop, so
+// a 30x to http://169.254.169.254/ (or any internal host) is refused rather than
+// followed.
+func ssrfSafeClient() *http.Client {
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	return &http.Client{
 		Timeout: 60 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return fmt.Errorf("stopped after 5 redirects")
+			}
+			if ssrf, err := isSSRFTarget(req.URL.String()); err != nil || ssrf {
+				return fmt.Errorf("redirect to disallowed target %q", req.URL.Host)
+			}
+			return nil
+		},
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				// Replace hostname with pinned IP, keep port
-				_, port, _ := net.SplitHostPort(addr)
-				return (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, network, net.JoinHostPort(pinnedAddr, port))
+				host, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+				ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+				if err != nil {
+					return nil, err
+				}
+				if len(ips) == 0 {
+					return nil, fmt.Errorf("no addresses for %q", host)
+				}
+				for _, ipa := range ips {
+					if isBlockedIP(ipa.IP) {
+						return nil, fmt.Errorf("blocked address %s for host %q", ipa.IP, host)
+					}
+				}
+				return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
 			},
 		},
 	}
@@ -115,13 +168,10 @@ func downloadWithRetry(rawURL string, maxBytes int64) ([]byte, error) {
 }
 
 func downloadOnce(rawURL string, maxBytes int64) ([]byte, error) {
-	// Use SSRF-safe client that pins DNS to prevent rebinding
-	u, _ := url.Parse(rawURL)
-	hostname := ""
-	if u != nil {
-		hostname = u.Hostname()
-	}
-	client := ssrfSafeClient(hostname)
+	// SSRF-safe client validates the destination IP at dial time and on every
+	// redirect, so DNS rebinding between the pre-check and the fetch cannot reach
+	// internal addresses.
+	client := ssrfSafeClient()
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
@@ -169,7 +219,9 @@ func readAll(r interface{ Read([]byte) (int, error) }) ([]byte, error) {
 }
 
 // ioReader wraps a minimal Read interface into io.Reader for bytes.Buffer.ReadFrom.
-type ioReader struct{ r interface{ Read([]byte) (int, error) } }
+type ioReader struct {
+	r interface{ Read([]byte) (int, error) }
+}
 
 func (w ioReader) Read(p []byte) (int, error) { return w.r.Read(p) }
 

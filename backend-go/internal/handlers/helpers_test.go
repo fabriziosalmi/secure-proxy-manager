@@ -1,8 +1,44 @@
 package handlers
 
 import (
+	"net"
 	"testing"
 )
+
+func TestIsBlockedIP(t *testing.T) {
+	blocked := []string{
+		"127.0.0.1", "::1", "10.0.0.1", "192.168.1.1", "172.16.0.1",
+		"169.254.169.254",                          // cloud metadata
+		"0.0.0.0", "100.64.0.1", "100.127.255.255", // CGNAT
+		"224.0.0.1", "fe80::1", "fc00::1",
+	}
+	for _, s := range blocked {
+		if ip := net.ParseIP(s); ip == nil || !isBlockedIP(ip) {
+			t.Errorf("isBlockedIP(%q) = false, want true", s)
+		}
+	}
+	allowed := []string{"8.8.8.8", "1.1.1.1", "93.184.216.34", "100.63.255.255", "100.128.0.1", "2606:4700:4700::1111"}
+	for _, s := range allowed {
+		if ip := net.ParseIP(s); ip == nil || isBlockedIP(ip) {
+			t.Errorf("isBlockedIP(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestIsWritableSettingKey(t *testing.T) {
+	bad := []string{"default_password_changed", "has space", "semi;colon", "", "../etc"}
+	for _, k := range bad {
+		if isWritableSettingKey(k) {
+			t.Errorf("isWritableSettingKey(%q) = true, want false", k)
+		}
+	}
+	good := []string{"enable_waf", "webhook_url", "proxy_port", "enable_safesearch"}
+	for _, k := range good {
+		if !isWritableSettingKey(k) {
+			t.Errorf("isWritableSettingKey(%q) = false, want true", k)
+		}
+	}
+}
 
 func TestHelpers_IsValidCIDR(t *testing.T) {
 	cases := []struct {
