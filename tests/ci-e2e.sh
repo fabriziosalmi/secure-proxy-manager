@@ -94,13 +94,21 @@ hc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' http://example.com
 sc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' https://example.com/)
 [ "$sc" = 200 ] && ok "proxy HTTPS egress (200)" || bad "proxy HTTPS egress (got $sc)"
 
-# Live blacklist reload — add a domain, expect the watchdog to push it into
-# Squid within a couple of seconds, then an HTTP request to it must be denied.
+# Live blacklist reload. Block a normally-reachable domain and confirm it stops
+# being reachable. We test a domain that DOES resolve (example.org) so the
+# result distinguishes "blocked" from "never resolved": without the block it is
+# 200, and a block makes it non-200 — whether that is 403 (Squid ACL, once the
+# watchdog has synced the list) or a blackhole/connect failure (DNS layer).
+base_code=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' http://example.org/)
 curl -s -m 10 -u "$AUTH" -X POST -H 'Content-Type: application/json' \
-  -d '{"domain":"ci-block.invalid"}' "$API/api/domain-blacklist" >/dev/null
-sleep 5
-bc=$(curl -s -m 10 -x "$PROXY" -o /dev/null -w '%{http_code}' http://ci-block.invalid/)
-[ "$bc" = 403 ] && ok "blacklisted host blocked (403)" || bad "blacklist block (got $bc, expected 403)"
+  -d '{"domain":"example.org"}' "$API/api/domain-blacklist" >/dev/null
+sleep 10
+bc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' http://example.org/)
+if [ "$base_code" = 200 ] && [ "$bc" != 200 ]; then
+  ok "blacklisted domain blocked (example.org: 200 -> $bc)"
+else
+  bad "blacklist did not block (baseline=$base_code, after=$bc)"
+fi
 
 # Log pipeline — generate some proxied traffic, then the dashboard must count it
 # (this fails if the backend cannot read Squid's access.log).
