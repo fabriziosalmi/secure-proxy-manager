@@ -39,7 +39,6 @@ export function Logs() {
     }
 
     let ws: WebSocket | null = null;
-    let pingInterval: ReturnType<typeof setInterval>;
     let reconnectTimeout: ReturnType<typeof setTimeout>;
     let cancelled = false;
     let retryCount = 0;
@@ -66,13 +65,12 @@ export function Logs() {
         ws.onopen = () => {
           setWsStatus('connected');
           retryCount = 0;
-          pingInterval = setInterval(() => {
-            if (ws?.readyState === WebSocket.OPEN) ws.send('ping');
-          }, 30000);
+          // Keep-alive is server-driven: the backend sends protocol-level
+          // WebSocket pings and the browser answers them automatically. No
+          // application-level heartbeat is needed from the client.
         };
 
         ws.onmessage = (event) => {
-          if (event.data === 'pong') return;
           try {
             const newLog = JSON.parse(event.data);
             setRealtimeLogs(prev => [newLog, ...prev].slice(0, 200));
@@ -81,7 +79,6 @@ export function Logs() {
 
         ws.onclose = () => {
           setWsStatus('disconnected');
-          if (pingInterval) clearInterval(pingInterval);
           if (!cancelled && retryCount < MAX_RETRIES) {
             const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
             retryCount++;
@@ -107,7 +104,6 @@ export function Logs() {
 
     return () => {
       cancelled = true;
-      if (pingInterval) clearInterval(pingInterval);
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
         ws.close();

@@ -9,6 +9,20 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const (
+	// writeWait is the deadline for a single write (frame) to the peer.
+	writeWait = 10 * time.Second
+	// pongWait is how long readPump waits for the next read before declaring
+	// the connection dead. Reset on every protocol-level pong.
+	pongWait = 90 * time.Second
+	// pingPeriod is how often writePump sends a protocol-level ping. Must be
+	// shorter than pongWait so a pong always lands before the read deadline.
+	// Browsers answer protocol pings automatically (the JS WebSocket API does
+	// not expose ping/pong), which is what actually keeps the stream alive —
+	// there is no application-level heartbeat.
+	pingPeriod = (pongWait * 9) / 10 // 81s
+)
+
 // Client wraps a single WebSocket connection.
 type Client struct {
 	conn *websocket.Conn
@@ -76,26 +90,48 @@ func (h *Hub) ClientCount() int {
 	return len(h.clients)
 }
 
+// writePump is the SOLE writer on the connection (gorilla/websocket forbids
+// concurrent writes). It drains broadcast messages from c.send and, on a
+// pingPeriod ticker, emits a protocol-level ping to keep the stream alive.
 func (c *Client) writePump() {
+	ticker := time.NewTicker(pingPeriod)
 	defer func() {
+		ticker.Stop()
 		if r := recover(); r != nil {
 			log.Debug().Interface("recover", r).Msg("ws writePump recovered")
 		}
 		c.hub.Unregister(c) // clean up on exit
 	}()
-	for msg := range c.send {
-		if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-			return
+	for {
+		select {
+		case msg, ok := <-c.send:
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if !ok {
+				// Hub closed the channel during Unregister — say goodbye.
+				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				return
+			}
+		case <-ticker.C:
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
 		}
 	}
 }
 
-// readPump reads pings/pongs and detects disconnects.
+// readPump detects disconnects and refreshes the read deadline on every
+// protocol-level pong (sent automatically by the peer in response to the
+// writePump ping). Any inbound application frames are read and discarded —
+// this stream is server→client only.
 func (c *Client) readPump() {
 	defer c.hub.Unregister(c)
-	_ = c.conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+	_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error {
-		_ = c.conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+		_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
 	for {
