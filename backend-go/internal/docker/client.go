@@ -27,9 +27,8 @@ const dockerSock = "/var/run/docker.sock"
 var (
 	// allowedContainers is the set of containers the backend may control.
 	allowedContainers = map[string]struct{}{
-		"secure-proxy-manager-proxy":   {},
-		"secure-proxy-manager-proxy-1": {},
-		"secure-proxy-manager-dns-1":   {},
+		"secure-proxy-manager-proxy": {}, // explicit container_name in compose
+		"secure-proxy-manager-dns-1": {}, // compose default naming (<project>-dns-1)
 	}
 
 	// allowedExecCommands is the set of argv vectors Exec may run, matched

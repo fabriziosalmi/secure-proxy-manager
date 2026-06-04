@@ -61,7 +61,7 @@ func TestClient_KillContainer(t *testing.T) {
 				hc: &http.Client{Transport: mrt},
 			}
 
-			err := client.KillContainer("secure-proxy-manager-proxy-1", "HUP")
+			err := client.KillContainer("secure-proxy-manager-proxy", "HUP")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("KillContainer() error = %v, wantErr %v", err, tt.wantErr)
 			}
