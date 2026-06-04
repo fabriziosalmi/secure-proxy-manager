@@ -131,7 +131,21 @@ export function SetupWizard({ onComplete }: Props) {
       const settings = mapToPreset(env, devices, strict);
       settings.wizard_completed = 'true';
       await api.post('settings', settings);
-      toast.success('Setup complete! Your proxy is configured.', { duration: 5000, icon: '🚀' });
+      // Saving only writes the toggle files; they take effect when startup.sh
+      // regenerates squid.conf, which happens on a proxy reload. Without this the
+      // wizard's "Setup complete" was misleading — nothing was actually applied.
+      // Fire-and-forget (mirrors Settings.tsx) so we don't block the wizard on
+      // the proxy restart; the toast reports progress in the background.
+      toast.promise(
+        api.post('maintenance/reload-config', {}, {
+          headers: { 'Idempotency-Key': `wizard-reload-${Date.now()}` },
+        }),
+        {
+          loading: 'Applying your configuration to the proxy…',
+          success: 'Setup complete — your proxy is live with these settings! 🚀',
+          error: 'Saved, but auto-apply failed — use Settings → Maintenance → Reload config.',
+        }
+      );
       onComplete();
     } catch {
       toast.error('Failed to save configuration');

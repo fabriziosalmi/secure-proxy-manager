@@ -21,7 +21,9 @@ import (
 // It also broadcasts a JSON representation to the WebSocket hub.
 func StartLogTailer(ctx context.Context, db *sql.DB, logPath string, hub *websocket.Hub) {
 	go func() {
-		var offset int64
+		// Restore the persisted byte offset so a backend restart does not re-read
+		// the whole file from the start and re-insert every still-present line.
+		offset := readOffset(logPath)
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
 		for {
@@ -41,7 +43,7 @@ func StartLogTailer(ctx context.Context, db *sql.DB, logPath string, hub *websoc
 				f.Close()
 				continue
 			}
-			// Detect log rotation.
+			// Detect log rotation / truncation.
 			if fi.Size() < offset {
 				offset = 0
 			}
@@ -55,16 +57,28 @@ func StartLogTailer(ctx context.Context, db *sql.DB, logPath string, hub *websoc
 			}
 			scanner := bufio.NewScanner(f)
 			scanner.Buffer(make([]byte, 64*1024), 256*1024) // 64KB default, 256KB max line
+			batch := make([]map[string]any, 0, 256)
 			for scanner.Scan() {
 				line := strings.TrimSpace(scanner.Text())
 				if line == "" {
 					continue
 				}
-				entry := parseSquidLine(line)
-				if entry == nil {
-					continue
+				if entry := parseSquidLine(line); entry != nil {
+					batch = append(batch, entry)
 				}
-				insertLogEntry(db, entry)
+			}
+			newOffset, seekErr := f.Seek(0, io.SeekCurrent)
+			f.Close()
+
+			// Insert the whole tick in one transaction. If it fails, leave the
+			// offset where it was and retry next tick rather than silently
+			// dropping rows (and advancing past them).
+			if err := insertLogBatch(db, batch); err != nil {
+				log.Warn().Err(err).Int("lines", len(batch)).Msg("log tailer: batch insert failed, will retry")
+				continue
+			}
+			// Broadcast only committed rows, so a retry does not double-emit.
+			for _, entry := range batch {
 				if msg, err := json.Marshal(entry); err == nil {
 					select {
 					case hub.Broadcast <- msg:
@@ -72,17 +86,42 @@ func StartLogTailer(ctx context.Context, db *sql.DB, logPath string, hub *websoc
 					}
 				}
 			}
-			// Update offset to current file position.
-			newOffset, err := f.Seek(0, io.SeekCurrent)
-			f.Close()
-			if err == nil {
+
+			if seekErr == nil {
 				offset = newOffset
 			} else {
 				offset = fi.Size()
 			}
+			writeOffset(logPath, offset)
 		}
 	}()
 	log.Info().Str("path", logPath).Msg("log tailer started")
+}
+
+// offsetPath returns the sidecar file that persists the tail position.
+func offsetPath(logPath string) string { return logPath + ".pos" }
+
+func readOffset(logPath string) int64 {
+	data, err := os.ReadFile(offsetPath(logPath)) // #nosec G304 — derived from configured log path
+	if err != nil {
+		return 0
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
+func writeOffset(logPath string, offset int64) {
+	tmp := offsetPath(logPath) + ".tmp"
+	if err := os.WriteFile(tmp, []byte(strconv.FormatInt(offset, 10)), 0o600); err != nil {
+		log.Warn().Err(err).Msg("log tailer: cannot persist offset (will re-read on restart)")
+		return
+	}
+	if err := os.Rename(tmp, offsetPath(logPath)); err != nil {
+		log.Warn().Err(err).Msg("log tailer: cannot move offset file into place")
+	}
 }
 
 // squid native access log format:
@@ -125,25 +164,45 @@ func parseSquidLine(line string) map[string]any {
 	statusStr := action + "/" + statusCode
 
 	return map[string]any{
-		"timestamp":   timestamp,
-		"client_ip":   clientIP,
-		"source_ip":   clientIP, // kept for DB insert compatibility
-		"method":      method,
-		"destination": destination,
-		"status":      statusStr,
-		"bytes":       bytesInt,
-		"elapsed_ms":  elapsed,
+		"timestamp":      timestamp,
+		"unix_timestamp": unixSec,
+		"client_ip":      clientIP,
+		"source_ip":      clientIP, // kept for DB insert compatibility
+		"method":         method,
+		"destination":    destination,
+		"status":         statusStr,
+		"bytes":          bytesInt,
+		"elapsed_ms":     elapsed,
 	}
 }
 
-func insertLogEntry(db *sql.DB, entry map[string]any) {
-	_, err := db.Exec(
-		`INSERT INTO proxy_logs(timestamp, source_ip, method, destination, status, bytes)
-		 VALUES(?, ?, ?, ?, ?, ?)`,
-		entry["timestamp"], entry["source_ip"], entry["method"],
-		entry["destination"], entry["status"], entry["bytes"],
-	)
-	if err != nil {
-		log.Debug().Err(err).Msg("insert log entry failed")
+// insertLogBatch inserts a tick's worth of entries in a single transaction.
+// Populating unix_timestamp (and elapsed_ms) is what makes idx_proxy_logs_unix_ts
+// usable for time-window analytics — both columns were previously never written.
+func insertLogBatch(db *sql.DB, entries []map[string]any) error {
+	if len(entries) == 0 {
+		return nil
 	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(
+		`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, bytes, elapsed_ms)
+		 VALUES(?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+	for _, e := range entries {
+		if _, err := stmt.Exec(
+			e["timestamp"], e["unix_timestamp"], e["source_ip"], e["method"],
+			e["destination"], e["status"], e["bytes"], e["elapsed_ms"],
+		); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
 }

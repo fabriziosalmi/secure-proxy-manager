@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
+	appcrypto "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/crypto"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/docker"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
@@ -62,14 +63,31 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, "no configuration data provided")
 		return
 	}
+	restored := 0
 	for k, v := range body.Config {
-		h.db.Exec( //nolint:errcheck
+		// Same guard as BulkUpdate: only known-safe, writable keys; reject
+		// internally-managed state and non-conforming key names. (Previously this
+		// path upserted ANY key/value with no validation — a mass-assignment hole.)
+		if !isWritableSettingKey(k) || len(v) > 10000 {
+			log.Warn().Str("key", k).Msg("RestoreConfig: skipping invalid or protected key")
+			continue
+		}
+		val := v
+		if appcrypto.IsSensitive(k) && val != "" {
+			if enc, err := appcrypto.Encrypt(val, h.cfg.EncryptionKey); err == nil {
+				val = enc
+			}
+		}
+		if _, err := h.db.Exec(
 			"INSERT INTO settings(setting_name,setting_value) VALUES(?,?) ON CONFLICT(setting_name) DO UPDATE SET setting_value=excluded.setting_value",
-			k, v,
-		)
+			k, val,
+		); err != nil {
+			log.Error().Str("key", k).Err(err).Msg("RestoreConfig: failed to save setting")
+		}
+		restored++
 	}
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
-	database.Audit(h.db, username, "restore_config", "", fmt.Sprintf("%d settings restored", len(body.Config)))
+	database.Audit(h.db, username, "restore_config", "", fmt.Sprintf("%d settings restored", restored))
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Configuration restored successfully"})
 }
 

@@ -131,28 +131,54 @@ func TestCheckUpdate(t *testing.T) {
 	check(ts3.URL)
 }
 
-func TestInsertLogEntry(t *testing.T) {
+func TestInsertLogBatch(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	// 1. Success
-	entry := map[string]any{
-		"timestamp":   "2024-04-02T10:00:00Z",
-		"source_ip":   "192.168.1.1",
-		"method":      "GET",
-		"destination": "http://example.com",
-		"status":      "TCP_MISS/200",
-		"bytes":       1024,
+	batch := []map[string]any{
+		{
+			"timestamp":      "2024-04-02T10:00:00Z",
+			"unix_timestamp": int64(1712052000),
+			"source_ip":      "192.168.1.1",
+			"method":         "GET",
+			"destination":    "http://example.com",
+			"status":         "TCP_MISS/200",
+			"bytes":          1024,
+			"elapsed_ms":     12,
+		},
+		{"source_ip": "1.2.3.4"}, // partial map — must not break the batch
 	}
-	insertLogEntry(db, entry)
-
-	// 2. Missing fields (coverage for partial maps)
-	insertLogEntry(db, map[string]any{"source_ip": "1.2.3.4"})
+	if err := insertLogBatch(db, batch); err != nil {
+		t.Fatalf("insertLogBatch: %v", err)
+	}
 
 	var count int
 	_ = db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&count)
 	if count != 2 {
 		t.Errorf("Expected 2 log entries, got %d", count)
+	}
+	// unix_timestamp must now be populated (the index depends on it).
+	var withUnix int
+	_ = db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE unix_timestamp = 1712052000").Scan(&withUnix)
+	if withUnix != 1 {
+		t.Errorf("Expected unix_timestamp to be populated, got %d rows", withUnix)
+	}
+
+	// Empty batch is a no-op.
+	if err := insertLogBatch(db, nil); err != nil {
+		t.Errorf("insertLogBatch(nil): %v", err)
+	}
+}
+
+func TestLogOffsetRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	logPath := dir + "/access.log"
+	if got := readOffset(logPath); got != 0 {
+		t.Errorf("readOffset with no file = %d, want 0", got)
+	}
+	writeOffset(logPath, 4096)
+	if got := readOffset(logPath); got != 4096 {
+		t.Errorf("readOffset after write = %d, want 4096", got)
 	}
 }
 

@@ -48,22 +48,31 @@ If you want to get up and running quickly with default settings:
 git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
 cd secure-proxy-manager
 
-# 2. Run the initialization script
-chmod +x init.sh
-./init.sh
+# 2. Create your .env with strong credentials
+cp .env.example .env
+$EDITOR .env   # set BASIC_AUTH_PASSWORD (see notes below)
 
-# 3. Start the services
-docker-compose up -d
+# 3. Build and start the services
+docker compose up -d --build
 
 # 4. Check the logs
-docker-compose logs -f
+docker compose logs -f
 
 # 5. Access the web interface
-# Open your browser to: http://localhost:8011
+# Open your browser to: https://localhost:8443  (accept the self-signed cert)
 # Log in with the credentials you set in .env
 ```
 
-**Note**: `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` must be set in `.env` before starting. The services refuse to start if these are empty or set to `admin`.
+Or, for a one-command install on a fresh VPS (generates and prints credentials
+for you):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/deploy/install.sh | sudo bash
+```
+
+**Note**: `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` must be set in `.env`
+before starting. The backend refuses to start if the password is empty, a common
+default (`changeme`, `admin`, `password`, …), or shorter than 8 characters.
 
 ## Step-by-Step Deployment
 
@@ -76,21 +85,20 @@ cd secure-proxy-manager
 
 ### Step 2: Prepare the Environment
 
-#### Option A: Using the Initialization Script (Recommended)
+#### Option A: Using the Installer (Recommended)
 
-The initialization script will create all necessary directories and files:
+`deploy/install.sh` provisions everything on a fresh host:
 
 ```bash
-chmod +x init.sh
-./init.sh
+curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/deploy/install.sh | sudo bash
 ```
 
 This script will:
 - Check for Docker and Docker Compose installation
 - Create required directories (`config`, `data`, `logs`)
 - Create empty blacklist files if they don't exist
-- Create a `.env` file from `.env.example` if it doesn't exist
-- Set proper permissions
+- Generate a `.env` with strong, random credentials and print them
+- Build and start the stack
 
 #### Option B: Manual Setup
 
@@ -166,16 +174,17 @@ docker-compose logs -f
 ```
 
 Look for these success messages in the logs:
-- Backend: `"Gunicorn is running on http://0.0.0.0:5000"`
-- Web UI: `"Running on http://0.0.0.0:8011"`
+- Backend (Go): `"HTTP server listening"` on port `5000` (internal)
+- Web UI (nginx): serving on `8443` (HTTPS) / `8011` (HTTP redirect)
 - Proxy: `"Squid configuration syntax is valid"`
 
 ### Step 6: Access the Web Interface
 
 1. Open your web browser and navigate to:
    ```
-   http://localhost:8011
+   https://localhost:8443
    ```
+   (accept the self-signed certificate; plain `http://localhost:8011` redirects here)
 
 2. Enter your credentials:
    - Username: `admin` (or what you set in `.env`)
@@ -232,7 +241,7 @@ All configuration is done through the `.env` file. Here are the key variables:
 |----------|---------|-------------|
 | `BASIC_AUTH_USERNAME` | required | Username for web UI and API access |
 | `BASIC_AUTH_PASSWORD` | required | Password for web UI and API access |
-| `SECRET_KEY` | Auto-generated | Flask session secret (generate with `secrets.token_hex(32)`) |
+| `SECRET_KEY` | Auto-generated | JWT signing secret. Leave empty to auto-generate and persist under `/data`. If set, must be unique, random and 32+ chars (`openssl rand -hex 32`); known/example values are rejected at startup. |
 
 #### Backend API
 | Variable | Default | Description |
@@ -606,8 +615,9 @@ Set up health monitoring:
 
 ```bash
 # Check health endpoints
-curl -I http://localhost:8011/health
-curl -I http://localhost:5001/health
+curl -I http://localhost:8011/health          # web UI (nginx)
+curl -I http://127.0.0.1:5001/health          # backend API (bound to localhost)
+curl -skI https://localhost:8443/             # web UI over HTTPS
 
 # Set up monitoring with tools like:
 # - Prometheus + Grafana

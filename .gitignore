@@ -54,5 +54,11 @@ config/dnsmasq.d/
 config/squid_settings.env
 config/custom_squid_extra.conf
 
+# TLS material — NEVER commit. The SSL-bump CA is generated per-deployment at
+# first boot (proxy/startup.sh). Committing it shares one private key with every
+# user and enables MITM of all bumped TLS.
+config/*.pem
+config/ssl_db/
+
 # Claude Code working directory (worktrees, settings, transcripts)
 .claude/

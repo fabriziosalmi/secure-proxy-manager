@@ -2,7 +2,7 @@
 # pre-commit-validate.sh — fast local validation before committing
 #
 # Runs without Docker (uses local toolchains).
-# Checks: TypeScript types, ESLint, Python syntax, unit tests.
+# Checks: TypeScript types, ESLint, Go format/vet/tests, UI build.
 #
 # Usage:
 #   ./scripts/pre-commit-validate.sh
@@ -58,44 +58,52 @@ else
   fi
 fi
 
-# ── 3. Python syntax check ────────────────────────────────────────────────────
+# ── 3. Go format & vet ────────────────────────────────────────────────────────
 
-step_start "Python syntax check (py_compile)"
-PY_FILES=(
-  "${REPO_ROOT}/backend/app/main.py"
-)
-
-PY_OK=true
-for f in "${PY_FILES[@]}"; do
-  if python3 -m py_compile "$f" 2>&1; then
-    echo "    OK: $f"
-  else
-    echo -e "  ${RED}FAIL: $f${NC}"
-    PY_OK=false
+step_start "Go format & vet (backend-go, waf-go)"
+# gofmt drift is reported as a warning (the tree has pre-existing drift that CI
+# does not gate on); go vet is the hard gate. Run with --fix to auto-format.
+GO_OK=true
+for mod in backend-go waf-go; do
+  dir="${REPO_ROOT}/${mod}"
+  [ -d "$dir" ] || continue
+  unformatted="$(cd "$dir" && gofmt -l . 2>/dev/null || true)"
+  if [ -n "$unformatted" ]; then
+    if [ "$FIX_MODE" = true ]; then
+      (cd "$dir" && gofmt -w .)
+      echo "    fixed formatting in ${mod}"
+    else
+      step_warn "${mod} not gofmt-clean (run with --fix): $(echo "$unformatted" | tr '\n' ' ')"
+    fi
+  fi
+  if ! (cd "$dir" && go vet ./... 2>&1); then
+    echo -e "  ${RED}FAIL: go vet in ${mod}${NC}"
+    GO_OK=false
   fi
 done
 
-if $PY_OK; then
-  step_ok "Python: no syntax errors"
+if $GO_OK; then
+  step_ok "Go: go vet passed"
 else
-  step_fail "Python: syntax errors found"
+  step_fail "Go: go vet issues found"
 fi
 
-# ── 4. Python unit tests ──────────────────────────────────────────────────────
+# ── 4. Go unit tests ──────────────────────────────────────────────────────────
 
-step_start "Python unit tests (pytest)"
-PYTEST_TARGETS=(
-  "${REPO_ROOT}/tests/test_imports.py"
-)
+step_start "Go unit tests (go test ./...)"
+GOTEST_OK=true
+for mod in backend-go waf-go; do
+  dir="${REPO_ROOT}/${mod}"
+  [ -d "$dir" ] || continue
+  if ! (cd "$dir" && go test ./... 2>&1); then
+    GOTEST_OK=false
+  fi
+done
 
-# Add test_security_improvements.py if it exists and doesn't need running backend
-EXTRA="${REPO_ROOT}/tests/test_security_improvements.py"
-[ -f "$EXTRA" ] && PYTEST_TARGETS+=("$EXTRA")
-
-if python3 -m pytest "${PYTEST_TARGETS[@]}" -v --tb=short 2>&1; then
-  step_ok "Python unit tests: all passed"
+if $GOTEST_OK; then
+  step_ok "Go unit tests: all passed"
 else
-  step_fail "Python unit tests: failures detected"
+  step_fail "Go unit tests: failures detected"
 fi
 
 # ── 5. UI build smoke-test ────────────────────────────────────────────────────

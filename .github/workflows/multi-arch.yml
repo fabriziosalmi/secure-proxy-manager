@@ -72,3 +72,7 @@ jobs:
             ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Attach an SBOM and SLSA build provenance attestation to each image so
+          # consumers can audit contents and verify the build origin.
+          sbom: true
+          provenance: mode=max
