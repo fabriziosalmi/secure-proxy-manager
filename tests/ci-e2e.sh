@@ -94,21 +94,29 @@ hc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' http://example.com
 sc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' https://example.com/)
 [ "$sc" = 200 ] && ok "proxy HTTPS egress (200)" || bad "proxy HTTPS egress (got $sc)"
 
-# Live blacklist reload. Block a normally-reachable domain and confirm it stops
-# being reachable. We test a domain that DOES resolve (example.org) so the
-# result distinguishes "blocked" from "never resolved": without the block it is
-# 200, and a block makes it non-200 — whether that is 403 (Squid ACL, once the
-# watchdog has synced the list) or a blackhole/connect failure (DNS layer).
-base_code=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' http://example.org/)
+# Live blacklist reload. Add a non-resolvable host (so the Squid ACL gives a
+# clean 403 with no DNS in the way), then poll until the watchdog has copied it
+# from /config into the Squid ACL list — a deterministic signal that avoids
+# guessing how long the slow CI runner needs — and finally confirm the request
+# is denied.
+BLOCK_HOST='ci-block.invalid'
 curl -s -m 10 -u "$AUTH" -X POST -H 'Content-Type: application/json' \
-  -d '{"domain":"example.org"}' "$API/api/domain-blacklist" >/dev/null
-sleep 10
-bc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' http://example.org/)
-if [ "$base_code" = 200 ] && [ "$bc" != 200 ]; then
-  ok "blacklisted domain blocked (example.org: 200 -> $bc)"
-else
-  bad "blacklist did not block (baseline=$base_code, after=$bc)"
-fi
+  -d "{\"domain\":\"${BLOCK_HOST}\"}" "$API/api/domain-blacklist" >/dev/null
+synced=0
+for _ in $(seq 1 15); do # up to ~30s
+  if docker exec secure-proxy-manager-proxy \
+       grep -q "$BLOCK_HOST" /etc/squid/blacklists/domain/local.txt 2>/dev/null; then
+    synced=1
+    break
+  fi
+  sleep 2
+done
+[ "$synced" = 1 ] && ok "watchdog synced the blacklist into Squid" \
+                  || bad "watchdog did not sync the blacklist within 30s"
+
+bc=$(curl -s -m 10 -x "$PROXY" -o /dev/null -w '%{http_code}' "http://${BLOCK_HOST}/")
+[ "$bc" = 403 ] && ok "blacklisted host denied (403)" \
+                || bad "blacklist block (got $bc, expected 403)"
 
 # Log pipeline — generate some proxied traffic, then the dashboard must count it
 # (this fails if the backend cannot read Squid's access.log).
