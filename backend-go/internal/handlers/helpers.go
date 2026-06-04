@@ -81,6 +81,22 @@ func isBlockedIP(ip net.IP) bool {
 	return false
 }
 
+// isLANBogonCIDR reports whether an IP/CIDR is a private (RFC1918), loopback,
+// link-local, CGNAT or otherwise non-routable range. Such entries must NOT enter
+// the SOURCE ip_blacklist: it is matched as `acl ip_blacklist src` and denied
+// before `allow localnet`/`allow localhost`, so adding e.g. 192.168.0.0/16 (as
+// Firehol/bogon feeds do) would block the proxy's own LAN clients.
+func isLANBogonCIDR(s string) bool {
+	s = strings.TrimSpace(s)
+	if _, ipnet, err := net.ParseCIDR(s); err == nil {
+		return isBlockedIP(ipnet.IP)
+	}
+	if ip := net.ParseIP(s); ip != nil {
+		return isBlockedIP(ip)
+	}
+	return false
+}
+
 // isSSRFTarget resolves the hostname in rawURL and returns true if ANY resolved
 // IP is non-routable. This is the early pre-flight check; the actual fetch is
 // additionally guarded at dial time by ssrfSafeClient (see below), so a DNS

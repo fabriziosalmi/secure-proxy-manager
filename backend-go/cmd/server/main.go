@@ -4,8 +4,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/pprof"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -153,11 +155,18 @@ func run() error {
 			if _, ok := wsAllowed[origin]; ok {
 				return true
 			}
-			// Allow WebSocket from the same host the request arrived on
-			// (covers IP-based access where CORS_ALLOWED_ORIGINS lists only localhost).
+			// Allow WebSocket from the same host the page was served from. Compare
+			// HOSTNAMES (port-tolerant): the browser Origin carries the public port
+			// (e.g. https://192.168.122.107:8443) but nginx forwards Host as $host
+			// without the port, so an exact "scheme+host" match would wrongly fail
+			// for IP-based access where CORS_ALLOWED_ORIGINS lists only localhost.
 			if r.Host != "" {
-				for _, scheme := range []string{"https://", "http://"} {
-					if origin == scheme+r.Host {
+				if ou, err := url.Parse(origin); err == nil && ou.Hostname() != "" {
+					rh := r.Host
+					if h, _, e := net.SplitHostPort(rh); e == nil {
+						rh = h
+					}
+					if ou.Hostname() == rh {
 						return true
 					}
 				}
