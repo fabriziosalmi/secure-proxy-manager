@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.6] - 2026-06-04
+
+### Fixed
+
+- **A fresh `docker compose up` now works end-to-end (#80).** Six bugs broke a
+  clean deploy and none were caught by CI (which builds the images but never
+  runs the stack): the backend could not write its bind-mounted volumes
+  (SQLite `CANTOPEN` — it now runs as root like the sibling proxy/dns/waf
+  containers, because su-exec/gosu privilege drop fails on Proxmox/unprivileged
+  LXC); `dns` crash-looped on a missing `config/dnsmasq.d/` (now shipped via a
+  `.gitkeep`); the proxy and dns had no internet egress (they sat only on an
+  `internal: true` network — both are now also on `frontend`); the blacklist
+  watchdog never started (it was generated at runtime — it is now shipped as
+  `proxy/blacklist_watchdog.py` and registered statically in supervisord); and
+  the dashboard / Logs page stayed empty because Squid's `0640` access.log was
+  unreadable by the backend container (the watchdog now re-asserts `0644`).
+- **WebSocket log-stream keep-alive (#79).** The server now sends protocol-level
+  pings (browsers answer automatically), so the stream no longer dies roughly
+  every 90 s and reconnects. Removed the dead client-side text `ping`/`pong`
+  and corrected the WebSocket API docs (authentication failures are HTTP 401
+  before the upgrade, not WebSocket close codes).
+
+### Security
+
+- **react-router `7.13.1` → `7.16.0` (#76)** clears five advisories, including a
+  turbo-stream RCE (`GHSA-49rj-9fvp-4h2h`) and two XSS issues.
+- **CI `npm audit` gate tightened from `critical` to `high` (#78)** so this
+  class of advisory fails at PR time instead of shipping green.
+
 ## [3.4.5] - 2026-06-04
 
 ### Fixed
