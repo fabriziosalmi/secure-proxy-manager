@@ -23,7 +23,7 @@ func TestBlacklistHandlers_List(t *testing.T) {
 	_, _ = db.Exec("INSERT INTO ip_blacklist (ip, description) VALUES (?,?)", "2.2.2.2", "other ip")
 
 	handler := listHandler(db, "ip_blacklist", "ip")
-	
+
 	// Basic list
 	r := httptest.NewRequest("GET", "/api/ip-blacklist", nil)
 	w := httptest.NewRecorder()
@@ -49,7 +49,7 @@ func TestBlacklistHandlers_AddIP(t *testing.T) {
 	defer cleanup()
 	h := NewBlacklistHandlers(db, cfg)
 
-	item := models.IPListItem{IP: "10.10.10.10", Description: "New IP"}
+	item := models.IPListItem{IP: "203.0.113.10", Description: "New IP"}
 	body, _ := json.Marshal(item)
 	r := httptest.NewRequest("POST", "/api/ip-blacklist", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
@@ -59,8 +59,16 @@ func TestBlacklistHandlers_AddIP(t *testing.T) {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
 
+	// Private/RFC1918 ranges must be rejected from the source IP blacklist.
+	rejW := httptest.NewRecorder()
+	rejBody, _ := json.Marshal(models.IPListItem{IP: "192.168.0.0/16"})
+	h.AddIP(rejW, httptest.NewRequest("POST", "/api/ip-blacklist", bytes.NewBuffer(rejBody)))
+	if rejW.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for a private range, got %d", rejW.Code)
+	}
+
 	var count int
-	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist WHERE ip='10.10.10.10'").Scan(&count)
+	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist WHERE ip='203.0.113.10'").Scan(&count)
 	if count != 1 {
 		t.Error("IP not found in database")
 	}
@@ -76,14 +84,14 @@ func TestBlacklistHandlers_Delete(t *testing.T) {
 	_ = db.QueryRow("SELECT id FROM ip_blacklist WHERE ip='5.5.5.5'").Scan(&id)
 
 	handler := deleteByIDHandler(db, "ip_blacklist", cfg)
-	
+
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", fmt.Sprintf("%d", id))
 	r := httptest.NewRequest("DELETE", "/api/ip-blacklist/"+fmt.Sprintf("%d", id), nil)
 	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
@@ -108,13 +116,13 @@ func TestBlacklistHandlers_BulkDelete(t *testing.T) {
 	_ = db.QueryRow("SELECT id FROM ip_blacklist WHERE ip='7.7.7.7'").Scan(&id2)
 
 	handler := bulkDeleteHandler(db, "ip_blacklist", cfg)
-	
+
 	req := models.BulkDeleteRequest{IDs: []int64{id1, id2}}
 	body, _ := json.Marshal(req)
 	r := httptest.NewRequest("POST", "/api/ip-blacklist/bulk-delete", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
@@ -126,12 +134,12 @@ func TestBlacklistHandlers_ClearAll(t *testing.T) {
 	defer cleanup()
 
 	_, _ = db.Exec("INSERT INTO ip_blacklist (ip) VALUES (?)", "8.8.8.8")
-	
+
 	handler := clearAllHandler(db, "ip_blacklist", cfg, "ip")
 	r := httptest.NewRequest("DELETE", "/api/ip-blacklist/clear-all", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
@@ -149,23 +157,29 @@ func TestBlacklistHandlers_ImportContent(t *testing.T) {
 	defer cleanup()
 	h := NewBlacklistHandlers(db, cfg)
 
+	// 3 routable IPs + one private range that must be dropped (source ACL).
 	req := models.ImportBlacklistRequest{
 		Type:    "ip",
-		Content: "10.0.0.1\n# Comment\n10.0.0.2\n1.1.1.1",
+		Content: "203.0.113.1\n# Comment\n203.0.113.2\n1.1.1.1\n192.168.5.5",
 	}
 	body, _ := json.Marshal(req)
 	r := httptest.NewRequest("POST", "/api/blacklists/import", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	h.Import(w, r)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
 
 	var count int
 	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&count)
-	if count < 3 {
-		t.Errorf("Expected at least 3 entries imported, got %d", count)
+	if count != 3 {
+		t.Errorf("Expected 3 routable entries imported, got %d", count)
+	}
+	var priv int
+	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist WHERE ip='192.168.5.5'").Scan(&priv)
+	if priv != 0 {
+		t.Error("private range 192.168.5.5 must not be imported into the source IP blacklist")
 	}
 	time.Sleep(100 * time.Millisecond)
 }

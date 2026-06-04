@@ -190,6 +190,10 @@ func (h *BlacklistHandlers) AddIP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid IP address or CIDR format")
 		return
 	}
+	if isLANBogonCIDR(ip) {
+		writeError(w, http.StatusBadRequest, "private/RFC1918/bogon ranges cannot be blacklisted — the IP blacklist is a source ACL, so this would block your own LAN clients")
+		return
+	}
 	_, err := h.db.Exec("INSERT INTO ip_blacklist(ip, description) VALUES(?,?)", ip, item.Description)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
@@ -371,7 +375,7 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 
 	var toInsert [][2]string
 	importDesc := "Imported on " + time.Now().Format("2006-01-02")
-	added, skipped := 0, 0
+	added, skipped, bogonSkipped := 0, 0, 0
 	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
@@ -384,6 +388,13 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 		entry := parts[len(parts)-1]
 		if blType == "ip" {
 			if !isValidCIDR(entry) {
+				skipped++
+				continue
+			}
+			// Firehol/bogon feeds include RFC1918 + loopback ranges; importing
+			// them into the source ip_blacklist would lock out the LAN clients.
+			if isLANBogonCIDR(entry) {
+				bogonSkipped++
 				skipped++
 				continue
 			}
@@ -451,10 +462,14 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	if added > 0 {
 		go propagate(h.db, h.cfg, blType)
 	}
+	msg := fmt.Sprintf("Successfully imported %d entries (%d skipped/invalid)", added, skipped)
+	if bogonSkipped > 0 {
+		msg += fmt.Sprintf(" — %d private/bogon ranges were dropped (a source IP blacklist must not include LAN ranges)", bogonSkipped)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
-		"message": fmt.Sprintf("Successfully imported %d entries (%d skipped/invalid)", added, skipped),
-		"data":    map[string]any{"added": added, "skipped": skipped},
+		"message": msg,
+		"data":    map[string]any{"added": added, "skipped": skipped, "bogon_skipped": bogonSkipped},
 	})
 }
 

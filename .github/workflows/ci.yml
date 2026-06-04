@@ -151,8 +151,13 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install Trivy
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/v0.58.1/contrib/install.sh \
-            | sudo sh -s -- -b /usr/local/bin v0.58.1
+          # Download the pinned release binary directly — the upstream install.sh
+          # is flaky in CI (exits 1 after resolving the version).
+          VER=0.69.3
+          curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${VER}/trivy_${VER}_Linux-64bit.tar.gz" -o /tmp/trivy.tgz
+          tar -xzf /tmp/trivy.tgz -C /tmp trivy
+          sudo install -m 0755 /tmp/trivy /usr/local/bin/trivy
+          trivy --version
       - name: Scan dependencies for fixable high/critical CVEs
         run: |
           trivy fs --scanners vuln \

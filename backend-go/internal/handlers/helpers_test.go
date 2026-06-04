@@ -25,6 +25,25 @@ func TestIsBlockedIP(t *testing.T) {
 	}
 }
 
+func TestIsLANBogonCIDR(t *testing.T) {
+	bogon := []string{
+		"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8",
+		"169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16",
+		"192.168.122.0/24", "10.1.2.3", "127.0.0.1", "::1", "fe80::/10", "fc00::/7",
+	}
+	for _, c := range bogon {
+		if !isLANBogonCIDR(c) {
+			t.Errorf("isLANBogonCIDR(%q) = false, want true", c)
+		}
+	}
+	routable := []string{"8.8.8.8/32", "1.1.1.1", "93.184.216.0/24", "203.0.113.5", "2606:4700::/32"}
+	for _, c := range routable {
+		if isLANBogonCIDR(c) {
+			t.Errorf("isLANBogonCIDR(%q) = true, want false", c)
+		}
+	}
+}
+
 func TestIsWritableSettingKey(t *testing.T) {
 	bad := []string{"default_password_changed", "has space", "semi;colon", "", "../etc"}
 	for _, k := range bad {
