@@ -61,6 +61,43 @@ export interface AuditPageData {
   offset?: number;
 }
 
+export interface ClientStat {
+  ip_address: string;
+  requests: number;
+  blocked: number;
+  last_seen: string;
+  status: string;
+}
+
+export interface ClientsData {
+  total_clients: number;
+  clients: ClientStat[];
+}
+
+export interface ClientDomain {
+  destination: string;
+  requests: number;
+  blocked: number;
+}
+
+export interface ClientRecent {
+  timestamp: string;
+  method: string;
+  destination: string;
+  status: string;
+  bytes: number;
+}
+
+export interface ClientDetail {
+  ip_address: string;
+  total_requests: number;
+  blocked: number;
+  first_seen: string;
+  last_seen: string;
+  top_domains: ClientDomain[];
+  recent: ClientRecent[];
+}
+
 export interface TimelineEntry {
   time: string;
   total: number;

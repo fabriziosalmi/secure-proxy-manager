@@ -68,6 +68,7 @@ func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	r.With(authMW).Get("/api/status", h.Status)
 	r.With(authMW).Get("/api/traffic/statistics", h.TrafficStats)
 	r.With(authMW).Get("/api/clients/statistics", h.ClientStats)
+	r.With(authMW).Get("/api/clients/{ip}/details", h.ClientDetails)
 	r.With(authMW).Get("/api/domains/statistics", h.DomainStats)
 	r.With(authMW).Get("/api/cache/statistics", h.CacheStats)
 	r.With(authMW).Get("/api/waf/stats", h.WAFStats)
@@ -221,7 +222,10 @@ func parseDuration(s string) time.Duration {
 
 func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(`
-		SELECT source_ip, COUNT(*) AS requests FROM proxy_logs
+		SELECT source_ip, COUNT(*) AS requests,
+		       SUM(CASE WHEN status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%' THEN 1 ELSE 0 END) AS blocked,
+		       MAX(timestamp) AS last_seen
+		FROM proxy_logs
 		WHERE source_ip IS NOT NULL AND source_ip != ''
 		GROUP BY source_ip ORDER BY requests DESC LIMIT 50`)
 	if err != nil {
@@ -232,9 +236,13 @@ func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) 
 	var clients []map[string]any
 	for rows.Next() {
 		var ip string
-		var cnt int
-		rows.Scan(&ip, &cnt) //nolint:errcheck
-		clients = append(clients, map[string]any{"ip_address": ip, "requests": cnt, "status": "Active"})
+		var cnt, blocked int
+		var lastSeen sql.NullString
+		rows.Scan(&ip, &cnt, &blocked, &lastSeen) //nolint:errcheck
+		clients = append(clients, map[string]any{
+			"ip_address": ip, "requests": cnt, "blocked": blocked,
+			"last_seen": lastSeen.String, "status": "Active",
+		})
 	}
 	if clients == nil {
 		clients = []map[string]any{}
@@ -242,6 +250,65 @@ func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) 
 	var total int
 	h.db.QueryRow("SELECT COUNT(DISTINCT source_ip) FROM proxy_logs WHERE source_ip IS NOT NULL AND source_ip != ''").Scan(&total) //nolint:errcheck
 	writeOK(w, map[string]any{"total_clients": total, "clients": clients})
+}
+
+// ClientDetails returns a per-client drill-down for a single source IP:
+// totals, top destinations (with how many were blocked), and the most recent
+// requests. The IP is bound as a query parameter, so it is not an injection
+// vector; isValidCIDR rejects obviously malformed input early.
+func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request) {
+	ip := chi.URLParam(r, "ip")
+	if !isValidCIDR(ip) {
+		writeError(w, http.StatusBadRequest, "invalid IP address")
+		return
+	}
+	const blockedCase = `SUM(CASE WHEN status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%' THEN 1 ELSE 0 END)`
+
+	var total, blocked int
+	var firstSeen, lastSeen sql.NullString
+	h.db.QueryRow( //nolint:errcheck
+		`SELECT COUNT(*), `+blockedCase+`, MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE source_ip = ?`,
+		ip,
+	).Scan(&total, &blocked, &firstSeen, &lastSeen)
+
+	topDomains := []map[string]any{}
+	if dr, err := h.db.Query(
+		`SELECT destination, COUNT(*) AS c, `+blockedCase+` AS b
+		 FROM proxy_logs WHERE source_ip = ? AND destination IS NOT NULL AND destination != ''
+		 GROUP BY destination ORDER BY c DESC LIMIT 10`, ip); err == nil {
+		for dr.Next() {
+			var d string
+			var c, b int
+			dr.Scan(&d, &c, &b) //nolint:errcheck
+			topDomains = append(topDomains, map[string]any{"destination": d, "requests": c, "blocked": b})
+		}
+		dr.Close()
+	}
+
+	recent := []map[string]any{}
+	if rr, err := h.db.Query(
+		`SELECT timestamp, method, destination, status, bytes
+		 FROM proxy_logs WHERE source_ip = ? ORDER BY id DESC LIMIT 20`, ip); err == nil {
+		for rr.Next() {
+			var ts, method, dest, status string
+			var nbytes int64
+			rr.Scan(&ts, &method, &dest, &status, &nbytes) //nolint:errcheck
+			recent = append(recent, map[string]any{
+				"timestamp": ts, "method": method, "destination": dest, "status": status, "bytes": nbytes,
+			})
+		}
+		rr.Close()
+	}
+
+	writeOK(w, map[string]any{
+		"ip_address":     ip,
+		"total_requests": total,
+		"blocked":        blocked,
+		"first_seen":     firstSeen.String,
+		"last_seen":      lastSeen.String,
+		"top_domains":    topDomains,
+		"recent":         recent,
+	})
 }
 
 func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) {
