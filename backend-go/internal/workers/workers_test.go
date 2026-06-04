@@ -278,7 +278,7 @@ func TestStartWorkers_Basic(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	StartLogRetention(ctx, db)
-	StartBlacklistRefresh(ctx, db, tmpDir)
+	StartBlacklistRefresh(ctx, db, tmpDir, nil)
 	StartUpdateChecker(ctx, "v1.0.0")
 
 	logFile := filepath.Join(tmpDir, "access.log")
@@ -287,3 +287,36 @@ func TestStartWorkers_Basic(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 }
+
+// fakeDNSSignaler records KillContainer calls for assertion.
+type fakeDNSSignaler struct {
+	name, signal string
+	calls        int
+	err          error
+}
+
+func (f *fakeDNSSignaler) KillContainer(name, signal string) error {
+	f.calls++
+	f.name, f.signal = name, signal
+	return f.err
+}
+
+func TestSignalDNSReload(t *testing.T) {
+	// nil signaler must be a silent no-op (the unit-test/dev path).
+	signalDNSReload(nil)
+
+	// A real signaler gets a SIGHUP to the DNS container.
+	f := &fakeDNSSignaler{}
+	signalDNSReload(f)
+	if f.calls != 1 {
+		t.Fatalf("expected 1 KillContainer call, got %d", f.calls)
+	}
+	if f.name != dnsContainer || f.signal != "HUP" {
+		t.Fatalf("expected KillContainer(%q, HUP), got (%q, %q)", dnsContainer, f.name, f.signal)
+	}
+
+	// A signaler error must not panic (failure is non-fatal).
+	signalDNSReload(&fakeDNSSignaler{err: errTest})
+}
+
+var errTest = fmt.Errorf("boom")
