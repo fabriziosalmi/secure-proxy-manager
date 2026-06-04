@@ -70,11 +70,15 @@ fi
 
 echo "Upstream DNS: ${DNS1}, ${DNS2}, ${DNS3}"
 
-# Ensure the addn-hosts blocklist exists so dnsmasq doesn't warn before the
-# backend's first export, then count entries for logging.
-mkdir -p /config/dnsmasq.d
-touch /config/dnsmasq.d/blocklist.hosts
-BLOCK_COUNT=$(grep -c "^0.0.0.0 " /config/dnsmasq.d/blocklist.hosts 2>/dev/null || echo 0)
-echo "Blocklist: ${BLOCK_COUNT} entries"
+# Best-effort: create an empty addn-hosts blocklist so dnsmasq doesn't warn
+# before the backend's first export. Silently skipped when /config is mounted
+# read-only (production) — there the backend (read-write mount) owns the file;
+# dnsmasq tolerates it being absent at boot and reads it on the next reload.
+touch /config/dnsmasq.d/blocklist.hosts 2>/dev/null || true
+# busybox `grep -c` prints "0" AND exits non-zero on an empty/non-matching file,
+# so a `|| echo 0` would double-emit ("0\n0"). Capture grep's count directly and
+# default an empty result (missing file) to 0 — one clean line in every case.
+BLOCK_COUNT=$(grep -c "^0.0.0.0 " /config/dnsmasq.d/blocklist.hosts 2>/dev/null || true)
+echo "Blocklist: ${BLOCK_COUNT:-0} entries"
 
 exec dnsmasq --no-daemon --log-facility=- --conf-file=/tmp/dnsmasq.conf

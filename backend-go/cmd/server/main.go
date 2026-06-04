@@ -99,7 +99,7 @@ func run() error {
 	defer workerCancel()
 	workers.StartLogTailer(workerCtx, db, cfg.LogPath, filepath.Dir(cfg.DatabasePath), hub)
 	workers.StartLogRetention(workerCtx, db)
-	workers.StartBlacklistRefresh(workerCtx, db, cfg.ConfigDir)
+	workers.StartBlacklistRefresh(workerCtx, db, cfg.ConfigDir, dockerClient)
 	workers.StartUpdateChecker(workerCtx, "")
 	workers.CheckSquidCVEs()
 
