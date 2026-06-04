@@ -83,6 +83,22 @@ chmod 750 /config/ssl_db
 
 # ── SSL certificates ────────────────────────────────────────────────────────
 
+# Reject the CA private key that was historically committed to this repository.
+# Any deployment still carrying it shares one public keypair with every other
+# user of the project, so anyone with the repo could forge certificates and MITM
+# all SSL-bumped TLS. If we detect that exact keypair (matched by modulus, so it
+# survives PEM re-encoding), delete it and the cert DB it signed so a fresh,
+# unique CA is generated below.
+KNOWN_BAD_KEY_MODULUS_SHA256="b3443bfd0d20cec31e7a87eb77d7ebd6864253037091c69bf1d069368e089c31"
+if [ -f /config/ssl_key.pem ]; then
+    current_modulus_sha256="$(openssl rsa -in /config/ssl_key.pem -noout -modulus 2>/dev/null | openssl sha256 2>/dev/null | awk '{print $NF}')"
+    if [ "$current_modulus_sha256" = "$KNOWN_BAD_KEY_MODULUS_SHA256" ]; then
+        echo "SECURITY: detected the known-compromised committed CA key — deleting and regenerating a unique CA." >&2
+        rm -f /config/ssl_key.pem /config/ssl_cert.pem
+        rm -rf /config/ssl_db/* 2>/dev/null || true
+    fi
+fi
+
 if [ ! -f /config/ssl_cert.pem ] || [ ! -f /config/ssl_key.pem ]; then
     echo "Generating SSL certificates for HTTPS filtering..."
     openssl genrsa -out /config/ssl_key.pem 2048
