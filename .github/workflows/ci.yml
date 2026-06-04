@@ -155,3 +155,16 @@ jobs:
           check_url "StevenBlack hosts"  "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
           check_url "URLhaus domains"    "https://urlhaus.abuse.ch/downloads/hostfile/"
           [ "$FAILED" -ne 0 ] && exit 1 || true
+
+  # ── 9. End-to-end smoke (compose up + core path) ──────────────────────
+  # Builds and RUNS the whole stack, then exercises the core path: service
+  # health, proxy egress, live blacklist blocking, the Squid→backend log
+  # pipeline, and the audit log. This is the check that would have caught the
+  # fresh-deploy breakage that the build-only jobs above let through.
+  e2e:
+    name: E2E (compose up + smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Compose up + core smoke
+        run: bash tests/ci-e2e.sh
