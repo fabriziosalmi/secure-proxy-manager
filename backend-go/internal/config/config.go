@@ -4,6 +4,7 @@ package config
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -16,18 +17,18 @@ import (
 type Config struct {
 	// Auth / JWT
 	AdminUsername     string
-	AdminPassword     string        // plaintext only for initial / legacy auth
-	AdminPasswordHash string        // bcrypt hash loaded from DB at runtime (optional)
+	AdminPassword     string // plaintext only for initial / legacy auth
+	AdminPasswordHash string // bcrypt hash loaded from DB at runtime (optional)
 	SecretKey         string
 	JWTExpireDuration time.Duration
 	MaxAttempts       int
 	RateLimitWindow   time.Duration
 
 	// Network
-	Port           string
+	Port               string
 	CORSAllowedOrigins []string
-	ProxyHost      string
-	ProxyPort      string
+	ProxyHost          string
+	ProxyPort          string
 
 	// Filesystem
 	DatabasePath string
@@ -35,9 +36,9 @@ type Config struct {
 	LogPath      string
 
 	// Internal component URLs (for WAF/Proxy communication)
-	WAFURL       string
-	ProxyURL     string
-	GeoIPURL     string
+	WAFURL   string
+	ProxyURL string
+	GeoIPURL string
 
 	// Encryption key for sensitive settings (hex-encoded 32 bytes)
 	EncryptionKey string
@@ -74,23 +75,23 @@ func Load() *Config {
 	}
 
 	cfg := &Config{
-		AdminUsername:     username,
-		AdminPassword:     password,
-		SecretKey:         loadOrGenerateSecret(),
-		JWTExpireDuration: jwtExp,
-		MaxAttempts:       maxAttempts,
-		RateLimitWindow:   time.Duration(rateLimitSec) * time.Second,
-		Port:              envOrDefault("PORT", "5000"),
+		AdminUsername:      username,
+		AdminPassword:      password,
+		SecretKey:          loadOrGenerateSecret(),
+		JWTExpireDuration:  jwtExp,
+		MaxAttempts:        maxAttempts,
+		RateLimitWindow:    time.Duration(rateLimitSec) * time.Second,
+		Port:               envOrDefault("PORT", "5000"),
 		CORSAllowedOrigins: cleanCors,
-		ProxyHost:         envOrDefault("PROXY_HOST", "proxy"),
-		ProxyPort:         envOrDefault("PROXY_PORT", "3128"),
-		DatabasePath:      envOrDefault("DATABASE_PATH", "/data/proxy_manager.db"),
-		ConfigDir:         envOrDefault("CONFIG_DIR", "/config"),
-		LogPath:           envOrDefault("LOG_PATH", "/logs/access.log"),
-		WAFURL:            envOrDefault("WAF_URL", "http://waf:8080"),
-		ProxyURL:          envOrDefault("PROXY_URL", "http://proxy:3128"),
-		GeoIPURL:          envOrDefault("GEOIP_URL", ""), // Empty means use defaults
-		EncryptionKey:     loadOrGenerateEncKey(),
+		ProxyHost:          envOrDefault("PROXY_HOST", "proxy"),
+		ProxyPort:          envOrDefault("PROXY_PORT", "3128"),
+		DatabasePath:       envOrDefault("DATABASE_PATH", "/data/proxy_manager.db"),
+		ConfigDir:          envOrDefault("CONFIG_DIR", "/config"),
+		LogPath:            envOrDefault("LOG_PATH", "/logs/access.log"),
+		WAFURL:             envOrDefault("WAF_URL", "http://waf:8080"),
+		ProxyURL:           envOrDefault("PROXY_URL", "http://proxy:3128"),
+		GeoIPURL:           envOrDefault("GEOIP_URL", ""), // Empty means use defaults
+		EncryptionKey:      loadOrGenerateEncKey(),
 	}
 	return cfg
 }
@@ -115,6 +116,52 @@ func validatePasswordComplexity(password string) {
 	}
 	if len(password) < 8 {
 		log.Fatal().Int("length", len(password)).Msg("BASIC_AUTH_PASSWORD must be at least 8 characters")
+	}
+}
+
+// knownWeakSecrets are example/dev SECRET_KEY values shipped in docs, compose
+// files or commonly copy-pasted. A predictable JWT secret lets an attacker forge
+// admin session tokens, so we refuse to boot with one (compared case-folded).
+var knownWeakSecrets = map[string]struct{}{
+	"dev_secret_key_change_in_production": {},
+	"change_in_production":                {},
+	"changeme":                            {},
+	"change_me":                           {},
+	"secret":                              {},
+	"secret_key":                          {},
+	"your_secret_key_here":                {},
+	"please_change_me":                    {},
+	"supersecret":                         {},
+}
+
+// secretKeyStrengthError returns a non-nil error if the operator-supplied JWT
+// secret is predictable (known example value, too short, or too low entropy).
+// Split out from the fatal wrapper so the policy is unit-testable without
+// os.Exit. An empty SECRET_KEY is handled separately by loadOrGenerateSecret
+// (auto-generate), so this only runs on operator-supplied values.
+func secretKeyStrengthError(secret string) error {
+	const minLen = 32
+	if _, bad := knownWeakSecrets[strings.ToLower(strings.TrimSpace(secret))]; bad {
+		return fmt.Errorf("SECRET_KEY is a known example/default value — set a unique random secret (generate one with `openssl rand -hex 32`)")
+	}
+	if len(secret) < minLen {
+		return fmt.Errorf("SECRET_KEY is too short (%d chars) — use at least %d (`openssl rand -hex 32`)", len(secret), minLen)
+	}
+	distinct := make(map[rune]struct{}, len(secret))
+	for _, r := range secret {
+		distinct[r] = struct{}{}
+	}
+	if len(distinct) < 8 {
+		return fmt.Errorf("SECRET_KEY has too little entropy (%d distinct characters) — generate one with `openssl rand -hex 32`", len(distinct))
+	}
+	return nil
+}
+
+// validateSecretKeyStrength fails the process closed on a predictable JWT secret,
+// mirroring validatePasswordComplexity — a weak secret forges every session token.
+func validateSecretKeyStrength(secret string) {
+	if err := secretKeyStrengthError(secret); err != nil {
+		log.Fatal().Msg(err.Error())
 	}
 }
 
@@ -156,6 +203,7 @@ func loadOrGenerateEncKey() string {
 // loadOrGenerateSecret reads the JWT secret from env → file → auto-generate.
 func loadOrGenerateSecret() string {
 	if s := os.Getenv("SECRET_KEY"); s != "" {
+		validateSecretKeyStrength(s) // fail-closed on predictable secrets
 		return s
 	}
 	const jwtFile = "/data/.jwt_secret"
