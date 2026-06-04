@@ -114,9 +114,17 @@ done
 [ "$synced" = 1 ] && ok "watchdog synced the blacklist into Squid" \
                   || bad "watchdog did not sync the blacklist within 30s"
 
-bc=$(curl -s -m 10 -x "$PROXY" -o /dev/null -w '%{http_code}' "http://${BLOCK_HOST}/")
+# Poll the actual block: the watchdog runs `squid -k reconfigure` after copying
+# the file, so the ACL takes effect a moment after the file appears. Poll the
+# request until it is denied (403) rather than guessing the reconfigure delay.
+bc=000
+for _ in $(seq 1 20); do # up to ~40s
+  bc=$(curl -s -m 10 -x "$PROXY" -o /dev/null -w '%{http_code}' "http://${BLOCK_HOST}/")
+  [ "$bc" = 403 ] && break
+  sleep 2
+done
 [ "$bc" = 403 ] && ok "blacklisted host denied (403)" \
-                || bad "blacklist block (got $bc, expected 403)"
+                || bad "blacklist block (last=$bc, expected 403)"
 
 # Log pipeline — generate some proxied traffic, then the dashboard must count it
 # (this fails if the backend cannot read Squid's access.log).
