@@ -76,7 +76,10 @@ safe_source() {
 
 mkdir -p /etc/squid/blacklists/ip /etc/squid/blacklists/domain /etc/squid/whitelists/ip
 mkdir -p /config/ssl_db
-chmod 700 /config/ssl_db
+# ssl_db must be writable by the proxy user (squid SSL bump) and readable by
+# the backend health checker — 750 with proxy ownership is the safe minimum.
+chown proxy:proxy /config/ssl_db
+chmod 750 /config/ssl_db
 
 # ── SSL certificates ────────────────────────────────────────────────────────
 
@@ -552,15 +555,84 @@ if [ -f /etc/squid/error-pages/ERR_ACCESS_DENIED ] && ! grep -q "deny_info" /etc
 fi
 
 # ── Copy blacklists from config volume ───────────────────────────────────────
+# Initial copy at startup; the watchdog (below) keeps them in sync at runtime.
 
 [ -f /config/ip_blacklist.txt ]     && cp /config/ip_blacklist.txt /etc/squid/blacklists/ip/local.txt
 [ -f /config/ip_whitelist.txt ]     && cp /config/ip_whitelist.txt /etc/squid/whitelists/ip/local.txt
 [ -f /config/domain_blacklist.txt ] && cp /config/domain_blacklist.txt /etc/squid/blacklists/domain/local.txt
 
+# ── Blacklist watchdog (live reload) ─────────────────────────────────────────
+# Polls /config/{ip,domain}_blacklist.txt every 2 s.  When either file
+# changes, copies it into the Squid ACL directory and calls
+# `squid -k reconfigure` so the new rules take effect without a container
+# restart.  Runs under supervisord (see squid-supervisor.conf).
+cat > /usr/local/bin/blacklist_watchdog.py << 'WATCHDOG_EOF'
+#!/usr/bin/env python3
+"""Watch /config blacklist files and reconfigure Squid on change."""
+import os, subprocess, time
+
+PAIRS = [
+    ("/config/ip_blacklist.txt",     "/etc/squid/blacklists/ip/local.txt"),
+    ("/config/ip_whitelist.txt",     "/etc/squid/whitelists/ip/local.txt"),
+    ("/config/domain_blacklist.txt", "/etc/squid/blacklists/domain/local.txt"),
+]
+
+def mtime(p):
+    try:
+        return os.path.getmtime(p)
+    except OSError:
+        return 0
+
+mtimes = {src: mtime(src) for src, _ in PAIRS}
+print("[watchdog] started", flush=True)
+
+while True:
+    time.sleep(2)
+    changed = False
+    for src, dst in PAIRS:
+        mt = mtime(src)
+        if mt != mtimes[src]:
+            mtimes[src] = mt
+            if os.path.exists(src):
+                try:
+                    import shutil
+                    shutil.copy2(src, dst)
+                    changed = True
+                    print(f"[watchdog] synced {src} → {dst}", flush=True)
+                except OSError as exc:
+                    print(f"[watchdog] copy failed: {exc}", flush=True)
+    if changed:
+        try:
+            r = subprocess.run(["/usr/sbin/squid", "-k", "reconfigure"],
+                               capture_output=True, timeout=10)
+            print(f"[watchdog] squid reconfigure rc={r.returncode}", flush=True)
+        except Exception as exc:
+            print(f"[watchdog] reconfigure error: {exc}", flush=True)
+WATCHDOG_EOF
+chmod +x /usr/local/bin/blacklist_watchdog.py
+
+# Register watchdog with supervisord (appended to the existing conf).
+if ! grep -q "blacklist_watchdog" /etc/supervisor/conf.d/squid-supervisor.conf 2>/dev/null; then
+    cat >> /etc/supervisor/conf.d/squid-supervisor.conf << 'SUP_EOF'
+
+[program:blacklist_watchdog]
+command=/usr/bin/python3 /usr/local/bin/blacklist_watchdog.py
+autostart=true
+autorestart=true
+redirect_stderr=true
+stdout_logfile=/var/log/squid/watchdog.log
+stdout_logfile_maxbytes=1MB
+SUP_EOF
+fi
+
 # ── Prepare directories and permissions ──────────────────────────────────────
 
 mkdir -p /var/log/squid /var/spool/squid /run/squid /var/run/squid /var/log/supervisor
 chown -R proxy:proxy /var/log/squid /var/spool/squid /run/squid /var/run/squid
+# Log files must be world-readable so the backend container (different UID)
+# can tail access.log for analytics without requiring a shared group or
+# elevated privileges.
+chmod 755 /var/log/squid
 chmod 755 /run/squid /var/run/squid
 touch /run/squid/squid.pid /run/squid.pid
 chown proxy:proxy /run/squid/squid.pid /run/squid.pid
