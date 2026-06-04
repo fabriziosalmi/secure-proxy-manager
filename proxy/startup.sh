@@ -158,8 +158,12 @@ echo "Squid settings: port=${SQUID_PORT} cache=${SQUID_CACHE_MB}MB mem=${SQUID_M
 
 # ── Generate base Squid configuration ────────────────────────────────────────
 
-# Ensure error-pages directory exists (in case COPY was skipped or volume mounted)
+# /etc/squid is a tmpfs at runtime, so install the staged branded error pages
+# into it on every boot (the image copy lives at /opt/squid-error-pages).
 mkdir -p /etc/squid/error-pages
+if [ -d /opt/squid-error-pages ]; then
+    cp -a /opt/squid-error-pages/. /etc/squid/error-pages/ 2>/dev/null || true
+fi
 
 echo "Setting up Squid configuration..."
 cat > /etc/squid/squid.conf.base << CONFEOF
@@ -284,11 +288,14 @@ adaptation_access service_req allow all
 icap_service service_resp respmod_precache bypass=1 icap://waf:1344/waf
 adaptation_access service_resp allow all
 
-# Logging
-debug_options ALL,2
+# Logging — keep volume growth bounded: lower verbosity, disable the noisy
+# store log, and keep 5 rotations (a daily `squid -k rotate` is triggered by the
+# blacklist watchdog sidecar).
+debug_options ALL,1
+logfile_rotate 5
 access_log daemon:/var/log/squid/access.log squid
 cache_log /var/log/squid/cache.log
-cache_store_log stdio:/var/log/squid/store.log
+cache_store_log none
 
 # Timeouts
 connect_timeout 30 seconds

@@ -23,7 +23,10 @@ RUN mkdir -p /etc/squid/blacklists/ip /etc/squid/blacklists/domain /config /usr/
 COPY squid.conf /etc/squid/squid.conf
 COPY startup.sh /startup.sh
 COPY blacklist_watchdog.py /usr/local/bin/blacklist_watchdog.py
-COPY error-pages/ /etc/squid/error-pages/
+# Staged outside /etc/squid because that path is a tmpfs at runtime (which would
+# overmount and wipe a baked-in copy). startup.sh installs these into
+# /etc/squid/error-pages on boot.
+COPY error-pages/ /opt/squid-error-pages/
 COPY squid-supervisor.conf /etc/supervisor/conf.d/
 
 RUN chmod +x /startup.sh /usr/local/bin/blacklist_watchdog.py
