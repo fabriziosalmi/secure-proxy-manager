@@ -47,7 +47,7 @@ function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): 
     enable_bandwidth_limits: 'false',
     enable_time_restrictions: 'false',
     enable_proxy_auth: 'false',
-    aggressive_caching: 'false',
+    aggressive_caching_enabled: 'false',
     enable_offline_mode: 'false',
     waf_block_threshold: '10',
   };
@@ -86,7 +86,7 @@ function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): 
   } else if (strict === 'balanced') {
     base.waf_block_threshold = '8';
     base.heuristic_protocol_ghosting = 'true';
-    base.aggressive_caching = 'true';
+    base.aggressive_caching_enabled = 'true';
   } else if (strict === 'strict') {
     base.waf_block_threshold = '5';
     base.heuristic_pii_leak = 'true';
@@ -96,7 +96,7 @@ function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): 
     base.enable_content_filtering = 'true';
     base.blocked_file_types = 'exe,bat,cmd,dll,msi,scr,ps1,vbs,js,sh,py,rb,zip,7z,rar,tar,iso';
     base.block_direct_ip = 'true';
-    base.aggressive_caching = 'true';
+    base.aggressive_caching_enabled = 'true';
     base.enable_offline_mode = 'true';
   }
 
