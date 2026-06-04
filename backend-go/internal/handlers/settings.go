@@ -121,9 +121,10 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		database.Audit(h.db, user, "update_settings", strings.Join(keys, ","), "")
 	}
 	for k, v := range body {
-		// Validate key: max 100 chars, alphanumeric+underscore only (matches DB convention)
-		if len(k) > 100 || len(v) > 10000 || !validKeyRE.MatchString(k) {
-			log.Warn().Str("key", k).Msg("BulkUpdate: skipping invalid key")
+		// Only known-safe, writable keys may be set (rejects internally-managed
+		// state like default_password_changed and any non-conforming key name).
+		if !isWritableSettingKey(k) || len(v) > 10000 {
+			log.Warn().Str("key", k).Msg("BulkUpdate: skipping invalid or protected key")
 			continue
 		}
 		val := v
