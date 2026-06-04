@@ -7,7 +7,8 @@ The log stream is delivered over a WebSocket connection. Because browsers cannot
 1. `GET /api/ws-token` (HTTP Basic or JWT) — fetch a single-use token.
 2. Open a WebSocket to `/api/ws/logs?token=<token>` on the same origin as the UI.
 3. Receive log entries as JSON messages.
-4. Send the literal string `ping` periodically to keep the connection alive; the server replies with the literal string `pong`.
+
+The connection is kept alive by the **server**, which sends WebSocket protocol-level ping control frames roughly every 80 s; browsers answer them automatically. No application-level heartbeat is required — clients do not need to send anything after connecting.
 
 ## Step 1 — Fetch a token
 
@@ -32,7 +33,7 @@ wss://<your-host>/api/ws/logs?token=xK9z2...
 
 The `web` service proxies the upgrade to the backend on the internal network. If you are connecting from a script running on the host (and only on the host), you can also reach the backend directly at `ws://127.0.0.1:5001/api/ws/logs?token=...`; the backend port is bound to `127.0.0.1` only.
 
-A second connection using the same token is rejected with close code `4003`.
+The token is single-use, so a second connection attempt with the same token is rejected with **HTTP 401** during the handshake, before the WebSocket upgrade completes (see [Authentication failures](#authentication-failures) below).
 
 ## Step 3 — Receive messages
 
@@ -50,14 +51,18 @@ Each message is a JSON object representing a log entry:
 }
 ```
 
-The literal string `pong` (sent in response to a `ping` keep-alive) is the only non-JSON message.
+Every application message is a JSON log entry — there are no sentinel/text messages to filter out.
 
-## Close codes
+## Authentication failures
 
-| Code | Meaning |
+The token is validated **before** the WebSocket upgrade, so authentication problems surface as ordinary HTTP responses on the handshake request rather than as WebSocket close codes:
+
+| Condition | Response |
 |---|---|
-| `4001` | Token not provided |
-| `4003` | Token invalid, expired, or already used |
+| `token` query parameter missing | `HTTP 401` — `missing token` |
+| token invalid, expired, or already used (single-use) | `HTTP 401` — `invalid or expired token` |
+
+Once the upgrade succeeds, the connection follows standard WebSocket lifecycle close codes (`1000` normal, `1001` going away, `1006` abnormal). The server closes idle connections that stop answering protocol pings after ~90 s.
 
 ## JavaScript example
 
@@ -72,15 +77,12 @@ async function connectLogs() {
   const ws    = new WebSocket(url);
 
   ws.onmessage = (event) => {
-    if (event.data === 'pong') return;
     const log = JSON.parse(event.data);
     console.log(log);
   };
 
-  setInterval(() => {
-    if (ws.readyState === WebSocket.OPEN) ws.send('ping');
-  }, 30_000);
-
+  // No keep-alive code needed: the server sends protocol-level pings and the
+  // browser answers them automatically.
   return ws;
 }
 ```
