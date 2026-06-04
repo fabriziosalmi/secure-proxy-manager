@@ -213,7 +213,7 @@ func CheckRequestHeuristics(clientIP, method, host, path, body, rawHeaders strin
 			r := HeuristicResult{
 				ID:       "H1-ENTROPY",
 				Category: "HEURISTIC_ENTROPY",
-				Score:    10,
+				Score:    6, // probabilistic: below blockThreshold, needs corroboration
 				Detail:   fmt.Sprintf("body entropy %.2f > %.1f (size=%d)", bodyEntropy, heuristicCfg.EntropyMax, bodySize),
 			}
 			results = append(results, r)
@@ -239,7 +239,7 @@ func CheckRequestHeuristics(clientIP, method, host, path, body, rawHeaders strin
 				r := HeuristicResult{
 					ID:       "H2-BEACON",
 					Category: "HEURISTIC_BEACONING",
-					Score:    10,
+					Score:    6, // probabilistic: below blockThreshold, needs corroboration
 					Detail:   fmt.Sprintf("regular interval pattern detected (%d reqs in %ds)", len(validTimes), heuristicCfg.BeaconingWindow),
 				}
 				results = append(results, r)
@@ -254,7 +254,7 @@ func CheckRequestHeuristics(clientIP, method, host, path, body, rawHeaders strin
 			r := HeuristicResult{
 				ID:       "H4-SHARDING",
 				Category: "HEURISTIC_SHARDING",
-				Score:    10,
+				Score:    6, // probabilistic: below blockThreshold, needs corroboration
 				Detail:   fmt.Sprintf("%d unique destinations in 60s (max=%d)", destCount, heuristicCfg.ShardingMaxDests),
 			}
 			results = append(results, r)
@@ -284,7 +284,7 @@ func CheckRequestHeuristics(clientIP, method, host, path, body, rawHeaders strin
 			r := HeuristicResult{
 				ID:       "H6-GHOST",
 				Category: "HEURISTIC_GHOSTING",
-				Score:    10,
+				Score:    7, // probabilistic: below blockThreshold, needs corroboration
 				Detail:   fmt.Sprintf("encapsulated protocol detected: %s", ghost),
 			}
 			results = append(results, r)
