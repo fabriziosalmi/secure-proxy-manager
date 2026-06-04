@@ -114,12 +114,14 @@ done
 [ "$synced" = 1 ] && ok "watchdog synced the blacklist into Squid" \
                   || bad "watchdog did not sync the blacklist within 30s"
 
-# Poll the actual block: the watchdog runs `squid -k reconfigure` after copying
-# the file, so the ACL takes effect a moment after the file appears. Poll the
-# request until it is denied (403) rather than guessing the reconfigure delay.
+# Poll the actual block from inside the proxy container (client = localhost, as
+# a real on-box check would be). The watchdog runs `squid -k reconfigure` after
+# copying the file, so the ACL takes effect a moment later; poll until denied.
 bc=000
 for _ in $(seq 1 20); do # up to ~40s
-  bc=$(curl -s -m 10 -x "$PROXY" -o /dev/null -w '%{http_code}' "http://${BLOCK_HOST}/")
+  bc=$(docker exec secure-proxy-manager-proxy \
+        curl -s -m 10 -x http://127.0.0.1:3128 -o /dev/null -w '%{http_code}' \
+        "http://${BLOCK_HOST}/" 2>/dev/null || echo 000)
   [ "$bc" = 403 ] && break
   sleep 2
 done
