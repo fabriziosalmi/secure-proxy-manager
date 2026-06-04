@@ -51,6 +51,15 @@ PROXY_CONTAINER_NAME=secure-proxy-manager-proxy
 PROXY_BIND_IP=0.0.0.0
 EOF
 
+# Ensure the bind-mounted runtime directories are writable by the containers.
+# ./data and ./logs are created by compose (root-owned, fine), but ./config is
+# checked out as the CI user, so a container whose effective UID differs (e.g.
+# under userns-remap) cannot rewrite the blacklist files the proxy reads. This
+# mirrors the prep an operator does before a real deploy.
+echo "── preparing writable runtime dirs ──"
+mkdir -p config config/dnsmasq.d data logs
+chmod -R a+rwX config data logs 2>/dev/null || true
+
 echo "── docker compose up -d --build ──"
 if ! docker compose up -d --build; then
   echo "compose up failed"
