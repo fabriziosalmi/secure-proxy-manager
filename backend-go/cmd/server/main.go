@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -96,7 +97,7 @@ func run() error {
 	// ── background workers ───────────────────────────────────────────────────
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
-	workers.StartLogTailer(workerCtx, db, cfg.LogPath, hub)
+	workers.StartLogTailer(workerCtx, db, cfg.LogPath, filepath.Dir(cfg.DatabasePath), hub)
 	workers.StartLogRetention(workerCtx, db)
 	workers.StartBlacklistRefresh(workerCtx, db, cfg.ConfigDir)
 	workers.StartUpdateChecker(workerCtx, "")

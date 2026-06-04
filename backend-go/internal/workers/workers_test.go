@@ -282,7 +282,7 @@ func TestStartWorkers_Basic(t *testing.T) {
 
 	logFile := filepath.Join(tmpDir, "access.log")
 	_ = os.WriteFile(logFile, []byte("test"), 0644)
-	StartLogTailer(ctx, db, logFile, hub)
+	StartLogTailer(ctx, db, logFile, tmpDir, hub)
 
 	time.Sleep(100 * time.Millisecond)
 }
