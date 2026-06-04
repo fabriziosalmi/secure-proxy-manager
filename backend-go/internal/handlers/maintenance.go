@@ -73,7 +73,10 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 			continue
 		}
 		val := v
-		if appcrypto.IsSensitive(k) && val != "" {
+		// Encrypt sensitive values, but NOT if they are already encrypted — a
+		// backup exports the raw (already-enc::) column, so re-encrypting here
+		// would double-encrypt and corrupt the value on the next decrypt.
+		if appcrypto.IsSensitive(k) && val != "" && !appcrypto.IsEncrypted(val) {
 			if enc, err := appcrypto.Encrypt(val, h.cfg.EncryptionKey); err == nil {
 				val = enc
 			}

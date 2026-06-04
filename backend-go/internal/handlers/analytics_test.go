@@ -41,6 +41,40 @@ func TestAnalyticsHandlers_TrafficStats(t *testing.T) {
 	}
 }
 
+// Regression: a log at a mid-bucket minute within the last hour must be counted
+// in the 5-minute hour view (per-minute SQL buckets never matched the 5-min
+// label grid, dropping ~all points).
+func TestAnalyticsHandlers_TrafficStats_HourBucketing(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+
+	ts := time.Now().UTC().Add(-12 * time.Minute).Format("2006-01-02 15:04:05")
+	for i := 0; i < 3; i++ {
+		_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, destination, status) VALUES (?, '1.1.1.1', 'http://a.com', '200 OK')", ts)
+	}
+
+	r := httptest.NewRequest("GET", "/api/traffic/statistics?period=hour", nil)
+	w := httptest.NewRecorder()
+	h.TrafficStats(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d", w.Code)
+	}
+	var resp struct {
+		Data struct {
+			Inbound []int `json:"inbound"`
+		} `json:"data"`
+	}
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	sum := 0
+	for _, v := range resp.Data.Inbound {
+		sum += v
+	}
+	if sum < 3 {
+		t.Errorf("hour view dropped data: inbound sum = %d, want >= 3", sum)
+	}
+}
+
 func TestAnalyticsHandlers_ClientStats(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()

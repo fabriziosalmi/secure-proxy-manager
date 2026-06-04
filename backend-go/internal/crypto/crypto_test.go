@@ -53,6 +53,30 @@ func TestDecryptPlaintextPassthrough(t *testing.T) {
 	}
 }
 
+func TestIsEncrypted(t *testing.T) {
+	key := testKey()
+	enc, err := Encrypt("secret", key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !IsEncrypted(enc) {
+		t.Error("IsEncrypted(ciphertext) = false, want true")
+	}
+	if IsEncrypted("https://example.com/webhook") {
+		t.Error("IsEncrypted(plaintext) = true, want false")
+	}
+	// Double-encrypting corrupts: a single decrypt of enc(enc(x)) yields enc(x),
+	// not x — which is exactly why callers must guard with IsEncrypted.
+	dbl, _ := Encrypt(enc, key)
+	once, _ := Decrypt(dbl, key)
+	if once == "secret" {
+		t.Error("expected double-encryption to NOT round-trip in one decrypt")
+	}
+	if once != enc {
+		t.Errorf("one decrypt of double-encrypted = %q, want the once-encrypted form", once)
+	}
+}
+
 func TestDecryptWrongKey(t *testing.T) {
 	key1 := testKey()
 	key2 := testKey()
