@@ -29,6 +29,32 @@ function rate(blocked: number, total: number): number {
 
 type SortKey = 'requests' | 'blocked' | 'rate';
 
+// Declared at module scope (not inside render) so React keeps their identity
+// stable — defining components during render resets their state every render
+// and trips react-hooks/static-components.
+function SortTh({ k, label, sort, onSort }: { k: SortKey; label: string; sort: SortKey; onSort: (k: SortKey) => void }) {
+  return (
+    <th className="px-5 py-3 font-medium">
+      <button
+        onClick={() => onSort(k)}
+        className={`inline-flex items-center gap-1 hover:text-foreground transition-colors ${sort === k ? 'text-foreground' : ''}`}
+      >
+        {label}
+        <ArrowUpDown className="w-3 h-3 opacity-60" />
+      </button>
+    </th>
+  );
+}
+
+function Stat({ label, value, tone = '' }: { label: string; value: string | number; tone?: string }) {
+  return (
+    <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
+      <div className={`text-lg font-semibold tabular-nums ${tone}`}>{value}</div>
+    </div>
+  );
+}
+
 export function Clients() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortKey>('requests');
@@ -52,18 +78,6 @@ export function Clients() {
     });
     return sorted;
   }, [clients, search, sort]);
-
-  const SortTh = ({ k, label }: { k: SortKey; label: string }) => (
-    <th className="px-5 py-3 font-medium">
-      <button
-        onClick={() => setSort(k)}
-        className={`inline-flex items-center gap-1 hover:text-foreground transition-colors ${sort === k ? 'text-foreground' : ''}`}
-      >
-        {label}
-        <ArrowUpDown className="w-3 h-3 opacity-60" />
-      </button>
-    </th>
-  );
 
   return (
     <div className="page-enter space-y-6">
@@ -103,9 +117,9 @@ export function Clients() {
               <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-white/[0.02] border-b border-white/[0.06]">
                 <tr>
                   <th className="px-5 py-3 font-medium">Client IP</th>
-                  <SortTh k="requests" label="Requests" />
-                  <SortTh k="blocked" label="Blocked" />
-                  <SortTh k="rate" label="Block rate" />
+                  <SortTh k="requests" label="Requests" sort={sort} onSort={setSort} />
+                  <SortTh k="blocked" label="Blocked" sort={sort} onSort={setSort} />
+                  <SortTh k="rate" label="Block rate" sort={sort} onSort={setSort} />
                   <th className="px-5 py-3 font-medium">Last seen</th>
                 </tr>
               </thead>
@@ -158,13 +172,6 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
     queryKey: ['client-details', ip],
     queryFn: () => api.get(`clients/${encodeURIComponent(ip)}/details`).then((r) => r.data.data),
   });
-
-  const Stat = ({ label, value, tone = '' }: { label: string; value: string | number; tone?: string }) => (
-    <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
-      <div className={`text-lg font-semibold tabular-nums ${tone}`}>{value}</div>
-    </div>
-  );
 
   const br = data ? rate(data.blocked, data.total_requests) : 0;
 
