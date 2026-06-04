@@ -70,11 +70,11 @@ fi
 
 echo "Upstream DNS: ${DNS1}, ${DNS2}, ${DNS3}"
 
-# Count blocklist entries for logging
-BLOCK_COUNT=0
-if [ -f /config/dnsmasq.d/blocklist.conf ]; then
-    BLOCK_COUNT=$(grep -c "^address=" /config/dnsmasq.d/blocklist.conf 2>/dev/null || echo 0)
-fi
+# Ensure the addn-hosts blocklist exists so dnsmasq doesn't warn before the
+# backend's first export, then count entries for logging.
+mkdir -p /config/dnsmasq.d
+touch /config/dnsmasq.d/blocklist.hosts
+BLOCK_COUNT=$(grep -c "^0.0.0.0 " /config/dnsmasq.d/blocklist.hosts 2>/dev/null || echo 0)
 echo "Blocklist: ${BLOCK_COUNT} entries"
 
 exec dnsmasq --no-daemon --log-facility=- --conf-file=/tmp/dnsmasq.conf
