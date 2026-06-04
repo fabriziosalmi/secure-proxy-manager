@@ -11,6 +11,8 @@ import (
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	appcrypto "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/crypto"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 )
@@ -99,6 +101,9 @@ func (h *SettingsHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
+		database.Audit(h.db, user, "update_setting", name, "")
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Setting updated"})
 }
 
@@ -107,6 +112,13 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok && len(body) > 0 {
+		keys := make([]string, 0, len(body))
+		for k := range body {
+			keys = append(keys, k)
+		}
+		database.Audit(h.db, user, "update_settings", strings.Join(keys, ","), "")
 	}
 	for k, v := range body {
 		// Validate key: max 100 chars, alphanumeric+underscore only (matches DB convention)

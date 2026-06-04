@@ -45,6 +45,22 @@ export interface LogsPageData {
   total?: number;
 }
 
+export interface AuditEntry {
+  id: number;
+  username: string | null;
+  action: string;
+  target: string | null;
+  details: string | null;
+  timestamp: string;
+}
+
+export interface AuditPageData {
+  data?: AuditEntry[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+}
+
 export interface TimelineEntry {
   time: string;
   total: number;
