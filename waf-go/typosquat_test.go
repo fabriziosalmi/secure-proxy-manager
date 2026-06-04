@@ -17,6 +17,16 @@ func TestCheckTyposquat(t *testing.T) {
 		{"paypa1.com", true},
 		{"appl.ecom", true},
 		{"apple.com", false},
+		// Regression: legitimate domains that the TLD-blind detector wrongly
+		// flagged. github.io/gitlab.io are public suffixes; yahoo.co is the same
+		// brand on another TLD; chess.com is unrelated to chase.com (2 edits, no
+		// swap).
+		{"user.github.io", false},
+		{"myapp.gitlab.io", false},
+		{"github.io", false},
+		{"yahoo.co", false},
+		{"chess.com", false},
+		{"g1thub.com", true},
 	}
 
 	for _, tt := range tests {
