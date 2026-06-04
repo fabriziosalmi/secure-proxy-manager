@@ -153,7 +153,7 @@ jobs:
         run: |
           # Download the pinned release binary directly — the upstream install.sh
           # is flaky in CI (exits 1 after resolving the version).
-          VER=0.58.1
+          VER=0.69.3
           curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${VER}/trivy_${VER}_Linux-64bit.tar.gz" -o /tmp/trivy.tgz
           tar -xzf /tmp/trivy.tgz -C /tmp trivy
           sudo install -m 0755 /tmp/trivy /usr/local/bin/trivy
