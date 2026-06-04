@@ -13,6 +13,15 @@ export default defineConfig({
     }
   },
   build: {
+    modulePreload: {
+      // recharts (vendor-charts, ~110KB gzip) is only used by the lazy Dashboard
+      // and ThreatIntel routes. Vite would otherwise <link rel=modulepreload> it
+      // from the entry HTML, pulling it onto EVERY first paint (Logs, Settings,
+      // Audit…) and defeating the lazy boundary. Drop it from the preload set so
+      // those routes fetch it on demand; the chunk stays shared and cacheable.
+      resolveDependencies: (_filename: string, deps: string[]) =>
+        deps.filter((dep) => !dep.includes('vendor-charts')),
+    },
     rollupOptions: {
       output: {
         manualChunks(id) {
