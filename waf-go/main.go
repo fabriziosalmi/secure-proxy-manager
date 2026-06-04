@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,6 +30,13 @@ const (
 
 var (
 	blockThreshold = 10 // Configurable via WAF_BLOCK_THRESHOLD env
+
+	// wafFailOpen controls behaviour when a REQMOD handler panics. Default is
+	// fail-CLOSED (block the request) — a handler that crashed cannot vouch for
+	// traffic. Operators who prefer availability over inspection can set
+	// WAF_FAIL_OPEN=1 to let such requests through unmodified.
+	wafFailOpen = false
+
 	tarPitDelay    = 10 * time.Second
 	ipBlockTracker = make(map[string][]time.Time)
 	trackerMutex   sync.Mutex
@@ -149,6 +157,11 @@ func init() {
 			blockThreshold = v
 		}
 	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("WAF_FAIL_OPEN"))) {
+	case "1", "true", "yes", "on":
+		wafFailOpen = true
+		log.Printf("WAF_FAIL_OPEN=1 — REQMOD handler panics will ALLOW traffic (availability over security)\n")
+	}
 	// Load disabled categories from env (comma-separated)
 	if disabled := os.Getenv("WAF_DISABLED_CATEGORIES"); disabled != "" {
 		for _, cat := range strings.Split(disabled, ",") {
@@ -216,6 +229,24 @@ func notifyBackend(data map[string]interface{}) {
 
 // ── ICAP handlers ───────────────────────────────────────────────────────────
 
+// recoverICAP turns a handler panic into a deterministic ICAP response instead
+// of a dropped connection (whose effect depends on Squid's bypass setting and
+// is typically fail-OPEN). For REQMOD it fails CLOSED by default — a crashed
+// handler cannot certify the request as clean — unless WAF_FAIL_OPEN is set.
+// RESPMOD failures allow the response through (blocking responses on an internal
+// error is riskier than letting them pass). It is invoked via defer, so it only
+// fires before a normal WriteHeader has run.
+func recoverICAP(w icap.ResponseWriter, method string) {
+	if r := recover(); r != nil {
+		log.Printf("PANIC in %s handler: %v\n%s", method, r, debug.Stack())
+		if method == "REQMOD" && !wafFailOpen {
+			sendBlockResponse(w, "WAF_INTERNAL_ERROR", blockThreshold)
+			return
+		}
+		w.WriteHeader(204, nil, false)
+	}
+}
+
 func handleOptions(w icap.ResponseWriter, req *icap.Request) {
 	w.Header().Set("Methods", "REQMOD, RESPMOD")
 	w.Header().Set("Service", "SecureProxy-WAF-2.0")
@@ -246,7 +277,14 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	}
 
 	// ── Safe URL Cache: skip regex scan for known-clean URLs ────────────
-	if safeCache.IsSafe(rawURL) {
+	// Only short-circuit idempotent, body-less methods, and scope the cache key
+	// by method. A clean GET must never vouch for a POST to the same URL — that
+	// request carries an attacker-controlled body and headers we have not seen
+	// (the previous rawURL-only key let a benign GET poison the cache so a later
+	// malicious POST skipped ALL inspection).
+	cacheable := req.Request.Method == http.MethodGet || req.Request.Method == http.MethodHead
+	cacheKey := req.Request.Method + "\x00" + rawURL
+	if cacheable && safeCache.IsSafe(cacheKey) {
 		w.WriteHeader(204, nil, false)
 		return
 	}
@@ -283,7 +321,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	var bodySize int
 	if score < blockThreshold && req.Request.Body != nil {
 		ct := req.Request.Header.Get("Content-Type")
-		if isTextContent(ct) {
+		if shouldInspectBody(ct) {
 			bodyBytes, readErr := io.ReadAll(io.LimitReader(req.Request.Body, maxBodyInspectSize))
 			if readErr == nil && len(bodyBytes) > 0 {
 				bodyStr = normalizeInput(string(bodyBytes))
@@ -488,8 +526,12 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 		return
 	}
 
-	// URL passed all checks — mark as safe for future requests
-	safeCache.MarkSafe(rawURL)
+	// URL passed all checks — mark as safe for future requests. Only cache a
+	// clean verdict for body-less idempotent methods where no body was inspected,
+	// so a pass can never authorize a later request that carries a body.
+	if cacheable && bodySize == 0 {
+		safeCache.MarkSafe(cacheKey)
+	}
 	w.WriteHeader(204, nil, false)
 }
 
@@ -596,8 +638,10 @@ func main() {
 		case "OPTIONS":
 			handleOptions(w, req)
 		case "REQMOD":
+			defer recoverICAP(w, "REQMOD")
 			handleReqmod(w, req)
 		case "RESPMOD":
+			defer recoverICAP(w, "RESPMOD")
 			handleRespmod(w, req)
 		default:
 			w.WriteHeader(405, nil, false)
@@ -665,7 +709,7 @@ func main() {
 	go func() {
 		h := &MgmtHandlers{}
 		healthMux := http.NewServeMux()
-		healthMux.HandleFunc("/health", h.HealthHandler) // unauthenticated — used by Docker healthcheck
+		healthMux.HandleFunc("/health", h.HealthHandler)   // unauthenticated — used by Docker healthcheck
 		healthMux.HandleFunc("/metrics", h.MetricsHandler) // unauthenticated — Prometheus exposition (no sensitive data)
 		healthMux.HandleFunc("/stats", mgmtAuthMiddleware(h.StatsHandler))
 		healthMux.HandleFunc("/reset", mgmtAuthMiddleware(h.ResetHandler))

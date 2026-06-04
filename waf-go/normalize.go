@@ -3,7 +3,6 @@ package main
 import (
 	"html"
 	"net"
-	"net/url"
 	"regexp"
 	"strings"
 )
@@ -39,10 +38,8 @@ func normalizeInput(input string) string {
 		prev := s
 		s = reDoubleEncode.ReplaceAllString(s, "%$1")
 
-		// URL-decode
-		if decoded, err := url.QueryUnescape(strings.ReplaceAll(s, "+", " ")); err == nil {
-			s = decoded
-		}
+		// URL-decode (tolerant: malformed escapes do not abort the whole string)
+		s = percentDecodeTolerant(s)
 
 		// Stop when decoding produces no further change
 		if s == prev {
@@ -106,4 +103,73 @@ func isTextContent(contentType string) bool {
 		}
 	}
 	return false
+}
+
+// percentDecodeTolerant decodes %XX escapes, leaving malformed escapes (e.g.
+// "%ZZ" or a trailing "%") as literal text. Unlike url.QueryUnescape — which is
+// all-or-nothing and returns the input UNDECODED on the first bad escape — a
+// single invalid token here does not abort decoding of the rest of the string.
+// That all-or-nothing behavior was a full WAF bypass: appending one bad token
+// (e.g. "%3Cscript%3E%ZZ") kept the real payload encoded and unscanned. "+" is
+// decoded to a space to match query-string semantics.
+func percentDecodeTolerant(s string) string {
+	if !strings.ContainsAny(s, "%+") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; c {
+		case '%':
+			if i+2 < len(s) {
+				if hi, ok := fromHex(s[i+1]); ok {
+					if lo, ok2 := fromHex(s[i+2]); ok2 {
+						b.WriteByte(hi<<4 | lo)
+						i += 2
+						continue
+					}
+				}
+			}
+			b.WriteByte('%') // malformed escape — keep literal, keep scanning
+		case '+':
+			b.WriteByte(' ')
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+func fromHex(c byte) (byte, bool) {
+	switch {
+	case c >= '0' && c <= '9':
+		return c - '0', true
+	case c >= 'a' && c <= 'f':
+		return c - 'a' + 10, true
+	case c >= 'A' && c <= 'F':
+		return c - 'A' + 10, true
+	}
+	return 0, false
+}
+
+// nonInspectableMedia are opaque binary media types that regex rules cannot
+// meaningfully match. Most are already offloaded by the ICAP Transfer-Ignore
+// list, so they rarely reach the WAF with a body.
+var nonInspectableMedia = []string{
+	"image/", "video/", "audio/", "font/", "application/font",
+}
+
+// shouldInspectBody decides whether a request body is worth scanning. Crucially
+// it must NOT let the attacker-declared Content-Type be used to SKIP inspection:
+// the previous text-only gate let any body through as long as it was labelled
+// e.g. application/octet-stream. We therefore inspect by default and only skip a
+// small set of genuinely opaque media types.
+func shouldInspectBody(contentType string) bool {
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+	for _, skip := range nonInspectableMedia {
+		if strings.HasPrefix(ct, skip) {
+			return false
+		}
+	}
+	return true
 }
