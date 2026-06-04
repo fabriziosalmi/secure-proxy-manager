@@ -200,6 +200,9 @@ func (h *BlacklistHandlers) AddIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	go propagate(h.db, h.cfg, "ip")
+	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
+		database.Audit(h.db, user, "add_ip_blacklist", ip, item.Description)
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "IP added to blacklist"})
 }
 
@@ -258,6 +261,9 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	go propagate(h.db, h.cfg, "domain")
+	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
+		database.Audit(h.db, user, "add_domain_blacklist", domain, item.Description)
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Domain added to blacklist"})
 }
 
