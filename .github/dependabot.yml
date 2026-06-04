@@ -35,3 +35,23 @@ updates:
       docker-dependencies:
         patterns:
           - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/docs"
+    schedule:
+      interval: "weekly"
+    groups:
+      docs-dependencies:
+        patterns:
+          - "*"
+
+  # Keep the SHA-pinned GitHub Actions (ci.yml, multi-arch.yml, docs.yml)
+  # patched — pinning to a digest means we don't get upstream fixes otherwise.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions-dependencies:
+        patterns:
+          - "*"
