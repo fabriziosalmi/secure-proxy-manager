@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] - 2026-06-04
+
+### Added
+
+- **Audit Log page (#82).** A paginated, filterable view of administrative
+  actions — logins, blacklist and settings changes, maintenance — with
+  per-action badges and CSV export, backed by the existing `/api/audit-log`.
+  Backend audit coverage was widened to also record blacklist additions and
+  settings changes.
+- **Clients page (#83).** A sortable table of source IPs (requests, blocked,
+  block rate, last seen) with a per-client drill-down drawer (top destinations
+  with blocked counts, recent requests), backed by an enriched
+  `/api/clients/statistics` and a new `GET /api/clients/{ip}/details` endpoint.
+- **Service-status panel in Settings (#84).** Live proxy up/down, listen
+  address, version, clients seen, 24h request/block counts and cache hit rate
+  at the top of the page. The setting cards now flow into two columns on wide
+  screens to cut the scrolling, and `/api/status` reports the configured
+  `proxy_port` from the database instead of a hard-coded value.
+- **End-to-end CI smoke job (#85).** A new `E2E (compose up + smoke)` job runs
+  the whole stack with `docker compose up` and exercises the core path —
+  service health, proxy egress, the blacklist watchdog, the Squid→backend log
+  pipeline, and the audit log — so fresh-deploy breakage can no longer ship
+  green. It is enforced as a required status check via branch protection.
+
+### Changed
+
+- **No movement on hovered data.** Table rows now highlight with colour only;
+  the previous `transform: translateX(2px)` on `.row-hover`, which shifted
+  every row under the cursor, was removed across the Logs, Blacklists, Clients
+  and Audit tables.
+
 ## [3.4.6] - 2026-06-04
 
 ### Fixed
