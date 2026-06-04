@@ -54,22 +54,39 @@ func TestRunRetention(t *testing.T) {
 	}
 }
 
-func TestRefreshList(t *testing.T) {
+func TestInsertBlacklistEntries(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Routable IPs are inserted; the private 10.0.0.1 and the invalid line are
+	// dropped (the ip_blacklist is a source ACL).
+	added := insertBlacklistEntries(db, "ip_blacklist", "ip",
+		"1.1.1.1\n2.2.2.2\n10.0.0.1\n# comment\nnotanip", map[string]struct{}{})
+	if added != 2 {
+		t.Errorf("expected 2 inserted (bogon/invalid dropped), got %d", added)
+	}
+	var priv int
+	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist WHERE ip='10.0.0.1'").Scan(&priv)
+	if priv != 0 {
+		t.Error("private 10.0.0.1 must not enter the source IP blacklist")
+	}
+}
+
+func TestRefreshList_RefusesLoopback(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "1.1.1.1")
-		fmt.Fprintln(w, "2.2.2.2")
+		fmt.Fprintln(w, "8.8.8.8")
 	}))
 	defer ts.Close()
 
+	// ts.URL is 127.0.0.1 — the SSRF guard must refuse it and insert nothing.
 	refreshList(db, "ip_blacklist", "ip", []string{ts.URL})
-
 	var count int
 	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&count)
-	if count != 2 {
-		t.Errorf("Expected 2 IPs, got %d", count)
+	if count != 0 {
+		t.Errorf("expected 0 (loopback refused by SSRF guard), got %d", count)
 	}
 }
 
@@ -237,32 +254,16 @@ func TestRunCheck(t *testing.T) {
 	}
 }
 
-func TestRefreshAll(t *testing.T) {
+func TestInsertBlacklistEntries_Domain(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "10.0.0.1")
-	}))
-	defer ts.Close()
-
-	// Override default lists to use our mock server
-	oldIP := defaultIPLists
-	oldDomain := defaultDomainLists
-	defaultIPLists = []string{ts.URL}
-	defaultDomainLists = []string{ts.URL}
-	defer func() {
-		defaultIPLists = oldIP
-		defaultDomainLists = oldDomain
-	}()
-
-	refreshAll(db)
-
-	var ipCount, domainCount int
-	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&ipCount)
-	_ = db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&domainCount)
-	if ipCount != 1 || domainCount != 1 {
-		t.Errorf("Expected counts (1,1), got (%d,%d)", ipCount, domainCount)
+	// Domain lists are not CIDR/bogon-filtered; hosts-format lines take the last
+	// field. 0.0.0.0 example.com -> example.com.
+	added := insertBlacklistEntries(db, "domain_blacklist", "domain",
+		"0.0.0.0 evil.example\nbad.test\n# comment", map[string]struct{}{})
+	if added != 2 {
+		t.Errorf("expected 2 domains inserted, got %d", added)
 	}
 }
 

@@ -2,17 +2,16 @@ package handlers
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"net/netip"
-	"net/url"
 	"strings"
 	"time"
+
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
 )
 
 // writeJSON serialises v as JSON and writes with the given status code.
@@ -32,14 +31,14 @@ func writeOK(w http.ResponseWriter, data any) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "success", "data": data})
 }
 
-// isValidCIDR returns true if s is a valid IP address or CIDR prefix.
-func isValidCIDR(s string) bool {
-	if _, err := netip.ParsePrefix(s); err == nil {
-		return true
-	}
-	_, err := netip.ParseAddr(s)
-	return err == nil
-}
+// Network-safety primitives live in internal/netguard so the handlers and the
+// background workers share one implementation. These thin wrappers keep the
+// existing handler call sites unchanged.
+func isValidCIDR(s string) bool           { return netguard.IsValidCIDR(s) }
+func isBlockedIP(ip net.IP) bool          { return netguard.IsBlockedIP(ip) }
+func isLANBogonCIDR(s string) bool        { return netguard.IsLANBogonCIDR(s) }
+func isSSRFTarget(u string) (bool, error) { return netguard.IsSSRFTarget(u) }
+func ssrfSafeClient() *http.Client        { return netguard.SSRFSafeClient() }
 
 // internallyManagedSettings are written by the application itself (not the
 // operator) and must never be set through the generic bulk-update or
@@ -54,118 +53,6 @@ var internallyManagedSettings = map[string]bool{
 // be within the length bound, and not be an internally-managed key.
 func isWritableSettingKey(key string) bool {
 	return len(key) <= 100 && validKeyRE.MatchString(key) && !internallyManagedSettings[key]
-}
-
-// isBlockedIP reports whether an IP must not be reached by server-side fetches:
-// private, loopback, link-local, unspecified, multicast, 0.0.0.0/8 or the
-// 100.64.0.0/10 CGNAT range (commonly fronting internal infra / metadata).
-func isBlockedIP(ip net.IP) bool {
-	a, ok := netip.AddrFromSlice(ip)
-	if !ok {
-		return true
-	}
-	a = a.Unmap()
-	if a.IsPrivate() || a.IsLoopback() || a.IsLinkLocalUnicast() ||
-		a.IsLinkLocalMulticast() || a.IsUnspecified() || a.IsMulticast() {
-		return true
-	}
-	if a.Is4() {
-		b := a.As4()
-		if b[0] == 0 { // 0.0.0.0/8
-			return true
-		}
-		if b[0] == 100 && b[1] >= 64 && b[1] <= 127 { // 100.64.0.0/10 CGNAT
-			return true
-		}
-	}
-	return false
-}
-
-// isLANBogonCIDR reports whether an IP/CIDR is a private (RFC1918), loopback,
-// link-local, CGNAT or otherwise non-routable range. Such entries must NOT enter
-// the SOURCE ip_blacklist: it is matched as `acl ip_blacklist src` and denied
-// before `allow localnet`/`allow localhost`, so adding e.g. 192.168.0.0/16 (as
-// Firehol/bogon feeds do) would block the proxy's own LAN clients.
-func isLANBogonCIDR(s string) bool {
-	s = strings.TrimSpace(s)
-	if _, ipnet, err := net.ParseCIDR(s); err == nil {
-		return isBlockedIP(ipnet.IP)
-	}
-	if ip := net.ParseIP(s); ip != nil {
-		return isBlockedIP(ip)
-	}
-	return false
-}
-
-// isSSRFTarget resolves the hostname in rawURL and returns true if ANY resolved
-// IP is non-routable. This is the early pre-flight check; the actual fetch is
-// additionally guarded at dial time by ssrfSafeClient (see below), so a DNS
-// answer that changes between this check and the dial cannot bypass protection.
-func isSSRFTarget(rawURL string) (bool, error) {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return true, err
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return true, fmt.Errorf("only http/https URLs allowed")
-	}
-	hostname := u.Hostname()
-	if hostname == "" {
-		return true, fmt.Errorf("empty hostname")
-	}
-	addrs, err := net.LookupHost(hostname)
-	if err != nil {
-		return true, fmt.Errorf("cannot resolve hostname: %w", err)
-	}
-	for _, addr := range addrs {
-		if ip := net.ParseIP(addr); ip != nil && isBlockedIP(ip) {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// ssrfSafeClient returns an HTTP client hardened against SSRF. Unlike a one-shot
-// pre-check, it validates the destination IP AT DIAL TIME — the IP it validates
-// is the exact IP it connects to — which closes the DNS-rebinding TOCTOU window
-// between resolution and connection. It also re-validates every redirect hop, so
-// a 30x to http://169.254.169.254/ (or any internal host) is refused rather than
-// followed.
-func ssrfSafeClient() *http.Client {
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
-	return &http.Client{
-		Timeout: 60 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 5 {
-				return fmt.Errorf("stopped after 5 redirects")
-			}
-			if ssrf, err := isSSRFTarget(req.URL.String()); err != nil || ssrf {
-				return fmt.Errorf("redirect to disallowed target %q", req.URL.Host)
-			}
-			return nil
-		},
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				host, port, err := net.SplitHostPort(addr)
-				if err != nil {
-					return nil, err
-				}
-				ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-				if err != nil {
-					return nil, err
-				}
-				if len(ips) == 0 {
-					return nil, fmt.Errorf("no addresses for %q", host)
-				}
-				for _, ipa := range ips {
-					if isBlockedIP(ipa.IP) {
-						return nil, fmt.Errorf("blocked address %s for host %q", ipa.IP, host)
-					}
-				}
-				return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
-			},
-		},
-	}
 }
 
 // downloadWithRetry fetches a URL (max maxBytes) with up to 3 retries (exp backoff).
