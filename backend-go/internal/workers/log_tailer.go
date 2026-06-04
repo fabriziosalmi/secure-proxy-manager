@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -18,12 +19,15 @@ import (
 )
 
 // StartLogTailer tails the Squid access log and inserts rows into proxy_logs.
-// It also broadcasts a JSON representation to the WebSocket hub.
-func StartLogTailer(ctx context.Context, db *sql.DB, logPath string, hub *websocket.Hub) {
+// It also broadcasts a JSON representation to the WebSocket hub. stateDir is a
+// backend-writable directory (e.g. /data) where the tail offset is persisted —
+// the log directory itself is typically not writable by the backend's user.
+func StartLogTailer(ctx context.Context, db *sql.DB, logPath, stateDir string, hub *websocket.Hub) {
+	posPath := filepath.Join(stateDir, filepath.Base(logPath)+".pos")
 	go func() {
 		// Restore the persisted byte offset so a backend restart does not re-read
 		// the whole file from the start and re-insert every still-present line.
-		offset := readOffset(logPath)
+		offset := readOffset(posPath)
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
 		for {
@@ -92,17 +96,14 @@ func StartLogTailer(ctx context.Context, db *sql.DB, logPath string, hub *websoc
 			} else {
 				offset = fi.Size()
 			}
-			writeOffset(logPath, offset)
+			writeOffset(posPath, offset)
 		}
 	}()
 	log.Info().Str("path", logPath).Msg("log tailer started")
 }
 
-// offsetPath returns the sidecar file that persists the tail position.
-func offsetPath(logPath string) string { return logPath + ".pos" }
-
-func readOffset(logPath string) int64 {
-	data, err := os.ReadFile(offsetPath(logPath)) // #nosec G304 — derived from configured log path
+func readOffset(posPath string) int64 {
+	data, err := os.ReadFile(posPath) // #nosec G304 — derived from configured data dir
 	if err != nil {
 		return 0
 	}
@@ -113,13 +114,13 @@ func readOffset(logPath string) int64 {
 	return n
 }
 
-func writeOffset(logPath string, offset int64) {
-	tmp := offsetPath(logPath) + ".tmp"
+func writeOffset(posPath string, offset int64) {
+	tmp := posPath + ".tmp"
 	if err := os.WriteFile(tmp, []byte(strconv.FormatInt(offset, 10)), 0o600); err != nil {
 		log.Warn().Err(err).Msg("log tailer: cannot persist offset (will re-read on restart)")
 		return
 	}
-	if err := os.Rename(tmp, offsetPath(logPath)); err != nil {
+	if err := os.Rename(tmp, posPath); err != nil {
 		log.Warn().Err(err).Msg("log tailer: cannot move offset file into place")
 	}
 }

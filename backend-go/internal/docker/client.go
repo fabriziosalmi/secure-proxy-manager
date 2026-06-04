@@ -78,7 +78,10 @@ func New() *Client {
 			return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", dockerSock)
 		},
 	}
-	return &Client{hc: &http.Client{Transport: transport, Timeout: 10 * time.Second}}
+	// No global client Timeout: each method sets its own per-request context
+	// deadline, because a container restart waits for the graceful stop and needs
+	// far longer than the quick kill/exec calls.
+	return &Client{hc: &http.Client{Transport: transport}}
 }
 
 // KillContainer sends signal to a container via the Docker Engine API.
@@ -92,7 +95,9 @@ func (c *Client) KillContainer(name, signal string) error {
 	}
 	u := fmt.Sprintf("http://localhost/v1.41/containers/%s/kill?signal=%s",
 		url.PathEscape(name), url.QueryEscape(signal))
-	req, err := http.NewRequest(http.MethodPost, u, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
 	}
@@ -113,8 +118,14 @@ func (c *Client) RestartContainer(name string) error {
 	if err := checkContainerAllowed(name); err != nil {
 		return err
 	}
-	u := fmt.Sprintf("http://localhost/v1.41/containers/%s/restart", url.PathEscape(name))
-	req, err := http.NewRequest(http.MethodPost, u, nil)
+	// ?t=5 caps the graceful-stop wait at 5s (a Squid with a large ACL set can be
+	// slow to drain); the 60s context covers stop+start. The previous shared 10s
+	// client timeout fired before the restart returned ("context deadline
+	// exceeded"), so ReloadConfig wrongly reported "proxy restart failed".
+	u := fmt.Sprintf("http://localhost/v1.41/containers/%s/restart?t=5", url.PathEscape(name))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
 	}
@@ -139,6 +150,9 @@ func (c *Client) ExecContainer(name string, cmd []string) (string, error) {
 		return "", fmt.Errorf("docker: exec command %v is not in the allowlist", cmd)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
 	// Step 1: Create exec instance
 	createBody, _ := json.Marshal(map[string]any{
 		"AttachStdout": true,
@@ -146,7 +160,7 @@ func (c *Client) ExecContainer(name string, cmd []string) (string, error) {
 		"Cmd":          cmd,
 	})
 	createURL := fmt.Sprintf("http://localhost/v1.41/containers/%s/exec", url.PathEscape(name))
-	createReq, err := http.NewRequest(http.MethodPost, createURL, bytes.NewReader(createBody))
+	createReq, err := http.NewRequestWithContext(ctx, http.MethodPost, createURL, bytes.NewReader(createBody))
 	if err != nil {
 		return "", fmt.Errorf("build exec create request: %w", err)
 	}
@@ -169,7 +183,7 @@ func (c *Client) ExecContainer(name string, cmd []string) (string, error) {
 	// Step 2: Start exec and capture output
 	startBody, _ := json.Marshal(map[string]any{"Detach": false, "Tty": false})
 	startURL := fmt.Sprintf("http://localhost/v1.41/exec/%s/start", execResult.ID)
-	startReq, err := http.NewRequest(http.MethodPost, startURL, bytes.NewReader(startBody))
+	startReq, err := http.NewRequestWithContext(ctx, http.MethodPost, startURL, bytes.NewReader(startBody))
 	if err != nil {
 		return "", fmt.Errorf("build exec start request: %w", err)
 	}

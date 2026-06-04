@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 )
 
 type mockRoundTripper struct {
@@ -118,7 +117,7 @@ func TestNew(t *testing.T) {
 	if c == nil || c.hc == nil {
 		t.Fatal("New() returned nil client or http client")
 	}
-	if c.hc.Timeout != 10*time.Second {
-		t.Errorf("Expected 10s timeout, got %v", c.hc.Timeout)
+	if c.hc.Timeout != 0 {
+		t.Errorf("Expected no global client timeout (per-request contexts), got %v", c.hc.Timeout)
 	}
 }
