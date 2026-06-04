@@ -1,0 +1,3 @@
+# Keep this directory in git.
+# dnsmasq conf-dir=/config/dnsmasq.d/ requires it to exist even when empty;
+# the backend writes blocklist.conf here on reload.

@@ -183,6 +183,10 @@ services:
         max-file: "3"
     networks:
       - proxy-internal
+      # Egress: dnsmasq must reach the upstream resolvers (DNS_UPSTREAM_*).
+      # proxy-internal is `internal: true` (no gateway), so without this the
+      # dns container cannot forward queries and the proxy cannot resolve.
+      - frontend
     restart: unless-stopped
 
   proxy:
@@ -228,6 +232,11 @@ services:
         max-file: "3"
     networks:
       - proxy-internal
+      # Egress: a forward proxy must reach the internet. proxy-internal is
+      # `internal: true` (no gateway to the host/internet), so the proxy is
+      # also attached to the egress-capable `frontend` network. Without this
+      # every upstream fetch fails (HTTP 502 / CONNECT refused).
+      - frontend
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
