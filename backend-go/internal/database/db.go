@@ -147,6 +147,16 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		_, _ = db.Exec(m) // "duplicate column" error is harmless
 	}
 
+	// Backfill unix_timestamp for rows written before it was populated, so the
+	// idx_proxy_logs_unix_ts index covers historical data and time-window
+	// analytics can range-scan on it instead of doing TEXT-date arithmetic.
+	if _, err := db.Exec(
+		`UPDATE proxy_logs SET unix_timestamp = CAST(strftime('%s', timestamp) AS INTEGER)
+		 WHERE unix_timestamp IS NULL AND timestamp IS NOT NULL`,
+	); err != nil {
+		log.Warn().Err(err).Msg("backfill unix_timestamp failed (non-fatal)")
+	}
+
 	// Default settings.
 	defaultSettings := [][]string{
 		// Proxy configuration
