@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { ChangePassword } from '../components/settings/ChangePassword';
 import { Maintenance } from '../components/settings/Maintenance';
 import { Presets } from '../components/settings/Presets';
+import { ServiceStatus } from '../components/settings/ServiceStatus';
 import { ClientSetup } from '../components/ClientSetup';
 
 // Validation schema for settings form data
@@ -145,13 +146,18 @@ export function Settings() {
         </button>
       </div>
 
+      {/* Live service status */}
+      <ServiceStatus />
+
       {/* Quick Setup Presets */}
       <Presets
         formData={formData}
         onApply={(values) => setFormData(prev => ({ ...prev, ...values }))}
       />
 
-      <div className="grid gap-6">
+      {/* Setting cards flow into two columns on wide screens to cut scrolling;
+          break-inside-avoid keeps each card whole. */}
+      <div className="columns-1 xl:columns-2 xl:gap-6 [&>*]:mb-6 [&>*]:break-inside-avoid">
         <Card className="bg-transparent">
           <CardHeader>
             <div className="flex items-center space-x-2">
