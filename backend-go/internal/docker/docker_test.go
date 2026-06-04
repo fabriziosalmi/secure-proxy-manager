@@ -61,7 +61,7 @@ func TestClient_KillContainer(t *testing.T) {
 				hc: &http.Client{Transport: mrt},
 			}
 
-			err := client.KillContainer("test-container", "HUP")
+			err := client.KillContainer("secure-proxy-manager-proxy-1", "HUP")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("KillContainer() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -82,6 +82,34 @@ func TestClient_KillContainer_RequestError(t *testing.T) {
 	err := client.KillContainer("test-container", "HUP")
 	if err == nil {
 		t.Error("Expected error from network failure, got nil")
+	}
+}
+
+// failingTransport must never be reached when the allowlist rejects a call.
+type failingTransport struct{ t *testing.T }
+
+func (f *failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	f.t.Fatal("allowlist should have rejected the call before any HTTP request")
+	return nil, nil
+}
+
+func TestClient_Allowlist(t *testing.T) {
+	client := &Client{hc: &http.Client{Transport: &failingTransport{t}}}
+
+	if err := client.KillContainer("evil-container", "HUP"); err == nil {
+		t.Error("KillContainer: expected rejection of non-allowlisted container")
+	}
+	if err := client.KillContainer("secure-proxy-manager-dns-1", "KILL"); err == nil {
+		t.Error("KillContainer: expected rejection of non-allowlisted signal")
+	}
+	if err := client.RestartContainer("evil-container"); err == nil {
+		t.Error("RestartContainer: expected rejection of non-allowlisted container")
+	}
+	if _, err := client.ExecContainer("secure-proxy-manager-proxy", []string{"sh", "-c", "rm -rf /"}); err == nil {
+		t.Error("ExecContainer: expected rejection of non-allowlisted command")
+	}
+	if _, err := client.ExecContainer("evil-container", []string{"squid", "-k", "purge"}); err == nil {
+		t.Error("ExecContainer: expected rejection of non-allowlisted container")
 	}
 }
 
