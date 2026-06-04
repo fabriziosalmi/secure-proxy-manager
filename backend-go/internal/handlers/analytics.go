@@ -98,10 +98,14 @@ func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 	todayStr := time.Now().Format("2006-01-02")
 	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE timestamp >= ? AND timestamp < date(?, '+1 day')", todayStr, todayStr).Scan(&todayCount) //nolint:errcheck
 
+	// Read the configured proxy port rather than hard-coding 3128.
+	proxyPort := "3128"
+	h.db.QueryRow("SELECT setting_value FROM settings WHERE setting_name = 'proxy_port'").Scan(&proxyPort) //nolint:errcheck
+
 	writeOK(w, map[string]any{
 		"proxy_status":   proxyStatus,
 		"proxy_host":     h.cfg.ProxyHost,
-		"proxy_port":     "3128",
+		"proxy_port":     proxyPort,
 		"timestamp":      time.Now().Format(time.RFC3339),
 		"version":        config.AppVersion,
 		"requests_count": todayCount,
