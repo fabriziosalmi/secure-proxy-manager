@@ -113,7 +113,11 @@ jobs:
         working-directory: ui
         run: |
           npm ci
-          npm audit --audit-level=critical
+          # Gate on HIGH (not just critical): the react-router CVE wave that
+          # shipped in v3.4.5 (GHSA turbo-stream RCE + 2 XSS) was rated HIGH and
+          # silently passed a critical-only gate. Moderate is intentionally not
+          # gated (current brace-expansion devDep advisory has no clean fix).
+          npm audit --audit-level=high
 
   # ── 7. Docker build verification ──────────────────────────────────────
   docker-build:
