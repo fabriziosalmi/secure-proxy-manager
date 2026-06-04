@@ -12,10 +12,51 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
 const dockerSock = "/var/run/docker.sock"
+
+// The Docker socket is host-root-equivalent: a process that can talk to it can
+// start a privileged container and take over the host. Every call site in this
+// codebase passes a hardcoded container name and command, but we defence-in-
+// depth against a future bug (or an RCE/SSRF elsewhere) turning this client into
+// an arbitrary-container, arbitrary-command control plane. All three operations
+// are therefore constrained to fixed allowlists.
+var (
+	// allowedContainers is the set of containers the backend may control.
+	allowedContainers = map[string]struct{}{
+		"secure-proxy-manager-proxy":   {},
+		"secure-proxy-manager-proxy-1": {},
+		"secure-proxy-manager-dns-1":   {},
+	}
+
+	// allowedExecCommands is the set of argv vectors Exec may run, matched
+	// exactly (joined by NUL) so neither the binary nor any argument can be
+	// influenced by request data.
+	allowedExecCommands = map[string]struct{}{
+		execKey([]string{"squid", "-k", "purge"}):                                       {},
+		execKey([]string{"squid", "-k", "shutdown"}):                                    {},
+		execKey([]string{"squidclient", "-h", "127.0.0.1", "-p", "3128", "mgr:info"}):   {},
+		execKey([]string{"squidclient", "-h", "127.0.0.1", "-p", "3128", "mgr:menu"}):   {},
+		execKey([]string{"squidclient", "-h", "127.0.0.1", "-p", "3128", "mgr:active"}): {},
+	}
+
+	// allowedSignals limits KillContainer to the signals the backend sends.
+	allowedSignals = map[string]struct{}{
+		"HUP": {}, "TERM": {}, "INT": {},
+	}
+)
+
+func execKey(cmd []string) string { return strings.Join(cmd, "\x00") }
+
+func checkContainerAllowed(name string) error {
+	if _, ok := allowedContainers[name]; !ok {
+		return fmt.Errorf("docker: container %q is not in the control allowlist", name)
+	}
+	return nil
+}
 
 // DockerClient defines the interface for interacting with the Docker Engine API.
 type DockerClient interface {
@@ -44,6 +85,12 @@ func New() *Client {
 // KillContainer sends signal to a container via the Docker Engine API.
 // Equivalent to: docker kill --signal=<sig> <name>
 func (c *Client) KillContainer(name, signal string) error {
+	if err := checkContainerAllowed(name); err != nil {
+		return err
+	}
+	if _, ok := allowedSignals[signal]; !ok {
+		return fmt.Errorf("docker: signal %q is not in the allowlist", signal)
+	}
 	u := fmt.Sprintf("http://localhost/v1.41/containers/%s/kill?signal=%s",
 		url.PathEscape(name), url.QueryEscape(signal))
 	req, err := http.NewRequest(http.MethodPost, u, nil)
@@ -64,6 +111,9 @@ func (c *Client) KillContainer(name, signal string) error {
 // RestartContainer restarts a container via the Docker Engine API.
 // Equivalent to: docker restart <name>
 func (c *Client) RestartContainer(name string) error {
+	if err := checkContainerAllowed(name); err != nil {
+		return err
+	}
 	u := fmt.Sprintf("http://localhost/v1.41/containers/%s/restart", url.PathEscape(name))
 	req, err := http.NewRequest(http.MethodPost, u, nil)
 	if err != nil {
@@ -83,6 +133,13 @@ func (c *Client) RestartContainer(name string) error {
 // ExecContainer runs a command inside a container and returns stdout.
 // Equivalent to: docker exec <name> <cmd...>
 func (c *Client) ExecContainer(name string, cmd []string) (string, error) {
+	if err := checkContainerAllowed(name); err != nil {
+		return "", err
+	}
+	if _, ok := allowedExecCommands[execKey(cmd)]; !ok {
+		return "", fmt.Errorf("docker: exec command %v is not in the allowlist", cmd)
+	}
+
 	// Step 1: Create exec instance
 	createBody, _ := json.Marshal(map[string]any{
 		"AttachStdout": true,
