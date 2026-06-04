@@ -179,11 +179,12 @@
 
   /* Table row hover slide */
   .row-hover {
-    @apply transition-all duration-150;
+    @apply transition-colors duration-150;
   }
+  /* Highlight rows on hover with colour only — never move/scale data that is
+     being read (no transform). */
   .row-hover:hover {
-    @apply bg-white/[0.02];
-    transform: translateX(2px);
+    @apply bg-white/[0.04];
   }
 
   /* Ambient background glow */
