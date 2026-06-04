@@ -534,6 +534,11 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 			if ip == "" || strings.HasPrefix(ip, "#") {
 				continue
 			}
+			// Same guards as the regular import: valid CIDR/IP, and never a
+			// private/bogon range (the ip_blacklist is a source ACL).
+			if !isValidCIDR(ip) || isLANBogonCIDR(ip) {
+				continue
+			}
 			if _, ex := existing[ip]; !ex {
 				toInsert = append(toInsert, [2]string{ip, "GeoIP: " + strings.ToUpper(cc)})
 				existing[ip] = struct{}{}
