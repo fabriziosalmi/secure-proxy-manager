@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
 )
 
 // Default lists to refresh.
@@ -58,7 +59,7 @@ func StartBlacklistRefresh(ctx context.Context, db *sql.DB, configDir string) {
 func readRefreshSettings(db *sql.DB) (bool, int) {
 	var enabledVal, hoursVal string
 	db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='auto_refresh_enabled'").Scan(&enabledVal) //nolint:errcheck
-	db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='auto_refresh_hours'").Scan(&hoursVal)    //nolint:errcheck
+	db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='auto_refresh_hours'").Scan(&hoursVal)     //nolint:errcheck
 	hours, _ := strconv.Atoi(hoursVal)
 	return enabledVal == "true", hours
 }
@@ -97,10 +98,17 @@ func refreshList(db *sql.DB, table, col string, urls []string) {
 		rows.Close()
 	}
 
-	client := &http.Client{Timeout: 120 * time.Second}
+	// Use the same SSRF-safe client and validation as the import handler (shared
+	// in internal/netguard) so the auto-refresh path can't be pointed at internal
+	// services and can't reintroduce private/bogon ranges into the source ACL.
+	client := netguard.SSRFSafeClient()
 	var added int
 
 	for _, u := range urls {
+		if ssrf, err := netguard.IsSSRFTarget(u); err != nil || ssrf {
+			log.Warn().Str("url", u).Msg("blacklist refresh: refusing non-routable/invalid URL")
+			continue
+		}
 		resp, err := client.Get(u)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if resp != nil {
@@ -111,34 +119,47 @@ func refreshList(db *sql.DB, table, col string, urls []string) {
 		}
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 200*1024*1024))
 		resp.Body.Close()
-
-		tx, err := db.Begin()
-		if err != nil {
-			log.Error().Err(err).Msg("blacklist refresh: tx begin failed")
-			continue
-		}
-		stmt, err := tx.Prepare(fmt.Sprintf("INSERT OR IGNORE INTO %s (%s, description) VALUES(?,?)", table, col))
-		if err != nil {
-			tx.Rollback() //nolint:errcheck
-			log.Error().Err(err).Msg("blacklist refresh: prepare failed")
-			continue
-		}
-		for _, line := range strings.Split(string(data), "\n") {
-			parts := strings.Fields(line)
-			if len(parts) == 0 || strings.HasPrefix(parts[0], "#") {
-				continue
-			}
-			entry := parts[len(parts)-1]
-			if _, ex := existing[entry]; !ex {
-				stmt.Exec(entry, "Auto-refresh: "+time.Now().Format("2006-01-02")) //nolint:errcheck
-				existing[entry] = struct{}{}
-				added++
-			}
-		}
-		stmt.Close()
-		tx.Commit() //nolint:errcheck
+		added += insertBlacklistEntries(db, table, col, string(data), existing)
 	}
 	if added > 0 {
 		log.Info().Str("table", table).Int("added", added).Msg("blacklist refresh complete")
 	}
+}
+
+// insertBlacklistEntries parses a fetched list and inserts new entries in one
+// transaction, returning the count added. For IP lists it applies the same
+// validation as the import handler: valid CIDR/IP only, and never a
+// private/bogon range (the ip_blacklist is a source ACL — a LAN range would
+// lock out the proxy's own clients).
+func insertBlacklistEntries(db *sql.DB, table, col, data string, existing map[string]struct{}) int {
+	tx, err := db.Begin()
+	if err != nil {
+		log.Error().Err(err).Msg("blacklist refresh: tx begin failed")
+		return 0
+	}
+	stmt, err := tx.Prepare(fmt.Sprintf("INSERT OR IGNORE INTO %s (%s, description) VALUES(?,?)", table, col))
+	if err != nil {
+		tx.Rollback() //nolint:errcheck
+		log.Error().Err(err).Msg("blacklist refresh: prepare failed")
+		return 0
+	}
+	added := 0
+	for _, line := range strings.Split(data, "\n") {
+		parts := strings.Fields(line)
+		if len(parts) == 0 || strings.HasPrefix(parts[0], "#") {
+			continue
+		}
+		entry := parts[len(parts)-1]
+		if col == "ip" && (!netguard.IsValidCIDR(entry) || netguard.IsLANBogonCIDR(entry)) {
+			continue
+		}
+		if _, ex := existing[entry]; !ex {
+			stmt.Exec(entry, "Auto-refresh: "+time.Now().Format("2006-01-02")) //nolint:errcheck
+			existing[entry] = struct{}{}
+			added++
+		}
+	}
+	stmt.Close()
+	tx.Commit() //nolint:errcheck
+	return added
 }

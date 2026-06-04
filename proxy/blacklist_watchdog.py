@@ -47,6 +47,7 @@ def main():
     import shutil
 
     mtimes = {src: mtime(src) for src, _ in PAIRS}
+    last_rotate_day = time.gmtime().tm_yday
     print("[watchdog] started", flush=True)
 
     while True:
@@ -58,6 +59,17 @@ def main():
                 os.chmod(log, 0o644)
             except OSError:
                 pass
+
+        # Daily log rotation (with logfile_rotate 5 in squid.conf this keeps
+        # access/cache logs bounded instead of growing without limit).
+        day = time.gmtime().tm_yday
+        if day != last_rotate_day:
+            last_rotate_day = day
+            try:
+                subprocess.run(["/usr/sbin/squid", "-k", "rotate"], capture_output=True, timeout=10)
+                print("[watchdog] daily squid -k rotate", flush=True)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[watchdog] rotate error: {exc}", flush=True)
 
         # Sync changed blacklist files and reconfigure Squid.
         changed = False
