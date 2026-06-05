@@ -217,3 +217,26 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Compose up + core smoke
         run: bash tests/ci-e2e.sh
+
+  # ── 10. End-to-end UI/API (Playwright) ────────────────────────────────
+  # Runs the maintained Playwright suite (tests/e2e/selfhoster.spec.ts) against
+  # the test stack (backend + web + mock-lists) via docker-compose.test.yml.
+  # Non-gating for now (continue-on-error): serial workers, a shared DB, and
+  # live-data assertions make occasional flakes likely — promote to required
+  # once it has proven stable across a few runs.
+  e2e-ui:
+    name: E2E UI (Playwright)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Playwright e2e (test compose)
+        env:
+          TEST_USERNAME: testadmin
+          TEST_PASSWORD: TestP@ss123!
+        run: |
+          docker compose -f docker-compose.test.yml up --build \
+            --abort-on-container-exit --exit-code-from test-runner
+      - name: Teardown
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v
