@@ -3,6 +3,7 @@ import { Shield, Baby, Server, Lock, Monitor, Tv, Wifi, Smartphone, ChevronRight
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { useModal } from '../hooks/useModal';
+import { ClientSetup } from './ClientSetup';
 
 interface Props {
   onComplete: () => void;
@@ -147,7 +148,9 @@ export function SetupWizard({ onComplete }: Props) {
           error: 'Saved, but auto-apply failed — use Settings → Maintenance → Reload config.',
         }
       );
-      onComplete();
+      // Advance to the final "connect your devices" step instead of closing, so a
+      // first-run user is shown how to actually route traffic through the proxy.
+      setStep(3);
     } catch {
       toast.error('Failed to save configuration');
     } finally {
@@ -177,7 +180,7 @@ export function SetupWizard({ onComplete }: Props) {
 
         {/* Progress */}
         <div className="flex items-center justify-center gap-2 mb-8">
-          {[0, 1, 2].map(i => (
+          {[0, 1, 2, 3].map(i => (
             <div key={i} className={`h-1.5 rounded-full transition-all ${
               i === step ? 'w-10 bg-primary' : i < step ? 'w-6 bg-primary/50' : 'w-6 bg-secondary'
             }`} />
@@ -270,6 +273,16 @@ export function SetupWizard({ onComplete }: Props) {
               </div>
             </div>
           )}
+
+          {step === 3 && (
+            <div>
+              <h2 className="text-lg font-semibold mb-1">You're set — connect your devices</h2>
+              <p className="text-xs text-muted-foreground mb-4">Point a device at the proxy to start filtering its traffic.</p>
+              <div className="max-h-[50vh] overflow-y-auto -mx-1 px-1">
+                <ClientSetup />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Navigation */}
@@ -277,13 +290,21 @@ export function SetupWizard({ onComplete }: Props) {
           <button
             type="button"
             onClick={() => setStep(s => s - 1)}
-            disabled={step === 0}
+            disabled={step === 0 || step === 3}
             className="flex items-center gap-1 px-4 py-2 text-sm text-muted-foreground hover:text-foreground disabled:opacity-0 transition-all"
           >
             <ChevronLeft className="w-4 h-4" /> Back
           </button>
 
-          {env === 'advanced' && step === 0 ? (
+          {step === 3 ? (
+            <button
+              type="button"
+              onClick={onComplete}
+              className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+            >
+              <Check className="w-4 h-4" /> Done
+            </button>
+          ) : env === 'advanced' && step === 0 ? (
             <button
               type="button"
               onClick={handleFinish}
