@@ -26,8 +26,9 @@ func TestBlockedFlagMigration(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	// Simulate rows written before the blocked column existed: don't set it, so
-	// it takes the DEFAULT 0. Three of these are blocked statuses.
+	// Insert rows without setting blocked, so it takes the DEFAULT 0 (the legacy
+	// ALTER path itself is covered by TestBlockedColumnAlterMigration). Three of
+	// these are blocked statuses that the backfill must flip.
 	statuses := []string{"TCP_DENIED/403", "TCP_MISS/200", "NONE/403", "TCP_TUNNEL/200", "X_BLOCKED/000"}
 	for i, st := range statuses {
 		if _, err := db.Exec(
@@ -81,6 +82,49 @@ func TestBlockedFlagMigration(t *testing.T) {
 	}
 	if !used {
 		t.Errorf("recent-blocks query does not use idx_proxy_logs_blocked partial index")
+	}
+}
+
+// TestBlockedColumnAlterMigration exercises the real upgrade path: a legacy
+// proxy_logs table with NO blocked column, on which Init must run the
+// idempotent ALTER ADD COLUMN (filling existing rows with 0) and then backfill.
+func TestBlockedColumnAlterMigration(t *testing.T) {
+	tmpDB := "/tmp/test_blocked_alter.db"
+	defer os.Remove(tmpDB)
+
+	db, err := Open(tmpDB)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	// Pre-create a legacy table with the full pre-blocked schema (everything the
+	// indexes reference) but WITHOUT the blocked column, so Init's CREATE TABLE
+	// IF NOT EXISTS is a no-op and the ALTER ADD COLUMN path runs.
+	if _, err := db.Exec(`CREATE TABLE proxy_logs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		timestamp TEXT, source_ip TEXT, method TEXT, destination TEXT,
+		status TEXT, bytes INTEGER, elapsed_ms INTEGER, unix_timestamp INTEGER)`); err != nil {
+		t.Fatalf("legacy create: %v", err)
+	}
+	for _, st := range []string{"TCP_DENIED/403", "TCP_MISS/200", "NONE/403"} {
+		if _, err := db.Exec("INSERT INTO proxy_logs(timestamp, status, destination) VALUES(datetime('now'), ?, 'http://x')", st); err != nil {
+			t.Fatalf("legacy insert: %v", err)
+		}
+	}
+
+	if err := Init(db, "admin", "hash"); err != nil {
+		t.Fatalf("Init on legacy table: %v", err)
+	}
+
+	// The ALTER must have added the column (querying it must not error) and the
+	// backfill must have flipped the two blocked rows.
+	var blocked int
+	if err := db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1").Scan(&blocked); err != nil {
+		t.Fatalf("blocked column missing after Init (ALTER did not run): %v", err)
+	}
+	if blocked != 2 {
+		t.Errorf("backfill on legacy table: got %d blocked, want 2", blocked)
 	}
 }
 

@@ -235,6 +235,8 @@ func TestIsBlockedStatus(t *testing.T) {
 		{"TCP_TUNNEL/200", false},
 		{"NONE_BLOCKED/000", true},
 		{"TCP_HIT/304", false},
+		{"tcp_denied/000", true}, // case-insensitive, matches the SQL LIKE backfill
+		{"x_blocked/000", true},
 	}
 	for _, c := range cases {
 		if got := isBlockedStatus(c.status); got != c.want {

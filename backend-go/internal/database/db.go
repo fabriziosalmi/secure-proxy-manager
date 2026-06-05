@@ -114,9 +114,6 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_ts_dest ON proxy_logs(timestamp, destination)`,
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_status ON proxy_logs(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_unix_ts ON proxy_logs(unix_timestamp)`,
-		// Partial index: only blocked rows are indexed, so it stays tiny while
-		// serving the "recent blocks" / "top blocked" lookups directly.
-		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_blocked ON proxy_logs(blocked) WHERE blocked = 1`,
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_dest ON proxy_logs(destination)`,
 		`CREATE TABLE IF NOT EXISTS settings (
 			setting_name TEXT PRIMARY KEY,
@@ -150,6 +147,20 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // "duplicate column" error is harmless
+	}
+
+	// Indexes on migrated columns must be created AFTER the ALTERs above add the
+	// columns — a legacy proxy_logs predates `blocked`, so this partial index
+	// can't live in the schema slice (which runs before migrations) or its
+	// `WHERE blocked = 1` would fail with "no such column" and abort Init on
+	// upgrade. Only blocked rows are indexed, so it stays tiny.
+	postMigrationIndexes := []string{
+		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_blocked ON proxy_logs(blocked) WHERE blocked = 1`,
+	}
+	for _, stmt := range postMigrationIndexes {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("post-migration index: %w", err)
+		}
 	}
 
 	// Backfill unix_timestamp for rows written before it was populated, so the

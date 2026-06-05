@@ -185,12 +185,15 @@ func parseSquidLine(line string) map[string]any {
 
 // isBlockedStatus reports whether a Squid "action/code" status string denotes a
 // blocked request. It mirrors the SQL backfill predicate
-// (status LIKE '%DENIED%' OR '%403%' OR '%BLOCKED%') exactly, so the flag the
-// insert path writes and the flag the migration backfills always agree.
+// (status LIKE '%DENIED%' OR '%403%' OR '%BLOCKED%'). SQLite LIKE is
+// ASCII-case-insensitive, so we upper-case here to match it byte-for-byte —
+// then a row's flag is identical whether it was written at insert or by the
+// one-time backfill, even for a non-standard lowercase action tag.
 func isBlockedStatus(status string) bool {
-	return strings.Contains(status, "DENIED") ||
-		strings.Contains(status, "403") ||
-		strings.Contains(status, "BLOCKED")
+	up := strings.ToUpper(status)
+	return strings.Contains(up, "DENIED") ||
+		strings.Contains(up, "403") ||
+		strings.Contains(up, "BLOCKED")
 }
 
 // insertLogBatch inserts a tick's worth of entries in a single transaction.
