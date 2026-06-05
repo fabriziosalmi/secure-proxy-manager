@@ -164,6 +164,11 @@ func parseSquidLine(line string) map[string]any {
 
 	statusStr := action + "/" + statusCode
 
+	blocked := 0
+	if isBlockedStatus(statusStr) {
+		blocked = 1
+	}
+
 	return map[string]any{
 		"timestamp":      timestamp,
 		"unix_timestamp": unixSec,
@@ -174,7 +179,18 @@ func parseSquidLine(line string) map[string]any {
 		"status":         statusStr,
 		"bytes":          bytesInt,
 		"elapsed_ms":     elapsed,
+		"blocked":        blocked,
 	}
+}
+
+// isBlockedStatus reports whether a Squid "action/code" status string denotes a
+// blocked request. It mirrors the SQL backfill predicate
+// (status LIKE '%DENIED%' OR '%403%' OR '%BLOCKED%') exactly, so the flag the
+// insert path writes and the flag the migration backfills always agree.
+func isBlockedStatus(status string) bool {
+	return strings.Contains(status, "DENIED") ||
+		strings.Contains(status, "403") ||
+		strings.Contains(status, "BLOCKED")
 }
 
 // insertLogBatch inserts a tick's worth of entries in a single transaction.
@@ -189,17 +205,24 @@ func insertLogBatch(db *sql.DB, entries []map[string]any) error {
 		return err
 	}
 	stmt, err := tx.Prepare(
-		`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, bytes, elapsed_ms)
-		 VALUES(?, ?, ?, ?, ?, ?, ?, ?)`)
+		`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, bytes, elapsed_ms, blocked)
+		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		_ = tx.Rollback()
 		return err
 	}
 	defer stmt.Close()
 	for _, e := range entries {
+		// blocked is NOT NULL; coalesce a missing/partial entry to 0 so an
+		// incomplete map can't violate the constraint (parseSquidLine always
+		// sets it, but insertLogBatch stays robust to partial maps).
+		blocked := e["blocked"]
+		if blocked == nil {
+			blocked = 0
+		}
 		if _, err := stmt.Exec(
 			e["timestamp"], e["unix_timestamp"], e["source_ip"], e["method"],
-			e["destination"], e["status"], e["bytes"], e["elapsed_ms"],
+			e["destination"], e["status"], e["bytes"], e["elapsed_ms"], blocked,
 		); err != nil {
 			_ = tx.Rollback()
 			return err

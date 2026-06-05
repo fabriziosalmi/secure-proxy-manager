@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
+	"github.com/go-chi/chi/v5"
 )
 
 type LogHandlers struct {
@@ -104,15 +104,15 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 func (h *LogHandlers) Stats(w http.ResponseWriter, r *http.Request) {
 	var total, blocked, ipBlocks int
 	var lastImport sql.NullString
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&total)                                                                               //nolint:errcheck
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%'").Scan(&blocked) //nolint:errcheck
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%') AND (destination LIKE 'http://%.%.%.%' OR destination LIKE 'https://%.%.%.%')").Scan(&ipBlocks) //nolint:errcheck
-	h.db.QueryRow("SELECT MAX(timestamp) FROM proxy_logs").Scan(&lastImport)                                                                    //nolint:errcheck
+	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&total)                                                                                                    //nolint:errcheck
+	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1").Scan(&blocked)                                                                                //nolint:errcheck
+	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND (destination LIKE 'http://%.%.%.%' OR destination LIKE 'https://%.%.%.%')").Scan(&ipBlocks) //nolint:errcheck
+	h.db.QueryRow("SELECT MAX(timestamp) FROM proxy_logs").Scan(&lastImport)                                                                                         //nolint:errcheck
 	writeOK(w, map[string]any{
-		"total_count":    total,
-		"blocked_count":  blocked,
+		"total_count":     total,
+		"blocked_count":   blocked,
 		"ip_blocks_count": ipBlocks,
-		"last_import":    lastImport.String,
+		"last_import":     lastImport.String,
 	})
 }
 
@@ -124,7 +124,7 @@ func (h *LogHandlers) Timeline(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(`
 		SELECT strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
 		       COUNT(*) as total,
-		       SUM(CASE WHEN status LIKE '403%' THEN 1 ELSE 0 END) as blocked
+		       SUM(blocked) as blocked
 		FROM proxy_logs
 		WHERE timestamp >= datetime('now', ?)
 		GROUP BY hour ORDER BY hour ASC`,
@@ -150,7 +150,7 @@ func (h *LogHandlers) Timeline(w http.ResponseWriter, r *http.Request) {
 
 func (h *LogHandlers) Clear(w http.ResponseWriter, r *http.Request) {
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
-	h.db.Exec("DELETE FROM proxy_logs")   //nolint:errcheck
+	h.db.Exec("DELETE FROM proxy_logs")                                                                                          //nolint:errcheck
 	h.db.Exec("INSERT INTO audit_log(username,action,target,details) VALUES(?,?,?,?)", username, "clear_logs", "proxy_logs", "") //nolint:errcheck
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "All logs cleared"})
 }
