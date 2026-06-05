@@ -11,6 +11,7 @@ import { Maintenance } from '../components/settings/Maintenance';
 import { Presets } from '../components/settings/Presets';
 import { ServiceStatus } from '../components/settings/ServiceStatus';
 import { ClientSetup } from '../components/ClientSetup';
+import { Toggle } from '../components/ui/Toggle';
 
 // Validation schema for settings form data
 const settingsSchema = z.object({
@@ -230,22 +231,28 @@ export function Settings() {
                   <p className="text-xs font-medium text-blue-400">Tailscale</p>
                   <p className="text-[10px] text-muted-foreground">Overlay network access</p>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                  <input type="checkbox" name="tailscale_enabled" checked={formData.tailscale_enabled === 'true'}
-                    onChange={(e) => setFormData(prev => ({ ...prev, tailscale_enabled: e.target.checked ? 'true' : 'false' }))} className="sr-only peer" />
-                  <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                </label>
+                <Toggle
+                  name="tailscale_enabled"
+                  label="Tailscale"
+                  checked={formData.tailscale_enabled === 'true'}
+                  onChange={(v) => setFormData(prev => ({ ...prev, tailscale_enabled: v ? 'true' : 'false' }))}
+                  size="sm"
+                  className="ml-2"
+                />
               </div>
               <div className="flex items-center justify-between p-3 border border-white/[0.06] rounded-lg bg-white/[0.02]">
                 <div>
                   <p className="text-xs font-medium text-emerald-400">Dynamic DNS</p>
                   <p className="text-[10px] text-muted-foreground">Auto-update public IP</p>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                  <input type="checkbox" name="ddns_enabled" checked={formData.ddns_enabled === 'true'}
-                    onChange={(e) => setFormData(prev => ({ ...prev, ddns_enabled: e.target.checked ? 'true' : 'false' }))} className="sr-only peer" />
-                  <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                </label>
+                <Toggle
+                  name="ddns_enabled"
+                  label="Dynamic DNS"
+                  checked={formData.ddns_enabled === 'true'}
+                  onChange={(v) => setFormData(prev => ({ ...prev, ddns_enabled: v ? 'true' : 'false' }))}
+                  size="sm"
+                  className="ml-2"
+                />
               </div>
             </div>
             {/* Tailscale expanded */}
@@ -298,11 +305,14 @@ export function Settings() {
                     <p className="text-xs font-medium">{t.label}</p>
                     <p className="text-[10px] text-muted-foreground">{t.desc}</p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                    <input type="checkbox" name={t.name} checked={formData[t.name] === 'true'}
-                      onChange={(e) => setFormData(prev => ({ ...prev, [t.name]: e.target.checked ? 'true' : 'false' }))} className="sr-only peer" />
-                    <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                  </label>
+                  <Toggle
+                    name={t.name}
+                    label={t.label}
+                    checked={formData[t.name] === 'true'}
+                    onChange={(v) => setFormData(prev => ({ ...prev, [t.name]: v ? 'true' : 'false' }))}
+                    size="sm"
+                    className="ml-2"
+                  />
                 </div>
               ))}
             </div>
@@ -336,16 +346,13 @@ export function Settings() {
                     <label className="text-sm font-medium">Enable Notifications</label>
                     <p className="text-xs text-muted-foreground">Receive real-time alerts via your preferred providers.</p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      name="enable_notifications"
-                      checked={formData.enable_notifications === 'true'}
-                      onChange={(e) => setFormData(prev => ({ ...prev, enable_notifications: e.target.checked ? 'true' : 'false' }))}
-                      className="sr-only peer" 
-                    />
-                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                  </label>
+                  <Toggle
+                    name="enable_notifications"
+                    label="Enable Notifications"
+                    checked={formData.enable_notifications === 'true'}
+                    onChange={(v) => setFormData(prev => ({ ...prev, enable_notifications: v ? 'true' : 'false' }))}
+                    size="md"
+                  />
                 </div>
                 
                 {formData.enable_notifications === 'true' && (
@@ -537,12 +544,14 @@ export function Settings() {
                   <p className="text-xs font-medium text-blue-400">GDPR Mode</p>
                   <p className="text-[10px] text-muted-foreground">Anonymize IPs in logs (last octet → x)</p>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                  <input type="checkbox" name="gdpr_mode" checked={formData.gdpr_mode === 'true'}
-                    onChange={(e) => setFormData(prev => ({ ...prev, gdpr_mode: e.target.checked ? 'true' : 'false' }))}
-                    className="sr-only peer" />
-                  <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                </label>
+                <Toggle
+                  name="gdpr_mode"
+                  label="GDPR Mode"
+                  checked={formData.gdpr_mode === 'true'}
+                  onChange={(v) => setFormData(prev => ({ ...prev, gdpr_mode: v ? 'true' : 'false' }))}
+                  size="sm"
+                  className="ml-2"
+                />
               </div>
 
             {/* DoH Blocker */}
@@ -616,12 +625,13 @@ export function Settings() {
                   <label className="text-sm font-medium">Auto-Refresh Blocklists</label>
                   <p className="text-xs text-muted-foreground">Automatically re-download popular IP and domain blocklists. Deduplicates on import.</p>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" name="auto_refresh_enabled" checked={formData.auto_refresh_enabled === 'true'}
-                    onChange={(e) => setFormData(prev => ({ ...prev, auto_refresh_enabled: e.target.checked ? 'true' : 'false' }))}
-                    className="sr-only peer" />
-                  <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                </label>
+                <Toggle
+                  name="auto_refresh_enabled"
+                  label="Auto-Refresh Blocklists"
+                  checked={formData.auto_refresh_enabled === 'true'}
+                  onChange={(v) => setFormData(prev => ({ ...prev, auto_refresh_enabled: v ? 'true' : 'false' }))}
+                  size="sm"
+                />
               </div>
               {formData.auto_refresh_enabled === 'true' && (
                 <div className="mt-2 pt-2 border-t border-white/[0.06]">
@@ -650,12 +660,14 @@ export function Settings() {
                       <p className="text-xs font-medium">{h.label}</p>
                       <p className="text-[10px] text-muted-foreground">{h.desc}</p>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                      <input type="checkbox" name={h.key} checked={formData[h.key] !== 'false' && formData[h.key] !== '0'}
-                        onChange={(e) => setFormData(prev => ({ ...prev, [h.key]: e.target.checked ? 'true' : 'false' }))}
-                        className="sr-only peer" />
-                      <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                    </label>
+                    <Toggle
+                      name={h.key}
+                      label={h.label}
+                      checked={formData[h.key] !== 'false' && formData[h.key] !== '0'}
+                      onChange={(v) => setFormData(prev => ({ ...prev, [h.key]: v ? 'true' : 'false' }))}
+                      size="sm"
+                      className="ml-2"
+                    />
                   </div>
                 ))}
               </div>
@@ -679,12 +691,14 @@ export function Settings() {
                   <p className="text-xs font-medium">Bandwidth Throttling</p>
                   <p className="text-[10px] text-muted-foreground">Delay pools for congestion</p>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                  <input type="checkbox" name="enable_bandwidth_limits" checked={formData.enable_bandwidth_limits === 'true'}
-                    onChange={(e) => setFormData(prev => ({ ...prev, enable_bandwidth_limits: e.target.checked ? 'true' : 'false' }))}
-                    className="sr-only peer" />
-                  <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                </label>
+                <Toggle
+                  name="enable_bandwidth_limits"
+                  label="Bandwidth Throttling"
+                  checked={formData.enable_bandwidth_limits === 'true'}
+                  onChange={(v) => setFormData(prev => ({ ...prev, enable_bandwidth_limits: v ? 'true' : 'false' }))}
+                  size="sm"
+                  className="ml-2"
+                />
               </div>
               {/* Time restrictions */}
               <div className="flex items-center justify-between p-3 border border-white/[0.06] rounded-lg bg-white/[0.02]">
@@ -692,12 +706,14 @@ export function Settings() {
                   <p className="text-xs font-medium">Time-based Restrictions</p>
                   <p className="text-[10px] text-muted-foreground">Limit access to specific hours</p>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                  <input type="checkbox" name="enable_time_restrictions" checked={formData.enable_time_restrictions === 'true'}
-                    onChange={(e) => setFormData(prev => ({ ...prev, enable_time_restrictions: e.target.checked ? 'true' : 'false' }))}
-                    className="sr-only peer" />
-                  <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                </label>
+                <Toggle
+                  name="enable_time_restrictions"
+                  label="Time-based Restrictions"
+                  checked={formData.enable_time_restrictions === 'true'}
+                  onChange={(v) => setFormData(prev => ({ ...prev, enable_time_restrictions: v ? 'true' : 'false' }))}
+                  size="sm"
+                  className="ml-2"
+                />
               </div>
               {/* Proxy auth */}
               <div className="flex items-center justify-between p-3 border border-white/[0.06] rounded-lg bg-white/[0.02]">
@@ -705,12 +721,14 @@ export function Settings() {
                   <p className="text-xs font-medium">Proxy Authentication</p>
                   <p className="text-[10px] text-muted-foreground">Require login to use proxy</p>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                  <input type="checkbox" name="enable_proxy_auth" checked={formData.enable_proxy_auth === 'true'}
-                    onChange={(e) => setFormData(prev => ({ ...prev, enable_proxy_auth: e.target.checked ? 'true' : 'false' }))}
-                    className="sr-only peer" />
-                  <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                </label>
+                <Toggle
+                  name="enable_proxy_auth"
+                  label="Proxy Authentication"
+                  checked={formData.enable_proxy_auth === 'true'}
+                  onChange={(v) => setFormData(prev => ({ ...prev, enable_proxy_auth: v ? 'true' : 'false' }))}
+                  size="sm"
+                  className="ml-2"
+                />
               </div>
             </div>
             {/* Expanded settings for enabled toggles */}
@@ -769,11 +787,14 @@ export function Settings() {
                 <label className="text-sm font-medium">HTTPS Inspection (SSL Bump)</label>
                 <p className="text-xs text-muted-foreground">Intercept HTTPS traffic for WAF, content filtering, and security scanning.</p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
-                <input type="checkbox" name="ssl_bump_enabled" checked={formData.ssl_bump_enabled === 'true'}
-                  onChange={(e) => setFormData(prev => ({ ...prev, ssl_bump_enabled: e.target.checked ? 'true' : 'false' }))} className="sr-only peer" />
-                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-              </label>
+              <Toggle
+                name="ssl_bump_enabled"
+                label="HTTPS Inspection (SSL Bump)"
+                checked={formData.ssl_bump_enabled === 'true'}
+                onChange={(v) => setFormData(prev => ({ ...prev, ssl_bump_enabled: v ? 'true' : 'false' }))}
+                size="md"
+                className="ml-4"
+              />
             </div>
             {formData.ssl_bump_enabled === 'true' && (
               <div className="text-xs text-muted-foreground p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
@@ -819,12 +840,13 @@ export function Settings() {
                 <label className="text-sm font-medium">Block Known Malicious IPs</label>
                 <p className="text-xs text-muted-foreground">Automatically download and apply community blacklists.</p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" name="enable_ip_blacklist" className="sr-only peer"
-                  checked={formData.enable_ip_blacklist !== 'false'}
-                  onChange={(e) => setFormData(prev => ({ ...prev, enable_ip_blacklist: e.target.checked ? 'true' : 'false' }))} />
-                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-              </label>
+              <Toggle
+                name="enable_ip_blacklist"
+                label="Block Known Malicious IPs"
+                checked={formData.enable_ip_blacklist !== 'false'}
+                onChange={(v) => setFormData(prev => ({ ...prev, enable_ip_blacklist: v ? 'true' : 'false' }))}
+                size="md"
+              />
             </div>
             <div className="flex items-center justify-between p-4 border border-white/[0.06] rounded-lg bg-white/[0.03]">
               <div className="space-y-0.5 w-full">
@@ -833,16 +855,13 @@ export function Settings() {
                     <label className="text-sm font-medium">Outbound WAF (Content Inspection)</label>
                     <p className="text-xs text-muted-foreground">Inspect request bodies to block sensitive data leaks and injection attacks.</p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      name="enable_waf"
-                      checked={formData.enable_waf === 'true'}
-                      onChange={(e) => setFormData(prev => ({ ...prev, enable_waf: e.target.checked ? 'true' : 'false' }))}
-                      className="sr-only peer" 
-                    />
-                    <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                  </label>
+                  <Toggle
+                    name="enable_waf"
+                    label="Outbound WAF (Content Inspection)"
+                    checked={formData.enable_waf === 'true'}
+                    onChange={(v) => setFormData(prev => ({ ...prev, enable_waf: v ? 'true' : 'false' }))}
+                    size="md"
+                  />
                 </div>
                 {formData.enable_waf === 'true' && (
                   <div className="mt-2 pt-2 border-t border-white/[0.06]">
@@ -874,12 +893,14 @@ export function Settings() {
                     <p className="text-xs font-medium">{t.label}</p>
                     <p className="text-[10px] text-muted-foreground">{t.desc}</p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                    <input type="checkbox" name={t.name} checked={formData[t.name] === 'true'}
-                      onChange={(e) => setFormData(prev => ({ ...prev, [t.name]: e.target.checked ? 'true' : 'false' }))}
-                      className="sr-only peer" />
-                    <div className="w-9 h-5 bg-secondary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                  </label>
+                  <Toggle
+                    name={t.name}
+                    label={t.label}
+                    checked={formData[t.name] === 'true'}
+                    onChange={(v) => setFormData(prev => ({ ...prev, [t.name]: v ? 'true' : 'false' }))}
+                    size="sm"
+                    className="ml-2"
+                  />
                 </div>
               ))}
             </div>
