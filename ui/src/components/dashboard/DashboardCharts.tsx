@@ -2,6 +2,7 @@ import { Area, Bar, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis, C
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { AlertTriangle } from 'lucide-react';
 import type { TimelineEntry, DashboardSummary } from '../../types';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 const C = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899'];
 
@@ -26,6 +27,9 @@ interface Props {
 // route bundle (~110 KB gzipped) for users who land on /dashboard but never
 // scroll to the charts.
 export default function DashboardCharts({ chart, summary }: Props) {
+  const reducedMotion = useReducedMotion();
+  const totalReqs = chart.reduce((s, p) => s + (p.total || 0), 0);
+  const blockedReqs = chart.reduce((s, p) => s + (p.blocked || 0), 0);
   return (
     <div className="grid gap-3 lg:grid-cols-12">
       {/* Traffic chart */}
@@ -34,7 +38,7 @@ export default function DashboardCharts({ chart, summary }: Props) {
           <CardTitle className="text-sm">Traffic 24h</CardTitle>
         </CardHeader>
         <CardContent className="p-2">
-          <div className="h-[180px]">
+          <div className="h-[180px]" role="img" aria-label={`Traffic over the last 24 hours: ${totalReqs} requests, ${blockedReqs} blocked`}>
             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <ComposedChart data={chart} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                 <defs>
@@ -44,8 +48,8 @@ export default function DashboardCharts({ chart, summary }: Props) {
                 <YAxis yAxisId="left" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
                 <YAxis yAxisId="right" orientation="right" stroke="#ef4444" fontSize={9} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} />
-                <Area yAxisId="left" type="monotone" dataKey="total" name="Total" stroke="#3b82f6" strokeWidth={1.5} fill="url(#cT)" />
-                <Bar yAxisId="right" dataKey="blocked" name="Blocked" fill="#ef4444" opacity={0.7} radius={[2, 2, 0, 0]} />
+                <Area yAxisId="left" type="monotone" dataKey="total" name="Total" stroke="#3b82f6" strokeWidth={1.5} fill="url(#cT)" isAnimationActive={!reducedMotion} />
+                <Bar yAxisId="right" dataKey="blocked" name="Blocked" fill="#ef4444" opacity={0.7} radius={[2, 2, 0, 0]} isAnimationActive={!reducedMotion} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -60,9 +64,9 @@ export default function DashboardCharts({ chart, summary }: Props) {
         <CardContent className="p-2">
           {(summary?.threat_categories?.length ?? 0) > 0 && summary ? (
             <>
-              <div className="h-[130px]">
+              <div className="h-[130px]" role="img" aria-label={`Threat categories: ${summary.threat_categories.map(c => `${c.category} ${c.count}`).join(', ')}`}>
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                  <PieChart><Pie data={summary.threat_categories} dataKey="count" nameKey="category" cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={3}>
+                  <PieChart><Pie data={summary.threat_categories} dataKey="count" nameKey="category" cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={3} isAnimationActive={!reducedMotion}>
                     {summary.threat_categories.map((_: unknown, i: number) => <Cell key={i} fill={C[i % C.length]} />)}
                   </Pie><Tooltip contentStyle={TOOLTIP_STYLE} /></PieChart>
                 </ResponsiveContainer>
