@@ -27,7 +27,6 @@ type HeuristicConfig struct {
 	PIIMaxPerResponse    int     // H3: max PII items before block (default 5)
 	DestinationSharding  bool    // H4: detect rapid multi-destination access
 	ShardingMaxDests     int     // H4: max unique destinations per IP per minute (default 50)
-	HeaderMorphing       bool    // H5: detect header order/case changes
 	ProtocolGhosting     bool    // H6: detect encapsulated protocols in HTTP
 	SequenceValidation   bool    // H7: detect impossible request sequences
 }
@@ -53,7 +52,6 @@ func initHeuristics() {
 		PIIMaxPerResponse:    envInt("WAF_H_PII_MAX", 5),
 		DestinationSharding:  envBool("WAF_H_SHARDING", true),
 		ShardingMaxDests:     envInt("WAF_H_SHARDING_MAX", 50),
-		HeaderMorphing:       envBool("WAF_H_MORPHING", false), // Off by default (noisy)
 		ProtocolGhosting:     envBool("WAF_H_GHOSTING", true),
 		SequenceValidation:   envBool("WAF_H_SEQUENCE", false), // Off by default (needs tuning)
 	}
@@ -71,16 +69,13 @@ func initHeuristics() {
 	if heuristicCfg.DestinationSharding {
 		enabled++
 	}
-	if heuristicCfg.HeaderMorphing {
-		enabled++
-	}
 	if heuristicCfg.ProtocolGhosting {
 		enabled++
 	}
 	if heuristicCfg.SequenceValidation {
 		enabled++
 	}
-	log.Printf("Heuristic engine: %d/7 rules enabled\n", enabled)
+	log.Printf("Heuristic engine: %d/6 rules enabled\n", enabled)
 }
 
 // ── State tracking ──────────────────────────────────────────────────────────
@@ -93,9 +88,6 @@ type clientState struct {
 	// Destination sharding: unique dests in current window
 	dests    map[string]time.Time
 	destLast time.Time
-
-	// Header morphing: last seen header fingerprint
-	lastHeaderFP string
 
 	// Sequence: last method+path
 	lastMethod string
@@ -141,7 +133,7 @@ func cleanupClientStates() {
 
 // CheckRequestHeuristics evaluates behavioral heuristics for a request.
 // Returns additional score and match results.
-func CheckRequestHeuristics(clientIP, method, host, path, body, rawHeaders string, bodySize int, bodyEntropy, urlEntropy float64) ([]HeuristicResult, int) {
+func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize int, bodyEntropy, urlEntropy float64) ([]HeuristicResult, int) {
 	var results []HeuristicResult
 	totalScore := 0
 
@@ -187,13 +179,6 @@ func CheckRequestHeuristics(clientIP, method, host, path, body, rawHeaders strin
 		cs.dests[host] = now
 		cs.destLast = now
 		destCount = len(cs.dests)
-	}
-
-	// H5: snapshot header FP
-	var prevHeaderFP string
-	if heuristicCfg.HeaderMorphing {
-		prevHeaderFP = cs.lastHeaderFP
-		cs.lastHeaderFP = headerFingerprint(rawHeaders)
 	}
 
 	// H7: snapshot last method/path
@@ -256,22 +241,6 @@ func CheckRequestHeuristics(clientIP, method, host, path, body, rawHeaders strin
 				Category: "HEURISTIC_SHARDING",
 				Score:    6, // probabilistic: below blockThreshold, needs corroboration
 				Detail:   fmt.Sprintf("%d unique destinations in 60s (max=%d)", destCount, heuristicCfg.ShardingMaxDests),
-			}
-			results = append(results, r)
-			totalScore += r.Score
-		}
-	}
-
-	// ── H5: Header Morphing Detection ───────────────────────────────────
-	if heuristicCfg.HeaderMorphing {
-		fp := headerFingerprint(rawHeaders)
-
-		if prevHeaderFP != "" && fp != prevHeaderFP {
-			r := HeuristicResult{
-				ID:       "H5-MORPHING",
-				Category: "HEURISTIC_MORPHING",
-				Score:    4,
-				Detail:   "header fingerprint changed between requests",
 			}
 			results = append(results, r)
 			totalScore += r.Score
@@ -410,18 +379,6 @@ func isUniformSize(sizes []int) bool {
 	variance /= float64(len(sizes))
 	cv := sqrt(variance) / mean
 	return cv < 0.2 // Very uniform sizes
-}
-
-// headerFingerprint creates a stable fingerprint from header names and order.
-func headerFingerprint(rawHeaders string) string {
-	lines := strings.Split(rawHeaders, "\n")
-	var names []string
-	for _, line := range lines {
-		if idx := strings.Index(line, ":"); idx > 0 {
-			names = append(names, strings.ToLower(strings.TrimSpace(line[:idx])))
-		}
-	}
-	return strings.Join(names, "|")
 }
 
 // detectProtocolGhosting checks for non-HTTP protocols encapsulated in HTTP body.

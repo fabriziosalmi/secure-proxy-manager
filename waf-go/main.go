@@ -409,15 +409,9 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	}
 
 	// ── Behavioral heuristics (stateful, time-windowed) ────────────────
-	var rawHdrs string
-	for k, vals := range req.Request.Header {
-		for _, v := range vals {
-			rawHdrs += k + ": " + v + "\n"
-		}
-	}
 	hResults, hScore := CheckRequestHeuristics(
 		clientIP, req.Request.Method, req.Request.Host, req.Request.URL.Path,
-		bodyStr, rawHdrs, bodySize, feature.BodyEntropy, feature.URLEntropy,
+		bodyStr, bodySize, feature.BodyEntropy, feature.URLEntropy,
 	)
 	for _, hr := range hResults {
 		matches = append(matches, MatchResult{
@@ -778,8 +772,7 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	for _, on := range []bool{
 		heuristicCfg.EntropyThreshold, heuristicCfg.BeaconingDetection,
 		heuristicCfg.PIICounter, heuristicCfg.DestinationSharding,
-		heuristicCfg.HeaderMorphing, heuristicCfg.ProtocolGhosting,
-		heuristicCfg.SequenceValidation,
+		heuristicCfg.ProtocolGhosting, heuristicCfg.SequenceValidation,
 	} {
 		if on {
 			heuristicsEnabled++
@@ -849,7 +842,7 @@ func (h *MgmtHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	hEnabled := 0
-	for _, on := range []bool{heuristicCfg.EntropyThreshold, heuristicCfg.BeaconingDetection, heuristicCfg.PIICounter, heuristicCfg.DestinationSharding, heuristicCfg.HeaderMorphing, heuristicCfg.ProtocolGhosting, heuristicCfg.SequenceValidation} {
+	for _, on := range []bool{heuristicCfg.EntropyThreshold, heuristicCfg.BeaconingDetection, heuristicCfg.PIICounter, heuristicCfg.DestinationSharding, heuristicCfg.ProtocolGhosting, heuristicCfg.SequenceValidation} {
 		if on {
 			hEnabled++
 		}
