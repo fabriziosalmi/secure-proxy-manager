@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { IpBadge } from '../components/IpBadge';
+import { useModal } from '../hooks/useModal';
 import { api } from '../lib/api';
 import type { ClientsData, ClientStat, ClientDetail } from '../types';
 
@@ -174,11 +175,12 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
   });
 
   const br = data ? rate(data.blocked, data.total_requests) : 0;
+  const modalRef = useModal<HTMLDivElement>(true, onClose);
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md h-full overflow-y-auto bg-[var(--card)] border-l border-white/[0.08] shadow-2xl animate-in">
+      <div ref={modalRef} className="relative w-full max-w-md h-full overflow-y-auto bg-[var(--card)] border-l border-white/[0.08] shadow-2xl animate-in">
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-white/[0.06] bg-[var(--card)]">
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-cyan-400" />
