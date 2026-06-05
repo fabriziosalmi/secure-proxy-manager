@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
+import { useConfirm } from '../hooks/useConfirm';
 import type { TimelineEntry, SecurityScore, DashboardSummary, CacheStats } from '../types';
 
 // Lazy-load the recharts-based chart cards. Recharts is ~110 KB gzipped
@@ -16,6 +17,7 @@ const REFETCH = 30_000;
 
 export function Dashboard() {
   const queryClient = useQueryClient();
+  const { confirm, dialog } = useConfirm();
   const [copied, setCopied] = useState(false);
   const proxy = `${window.location.hostname}:3128`;
   const copy = () => { navigator.clipboard.writeText(proxy).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }).catch(() => toast.error('Clipboard access denied')); };
@@ -60,6 +62,7 @@ export function Dashboard() {
 
   return (
     <div className="space-y-4">
+      {dialog}
       {/* Header + proxy address */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">Dashboard</h1>
@@ -71,7 +74,12 @@ export function Dashboard() {
             </button>
           </div>
           <button type="button" onClick={async () => {
-              if (!confirm('Reset all counters? This clears proxy logs and WAF stats.')) return;
+              if (!(await confirm({
+                title: 'Reset all counters?',
+                body: 'This clears all proxy logs and WAF statistics. This cannot be undone.',
+                confirmLabel: 'Reset counters',
+                destructive: true,
+              }))) return;
               const t = toast.loading('Resetting counters...');
               try {
                 await api.post('counters/reset');
