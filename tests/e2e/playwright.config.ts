@@ -15,7 +15,10 @@ export default defineConfig({
   ],
 
   use: {
-    baseURL: process.env.BASE_URL ?? 'http://localhost:8011',
+    baseURL: process.env.BASE_URL ?? 'https://localhost:8443',
+    // The web serves only HTTPS (HTTP 8011 301-redirects everything except
+    // /health); accept its self-signed cert.
+    ignoreHTTPSErrors: true,
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     trace: 'on-first-retry',

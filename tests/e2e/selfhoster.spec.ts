@@ -7,12 +7,12 @@
  *
  * Architecture notes:
  *   - API tests run via Playwright's `request` fixture (no browser overhead)
- *   - UI tests drive real Chromium, inject JWT into sessionStorage via addInitScript
+ *   - UI tests drive real Chromium, inject JWT into localStorage via addInitScript
  *     (Playwright storageState only persists localStorage, so we inject per-test)
  *   - Auth tests deliberately run WITHOUT token injection
  *
  * Environment variables (set in docker-compose.test.yml):
- *   BASE_URL          http://web:8011          (UI + nginx proxy)
+ *   BASE_URL          https://web:8443         (UI + nginx, HTTPS only)
  *   API_URL           http://backend:5000      (direct backend)
  *   TEST_USERNAME     testadmin
  *   TEST_PASSWORD     TestP@ss123!
@@ -46,7 +46,7 @@ async function apiToken(request: APIRequestContext): Promise<string> {
     data: { username: USERNAME, password: PASSWORD },
   });
   expect(res.ok(), `Login failed (${res.status()}): ${await res.text()}`).toBeTruthy();
-  const { token } = (await res.json()) as { token: string };
+  const { access_token: token } = (await res.json()) as { access_token: string };
   return token;
 }
 
@@ -58,17 +58,27 @@ async function apiToken(request: APIRequestContext): Promise<string> {
 async function injectAuth(page: Page, request: APIRequestContext): Promise<void> {
   const token = await apiToken(request);
   await page.addInitScript((t: string) => {
-    sessionStorage.setItem('auth_token', t);
+    localStorage.setItem('auth_token', t);
   }, token);
 }
+
+// Mark the first-run Setup Wizard complete once for the whole run, so
+// authenticated views land on the Dashboard instead of the wizard gate.
+test.beforeAll(async ({ request }) => {
+  const token = await apiToken(request);
+  await request.post('/api/settings', {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { wizard_completed: 'true' },
+  });
+});
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 
 test.describe('Authentication', () => {
   // No token injection — these tests verify the unauthenticated flow
   test.beforeEach(async ({ page }) => {
-    // Ensure sessionStorage is clear (no leftover token from other tests)
-    await page.addInitScript(() => { sessionStorage.clear(); });
+    // Ensure storage is clear (no leftover token from other tests)
+    await page.addInitScript(() => { localStorage.clear(); sessionStorage.clear(); });
   });
 
   test('shows login form when unauthenticated', async ({ page }) => {
@@ -95,7 +105,7 @@ test.describe('Authentication', () => {
     await page.fill('#username', USERNAME);
     await page.fill('#password', PASSWORD);
     await page.click('button[type="submit"]');
-    await expect(page.locator('text=Configure your device')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('h1', { hasText: 'Dashboard' }).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test('submit button shows loading state', async ({ page }) => {
@@ -137,7 +147,7 @@ test.describe('API — health & auth', () => {
       data: { username: USERNAME, password: PASSWORD },
     });
     expect(res.ok()).toBeTruthy();
-    const { token } = (await res.json()) as { token: string };
+    const { access_token: token } = (await res.json()) as { access_token: string };
     expect(typeof token).toBe('string');
     expect(token.split('.').length).toBe(3); // JWT = 3 base64 segments
   });
@@ -397,7 +407,7 @@ test.describe('UI — Dashboard', () => {
 
   test('shows proxy address banner with host and port 3128', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('text=Configure your device', { timeout: 15_000 });
+    await page.waitForSelector('h1:has-text("Dashboard")', { timeout: 15_000 });
     await expect(page.locator('code').filter({ hasText: '3128' }).first()).toBeVisible();
   });
 
@@ -411,14 +421,14 @@ test.describe('UI — Dashboard', () => {
       });
     });
     await page.goto('/');
-    await page.waitForSelector('text=Configure your device');
+    await page.waitForSelector('h1:has-text("Dashboard")');
     await page.getByRole('button', { name: /copy/i }).first().click();
     await expect(page.getByText('Copied!')).toBeVisible({ timeout: 5_000 });
   });
 
   test('shows stats cards (Total Requests, Blocked, Direct IP, Security)', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('text=Configure your device');
+    await page.waitForSelector('h1:has-text("Dashboard")');
     for (const label of ['Total Requests', 'Blocked Threats', 'Direct IP Blocks', 'Security Score']) {
       await expect(page.getByText(label)).toBeVisible();
     }
@@ -426,7 +436,7 @@ test.describe('UI — Dashboard', () => {
 
   test('activity chart is rendered', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('text=Configure your device');
+    await page.waitForSelector('h1:has-text("Dashboard")');
     await expect(page.locator('svg').first()).toBeVisible();
   });
 });
@@ -704,7 +714,7 @@ test.describe('Full onboarding flow', () => {
     await page.fill('#username', USERNAME);
     await page.fill('#password', PASSWORD);
     await page.click('button[type="submit"]');
-    await expect(page.locator('text=Configure your device')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('h1', { hasText: 'Dashboard' }).first()).toBeVisible({ timeout: 15_000 });
 
     // 2. Note proxy address
     const proxyAddr = await page.locator('code').filter({ hasText: '3128' }).first().textContent();
