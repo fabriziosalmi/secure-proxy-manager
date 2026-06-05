@@ -1,4 +1,4 @@
-# Benchmarks — Secure Proxy Manager v1.4.0
+# Benchmarks — Secure Proxy Manager v3.8.0
 
 Reproducible security and performance benchmarks. All numbers are from real traffic on a LAN-deployed stack.
 
@@ -6,10 +6,10 @@ Reproducible security and performance benchmarks. All numbers are from real traf
 
 | Component | Detail |
 |-----------|--------|
-| Version | 1.4.0 |
-| WAF Engine | Go ICAP 2.0 — 171 rules, 21 categories, anomaly scoring |
+| Version | 3.8.0 |
+| WAF Engine | Go ICAP 2.0 — 170 rules, 21 categories, anomaly scoring (+2 response packs) |
 | Proxy | Squid 5.9 |
-| Backend | FastAPI + Uvicorn + SQLite WAL |
+| Backend | Go (chi) + modernc/sqlite (WAL) |
 | Frontend | React 19 + Vite + Tailwind |
 | Server | Debian LXC container (192.168.100.253), Docker Compose |
 | Test client | macOS (M-series), curl 8.7.1 |
@@ -93,7 +93,7 @@ Blocked requests are served in ~12ms (first offense) or ~10s (tar-pit after 3+ b
 
 | Benchmark | Time/op | Allocs |
 |-----------|---------|--------|
-| All 171 rules (legitimate URL) | 176us | 0 |
+| All 170 rules (legitimate URL) | 176us | 0 |
 | Tier 1 early-exit (malicious URL) | 11us | 1 |
 | Input normalization | 2.6us | 21 |
 | Shannon entropy | 1.6us | 5 |
@@ -124,7 +124,7 @@ Blocked requests are served in ~12ms (first offense) or ~10s (tar-pit after 3+ b
 | 200 clients | 400 | 565ms | 707.9 req/s |
 | **500 clients** | **1,000** | **1,337ms** | **747.9 req/s** |
 
-**Peak throughput: ~750 req/s** with all 171 WAF rules active (limited by WiFi LAN, not by proxy/WAF). On wired gigabit: expect 1000+ req/s.
+**Peak throughput: ~750 req/s** with all 170 WAF rules active (limited by WiFi LAN, not by proxy/WAF). On wired gigabit: expect 1000+ req/s.
 
 ## Backend API Latency
 
@@ -171,7 +171,7 @@ Traffic profiling log: 365 entries, 126KB (`/data/waf_traffic.jsonl`)
 | COMMAND_INJECTION | 8 | semicolon, pipe, subshell $(), backtick, Python/Ruby/PHP eval, PowerShell, rm -rf |
 | DIRECTORY_TRAVERSAL | 9 | ../, double-encode, null byte, UNC paths, /proc/self, Windows paths |
 | DATA_LEAK_PREVENTION | 7 | passwords in URLs, private keys, SSN, DB connection strings |
-| SSRF | 7 | AWS/GCP/Azure metadata, private IPs, file/gopher/dict protocols |
+| SSRF | 11 | AWS/GCP/Azure metadata, private IPs, file/gopher/dict protocols, decimal/octal/hex/IPv6 IP bypass |
 | LOG4SHELL | 5 | JNDI basic, nested expressions, hex-encoded, env lookup |
 | XXE | 6 | DOCTYPE/ENTITY, php/java protocols, billion laughs |
 | PROTOTYPE_POLLUTION | 4 | __proto__, constructor.prototype, bracket notation |
@@ -187,7 +187,7 @@ Traffic profiling log: 365 entries, 126KB (`/data/waf_traffic.jsonl`)
 | FINANCIAL_DATA | 6 | Visa, MasterCard, Amex, IBAN, Bitcoin, Ethereum |
 | RANSOMWARE | 3 | encrypted extensions, ransom instructions, BTC addresses |
 | UNICODE_OBFUSCATION | 5 | zero-width chars, RTL override, Cyrillic/Greek homoglyphs |
-| **TOTAL** | **171** | |
+| **TOTAL** | **170** | |
 
 ## How to Reproduce
 
