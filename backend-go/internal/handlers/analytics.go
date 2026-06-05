@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"regexp"
@@ -27,9 +29,11 @@ var (
 	probeClient = &http.Client{Timeout: 1 * time.Second}
 )
 
-// wafGet performs a GET request to the WAF management API with Basic Auth.
-func wafGet(cfg *config.Config, path string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", cfg.WAFURL+path, nil)
+// wafGet performs a GET request to the WAF management API with Basic Auth. The
+// request is bound to ctx, so a client disconnect (or the 3s client timeout)
+// cancels the upstream call instead of leaking it.
+func wafGet(ctx context.Context, cfg *config.Config, path string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", cfg.WAFURL+path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -38,14 +42,47 @@ func wafGet(cfg *config.Config, path string) (*http.Response, error) {
 }
 
 // wafPost performs a POST request to the WAF management API with Basic Auth.
-func wafPost(cfg *config.Config, path, contentType string, body io.Reader) (*http.Response, error) {
-	req, err := http.NewRequest("POST", cfg.WAFURL+path, body)
+func wafPost(ctx context.Context, cfg *config.Config, path, contentType string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, "POST", cfg.WAFURL+path, body)
 	if err != nil {
 		return nil, err
 	}
 	req.SetBasicAuth(cfg.AdminUsername, cfg.AdminPassword)
 	req.Header.Set("Content-Type", contentType)
 	return wafClient.Do(req)
+}
+
+// wafGetBreaker is wafGet behind the circuit breaker: it returns
+// appMW.ErrCircuitOpen without a network call when the WAF has been failing, and
+// records success/failure so the breaker trips and resets. Every WAF GET
+// fan-out goes through this so none can silently drift out of breaker coverage —
+// the dashboard /stats poll previously did, blocking each dashboard load for the
+// full client timeout whenever the WAF was down.
+func wafGetBreaker(ctx context.Context, cfg *config.Config, path string) (*http.Response, error) {
+	if err := wafBreaker.Allow(); err != nil {
+		return nil, err
+	}
+	resp, err := wafGet(ctx, cfg, path)
+	if err != nil {
+		wafBreaker.RecordFailure()
+		return nil, err
+	}
+	wafBreaker.RecordSuccess()
+	return resp, nil
+}
+
+// wafPostBreaker is wafPost behind the same circuit breaker.
+func wafPostBreaker(ctx context.Context, cfg *config.Config, path, contentType string, body io.Reader) (*http.Response, error) {
+	if err := wafBreaker.Allow(); err != nil {
+		return nil, err
+	}
+	resp, err := wafPost(ctx, cfg, path, contentType, body)
+	if err != nil {
+		wafBreaker.RecordFailure()
+		return nil, err
+	}
+	wafBreaker.RecordSuccess()
+	return resp, nil
 }
 
 // dockerExecer is the subset of docker.DockerClient needed for cache stats.
@@ -482,18 +519,16 @@ func parseSquidInfo(raw string) map[string]any {
 }
 
 func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {
-	if err := wafBreaker.Allow(); err != nil {
-		writeError(w, http.StatusServiceUnavailable, "WAF service circuit open — retrying soon")
-		return
-	}
-	resp, err := wafGet(h.cfg, "/stats")
+	resp, err := wafGetBreaker(r.Context(), h.cfg, "/stats")
 	if err != nil {
-		wafBreaker.RecordFailure()
-		writeError(w, http.StatusBadGateway, "WAF service unreachable")
+		if errors.Is(err, appMW.ErrCircuitOpen) {
+			writeError(w, http.StatusServiceUnavailable, "WAF service circuit open — retrying soon")
+		} else {
+			writeError(w, http.StatusBadGateway, "WAF service unreachable")
+		}
 		return
 	}
 	defer resp.Body.Close()
-	wafBreaker.RecordSuccess()
 	if resp.StatusCode != http.StatusOK {
 		writeError(w, http.StatusBadGateway, "WAF stats returned "+resp.Status)
 		return
@@ -513,8 +548,10 @@ func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request
 		deleted, _ = res.RowsAffected()
 	}
 
+	// The log delete above is unconditional; the WAF reset is best-effort and
+	// behind the breaker, so a down/circuit-open WAF can't gate the DB clear.
 	wafReset := false
-	if resp, err := wafPost(h.cfg, "/reset", "application/json", nil); err == nil {
+	if resp, err := wafPostBreaker(r.Context(), h.cfg, "/reset", "application/json", nil); err == nil {
 		resp.Body.Close()
 		wafReset = resp.StatusCode == 200
 	}
@@ -615,8 +652,11 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	}
 	result["recent_blocks"] = recentBlocks
 
-	// WAF stats
-	if resp, err := wafGet(h.cfg, "/stats"); err == nil {
+	// WAF stats — behind the circuit breaker so a down or circuit-open WAF
+	// degrades only this sub-field (and counts toward tripping the breaker)
+	// instead of blocking every dashboard load for the full client timeout. The
+	// rest of the dashboard is DB-sourced and must still render.
+	if resp, err := wafGetBreaker(r.Context(), h.cfg, "/stats"); err == nil {
 		if resp.StatusCode == http.StatusOK {
 			var wafData any
 			json.NewDecoder(resp.Body).Decode(&wafData) //nolint:errcheck
@@ -842,17 +882,15 @@ func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
 
 // WAFCategories proxies GET /categories from the WAF container.
 func (h *AnalyticsHandlers) WAFCategories(w http.ResponseWriter, r *http.Request) {
-	if err := wafBreaker.Allow(); err != nil {
-		writeError(w, http.StatusServiceUnavailable, "WAF circuit open")
-		return
-	}
-	resp, err := wafGet(h.cfg, "/categories")
+	resp, err := wafGetBreaker(r.Context(), h.cfg, "/categories")
 	if err != nil {
-		wafBreaker.RecordFailure()
-		writeError(w, http.StatusBadGateway, "WAF unreachable")
+		if errors.Is(err, appMW.ErrCircuitOpen) {
+			writeError(w, http.StatusServiceUnavailable, "WAF circuit open")
+		} else {
+			writeError(w, http.StatusBadGateway, "WAF unreachable")
+		}
 		return
 	}
-	wafBreaker.RecordSuccess()
 	defer resp.Body.Close()
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
@@ -861,17 +899,15 @@ func (h *AnalyticsHandlers) WAFCategories(w http.ResponseWriter, r *http.Request
 
 // WAFCategoryToggle proxies POST /categories/toggle to WAF.
 func (h *AnalyticsHandlers) WAFCategoryToggle(w http.ResponseWriter, r *http.Request) {
-	if err := wafBreaker.Allow(); err != nil {
-		writeError(w, http.StatusServiceUnavailable, "WAF circuit open")
-		return
-	}
-	resp, err := wafPost(h.cfg, "/categories/toggle", "application/json", r.Body)
+	resp, err := wafPostBreaker(r.Context(), h.cfg, "/categories/toggle", "application/json", r.Body)
 	if err != nil {
-		wafBreaker.RecordFailure()
-		writeError(w, http.StatusBadGateway, "WAF unreachable")
+		if errors.Is(err, appMW.ErrCircuitOpen) {
+			writeError(w, http.StatusServiceUnavailable, "WAF circuit open")
+		} else {
+			writeError(w, http.StatusBadGateway, "WAF unreachable")
+		}
 		return
 	}
-	wafBreaker.RecordSuccess()
 	defer resp.Body.Close()
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
