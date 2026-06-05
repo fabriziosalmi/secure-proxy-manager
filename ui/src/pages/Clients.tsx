@@ -88,7 +88,7 @@ export function Clients() {
             Clients
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Source IPs seen by the proxy{typeof data?.total_clients === 'number' ? ` — ${data.total_clients} total` : ''}. Select a row for details.
+            Source IPs seen in the last 7 days{typeof data?.total_clients === 'number' ? ` — ${data.total_clients}` : ''}. Select a row for details.
           </p>
         </div>
         <button
