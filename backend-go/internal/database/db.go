@@ -105,7 +105,8 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 			status TEXT,
 			bytes INTEGER,
 			elapsed_ms INTEGER,
-			unix_timestamp INTEGER
+			unix_timestamp INTEGER,
+			blocked INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_timestamp ON proxy_logs(timestamp)`,
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_source_ip ON proxy_logs(source_ip)`,
@@ -141,10 +142,25 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		"ALTER TABLE proxy_logs ADD COLUMN unix_timestamp INTEGER",
 		"ALTER TABLE proxy_logs ADD COLUMN method TEXT",
 		"ALTER TABLE proxy_logs ADD COLUMN elapsed_ms INTEGER",
+		"ALTER TABLE proxy_logs ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE domain_whitelist ADD COLUMN type TEXT DEFAULT 'fqdn'",
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // "duplicate column" error is harmless
+	}
+
+	// Indexes on migrated columns must be created AFTER the ALTERs above add the
+	// columns — a legacy proxy_logs predates `blocked`, so this partial index
+	// can't live in the schema slice (which runs before migrations) or its
+	// `WHERE blocked = 1` would fail with "no such column" and abort Init on
+	// upgrade. Only blocked rows are indexed, so it stays tiny.
+	postMigrationIndexes := []string{
+		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_blocked ON proxy_logs(blocked) WHERE blocked = 1`,
+	}
+	for _, stmt := range postMigrationIndexes {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("post-migration index: %w", err)
+		}
 	}
 
 	// Backfill unix_timestamp for rows written before it was populated, so the
@@ -155,6 +171,18 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		 WHERE unix_timestamp IS NULL AND timestamp IS NOT NULL`,
 	); err != nil {
 		log.Warn().Err(err).Msg("backfill unix_timestamp failed (non-fatal)")
+	}
+
+	// Backfill the blocked flag for historical rows, using the exact same token
+	// set the insert path derives it from, so old and new rows agree and the
+	// idx_proxy_logs_blocked partial index covers all blocked rows. Idempotent:
+	// only flips rows still at the default 0 that match.
+	if _, err := db.Exec(
+		`UPDATE proxy_logs SET blocked = 1
+		 WHERE blocked = 0
+		   AND (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%')`,
+	); err != nil {
+		log.Warn().Err(err).Msg("backfill blocked flag failed (non-fatal)")
 	}
 
 	// Default settings.

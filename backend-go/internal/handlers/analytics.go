@@ -149,7 +149,7 @@ func (h *AnalyticsHandlers) TrafficStats(w http.ResponseWriter, r *http.Request)
 	// #nosec G202
 	rows, err := h.db.Query(`
 		SELECT `+interval+` AS bucket, COUNT(*) AS total,
-		       SUM(CASE WHEN status LIKE '%DENIED%' OR status LIKE '%BLOCKED%' THEN 1 ELSE 0 END) AS blocked
+		       SUM(blocked) AS blocked
 		FROM proxy_logs WHERE timestamp >= datetime('now', ?) GROUP BY bucket`,
 		startDuration,
 	)
@@ -236,7 +236,7 @@ func parseDuration(s string) time.Duration {
 func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(`
 		SELECT source_ip, COUNT(*) AS requests,
-		       SUM(CASE WHEN status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%' THEN 1 ELSE 0 END) AS blocked,
+		       SUM(blocked) AS blocked,
 		       MAX(timestamp) AS last_seen
 		FROM proxy_logs
 		WHERE source_ip IS NOT NULL AND source_ip != ''
@@ -275,7 +275,7 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "invalid IP address")
 		return
 	}
-	const blockedCase = `SUM(CASE WHEN status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%' THEN 1 ELSE 0 END)`
+	const blockedCase = `SUM(blocked)`
 
 	var total, blocked int
 	var firstSeen, lastSeen sql.NullString
@@ -327,7 +327,7 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(`
 		SELECT destination, COUNT(*) AS requests,
-		       SUM(CASE WHEN status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%' THEN 1 ELSE 0 END) AS blocked_requests
+		       SUM(blocked) AS blocked_requests
 		FROM proxy_logs WHERE destination IS NOT NULL AND destination != ''
 		GROUP BY destination ORDER BY requests DESC LIMIT 50`)
 	if err != nil {
@@ -517,9 +517,9 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	var totalReqs, blockedReqs, todayReqs, todayBlocked int
 	h.db.QueryRow(`SELECT
 		COUNT(*),
-		SUM(CASE WHEN status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%' THEN 1 ELSE 0 END),
+		SUM(blocked),
 		SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END),
-		SUM(CASE WHEN (status LIKE '%DENIED%' OR status LIKE '%403%') AND timestamp >= ? THEN 1 ELSE 0 END)
+		SUM(CASE WHEN blocked = 1 AND timestamp >= ? THEN 1 ELSE 0 END)
 		FROM proxy_logs`, today, today).Scan(&totalReqs, &blockedReqs, &todayReqs, &todayBlocked) //nolint:errcheck
 
 	var ipBLCount, domainBLCount int
@@ -530,7 +530,7 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	result["today_blocked"] = todayBlocked
 
 	var topBlocked []map[string]any
-	rows, _ := h.db.Query(`SELECT destination, COUNT(*) AS cnt FROM proxy_logs WHERE (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%') AND timestamp >= datetime('now','-1 day') GROUP BY destination ORDER BY cnt DESC LIMIT 10`)
+	rows, _ := h.db.Query(`SELECT destination, COUNT(*) AS cnt FROM proxy_logs WHERE blocked = 1 AND timestamp >= datetime('now','-1 day') GROUP BY destination ORDER BY cnt DESC LIMIT 10`)
 	if rows != nil {
 		for rows.Next() {
 			var dest string
@@ -570,7 +570,7 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 
 	// Threat categories (last 7 days)
 	var threatCats []map[string]any
-	tRows, _ := h.db.Query(`SELECT CASE WHEN destination LIKE '%.exe%' OR destination LIKE '%.dll%' THEN 'Malware' WHEN status LIKE '%DENIED%' AND destination LIKE '%:%' THEN 'Direct IP' WHEN status LIKE '%403%' THEN 'WAF Block' ELSE 'Policy' END as category, COUNT(*) as cnt FROM proxy_logs WHERE (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%') AND timestamp >= datetime('now','-7 days') GROUP BY category ORDER BY cnt DESC`)
+	tRows, _ := h.db.Query(`SELECT CASE WHEN destination LIKE '%.exe%' OR destination LIKE '%.dll%' THEN 'Malware' WHEN status LIKE '%DENIED%' AND destination LIKE '%:%' THEN 'Direct IP' WHEN status LIKE '%403%' THEN 'WAF Block' ELSE 'Policy' END as category, COUNT(*) as cnt FROM proxy_logs WHERE blocked = 1 AND timestamp >= datetime('now','-7 days') GROUP BY category ORDER BY cnt DESC`)
 	if tRows != nil {
 		for tRows.Next() {
 			var cat string
@@ -587,7 +587,7 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 
 	// Recent blocks (last 10)
 	var recentBlocks []map[string]any
-	rRows, _ := h.db.Query(`SELECT timestamp, source_ip, method, destination, status FROM proxy_logs WHERE status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%' ORDER BY id DESC LIMIT 10`)
+	rRows, _ := h.db.Query(`SELECT timestamp, source_ip, method, destination, status FROM proxy_logs WHERE blocked = 1 ORDER BY id DESC LIMIT 10`)
 	if rRows != nil {
 		for rRows.Next() {
 			var ts, srcIP, method, dest, status string

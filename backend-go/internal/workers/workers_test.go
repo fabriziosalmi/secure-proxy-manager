@@ -222,6 +222,46 @@ func TestParseSquidLine_Edge(t *testing.T) {
 	}
 }
 
+func TestIsBlockedStatus(t *testing.T) {
+	cases := []struct {
+		status string
+		want   bool
+	}{
+		{"TCP_DENIED/403", true},
+		{"TCP_MISS/200", false},
+		{"NONE/403", true},
+		{"TCP_MISS/403", true},
+		{"TCP_DENIED/407", true}, // DENIED action without 403
+		{"TCP_TUNNEL/200", false},
+		{"NONE_BLOCKED/000", true},
+		{"TCP_HIT/304", false},
+		{"tcp_denied/000", true}, // case-insensitive, matches the SQL LIKE backfill
+		{"x_blocked/000", true},
+	}
+	for _, c := range cases {
+		if got := isBlockedStatus(c.status); got != c.want {
+			t.Errorf("isBlockedStatus(%q) = %v; want %v", c.status, got, c.want)
+		}
+	}
+}
+
+func TestParseSquidLine_Blocked(t *testing.T) {
+	blockedLine := "1234567890.123 100 127.0.0.1 TCP_DENIED/403 0 GET http://evil.com - HIER_NONE/- text/html"
+	got := parseSquidLine(blockedLine)
+	if got == nil {
+		t.Fatal("expected a parsed map for a blocked line")
+	}
+	if got["blocked"] != 1 {
+		t.Errorf("blocked = %v; want 1", got["blocked"])
+	}
+
+	allowedLine := "1234567890.123 100 127.0.0.1 TCP_MISS/200 1024 GET http://example.com - DIRECT/93.184.216.34 text/html"
+	got = parseSquidLine(allowedLine)
+	if got["blocked"] != 0 {
+		t.Errorf("blocked = %v; want 0", got["blocked"])
+	}
+}
+
 func TestParseSquidVersion_More(t *testing.T) {
 	if parseSquidVersion("invalid") != "" {
 		t.Error("Expected empty for invalid")
