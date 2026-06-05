@@ -5,6 +5,30 @@ import (
 	"testing"
 )
 
+// TestMatchRulesScored_CompactCollapse guards the double-scan collapse: direct
+// attacks must still block, space-insertion evasion (only caught via the compact
+// pass) must still block, and clean whitespace-free input (the path that now
+// skips the redundant compact re-scan) must not false-positive.
+func TestMatchRulesScored_CompactCollapse(t *testing.T) {
+	blocked := []struct{ name, payload string }{
+		{"sqli-union", "id=1 UNION SELECT password FROM users"},
+		{"xss-direct", "<script>alert(1)</script>"},
+		{"xss-space-insertion", "<scr ipt>alert(1)</scr ipt>"}, // only the compact pass catches this
+	}
+	for _, c := range blocked {
+		if _, score := matchRulesScored(c.payload); score == 0 {
+			t.Errorf("%s: expected block (score>0), got 0 for %q", c.name, c.payload)
+		}
+	}
+
+	clean := []string{"hello-world", "user=alice&page=2", "/api/v1/items/42"}
+	for _, c := range clean {
+		if m, score := matchRulesScored(c); score != 0 || len(m) != 0 {
+			t.Errorf("clean input %q false-positived: score=%d matches=%v", c, score, m)
+		}
+	}
+}
+
 func TestIsLANHost(t *testing.T) {
 	tests := []struct {
 		host string

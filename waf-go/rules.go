@@ -454,9 +454,16 @@ func matchRulesScored(input string) ([]MatchResult, int) {
 	totalScore := 0
 	matched := make(map[string]bool) // Deduplicate by rule ID
 
-	// Prepare a compacted version (no whitespace) lazily — only used if
-	// the normal input doesn't match, to catch evasion via space insertion.
+	// Compacted (whitespace-stripped) form, to catch evasion via space insertion
+	// (e.g. "<scr ipt>", "UNION  SELECT"). Built lazily on the first rule miss.
+	// Crucially, it's only re-scanned when it actually DIFFERS from input — i.e.
+	// the input contained whitespace. With no whitespace, compactInput is a no-op
+	// and MatchString(compact) is identical to the MatchString(input) we already
+	// ran, so the second scan is pure redundant work. Skipping it there halves the
+	// per-rule regex evaluations on the common case (whitespace-free URLs/queries)
+	// with zero change to what gets detected.
 	var compact string
+	var checkCompact bool
 	var compactReady bool
 
 	for tier := 1; tier <= 3; tier++ {
@@ -477,12 +484,16 @@ func matchRulesScored(input string) ([]MatchResult, int) {
 				}
 				hit := rule.Pattern.MatchString(input)
 				if !hit {
-					// Lazy-init compact on first miss
+					// Lazy-init compact on the first miss, and decide once whether
+					// it can differ from input at all.
 					if !compactReady {
 						compact = compactInput(input)
+						checkCompact = compact != input
 						compactReady = true
 					}
-					hit = rule.Pattern.MatchString(compact)
+					if checkCompact {
+						hit = rule.Pattern.MatchString(compact)
+					}
 				}
 				if hit {
 					matched[rule.ID] = true
