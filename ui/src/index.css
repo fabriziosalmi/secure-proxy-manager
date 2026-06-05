@@ -77,11 +77,6 @@
   }
 }
 
-@keyframes scan-line {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
-
 @keyframes bar-fill {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
@@ -220,5 +215,22 @@
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground) / 0.3);
+  }
+}
+
+/* ── Reduced motion ────────────────────────────────────────────
+   Honor the OS "reduce motion" setting: neutralize every CSS keyframe
+   animation, transition, and smooth-scroll in one sweep. Outside @layer so it
+   wins specificity over component utilities. JS-driven motion (the rAF number
+   counter, recharts mount animations) is handled separately via the
+   useReducedMotion hook. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

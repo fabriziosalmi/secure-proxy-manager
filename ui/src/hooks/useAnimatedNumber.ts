@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useReducedMotion } from './useReducedMotion';
 
 /**
  * Animates a number from its previous value to a new target.
@@ -8,8 +9,17 @@ export function useAnimatedNumber(target: number, duration = 600): number {
   const [display, setDisplay] = useState(target);
   const prev = useRef(target);
   const raf = useRef(0);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
+    // Reduced motion: no rAF interpolation. Keep prev in sync (so animation
+    // resumes correctly if the user re-enables motion) and let render return the
+    // target directly below — no synchronous setState in the effect.
+    if (reducedMotion) {
+      prev.current = target;
+      return;
+    }
+
     const from = prev.current;
     const delta = target - from;
     if (delta === 0) return;
@@ -31,7 +41,7 @@ export function useAnimatedNumber(target: number, duration = 600): number {
 
     raf.current = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf.current);
-  }, [target, duration]);
+  }, [target, duration, reducedMotion]);
 
-  return display;
+  return reducedMotion ? target : display;
 }

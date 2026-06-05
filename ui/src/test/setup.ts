@@ -16,3 +16,23 @@ Object.defineProperty(globalThis, 'localStorage', {
   writable: true,
   configurable: true,
 })
+
+// jsdom has no matchMedia; components reading prefers-reduced-motion (the
+// useReducedMotion hook, animated counters, charts) would throw without this.
+// Defaults to "no match" (motion allowed); a test can override matches per-case.
+if (!globalThis.matchMedia) {
+  Object.defineProperty(globalThis, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  })
+}
