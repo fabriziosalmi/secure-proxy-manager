@@ -72,7 +72,6 @@ services:
       - WAF_H_BEACONING=${WAF_H_BEACONING:-1}
       - WAF_H_PII=${WAF_H_PII:-1}
       - WAF_H_SHARDING=${WAF_H_SHARDING:-1}
-      - WAF_H_MORPHING=${WAF_H_MORPHING:-0}
       - WAF_H_GHOSTING=${WAF_H_GHOSTING:-1}
       - WAF_H_SEQUENCE=${WAF_H_SEQUENCE:-0}
     deploy:
