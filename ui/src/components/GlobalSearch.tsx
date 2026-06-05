@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, ArrowRight, Ban, Shield, List, Settings, LayoutDashboard, X } from 'lucide-react';
 import { api } from '../lib/api';
+import { useModal } from '../hooks/useModal';
 import type { IpEntry, DomainEntry, LogEntry } from '../types';
 
 interface SearchResult {
@@ -27,6 +28,9 @@ export function GlobalSearch() {
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  // Focus-trap + restore + Escape for the search dialog. (Cmd+K to OPEN stays a
+  // global shortcut below; only the in-dialog Escape moves to the hook.)
+  const dialogRef = useModal<HTMLDivElement>(open, () => setOpen(false));
 
   // Cmd+K / Ctrl+K to open
   useEffect(() => {
@@ -35,7 +39,7 @@ export function GlobalSearch() {
         e.preventDefault();
         setOpen(o => !o);
       }
-      if (e.key === 'Escape') setOpen(false);
+      // Escape-to-close is handled by useModal (scoped to the open dialog).
       // Number keys for navigation (only when search is closed)
       if (!open && !e.metaKey && !e.ctrlKey && !e.altKey) {
         const target = e.target as HTMLElement;
@@ -58,7 +62,8 @@ export function GlobalSearch() {
         setQuery('');
         setResults([]);
         setSelected(0);
-        inputRef.current?.focus();
+        // Initial focus is handled by useModal (focuses the first focusable —
+        // the search input).
       }, 0);
     }
   }, [open]);
@@ -163,6 +168,7 @@ export function GlobalSearch() {
       <h2 id="global-search-title" className="sr-only">Global search</h2>
       <div className="fixed inset-0 bg-black/50 -webkit-backdrop-blur-xl backdrop-blur-xl" aria-hidden="true" />
       <div
+        ref={dialogRef}
         className="relative w-full max-w-lg glass-surface rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up"
         onClick={e => e.stopPropagation()}
       >

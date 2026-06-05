@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Shield, Baby, Server, Lock, Monitor, Tv, Wifi, Smartphone, ChevronRight, ChevronLeft, Zap, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import { useModal } from '../hooks/useModal';
 
 interface Props {
   onComplete: () => void;
@@ -107,6 +108,8 @@ export function SetupWizard({ onComplete }: Props) {
   const [devices, setDevices] = useState<string[]>([]);
   const [strict, setStrict] = useState<StrictLevel>('balanced');
   const [saving, setSaving] = useState(false);
+  // First-run gate: trap focus inside the wizard, but no Escape-to-dismiss.
+  const modalRef = useModal<HTMLDivElement>(true);
 
   const toggleDevice = (id: string) => {
     setDevices(prev => prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]);
@@ -156,6 +159,7 @@ export function SetupWizard({ onComplete }: Props) {
 
   return (
     <div
+      ref={modalRef}
       className="fixed inset-0 z-[100] bg-background flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
