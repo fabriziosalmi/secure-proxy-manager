@@ -258,6 +258,17 @@ func handleOptions(w icap.ResponseWriter, req *icap.Request) {
 	w.WriteHeader(200, nil, false)
 }
 
+var eventCounter uint64
+
+// nextEventID returns a process-unique, time-ordered correlation ID for one
+// inspected request: base-36 nanos + an atomic counter. Cheap on the
+// latency-tracked hot path (no crypto/rand). It ties a block's WAF traffic-log
+// record to the notification/websocket event the backend emits for it.
+func nextEventID(t time.Time) string {
+	n := atomic.AddUint64(&eventCounter, 1)
+	return strconv.FormatInt(t.UnixNano(), 36) + "-" + strconv.FormatUint(n, 36)
+}
+
 func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	if req.Request == nil || req.Request.URL == nil {
 		w.WriteHeader(204, nil, false)
@@ -265,6 +276,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	}
 
 	startTime := time.Now()
+	eventID := nextEventID(startTime)
 
 	rawURL := req.Request.URL.String()
 
@@ -387,6 +399,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	}
 
 	feature := TrafficFeature{
+		EventID:         eventID,
 		Timestamp:       startTime.UTC().Format(time.RFC3339),
 		ClientIP:        clientIP,
 		Method:          req.Request.Method,
@@ -496,6 +509,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 			"event_type": "waf_block",
 			"message":    fmt.Sprintf("WAF blocked %s — score %d, categories: %s", source, score, strings.Join(categories, ", ")),
 			"details": map[string]interface{}{
+				"event_id":   eventID,
 				"category":   primaryCategory,
 				"categories": categories,
 				"rules":      ruleIDs,
