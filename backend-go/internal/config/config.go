@@ -28,7 +28,6 @@ type Config struct {
 	Port               string
 	CORSAllowedOrigins []string
 	ProxyHost          string
-	ProxyPort          string
 
 	// Filesystem
 	DatabasePath string
@@ -84,7 +83,6 @@ func Load() *Config {
 		Port:               envOrDefault("PORT", "5000"),
 		CORSAllowedOrigins: cleanCors,
 		ProxyHost:          envOrDefault("PROXY_HOST", "proxy"),
-		ProxyPort:          envOrDefault("PROXY_PORT", "3128"),
 		DatabasePath:       envOrDefault("DATABASE_PATH", "/data/proxy_manager.db"),
 		ConfigDir:          envOrDefault("CONFIG_DIR", "/config"),
 		LogPath:            envOrDefault("LOG_PATH", "/logs/access.log"),

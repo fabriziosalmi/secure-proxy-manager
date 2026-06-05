@@ -3,10 +3,10 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"path/filepath"
 	"testing"
 	"time"
-	"net/http"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/auth"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
@@ -41,7 +41,6 @@ func setupTestDB(t *testing.T) (*sql.DB, *auth.Service, *config.Config, func()) 
 		MaxAttempts:       5,
 		RateLimitWindow:   1 * time.Minute,
 		ProxyHost:         "localhost",
-		ProxyPort:         "3128",
 		WAFURL:            "http://localhost:8080", // Default test URL
 		ProxyURL:          "http://localhost:3128",
 	}
