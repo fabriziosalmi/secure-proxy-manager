@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useEffect, useState } from 'react';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import type { TimelineEntry, DashboardSummary, ShadowItService, FileExtData, ServiceTypeData, TopDomain } from '../types';
 import { RegexPlayground } from '../components/RegexPlayground';
 
@@ -26,6 +27,7 @@ const TOOLTIP_STYLE = {
 };
 
 export function ThreatIntel() {
+  const reducedMotion = useReducedMotion();
   const [vis, setVis] = useState(document.visibilityState !== 'hidden');
   useEffect(() => { const h = () => setVis(document.visibilityState !== 'hidden'); document.addEventListener('visibilitychange', h); return () => document.removeEventListener('visibilitychange', h); }, []);
 
@@ -37,6 +39,8 @@ export function ThreatIntel() {
   const { data: uaData } = useQuery<ServiceTypeData>({ queryKey: ['user-agents'], queryFn: () => api.get('analytics/user-agents').then(r => r.data.data), refetchInterval: vis ? 60_000 : false });
 
   const wafCats = s?.waf?.top_blocked_categories ?? [];
+  const tlTotal = (tl ?? []).reduce((acc, p) => acc + (p.total || 0), 0);
+  const tlBlocked = (tl ?? []).reduce((acc, p) => acc + (p.blocked || 0), 0);
 
   const animTodayBlocked = useAnimatedNumber(s?.today_blocked ?? 0);
   const animTotalBlocked = useAnimatedNumber(s?.blocked_requests ?? 0);
@@ -87,15 +91,15 @@ export function ThreatIntel() {
         <Card className="lg:col-span-7">
           <CardHeader className="p-3 pb-0"><CardTitle className="text-sm">Threat Timeline (72h)</CardTitle></CardHeader>
           <CardContent className="p-2">
-            <div className="h-[180px]">
+            <div className="h-[180px]" role="img" aria-label={`Threat timeline over the last 72 hours: ${tlTotal} total events, ${tlBlocked} blocked`}>
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <AreaChart data={tl ?? []} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                   <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ef4444" stopOpacity={0.4}/><stop offset="95%" stopColor="#ef4444" stopOpacity={0}/></linearGradient></defs>
                   <XAxis dataKey="time" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
                   <YAxis stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} />
-                  <Area type="monotone" dataKey="blocked" name="Blocked" stroke="#ef4444" strokeWidth={2} fill="url(#bg)" />
-                  <Area type="monotone" dataKey="total" name="Total" stroke="#3b82f6" strokeWidth={1} fill="none" opacity={0.4} />
+                  <Area type="monotone" dataKey="blocked" name="Blocked" stroke="#ef4444" strokeWidth={2} fill="url(#bg)" isAnimationActive={!reducedMotion} />
+                  <Area type="monotone" dataKey="total" name="Total" stroke="#3b82f6" strokeWidth={1} fill="none" opacity={0.4} isAnimationActive={!reducedMotion} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -106,13 +110,13 @@ export function ThreatIntel() {
           <CardHeader className="p-3 pb-0"><CardTitle className="text-sm">WAF Categories</CardTitle></CardHeader>
           <CardContent className="p-2">
             {wafCats.length > 0 ? (
-              <div className="h-[180px]">
+              <div className="h-[180px]" role="img" aria-label={`Top WAF blocked categories: ${wafCats.slice(0, 8).map(c => `${c.key} ${c.count}`).join(', ')}`}>
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <BarChart data={wafCats.slice(0, 8)} layout="vertical" margin={{ left: 80, right: 10 }}>
                     <XAxis type="number" stroke="#555" fontSize={9} tickLine={false} />
                     <YAxis type="category" dataKey="key" stroke="#555" fontSize={9} tickLine={false} width={80} />
                     <Tooltip contentStyle={TOOLTIP_STYLE} />
-                    <Bar dataKey="count" radius={[0, 3, 3, 0]}>{wafCats.slice(0, 8).map((_: unknown, i: number) => <Cell key={i} fill={C[i % C.length]} />)}</Bar>
+                    <Bar dataKey="count" radius={[0, 3, 3, 0]} isAnimationActive={!reducedMotion}>{wafCats.slice(0, 8).map((_: unknown, i: number) => <Cell key={i} fill={C[i % C.length]} />)}</Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -152,9 +156,9 @@ export function ThreatIntel() {
           <CardContent className="p-2">
             {(fileExts?.categories?.length ?? 0) > 0 ? (
               <>
-                <div className="h-[120px]">
+                <div className="h-[120px]" role="img" aria-label={`File types: ${fileExts!.categories.slice(0, 8).map(c => `${c.category} ${c.count}`).join(', ')}`}>
                   <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                    <PieChart><Pie data={fileExts!.categories.slice(0, 8)} dataKey="count" nameKey="category" cx="50%" cy="50%" innerRadius={30} outerRadius={50} paddingAngle={2}>
+                    <PieChart><Pie data={fileExts!.categories.slice(0, 8)} dataKey="count" nameKey="category" cx="50%" cy="50%" innerRadius={30} outerRadius={50} paddingAngle={2} isAnimationActive={!reducedMotion}>
                       {fileExts!.categories.slice(0, 8).map((_, i) => <Cell key={i} fill={C[i % C.length]} />)}
                     </Pie><Tooltip contentStyle={TOOLTIP_STYLE} /></PieChart>
                   </ResponsiveContainer>
