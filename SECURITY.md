@@ -43,7 +43,7 @@ connect-src 'self' ws: wss:
 
 ### WAF
 
-- 166 regex + 7 heuristics + 3 ML-lite across 21 Security Packs
+- 170 regex rules + 6 heuristics across 21 Security Packs (+ per-request feature-vector profiling)
 - Anomaly scoring, dual-scan (raw + decoded), 55MB body limit
 - All inputs validated with max-length constraints
 - Circuit breaker protects backend against WAF service failures
@@ -72,7 +72,8 @@ connect-src 'self' ws: wss:
 
 | Version | Status |
 |---------|--------|
-| 3.1.x | Current (security hardening release) |
-| 3.0.x | Security fixes only |
+| 3.8.x | Current (security hardening release) |
+| 3.7.x | Security fixes only |
+| < 3.7 | EOL |
 | 2.x | EOL |
 | <2.0 | EOL |
