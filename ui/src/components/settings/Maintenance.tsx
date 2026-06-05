@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui
 import { Database, Download, Trash2, RotateCcw, Wrench } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
+import { useConfirm } from '../../hooks/useConfirm';
 
 function Btn({ icon: Icon, label, sub, onClick, destructive }: {
   icon: typeof Download; label: string; sub: string; onClick: () => void; destructive?: boolean;
@@ -24,6 +25,7 @@ function Btn({ icon: Icon, label, sub, onClick, destructive }: {
 }
 
 export function Maintenance() {
+  const { confirm, dialog } = useConfirm();
   const action = async (label: string, fn: () => Promise<unknown>) => {
     const id = toast.loading(`${label}...`);
     try {
@@ -42,14 +44,31 @@ export function Maintenance() {
     a.click(); window.URL.revokeObjectURL(url);
   });
 
-  const handleClearCache = () => action('Clear cache', () => api.post('maintenance/clear-cache'));
+  const handleClearCache = async () => {
+    if (!(await confirm({
+      title: 'Clear proxy cache?',
+      body: 'Frees proxy memory now; cached objects are re-fetched on the next request.',
+      confirmLabel: 'Clear cache',
+      destructive: true,
+    }))) return;
+    action('Clear cache', () => api.post('maintenance/clear-cache'));
+  };
   const handleOptimize = () => action('Optimize DB', () => api.post('database/optimize'));
-  const handleResetCounters = () => action('Reset counters', () => api.post('counters/reset'));
+  const handleResetCounters = async () => {
+    if (!(await confirm({
+      title: 'Reset all counters?',
+      body: 'Permanently clears all proxy logs and WAF statistics. This cannot be undone.',
+      confirmLabel: 'Reset counters',
+      destructive: true,
+    }))) return;
+    action('Reset counters', () => api.post('counters/reset'));
+  };
   const handleReloadConfig = () => action('Reload config', () => api.post('maintenance/reload-config'));
   const handleReloadDns = () => action('Reload DNS', () => api.post('maintenance/reload-dns'));
 
   return (
     <Card className="bg-card/50">
+      {dialog}
       <CardHeader className="p-4 pb-2">
         <div className="flex items-center gap-2">
           <Database className="w-4 h-4 text-muted-foreground" />
