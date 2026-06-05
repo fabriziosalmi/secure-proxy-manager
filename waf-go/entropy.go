@@ -42,6 +42,7 @@ func shannonEntropy(s string) float64 {
 // ── Traffic Feature Extraction ──────────────────────────────────────────────
 
 type TrafficFeature struct {
+	EventID         string   `json:"event_id"`
 	Timestamp       string   `json:"ts"`
 	ClientIP        string   `json:"client_ip"`
 	Method          string   `json:"method"`

@@ -1,10 +1,29 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestNextEventID(t *testing.T) {
+	t0 := time.Now()
+	a := nextEventID(t0)
+	b := nextEventID(t0) // same timestamp — the atomic counter must still differ
+	if a == "" || b == "" {
+		t.Fatal("event id must not be empty")
+	}
+	if a == b {
+		t.Errorf("event ids must be unique at the same timestamp: %q == %q", a, b)
+	}
+	// The ID rides along in the JSONL traffic record so a block can be traced.
+	js, _ := json.Marshal(TrafficFeature{EventID: a, Method: "GET"})
+	if !strings.Contains(string(js), `"event_id":"`+a+`"`) {
+		t.Errorf("event_id missing from TrafficFeature JSON: %s", js)
+	}
+}
 
 func TestShannonEntropy(t *testing.T) {
 	cases := []struct {
