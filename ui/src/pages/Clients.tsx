@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { IpBadge } from '../components/IpBadge';
+import { ClientSetup } from '../components/ClientSetup';
 import { useModal } from '../hooks/useModal';
 import { api } from '../lib/api';
 import type { ClientsData, ClientStat, ClientDetail } from '../types';
@@ -128,8 +129,17 @@ export function Clients() {
                 {isLoading ? (
                   <tr><td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">Loading…</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">
-                    {search ? 'No clients match the filter.' : 'No client traffic recorded yet.'}
+                  <tr><td colSpan={5} className="px-5 py-8">
+                    {search ? (
+                      <p className="text-center text-muted-foreground">No clients match the filter.</p>
+                    ) : (
+                      <div className="space-y-4">
+                        <p className="text-center text-sm text-muted-foreground">
+                          No client traffic in the last 7 days — connect a device to get started.
+                        </p>
+                        <ClientSetup />
+                      </div>
+                    )}
                   </td></tr>
                 ) : (
                   rows.map((c) => {
