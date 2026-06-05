@@ -1,679 +1,370 @@
-# Secure Proxy Manager - Deployment Guide
+# Secure Proxy Manager — Deployment Guide
 
-This guide provides detailed instructions for deploying Secure Proxy Manager using Docker Compose.
+Practical instructions for deploying **Secure Proxy Manager v3.8.0** with Docker
+Compose. The stack is a set of Go and container services orchestrated by
+`docker-compose.yml`:
+
+| Service | Image / tech | Role |
+|---------|--------------|------|
+| `backend` | Go (chi) + modernc/sqlite (WAL) | REST/WebSocket API, auth, database |
+| `web` | nginx | Serves the UI and reverse-proxies the backend |
+| `proxy` | Squid (`squid-openssl`, Ubuntu) | The forward proxy on `3128`, ICAP-wired to the WAF |
+| `waf` | Go | ICAP WAF that Squid calls to inspect requests |
+| `dns` | dnsmasq | DNS resolver / sinkhole for blacklisted domains |
+| `tailscale` | Tailscale (optional) | Remote-access sidecar, enabled via a compose profile |
 
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
-- [Step-by-Step Deployment](#step-by-step-deployment)
+- [Services and Ports](#services-and-ports)
 - [Configuration](#configuration)
-- [Troubleshooting](#troubleshooting)
-- [Production Deployment](#production-deployment)
+- [Volumes and Persistence](#volumes-and-persistence)
+- [HTTPS and the SSL-Bump CA](#https-and-the-ssl-bump-ca)
+- [Backups](#backups)
 - [Updating](#updating)
+- [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed:
+- **Docker**: 20.10.0 or higher — https://docs.docker.com/get-docker/
+- **Docker Compose v2**: the `docker compose` plugin (not the legacy
+  `docker-compose` binary) — https://docs.docker.com/compose/install/
+- **System**: ~512 MB RAM and ~2 GB disk to start; more headroom is recommended
+  if you enable the Squid disk cache and verbose logging. Runs on x86_64 and
+  ARM64.
 
-- **Docker**: Version 20.10.0 or higher
-  - Install: https://docs.docker.com/get-docker/
-- **Docker Compose**: Version 2.0.0 or higher
-  - Install: https://docs.docker.com/compose/install/
-- **System Requirements**:
-  - Minimum: 1 CPU core, 1GB RAM, 5GB disk space
-  - Recommended: 2+ CPU cores, 4GB+ RAM, 20GB+ disk space
-
-### Verify Installation
+Verify your environment:
 
 ```bash
-# Check Docker version
 docker --version
-
-# Check Docker Compose version
-docker-compose --version
-# or
 docker compose version
-
-# Verify Docker is running
-docker ps
+docker ps          # confirms the daemon is running
 ```
 
 ## Quick Start
 
-If you want to get up and running quickly with default settings:
+### One command (fresh VPS or server)
+
+`deploy/install.sh` checks for Docker, clones the repo to
+`/opt/secure-proxy-manager`, generates a `.env` with random admin credentials
+and a strong `SECRET_KEY` (`openssl rand -hex 32`), builds the images, and
+starts the stack. It prints the credentials at the end — **save them, they are
+not shown again.**
 
 ```bash
-# 1. Clone the repository
+curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/deploy/install.sh | sudo bash
+```
+
+### Manual
+
+```bash
+# 1. Clone
 git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
 cd secure-proxy-manager
 
-# 2. Create your .env with strong credentials
+# 2. Create your .env
 cp .env.example .env
-$EDITOR .env   # set BASIC_AUTH_PASSWORD (see notes below)
 
-# 3. Build and start the services
+# 3. Set credentials in .env (see notes below), then:
 docker compose up -d --build
 
-# 4. Check the logs
+# 4. Watch it come up
 docker compose logs -f
-
-# 5. Access the web interface
-# Open your browser to: https://localhost:8443  (accept the self-signed cert)
-# Log in with the credentials you set in .env
 ```
 
-Or, for a one-command install on a fresh VPS (generates and prints credentials
-for you):
+A `Makefile` wraps the common commands: `make setup` creates `.env` and the
+`data/`, `logs/`, `config/` directories; `make start` runs
+`docker compose up -d --build`; `make stop`, `make restart`, `make logs`, and
+`make clean` (`down -v`, your `./data` is preserved) round it out.
+
+> **Required before first start:** set `BASIC_AUTH_USERNAME` and
+> `BASIC_AUTH_PASSWORD` in `.env`. The backend **refuses to start** if the
+> password is empty, a common default (`changeme`, `admin`, `password`,
+> `secret`, …), or shorter than 8 characters. There is **no** `admin/admin`
+> fallback. Leave `SECRET_KEY` empty to have a strong one auto-generated and
+> persisted under `./data` (see [Configuration](#configuration)).
+
+### Access the UI
+
+Open <https://localhost:8443> and accept the self-signed certificate. Plain
+`http://localhost:8011` (and host port `80`) redirect to HTTPS. Log in with the
+credentials from your `.env` (or the ones the installer printed).
+
+### Point a client at the proxy
+
+- **Host**: `localhost` (or the server's IP) **Port**: `3128` **Protocol**: HTTP
+- Only RFC1918/localhost sources are allowed by default; widen this with
+  `GUI_IP_WHITELIST` or in the UI.
+- Settings → Client Setup generates per-OS instructions and a PAC file.
+
+Test it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/deploy/install.sh | sudo bash
-```
-
-**Note**: `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` must be set in `.env`
-before starting. The backend refuses to start if the password is empty, a common
-default (`changeme`, `admin`, `password`, …), or shorter than 8 characters.
-
-## Step-by-Step Deployment
-
-### Step 1: Clone the Repository
-
-```bash
-git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
-cd secure-proxy-manager
-```
-
-### Step 2: Prepare the Environment
-
-#### Option A: Using the Installer (Recommended)
-
-`deploy/install.sh` provisions everything on a fresh host:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/deploy/install.sh | sudo bash
-```
-
-This script will:
-- Check for Docker and Docker Compose installation
-- Create required directories (`config`, `data`, `logs`)
-- Create empty blacklist files if they don't exist
-- Generate a `.env` with strong, random credentials and print them
-- Build and start the stack
-
-#### Option B: Manual Setup
-
-If you prefer to set up manually:
-
-```bash
-# Create required directories
-mkdir -p config data logs
-
-# Create empty blacklist files
-touch config/ip_blacklist.txt
-touch config/domain_blacklist.txt
-
-# Copy the example environment file
-cp .env.example .env
-
-# Edit the .env file with your preferred settings
-nano .env  # or use your preferred editor
-```
-
-### Step 3: Configure Environment Variables
-
-Edit the `.env` file to customize your deployment:
-
-```bash
-nano .env
-```
-
-**Critical settings to review:**
-
-```bash
-# Set credentials before starting — no defaults are provided
-BASIC_AUTH_USERNAME=your_username
-BASIC_AUTH_PASSWORD=your_password
-
-# Optional: set an explicit session secret for stable sessions across restarts
-# Generate with: python3 -c "import secrets; print(secrets.token_hex(32))"
-SECRET_KEY=your-generated-secret-key-here
-```
-
-For a complete list of configuration options, see the [Configuration](#configuration) section.
-
-### Step 4: Build and Start the Services
-
-```bash
-# Build and start all services in detached mode
-docker-compose up -d
-
-# This will:
-# 1. Build the Docker images for backend, UI, and proxy services
-# 2. Create the necessary volumes
-# 3. Start all containers
-# 4. Set up the network
-```
-
-**First-time startup may take 2-5 minutes** as Docker builds the images and initializes the database.
-
-### Step 5: Verify the Deployment
-
-```bash
-# Check the status of all services
-docker-compose ps
-
-# All services should show "Up" status:
-# - secure-proxy-backend-1
-# - secure-proxy-web-1
-# - secure-proxy-proxy-1
-
-# View the logs to ensure no errors
-docker-compose logs -f
-
-# Press Ctrl+C to exit log view
-```
-
-Look for these success messages in the logs:
-- Backend (Go): `"HTTP server listening"` on port `5000` (internal)
-- Web UI (nginx): serving on `8443` (HTTPS) / `8011` (HTTP redirect)
-- Proxy: `"Squid configuration syntax is valid"`
-
-### Step 6: Access the Web Interface
-
-1. Open your web browser and navigate to:
-   ```
-   https://localhost:8443
-   ```
-   (accept the self-signed certificate; plain `http://localhost:8011` redirects here)
-
-2. Enter your credentials:
-   - Username: `admin` (or what you set in `.env`)
-   - Password: `admin` (or what you set in `.env`)
-
-3. You should see the Secure Proxy Manager dashboard.
-
-### Step 7: Configure Your Proxy Client
-
-Configure your browser or system to use the proxy:
-
-- **Proxy Host**: `localhost` (or your server's IP address)
-- **Proxy Port**: `3128`
-- **Protocol**: HTTP
-
-**Example browser configuration:**
-
-**Firefox:**
-1. Settings → General → Network Settings → Settings
-2. Select "Manual proxy configuration"
-3. HTTP Proxy: `localhost`, Port: `3128`
-4. Check "Use this proxy server for all protocols"
-
-**Chrome/Edge:**
-Use system proxy settings or a proxy extension like SwitchyOmega.
-
-**System-wide (Linux):**
-```bash
-export http_proxy=http://localhost:3128
-export https_proxy=http://localhost:3128
-```
-
-### Step 8: Test the Proxy
-
-```bash
-# Test HTTP proxy
 curl -x http://localhost:3128 http://example.com
-
-# Test with authentication (if you've enabled it)
-curl -x http://localhost:3128 -U username:password http://example.com
-
-# Check if a request appears in the logs
-docker-compose logs proxy | tail -n 20
+docker compose logs proxy | tail -n 20
 ```
+
+## Services and Ports
+
+Host port mappings come straight from `docker-compose.yml`:
+
+| Host binding | Container | Service | Notes |
+|--------------|-----------|---------|-------|
+| `443` → `8443`, `8443` → `8443` | `web` | Web UI (HTTPS) | Main interface; `8443` is the same UI on an alternate port |
+| `80` → `8011`, `8011` → `8011` | `web` | Web UI (HTTP) | Redirects to HTTPS; also serves ACME challenges for Let's Encrypt |
+| `127.0.0.1:5001` → `5000` | `backend` | Backend API | Bound to localhost only; the UI proxies it (incl. WebSocket) internally |
+| `${PROXY_BIND_IP:-0.0.0.0}:3128` → `3128` | `proxy` | Forward proxy | Point clients here |
+| — (internal) | `waf` | WAF | `1344` (ICAP, Squid → WAF) and `8080` (health / `:8080/metrics`) — **not** published on the host |
+| — (internal) | `dns` | dnsmasq | Port `53` inside the `proxy-internal` network; not published on the host |
+
+Networks: `frontend` (bridge, has egress) and `proxy-internal`
+(`internal: true`, no gateway). `proxy` and `dns` attach to **both** so they can
+reach the internet/upstream resolvers.
+
+To change a published port, edit the `ports:` entry in `docker-compose.yml`,
+e.g. `- "9443:8443"`.
 
 ## Configuration
 
-### Environment Variables
+All runtime configuration is environment-driven via `.env` (copy from
+`.env.example`). Backend defaults are defined in
+`backend-go/internal/config/config.go`.
 
-All configuration is done through the `.env` file. Here are the key variables:
+### Authentication
 
-#### Authentication
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BASIC_AUTH_USERNAME` | required | Username for web UI and API access |
-| `BASIC_AUTH_PASSWORD` | required | Password for web UI and API access |
-| `SECRET_KEY` | Auto-generated | JWT signing secret. Leave empty to auto-generate and persist under `/data`. If set, must be unique, random and 32+ chars (`openssl rand -hex 32`); known/example values are rejected at startup. |
+| `BASIC_AUTH_USERNAME` | **required** | Admin login username |
+| `BASIC_AUTH_PASSWORD` | **required** | Admin login password. Rejected at startup if empty, a common default, or < 8 chars |
+| `SECRET_KEY` | auto-generated | JWT signing secret. Leave empty to generate and persist one under `./data/.jwt_secret`. If you set it, it must be unique, random, and 32+ chars (`openssl rand -hex 32`); known/example values are rejected at startup |
 
-#### Backend API
+Generate strong values:
+
+```bash
+openssl rand -hex 32   # password and/or SECRET_KEY
+```
+
+### Network / proxy
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BACKEND_URL` | `http://backend:5000` | Backend API URL (Docker internal) |
-| `REQUEST_TIMEOUT` | `30` | API request timeout in seconds |
-| `MAX_RETRIES` | `5` | Maximum API retry attempts |
-| `BACKOFF_FACTOR` | `1.0` | Exponential backoff multiplier |
-
-#### Proxy Service
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PROXY_HOST` | `proxy` | Proxy service hostname |
+| `BACKEND_URL` | `http://backend:5000` | Internal backend URL used by `web` (Docker network) |
+| `CORS_ALLOWED_ORIGINS` | `https://localhost:8443` | Allowed UI origin(s); add your domain when using Let's Encrypt |
+| `PROXY_HOST` | `proxy` | Proxy service hostname (internal) |
 | `PROXY_PORT` | `3128` | Proxy service port |
-| `PROXY_CONTAINER_NAME` | `secure-proxy-manager-proxy` | Docker container name |
+| `PROXY_CONTAINER_NAME` | `secure-proxy-manager-proxy` | Container name used for reload signals |
+| `PROXY_BIND_IP` | `0.0.0.0` | Host interface the proxy port binds to |
+| `GUI_IP_WHITELIST` | empty | Extra source IP(s) allowed to use the proxy |
+| `PROXY_IP` | empty | Your LAN IP, to enable WPAD (`wpad.dat`) auto-discovery for browsers |
 
-### Directory Structure
+### DNS
 
-After initialization, your directory structure should look like:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DNS_UPSTREAM_1` | `1.1.1.3` | Upstream resolver (malware-blocking by default) |
+| `DNS_UPSTREAM_2` | `9.9.9.9` | Upstream resolver |
+| `DNS_UPSTREAM_3` | `8.8.8.8` | Upstream resolver |
+
+### WAF
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WAF_BLOCK_THRESHOLD` | `10` | Anomaly score at which a request is blocked (lower is stricter) |
+| `WAF_DISABLED_CATEGORIES` | empty | Comma-separated rule categories to disable |
+| `WAF_H_ENTROPY`, `WAF_H_BEACONING`, `WAF_H_PII`, `WAF_H_SHARDING`, `WAF_H_GHOSTING`, `WAF_H_SEQUENCE` | per compose | Heuristic engine toggles (`1`/`0`) |
+
+Most runtime behaviour (WAF categories, blocklists, filtering toggles,
+notifications) is managed from the UI and stored in the database, not in `.env`.
+
+### HTTPS / Let's Encrypt
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LETSENCRYPT_DOMAIN` | empty | Set with `LETSENCRYPT_EMAIL` to obtain a real cert via certbot instead of the self-signed one |
+| `LETSENCRYPT_EMAIL` | empty | Contact email for ACME |
+
+### Optional
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TS_AUTHKEY` | empty | Tailscale auth key; the `tailscale` service runs only under its compose profile (`docker compose --profile tailscale up -d`) |
+| `REQUEST_TIMEOUT` | `120` | UI → backend request timeout (seconds) |
+
+## Volumes and Persistence
+
+Bind mounts (created in the repo root; `make setup`/the installer create them):
 
 ```
 secure-proxy-manager/
-├── config/              # Configuration files
-│   ├── ip_blacklist.txt      # IP blacklist (created automatically)
-│   ├── domain_blacklist.txt  # Domain blacklist (created automatically)
-│   ├── ssl_cert.pem          # SSL certificate (created by proxy)
-│   └── ssl_key.pem           # SSL key (created by proxy)
-├── data/                # Persistent data
-│   └── secure_proxy.db       # SQLite database (created automatically)
-├── logs/                # Application logs
-│   ├── backend.log           # Backend API logs
-│   ├── ui.log                # Web UI logs
-│   └── squid/                # Proxy logs (mounted from container)
-├── .env                 # Environment configuration (YOU MUST CREATE THIS)
-├── .env.example         # Example environment file
-├── docker-compose.yml   # Docker Compose configuration
-├── init.sh              # Initialization script
-└── README.md            # Main documentation
+├── config/                  # Config + TLS material (mounted into proxy/waf/dns)
+│   ├── ssl_cert.pem         # SSL-bump CA cert — generated at first boot (gitignored)
+│   ├── ssl_key.pem          # SSL-bump CA key  — generated at first boot (gitignored)
+│   ├── ssl_db/              # Squid generated-cert DB (gitignored)
+│   ├── ip_blacklist.txt     # Optional seed lists copied into Squid at startup
+│   └── domain_blacklist.txt
+├── data/                    # Persistent state
+│   ├── proxy_manager.db     # SQLite database (created automatically)
+│   ├── .jwt_secret          # Auto-generated JWT secret (if SECRET_KEY unset)
+│   └── .enc_key             # Auto-generated key for encrypted settings
+├── logs/                    # Access log + Squid logs (mounted into backend/proxy)
+├── .env                     # Your environment (you create this)
+├── docker-compose.yml
+└── Makefile
 ```
 
-### Port Mappings
+Named Docker volumes (managed by Compose):
 
-| Port | Service | Description |
-|------|---------|-------------|
-| `8011` | Web UI | Main web interface |
-| `5001` | Backend API | Direct API access (optional) |
-| `3128` | Proxy | HTTP/HTTPS proxy service |
+| Volume | Used by | Purpose |
+|--------|---------|---------|
+| `squid-cache` | `proxy` | Squid disk cache (`/var/spool/squid`) |
+| `letsencrypt` | `web` | Persisted Let's Encrypt certificates |
+| `tailscale-data` | `tailscale` | Tailscale node state |
 
-**To change ports**, edit `docker-compose.yml`:
+The database is `data/proxy_manager.db` (config default `DATABASE_PATH`
+`/data/proxy_manager.db`). Back up `./data` and `./config` to preserve all state
+and the SSL-bump CA. `docker compose down -v` removes the named volumes (cache,
+letsencrypt) but **not** the bind mounts; `make clean` does the same and reminds
+you `./data` is preserved.
 
-```yaml
-services:
-  web:
-    ports:
-      - "8080:8011"  # Change 8080 to your desired port
-```
+## HTTPS and the SSL-Bump CA
 
-## Troubleshooting
+There are two distinct TLS surfaces:
 
-### Common Issues and Solutions
+1. **Web UI TLS.** `web` serves HTTPS on `8443`/`443` with a self-signed cert by
+   default. Set `LETSENCRYPT_DOMAIN` + `LETSENCRYPT_EMAIL` (and a public
+   domain + reachable port `80`) to get a real certificate via certbot; certs
+   persist in the `letsencrypt` volume.
 
-#### Issue 1: "Cannot access web UI"
+2. **Proxy SSL-bump CA.** When SSL-bump is enabled (Settings), Squid intercepts
+   TLS using a locally generated CA so the WAF can inspect decrypted requests.
+   `proxy/startup.sh` generates `config/ssl_cert.pem` and `config/ssl_key.pem`
+   on first boot if they are absent (2048-bit RSA, 10-year cert) and initializes
+   `config/ssl_db/`. These files are **gitignored** (`config/*.pem`,
+   `config/ssl_db/`) and are **never committed** — each deployment has its own
+   unique CA. The startup script additionally detects and deletes a
+   known-compromised CA key that was historically committed, regenerating a
+   fresh one.
 
-**Symptoms:** Browser shows "connection refused" or timeout when accessing `http://localhost:8011`
+   To inspect HTTPS on clients, install the generated CA (Settings → download CA)
+   on every device that should trust the bump. Without SSL-bump, HTTPS is
+   tunnelled via `CONNECT` and the WAF only sees connection metadata.
 
-**Solutions:**
-1. Check if the container is running:
-   ```bash
-   docker-compose ps
-   ```
+## Backups
 
-2. Check the logs for errors:
-   ```bash
-   docker-compose logs web
-   ```
+The database holds all configuration, blocklists, logs, and audit history.
 
-3. Verify port is not in use:
-   ```bash
-   netstat -an | grep 8011  # Linux/Mac
-   # or
-   netstat -ano | findstr 8011  # Windows
-   ```
+- **From the UI:** Settings → Maintenance → Backup, which calls the
+  `GET /api/database/export` endpoint and downloads a JSON export of the
+  database tables. `GET /api/maintenance/backup-config` exports the
+  configuration separately. Both require authentication.
+- **From the host (cold copy):** stop the stack and archive the bind mounts:
 
-4. Try accessing via IP instead of localhost:
-   ```bash
-   # Find your IP
-   ip addr show  # Linux
-   ipconfig  # Windows
-   
-   # Access via IP
-   http://YOUR_IP:8011
-   ```
+  ```bash
+  docker compose down
+  tar -czf spm-backup-$(date +%Y%m%d).tar.gz data/ config/
+  docker compose up -d
+  ```
 
-#### Issue 2: "Permission denied" errors in logs
+  Restore by extracting the archive back over `data/` and `config/` before
+  `docker compose up -d`.
 
-**Symptoms:** Log messages about permission denied on `/config`, `/data`, or `/logs`
-
-**Solutions:**
-1. Ensure directories exist and have correct permissions:
-   ```bash
-   mkdir -p config data logs
-   chmod 755 config data logs
-   ```
-
-2. If on Linux with SELinux enabled:
-   ```bash
-   chcon -Rt svirt_sandbox_file_t config data logs
-   # or disable SELinux (not recommended for production)
-   ```
-
-3. Rebuild containers:
-   ```bash
-   docker-compose down
-   docker-compose build --no-cache
-   docker-compose up -d
-   ```
-
-#### Issue 3: "Authentication failed" errors
-
-**Symptoms:** Cannot login with credentials, or backend/UI communication fails
-
-**Solutions:**
-1. Verify credentials in `.env` file:
-   ```bash
-   cat .env | grep BASIC_AUTH
-   ```
-
-2. Ensure the `.env` file is loaded:
-   ```bash
-   docker-compose down
-   docker-compose up -d
-   ```
-
-3. Check container environment variables:
-   ```bash
-   docker-compose exec backend env | grep BASIC_AUTH
-   docker-compose exec web env | grep BASIC_AUTH
-   ```
-
-4. Verify credentials are set in `.env`:
-   ```bash
-   grep BASIC_AUTH .env
-   ```
-   Restart services after any change:
-   ```bash
-   docker-compose restart
-   ```
-
-#### Issue 4: "Database errors"
-
-**Symptoms:** Errors about database lock, corruption, or missing tables
-
-**Solutions:**
-1. Stop all services:
-   ```bash
-   docker-compose down
-   ```
-
-2. Check database file permissions:
-   ```bash
-   ls -la data/secure_proxy.db
-   ```
-
-3. If corrupt, remove and recreate:
-   ```bash
-   # Backup first!
-   cp data/secure_proxy.db data/secure_proxy.db.backup
-   
-   # Remove database
-   rm data/secure_proxy.db
-   
-   # Restart to recreate
-   docker-compose up -d
-   ```
-
-#### Issue 5: "Proxy not filtering traffic"
-
-**Symptoms:** Requests are not logged, blacklists not working
-
-**Solutions:**
-1. Verify proxy is running:
-   ```bash
-   docker-compose logs proxy
-   ```
-
-2. Test proxy connectivity:
-   ```bash
-   curl -x http://localhost:3128 http://example.com
-   ```
-
-3. Check blacklist files are loaded:
-   ```bash
-   docker-compose exec proxy cat /etc/squid/blacklists/ip/local.txt
-   docker-compose exec proxy cat /etc/squid/blacklists/domain/local.txt
-   ```
-
-4. Reload proxy configuration:
-   ```bash
-   docker-compose restart proxy
-   ```
-
-### Viewing Logs
+Schedule the cold copy with cron if desired:
 
 ```bash
-# View logs for all services
-docker-compose logs -f
-
-# View logs for a specific service
-docker-compose logs -f backend
-docker-compose logs -f web
-docker-compose logs -f proxy
-
-# View last 100 lines
-docker-compose logs --tail=100 backend
-
-# Save logs to file
-docker-compose logs > deployment.log
-```
-
-### Getting Container Shell Access
-
-```bash
-# Access backend container
-docker-compose exec backend /bin/bash
-
-# Access web container
-docker-compose exec web /bin/bash
-
-# Access proxy container
-docker-compose exec proxy /bin/bash
-```
-
-### Completely Resetting the Deployment
-
-If you need to start fresh:
-
-```bash
-# WARNING: This will delete all data!
-
-# Stop and remove containers, volumes, and networks
-docker-compose down -v
-
-# Remove local data
-rm -rf data logs
-
-# Recreate directories
-mkdir -p config data logs
-
-# Start fresh
-docker-compose up -d
-```
-
-## Production Deployment
-
-For production deployments, follow these additional steps:
-
-### 1. Change Default Credentials
-
-Edit `.env` and set strong credentials:
-
-```bash
-BASIC_AUTH_USERNAME=your_secure_username
-BASIC_AUTH_PASSWORD=your_strong_password_here
-```
-
-Generate a strong password:
-```bash
-openssl rand -base64 32
-```
-
-### 2. Generate Secret Key
-
-```bash
-# Generate a secret key
-python3 -c "import secrets; print(secrets.token_hex(32))"
-
-# Add to .env
-SECRET_KEY=your_generated_key_here
-```
-
-### 3. Enable HTTPS for Web UI
-
-Use a reverse proxy (nginx, Traefik, or Caddy) with SSL/TLS:
-
-**Example nginx configuration:**
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name proxy.example.com;
-
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
-
-    location / {
-        proxy_pass http://localhost:8011;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-### 4. Restrict Access
-
-Use firewall rules to restrict access to the web UI:
-
-```bash
-# Allow only specific IP
-sudo ufw allow from YOUR_IP to any port 8011
-
-# Or use nginx IP restrictions
-# In your nginx config:
-allow YOUR_IP;
-deny all;
-```
-
-### 5. Set Up Backups
-
-Create a backup script:
-
-```bash
-#!/bin/bash
-# backup.sh
-
-BACKUP_DIR="/backups/secure-proxy"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-
-mkdir -p $BACKUP_DIR
-
-# Stop services
-docker-compose down
-
-# Backup data
-tar -czf "$BACKUP_DIR/data-$TIMESTAMP.tar.gz" data/
-tar -czf "$BACKUP_DIR/config-$TIMESTAMP.tar.gz" config/
-tar -czf "$BACKUP_DIR/logs-$TIMESTAMP.tar.gz" logs/
-
-# Start services
-docker-compose up -d
-
-# Keep only last 7 days of backups
-find $BACKUP_DIR -name "*.tar.gz" -mtime +7 -delete
-```
-
-Schedule with cron:
-```bash
-# Run daily at 2 AM
-0 2 * * * /path/to/backup.sh
-```
-
-### 6. Set Resource Limits
-
-Edit `docker-compose.yml` to adjust resource limits based on your hardware:
-
-```yaml
-deploy:
-  resources:
-    limits:
-      cpus: '2.0'        # Adjust based on available CPU
-      memory: 2048M      # Adjust based on available RAM
-    reservations:
-      cpus: '0.5'
-      memory: 512M
-```
-
-### 7. Enable Monitoring
-
-Set up health monitoring:
-
-```bash
-# Check health endpoints
-curl -I http://localhost:8011/health          # web UI (nginx)
-curl -I http://127.0.0.1:5001/health          # backend API (bound to localhost)
-curl -skI https://localhost:8443/             # web UI over HTTPS
-
-# Set up monitoring with tools like:
-# - Prometheus + Grafana
-# - UptimeRobot
-# - Nagios
-```
-
-### 8. Regular Updates
-
-Keep the system updated:
-
-```bash
-# Pull latest changes
-git pull
-
-# Rebuild and restart
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+# Daily at 02:00
+0 2 * * * cd /opt/secure-proxy-manager && tar -czf /backups/spm-$(date +\%Y\%m\%d).tar.gz data config
 ```
 
 ## Updating
 
-To update to the latest version:
-
 ```bash
-# 1. Backup your data first!
-cp -r data data.backup
-cp -r config config.backup
+# 1. Back up first (see above)
+cp -r data data.backup && cp -r config config.backup
 
-# 2. Pull latest changes
-git pull origin main
+# 2. Pull the latest code
+git pull origin main          # or: deploy/install.sh re-run does a ff-only pull
 
-# 3. Rebuild containers
-docker-compose down
-docker-compose build --no-cache
+# 3. Rebuild and restart
+docker compose up -d --build
 
-# 4. Start with new version
-docker-compose up -d
-
-# 5. Verify everything works
-docker-compose logs -f
+# 4. Verify
+docker compose ps
+docker compose logs -f
 ```
 
-## Getting Help
+The database, generated CA, and named volumes are preserved across updates.
 
-If you encounter issues not covered in this guide:
+## Troubleshooting
 
-1. **Check the logs**: Most issues are logged with helpful error messages
-2. **Search existing issues**: https://github.com/fabriziosalmi/secure-proxy-manager/issues
-3. **Create a new issue**: Include logs, your environment, and steps to reproduce
-4. **Review the main README**: https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/README.md
+### Cannot reach the web UI
+
+```bash
+docker compose ps                 # is `web` (and `backend`) healthy?
+docker compose logs web
+```
+
+`web` depends on `backend` being healthy. The backend will exit on boot if
+`BASIC_AUTH_PASSWORD`/`SECRET_KEY` are invalid — check `docker compose logs
+backend` for a fatal message about a weak password or secret.
+
+### Backend won't start
+
+Most often a credential policy failure:
+
+```bash
+docker compose logs backend | tail -n 30
+grep BASIC_AUTH .env
+```
+
+Fix `.env` (password ≥ 8 chars and not a common default; `SECRET_KEY` empty or
+32+ random chars) and `docker compose up -d`.
+
+### Proxy not filtering / 502s on upstream fetches
+
+```bash
+docker compose logs proxy
+docker compose logs waf          # WAF must be healthy; Squid ICAP-calls it
+curl -x http://localhost:3128 http://example.com
+```
+
+`proxy` depends on both `waf` and `dns` being healthy. It is attached to the
+egress-capable `frontend` network as well as `proxy-internal`; if you customise
+networking, keep that egress path or every upstream fetch fails.
+
+### Health checks
+
+```bash
+curl -sf  http://localhost:8011/health          # web (nginx)
+curl -skI https://localhost:8443/                # web over HTTPS
+curl -sk  https://localhost:8443/api/health      # backend via the UI proxy
+```
+
+The backend's own healthcheck runs `/server -healthcheck` inside the container;
+its API port is bound to `127.0.0.1:5001` on the host.
+
+### Logs and shell access
+
+```bash
+docker compose logs -f                 # all services
+docker compose logs -f backend         # one service (backend|web|proxy|waf|dns)
+docker compose logs --tail=100 proxy
+
+docker compose exec backend /bin/sh    # backend/waf are minimal images (sh)
+docker compose exec proxy  /bin/bash
+```
+
+### Start completely fresh (deletes all data)
+
+```bash
+docker compose down -v
+rm -rf data logs config/*.pem config/ssl_db
+docker compose up -d --build
+```
 
 ---
 
-**For more information, see:**
-- [README.md](README.md) - Main documentation
-- [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
-- [CHANGELOG.md](CHANGELOG.md) - Version history
+**See also:**
+- [README.md](README.md) — overview and feature list
+- [CHANGELOG.md](CHANGELOG.md) — release history
+- [CONTRIBUTING.md](CONTRIBUTING.md) — contribution guidelines
