@@ -51,7 +51,7 @@ async function apiToken(request: APIRequestContext): Promise<string> {
 }
 
 /**
- * Inject a valid JWT into sessionStorage BEFORE the page script runs.
+ * Inject a valid JWT into localStorage BEFORE the page script runs.
  * Must be called before page.goto() — addInitScript registers a script that
  * fires on every subsequent navigation within the test.
  */
@@ -411,7 +411,7 @@ test.describe('UI — Dashboard', () => {
     await expect(page.locator('code').filter({ hasText: '3128' }).first()).toBeVisible();
   });
 
-  test('copy button changes to "Copied!" on click', async ({ page, context }) => {
+  test('copy button shows confirmation on click', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     // Mock clipboard so writeText resolves immediately in headless mode
     await page.addInitScript(() => {
@@ -422,15 +422,17 @@ test.describe('UI — Dashboard', () => {
     });
     await page.goto('/');
     await page.waitForSelector('h1:has-text("Dashboard")');
-    await page.getByRole('button', { name: /copy/i }).first().click();
-    await expect(page.getByText('Copied!')).toBeVisible({ timeout: 5_000 });
+    const copyBtn = page.getByRole('button', { name: /copy proxy address/i });
+    await copyBtn.click();
+    // Feedback is an icon swap (Copy → Check), not a "Copied!" label.
+    await expect(copyBtn.locator('svg.lucide-check')).toBeVisible({ timeout: 5_000 });
   });
 
-  test('shows stats cards (Total Requests, Blocked, Direct IP, Security)', async ({ page }) => {
+  test('shows stats cards (Today, Total, Block Rate, Score)', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('h1:has-text("Dashboard")');
-    for (const label of ['Total Requests', 'Blocked Threats', 'Direct IP Blocks', 'Security Score']) {
-      await expect(page.getByText(label)).toBeVisible();
+    for (const label of ['Today', 'Block Rate', 'Score', 'IP Rules']) {
+      await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
     }
   });
 
@@ -448,7 +450,7 @@ test.describe('UI — Navigation', () => {
 
   test('navigates to /blacklists', async ({ page }) => {
     await page.goto('/blacklists');
-    await expect(page.getByRole('button', { name: /IP Addresses/i }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('tab', { name: /IP Addresses/i }).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test('navigates to /logs', async ({ page }) => {
@@ -493,6 +495,9 @@ test.describe('UI — Blacklists (IP tab)', () => {
       page.getByRole('button', { name: /Save Rule/i }).click(),
     ]);
     expect([200, 201, 400]).toContain(resp.status()); // 400 = duplicate on retry
+    // Filter to the new IP so the assertion is deterministic regardless of how
+    // many entries earlier tests left in the list (geo-import can add thousands).
+    await page.getByPlaceholder(/Search/i).fill(testIp);
     await expect(page.getByText(testIp)).toBeVisible({ timeout: 10_000 });
 
     // Delete it
@@ -548,7 +553,7 @@ test.describe('UI — Blacklists (Domain tab)', () => {
     await injectAuth(page, request);
     await page.goto('/blacklists');
     await page.waitForSelector('button:has-text("Add Rule")', { timeout: 15_000 });
-    await page.getByRole('button', { name: /Domain/i }).first().click();
+    await page.getByRole('tab', { name: /Domains/i }).first().click();
     await page.waitForTimeout(300);
   });
 
@@ -595,12 +600,12 @@ test.describe('UI — Blacklists (Whitelist tab)', () => {
     await injectAuth(page, request);
     await page.goto('/blacklists');
     await page.waitForSelector('button:has-text("Add Rule")', { timeout: 15_000 });
-    await page.getByRole('button', { name: /Whitelist/i }).first().click();
+    await page.getByRole('tab', { name: /Whitelist/i }).first().click();
     await page.waitForTimeout(300);
   });
 
   test('whitelist tab has green styling', async ({ page }) => {
-    const tab = page.getByRole('button', { name: /Whitelist/i }).first();
+    const tab = page.getByRole('tab', { name: /Whitelist/i }).first();
     const cls = await tab.getAttribute('class');
     expect(cls).toMatch(/green/);
   });
@@ -682,7 +687,7 @@ test.describe('UI — Settings page', () => {
       page.waitForEvent('download', { timeout: 15_000 }),
       page.getByRole('button', { name: /Backup Config/i }).click(),
     ]);
-    expect(download.suggestedFilename()).toMatch(/secure-proxy-backup.*\.json/);
+    expect(download.suggestedFilename()).toMatch(/proxy-backup.*\.json/);
   });
 
   test('Clear Cache button is visible', async ({ page }) => {
@@ -732,7 +737,7 @@ test.describe('Full onboarding flow', () => {
     expect([200, 201]).toContain(ipResp.status());
 
     // 4. Bulk add 3 domains
-    await page.getByRole('button', { name: /Domain/i }).first().click();
+    await page.getByRole('tab', { name: /Domains/i }).first().click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: /Bulk Add/i }).click();
     await page.locator('textarea').fill(['onboarding-1.test', 'onboarding-2.test', 'onboarding-3.test'].join('\n'));

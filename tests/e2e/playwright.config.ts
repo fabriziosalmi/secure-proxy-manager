@@ -5,7 +5,7 @@ export default defineConfig({
   testMatch: '**/*.spec.ts',
   timeout: 60_000,
   expect: { timeout: 15_000 },
-  retries: process.env.CI ? 2 : 1,
+  retries: process.env.CI ? 1 : 0,
   workers: 1, // serial — tests share DB state
 
   reporter: [
@@ -22,15 +22,10 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     trace: 'on-first-retry',
-    // allow clipboard API in insecure origins (http)
-    launchOptions: {
-      args: ['--unsafely-treat-insecure-origin-as-secure=http://web:8011,http://localhost:8011'],
-    },
   },
 
   // No globalSetup / storageState: auth is injected per-test via addInitScript
-  // (Playwright storageState only persists localStorage, not sessionStorage,
-  //  and the app uses sessionStorage for the JWT token)
+  // into localStorage (where the app reads the JWT).
 
   projects: [
     {
