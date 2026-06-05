@@ -23,6 +23,8 @@ jobs:
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
         working-directory: ui
+      - run: npm run lint
+        working-directory: ui
       - run: npm run build
         working-directory: ui
       - run: npm test
@@ -40,6 +42,8 @@ jobs:
           cache-dependency-path: backend-go/go.sum
       - run: go build -v ./...
         working-directory: backend-go
+      - run: go vet ./...
+        working-directory: backend-go
 
   # ── 3. Go WAF build ───────────────────────────────────────────────────
   build-waf:
@@ -52,6 +56,8 @@ jobs:
           go-version: '1.24'
           cache-dependency-path: waf-go/go.sum
       - run: go build -v ./...
+        working-directory: waf-go
+      - run: go vet ./...
         working-directory: waf-go
 
   # ── 4. Go backend tests ──────────────────────────────────────────────
