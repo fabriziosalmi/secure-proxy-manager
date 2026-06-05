@@ -85,6 +85,50 @@ func TestBlockedFlagMigration(t *testing.T) {
 	}
 }
 
+// TestUnixTimestampIndexUsed proves the previously-dead idx_proxy_logs_unix_ts
+// is now consulted: a time-bucketed range query (the TrafficStats/Timeline
+// shape) range-scans the unix_timestamp index instead of doing TEXT-date math.
+func TestUnixTimestampIndexUsed(t *testing.T) {
+	tmpDB := "/tmp/test_unix_idx.db"
+	defer os.Remove(tmpDB)
+
+	db, err := Open(tmpDB)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+	if err := Init(db, "admin", "hash"); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	for i := 0; i < 1000; i++ {
+		if _, err := db.Exec("INSERT INTO proxy_logs(timestamp, unix_timestamp, destination) VALUES(datetime('now'), ?, 'http://x')", 1700000000+i); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+
+	rs, err := db.Query(`EXPLAIN QUERY PLAN
+		SELECT strftime('%Y-%m-%d %H', datetime((unix_timestamp/300)*300,'unixepoch')) b, COUNT(*)
+		FROM proxy_logs WHERE unix_timestamp >= 1700000500 GROUP BY b`)
+	if err != nil {
+		t.Fatalf("explain: %v", err)
+	}
+	defer rs.Close()
+	used := false
+	for rs.Next() {
+		var id, parent, notused int
+		var detail string
+		if err := rs.Scan(&id, &parent, &notused, &detail); err != nil {
+			t.Fatalf("scan plan: %v", err)
+		}
+		if strings.Contains(detail, "idx_proxy_logs_unix_ts") {
+			used = true
+		}
+	}
+	if !used {
+		t.Errorf("time-window query does not range-scan idx_proxy_logs_unix_ts (index still dead)")
+	}
+}
+
 // TestBlockedColumnAlterMigration exercises the real upgrade path: a legacy
 // proxy_logs table with NO blocked column, on which Init must run the
 // idempotent ALTER ADD COLUMN (filling existing rows with 0) and then backfill.

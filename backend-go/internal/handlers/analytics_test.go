@@ -49,9 +49,12 @@ func TestAnalyticsHandlers_TrafficStats_HourBucketing(t *testing.T) {
 	defer cleanup()
 	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
 
-	ts := time.Now().UTC().Add(-12 * time.Minute).Format("2006-01-02 15:04:05")
+	ts := time.Now().UTC().Add(-12 * time.Minute)
+	tsStr := ts.Format("2006-01-02 15:04:05")
 	for i := 0; i < 3; i++ {
-		_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, destination, status) VALUES (?, '1.1.1.1', 'http://a.com', '200 OK')", ts)
+		// unix_timestamp is what the time-window range scan now filters/buckets on
+		// (the log tailer always populates it in production).
+		_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, unix_timestamp, source_ip, destination, status) VALUES (?, ?, '1.1.1.1', 'http://a.com', '200 OK')", tsStr, ts.Unix())
 	}
 
 	r := httptest.NewRequest("GET", "/api/traffic/statistics?period=hour", nil)
@@ -80,7 +83,12 @@ func TestAnalyticsHandlers_ClientStats(t *testing.T) {
 	defer cleanup()
 	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
 
-	_, _ = db.Exec("INSERT INTO proxy_logs (source_ip, destination) VALUES ('1.2.3.4', 'http://a.com')")
+	now := time.Now().UTC()
+	// Recent client (in the 7-day window) and an old one (60 days ago, outside it).
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, unix_timestamp, source_ip, destination) VALUES (?, ?, '1.2.3.4', 'http://a.com')",
+		now.Format("2006-01-02 15:04:05"), now.Unix())
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, unix_timestamp, source_ip, destination) VALUES (?, ?, '9.9.9.9', 'http://old.com')",
+		now.AddDate(0, 0, -60).Format("2006-01-02 15:04:05"), now.AddDate(0, 0, -60).Unix())
 
 	r := httptest.NewRequest("GET", "/api/clients/statistics", nil)
 	w := httptest.NewRecorder()
@@ -89,6 +97,29 @@ func TestAnalyticsHandlers_ClientStats(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
+	var resp struct {
+		Data struct {
+			Clients []struct {
+				IPAddress string `json:"ip_address"`
+			} `json:"clients"`
+		} `json:"data"`
+	}
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	var hasRecent, hasOld bool
+	for _, c := range resp.Data.Clients {
+		if c.IPAddress == "1.2.3.4" {
+			hasRecent = true
+		}
+		if c.IPAddress == "9.9.9.9" {
+			hasOld = true
+		}
+	}
+	if !hasRecent {
+		t.Error("recent client (in 7-day window) missing from ClientStats")
+	}
+	if hasOld {
+		t.Error("old client (60 days ago) must be excluded by the time-window bound")
+	}
 }
 
 func TestAnalyticsHandlers_DomainStats(t *testing.T) {
@@ -96,7 +127,9 @@ func TestAnalyticsHandlers_DomainStats(t *testing.T) {
 	defer cleanup()
 	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
 
-	_, _ = db.Exec("INSERT INTO proxy_logs (destination, status) VALUES ('example.com', '200 OK')")
+	now := time.Now().UTC()
+	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, unix_timestamp, destination, status) VALUES (?, ?, 'example.com', '200 OK')",
+		now.Format("2006-01-02 15:04:05"), now.Unix())
 
 	r := httptest.NewRequest("GET", "/api/domains/statistics", nil)
 	w := httptest.NewRecorder()

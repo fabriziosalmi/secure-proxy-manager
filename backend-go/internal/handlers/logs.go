@@ -126,9 +126,9 @@ func (h *LogHandlers) Timeline(w http.ResponseWriter, r *http.Request) {
 		       COUNT(*) as total,
 		       SUM(blocked) as blocked
 		FROM proxy_logs
-		WHERE timestamp >= datetime('now', ?)
+		WHERE unix_timestamp >= ?
 		GROUP BY hour ORDER BY hour ASC`,
-		"-"+strconv.Itoa(hours)+" hours",
+		time.Now().Add(-time.Duration(hours)*time.Hour).Unix(),
 	)
 	if err != nil {
 		writeOK(w, []any{})
