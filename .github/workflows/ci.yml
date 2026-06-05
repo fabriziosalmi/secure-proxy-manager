@@ -227,13 +227,12 @@ jobs:
   # ── 10. End-to-end UI/API (Playwright) ────────────────────────────────
   # Runs the maintained Playwright suite (tests/e2e/selfhoster.spec.ts) against
   # the test stack (backend + web + mock-lists) via docker-compose.test.yml.
-  # Non-gating for now (continue-on-error): serial workers, a shared DB, and
-  # live-data assertions make occasional flakes likely — promote to required
-  # once it has proven stable across a few runs.
+  # The suite is green (59/59); 1 retry tolerates the occasional flake from the
+  # serial / shared-DB design. (To make it a hard merge gate, also add
+  # "E2E UI (Playwright)" to the branch's required status checks.)
   e2e-ui:
     name: E2E UI (Playwright)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Playwright e2e (test compose)
