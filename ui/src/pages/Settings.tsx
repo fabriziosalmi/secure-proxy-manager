@@ -644,7 +644,6 @@ export function Settings() {
                   { key: 'waf_h_pii', label: 'PII Leak Counter', desc: 'Count emails/CC/SSN in responses' },
                   { key: 'waf_h_sharding', label: 'Dest Sharding', desc: 'Block rapid multi-destination access' },
                   { key: 'waf_h_ghosting', label: 'Protocol Ghosting', desc: 'Detect SSH/ELF/PE in HTTP body' },
-                  { key: 'waf_h_morphing', label: 'Header Morphing', desc: 'Detect header order changes (noisy)' },
                 ].map((h) => (
                   <div key={h.key} className="flex items-center justify-between p-2 bg-secondary/20 rounded">
                     <div>

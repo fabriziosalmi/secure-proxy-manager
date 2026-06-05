@@ -38,7 +38,6 @@ function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): 
     heuristic_pii_leak: 'false',
     heuristic_dest_sharding: 'false',
     heuristic_protocol_ghosting: 'false',
-    heuristic_header_morphing: 'false',
     ssl_bump_enabled: 'false',
     block_direct_ip: 'false',
     enable_safesearch: 'false',
@@ -92,7 +91,6 @@ function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): 
     base.heuristic_pii_leak = 'true';
     base.heuristic_dest_sharding = 'true';
     base.heuristic_protocol_ghosting = 'true';
-    base.heuristic_header_morphing = 'true';
     base.enable_content_filtering = 'true';
     base.blocked_file_types = 'exe,bat,cmd,dll,msi,scr,ps1,vbs,js,sh,py,rb,zip,7z,rar,tar,iso';
     base.block_direct_ip = 'true';
