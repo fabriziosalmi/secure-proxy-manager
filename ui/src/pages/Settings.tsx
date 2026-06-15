@@ -802,6 +802,26 @@ export function Settings() {
                 <p>You must install the Root CA Certificate below on all client devices to avoid security warnings.</p>
               </div>
             )}
+            <div className="flex items-center justify-between p-4 border border-white/[0.06] rounded-lg bg-white/[0.03]">
+              <div className="space-y-0.5">
+                <label className="text-sm font-medium">Default-deny egress</label>
+                <p className="text-xs text-muted-foreground">Clients may reach only destinations in the Egress Allowlist; everything else is denied.</p>
+              </div>
+              <Toggle
+                name="egress_default_deny"
+                label="Default-deny egress"
+                checked={formData.egress_default_deny === 'true'}
+                onChange={(v) => setFormData(prev => ({ ...prev, egress_default_deny: v ? 'true' : 'false' }))}
+                size="md"
+                className="ml-4"
+              />
+            </div>
+            {formData.egress_default_deny === 'true' && (
+              <div className="text-xs text-muted-foreground p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
+                <p className="font-semibold text-yellow-400 mb-1">Important:</p>
+                <p>With an empty Egress Allowlist, all client traffic is blocked — add the destinations you allow first. Saving restarts the proxy.</p>
+              </div>
+            )}
             <div className="p-4 border border-white/[0.06] rounded-lg bg-white/[0.03]">
               <h3 className="text-sm font-medium mb-2">Root CA Certificate</h3>
               <p className="text-xs text-muted-foreground mb-4">

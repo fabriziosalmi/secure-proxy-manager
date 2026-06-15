@@ -151,6 +151,47 @@ else
   bad "audit log missing the action"
 fi
 
+# ── Egress default-deny destination allowlist ────────────────────────────────
+# Allowlist example.com + enable default-deny via the API (exercises the new Go
+# export + toggle), reload-config to restart the proxy so startup.sh injects the
+# rule, then assert the allowlisted host is reachable and another is denied.
+# Runs last: default-deny changes proxy behaviour for everything after it.
+echo "── egress allowlist (default-deny) ──"
+curl -s -m 10 -u "$AUTH" -X POST -H 'Content-Type: application/json' \
+  -d '{"entry":"example.com","description":"e2e allow"}' "$API/api/egress-allowlist" >/dev/null
+curl -s -m 10 -u "$AUTH" -X POST -H 'Content-Type: application/json' \
+  -d '{"egress_default_deny":"true"}' "$API/api/settings" >/dev/null
+curl -s -m 30 -u "$AUTH" -X POST "$API/api/maintenance/reload-config" >/dev/null
+
+egress_up=0
+for _ in $(seq 1 30); do
+  if docker exec secure-proxy-manager-proxy squidclient -h 127.0.0.1 -p 3128 mgr:info >/dev/null 2>&1; then
+    egress_up=1; break
+  fi
+  sleep 2
+done
+[ "$egress_up" = 1 ] && ok "proxy recovered after enabling default-deny" \
+                     || bad "proxy did not recover after enabling default-deny"
+
+if docker exec secure-proxy-manager-proxy \
+     grep -q 'http_access deny localnet !egress_dst_allow' /etc/squid/squid.conf 2>/dev/null; then
+  ok "default-deny rule injected into squid.conf"
+else
+  bad "default-deny rule missing from squid.conf"
+fi
+
+ac=$(docker exec secure-proxy-manager-proxy \
+      curl -s -m 15 -x http://127.0.0.1:3128 -o /dev/null -w '%{http_code}' http://example.com/ 2>/dev/null || echo 000)
+case "$ac" in
+  200|301|302) ok "allowlisted destination reachable (example.com → $ac)" ;;
+  *)           bad "allowlisted destination unreachable (example.com → $ac)" ;;
+esac
+
+dc=$(docker exec secure-proxy-manager-proxy \
+      curl -s -m 15 -x http://127.0.0.1:3128 -o /dev/null -w '%{http_code}' http://example.org/ 2>/dev/null || echo 000)
+[ "$dc" = 403 ] && ok "non-allowlisted destination denied (example.org → 403)" \
+                || warn "non-allowlisted destination not denied (example.org → $dc)"
+
 echo
 echo "── result: ${PASS} passed, ${FAIL} failed ──"
 if [ "${FAIL}" -gt 0 ]; then

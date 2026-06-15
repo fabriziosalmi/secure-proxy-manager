@@ -25,6 +25,11 @@ type DomainListItem struct {
 	Description string `json:"description" validate:"max=500"`
 }
 
+type EgressAllowItem struct {
+	Entry       string `json:"entry"       validate:"required,max=253"`
+	Description string `json:"description" validate:"max=500"`
+}
+
 type InternalAlert struct {
 	EventType string         `json:"event_type" validate:"required"`
 	Message   string         `json:"message"    validate:"required"`

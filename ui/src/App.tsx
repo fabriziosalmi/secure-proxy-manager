@@ -36,6 +36,7 @@ const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.S
 const ThreatIntel = lazy(() => import('./pages/ThreatIntel').then(m => ({ default: m.ThreatIntel })));
 const Audit = lazy(() => import('./pages/Audit').then(m => ({ default: m.Audit })));
 const Clients = lazy(() => import('./pages/Clients').then(m => ({ default: m.Clients })));
+const EgressAllowlist = lazy(() => import('./pages/EgressAllowlist').then(m => ({ default: m.EgressAllowlist })));
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
   constructor(props: { children: React.ReactNode }) {
@@ -175,6 +176,7 @@ function App() {
                   <Route path="clients" element={<ErrorBoundary><Clients /></ErrorBoundary>} />
                   <Route path="logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
                   <Route path="audit" element={<ErrorBoundary><Audit /></ErrorBoundary>} />
+                  <Route path="egress" element={<ErrorBoundary><EgressAllowlist /></ErrorBoundary>} />
                   <Route path="settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
                   <Route path="*" element={<NotFound />} />
                 </Route>

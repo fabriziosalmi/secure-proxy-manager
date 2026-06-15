@@ -43,7 +43,7 @@ func (h *DatabaseHandlers) Optimize(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Database optimized (VACUUM + REINDEX)"})
 }
 
-var allowedTables = []string{"users", "ip_whitelist", "ip_blacklist", "domain_blacklist", "domain_whitelist", "proxy_logs", "settings", "audit_log"}
+var allowedTables = []string{"users", "ip_whitelist", "ip_blacklist", "domain_blacklist", "domain_whitelist", "dst_allowlist", "proxy_logs", "settings", "audit_log"}
 
 func (h *DatabaseHandlers) Stats(w http.ResponseWriter, r *http.Request) {
 	counts := map[string]int64{}
