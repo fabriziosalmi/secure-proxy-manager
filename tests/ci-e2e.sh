@@ -163,15 +163,20 @@ curl -s -m 10 -u "$AUTH" -X POST -H 'Content-Type: application/json' \
   -d '{"egress_default_deny":"true"}' "$API/api/settings" >/dev/null
 curl -s -m 30 -u "$AUTH" -X POST "$API/api/maintenance/reload-config" >/dev/null
 
-egress_up=0
-for _ in $(seq 1 30); do
-  if docker exec secure-proxy-manager-proxy squidclient -h 127.0.0.1 -p 3128 mgr:info >/dev/null 2>&1; then
-    egress_up=1; break
-  fi
+# reload-config restarts the proxy. Poll a real proxied request to the
+# allowlisted host: a 200 means the proxy is back up AND enforcing (squidclient
+# mgr:info is an unreliable readiness probe right after a restart).
+ac=000
+for _ in $(seq 1 60); do
+  ac=$(docker exec secure-proxy-manager-proxy \
+        curl -s -m 10 -x http://127.0.0.1:3128 -o /dev/null -w '%{http_code}' http://example.com/ 2>/dev/null || echo 000)
+  case "$ac" in 200|301|302) break ;; esac
   sleep 2
 done
-[ "$egress_up" = 1 ] && ok "proxy recovered after enabling default-deny" \
-                     || bad "proxy did not recover after enabling default-deny"
+case "$ac" in
+  200|301|302) ok "proxy recovered; allowlisted destination reachable (example.com → $ac)" ;;
+  *)           bad "allowlisted destination unreachable after default-deny (example.com → $ac)" ;;
+esac
 
 if docker exec secure-proxy-manager-proxy \
      grep -q 'http_access deny localnet !egress_dst_allow' /etc/squid/squid.conf 2>/dev/null; then
@@ -180,15 +185,15 @@ else
   bad "default-deny rule missing from squid.conf"
 fi
 
-ac=$(docker exec secure-proxy-manager-proxy \
-      curl -s -m 15 -x http://127.0.0.1:3128 -o /dev/null -w '%{http_code}' http://example.com/ 2>/dev/null || echo 000)
-case "$ac" in
-  200|301|302) ok "allowlisted destination reachable (example.com → $ac)" ;;
-  *)           bad "allowlisted destination unreachable (example.com → $ac)" ;;
-esac
-
-dc=$(docker exec secure-proxy-manager-proxy \
-      curl -s -m 15 -x http://127.0.0.1:3128 -o /dev/null -w '%{http_code}' http://example.org/ 2>/dev/null || echo 000)
+# A non-allowlisted destination must be denied; retry to absorb the restart
+# settle window.
+dc=000
+for _ in $(seq 1 15); do
+  dc=$(docker exec secure-proxy-manager-proxy \
+        curl -s -m 10 -x http://127.0.0.1:3128 -o /dev/null -w '%{http_code}' http://example.org/ 2>/dev/null || echo 000)
+  [ "$dc" = 403 ] && break
+  sleep 2
+done
 [ "$dc" = 403 ] && ok "non-allowlisted destination denied (example.org → 403)" \
                 || warn "non-allowlisted destination not denied (example.org → $dc)"
 
