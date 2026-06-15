@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.0] - 2026-06-15
+
+### Added
+
+- **Egress destination allowlist (default-deny mode).** Opt-in via a new
+  "Default-deny egress" toggle in Settings: a client behind the proxy may then
+  reach only the destinations on the new **Egress Allowlist** (CIDR/IP or
+  domain); everything else is denied. This turns the forward proxy from
+  default-allow-destination into default-deny-destination — the basis for a
+  sovereign / data-residency egress. Includes a managed allowlist page, a REST
+  API (`/api/egress-allowlist`), and Squid `dst`/`dstdomain` enforcement driven
+  by the existing list + toggle plumbing. Off by default.
+
+### Security
+
+- Bump Go 1.24 → 1.26, clearing newly-disclosed Go standard-library advisories
+  (net/http, net, crypto/x509, net/textproto) that have no 1.24 patch.
+- Bump esbuild to 0.28.1 (devDependency), clearing a HIGH npm advisory
+  (GHSA-gv7w-rqvm-qjhr; affects the dev server only, not the production build).
+
 ## [3.5.0] - 2026-06-04
 
 ### Added
