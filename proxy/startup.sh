@@ -386,6 +386,30 @@ if [ -n "$GUI_IP_WHITELIST" ]; then
     fi
 fi
 
+# ── Egress destination allowlist (default-deny) — conditional on toggle ──────
+# When /config/egress_default_deny exists, a localnet client may reach ONLY
+# destinations in the allowlists (IP/CIDR via `dst`, domain via `dstdomain`);
+# anything else falls through to the final "deny all". This flips the forward
+# proxy from default-allow-destination to default-deny-destination — the basis
+# for a sovereign / EU-strict egress. Trusted sources (ip_whitelist) and local
+# infrastructure (local_dst) are allowed earlier and are unaffected.
+# The allowlist files always exist (managed by the backend + watchdog); only the
+# enforcement rule is gated by the toggle, so removing the toggle restores the
+# prior default-allow behaviour.
+mkdir -p /etc/squid/allowlists/dst_ip /etc/squid/allowlists/dst_domain
+touch /etc/squid/allowlists/dst_ip/local.txt /etc/squid/allowlists/dst_domain/local.txt
+
+if [ -f /config/egress_default_deny ]; then
+    echo "Egress default-deny ENABLED — localnet reaches only allowlisted destinations"
+    # ACLs: destination IP/CIDR allowlist + destination domain allowlist. Inject
+    # once, at the first "acl CONNECT" (Squid evaluates the first matching
+    # http_access rule, so the first rule block is authoritative).
+    sed -i '0,/^acl CONNECT method CONNECT$/s|^acl CONNECT method CONNECT$|acl CONNECT method CONNECT\nacl egress_dst_allow_ip dst "/etc/squid/allowlists/dst_ip/local.txt"\nacl egress_dst_allow_dom dstdomain "/etc/squid/allowlists/dst_domain/local.txt"|' /etc/squid/squid.conf
+    # Deny any localnet client whose destination is in neither allowlist,
+    # immediately before the first catch-all "http_access allow localnet".
+    sed -i '0,/^http_access allow localnet$/s|^http_access allow localnet$|http_access deny localnet !egress_dst_allow_ip !egress_dst_allow_dom\nhttp_access allow localnet|' /etc/squid/squid.conf
+fi
+
 # ── SSL Bump (HTTPS Inspection) — conditional on toggle file ─────────────
 
 if [ -f /config/ssl_bump_enabled ]; then
@@ -586,6 +610,8 @@ fi
 [ -f /config/ip_blacklist.txt ]     && cp /config/ip_blacklist.txt /etc/squid/blacklists/ip/local.txt
 [ -f /config/ip_whitelist.txt ]     && cp /config/ip_whitelist.txt /etc/squid/whitelists/ip/local.txt
 [ -f /config/domain_blacklist.txt ] && cp /config/domain_blacklist.txt /etc/squid/blacklists/domain/local.txt
+[ -f /config/dst_allow_ip.txt ]     && cp /config/dst_allow_ip.txt /etc/squid/allowlists/dst_ip/local.txt
+[ -f /config/dst_allow_domain.txt ] && cp /config/dst_allow_domain.txt /etc/squid/allowlists/dst_domain/local.txt
 
 # ── Blacklist watchdog (live reload + log readability) ───────────────────────
 # The watchdog is shipped as /usr/local/bin/blacklist_watchdog.py and is

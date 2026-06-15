@@ -27,6 +27,11 @@ PAIRS = [
     ("/config/ip_blacklist.txt", "/etc/squid/blacklists/ip/local.txt"),
     ("/config/ip_whitelist.txt", "/etc/squid/whitelists/ip/local.txt"),
     ("/config/domain_blacklist.txt", "/etc/squid/blacklists/domain/local.txt"),
+    # Egress destination allowlists (default-deny mode). Enforced only when
+    # /config/egress_default_deny exists; the lists sync regardless so a later
+    # toggle picks them up on reconfigure.
+    ("/config/dst_allow_ip.txt", "/etc/squid/allowlists/dst_ip/local.txt"),
+    ("/config/dst_allow_domain.txt", "/etc/squid/allowlists/dst_domain/local.txt"),
 ]
 
 LOGS = [
