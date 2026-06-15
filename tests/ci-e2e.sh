@@ -151,6 +151,52 @@ else
   bad "audit log missing the action"
 fi
 
+# ── Egress default-deny destination allowlist ────────────────────────────────
+# Allowlist example.com + enable default-deny via the API (exercises the new Go
+# export + toggle), reload-config to restart the proxy so startup.sh injects the
+# rule, then assert the allowlisted host is reachable and another is denied.
+# Runs last: default-deny changes proxy behaviour for everything after it.
+echo "── egress allowlist (default-deny) ──"
+curl -s -m 10 -u "$AUTH" -X POST -H 'Content-Type: application/json' \
+  -d '{"entry":"example.com","description":"e2e allow"}' "$API/api/egress-allowlist" >/dev/null
+curl -s -m 10 -u "$AUTH" -X POST -H 'Content-Type: application/json' \
+  -d '{"egress_default_deny":"true"}' "$API/api/settings" >/dev/null
+curl -s -m 30 -u "$AUTH" -X POST "$API/api/maintenance/reload-config" >/dev/null
+
+# reload-config restarts the proxy. Poll a real proxied request to the
+# allowlisted host: a 200 means the proxy is back up AND enforcing (squidclient
+# mgr:info is an unreliable readiness probe right after a restart).
+ac=000
+for _ in $(seq 1 60); do
+  ac=$(docker exec secure-proxy-manager-proxy \
+        curl -s -m 10 -x http://127.0.0.1:3128 -o /dev/null -w '%{http_code}' http://example.com/ 2>/dev/null || echo 000)
+  case "$ac" in 200|301|302) break ;; esac
+  sleep 2
+done
+case "$ac" in
+  200|301|302) ok "proxy recovered; allowlisted destination reachable (example.com → $ac)" ;;
+  *)           bad "allowlisted destination unreachable after default-deny (example.com → $ac)" ;;
+esac
+
+if docker exec secure-proxy-manager-proxy \
+     grep -q 'http_access deny localnet !egress_dst_allow' /etc/squid/squid.conf 2>/dev/null; then
+  ok "default-deny rule injected into squid.conf"
+else
+  bad "default-deny rule missing from squid.conf"
+fi
+
+# A non-allowlisted destination must be denied; retry to absorb the restart
+# settle window.
+dc=000
+for _ in $(seq 1 15); do
+  dc=$(docker exec secure-proxy-manager-proxy \
+        curl -s -m 10 -x http://127.0.0.1:3128 -o /dev/null -w '%{http_code}' http://example.org/ 2>/dev/null || echo 000)
+  [ "$dc" = 403 ] && break
+  sleep 2
+done
+[ "$dc" = 403 ] && ok "non-allowlisted destination denied (example.org → 403)" \
+                || warn "non-allowlisted destination not denied (example.org → $dc)"
+
 echo
 echo "── result: ${PASS} passed, ${FAIL} failed ──"
 if [ "${FAIL}" -gt 0 ]; then

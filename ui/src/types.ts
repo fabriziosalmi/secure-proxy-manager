@@ -14,6 +14,14 @@ export interface DomainEntry {
   added_date: string;
 }
 
+export interface EgressEntry {
+  id: number;
+  entry: string;
+  type: 'cidr' | 'domain';
+  description: string | null;
+  added_date: string;
+}
+
 export interface DomainWhitelistEntry {
   id: number;
   domain: string;

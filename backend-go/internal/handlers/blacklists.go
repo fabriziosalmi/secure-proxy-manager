@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -53,6 +54,14 @@ func (h *BlacklistHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	r.With(authMW).Get("/api/domain-whitelist", listHandler(h.db, "domain_whitelist", "domain"))
 	r.With(authMW).Post("/api/domain-whitelist", h.AddDomainWhitelist)
 	r.With(authMW).Delete("/api/domain-whitelist/{id}", deleteByIDHandler(h.db, "domain_whitelist", nil))
+
+	// Egress destination allowlist (default-deny egress). Single table, entries
+	// classified as 'cidr' or 'domain'; pass h.cfg so deletes re-export.
+	r.With(authMW).Get("/api/egress-allowlist", listHandler(h.db, "dst_allowlist", "entry"))
+	r.With(authMW).Post("/api/egress-allowlist", h.AddDstAllow)
+	r.With(authMW).Delete("/api/egress-allowlist/clear-all", clearAllHandler(h.db, "dst_allowlist", h.cfg, "entry"))
+	r.With(authMW).Post("/api/egress-allowlist/bulk-delete", bulkDeleteHandler(h.db, "dst_allowlist", h.cfg))
+	r.With(authMW).Delete("/api/egress-allowlist/{id}", deleteByIDHandler(h.db, "dst_allowlist", h.cfg))
 
 	// Import endpoints
 	r.With(authMW).Post("/api/blacklists/import", h.Import)
@@ -269,6 +278,43 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 		database.Audit(h.db, user, "add_domain_blacklist", domain, item.Description)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Domain added to blacklist"})
+}
+
+// AddDstAllow adds an entry to the egress destination allowlist (default-deny
+// egress). The entry is auto-classified: an IP or CIDR is stored as 'cidr'
+// (Squid `dst`), anything else as a domain (Squid `dstdomain`).
+func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) {
+	var item models.EgressAllowItem
+	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	entry := strings.TrimSpace(strings.ToLower(item.Entry))
+	if entry == "" || strings.ContainsAny(entry, " ") {
+		writeError(w, http.StatusBadRequest, "invalid entry")
+		return
+	}
+	typ := "domain"
+	if isValidCIDR(entry) || net.ParseIP(entry) != nil {
+		typ = "cidr"
+	} else if !strings.Contains(entry, ".") || strings.HasPrefix(entry, "-") {
+		writeError(w, http.StatusBadRequest, "entry must be an IP, CIDR, or domain")
+		return
+	}
+	_, err := h.db.Exec("INSERT INTO dst_allowlist(entry, type, description) VALUES(?,?,?)", entry, typ, item.Description)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			writeError(w, http.StatusBadRequest, "entry already in allowlist")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	go propagate(h.db, h.cfg, "dst")
+	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
+		database.Audit(h.db, user, "add_egress_allowlist", entry, item.Description)
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Entry added to egress allowlist"})
 }
 
 func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Request) {

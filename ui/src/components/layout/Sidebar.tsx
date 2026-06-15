@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Ban, ShieldAlert, List, ScrollText, Users, Settings, Search, Command, LogOut } from 'lucide-react';
+import { LayoutDashboard, Ban, ShieldAlert, List, ScrollText, Users, Settings, Search, Command, LogOut, ArrowUpFromLine } from 'lucide-react';
 import { api } from '../../lib/api';
 
 type ApiStatus = 'connected' | 'disconnected' | 'checking';
@@ -12,6 +12,7 @@ const navItems = [
   { to: '/threats', icon: ShieldAlert, label: 'Threat Intel' },
   { to: '/logs', icon: List, label: 'Access Logs' },
   { to: '/audit', icon: ScrollText, label: 'Audit Log' },
+  { to: '/egress', icon: ArrowUpFromLine, label: 'Egress Allowlist' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

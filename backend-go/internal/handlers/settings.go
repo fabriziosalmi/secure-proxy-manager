@@ -147,6 +147,7 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		file string
 	}{
 		{"ssl_bump_enabled", "ssl_bump_enabled"},
+		{"egress_default_deny", "egress_default_deny"},
 		{"aggressive_caching_enabled", "aggressive_caching_enabled"},
 		{"enable_offline_mode", "offline_mode_enabled"},
 		{"enable_content_filtering", "content_filtering_enabled"},

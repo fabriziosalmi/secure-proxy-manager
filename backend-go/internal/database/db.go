@@ -96,6 +96,13 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 			description TEXT,
 			added_date TEXT DEFAULT (datetime('now'))
 		)`,
+		`CREATE TABLE IF NOT EXISTS dst_allowlist (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			entry TEXT UNIQUE NOT NULL,
+			type TEXT NOT NULL DEFAULT 'domain',
+			description TEXT,
+			added_date TEXT DEFAULT (datetime('now'))
+		)`,
 		`CREATE TABLE IF NOT EXISTS proxy_logs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			timestamp TEXT,
@@ -194,6 +201,7 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		{"allowed_networks", "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"},
 		// Feature toggles
 		{"ssl_bump_enabled", "false"},
+		{"egress_default_deny", "false"},
 		{"aggressive_caching_enabled", "false"},
 		{"cache_bypass_domains", ""},
 		{"enable_offline_mode", "false"},
@@ -262,6 +270,16 @@ func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
 	// 3. domain_blacklist.txt (with whitelist exclusions)
 	exclusions := loadWhitelistSet(db)
 	if err := exportDomainBlacklist(db, configDir+"/domain_blacklist.txt", exclusions); err != nil {
+		return err
+	}
+	// 3b. Egress destination allowlist (default-deny mode): split by type into a
+	// CIDR/IP list and a domain list that Squid reads as `dst` / `dstdomain`.
+	if err := exportLines(db, configDir+"/dst_allow_ip.txt",
+		"SELECT entry FROM dst_allowlist WHERE type='cidr' ORDER BY entry"); err != nil {
+		return err
+	}
+	if err := exportLines(db, configDir+"/dst_allow_domain.txt",
+		"SELECT entry FROM dst_allowlist WHERE type='domain' ORDER BY entry"); err != nil {
 		return err
 	}
 	// 4. dnsmasq blocklist (hosts format, re-read on SIGHUP). Remove the legacy
