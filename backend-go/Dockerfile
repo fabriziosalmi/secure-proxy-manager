@@ -1,5 +1,5 @@
 # ── stage 1: build ───────────────────────────────────────────────────────────
-FROM golang:1.24.2-alpine3.21 AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /src
 ENV CGO_ENABLED=0
