@@ -303,3 +303,82 @@ POST /api/domain-whitelist
 ```
 DELETE /api/domain-whitelist/{id}
 ```
+
+---
+
+## Egress allowlist {#egress-allowlist}
+
+The egress allowlist is the deny-by-default complement to the blacklists. It is consulted only when default-deny egress is enabled (the `egress_default_deny` setting, default `false`). While that setting is off — the default — behaviour is unchanged: clients may reach any destination not on a blacklist, and this allowlist has no effect. When it is on, the proxy denies all outbound egress from local clients except destinations on this allowlist; everything else is refused with a Squid 403.
+
+The `egress_default_deny` toggle is set via the bulk settings endpoint (`POST /api/settings`, flat `{name: value}` body), not through this group.
+
+Each entry is either an IP/CIDR (matched by Squid `dst`) or a domain (matched by Squid `dstdomain`). The type is auto-classified on add: a value parseable as an IP or CIDR is stored as type `cidr`, otherwise it is treated as a `domain`.
+
+### List entries
+
+```
+GET /api/egress-allowlist
+```
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": 1,
+      "entry": "acme-v02.api.example",
+      "type": "domain",
+      "description": "ACME server",
+      "added_date": "2026-03-01T12:00:00"
+    }
+  ]
+}
+```
+
+### Add entry
+
+```
+POST /api/egress-allowlist
+```
+
+```json
+{
+  "entry": "203.0.113.0/24",
+  "description": "optional description"
+}
+```
+
+`entry` accepts an IP, a CIDR range, or a domain; the type is auto-classified to `cidr` or `domain`.
+
+**Success:**
+
+```json
+{
+  "status": "success",
+  "message": "Entry added to egress allowlist"
+}
+```
+
+A 400 is returned with `"entry must be an IP, CIDR, or domain"` when `entry` is empty, whitespace, or otherwise invalid, and with `"entry already in allowlist"` on a duplicate.
+
+### Delete entry
+
+```
+DELETE /api/egress-allowlist/{id}
+```
+
+### Bulk delete
+
+```
+POST /api/egress-allowlist/bulk-delete
+```
+
+```json
+{ "ids": [1, 2, 3] }
+```
+
+### Clear all
+
+```
+DELETE /api/egress-allowlist/clear-all
+```

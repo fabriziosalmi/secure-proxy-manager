@@ -93,6 +93,17 @@ Custom directives are appended after the base configuration; later directives ov
 
 These can be overridden through the **Settings** page of the web UI, which writes the values to `/config/squid_settings.env`.
 
+## Default-deny egress (optional)
+
+By default the proxy is a deny-list gateway: clients may reach any destination that is not blacklisted. You can optionally switch it into a default-deny egress gateway, where local clients can reach **only** the destinations on an explicit allowlist and everything else is refused with a Squid 403.
+
+This mode is off by default and is configured entirely from the web UI and API, not via `.env`:
+
+- Enable it with the **Default-deny egress** toggle on the **Settings** page (next to SSL inspection). It maps to the `egress_default_deny` setting, which defaults to `false`.
+- Manage allowed destinations on the **Egress Allowlist** page (add, delete, search, paginate). Each entry is either an IP/CIDR or a domain; the type is auto-classified when you add it. A client is allowed only if the destination matches the IP allowlist or the domain allowlist.
+
+When the toggle is off, behaviour is unchanged and no destinations are blocked by this feature. Use default-deny egress when you need a strict "allow only these destinations" outbound policy — for example, letting an application reach only an approved ACME server, package mirror, or internal API.
+
 ## WAF custom rules
 
 Create `/config/waf_custom_rules.txt` with one regex per line. Lines starting with `#` are ignored. Each line is rejected if longer than 512 characters or if it contains a NUL byte. Restart the `waf` service to reload:

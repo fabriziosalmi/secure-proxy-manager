@@ -44,6 +44,18 @@ Every endpoint accepts either HTTP Basic or JWT bearer authentication unless not
 | `POST`   | `/api/domain-whitelist` | Add a domain whitelist entry |
 | `DELETE` | `/api/domain-whitelist/{id}` | Delete a domain whitelist entry |
 
+## Egress allowlist
+
+Optional default-deny outbound egress. Off by default (the `egress_default_deny` setting is `false`); when off, behaviour is unchanged and clients may reach any destination not on a blacklist. When the setting is on, local clients may only reach destinations on this allowlist. The toggle itself is set through the bulk settings endpoint (`POST /api/settings`), not through this group. Each entry is auto-classified as a CIDR or a domain on add. See [Blacklists and Whitelists](../guide/blacklists.md) for full details.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET`    | `/api/egress-allowlist` | List egress allowlist entries |
+| `POST`   | `/api/egress-allowlist` | Add an entry (`{"entry": "<ip\|cidr\|domain>", "description": "<optional>"}`) |
+| `DELETE` | `/api/egress-allowlist/{id}` | Delete an egress allowlist entry |
+| `POST`   | `/api/egress-allowlist/bulk-delete` | Delete multiple egress allowlist entries |
+| `DELETE` | `/api/egress-allowlist/clear-all` | Remove all egress allowlist entries |
+
 ## Logs and analytics
 
 | Method | Path | Description |

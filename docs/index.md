@@ -22,6 +22,8 @@ hero:
 features:
   - title: Traffic filtering
     details: Domain and IP blocking with CIDR and wildcard subdomain support. One-click import of curated public blocklists. Geo-based IP blocking by country code.
+  - title: Egress allowlist
+    details: Optional default-deny outbound egress. Turn SPM into a strict egress gateway where local clients reach only an explicit allowlist of IP/CIDR and domain destinations. Off by default; when off, behaviour is unchanged.
   - title: IP whitelist
     details: Whitelist trusted destination IPs to bypass the direct-IP block rule. Useful for LAN devices accessed by IP address.
   - title: ICAP WAF
