@@ -94,6 +94,10 @@ notifications) is managed from the UI and stored in the database, not in `.env`.
 - DNS sinkholing of blacklisted domains via dnsmasq, so blocked lookups never
   reach the proxy at all.
 - Direct-IP-access blocking and a method whitelist in Squid.
+- Optional default-deny egress (off by default): instead of the deny-list
+  blacklists, allow outbound traffic only to an explicit CIDR/domain allowlist
+  and refuse everything else. Toggled in Settings; destinations managed on the
+  Egress Allowlist page.
 
 **WAF**
 - 175 regex rules across 23 toggleable categories (SQLi, XSS, traversal, C2,
@@ -135,6 +139,10 @@ precedence.
 **Inspect HTTPS.** Settings > enable SSL inspection, download the generated CA,
 and install it as trusted on your clients. Without this, HTTPS requests are only
 filtered by host/IP and DNS, not by WAF body rules.
+
+**Lock egress to an allowlist.** Settings > enable default-deny egress, then add
+the approved IPs/CIDRs and domains on the Egress Allowlist page. Local clients
+can then reach only those destinations; everything else is refused.
 
 **Import a blocklist.** Blacklists > Import supports popular public lists by URL
 or pasted content. Imports are size-bounded and fetched with an SSRF-safe client
@@ -198,7 +206,7 @@ ESLint, Go vet/test, and the UI build is at `scripts/pre-commit-validate.sh`.
 
 ## API
 
-The backend exposes a REST API (72 routes) used by the UI. A machine-readable
+The backend exposes a REST API (77 routes) used by the UI. A machine-readable
 listing is available at `GET /api/docs`. Authenticate with HTTP Basic auth, or
 exchange credentials at `POST /api/auth/login` for a JWT and send it as a Bearer
 token.

@@ -56,6 +56,33 @@ A wildcard (`*`) is stripped at load time and is not accepted.
 
 Squid is configured to reject requests to raw IP addresses by default, preventing clients from bypassing the domain blacklist by addressing destinations directly. Add trusted destinations to the **IP whitelist** (`/config/ip_whitelist.txt`, also editable via the UI) to allow specific exceptions; whitelisted IPs are evaluated before the deny rule.
 
+## Default-deny egress
+
+The domain and IP blacklists and direct-IP blocking are deny-lists: a client may reach any destination that is not explicitly forbidden. Default-deny egress inverts this for environments that require a strict, allow-only outbound policy. When enabled, the proxy refuses all outbound egress from local clients except destinations on an explicit allowlist; every other destination is denied with an HTTP 403. Restricting outbound traffic to an approved set of endpoints reduces the exfiltration and lateral-movement surface and supports sovereign or strictly scoped egress policies — for example, allowing an application behind the proxy to reach only a CA/ACME server, a package mirror, and an internal API, and nothing else.
+
+This mode is **off by default**. With the `egress_default_deny` setting set to `false` (the default), behaviour is unchanged and clients may reach any destination not on a blacklist. Enabling it only restricts egress; it does not affect any other rule.
+
+To enable it:
+
+1. Turn on the **Default-deny egress** toggle on the **Settings** page (shown next to SSL inspection). This flips the `egress_default_deny` setting, which can also be set through the bulk settings API (`POST /api/settings`).
+2. Populate the **Egress Allowlist** page with the destinations clients are permitted to reach. Each entry is either an IP/CIDR or a domain; the type is auto-classified on add (a value that parses as an IP or CIDR is stored as `cidr`, otherwise as `domain`). Entries can be added, deleted, searched, and paginated from the UI or managed through the API.
+
+A local client is allowed only if the destination matches the IP allowlist **or** the domain allowlist; anything else is refused.
+
+### Egress allowlist API
+
+The allowlist endpoints use the same authentication as the rest of the API (HTTP Basic or JWT bearer):
+
+| Method   | Path                              | Description |
+| -------- | --------------------------------- | ----------- |
+| `GET`    | `/api/egress-allowlist`           | List entries (paginated). |
+| `POST`   | `/api/egress-allowlist`           | Add one entry. Body `{"entry": "<ip\|cidr\|domain>", "description": "<optional>"}`. The type is auto-classified. Returns 400 (`entry must be an IP, CIDR, or domain`) for empty or invalid input, 400 (`entry already in allowlist`) for a duplicate, and 200 (`{"status":"success","message":"Entry added to egress allowlist"}`) on success. |
+| `DELETE` | `/api/egress-allowlist/{id}`      | Remove one entry by ID. |
+| `POST`   | `/api/egress-allowlist/bulk-delete` | Remove entries by a list of IDs. |
+| `DELETE` | `/api/egress-allowlist/clear-all` | Remove all entries. |
+
+The `egress_default_deny` toggle itself is set through the bulk settings endpoint, not through this group.
+
 ## Database export redaction
 
 `GET /api/database/export` returns a full JSON dump of the database. Any column literally named `password`, `secret`, or `token` (across every exported table) is replaced with the string `***REDACTED***` before serialisation. Sensitive settings stored under those column names are therefore never present in the export.

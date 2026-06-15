@@ -46,6 +46,56 @@ Whitelisted domains are removed from the dnsmasq blocklist, so they resolve norm
 
 Manage via **Web UI → Blacklists → Domain Whitelist** or the [API](/api/blacklists#domain-whitelist).
 
+## Destination allowlist (default-deny egress)
+
+The blacklists above are deny-lists: clients may reach any destination that is not explicitly blocked. The destination allowlist inverts that for outbound egress. When enabled, the proxy denies all egress from local clients **except** destinations on the allowlist, and refuses everything else with a Squid `403`.
+
+This is the deny-by-default complement to the domain and IP blacklists and the direct-IP block rule. Use it for a strict "allow-only-these-destinations" outbound policy — for example, to let an app behind the proxy reach only an approved CA/ACME server, package mirror, or internal API and nothing else.
+
+::: warning
+Default-deny egress is **off by default**. While it is off, behaviour is unchanged: clients reach any destination that is not blacklisted. Turning it on with an empty allowlist blocks all outbound egress from local clients.
+:::
+
+### Enable default-deny egress
+
+Toggle **Default-deny egress** on the **Settings** page (next to SSL inspection), or set it through the bulk settings API:
+
+```bash
+curl -X POST https://localhost:8443/api/settings \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"egress_default_deny": true}'
+```
+
+The setting is `egress_default_deny` and defaults to `false`.
+
+### Manage allowed destinations
+
+Add destinations on the **Egress Allowlist** page (add, delete, search, paginate), or via the API. Each entry is one of:
+
+- IP or CIDR: `203.0.113.10`, `198.51.100.0/24` — matched on the destination IP.
+- Domain: `acme-v02.api.letsencrypt.org` — matched on the destination domain.
+
+The type is classified automatically on add: a value that parses as an IP or CIDR is stored as `cidr`, otherwise it is treated as a `domain`. A local client is allowed only if the destination matches the IP allowlist **or** the domain allowlist.
+
+```bash
+# Add a destination (auto-classified as cidr or domain)
+curl -X POST https://localhost:8443/api/egress-allowlist \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"entry": "acme-v02.api.letsencrypt.org", "description": "ACME"}'
+
+# List entries
+curl https://localhost:8443/api/egress-allowlist -H "$AUTH"
+
+# Delete one entry by ID
+curl -X DELETE https://localhost:8443/api/egress-allowlist/42 -H "$AUTH"
+```
+
+`POST /api/egress-allowlist/bulk-delete` removes entries by a list of IDs, and `DELETE /api/egress-allowlist/clear-all` removes them all. The `egress_default_deny` toggle is set through the bulk settings endpoint, not this group.
+
+::: tip
+Whitelists and blacklists still apply when default-deny egress is on. A destination must be on the allowlist **and** must not be blacklisted to be reachable.
+:::
+
 ## Importing blocklists
 
 ### Curated public lists (one click)

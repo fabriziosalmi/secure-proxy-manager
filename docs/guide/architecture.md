@@ -63,14 +63,17 @@ The `frontend` network connects `web` to `backend`. The `proxy-internal` network
 - `log_tailer` worker reads `/var/log/squid/access.log` and inserts parsed entries into the `proxy_logs` table.
 - `blacklist_refresh` worker re-imports configured public lists at the interval defined by the `auto_refresh_hours` setting.
 - Applies blacklist and whitelist changes by writing files under `/config/` and signalling the proxy or DNS service to reload.
+- When default-deny egress is enabled, exports the `dst_allowlist` table to `/config/dst_allow_ip.txt` (CIDR entries) and `/config/dst_allow_domain.txt` (domain entries), both written atomically, and writes the flag file `/config/egress_default_deny` to reflect the toggle.
 - WebSocket endpoint at `/api/ws/logs` broadcasts new log entries to connected UI clients.
 
 ### `proxy` — Squid
 
 - Forward proxy on port `3128`.
 - `proxy/startup.sh` generates `squid.conf` from a base template plus optional extras from `/config/custom_squid_extra.conf`, validates with `squid -k parse`, then initialises the cache with `squid -z`.
+- `blacklist_watchdog.py` polls the `/config` list files by mtime (roughly every two seconds) — including `dst_allow_ip.txt` and `dst_allow_domain.txt` — and runs `squid -k reconfigure` when one changes, so backend writes to the allowlist take effect without a restart.
 - ICAP integration forwards REQMOD and RESPMOD adaptations to the WAF.
 - Direct-IP access is blocked by ACL rules; whitelisted destination IPs in `ip_whitelist.txt` bypass that block.
+- When `/config/egress_default_deny` is present, `startup.sh` injects two ACLs — `acl egress_dst_allow_ip dst "<path>/dst_allow_ip.txt"` and `acl egress_dst_allow_dom dstdomain "<path>/dst_allow_domain.txt"` — and, immediately before the first `http_access allow localnet`, the rule `http_access deny localnet !egress_dst_allow_ip !egress_dst_allow_dom`. Local clients are then allowed only when the destination matches the IP allowlist or the domain allowlist; every other destination is refused. The toggle is off by default, so this mode is opt-in and the proxy otherwise reaches any destination not on a blacklist.
 - SSL bump uses the CA certificate at `/config/ssl_cert.pem` (auto-generated on first start if absent).
 - The container `iptables` rules redirect transparent intercepted traffic on ports 80 and 443 to 3128 inside the container.
 
@@ -101,7 +104,7 @@ The `frontend` network connects `web` to `backend`. The `proxy-internal` network
 
 1. The client sends an HTTP or HTTPS request to Squid on port `3128`.
 2. Squid issues an ICAP `REQMOD` to the WAF. The WAF inspects the URL, headers, and (for write methods) the request body; if the anomaly score exceeds the threshold it returns an HTTP 403 ICAP response and notifies the backend.
-3. If the WAF allows the request, Squid evaluates its ACLs: IP blacklist (source), domain blacklist (destination), direct-IP rule, and the IP whitelist that bypasses it.
+3. If the WAF allows the request, Squid evaluates its ACLs: IP blacklist (source), domain blacklist (destination), direct-IP rule, and the IP whitelist that bypasses it. When default-deny egress is enabled, a local client is allowed only if the destination is on the IP or domain allowlist; any other destination is refused with a 403.
 4. If Squid allows the request, it is forwarded to the destination. For HTTPS with SSL bump enabled, the connection is decrypted, inspected, and re-encrypted.
 5. Squid writes an entry to `/var/log/squid/access.log`.
 6. The backend `log_tailer` reads the new entry, parses it, inserts a row into `proxy_logs`, and broadcasts it to subscribed WebSocket clients.
@@ -110,7 +113,7 @@ The `frontend` network connects `web` to `backend`. The `proxy-internal` network
 
 | Volume | Purpose |
 |---|---|
-| `./config` | Shared configuration: blacklist/whitelist text files, SSL certificate, custom Squid extras, dynamic settings |
+| `./config` | Shared configuration: blacklist/whitelist text files, egress allowlist files (`dst_allow_ip.txt`, `dst_allow_domain.txt`) and the `egress_default_deny` flag, SSL certificate, custom Squid extras, dynamic settings |
 | `./data` | SQLite database |
 | `./logs` | Mounted as `/var/log/squid` inside the proxy container |
 | `squid-cache` (named) | Squid disk cache |
