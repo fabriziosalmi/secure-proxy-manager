@@ -207,14 +207,25 @@ func (s *Service) ValidateJWT(tokenStr string) (string, error) {
 	return username, nil
 }
 
-// tokenExpiry returns the token's own exp claim, or a default access-token
-// lifetime if the token can't be parsed.
+// tokenExpiry returns the token's own exp claim (used to size the blacklist TTL),
+// or a default access-token lifetime if the token can't be parsed/verified.
+//
+// The token is parsed WITH signature verification: callers revoke tokens they
+// have already authenticated (logout: the request's bearer token; refresh: a
+// token ValidateRefreshToken just accepted), so verification succeeds here, and
+// we never trust an exp claim from an unverified/forged token. HMAC is pinned to
+// block the alg-confusion attack, exactly as ValidateJWT does.
 func (s *Service) tokenExpiry(tokenStr string) time.Time {
 	exp := time.Now().Add(s.cfg.JWTExpireDuration)
-	parser := jwt.NewParser()
-	if token, _, _ := parser.ParseUnverified(tokenStr, jwt.MapClaims{}); token != nil {
+	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return []byte(s.cfg.SecretKey), nil
+	})
+	if err == nil && token != nil {
 		if claims, ok := token.Claims.(jwt.MapClaims); ok {
-			if expClaim, err := claims.GetExpirationTime(); err == nil && expClaim != nil {
+			if expClaim, e := claims.GetExpirationTime(); e == nil && expClaim != nil {
 				exp = expClaim.Time
 			}
 		}
