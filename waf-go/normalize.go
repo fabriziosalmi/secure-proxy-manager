@@ -5,6 +5,8 @@ import (
 	"net"
 	"regexp"
 	"strings"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // textContentTypes lists Content-Type prefixes for which body inspection is meaningful.
@@ -24,6 +26,11 @@ var (
 	reNullBytes    = regexp.MustCompile("(%00|\\\\x00|&#0+;?|\x00)")
 	reMultiSpace   = regexp.MustCompile(`\s{2,}`)
 	reAllSpace     = regexp.MustCompile(`\s+`)
+	// Comment forms used to break keywords apart for evasion, e.g. UN/**/ION,
+	// <scr<!-- -->ipt>. Stripped in the compacted scan form (non-greedy, dot
+	// matches newlines via the (?s) flag so multi-line comments collapse too).
+	reBlockComment = regexp.MustCompile(`(?s)/\*.*?\*/`)
+	reHTMLComment  = regexp.MustCompile(`(?s)<!--.*?-->`)
 )
 
 // normalizeInput applies anti-evasion transformations to the input.
@@ -50,6 +57,24 @@ func normalizeInput(input string) string {
 	// HTML entity decode
 	s = html.UnescapeString(s)
 
+	// Unicode NFKC fold: maps compatibility variants (fullwidth ＳＥＬＥＣＴ, ligatures,
+	// circled/wide forms) to their ASCII equivalents, defeating homoglyph evasion
+	// of keywords like <script>/SELECT that the regex rules expect in ASCII.
+	if !isASCII(s) {
+		s = norm.NFKC.String(s)
+	}
+
+	// Strip inline comments used to break keywords apart, replacing each with a
+	// SPACE so token boundaries are preserved the way the DB/HTML parser sees them
+	// (MySQL treats /**/ as whitespace): UNION/**/SELECT → "UNION SELECT" matches
+	// the SQLi rule; <scr<!-- -->ipt> → "<scr ipt>" then collapses below.
+	if strings.Contains(s, "/*") {
+		s = reBlockComment.ReplaceAllString(s, " ")
+	}
+	if strings.Contains(s, "<!--") {
+		s = reHTMLComment.ReplaceAllString(s, " ")
+	}
+
 	// Remove null bytes
 	s = reNullBytes.ReplaceAllString(s, "")
 
@@ -59,8 +84,20 @@ func normalizeInput(input string) string {
 	return s
 }
 
+// isASCII reports whether s is pure ASCII (fast path to skip NFKC, which is the
+// main per-request allocation cost on the hot path).
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
+}
+
 // compactInput strips ALL whitespace — catches evasion via space insertion
-// inside keywords (e.g. "<scr ipt>" → "<script>").
+// inside keywords (e.g. "<scr ipt>" → "<script>"). Comments are already turned
+// into spaces by normalizeInput, so by here they are just whitespace.
 func compactInput(s string) string {
 	return reAllSpace.ReplaceAllString(s, "")
 }
@@ -93,6 +130,21 @@ func isLANHost(host string) bool {
 		return false
 	}
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
+}
+
+// isCompressedEncoding reports whether a Content-Encoding marks the body as
+// compressed (so the raw bytes are not scannable by the plaintext rules).
+func isCompressedEncoding(enc string) bool {
+	enc = strings.ToLower(strings.TrimSpace(enc))
+	if enc == "" || enc == "identity" {
+		return false
+	}
+	for _, c := range []string{"gzip", "br", "deflate", "compress", "zstd"} {
+		if strings.Contains(enc, c) {
+			return true
+		}
+	}
+	return false
 }
 
 func isTextContent(contentType string) bool {

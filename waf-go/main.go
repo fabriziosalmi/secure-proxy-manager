@@ -47,6 +47,17 @@ var (
 	notifyChan    = make(chan map[string]interface{}, 64)
 	notifyDropped atomic.Int64
 
+	// bodyTruncatedCount counts requests whose body exceeded maxBodyInspectSize,
+	// so only a 1 MB prefix was scanned. Surfaced via /metrics so the coverage
+	// gap (payload hidden behind >1 MB of padding) is observable, not silent.
+	bodyTruncatedCount atomic.Int64
+
+	// respmodUninspectable counts text responses the WAF could NOT actually scan
+	// because the body was compressed (Content-Encoding gzip/br/deflate) — the
+	// regex rules would only see compressed bytes. Surfaced so operators know
+	// response-side coverage has a hole rather than assuming everything was clean.
+	respmodUninspectable atomic.Int64
+
 	// Reusable HTTP client for backend notifications (avoid alloc per call)
 	notifyClient = &http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{
 		MaxIdleConns:        10,
@@ -97,6 +108,28 @@ func cachedAnalyzeDGA(host string) DGAResult {
 
 // ── Custom rules loader ─────────────────────────────────────────────────────
 
+// overlyBroadRule reports a reason string if a compiled custom rule is
+// dangerously broad — it matches the empty string, or matches every entry in a
+// small benign corpus — which would make it fire on essentially all traffic.
+// Returns "" when the rule is acceptably specific.
+func overlyBroadRule(re *regexp.Regexp) string {
+	if re.MatchString("") {
+		return "matches the empty string (would match everything)"
+	}
+	benign := []string{
+		"https://example.com/index.html?lang=en",
+		`{"user":"alice","action":"view","id":42}`,
+		"GET /assets/app.css HTTP/1.1",
+		"the quick brown fox jumps over the lazy dog",
+	}
+	for _, b := range benign {
+		if !re.MatchString(b) {
+			return "" // distinguishes at least one benign input → specific enough
+		}
+	}
+	return "matches all benign sample inputs (too broad)"
+}
+
 func loadCustomRules() {
 	content, err := os.ReadFile("/config/waf_custom_rules.txt")
 	if err != nil {
@@ -121,6 +154,10 @@ func loadCustomRules() {
 			compiled, err := regexp.Compile("(?i)" + line)
 			if err != nil {
 				log.Printf("Error compiling custom rule %s: %v\n", line, err)
+			} else if reason := overlyBroadRule(compiled); reason != "" {
+				// A rule that matches everything (".*", "", "a?", …) would score 7
+				// on every request → mass false-positive blocks. Reject at load.
+				log.Printf("Custom rule %d skipped: %s (pattern %q)\n", i+1, reason, line)
 			} else {
 				customRules = append(customRules, Rule{
 					ID:       fmt.Sprintf("CUSTOM-%03d", i+1),
@@ -377,14 +414,30 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	if score < blockThreshold && req.Request.Body != nil {
 		ct := req.Request.Header.Get("Content-Type")
 		if shouldInspectBody(ct) {
-			bodyBytes, readErr := io.ReadAll(io.LimitReader(req.Request.Body, maxBodyInspectSize))
+			// Read one byte past the inspection limit so we can tell whether the
+			// body was truncated (i.e. a payload may be hiding past the limit).
+			bodyBytes, readErr := io.ReadAll(io.LimitReader(req.Request.Body, maxBodyInspectSize+1))
 			if readErr == nil && len(bodyBytes) > 0 {
+				truncated := len(bodyBytes) > maxBodyInspectSize
+				if truncated {
+					bodyBytes = bodyBytes[:maxBodyInspectSize]
+				}
 				bodyStr = normalizeInput(string(bodyBytes))
 				bodySize = len(bodyBytes)
 				req.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 				bodyMatches, bodyScore := matchRulesScored(bodyStr)
 				matches = append(matches, bodyMatches...)
 				score += bodyScore
+
+				// An over-limit body is a coverage gap, not a clean allow. Add a
+				// corroborating signal (below blockThreshold, so it can't block on
+				// its own — pairs with any other rule/heuristic hit) and count it.
+				if truncated {
+					bodyTruncatedCount.Add(1)
+					const oversizeBodyScore = 4
+					matches = append(matches, MatchResult{RuleID: "WAF-BODY-OVERSIZE", Category: "BODY_OVERSIZE", Score: oversizeBodyScore})
+					score += oversizeBodyScore
+				}
 			}
 		}
 	}
@@ -606,6 +659,15 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 			sendBlockResponse(w, "DANGEROUS_CONTENT_TYPE", 10)
 			return
 		}
+	}
+
+	// Compressed text bodies are uninspectable by the regex rules (they'd match
+	// against compressed bytes). Flag the coverage gap rather than silently
+	// returning a clean verdict. Decompression is deferred to a later phase.
+	if req.Response.Body != nil && isTextContent(contentType) && isCompressedEncoding(req.Response.Header.Get("Content-Encoding")) {
+		respmodUninspectable.Add(1)
+		w.WriteHeader(204, nil, false)
+		return
 	}
 
 	// Inspect text response bodies for reflected XSS and secret leaks
@@ -908,10 +970,18 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 			"waf_trafficlog_dropped_total %d\n"+
 			"# HELP waf_notify_dropped_total Backend notifications (alerts) dropped because the queue was full.\n"+
 			"# TYPE waf_notify_dropped_total counter\n"+
-			"waf_notify_dropped_total %d\n",
+			"waf_notify_dropped_total %d\n"+
+			"# HELP waf_body_truncated_total Requests whose body exceeded the inspection limit (only a prefix was scanned).\n"+
+			"# TYPE waf_body_truncated_total counter\n"+
+			"waf_body_truncated_total %d\n"+
+			"# HELP waf_respmod_uninspectable_total Text responses skipped because the body was compressed (coverage gap).\n"+
+			"# TYPE waf_respmod_uninspectable_total counter\n"+
+			"waf_respmod_uninspectable_total %d\n",
 		trafficEnabled,
 		trafficLogDropped.Load(),
 		notifyDropped.Load(),
+		bodyTruncatedCount.Load(),
+		respmodUninspectable.Load(),
 	)
 
 	// REQMOD inspection latency histogram → enables p50/p95/p99 in Prometheus.
