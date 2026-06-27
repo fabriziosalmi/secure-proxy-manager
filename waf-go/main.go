@@ -318,6 +318,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	}
 
 	startTime := time.Now()
+	defer func() { reqmodLatency.Observe(time.Since(startTime)) }()
 	eventID := nextEventID(startTime)
 
 	rawURL := req.Request.URL.String()
@@ -911,6 +912,9 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		trafficLogDropped.Load(),
 		notifyDropped.Load(),
 	)
+
+	// REQMOD inspection latency histogram → enables p50/p95/p99 in Prometheus.
+	reqmodLatency.write(w, "waf_reqmod_duration_seconds", "REQMOD request inspection latency in seconds.")
 }
 
 func (h *MgmtHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {

@@ -260,6 +260,54 @@ services:
     profiles:
       - tailscale
 
+  # ── Observability stack (opt-in) ───────────────────────────────────────────
+  # Enable with:  docker compose --profile observability up -d
+  # Prometheus scrapes backend:5000/metrics and waf:8080/metrics on the internal
+  # network; Grafana is published on localhost only.
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: secure-proxy-manager-prometheus
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - proxy-internal
+      - frontend
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    profiles:
+      - observability
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: secure-proxy-manager-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - frontend
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    profiles:
+      - observability
+
 networks:
   frontend:
     driver: bridge
@@ -273,4 +321,8 @@ volumes:
   tailscale-data:
     driver: local
   letsencrypt:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
     driver: local

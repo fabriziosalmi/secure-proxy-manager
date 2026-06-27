@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 )
 
 // StartLogRetention runs a daily cleanup of aged-out proxy_logs rows.
@@ -30,6 +32,7 @@ func StartLogRetention(ctx context.Context, db *sql.DB) {
 }
 
 func runRetention(db *sql.DB) {
+	metrics.WorkerHeartbeat("log_retention")
 	var val string
 	if err := db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='log_retention_days'").Scan(&val); err != nil {
 		return

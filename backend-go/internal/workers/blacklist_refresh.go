@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
 )
 
@@ -63,6 +64,7 @@ func StartBlacklistRefresh(ctx context.Context, db *sql.DB, configDir string, dn
 			case <-time.After(time.Duration(interval) * time.Hour):
 			}
 			log.Info().Msg("auto-refresh blacklists starting")
+			metrics.WorkerHeartbeat("blacklist_refresh")
 			refreshAll(db)
 			if err := database.ExportBlacklistsToFiles(db, configDir); err != nil {
 				log.Warn().Err(err).Msg("blacklist export after auto-refresh failed")
