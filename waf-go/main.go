@@ -701,8 +701,9 @@ func main() {
 	// Initialize traffic logger (async via bounded channel)
 	trafficLog = newTrafficLogger(trafficLogPath, trafficLogMaxBytes)
 	if trafficLog != nil {
+		// Report the path actually in use (may be the /tmp fallback), not the const.
 		log.Printf("Traffic logging to %s (max %dMB, queue=%d)\n",
-			trafficLogPath, trafficLogMaxBytes/(1<<20), logQueueSize)
+			trafficLog.path, trafficLog.maxSize/(1<<20), logQueueSize)
 		go func() {
 			for {
 				time.Sleep(5 * time.Second)
