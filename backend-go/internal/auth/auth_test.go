@@ -2,11 +2,46 @@ package auth
 
 import (
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 )
+
+// RevokeJWTOnce must let exactly one caller consume a given token even under
+// concurrent access — this is the gate that prevents refresh-token replay.
+func TestRevokeJWTOnceIsSingleUse(t *testing.T) {
+	cfg := &config.Config{
+		SecretKey:         "super-secret-key-for-testing-1234567",
+		JWTExpireDuration: 1 * time.Hour,
+	}
+	s := NewService(cfg, nil)
+	token, err := s.IssueRefreshToken("alice")
+	if err != nil {
+		t.Fatalf("IssueRefreshToken failed: %v", err)
+	}
+
+	const n = 50
+	var wg sync.WaitGroup
+	var winners int64
+	var mu sync.Mutex
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			if s.RevokeJWTOnce(token) {
+				mu.Lock()
+				winners++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if winners != 1 {
+		t.Fatalf("expected exactly 1 caller to consume the token, got %d", winners)
+	}
+}
 
 func TestHashPassword(t *testing.T) {
 	password := "mypassword"

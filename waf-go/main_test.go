@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/go-icap/icap"
@@ -43,6 +44,34 @@ func TestHandleOptions(t *testing.T) {
 	}
 	if w.Header().Get("Methods") != "REQMOD, RESPMOD" {
 		t.Errorf("Expected REQMOD, RESPMOD, got %s", w.Header().Get("Methods"))
+	}
+	if w.Header().Get("ISTag") == "" {
+		t.Error("OPTIONS response must carry an ISTag (RFC 3507 §4.7)")
+	}
+}
+
+// ISTag must be present on REQMOD/RESPMOD and must change when the effective
+// ruleset changes, so Squid invalidates cached verdicts after a toggle.
+func TestISTag(t *testing.T) {
+	if istagBase == "" {
+		initISTag()
+	}
+	first := currentISTag()
+	if first == "" || first[0] != '"' {
+		t.Fatalf("ISTag must be a non-empty quoted token, got %q", first)
+	}
+
+	// A REQMOD response carries it.
+	w := &mockResponseWriter{}
+	handleReqmod(w, &icap.Request{Request: httptest.NewRequest("GET", "http://example.com/safe", nil)})
+	if got := w.Header().Get("ISTag"); got != first {
+		t.Errorf("REQMOD ISTag = %q, want %q", got, first)
+	}
+
+	// A category toggle bumps the epoch → ISTag changes.
+	atomic.AddUint64(&istagEpoch, 1)
+	if second := currentISTag(); second == first {
+		t.Errorf("ISTag did not change after ruleset change: still %q", second)
 	}
 }
 

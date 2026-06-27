@@ -139,9 +139,14 @@ pkill -15 squid 2>/dev/null || true
 sleep 2
 
 # ── iptables for transparent proxy ──────────────────────────────────────────
+# Idempotent: -C checks whether the rule already exists before -A appends it, so
+# a `docker restart` (which reuses the netns) does not stack duplicate REDIRECT
+# rules on every boot.
 
-iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3128
-iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 3128
+iptables -t nat -C PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3128 2>/dev/null || \
+    iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3128
+iptables -t nat -C PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 3128 2>/dev/null || \
+    iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 3128
 
 # ── Read dynamic settings from backend DB (via config files written on save) ─
 
@@ -408,6 +413,30 @@ if [ -f /config/egress_default_deny ]; then
     # Deny any localnet client whose destination is in neither allowlist,
     # immediately before the first catch-all "http_access allow localnet".
     sed -i '0,/^http_access allow localnet$/s|^http_access allow localnet$|http_access deny localnet !egress_dst_allow_ip !egress_dst_allow_dom\nhttp_access allow localnet|' /etc/squid/squid.conf
+
+    # FAIL-CLOSED VERIFICATION. The toggle promises default-deny egress; a silent
+    # default-allow (e.g. if the anchors above drifted and the sed no-op'd) would
+    # be a security regression, not a cosmetic one. If the precise deny rule did
+    # not land, retry with a whitespace-tolerant anchor; if it still isn't there,
+    # neutralise the catch-all localnet allow so non-allowlisted egress falls
+    # through to the final "http_access deny all" (hard fail-closed) rather than
+    # leaking open.
+    DENY_RULE='http_access deny localnet !egress_dst_allow_ip !egress_dst_allow_dom'
+    if ! grep -qF "$DENY_RULE" /etc/squid/squid.conf; then
+        echo "WARNING: egress deny rule not injected via primary anchor — applying tolerant fallback"
+        grep -qF 'acl egress_dst_allow_ip dst' /etc/squid/squid.conf || \
+            sed -i 's|^[[:space:]]*acl CONNECT method CONNECT.*|&\nacl egress_dst_allow_ip dst "/etc/squid/allowlists/dst_ip/local.txt"\nacl egress_dst_allow_dom dstdomain "/etc/squid/allowlists/dst_domain/local.txt"|' /etc/squid/squid.conf
+        # Insert the deny immediately before any localnet allow (leading/internal
+        # whitespace and trailing tokens tolerated). "&" re-emits the matched
+        # allow line after.
+        sed -i "s|^[[:space:]]*http_access[[:space:]]\\+allow[[:space:]]\\+localnet.*|${DENY_RULE}\\n&|" /etc/squid/squid.conf
+    fi
+    if ! grep -qF "$DENY_RULE" /etc/squid/squid.conf; then
+        echo "CRITICAL: could not enforce egress default-deny — denying ALL localnet egress (fail-closed)"
+        sed -i 's|^[[:space:]]*http_access[[:space:]]\+allow[[:space:]]\+localnet.*|http_access deny localnet  # egress default-deny: enforcement injection failed — fail-closed|' /etc/squid/squid.conf
+    else
+        echo "Egress default-deny enforcement rule verified present"
+    fi
 fi
 
 # ── SSL Bump (HTTPS Inspection) — conditional on toggle file ─────────────

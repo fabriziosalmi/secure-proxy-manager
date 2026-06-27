@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -139,6 +141,43 @@ func loadCustomRules() {
 	}
 }
 
+// ── ICAP ISTag (RFC 3507 §4.7) ───────────────────────────────────────────────
+// Squid uses the ISTag to decide whether a cached ICAP verdict is still valid.
+// It MUST change whenever the effective ruleset changes, otherwise Squid may
+// keep serving stale allow/block decisions after a rule reload or a category
+// toggle. We derive a stable base from the loaded rules + the startup disabled
+// set, and bump an atomic epoch on every runtime change (no lock on the hot
+// path). The value is emitted on OPTIONS and every REQMOD/RESPMOD response.
+var (
+	istagBase  string // 16-hex digest of the rules + startup-disabled categories
+	istagEpoch uint64 // bumped on every runtime ruleset change (category toggle)
+)
+
+// initISTag must run after loadCustomRules() and after the env-disabled set is
+// populated, so both are folded into the base digest.
+func initISTag() {
+	h := sha256.New()
+	for _, cr := range blockRules {
+		fmt.Fprintf(h, "C:%s\n", cr.Category)
+		for _, r := range cr.Rules {
+			fmt.Fprintf(h, "R:%s:%d:%d\n", r.ID, r.Severity, r.Tier)
+		}
+	}
+	// Fold the startup disabled set so a different WAF_DISABLED_CATEGORIES env
+	// yields a different ISTag across restarts.
+	disabledCatMu.RLock()
+	for cat := range disabledCats {
+		fmt.Fprintf(h, "D:%s\n", cat)
+	}
+	disabledCatMu.RUnlock()
+	istagBase = hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// currentISTag returns the quoted ISTag for the current effective ruleset.
+func currentISTag() string {
+	return `"` + istagBase + "-" + strconv.FormatUint(atomic.LoadUint64(&istagEpoch), 36) + `"`
+}
+
 // disabledCategories tracks which WAF rule categories are turned off.
 var (
 	disabledCatMu sync.RWMutex
@@ -174,6 +213,7 @@ func init() {
 	}
 
 	loadCustomRules()
+	initISTag()
 	initHeuristics()
 
 	// Log rule counts
@@ -248,6 +288,7 @@ func recoverICAP(w icap.ResponseWriter, method string) {
 }
 
 func handleOptions(w icap.ResponseWriter, req *icap.Request) {
+	w.Header().Set("ISTag", currentISTag())
 	w.Header().Set("Methods", "REQMOD, RESPMOD")
 	w.Header().Set("Service", "SecureProxy-WAF-2.0")
 	w.Header().Set("Preview", "1024")
@@ -270,6 +311,7 @@ func nextEventID(t time.Time) string {
 }
 
 func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
+	w.Header().Set("ISTag", currentISTag())
 	if req.Request == nil || req.Request.URL == nil {
 		w.WriteHeader(204, nil, false)
 		return
@@ -542,6 +584,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 }
 
 func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
+	w.Header().Set("ISTag", currentISTag())
 	if req.Response == nil {
 		w.WriteHeader(204, nil, false)
 		return
@@ -846,6 +889,28 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 				"# TYPE waf_safe_cache_size gauge\n"+
 				"waf_safe_cache_size %v\n", size)
 	}
+
+	// Observability for silent-drop paths: forensics (traffic log) and alerts
+	// (backend notifications) are shed under load / when /data is read-only.
+	// Without these, the failures from finding #112 are invisible to monitoring.
+	trafficEnabled := 0
+	if trafficLog != nil {
+		trafficEnabled = 1
+	}
+	fmt.Fprintf(w,
+		"# HELP waf_trafficlog_enabled Whether the WAF traffic feature log has a writable sink (1) or is disabled (0).\n"+
+			"# TYPE waf_trafficlog_enabled gauge\n"+
+			"waf_trafficlog_enabled %d\n"+
+			"# HELP waf_trafficlog_dropped_total Traffic feature records dropped because the queue was full.\n"+
+			"# TYPE waf_trafficlog_dropped_total counter\n"+
+			"waf_trafficlog_dropped_total %d\n"+
+			"# HELP waf_notify_dropped_total Backend notifications (alerts) dropped because the queue was full.\n"+
+			"# TYPE waf_notify_dropped_total counter\n"+
+			"waf_notify_dropped_total %d\n",
+		trafficEnabled,
+		trafficLogDropped.Load(),
+		notifyDropped.Load(),
+	)
 }
 
 func (h *MgmtHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
@@ -938,7 +1003,8 @@ func (h *MgmtHandlers) CategoriesToggleHandler(w http.ResponseWriter, r *http.Re
 		disabledCats[req.Category] = true
 	}
 	disabledCatMu.Unlock()
-	safeCache.Invalidate() // Clear cache since rules changed
+	atomic.AddUint64(&istagEpoch, 1) // effective ruleset changed → new ISTag so Squid drops cached verdicts
+	safeCache.Invalidate()           // Clear cache since rules changed
 	log.Printf("Category %s: enabled=%v\n", req.Category, req.Enabled)
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status":"ok","category":"%s","enabled":%v}`, req.Category, req.Enabled)
