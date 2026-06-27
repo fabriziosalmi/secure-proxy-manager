@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { useQuery } from '@tanstack/react-query';
 import type { SettingRow } from '../types';
-import { Save, Download, Shield, Network, Key, Bell } from 'lucide-react';
+import { Save, Download, Shield, Network, Key, Bell, Lock, User } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
@@ -30,6 +30,18 @@ const settingsSchema = z.object({
   custom_squid_conf: z.string().optional()
 }).catchall(z.string());
 
+// Sections for the sticky quick-nav. `id` must match the matching section's
+// anchor id below; the icon/colour mirror each section's card header.
+const SECTIONS = [
+  { id: 'sec-proxy', label: 'Proxy', Icon: Network, color: 'text-primary' },
+  { id: 'sec-notifications', label: 'Notifications', Icon: Bell, color: 'text-orange-500' },
+  { id: 'sec-dns-waf', label: 'DNS & WAF', Icon: Shield, color: 'text-cyan-500' },
+  { id: 'sec-access', label: 'Access', Icon: Lock, color: 'text-indigo-500' },
+  { id: 'sec-certificates', label: 'Certificates', Icon: Key, color: 'text-yellow-500' },
+  { id: 'sec-security', label: 'Security', Icon: Shield, color: 'text-emerald-500' },
+  { id: 'sec-account', label: 'Account', Icon: User, color: 'text-sky-500' },
+] as const;
+
 export function Settings() {
   const { data: settingsData, isLoading: loading, error } = useQuery<SettingRow[]>({
     queryKey: ['settings'],
@@ -42,6 +54,36 @@ export function Settings() {
   // double-click within the same tick would fire handleSave twice and
   // POST settings twice. The ref blocks the second call immediately.
   const savingRef = useRef(false);
+
+  // Quick-nav: track which section is currently near the top of the viewport so
+  // the matching chip can be highlighted (scrollspy).
+  const [activeSection, setActiveSection] = useState<string>(SECTIONS[0].id);
+  useEffect(() => {
+    // Guard: not present in test (jsdom) or very old browsers — the nav still
+    // works for jumping, it just won't auto-highlight the active section.
+    if (typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Among the sections crossing the trigger band, pick the topmost.
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible[0]) setActiveSection(visible[0].target.id);
+      },
+      // Trigger band = just below the sticky nav, top ~30% of the viewport.
+      { rootMargin: '-96px 0px -68% 0px', threshold: 0 }
+    );
+    SECTIONS.forEach((s) => {
+      const el = document.getElementById(s.id);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  const scrollToSection = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setActiveSection(id);
+  };
 
   useEffect(() => {
     if (!loading && !error && Array.isArray(settingsData)) {
@@ -147,6 +189,34 @@ export function Settings() {
         </button>
       </div>
 
+      {/* Quick-nav: full-width sticky bar that jumps to each settings section */}
+      <div className="sticky top-0 z-20 -mt-2 py-2 bg-background/80 backdrop-blur-md">
+        <nav
+          aria-label="Settings sections"
+          className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar rounded-xl border border-white/[0.06] bg-white/[0.02] p-1.5"
+        >
+          {SECTIONS.map(({ id, label, Icon, color }) => {
+            const active = activeSection === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => scrollToSection(id)}
+                aria-current={active ? 'true' : undefined}
+                className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  active
+                    ? 'bg-primary/15 text-primary ring-1 ring-primary/30'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-white/[0.04]'
+                }`}
+              >
+                <Icon className={`w-3.5 h-3.5 ${active ? 'text-primary' : color}`} />
+                {label}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
       {/* Live service status */}
       <ServiceStatus />
 
@@ -159,7 +229,7 @@ export function Settings() {
       {/* Setting cards flow into two columns on wide screens to cut scrolling;
           break-inside-avoid keeps each card whole. */}
       <div className="columns-1 xl:columns-2 xl:gap-6 [&>*]:mb-6 [&>*]:break-inside-avoid">
-        <Card className="bg-transparent">
+        <Card id="sec-proxy" className="bg-transparent scroll-mt-24">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Network className="w-5 h-5 text-primary" />
@@ -330,7 +400,7 @@ export function Settings() {
         {/* Client Setup — how to connect devices */}
         <ClientSetup />
 
-        <Card className="bg-transparent">
+        <Card id="sec-notifications" className="bg-transparent scroll-mt-24">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Bell className="w-5 h-5 text-orange-500" />
@@ -458,7 +528,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        <Card className="bg-transparent">
+        <Card id="sec-dns-waf" className="bg-transparent scroll-mt-24">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Shield className="w-5 h-5 text-cyan-500" />
@@ -675,7 +745,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        <Card className="bg-transparent">
+        <Card id="sec-access" className="bg-transparent scroll-mt-24">
           <CardHeader className="p-4 pb-2">
             <div className="flex items-center space-x-2">
               <Shield className="w-4 h-4 text-indigo-500" />
@@ -773,7 +843,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        <Card className="bg-transparent">
+        <Card id="sec-certificates" className="bg-transparent scroll-mt-24">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Key className="w-5 h-5 text-yellow-500" />
@@ -846,7 +916,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        <Card className="bg-transparent">
+        <Card id="sec-security" className="bg-transparent scroll-mt-24">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Shield className="w-5 h-5 text-emerald-500" />
@@ -935,7 +1005,7 @@ export function Settings() {
         </Card>
 
         {/* Account & Maintenance — side by side */}
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div id="sec-account" className="grid gap-4 lg:grid-cols-2 scroll-mt-24">
           <ChangePassword />
           <Maintenance />
         </div>
