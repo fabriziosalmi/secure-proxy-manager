@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 )
 
 // UpdateInfo holds the latest release info from GitHub.
@@ -89,6 +90,7 @@ func semverGreater(a, b string) bool {
 }
 
 func check(url string) {
+	metrics.WorkerHeartbeat("update_checker")
 	client := &http.Client{Timeout: 10 * time.Second}
 	if !strings.Contains(url, "://") {
 		url = "https://api.github.com/repos/" + url + "/releases/latest"
