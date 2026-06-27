@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -42,7 +43,10 @@ func (h *AuthHandlers) Register(r chi.Router) {
 	r.With(authMW).Post("/api/change-password", h.ChangePassword)
 	r.With(authMW).Get("/api/ws-token", h.WSToken)
 	r.Get("/health", h.HealthLegacy)
+	r.Get("/livez", h.HealthLegacy)
+	r.Get("/readyz", h.Ready)
 	r.Get("/api/health", h.Health)
+	r.Get("/api/ready", h.Ready)
 }
 
 func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
@@ -111,8 +115,13 @@ func (h *AuthHandlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid or expired refresh token")
 		return
 	}
-	// Revoke old refresh token (rotation — prevents replay)
-	h.svc.RevokeJWT(req.RefreshToken)
+	// Atomically consume the old refresh token (one-time rotation). If a
+	// concurrent request already consumed it, reject this one as a replay —
+	// only the first caller is issued a fresh token pair.
+	if !h.svc.RevokeJWTOnce(req.RefreshToken) {
+		writeError(w, http.StatusUnauthorized, "refresh token already used")
+		return
+	}
 
 	newAccess, err := h.svc.IssueJWT(username)
 	if err != nil {
@@ -197,8 +206,37 @@ func (h *AuthHandlers) WSToken(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "token": token})
 }
 
+// HealthLegacy is a cheap liveness check: it answers 200 as long as the process
+// is up and serving. It deliberately does NOT touch the database — use Ready for
+// that. (Also served at /livez.)
 func (h *AuthHandlers) HealthLegacy(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "healthy"})
+}
+
+// Ready is a real readiness probe: it verifies the database is reachable within
+// a short deadline and returns 503 otherwise. The Docker healthcheck points here
+// so a wedged/locked/corrupt SQLite surfaces as an unhealthy container instead of
+// the process falsely reporting healthy. (Also served at /api/ready.)
+func (h *AuthHandlers) Ready(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := h.db.PingContext(ctx); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"status": "unready",
+			"reason": "database unreachable",
+		})
+		return
+	}
+	// A trivial query confirms the connection can actually execute, not just ping.
+	var one int
+	if err := h.db.QueryRowContext(ctx, "SELECT 1").Scan(&one); err != nil || one != 1 {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"status": "unready",
+			"reason": "database query failed",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
 func (h *AuthHandlers) Health(w http.ResponseWriter, r *http.Request) {

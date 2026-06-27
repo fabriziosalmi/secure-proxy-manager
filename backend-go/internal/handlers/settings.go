@@ -120,6 +120,14 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		database.Audit(h.db, user, "update_settings", strings.Join(keys, ","), "")
 	}
+	// Persist all settings atomically so a mid-loop failure can't leave the DB
+	// half-updated relative to the toggle files written below.
+	tx, err := h.db.Begin()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck — no-op once committed
 	for k, v := range body {
 		// Only known-safe, writable keys may be set (rejects internally-managed
 		// state like default_password_changed and any non-conforming key name).
@@ -133,12 +141,18 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 				val = enc
 			}
 		}
-		if _, err := h.db.Exec(
+		if _, err := tx.Exec(
 			"INSERT INTO settings(setting_name,setting_value) VALUES(?,?) ON CONFLICT(setting_name) DO UPDATE SET setting_value=excluded.setting_value",
 			k, val,
 		); err != nil {
-			log.Error().Str("key", k).Err(err).Msg("BulkUpdate: failed to save setting")
+			log.Error().Str("key", k).Err(err).Msg("BulkUpdate: failed to save setting — rolling back")
+			writeError(w, http.StatusInternalServerError, "failed to save settings (rolled back)")
+			return
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit settings")
+		return
 	}
 
 	// Toggle files — Squid reads these at container startup.

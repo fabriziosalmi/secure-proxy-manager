@@ -8,14 +8,22 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 )
 
 const (
-	trafficLogPath     = "/data/waf_traffic.jsonl"
-	trafficLogMaxBytes = 100 * 1 << 20 // 100 MB
-	highEntropyThresh  = 4.5
-	logQueueSize       = 4096 // Bounded channel — drops on overflow
+	trafficLogPath             = "/data/waf_traffic.jsonl"
+	trafficLogFallback         = "/tmp/waf_traffic.jsonl" // used when the primary path is read-only (e.g. read_only /data in prod)
+	trafficLogMaxBytes         = 100 * 1 << 20            // 100 MB
+	trafficLogFallbackMaxBytes = 16 * 1 << 20             // 16 MB — fallback is a memory-backed tmpfs; keep it small to avoid OOMing the container
+	highEntropyThresh          = 4.5
+	logQueueSize               = 4096 // Bounded channel — drops on overflow
 )
+
+// trafficLogDropped counts feature records dropped because the bounded queue was
+// full. Exposed via /metrics so operators can see forensics being shed under
+// load instead of it failing silently.
+var trafficLogDropped atomic.Int64
 
 // ── Shannon Entropy ─────────────────────────────────────────────────────────
 
@@ -81,18 +89,47 @@ type TrafficLogger struct {
 
 var trafficLog *TrafficLogger
 
-func newTrafficLogger(path string, maxSize int64) *TrafficLogger {
+// openTrafficFile tries to open path for appending, creating its directory.
+// Returns nil on any failure (e.g. read-only filesystem) so the caller can fall
+// back to a writable location.
+func openTrafficFile(path string) *os.File {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		log.Printf("Failed to create traffic log dir %s: %v\n", dir, err)
+		log.Printf("traffic log: cannot create dir %s: %v\n", dir, err)
 		return nil
 	}
-
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Printf("Failed to open traffic log %s: %v\n", path, err)
+		log.Printf("traffic log: cannot open %s: %v\n", path, err)
 		return nil
 	}
+	return f
+}
+
+// newTrafficLogger opens the primary path; if that is unwritable (the prod
+// read_only /data case — issue #112), it falls back to fallbackPath (tmpfs) so
+// the feature/event-ID forensics keep flowing instead of silently no-op'ing.
+func newTrafficLogger(path string, maxSize int64) *TrafficLogger {
+	if envPath := os.Getenv("WAF_TRAFFIC_LOG_PATH"); envPath != "" {
+		path = envPath
+	}
+
+	f := openTrafficFile(path)
+	if f == nil && path != trafficLogFallback {
+		log.Printf("traffic log: primary path %s unwritable, falling back to %s — forensics will NOT survive a restart\n", path, trafficLogFallback)
+		path = trafficLogFallback
+		f = openTrafficFile(path)
+		// The fallback is a memory-backed tmpfs; shrink the rotation cap so the
+		// log can't grow into the container's memory limit.
+		if maxSize > trafficLogFallbackMaxBytes {
+			maxSize = trafficLogFallbackMaxBytes
+		}
+	}
+	if f == nil {
+		log.Printf("traffic log: DISABLED — no writable path (records will be dropped, see waf_trafficlog_enabled metric)\n")
+		return nil
+	}
+	log.Printf("traffic log: writing to %s\n", path)
 
 	info, _ := f.Stat()
 	written := int64(0)
@@ -124,7 +161,8 @@ func (tl *TrafficLogger) Write(feature TrafficFeature) {
 	select {
 	case tl.ch <- feature:
 	default:
-		// Queue full — drop silently (backpressure)
+		// Queue full — drop (backpressure), but count it so it's observable.
+		trafficLogDropped.Add(1)
 	}
 }
 

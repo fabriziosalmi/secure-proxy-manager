@@ -12,6 +12,34 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 )
 
+func TestReadyHandler(t *testing.T) {
+	db, svc, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewAuthHandlers(db, svc, cfg, nil, nil)
+
+	// Healthy DB → 200 ready.
+	r := httptest.NewRequest("GET", "/readyz", nil)
+	w := httptest.NewRecorder()
+	h.Ready(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 ready, got %d", w.Code)
+	}
+	var resp map[string]string
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["status"] != "ready" {
+		t.Errorf("Expected status=ready, got %v", resp)
+	}
+
+	// Closed DB → 503 unready (proves the probe actually exercises the DB).
+	cleanup()
+	r = httptest.NewRequest("GET", "/readyz", nil)
+	w = httptest.NewRecorder()
+	h.Ready(w, r)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected 503 after DB close, got %d", w.Code)
+	}
+}
+
 func TestLoginHandler(t *testing.T) {
 	db, svc, cfg, cleanup := setupTestDB(t)
 	defer cleanup()

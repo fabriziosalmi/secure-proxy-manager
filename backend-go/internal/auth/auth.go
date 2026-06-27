@@ -207,34 +207,74 @@ func (s *Service) ValidateJWT(tokenStr string) (string, error) {
 	return username, nil
 }
 
-// RevokeJWT adds a token to the blacklist (in memory + DB).
-func (s *Service) RevokeJWT(tokenStr string) {
-	parser := jwt.NewParser()
-	token, _, _ := parser.ParseUnverified(tokenStr, jwt.MapClaims{})
+// tokenExpiry returns the token's own exp claim (used to size the blacklist TTL),
+// or a default access-token lifetime if the token can't be parsed/verified.
+//
+// The token is parsed WITH signature verification: callers revoke tokens they
+// have already authenticated (logout: the request's bearer token; refresh: a
+// token ValidateRefreshToken just accepted), so verification succeeds here, and
+// we never trust an exp claim from an unverified/forged token. HMAC is pinned to
+// block the alg-confusion attack, exactly as ValidateJWT does.
+func (s *Service) tokenExpiry(tokenStr string) time.Time {
 	exp := time.Now().Add(s.cfg.JWTExpireDuration)
-	if token != nil {
+	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return []byte(s.cfg.SecretKey), nil
+	})
+	if err == nil && token != nil {
 		if claims, ok := token.Claims.(jwt.MapClaims); ok {
-			if expClaim, err := claims.GetExpirationTime(); err == nil && expClaim != nil {
+			if expClaim, e := claims.GetExpirationTime(); e == nil && expClaim != nil {
 				exp = expClaim.Time
 			}
 		}
 	}
+	return exp
+}
+
+// persistRevocation writes a blacklisted token hash to the DB for restart
+// survival. Failure is non-fatal (revocation still works in-memory until
+// restart) but is logged so operators can detect in-memory/DB divergence.
+func (s *Service) persistRevocation(h string, exp time.Time) {
+	if s.db == nil {
+		return
+	}
+	if _, err := s.db.Exec(
+		"INSERT OR REPLACE INTO jwt_blacklist(token_hash, expires_at) VALUES(?,?)",
+		h, exp.Format(time.RFC3339),
+	); err != nil {
+		log.Warn().Err(err).Msg("failed to persist revoked JWT to blacklist DB — revocation will not survive restart")
+	}
+}
+
+// RevokeJWT adds a token to the blacklist (in memory + DB).
+func (s *Service) RevokeJWT(tokenStr string) {
+	exp := s.tokenExpiry(tokenStr)
 	h := tokenHash(tokenStr)
 	s.jwtBlacklistMu.Lock()
 	s.jwtBlacklist[h] = exp
 	s.jwtBlacklistMu.Unlock()
+	s.persistRevocation(h, exp)
+}
 
-	// Persist to DB for restart survival. Failure is non-fatal (revocation
-	// still works in-memory until restart) but must be logged so operators
-	// can detect a divergence between in-memory and DB state.
-	if s.db != nil {
-		if _, err := s.db.Exec(
-			"INSERT OR REPLACE INTO jwt_blacklist(token_hash, expires_at) VALUES(?,?)",
-			h, exp.Format(time.RFC3339),
-		); err != nil {
-			log.Warn().Err(err).Msg("failed to persist revoked JWT to blacklist DB — revocation will not survive restart")
-		}
+// RevokeJWTOnce atomically blacklists a token and reports whether THIS call was
+// the first to do so. Used for one-time refresh-token rotation: when several
+// requests present the same refresh token concurrently, exactly one sees `true`,
+// so only one is issued a fresh token pair. This closes the check-then-revoke
+// replay race that RevokeJWT + a separate ValidateRefreshToken would leave open.
+func (s *Service) RevokeJWTOnce(tokenStr string) bool {
+	exp := s.tokenExpiry(tokenStr)
+	h := tokenHash(tokenStr)
+	s.jwtBlacklistMu.Lock()
+	if prev, exists := s.jwtBlacklist[h]; exists && time.Now().Before(prev) {
+		s.jwtBlacklistMu.Unlock()
+		return false // already consumed by a concurrent or earlier caller
 	}
+	s.jwtBlacklist[h] = exp
+	s.jwtBlacklistMu.Unlock()
+	s.persistRevocation(h, exp)
+	return true
 }
 
 // Authenticate extracts and validates credentials from r.
