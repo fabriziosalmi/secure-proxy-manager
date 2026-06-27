@@ -5,6 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.0] - 2026-06-27
+
+### Added
+
+- **Observability stack.** The backend now exposes Prometheus metrics at
+  `/metrics` (internal network only — nginx does not proxy it): RED metrics per
+  matched route (`spm_http_requests_total`, `spm_http_request_duration_seconds`,
+  `spm_http_requests_in_flight`), database connection-pool gauges
+  (`spm_db_connections_*`), per-worker heartbeats
+  (`spm_worker_last_success_timestamp_seconds`), build info, plus the standard
+  Go runtime/process collectors. A structured zerolog access log is emitted for
+  every request. The WAF gains a REQMOD latency histogram
+  (`waf_reqmod_duration_seconds`) so p50/p95/p99 are derivable. An **opt-in**
+  `observability` Docker Compose profile ships Prometheus + Grafana (localhost
+  -bound, auto-provisioned datasource): `docker compose --profile observability up -d`.
+- **Real readiness probe.** New `/readyz` (+ `/livez`, `/api/ready`) that pings
+  the database (`PingContext` + `SELECT 1`) and returns `503` when it is
+  unreachable. The container healthcheck now probes readiness, not bare
+  liveness, so a wedged/locked SQLite surfaces as an unhealthy container instead
+  of a falsely healthy one.
+
+### Changed
+
+- **WAF anti-evasion normalization.** Inline SQL/HTML comments are stripped
+  (replaced with a space, matching how the DB/HTML parser tokenizes), so
+  `UNION/**/SELECT` and `<scr<!-- -->ipt>` are caught while non-keyword splits
+  like `UN/**/ION` are not false-positived. Input is NFKC-folded so fullwidth /
+  homoglyph keyword variants (`＜script＞`, `ＳＥＬＥＣＴ`) collapse to the ASCII the
+  rules expect (pure-ASCII requests skip the fold via a fast path).
+- WAF traffic feature log falls back to a writable tmpfs path when `/data` is
+  read-only instead of silently becoming a no-op, and over-broad custom rules
+  (matching the empty string or every benign sample) are rejected at load.
+
+### Security
+
+- **Egress default-deny now fails closed.** If the Squid deny-rule injection
+  cannot be verified (anchor drift), startup retries with a tolerant anchor and,
+  failing that, denies all localnet egress rather than silently reverting to
+  default-allow.
+- **WAF ICAP responses carry an `ISTag`** (RFC 3507), derived from a ruleset
+  hash and bumped on category toggles, so Squid invalidates cached allow/block
+  verdicts when rules change.
+- **Refresh-token rotation replay race closed** via an atomic consume-once
+  revoke; `RestoreConfig` and bulk settings updates are now transactional.
+- JWT expiry for the revocation blacklist is read from a **signature-verified**
+  token (was `ParseUnverified`), closing a CodeQL `go/missing-jwt-signature-check`
+  finding.
+- `iptables` PREROUTING redirect rules are made idempotent (no duplicates across
+  restarts).
+- New coverage-gap signals so detection holes are observable rather than silent:
+  oversize request bodies (`waf_body_truncated_total` + a corroborating score),
+  compressed/uninspectable responses (`waf_respmod_uninspectable_total`), and
+  shed forensics/alerts (`waf_trafficlog_*`, `waf_notify_dropped_total`).
+- Dependency bumps clearing HIGH advisories: `form-data` 4.0.6, `undici` 7.28.0,
+  `vite` 8.1.0 (UI), and `golang.org/x/crypto` 0.53.0 / `golang.org/x/net`
+  0.56.0 kept current in the Go modules.
+
+### Tests
+
+- SSRF/IP-safety kill-switch (`netguard`) raised from 0% to a full table-driven
+  matrix; added tests for ISTag, readiness, the refresh-token race, the
+  observability middleware, the WAF latency histogram, and the new normalization
+  /evasion paths.
+
 ## [3.9.0] - 2026-06-15
 
 ### Added
