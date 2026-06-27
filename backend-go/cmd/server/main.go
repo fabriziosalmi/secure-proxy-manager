@@ -26,6 +26,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/docker"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/handlers"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	ws "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/websocket"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
@@ -109,6 +110,8 @@ func run() error {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(appMW.RequestID)
+	r.Use(appMW.Metrics)   // RED metrics per route (records after routing)
+	r.Use(appMW.AccessLog) // one structured log line per request
 	r.Use(appMW.CORS(cfg))
 	r.Use(appMW.SecurityHeaders)
 	r.Use(appMW.GlobalRateLimit(20, 60))       // 20 req/s sustained, 60 burst per IP
@@ -127,6 +130,11 @@ func run() error {
 	handlers.NewDatabaseHandlers(db).Register(r, authMW)
 	handlers.NewDNSDetectHandlers(db).Register(r, authMW)
 	handlers.RegisterAPIDocs(r, authMW)
+
+	// ── Prometheus metrics (internal network only; not proxied by nginx) ──────
+	metrics.SetBuildInfo(config.AppVersion)
+	metrics.RegisterDBStats(db)
+	r.Handle("/metrics", metrics.Handler())
 
 	// ── pprof (auth-protected) ───────────────────────────────────────────────
 	r.Route("/debug/pprof", func(pr chi.Router) {

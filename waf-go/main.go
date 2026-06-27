@@ -318,6 +318,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	}
 
 	startTime := time.Now()
+	defer func() { reqmodLatency.Observe(time.Since(startTime)) }()
 	eventID := nextEventID(startTime)
 
 	rawURL := req.Request.URL.String()
@@ -700,8 +701,9 @@ func main() {
 	// Initialize traffic logger (async via bounded channel)
 	trafficLog = newTrafficLogger(trafficLogPath, trafficLogMaxBytes)
 	if trafficLog != nil {
+		// Report the path actually in use (may be the /tmp fallback), not the const.
 		log.Printf("Traffic logging to %s (max %dMB, queue=%d)\n",
-			trafficLogPath, trafficLogMaxBytes/(1<<20), logQueueSize)
+			trafficLog.path, trafficLog.maxSize/(1<<20), logQueueSize)
 		go func() {
 			for {
 				time.Sleep(5 * time.Second)
@@ -911,6 +913,9 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		trafficLogDropped.Load(),
 		notifyDropped.Load(),
 	)
+
+	// REQMOD inspection latency histogram → enables p50/p95/p99 in Prometheus.
+	reqmodLatency.write(w, "waf_reqmod_duration_seconds", "REQMOD request inspection latency in seconds.")
 }
 
 func (h *MgmtHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {

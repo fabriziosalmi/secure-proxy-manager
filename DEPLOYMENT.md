@@ -340,8 +340,39 @@ curl -skI https://localhost:8443/                # web over HTTPS
 curl -sk  https://localhost:8443/api/health      # backend via the UI proxy
 ```
 
-The backend's own healthcheck runs `/server -healthcheck` inside the container;
-its API port is bound to `127.0.0.1:5001` on the host.
+The backend's own healthcheck runs `/server -healthcheck` inside the container,
+which now probes **readiness** (`/readyz` — pings the database) rather than bare
+liveness, so a wedged SQLite surfaces as an unhealthy container. Probe endpoints:
+
+| Endpoint | Meaning |
+|----------|---------|
+| `/livez`, `/health` | Liveness — process is up (no DB touch). |
+| `/readyz`, `/api/ready` | Readiness — DB reachable (`PingContext` + `SELECT 1`); `503` if not. |
+
+### Metrics & observability
+
+The backend and WAF both expose Prometheus metrics on their **internal** ports
+(not proxied by nginx, so not reachable from outside the Docker network):
+
+```bash
+docker compose exec backend wget -qO- http://localhost:5000/metrics | head   # spm_http_*, spm_db_*, spm_worker_*
+docker compose exec waf     wget -qO- http://localhost:8080/metrics | head   # waf_*, waf_reqmod_duration_seconds, waf_trafficlog_*
+```
+
+Backend metrics: RED per route (`spm_http_requests_total`,
+`spm_http_request_duration_seconds`, `spm_http_requests_in_flight`), DB pool
+gauges (`spm_db_connections_*`), worker heartbeats
+(`spm_worker_last_success_timestamp_seconds`), plus `go_*`/`process_*`. WAF
+metrics add a REQMOD latency histogram and the silent-drop counters
+(`waf_trafficlog_enabled`, `waf_trafficlog_dropped_total`,
+`waf_notify_dropped_total`).
+
+An opt-in Prometheus + Grafana stack scrapes both:
+
+```bash
+docker compose --profile observability up -d
+# Prometheus → http://127.0.0.1:9090   Grafana → http://127.0.0.1:3000 (admin / $GRAFANA_ADMIN_PASSWORD)
+```
 
 ### Logs and shell access
 

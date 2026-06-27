@@ -15,6 +15,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/websocket"
 )
 
@@ -37,6 +38,7 @@ func StartLogTailer(ctx context.Context, db *sql.DB, logPath, stateDir string, h
 				return
 			case <-ticker.C:
 			}
+			metrics.WorkerHeartbeat("log_tailer")
 			// #nosec G304
 			f, err := os.Open(logPath)
 			if err != nil {
