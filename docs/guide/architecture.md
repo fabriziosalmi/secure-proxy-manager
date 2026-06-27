@@ -35,7 +35,7 @@ Secure Proxy Manager is a multi-service Docker Compose application. Each service
 │                         ▼                                       │
 │              waf  (internal port 1344)                          │
 │              Go ICAP server                                     │
-│              175 regex rules + 7 behavioural heuristics         │
+│              170 regex rules + 7 behavioural heuristics         │
 │              Notifies backend at POST /api/internal/alert       │
 │                                                                 │
 │              dns  (internal port 53)                            │
@@ -65,6 +65,8 @@ The `frontend` network connects `web` to `backend`. The `proxy-internal` network
 - Applies blacklist and whitelist changes by writing files under `/config/` and signalling the proxy or DNS service to reload.
 - When default-deny egress is enabled, exports the `dst_allowlist` table to `/config/dst_allow_ip.txt` (CIDR entries) and `/config/dst_allow_domain.txt` (domain entries), both written atomically, and writes the flag file `/config/egress_default_deny` to reflect the toggle.
 - WebSocket endpoint at `/api/ws/logs` broadcasts new log entries to connected UI clients.
+- Liveness at `/livez` (and `/health`); readiness at `/readyz` (pings the database) — the container healthcheck uses readiness, so a wedged database is reported as unhealthy.
+- Prometheus metrics at `/metrics` (RED metrics per route, DB connection-pool gauges, per-worker heartbeats, Go runtime), plus a structured access-log line per request. The endpoint is internal-only — nginx does not proxy it.
 
 ### `proxy` — Squid
 
@@ -80,12 +82,15 @@ The `frontend` network connects `web` to `backend`. The `proxy-internal` network
 ### `waf` — Go ICAP server
 
 - Listens for ICAP `REQMOD` (and limited `RESPMOD`) on port `1344`.
-- Applies 175 regex rules across 23 categories (SQL injection, XSS, directory traversal, command injection, Unicode homograph obfuscation, response XSS, response secret leak, and more).
+- Applies 170 regex rules across 21 categories (SQL injection, XSS, directory traversal, command injection, Unicode homograph obfuscation, response XSS, response secret leak, and more).
 - Seven behavioural heuristics: entropy thresholding, C2 beaconing detection, PII leak counting, destination sharding, protocol ghosting, header morphing, sequence validation. Each heuristic is individually toggleable via the `WAF_H_*` environment variables.
 - Anomaly scoring with a configurable threshold (`WAF_BLOCK_THRESHOLD`, default `10`).
-- Loads custom regex patterns from `/config/waf_custom_rules.txt` at startup (one pattern per line, `#` for comments).
+- Anti-evasion input normalization: multi-pass URL/HTML decode, inline SQL/HTML comment stripping (so `UNION/**/SELECT` is caught), and NFKC Unicode folding to defeat fullwidth/homoglyph keyword variants.
+- Loads custom regex patterns from `/config/waf_custom_rules.txt` at startup (one pattern per line, `#` for comments); over-broad patterns that would match everything are rejected.
 - Tar-pits repeat offenders: clients seen with three or more blocks within sixty seconds are delayed by ten seconds per request.
 - Notifies the backend of blocks via authenticated `POST /api/internal/alert`.
+- Emits an `ISTag` (RFC 3507) on ICAP responses, derived from the ruleset and bumped on category toggles, so Squid invalidates cached verdicts when rules change.
+- Prometheus metrics at `:8080/metrics`: aggregate counters, a REQMOD latency histogram, and coverage-gap counters (traffic-log enabled/dropped, oversize bodies, uninspectable compressed responses).
 
 ### `dns` — dnsmasq sinkhole
 

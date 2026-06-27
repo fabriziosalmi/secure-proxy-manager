@@ -11,7 +11,7 @@ It is intended for homelab operators and small networks that need a manageable, 
 - **Egress allowlist.** Optional default-deny outbound egress that turns the proxy into a strict egress gateway. When enabled, local clients may reach only the destinations on an explicit allowlist of IP/CIDR and domain entries; everything else is refused. Off by default — when off, behaviour is unchanged and clients may reach any destination not on a blacklist.
 - **IP whitelist.** Trusted destination IPs that bypass the direct-IP block rule.
 - **Domain whitelist.** Domains excluded from the dnsmasq DNS sinkhole.
-- **WAF.** A Go ICAP server that inspects request payloads with 175 regex rules across 23 categories and 7 behavioural heuristics (entropy, beaconing, PII, sharding, ghosting, morphing, sequence). Limited response inspection (reflected XSS, secret leak, PII) is also performed.
+- **WAF.** A Go ICAP server that inspects request payloads with 170 regex rules across 21 categories and 7 behavioural heuristics (entropy, beaconing, PII, sharding, ghosting, morphing, sequence). Limited response inspection (reflected XSS, secret leak, PII) is also performed.
 - **Real-time logs.** WebSocket-based live log stream with search, filters, and statistics.
 - **Dashboard.** Traffic timeline, security score, blocked counts, top domains and clients.
 - **Blocklist import.** Import from URL or inline content. One-click import of curated public lists (Firehol, Spamhaus, StevenBlack, URLhaus, Phishing Army, and others).
