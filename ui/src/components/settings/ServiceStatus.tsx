@@ -25,7 +25,7 @@ function Tile({ icon: Icon, label, value, tone = '', accent = false }: {
   icon: typeof Activity; label: string; value: ReactNode; tone?: string; accent?: boolean;
 }) {
   return (
-    <div className={`rounded-lg border px-3 py-2.5 ${accent ? 'border-cyan-500/20 bg-cyan-500/[0.04]' : 'border-white/[0.06] bg-white/[0.02]'}`}>
+    <div className={`rounded-lg border px-3 py-2.5 ${accent ? 'border-cyan-500/20 bg-cyan-500/[0.04]' : 'border-border/50 bg-secondary/30'}`}>
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
         <Icon className="w-3 h-3" />
         {label}
@@ -51,7 +51,7 @@ export function ServiceStatus() {
     <Card className="bg-transparent">
       <CardContent className="p-4">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-          <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+          <div className="rounded-lg border border-border/50 bg-secondary/30 px-3 py-2.5">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
               <Activity className="w-3 h-3" /> Proxy
             </div>
@@ -60,7 +60,7 @@ export function ServiceStatus() {
                 {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400/70" />}
                 <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? 'bg-emerald-400' : 'bg-red-400'}`} />
               </span>
-              <span className={`text-sm font-semibold ${running ? 'text-emerald-300' : 'text-red-300'}`}>
+              <span className={`text-sm font-semibold ${running ? 'text-emerald-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'}`}>
                 {status.isLoading ? '…' : running ? 'Running' : 'Offline'}
               </span>
             </div>
@@ -70,7 +70,7 @@ export function ServiceStatus() {
           <Tile icon={Tag} label="Version" value={s?.version ? `v${s.version}` : '—'} />
           <Tile icon={Users} label="Clients" value={num(clients.data?.total_clients)} accent />
           <Tile icon={ArrowDownUp} label="Requests 24h" value={num(s?.requests_count)} />
-          <Tile icon={Ban} label="Blocked 24h" value={num(summary.data?.today_blocked)} tone={(summary.data?.today_blocked ?? 0) > 0 ? 'text-orange-300' : ''} />
+          <Tile icon={Ban} label="Blocked 24h" value={num(summary.data?.today_blocked)} tone={(summary.data?.today_blocked ?? 0) > 0 ? 'text-orange-600 dark:text-orange-300' : ''} />
           <Tile icon={Database} label="Cache hit" value={hitPct} />
         </div>
       </CardContent>

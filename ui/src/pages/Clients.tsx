@@ -50,12 +50,14 @@ function SortTh({ k, label, sort, onSort }: { k: SortKey; label: string; sort: S
 
 function Stat({ label, value, tone = '' }: { label: string; value: string | number; tone?: string }) {
   return (
-    <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
+    <div className="rounded-lg bg-secondary/40 border border-border/50 px-3 py-2.5">
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
       <div className={`text-lg font-semibold tabular-nums ${tone}`}>{value}</div>
     </div>
   );
 }
+
+const EMPTY_CLIENTS: ClientStat[] = [];
 
 export function Clients() {
   const [search, setSearch] = useState('');
@@ -68,7 +70,7 @@ export function Clients() {
     refetchInterval: 30_000,
   });
 
-  const clients: ClientStat[] = data?.clients ?? [];
+  const clients: ClientStat[] = data?.clients ?? EMPTY_CLIENTS;
 
   const rows = useMemo(() => {
     const t = search.trim().toLowerCase();
@@ -86,7 +88,7 @@ export function Clients() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Users className="w-5 h-5 text-cyan-400" />
+            <Users className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
             Clients
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -95,7 +97,7 @@ export function Clients() {
         </div>
         <button
           onClick={() => refetch()}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-white/[0.04] hover:bg-white/[0.08] transition-colors btn-press"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-secondary/50 hover:bg-secondary/80 transition-colors btn-press"
         >
           <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
           Refresh
@@ -108,7 +110,7 @@ export function Clients() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter by IP…"
-          className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.08] text-sm focus:outline-none focus:border-cyan-500/40 focus:bg-white/[0.05] transition-colors"
+          className="w-full pl-9 pr-3 py-2 rounded-lg bg-secondary/40 border border-border/70 text-sm focus:outline-none focus:border-cyan-500/40 focus:bg-secondary/60 transition-colors"
         />
       </div>
 
@@ -116,7 +118,7 @@ export function Clients() {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-white/[0.02] border-b border-white/[0.06]">
+              <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-secondary/30 border-b border-border/50">
                 <tr>
                   <th className="px-5 py-3 font-medium">Client IP</th>
                   <SortTh k="requests" label="Requests" sort={sort} onSort={setSort} />
@@ -125,7 +127,7 @@ export function Clients() {
                   <th className="px-5 py-3 font-medium">Last seen</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.04]">
+              <tbody className="divide-y divide-border/30">
                 {isLoading ? (
                   <tr><td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">Loading…</td></tr>
                 ) : rows.length === 0 ? (
@@ -153,10 +155,10 @@ export function Clients() {
                         <td className="px-5 py-3"><IpBadge ip={c.ip_address} /></td>
                         <td className="px-5 py-3 font-mono tabular-nums">{c.requests.toLocaleString()}</td>
                         <td className="px-5 py-3 font-mono tabular-nums">
-                          {c.blocked > 0 ? <span className="text-orange-300">{c.blocked.toLocaleString()}</span> : <span className="text-muted-foreground">0</span>}
+                          {c.blocked > 0 ? <span className="text-orange-600 dark:text-orange-300">{c.blocked.toLocaleString()}</span> : <span className="text-muted-foreground">0</span>}
                         </td>
                         <td className="px-5 py-3">
-                          <span className={`font-mono tabular-nums text-xs ${br >= 20 ? 'text-red-300' : br > 0 ? 'text-amber-300' : 'text-muted-foreground'}`}>
+                          <span className={`font-mono tabular-nums text-xs ${br >= 20 ? 'text-red-600 dark:text-red-300' : br > 0 ? 'text-amber-600 dark:text-amber-300' : 'text-muted-foreground'}`}>
                             {br}%
                           </span>
                         </td>
@@ -190,13 +192,13 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div ref={modalRef} className="relative w-full max-w-md h-full overflow-y-auto bg-[var(--card)] border-l border-white/[0.08] shadow-2xl animate-in">
-        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-white/[0.06] bg-[var(--card)]">
+      <div ref={modalRef} className="relative w-full max-w-md h-full overflow-y-auto bg-[var(--card)] border-l border-border/70 shadow-2xl animate-in">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-border/50 bg-[var(--card)]">
           <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-cyan-400" />
+            <Activity className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
             <IpBadge ip={ip} />
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors" aria-label="Close">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-secondary/70 transition-colors" aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -207,8 +209,8 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
           <div className="p-5 space-y-6">
             <div className="grid grid-cols-2 gap-3">
               <Stat label="Requests" value={data.total_requests.toLocaleString()} />
-              <Stat label="Blocked" value={data.blocked.toLocaleString()} tone={data.blocked > 0 ? 'text-orange-300' : ''} />
-              <Stat label="Block rate" value={`${br}%`} tone={br >= 20 ? 'text-red-300' : br > 0 ? 'text-amber-300' : ''} />
+              <Stat label="Blocked" value={data.blocked.toLocaleString()} tone={data.blocked > 0 ? 'text-orange-600 dark:text-orange-300' : ''} />
+              <Stat label="Block rate" value={`${br}%`} tone={br >= 20 ? 'text-red-600 dark:text-red-300' : br > 0 ? 'text-amber-600 dark:text-amber-300' : ''} />
               <Stat label="Last seen" value={relative(data.last_seen)} />
             </div>
             <div className="text-xs text-muted-foreground flex items-center gap-1.5">
@@ -225,11 +227,11 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
               ) : (
                 <div className="space-y-1">
                   {data.top_domains.map((d) => (
-                    <div key={d.destination} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white/[0.02] hover:bg-white/[0.04] transition-colors">
+                    <div key={d.destination} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors">
                       <span className="font-mono text-xs truncate" title={d.destination}>{d.destination}</span>
                       <span className="flex items-center gap-2 shrink-0 text-xs tabular-nums">
                         {d.blocked > 0 && (
-                          <span className="inline-flex items-center gap-1 text-orange-300" title={`${d.blocked} blocked`}>
+                          <span className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-300" title={`${d.blocked} blocked`}>
                             <Ban className="w-3 h-3" />{d.blocked}
                           </span>
                         )}
@@ -250,11 +252,11 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
                   {data.recent.map((e, i) => {
                     const blocked = /DENIED|403|BLOCKED/i.test(e.status);
                     return (
-                      <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.02] text-xs">
+                      <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/30 text-xs">
                         <span className="text-muted-foreground w-14 shrink-0" title={parseUtc(e.timestamp).toLocaleString()}>{relative(e.timestamp)}</span>
                         <span className="font-mono text-[10px] text-muted-foreground w-12 shrink-0">{e.method}</span>
                         <span className="font-mono truncate flex-1" title={e.destination}>{e.destination}</span>
-                        <span className={`shrink-0 ${blocked ? 'text-orange-300' : 'text-muted-foreground'}`}>{blocked ? 'blocked' : 'ok'}</span>
+                        <span className={`shrink-0 ${blocked ? 'text-orange-600 dark:text-orange-300' : 'text-muted-foreground'}`}>{blocked ? 'blocked' : 'ok'}</span>
                       </div>
                     );
                   })}

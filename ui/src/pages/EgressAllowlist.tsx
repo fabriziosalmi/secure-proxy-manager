@@ -71,7 +71,7 @@ export function EgressAllowlist() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent flex items-center">
+        <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent flex items-center">
           <ArrowUpFromLine className="w-6 h-6 mr-2 text-primary" />Egress Allowlist
         </h1>
         <p className="text-muted-foreground">Destinations a client may reach when default-deny egress is on</p>

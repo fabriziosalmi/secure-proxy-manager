@@ -39,7 +39,7 @@ export function Login({ onLogin }: Props) {
               <div className="absolute inset-0 rounded-2xl bg-primary/5 animate-glow-pulse" />
             </div>
           </div>
-          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">
+          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">
             Secure Proxy Manager
           </h1>
           <p className="text-sm text-muted-foreground">Sign in to continue</p>
