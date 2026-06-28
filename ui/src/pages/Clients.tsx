@@ -86,7 +86,7 @@ export function Clients() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Users className="w-5 h-5 text-cyan-400" />
+            <Users className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
             Clients
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -125,7 +125,7 @@ export function Clients() {
                   <th className="px-5 py-3 font-medium">Last seen</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.04]">
+              <tbody className="divide-y divide-border/30">
                 {isLoading ? (
                   <tr><td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">Loading…</td></tr>
                 ) : rows.length === 0 ? (
@@ -153,10 +153,10 @@ export function Clients() {
                         <td className="px-5 py-3"><IpBadge ip={c.ip_address} /></td>
                         <td className="px-5 py-3 font-mono tabular-nums">{c.requests.toLocaleString()}</td>
                         <td className="px-5 py-3 font-mono tabular-nums">
-                          {c.blocked > 0 ? <span className="text-orange-300">{c.blocked.toLocaleString()}</span> : <span className="text-muted-foreground">0</span>}
+                          {c.blocked > 0 ? <span className="text-orange-600 dark:text-orange-300">{c.blocked.toLocaleString()}</span> : <span className="text-muted-foreground">0</span>}
                         </td>
                         <td className="px-5 py-3">
-                          <span className={`font-mono tabular-nums text-xs ${br >= 20 ? 'text-red-300' : br > 0 ? 'text-amber-300' : 'text-muted-foreground'}`}>
+                          <span className={`font-mono tabular-nums text-xs ${br >= 20 ? 'text-red-600 dark:text-red-300' : br > 0 ? 'text-amber-600 dark:text-amber-300' : 'text-muted-foreground'}`}>
                             {br}%
                           </span>
                         </td>
@@ -193,7 +193,7 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
       <div ref={modalRef} className="relative w-full max-w-md h-full overflow-y-auto bg-[var(--card)] border-l border-border/70 shadow-2xl animate-in">
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-border/50 bg-[var(--card)]">
           <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-cyan-400" />
+            <Activity className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
             <IpBadge ip={ip} />
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-secondary/70 transition-colors" aria-label="Close">
@@ -207,8 +207,8 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
           <div className="p-5 space-y-6">
             <div className="grid grid-cols-2 gap-3">
               <Stat label="Requests" value={data.total_requests.toLocaleString()} />
-              <Stat label="Blocked" value={data.blocked.toLocaleString()} tone={data.blocked > 0 ? 'text-orange-300' : ''} />
-              <Stat label="Block rate" value={`${br}%`} tone={br >= 20 ? 'text-red-300' : br > 0 ? 'text-amber-300' : ''} />
+              <Stat label="Blocked" value={data.blocked.toLocaleString()} tone={data.blocked > 0 ? 'text-orange-600 dark:text-orange-300' : ''} />
+              <Stat label="Block rate" value={`${br}%`} tone={br >= 20 ? 'text-red-600 dark:text-red-300' : br > 0 ? 'text-amber-600 dark:text-amber-300' : ''} />
               <Stat label="Last seen" value={relative(data.last_seen)} />
             </div>
             <div className="text-xs text-muted-foreground flex items-center gap-1.5">
@@ -229,7 +229,7 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
                       <span className="font-mono text-xs truncate" title={d.destination}>{d.destination}</span>
                       <span className="flex items-center gap-2 shrink-0 text-xs tabular-nums">
                         {d.blocked > 0 && (
-                          <span className="inline-flex items-center gap-1 text-orange-300" title={`${d.blocked} blocked`}>
+                          <span className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-300" title={`${d.blocked} blocked`}>
                             <Ban className="w-3 h-3" />{d.blocked}
                           </span>
                         )}
@@ -254,7 +254,7 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
                         <span className="text-muted-foreground w-14 shrink-0" title={parseUtc(e.timestamp).toLocaleString()}>{relative(e.timestamp)}</span>
                         <span className="font-mono text-[10px] text-muted-foreground w-12 shrink-0">{e.method}</span>
                         <span className="font-mono truncate flex-1" title={e.destination}>{e.destination}</span>
-                        <span className={`shrink-0 ${blocked ? 'text-orange-300' : 'text-muted-foreground'}`}>{blocked ? 'blocked' : 'ok'}</span>
+                        <span className={`shrink-0 ${blocked ? 'text-orange-600 dark:text-orange-300' : 'text-muted-foreground'}`}>{blocked ? 'blocked' : 'ok'}</span>
                       </div>
                     );
                   })}

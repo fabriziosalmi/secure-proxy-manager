@@ -301,7 +301,7 @@ export function Settings() {
             <div className="grid grid-cols-2 gap-2">
               <div className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
                 <div>
-                  <p className="text-xs font-medium text-blue-400">Tailscale</p>
+                  <p className="text-xs font-medium text-blue-600 dark:text-blue-400">Tailscale</p>
                   <p className="text-[10px] text-muted-foreground">Overlay network access</p>
                 </div>
                 <Toggle
@@ -315,7 +315,7 @@ export function Settings() {
               </div>
               <div className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
                 <div>
-                  <p className="text-xs font-medium text-emerald-400">Dynamic DNS</p>
+                  <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Dynamic DNS</p>
                   <p className="text-[10px] text-muted-foreground">Auto-update public IP</p>
                 </div>
                 <Toggle
@@ -432,7 +432,7 @@ export function Settings() {
                   <div className="mt-4 pt-4 border-t border-border/50 space-y-4">
                     {/* Telegram */}
                     <div className="space-y-2">
-                      <h4 className="text-sm font-medium text-blue-400">Telegram Bot</h4>
+                      <h4 className="text-sm font-medium text-blue-600 dark:text-blue-400">Telegram Bot</h4>
                       <div className="grid gap-2">
                         <input 
                           type="text" 
@@ -455,7 +455,7 @@ export function Settings() {
 
                     {/* Gotify */}
                     <div className="space-y-2">
-                      <h4 className="text-sm font-medium text-green-400">Gotify Server</h4>
+                      <h4 className="text-sm font-medium text-green-600 dark:text-green-400">Gotify Server</h4>
                       <div className="grid gap-2">
                         <input 
                           type="text" 
@@ -478,7 +478,7 @@ export function Settings() {
 
                     {/* ntfy.sh */}
                     <div className="space-y-2">
-                      <h4 className="text-sm font-medium text-cyan-400">ntfy.sh (Self-hosted Push)</h4>
+                      <h4 className="text-sm font-medium text-cyan-600 dark:text-cyan-400">ntfy.sh (Self-hosted Push)</h4>
                       <div className="grid gap-2">
                         <input
                           type="text"
@@ -501,7 +501,7 @@ export function Settings() {
 
                     {/* MS Teams */}
                     <div className="space-y-2">
-                      <h4 className="text-sm font-medium text-purple-400">Microsoft Teams</h4>
+                      <h4 className="text-sm font-medium text-purple-600 dark:text-purple-400">Microsoft Teams</h4>
                       <input 
                         type="text" 
                         name="teams_webhook_url"
@@ -514,7 +514,7 @@ export function Settings() {
 
                     {/* Custom Webhook */}
                     <div className="space-y-2">
-                      <h4 className="text-sm font-medium text-orange-400">Custom Webhook (JSON)</h4>
+                      <h4 className="text-sm font-medium text-orange-600 dark:text-orange-400">Custom Webhook (JSON)</h4>
                       <input 
                         type="text" 
                         name="webhook_url"
@@ -543,7 +543,7 @@ export function Settings() {
             {/* Pi-hole / AdGuard Detection */}
             <div className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
               <div>
-                <p className="text-xs font-medium text-cyan-400">DNS Provider Auto-Detect</p>
+                <p className="text-xs font-medium text-cyan-600 dark:text-cyan-400">DNS Provider Auto-Detect</p>
                 <p className="text-[10px] text-muted-foreground">Scan LAN for Pi-hole or AdGuard Home to use as upstream DNS</p>
               </div>
               <button
@@ -563,7 +563,7 @@ export function Settings() {
                     toast.error('Scan failed — check network access', { id: t });
                   }
                 }}
-                className="px-3 py-1.5 text-xs font-medium rounded-md bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors shrink-0"
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors shrink-0"
               >
                 Scan LAN
               </button>
@@ -573,7 +573,7 @@ export function Settings() {
             <div className="p-4 border border-border/50 rounded-lg bg-secondary/40">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <label className="text-sm font-medium text-emerald-400">Essential Domain Whitelist</label>
+                  <label className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Essential Domain Whitelist</label>
                   <p className="text-xs text-muted-foreground">Domains that should never be blocked by the DNS blackhole. Click to add common services.</p>
                 </div>
               </div>
@@ -601,7 +601,7 @@ export function Settings() {
                       }
                       toast.success(`${group.label}: ${added} domains whitelisted`, { id: t });
                     }}
-                    className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+                    className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
                   >
                     + {group.label}
                   </button>
@@ -614,7 +614,7 @@ export function Settings() {
             <div className="grid grid-cols-2 gap-2">
               <div className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
                 <div>
-                  <p className="text-xs font-medium text-blue-400">GDPR Mode</p>
+                  <p className="text-xs font-medium text-blue-600 dark:text-blue-400">GDPR Mode</p>
                   <p className="text-[10px] text-muted-foreground">Anonymize IPs in logs (last octet → x)</p>
                 </div>
                 <Toggle
@@ -631,7 +631,7 @@ export function Settings() {
             <div className="p-3 border border-border/50 rounded-lg bg-secondary/30">
               <div className="flex items-center justify-between">
                 <div>
-                  <label className="text-xs font-medium text-red-400">Block DNS-over-HTTPS (DoH)</label>
+                  <label className="text-xs font-medium text-red-600 dark:text-red-400">Block DNS-over-HTTPS (DoH)</label>
                   <p className="text-[10px] text-muted-foreground">Prevent devices from bypassing DNS blackhole via encrypted DNS. Blocks Google DNS, Cloudflare DNS, Quad9, etc.</p>
                 </div>
                 <button
@@ -655,7 +655,7 @@ export function Settings() {
                     try { await api.post('maintenance/reload-dns'); } catch { /* ignore */ }
                     toast.success(`Blocked ${added} DoH providers + DNS reloaded`, { id: t });
                   }}
-                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors shrink-0"
+                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors shrink-0"
                 >
                   Block DoH
                 </button>
@@ -871,7 +871,7 @@ export function Settings() {
             </div>
             {formData.ssl_bump_enabled === 'true' && (
               <div className="text-xs text-muted-foreground p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
-                <p className="font-semibold text-yellow-400 mb-1">Important:</p>
+                <p className="font-semibold text-amber-600 dark:text-yellow-400 mb-1">Important:</p>
                 <p>You must install the Root CA Certificate below on all client devices to avoid security warnings.</p>
               </div>
             )}
@@ -891,7 +891,7 @@ export function Settings() {
             </div>
             {formData.egress_default_deny === 'true' && (
               <div className="text-xs text-muted-foreground p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
-                <p className="font-semibold text-yellow-400 mb-1">Important:</p>
+                <p className="font-semibold text-amber-600 dark:text-yellow-400 mb-1">Important:</p>
                 <p>With an empty Egress Allowlist, all client traffic is blocked — add the destinations you allow first. Saving restarts the proxy.</p>
               </div>
             )}
@@ -909,7 +909,7 @@ export function Settings() {
               </button>
             </div>
             <div className="text-xs text-muted-foreground p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
-              <p className="font-semibold text-blue-400 mb-1">Installation Instructions:</p>
+              <p className="font-semibold text-blue-600 dark:text-blue-400 mb-1">Installation Instructions:</p>
               <ul className="list-disc pl-4 space-y-1">
                 <li><strong>Windows:</strong> Double-click the file and install to "Trusted Root Certification Authorities".</li>
                 <li><strong>macOS:</strong> Open in Keychain Access, select the cert, Get Info, and set "Always Trust".</li>

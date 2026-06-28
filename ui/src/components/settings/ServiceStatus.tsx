@@ -60,7 +60,7 @@ export function ServiceStatus() {
                 {running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400/70" />}
                 <span className={`relative inline-flex rounded-full h-2 w-2 ${running ? 'bg-emerald-400' : 'bg-red-400'}`} />
               </span>
-              <span className={`text-sm font-semibold ${running ? 'text-emerald-300' : 'text-red-300'}`}>
+              <span className={`text-sm font-semibold ${running ? 'text-emerald-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'}`}>
                 {status.isLoading ? '…' : running ? 'Running' : 'Offline'}
               </span>
             </div>
@@ -70,7 +70,7 @@ export function ServiceStatus() {
           <Tile icon={Tag} label="Version" value={s?.version ? `v${s.version}` : '—'} />
           <Tile icon={Users} label="Clients" value={num(clients.data?.total_clients)} accent />
           <Tile icon={ArrowDownUp} label="Requests 24h" value={num(s?.requests_count)} />
-          <Tile icon={Ban} label="Blocked 24h" value={num(summary.data?.today_blocked)} tone={(summary.data?.today_blocked ?? 0) > 0 ? 'text-orange-300' : ''} />
+          <Tile icon={Ban} label="Blocked 24h" value={num(summary.data?.today_blocked)} tone={(summary.data?.today_blocked ?? 0) > 0 ? 'text-orange-600 dark:text-orange-300' : ''} />
           <Tile icon={Database} label="Cache hit" value={hitPct} />
         </div>
       </CardContent>

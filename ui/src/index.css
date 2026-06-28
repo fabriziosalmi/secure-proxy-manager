@@ -80,6 +80,9 @@
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+  body, aside, main, .glass-surface, tr, td, button, input, select, .card, hr, h1, h2, h3, h4, p, span, svg {
+    transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), color 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
 
   /* Tabular numbers globally on numeric elements */
   .font-bold,

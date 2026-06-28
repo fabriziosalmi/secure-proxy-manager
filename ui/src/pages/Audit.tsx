@@ -14,17 +14,17 @@ const PAGE_SIZE = 50;
 // Visual treatment per action. Colour only — never used to move the row.
 function actionStyle(action: string): { label: string; cls: string; Icon: typeof LogIn } {
   const a = action.toLowerCase();
-  if (a === 'login') return { label: 'Login', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20', Icon: LogIn };
-  if (a === 'login_failed') return { label: 'Login failed', cls: 'text-red-300 bg-red-500/10 border-red-500/25', Icon: ShieldAlert };
-  if (a === 'logout') return { label: 'Logout', cls: 'text-slate-300 bg-secondary/50 border-border/80', Icon: LogOut };
-  if (a === 'change_password') return { label: 'Password change', cls: 'text-amber-300 bg-amber-500/10 border-amber-500/20', Icon: KeyRound };
-  if (a.startsWith('add_')) return { label: action.replace(/_/g, ' '), cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20', Icon: Plus };
-  if (a.startsWith('delete_') || a.includes('remove')) return { label: action.replace(/_/g, ' '), cls: 'text-orange-300 bg-orange-500/10 border-orange-500/20', Icon: Trash2 };
-  if (a.startsWith('update_set')) return { label: action.replace(/_/g, ' '), cls: 'text-cyan-300 bg-cyan-500/10 border-cyan-500/20', Icon: Settings2 };
-  if (a === 'database_reset') return { label: 'Database reset', cls: 'text-red-300 bg-red-500/10 border-red-500/25', Icon: Database };
+  if (a === 'login') return { label: 'Login', cls: 'text-emerald-600 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/20 dark:border-emerald-500/20', Icon: LogIn };
+  if (a === 'login_failed') return { label: 'Login failed', cls: 'text-red-600 dark:text-red-300 bg-red-500/10 border-red-500/25 dark:border-red-500/25', Icon: ShieldAlert };
+  if (a === 'logout') return { label: 'Logout', cls: 'text-slate-600 dark:text-slate-300 bg-secondary/50 border-border/80 dark:border-border/30', Icon: LogOut };
+  if (a === 'change_password') return { label: 'Password change', cls: 'text-amber-600 dark:text-amber-300 bg-amber-500/10 border-amber-500/20 dark:border-amber-500/20', Icon: KeyRound };
+  if (a.startsWith('add_')) return { label: action.replace(/_/g, ' '), cls: 'text-emerald-600 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/20 dark:border-emerald-500/20', Icon: Plus };
+  if (a.startsWith('delete_') || a.includes('remove')) return { label: action.replace(/_/g, ' '), cls: 'text-orange-600 dark:text-orange-300 bg-orange-500/10 border-orange-500/20 dark:border-orange-500/20', Icon: Trash2 };
+  if (a.startsWith('update_set')) return { label: action.replace(/_/g, ' '), cls: 'text-cyan-600 dark:text-cyan-300 bg-cyan-500/10 border-cyan-500/20 dark:border-cyan-500/20', Icon: Settings2 };
+  if (a === 'database_reset') return { label: 'Database reset', cls: 'text-red-600 dark:text-red-300 bg-red-500/10 border-red-500/25 dark:border-red-500/25', Icon: Database };
   if (a.includes('config') || a.includes('cache') || a.includes('clear') || a.includes('restore') || a.includes('reload'))
-    return { label: action.replace(/_/g, ' '), cls: 'text-blue-300 bg-blue-500/10 border-blue-500/20', Icon: RotateCcw };
-  return { label: action.replace(/_/g, ' '), cls: 'text-slate-300 bg-secondary/50 border-border/80', Icon: ScrollText };
+    return { label: action.replace(/_/g, ' '), cls: 'text-blue-600 dark:text-blue-300 bg-blue-500/10 border-blue-500/20 dark:border-blue-500/20', Icon: RotateCcw };
+  return { label: action.replace(/_/g, ' '), cls: 'text-slate-600 dark:text-slate-300 bg-secondary/50 border-border/80 dark:border-border/30', Icon: ScrollText };
 }
 
 function parseUtc(ts: string): Date {
@@ -90,7 +90,7 @@ export function Audit() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-2">
-            <ScrollText className="w-5 h-5 text-cyan-400" />
+            <ScrollText className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
             Audit Log
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -141,7 +141,7 @@ export function Audit() {
                   <th className="px-5 py-3 font-medium">Details</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.04]">
+              <tbody className="divide-y divide-border/30">
                 {isLoading ? (
                   <tr><td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">Loading…</td></tr>
                 ) : filtered.length === 0 ? (

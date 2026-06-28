@@ -466,15 +466,15 @@ export function Blacklists() {
         </button>
         <button role="tab" aria-selected={activeTab === 'whitelist'} aria-controls="bl-panel-whitelist" id="bl-tab-whitelist" tabIndex={activeTab === 'whitelist' ? 0 : -1} type="button"
           onClick={() => { setActiveTab('whitelist'); closeAllPanels(); resetPage(); }}
-          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/20 text-green-500 shadow-sm' : 'text-muted-foreground hover:text-green-500'}`}>
+          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/10 dark:bg-green-500/20 text-green-600 dark:text-green-400 shadow-sm' : 'text-muted-foreground hover:text-green-600 dark:hover:text-green-400'}`}>
           <CheckCircle className="w-4 h-4 mr-2" aria-hidden="true" />IP Whitelist
-          <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{whitelistResult?.total ?? 0}</span>
+          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{whitelistResult?.total ?? 0}</span>
         </button>
         <button role="tab" aria-selected={activeTab === 'domain-whitelist'} aria-controls="bl-panel-dwhitelist" id="bl-tab-dwhitelist" tabIndex={activeTab === 'domain-whitelist' ? 0 : -1} type="button"
           onClick={() => { setActiveTab('domain-whitelist'); closeAllPanels(); resetPage(); }}
-          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain-whitelist' ? 'bg-emerald-500/20 text-emerald-400 shadow-sm' : 'text-muted-foreground hover:text-emerald-400'}`}>
+          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain-whitelist' ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400'}`}>
           <ShieldCheck className="w-4 h-4 mr-2" aria-hidden="true" />Domain Whitelist
-          <span className="ml-2 bg-secondary text-xs px-2 py-0.5 rounded-full">{domainWhitelistResult?.total ?? 0}</span>
+          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{domainWhitelistResult?.total ?? 0}</span>
         </button>
       </div>
 
@@ -552,7 +552,7 @@ export function Blacklists() {
               ))}
               {activeTab === 'whitelist' && whitelists.map((item) => (
                 <tr key={item.id} className="row-hover">
-                  <td className="px-6 py-4 font-medium text-green-500">{item.ip}</td>
+                  <td className="px-6 py-4 font-medium text-green-600 dark:text-green-400">{item.ip}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
                   <td className="px-6 py-4 text-right">
@@ -571,9 +571,9 @@ export function Blacklists() {
               ))}
               {activeTab === 'domain-whitelist' && domainWhitelists.map((item) => (
                 <tr key={item.id} className="row-hover">
-                  <td className="px-6 py-4 font-medium text-emerald-400">
+                  <td className="px-6 py-4 font-medium text-emerald-600 dark:text-emerald-400">
                     {item.domain}
-                    <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded ${item.type === 'fqdn' ? 'bg-blue-500/20 text-blue-400' : 'bg-purple-500/20 text-purple-400'}`}>
+                    <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded ${item.type === 'fqdn' ? 'bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400' : 'bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400'}`}>
                       {item.type}
                     </span>
                   </td>
