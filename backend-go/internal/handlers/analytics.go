@@ -561,14 +561,13 @@ func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request
 func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Request) {
 	result := map[string]any{}
 
-	today := time.Now().Format("2006-01-02")
 	var totalReqs, blockedReqs, todayReqs, todayBlocked int
-	h.db.QueryRow(`SELECT
-		COUNT(*),
-		SUM(blocked),
-		SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END),
-		SUM(CASE WHEN blocked = 1 AND timestamp >= ? THEN 1 ELSE 0 END)
-		FROM proxy_logs`, today, today).Scan(&totalReqs, &blockedReqs, &todayReqs, &todayBlocked) //nolint:errcheck
+	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs`).Scan(&totalReqs) //nolint:errcheck
+	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1`).Scan(&blockedReqs) //nolint:errcheck
+
+	todayStart := time.Now().UTC().Truncate(24 * time.Hour).Unix()
+	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE unix_timestamp >= ?`, todayStart).Scan(&todayReqs) //nolint:errcheck
+	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ?`, todayStart).Scan(&todayBlocked) //nolint:errcheck
 
 	var ipBLCount, domainBLCount int
 
@@ -763,11 +762,12 @@ func (h *AnalyticsHandlers) ShadowIT(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AnalyticsHandlers) UserAgents(w http.ResponseWriter, r *http.Request) {
+	since := sinceUnix(analyticsWindow)
 	rows, err := h.db.Query(`
 		SELECT method, COUNT(*) AS cnt FROM proxy_logs
 		WHERE method IS NOT NULL AND method != '' AND method != '-'
 		AND unix_timestamp >= ?
-		GROUP BY method ORDER BY cnt DESC LIMIT 50`, sinceUnix(analyticsWindow))
+		GROUP BY method ORDER BY cnt DESC LIMIT 50`, since)
 	var methods []map[string]any
 	if err == nil {
 		defer rows.Close()
@@ -781,7 +781,42 @@ func (h *AnalyticsHandlers) UserAgents(w http.ResponseWriter, r *http.Request) {
 	if methods == nil {
 		methods = []map[string]any{}
 	}
-	writeOK(w, map[string]any{"methods": methods})
+
+	stRows, err := h.db.Query(`
+		SELECT
+			CASE
+				WHEN destination LIKE '%googleapis.com%' OR destination LIKE '%google.com%' THEN 'Google Services'
+				WHEN destination LIKE '%microsoft.com%' OR destination LIKE '%office.com%' OR destination LIKE '%live.com%' THEN 'Microsoft'
+				WHEN destination LIKE '%apple.com%' OR destination LIKE '%icloud.com%' THEN 'Apple'
+				WHEN destination LIKE '%github.com%' OR destination LIKE '%gitlab%' THEN 'Dev Tools'
+				WHEN destination LIKE '%docker%' OR destination LIKE '%registry%' THEN 'Containers'
+				WHEN destination LIKE '%npm%' OR destination LIKE '%pypi%' OR destination LIKE '%maven%' THEN 'Package Managers'
+				WHEN destination LIKE '%cdn%' OR destination LIKE '%cloudflare%' OR destination LIKE '%akamai%' THEN 'CDN'
+				WHEN destination LIKE '%update%' OR destination LIKE '%patch%' THEN 'Updates'
+				ELSE 'Other'
+			END as service_type,
+			COUNT(*) as cnt
+		FROM proxy_logs
+		WHERE unix_timestamp >= ? AND destination IS NOT NULL
+		GROUP BY service_type ORDER BY cnt DESC`, since)
+	var serviceTypes []map[string]any
+	if err == nil {
+		defer stRows.Close()
+		for stRows.Next() {
+			var name string
+			var cnt int
+			stRows.Scan(&name, &cnt) //nolint:errcheck
+			serviceTypes = append(serviceTypes, map[string]any{"name": name, "count": cnt})
+		}
+	}
+	if serviceTypes == nil {
+		serviceTypes = []map[string]any{}
+	}
+
+	writeOK(w, map[string]any{
+		"methods":       methods,
+		"service_types": serviceTypes,
+	})
 }
 
 var extRe = regexp.MustCompile(`\.([a-zA-Z0-9]{1,10})(?:\?|$|#)`)
@@ -805,11 +840,68 @@ func (h *AnalyticsHandlers) FileExtensions(w http.ResponseWriter, r *http.Reques
 			}
 		}
 	}
-	var exts []map[string]any
-	for e, c := range extCounts {
-		exts = append(exts, map[string]any{"ext": "." + e, "count": c})
+
+	type extItem struct {
+		Ext   string `json:"ext"`
+		Count int    `json:"count"`
 	}
-	writeOK(w, map[string]any{"extensions": exts})
+	var exts []extItem
+	for e, c := range extCounts {
+		exts = append(exts, extItem{"." + e, c})
+	}
+	sort.Slice(exts, func(i, j int) bool {
+		return exts[i].Count > exts[j].Count
+	})
+	if len(exts) > 30 {
+		exts = exts[:30]
+	}
+
+	categoriesMap := map[string][]string{
+		"Web":         {"html", "htm", "css", "js", "jsx", "ts", "tsx", "woff", "woff2", "ttf", "svg", "ico", "webmanifest"},
+		"Images":      {"png", "jpg", "jpeg", "gif", "webp", "bmp", "avif", "tiff"},
+		"Documents":   {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "txt", "rtf"},
+		"Archives":    {"zip", "tar", "gz", "bz2", "7z", "rar", "xz"},
+		"Media":       {"mp4", "mp3", "avi", "mkv", "wav", "ogg", "flac", "m4a"},
+		"Code":        {"py", "go", "rs", "java", "c", "cpp", "rb", "php", "sh", "yaml", "yml", "json", "xml", "toml"},
+		"Executables": {"exe", "msi", "dmg", "deb", "rpm", "apk", "bin"},
+		"Data":        {"sql", "db", "sqlite", "bak", "dump"},
+	}
+
+	catCounts := map[string]int{}
+	for ext, count := range extCounts {
+		category := "Other"
+		for catName, extsList := range categoriesMap {
+			found := false
+			for _, x := range extsList {
+				if x == ext {
+					found = true
+					break
+				}
+			}
+			if found {
+				category = catName
+				break
+			}
+		}
+		catCounts[category] += count
+	}
+
+	type catItem struct {
+		Category string `json:"category"`
+		Count    int    `json:"count"`
+	}
+	var categories []catItem
+	for cat, count := range catCounts {
+		categories = append(categories, catItem{cat, count})
+	}
+	sort.Slice(categories, func(i, j int) bool {
+		return categories[i].Count > categories[j].Count
+	})
+
+	writeOK(w, map[string]any{
+		"extensions": exts,
+		"categories": categories,
+	})
 }
 
 func (h *AnalyticsHandlers) TopDomains(w http.ResponseWriter, r *http.Request) {

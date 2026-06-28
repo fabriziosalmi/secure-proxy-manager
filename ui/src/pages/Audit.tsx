@@ -44,6 +44,8 @@ function relative(ts: string): string {
   return `${Math.round(h / 24)}d ago`;
 }
 
+const EMPTY_ENTRIES: AuditEntry[] = [];
+
 export function Audit() {
   const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState('');
@@ -54,7 +56,7 @@ export function Audit() {
     refetchInterval: 30_000,
   });
 
-  const entries: AuditEntry[] = data?.data ?? [];
+  const entries: AuditEntry[] = data?.data ?? EMPTY_ENTRIES;
   const total = data?.total ?? 0;
 
   const filtered = useMemo(() => {

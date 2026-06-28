@@ -57,6 +57,8 @@ function Stat({ label, value, tone = '' }: { label: string; value: string | numb
   );
 }
 
+const EMPTY_CLIENTS: ClientStat[] = [];
+
 export function Clients() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortKey>('requests');
@@ -68,7 +70,7 @@ export function Clients() {
     refetchInterval: 30_000,
   });
 
-  const clients: ClientStat[] = data?.clients ?? [];
+  const clients: ClientStat[] = data?.clients ?? EMPTY_CLIENTS;
 
   const rows = useMemo(() => {
     const t = search.trim().toLowerCase();

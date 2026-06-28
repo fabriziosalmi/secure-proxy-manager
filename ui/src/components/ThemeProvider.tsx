@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState } from 'react';
 
 export type Theme = 'light' | 'dark' | 'auto';
@@ -16,7 +17,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       if (saved === 'light' || saved === 'dark' || saved === 'auto') {
         return saved;
       }
-    } catch (_) {}
+    } catch { /* ignore */ }
     return 'auto';
   });
 
@@ -24,7 +25,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setThemeState(newTheme);
     try {
       localStorage.setItem('theme', newTheme);
-    } catch (_) {}
+    } catch { /* ignore */ }
   };
 
   useEffect(() => {
