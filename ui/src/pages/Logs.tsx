@@ -164,7 +164,7 @@ export function Logs() {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">Access Logs</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Access Logs</h1>
           <p className="text-sm text-muted-foreground">Monitor real-time proxy traffic</p>
         </div>
         <div className="flex items-center gap-2">
@@ -273,7 +273,7 @@ export function Logs() {
       </div>
 
       <Card>
-        <div className="p-4 border-b border-white/[0.06] flex items-center">
+        <div className="p-4 border-b border-border/50 flex items-center">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
@@ -281,7 +281,7 @@ export function Logs() {
               placeholder="Search by IP, domain, or status..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white/[0.02] border border-white/[0.06] rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+              className="w-full bg-secondary/30 border border-border/50 rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
             />
           </div>
           <div className="ml-auto text-sm text-muted-foreground font-mono">
@@ -291,7 +291,7 @@ export function Logs() {
         <CardContent className="p-0">
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
             <table className="w-full text-sm text-left relative">
-              <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-white/[0.02] border-b border-white/[0.06] sticky top-0 -webkit-backdrop-blur-sm backdrop-blur-sm z-10">
+              <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-secondary/30 border-b border-border/50 sticky top-0 -webkit-backdrop-blur-sm backdrop-blur-sm z-10">
                 <tr>
                   <th scope="col" className="px-6 py-3 font-medium">Timestamp</th>
                   <th scope="col" className="px-6 py-3 font-medium">Client IP</th>
@@ -301,13 +301,13 @@ export function Logs() {
                   <th scope="col" className="px-6 py-3 font-medium text-right">Size</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.04]">
+              <tbody className="divide-y divide-border/30">
                 {filteredLogs.map((log) => (
                   <tr key={log.id ?? log.timestamp} className="row-hover font-mono text-xs">
                     <td className="px-6 py-3 text-muted-foreground whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleString()}
                     </td>
-                    <td className="px-6 py-3 text-white"><IpBadge ip={log.client_ip} /></td>
+                    <td className="px-6 py-3 text-foreground"><IpBadge ip={log.client_ip} /></td>
                     <td className="px-6 py-3 text-primary">{log.method}</td>
                     <td className="px-6 py-3 text-muted-foreground truncate max-w-xs" title={log.destination}>
                       {log.destination}

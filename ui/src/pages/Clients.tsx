@@ -50,7 +50,7 @@ function SortTh({ k, label, sort, onSort }: { k: SortKey; label: string; sort: S
 
 function Stat({ label, value, tone = '' }: { label: string; value: string | number; tone?: string }) {
   return (
-    <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
+    <div className="rounded-lg bg-secondary/40 border border-border/50 px-3 py-2.5">
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
       <div className={`text-lg font-semibold tabular-nums ${tone}`}>{value}</div>
     </div>
@@ -95,7 +95,7 @@ export function Clients() {
         </div>
         <button
           onClick={() => refetch()}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-white/[0.04] hover:bg-white/[0.08] transition-colors btn-press"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-secondary/50 hover:bg-secondary/80 transition-colors btn-press"
         >
           <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
           Refresh
@@ -108,7 +108,7 @@ export function Clients() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter by IP…"
-          className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.08] text-sm focus:outline-none focus:border-cyan-500/40 focus:bg-white/[0.05] transition-colors"
+          className="w-full pl-9 pr-3 py-2 rounded-lg bg-secondary/40 border border-border/70 text-sm focus:outline-none focus:border-cyan-500/40 focus:bg-secondary/60 transition-colors"
         />
       </div>
 
@@ -116,7 +116,7 @@ export function Clients() {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-white/[0.02] border-b border-white/[0.06]">
+              <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-secondary/30 border-b border-border/50">
                 <tr>
                   <th className="px-5 py-3 font-medium">Client IP</th>
                   <SortTh k="requests" label="Requests" sort={sort} onSort={setSort} />
@@ -190,13 +190,13 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div ref={modalRef} className="relative w-full max-w-md h-full overflow-y-auto bg-[var(--card)] border-l border-white/[0.08] shadow-2xl animate-in">
-        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-white/[0.06] bg-[var(--card)]">
+      <div ref={modalRef} className="relative w-full max-w-md h-full overflow-y-auto bg-[var(--card)] border-l border-border/70 shadow-2xl animate-in">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-border/50 bg-[var(--card)]">
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-cyan-400" />
             <IpBadge ip={ip} />
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors" aria-label="Close">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-secondary/70 transition-colors" aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -225,7 +225,7 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
               ) : (
                 <div className="space-y-1">
                   {data.top_domains.map((d) => (
-                    <div key={d.destination} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white/[0.02] hover:bg-white/[0.04] transition-colors">
+                    <div key={d.destination} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors">
                       <span className="font-mono text-xs truncate" title={d.destination}>{d.destination}</span>
                       <span className="flex items-center gap-2 shrink-0 text-xs tabular-nums">
                         {d.blocked > 0 && (
@@ -250,7 +250,7 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
                   {data.recent.map((e, i) => {
                     const blocked = /DENIED|403|BLOCKED/i.test(e.status);
                     return (
-                      <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.02] text-xs">
+                      <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/30 text-xs">
                         <span className="text-muted-foreground w-14 shrink-0" title={parseUtc(e.timestamp).toLocaleString()}>{relative(e.timestamp)}</span>
                         <span className="font-mono text-[10px] text-muted-foreground w-12 shrink-0">{e.method}</span>
                         <span className="font-mono truncate flex-1" title={e.destination}>{e.destination}</span>

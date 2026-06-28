@@ -27,6 +27,7 @@ import { GlobalSearch } from './components/GlobalSearch';
 import { Login } from './pages/Login';
 import { SetupWizard } from './components/SetupWizard';
 import { api } from './lib/api';
+import { ThemeProvider } from './components/ThemeProvider';
 
 // Lazy-loaded page components for code splitting
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -86,7 +87,7 @@ function NotFound() {
   );
 }
 
-function App() {
+function AppContent() {
   const handleLogout = () => {
     localStorage.removeItem('auth_token');
     setIsAuthenticated(false);
@@ -189,19 +190,27 @@ function App() {
         position="bottom-right"
         toastOptions={{
           style: {
-            background: '#1e293b',
-            color: '#fff',
-            border: '1px solid #334155',
+            background: 'hsl(var(--card))',
+            color: 'hsl(var(--foreground))',
+            border: '1px solid hsl(var(--border))',
           },
           success: {
             iconTheme: {
               primary: '#10b981',
-              secondary: '#fff',
+              secondary: 'hsl(var(--card))',
             },
           },
         }}
       />
     </>
+  );
+}
+
+function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }
 

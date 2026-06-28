@@ -31,7 +31,7 @@ export function Layout({ onLogout }: { onLogout?: () => void }) {
       {/* Main content */}
       <main className="flex-1 overflow-y-auto custom-scrollbar">
         {/* Mobile top bar */}
-        <div className="lg:hidden sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-white/[0.06] px-4 py-3 flex items-center gap-3">
+        <div className="lg:hidden sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 py-3 flex items-center gap-3">
           <button
             type="button"
             onClick={() => setMobileOpen(!mobileOpen)}

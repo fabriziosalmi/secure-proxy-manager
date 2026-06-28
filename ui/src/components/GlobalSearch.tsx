@@ -173,7 +173,7 @@ export function GlobalSearch() {
         onClick={e => e.stopPropagation()}
       >
         {/* Search input */}
-        <div className="flex items-center px-4 py-3.5 border-b border-white/[0.06]">
+        <div className="flex items-center px-4 py-3.5 border-b border-border/50">
           <Search className="w-4 h-4 text-muted-foreground mr-3 shrink-0" aria-hidden="true" />
           <input
             ref={inputRef}
@@ -207,7 +207,7 @@ export function GlobalSearch() {
                   onClick={r.action}
                   onMouseEnter={() => setSelected(i)}
                   className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-all duration-150 ${
-                    i === selected ? 'bg-primary/10 border-l-2 border-l-primary' : 'border-l-2 border-l-transparent hover:bg-white/[0.03]'
+                    i === selected ? 'bg-primary/10 border-l-2 border-l-primary' : 'border-l-2 border-l-transparent hover:bg-secondary/40'
                   }`}
                 >
                   {typeIcon(r.type)}
@@ -215,7 +215,7 @@ export function GlobalSearch() {
                     <p className="text-sm font-medium truncate">{r.label}</p>
                     {r.description && <p className="text-[10px] text-muted-foreground truncate">{r.description}</p>}
                   </div>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-white/[0.06] text-muted-foreground uppercase shrink-0 font-mono">{r.type}</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-secondary/70 text-muted-foreground uppercase shrink-0 font-mono">{r.type}</span>
                 </button>
               ))}
             </div>
@@ -229,11 +229,11 @@ export function GlobalSearch() {
                   key={p.path}
                   type="button"
                   onClick={() => { navigate(p.path); setOpen(false); }}
-                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-white/[0.04] transition-all duration-150"
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-secondary/50 transition-all duration-150"
                 >
                   <p.icon className="w-3.5 h-3.5 text-muted-foreground" />
                   <span className="text-sm">{p.label}</span>
-                  <kbd className="ml-auto text-[10px] px-1.5 py-0.5 bg-white/[0.06] rounded-md font-mono text-muted-foreground">{i + 1}</kbd>
+                  <kbd className="ml-auto text-[10px] px-1.5 py-0.5 bg-secondary/70 rounded-md font-mono text-muted-foreground">{i + 1}</kbd>
                 </button>
               ))}
             </div>
@@ -241,14 +241,14 @@ export function GlobalSearch() {
         </div>
 
         {/* Footer hints */}
-        <div className="flex items-center justify-between px-4 py-2 border-t border-white/[0.06] text-[10px] text-muted-foreground/50">
+        <div className="flex items-center justify-between px-4 py-2 border-t border-border/50 text-[10px] text-muted-foreground/50">
           <div className="flex items-center gap-3">
-            <span><kbd className="px-1 py-0.5 bg-white/[0.06] rounded font-mono">↑↓</kbd> navigate</span>
-            <span><kbd className="px-1 py-0.5 bg-white/[0.06] rounded font-mono">↵</kbd> select</span>
-            <span><kbd className="px-1 py-0.5 bg-white/[0.06] rounded font-mono">esc</kbd> close</span>
+            <span><kbd className="px-1 py-0.5 bg-secondary/70 rounded font-mono">↑↓</kbd> navigate</span>
+            <span><kbd className="px-1 py-0.5 bg-secondary/70 rounded font-mono">↵</kbd> select</span>
+            <span><kbd className="px-1 py-0.5 bg-secondary/70 rounded font-mono">esc</kbd> close</span>
           </div>
           <div className="flex items-center gap-2">
-            {PAGES.map((_, i) => <span key={i}><kbd className="px-1 py-0.5 bg-white/[0.06] rounded font-mono">{i+1}</kbd></span>)}
+            {PAGES.map((_, i) => <span key={i}><kbd className="px-1 py-0.5 bg-secondary/70 rounded font-mono">{i+1}</kbd></span>)}
             <span>quick nav</span>
           </div>
         </div>

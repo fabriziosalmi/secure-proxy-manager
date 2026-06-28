@@ -45,7 +45,7 @@ export function Dashboard() {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">Dashboard</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Dashboard</h1>
         </div>
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -65,7 +65,7 @@ export function Dashboard() {
       {dialog}
       {/* Header + proxy address */}
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">Dashboard</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Dashboard</h1>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 px-3 py-1.5 glass-surface rounded-lg text-sm">
             <code className="font-mono font-semibold text-primary">{proxy}</code>
@@ -97,7 +97,7 @@ export function Dashboard() {
             <RotateCcw className="w-3.5 h-3.5 mr-1.5" />Reset
           </button>
           <button type="button" onClick={() => window.open('/api/analytics/report/pdf', '_blank')}
-            className="flex items-center px-3 py-1.5 glass-surface text-foreground hover:bg-white/[0.06] rounded-lg text-sm font-medium btn-press transition-colors">
+            className="flex items-center px-3 py-1.5 glass-surface text-foreground hover:bg-secondary/70 rounded-lg text-sm font-medium btn-press transition-colors">
             <Download className="w-3.5 h-3.5 mr-1.5" />PDF
           </button>
         </div>
@@ -159,9 +159,9 @@ export function Dashboard() {
       {/* Chart + Threat categories + Top blocked — 3 columns (lazy: recharts chunk) */}
       <Suspense fallback={
         <div className="grid gap-3 lg:grid-cols-12">
-          <Card className="lg:col-span-5"><CardContent className="p-2"><div className="h-[180px] animate-pulse bg-white/[0.02] rounded" role="status" aria-label="Loading traffic chart" /></CardContent></Card>
-          <Card className="lg:col-span-3"><CardContent className="p-2"><div className="h-[180px] animate-pulse bg-white/[0.02] rounded" role="status" aria-label="Loading threats chart" /></CardContent></Card>
-          <Card className="lg:col-span-4"><CardContent className="p-2"><div className="h-[180px] animate-pulse bg-white/[0.02] rounded" role="status" aria-label="Loading top blocked" /></CardContent></Card>
+          <Card className="lg:col-span-5"><CardContent className="p-2"><div className="h-[180px] animate-pulse bg-secondary/30 rounded" role="status" aria-label="Loading traffic chart" /></CardContent></Card>
+          <Card className="lg:col-span-3"><CardContent className="p-2"><div className="h-[180px] animate-pulse bg-secondary/30 rounded" role="status" aria-label="Loading threats chart" /></CardContent></Card>
+          <Card className="lg:col-span-4"><CardContent className="p-2"><div className="h-[180px] animate-pulse bg-secondary/30 rounded" role="status" aria-label="Loading top blocked" /></CardContent></Card>
         </div>
       }>
         <DashboardCharts chart={chart} summary={s} />
@@ -203,7 +203,7 @@ export function Dashboard() {
                 <div><p className="text-[10px] text-muted-foreground uppercase">Entropy</p><p className="text-lg font-bold">{w.avg_url_entropy ?? '—'}</p></div>
               </div>
               {w.top_blocked_categories?.length > 0 && (
-                <div className="flex flex-wrap gap-1 pt-2 border-t border-white/[0.06]">
+                <div className="flex flex-wrap gap-1 pt-2 border-t border-border/50">
                   {w.top_blocked_categories.slice(0, 6).map((c: { key: string; count: number }) => (
                     <span key={c.key} className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">{c.key} ({c.count})</span>
                   ))}
@@ -249,7 +249,7 @@ export function Dashboard() {
                     </div>
                   </div>
                   {saved > 0 && (
-                    <div className="pt-1 border-t border-white/[0.06]">
+                    <div className="pt-1 border-t border-border/50">
                       <p className="text-[10px] text-muted-foreground">Bandwidth Saved</p>
                       <p className="text-sm font-bold text-emerald-500">{formatBytes(saved)}</p>
                     </div>

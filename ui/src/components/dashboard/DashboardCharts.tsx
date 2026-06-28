@@ -7,13 +7,14 @@ import { useReducedMotion } from '../../hooks/useReducedMotion';
 const C = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899'];
 
 const TOOLTIP_STYLE = {
-  backgroundColor: 'rgba(15, 23, 42, 0.92)',
+  backgroundColor: 'var(--tooltip-bg)',
   backdropFilter: 'blur(12px)',
   WebkitBackdropFilter: 'blur(12px)',
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: '1px solid var(--tooltip-border)',
   borderRadius: '8px',
   fontSize: '11px',
-  boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+  color: 'hsl(var(--foreground))',
+  boxShadow: 'var(--tooltip-shadow)',
   fontVariantNumeric: 'tabular-nums' as const,
 };
 
@@ -44,8 +45,8 @@ export default function DashboardCharts({ chart, summary }: Props) {
                 <defs>
                   <linearGradient id="cT" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} /><stop offset="95%" stopColor="#3b82f6" stopOpacity={0} /></linearGradient>
                 </defs>
-                <XAxis dataKey="time" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
-                <YAxis yAxisId="left" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
+                <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} axisLine={false} />
+                <YAxis yAxisId="left" stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} axisLine={false} />
                 <YAxis yAxisId="right" orientation="right" stroke="#ef4444" fontSize={9} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} />
                 <Area yAxisId="left" type="monotone" dataKey="total" name="Total" stroke="#3b82f6" strokeWidth={1.5} fill="url(#cT)" isAnimationActive={!reducedMotion} />

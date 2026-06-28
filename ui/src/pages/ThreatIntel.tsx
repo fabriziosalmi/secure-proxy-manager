@@ -16,13 +16,14 @@ const CAT_COLORS: Record<string, string> = {
 };
 
 const TOOLTIP_STYLE = {
-  backgroundColor: 'rgba(15, 23, 42, 0.92)',
+  backgroundColor: 'var(--tooltip-bg)',
   backdropFilter: 'blur(12px)',
   WebkitBackdropFilter: 'blur(12px)',
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: '1px solid var(--tooltip-border)',
   borderRadius: '8px',
   fontSize: '11px',
-  boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+  color: 'hsl(var(--foreground))',
+  boxShadow: 'var(--tooltip-shadow)',
   fontVariantNumeric: 'tabular-nums' as const,
 };
 
@@ -50,7 +51,7 @@ export function ThreatIntel() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">Threat Intelligence</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Threat Intelligence</h1>
 
       {/* Compact metrics */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
@@ -95,8 +96,8 @@ export function ThreatIntel() {
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <AreaChart data={tl ?? []} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                   <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ef4444" stopOpacity={0.4}/><stop offset="95%" stopColor="#ef4444" stopOpacity={0}/></linearGradient></defs>
-                  <XAxis dataKey="time" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
+                  <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} axisLine={false} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} axisLine={false} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} />
                   <Area type="monotone" dataKey="blocked" name="Blocked" stroke="#ef4444" strokeWidth={2} fill="url(#bg)" isAnimationActive={!reducedMotion} />
                   <Area type="monotone" dataKey="total" name="Total" stroke="#3b82f6" strokeWidth={1} fill="none" opacity={0.4} isAnimationActive={!reducedMotion} />
@@ -113,8 +114,8 @@ export function ThreatIntel() {
               <div className="h-[180px]" role="img" aria-label={`Top WAF blocked categories: ${wafCats.slice(0, 8).map(c => `${c.key} ${c.count}`).join(', ')}`}>
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <BarChart data={wafCats.slice(0, 8)} layout="vertical" margin={{ left: 80, right: 10 }}>
-                    <XAxis type="number" stroke="#555" fontSize={9} tickLine={false} />
-                    <YAxis type="category" dataKey="key" stroke="#555" fontSize={9} tickLine={false} width={80} />
+                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} />
+                    <YAxis type="category" dataKey="key" stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} width={80} />
                     <Tooltip contentStyle={TOOLTIP_STYLE} />
                     <Bar dataKey="count" radius={[0, 3, 3, 0]} isAnimationActive={!reducedMotion}>{wafCats.slice(0, 8).map((_: unknown, i: number) => <Cell key={i} fill={C[i % C.length]} />)}</Bar>
                   </BarChart>
@@ -140,7 +141,7 @@ export function ThreatIntel() {
                     <span className="font-medium truncate">{svc.name}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-white/[0.06] text-muted-foreground">{svc.category}</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-secondary/70 text-muted-foreground">{svc.category}</span>
                     <span className="font-bold text-muted-foreground w-8 text-right">{svc.requests}</span>
                   </div>
                 </div>
@@ -213,7 +214,7 @@ export function ThreatIntel() {
                   return (
                     <span
                       key={d.domain}
-                      className="px-1.5 py-0.5 rounded cursor-default hover:bg-white/[0.04] transition-colors font-mono"
+                      className="px-1.5 py-0.5 rounded cursor-default hover:bg-secondary/50 transition-colors font-mono"
                       style={{ fontSize: `${size}px`, opacity, color: C[i % C.length] }}
                       title={`${d.domain}: ${d.count} requests`}
                     >

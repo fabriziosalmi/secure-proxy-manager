@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Ban, ShieldAlert, List, ScrollText, Users, Settings, Search, Command, LogOut, ArrowUpFromLine } from 'lucide-react';
+import { LayoutDashboard, Ban, ShieldAlert, List, ScrollText, Users, Settings, Search, Command, LogOut, ArrowUpFromLine, Sun, Moon, SunMoon } from 'lucide-react';
 import { api } from '../../lib/api';
+import { useTheme } from '../ThemeProvider';
 
 type ApiStatus = 'connected' | 'disconnected' | 'checking';
 
@@ -17,6 +18,7 @@ const navItems = [
 ];
 
 export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onLogout?: () => void }) {
+  const { theme, setTheme } = useTheme();
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking');
   const [backendInfo, setBackendInfo] = useState<{ version?: string; runtime?: string; update_available?: string; update_url?: string }>({});
   const location = useLocation();
@@ -48,13 +50,13 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
   );
 
   return (
-    <aside className="w-64 border-r border-white/[0.06] bg-[#060608] flex flex-col h-screen">
+    <aside className="w-64 border-r border-border/50 bg-card flex flex-col h-screen">
       {/* Logo */}
-      <div className="h-16 flex items-center px-6 border-b border-white/[0.06]">
+      <div className="h-16 flex items-center px-6 border-b border-border/50">
         <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center mr-3">
           <img src="/logo.svg" alt="Secure Proxy Manager" className="w-5 h-5" />
         </div>
-        <span className="font-bold text-base tracking-tight text-white">Proxy Manager</span>
+        <span className="font-bold text-base tracking-tight text-foreground">Proxy Manager</span>
       </div>
 
       <div className="p-4">
@@ -66,7 +68,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
         >
           <Search className="w-3.5 h-3.5 shrink-0" />
           <span className="flex-1 text-left">Search...</span>
-          <kbd className="flex items-center gap-0.5 px-1.5 py-0.5 bg-white/[0.06] rounded text-[10px] font-mono">
+          <kbd className="flex items-center gap-0.5 px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono">
             <Command className="w-2.5 h-2.5" />K
           </kbd>
         </button>
@@ -93,8 +95,8 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
               className={({ isActive }) =>
                 `flex items-center px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
                   isActive
-                    ? 'bg-white/[0.06] text-white'
-                    : 'text-muted-foreground hover:bg-white/[0.04] hover:text-white'
+                    ? 'bg-secondary text-foreground'
+                    : 'text-muted-foreground hover:bg-secondary/55 hover:text-foreground'
                 }`
               }
             >
@@ -105,7 +107,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
         </nav>
       </div>
 
-      <div className="mt-auto p-3 border-t border-white/[0.06] space-y-2">
+      <div className="mt-auto p-3 border-t border-border/50 space-y-2">
         {/* System status panel */}
         <div className="rounded-lg glass-surface p-3 space-y-3">
           {/* Connection row */}
@@ -146,7 +148,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
           </div>
 
           {/* Divider */}
-          <div className="border-t border-white/[0.04]" />
+          <div className="border-t border-border/30" />
 
           {/* Version + Runtime row */}
           <div className="flex items-center justify-between">
@@ -175,6 +177,32 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
             ) : (
               <span className="text-[9px] text-muted-foreground/30 font-mono">latest</span>
             )}
+          </div>
+        </div>
+
+        {/* Theme quick toggler */}
+        <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-secondary/30 border border-border/30">
+          <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Theme</span>
+          <div className="flex gap-0.5 bg-secondary/50 p-0.5 rounded-md border border-border/30">
+            {(['light', 'dark', 'auto'] as const).map((t) => {
+              const active = theme === t;
+              const Icon = t === 'light' ? Sun : t === 'dark' ? Moon : SunMoon;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTheme(t)}
+                  title={`${t.charAt(0).toUpperCase() + t.slice(1)} Mode`}
+                  className={`p-1 rounded transition-colors ${
+                    active
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary/40'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                </button>
+              );
+            })}
           </div>
         </div>
 

@@ -31,7 +31,7 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby="confirm-title"
         aria-describedby={body ? 'confirm-body' : undefined}
-        className="relative w-full max-w-sm glass-surface rounded-xl border border-white/[0.08] p-5 shadow-2xl"
+        className="relative w-full max-w-sm glass-surface rounded-xl border border-border/70 p-5 shadow-2xl"
       >
         <h2 id="confirm-title" className="text-sm font-semibold">{title}</h2>
         {body && <p id="confirm-body" className="mt-2 text-xs text-muted-foreground">{body}</p>}

@@ -1,9 +1,43 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
 @layer base {
   :root {
+    --background: 0 0% 100%;
+    --foreground: 224 71.4% 4.1%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 71.4% 4.1%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71.4% 4.1%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+
+    /* Light glassmorphism overlay variables */
+    --glass-bg: rgba(0, 0, 0, 0.015);
+    --glass-border: rgba(0, 0, 0, 0.07);
+    --glass-shadow: 0 0 0 1px rgba(0, 0, 0, 0.01) inset, 0 1px 2px rgba(0, 0, 0, 0.05), 0 0 20px rgba(59, 130, 246, 0.01);
+    --glass-hover-border: rgba(0, 0, 0, 0.12);
+    --glass-hover-shadow: 0 0 0 1px rgba(0, 0, 0, 0.02) inset, 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 30px rgba(59, 130, 246, 0.03);
+
+    /* Light chart tooltip variables */
+    --tooltip-bg: rgba(255, 255, 255, 0.92);
+    --tooltip-border: rgba(0, 0, 0, 0.08);
+    --tooltip-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  }
+
+  .dark {
     --background: 0 0% 4%;
     --foreground: 0 0% 98%;
     --card: 0 0% 7%;
@@ -23,7 +57,18 @@
     --border: 0 0% 15%;
     --input: 0 0% 15%;
     --ring: 217 91% 60%;
-    --radius: 0.5rem;
+
+    /* Dark glassmorphism overlay variables */
+    --glass-bg: rgba(255, 255, 255, 0.02);
+    --glass-border: rgba(255, 255, 255, 0.06);
+    --glass-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03) inset, 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 20px rgba(59, 130, 246, 0.03);
+    --glass-hover-border: rgba(255, 255, 255, 0.1);
+    --glass-hover-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05) inset, 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 30px rgba(59, 130, 246, 0.06);
+
+    /* Dark chart tooltip variables */
+    --tooltip-bg: rgba(15, 23, 42, 0.92);
+    --tooltip-border: rgba(255, 255, 255, 0.08);
+    --tooltip-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   }
 }
 
@@ -87,19 +132,17 @@
 @layer utilities {
   /* Glass surface — the core aerospace panel */
   .glass-surface {
-    @apply bg-white/[0.02] backdrop-blur-xl border border-white/[0.06];
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.03) inset,
-      0 1px 2px rgba(0, 0, 0, 0.4),
-      0 0 20px rgba(59, 130, 246, 0.03);
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .glass-surface:hover {
-    @apply border-white/[0.1];
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-      0 2px 8px rgba(0, 0, 0, 0.5),
-      0 0 30px rgba(59, 130, 246, 0.06);
+    border-color: var(--glass-hover-border);
+    box-shadow: var(--glass-hover-shadow);
   }
 
   /* Shimmer skeleton replacement */
@@ -179,7 +222,7 @@
   /* Highlight rows on hover with colour only — never move/scale data that is
      being read (no transform). */
   .row-hover:hover {
-    @apply bg-white/[0.04];
+    @apply bg-muted/40;
   }
 
   /* Ambient background glow */
