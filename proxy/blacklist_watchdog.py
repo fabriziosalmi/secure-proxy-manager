@@ -52,11 +52,39 @@ def main():
     import shutil
 
     mtimes = {src: mtime(src) for src, _ in PAIRS}
+    mtimes["/config/.reload-squid"] = mtime("/config/.reload-squid")
+    mtimes["/config/.clear-cache"] = mtime("/config/.clear-cache")
     last_rotate_day = time.gmtime().tm_yday
+    last_stats_time = 0
     print("[watchdog] started", flush=True)
+
+    # Write Squid version at startup to /config/squid_version.txt
+    try:
+        res = subprocess.run(["/usr/sbin/squid", "-v"], capture_output=True, timeout=5, text=True)
+        if res.returncode == 0:
+            with open("/config/squid_version.txt", "w") as f:
+                f.write(res.stdout)
+    except Exception as exc:
+        print(f"[watchdog] squid version check failed: {exc}", flush=True)
 
     while True:
         time.sleep(2)
+
+        # Periodically dump Squid cache stats to a shared file in /config
+        if time.time() - last_stats_time > 10:
+            last_stats_time = time.time()
+            try:
+                res = subprocess.run(
+                    ["/usr/sbin/squidclient", "-h", "127.0.0.1", "-p", "3128", "mgr:info"],
+                    capture_output=True,
+                    timeout=5,
+                    text=True
+                )
+                if res.returncode == 0:
+                    with open("/config/cache_stats.txt", "w") as f:
+                        f.write(res.stdout)
+            except Exception as exc:
+                print(f"[watchdog] stats extraction error: {exc}", flush=True)
 
         # Keep Squid logs world-readable for the backend tailer.
         for log in LOGS:
@@ -75,6 +103,37 @@ def main():
                 print("[watchdog] daily squid -k rotate", flush=True)
             except Exception as exc:  # noqa: BLE001
                 print(f"[watchdog] rotate error: {exc}", flush=True)
+
+        # Check reload-squid trigger
+        mt_reload = mtime("/config/.reload-squid")
+        if mt_reload != mtimes["/config/.reload-squid"]:
+            mtimes["/config/.reload-squid"] = mt_reload
+            if os.path.exists("/config/.reload-squid"):
+                print("[watchdog] reload-squid trigger detected, regenerating config...", flush=True)
+                try:
+                    # Run the configuration generator script
+                    gen_res = subprocess.run(["/usr/local/bin/generate_squid_conf.sh"], capture_output=True, timeout=30)
+                    print(f"[watchdog] generate_squid_conf.sh rc={gen_res.returncode}", flush=True)
+                    # Reconfigure Squid
+                    rec_res = subprocess.run(["/usr/sbin/squid", "-k", "reconfigure"], capture_output=True, timeout=10)
+                    print(f"[watchdog] squid reconfigure rc={rec_res.returncode}", flush=True)
+                except Exception as exc:
+                    print(f"[watchdog] reload error: {exc}", flush=True)
+
+        # Check clear-cache trigger
+        mt_clear = mtime("/config/.clear-cache")
+        if mt_clear != mtimes["/config/.clear-cache"]:
+            mtimes["/config/.clear-cache"] = mt_clear
+            if os.path.exists("/config/.clear-cache"):
+                print("[watchdog] clear-cache trigger detected, purging cache...", flush=True)
+                try:
+                    purge_res = subprocess.run(["/usr/sbin/squid", "-k", "purge"], capture_output=True, timeout=20)
+                    print(f"[watchdog] squid -k purge rc={purge_res.returncode}", flush=True)
+                    if purge_res.returncode != 0:
+                        print("[watchdog] purge failed, trying fallback shutdown...", flush=True)
+                        subprocess.run(["/usr/sbin/squid", "-k", "shutdown"], capture_output=True, timeout=20)
+                except Exception as exc:
+                    print(f"[watchdog] clear cache error: {exc}", flush=True)
 
         # Sync changed blacklist files and reconfigure Squid.
         changed = False

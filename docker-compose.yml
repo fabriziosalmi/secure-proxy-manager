@@ -109,7 +109,6 @@ services:
       - ./config:/config
       - ./data:/data
       - ./logs:/logs
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # for dnsmasq/squid reload signals
     environment:
       - PROXY_HOST=${PROXY_HOST:-proxy}
       - PROXY_PORT=${PROXY_PORT:-3128}
@@ -147,6 +146,7 @@ services:
     build: ./dns
     volumes:
       - ./config:/config:ro
+      - ./logs:/var/log
     environment:
       # Upstream DNS: default malware-blocking resolvers. Override with your own (e.g. Pi-hole)
       - DNS_UPSTREAM_1=${DNS_UPSTREAM_1:-1.1.1.3}
