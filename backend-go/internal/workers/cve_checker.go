@@ -100,7 +100,7 @@ func runCheck(version string) {
 func detectSquidVersion() string {
 	// Method 1: read from shared volume /config/squid_version.txt
 	for _, p := range []string{"/config/squid_version.txt", "config/squid_version.txt"} {
-		if content, err := os.ReadFile(p); err == nil {
+		if content, err := os.ReadFile(p); err == nil { // #nosec G304 — p is from a fixed internal path list
 			if version := parseSquidVersion(string(content)); version != "" {
 				return version
 			}

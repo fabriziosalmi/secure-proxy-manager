@@ -462,7 +462,7 @@ func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) 
 
 func (h *AnalyticsHandlers) CacheStats(w http.ResponseWriter, r *http.Request) {
 	statsFile := filepath.Join(h.cfg.ConfigDir, "cache_stats.txt")
-	content, err := os.ReadFile(statsFile)
+	content, err := os.ReadFile(statsFile) // #nosec G304 — statsFile is a fixed internal config path
 	if err != nil {
 		log.Debug().Err(err).Msg("failed to read shared cache_stats.txt file, returning zeros")
 		writeOK(w, map[string]any{

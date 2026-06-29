@@ -110,7 +110,7 @@ func StartDNSTailer(ctx context.Context, db *sql.DB, logPath, stateDir string, h
 			}
 			metrics.WorkerHeartbeat("dns_tailer")
 
-			f, err := os.Open(logPath)
+			f, err := os.Open(logPath) // #nosec G304 — logPath is the configured DNS log path
 			if err != nil {
 				continue
 			}
