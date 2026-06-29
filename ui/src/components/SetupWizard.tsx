@@ -35,11 +35,11 @@ const STRICT_OPTIONS: { id: StrictLevel; color: string; label: string; desc: str
 
 function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): Record<string, string> {
   const base: Record<string, string> = {
-    heuristic_entropy: 'true',
-    heuristic_beaconing: 'true',
-    heuristic_pii_leak: 'false',
-    heuristic_dest_sharding: 'false',
-    heuristic_protocol_ghosting: 'false',
+    waf_h_entropy: 'true',
+    waf_h_beaconing: 'true',
+    waf_h_pii: 'false',
+    waf_h_sharding: 'false',
+    waf_h_ghosting: 'false',
     ssl_bump_enabled: 'false',
     block_direct_ip: 'false',
     enable_safesearch: 'false',
@@ -64,16 +64,16 @@ function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): 
     base.block_direct_ip = 'true';
     base.enable_content_filtering = 'true';
     base.blocked_file_types = 'exe,bat,cmd,dll,msi,scr,ps1,vbs,js';
-    base.heuristic_pii_leak = 'true';
-    base.heuristic_dest_sharding = 'true';
-    base.heuristic_protocol_ghosting = 'true';
+    base.waf_h_pii = 'true';
+    base.waf_h_sharding = 'true';
+    base.waf_h_ghosting = 'true';
   }
 
   // Device overrides
   if (devices.includes('smart_tv') || devices.includes('iot')) {
     base.block_direct_ip = 'true';
-    base.heuristic_beaconing = 'true';
-    base.heuristic_dest_sharding = 'true';
+    base.waf_h_beaconing = 'true';
+    base.waf_h_sharding = 'true';
   }
   if (devices.includes('phones')) {
     base.enable_bandwidth_limits = 'true';
@@ -86,13 +86,13 @@ function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): 
     base.waf_block_threshold = '15';
   } else if (strict === 'balanced') {
     base.waf_block_threshold = '8';
-    base.heuristic_protocol_ghosting = 'true';
+    base.waf_h_ghosting = 'true';
     base.aggressive_caching_enabled = 'true';
   } else if (strict === 'strict') {
     base.waf_block_threshold = '5';
-    base.heuristic_pii_leak = 'true';
-    base.heuristic_dest_sharding = 'true';
-    base.heuristic_protocol_ghosting = 'true';
+    base.waf_h_pii = 'true';
+    base.waf_h_sharding = 'true';
+    base.waf_h_ghosting = 'true';
     base.enable_content_filtering = 'true';
     base.blocked_file_types = 'exe,bat,cmd,dll,msi,scr,ps1,vbs,js,sh,py,rb,zip,7z,rar,tar,iso';
     base.block_direct_ip = 'true';

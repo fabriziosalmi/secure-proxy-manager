@@ -3,7 +3,7 @@ import { Zap, Download, Copy, Check, Brain, RotateCcw } from 'lucide-react';
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { api } from '../lib/api';
+import { api, getData } from '../lib/api';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import { useConfirm } from '../hooks/useConfirm';
 import type { TimelineEntry, SecurityScore, DashboardSummary, CacheStats } from '../types';
@@ -25,10 +25,10 @@ export function Dashboard() {
   const [vis, setVis] = useState(document.visibilityState !== 'hidden');
   useEffect(() => { const h = () => setVis(document.visibilityState !== 'hidden'); document.addEventListener('visibilitychange', h); return () => document.removeEventListener('visibilitychange', h); }, []);
 
-  const { data: s, isLoading } = useQuery<DashboardSummary>({ queryKey: ['dashboard'], queryFn: () => api.get('dashboard/summary').then(r => r.data.data), refetchInterval: vis ? REFETCH : false });
-  const { data: tl } = useQuery<TimelineEntry[]>({ queryKey: ['timeline'], queryFn: () => api.get('logs/timeline').then(r => r.data.data), refetchInterval: vis ? REFETCH : false });
-  const { data: sec } = useQuery<SecurityScore>({ queryKey: ['score'], queryFn: () => api.get('security/score').then(r => r.data.data), refetchInterval: vis ? 30_000 : false });
-  const { data: cache } = useQuery<CacheStats>({ queryKey: ['cache'], queryFn: () => api.get('cache/statistics').then(r => r.data.data), refetchInterval: vis ? 30_000 : false });
+  const { data: s, isLoading } = useQuery<DashboardSummary>({ queryKey: ['dashboard'], queryFn: () => getData<DashboardSummary>('dashboard/summary'), refetchInterval: vis ? REFETCH : false });
+  const { data: tl } = useQuery<TimelineEntry[]>({ queryKey: ['timeline'], queryFn: () => getData<TimelineEntry[]>('logs/timeline'), refetchInterval: vis ? REFETCH : false });
+  const { data: sec } = useQuery<SecurityScore>({ queryKey: ['score'], queryFn: () => getData<SecurityScore>('security/score'), refetchInterval: vis ? 30_000 : false });
+  const { data: cache } = useQuery<CacheStats>({ queryKey: ['cache'], queryFn: () => getData<CacheStats>('cache/statistics'), refetchInterval: vis ? 30_000 : false });
 
   const chart = React.useMemo(() => tl ?? [], [tl]);
   const rate = s?.total_requests ? ((s.blocked_requests / s.total_requests) * 100).toFixed(1) : '0';

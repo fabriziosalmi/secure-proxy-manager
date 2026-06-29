@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Shield, Activity, Globe, AlertTriangle, Clock, TrendingUp, Eye, FileType, Cloud } from 'lucide-react';
 import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, AreaChart, Area, PieChart, Pie } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { getData } from '../lib/api';
 import { useEffect, useState } from 'react';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import { useReducedMotion } from '../hooks/useReducedMotion';
@@ -32,12 +32,12 @@ export function ThreatIntel() {
   const [vis, setVis] = useState(document.visibilityState !== 'hidden');
   useEffect(() => { const h = () => setVis(document.visibilityState !== 'hidden'); document.addEventListener('visibilitychange', h); return () => document.removeEventListener('visibilitychange', h); }, []);
 
-  const { data: s } = useQuery<DashboardSummary>({ queryKey: ['dashboard'], queryFn: () => api.get('dashboard/summary').then(r => r.data.data), refetchInterval: vis ? 30_000 : false });
-  const { data: tl } = useQuery<TimelineEntry[]>({ queryKey: ['timeline72'], queryFn: () => api.get('logs/timeline?hours=72').then(r => r.data.data), refetchInterval: vis ? 60_000 : false });
-  const { data: shadowIt } = useQuery<ShadowItService[]>({ queryKey: ['shadow-it'], queryFn: () => api.get('analytics/shadow-it').then(r => r.data.data), refetchInterval: vis ? 60_000 : false });
-  const { data: fileExts } = useQuery<FileExtData>({ queryKey: ['file-exts'], queryFn: () => api.get('analytics/file-extensions').then(r => r.data.data), refetchInterval: vis ? 60_000 : false });
-  const { data: topDomains } = useQuery<TopDomain[]>({ queryKey: ['top-domains'], queryFn: () => api.get('analytics/top-domains').then(r => r.data.data), refetchInterval: vis ? 60_000 : false });
-  const { data: uaData } = useQuery<ServiceTypeData>({ queryKey: ['user-agents'], queryFn: () => api.get('analytics/user-agents').then(r => r.data.data), refetchInterval: vis ? 60_000 : false });
+  const { data: s } = useQuery<DashboardSummary>({ queryKey: ['dashboard'], queryFn: () => getData<DashboardSummary>('dashboard/summary'), refetchInterval: vis ? 30_000 : false });
+  const { data: tl } = useQuery<TimelineEntry[]>({ queryKey: ['timeline72'], queryFn: () => getData<TimelineEntry[]>('logs/timeline?hours=72'), refetchInterval: vis ? 60_000 : false });
+  const { data: shadowIt } = useQuery<ShadowItService[]>({ queryKey: ['shadow-it'], queryFn: () => getData<ShadowItService[]>('analytics/shadow-it'), refetchInterval: vis ? 60_000 : false });
+  const { data: fileExts } = useQuery<FileExtData>({ queryKey: ['file-exts'], queryFn: () => getData<FileExtData>('analytics/file-extensions'), refetchInterval: vis ? 60_000 : false });
+  const { data: topDomains } = useQuery<TopDomain[]>({ queryKey: ['top-domains'], queryFn: () => getData<TopDomain[]>('analytics/top-domains'), refetchInterval: vis ? 60_000 : false });
+  const { data: uaData } = useQuery<ServiceTypeData>({ queryKey: ['user-agents'], queryFn: () => getData<ServiceTypeData>('analytics/user-agents'), refetchInterval: vis ? 60_000 : false });
 
   const wafCats = s?.waf?.top_blocked_categories ?? [];
   const tlTotal = (tl ?? []).reduce((acc, p) => acc + (p.total || 0), 0);

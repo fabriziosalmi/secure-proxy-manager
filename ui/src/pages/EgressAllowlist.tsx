@@ -27,7 +27,7 @@ export function EgressAllowlist() {
     queryKey: ['egress-allowlist', page, search],
     queryFn: () => api
       .get(`egress-allowlist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(search)}`)
-      .then(r => ({ data: r.data.data, total: r.data.total })),
+      .then(r => ({ data: r.data?.data ?? [], total: r.data?.total ?? 0 })),
   });
   const entries = result?.data ?? [];
   const total = result?.total ?? 0;
@@ -126,7 +126,7 @@ export function EgressAllowlist() {
       </Card>
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-muted-foreground">

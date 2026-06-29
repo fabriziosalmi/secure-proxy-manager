@@ -3,14 +3,21 @@ import { screen, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '../test/helpers'
 import { Dashboard } from './Dashboard'
 
-vi.mock('../lib/api', () => ({
-  api: {
-    get: vi.fn(),
-    post: vi.fn(),
-    interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
-  },
-  getErrorMessage: (_e: unknown, f: string) => f,
-}))
+vi.mock('../lib/api', () => {
+  const get = vi.fn()
+  return {
+    api: {
+      get,
+      post: vi.fn(),
+      interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
+    },
+    // getData wraps the (mocked) api.get and unwraps the { data } envelope, so
+    // the same mockImplementation drives both api.get and getData call sites.
+    getData: (path: string) =>
+      get(path).then((r: { data?: { data?: unknown } }) => r?.data?.data ?? null),
+    getErrorMessage: (_e: unknown, f: string) => f,
+  }
+})
 
 vi.mock('../hooks/useAnimatedNumber', () => ({
   useAnimatedNumber: (v: number) => v,
