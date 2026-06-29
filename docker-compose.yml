@@ -241,6 +241,14 @@ services:
       # every upstream fetch fails (HTTP 502 / CONNECT refused).
       - frontend
     restart: unless-stopped
+    # GUARDRAIL: the proxy intentionally has NO `cap_drop: ALL`. It relies on the
+    # default capability set — CHOWN, SETUID/SETGID, DAC_OVERRIDE — for
+    # startup.sh (chown /config/ssl_db and the shared ./logs mount, `su - proxy`)
+    # and for squid's privilege drop + log_file_daemon writing to ./logs (owned
+    # by a different host UID). Adding `cap_drop: ALL` here without granting those
+    # back WILL break the data plane — the same class as the 3.10.4/3.10.5 dns
+    # CAP_DAC_OVERRIDE bug, but threefold. NET_ADMIN is for the transparent-proxy
+    # iptables REDIRECT rules.
     cap_add:
       - NET_ADMIN
 

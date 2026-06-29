@@ -30,6 +30,16 @@ jobs:
       - run: npm test
         working-directory: ui
 
+  # ── 1b. Version sync ──────────────────────────────────────────────────
+  # Fail the build if the version drifts across version.go / package.json /
+  # package-lock.json / CHANGELOG (package-lock lagged at 3.10.2 until 3.10.5).
+  version-sync:
+    name: Version sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - run: bash scripts/check-version-sync.sh
+
   # ── 2. Go backend build ────────────────────────────────────────────────
   build-backend:
     name: Go backend build
@@ -210,6 +220,22 @@ jobs:
           check_url "StevenBlack hosts"  "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
           check_url "URLhaus domains"    "https://urlhaus.abuse.ch/downloads/hostfile/"
           [ "$FAILED" -ne 0 ] && exit 1 || true
+
+  # ── 8b. Compose validation (incl. the prod file users actually run) ───
+  # deploy/docker-compose.prod.yml is what deploy/install.sh copies into place on
+  # every real install, yet nothing else in CI ever parses it — so a YAML /
+  # interpolation / schema error (or a security key applied to only one of the
+  # two hand-maintained files, like the dns CAP_DAC_OVERRIDE fix) ships unnoticed.
+  # `config -q` resolves and validates both files.
+  validate-compose:
+    name: Validate compose files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Validate dev compose
+        run: docker compose -f docker-compose.yml config -q
+      - name: Validate prod compose
+        run: docker compose -f deploy/docker-compose.prod.yml config -q
 
   # ── 9. End-to-end smoke (compose up + core path) ──────────────────────
   # Builds and RUNS the whole stack, then exercises the core path: service

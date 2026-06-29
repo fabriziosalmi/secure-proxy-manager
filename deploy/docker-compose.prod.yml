@@ -226,6 +226,11 @@ services:
       - proxy-internal
       - frontend
     restart: unless-stopped
+    # GUARDRAIL: the proxy intentionally has NO `cap_drop: ALL` — it needs the
+    # default caps (CHOWN, SETUID/SETGID, DAC_OVERRIDE) for startup.sh chown +
+    # `su - proxy` and squid's privilege drop + log writing to the shared ./logs
+    # mount. Adding `cap_drop: ALL` without granting those back breaks the data
+    # plane (same class as the 3.10.4/3.10.5 dns CAP_DAC_OVERRIDE bug, threefold).
     cap_add:
       - NET_ADMIN
 
