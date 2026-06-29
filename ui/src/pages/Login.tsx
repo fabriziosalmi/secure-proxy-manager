@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Shield } from 'lucide-react';
 import { api, setAuthToken } from '../lib/api';
 
 interface Props {
@@ -35,7 +34,7 @@ export function Login({ onLogin }: Props) {
         <div className="text-center space-y-2">
           <div className="flex justify-center">
             <div className="relative w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <Shield className="w-7 h-7 text-primary" />
+              <img src="/logo.svg" alt="Secure Proxy Manager" className="w-8 h-8" />
               <div className="absolute inset-0 rounded-2xl bg-primary/5 animate-glow-pulse" />
             </div>
           </div>

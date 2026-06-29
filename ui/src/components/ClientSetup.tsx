@@ -156,7 +156,7 @@ export function ClientSetup() {
         {/* Command */}
         {active.cmd && (
           <div className="relative">
-            <pre className="bg-[#0a0a0a] border border-border rounded-lg p-3 text-[11px] font-mono text-emerald-400 overflow-x-auto whitespace-pre-wrap">
+            <pre className="bg-secondary/60 dark:bg-[#0a0a0a] border border-border rounded-lg p-3 text-[11px] font-mono text-emerald-600 dark:text-emerald-400 overflow-x-auto whitespace-pre-wrap">
               {active.cmd}
             </pre>
             <button type="button" onClick={() => copy(active.cmd!, 'cmd')}
