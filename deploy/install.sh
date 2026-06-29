@@ -81,7 +81,9 @@ fi
 if [ ! -f .env ]; then
     info "Generating .env with random credentials..."
     ADMIN_USER="admin"
-    ADMIN_PASS=$(openssl rand -hex 32)
+    # Alphanumeric (no +/=) so it is typeable into a Basic-Auth dialog; still
+    # ~119 bits of entropy. SECRET_KEY stays full-length hex (never typed).
+    ADMIN_PASS=$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 20)
     SECRET_KEY=$(openssl rand -hex 32)
 
     cat > .env <<EOF
@@ -107,7 +109,7 @@ EOF
     printf "  ${B}Username:${N} ${ADMIN_USER}\n"
     printf "  ${B}Password:${N} ${ADMIN_PASS}\n"
     echo ""
-    warn "Save these credentials! They won't be shown again."
+    warn "Save these credentials! They are also stored in ${INSTALL_DIR}/.env"
     echo ""
 else
     ok ".env already exists — keeping current credentials"
@@ -116,6 +118,14 @@ fi
 # ── Build and start ──────────────────────────────────────────────────
 info "Pulling pre-built containers from GitHub Container Registry (GHCR)..."
 docker compose pull --quiet
+
+# Back up the data volume before launching new images that may run a DB
+# migration (no-op on a fresh install). Keep the 3 most recent backups.
+if [ -d data ]; then
+    backup="data.bak.$(date +%Y%m%d-%H%M%S)"
+    cp -a data "$backup" && ok "Backed up data/ -> ${backup}"
+    ls -1dt data.bak.* 2>/dev/null | tail -n +4 | xargs -r rm -rf
+fi
 
 info "Starting services..."
 docker compose up -d
@@ -131,10 +141,23 @@ done
 
 # ── Verify ───────────────────────────────────────────────────────────
 if curl -sk --max-time 5 https://localhost:8443/api/health 2>/dev/null | grep -q '"healthy"'; then
-    ok "All services healthy!"
+    ok "Backend API healthy!"
 else
-    warn "Services still starting — check: docker compose ps"
+    warn "Backend still starting — check: docker compose ps"
 fi
+
+# Smoke-test the actual product — the forward proxy — not just the API. This is
+# what catches a proxy-side capability/permission regression the API check misses.
+if docker compose exec -T proxy curl -s --max-time 8 -x http://127.0.0.1:3128 \
+        -o /dev/null -w '%{http_code}' http://www.gstatic.com/generate_204 2>/dev/null | grep -q '204'; then
+    ok "Forward proxy egress working (port 3128)"
+else
+    warn "Proxy egress not confirmed yet — check: docker compose logs proxy"
+fi
+
+# Surface every container's health so a silently-unhealthy one is visible.
+echo ""
+docker compose ps
 
 # ── Print access info ────────────────────────────────────────────────
 LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")

@@ -73,6 +73,9 @@ services:
       - WAF_H_PII=${WAF_H_PII:-1}
       - WAF_H_SHARDING=${WAF_H_SHARDING:-1}
       - WAF_H_GHOSTING=${WAF_H_GHOSTING:-1}
+      # Comma-separated rule categories to disable (read by waf-go main.go). Was
+      # documented in .env.example but never passed to the container.
+      - WAF_DISABLED_CATEGORIES=${WAF_DISABLED_CATEGORIES:-}
       - WAF_H_SEQUENCE=${WAF_H_SEQUENCE:-0}
     deploy:
       resources:
@@ -160,7 +163,10 @@ services:
           cpus: '0.50'
           memory: 256M
     healthcheck:
-      test: ["CMD", "nslookup", "localhost", "127.0.0.1"]
+      # Resolve an external name through dnsmasq — exercises the upstream
+      # forwarding path, not just that the daemon is alive (a plain
+      # `nslookup localhost` passes even when forwarding is broken).
+      test: ["CMD", "nslookup", "-timeout=2", "cloudflare.com", "127.0.0.1"]
       interval: 10s
       timeout: 5s
       retries: 6
