@@ -27,7 +27,7 @@ features:
   - title: IP whitelist
     details: Whitelist trusted destination IPs to bypass the direct-IP block rule. Useful for LAN devices accessed by IP address.
   - title: ICAP WAF
-    details: Go-based ICAP server inspects HTTP requests with 175 regex rules across 23 categories plus 7 behavioural heuristics. Anomaly scoring with a configurable block threshold.
+    details: Go-based ICAP server inspects HTTP requests with 170 regex rules across 21 categories plus 7 behavioural heuristics. Anomaly scoring with a configurable block threshold.
   - title: Real-time logs
     details: Live log streaming over WebSocket with one-time token authentication. Filter, search, and aggregate access events.
   - title: Hardened by default

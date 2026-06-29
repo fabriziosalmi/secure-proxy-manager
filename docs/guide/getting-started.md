@@ -86,11 +86,31 @@ docker compose up -d
 # All services running and healthy
 docker compose ps
 
-# Backend health (localhost only)
+# Backend liveness (localhost only)
 curl -k https://localhost:8443/health
+
+# Backend readiness — checks the database is reachable (503 if not)
+docker compose exec backend wget -qO- http://localhost:5000/readyz
 
 # Test proxy connectivity
 curl -x http://localhost:3128 http://example.com
+```
+
+## Metrics and Grafana
+
+The backend and WAF expose Prometheus metrics on their internal ports (not
+proxied by nginx, so not reachable from outside the Docker network):
+
+```bash
+docker compose exec backend wget -qO- http://localhost:5000/metrics | head
+docker compose exec waf     wget -qO- http://localhost:8080/metrics | head
+```
+
+To get a ready-made Prometheus + Grafana stack scraping both, start the opt-in
+`observability` profile (Grafana on `127.0.0.1:3000`, Prometheus on `:9090`):
+
+```bash
+docker compose --profile observability up -d
 ```
 
 ## Troubleshooting

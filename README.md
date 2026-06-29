@@ -100,7 +100,7 @@ notifications) is managed from the UI and stored in the database, not in `.env`.
   Egress Allowlist page.
 
 **WAF**
-- 175 regex rules across 23 toggleable categories (SQLi, XSS, traversal, C2,
+- 170 regex rules across 21 toggleable categories (SQLi, XSS, traversal, C2,
   data-loss, etc.), each enableable/disableable at runtime.
 - 7 behavioural heuristics (entropy, beaconing, PII, sharding, morphing,
   ghosting, sequence) plus DGA detection (bigram + entropy), typosquatting
@@ -119,7 +119,14 @@ notifications) is managed from the UI and stored in the database, not in `.env`.
 **Operations**
 - Live dashboard, per-client drill-down, searchable access logs, and an audit
   log of configuration changes.
-- Prometheus metrics from the WAF at `:8080/metrics` (aggregate counters only).
+- Prometheus metrics on the internal network: the backend at `:5000/metrics`
+  (RED metrics per route, DB connection-pool gauges, worker heartbeats, Go
+  runtime) and the WAF at `:8080/metrics` (counters plus a REQMOD latency
+  histogram). An opt-in `observability` Compose profile ships Prometheus +
+  Grafana: `docker compose --profile observability up -d`.
+- Health probes: `/livez` (process up) and `/readyz` (database reachable — the
+  container healthcheck uses this so a wedged DB surfaces as unhealthy).
+  Structured per-request access logs on the backend.
 - Notifications to a custom webhook, Gotify, Telegram, or Microsoft Teams, with
   retry and backoff.
 - WebSocket log streaming, JWT auth with a persistent revocation list, per-IP
