@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.3] - 2026-06-29
+
+### Added
+
+- **DNS sinkhole tailer.** The backend now tails the dnsmasq log and records
+  blocked DNS resolutions into `proxy_logs`, correlating each block back to the
+  client that queried it. The query→client correlation cache is bounded (2-minute
+  TTL + 8192-entry hard cap) so it can no longer grow unbounded over the process
+  lifetime.
+
+### Changed
+
+- **Docker client decoupled from handlers/workers.** Blacklist reloads and the
+  dnsmasq reload signal now go through a shared `.reload-dns` file instead of the
+  Docker API, so the analytics/maintenance handlers and the blacklist-refresh
+  worker no longer depend on a Docker socket.
+
+### Performance
+
+- **Analytics conditional GETs.** Read-heavy analytics endpoints now emit an
+  `ETag` and honour `If-None-Match`, returning `304 Not Modified` for unchanged
+  payloads on repeated dashboard polls.
+- **Domain blacklist snapshot cache.** `DomainStats` caches the blacklist
+  (30-second TTL) instead of reloading the whole `domain_blacklist` table on
+  every request.
+
+### Fixed
+
+- **Login page logo.** The login screen showed a generic shield icon instead of
+  the brand eye logo used by the favicon and the rest of the UI.
+- **ClientSetup contrast in light mode.** The setup command block used hardcoded
+  near-black/emerald colors; it is now theme-aware while keeping the dark
+  terminal look in dark mode.
+
 ## [3.10.2] - 2026-06-28
 
 ### Changed

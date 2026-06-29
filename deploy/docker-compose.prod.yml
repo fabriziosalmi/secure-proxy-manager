@@ -1,8 +1,6 @@
 services:
   web:
-    build:
-      context: .
-      dockerfile: ./ui/Dockerfile
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-web:latest
     ports:
       - "80:8011"     # HTTP (redirect + ACME challenges)
       - "443:8443"    # HTTPS (main UI)
@@ -16,7 +14,6 @@ services:
     environment:
       - BACKEND_URL=${BACKEND_URL:-http://backend:5000}
       - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-120}
-      # Let's Encrypt (optional): set both to enable auto-HTTPS with real certs
       - LETSENCRYPT_DOMAIN=${LETSENCRYPT_DOMAIN:-}
       - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-}
     healthcheck:
@@ -57,8 +54,7 @@ services:
     restart: unless-stopped
 
   waf:
-    build: ./waf-go
-    # Port 1344 (ICAP) is internal only — not exposed on the host
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-waf:latest
     volumes:
       - ./config:/config:ro
       - ./data:/data:ro
@@ -66,7 +62,6 @@ services:
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
       - WAF_BLOCK_THRESHOLD=${WAF_BLOCK_THRESHOLD:-10}
-      # Heuristic engine toggles (1=on, 0=off)
       - WAF_H_ENTROPY=${WAF_H_ENTROPY:-1}
       - WAF_H_ENTROPY_MAX=${WAF_H_ENTROPY_MAX:-7.5}
       - WAF_H_BEACONING=${WAF_H_BEACONING:-1}
@@ -102,9 +97,9 @@ services:
     restart: unless-stopped
 
   backend:
-    build: ./backend-go
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-backend:latest
     ports:
-      - "127.0.0.1:5001:5000"  # Backend API — localhost only (WebSocket proxied via Nginx)
+      - "127.0.0.1:5001:5000"
     volumes:
       - ./config:/config
       - ./data:/data
@@ -121,7 +116,7 @@ services:
       resources:
         limits:
           cpus: '0.25'
-          memory: 128M  # Go uses ~20MB vs Python 150MB+
+          memory: 128M
     healthcheck:
       test: ["CMD", "/server", "-healthcheck"]
       interval: 5s
@@ -143,16 +138,14 @@ services:
     restart: unless-stopped
 
   dns:
-    build: ./dns
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-dns:latest
     volumes:
       - ./config:/config:ro
       - ./logs:/var/log
     environment:
-      # Upstream DNS: default malware-blocking resolvers. Override with your own (e.g. Pi-hole)
       - DNS_UPSTREAM_1=${DNS_UPSTREAM_1:-1.1.1.3}
       - DNS_UPSTREAM_2=${DNS_UPSTREAM_2:-9.9.9.9}
       - DNS_UPSTREAM_3=${DNS_UPSTREAM_3:-8.8.8.8}
-      # WPAD: set to your proxy's LAN IP for auto-proxy discovery
       - PROXY_IP=${PROXY_IP:-}
     deploy:
       resources:
@@ -182,14 +175,11 @@ services:
         max-file: "3"
     networks:
       - proxy-internal
-      # Egress: dnsmasq must reach the upstream resolvers (DNS_UPSTREAM_*).
-      # proxy-internal is `internal: true` (no gateway), so without this the
-      # dns container cannot forward queries and the proxy cannot resolve.
       - frontend
     restart: unless-stopped
 
   proxy:
-    build: ./proxy
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:latest
     container_name: secure-proxy-manager-proxy
     environment:
       - GUI_IP_WHITELIST=${GUI_IP_WHITELIST:-}
@@ -231,18 +221,13 @@ services:
         max-file: "3"
     networks:
       - proxy-internal
-      # Egress: a forward proxy must reach the internet. proxy-internal is
-      # `internal: true` (no gateway to the host/internet), so the proxy is
-      # also attached to the egress-capable `frontend` network. Without this
-      # every upstream fetch fails (HTTP 502 / CONNECT refused).
       - frontend
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
 
-  # Optional Tailscale sidecar for secure remote access
   tailscale:
-    build: ./overlay/tailscale
+    image: tailscale/tailscale:v1.80.3
     hostname: ${TAILSCALE_HOSTNAME:-secure-proxy}
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY:-}
@@ -260,10 +245,7 @@ services:
     profiles:
       - tailscale
 
-  # ── Observability stack (opt-in) ───────────────────────────────────────────
-  # Enable with:  docker compose --profile observability up -d
-  # Prometheus scrapes backend:5000/metrics and waf:8080/metrics on the internal
-  # network; Grafana is published on localhost only.
+  # Observability stack (opt-in)
   prometheus:
     image: prom/prometheus:v3.1.0
     container_name: secure-proxy-manager-prometheus

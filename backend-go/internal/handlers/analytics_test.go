@@ -12,7 +12,7 @@ import (
 func TestAnalyticsHandlers_Status(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+	h := NewAnalyticsHandlers(db, cfg)
 
 	r := httptest.NewRequest("GET", "/api/status", nil)
 	w := httptest.NewRecorder()
@@ -26,7 +26,7 @@ func TestAnalyticsHandlers_Status(t *testing.T) {
 func TestAnalyticsHandlers_TrafficStats(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+	h := NewAnalyticsHandlers(db, cfg)
 
 	// Add some logs in the past 24h
 	today := time.Now().Format("2006-01-02 15:04:05")
@@ -47,7 +47,7 @@ func TestAnalyticsHandlers_TrafficStats(t *testing.T) {
 func TestAnalyticsHandlers_TrafficStats_HourBucketing(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+	h := NewAnalyticsHandlers(db, cfg)
 
 	ts := time.Now().UTC().Add(-12 * time.Minute)
 	tsStr := ts.Format("2006-01-02 15:04:05")
@@ -81,7 +81,7 @@ func TestAnalyticsHandlers_TrafficStats_HourBucketing(t *testing.T) {
 func TestAnalyticsHandlers_ClientStats(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+	h := NewAnalyticsHandlers(db, cfg)
 
 	now := time.Now().UTC()
 	// Recent client (in the 7-day window) and an old one (60 days ago, outside it).
@@ -125,7 +125,7 @@ func TestAnalyticsHandlers_ClientStats(t *testing.T) {
 func TestAnalyticsHandlers_DomainStats(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+	h := NewAnalyticsHandlers(db, cfg)
 
 	now := time.Now().UTC()
 	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, unix_timestamp, destination, status) VALUES (?, ?, 'example.com', '200 OK')",
@@ -143,7 +143,7 @@ func TestAnalyticsHandlers_DomainStats(t *testing.T) {
 func TestAnalyticsHandlers_DashboardSummary(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+	h := NewAnalyticsHandlers(db, cfg)
 
 	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, unix_timestamp, destination, status, blocked) VALUES (datetime('now'), strftime('%s','now'), 'evil.com', '403 Forbidden', 1)")
 
@@ -159,7 +159,7 @@ func TestAnalyticsHandlers_DashboardSummary(t *testing.T) {
 func TestAnalyticsHandlers_ShadowIT(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+	h := NewAnalyticsHandlers(db, cfg)
 
 	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, unix_timestamp, destination) VALUES (datetime('now'), strftime('%s','now'), 'dropbox.com')")
 
@@ -175,7 +175,7 @@ func TestAnalyticsHandlers_ShadowIT(t *testing.T) {
 func TestAnalyticsHandlers_AuditLog(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+	h := NewAnalyticsHandlers(db, cfg)
 
 	_, _ = db.Exec("INSERT INTO audit_log (username, action) VALUES ('admin', 'test')")
 
@@ -191,7 +191,7 @@ func TestAnalyticsHandlers_AuditLog(t *testing.T) {
 func TestAnalyticsHandlers_TestRule(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+	h := NewAnalyticsHandlers(db, cfg)
 
 	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, unix_timestamp, destination) VALUES (datetime('now'), strftime('%s','now'), 'malware-site.com')")
 

@@ -282,8 +282,8 @@ func TestRunCheck(t *testing.T) {
 	// Test version 3.x
 	runCheck("3.5")
 	info = GetCVEInfo()
-	if len(info.CVEs) != 2 { // knownCVEs["3."] has 2 items
-		t.Errorf("Expected 2 CVEs for 3.5, got %d", len(info.CVEs))
+	if len(info.CVEs) != 3 { // knownCVEs["3."] has 3 items (incl. Squidbleed CVE-2026-47729)
+		t.Errorf("Expected 3 CVEs for 3.5, got %d", len(info.CVEs))
 	}
 
 	// Test unknown version
@@ -318,45 +318,92 @@ func TestStartWorkers_Basic(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	StartLogRetention(ctx, db)
-	StartBlacklistRefresh(ctx, db, tmpDir, nil)
+	StartBlacklistRefresh(ctx, db, tmpDir)
 	StartUpdateChecker(ctx, "v1.0.0")
 
 	logFile := filepath.Join(tmpDir, "access.log")
-	_ = os.WriteFile(logFile, []byte("test"), 0644)
 	StartLogTailer(ctx, db, logFile, tmpDir, hub)
 
 	time.Sleep(100 * time.Millisecond)
 }
 
-// fakeDNSSignaler records KillContainer calls for assertion.
-type fakeDNSSignaler struct {
-	name, signal string
-	calls        int
-	err          error
-}
-
-func (f *fakeDNSSignaler) KillContainer(name, signal string) error {
-	f.calls++
-	f.name, f.signal = name, signal
-	return f.err
-}
-
-func TestSignalDNSReload(t *testing.T) {
-	// nil signaler must be a silent no-op (the unit-test/dev path).
-	signalDNSReload(nil)
-
-	// A real signaler gets a SIGHUP to the DNS container.
-	f := &fakeDNSSignaler{}
-	signalDNSReload(f)
-	if f.calls != 1 {
-		t.Fatalf("expected 1 KillContainer call, got %d", f.calls)
-	}
-	if f.name != dnsContainer || f.signal != "HUP" {
-		t.Fatalf("expected KillContainer(%q, HUP), got (%q, %q)", dnsContainer, f.name, f.signal)
+func TestParseDNSLine(t *testing.T) {
+	// Parse query line
+	queryLine := "Jun 28 08:34:10 dnsmasq[123]: query[A] evil.com from 192.168.1.5"
+	entry := parseDNSLine(queryLine)
+	if entry != nil {
+		t.Fatal("expected parseDNSLine to return nil for queries (side effect only)")
 	}
 
-	// A signaler error must not panic (failure is non-fatal).
-	signalDNSReload(&fakeDNSSignaler{err: errTest})
+	// Parse reply line
+	replyLine := "Jun 28 08:34:10 dnsmasq[123]: config evil.com is 0.0.0.0"
+	entry = parseDNSLine(replyLine)
+	if entry == nil {
+		t.Fatal("expected entry to be parsed for block reply")
+	}
+	if entry["client_ip"] != "192.168.1.5" {
+		t.Errorf("expected client_ip 192.168.1.5, got %v", entry["client_ip"])
+	}
+	if entry["destination"] != "evil.com" {
+		t.Errorf("expected destination evil.com, got %v", entry["destination"])
+	}
+	if entry["blocked"] != 1 {
+		t.Errorf("expected blocked 1, got %v", entry["blocked"])
+	}
+	if entry["status"] != "DNS_SINKHOLE/0.0.0.0" {
+		t.Errorf("expected status DNS_SINKHOLE/0.0.0.0, got %v", entry["status"])
+	}
 }
 
-var errTest = fmt.Errorf("boom")
+func TestStartDNSTailer(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	tmpDir := t.TempDir()
+	hub := websocket.NewHub()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	logFile := filepath.Join(tmpDir, "dnsmasq.log")
+	_ = os.WriteFile(logFile, []byte("Jun 28 08:34:10 dnsmasq[123]: query[A] bad.com from 192.168.1.10\nJun 28 08:34:10 dnsmasq[123]: config bad.com is 0.0.0.0\n"), 0644)
+	StartDNSTailer(ctx, db, logFile, tmpDir, hub)
+
+	time.Sleep(800 * time.Millisecond)
+
+	var count int
+	_ = db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE method='DNS'").Scan(&count)
+	if count != 1 {
+		t.Errorf("expected 1 DNS sinkhole log, got %d", count)
+	}
+}
+
+func TestBoundedDNSCache(t *testing.T) {
+	now := time.Now()
+
+	// Roundtrip within TTL.
+	c := newBoundedDNSCache(4, time.Minute)
+	c.set("evil.com", "192.168.1.5", now)
+	if ip, ok := c.get("evil.com", now); !ok || ip != "192.168.1.5" {
+		t.Fatalf("expected hit 192.168.1.5, got %q ok=%v", ip, ok)
+	}
+
+	// Expiry: a read past the TTL misses and drops the entry.
+	if _, ok := c.get("evil.com", now.Add(2*time.Minute)); ok {
+		t.Fatal("expected expired entry to miss")
+	}
+	if c.len() != 0 {
+		t.Fatalf("expected expired entry to be evicted on read, len=%d", c.len())
+	}
+
+	// Hard cap: inserting well past max never grows the map beyond max.
+	small := newBoundedDNSCache(8, time.Hour)
+	for i := 0; i < 1000; i++ {
+		small.set(fmt.Sprintf("d%d.example", i), "10.0.0.1", now)
+		if small.len() > 8 {
+			t.Fatalf("cache exceeded cap: len=%d", small.len())
+		}
+	}
+	if small.len() == 0 || small.len() > 8 {
+		t.Fatalf("expected 1..8 entries after churn, got %d", small.len())
+	}
+}

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -28,22 +30,10 @@ var defaultDomainLists = []string{
 	"https://urlhaus.abuse.ch/downloads/text/",
 }
 
-// dnsSignaler is the subset of docker.DockerClient the refresh worker needs to
-// tell dnsmasq to re-read its exported blocklist. Kept as a local interface so
-// the worker stays testable and nil-safe (a nil signaler simply skips the
-// reload, which is what the unit tests pass).
-type dnsSignaler interface {
-	KillContainer(name, signal string) error
-}
-
-// dnsContainer is the compose-default name of the DNS service, matching the
-// docker client's control allowlist and the ReloadDNS handler.
-const dnsContainer = "secure-proxy-manager-dns-1"
-
 // StartBlacklistRefresh runs an auto-refresh loop based on DB settings. After
 // each export it signals dnsmasq to reload (Squid's blacklists are picked up
 // separately by the proxy-side watchdog; only the DNS sinkhole needs the nudge).
-func StartBlacklistRefresh(ctx context.Context, db *sql.DB, configDir string, dns dnsSignaler) {
+func StartBlacklistRefresh(ctx context.Context, db *sql.DB, configDir string) {
 	go func() {
 		for {
 			// Re-read settings on each cycle so changes take effect.
@@ -70,24 +60,16 @@ func StartBlacklistRefresh(ctx context.Context, db *sql.DB, configDir string, dn
 				log.Warn().Err(err).Msg("blacklist export after auto-refresh failed")
 				continue
 			}
-			signalDNSReload(dns)
+			reloadFile := filepath.Join(configDir, ".reload-dns")
+			// #nosec G306 — reload trigger, must be readable by the proxy/dns container
+			if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
+				log.Warn().Err(err).Msg("dns reload file trigger after auto-refresh failed")
+			} else {
+				log.Info().Msg("signaled dnsmasq to reload blocklist after auto-refresh")
+			}
 		}
 	}()
 	log.Info().Msg("blacklist auto-refresh worker started")
-}
-
-// signalDNSReload tells dnsmasq to re-read its addn-hosts blocklist via SIGHUP.
-// No-op when dns is nil (tests). Failures are non-fatal: the export already
-// landed on disk and dnsmasq will pick it up on its next reload regardless.
-func signalDNSReload(dns dnsSignaler) {
-	if dns == nil {
-		return
-	}
-	if err := dns.KillContainer(dnsContainer, "HUP"); err != nil {
-		log.Warn().Err(err).Msg("dnsmasq SIGHUP after auto-refresh failed (non-fatal)")
-		return
-	}
-	log.Info().Msg("signaled dnsmasq to reload blocklist after auto-refresh")
 }
 
 func readRefreshSettings(db *sql.DB) (bool, int) {

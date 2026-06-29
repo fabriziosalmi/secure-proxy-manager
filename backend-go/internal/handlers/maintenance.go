@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -15,18 +17,16 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	appcrypto "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/crypto"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/docker"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 )
 
 type MaintenanceHandlers struct {
-	db     *sql.DB
-	cfg    *config.Config
-	docker docker.DockerClient
+	db  *sql.DB
+	cfg *config.Config
 }
 
-func NewMaintenanceHandlers(db *sql.DB, cfg *config.Config, dc docker.DockerClient) *MaintenanceHandlers {
-	return &MaintenanceHandlers{db: db, cfg: cfg, docker: dc}
+func NewMaintenanceHandlers(db *sql.DB, cfg *config.Config) *MaintenanceHandlers {
+	return &MaintenanceHandlers{db: db, cfg: cfg}
 }
 
 func (h *MaintenanceHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {
@@ -173,16 +173,17 @@ func (h *MaintenanceHandlers) ReloadConfig(w http.ResponseWriter, r *http.Reques
 	if err := database.ExportBlacklistsToFiles(h.db, h.cfg.ConfigDir); err != nil {
 		log.Warn().Err(err).Msg("export blacklists failed during reload")
 	}
-	// Restart the proxy container so startup.sh regenerates squid.conf from the
-	// current toggle files (ssl_bump_enabled, etc.) and blacklist files.
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
 	database.Audit(h.db, username, "reload_config", "proxy", "")
-	if err := h.docker.RestartContainer("secure-proxy-manager-proxy"); err != nil {
-		log.Warn().Err(err).Msg("proxy container restart failed (non-fatal)")
-		writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Config exported — proxy restart failed, apply manually"})
+
+	reloadFile := filepath.Join(h.cfg.ConfigDir, ".reload-squid")
+	// #nosec G306 — reload trigger, must be readable by the proxy/dns container
+	if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
+		log.Warn().Err(err).Msg("proxy reload file trigger failed")
+		writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Config exported — reload trigger write failed, apply manually"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Proxy restarted with new configuration"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Proxy reload signal sent successfully"})
 }
 
 func (h *MaintenanceHandlers) ReloadDNS(w http.ResponseWriter, r *http.Request) {
@@ -190,9 +191,10 @@ func (h *MaintenanceHandlers) ReloadDNS(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// Signal dnsmasq reload via Docker Engine API (replaces docker exec subprocess).
-	if err := h.docker.KillContainer("secure-proxy-manager-dns-1", "HUP"); err != nil {
-		log.Warn().Err(err).Msg("dnsmasq SIGHUP failed (non-fatal)")
+	reloadFile := filepath.Join(h.cfg.ConfigDir, ".reload-dns")
+	// #nosec G306 — reload trigger, must be readable by the proxy/dns container
+	if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
+		log.Warn().Err(err).Msg("dns reload file trigger failed")
 	}
 	var count int
 	h.db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&count) //nolint:errcheck
@@ -205,11 +207,11 @@ func (h *MaintenanceHandlers) ReloadDNS(w http.ResponseWriter, r *http.Request) 
 func (h *MaintenanceHandlers) ClearCache(w http.ResponseWriter, r *http.Request) {
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
 	database.Audit(h.db, username, "clear_cache", "proxy", "")
-	_, err := h.docker.ExecContainer("secure-proxy-manager-proxy", []string{"squid", "-k", "purge"})
-	if err != nil {
-		log.Warn().Err(err).Msg("squid cache purge failed, trying flush")
-		// Fallback: flush swap — less aggressive but still clears disk cache.
-		h.docker.ExecContainer("secure-proxy-manager-proxy", []string{"squid", "-k", "shutdown"}) //nolint:errcheck
+
+	clearFile := filepath.Join(h.cfg.ConfigDir, ".clear-cache")
+	// #nosec G306 — clear-cache trigger, must be readable by the proxy container
+	if err := os.WriteFile(clearFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
+		log.Warn().Err(err).Msg("clear cache trigger file write failed")
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Proxy cache purged"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Proxy cache purge signal sent successfully"})
 }

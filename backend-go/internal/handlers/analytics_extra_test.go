@@ -26,7 +26,7 @@ func TestDashboardSummary_WAFBreakerDegrades(t *testing.T) {
 
 	// Closed port → connection refused fast (not the 3s client timeout).
 	cfg.WAFURL = "http://127.0.0.1:1"
-	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+	h := NewAnalyticsHandlers(db, cfg)
 
 	for i := 0; i < 5; i++ {
 		r := httptest.NewRequest("GET", "/api/dashboard/summary", nil)
@@ -66,7 +66,7 @@ func TestAnalyticsHandlers_Status_Mocked(t *testing.T) {
 	defer proxyTs.Close()
 	cfg.ProxyURL = proxyTs.URL
 
-	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+	h := NewAnalyticsHandlers(db, cfg)
 	r := httptest.NewRequest("GET", "/api/status", nil)
 	w := httptest.NewRecorder()
 	h.Status(w, r)
@@ -104,7 +104,7 @@ func TestAnalyticsHandlers_WAFProxying(t *testing.T) {
 	defer wafTs.Close()
 	cfg.WAFURL = wafTs.URL
 
-	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+	h := NewAnalyticsHandlers(db, cfg)
 
 	// 1. WAFStats (inline in DashboardSummary or separate if added)
 	// WAFStats is called from DashboardSummary
@@ -144,7 +144,7 @@ func TestAnalyticsHandlers_WAFProxying(t *testing.T) {
 func TestAnalyticsHandlers_MoreStats(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+	h := NewAnalyticsHandlers(db, cfg)
 
 	// Add some logs
 	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, source_ip, method, destination, status) VALUES (datetime('now'), '1.1.1.1', 'GET', 'http://dropbox.com/file', 'TCP_MISS/200')")
@@ -186,7 +186,7 @@ func TestAnalyticsHandlers_MoreStats(t *testing.T) {
 func TestAnalyticsHandlers_TestRule_Extra(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAnalyticsHandlers(db, cfg, &mockDockerClient{})
+	h := NewAnalyticsHandlers(db, cfg)
 
 	_, _ = db.Exec("INSERT INTO proxy_logs (timestamp, destination) VALUES (datetime('now'), 'http://malicious.com/payload')")
 

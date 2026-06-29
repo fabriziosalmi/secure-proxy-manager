@@ -236,6 +236,9 @@ token.
   a private network (e.g. the Tailscale sidecar).
 - Sensitive settings (webhook URLs, tokens) are encrypted at rest; JWT secrets
   and the encryption key are generated and persisted under `data/`.
+- Squid is kept patched against upstream CVEs (e.g. Squidbleed / CVE-2026-47729)
+  via a fail-closed version floor in the proxy image and a disabled FTP gateway —
+  see [Security Advisories](docs/guide/security-advisories.md).
 
 ## Contributing
 

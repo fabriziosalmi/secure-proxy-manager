@@ -4,9 +4,11 @@ import { Activity, Server, Tag, Users, ArrowDownUp, Ban, Database } from 'lucide
 import { Card, CardContent } from '../ui/card';
 import { api } from '../../lib/api';
 
-// Unwrap the { status, data } envelope.
+// Unwrap the { status, data } envelope. Coalesce to null (never undefined) so a
+// data-less response (error envelope, empty/304 body) doesn't trip React Query's
+// "Query data cannot be undefined" invariant — callers already optional-chain.
 function api_get<T = unknown>(path: string): Promise<T> {
-  return api.get(path).then((r) => r.data.data as T);
+  return api.get(path).then((r) => (r.data?.data ?? null) as T);
 }
 
 interface StatusData {

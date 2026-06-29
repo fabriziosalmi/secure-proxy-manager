@@ -62,6 +62,12 @@ connect-src 'self' ws: wss:
 - **Backend tests**: Race detector enabled, 60% coverage threshold enforced
 - **Docker build verification**: All 5 images built and verified in CI
 
+## Security Advisories
+
+Component-specific advisories and how SPM mitigates them — e.g. the Squid
+"Squidbleed" FTP-gateway leak (CVE-2026-47729) — are tracked in
+[docs/guide/security-advisories.md](docs/guide/security-advisories.md).
+
 ## Reporting Vulnerabilities
 
 1. **Do NOT** open a public issue

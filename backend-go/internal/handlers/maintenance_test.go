@@ -11,26 +11,10 @@ import (
 	"time"
 )
 
-type mockDockerClient struct {
-	err error
-}
-
-func (m *mockDockerClient) KillContainer(name, signal string) error {
-	return m.err
-}
-
-func (m *mockDockerClient) RestartContainer(name string) error {
-	return m.err
-}
-
-func (m *mockDockerClient) ExecContainer(name string, cmd []string) (string, error) {
-	return "", m.err
-}
-
 func TestMaintenanceHandlers_BackupConfig(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewMaintenanceHandlers(db, cfg, &mockDockerClient{})
+	h := NewMaintenanceHandlers(db, cfg)
 
 	r := httptest.NewRequest("GET", "/api/maintenance/backup-config", nil)
 	w := httptest.NewRecorder()
@@ -52,7 +36,7 @@ func TestMaintenanceHandlers_BackupConfig(t *testing.T) {
 func TestMaintenanceHandlers_RestoreConfig(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewMaintenanceHandlers(db, cfg, &mockDockerClient{})
+	h := NewMaintenanceHandlers(db, cfg)
 
 	body, _ := json.Marshal(map[string]any{
 		"config": map[string]string{"proxy_port": "8080"},
@@ -75,7 +59,7 @@ func TestMaintenanceHandlers_RestoreConfig(t *testing.T) {
 func TestMaintenanceHandlers_DownloadCA(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewMaintenanceHandlers(db, cfg, &mockDockerClient{})
+	h := NewMaintenanceHandlers(db, cfg)
 
 	// Test not found
 	r := httptest.NewRequest("GET", "/api/security/download-ca", nil)
@@ -104,7 +88,7 @@ func TestMaintenanceHandlers_DownloadCA(t *testing.T) {
 func TestMaintenanceHandlers_CheckCertSecurity(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewMaintenanceHandlers(db, cfg, &mockDockerClient{})
+	h := NewMaintenanceHandlers(db, cfg)
 
 	r := httptest.NewRequest("GET", "/api/maintenance/check-cert-security", nil)
 	w := httptest.NewRecorder()
@@ -128,7 +112,7 @@ func TestMaintenanceHandlers_CheckCertSecurity(t *testing.T) {
 func TestMaintenanceHandlers_ReloadConfig(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewMaintenanceHandlers(db, cfg, &mockDockerClient{})
+	h := NewMaintenanceHandlers(db, cfg)
 
 	r := httptest.NewRequest("POST", "/api/maintenance/reload-config", nil)
 	w := httptest.NewRecorder()
@@ -143,7 +127,7 @@ func TestMaintenanceHandlers_ReloadConfig(t *testing.T) {
 func TestMaintenanceHandlers_ReloadDNS(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewMaintenanceHandlers(db, cfg, &mockDockerClient{})
+	h := NewMaintenanceHandlers(db, cfg)
 
 	r := httptest.NewRequest("POST", "/api/maintenance/reload-dns", nil)
 	w := httptest.NewRecorder()
@@ -158,7 +142,7 @@ func TestMaintenanceHandlers_ReloadDNS(t *testing.T) {
 func TestMaintenanceHandlers_ClearCache(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewMaintenanceHandlers(db, cfg, &mockDockerClient{})
+	h := NewMaintenanceHandlers(db, cfg)
 
 	r := httptest.NewRequest("POST", "/api/maintenance/clear-cache", nil)
 	w := httptest.NewRecorder()

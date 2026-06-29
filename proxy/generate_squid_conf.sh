@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # ── Helper functions ─────────────────────────────────────────────────────────
 
 ensure_ip_blocking_rules() {
@@ -125,31 +124,221 @@ touch /etc/squid/blacklists/ip/local.txt
 touch /etc/squid/blacklists/domain/local.txt
 touch /etc/squid/whitelists/ip/local.txt
 
-# ── Stop any existing Squid ──────────────────────────────────────────────────
+# ── Read dynamic settings from backend DB (via config files written on save) ─
 
-if [ -f /run/squid.pid ]; then
-    pid=$(cat /run/squid.pid)
-    if ps -p $pid > /dev/null 2>&1; then
-        kill $pid
-        sleep 2
-    fi
-    rm -f /run/squid.pid
+SQUID_PORT="${PROXY_PORT:-3128}"
+SQUID_CACHE_MB="${PROXY_CACHE_SIZE_MB:-2000}"
+SQUID_MEM_MB="${PROXY_MEMORY_CACHE_MB:-256}"
+
+# Allow override via /config/squid_settings.env (written by backend on settings save)
+if [ -f /config/squid_settings.env ]; then
+    safe_source /config/squid_settings.env
 fi
-pkill -15 squid 2>/dev/null || true
-sleep 2
 
-# ── iptables for transparent proxy ──────────────────────────────────────────
-# Idempotent: -C checks whether the rule already exists before -A appends it, so
-# a `docker restart` (which reuses the netns) does not stack duplicate REDIRECT
-# rules on every boot.
+echo "Squid settings: port=${SQUID_PORT} cache=${SQUID_CACHE_MB}MB mem=${SQUID_MEM_MB}MB extra_ssl=${EXTRA_SSL_PORTS:-none}"
 
-iptables -t nat -C PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3128 2>/dev/null || \
-    iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3128
-iptables -t nat -C PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 3128 2>/dev/null || \
-    iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 3128
+# ── Generate base Squid configuration ────────────────────────────────────────
 
-# ── Generate Squid configuration ─────────────────────────────────────────────
-. /usr/local/bin/generate_squid_conf.sh
+# /etc/squid is a tmpfs at runtime, so install the staged branded error pages
+# into it on every boot (the image copy lives at /opt/squid-error-pages).
+mkdir -p /etc/squid/error-pages
+if [ -d /opt/squid-error-pages ]; then
+    cp -a /opt/squid-error-pages/. /etc/squid/error-pages/ 2>/dev/null || true
+fi
+
+echo "Setting up Squid configuration..."
+cat > /etc/squid/squid.conf.base << CONFEOF
+http_port ${SQUID_PORT}
+visible_hostname secure-proxy
+pid_filename /run/squid/squid.pid
+
+# Access control lists
+acl localnet src 10.0.0.0/8
+acl localnet src 172.16.0.0/12
+acl localnet src 192.168.0.0/16
+acl localnet src fc00::/7
+acl localnet src fe80::/10
+
+# SSL/HTTPS related ACLs
+acl SSL_ports port 443
+acl SSL_ports port 8443
+acl Safe_ports port 80
+acl Safe_ports port 443
+# port 21 (FTP) intentionally NOT a Safe_port — we do not proxy FTP, and the
+# FTP gateway is the Squidbleed (CVE-2026-47729) attack surface. See ftp_proto.
+acl Safe_ports port 70
+acl Safe_ports port 210
+acl Safe_ports port 1025-65535
+acl Safe_ports port 280
+acl Safe_ports port 488
+acl Safe_ports port 591
+acl Safe_ports port 777
+
+# Blacklists and whitelists
+# Domain blocking is handled at L3 by dnsmasq (DNS blackhole → 0.0.0.0)
+# Only IP blocking remains at L7 in Squid
+acl ip_blacklist src "/etc/squid/blacklists/ip/local.txt"
+acl ip_whitelist dst "/etc/squid/whitelists/ip/local.txt"
+
+# Direct IP access detection
+acl direct_ip_url url_regex -i ^https?://([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)
+acl direct_ip_host dstdom_regex -i ^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$
+acl direct_ipv6_url url_regex -i ^https?://\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\]
+acl direct_ipv6_host dstdom_regex -i ^\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\]$
+
+# HTTP method definitions
+acl CONNECT method CONNECT
+
+# Protocol guard: Squid's built-in FTP gateway is the Squidbleed
+# (CVE-2026-47729) out-of-bounds-read surface. We never proxy FTP, so match and
+# deny the FTP scheme outright (denied first in the access rules below).
+acl ftp_proto proto FTP
+
+# Local network destinations (proxy UI, backend — should not be blocked as "direct IP")
+# NOTE: 172.16.0.0/12 intentionally excluded — Docker internal networks use that range
+acl local_dst dst 10.0.0.0/8 192.168.0.0/16
+acl local_dst_url url_regex -i ^https?://192\.168\. ^https?://10\.
+
+# HTTP method policy: positive allowlist (Safe_methods) + explicit dangerous-method
+# denylist for clearer audit logs. Anything not in Safe_methods is denied below
+# alongside the rest of the access rules.
+acl Safe_methods method GET HEAD POST OPTIONS CONNECT
+acl Dangerous_methods method PUT DELETE PATCH TRACE TRACK
+http_access deny Dangerous_methods
+http_access deny !Safe_methods
+
+# Access rules
+http_access deny ftp_proto
+http_access deny !Safe_ports
+http_access allow CONNECT local_dst
+http_access deny CONNECT !SSL_ports
+
+# Allow whitelisted + local network destinations before blocking direct IPs
+http_access allow ip_whitelist
+http_access allow local_dst
+http_access allow local_dst_url
+
+http_access deny direct_ip_url
+http_access deny direct_ip_host
+http_access deny direct_ipv6_url
+http_access deny direct_ipv6_host
+http_access deny CONNECT direct_ip_host
+http_access deny CONNECT direct_ipv6_host
+# ip_blacklist is a SOURCE ACL. Scope the deny so it can NEVER apply to LAN
+# clients: if a bogon/RFC1918-containing feed (Firehol etc.) is ever loaded, an
+# unscoped "deny ip_blacklist" would lock out every localnet/localhost client.
+http_access deny ip_blacklist !localnet !localhost
+# domain_blacklist removed — handled by dnsmasq DNS blackhole at L3
+http_access allow localnet
+http_access allow localhost
+http_access deny all
+
+# Caching
+cache_mem ${SQUID_MEM_MB} MB
+maximum_object_size_in_memory 512 KB
+memory_replacement_policy lru
+cache_replacement_policy heap LFUDA
+cache_dir ufs /var/spool/squid ${SQUID_CACHE_MB} 16 256
+maximum_object_size 100 MB
+coredump_dir /var/spool/squid
+
+# Connection performance tuning
+client_persistent_connections on
+server_persistent_connections on
+pipeline_prefetch on
+dns_v4_first on
+request_body_max_size 10 MB
+reply_body_max_size 200 MB
+max_filedesc 65535
+
+# Refresh patterns — base (conservative)
+refresh_pattern ^ftp:           1440    20%     10080
+refresh_pattern ^gopher:        1440    0%      1440
+refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
+refresh_pattern .               0       20%     4320
+
+# Allow cache manager for stats (squidclient mgr:info)
+cachemgr_passwd none info menu
+
+# Custom branded error pages
+error_directory /etc/squid/error-pages
+
+# ICAP WAF
+icap_enable on
+icap_send_client_ip on
+icap_send_client_username on
+icap_client_username_encode off
+icap_client_username_header X-Client-Username
+icap_preview_enable on
+icap_preview_size 4096
+icap_service service_req reqmod_precache bypass=0 icap://waf:1344/waf
+adaptation_access service_req allow all
+icap_service service_resp respmod_precache bypass=1 icap://waf:1344/waf
+adaptation_access service_resp allow all
+
+# Logging — keep volume growth bounded: lower verbosity, disable the noisy
+# store log, and keep 5 rotations (a daily `squid -k rotate` is triggered by the
+# blacklist watchdog sidecar).
+debug_options ALL,1
+logfile_rotate 5
+access_log daemon:/var/log/squid/access.log squid
+cache_log /var/log/squid/cache.log
+cache_store_log none
+
+# Timeouts
+connect_timeout 30 seconds
+dns_timeout 5 seconds
+
+# ── Protocol Hardening ───────────────────────────────────────────────────────
+
+# Strip internal topology from outbound requests
+via off
+forwarded_for delete
+request_header_access X-Forwarded-For deny all
+
+# Inject HSTS on all proxied responses (force HTTPS on clients)
+reply_header_add Strict-Transport-Security "max-age=31536000; includeSubDomains" all
+
+
+# Strip Expect: 100-continue (anti-smuggling)
+request_header_access Expect deny all
+
+# Strip non-standard outbound headers (reduce attack surface)
+request_header_access X-Forwarded-Host deny all
+request_header_access X-Forwarded-Proto deny all
+request_header_access Proxy-Connection deny all
+
+# Limit request body size (10MB default, prevents exfiltration of large dumps)
+request_body_max_size 10 MB
+
+# Limit request header size (prevents header-based buffer overflow/exfil)
+request_header_max_size 64 KB
+
+# Outbound TLS hardening — disable obsolete protocols, prefer modern ciphers.
+# Applies to direct CONNECT tunneling and (when enabled) SSL-bump origin
+# connections. NO_SSLv3,NO_TLSv1,NO_TLSv1_1 covers the obsolete versions;
+# we keep TLSv1.2+TLSv1.3 for compatibility with the long tail of older
+# legitimate origins. Cipher list mandates ECDHE forward secrecy + AEAD.
+tls_outgoing_options options=NO_SSLv3,NO_TLSv1,NO_TLSv1_1 cipher=ECDHE+AESGCM:ECDHE+CHACHA20:!aNULL:!eNULL:!MD5:!3DES:!RC4
+
+CONFEOF
+
+# ── Apply generated config, then append custom extras ────────────────────────
+
+cp /etc/squid/squid.conf.base /etc/squid/squid.conf
+
+# Append custom directives (extras only — do NOT override the entire config).
+# Migration: if old custom_squid.conf exists, rename to custom_squid_extra.conf.
+if [ -f /config/custom_squid.conf ] && [ ! -f /config/custom_squid_extra.conf ]; then
+    echo "Migrating custom_squid.conf → custom_squid_extra.conf (append-only mode)"
+    mv /config/custom_squid.conf /config/custom_squid_extra.conf
+fi
+if [ -f /config/custom_squid_extra.conf ]; then
+    echo "Appending custom directives from /config/custom_squid_extra.conf"
+    echo "" >> /etc/squid/squid.conf
+    echo "# ── Custom extras (from custom_squid_extra.conf) ──" >> /etc/squid/squid.conf
+    cat /config/custom_squid_extra.conf >> /etc/squid/squid.conf
+fi
 
 # ── Ensure critical security rules are present ──────────────────────────────
 
@@ -435,56 +624,3 @@ fi
 [ -f /config/domain_blacklist.txt ] && cp /config/domain_blacklist.txt /etc/squid/blacklists/domain/local.txt
 [ -f /config/dst_allow_ip.txt ]     && cp /config/dst_allow_ip.txt /etc/squid/allowlists/dst_ip/local.txt
 [ -f /config/dst_allow_domain.txt ] && cp /config/dst_allow_domain.txt /etc/squid/allowlists/dst_domain/local.txt
-
-# ── Blacklist watchdog (live reload + log readability) ───────────────────────
-# The watchdog is shipped as /usr/local/bin/blacklist_watchdog.py and is
-# registered statically in squid-supervisor.conf, so supervisord starts it on
-# boot. It keeps /config blacklist files synced into the Squid ACL dirs (live
-# reload via `squid -k reconfigure`) and re-asserts 0644 on the Squid logs so
-# the backend container can tail them. Nothing to generate here at runtime.
-
-# ── Prepare directories and permissions ──────────────────────────────────────
-
-mkdir -p /var/log/squid /var/spool/squid /run/squid /var/run/squid /var/log/supervisor
-chown -R proxy:proxy /var/log/squid /var/spool/squid /run/squid /var/run/squid
-# Log files must be world-readable so the backend container (different UID)
-# can tail access.log for analytics without requiring a shared group or
-# elevated privileges.
-chmod 755 /var/log/squid
-chmod 755 /run/squid /var/run/squid
-touch /run/squid/squid.pid /run/squid.pid
-chown proxy:proxy /run/squid/squid.pid /run/squid.pid
-
-# ── Initialize swap directories ─────────────────────────────────────────────
-
-su - proxy -s /bin/bash -c "/usr/sbin/squid -z"
-sleep 2
-
-# ── Validate configuration ──────────────────────────────────────────────────
-
-echo "Validating Squid configuration..."
-if /usr/sbin/squid -k parse; then
-    echo "Configuration syntax is valid."
-else
-    echo "Configuration has errors, falling back to base..."
-    [ ! -f /etc/squid/squid.conf.backup ] && cp /etc/squid/squid.conf /etc/squid/squid.conf.backup
-    cp /etc/squid/squid.conf.base /etc/squid/squid.conf
-    ensure_ip_blocking_rules /etc/squid/squid.conf
-fi
-
-# ── Final verification ──────────────────────────────────────────────────────
-
-echo "Configuration verification:"
-verify_config_feature "Direct IP blocking"      "acl direct_ip_url"
-verify_config_feature "Cache configuration"      "cache_dir ufs"
-verify_config_feature "Local network access"     "acl localnet src"
-verify_config_feature "IP blacklist"             "acl ip_blacklist"
-verify_config_feature "Domain blacklist"         "acl domain_blacklist"
-verify_config_feature "Connection timeout"       "connect_timeout"
-verify_config_feature "DNS timeout"              "dns_timeout"
-verify_config_feature "Logging"                  "debug_options"
-
-# ── Start supervisor ────────────────────────────────────────────────────────
-
-echo "Starting supervisor..."
-exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf
