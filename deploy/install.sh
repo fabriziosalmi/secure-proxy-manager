@@ -67,11 +67,13 @@ if [ -d "$INSTALL_DIR" ]; then
     info "Updating existing installation..."
     cd "$INSTALL_DIR"
     git pull --ff-only origin "$BRANCH"
+    cp deploy/docker-compose.prod.yml docker-compose.yml
     ok "Updated to latest"
 else
     info "Cloning repository..."
     git clone --depth 1 -b "$BRANCH" "$REPO" "$INSTALL_DIR"
     cd "$INSTALL_DIR"
+    cp deploy/docker-compose.prod.yml docker-compose.yml
     ok "Cloned to $INSTALL_DIR"
 fi
 
@@ -112,15 +114,15 @@ else
 fi
 
 # ── Build and start ──────────────────────────────────────────────────
-info "Building containers (this may take 2-5 minutes on first run)..."
-docker compose build --quiet 2>&1 | tail -3
+info "Pulling pre-built containers from GitHub Container Registry (GHCR)..."
+docker compose pull --quiet
 
 info "Starting services..."
 docker compose up -d
 
 # ── Wait for healthy ─────────────────────────────────────────────────
 info "Waiting for services to be healthy..."
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
     if curl -sk --max-time 2 https://localhost:8443/api/health 2>/dev/null | grep -q '"healthy"'; then
         break
     fi

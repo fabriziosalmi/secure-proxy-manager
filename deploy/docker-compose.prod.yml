@@ -1,0 +1,310 @@
+services:
+  web:
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-web:latest
+    ports:
+      - "80:8011"     # HTTP (redirect + ACME challenges)
+      - "443:8443"    # HTTPS (main UI)
+      - "8011:8011"   # HTTP alt (backward compat)
+      - "8443:8443"   # HTTPS alt (backward compat)
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      - BACKEND_URL=${BACKEND_URL:-http://backend:5000}
+      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-120}
+      - LETSENCRYPT_DOMAIN=${LETSENCRYPT_DOMAIN:-}
+      - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8011/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 128M
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run
+      - /var/cache/nginx
+      - /etc/nginx/ssl
+      - /etc/nginx/conf.d
+      - /var/www/certbot
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - NET_BIND_SERVICE
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - frontend
+    restart: unless-stopped
+
+  waf:
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-waf:latest
+    volumes:
+      - ./config:/config:ro
+      - ./data:/data:ro
+    environment:
+      - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
+      - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
+      - WAF_BLOCK_THRESHOLD=${WAF_BLOCK_THRESHOLD:-10}
+      - WAF_H_ENTROPY=${WAF_H_ENTROPY:-1}
+      - WAF_H_ENTROPY_MAX=${WAF_H_ENTROPY_MAX:-7.5}
+      - WAF_H_BEACONING=${WAF_H_BEACONING:-1}
+      - WAF_H_PII=${WAF_H_PII:-1}
+      - WAF_H_SHARDING=${WAF_H_SHARDING:-1}
+      - WAF_H_GHOSTING=${WAF_H_GHOSTING:-1}
+      - WAF_H_SEQUENCE=${WAF_H_SEQUENCE:-0}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - proxy-internal
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-backend:latest
+    ports:
+      - "127.0.0.1:5001:5000"
+    volumes:
+      - ./config:/config
+      - ./data:/data
+      - ./logs:/logs
+    environment:
+      - PROXY_HOST=${PROXY_HOST:-proxy}
+      - PROXY_PORT=${PROXY_PORT:-3128}
+      - PROXY_CONTAINER_NAME=${PROXY_CONTAINER_NAME:-secure-proxy-manager-proxy}
+      - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
+      - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
+      - SECRET_KEY=${SECRET_KEY}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://localhost:8443}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "/server", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - frontend
+      - proxy-internal
+    restart: unless-stopped
+
+  dns:
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-dns:latest
+    volumes:
+      - ./config:/config:ro
+      - ./logs:/var/log
+    environment:
+      - DNS_UPSTREAM_1=${DNS_UPSTREAM_1:-1.1.1.3}
+      - DNS_UPSTREAM_2=${DNS_UPSTREAM_2:-9.9.9.9}
+      - DNS_UPSTREAM_3=${DNS_UPSTREAM_3:-8.8.8.8}
+      - PROXY_IP=${PROXY_IP:-}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "nslookup", "localhost", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - proxy-internal
+      - frontend
+    restart: unless-stopped
+
+  proxy:
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:latest
+    container_name: secure-proxy-manager-proxy
+    environment:
+      - GUI_IP_WHITELIST=${GUI_IP_WHITELIST:-}
+    ports:
+      - "${PROXY_BIND_IP:-0.0.0.0}:3128:3128"
+    volumes:
+      - ./config:/config
+      - ./data:/data:ro
+      - ./logs:/var/log/squid
+      - squid-cache:/var/spool/squid
+    depends_on:
+      waf:
+        condition: service_healthy
+      dns:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "(squidclient -h 127.0.0.1 -p 3128 mgr:info 2>/dev/null | grep -q 'Squid Object Cache') || curl -sf --max-time 3 -x http://127.0.0.1:3128 http://www.gstatic.com/generate_204 -o /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run
+      - /var/log/supervisor
+      - /etc/squid
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - proxy-internal
+      - frontend
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+
+  tailscale:
+    image: tailscale/tailscale:v1.80.3
+    hostname: ${TAILSCALE_HOSTNAME:-secure-proxy}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_EXTRA_ARGS=--advertise-tags=tag:proxy
+    volumes:
+      - tailscale-data:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    networks:
+      - proxy-internal
+    restart: unless-stopped
+    profiles:
+      - tailscale
+
+  # Observability stack (opt-in)
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: secure-proxy-manager-prometheus
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - proxy-internal
+      - frontend
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    profiles:
+      - observability
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: secure-proxy-manager-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - frontend
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    profiles:
+      - observability
+
+networks:
+  frontend:
+    driver: bridge
+  proxy-internal:
+    driver: bridge
+    internal: true
+
+volumes:
+  squid-cache:
+    driver: local
+  tailscale-data:
+    driver: local
+  letsencrypt:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
