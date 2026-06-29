@@ -1,4 +1,4 @@
 package config
 
 // AppVersion is the semantic version of this backend build.
-const AppVersion = "3.10.5"
+const AppVersion = "3.11.0"

@@ -34,20 +34,20 @@ export function Blacklists() {
 
   const { data: ipResult } = useQuery<PaginatedResponse<IpEntry>>({
     queryKey: ['blacklist', 'ip', page, searchTerm],
-    queryFn: () => api.get(`ip-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data.data, total: r.data.total })),
+    queryFn: () => api.get(`ip-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.total ?? 0 })),
   });
   const { data: domainResult } = useQuery<PaginatedResponse<DomainEntry>>({
     queryKey: ['blacklist', 'domain', page, searchTerm],
-    queryFn: () => api.get(`domain-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data.data, total: r.data.total })),
+    queryFn: () => api.get(`domain-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.total ?? 0 })),
   });
   const { data: whitelistResult } = useQuery<PaginatedResponse<WhitelistEntry>>({
     queryKey: ['whitelist', 'ip', page, searchTerm],
-    queryFn: () => api.get(`ip-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data.data, total: r.data.total })),
+    queryFn: () => api.get(`ip-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.total ?? 0 })),
   });
 
   const { data: domainWhitelistResult } = useQuery<PaginatedResponse<DomainWhitelistEntry>>({
     queryKey: ['whitelist', 'domain', page, searchTerm],
-    queryFn: () => api.get(`domain-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data.data, total: r.data.total })),
+    queryFn: () => api.get(`domain-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.total ?? 0 })),
   });
 
   const ips = ipResult?.data ?? [];
@@ -501,7 +501,7 @@ export function Blacklists() {
         aria-labelledby={`bl-tab-${activeTab === 'domain-whitelist' ? 'dwhitelist' : activeTab}`}
         className="bg-transparent"
       >
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-secondary/30 border-b border-border/50">
               <tr>

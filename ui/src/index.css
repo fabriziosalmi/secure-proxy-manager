@@ -239,12 +239,14 @@
 
   /* Chart tooltip glass */
   .chart-tooltip {
-    background: rgba(15, 23, 42, 0.9) !important;
+    /* Theme-aware: was a hardcoded dark rgba that rendered a dark tooltip on the
+       light theme. Use the same tokens as the recharts TOOLTIP_STYLE. */
+    background: var(--tooltip-bg) !important;
     -webkit-backdrop-filter: blur(12px) !important;
     backdrop-filter: blur(12px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid var(--tooltip-border) !important;
     border-radius: 8px !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+    box-shadow: var(--tooltip-shadow) !important;
     font-variant-numeric: tabular-nums !important;
   }
 

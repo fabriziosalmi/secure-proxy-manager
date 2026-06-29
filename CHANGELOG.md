@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.0] - 2026-06-29
+
+Hardening sweep across CI/release rigor, UX correctness, deployment robustness,
+and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy churn.
+
+### Added
+
+- **CI now catches the class of bug that shipped green.** The e2e smoke no longer
+  `chmod -R a+rwX ./logs` (that masking hid the dns capability/permission bug);
+  it owns `./logs` by a non-container UID so the real cap path is exercised. A
+  new `validate-compose` job runs `docker compose config -q` on **both** the dev
+  and the prod compose (the prod file install.sh ships was never parsed in CI). A
+  new `version-sync` job (+ `scripts/check-version-sync.sh`) fails on version
+  drift across version.go / package.json / package-lock.json / CHANGELOG.
+- **WAF_DISABLED_CATEGORIES** is now passed to the waf service (it was read by
+  waf-go but never wired into the container).
+
+### Changed
+
+- **dns healthcheck** resolves an external name through dnsmasq instead of
+  `nslookup localhost`, so a broken upstream-forwarding path is detected.
+- **install.sh**: backs up `./data` before an upgrade (DB-migration safety),
+  smoke-tests the forward proxy and prints `docker compose ps` before declaring
+  success, and generates a typeable admin password.
+- Documented the proxy's intentional full-capability retention as a guardrail in
+  both compose files (so a future "harden everything" change can't reproduce the
+  dns bug on the data plane).
+- Adoption: README badges + docs-site link + a "How it compares" table; a
+  SECURITY.md "Verifying release images" (cosign/SBOM) section and refreshed
+  Supported Versions; removed stale version strings.
+
+### Fixed
+
+- **WAF heuristic toggles (#102, UI part):** SetupWizard/Presets wrote
+  `heuristic_*` keys while Settings used `waf_h_*`, so selections never
+  round-tripped — unified on `waf_h_*` (matching the WAF's `WAF_H_*` env), and
+  corrected the misleading "Proxy restarted" save copy.
+- **React Query "data undefined" crash class:** all queryFns now unwrap the API
+  envelope via shared `lib/api` helpers (null-coalescing) instead of raw
+  `r.data.data`, which threw on an error/empty/304 response.
+- Light-mode chart tooltip (was a hardcoded dark colour); mobile horizontal
+  overflow on the Blacklists and Egress Allowlist tables; the Logs page
+  cold-start copy ("waiting for traffic" instead of "no logs match your search");
+  `.env.example` `TAILSCALE_AUTHKEY` → `TS_AUTHKEY` and a documented
+  `PROXY_BIND_IP`; a bogus `#nosec G704` (→ G107) in the backend.
+
 ## [3.10.5] - 2026-06-29
 
 ### Fixed

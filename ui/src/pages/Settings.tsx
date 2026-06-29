@@ -5,7 +5,7 @@ import { Save, Download, Shield, Network, Key, Bell, Lock, User, Sun, Moon, SunM
 import { useTheme } from '../components/ThemeProvider';
 import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { api } from '../lib/api';
+import { api, getData } from '../lib/api';
 import { z } from 'zod';
 import { ChangePassword } from '../components/settings/ChangePassword';
 import { Maintenance } from '../components/settings/Maintenance';
@@ -48,7 +48,7 @@ export function Settings() {
   const { theme, setTheme } = useTheme();
   const { data: settingsData, isLoading: loading, error } = useQuery<SettingRow[]>({
     queryKey: ['settings'],
-    queryFn: () => api.get('settings').then(r => r.data.data),
+    queryFn: () => getData<SettingRow[]>('settings'),
   });
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -146,8 +146,8 @@ export function Settings() {
         }),
         {
           loading: 'Applying new configuration to Proxy...',
-          success: 'Proxy restarted with new settings!',
-          error: 'Failed to restart proxy.',
+          success: 'Proxy reloaded with new configuration.',
+          error: 'Failed to apply configuration.',
         }
       );
     } catch {
@@ -719,7 +719,7 @@ export function Settings() {
             {/* WAF Heuristics toggles */}
             <div className="p-4 border border-border/50 rounded-lg bg-secondary/40">
               <label className="text-sm font-medium mb-2 block">WAF Behavioral Heuristics</label>
-              <p className="text-xs text-muted-foreground mb-3">Advanced stateful anomaly detection. Requires container restart to apply.</p>
+              <p className="text-xs text-muted-foreground mb-3">Advanced stateful anomaly detection. Saved here and applied to the WAF on its next container restart (via the matching WAF_H_* configuration).</p>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { key: 'waf_h_entropy', label: 'Entropy Detection', desc: 'Block high-entropy payloads (encrypted/compressed = exfiltration)' },

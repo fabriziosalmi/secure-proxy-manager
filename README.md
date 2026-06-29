@@ -1,5 +1,13 @@
 # Secure Proxy Manager
 
+[![Release](https://img.shields.io/github/v/release/fabriziosalmi/secure-proxy-manager?sort=semver)](https://github.com/fabriziosalmi/secure-proxy-manager/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/fabriziosalmi/secure-proxy-manager/ci.yml?branch=main&label=CI)](https://github.com/fabriziosalmi/secure-proxy-manager/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Images: GHCR · cosign-signed](https://img.shields.io/badge/images-GHCR%20%C2%B7%20cosign--signed-2496ED?logo=docker&logoColor=white)](https://github.com/fabriziosalmi/secure-proxy-manager/pkgs/container/secure-proxy-manager-proxy)
+[![Docs](https://img.shields.io/badge/docs-website-22c55e)](https://fabriziosalmi.github.io/secure-proxy-manager/)
+
+📖 **Documentation:** <https://fabriziosalmi.github.io/secure-proxy-manager/>
+
 A self-hosted forward proxy with a web UI for filtering, inspecting, and logging
 outbound HTTP/HTTPS traffic on a network. It combines a Squid proxy, a custom
 WAF, a DNS sinkhole, and a management API into a single Docker Compose stack.
@@ -9,6 +17,23 @@ point: block domains and IPs, inspect requests against WAF rules, sinkhole
 malware/ad domains at the DNS layer, and see what every client is reaching.
 
 ![Dashboard](docs/screenshots/dashboard.png)
+
+## How it compares
+
+Most self-hosted network tools cover one layer. SPM combines forward-proxy egress
+control, request inspection, and DNS sinkholing in a single stack:
+
+| Capability | Pi-hole / AdGuard | Nginx Proxy Manager | **Secure Proxy Manager** |
+|---|:---:|:---:|:---:|
+| DNS sinkhole (block at resolve time) | ✅ | — | ✅ |
+| Forward proxy (outbound egress control) | — | — | ✅ |
+| HTTP request/body inspection (WAF) | — | — | ✅ |
+| Default-deny egress allowlist | — | — | ✅ |
+| Reverse proxy / ingress | — | ✅ | — |
+
+Pi-hole/AdGuard block at the DNS layer and Nginx Proxy Manager is reverse-proxy
+*ingress*; SPM is the **outbound** counterpart — one controllable egress point
+with WAF inspection and DNS sinkholing combined.
 
 ## What it is
 
@@ -37,8 +62,9 @@ x86_64 and ARM64.
 curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/deploy/install.sh | sudo bash
 ```
 
-The installer checks for Docker, generates random admin credentials, builds the
-images, and starts the stack. It prints the credentials at the end.
+The installer checks for Docker, generates random admin credentials, pulls the
+pre-built signed images from GHCR, and starts the stack. It prints the
+credentials at the end (they are also saved to `.env`).
 
 **Manual:**
 

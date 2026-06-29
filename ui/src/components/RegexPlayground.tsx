@@ -36,7 +36,7 @@ export function RegexPlayground() {
     setResult(null);
     try {
       const res = await api.post('waf/test-rule', { regex: regex.trim(), hours });
-      setResult(res.data.data);
+      setResult(res.data?.data ?? null);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Test failed';
       toast.error(msg);

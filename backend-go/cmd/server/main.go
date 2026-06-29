@@ -51,7 +51,8 @@ func run() error {
 		}
 		// Probe readiness (DB reachable), not just liveness, so a wedged DB makes
 		// the container report unhealthy instead of falsely healthy.
-		// #nosec G704
+		// #nosec G107 -- localhost readiness probe; portNum is a validated
+		// 1-65535 int (checked above) and the URL is not user input.
 		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/readyz", portNum))
 		if err != nil || resp.StatusCode != 200 {
 			os.Exit(1)

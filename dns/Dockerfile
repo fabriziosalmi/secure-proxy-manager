@@ -14,7 +14,9 @@ RUN chmod +x /entrypoint.sh
 
 EXPOSE 53/udp 53/tcp
 
-HEALTHCHECK --interval=10s --timeout=2s --retries=3 \
-    CMD nslookup localhost 127.0.0.1 > /dev/null 2>&1 || exit 1
+# Resolve an external name (exercises upstream forwarding, not just liveness).
+# retries=6 tolerates a transient upstream blip before marking unhealthy.
+HEALTHCHECK --interval=10s --timeout=3s --retries=6 \
+    CMD nslookup -timeout=2 cloudflare.com 127.0.0.1 > /dev/null 2>&1 || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

@@ -1,9 +1,26 @@
 import axios from 'axios';
+import type { AxiosResponse, AxiosRequestConfig } from 'axios';
 
 export const api = axios.create({
   baseURL: '/api',
   timeout: 120000,
 });
+
+/**
+ * Unwrap the backend's `{ status, data }` envelope, coalescing a missing `data`
+ * to `null`. React Query forbids a queryFn resolving to `undefined`; a data-less
+ * response (error envelope, empty body, or a 304 Not Modified) would otherwise
+ * throw inside the queryFn and crash the page. Always route queryFns through
+ * this (or `getData`) instead of reaching for `r.data.data` directly.
+ */
+export function unwrapData<T = unknown>(r: AxiosResponse): T {
+  return (r?.data?.data ?? null) as T;
+}
+
+/** GET a path and unwrap the `{ status, data }` envelope (never resolves to undefined). */
+export function getData<T = unknown>(path: string, config?: AxiosRequestConfig): Promise<T> {
+  return api.get(path, config).then((r) => unwrapData<T>(r));
+}
 
 /** Decode JWT payload without a library (base64url → JSON). */
 function decodeJwtPayload(token: string): { exp?: number } | null {

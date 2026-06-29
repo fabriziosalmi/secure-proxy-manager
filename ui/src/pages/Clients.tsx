@@ -7,7 +7,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { IpBadge } from '../components/IpBadge';
 import { ClientSetup } from '../components/ClientSetup';
 import { useModal } from '../hooks/useModal';
-import { api } from '../lib/api';
+import { getData } from '../lib/api';
 import type { ClientsData, ClientStat, ClientDetail } from '../types';
 
 function parseUtc(ts: string): Date {
@@ -66,7 +66,7 @@ export function Clients() {
 
   const { data, isLoading, isFetching, refetch } = useQuery<ClientsData>({
     queryKey: ['clients', 'statistics'],
-    queryFn: () => api.get('clients/statistics').then((r) => r.data.data),
+    queryFn: () => getData<ClientsData>('clients/statistics'),
     refetchInterval: 30_000,
   });
 
@@ -183,7 +183,7 @@ export function Clients() {
 function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
   const { data, isLoading } = useQuery<ClientDetail>({
     queryKey: ['client-details', ip],
-    queryFn: () => api.get(`clients/${encodeURIComponent(ip)}/details`).then((r) => r.data.data),
+    queryFn: () => getData<ClientDetail>(`clients/${encodeURIComponent(ip)}/details`),
   });
 
   const br = data ? rate(data.blocked, data.total_requests) : 0;

@@ -331,7 +331,9 @@ export function Logs() {
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
                       <FileText className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                      No logs match your search
+                      {searchTerm
+                        ? 'No logs match your search'
+                        : 'Waiting for traffic — point a device at the proxy to start seeing logs'}
                     </td>
                   </tr>
                 )}

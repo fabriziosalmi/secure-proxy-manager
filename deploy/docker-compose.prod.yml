@@ -68,6 +68,7 @@ services:
       - WAF_H_PII=${WAF_H_PII:-1}
       - WAF_H_SHARDING=${WAF_H_SHARDING:-1}
       - WAF_H_GHOSTING=${WAF_H_GHOSTING:-1}
+      - WAF_DISABLED_CATEGORIES=${WAF_DISABLED_CATEGORIES:-}
       - WAF_H_SEQUENCE=${WAF_H_SEQUENCE:-0}
     deploy:
       resources:
@@ -153,7 +154,9 @@ services:
           cpus: '0.50'
           memory: 256M
     healthcheck:
-      test: ["CMD", "nslookup", "localhost", "127.0.0.1"]
+      # Resolve an external name through dnsmasq — exercises upstream forwarding,
+      # not just that the daemon is alive.
+      test: ["CMD", "nslookup", "-timeout=2", "cloudflare.com", "127.0.0.1"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -226,6 +229,11 @@ services:
       - proxy-internal
       - frontend
     restart: unless-stopped
+    # GUARDRAIL: the proxy intentionally has NO `cap_drop: ALL` — it needs the
+    # default caps (CHOWN, SETUID/SETGID, DAC_OVERRIDE) for startup.sh chown +
+    # `su - proxy` and squid's privilege drop + log writing to the shared ./logs
+    # mount. Adding `cap_drop: ALL` without granting those back breaks the data
+    # plane (same class as the 3.10.4/3.10.5 dns CAP_DAC_OVERRIDE bug, threefold).
     cap_add:
       - NET_ADMIN
 
