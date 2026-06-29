@@ -648,7 +648,8 @@ func propagate(db *sql.DB, cfg *config.Config, kind string) {
 	// Signal dnsmasq to reload blocklist (using shared reload-dns file)
 	if kind == "domain" || kind == "all" {
 		reloadFile := filepath.Join(cfg.ConfigDir, ".reload-dns")
-		if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil { // #nosec G306 — reload trigger, must be readable by the proxy/dns container
+		// #nosec G306 — reload trigger, must be readable by the proxy/dns container
+		if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
 			log.Warn().Err(err).Msg("dns reload file trigger failed in propagate")
 		} else {
 			log.Info().Msg("dnsmasq reload file trigger written in propagate")

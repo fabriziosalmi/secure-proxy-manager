@@ -177,7 +177,8 @@ func (h *MaintenanceHandlers) ReloadConfig(w http.ResponseWriter, r *http.Reques
 	database.Audit(h.db, username, "reload_config", "proxy", "")
 
 	reloadFile := filepath.Join(h.cfg.ConfigDir, ".reload-squid")
-	if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil { // #nosec G306 — reload trigger, must be readable by the proxy/dns container
+	// #nosec G306 — reload trigger, must be readable by the proxy/dns container
+	if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
 		log.Warn().Err(err).Msg("proxy reload file trigger failed")
 		writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Config exported — reload trigger write failed, apply manually"})
 		return
@@ -191,7 +192,8 @@ func (h *MaintenanceHandlers) ReloadDNS(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	reloadFile := filepath.Join(h.cfg.ConfigDir, ".reload-dns")
-	if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil { // #nosec G306 — reload trigger, must be readable by the proxy/dns container
+	// #nosec G306 — reload trigger, must be readable by the proxy/dns container
+	if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
 		log.Warn().Err(err).Msg("dns reload file trigger failed")
 	}
 	var count int
@@ -207,7 +209,8 @@ func (h *MaintenanceHandlers) ClearCache(w http.ResponseWriter, r *http.Request)
 	database.Audit(h.db, username, "clear_cache", "proxy", "")
 
 	clearFile := filepath.Join(h.cfg.ConfigDir, ".clear-cache")
-	if err := os.WriteFile(clearFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil { // #nosec G306 — clear-cache trigger, must be readable by the proxy container
+	// #nosec G306 — clear-cache trigger, must be readable by the proxy container
+	if err := os.WriteFile(clearFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
 		log.Warn().Err(err).Msg("clear cache trigger file write failed")
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Proxy cache purge signal sent successfully"})
