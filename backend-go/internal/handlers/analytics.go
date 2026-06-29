@@ -7,10 +7,13 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -85,38 +88,72 @@ func wafPostBreaker(ctx context.Context, cfg *config.Config, path, contentType s
 	return resp, nil
 }
 
-// dockerExecer is the subset of docker.DockerClient needed for cache stats.
-type dockerExecer interface {
-	ExecContainer(name string, cmd []string) (string, error)
-}
-
 type AnalyticsHandlers struct {
-	db     *sql.DB
-	cfg    *config.Config
-	docker dockerExecer
+	db  *sql.DB
+	cfg *config.Config
+
+	// domain_blacklist is re-read on every DomainStats request and only changes
+	// when the blacklist-refresh worker runs (minutes apart), so a short-TTL
+	// snapshot avoids reloading the whole table on each dashboard poll. Snapshots
+	// are immutable once published, so callers may read them without the lock.
+	blMu      sync.Mutex
+	blSet     map[string]struct{}
+	blWild    []string
+	blFetched time.Time
 }
 
-func NewAnalyticsHandlers(db *sql.DB, cfg *config.Config, dc dockerExecer) *AnalyticsHandlers {
-	return &AnalyticsHandlers{db: db, cfg: cfg, docker: dc}
+func NewAnalyticsHandlers(db *sql.DB, cfg *config.Config) *AnalyticsHandlers {
+	return &AnalyticsHandlers{db: db, cfg: cfg}
+}
+
+const domainBlacklistTTL = 30 * time.Second
+
+// domainBlacklist returns a cached snapshot of the domain blacklist (exact-match
+// set + wildcard suffixes), refreshing from the DB at most once per TTL.
+func (h *AnalyticsHandlers) domainBlacklist() (map[string]struct{}, []string) {
+	h.blMu.Lock()
+	defer h.blMu.Unlock()
+	if h.blSet != nil && time.Since(h.blFetched) < domainBlacklistTTL {
+		return h.blSet, h.blWild
+	}
+	set := map[string]struct{}{}
+	var wild []string
+	rows, _ := h.db.Query("SELECT domain FROM domain_blacklist")
+	if rows != nil {
+		for rows.Next() {
+			var d string
+			rows.Scan(&d) //nolint:errcheck
+			set[d] = struct{}{}
+			if strings.HasPrefix(d, "*.") {
+				wild = append(wild, d[2:])
+			}
+		}
+		rows.Close()
+	}
+	h.blSet, h.blWild, h.blFetched = set, wild, time.Now()
+	return set, wild
 }
 
 func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {
+	// etag adds conditional-GET revalidation to read-heavy analytics payloads so
+	// repeated dashboard polls return 304 when the data is unchanged.
+	etag := appMW.ETag
 	r.With(authMW).Get("/api/status", h.Status)
-	r.With(authMW).Get("/api/traffic/statistics", h.TrafficStats)
-	r.With(authMW).Get("/api/clients/statistics", h.ClientStats)
+	r.With(authMW, etag).Get("/api/traffic/statistics", h.TrafficStats)
+	r.With(authMW, etag).Get("/api/clients/statistics", h.ClientStats)
 	r.With(authMW).Get("/api/clients/{ip}/details", h.ClientDetails)
-	r.With(authMW).Get("/api/domains/statistics", h.DomainStats)
+	r.With(authMW, etag).Get("/api/domains/statistics", h.DomainStats)
 	r.With(authMW).Get("/api/cache/statistics", h.CacheStats)
 	r.With(authMW).Get("/api/waf/stats", h.WAFStats)
 	r.With(authMW).Get("/api/waf/categories", h.WAFCategories)
 	r.With(authMW).Post("/api/waf/categories/toggle", h.WAFCategoryToggle)
 	r.With(authMW).Post("/api/counters/reset", h.ResetCounters)
-	r.With(authMW).Get("/api/dashboard/summary", h.DashboardSummary)
-	r.With(authMW).Get("/api/analytics/shadow-it", h.ShadowIT)
-	r.With(authMW).Get("/api/analytics/user-agents", h.UserAgents)
-	r.With(authMW).Get("/api/analytics/file-extensions", h.FileExtensions)
-	r.With(authMW).Get("/api/analytics/top-domains", h.TopDomains)
-	r.With(authMW).Get("/api/audit-log", h.AuditLog)
+	r.With(authMW, etag).Get("/api/dashboard/summary", h.DashboardSummary)
+	r.With(authMW, etag).Get("/api/analytics/shadow-it", h.ShadowIT)
+	r.With(authMW, etag).Get("/api/analytics/user-agents", h.UserAgents)
+	r.With(authMW, etag).Get("/api/analytics/file-extensions", h.FileExtensions)
+	r.With(authMW, etag).Get("/api/analytics/top-domains", h.TopDomains)
+	r.With(authMW, etag).Get("/api/audit-log", h.AuditLog)
 	r.With(authMW).Post("/api/waf/test-rule", h.TestRule)
 }
 
@@ -397,20 +434,7 @@ func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) 
 	}
 	rows.Close()
 
-	blRows, _ := h.db.Query("SELECT domain FROM domain_blacklist")
-	blSet := map[string]struct{}{}
-	var wildcards []string
-	if blRows != nil {
-		for blRows.Next() {
-			var d string
-			blRows.Scan(&d) //nolint:errcheck
-			blSet[d] = struct{}{}
-			if strings.HasPrefix(d, "*.") {
-				wildcards = append(wildcards, d[2:])
-			}
-		}
-		blRows.Close()
-	}
+	blSet, wildcards := h.domainBlacklist()
 
 	var domains []map[string]any
 	for _, e := range entries {
@@ -437,9 +461,10 @@ func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *AnalyticsHandlers) CacheStats(w http.ResponseWriter, r *http.Request) {
-	out, err := h.docker.ExecContainer("secure-proxy-manager-proxy", []string{"squidclient", "-h", "127.0.0.1", "-p", "3128", "mgr:info"})
+	statsFile := filepath.Join(h.cfg.ConfigDir, "cache_stats.txt")
+	content, err := os.ReadFile(statsFile)
 	if err != nil {
-		log.Debug().Err(err).Msg("squidclient mgr:info failed, returning zeros")
+		log.Debug().Err(err).Msg("failed to read shared cache_stats.txt file, returning zeros")
 		writeOK(w, map[string]any{
 			"hit_rate": 0, "byte_hit_rate": 0, "cache_size": "N/A",
 			"max_cache_size": "N/A", "objects_cached": 0, "hits": 0,
@@ -447,7 +472,7 @@ func (h *AnalyticsHandlers) CacheStats(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	writeOK(w, parseSquidInfo(out))
+	writeOK(w, parseSquidInfo(string(content)))
 }
 
 // parseSquidInfo extracts cache metrics from squidclient mgr:info output.
@@ -562,11 +587,11 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	result := map[string]any{}
 
 	var totalReqs, blockedReqs, todayReqs, todayBlocked int
-	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs`).Scan(&totalReqs) //nolint:errcheck
+	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs`).Scan(&totalReqs)                     //nolint:errcheck
 	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1`).Scan(&blockedReqs) //nolint:errcheck
 
 	todayStart := time.Now().UTC().Truncate(24 * time.Hour).Unix()
-	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE unix_timestamp >= ?`, todayStart).Scan(&todayReqs) //nolint:errcheck
+	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE unix_timestamp >= ?`, todayStart).Scan(&todayReqs)                    //nolint:errcheck
 	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ?`, todayStart).Scan(&todayBlocked) //nolint:errcheck
 
 	var ipBLCount, domainBLCount int

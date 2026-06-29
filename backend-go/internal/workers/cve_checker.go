@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -91,13 +92,22 @@ func runCheck(version string) {
 }
 
 func detectSquidVersion() string {
-	// Method 1: docker exec
+	// Method 1: read from shared volume /config/squid_version.txt
+	for _, p := range []string{"/config/squid_version.txt", "config/squid_version.txt"} {
+		if content, err := os.ReadFile(p); err == nil {
+			if version := parseSquidVersion(string(content)); version != "" {
+				return version
+			}
+		}
+	}
+
+	// Method 2: docker exec
 	out, err := exec.Command("docker", "exec", "secure-proxy-manager-proxy", "squid", "-v").CombinedOutput()
 	if err == nil {
 		return parseSquidVersion(string(out))
 	}
 
-	// Method 2: direct binary (if running on same host)
+	// Method 3: direct binary (if running on same host)
 	out, err = exec.Command("squid", "-v").CombinedOutput()
 	if err == nil {
 		return parseSquidVersion(string(out))

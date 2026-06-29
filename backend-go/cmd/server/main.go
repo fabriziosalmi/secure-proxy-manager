@@ -24,7 +24,6 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/auth"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/docker"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/handlers"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
@@ -93,7 +92,6 @@ func run() error {
 
 	// ── services ─────────────────────────────────────────────────────────────
 	authSvc := auth.NewService(cfg, db)
-	dockerClient := docker.New()
 	hub := ws.NewHub()
 	notify := handlers.NewNotifyQueue(db, cfg.EncryptionKey)
 
@@ -101,8 +99,9 @@ func run() error {
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
 	workers.StartLogTailer(workerCtx, db, cfg.LogPath, filepath.Dir(cfg.DatabasePath), hub)
+	workers.StartDNSTailer(workerCtx, db, cfg.DNSLogPath, filepath.Dir(cfg.DatabasePath), hub)
 	workers.StartLogRetention(workerCtx, db)
-	workers.StartBlacklistRefresh(workerCtx, db, cfg.ConfigDir, dockerClient)
+	workers.StartBlacklistRefresh(workerCtx, db, cfg.ConfigDir)
 	workers.StartUpdateChecker(workerCtx, "")
 	workers.CheckSquidCVEs()
 
@@ -125,8 +124,8 @@ func run() error {
 	handlers.NewSettingsHandlers(db, cfg).Register(r, authMW)
 	handlers.NewBlacklistHandlers(db, cfg).Register(r, authMW)
 	handlers.NewSecurityHandlers(db, authSvc, cfg, notify).Register(r, authMW)
-	handlers.NewMaintenanceHandlers(db, cfg, dockerClient).Register(r, authMW)
-	handlers.NewAnalyticsHandlers(db, cfg, dockerClient).Register(r, authMW)
+	handlers.NewMaintenanceHandlers(db, cfg).Register(r, authMW)
+	handlers.NewAnalyticsHandlers(db, cfg).Register(r, authMW)
 	handlers.NewDatabaseHandlers(db).Register(r, authMW)
 	handlers.NewDNSDetectHandlers(db).Register(r, authMW)
 	handlers.RegisterAPIDocs(r, authMW)

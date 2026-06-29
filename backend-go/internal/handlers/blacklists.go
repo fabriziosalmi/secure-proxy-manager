@@ -7,7 +7,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,7 +19,6 @@ import (
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/docker"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 )
@@ -643,13 +645,13 @@ func propagate(db *sql.DB, cfg *config.Config, kind string) {
 	// POST to proxy:3128/api/reload was a dead no-op (3128 is the forward-proxy
 	// port, which has no /api/reload).
 
-	// Signal dnsmasq to reload blocklist (SIGHUP via Docker API)
+	// Signal dnsmasq to reload blocklist (using shared reload-dns file)
 	if kind == "domain" || kind == "all" {
-		dc := docker.New()
-		if err := dc.KillContainer("secure-proxy-manager-dns-1", "HUP"); err != nil {
-			log.Warn().Err(err).Msg("dnsmasq SIGHUP failed (docker.sock mounted?)")
+		reloadFile := filepath.Join(cfg.ConfigDir, ".reload-dns")
+		if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
+			log.Warn().Err(err).Msg("dns reload file trigger failed in propagate")
 		} else {
-			log.Info().Msg("dnsmasq reload signaled")
+			log.Info().Msg("dnsmasq reload file trigger written in propagate")
 		}
 	}
 }
