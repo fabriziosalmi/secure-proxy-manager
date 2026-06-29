@@ -62,6 +62,22 @@ connect-src 'self' ws: wss:
 - **Backend tests**: Race detector enabled, 60% coverage threshold enforced
 - **Docker build verification**: All 5 images built and verified in CI
 
+## Verifying release images
+
+Every published GHCR image is keyless-signed with cosign and ships an SBOM and
+SLSA build provenance attestation. Verify a pulled image came from this repo's
+CI before trusting it:
+
+```bash
+cosign verify \
+  --certificate-identity-regexp 'https://github.com/fabriziosalmi/secure-proxy-manager/.github/workflows/.+' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:latest
+
+# Inspect the attached SBOM / provenance:
+cosign download sbom ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:latest
+```
+
 ## Security Advisories
 
 Component-specific advisories and how SPM mitigates them — e.g. the Squid
@@ -78,8 +94,6 @@ Component-specific advisories and how SPM mitigates them — e.g. the Squid
 
 | Version | Status |
 |---------|--------|
-| 3.8.x | Current (security hardening release) |
-| 3.7.x | Security fixes only |
-| < 3.7 | EOL |
-| 2.x | EOL |
-| <2.0 | EOL |
+| 3.10.x | Current |
+| 3.9.x | Security fixes only |
+| < 3.9 | EOL |

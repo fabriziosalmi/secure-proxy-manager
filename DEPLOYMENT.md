@@ -1,6 +1,6 @@
 # Secure Proxy Manager — Deployment Guide
 
-Practical instructions for deploying **Secure Proxy Manager v3.8.0** with Docker
+Practical instructions for deploying **Secure Proxy Manager** with Docker
 Compose. The stack is a set of Go and container services orchestrated by
 `docker-compose.yml`:
 
