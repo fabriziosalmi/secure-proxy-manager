@@ -175,6 +175,10 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+      # DAC_OVERRIDE: dnsmasq writes its query log to the shared ./logs mount,
+      # which is owned by a different UID; with cap_drop: ALL even root needs this
+      # to write there (see dns/entrypoint.sh).
+      - DAC_OVERRIDE
     logging:
       driver: json-file
       options:

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.5] - 2026-06-29
+
+### Fixed
+
+- **DNS container still unhealthy on deploy (follow-up to 3.10.4).** The real
+  cause was not the log file's owner but `cap_drop: ALL` on the dns service:
+  without `CAP_DAC_OVERRIDE`, even root cannot create/write dnsmasq's query log
+  on the shared `./logs` bind-mount (owned by the proxy's UID), so dnsmasq looped
+  on `cannot open log …: Permission denied` and the container never went healthy.
+  Add `CAP_DAC_OVERRIDE` to the dns service and run `dnsmasq --user=root` so it
+  keeps that capability to write the log. Verified end-to-end against a
+  restrictive bind-mount with the exact runtime caps (dnsmasq healthy, log
+  written, no permission error). The proxy was unaffected because squid runs as
+  the same UID that owns `./logs`.
+
 ## [3.10.4] - 2026-06-29
 
 ### Fixed
