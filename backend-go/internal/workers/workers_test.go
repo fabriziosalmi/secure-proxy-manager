@@ -282,8 +282,8 @@ func TestRunCheck(t *testing.T) {
 	// Test version 3.x
 	runCheck("3.5")
 	info = GetCVEInfo()
-	if len(info.CVEs) != 2 { // knownCVEs["3."] has 2 items
-		t.Errorf("Expected 2 CVEs for 3.5, got %d", len(info.CVEs))
+	if len(info.CVEs) != 3 { // knownCVEs["3."] has 3 items (incl. Squidbleed CVE-2026-47729)
+		t.Errorf("Expected 3 CVEs for 3.5, got %d", len(info.CVEs))
 	}
 
 	// Test unknown version

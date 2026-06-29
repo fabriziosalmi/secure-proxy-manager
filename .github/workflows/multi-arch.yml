@@ -74,6 +74,12 @@ jobs:
             ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Busts the proxy image's apt layer every run so a cached layer can
+          # never reinstall an unpatched squid (the proxy Dockerfile also fails
+          # closed if squid is older than its CVE floor). Ignored by images whose
+          # Dockerfile does not declare APT_REFRESH.
+          build-args: |
+            APT_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
           # Attach an SBOM and SLSA build provenance attestation to each image so
           # consumers can audit contents and verify the build origin.
           sbom: true

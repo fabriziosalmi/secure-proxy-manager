@@ -39,6 +39,10 @@ func GetCVEInfo() CVEInfo {
 // Source: https://www.cvedetails.com/product/29/Squid-Squid.html
 var knownCVEs = map[string][]SquidCVE{
 	"5.": {
+		{ID: "CVE-2026-47729", Severity: "high", Summary: "Squidbleed: FTP-gateway out-of-bounds read leaks other clients' data (Squid <7.6; jammy fix 5.9-0ubuntu0.22.04.7)"},
+		{ID: "CVE-2026-50012", Severity: "high", Summary: "Heap overflow in cache_digest reply handling (only if built --enable-cache-digests; fixed 7.6)"},
+		{ID: "CVE-2026-33526", Severity: "medium", Summary: "DoS via ICP protocol handling (only if ICP enabled)"},
+		{ID: "CVE-2026-32748", Severity: "medium", Summary: "DoS in ICP request handling (only if ICP enabled)"},
 		{ID: "CVE-2024-45802", Severity: "high", Summary: "DoS via ESI processing (Squid <6.10)"},
 		{ID: "CVE-2024-25111", Severity: "high", Summary: "HTTP chunked decoding DoS"},
 		{ID: "CVE-2024-25617", Severity: "medium", Summary: "HTTP header parsing DoS"},
@@ -47,12 +51,14 @@ var knownCVEs = map[string][]SquidCVE{
 		{ID: "CVE-2023-46846", Severity: "high", Summary: "Request smuggling in chunked encoding"},
 	},
 	"4.": {
+		{ID: "CVE-2026-47729", Severity: "high", Summary: "Squidbleed: FTP-gateway out-of-bounds read leaks other clients' data (Squid <7.6)"},
 		{ID: "CVE-2023-46847", Severity: "critical", Summary: "Buffer overflow in HTTP digest auth"},
 		{ID: "CVE-2023-46846", Severity: "critical", Summary: "Request smuggling in chunked encoding"},
 		{ID: "CVE-2022-41318", Severity: "high", Summary: "Buffer over-read in SSPI/SMB auth"},
 		{ID: "CVE-2021-28116", Severity: "medium", Summary: "Info disclosure via WCCPv2"},
 	},
 	"3.": {
+		{ID: "CVE-2026-47729", Severity: "high", Summary: "Squidbleed: FTP-gateway out-of-bounds read leaks other clients' data (Squid <7.6)"},
 		{ID: "CVE-2020-15049", Severity: "critical", Summary: "Request smuggling via Content-Length"},
 		{ID: "CVE-2019-12528", Severity: "high", Summary: "Info disclosure via FTP"},
 	},

@@ -33,7 +33,8 @@ export default defineConfig({
         items: [
           { text: 'Environment Variables', link: '/guide/configuration' },
           { text: 'Blacklists and Whitelists', link: '/guide/blacklists' },
-          { text: 'Security', link: '/guide/security' }
+          { text: 'Security', link: '/guide/security' },
+          { text: 'Security Advisories', link: '/guide/security-advisories' }
         ]
       },
       {
