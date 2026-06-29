@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.4] - 2026-06-29
+
+### Fixed
+
+- **DNS container unhealthy on real deploys (regression in 3.10.3).** The
+  docker-decouple pointed dnsmasq's query log at `/var/log/dnsmasq.log` on the
+  shared `./logs` bind-mount so the backend DNS tailer could read it, but the
+  unprivileged user dnsmasq drops to could not write the root-owned file and
+  exited in a restart loop (`cannot open log …: Permission denied`). The log is
+  now `chown`ed to the `dnsmasq` user and dnsmasq runs with `--user=dnsmasq`, so
+  it works regardless of the host directory's ownership. (CI masked this by
+  making `./logs` world-writable; real deploys do not.)
+
 ## [3.10.3] - 2026-06-29
 
 ### Added
