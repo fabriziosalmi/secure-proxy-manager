@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.1] - 2026-06-29
+
+### Fixed
+
+- **Proxy 502 after the dns (or waf) container is recreated.** squid bakes the
+  dnsmasq IP (`dns_nameservers`) and the WAF ICAP IP into its config at
+  generation time; when those containers are recreated they get new IPs, leaving
+  squid pointing at dead addresses — every request 502s (dns) or skips ICAP
+  (waf) until the proxy is manually restarted. The in-container watchdog now
+  tracks the resolved dns/waf IPs and, on drift, regenerates the squid config
+  and reconfigures in place (self-healing within ~2s, no proxy restart). This
+  surfaced live during the 3.11.0 dev deploy (a partial rebuild recreated dns
+  but not the proxy). A full `compose up` after a full build was already safe via
+  dependency ordering; this covers partial deploys and ad-hoc recreates too.
+
 ## [3.11.0] - 2026-06-29
 
 Hardening sweep across CI/release rigor, UX correctness, deployment robustness,

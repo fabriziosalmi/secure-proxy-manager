@@ -19,6 +19,7 @@ squid-supervisor.conf (rather than generated at runtime) so supervisord always
 picks it up on a fresh boot.
 """
 import os
+import socket
 import subprocess
 import time
 
@@ -48,6 +49,24 @@ def mtime(path):
         return 0
 
 
+def resolved_ips():
+    """Current IPs of the dns + waf service names (via Docker's embedded DNS).
+
+    squid bakes these IPs into squid.conf at config-generation time
+    (dns_nameservers for dnsmasq, the ICAP service URL for the WAF). When those
+    containers are recreated they get NEW IPs, leaving squid pointing at dead
+    addresses — 502 on every request (dns) or ICAP failures (waf). We track the
+    resolved IPs so the loop can detect that drift and regenerate in place.
+    """
+    ips = []
+    for name in ("dns", "waf"):
+        try:
+            ips.append(socket.gethostbyname(name))
+        except OSError:
+            ips.append("")
+    return ",".join(ips)
+
+
 def main():
     import shutil
 
@@ -67,8 +86,27 @@ def main():
     except Exception as exc:
         print(f"[watchdog] squid version check failed: {exc}", flush=True)
 
+    # Baseline = the IPs squid was configured with at startup (startup.sh ran
+    # generate_squid_conf.sh against the same resolution).
+    resolv_fp = resolved_ips()
+
     while True:
         time.sleep(2)
+
+        # Self-heal stale dnsmasq/waf IPs: if either service was recreated and
+        # got a new IP, squid's baked dns_nameservers / ICAP URL now point at a
+        # dead address (502 on every request, or ICAP failures). Regenerate the
+        # config (re-resolves both) and reconfigure in place. Guard on both being
+        # resolvable so a transient lookup miss doesn't trigger a needless reload.
+        fp = resolved_ips()
+        if fp != resolv_fp and all(fp.split(",")):
+            print(f"[watchdog] resolver drift {resolv_fp} -> {fp}, regenerating config...", flush=True)
+            try:
+                subprocess.run(["/usr/local/bin/generate_squid_conf.sh"], capture_output=True, timeout=30)
+                subprocess.run(["/usr/sbin/squid", "-k", "reconfigure"], capture_output=True, timeout=10)
+                resolv_fp = fp
+            except Exception as exc:  # noqa: BLE001
+                print(f"[watchdog] resolver-drift reload error: {exc}", flush=True)
 
         # Periodically dump Squid cache stats to a shared file in /config
         if time.time() - last_stats_time > 10:
