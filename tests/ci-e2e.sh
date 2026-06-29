@@ -178,12 +178,21 @@ case "$ac" in
   *)           bad "allowlisted destination unreachable after default-deny (example.com → $ac)" ;;
 esac
 
-if docker exec secure-proxy-manager-proxy \
-     grep -q 'http_access deny localnet !egress_dst_allow' /etc/squid/squid.conf 2>/dev/null; then
-  ok "default-deny rule injected into squid.conf"
-else
-  bad "default-deny rule missing from squid.conf"
-fi
+# reload-config is now asynchronous: the backend writes a .reload-squid trigger
+# and the in-container watchdog regenerates the config + reconfigures squid (the
+# docker-decouple replaced the old "restart the proxy container" path). The
+# "example.com → 200" probe above does not gate on that regen (example.com is
+# reachable regardless), so poll for the injected rule instead of grepping once.
+rule_found=0
+for _ in $(seq 1 20); do
+  if docker exec secure-proxy-manager-proxy \
+       grep -q 'http_access deny localnet !egress_dst_allow' /etc/squid/squid.conf 2>/dev/null; then
+    rule_found=1; break
+  fi
+  sleep 2
+done
+[ "$rule_found" = 1 ] && ok "default-deny rule injected into squid.conf" \
+                      || bad "default-deny rule missing from squid.conf"
 
 # A non-allowlisted destination must be denied; retry to absorb the restart
 # settle window.
