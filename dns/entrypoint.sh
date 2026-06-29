@@ -135,29 +135,25 @@ watch_dnsmasq() {
 # Start background watchdog
 watch_dnsmasq &
 
-# Ensure the query log exists and is writable by the unprivileged user dnsmasq
-# drops to. /var/log is a bind-mount (host ./logs) owned by a UID that differs
-# from dnsmasq's runtime user, so a root-created 0644 file is NOT writable after
-# the privilege drop and dnsmasq exits with "cannot open log ...: Permission
-# denied". chown the file to the dnsmasq user (we run as root here) so this works
-# regardless of the host directory's ownership. (CI masks this by making ./logs
-# world-writable; real deploys do not — this is the host-independent fix.)
+# /var/log is the shared ./logs bind-mount, owned by a different UID than this
+# container (the proxy creates those files as its own user). With cap_drop: ALL
+# even root is subject to DAC checks, so writing there needs CAP_DAC_OVERRIDE
+# (added to the dns service) AND dnsmasq must stay root to keep that capability —
+# dropping to an unprivileged user would lose it and fail with "cannot open log
+# …: Permission denied". (CI masks this by chmod a+rwX on ./logs; real deploys
+# keep restrictive perms — this is the host-independent fix.)
 mkdir -p /var/log
-touch /var/log/dnsmasq.log
-if chown dnsmasq:dnsmasq /var/log/dnsmasq.log 2>/dev/null; then
-    chmod 0644 /var/log/dnsmasq.log
-else
-    chmod 0666 /var/log/dnsmasq.log
-fi
+touch /var/log/dnsmasq.log 2>/dev/null || true
+chmod 0644 /var/log/dnsmasq.log 2>/dev/null || true
 
 # Foreground loop to restart dnsmasq process on configuration toggle trigger
 while true; do
     build_dnsmasq_conf
 
     echo "Starting dnsmasq..."
-    # --user=dnsmasq: run as the same user that owns the log above (explicit, so
-    # we don't depend on the compiled-in default), keeping least privilege.
-    dnsmasq --no-daemon --user=dnsmasq --log-queries --log-facility=/var/log/dnsmasq.log --conf-file=/tmp/dnsmasq.conf
+    # --user=root: keep CAP_DAC_OVERRIDE so dnsmasq can write its query log on
+    # the shared, differently-owned ./logs mount (the container is already root).
+    dnsmasq --no-daemon --user=root --log-queries --log-facility=/var/log/dnsmasq.log --conf-file=/tmp/dnsmasq.conf
     
     echo "dnsmasq process exited, restarting in 1 second..."
     sleep 1
