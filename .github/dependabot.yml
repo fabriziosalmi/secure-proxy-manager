@@ -36,6 +36,48 @@ updates:
         patterns:
           - "*"
 
+  # Per-directory Docker entries so Dependabot bumps digest-pinned base images
+  # in each Dockerfile independently (a root "/" entry only watches that one file).
+  - package-ecosystem: "docker"
+    directory: "/backend-go"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/waf-go"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/ui"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/dns"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/proxy"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/overlay/tailscale"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/tests/e2e"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/deploy"
+    schedule:
+      interval: "weekly"
+
   - package-ecosystem: "npm"
     directory: "/docs"
     schedule:

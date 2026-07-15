@@ -35,12 +35,15 @@ var (
 // wafGet performs a GET request to the WAF management API with Basic Auth. The
 // request is bound to ctx, so a client disconnect (or the 3s client timeout)
 // cancels the upstream call instead of leaking it.
+// Uses dedicated WAF service credentials (WAFServiceUser/WAFServicePass) rather
+// than the human admin password, so WAF calls remain valid after an admin
+// password change.
 func wafGet(ctx context.Context, cfg *config.Config, path string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", cfg.WAFURL+path, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.SetBasicAuth(cfg.AdminUsername, cfg.AdminPassword)
+	req.SetBasicAuth(cfg.WAFServiceUser, cfg.WAFServicePass)
 	return wafClient.Do(req)
 }
 
@@ -50,7 +53,7 @@ func wafPost(ctx context.Context, cfg *config.Config, path, contentType string, 
 	if err != nil {
 		return nil, err
 	}
-	req.SetBasicAuth(cfg.AdminUsername, cfg.AdminPassword)
+	req.SetBasicAuth(cfg.WAFServiceUser, cfg.WAFServicePass)
 	req.Header.Set("Content-Type", contentType)
 	return wafClient.Do(req)
 }

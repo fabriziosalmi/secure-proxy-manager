@@ -238,7 +238,7 @@ services:
       - NET_ADMIN
 
   tailscale:
-    image: tailscale/tailscale:v1.80.3
+    image: tailscale/tailscale:v1.80.3@sha256:af6026ed3e5892c5d4966962618a09685198111507df16803b2aec7066046582
     hostname: ${TAILSCALE_HOSTNAME:-secure-proxy}
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY:-}
@@ -258,7 +258,7 @@ services:
 
   # Observability stack (opt-in)
   prometheus:
-    image: prom/prometheus:v3.1.0
+    image: prom/prometheus:v3.1.0@sha256:6559acbd5d770b15bb3c954629ce190ac3cbbdb2b7f1c30f0385c4e05104e218
     container_name: secure-proxy-manager-prometheus
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -279,7 +279,7 @@ services:
       - observability
 
   grafana:
-    image: grafana/grafana:11.4.0
+    image: grafana/grafana:11.4.0@sha256:d8ea37798ccc41061a62ab080f2676dda6bf7815558499f901bdb0f533a456fb
     container_name: secure-proxy-manager-grafana
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}

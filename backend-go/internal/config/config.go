@@ -36,9 +36,11 @@ type Config struct {
 	DNSLogPath   string
 
 	// Internal component URLs (for WAF/Proxy communication)
-	WAFURL   string
-	ProxyURL string
-	GeoIPURL string
+	WAFURL          string
+	WAFServiceUser  string // dedicated service credential for WAF management API
+	WAFServicePass  string // separate from AdminPassword so password changes don't break WAF calls
+	ProxyURL        string
+	GeoIPURL        string
 
 	// Encryption key for sensitive settings (hex-encoded 32 bytes)
 	EncryptionKey string
@@ -89,6 +91,12 @@ func Load() *Config {
 		LogPath:            envOrDefault("LOG_PATH", "/logs/access.log"),
 		DNSLogPath:         envOrDefault("DNS_LOG_PATH", "/logs/dnsmasq.log"),
 		WAFURL:             envOrDefault("WAF_URL", "http://waf:8080"),
+		// WAF_SERVICE_USERNAME/PASSWORD default to BASIC_AUTH_* so existing
+		// single-credential deployments work unchanged. Set the WAF_SERVICE_*
+		// vars to a dedicated service account to decouple the human admin
+		// password from inter-service auth (e.g. after an admin password change).
+		WAFServiceUser:     envOrDefault("WAF_SERVICE_USERNAME", username),
+		WAFServicePass:     envOrDefault("WAF_SERVICE_PASSWORD", password),
 		ProxyURL:           envOrDefault("PROXY_URL", "http://proxy:3128"),
 		GeoIPURL:           envOrDefault("GEOIP_URL", ""), // Empty means use defaults
 		EncryptionKey:      loadOrGenerateEncKey(),

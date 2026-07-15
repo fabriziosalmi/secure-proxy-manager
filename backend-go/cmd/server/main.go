@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -35,6 +36,20 @@ func main() {
 	if err := run(); err != nil {
 		log.Fatal().Err(err).Msg("application failed")
 	}
+}
+
+// wsTokenFromSubprotocol extracts the one-time auth token from the
+// Sec-WebSocket-Protocol header. The client sends it as the subprotocol value
+// "spm-ws-token.<hex-token>", keeping it out of the URL query string (and
+// therefore out of server access logs, browser history, and Referer headers).
+func wsTokenFromSubprotocol(req *http.Request) string {
+	for _, proto := range websocket.Subprotocols(req) {
+		const prefix = "spm-ws-token."
+		if strings.HasPrefix(proto, prefix) {
+			return proto[len(prefix):]
+		}
+	}
+	return ""
 }
 
 func run() error {
@@ -158,6 +173,9 @@ func run() error {
 		wsAllowed[o] = struct{}{}
 	}
 	upgrader := websocket.Upgrader{
+		// No Subprotocols list here: gorilla's selectSubprotocol does exact
+		// matching, and the client's offered value is "spm-ws-token.<token>"
+		// (dynamic). We perform the subprotocol negotiation manually below.
 		CheckOrigin: func(r *http.Request) bool {
 			origin := r.Header.Get("Origin")
 			if origin == "" {
@@ -190,7 +208,7 @@ func run() error {
 
 	r.With(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			token := req.URL.Query().Get("token")
+			token := wsTokenFromSubprotocol(req)
 			if token == "" {
 				http.Error(w, "missing token", http.StatusUnauthorized)
 				return
@@ -202,6 +220,11 @@ func run() error {
 			next.ServeHTTP(w, req)
 		})
 	}).Get("/api/ws/logs", func(w http.ResponseWriter, req *http.Request) {
+		// The one-time token arrives in the client's Sec-WebSocket-Protocol
+		// request header and is extracted/validated by the middleware above.
+		// The server intentionally selects NO subprotocol: omitting
+		// Sec-WebSocket-Protocol from the 101 response is valid per RFC 6455
+		// §4.2.2, browsers accept it, and it avoids echoing the token at all.
 		conn, err := upgrader.Upgrade(w, req, nil)
 		if err != nil {
 			log.Warn().Err(err).Msg("websocket upgrade failed")

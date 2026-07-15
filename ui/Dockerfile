@@ -1,5 +1,5 @@
 # Pin: node 20.19 alpine 3.21 (2025-04)
-FROM node:20.19-alpine3.21 AS frontend-builder
+FROM node:20.19-alpine3.21@sha256:eb0b81f6eb35ec5ecd1cab181801f93a6314127580b416e6e290363b724e1686 AS frontend-builder
 WORKDIR /frontend
 COPY ./ui/package*.json ./
 RUN npm ci
@@ -7,7 +7,7 @@ COPY ./ui/ ./
 RUN npm run build
 
 # Pin: nginx 1.27.4 alpine (2025-03)
-FROM nginx:1.27.4-alpine
+FROM nginx:1.27.4-alpine@sha256:4ff102c5d78d254a6f0da062b3cf39eaf07f01eec0927fd21e219d0af8bc0591
 
 # openssl for self-signed cert generation at boot
 RUN apk add --no-cache openssl && rm /etc/nginx/conf.d/default.conf

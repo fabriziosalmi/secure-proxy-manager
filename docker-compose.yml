@@ -283,7 +283,7 @@ services:
   # Prometheus scrapes backend:5000/metrics and waf:8080/metrics on the internal
   # network; Grafana is published on localhost only.
   prometheus:
-    image: prom/prometheus:v3.1.0
+    image: prom/prometheus:v3.1.0@sha256:6559acbd5d770b15bb3c954629ce190ac3cbbdb2b7f1c30f0385c4e05104e218
     container_name: secure-proxy-manager-prometheus
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -304,7 +304,7 @@ services:
       - observability
 
   grafana:
-    image: grafana/grafana:11.4.0
+    image: grafana/grafana:11.4.0@sha256:d8ea37798ccc41061a62ab080f2676dda6bf7815558499f901bdb0f533a456fb
     container_name: secure-proxy-manager-grafana
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}

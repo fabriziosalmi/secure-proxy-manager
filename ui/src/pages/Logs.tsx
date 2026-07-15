@@ -56,9 +56,13 @@ export function Logs() {
           ?? import.meta.env.VITE_WS_BACKEND_PORT
           ?? window.location.port
           ?? (window.location.protocol === 'https:' ? '443' : '80');
-        const socketUrl = `${wsProtocol}//${hostname}:${wsPort}/api/ws/logs?token=${encodeURIComponent(token)}`;
+        const socketUrl = `${wsProtocol}//${hostname}:${wsPort}/api/ws/logs`;
 
-        ws = new WebSocket(socketUrl);
+        // Pass the one-time token as a WebSocket subprotocol value instead of a
+        // query-string parameter. Query-string tokens leak into server access
+        // logs, browser history, and Referer headers; subprotocol values are
+        // transmitted only in the WebSocket upgrade headers.
+        ws = new WebSocket(socketUrl, [`spm-ws-token.${token}`]);
         socketRef.current = ws;
         setWsStatus('connecting');
 

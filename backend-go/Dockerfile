@@ -1,5 +1,5 @@
 # ── stage 1: build ───────────────────────────────────────────────────────────
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
 
 WORKDIR /src
 ENV CGO_ENABLED=0
@@ -11,7 +11,7 @@ COPY . .
 RUN go build -trimpath -ldflags="-s -w" -o /bin/server ./cmd/server
 
 # ── stage 2: runtime ──────────────────────────────────────────────────────────
-FROM alpine:3.21
+FROM alpine:3.21@sha256:a8560b36e8b8210634f77d9f7f9efd7ffa463e380b75e2e74aff4511df3ef88c
 
 RUN apk add --no-cache ca-certificates docker-cli
 
