@@ -220,15 +220,12 @@ func run() error {
 			next.ServeHTTP(w, req)
 		})
 	}).Get("/api/ws/logs", func(w http.ResponseWriter, req *http.Request) {
-		// Echo the exact subprotocol the client offered ("spm-ws-token.<token>")
-		// so the browser handshake completes correctly (RFC 6455 §4.2.2: the
-		// server MUST include the selected protocol in the response).
-		// We re-extract the token here (cheap, pure) rather than tunnelling it
-		// through context, since the middleware already validated it.
-		token := wsTokenFromSubprotocol(req)
-		conn, err := upgrader.Upgrade(w, req, http.Header{
-			"Sec-WebSocket-Protocol": []string{"spm-ws-token." + token},
-		})
+		// The one-time token arrives in the client's Sec-WebSocket-Protocol
+		// request header and is extracted/validated by the middleware above.
+		// The server intentionally selects NO subprotocol: omitting
+		// Sec-WebSocket-Protocol from the 101 response is valid per RFC 6455
+		// §4.2.2, browsers accept it, and it avoids echoing the token at all.
+		conn, err := upgrader.Upgrade(w, req, nil)
 		if err != nil {
 			log.Warn().Err(err).Msg("websocket upgrade failed")
 			return

@@ -153,10 +153,9 @@ func TestWSLogsSubprotocolAuth(t *testing.T) {
 			http.Error(w, "invalid or expired token", http.StatusUnauthorized)
 			return
 		}
-		// Echo the full "spm-ws-token.<token>" the client offered (RFC 6455 §4.2.2).
-		conn, err := upgrader.Upgrade(w, req, http.Header{
-			"Sec-WebSocket-Protocol": []string{"spm-ws-token." + token},
-		})
+		// Server selects no subprotocol — omitting Sec-WebSocket-Protocol from
+		// the 101 response is valid (RFC 6455 §4.2.2) and avoids echoing the token.
+		conn, err := upgrader.Upgrade(w, req, nil)
 		if err != nil {
 			return
 		}
