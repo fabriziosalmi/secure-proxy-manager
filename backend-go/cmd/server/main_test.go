@@ -139,8 +139,8 @@ func TestWSLogsSubprotocolAuth(t *testing.T) {
 
 	// Build a minimal upgrader + middleware that mirrors run().
 	upgrader := websocket.Upgrader{
-		Subprotocols: []string{"spm-ws-token"},
-		CheckOrigin:  func(*http.Request) bool { return true },
+		// No Subprotocols: gorilla does exact matching; our tokens are dynamic.
+		CheckOrigin: func(*http.Request) bool { return true },
 	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -153,8 +153,9 @@ func TestWSLogsSubprotocolAuth(t *testing.T) {
 			http.Error(w, "invalid or expired token", http.StatusUnauthorized)
 			return
 		}
+		// Echo the full "spm-ws-token.<token>" the client offered (RFC 6455 §4.2.2).
 		conn, err := upgrader.Upgrade(w, req, http.Header{
-			"Sec-WebSocket-Protocol": []string{"spm-ws-token"},
+			"Sec-WebSocket-Protocol": []string{"spm-ws-token." + token},
 		})
 		if err != nil {
 			return

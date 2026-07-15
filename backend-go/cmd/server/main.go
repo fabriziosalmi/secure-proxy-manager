@@ -173,10 +173,9 @@ func run() error {
 		wsAllowed[o] = struct{}{}
 	}
 	upgrader := websocket.Upgrader{
-		// Accept "spm-ws-token.<token>" as the only negotiated subprotocol.
-		// The browser sends the token this way to avoid query-string leakage into
-		// server access logs, browser history, and Referer headers.
-		Subprotocols: []string{"spm-ws-token"},
+		// No Subprotocols list here: gorilla's selectSubprotocol does exact
+		// matching, and the client's offered value is "spm-ws-token.<token>"
+		// (dynamic). We perform the subprotocol negotiation manually below.
 		CheckOrigin: func(r *http.Request) bool {
 			origin := r.Header.Get("Origin")
 			if origin == "" {
@@ -221,11 +220,14 @@ func run() error {
 			next.ServeHTTP(w, req)
 		})
 	}).Get("/api/ws/logs", func(w http.ResponseWriter, req *http.Request) {
-		// Echo the negotiated subprotocol so the browser WebSocket handshake
-		// completes correctly (RFC 6455 §4.1: the server MUST include it if the
-		// client requested it).
+		// Echo the exact subprotocol the client offered ("spm-ws-token.<token>")
+		// so the browser handshake completes correctly (RFC 6455 §4.2.2: the
+		// server MUST include the selected protocol in the response).
+		// We re-extract the token here (cheap, pure) rather than tunnelling it
+		// through context, since the middleware already validated it.
+		token := wsTokenFromSubprotocol(req)
 		conn, err := upgrader.Upgrade(w, req, http.Header{
-			"Sec-WebSocket-Protocol": []string{"spm-ws-token"},
+			"Sec-WebSocket-Protocol": []string{"spm-ws-token." + token},
 		})
 		if err != nil {
 			log.Warn().Err(err).Msg("websocket upgrade failed")
