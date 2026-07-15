@@ -1,2 +1,2 @@
 # Pin: tailscale v1.80.3 (2025-03)
-FROM tailscale/tailscale:v1.80.3@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982
+FROM tailscale/tailscale:v1.80.3@sha256:af6026ed3e5892c5d4966962618a09685198111507df16803b2aec7066046582

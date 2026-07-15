@@ -304,7 +304,7 @@ services:
       - observability
 
   grafana:
-    image: grafana/grafana:11.4.0@sha256:af6026ed3e5892c5d4966962618a09685198111507df16803b2aec7066046582
+    image: grafana/grafana:11.4.0@sha256:d8ea37798ccc41061a62ab080f2676dda6bf7815558499f901bdb0f533a456fb
     container_name: secure-proxy-manager-grafana
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}

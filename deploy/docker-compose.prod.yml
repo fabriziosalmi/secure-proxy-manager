@@ -238,7 +238,7 @@ services:
       - NET_ADMIN
 
   tailscale:
-    image: tailscale/tailscale:v1.80.3@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982
+    image: tailscale/tailscale:v1.80.3@sha256:af6026ed3e5892c5d4966962618a09685198111507df16803b2aec7066046582
     hostname: ${TAILSCALE_HOSTNAME:-secure-proxy}
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY:-}
@@ -279,7 +279,7 @@ services:
       - observability
 
   grafana:
-    image: grafana/grafana:11.4.0@sha256:af6026ed3e5892c5d4966962618a09685198111507df16803b2aec7066046582
+    image: grafana/grafana:11.4.0@sha256:d8ea37798ccc41061a62ab080f2676dda6bf7815558499f901bdb0f533a456fb
     container_name: secure-proxy-manager-grafana
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
