@@ -41,9 +41,31 @@ const mockLogs = {
   },
 }
 
+// Capture WebSocket constructor calls so we can assert on the protocols argument.
+const mockWebSocketInstances: Array<{ url: string; protocols?: string | string[] }> = []
+
+vi.stubGlobal('WebSocket', class MockWebSocket {
+  url: string
+  protocols?: string | string[]
+  onopen: (() => void) | null = null
+  onmessage: ((e: MessageEvent) => void) | null = null
+  onclose: (() => void) | null = null
+  onerror: (() => void) | null = null
+  readyState = 0 // CONNECTING
+
+  constructor(url: string, protocols?: string | string[]) {
+    this.url = url
+    this.protocols = protocols
+    mockWebSocketInstances.push({ url, protocols })
+  }
+
+  close() {}
+})
+
 describe('Logs', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockWebSocketInstances.length = 0
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url.includes('logs')) return Promise.resolve(mockLogs)
       if (url.includes('ws-token')) return Promise.resolve({ data: { token: 'ws-tok' } })
@@ -77,4 +99,27 @@ describe('Logs', () => {
     const searchInputs = screen.getAllByRole('textbox')
     expect(searchInputs.length).toBeGreaterThan(0)
   })
+
+  it('passes token via Sec-WebSocket-Protocol subprotocol, not query string', async () => {
+    renderWithProviders(<Logs />)
+
+    // Wait for the ws-token API call and WebSocket construction.
+    await waitFor(() => {
+      expect(mockWebSocketInstances.length).toBeGreaterThan(0)
+    })
+
+    const instance = mockWebSocketInstances[0]
+
+    // Token MUST appear in the protocols array as "spm-ws-token.<token>".
+    const protocols = Array.isArray(instance.protocols)
+      ? instance.protocols
+      : [instance.protocols ?? '']
+    const hasSubprotocol = protocols.some((p) => p === 'spm-ws-token.ws-tok')
+    expect(hasSubprotocol).toBe(true)
+
+    // Token MUST NOT appear in the URL query string.
+    expect(instance.url).not.toContain('token=')
+    expect(instance.url).not.toContain('ws-tok')
+  })
 })
+

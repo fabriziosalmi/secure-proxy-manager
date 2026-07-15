@@ -42,6 +42,8 @@ func setupTestDB(t *testing.T) (*sql.DB, *auth.Service, *config.Config, func()) 
 		RateLimitWindow:   1 * time.Minute,
 		ProxyHost:         "localhost",
 		WAFURL:            "http://localhost:8080", // Default test URL
+		WAFServiceUser:    "admin",
+		WAFServicePass:    adminPass,
 		ProxyURL:          "http://localhost:3128",
 	}
 

@@ -1,6 +1,10 @@
 # Playwright test runner
 # Uses the official Microsoft image which bundles Chromium, Firefox, WebKit
 # and all OS-level dependencies needed to run them headlessly.
+# TODO: pin digest — mcr.microsoft.com registry was unreachable during digest
+# resolution; resolve with:
+#   docker buildx imagetools inspect mcr.microsoft.com/playwright:v1.58.2-noble \
+#     --format '{{.Manifest.Digest}}'
 FROM mcr.microsoft.com/playwright:v1.58.2-noble
 
 WORKDIR /tests

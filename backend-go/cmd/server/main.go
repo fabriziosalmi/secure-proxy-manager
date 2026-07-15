@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -35,6 +36,20 @@ func main() {
 	if err := run(); err != nil {
 		log.Fatal().Err(err).Msg("application failed")
 	}
+}
+
+// wsTokenFromSubprotocol extracts the one-time auth token from the
+// Sec-WebSocket-Protocol header. The client sends it as the subprotocol value
+// "spm-ws-token.<hex-token>", keeping it out of the URL query string (and
+// therefore out of server access logs, browser history, and Referer headers).
+func wsTokenFromSubprotocol(req *http.Request) string {
+	for _, proto := range websocket.Subprotocols(req) {
+		const prefix = "spm-ws-token."
+		if strings.HasPrefix(proto, prefix) {
+			return proto[len(prefix):]
+		}
+	}
+	return ""
 }
 
 func run() error {
@@ -158,6 +173,10 @@ func run() error {
 		wsAllowed[o] = struct{}{}
 	}
 	upgrader := websocket.Upgrader{
+		// Accept "spm-ws-token.<token>" as the only negotiated subprotocol.
+		// The browser sends the token this way to avoid query-string leakage into
+		// server access logs, browser history, and Referer headers.
+		Subprotocols: []string{"spm-ws-token"},
 		CheckOrigin: func(r *http.Request) bool {
 			origin := r.Header.Get("Origin")
 			if origin == "" {
@@ -190,7 +209,7 @@ func run() error {
 
 	r.With(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			token := req.URL.Query().Get("token")
+			token := wsTokenFromSubprotocol(req)
 			if token == "" {
 				http.Error(w, "missing token", http.StatusUnauthorized)
 				return
@@ -202,7 +221,12 @@ func run() error {
 			next.ServeHTTP(w, req)
 		})
 	}).Get("/api/ws/logs", func(w http.ResponseWriter, req *http.Request) {
-		conn, err := upgrader.Upgrade(w, req, nil)
+		// Echo the negotiated subprotocol so the browser WebSocket handshake
+		// completes correctly (RFC 6455 §4.1: the server MUST include it if the
+		// client requested it).
+		conn, err := upgrader.Upgrade(w, req, http.Header{
+			"Sec-WebSocket-Protocol": []string{"spm-ws-token"},
+		})
 		if err != nil {
 			log.Warn().Err(err).Msg("websocket upgrade failed")
 			return
