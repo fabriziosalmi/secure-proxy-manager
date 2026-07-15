@@ -1,7 +1,7 @@
 # Playwright test runner
 # Uses the official Microsoft image which bundles Chromium, Firefox, WebKit
 # and all OS-level dependencies needed to run them headlessly.
-FROM mcr.microsoft.com/playwright:v1.58.2-noble@sha256:6446946a1d9fd62d9ae501312a2d76a43ee688542b21622056a372959b65d63d
+FROM mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
 
 WORKDIR /tests
 
