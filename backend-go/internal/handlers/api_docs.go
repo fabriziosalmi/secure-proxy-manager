@@ -106,7 +106,7 @@ func RegisterAPIDocs(r chi.Router, authMW func(http.Handler) http.Handler) {
 			{Method: "DELETE", Path: "/api/security/rate-limits/{ip}", Auth: true, Desc: "Clear rate limit for specific IP"},
 
 			// WebSocket
-			{Method: "GET", Path: "/api/ws/logs", Auth: false, Desc: "WebSocket: real-time log stream (pass token from /api/ws-token as Sec-WebSocket-Protocol: spm-ws-token.<token>)"},
+			{Method: "GET", Path: "/api/ws/logs", Auth: false, Desc: "WebSocket: real-time log stream (pass token from /api/ws-token as WebSocket subprotocol: spm-ws-token.<token>)"},
 
 			// Docs
 			{Method: "GET", Path: "/api/docs", Auth: false, Desc: "This endpoint — API documentation"},
