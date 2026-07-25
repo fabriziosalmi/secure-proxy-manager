@@ -23,7 +23,14 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 )
 
-// tokenHash returns a hex-encoded SHA-256 hash of a JWT string.
+// tokenHash returns a hex-encoded SHA-256 hash of a JWT string. It is the
+// revocation-blacklist key, so it MUST uniquely identify a token. That holds
+// only because every jwt.Parse call site pins jwt.WithStrictDecoding():
+// golang-jwt decodes Base64URL non-strictly by default, so distinct compact
+// spellings (unused signature bits flipped) would otherwise decode to the same
+// signature bytes, validate, yet hash differently — letting a revoked token be
+// replayed under an equivalent spelling (GHSA-j5fj-8wxc-gvmj). Strict decoding
+// makes only the canonical spelling parse, restoring the 1:1 string↔token map.
 func tokenHash(token string) string {
 	h := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(h[:])
@@ -148,7 +155,7 @@ func (s *Service) ValidateRefreshToken(tokenStr string) (string, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return []byte(s.cfg.SecretKey), nil
-	})
+	}, jwt.WithStrictDecoding())
 	if err != nil || !token.Valid {
 		return "", errors.New("invalid or expired refresh token")
 	}
@@ -176,7 +183,7 @@ func (s *Service) ValidateJWT(tokenStr string) (string, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return []byte(s.cfg.SecretKey), nil
-	})
+	}, jwt.WithStrictDecoding())
 	if err != nil || !token.Valid {
 		return "", errors.New("invalid or expired token")
 	}
@@ -222,7 +229,7 @@ func (s *Service) tokenExpiry(tokenStr string) time.Time {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return []byte(s.cfg.SecretKey), nil
-	})
+	}, jwt.WithStrictDecoding())
 	if err == nil && token != nil {
 		if claims, ok := token.Claims.(jwt.MapClaims); ok {
 			if expClaim, e := claims.GetExpirationTime(); e == nil && expClaim != nil {
