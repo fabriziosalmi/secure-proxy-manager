@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.2] - 2026-07-25
+
+### Security
+
+- **Logout / token-revocation bypass via alternate JWT spelling
+  ([GHSA-j5fj-8wxc-gvmj], CWE-613, CVSS 6.3).** The revocation blacklist is keyed
+  by the SHA-256 of the compact JWT string, but `golang-jwt` decodes Base64URL
+  non-strictly by default: a token whose final signature character is swapped for
+  an equivalent spelling (only unused bits differ) decodes to the same signature
+  bytes — so it still validates — yet hashes to a different blacklist key. A
+  holder of a valid token could therefore keep authenticating after logout, and
+  defeat one-time refresh-token rotation, using an equivalent spelling. Fixed by
+  pinning `jwt.WithStrictDecoding()` at all three parse sites (`ValidateJWT`,
+  `ValidateRefreshToken`, `tokenExpiry`), so only the canonical spelling parses
+  and the string↔token identity the blacklist relies on is restored. Adds an
+  HTTP-level regression test. Reported under coordinated disclosure by a UC
+  Berkeley security research project: Corban Villa, Sohee Kim, and Austin Chu.
+
+[GHSA-j5fj-8wxc-gvmj]: https://github.com/fabriziosalmi/secure-proxy-manager/security/advisories/GHSA-j5fj-8wxc-gvmj
+
 ## [3.11.1] - 2026-06-29
 
 ### Fixed
