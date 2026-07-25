@@ -148,11 +148,13 @@ jobs:
         working-directory: ui
         run: |
           npm ci
-          # Gate on HIGH (not just critical): the react-router CVE wave that
-          # shipped in v3.4.5 (GHSA turbo-stream RCE + 2 XSS) was rated HIGH and
-          # silently passed a critical-only gate. Moderate is intentionally not
-          # gated (current brace-expansion devDep advisory has no clean fix).
-          npm audit --audit-level=high
+          # Gate on HIGH/CRITICAL via an allowlisting wrapper. Plain
+          # `npm audit --audit-level=high` has no ignore mechanism, so one
+          # non-applicable or dev-only HIGH advisory red-gates every unrelated
+          # PR. The wrapper fails on HIGH/CRITICAL EXCEPT advisories explicitly
+          # justified in scripts/npm-audit-allowlist.json, and prints those it
+          # ignores on every run. Moderate stays ungated.
+          node ../scripts/npm-audit-gate.mjs
 
   # ── 6b. Trivy filesystem CVE + misconfiguration scan ──────────────────
   # Catches vulnerable OS/library packages and IaC misconfigurations that gosec
