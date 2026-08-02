@@ -1,12 +1,14 @@
 # Adversarial e2e harness (proxy + WAF data plane, backend API)
 
 Drives attacker-style traffic against the running product in an isolated
-sandbox and gates on security regressions. Two planes:
+sandbox and gates on security regressions. Three planes:
 
 - **Plane 1 — data-plane block-matrix.** Traffic **through the real forward
   proxy + WAF/ICAP**; measures block/allow correctness (FP/FN).
 - **Plane 2 — API attacker.** Hits the **backend's auth boundary directly**
   (auth-bypass, forged/tampered JWTs, login SQLi, rate-limit).
+- **Plane 3 — bench/latency.** k6 load through the proxy + WAF vs a direct
+  baseline; p50/p95, throughput, ICAP overhead, with a p95/error-rate gate.
 
 This is the counterpart to the UI Playwright suite and the API/UI-only
 `docker-compose.test.yml` (which deliberately excludes proxy + WAF).
@@ -95,9 +97,24 @@ mutated signature, garbage), **login SQL-injection**, wrong-password, per-IP
 access still works. A protected endpoint returning 2xx unauthenticated is a
 **bypass** and fails the gate.
 
+### Plane 3 — bench / latency
+
+[`bench/bench.js`](bench/bench.js) — a k6 load test run twice: a **baseline**
+(direct to the mock upstream) and a **proxied** run (through proxy + WAF/ICAP,
+`HTTP_PROXY` set). Each request uses a unique cache-buster URL, so the WAF
+safe-cache and Squid cache both miss and we measure real per-request inspection.
+The report shows p50/p95/p99, throughput, and the **proxy + ICAP overhead**
+(proxied − baseline). k6's thresholds are the gate — it exits non-zero on a
+breach (tunable via env):
+
+| Env | Default | Meaning |
+|---|---|---|
+| `P95_MS` | `800` | proxied p95 latency ceiling (ms) |
+| `MAX_FAIL` | `0.05` | proxied error-rate ceiling |
+| `VUS` / `DURATION` | `10` / `15s` | load shape |
+
 ## Roadmap (later phases, see #200)
 
-- **Phase 3** — bench/latency (k6/vegeta): p50/p95, ICAP overhead, regression gate.
 - **Phase 4** — resilience: kill/restart waf/dns hot; self-heal + fail-closed hold.
 - Optional Phase 2b — templated scans (nuclei / ZAP baseline) layered on the
   same sandbox.
