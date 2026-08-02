@@ -20,7 +20,7 @@ Block domains and IPs, enforce a default-deny egress allowlist, inspect requests
 against WAF rules, sinkhole malware/ad domains at the DNS layer, and see what
 every client is reaching.
 
-![Malicious requests blocked by the proxy + WAF, benign traffic allowed](docs/demo/adversarial-demo.svg)
+![Malicious requests blocked by the proxy + WAF, benign traffic allowed](docs/public/demo/adversarial-demo.svg)
 
 <sub>Malicious requests get **403**'d at the proxy by the WAF; benign traffic passes. Every category is verified with an adversarial test suite — see [Tested like an attacker](#tested-like-an-attacker).</sub>
 
