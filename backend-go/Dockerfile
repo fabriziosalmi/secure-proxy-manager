@@ -11,7 +11,7 @@ COPY . .
 RUN go build -trimpath -ldflags="-s -w" -o /bin/server ./cmd/server
 
 # ── stage 2: runtime ──────────────────────────────────────────────────────────
-FROM alpine:3.21@sha256:a8560b36e8b8210634f77d9f7f9efd7ffa463e380b75e2e74aff4511df3ef88c
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
 RUN apk add --no-cache ca-certificates docker-cli
 
