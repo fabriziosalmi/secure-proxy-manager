@@ -292,6 +292,21 @@ make adversarial
 
 See [`tests/adversarial/`](tests/adversarial/).
 
+## Manage it from an AI agent (MCP)
+
+SPM ships an optional [Model Context Protocol](https://modelcontextprotocol.io)
+server ([`mcp/`](mcp/)) that exposes the management API as tools, so an assistant
+or agent (e.g. Claude) can **drive your Secure Web Gateway in natural language** —
+"what are my top egressing domains?", "is anything reaching AI APIs?", "block
+`evil.example`", "disable the SQL_INJECTION category for 5 minutes". Read tools
+are safe; mutating tools (block/toggle/reload) are explicit and approved per call.
+
+```bash
+SPM_URL=http://localhost:5001 SPM_USERNAME=admin SPM_PASSWORD=... uvx spm-mcp
+```
+
+See [`mcp/README.md`](mcp/README.md) for the tool list and Claude Desktop config.
+
 ## Security notes
 
 - The SSL-bump CA is generated per deployment at first boot and never committed;
