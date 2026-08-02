@@ -1,7 +1,7 @@
 # Adversarial e2e harness (proxy + WAF data plane, backend API)
 
 Drives attacker-style traffic against the running product in an isolated
-sandbox and gates on security regressions. Four planes:
+sandbox and gates on security regressions. Five planes:
 
 - **Plane 1 — data-plane block-matrix.** Traffic **through the real forward
   proxy + WAF/ICAP**; measures block/allow correctness (FP/FN).
@@ -11,6 +11,10 @@ sandbox and gates on security regressions. Four planes:
   baseline; p50/p95, throughput, ICAP overhead, with a p95/error-rate gate.
 - **Plane 4 — resilience.** Kills/restarts waf & dns and asserts the WAF
   **fails closed** (no fail-open hole) and the stack **self-heals**.
+- **Plane 5 — config-matrix.** Flips WAF settings through the real backend→WAF
+  push path and asserts the **data plane changes** accordingly (a disabled
+  rule-category's attack now passes; another category still blocks; re-enable
+  blocks again) — proving settings actually take effect, selectively.
 
 This is the counterpart to the UI Playwright suite and the API/UI-only
 `docker-compose.test.yml` (which deliberately excludes proxy + WAF).
@@ -126,6 +130,26 @@ from a throwaway container while it stops/starts services:
 | `waf-fail-closed` | WAF stopped → benign is **not** 200 (REQMOD `bypass=0` denies; a 200 would be a fail-**open** hole) |
 | `waf-self-heal` | WAF restarted → benign 200 **and** malicious 403 (ruleset/ISTag intact) |
 | `dns-self-heal` | dns recycled → traffic flows again (200) |
+
+### Plane 5 — config-matrix
+
+No corpus — a scripted sequence in `attacker/config-matrix.sh` that flips WAF
+rule-category toggles via `POST /api/waf/categories/toggle` (the real
+backend→WAF push path) and probes through the proxy. Each probe uses a unique
+cache-buster so neither Squid nor the WAF safe-cache serves a stale verdict (a
+category toggle also bumps the WAF ISTag).
+
+| Check | Asserts |
+|---|---|
+| `baseline-*-blocked` | SQLi & XSS both blocked at default config |
+| `*-disabled-passes` | disabling a category lets **that** attack through |
+| `*-still-blocks-while-*-off` | a **different** category still blocks (selective) |
+| `*-reenabled-blocks` | re-enabling restores blocking |
+
+Covers WAF category toggles today. A **5b** would extend it to dns-driven
+(blacklist/whitelist precedence, SafeSearch/YouTube DNS) and squid-driven
+(egress default-deny, SSL-bump) settings — those need the backend to share the
+config volume with dns/proxy and a reload step.
 
 ## Roadmap (later phases, see #200)
 

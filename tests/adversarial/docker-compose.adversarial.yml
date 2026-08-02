@@ -167,6 +167,8 @@ services:
   # Target for Phase 2 (API attacker): the attacker hits it DIRECTLY (not through
   # the proxy) to probe the app's own auth/authorization boundary. Known creds so
   # the driver can prove that legitimate access still works (control cases).
+  # Also on adv-internal + wired to the WAF mgmt API so Phase 5 (config-matrix)
+  # can flip WAF settings through the real backend→WAF push path.
   backend:
     build: ../../backend-go
     environment:
@@ -175,6 +177,10 @@ services:
       - SECRET_KEY=adv-e2e-secret-not-for-production
       - CORS_ALLOWED_ORIGINS=http://localhost:8011
       - DATABASE_PATH=/data/secure_proxy_adv.db
+      # WAF mgmt API (Phase 5): the WAF's creds, so backend→WAF pushes authenticate.
+      - WAF_URL=http://waf:8080
+      - WAF_SERVICE_USERNAME=adv
+      - WAF_SERVICE_PASSWORD=adv-not-a-real-secret
     volumes:
       - adv-backend-config:/config
       - adv-backend-data:/data
@@ -185,7 +191,8 @@ services:
       retries: 15
       start_period: 15s
     networks:
-      - adv-edge
+      - adv-edge      # reachable by the attacker directly
+      - adv-internal  # reach waf:8080 for the mgmt push (Phase 5)
     restart: "no"
 
   # ── Bench / latency (k6) ───────────────────────────────────────────────────
@@ -236,6 +243,7 @@ services:
       # no image rebuild.
       - ./attacker/attack.sh:/adversarial/attack.sh:ro
       - ./attacker/api-attack.sh:/adversarial/api-attack.sh:ro
+      - ./attacker/config-matrix.sh:/adversarial/config-matrix.sh:ro
       - ./corpus.json:/adversarial/corpus.json:ro
       - ./api-corpus.json:/adversarial/api-corpus.json:ro
       - ./report:/report
