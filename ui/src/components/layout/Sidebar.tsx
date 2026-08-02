@@ -166,15 +166,27 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
               )}
             </div>
             {backendInfo.update_available ? (
-              <a
-                href={safeExternalUrl(backendInfo.update_url)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors font-mono font-semibold"
-              >
-                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
-                {backendInfo.update_available}
-              </a>
+              safeExternalUrl(backendInfo.update_url) === '#' ? (
+                // Unsafe/malformed update_url — show the badge but don't link
+                // anywhere (no href/target, so no new tab to a '#' fragment).
+                <span
+                  title="Update available"
+                  className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono font-semibold"
+                >
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+                  {backendInfo.update_available}
+                </span>
+              ) : (
+                <a
+                  href={safeExternalUrl(backendInfo.update_url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors font-mono font-semibold"
+                >
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+                  {backendInfo.update_available}
+                </a>
+              )
             ) : (
               <span className="text-[9px] text-muted-foreground/30 font-mono">latest</span>
             )}
