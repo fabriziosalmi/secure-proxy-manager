@@ -1,0 +1,124 @@
+[
+  {
+    "id": "health-public",
+    "desc": "Public health endpoint is reachable (control: backend is up)",
+    "method": "GET", "path": "/api/health", "auth": "none",
+    "expect": "ok", "gate": "hard"
+  },
+  {
+    "id": "login-valid",
+    "desc": "Correct credentials issue a token (control: legit login works)",
+    "method": "POST", "path": "/api/auth/login", "auth": "none",
+    "content_type": "application/json",
+    "body": "{\"username\":\"testadmin\",\"password\":\"TestP@ss123!\"}",
+    "expect": "ok", "gate": "hard"
+  },
+  {
+    "id": "status-basic-valid",
+    "desc": "Valid Basic-Auth reaches a protected endpoint (control)",
+    "method": "GET", "path": "/api/status", "auth": "basic",
+    "expect": "ok", "gate": "hard"
+  },
+  {
+    "id": "status-bearer-valid",
+    "desc": "Valid JWT (from login) reaches a protected endpoint (control)",
+    "method": "GET", "path": "/api/status", "auth": "bearer_valid",
+    "expect": "ok", "gate": "hard"
+  },
+
+  {
+    "id": "status-noauth",
+    "desc": "Protected endpoint must reject unauthenticated access",
+    "method": "GET", "path": "/api/status", "auth": "none",
+    "expect": "unauthorized", "gate": "hard"
+  },
+  {
+    "id": "settings-noauth",
+    "desc": "Settings must not be readable unauthenticated",
+    "method": "GET", "path": "/api/settings", "auth": "none",
+    "expect": "unauthorized", "gate": "hard"
+  },
+  {
+    "id": "auditlog-noauth",
+    "desc": "Audit log must not be readable unauthenticated",
+    "method": "GET", "path": "/api/audit-log", "auth": "none",
+    "expect": "unauthorized", "gate": "hard"
+  },
+  {
+    "id": "db-export-noauth",
+    "desc": "Database export (sensitive) must not be reachable unauthenticated",
+    "method": "GET", "path": "/api/database/export", "auth": "none",
+    "expect": "unauthorized", "gate": "hard"
+  },
+  {
+    "id": "ratelimits-noauth",
+    "desc": "Security rate-limit admin must not be readable unauthenticated",
+    "method": "GET", "path": "/api/security/rate-limits", "auth": "none",
+    "expect": "unauthorized", "gate": "hard"
+  },
+  {
+    "id": "changepw-noauth",
+    "desc": "Change-password must reject unauthenticated calls",
+    "method": "POST", "path": "/api/change-password", "auth": "none",
+    "content_type": "application/json",
+    "body": "{\"current_password\":\"x\",\"new_password\":\"Whatever1!\"}",
+    "expect": "unauthorized", "gate": "hard"
+  },
+  {
+    "id": "dbreset-noauth",
+    "desc": "Destructive database reset must reject unauthenticated calls",
+    "method": "POST", "path": "/api/database/reset", "auth": "none",
+    "expect": "unauthorized", "gate": "hard"
+  },
+
+  {
+    "id": "bearer-garbage",
+    "desc": "Garbage bearer token is rejected",
+    "method": "GET", "path": "/api/status", "auth": "bearer_bad",
+    "expect": "unauthorized", "gate": "hard"
+  },
+  {
+    "id": "bearer-alg-none",
+    "desc": "Forged alg=none JWT claiming admin must be rejected (alg confusion)",
+    "method": "GET", "path": "/api/status", "auth": "bearer_alg_none",
+    "expect": "unauthorized", "gate": "hard"
+  },
+  {
+    "id": "bearer-tampered",
+    "desc": "Valid JWT with a mutated signature must be rejected",
+    "method": "GET", "path": "/api/status", "auth": "bearer_tampered",
+    "expect": "unauthorized", "gate": "hard"
+  },
+
+  {
+    "id": "login-sqli-comment",
+    "desc": "SQL-injection in username must not bypass login",
+    "method": "POST", "path": "/api/auth/login", "auth": "none",
+    "content_type": "application/json",
+    "body": "{\"username\":\"admin'--\",\"password\":\"x\"}",
+    "expect": "unauthorized", "gate": "hard"
+  },
+  {
+    "id": "login-sqli-or",
+    "desc": "SQL-injection tautology in username must not bypass login",
+    "method": "POST", "path": "/api/auth/login", "auth": "none",
+    "content_type": "application/json",
+    "body": "{\"username\":\"' OR '1'='1\",\"password\":\"' OR '1'='1\"}",
+    "expect": "unauthorized", "gate": "hard"
+  },
+  {
+    "id": "login-wrong-password",
+    "desc": "Correct user + wrong password is rejected",
+    "method": "POST", "path": "/api/auth/login", "auth": "none",
+    "content_type": "application/json",
+    "body": "{\"username\":\"testadmin\",\"password\":\"definitely-wrong\"}",
+    "expect": "unauthorized", "gate": "hard"
+  },
+
+  {
+    "id": "ratelimit-burst",
+    "desc": "A rapid burst from one IP must eventually be rate-limited (429)",
+    "method": "GET", "path": "/api/status", "auth": "none",
+    "expect": "ratelimited", "gate": "hard", "burst": 90
+  }
+]

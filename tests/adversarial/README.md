@@ -1,16 +1,23 @@
-# Adversarial e2e harness — Phase 1: data-plane block-matrix
+# Adversarial e2e harness (proxy + WAF data plane, backend API)
 
-Drives traffic **through the real forward proxy + WAF/ICAP** like a client /
-attacker and measures block/allow correctness. This is the data-plane
-counterpart to the UI Playwright suite and the API/UI-only
+Drives attacker-style traffic against the running product in an isolated
+sandbox and gates on security regressions. Two planes:
+
+- **Plane 1 — data-plane block-matrix.** Traffic **through the real forward
+  proxy + WAF/ICAP**; measures block/allow correctness (FP/FN).
+- **Plane 2 — API attacker.** Hits the **backend's auth boundary directly**
+  (auth-bypass, forged/tampered JWTs, login SQLi, rate-limit).
+
+This is the counterpart to the UI Playwright suite and the API/UI-only
 `docker-compose.test.yml` (which deliberately excludes proxy + WAF).
 
 Tracks issue [#200](https://github.com/fabriziosalmi/secure-proxy-manager/issues/200).
 
 ```
-attacker ──http_proxy──▶ proxy (Squid) ──ICAP──▶ waf   (REQMOD / RESPMOD)
-                              │  resolves via dns (dnsmasq)
-                              └──────────────▶ mock-upstream (controlled)
+plane 1:  attacker ──http_proxy──▶ proxy (Squid) ──ICAP──▶ waf   (REQMOD / RESPMOD)
+                                        │  resolves via dns (dnsmasq)
+                                        └──────────────▶ mock-upstream (controlled)
+plane 2:  attacker ─────────────────────────────────────▶ backend (Go API, direct)
 ```
 
 ## Run
@@ -19,10 +26,9 @@ attacker ──http_proxy──▶ proxy (Squid) ──ICAP──▶ waf   (REQM
 make adversarial          # or: bash tests/adversarial/run.sh
 ```
 
-The run builds the sandbox, sends every corpus case through the proxy, prints a
-**block-matrix + FP/FN report**, and tears the stack down. Exit code is the CI
-gate: **non-zero if any hard-gate case is a false negative (malicious allowed)
-or false positive (benign blocked)**.
+The run builds the sandbox, executes both planes, prints their reports, and
+tears the stack down. Exit code is the CI gate: **non-zero if plane 1 has a hard
+false negative/positive, or plane 2 has a hard auth/authorization regression.**
 
 Useful env:
 
@@ -72,8 +78,26 @@ single card is a corroborating signal, score 2 < 10, so it correctly passes).
 
 Extend it "as attackers": add cases, re-run with `NO_BUILD=1`, watch FN/FP.
 
+### Plane 2 — API attacker
+
+[`api-corpus.json`](api-corpus.json) — hits the backend directly:
+
+| field | meaning |
+|---|---|
+| `auth` | `none` \| `basic` \| `bearer_valid` \| `bearer_bad` \| `bearer_alg_none` \| `bearer_tampered` |
+| `expect` | `unauthorized` (401/403) \| `ok` (2xx control) \| `ratelimited` (burst → 429) |
+| `gate` | `hard` \| `soft` |
+
+Covers: auth-bypass on protected endpoints (status, settings, audit-log,
+database export/reset, change-password), forged JWTs (**alg=none** confusion,
+mutated signature, garbage), **login SQL-injection**, wrong-password, per-IP
+**rate-limit** enforcement, plus control cases proving legitimate Basic/JWT
+access still works. A protected endpoint returning 2xx unauthenticated is a
+**bypass** and fails the gate.
+
 ## Roadmap (later phases, see #200)
 
-- **Phase 2** — API attacker (JWT tampering, auth-bypass, IDOR) via nuclei / ZAP.
 - **Phase 3** — bench/latency (k6/vegeta): p50/p95, ICAP overhead, regression gate.
 - **Phase 4** — resilience: kill/restart waf/dns hot; self-heal + fail-closed hold.
+- Optional Phase 2b — templated scans (nuclei / ZAP baseline) layered on the
+  same sandbox.

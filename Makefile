@@ -35,7 +35,8 @@ clean:
 	docker compose down -v --remove-orphans
 	@echo "⚠️  Data in ./data/ preserved. Remove manually if needed."
 
-# Adversarial e2e block-matrix: drive attacker traffic through the real proxy +
-# WAF/ICAP in an isolated sandbox and gate on false negatives/positives (#200).
+# Adversarial e2e: drive attacker traffic against the real proxy + WAF/ICAP
+# (block-matrix) and the backend auth boundary (API attacker) in an isolated
+# sandbox; gate on false negatives/positives and auth bypasses (#200).
 adversarial:
 	bash tests/adversarial/run.sh
