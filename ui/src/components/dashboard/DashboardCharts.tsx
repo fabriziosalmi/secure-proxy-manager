@@ -3,20 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { AlertTriangle } from 'lucide-react';
 import type { TimelineEntry, DashboardSummary } from '../../types';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { TOOLTIP_STYLE } from '../../lib/chart';
 
 const C = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899'];
-
-const TOOLTIP_STYLE = {
-  backgroundColor: 'var(--tooltip-bg)',
-  backdropFilter: 'blur(12px)',
-  WebkitBackdropFilter: 'blur(12px)',
-  border: '1px solid var(--tooltip-border)',
-  borderRadius: '8px',
-  fontSize: '11px',
-  color: 'hsl(var(--foreground))',
-  boxShadow: 'var(--tooltip-shadow)',
-  fontVariantNumeric: 'tabular-nums' as const,
-};
 
 interface Props {
   chart: TimelineEntry[];
