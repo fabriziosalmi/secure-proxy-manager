@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router';
 import { LayoutDashboard, Ban, ShieldAlert, List, ScrollText, Users, Settings, Search, Command, LogOut, ArrowUpFromLine, Sun, Moon, SunMoon } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useTheme } from '../ThemeProvider';

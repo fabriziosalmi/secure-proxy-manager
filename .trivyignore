@@ -1,9 +1,6 @@
 # Trivy vulnerability allowlist. ONLY for advisories that are non-applicable or
 # dev-only with no proportionate fix; every entry needs a justification.
 # Keep in sync with scripts/npm-audit-allowlist.json.
-
-# react-router — RSC Mode CSRF. NOT APPLICABLE: this SPA uses react-router-dom in
-# client-side/data mode, not RSC framework mode, so the vulnerable RSC action path
-# is never mounted. No forward fix for react-router-dom exists (no 8.x); the only
-# remediation is a react-router v7->v8 migration. Tracked follow-up: migrate to v8.
-GHSA-qwww-vcr4-c8h2
+#
+# Currently EMPTY — the react-router RSC-mode CSRF exception (GHSA-qwww-vcr4-c8h2)
+# was retired by the react-router v8 migration (#191).

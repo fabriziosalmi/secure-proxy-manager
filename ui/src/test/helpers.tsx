@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter } from 'react-router'
 import { render } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { ThemeProvider } from '../components/ThemeProvider'
