@@ -87,7 +87,10 @@ jobs:
             echo "version=latest" >> $GITHUB_OUTPUT
           fi
 
-      # Tag list: always GHCR; add Docker Hub tags only when DOCKERHUB_USERNAME is set.
+      # Tag list. GHCR keeps a package per component (ghcr.io/…/…-<component>).
+      # Docker Hub uses a SINGLE repo (secure-proxy-manager) with the component in
+      # the tag (…:proxy-<version>, …:dns-latest, …) — added only when
+      # DOCKERHUB_USERNAME is set.
       - name: Compute image tags
         id: tags
         env:
@@ -100,8 +103,8 @@ jobs:
             echo "${IMAGE_PREFIX}-${IMG}:${VERSION}"
             echo "${IMAGE_PREFIX}-${IMG}:latest"
             if [ -n "$DH_USER" ]; then
-              echo "docker.io/${DH_USER}/secure-proxy-manager-${IMG}:${VERSION}"
-              echo "docker.io/${DH_USER}/secure-proxy-manager-${IMG}:latest"
+              echo "docker.io/${DH_USER}/secure-proxy-manager:${IMG}-${VERSION}"
+              echo "docker.io/${DH_USER}/secure-proxy-manager:${IMG}-latest"
             fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
@@ -145,5 +148,6 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/v') && steps.dh.outputs.enabled == 'true' }}
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
-          IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/secure-proxy-manager-${{ matrix.image }}
+          # Single repo; the digest identifies this component's manifest.
+          IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/secure-proxy-manager
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
