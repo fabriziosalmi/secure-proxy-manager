@@ -45,18 +45,23 @@ Malicious requests get **403**'d at the proxy by the WAF; benign traffic passes.
 
 ## How it compares
 
-| Capability | Pi-hole / AdGuard | Nginx Proxy Manager | Cloud SWG (Zscaler…) | **Secure Proxy Manager** |
-|---|:---:|:---:|:---:|:---:|
-| DNS sinkhole | ✅ | — | ✅ | ✅ |
-| Forward proxy (egress control) | — | — | ✅ | ✅ |
-| HTTP request/body inspection (WAF) | — | — | ✅ | ✅ |
-| Default-deny egress allowlist | — | — | ✅ | ✅ |
-| Reverse proxy / ingress | — | ✅ | — | — |
-| Self-hosted — traffic stays local | ✅ | ✅ | — | ✅ |
-| Free / no per-seat cost | ✅ | ✅ | — | ✅ |
+| Capability | Pi-hole / AdGuard | Nginx Proxy Manager | Cloud SWG (Zscaler…) | [Zion](https://github.com/fabriziosalmi/zion) | **Secure Proxy Manager** |
+|---|:---:|:---:|:---:|:---:|:---:|
+| DNS sinkhole | ✅ | — | ✅ | — | ✅ |
+| Forward proxy (egress control) | — | — | ✅ | — | ✅ |
+| HTTP request/body inspection (WAF) | — | — | ✅ | ✅ | ✅ |
+| Default-deny egress allowlist | — | — | ✅ | — | ✅ |
+| Reverse proxy / ingress | — | ✅ | — | ✅ | — |
+| Self-hosted — traffic stays local | ✅ | ✅ | — | ✅ | ✅ |
+| Free / no per-seat cost | ✅ | ✅ | — | ✅ | ✅ |
 
 SPM is the **self-hosted outbound** counterpart to a cloud Secure Web Gateway —
 WAF inspection + DNS sinkholing + egress control, on your own metal.
+
+Pair it with **[Zion](https://github.com/fabriziosalmi/zion)** — a single-binary
+Rust TLS **reverse** proxy with a built-in WAF — to cover the other direction:
+Zion inspects traffic coming **in**, SPM controls what goes **out**. Both
+self-hosted, both single-purpose, no cloud.
 
 ## Tested like an attacker
 
