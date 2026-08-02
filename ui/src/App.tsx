@@ -1,5 +1,5 @@
 import { Component, Suspense, lazy, useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router';
 import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/react-query';
 import toast, { Toaster } from 'react-hot-toast';
 import axios from 'axios';

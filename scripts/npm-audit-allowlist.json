@@ -1,6 +1,4 @@
 {
-  "_comment": "GHSA IDs that npm-audit-gate.mjs will NOT fail on. ONLY for advisories that are non-applicable or dev-only with no proportionate fix. Each MUST carry a justification and, ideally, a tracked follow-up. Runtime-reachable advisories must never be listed here — fix them.",
-  "allow": {
-    "GHSA-qwww-vcr4-c8h2": "react-router — RSC Mode CSRF. NOT APPLICABLE: this SPA uses react-router-dom in client-side/data mode, not RSC framework mode, so the vulnerable RSC action path is never mounted. No forward fix exists for react-router-dom (there is no 8.x of react-router-dom); the only remediation is a react-router v7->v8 migration. Tracked follow-up: migrate to react-router v8."
-  }
+  "_comment": "GHSA IDs that npm-audit-gate.mjs will NOT fail on. ONLY for advisories that are non-applicable or dev-only with no proportionate fix. Each MUST carry a justification and, ideally, a tracked follow-up. Runtime-reachable advisories must never be listed here — fix them. Currently EMPTY (the react-router RSC exception was retired by the v8 migration, #191).",
+  "allow": {}
 }
