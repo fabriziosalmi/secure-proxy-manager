@@ -93,6 +93,11 @@ export function Settings() {
       // API returns [{setting_name, setting_value}, ...] — convert to {key: value} map
       const map: Record<string, string> = {};
       settingsData.forEach((s) => { map[s.setting_name] = s.setting_value; });
+      // Seeding an editable form's local state from the fetched settings is a
+      // deliberate mirror of async query data into state — exactly what
+      // set-state-in-effect flags. Vetted exception (a full key-reset refactor
+      // isn't warranted here). See issue #192.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFormData(map);
     }
   }, [settingsData, loading, error]);
