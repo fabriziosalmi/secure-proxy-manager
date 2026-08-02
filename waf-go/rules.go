@@ -454,6 +454,16 @@ func matchRulesScored(input string) ([]MatchResult, int) {
 	totalScore := 0
 	matched := make(map[string]bool) // Deduplicate by rule ID
 
+	// Cheap pre-filter (#110): screen the input against required-literal keywords
+	// derived from the patterns. On benign input no gated rule's literal is
+	// present, so `active` holds only the always-scan (ungated) rules — the vast
+	// majority of RE2 evaluations are skipped. `gated` is false only when no
+	// screen was built, in which case every rule is scanned (safe fallback).
+	active, gated := prefilterActive(input)
+	if gated && len(active) == 0 {
+		return nil, 0
+	}
+
 	// Compacted (whitespace-stripped) form, to catch evasion via space insertion
 	// (e.g. "<scr ipt>", "UNION  SELECT"). Built lazily on the first rule miss.
 	// Crucially, it's only re-scanned when it actually DIFFERS from input — i.e.
@@ -481,6 +491,11 @@ func matchRulesScored(input string) ([]MatchResult, int) {
 				}
 				if matched[rule.ID] {
 					continue
+				}
+				if gated {
+					if _, ok := active[rule.ID]; !ok {
+						continue // pre-filtered out: no required literal present
+					}
 				}
 				hit := rule.Pattern.MatchString(input)
 				if !hit {

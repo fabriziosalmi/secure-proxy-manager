@@ -250,6 +250,7 @@ func init() {
 	}
 
 	loadCustomRules()
+	buildPrefilter() // #110: after loadCustomRules so custom rules are gated too
 	initISTag()
 	initHeuristics()
 
