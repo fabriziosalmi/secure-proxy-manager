@@ -39,6 +39,21 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # `secrets` cannot be used in `if:` conditions, so detect the Docker Hub
+      # credentials here (secrets ARE allowed in a step's env/run) and gate the
+      # mirror steps on this output. Absent creds → GHCR-only, nothing breaks.
+      - name: Detect Docker Hub credentials
+        id: dh
+        env:
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "$DH_USER" ] && [ -n "$DH_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up QEMU (for ARM64 emulation)
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
 
@@ -56,7 +71,7 @@ jobs:
       # discovery). Mirror there too — but only when the credentials exist, so
       # the release still works with just GHCR if they are not configured.
       - name: Login to Docker Hub
-        if: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+        if: ${{ steps.dh.outputs.enabled == 'true' }}
         uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
         with:
           registry: docker.io
@@ -72,7 +87,10 @@ jobs:
             echo "version=latest" >> $GITHUB_OUTPUT
           fi
 
-      # Tag list: always GHCR; add Docker Hub tags only when DOCKERHUB_USERNAME is set.
+      # Tag list. GHCR keeps a package per component (ghcr.io/…/…-<component>).
+      # Docker Hub uses a SINGLE repo (secure-proxy-manager) with the component in
+      # the tag (…:proxy-<version>, …:dns-latest, …) — added only when
+      # DOCKERHUB_USERNAME is set.
       - name: Compute image tags
         id: tags
         env:
@@ -85,8 +103,8 @@ jobs:
             echo "${IMAGE_PREFIX}-${IMG}:${VERSION}"
             echo "${IMAGE_PREFIX}-${IMG}:latest"
             if [ -n "$DH_USER" ]; then
-              echo "docker.io/${DH_USER}/secure-proxy-manager-${IMG}:${VERSION}"
-              echo "docker.io/${DH_USER}/secure-proxy-manager-${IMG}:latest"
+              echo "docker.io/${DH_USER}/secure-proxy-manager:${IMG}-${VERSION}"
+              echo "docker.io/${DH_USER}/secure-proxy-manager:${IMG}-latest"
             fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
@@ -127,8 +145,9 @@ jobs:
           IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
       - name: Sign the Docker Hub image (keyless)
-        if: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.DOCKERHUB_USERNAME != '' }}
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && steps.dh.outputs.enabled == 'true' }}
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
-          IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/secure-proxy-manager-${{ matrix.image }}
+          # Single repo; the digest identifies this component's manifest.
+          IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/secure-proxy-manager
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
