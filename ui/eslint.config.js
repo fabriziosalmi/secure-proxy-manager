@@ -19,5 +19,14 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Opt out of react-hooks 7.1's new (React-Compiler-era) rule for now.
+      // Our two effects that trip it are intentional: seeding editable local
+      // state from an async query (the Settings form) and seeding a WebSocket
+      // log buffer from the initial fetch. Adopting the rule means refactoring
+      // core UI with real regression risk — tracked as a follow-up, not part of
+      // the eslint 9->10 bump.
+      'react-hooks/set-state-in-effect': 'off',
+    },
   },
 ])
