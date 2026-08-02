@@ -33,10 +33,10 @@ function IpBadgeImpl({ ip, className = '' }: IpBadgeProps) {
           placeholder="Name this IP..."
           className="w-24 px-1.5 py-0.5 bg-background border border-primary/40 rounded text-[11px] outline-none focus:border-primary"
         />
-        <button type="button" onClick={() => {
+        <button type="button" aria-label={`Save tag for ${ip}`} onClick={() => {
           if (tagName.trim()) { addAssetTag(ip, tagName.trim()); setEditing(false); }
         }} className="text-emerald-500 hover:text-emerald-400"><Check className="w-3 h-3" /></button>
-        <button type="button" onClick={() => setEditing(false)} className="text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>
+        <button type="button" aria-label="Cancel editing tag" onClick={() => setEditing(false)} className="text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>
       </span>
     );
   }
