@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router';
 import { LayoutDashboard, Ban, ShieldAlert, List, ScrollText, Users, Settings, Search, Command, LogOut, ArrowUpFromLine, Sun, Moon, SunMoon } from 'lucide-react';
 import { api } from '../../lib/api';
+import { safeExternalUrl } from '../../lib/utils';
 import { useTheme } from '../ThemeProvider';
 
 type ApiStatus = 'connected' | 'disconnected' | 'checking';
@@ -166,7 +167,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
             </div>
             {backendInfo.update_available ? (
               <a
-                href={backendInfo.update_url || '#'}
+                href={safeExternalUrl(backendInfo.update_url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors font-mono font-semibold"

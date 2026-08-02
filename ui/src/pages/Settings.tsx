@@ -602,14 +602,23 @@ export function Settings() {
                     type="button"
                     onClick={async () => {
                       const t = toast.loading(`Adding ${group.label} domains...`);
-                      let added = 0;
-                      for (const domain of group.domains) {
-                        try {
-                          await api.post('domain-whitelist', { domain, description: `Essential: ${group.label}` });
-                          added++;
-                        } catch { /* already exists */ }
+                      const results = await Promise.allSettled(
+                        group.domains.map((domain) =>
+                          api.post('domain-whitelist', { domain, description: `Essential: ${group.label}` })
+                        )
+                      );
+                      const added = results.filter((r) => r.status === 'fulfilled').length;
+                      // 400 = already-whitelisted (these domains are known-good), expected on
+                      // a repeat click. Anything else (auth, 5xx, network) is a real failure.
+                      const failed = results.filter((r) =>
+                        r.status === 'rejected' &&
+                        ![400, 409].includes((r.reason as { response?: { status?: number } })?.response?.status ?? 0)
+                      ).length;
+                      if (failed > 0) {
+                        toast.error(`${group.label}: ${added} added, ${failed} failed — check API/auth`, { id: t });
+                      } else {
+                        toast.success(`${group.label}: ${added} domains whitelisted`, { id: t });
                       }
-                      toast.success(`${group.label}: ${added} domains whitelisted`, { id: t });
                     }}
                     className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
                   >
@@ -655,15 +664,23 @@ export function Settings() {
                       'dns.nextdns.io', 'dns.controld.com',
                     ];
                     const t = toast.loading('Blocking DoH providers...');
-                    let added = 0;
-                    for (const domain of dohDomains) {
-                      try {
-                        await api.post('domain-blacklist', { domain, description: 'DoH provider (anti-bypass)' });
-                        added++;
-                      } catch { /* already exists */ }
-                    }
+                    const results = await Promise.allSettled(
+                      dohDomains.map((domain) =>
+                        api.post('domain-blacklist', { domain, description: 'DoH provider (anti-bypass)' })
+                      )
+                    );
+                    const added = results.filter((r) => r.status === 'fulfilled').length;
+                    // 400 = already-blacklisted (known-good list), expected on a repeat click.
+                    const failed = results.filter((r) =>
+                      r.status === 'rejected' &&
+                      ![400, 409].includes((r.reason as { response?: { status?: number } })?.response?.status ?? 0)
+                    ).length;
                     try { await api.post('maintenance/reload-dns'); } catch { /* ignore */ }
-                    toast.success(`Blocked ${added} DoH providers + DNS reloaded`, { id: t });
+                    if (failed > 0) {
+                      toast.error(`DoH: ${added} blocked, ${failed} failed — check API/auth`, { id: t });
+                    } else {
+                      toast.success(`Blocked ${added} DoH providers + DNS reloaded`, { id: t });
+                    }
                   }}
                   className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors shrink-0"
                 >
