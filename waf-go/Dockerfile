@@ -17,6 +17,13 @@ WORKDIR /app
 COPY --from=builder /app/waf-server .
 RUN chown waf:waf /app/waf-server
 
+# Persistent, writable sink for the traffic feature log (issue #112). Created
+# owned by waf so that when the empty `waf-traffic` named volume is first mounted
+# here, Docker seeds it with waf:waf ownership — writable by the non-root process
+# even under a read_only root filesystem, and surviving restarts (unlike the
+# /tmp tmpfs fallback). WAF_TRAFFIC_LOG_PATH points the logger at this dir.
+RUN mkdir -p /var/lib/waf && chown waf:waf /var/lib/waf
+
 USER waf
 
 EXPOSE 1344

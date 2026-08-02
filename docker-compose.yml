@@ -62,9 +62,14 @@ services:
     volumes:
       - ./config:/config:ro
       - ./data:/data:ro
+      # Dedicated writable volume for the traffic feature log, so it persists
+      # across restarts and stays off the memory-backed /tmp tmpfs while /data
+      # stays read-only (issue #112).
+      - waf-traffic:/var/lib/waf
     environment:
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
+      - WAF_TRAFFIC_LOG_PATH=${WAF_TRAFFIC_LOG_PATH:-/var/lib/waf/waf_traffic.jsonl}
       - WAF_BLOCK_THRESHOLD=${WAF_BLOCK_THRESHOLD:-10}
       # Heuristic engine toggles (1=on, 0=off)
       - WAF_H_ENTROPY=${WAF_H_ENTROPY:-1}
@@ -334,6 +339,8 @@ networks:
     internal: true
 
 volumes:
+  waf-traffic:
+    driver: local
   squid-cache:
     driver: local
   tailscale-data:
