@@ -1,7 +1,7 @@
 # Adversarial e2e harness (proxy + WAF data plane, backend API)
 
 Drives attacker-style traffic against the running product in an isolated
-sandbox and gates on security regressions. Three planes:
+sandbox and gates on security regressions. Four planes:
 
 - **Plane 1 — data-plane block-matrix.** Traffic **through the real forward
   proxy + WAF/ICAP**; measures block/allow correctness (FP/FN).
@@ -9,6 +9,8 @@ sandbox and gates on security regressions. Three planes:
   (auth-bypass, forged/tampered JWTs, login SQLi, rate-limit).
 - **Plane 3 — bench/latency.** k6 load through the proxy + WAF vs a direct
   baseline; p50/p95, throughput, ICAP overhead, with a p95/error-rate gate.
+- **Plane 4 — resilience.** Kills/restarts waf & dns and asserts the WAF
+  **fails closed** (no fail-open hole) and the stack **self-heals**.
 
 This is the counterpart to the UI Playwright suite and the API/UI-only
 `docker-compose.test.yml` (which deliberately excludes proxy + WAF).
@@ -113,8 +115,19 @@ breach (tunable via env):
 | `MAX_FAIL` | `0.05` | proxied error-rate ceiling |
 | `VUS` / `DURATION` | `10` / `15s` | load shape |
 
+### Plane 4 — resilience
+
+No corpus — a scripted failure sequence in `run.sh`, probing through the proxy
+from a throwaway container while it stops/starts services:
+
+| Check | Asserts |
+|---|---|
+| `baseline` | benign → 200 while healthy |
+| `waf-fail-closed` | WAF stopped → benign is **not** 200 (REQMOD `bypass=0` denies; a 200 would be a fail-**open** hole) |
+| `waf-self-heal` | WAF restarted → benign 200 **and** malicious 403 (ruleset/ISTag intact) |
+| `dns-self-heal` | dns recycled → traffic flows again (200) |
+
 ## Roadmap (later phases, see #200)
 
-- **Phase 4** — resilience: kill/restart waf/dns hot; self-heal + fail-closed hold.
 - Optional Phase 2b — templated scans (nuclei / ZAP baseline) layered on the
-  same sandbox.
+  same sandbox; tighten the bench thresholds once CI has a baseline.

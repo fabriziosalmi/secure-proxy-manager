@@ -37,7 +37,8 @@ DC=("$DOCKER" compose -f docker-compose.adversarial.yml)
 mkdir -p report
 rm -f report/report.md report/report.json report/results.json \
       report/api-report.md report/api-report.json report/api-results.json \
-      report/bench-report.md report/bench-baseline.json report/bench-proxied.json
+      report/bench-report.md report/bench-baseline.json report/bench-proxied.json \
+      report/resilience-report.md
 
 # Build the plane-3 bench report from k6's summary exports (baseline vs proxied),
 # reporting p50/p95/throughput and the proxy + ICAP overhead.
@@ -74,6 +75,89 @@ bench_report() {
     echo
     echo "_Gate (proxied run): p95 < ${P95_MS:-800} ms and error rate < ${MAX_FAIL:-0.05} (k6 thresholds)._"
   } >report/bench-report.md
+}
+
+# Plane 4 — resilience. Kills/restarts waf and dns and asserts the two properties
+# that matter under failure: (1) losing the WAF FAILS CLOSED (a benign request
+# is denied, not served uninspected — no fail-open hole), and (2) the stack
+# self-heals (blocking resumes after the WAF returns; traffic flows after dns is
+# recycled). Sets the global P4_RC. Runs LAST (it disrupts the data plane).
+P4_RC=0
+resilience() {
+  local RESREC=() name detail v s sb sm
+  add() { RESREC+=("$1|$2|$3"); }
+
+  # Probe through the proxy from a throwaway attacker container on adv-edge.
+  # --no-deps: don't wait on service health (the proxy goes unhealthy while the
+  # WAF is down, but squid still answers — with an ICAP error, which is the point).
+  probe() {
+    # curl -w always prints a code (000 on no response); </dev/null so the
+    # container never consumes the caller's stdin. Compose progress is on stderr.
+    "${DC[@]}" run --rm --no-deps -T --entrypoint curl attacker \
+      -s -o /dev/null -w '%{http_code}' --max-time 12 --path-as-is \
+      -x http://proxy:3128 "http://upstream.test$1" </dev/null 2>/dev/null
+  }
+  wait_healthy() {
+    local svc=$1 tries=${2:-30} h
+    for _ in $(seq 1 "$tries"); do
+      h=$("$DOCKER" inspect -f '{{.State.Health.Status}}' "spm-adversarial-${svc}-1" 2>/dev/null || echo none)
+      [ "$h" = "healthy" ] && return 0
+      sleep 2
+    done
+    return 1
+  }
+
+  # R1 — baseline: benign is served while everything is healthy.
+  s=$(probe /index.html)
+  if [ "$s" = "200" ]; then v=PASS; else v=FAIL; P4_RC=1; fi
+  add "baseline" "benign→$s (want 200)" "$v"
+
+  # R2 — WAF fail-closed: with the WAF down, REQMOD (bypass=0) must NOT let a
+  # request through uninspected. A 200 here would be a fail-OPEN security hole.
+  "${DC[@]}" stop waf >/dev/null 2>&1
+  sleep 3
+  s=$(probe /index.html)
+  if [ "$s" != "200" ]; then v=PASS; else v=FAIL; P4_RC=1; fi
+  add "waf-fail-closed" "waf down: benign→$s (want NOT 200)" "$v"
+
+  # R3 — WAF self-heal: after the WAF returns, benign flows again AND malicious
+  # is still blocked (ruleset/ISTag intact). Retry: squid reconnects ICAP lazily.
+  "${DC[@]}" start waf >/dev/null 2>&1
+  if wait_healthy waf; then
+    sb=000; for _ in 1 2 3 4 5 6; do sb=$(probe /index.html); [ "$sb" = "200" ] && break; sleep 2; done
+    sm=$(probe "/p?id=1%20UNION%20SELECT%20a%20FROM%20b")
+    if [ "$sb" = "200" ] && [ "$sm" = "403" ]; then v=PASS; else v=FAIL; P4_RC=1; fi
+    add "waf-self-heal" "recovered: benign→$sb (want 200), malicious→$sm (want 403)" "$v"
+  else
+    add "waf-self-heal" "waf did not become healthy after restart" "FAIL"; P4_RC=1
+  fi
+
+  # R4 — DNS self-heal: recycle dns and confirm resolution/traffic recovers.
+  "${DC[@]}" restart dns >/dev/null 2>&1
+  if wait_healthy dns; then
+    sleep 2
+    sb=000; for _ in 1 2 3 4 5; do sb=$(probe /index.html); [ "$sb" = "200" ] && break; sleep 2; done
+    if [ "$sb" = "200" ]; then v=PASS; else v=FAIL; P4_RC=1; fi
+    add "dns-self-heal" "dns recycled: benign→$sb (want 200)" "$v"
+  else
+    add "dns-self-heal" "dns did not become healthy after restart" "FAIL"; P4_RC=1
+  fi
+
+  {
+    echo "# Resilience report"
+    echo
+    echo "> Fail-closed on WAF loss + self-heal under failure (#200 Phase 4)."
+    echo
+    echo "| Check | Detail | Verdict |"
+    echo "|---|---|---|"
+    for r in "${RESREC[@]}"; do
+      name=${r%%|*}; detail=${r#*|}; v=${detail##*|}; detail=${detail%|*}
+      printf '| %s | %s | %s |\n' "$name" "$detail" "$v"
+    done
+    echo
+    if [ "$P4_RC" -eq 0 ]; then echo "_Gate: **PASS** — fail-closed held and the stack self-healed._"
+    else echo "_Gate: **FAIL** — see the checks above._"; fi
+  } >report/resilience-report.md
 }
 
 cleanup() {
@@ -123,12 +207,18 @@ echo "── plane 3: bench/latency (k6 through proxy + WAF) ──"
   k6 run --quiet --summary-export=/report/bench-proxied.json /bench/bench.js; p3=$?
 bench_report
 
+# Plane 4 — resilience (fail-closed + self-heal). Runs last: it disrupts the
+# data plane by stopping/starting waf and dns.
+echo "── plane 4: resilience (fail-closed + self-heal) ──"
+resilience; p4=$P4_RC
+
 [ "$p1" -ne 0 ] && rc=1
 [ "$p2" -ne 0 ] && rc=1
 [ "$p3" -ne 0 ] && rc=1
+[ "$p4" -ne 0 ] && rc=1
 
 echo
-for f in report/report.md report/api-report.md report/bench-report.md; do
+for f in report/report.md report/api-report.md report/bench-report.md report/resilience-report.md; do
   if [ -f "$f" ]; then
     echo "════════════════════════════════════════════════════════════════════════"
     cat "$f"
@@ -140,6 +230,7 @@ echo
 printf '  plane 1 (block-matrix): %s\n' "$([ "$p1" -eq 0 ] && echo PASS || echo FAIL)"
 printf '  plane 2 (API attacker): %s\n' "$([ "$p2" -eq 0 ] && echo PASS || echo FAIL)"
 printf '  plane 3 (bench/latency): %s\n' "$([ "${p3:-1}" -eq 0 ] && echo PASS || echo FAIL)"
+printf '  plane 4 (resilience): %s\n' "$([ "${p4:-1}" -eq 0 ] && echo PASS || echo FAIL)"
 if [ "$rc" -eq 0 ]; then
   echo "✅ adversarial gate: PASS"
 else

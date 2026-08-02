@@ -36,8 +36,8 @@ clean:
 	@echo "⚠️  Data in ./data/ preserved. Remove manually if needed."
 
 # Adversarial e2e: drive attacker traffic against the real proxy + WAF/ICAP
-# (block-matrix), the backend auth boundary (API attacker), and a k6 latency
-# bench, in an isolated sandbox; gate on false negatives/positives, auth
-# bypasses, and p95/error-rate regressions (#200).
+# (block-matrix), the backend auth boundary (API attacker), a k6 latency bench,
+# and a resilience sweep (fail-closed + self-heal), in an isolated sandbox; gate
+# on FN/FP, auth bypasses, p95/error-rate regressions, and fail-open holes (#200).
 adversarial:
 	bash tests/adversarial/run.sh
