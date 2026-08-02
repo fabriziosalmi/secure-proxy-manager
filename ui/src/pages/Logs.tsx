@@ -21,11 +21,13 @@ export function Logs() {
   });
 
   useEffect(() => {
-    if (data?.data) {
-      setRealtimeLogs(data.data.slice(0, 200));
-    } else if (data?.logs) {
-      setRealtimeLogs(data.logs.slice(0, 200));
-    }
+    // Seed the realtime buffer from the initial fetch; the WebSocket then
+    // prepends live entries onto it. This deliberately mirrors async query data
+    // into local state (the buffer is a merge of fetch + WS and is reset on
+    // clear), which is exactly what set-state-in-effect flags — vetted exception.
+    const initial = data?.data ?? data?.logs;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (initial) setRealtimeLogs(initial.slice(0, 200));
   }, [data]);
 
   // Setup WebSocket connection for real-time logs with auto-reconnect
