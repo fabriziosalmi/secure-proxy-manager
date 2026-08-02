@@ -1,5 +1,5 @@
 # Pin: node 20.19 alpine 3.21 (2025-04)
-FROM node:20.19-alpine3.21@sha256:eb0b81f6eb35ec5ecd1cab181801f93a6314127580b416e6e290363b724e1686 AS frontend-builder
+FROM node:25.2-alpine3.21@sha256:32509199057d74a987fdd88cde00fdfd48ef52469adbd6bd11969fc701477761 AS frontend-builder
 WORKDIR /frontend
 COPY ./ui/package*.json ./
 RUN npm ci
