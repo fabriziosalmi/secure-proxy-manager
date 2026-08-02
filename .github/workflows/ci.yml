@@ -273,3 +273,18 @@ jobs:
       - name: Teardown
         if: always()
         run: docker compose -f docker-compose.test.yml down -v
+
+  # ── 11. Adversarial data-plane block-matrix (proxy + WAF/ICAP) ────────────
+  # Drives attacker traffic THROUGH the real forward proxy + WAF/ICAP in an
+  # isolated sandbox and gates on false negatives/positives (issue #200, Phase 1).
+  # run.sh prints the block-matrix + FP/FN report to the job log and tears the
+  # stack down on exit; a hard FN>0 or FP>0 fails the job. (To make it a hard
+  # merge gate, also add "Adversarial block-matrix (proxy + WAF)" to the
+  # branch's required status checks.)
+  adversarial:
+    name: Adversarial block-matrix (proxy + WAF)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Block-matrix through proxy + WAF/ICAP
+        run: bash tests/adversarial/run.sh
