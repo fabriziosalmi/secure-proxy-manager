@@ -1,5 +1,11 @@
 import { defineConfig } from 'vitepress'
 
+// Canonical origin (GitHub Pages) including the project base path. Used for
+// per-page canonical/og:url links and the sitemap.
+const SITE_URL = 'https://fabriziosalmi.github.io/secure-proxy-manager'
+const OG_DESCRIPTION =
+  'Self-hosted Secure Web Gateway: Squid forward proxy + a real WAF (ICAP) + DNS sinkhole + a modern UI, in one Docker Compose stack.'
+
 export default defineConfig({
   title: 'Secure Proxy Manager',
   description: 'Documentation for Secure Proxy Manager — a containerised Squid forward proxy with a Go backend, React UI, and Go ICAP WAF.',
@@ -8,7 +14,33 @@ export default defineConfig({
   lastUpdated: true,
   srcExclude: ['INTEGRATION_ARCHITECTURE.md'],
 
+  // hostname includes the base path; VitePress joins relative page paths onto it.
+  sitemap: { hostname: `${SITE_URL}/` },
+
+  // Per-page canonical + og:url (relative path → clean URL under SITE_URL).
+  transformPageData(pageData) {
+    const rel = pageData.relativePath
+      .replace(/(^|\/)index\.md$/, '$1')
+      .replace(/\.md$/, '')
+    const canonical = rel ? `${SITE_URL}/${rel}` : `${SITE_URL}/`
+    pageData.frontmatter.head ??= []
+    pageData.frontmatter.head.push(
+      ['link', { rel: 'canonical', href: canonical }],
+      ['meta', { property: 'og:url', content: canonical }],
+    )
+  },
+
   head: [
+    // Social / Open Graph defaults (site-level; per-page og:url is injected in
+    // transformPageData). No og:image yet — a 1200×630 raster (M9) will upgrade
+    // twitter:card to summary_large_image.
+    ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:site_name', content: 'Secure Proxy Manager' }],
+    ['meta', { property: 'og:title', content: 'Secure Proxy Manager — Self-hosted Secure Web Gateway' }],
+    ['meta', { property: 'og:description', content: OG_DESCRIPTION }],
+    ['meta', { name: 'twitter:card', content: 'summary' }],
+    ['meta', { name: 'twitter:title', content: 'Secure Proxy Manager — Self-hosted Secure Web Gateway' }],
+    ['meta', { name: 'twitter:description', content: OG_DESCRIPTION }],
     // Everything this site loads is first-party. 'unsafe-inline' is required
     // because VitePress emits an inline appearance script and inline styles.
     // Applied to the built site only: `vitepress dev` serves HMR over a

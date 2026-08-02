@@ -71,7 +71,7 @@ export function Login({ onLogin }: Props) {
           </div>
 
           {error && (
-            <p className="text-sm text-destructive animate-fade-in-up">{error}</p>
+            <p role="alert" className="text-sm text-destructive animate-fade-in-up">{error}</p>
           )}
 
           <button

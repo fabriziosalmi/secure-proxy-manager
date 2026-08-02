@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Users, RefreshCw, Search, X, Ban, Globe, Activity, Clock, ArrowUpDown,
+  Users, RefreshCw, Search, X, Ban, Globe, Activity, Clock, ArrowUpDown, ChevronRight,
 } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { IpBadge } from '../components/IpBadge';
@@ -125,13 +125,14 @@ export function Clients() {
                   <SortTh k="blocked" label="Blocked" sort={sort} onSort={setSort} />
                   <SortTh k="rate" label="Block rate" sort={sort} onSort={setSort} />
                   <th className="px-5 py-3 font-medium">Last seen</th>
+                  <th className="px-5 py-3 font-medium"><span className="sr-only">Details</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/30">
                 {isLoading ? (
-                  <tr><td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">Loading…</td></tr>
+                  <tr><td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">Loading…</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={5} className="px-5 py-8">
+                  <tr><td colSpan={6} className="px-5 py-8">
                     {search ? (
                       <p className="text-center text-muted-foreground">No clients match the filter.</p>
                     ) : (
@@ -164,6 +165,18 @@ export function Clients() {
                         </td>
                         <td className="px-5 py-3 text-xs text-muted-foreground whitespace-nowrap" title={c.last_seen ? parseUtc(c.last_seen).toLocaleString() : ''}>
                           {relative(c.last_seen)}
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          {/* Real focusable control for keyboard/AT — the whole row stays
+                              click-to-open for pointer users (the <tr> has no ARIA role). */}
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setSelectedIp(c.ip_address); }}
+                            aria-label={`View details for ${c.ip_address}`}
+                            className="p-1 rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
                         </td>
                       </tr>
                     );

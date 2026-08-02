@@ -182,7 +182,7 @@ export function ThreatIntel() {
             {(uaData?.service_types?.length ?? 0) > 0 ? (
               <div className="space-y-1">
                 {uaData!.service_types.slice(0, 10).map((st, i) => {
-                  const max = uaData!.service_types[0].count;
+                  const max = uaData!.service_types[0].count || 1;
                   return (
                     <div key={i} className="flex items-center gap-2 text-xs">
                       <span className="w-24 truncate text-muted-foreground">{st.name}</span>
@@ -207,7 +207,7 @@ export function ThreatIntel() {
             {topDomains && topDomains.length > 0 ? (
               <div className="flex flex-wrap gap-1 max-h-[200px] overflow-y-auto custom-scrollbar">
                 {topDomains.slice(0, 40).map((d, i) => {
-                  const maxCount = topDomains[0].count;
+                  const maxCount = topDomains[0].count || 1;
                   const ratio = d.count / maxCount;
                   const size = Math.max(10, Math.min(20, 10 + ratio * 10));
                   const opacity = Math.max(0.4, ratio);

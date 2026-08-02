@@ -168,7 +168,7 @@ export function Logs() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap gap-3 justify-between items-center">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Access Logs</h1>
           <p className="text-sm text-muted-foreground">Monitor real-time proxy traffic</p>
