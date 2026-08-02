@@ -7,7 +7,7 @@ COPY ./ui/ ./
 RUN npm run build
 
 # Pin: nginx 1.27.4 alpine (2025-03)
-FROM nginx:1.27.4-alpine@sha256:4ff102c5d78d254a6f0da062b3cf39eaf07f01eec0927fd21e219d0af8bc0591
+FROM nginx:1.31.3-alpine@sha256:4a73073bd557c65b759505da037898b61f1be6cbcc3c2c3aeac22d2a470c1752
 
 # openssl for self-signed cert generation at boot
 RUN apk add --no-cache openssl && rm /etc/nginx/conf.d/default.conf
