@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.3] - 2026-08-02
+
+### Changed
+
+- **React Router upgraded v7 → v8** (`react-router@8.3.0`; the `react-router-dom`
+  package is dropped in v8, so all imports move to `react-router`). This clears
+  **GHSA-qwww-vcr4-c8h2** (RSC-mode CSRF, fixed in 8.3.0) — the last remaining
+  entry in the CVE-audit allowlist. `scripts/npm-audit-allowlist.json` and
+  `.trivyignore` are now empty: the `npm audit` + Trivy gates pass with **zero**
+  standing exceptions.
+
+### Also
+
+- WAF heuristic toggles are now wired end-to-end (runtime, no container restart)
+  — see [#102].
+
+[#102]: https://github.com/fabriziosalmi/secure-proxy-manager/issues/102
+
 ## [3.11.2] - 2026-07-25
 
 ### Security
