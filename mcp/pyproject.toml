@@ -1,0 +1,27 @@
+[project]
+name = "spm-mcp"
+version = "0.1.0"
+description = "Model Context Protocol server for Secure Proxy Manager — manage the proxy + WAF + DNS stack from an AI assistant/agent."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Fabrizio Salmi" }]
+keywords = ["mcp", "model-context-protocol", "proxy", "waf", "secure-web-gateway", "self-hosted"]
+dependencies = [
+    "mcp>=2.0.0",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+spm-mcp = "spm_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/fabriziosalmi/secure-proxy-manager"
+Repository = "https://github.com/fabriziosalmi/secure-proxy-manager"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["spm_mcp"]
