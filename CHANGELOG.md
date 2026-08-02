@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.4] - 2026-08-02
+
+### Added
+
+- **Adversarial e2e harness** (`tests/adversarial/`, `make adversarial`) — drives
+  attacker-style traffic against the running product in an isolated sandbox and
+  gates on security regressions, as a new **Adversarial block-matrix (proxy +
+  WAF)** CI job. Four planes: (1) data-plane **block-matrix** through the real
+  forward proxy + WAF/ICAP (false-negative/positive gate), (2) **API attacker**
+  against the backend auth boundary (auth-bypass, forged/tampered JWTs, login
+  SQLi, rate-limit), (3) **bench/latency** (k6, proxied p95 + ICAP overhead), and
+  (4) **resilience** (WAF fail-closed on loss + self-heal). (#200)
+- **Correlation event-id in the proxy access log.** The WAF stamps
+  `X-WAF-Event-Id` on the 403 it returns via ICAP; Squid's new `spm` logformat
+  carries it as an 11th field, and it lands in a new `proxy_logs.event_id`
+  column — so a blocked request in the Logs page / analytics joins end-to-end to
+  its WAF traffic-log record and notification. (#107)
+
+### Changed
+
+- **WAF pre-filter (performance).** Before evaluating the ~170 RE2 rules, the WAF
+  screens the input with an in-repo Aho-Corasick automaton over required-literal
+  keywords derived programmatically from the patterns, skipping the rule set on
+  benign traffic (~4.4× faster on benign input). Sound by construction — rules
+  with no extractable required literal always run, verified by a 170/170
+  rule-positive coverage test + a differential-equivalence fuzzer. (#110)
+
 ## [3.11.3] - 2026-08-02
 
 ### Changed
