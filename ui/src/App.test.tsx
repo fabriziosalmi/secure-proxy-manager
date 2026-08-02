@@ -12,7 +12,7 @@ vi.mock('./lib/api', () => ({
   getErrorMessage: (_e: unknown, f: string) => f,
 }))
 
-import { api } from './lib/api'
+import { api, isTokenExpired } from './lib/api'
 
 function clearStorage() {
   localStorage.removeItem('auth_token')
@@ -68,6 +68,9 @@ describe('App', () => {
     const payload = btoa(JSON.stringify({ sub: 'admin', exp: Math.floor(Date.now() / 1000) - 120 }))
     const fakeToken = `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`
     localStorage.setItem('auth_token', fakeToken)
+    // App delegates expiry detection to the shared isTokenExpired helper
+    // (unit-tested in lib/api.test.ts); here we assert App acts on its verdict.
+    vi.mocked(isTokenExpired).mockReturnValue(true)
 
     render(<App />)
     expect(screen.getByText(/sign in to continue/i)).toBeInTheDocument()

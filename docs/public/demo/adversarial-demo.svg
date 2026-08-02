@@ -2,13 +2,13 @@
   <style>
     .bg      { fill:#0b1021; }
     .chrome  { fill:#161b2e; }
-    .txt     { fill:#c9d1e4; font-size:16px; }
-    .cmd     { fill:#8ab4ff; font-size:16px; }
-    .dim     { fill:#6b7594; font-size:15px; }
-    .block   { fill:#ff6b6b; font-size:16px; font-weight:600; }
-    .ok      { fill:#3ddc84; font-size:16px; font-weight:600; }
-    .title   { fill:#e6edff; font-size:15px; font-weight:600; }
-    .foot    { fill:#8ab4ff; font-size:14px; }
+    .txt     { fill:#c9d1e4; font-size:14px; }
+    .cmd     { fill:#8ab4ff; font-size:14px; }
+    .dim     { fill:#6b7594; font-size:13px; }
+    .block   { fill:#ff6b6b; font-size:14px; font-weight:600; }
+    .ok      { fill:#3ddc84; font-size:14px; font-weight:600; }
+    .title   { fill:#e6edff; font-size:13px; font-weight:600; }
+    .foot    { fill:#8ab4ff; font-size:12px; }
     g.line   { opacity:0; }
     /* one shared 16s loop; each line reveals at its slot, holds, then resets */
     .a1{animation:a1 16s infinite} @keyframes a1{0%,4%{opacity:0}6%,92%{opacity:1}100%{opacity:0}}
@@ -21,6 +21,11 @@
     .a8{animation:a8 16s infinite} @keyframes a8{0%,64%{opacity:0}66%,92%{opacity:1}100%{opacity:0}}
     .a9{animation:a9 16s infinite} @keyframes a9{0%,76%{opacity:0}78%,92%{opacity:1}100%{opacity:0}}
     .cur{animation:blink 1s steps(1) infinite}@keyframes blink{50%{opacity:0}}
+    /* Respect reduced-motion: reveal every line, stop all animation. */
+    @media (prefers-reduced-motion: reduce){
+      g.line{opacity:1}
+      .a1,.a2,.a3,.a4,.a5,.a6,.a7,.a8,.a9,.cur{animation:none}
+    }
   </style>
 
   <rect class="bg" x="0" y="0" width="860" height="470" rx="12"/>

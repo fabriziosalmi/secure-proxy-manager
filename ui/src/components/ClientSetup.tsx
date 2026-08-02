@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Monitor, Smartphone, Apple, Terminal, Copy, Check, Download, QrCode } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -18,12 +18,15 @@ export function ClientSetup() {
   const proxyPort = '3128';
   const proxyAddr = `${host}:${proxyPort}`;
 
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const copy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     setCopied(label);
     toast.success(`Copied ${label}`);
-    setTimeout(() => setCopied(''), 2000);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(''), 2000);
   };
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
 
   const pacContent = `function FindProxyForURL(url, host) {
   // Direct access for local network
@@ -129,13 +132,24 @@ export function ClientSetup() {
         </div>
 
         {/* OS tabs */}
-        <div className="flex gap-1 mb-3 border-b border-border pb-2">
-          {tabs.map(t => {
+        <div role="tablist" aria-label="Operating system" className="flex gap-1 mb-3 border-b border-border pb-2">
+          {tabs.map((t, i) => {
             const Icon = t.icon;
+            const selected = activeTab === t.id;
             return (
-              <button key={t.id} type="button" onClick={() => setActiveTab(t.id)}
-                className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded-md transition-colors ${
-                  activeTab === t.id ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground'
+              <button key={t.id} type="button" role="tab" id={`os-tab-${t.id}`}
+                aria-selected={selected} aria-controls="os-panel" tabIndex={selected ? 0 : -1}
+                onClick={() => setActiveTab(t.id)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+                  e.preventDefault();
+                  const dir = e.key === 'ArrowRight' ? 1 : -1;
+                  const next = tabs[(i + dir + tabs.length) % tabs.length];
+                  setActiveTab(next.id);
+                  document.getElementById(`os-tab-${next.id}`)?.focus();
+                }}
+                className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
+                  selected ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground'
                 }`}>
                 <Icon className="w-3 h-3" /> {t.label}
               </button>
@@ -143,6 +157,7 @@ export function ClientSetup() {
           })}
         </div>
 
+        <div role="tabpanel" id="os-panel" aria-labelledby={`os-tab-${active.id}`}>
         {/* Steps */}
         <ol className="space-y-1 mb-3">
           {active.steps.map((step, i) => (
@@ -165,6 +180,7 @@ export function ClientSetup() {
             </button>
           </div>
         )}
+        </div>
       </CardContent>
     </Card>
   );

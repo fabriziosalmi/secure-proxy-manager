@@ -26,7 +26,7 @@ import { Layout } from './components/layout/Layout';
 import { GlobalSearch } from './components/GlobalSearch';
 import { Login } from './pages/Login';
 import { SetupWizard } from './components/SetupWizard';
-import { api } from './lib/api';
+import { api, isTokenExpired } from './lib/api';
 import { ThemeProvider } from './components/ThemeProvider';
 
 // Lazy-loaded page components for code splitting
@@ -97,17 +97,12 @@ function AppContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     const token = localStorage.getItem('auth_token');
     if (!token) return false;
-    // Check JWT expiry on mount — clear stale tokens
-    try {
-      const parts = token.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-        if (payload.exp && payload.exp * 1000 < Date.now()) {
-          localStorage.removeItem('auth_token');
-          return false;
-        }
-      }
-    } catch { /* malformed token — treat as valid, API will 401 */ }
+    // Clear stale tokens on mount via the shared JWT helper. A malformed or
+    // exp-less token is kept (isTokenExpired → false) and the API will 401.
+    if (isTokenExpired(token)) {
+      localStorage.removeItem('auth_token');
+      return false;
+    }
     return true;
   });
 

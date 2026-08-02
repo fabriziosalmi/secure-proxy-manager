@@ -8,23 +8,12 @@ import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import type { TimelineEntry, DashboardSummary, ShadowItService, FileExtData, ServiceTypeData, TopDomain } from '../types';
 import { RegexPlayground } from '../components/RegexPlayground';
+import { TOOLTIP_STYLE } from '../lib/chart';
 
 const C = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899', '#14b8a6', '#6366f1'];
 const CAT_COLORS: Record<string, string> = {
   'File Sharing': '#ef4444', Messaging: '#f97316', Productivity: '#eab308', AI: '#8b5cf6',
   Social: '#3b82f6', Streaming: '#06b6d4', Tunneling: '#ef4444', 'Paste/Code': '#f59e0b',
-};
-
-const TOOLTIP_STYLE = {
-  backgroundColor: 'var(--tooltip-bg)',
-  backdropFilter: 'blur(12px)',
-  WebkitBackdropFilter: 'blur(12px)',
-  border: '1px solid var(--tooltip-border)',
-  borderRadius: '8px',
-  fontSize: '11px',
-  color: 'hsl(var(--foreground))',
-  boxShadow: 'var(--tooltip-shadow)',
-  fontVariantNumeric: 'tabular-nums' as const,
 };
 
 export function ThreatIntel() {
