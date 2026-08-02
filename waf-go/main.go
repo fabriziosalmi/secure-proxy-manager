@@ -317,7 +317,7 @@ func recoverICAP(w icap.ResponseWriter, method string) {
 	if r := recover(); r != nil {
 		log.Printf("PANIC in %s handler: %v\n%s", method, r, debug.Stack())
 		if method == "REQMOD" && !wafFailOpen {
-			sendBlockResponse(w, "WAF_INTERNAL_ERROR", blockThreshold)
+			sendBlockResponse(w, "WAF_INTERNAL_ERROR", blockThreshold, "")
 			return
 		}
 		w.WriteHeader(204, nil, false)
@@ -624,7 +624,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 			notifyDropped.Add(1)
 		}
 
-		sendBlockResponse(w, primaryCategory, score)
+		sendBlockResponse(w, primaryCategory, score, eventID)
 		return
 	}
 
@@ -656,7 +656,7 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 	for _, dt := range dangerousTypes {
 		if strings.Contains(contentTypeLower, dt) {
 			log.Printf("RESPMOD blocked dangerous content-type: %s\n", contentType)
-			sendBlockResponse(w, "DANGEROUS_CONTENT_TYPE", 10)
+			sendBlockResponse(w, "DANGEROUS_CONTENT_TYPE", 10, "")
 			return
 		}
 	}
@@ -706,7 +706,7 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 			if totalScore >= blockThreshold {
 				log.Printf("RESPMOD BLOCKED score=%d rules=[%s] content-type=%s\n",
 					totalScore, strings.Join(matchedRules, ","), contentType)
-				sendBlockResponse(w, matchedCat, totalScore)
+				sendBlockResponse(w, matchedCat, totalScore, "")
 				return
 			}
 			_ = piiScore
@@ -716,7 +716,12 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 	w.WriteHeader(204, nil, false)
 }
 
-func sendBlockResponse(w icap.ResponseWriter, category string, score int) {
+// sendBlockResponse encapsulates a 403 in the ICAP reply. When eventID is
+// non-empty it is stamped on the response as X-WAF-Event-Id so the same
+// correlation ID that lands in the WAF traffic log + notification can be picked
+// up by Squid's access log (custom `spm` logformat) and joined to the
+// proxy_logs row end-to-end (issue #107).
+func sendBlockResponse(w icap.ResponseWriter, category string, score int, eventID string) {
 	body := fmt.Sprintf(
 		`<html><body><h1>403 Forbidden</h1><p>Request blocked by WAF.</p><p>Category: <b>%s</b> | Score: %d</p></body></html>`,
 		html.EscapeString(category), score)
@@ -732,6 +737,9 @@ func sendBlockResponse(w icap.ResponseWriter, category string, score int) {
 		ContentLength: int64(len(body)),
 	}
 	resp.Header.Set("Content-Type", "text/html")
+	if eventID != "" {
+		resp.Header.Set("X-WAF-Event-Id", eventID)
+	}
 	w.WriteHeader(200, resp, true)
 }
 

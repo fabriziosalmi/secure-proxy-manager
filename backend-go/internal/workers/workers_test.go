@@ -159,14 +159,22 @@ func TestInsertLogBatch(t *testing.T) {
 			"source_ip":      "192.168.1.1",
 			"method":         "GET",
 			"destination":    "http://example.com",
-			"status":         "TCP_MISS/200",
+			"status":         "TCP_DENIED/403",
 			"bytes":          1024,
 			"elapsed_ms":     12,
+			"event_id":       "abc123-1f",
 		},
-		{"source_ip": "1.2.3.4"}, // partial map — must not break the batch
+		{"source_ip": "1.2.3.4"}, // partial map (no event_id) — must not break the batch
 	}
 	if err := insertLogBatch(db, batch); err != nil {
 		t.Fatalf("insertLogBatch: %v", err)
+	}
+
+	// The correlation id round-trips into its column.
+	var gotID string
+	_ = db.QueryRow("SELECT event_id FROM proxy_logs WHERE event_id = 'abc123-1f'").Scan(&gotID)
+	if gotID != "abc123-1f" {
+		t.Errorf("event_id not persisted; got %q", gotID)
 	}
 
 	var count int
@@ -219,6 +227,31 @@ func TestParseSquidLine(t *testing.T) {
 func TestParseSquidLine_Edge(t *testing.T) {
 	if parseSquidLine("invalid") != nil {
 		t.Error("Expected nil for invalid line")
+	}
+}
+
+func TestParseSquidLine_EventID(t *testing.T) {
+	// 11-field `spm` line: the trailing field is the WAF correlation id.
+	withID := "1234567890.123 100 127.0.0.1 TCP_DENIED/403 0 GET http://evil.com - HIER_NONE/- text/html abc123-1f"
+	got := parseSquidLine(withID)
+	if got == nil {
+		t.Fatal("expected a parsed map for an 11-field line")
+	}
+	if got["event_id"] != "abc123-1f" {
+		t.Errorf("event_id = %v; want abc123-1f", got["event_id"])
+	}
+
+	// A '-' in the 11th field (allowed request / header absent) → empty.
+	dash := "1234567890.123 100 127.0.0.1 TCP_MISS/200 1024 GET http://example.com - DIRECT/1.2.3.4 text/html -"
+	if got = parseSquidLine(dash); got["event_id"] != "" {
+		t.Errorf("event_id for '-' = %v; want empty", got["event_id"])
+	}
+
+	// Stock 10-field line (no event id column) still parses, event_id empty — no
+	// ingestion regression if the custom logformat isn't applied.
+	stock := "1234567890.123 100 127.0.0.1 TCP_MISS/200 1024 GET http://example.com - DIRECT/1.2.3.4 text/html"
+	if got = parseSquidLine(stock); got == nil || got["event_id"] != "" {
+		t.Errorf("stock line: got %v; want parsed with empty event_id", got)
 	}
 }
 

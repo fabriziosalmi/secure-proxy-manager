@@ -171,6 +171,16 @@ func parseSquidLine(line string) map[string]any {
 		blocked = 1
 	}
 
+	// Field 10 (11th): WAF correlation id, present only when the custom `spm`
+	// logformat is active AND the WAF stamped X-WAF-Event-Id on a blocked reply.
+	// Squid logs '-' when the header is absent (allowed requests, or the stock
+	// logformat), which we normalize to empty. Guarded by length so a stock
+	// 10-field line still parses with no regression (#107).
+	eventID := ""
+	if len(fields) >= 11 && fields[10] != "-" {
+		eventID = fields[10]
+	}
+
 	return map[string]any{
 		"timestamp":      timestamp,
 		"unix_timestamp": unixSec,
@@ -182,6 +192,7 @@ func parseSquidLine(line string) map[string]any {
 		"bytes":          bytesInt,
 		"elapsed_ms":     elapsed,
 		"blocked":        blocked,
+		"event_id":       eventID,
 	}
 }
 
@@ -210,8 +221,8 @@ func insertLogBatch(db *sql.DB, entries []map[string]any) error {
 		return err
 	}
 	stmt, err := tx.Prepare(
-		`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, bytes, elapsed_ms, blocked)
-		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, bytes, elapsed_ms, blocked, event_id)
+		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		_ = tx.Rollback()
 		return err
@@ -228,6 +239,7 @@ func insertLogBatch(db *sql.DB, entries []map[string]any) error {
 		if _, err := stmt.Exec(
 			e["timestamp"], e["unix_timestamp"], e["source_ip"], e["method"],
 			e["destination"], e["status"], e["bytes"], e["elapsed_ms"], blocked,
+			e["event_id"],
 		); err != nil {
 			_ = tx.Rollback()
 			return err

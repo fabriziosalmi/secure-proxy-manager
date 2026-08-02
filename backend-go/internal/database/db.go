@@ -113,7 +113,8 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 			bytes INTEGER,
 			elapsed_ms INTEGER,
 			unix_timestamp INTEGER,
-			blocked INTEGER NOT NULL DEFAULT 0
+			blocked INTEGER NOT NULL DEFAULT 0,
+			event_id TEXT
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_timestamp ON proxy_logs(timestamp)`,
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_source_ip ON proxy_logs(source_ip)`,
@@ -150,6 +151,7 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		"ALTER TABLE proxy_logs ADD COLUMN method TEXT",
 		"ALTER TABLE proxy_logs ADD COLUMN elapsed_ms INTEGER",
 		"ALTER TABLE proxy_logs ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE proxy_logs ADD COLUMN event_id TEXT", // WAF correlation id (#107)
 		"ALTER TABLE domain_whitelist ADD COLUMN type TEXT DEFAULT 'fqdn'",
 	}
 	for _, m := range migrations {
@@ -163,6 +165,9 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 	// upgrade. Only blocked rows are indexed, so it stays tiny.
 	postMigrationIndexes := []string{
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_blocked ON proxy_logs(blocked) WHERE blocked = 1`,
+		// Correlation-id lookup (join a WAF event → its proxy_logs row). Partial:
+		// only blocked rows carry an event_id, so the index stays tiny (#107).
+		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_event_id ON proxy_logs(event_id) WHERE event_id IS NOT NULL`,
 	}
 	for _, stmt := range postMigrationIndexes {
 		if _, err := db.Exec(stmt); err != nil {

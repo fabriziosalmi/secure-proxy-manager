@@ -281,7 +281,14 @@ adaptation_access service_resp allow all
 # blacklist watchdog sidecar).
 debug_options ALL,1
 logfile_rotate 5
-access_log daemon:/var/log/squid/access.log squid
+# Custom 'spm' logformat = the 10 stock `squid` fields IN EXACT ORDER (the
+# backend's parseSquidLine is positional and requires >=10 of them, so these must
+# not change) + an 11th field carrying the WAF correlation id. The WAF stamps
+# X-WAF-Event-Id on the 403 it returns via ICAP REQMOD; %{...}<h reads it from the
+# reply headers. Allowed requests carry no such header → Squid logs '-' there,
+# which parseSquidLine treats as empty (issue #107).
+logformat spm %ts.%03tu %6tr %>a %Ss/%03>Hs %<st %rm %ru %[un %Sh/%<a %mt %{X-WAF-Event-Id}<h
+access_log daemon:/var/log/squid/access.log spm
 cache_log /var/log/squid/cache.log
 cache_store_log none
 
