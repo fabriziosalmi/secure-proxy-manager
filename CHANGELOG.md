@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.5] - 2026-08-02
+
+### Added
+
+- **Docker Hub images.** The signed multi-arch images are now mirrored to Docker
+  Hub alongside GHCR (gated on `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN`), for
+  easier discovery and `docker pull`.
+- **Config-matrix plane** in the adversarial harness (Phase 5): flips a WAF
+  rule-category setting through the real backend→WAF path and asserts the live
+  data plane changes accordingly (a disabled category's attack passes; another
+  still blocks; re-enable blocks again). The `make adversarial` suite is now five
+  planes: block-matrix · API attacker · bench/latency · config-matrix · resilience.
+
+### Changed
+
+- **Docs / positioning.** README reframed as a **self-hosted Secure Web Gateway
+  (SWG)** with an expanded comparison table, a "Tested like an attacker" section
+  surfacing the adversarial harness (`WAF: 21 categories · FN=0 gated`), an
+  animated demo, and a Support section. No application-code changes in the docs
+  pass.
+
 ## [3.11.4] - 2026-08-02
 
 ### Added
