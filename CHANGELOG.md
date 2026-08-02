@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.6] - 2026-08-03
+
+Pre-release hardening pass (360° audit round 1): accessibility, performance,
+SEO, and polish. No functional/API changes.
+
+### Added
+
+- Docs "How it compares" table now lists **Zion** — the single-binary Rust TLS
+  reverse-proxy + WAF that complements SPM (ingress vs egress). (#217)
+- Docs site SEO: Open Graph / Twitter card meta, per-page canonical + `og:url`,
+  a generated `sitemap.xml`, and `robots.txt`. (#215)
+
+### Changed
+
+- **Accessibility pass** across the UI: Clients rows are keyboard-operable via a
+  real "Details" button (no invalid `role` on `<tr>`); the device-setup OS
+  switcher is a proper ARIA tablist (roles, `aria-selected`/`-controls`, roving
+  tabindex, arrow-key nav); form labels in Settings/Blacklists are associated via
+  `id`/`htmlFor`; login errors announce with `role="alert"`; tag and icon-only
+  controls get accessible names. (#215, #218)
+- **Performance:** `IpBadge` reads the asset-tag map from a shared, parse-once
+  store (`useSyncExternalStore`) and is memoized — removes up to ~200 synchronous
+  `localStorage`/`JSON.parse` calls per streamed log line in the Logs table. (#215)
+- Shared recharts tooltip style extracted to `lib/chart.ts`; App reuses the
+  tested `isTokenExpired()` helper instead of an inline JWT decode. (#218)
+
+### Fixed
+
+- Guard a divide-by-zero in Threat Intel that could produce `NaN` bar
+  widths/opacity when the top bucket had a zero count. (#215)
+- Sanitize the backend-provided update URL before using it as a link `href`
+  (allowlist `http`/`https`; unsafe values render as non-links). (#218)
+- Clear copy-confirmation timers on unmount; surface real failures (auth/5xx/
+  network) instead of silently treating every error as "already exists" in the
+  Settings bulk domain-import buttons. (#218)
+- Page headers wrap on narrow viewports (no horizontal overflow at 375px); the
+  demo terminal SVG respects `prefers-reduced-motion` and its summary lines wrap
+  instead of overrunning the canvas. (#215, #218)
+
 ## [3.11.5] - 2026-08-02
 
 ### Added
