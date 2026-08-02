@@ -286,7 +286,7 @@ export function Blacklists() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap gap-3 justify-between items-center">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Blacklists</h1>
           <p className="text-muted-foreground">Manage IP and Domain blocking rules</p>
@@ -361,14 +361,14 @@ export function Blacklists() {
           <CardContent className="pt-6">
             <form onSubmit={handleAdd} className="flex gap-4 items-end">
               <div className="flex-1 space-y-2">
-                <label className="text-sm font-medium">{activeTab === 'ip' ? 'IP Address' : activeTab === 'domain' ? 'Domain' : 'IP / CIDR Network'}</label>
-                <input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)}
+                <label htmlFor="bl-new-item" className="text-sm font-medium">{activeTab === 'ip' ? 'IP Address' : activeTab === 'domain' ? 'Domain' : 'IP / CIDR Network'}</label>
+                <input id="bl-new-item" type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)}
                   placeholder={activeTab === 'ip' ? 'e.g. 192.168.1.100' : activeTab === 'domain' ? 'e.g. bad-domain.com' : activeTab === 'domain-whitelist' ? 'e.g. ads.google.com or .*\\.example\\.com' : 'e.g. 192.168.0.0/16'}
                   className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
               </div>
               <div className="flex-1 space-y-2">
-                <label className="text-sm font-medium">Description (Optional)</label>
-                <input type="text" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Why is this blocked?"
+                <label htmlFor="bl-new-desc" className="text-sm font-medium">Description (Optional)</label>
+                <input id="bl-new-desc" type="text" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Why is this blocked?"
                   className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" />
               </div>
               <button type="submit" disabled={addMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors h-10 disabled:opacity-50 disabled:cursor-not-allowed">{addMutation.isPending ? 'Saving...' : 'Save Rule'}</button>
@@ -382,8 +382,8 @@ export function Blacklists() {
           <CardContent className="pt-6">
             <form onSubmit={handleBulkAdd} className="space-y-3">
               <div className="space-y-2">
-                <label className="text-sm font-medium">{activeTab === 'domain' ? 'Domains' : 'IP Addresses / CIDR Networks'} — one per line</label>
-                <textarea value={bulkText} onChange={(e) => setBulkText(e.target.value)}
+                <label htmlFor="bl-bulk-text" className="text-sm font-medium">{activeTab === 'domain' ? 'Domains' : 'IP Addresses / CIDR Networks'} — one per line</label>
+                <textarea id="bl-bulk-text" value={bulkText} onChange={(e) => setBulkText(e.target.value)}
                   placeholder={activeTab === 'domain' ? 'bad-domain.com\nanother-domain.net' : '192.168.1.100\n10.0.0.0/8'}
                   rows={6} className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary resize-y" required />
               </div>
@@ -402,8 +402,8 @@ export function Blacklists() {
           <CardContent className="pt-6">
             <form onSubmit={handleImport} className="flex gap-4 items-end">
               <div className="flex-1 space-y-2">
-                <label className="text-sm font-medium">List URL (e.g. GitHub raw file)</label>
-                <input type="url" value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="https://raw.githubusercontent.com/..."
+                <label htmlFor="bl-import-url" className="text-sm font-medium">List URL (e.g. GitHub raw file)</label>
+                <input id="bl-import-url" type="url" value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="https://raw.githubusercontent.com/..."
                   className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
               </div>
               <button type="submit" className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10">Import List</button>
@@ -440,8 +440,8 @@ export function Blacklists() {
           <CardContent className="pt-6">
             <form onSubmit={handleGeoBlock} className="flex gap-4 items-end">
               <div className="flex-1 space-y-2">
-                <label className="text-sm font-medium">Country Codes (comma or space separated)</label>
-                <input type="text" value={geoCountry} onChange={(e) => setGeoCountry(e.target.value.toUpperCase())} placeholder="e.g. CN, RU, KP"
+                <label htmlFor="bl-geo-country" className="text-sm font-medium">Country Codes (comma or space separated)</label>
+                <input id="bl-geo-country" type="text" value={geoCountry} onChange={(e) => setGeoCountry(e.target.value.toUpperCase())} placeholder="e.g. CN, RU, KP"
                   className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
               </div>
               <button type="submit" className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10">Download & Block IPs</button>

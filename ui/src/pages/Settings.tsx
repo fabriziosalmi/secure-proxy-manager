@@ -182,7 +182,7 @@ export function Settings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap gap-3 justify-between items-center">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Settings</h1>
           <p className="text-sm text-muted-foreground">Configure proxy behavior and security</p>
@@ -248,9 +248,10 @@ export function Settings() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Proxy Port</label>
-                <input 
-                  type="number" 
+                <label htmlFor="proxy_port" className="text-sm font-medium">Proxy Port</label>
+                <input
+                  type="number"
+                  id="proxy_port"
                   name="proxy_port"
                   value={formData.proxy_port || 3128}
                   onChange={handleChange}
@@ -258,9 +259,10 @@ export function Settings() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Cache Size (MB)</label>
-                <input 
-                  type="number" 
+                <label htmlFor="cache_size" className="text-sm font-medium">Cache Size (MB)</label>
+                <input
+                  type="number"
+                  id="cache_size"
                   name="cache_size"
                   value={formData.cache_size || 1000}
                   onChange={handleChange}
@@ -268,9 +270,10 @@ export function Settings() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Memory Cache (MB)</label>
-                <input 
-                  type="number" 
+                <label htmlFor="memory_cache" className="text-sm font-medium">Memory Cache (MB)</label>
+                <input
+                  type="number"
+                  id="memory_cache"
                   name="memory_cache"
                   value={formData.memory_cache || 256}
                   onChange={handleChange}
@@ -279,9 +282,10 @@ export function Settings() {
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Allowed Networks</label>
-              <input 
-                type="text" 
+              <label htmlFor="allowed_networks" className="text-sm font-medium">Allowed Networks</label>
+              <input
+                type="text"
+                id="allowed_networks"
                 name="allowed_networks"
                 value={formData.allowed_networks || '10.0.0.0/8 172.16.0.0/12 192.168.0.0/16'}
                 onChange={handleChange}
@@ -290,9 +294,10 @@ export function Settings() {
               <p className="text-xs text-muted-foreground">Space-separated list of CIDR subnets allowed to use the proxy.</p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Extra SSL/HTTPS Ports</label>
+              <label htmlFor="extra_ssl_ports" className="text-sm font-medium">Extra SSL/HTTPS Ports</label>
               <input
                 type="text"
+                id="extra_ssl_ports"
                 name="extra_ssl_ports"
                 value={formData.extra_ssl_ports || ''}
                 onChange={handleChange}
@@ -337,13 +342,13 @@ export function Settings() {
             {formData.tailscale_enabled === 'true' && (
               <div className="flex gap-3 mt-2 p-3 border border-border/30 rounded-lg bg-secondary/20">
                 <div className="flex-1 space-y-1">
-                  <label className="text-[10px] text-muted-foreground">Auth Key</label>
-                  <input type="password" name="tailscale_auth_key" value={formData.tailscale_auth_key || ''} onChange={handleChange} placeholder="tskey-auth-..."
+                  <label htmlFor="tailscale_auth_key" className="text-[10px] text-muted-foreground">Auth Key</label>
+                  <input type="password" id="tailscale_auth_key" name="tailscale_auth_key" value={formData.tailscale_auth_key || ''} onChange={handleChange} placeholder="tskey-auth-..."
                     className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
                 <div className="flex-1 space-y-1">
-                  <label className="text-[10px] text-muted-foreground">Hostname</label>
-                  <input type="text" name="tailscale_hostname" value={formData.tailscale_hostname || 'secure-proxy'} onChange={handleChange}
+                  <label htmlFor="tailscale_hostname" className="text-[10px] text-muted-foreground">Hostname</label>
+                  <input type="text" id="tailscale_hostname" name="tailscale_hostname" value={formData.tailscale_hostname || 'secure-proxy'} onChange={handleChange}
                     className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
               </div>
@@ -352,20 +357,20 @@ export function Settings() {
             {formData.ddns_enabled === 'true' && (
               <div className="flex gap-3 mt-2 p-3 border border-border/30 rounded-lg bg-secondary/20">
                 <div className="flex-1 space-y-1">
-                  <label className="text-[10px] text-muted-foreground">Provider</label>
-                  <select name="ddns_provider" value={formData.ddns_provider || 'cloudflare'} onChange={handleChange}
+                  <label htmlFor="ddns_provider" className="text-[10px] text-muted-foreground">Provider</label>
+                  <select id="ddns_provider" name="ddns_provider" value={formData.ddns_provider || 'cloudflare'} onChange={handleChange}
                     className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all">
                     <option value="cloudflare">Cloudflare</option><option value="duckdns">DuckDNS</option><option value="noip">No-IP</option><option value="custom">Custom</option>
                   </select>
                 </div>
                 <div className="flex-1 space-y-1">
-                  <label className="text-[10px] text-muted-foreground">Domain</label>
-                  <input type="text" name="ddns_domain" value={formData.ddns_domain || ''} onChange={handleChange} placeholder="proxy.example.com"
+                  <label htmlFor="ddns_domain" className="text-[10px] text-muted-foreground">Domain</label>
+                  <input type="text" id="ddns_domain" name="ddns_domain" value={formData.ddns_domain || ''} onChange={handleChange} placeholder="proxy.example.com"
                     className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
                 <div className="flex-1 space-y-1">
-                  <label className="text-[10px] text-muted-foreground">Token</label>
-                  <input type="password" name="ddns_token" value={formData.ddns_token || ''} onChange={handleChange}
+                  <label htmlFor="ddns_token" className="text-[10px] text-muted-foreground">Token</label>
+                  <input type="password" id="ddns_token" name="ddns_token" value={formData.ddns_token || ''} onChange={handleChange}
                     className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
               </div>
@@ -397,8 +402,8 @@ export function Settings() {
 
             {/* Cache bypass */}
             <div className="mt-3 p-3 border border-border/30 rounded-lg bg-secondary/20">
-              <label className="text-[10px] text-muted-foreground">Cache Bypass Domains (comma-separated)</label>
-              <input type="text" name="cache_bypass_domains" value={formData.cache_bypass_domains || ''} onChange={handleChange}
+              <label htmlFor="cache_bypass_domains" className="text-[10px] text-muted-foreground">Cache Bypass Domains (comma-separated)</label>
+              <input type="text" id="cache_bypass_domains" name="cache_bypass_domains" value={formData.cache_bypass_domains || ''} onChange={handleChange}
                 placeholder="banking.com, api.internal.local"
                 className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
             </div>
@@ -671,9 +676,10 @@ export function Settings() {
             {/* Log retention */}
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 border border-border/50 rounded-lg bg-secondary/40 space-y-2">
-                <label className="text-sm font-medium">Log Retention (days)</label>
+                <label htmlFor="log_retention_days" className="text-sm font-medium">Log Retention (days)</label>
                 <input
                   type="number"
+                  id="log_retention_days"
                   name="log_retention_days"
                   value={formData.log_retention_days || '30'}
                   onChange={handleChange}
@@ -683,9 +689,10 @@ export function Settings() {
                 <p className="text-[10px] text-muted-foreground">Logs older than this are automatically deleted.</p>
               </div>
               <div className="p-4 border border-border/50 rounded-lg bg-secondary/40 space-y-2">
-                <label className="text-sm font-medium">WAF Block Threshold</label>
+                <label htmlFor="waf_block_threshold" className="text-sm font-medium">WAF Block Threshold</label>
                 <input
                   type="number"
+                  id="waf_block_threshold"
                   name="waf_block_threshold"
                   value={formData.waf_block_threshold || '10'}
                   onChange={handleChange}
@@ -713,8 +720,8 @@ export function Settings() {
               </div>
               {formData.auto_refresh_enabled === 'true' && (
                 <div className="mt-2 pt-2 border-t border-border/50">
-                  <label className="text-xs text-muted-foreground">Refresh Interval (hours)</label>
-                  <input type="number" name="auto_refresh_hours" value={formData.auto_refresh_hours || '24'} onChange={handleChange}
+                  <label htmlFor="auto_refresh_hours" className="text-xs text-muted-foreground">Refresh Interval (hours)</label>
+                  <input type="number" id="auto_refresh_hours" name="auto_refresh_hours" value={formData.auto_refresh_hours || '24'} onChange={handleChange}
                     min={1} max={168} className="w-full mt-1 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
                   <p className="text-[10px] text-muted-foreground mt-1">Default: 24h. Lists: Firehol L1, Spamhaus DROP, fabriziosalmi/blacklists.</p>
                 </div>
@@ -814,13 +821,13 @@ export function Settings() {
             {formData.enable_bandwidth_limits === 'true' && (
               <div className="flex gap-3 mt-3 p-3 border border-border/30 rounded-lg bg-secondary/20">
                 <div className="flex-1 space-y-1">
-                  <label className="text-[10px] text-muted-foreground">Total (Mbps)</label>
-                  <input type="number" name="bandwidth_limit_mbps" value={formData.bandwidth_limit_mbps || '10'} onChange={handleChange}
+                  <label htmlFor="bandwidth_limit_mbps" className="text-[10px] text-muted-foreground">Total (Mbps)</label>
+                  <input type="number" id="bandwidth_limit_mbps" name="bandwidth_limit_mbps" value={formData.bandwidth_limit_mbps || '10'} onChange={handleChange}
                     className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
                 <div className="flex-1 space-y-1">
-                  <label className="text-[10px] text-muted-foreground">Per-User (Kbps)</label>
-                  <input type="number" name="bandwidth_limit_per_user_kbps" value={formData.bandwidth_limit_per_user_kbps || '500'} onChange={handleChange}
+                  <label htmlFor="bandwidth_limit_per_user_kbps" className="text-[10px] text-muted-foreground">Per-User (Kbps)</label>
+                  <input type="number" id="bandwidth_limit_per_user_kbps" name="bandwidth_limit_per_user_kbps" value={formData.bandwidth_limit_per_user_kbps || '500'} onChange={handleChange}
                     className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
               </div>
@@ -828,21 +835,21 @@ export function Settings() {
             {formData.enable_time_restrictions === 'true' && (
               <div className="flex gap-3 mt-3 p-3 border border-border/30 rounded-lg bg-secondary/20">
                 <div className="flex-1 space-y-1">
-                  <label className="text-[10px] text-muted-foreground">Start</label>
-                  <input type="time" name="time_restriction_start" value={formData.time_restriction_start || '09:00'} onChange={handleChange}
+                  <label htmlFor="time_restriction_start" className="text-[10px] text-muted-foreground">Start</label>
+                  <input type="time" id="time_restriction_start" name="time_restriction_start" value={formData.time_restriction_start || '09:00'} onChange={handleChange}
                     className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
                 <div className="flex-1 space-y-1">
-                  <label className="text-[10px] text-muted-foreground">End</label>
-                  <input type="time" name="time_restriction_end" value={formData.time_restriction_end || '17:00'} onChange={handleChange}
+                  <label htmlFor="time_restriction_end" className="text-[10px] text-muted-foreground">End</label>
+                  <input type="time" id="time_restriction_end" name="time_restriction_end" value={formData.time_restriction_end || '17:00'} onChange={handleChange}
                     className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
               </div>
             )}
             {formData.enable_proxy_auth === 'true' && (
               <div className="mt-3 p-3 border border-border/30 rounded-lg bg-secondary/20">
-                <label className="text-[10px] text-muted-foreground">Auth Method</label>
-                <select name="auth_method" value={formData.auth_method || 'basic'} onChange={handleChange}
+                <label htmlFor="auth_method" className="text-[10px] text-muted-foreground">Auth Method</label>
+                <select id="auth_method" name="auth_method" value={formData.auth_method || 'basic'} onChange={handleChange}
                   className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary">
                   <option value="basic">Basic</option>
                   <option value="digest">Digest</option>
@@ -1005,8 +1012,8 @@ export function Settings() {
             </div>
             {formData.enable_content_filtering === 'true' && (
               <div className="mt-3 p-3 border border-border/30 rounded-lg bg-secondary/20">
-                <label className="text-[10px] text-muted-foreground">Blocked Extensions</label>
-                <input type="text" name="blocked_file_types" value={formData.blocked_file_types || 'exe,bat,cmd,dll,js'} onChange={handleChange}
+                <label htmlFor="blocked_file_types" className="text-[10px] text-muted-foreground">Blocked Extensions</label>
+                <input type="text" id="blocked_file_types" name="blocked_file_types" value={formData.blocked_file_types || 'exe,bat,cmd,dll,js'} onChange={handleChange}
                   placeholder="exe,bat,mp4,zip" className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
               </div>
             )}

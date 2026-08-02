@@ -149,8 +149,14 @@ export function Clients() {
                     return (
                       <tr
                         key={c.ip_address}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`View details for ${c.ip_address}`}
                         onClick={() => setSelectedIp(c.ip_address)}
-                        className="row-hover cursor-pointer"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedIp(c.ip_address); }
+                        }}
+                        className="row-hover cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60"
                       >
                         <td className="px-5 py-3"><IpBadge ip={c.ip_address} /></td>
                         <td className="px-5 py-3 font-mono tabular-nums">{c.requests.toLocaleString()}</td>

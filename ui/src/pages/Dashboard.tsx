@@ -64,7 +64,7 @@ export function Dashboard() {
     <div className="space-y-4">
       {dialog}
       {/* Header + proxy address */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap gap-3 justify-between items-center">
         <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Dashboard</h1>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 px-3 py-1.5 glass-surface rounded-lg text-sm">
