@@ -828,6 +828,8 @@ func main() {
 		healthMux.HandleFunc("/reset", mgmtAuthMiddleware(h.ResetHandler))
 		healthMux.HandleFunc("/categories", mgmtAuthMiddleware(h.CategoriesHandler))
 		healthMux.HandleFunc("/categories/toggle", mgmtAuthMiddleware(h.CategoriesToggleHandler))
+		healthMux.HandleFunc("/heuristics", mgmtAuthMiddleware(h.HeuristicsHandler))
+		healthMux.HandleFunc("/heuristics/toggle", mgmtAuthMiddleware(h.HeuristicsToggleHandler))
 
 		log.Printf("Starting health endpoint on :8080\n")
 		if err := http.ListenAndServe(":8080", healthMux); err != nil {
@@ -889,11 +891,12 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	disabledCatCount := len(disabledCats)
 	disabledCatMu.RUnlock()
 
+	hcfg := loadHeuristicCfg()
 	heuristicsEnabled := 0
 	for _, on := range []bool{
-		heuristicCfg.EntropyThreshold, heuristicCfg.BeaconingDetection,
-		heuristicCfg.PIICounter, heuristicCfg.DestinationSharding,
-		heuristicCfg.ProtocolGhosting, heuristicCfg.SequenceValidation,
+		hcfg.EntropyThreshold, hcfg.BeaconingDetection,
+		hcfg.PIICounter, hcfg.DestinationSharding,
+		hcfg.ProtocolGhosting, hcfg.SequenceValidation,
 	} {
 		if on {
 			heuristicsEnabled++
@@ -995,8 +998,9 @@ func (h *MgmtHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	hcfg := loadHeuristicCfg()
 	hEnabled := 0
-	for _, on := range []bool{heuristicCfg.EntropyThreshold, heuristicCfg.BeaconingDetection, heuristicCfg.PIICounter, heuristicCfg.DestinationSharding, heuristicCfg.ProtocolGhosting, heuristicCfg.SequenceValidation} {
+	for _, on := range []bool{hcfg.EntropyThreshold, hcfg.BeaconingDetection, hcfg.PIICounter, hcfg.DestinationSharding, hcfg.ProtocolGhosting, hcfg.SequenceValidation} {
 		if on {
 			hEnabled++
 		}
@@ -1083,4 +1087,46 @@ func (h *MgmtHandlers) CategoriesToggleHandler(w http.ResponseWriter, r *http.Re
 	log.Printf("Category %s: enabled=%v\n", req.Category, req.Enabled)
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status":"ok","category":"%s","enabled":%v}`, req.Category, req.Enabled)
+}
+
+// HeuristicsHandler returns the current on/off state of each heuristic, keyed by
+// its `waf_h_*` setting key — lets the backend reconcile DB settings with the
+// live engine state.
+func (h *MgmtHandlers) HeuristicsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if err := json.NewEncoder(w).Encode(map[string]any{"status": "ok", "data": heuristicStates()}); err != nil {
+		log.Printf("HeuristicsHandler encode error: %v\n", err)
+	}
+}
+
+// HeuristicsToggleHandler flips one heuristic at runtime (mirrors
+// CategoriesToggleHandler). Heuristics contribute to the anomaly score, so a
+// toggle changes verdicts — bump the ISTag and drop the safe-cache so Squid and
+// the WAF stop serving pre-toggle decisions.
+func (h *MgmtHandlers) HeuristicsToggleHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "POST only", 405)
+		return
+	}
+	// Bound the body — this endpoint accepts a tiny JSON object; without a cap an
+	// authenticated caller could OOM the WAF by streaming into json.Decoder.
+	r.Body = http.MaxBytesReader(w, r.Body, 4*1024)
+	var req struct {
+		Heuristic string `json:"heuristic"`
+		Enabled   bool   `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Heuristic == "" {
+		http.Error(w, `{"error":"heuristic required"}`, 400)
+		return
+	}
+	if !setHeuristicEnabled(req.Heuristic, req.Enabled) {
+		http.Error(w, `{"error":"unknown heuristic"}`, 400)
+		return
+	}
+	atomic.AddUint64(&istagEpoch, 1)
+	safeCache.Invalidate()
+	log.Printf("Heuristic %s: enabled=%v\n", req.Heuristic, req.Enabled)
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"status":"ok","heuristic":"%s","enabled":%v}`, req.Heuristic, req.Enabled)
 }

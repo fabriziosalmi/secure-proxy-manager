@@ -39,10 +39,63 @@ type HeuristicResult struct {
 	Detail   string
 }
 
-var heuristicCfg HeuristicConfig
+// heuristicCfg is read on the request hot path (Check{Request,Response}Heuristics)
+// and mutated at runtime via the /heuristics/toggle mgmt endpoint, so every
+// access goes through heuristicCfgMu. Hot-path readers take ONE RLock snapshot
+// per call (loadHeuristicCfg) instead of locking per field.
+var (
+	heuristicCfg   HeuristicConfig
+	heuristicCfgMu sync.RWMutex
+)
+
+// loadHeuristicCfg returns a consistent copy of the current heuristic config.
+func loadHeuristicCfg() HeuristicConfig {
+	heuristicCfgMu.RLock()
+	defer heuristicCfgMu.RUnlock()
+	return heuristicCfg
+}
+
+// heuristicToggles maps the DB/UI setting key to a pointer-setter on the config.
+// It is the single source of truth for which heuristics are runtime-toggleable
+// and how their `waf_h_*` key maps to the struct field.
+var heuristicToggles = map[string]func(*HeuristicConfig, bool){
+	"waf_h_entropy":   func(c *HeuristicConfig, v bool) { c.EntropyThreshold = v },
+	"waf_h_beaconing": func(c *HeuristicConfig, v bool) { c.BeaconingDetection = v },
+	"waf_h_pii":       func(c *HeuristicConfig, v bool) { c.PIICounter = v },
+	"waf_h_sharding":  func(c *HeuristicConfig, v bool) { c.DestinationSharding = v },
+	"waf_h_ghosting":  func(c *HeuristicConfig, v bool) { c.ProtocolGhosting = v },
+	"waf_h_sequence":  func(c *HeuristicConfig, v bool) { c.SequenceValidation = v },
+}
+
+// heuristicStates returns the current on/off state keyed by the DB/UI `waf_h_*`
+// key (the read counterpart of heuristicToggles).
+func heuristicStates() map[string]bool {
+	cfg := loadHeuristicCfg()
+	return map[string]bool{
+		"waf_h_entropy":   cfg.EntropyThreshold,
+		"waf_h_beaconing": cfg.BeaconingDetection,
+		"waf_h_pii":       cfg.PIICounter,
+		"waf_h_sharding":  cfg.DestinationSharding,
+		"waf_h_ghosting":  cfg.ProtocolGhosting,
+		"waf_h_sequence":  cfg.SequenceValidation,
+	}
+}
+
+// setHeuristicEnabled flips one heuristic at runtime under the write lock.
+// Returns false if the key is not a known heuristic toggle.
+func setHeuristicEnabled(key string, enabled bool) bool {
+	apply, ok := heuristicToggles[key]
+	if !ok {
+		return false
+	}
+	heuristicCfgMu.Lock()
+	apply(&heuristicCfg, enabled)
+	heuristicCfgMu.Unlock()
+	return true
+}
 
 func initHeuristics() {
-	heuristicCfg = HeuristicConfig{
+	cfg := HeuristicConfig{
 		EntropyThreshold:     envBool("WAF_H_ENTROPY", true),
 		EntropyMax:           envFloat("WAF_H_ENTROPY_MAX", 7.5),
 		BeaconingDetection:   envBool("WAF_H_BEACONING", true),
@@ -55,25 +108,18 @@ func initHeuristics() {
 		ProtocolGhosting:     envBool("WAF_H_GHOSTING", true),
 		SequenceValidation:   envBool("WAF_H_SEQUENCE", false), // Off by default (needs tuning)
 	}
+	heuristicCfgMu.Lock()
+	heuristicCfg = cfg
+	heuristicCfgMu.Unlock()
 
 	enabled := 0
-	if heuristicCfg.EntropyThreshold {
-		enabled++
-	}
-	if heuristicCfg.BeaconingDetection {
-		enabled++
-	}
-	if heuristicCfg.PIICounter {
-		enabled++
-	}
-	if heuristicCfg.DestinationSharding {
-		enabled++
-	}
-	if heuristicCfg.ProtocolGhosting {
-		enabled++
-	}
-	if heuristicCfg.SequenceValidation {
-		enabled++
+	for _, on := range []bool{
+		cfg.EntropyThreshold, cfg.BeaconingDetection, cfg.PIICounter,
+		cfg.DestinationSharding, cfg.ProtocolGhosting, cfg.SequenceValidation,
+	} {
+		if on {
+			enabled++
+		}
 	}
 	log.Printf("Heuristic engine: %d/6 rules enabled\n", enabled)
 }
@@ -137,6 +183,9 @@ func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize 
 	var results []HeuristicResult
 	totalScore := 0
 
+	// One consistent snapshot of the (runtime-mutable) config for this request.
+	cfg := loadHeuristicCfg()
+
 	cs := getClientState(clientIP)
 	now := time.Now()
 
@@ -146,8 +195,8 @@ func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize 
 	// H2: trim old beaconing entries
 	var validTimes []time.Time
 	var validSizes []int
-	if heuristicCfg.BeaconingDetection {
-		window := time.Duration(heuristicCfg.BeaconingWindow) * time.Second
+	if cfg.BeaconingDetection {
+		window := time.Duration(cfg.BeaconingWindow) * time.Second
 		cutoff := now.Add(-window)
 		for i, t := range cs.reqTimes {
 			if t.After(cutoff) {
@@ -170,7 +219,7 @@ func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize 
 
 	// H4: clean old dests, record new
 	var destCount int
-	if heuristicCfg.DestinationSharding {
+	if cfg.DestinationSharding {
 		for d, t := range cs.dests {
 			if now.Sub(t) > 60*time.Second {
 				delete(cs.dests, d)
@@ -183,7 +232,7 @@ func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize 
 
 	// H7: snapshot last method/path
 	var prevMethod, prevPath string
-	if heuristicCfg.SequenceValidation {
+	if cfg.SequenceValidation {
 		prevMethod = cs.lastMethod
 		prevPath = cs.lastPath
 		cs.lastMethod = method
@@ -193,23 +242,23 @@ func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize 
 	// ── End single-lock section ────────────────────────────────────────
 
 	// ── H1: Entropy Thresholding ────────────────────────────────────────
-	if heuristicCfg.EntropyThreshold {
-		if bodyEntropy > heuristicCfg.EntropyMax && bodySize > 256 {
+	if cfg.EntropyThreshold {
+		if bodyEntropy > cfg.EntropyMax && bodySize > 256 {
 			r := HeuristicResult{
 				ID:       "H1-ENTROPY",
 				Category: "HEURISTIC_ENTROPY",
 				Score:    6, // probabilistic: below blockThreshold, needs corroboration
-				Detail:   fmt.Sprintf("body entropy %.2f > %.1f (size=%d)", bodyEntropy, heuristicCfg.EntropyMax, bodySize),
+				Detail:   fmt.Sprintf("body entropy %.2f > %.1f (size=%d)", bodyEntropy, cfg.EntropyMax, bodySize),
 			}
 			results = append(results, r)
 			totalScore += r.Score
 		}
-		if urlEntropy > heuristicCfg.EntropyMax {
+		if urlEntropy > cfg.EntropyMax {
 			r := HeuristicResult{
 				ID:       "H1-URL-ENTROPY",
 				Category: "HEURISTIC_ENTROPY",
 				Score:    7,
-				Detail:   fmt.Sprintf("URL entropy %.2f > %.1f", urlEntropy, heuristicCfg.EntropyMax),
+				Detail:   fmt.Sprintf("URL entropy %.2f > %.1f", urlEntropy, cfg.EntropyMax),
 			}
 			results = append(results, r)
 			totalScore += r.Score
@@ -217,15 +266,15 @@ func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize 
 	}
 
 	// ── H2: Beaconing Detection ─────────────────────────────────────────
-	if heuristicCfg.BeaconingDetection {
-		if len(validTimes) >= heuristicCfg.BeaconingMinRequests {
+	if cfg.BeaconingDetection {
+		if len(validTimes) >= cfg.BeaconingMinRequests {
 			// Check for regular intervals (beaconing)
 			if isBeaconing(validTimes) && isUniformSize(validSizes) {
 				r := HeuristicResult{
 					ID:       "H2-BEACON",
 					Category: "HEURISTIC_BEACONING",
 					Score:    6, // probabilistic: below blockThreshold, needs corroboration
-					Detail:   fmt.Sprintf("regular interval pattern detected (%d reqs in %ds)", len(validTimes), heuristicCfg.BeaconingWindow),
+					Detail:   fmt.Sprintf("regular interval pattern detected (%d reqs in %ds)", len(validTimes), cfg.BeaconingWindow),
 				}
 				results = append(results, r)
 				totalScore += r.Score
@@ -234,13 +283,13 @@ func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize 
 	}
 
 	// ── H4: Destination Sharding ────────────────────────────────────────
-	if heuristicCfg.DestinationSharding {
-		if destCount > heuristicCfg.ShardingMaxDests {
+	if cfg.DestinationSharding {
+		if destCount > cfg.ShardingMaxDests {
 			r := HeuristicResult{
 				ID:       "H4-SHARDING",
 				Category: "HEURISTIC_SHARDING",
 				Score:    6, // probabilistic: below blockThreshold, needs corroboration
-				Detail:   fmt.Sprintf("%d unique destinations in 60s (max=%d)", destCount, heuristicCfg.ShardingMaxDests),
+				Detail:   fmt.Sprintf("%d unique destinations in 60s (max=%d)", destCount, cfg.ShardingMaxDests),
 			}
 			results = append(results, r)
 			totalScore += r.Score
@@ -248,7 +297,7 @@ func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize 
 	}
 
 	// ── H6: Protocol Ghosting ───────────────────────────────────────────
-	if heuristicCfg.ProtocolGhosting {
+	if cfg.ProtocolGhosting {
 		if ghost := detectProtocolGhosting(body); ghost != "" {
 			r := HeuristicResult{
 				ID:       "H6-GHOST",
@@ -262,7 +311,7 @@ func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize 
 	}
 
 	// ── H7: Sequence Validation ─────────────────────────────────────────
-	if heuristicCfg.SequenceValidation {
+	if cfg.SequenceValidation {
 		if isInvalidSequence(prevMethod, prevPath, method, path) {
 			r := HeuristicResult{
 				ID:       "H7-SEQUENCE",
@@ -280,7 +329,8 @@ func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize 
 
 // CheckResponseHeuristics checks response body for PII leaks (H3).
 func CheckResponseHeuristics(body string) ([]HeuristicResult, int) {
-	if !heuristicCfg.PIICounter || len(body) == 0 {
+	cfg := loadHeuristicCfg()
+	if !cfg.PIICounter || len(body) == 0 {
 		return nil, 0
 	}
 
@@ -292,12 +342,12 @@ func CheckResponseHeuristics(body string) ([]HeuristicResult, int) {
 	// SSN
 	count += len(reSSN.FindAllString(body, -1))
 
-	if count > heuristicCfg.PIIMaxPerResponse {
+	if count > cfg.PIIMaxPerResponse {
 		r := HeuristicResult{
 			ID:       "H3-PII",
 			Category: "HEURISTIC_PII_LEAK",
 			Score:    10,
-			Detail:   fmt.Sprintf("%d PII items in response (max=%d)", count, heuristicCfg.PIIMaxPerResponse),
+			Detail:   fmt.Sprintf("%d PII items in response (max=%d)", count, cfg.PIIMaxPerResponse),
 		}
 		return []HeuristicResult{r}, r.Score
 	}

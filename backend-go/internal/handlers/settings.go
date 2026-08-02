@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -155,6 +157,10 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Push heuristic toggles to the running WAF so they take effect immediately —
+	// the WAF otherwise only reads WAF_H_* env at startup (issue #102).
+	h.pushHeuristicsToWAF(r.Context(), body)
+
 	// Toggle files — Squid reads these at container startup.
 	toggles := []struct {
 		key  string
@@ -239,6 +245,44 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Settings updated"})
+}
+
+// heuristicSettingKeys are the WAF heuristic toggles that must be propagated to
+// the running WAF, which otherwise only reads WAF_H_* env at startup. Keep in
+// sync with the WAF's heuristicToggles map (waf-go/heuristics.go).
+var heuristicSettingKeys = map[string]bool{
+	"waf_h_entropy":   true,
+	"waf_h_beaconing": true,
+	"waf_h_pii":       true,
+	"waf_h_sharding":  true,
+	"waf_h_ghosting":  true,
+	"waf_h_sequence":  true,
+}
+
+// pushHeuristicsToWAF propagates any heuristic toggles in the just-saved settings
+// to the WAF's runtime config (POST /heuristics/toggle). Best-effort: the DB is
+// the source of truth, so a WAF hiccup is logged but never fails the save — the
+// value still applies on the WAF's next restart via WAF_H_* env, and re-saving
+// re-pushes.
+func (h *SettingsHandlers) pushHeuristicsToWAF(ctx context.Context, body map[string]string) {
+	for key, val := range body {
+		if !heuristicSettingKeys[key] {
+			continue
+		}
+		payload, err := json.Marshal(map[string]any{"heuristic": key, "enabled": val == "true"})
+		if err != nil {
+			continue
+		}
+		resp, err := wafPostBreaker(ctx, h.cfg, "/heuristics/toggle", "application/json", bytes.NewReader(payload))
+		if err != nil {
+			log.Warn().Str("key", key).Err(err).Msg("failed to push heuristic toggle to WAF — applies on WAF restart")
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			log.Warn().Str("key", key).Int("status", resp.StatusCode).Msg("WAF rejected heuristic toggle")
+		}
+		resp.Body.Close() //nolint:errcheck
+	}
 }
 
 // writeSquidSettingsEnv writes a shell-sourceable env file to /config/squid_settings.env

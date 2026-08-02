@@ -724,7 +724,7 @@ export function Settings() {
             {/* WAF Heuristics toggles */}
             <div className="p-4 border border-border/50 rounded-lg bg-secondary/40">
               <label className="text-sm font-medium mb-2 block">WAF Behavioral Heuristics</label>
-              <p className="text-xs text-muted-foreground mb-3">Advanced stateful anomaly detection. Saved here and applied to the WAF on its next container restart (via the matching WAF_H_* configuration).</p>
+              <p className="text-xs text-muted-foreground mb-3">Advanced stateful anomaly detection. Applied to the running WAF immediately on save — no container restart needed.</p>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { key: 'waf_h_entropy', label: 'Entropy Detection', desc: 'Block high-entropy payloads (encrypted/compressed = exfiltration)' },
@@ -732,6 +732,7 @@ export function Settings() {
                   { key: 'waf_h_pii', label: 'PII Leak Counter', desc: 'Count emails/CC/SSN in responses' },
                   { key: 'waf_h_sharding', label: 'Dest Sharding', desc: 'Block rapid multi-destination access' },
                   { key: 'waf_h_ghosting', label: 'Protocol Ghosting', desc: 'Detect SSH/ELF/PE in HTTP body' },
+                  { key: 'waf_h_sequence', label: 'Sequence Validation', desc: 'Detect impossible request sequences (off by default)' },
                 ].map((h) => (
                   <div key={h.key} className="flex items-center justify-between p-2 bg-secondary/20 rounded">
                     <div>
