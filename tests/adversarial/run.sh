@@ -51,33 +51,45 @@ trap cleanup EXIT
 BUILD_FLAG="--build"
 [ "${NO_BUILD:-0}" = "1" ] && BUILD_FLAG=""
 
-echo "── bringing up adversarial sandbox (proxy + waf + dns + mock-upstream) ──"
-# Start the data-plane detached and wait for health, THEN run the attacker as a
-# one-shot. (Not `up --abort-on-container-exit`: that stops the whole stack the
+echo "── bringing up adversarial sandbox (proxy + waf + dns + mock-upstream + backend) ──"
+# Start the data-plane detached and wait for health, THEN run the attacker planes
+# as one-shots. (Not `up --abort-on-container-exit`: that stops the whole stack the
 # moment the attacker exits, which fights KEEP_UP and any post-run inspection.)
-"${DC[@]}" up -d $BUILD_FLAG --wait waf dns proxy mock-upstream
+"${DC[@]}" up -d $BUILD_FLAG --wait waf dns proxy mock-upstream backend
 up_rc=$?
+rc=0
 if [ "$up_rc" -ne 0 ]; then
   echo "error: sandbox failed to become healthy" >&2
   "${DC[@]}" ps
-  rc="$up_rc"
-else
-  "${DC[@]}" run --rm attacker
-  rc=$?
+  exit "$up_rc"
 fi
+
+# Plane 1 — data-plane block-matrix (traffic through proxy + WAF/ICAP).
+echo "── plane 1: block-matrix (proxy + WAF/ICAP) ──"
+"${DC[@]}" run --rm attacker;               p1=$?
+
+# Plane 2 — API attacker (direct to the backend auth boundary).
+echo "── plane 2: API attacker (backend auth boundary) ──"
+"${DC[@]}" run --rm --entrypoint /adversarial/api-attack.sh attacker; p2=$?
+
+[ "$p1" -ne 0 ] && rc=1
+[ "$p2" -ne 0 ] && rc=1
 
 echo
-if [ -f report/report.md ]; then
-  echo "════════════════════════════════════════════════════════════════════════"
-  cat report/report.md
-  echo "════════════════════════════════════════════════════════════════════════"
-else
-  echo "warning: no report produced — inspect logs above" >&2
-fi
+for f in report/report.md report/api-report.md; do
+  if [ -f "$f" ]; then
+    echo "════════════════════════════════════════════════════════════════════════"
+    cat "$f"
+    echo "════════════════════════════════════════════════════════════════════════"
+  fi
+done
 
+echo
+printf '  plane 1 (block-matrix): %s\n' "$([ "$p1" -eq 0 ] && echo PASS || echo FAIL)"
+printf '  plane 2 (API attacker): %s\n' "$([ "$p2" -eq 0 ] && echo PASS || echo FAIL)"
 if [ "$rc" -eq 0 ]; then
   echo "✅ adversarial gate: PASS"
 else
-  echo "❌ adversarial gate: FAIL (exit $rc)"
+  echo "❌ adversarial gate: FAIL"
 fi
 exit "$rc"

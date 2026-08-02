@@ -163,6 +163,31 @@ services:
           - upstream.test
     restart: "no"
 
+  # ── Backend API (Go) ───────────────────────────────────────────────────────
+  # Target for Phase 2 (API attacker): the attacker hits it DIRECTLY (not through
+  # the proxy) to probe the app's own auth/authorization boundary. Known creds so
+  # the driver can prove that legitimate access still works (control cases).
+  backend:
+    build: ../../backend-go
+    environment:
+      - BASIC_AUTH_USERNAME=testadmin
+      - BASIC_AUTH_PASSWORD=TestP@ss123!
+      - SECRET_KEY=adv-e2e-secret-not-for-production
+      - CORS_ALLOWED_ORIGINS=http://localhost:8011
+      - DATABASE_PATH=/data/secure_proxy_adv.db
+    volumes:
+      - adv-backend-config:/config
+      - adv-backend-data:/data
+    healthcheck:
+      test: ["CMD", "/server", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 15s
+    networks:
+      - adv-edge
+    restart: "no"
+
   # ── Attacker ───────────────────────────────────────────────────────────────
   # Runs the corpus through the proxy, writes the block-matrix + FP/FN report to
   # ./report, and exits with the CI gate code (non-zero on hard FN/FP).
@@ -175,16 +200,25 @@ services:
         condition: service_healthy
       mock-upstream:
         condition: service_healthy
+      backend:
+        condition: service_healthy
     environment:
       - PROXY=http://proxy:3128
       - BASE=http://upstream.test
       - CORPUS=/adversarial/corpus.json
       - REPORT_DIR=/report
+      # Phase 2 (API attacker) — hit the backend directly.
+      - API=http://backend:5000
+      - API_CORPUS=/adversarial/api-corpus.json
+      - API_USER=testadmin
+      - API_PASS=TestP@ss123!
     volumes:
       # Bind-mounted for fast iteration: edit the corpus/driver and re-run with
       # no image rebuild.
       - ./attacker/attack.sh:/adversarial/attack.sh:ro
+      - ./attacker/api-attack.sh:/adversarial/api-attack.sh:ro
       - ./corpus.json:/adversarial/corpus.json:ro
+      - ./api-corpus.json:/adversarial/api-corpus.json:ro
       - ./report:/report
     networks:
       - adv-edge
@@ -201,7 +235,9 @@ networks:
         - subnet: 10.99.0.0/24
 
 volumes:
-  # Ephemeral /config and /data for waf + proxy — removed by `down -v`, keeping
-  # the working tree clean (no config/squid_version.txt etc.).
+  # Ephemeral /config and /data for waf + proxy + backend — removed by `down -v`,
+  # keeping the working tree clean (no config/squid_version.txt, no sqlite db).
   adv-config:
   adv-data:
+  adv-backend-config:
+  adv-backend-data:
