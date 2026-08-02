@@ -114,9 +114,12 @@ echo "── plane 2: API attacker (backend auth boundary) ──"
 # Plane 3 — bench/latency (k6). Baseline (direct) is informational; the proxied
 # run through proxy + WAF carries the thresholds and is the gate.
 echo "── plane 3: bench/latency (k6 through proxy + WAF) ──"
-"${DC[@]}" run --rm -e TARGET=http://mock-upstream/bench \
+# --user 0: k6's image drops root, but the ./report bind mount is owned by the
+# host/CI user, so a non-root k6 can't write the --summary-export file there
+# (works on Docker Desktop only because it remaps ownership). Run as uid 0.
+"${DC[@]}" run --rm --user 0 -e TARGET=http://mock-upstream/bench \
   k6 run --quiet --summary-export=/report/bench-baseline.json /bench/bench.js >/dev/null 2>&1 || true
-"${DC[@]}" run --rm -e TARGET=http://upstream.test/bench -e HTTP_PROXY=http://proxy:3128 \
+"${DC[@]}" run --rm --user 0 -e TARGET=http://upstream.test/bench -e HTTP_PROXY=http://proxy:3128 \
   k6 run --quiet --summary-export=/report/bench-proxied.json /bench/bench.js; p3=$?
 bench_report
 
