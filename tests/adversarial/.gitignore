@@ -1,0 +1,5 @@
+# Generated block-matrix / FP-FN reports.
+report/
+
+# Runtime file created by the dns entrypoint inside the seeded config dir.
+dns-config/dnsmasq.d/blocklist.hosts

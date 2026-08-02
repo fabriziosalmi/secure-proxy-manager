@@ -1,4 +1,4 @@
-.PHONY: setup start stop restart logs build clean
+.PHONY: setup start stop restart logs build clean adversarial
 
 # First-run setup: create .env from template if not exists
 setup:
@@ -34,3 +34,8 @@ build: setup
 clean:
 	docker compose down -v --remove-orphans
 	@echo "⚠️  Data in ./data/ preserved. Remove manually if needed."
+
+# Adversarial e2e block-matrix: drive attacker traffic through the real proxy +
+# WAF/ICAP in an isolated sandbox and gate on false negatives/positives (#200).
+adversarial:
+	bash tests/adversarial/run.sh
