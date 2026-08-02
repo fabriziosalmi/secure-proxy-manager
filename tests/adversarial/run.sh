@@ -38,7 +38,7 @@ mkdir -p report
 rm -f report/report.md report/report.json report/results.json \
       report/api-report.md report/api-report.json report/api-results.json \
       report/bench-report.md report/bench-baseline.json report/bench-proxied.json \
-      report/resilience-report.md
+      report/resilience-report.md report/config-matrix-report.md
 
 # Build the plane-3 bench report from k6's summary exports (baseline vs proxied),
 # reporting p50/p95/throughput and the proxy + ICAP overhead.
@@ -207,6 +207,12 @@ echo "── plane 3: bench/latency (k6 through proxy + WAF) ──"
   k6 run --quiet --summary-export=/report/bench-proxied.json /bench/bench.js; p3=$?
 bench_report
 
+# Plane 5 — config-matrix: settings actually change live proxy/WAF behaviour
+# (WAF category toggles through the real backend→WAF push path). Runs before the
+# disruptive resilience plane, at the healthy default config.
+echo "── plane 5: config-matrix (settings flip the data plane) ──"
+"${DC[@]}" run --rm --entrypoint /adversarial/config-matrix.sh attacker; p5=$?
+
 # Plane 4 — resilience (fail-closed + self-heal). Runs last: it disrupts the
 # data plane by stopping/starting waf and dns.
 echo "── plane 4: resilience (fail-closed + self-heal) ──"
@@ -216,9 +222,10 @@ resilience; p4=$P4_RC
 [ "$p2" -ne 0 ] && rc=1
 [ "$p3" -ne 0 ] && rc=1
 [ "$p4" -ne 0 ] && rc=1
+[ "$p5" -ne 0 ] && rc=1
 
 echo
-for f in report/report.md report/api-report.md report/bench-report.md report/resilience-report.md; do
+for f in report/report.md report/api-report.md report/bench-report.md report/config-matrix-report.md report/resilience-report.md; do
   if [ -f "$f" ]; then
     echo "════════════════════════════════════════════════════════════════════════"
     cat "$f"
@@ -230,6 +237,7 @@ echo
 printf '  plane 1 (block-matrix): %s\n' "$([ "$p1" -eq 0 ] && echo PASS || echo FAIL)"
 printf '  plane 2 (API attacker): %s\n' "$([ "$p2" -eq 0 ] && echo PASS || echo FAIL)"
 printf '  plane 3 (bench/latency): %s\n' "$([ "${p3:-1}" -eq 0 ] && echo PASS || echo FAIL)"
+printf '  plane 5 (config-matrix): %s\n' "$([ "${p5:-1}" -eq 0 ] && echo PASS || echo FAIL)"
 printf '  plane 4 (resilience): %s\n' "$([ "${p4:-1}" -eq 0 ] && echo PASS || echo FAIL)"
 if [ "$rc" -eq 0 ]; then
   echo "✅ adversarial gate: PASS"
