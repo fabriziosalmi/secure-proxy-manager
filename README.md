@@ -5,16 +5,24 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Images: GHCR · cosign-signed](https://img.shields.io/badge/images-GHCR%20%C2%B7%20cosign--signed-2496ED?logo=docker&logoColor=white)](https://github.com/fabriziosalmi/secure-proxy-manager/pkgs/container/secure-proxy-manager-proxy)
 [![Docs](https://img.shields.io/badge/docs-website-22c55e)](https://fabriziosalmi.github.io/secure-proxy-manager/)
+[![WAF: 21 categories · FN=0 gated](https://img.shields.io/badge/WAF-21%20categories%20%C2%B7%20FN%3D0%20gated-3ddc84)](#tested-like-an-attacker)
 
 📖 **Documentation:** <https://fabriziosalmi.github.io/secure-proxy-manager/>
 
-A self-hosted forward proxy with a web UI for filtering, inspecting, and logging
-outbound HTTP/HTTPS traffic on a network. It combines a Squid proxy, a custom
-WAF, a DNS sinkhole, and a management API into a single Docker Compose stack.
+A **self-hosted Secure Web Gateway (SWG)** — one controllable egress point for a
+home, lab, or small-office network. It combines a Squid forward proxy, a custom
+**WAF** (request/response inspection over ICAP), a **DNS sinkhole**, and a modern
+web UI + API into a single Docker Compose stack: the self-hosted counterpart to
+cloud SWGs like Zscaler / Cloudflare Gateway — with **no traffic leaving your
+network**.
 
-Use it to give a home, lab, or small-office network one controllable egress
-point: block domains and IPs, inspect requests against WAF rules, sinkhole
-malware/ad domains at the DNS layer, and see what every client is reaching.
+Block domains and IPs, enforce a default-deny egress allowlist, inspect requests
+against WAF rules, sinkhole malware/ad domains at the DNS layer, and see what
+every client is reaching.
+
+![Malicious requests blocked by the proxy + WAF, benign traffic allowed](docs/demo/adversarial-demo.svg)
+
+<sub>Malicious requests get **403**'d at the proxy by the WAF; benign traffic passes. Every category is verified with an adversarial test suite — see [Tested like an attacker](#tested-like-an-attacker).</sub>
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
@@ -23,17 +31,20 @@ malware/ad domains at the DNS layer, and see what every client is reaching.
 Most self-hosted network tools cover one layer. SPM combines forward-proxy egress
 control, request inspection, and DNS sinkholing in a single stack:
 
-| Capability | Pi-hole / AdGuard | Nginx Proxy Manager | **Secure Proxy Manager** |
-|---|:---:|:---:|:---:|
-| DNS sinkhole (block at resolve time) | ✅ | — | ✅ |
-| Forward proxy (outbound egress control) | — | — | ✅ |
-| HTTP request/body inspection (WAF) | — | — | ✅ |
-| Default-deny egress allowlist | — | — | ✅ |
-| Reverse proxy / ingress | — | ✅ | — |
+| Capability | Pi-hole / AdGuard | Nginx Proxy Manager | Cloud SWG (Zscaler…) | **Secure Proxy Manager** |
+|---|:---:|:---:|:---:|:---:|
+| DNS sinkhole (block at resolve time) | ✅ | — | ✅ | ✅ |
+| Forward proxy (outbound egress control) | — | — | ✅ | ✅ |
+| HTTP request/body inspection (WAF) | — | — | ✅ | ✅ |
+| Default-deny egress allowlist | — | — | ✅ | ✅ |
+| Reverse proxy / ingress | — | ✅ | — | — |
+| **Self-hosted — traffic stays on your network** | ✅ | ✅ | — | ✅ |
+| **Free / no per-seat cost** | ✅ | ✅ | — | ✅ |
 
-Pi-hole/AdGuard block at the DNS layer and Nginx Proxy Manager is reverse-proxy
-*ingress*; SPM is the **outbound** counterpart — one controllable egress point
-with WAF inspection and DNS sinkholing combined.
+Pi-hole/AdGuard block only at the DNS layer; Nginx Proxy Manager is reverse-proxy
+*ingress*; cloud SWGs do all of this but as a paid SaaS your traffic flows
+through. SPM is the **self-hosted outbound** counterpart — one controllable
+egress point with WAF inspection and DNS sinkholing combined, on your own metal.
 
 ## What it is
 
@@ -253,6 +264,34 @@ token.
   benchmarks.
 - [CHANGELOG.md](CHANGELOG.md) - release history.
 
+## Tested like an attacker
+
+Most proxies and WAFs ship rules and hope. SPM has an **adversarial e2e harness**
+(`make adversarial`, gated in CI) that drives real attack traffic *through* the
+running proxy + WAF in an isolated sandbox and **fails the build on any
+regression**. Five planes:
+
+- **block-matrix** — SQLi / XSS / RCE / SSRF / traversal / secret-exfil / … across
+  the **21 WAF categories**: malicious → **403**, benign → allowed. Gate: **false
+  negatives = 0, false positives = 0**.
+- **API attacker** — auth-bypass, forged / tampered JWTs (incl. `alg=none`), login
+  SQL-injection, rate-limit probing → **no bypass** (401/403/429 as expected).
+- **bench / latency** — p50/p95 + proxy + ICAP overhead, with a regression gate.
+- **config-matrix** — flips a setting through the real API and proves the data
+  plane changes (disable a rule category → that attack now passes; re-enable →
+  blocked again, selectively).
+- **resilience** — kill the WAF and the proxy **fails closed** (no fail-open
+  hole); restart it and the stack **self-heals**.
+
+Run it yourself — it brings up the sandbox, attacks it, prints a block-matrix +
+FP/FN report, and tears down:
+
+```bash
+make adversarial
+```
+
+See [`tests/adversarial/`](tests/adversarial/).
+
 ## Security notes
 
 - The SSL-bump CA is generated per deployment at first boot and never committed;
@@ -269,6 +308,13 @@ token.
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Issues and pull requests are welcome.
+
+## Support
+
+SPM is MIT-licensed and free to self-host. If it's useful to you:
+
+- ⭐ **Star** the repo and [**sponsor**](https://github.com/sponsors/fabriziosalmi) to support development.
+- 🛠️ **Want it installed, hardened, or managed** for your network or organisation? Email **fabrizio.salmi@gmail.com**.
 
 ## License
 

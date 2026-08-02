@@ -52,6 +52,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Docker Hub is where people search for images (GHCR has little organic
+      # discovery). Mirror there too — but only when the credentials exist, so
+      # the release still works with just GHCR if they are not configured.
+      - name: Login to Docker Hub
+        if: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Extract version from tag
         id: version
         run: |
@@ -61,6 +72,25 @@ jobs:
             echo "version=latest" >> $GITHUB_OUTPUT
           fi
 
+      # Tag list: always GHCR; add Docker Hub tags only when DOCKERHUB_USERNAME is set.
+      - name: Compute image tags
+        id: tags
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IMG: ${{ matrix.image }}
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          {
+            echo "tags<<EOF"
+            echo "${IMAGE_PREFIX}-${IMG}:${VERSION}"
+            echo "${IMAGE_PREFIX}-${IMG}:latest"
+            if [ -n "$DH_USER" ]; then
+              echo "docker.io/${DH_USER}/secure-proxy-manager-${IMG}:${VERSION}"
+              echo "docker.io/${DH_USER}/secure-proxy-manager-${IMG}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and push ${{ matrix.image }}
         id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -69,9 +99,7 @@ jobs:
           file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ steps.version.outputs.version }}
-            ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:latest
+          tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           # Busts the proxy image's apt layer every run so a cached layer can
@@ -97,4 +125,10 @@ jobs:
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
           IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+      - name: Sign the Docker Hub image (keyless)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.DOCKERHUB_USERNAME != '' }}
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/secure-proxy-manager-${{ matrix.image }}
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
