@@ -8,7 +8,7 @@
     "test:report": "playwright show-report /test-results/html"
   },
   "devDependencies": {
-    "@playwright/test": "1.58.2",
+    "@playwright/test": "1.62.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.4.0"
   }
