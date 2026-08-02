@@ -1,0 +1,207 @@
+# docker-compose.adversarial.yml
+#
+# Adversarial e2e sandbox — Phase 1: data-plane block-matrix (issue #200).
+#
+# Drives traffic THROUGH the real forward proxy + WAF/ICAP like a client/attacker
+# and measures block/allow correctness (TP/TN/FP/FN) across the WAF's rule
+# categories. Unlike docker-compose.test.yml (which covers only API/UI and
+# deliberately excludes proxy+WAF), this stack runs the actual data plane:
+#
+#     attacker ──http_proxy──▶ proxy (Squid) ──ICAP──▶ waf   (REQMOD/RESPMOD)
+#                                   │  resolves via dns (dnsmasq)
+#                                   └──────────────▶ mock-upstream (controlled)
+#
+# Networks:
+#   adv-internal (internal: true)  proxy ↔ waf ↔ dns  — ICAP + name resolution
+#   adv-edge     (fixed subnet)    attacker ↔ proxy ↔ mock-upstream
+#
+# The mock upstream has a STATIC IP + hostname (upstream.test) injected into
+# dnsmasq (dns/upstream.conf), because Squid resolves destinations via dnsmasq
+# and denies IP-literal hosts. All corpus traffic targets upstream.test only;
+# no internet egress is required (the dns healthcheck is overridden to the local
+# record, so the stack comes up fully offline).
+#
+# Usage: tests/adversarial/run.sh   (brings up, runs the block-matrix, tears down)
+
+name: spm-adversarial
+
+services:
+
+  # ── WAF (ICAP REQMOD/RESPMOD) ──────────────────────────────────────────────
+  waf:
+    build: ../../waf-go
+    volumes:
+      # Ephemeral empty volumes (not the repo dirs) — hermetic, no working-tree
+      # pollution. The WAF's rules are compiled in; /config is optional.
+      - adv-config:/config:ro
+      - adv-data:/data:ro
+    environment:
+      - BASIC_AUTH_USERNAME=adv
+      - BASIC_AUTH_PASSWORD=adv-not-a-real-secret
+      - WAF_BLOCK_THRESHOLD=10
+      # Product-default heuristic posture — the harness tests the real config.
+      - WAF_H_ENTROPY=1
+      - WAF_H_ENTROPY_MAX=7.5
+      - WAF_H_BEACONING=1
+      - WAF_H_PII=1
+      - WAF_H_SHARDING=1
+      - WAF_H_GHOSTING=1
+      - WAF_H_SEQUENCE=0
+      - WAF_DISABLED_CATEGORIES=
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/lib/waf
+    cap_drop:
+      - ALL
+    networks:
+      - adv-internal
+    restart: "no"
+
+  # ── Internal DNS (dnsmasq) ─────────────────────────────────────────────────
+  # Squid resolves upstream destinations here. We inject a local address= record
+  # for upstream.test (dns/upstream.conf) so no internet is needed, and override
+  # the healthcheck to resolve that record instead of an external name.
+  dns:
+    build: ../../dns
+    volumes:
+      # Dedicated /config (rw) seeded with the upstream address record under
+      # dnsmasq.d/. Mounted as a single dir (not a nested bind) to avoid the
+      # Docker Desktop virtiofs "mountpoint outside of rootfs" error, and so the
+      # entrypoint can create dnsmasq.d/blocklist.hosts. Loaded via conf-dir.
+      - ./dns-config:/config
+    healthcheck:
+      # A-only lookup: the mock upstream has no AAAA, and querying both would let
+      # a SERVFAIL on the IPv6 record fail the check even though A resolves fine.
+      test: ["CMD", "nslookup", "-type=A", "-timeout=2", "upstream.test", "127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run
+      - /var/log
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - DAC_OVERRIDE
+    networks:
+      - adv-internal
+    restart: "no"
+
+  # ── Forward proxy (Squid) ──────────────────────────────────────────────────
+  # startup.sh resolves the `waf` and `dns` service names at boot and wires the
+  # ICAP service + dns_nameservers automatically, so no extra config is needed.
+  proxy:
+    build: ../../proxy
+    volumes:
+      # Ephemeral empty volumes (not the repo dirs): the proxy writes runtime
+      # artefacts (e.g. squid_version.txt) here, so keep them out of the tree.
+      - adv-config:/config
+      - adv-data:/data:ro
+    environment:
+      - PROXY_PORT=3128
+    depends_on:
+      waf:
+        condition: service_healthy
+      dns:
+        condition: service_healthy
+    healthcheck:
+      # Drive a benign request through the proxy to the mock upstream: proves the
+      # whole data plane is live (Squid listening + dns resolving upstream.test +
+      # ICAP REQMOD reachable + upstream answering) before the attacker starts.
+      # (squidclient isn't shipped in this image; curl is.)
+      test: ["CMD-SHELL", "curl -sf --max-time 3 -x http://127.0.0.1:3128 http://upstream.test/health -o /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run
+      - /var/log/supervisor
+      - /etc/squid
+      - /var/log/squid
+      - /var/spool/squid
+    networks:
+      - adv-internal
+      - adv-edge
+    restart: "no"
+
+  # ── Controlled mock upstream ───────────────────────────────────────────────
+  # Benign 200 for any path; special endpoints emit response-side attack content
+  # (RESPMOD): reflected-XSS payload and a leaked private key.
+  mock-upstream:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./mock-upstream/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      adv-edge:
+        ipv4_address: 10.99.0.10
+        aliases:
+          - upstream.test
+    restart: "no"
+
+  # ── Attacker ───────────────────────────────────────────────────────────────
+  # Runs the corpus through the proxy, writes the block-matrix + FP/FN report to
+  # ./report, and exits with the CI gate code (non-zero on hard FN/FP).
+  attacker:
+    build:
+      context: .
+      dockerfile: attacker/Dockerfile
+    depends_on:
+      proxy:
+        condition: service_healthy
+      mock-upstream:
+        condition: service_healthy
+    environment:
+      - PROXY=http://proxy:3128
+      - BASE=http://upstream.test
+      - CORPUS=/adversarial/corpus.json
+      - REPORT_DIR=/report
+    volumes:
+      # Bind-mounted for fast iteration: edit the corpus/driver and re-run with
+      # no image rebuild.
+      - ./attacker/attack.sh:/adversarial/attack.sh:ro
+      - ./corpus.json:/adversarial/corpus.json:ro
+      - ./report:/report
+    networks:
+      - adv-edge
+    restart: "no"
+
+networks:
+  adv-internal:
+    driver: bridge
+    internal: true
+  adv-edge:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.99.0.0/24
+
+volumes:
+  # Ephemeral /config and /data for waf + proxy — removed by `down -v`, keeping
+  # the working tree clean (no config/squid_version.txt etc.).
+  adv-config:
+  adv-data:
