@@ -1,5 +1,5 @@
 # Pin: ubuntu 22.04 jammy (LTS)
-FROM ubuntu:26.04@sha256:b7f48194d4d8b763a478a621cdc81c27be222ba2206ca3ca6bc42b49685f3d9e
+FROM ubuntu:26.04@sha256:3131b4cc82a783df6c9df078f86e01819a13594b865c2cad47bd1bca2b7063bb
 
 # Squid ships from the Ubuntu security pocket, so the package REVISION (e.g.
 # 5.9-0ubuntu0.22.04.7), not the upstream "5.9", is what carries CVE fixes.
