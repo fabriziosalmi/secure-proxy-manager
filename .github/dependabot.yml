@@ -1,4 +1,18 @@
 version: 2
+
+# Grouped updates cover minor and patch only. A major lands as its own pull
+# request instead of riding along with twenty compatible bumps.
+#
+# The ui-dependencies group showed why. With `patterns: ["*"]` and no split it
+# collected typescript 5.9 -> 7.0, tailwindcss 3.4 -> 4.3, jsdom 29 -> 30 and
+# @types/node 24 -> 26 into one pull request, which failed the TypeScript build,
+# the Docker build and both E2E jobs. Nothing in it could be merged, so the
+# harmless minors behind it were stuck too, from 31 August until this was found.
+#
+# The split applies to npm and gomod, where a major changes source-level
+# compatibility (a Go major changes the import path outright). Docker and
+# github-actions stay grouped: a major there is a tag change that CI validates
+# end to end, and splitting it would only add noise.
 updates:
   - package-ecosystem: "npm"
     directory: "/ui"
@@ -8,6 +22,9 @@ updates:
       ui-dependencies:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "gomod"
     directory: "/backend-go"
@@ -17,6 +34,9 @@ updates:
       backend-go-dependencies:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "gomod"
     directory: "/waf-go"
@@ -26,6 +46,9 @@ updates:
       waf-go-dependencies:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "docker"
     directory: "/"
@@ -86,6 +109,9 @@ updates:
       docs-dependencies:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # Keep the SHA-pinned GitHub Actions (ci.yml, multi-arch.yml, docs.yml)
   # patched — pinning to a digest means we don't get upstream fixes otherwise.
