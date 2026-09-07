@@ -17,6 +17,83 @@ ok()    { printf "${G}[OK]${N}   %s\n" "$1"; }
 warn()  { printf "${Y}[WARN]${N} %s\n" "$1"; }
 fail()  { printf "${R}[FAIL]${N} %s\n" "$1"; exit 1; }
 
+# ── Host port preflight ───────────────────────────────────────────────
+# A port already taken on the host is the most common reason a fresh install
+# does not come up, and it is invisible: `docker compose up -d` reports the bind
+# failure per container and the health wait then times out with a generic
+# warning about services still starting (#231).
+#
+# The ports are read from the compose file rather than hardcoded, so this stays
+# correct when the file changes.
+
+published_ports() {
+    # Host ports this compose file publishes, as "<bind address><TAB><port>".
+    # Handles "80:8011", "127.0.0.1:5001:5000" and the substitution
+    # "${PROXY_BIND_IP:-0.0.0.0}:3128:3128", whose default contains colons and
+    # has to be resolved before splitting on them.
+    sed -n 's/^[[:space:]]*-[[:space:]]*"\([^"]*\)".*/\1/p' "$1" \
+    | sed -e 's/\${[A-Za-z_][A-Za-z0-9_]*:-\([^}]*\)}/\1/g' \
+          -e 's/\${[A-Za-z_][A-Za-z0-9_]*}/0.0.0.0/g' \
+    | grep -E '^[0-9.]*:?[0-9]+:[0-9]+(\/(tcp|udp))?$' \
+    | sed 's:/.*::' \
+    | awk -F: '
+        {
+            if (NF >= 3) { addr = $1; port = $2 }
+            else         { addr = "0.0.0.0"; port = $1 }
+            if (port ~ /^[0-9]+$/) print addr "\t" port
+        }' \
+    | sort -u -k2,2n || true
+}
+
+listening_snapshot() {
+    # `ss` is present on any current Debian or RHEL; netstat is the fallback for
+    # older hosts. Both are read once rather than per port.
+    if command -v ss >/dev/null 2>&1; then
+        ss -lntp 2>/dev/null
+    elif command -v netstat >/dev/null 2>&1; then
+        netstat -lntp 2>/dev/null
+    fi
+}
+
+check_ports() {
+    local compose_file="$1" snapshot conflicts=0 addr port holder
+    snapshot=$(listening_snapshot)
+    if [ -z "$snapshot" ]; then
+        warn "Neither ss nor netstat is available — skipping the port check"
+        return 0
+    fi
+    while IFS="$(printf '\t')" read -r addr port; do
+        [ -n "$port" ] || continue
+        # Column 4 of both tools is the local address; match on the port at its
+        # end so 80 does not match 8080. The process column, when the tool
+        # reports one, says what is holding it.
+        holder=$(printf '%s\n' "$snapshot" | awk -v suffix=":$port" '
+            NR > 1 && $4 ~ suffix"$" { print; exit }')
+        if [ -n "$holder" ]; then
+            conflicts=$((conflicts + 1))
+            printf "${R}[PORT]${N} %s:%s is already in use\n" "$addr" "$port"
+            printf "        %s\n" "$(printf '%s' "$holder" | tr -s ' ')"
+        fi
+    done <<PORTS
+$(published_ports "$compose_file")
+PORTS
+    if [ "$conflicts" -gt 0 ]; then
+        echo ""
+        warn "Free the ports above, or change the host side of the mapping in"
+        warn "  ${INSTALL_DIR}/docker-compose.yml, then run this installer again."
+        warn "A web server on the host is the usual cause: systemctl stop nginx"
+        warn "Set SKIP_PORT_CHECK=1 to install anyway."
+        if [ "${SKIP_PORT_CHECK:-0}" = "1" ]; then
+            warn "SKIP_PORT_CHECK=1 set — continuing despite the conflicts"
+        else
+            fail "$conflicts port conflict(s)"
+        fi
+    else
+        ok "All published ports are free"
+    fi
+}
+
+
 echo ""
 printf "${C}╔═══════════════════════════════════════════════════════════╗${N}\n"
 printf "${C}║${N}  ${B}Secure Proxy Manager — Installer${N}                       ${C}║${N}\n"
@@ -127,8 +204,24 @@ if [ -d data ]; then
     ls -1dt data.bak.* 2>/dev/null | tail -n +4 | xargs -r rm -rf
 fi
 
+info "Checking host ports..."
+check_ports docker-compose.yml
+
 info "Starting services..."
 docker compose up -d
+
+# A container that cannot bind its port is left in a created or exited state,
+# and a later `docker compose up -d` sees no change to the configuration and
+# leaves it exactly as it is. That is why freeing the port was not enough in
+# #231 and --force-recreate was needed. Recreate them here instead of leaving
+# the operator to work it out from a health check that merely times out.
+stuck=$(docker compose ps -a --format '{{.Service}} {{.State}}' 2>/dev/null \
+        | awk '$2 != "running" { print $1 }' | tr '\n' ' ')
+if [ -n "${stuck// /}" ]; then
+    warn "Not running after start: ${stuck}"
+    info "Recreating them (a container that failed to bind stays down otherwise)..."
+    docker compose up -d --force-recreate
+fi
 
 # ── Wait for healthy ─────────────────────────────────────────────────
 info "Waiting for services to be healthy..."
