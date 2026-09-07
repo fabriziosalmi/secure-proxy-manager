@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
 )
 
 type BlacklistHandlers struct {
@@ -351,7 +353,12 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 
 // ── Import ─────────────────────────────────────────────────────────────────────
 
-const maxImportSize = 200 * 1024 * 1024 // 200 MB
+// maxImportSize bounds a blacklist download. It is deliberately far below the
+// container's memory limit (128M in both compose files): downloadWithRetry
+// buffers the whole response and the parse then builds a dedupe set over it, so
+// a cap above the budget means the process is OOM-killed before the cap can
+// fire — the guard would read as protection and provide none (SECURE-INPT-01).
+const maxImportSize = 32 * 1024 * 1024 // 32 MB
 
 func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	var req models.ImportBlacklistRequest
@@ -521,12 +528,38 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// maxGeoCountries mirrors the bound declared on ImportGeoBlacklistRequest.
+const maxGeoCountries = 50
+
 func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 	var req models.ImportGeoBlacklistRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Countries) == 0 {
 		writeError(w, http.StatusBadRequest, "countries list required")
 		return
 	}
+	// Enforce the bound the model declares. Without it an authenticated caller
+	// could post millions of entries and, since duplicates were not collapsed,
+	// drive two 30s outbound fetches per element from inside the request
+	// goroutine — an unbounded amplifier that never returns (SECURE-DOM-01).
+	if len(req.Countries) > maxGeoCountries {
+		writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("too many countries: %d (max %d)", len(req.Countries), maxGeoCountries))
+		return
+	}
+	seen := make(map[string]struct{}, len(req.Countries))
+	countries := make([]string, 0, len(req.Countries))
+	for _, c := range req.Countries {
+		cc := strings.ToLower(strings.TrimSpace(c))
+		if cc == "" {
+			continue
+		}
+		if _, dup := seen[cc]; dup {
+			continue
+		}
+		seen[cc] = struct{}{}
+		countries = append(countries, cc)
+	}
+	req.Countries = countries
 
 	existing := map[string]struct{}{}
 	rows, _ := h.db.Query("SELECT ip FROM ip_blacklist")
@@ -540,8 +573,32 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	totalImported := 0
+	importedCountries := 0
 	var fetchErrors []string
-	client := &http.Client{Timeout: 30 * time.Second}
+	// SECURE-INPT-03. The default feeds are third-party hosts we do not control,
+	// so a hijacked or compromised upstream must not be able to redirect us at
+	// an internal address: those go through the SSRF-safe client, which
+	// validates at dial time and on every redirect hop.
+	//
+	// An operator-supplied GEOIP_URL is a different case — pointing it at a
+	// mirror on the LAN is a legitimate self-hosting configuration, and the
+	// SSRF client would refuse exactly that. It gets a plain client with a
+	// bounded redirect chain instead: the operator chose the endpoint, so the
+	// address is their decision, but an unbounded redirect chain is not.
+	var client *http.Client
+	if h.cfg.GeoIPURL == "" {
+		client = netguard.SSRFSafeClient()
+	} else {
+		client = &http.Client{
+			CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+				if len(via) >= 5 {
+					return errors.New("stopped after 5 redirects")
+				}
+				return nil
+			},
+		}
+	}
+	client.Timeout = 30 * time.Second
 
 	ccRe := regexp.MustCompile(`^[a-zA-Z]{2}$`)
 	for _, country := range req.Countries {
@@ -590,36 +647,83 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 			if _, ex := existing[ip]; !ex {
 				toInsert = append(toInsert, [2]string{ip, "GeoIP: " + strings.ToUpper(cc)})
 				existing[ip] = struct{}{}
-				totalImported++
 			}
 		}
-		if len(toInsert) > 0 {
-			tx, err := h.db.Begin()
-			if err == nil {
-				stmt, err := tx.Prepare("INSERT INTO ip_blacklist(ip, description) VALUES(?,?)")
-				if err == nil {
-					for _, pair := range toInsert {
-						stmt.Exec(pair[0], pair[1]) //nolint:errcheck
-					}
-					stmt.Close()
-					tx.Commit() //nolint:errcheck
-				} else {
-					tx.Rollback() //nolint:errcheck
-				}
-			}
+		if len(toInsert) == 0 {
+			continue
 		}
+		// Count rows that COMMITTED, not rows queued in memory. The previous
+		// code incremented before any database work and discarded the errors
+		// from Begin, Prepare, Exec and Commit, so a locked or read-only SQLite
+		// produced a 200 reporting tens of thousands of imported blocks with
+		// nothing written (SECURE-ERR-01).
+		committed, err := insertGeoBatch(h.db, toInsert)
+		if err != nil {
+			// Roll the in-memory dedupe set back so a retry can re-attempt these.
+			for _, pair := range toInsert {
+				delete(existing, pair[0])
+			}
+			fetchErrors = append(fetchErrors, strings.ToUpper(cc)+": "+err.Error())
+			continue
+		}
+		totalImported += committed
+		importedCountries++
 	}
 
-	if len(fetchErrors) > 0 && totalImported == 0 {
+	// A failure that imported nothing is a failure; a partial import must say
+	// which countries failed rather than reporting an unqualified success.
+	if totalImported == 0 && len(fetchErrors) > 0 {
 		writeError(w, http.StatusBadGateway, strings.Join(fetchErrors, "; "))
 		return
 	}
 	go propagate(h.db, h.cfg, "ip")
-	writeJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"status":  "success",
-		"message": fmt.Sprintf("Imported %d IP blocks for %d countries", totalImported, len(req.Countries)),
-		"data":    map[string]any{"imported": totalImported},
-	})
+		"message": fmt.Sprintf("Imported %d IP blocks for %d of %d countries", totalImported, importedCountries, len(req.Countries)),
+		"data":    map[string]any{"imported": totalImported, "countries_imported": importedCountries, "countries_requested": len(req.Countries)},
+	}
+	if len(fetchErrors) > 0 {
+		resp["status"] = "partial"
+		resp["data"].(map[string]any)["errors"] = fetchErrors
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// insertGeoBatch writes one country's blocks in a single transaction and
+// returns how many rows were actually committed. Every error is checked: the
+// caller reports a count, and a count that is not backed by a commit is a lie.
+func insertGeoBatch(db *sql.DB, rows [][2]string) (int, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck — no-op once committed
+
+	stmt, err := tx.Prepare("INSERT INTO ip_blacklist(ip, description) VALUES(?,?)")
+	if err != nil {
+		return 0, fmt.Errorf("prepare: %w", err)
+	}
+	defer stmt.Close()
+
+	inserted := 0
+	for _, pair := range rows {
+		res, err := stmt.Exec(pair[0], pair[1])
+		if err != nil {
+			// A UNIQUE collision is expected (the row is already blacklisted)
+			// and is not a batch failure; anything else is.
+			if strings.Contains(err.Error(), "UNIQUE") {
+				continue
+			}
+			return 0, fmt.Errorf("insert %s: %w", pair[0], err)
+		}
+		if n, err := res.RowsAffected(); err == nil {
+			inserted += int(n)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+	return inserted, nil
 }
 
 // Legacy aliases — redirect to unified import endpoint.

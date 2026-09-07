@@ -40,12 +40,12 @@ func TestBlacklistHandlers_ErrorCases(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200 for first add, got %d", w.Code)
 	}
-	
+
 	w = httptest.NewRecorder()
 	r = httptest.NewRequest("POST", "/api/blacklists/ip", bytes.NewReader(body))
 	h.AddIP(w, r)
 	if w.Code != http.StatusBadRequest {
-	    t.Errorf("Expected 400 for duplicate add, got %d", w.Code)
+		t.Errorf("Expected 400 for duplicate add, got %d", w.Code)
 	}
 	// Give time for propagate goroutine to finish (affects cleanup)
 	time.Sleep(100 * time.Millisecond)
@@ -54,7 +54,7 @@ func TestBlacklistHandlers_ErrorCases(t *testing.T) {
 func TestHelper_BulkDelete_Errors(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	
+
 	// Create the handler using the helper from blacklists.go
 	h := bulkDeleteHandler(db, "ip_blacklist", cfg)
 

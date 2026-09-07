@@ -22,6 +22,10 @@ import (
 // validKeyRE enforces that settings key names are alphanumeric + underscore only.
 var validKeyRE = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
+// timeOfDayRE bounds the values written into /config/time_restrictions.conf,
+// which the proxy sources as shell.
+var timeOfDayRE = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
+
 type SettingsHandlers struct {
 	db  *sql.DB
 	cfg *config.Config
@@ -83,8 +87,12 @@ func (h *SettingsHandlers) GetAll(w http.ResponseWriter, r *http.Request) {
 
 func (h *SettingsHandlers) Update(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	if len(name) > 100 || !validKeyRE.MatchString(name) {
-		writeError(w, http.StatusBadRequest, "invalid setting name")
+	// isWritableSettingKey subsumes the length and character checks AND rejects
+	// internally-managed keys. Previously this path checked only the shape, so
+	// PUT /api/settings/default_password_changed could rewrite trusted internal
+	// state that BulkUpdate and RestoreConfig both refuse (SECURE-DOM-04).
+	if !isWritableSettingKey(name) {
+		writeError(w, http.StatusBadRequest, "invalid or protected setting name")
 		return
 	}
 	var body struct {
@@ -345,6 +353,14 @@ func (h *SettingsHandlers) writeTimeRestrictions(body map[string]string) {
 	end := h.dbSetting("time_restriction_end", "18:00")
 	if v, ok := body["time_restriction_end"]; ok && v != "" {
 		end = v
+	}
+	// These values are written into a file the proxy's ROOT shell sources.
+	// safe_source rejects shell metacharacters but permits any KEY=VALUE, so an
+	// unsanitised newline injects an arbitrary variable assignment (PATH, IFS)
+	// into that shell. A time is HH:MM and nothing else (SECURE-INPT-02).
+	if !timeOfDayRE.MatchString(start) || !timeOfDayRE.MatchString(end) {
+		log.Warn().Str("start", start).Str("end", end).Msg("invalid time restriction values — not written")
+		return
 	}
 	content := "TIME_START=" + start + "\nTIME_END=" + end + "\n"
 	os.WriteFile(filepath.Join(h.cfg.ConfigDir, "time_restrictions.conf"), []byte(content), 0o600) //nolint:errcheck

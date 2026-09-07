@@ -54,6 +54,13 @@ func Open(path string) (*sql.DB, error) {
 	return db, nil
 }
 
+// isDuplicateColumnErr reports whether err is SQLite's "duplicate column name"
+// error, which ALTER TABLE ADD COLUMN returns when the migration already ran.
+// That one is expected on every start after the first; nothing else is.
+func isDuplicateColumnErr(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "duplicate column")
+}
+
 // Init runs an integrity check, creates tables, applies migrations, and seeds the admin user.
 func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 	// Integrity check.
@@ -155,7 +162,14 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		"ALTER TABLE domain_whitelist ADD COLUMN type TEXT DEFAULT 'fqdn'",
 	}
 	for _, m := range migrations {
-		_, _ = db.Exec(m) // "duplicate column" error is harmless
+		// Only the expected "duplicate column" error is harmless — it means the
+		// migration already ran. Discarding every error meant a locked,
+		// read-only or full database produced a schema the process believed it
+		// had, with the failure surfacing later as a missing column at query
+		// time, or not at all (SECURE-DOM-05).
+		if _, err := db.Exec(m); err != nil && !isDuplicateColumnErr(err) {
+			return fmt.Errorf("migration %q: %w", m, err)
+		}
 	}
 
 	// Indexes on migrated columns must be created AFTER the ALTERs above add the

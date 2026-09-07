@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -189,5 +190,48 @@ func TestSettingsHandlers_GetAll_DoesNotLeakCiphertextOnDecryptFailure(t *testin
 	}
 	if !found {
 		t.Fatal("gotify_token missing from the response")
+	}
+}
+
+// SECURE-DOM-04: the internally-managed guard must cover PUT as it already
+// covers BulkUpdate and RestoreConfig.
+func TestSettingsHandlers_Update_RejectsInternallyManagedKey(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewSettingsHandlers(db, cfg)
+
+	body, _ := json.Marshal(map[string]string{"value": "true"})
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("name", "default_password_changed")
+	r := httptest.NewRequest("PUT", "/api/settings/default_password_changed", bytes.NewBuffer(body))
+	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+	h.Update(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for an internally-managed key, got %d", w.Code)
+	}
+	var v string
+	_ = db.QueryRow("SELECT setting_value FROM settings WHERE setting_name='default_password_changed'").Scan(&v)
+	if v == "true" {
+		t.Error("default_password_changed was rewritten through PUT — the security score can be falsified")
+	}
+}
+
+// SECURE-INPT-02: a time-restriction value containing a newline must not reach
+// the file the proxy's root shell sources.
+func TestWriteTimeRestrictions_RejectsInjectedAssignment(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewSettingsHandlers(db, cfg)
+
+	h.writeTimeRestrictions(map[string]string{
+		"time_restriction_start": "08:00\nPATH=/tmp/evil",
+		"time_restriction_end":   "18:00",
+	})
+
+	data, err := os.ReadFile(filepath.Join(cfg.ConfigDir, "time_restrictions.conf"))
+	if err == nil && strings.Contains(string(data), "PATH=") {
+		t.Errorf("injected assignment reached the sourced file: %q", data)
 	}
 }

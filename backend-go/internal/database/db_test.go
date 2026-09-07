@@ -1,8 +1,10 @@
 package database
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -251,5 +253,35 @@ func TestAudit(t *testing.T) {
 	_ = db.QueryRow("SELECT count(*) FROM audit_log").Scan(&count)
 	if count != 1 {
 		t.Errorf("Expected 1 audit entry, got %d", count)
+	}
+}
+
+// SECURE-DOM-05: migrations must now surface real errors while still tolerating
+// the one expected failure. The regression risk of that change is idempotency —
+// Init runs on every start and the ALTERs must keep being no-ops after the
+// first run, not hard errors.
+func TestInitIsIdempotentAcrossRestarts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "idem.db")
+	for i := 1; i <= 3; i++ {
+		db, err := Open(path)
+		if err != nil {
+			t.Fatalf("run %d: open: %v", i, err)
+		}
+		if err := Init(db, "admin", "$2a$10$abcdefghijklmnopqrstuv"); err != nil {
+			t.Fatalf("run %d: Init returned an error on a database that is already migrated: %v", i, err)
+		}
+		db.Close()
+	}
+}
+
+func TestIsDuplicateColumnErr(t *testing.T) {
+	if isDuplicateColumnErr(nil) {
+		t.Error("nil must not be treated as a duplicate-column error")
+	}
+	if !isDuplicateColumnErr(errors.New("SQL logic error: duplicate column name: blocked (1)")) {
+		t.Error("SQLite's duplicate-column error was not recognised — Init would fail on every restart")
+	}
+	if isDuplicateColumnErr(errors.New("attempt to write a readonly database")) {
+		t.Error("an unrelated error was swallowed as duplicate-column — that is the original bug")
 	}
 }

@@ -15,15 +15,15 @@ import (
 func TestSecurityHandlers_ReceiveAlert(t *testing.T) {
 	db, _, _, cleanup := setupTestDB(t)
 	defer cleanup()
-	
+
 	notify := NewNotifyQueue(db, "0000000000000000000000000000000000000000000000000000000000000000")
 	h := NewSecurityHandlers(db, nil, nil, notify)
 
 	alert := models.InternalAlert{
 		EventType: "test_event",
-		Message:    "test message",
-		Level:      "info",
-		Details:    map[string]any{"foo": "bar"},
+		Message:   "test message",
+		Level:     "info",
+		Details:   map[string]any{"foo": "bar"},
 	}
 	body, _ := json.Marshal(alert)
 	r := httptest.NewRequest("POST", "/api/internal/alert", bytes.NewBuffer(body))
@@ -62,7 +62,7 @@ func TestSecurityHandlers_ClearRateLimit(t *testing.T) {
 	r := httptest.NewRequest("DELETE", "/api/security/rate-limits/1.1.1.1", nil)
 	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 	w := httptest.NewRecorder()
-	
+
 	// Should be 404 because no active rate limit for 1.1.1.1
 	h.ClearRateLimit(w, r)
 	if w.Code != http.StatusNotFound {
