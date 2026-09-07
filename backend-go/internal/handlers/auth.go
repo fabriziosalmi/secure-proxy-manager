@@ -68,10 +68,10 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 
 	username, _, err := h.svc.Authenticate(tmpR)
 	if err != nil {
-		clientAddr := r.Header.Get("X-Forwarded-For")
-		if clientAddr == "" {
-			clientAddr = r.RemoteAddr
-		}
+		// Use the same trusted-peer policy as the rate limiter rather than the
+		// raw header: an attacker who can set X-Forwarded-For would otherwise
+		// choose the address the operator sees in the alert (SECURE-AUTH-03).
+		clientAddr := auth.ClientIP(r)
 
 		if err.Error() == "too many failed attempts, try again later" {
 			h.alertLoginFailure(req.Username, clientAddr, "rate_limited")
@@ -143,11 +143,24 @@ func (h *AuthHandlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
+	var revokeErr error
 	if strings.HasPrefix(authHeader, "Bearer ") && len(authHeader) > 7 {
-		h.svc.RevokeJWT(authHeader[7:])
+		revokeErr = h.svc.RevokeJWT(authHeader[7:])
 	}
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
 	database.Audit(h.db, username, "logout", "", "")
+
+	// The token is revoked in this process either way, but if the revocation
+	// could not be persisted it becomes valid again after a restart. Logout
+	// exists so a user on a shared or compromised machine can rely on it, so
+	// say so rather than returning an unqualified success (SECURE-ERR-03).
+	if revokeErr != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"status": "error",
+			"detail": "token could not be revoked durably — it may remain valid until it expires; change your password if this session may be compromised",
+		})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Logged out successfully"})
 }
 

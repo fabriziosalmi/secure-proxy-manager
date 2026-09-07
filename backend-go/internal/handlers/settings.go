@@ -49,20 +49,31 @@ func (h *SettingsHandlers) GetAll(w http.ResponseWriter, r *http.Request) {
 	type settingRow struct {
 		Name  string `json:"setting_name"`
 		Value string `json:"setting_value"`
+		// DecryptFailed marks a sensitive value that could not be decrypted
+		// (wrong or rotated key). The UI must render it as unreadable and must
+		// not submit it back, or the Save would overwrite the secret.
+		DecryptFailed bool `json:"decrypt_failed,omitempty"`
 	}
 	var settings []settingRow
 	for rows.Next() {
 		var k, v string
 		rows.Scan(&k, &v) //nolint:errcheck
 		// Decrypt sensitive settings transparently.
+		decryptFailed := false
 		if appcrypto.IsSensitive(k) {
 			if dec, err := appcrypto.Decrypt(v, h.cfg.EncryptionKey); err == nil {
 				v = dec
 			} else {
-				log.Warn().Str("key", k).Err(err).Msg("failed to decrypt setting, returning raw")
+				// Returning the raw enc:: blob would put ciphertext in the form
+				// field; the next Save would re-encrypt it as if it were the
+				// plaintext, destroying the secret irrecoverably. Return an
+				// empty value and flag it instead (SECURE-ERR-06).
+				log.Error().Str("key", k).Err(err).Msg("failed to decrypt setting — returning empty and flagging")
+				v = ""
+				decryptFailed = true
 			}
 		}
-		settings = append(settings, settingRow{Name: k, Value: v})
+		settings = append(settings, settingRow{Name: k, Value: v, DecryptFailed: decryptFailed})
 	}
 	if settings == nil {
 		settings = []settingRow{} // never return null
@@ -89,11 +100,16 @@ func (h *SettingsHandlers) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	val := body.Value
 	if appcrypto.IsSensitive(name) && val != "" {
-		if enc, err := appcrypto.Encrypt(val, h.cfg.EncryptionKey); err == nil {
-			val = enc
-		} else {
-			log.Warn().Str("key", name).Err(err).Msg("failed to encrypt setting")
+		enc, err := appcrypto.Encrypt(val, h.cfg.EncryptionKey)
+		if err != nil {
+			// Refuse rather than downgrade. Storing a value the project itself
+			// classifies as sensitive in cleartext, and reporting success, is
+			// worse than failing the write (SECURE-ERR-04).
+			log.Error().Str("key", name).Err(err).Msg("refusing to store sensitive setting: encryption failed")
+			writeError(w, http.StatusInternalServerError, "encryption unavailable — sensitive setting not saved")
+			return
 		}
+		val = enc
 	}
 	_, err := h.db.Exec(
 		"INSERT INTO settings(setting_name,setting_value) VALUES(?,?) ON CONFLICT(setting_name) DO UPDATE SET setting_value=excluded.setting_value",

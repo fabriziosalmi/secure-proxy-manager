@@ -36,11 +36,11 @@ type Config struct {
 	DNSLogPath   string
 
 	// Internal component URLs (for WAF/Proxy communication)
-	WAFURL          string
-	WAFServiceUser  string // dedicated service credential for WAF management API
-	WAFServicePass  string // separate from AdminPassword so password changes don't break WAF calls
-	ProxyURL        string
-	GeoIPURL        string
+	WAFURL         string
+	WAFServiceUser string // dedicated service credential for WAF management API
+	WAFServicePass string // separate from AdminPassword so password changes don't break WAF calls
+	ProxyURL       string
+	GeoIPURL       string
 
 	// Encryption key for sensitive settings (hex-encoded 32 bytes)
 	EncryptionKey string
@@ -95,11 +95,11 @@ func Load() *Config {
 		// single-credential deployments work unchanged. Set the WAF_SERVICE_*
 		// vars to a dedicated service account to decouple the human admin
 		// password from inter-service auth (e.g. after an admin password change).
-		WAFServiceUser:     envOrDefault("WAF_SERVICE_USERNAME", username),
-		WAFServicePass:     envOrDefault("WAF_SERVICE_PASSWORD", password),
-		ProxyURL:           envOrDefault("PROXY_URL", "http://proxy:3128"),
-		GeoIPURL:           envOrDefault("GEOIP_URL", ""), // Empty means use defaults
-		EncryptionKey:      loadOrGenerateEncKey(),
+		WAFServiceUser: envOrDefault("WAF_SERVICE_USERNAME", username),
+		WAFServicePass: envOrDefault("WAF_SERVICE_PASSWORD", password),
+		ProxyURL:       envOrDefault("PROXY_URL", "http://proxy:3128"),
+		GeoIPURL:       envOrDefault("GEOIP_URL", ""), // Empty means use defaults
+		EncryptionKey:  loadOrGenerateEncKey(),
 	}
 	return cfg
 }
@@ -180,9 +180,32 @@ func envOrDefault(key, def string) string {
 	return def
 }
 
+// encryptionKeyError returns a non-nil error if an operator-supplied
+// ENCRYPTION_KEY is not exactly 32 bytes of hex. Split out from the fatal
+// wrapper so the policy is unit-testable without os.Exit, mirroring
+// secretKeyStrengthError.
+func encryptionKeyError(key string) error {
+	raw, err := hex.DecodeString(key)
+	if err != nil {
+		return fmt.Errorf("ENCRYPTION_KEY is not valid hex (%d chars) — generate one with `openssl rand -hex 32`", len(key))
+	}
+	if len(raw) != 32 {
+		return fmt.Errorf("ENCRYPTION_KEY must decode to 32 bytes, got %d (%d hex chars) — generate one with `openssl rand -hex 32`", len(raw), len(key))
+	}
+	return nil
+}
+
 // loadOrGenerateEncKey reads the encryption key from env → file → auto-generate.
 func loadOrGenerateEncKey() string {
-	if s := os.Getenv("ENCRYPTION_KEY"); s != "" && len(s) == 64 {
+	// A key the operator explicitly supplied is either used or refused; it is
+	// never silently discarded in favour of a generated one. Falling through
+	// would encrypt under a key they do not hold, making their restore plan
+	// fail, or generate and persist a new one so that correcting the variable
+	// later renders every existing value undecryptable (SECURE-CONF-01).
+	if s := os.Getenv("ENCRYPTION_KEY"); s != "" {
+		if err := encryptionKeyError(s); err != nil {
+			log.Fatal().Msg(err.Error())
+		}
 		return s
 	}
 	const encFile = "/data/.enc_key"

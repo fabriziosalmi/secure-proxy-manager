@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -49,6 +50,11 @@ type Service struct {
 
 	wsTokenMu sync.Mutex
 	wsTokens  map[string]wsEntry
+
+	// blacklistUnavailable is set when the revocation store could not be
+	// created or read at startup. An unreadable revocation list must not be
+	// read as "nothing is revoked" — see ValidateJWT (SECURE-ERR-02).
+	blacklistUnavailable atomic.Bool
 }
 
 type wsEntry struct {
@@ -66,35 +72,48 @@ func NewService(cfg *config.Config, db *sql.DB) *Service {
 		attempts:     make(map[string][]time.Time),
 		wsTokens:     make(map[string]wsEntry),
 	}
-	svc.initBlacklistTable()
-	svc.loadBlacklistFromDB()
+	if err := svc.initBlacklistTable(); err != nil {
+		log.Error().Err(err).Msg("jwt_blacklist table unavailable — bearer tokens issued before this start will be refused")
+		svc.blacklistUnavailable.Store(true)
+	} else if err := svc.loadBlacklistFromDB(); err != nil {
+		log.Error().Err(err).Msg("JWT blacklist could not be loaded — bearer tokens issued before this start will be refused")
+		svc.blacklistUnavailable.Store(true)
+	}
 	go svc.cleanupLoop()
 	return svc
 }
 
+// startedAt marks the boundary used when the revocation store is unavailable:
+// a token issued before the process started cannot be checked against the
+// blacklist, so it is refused rather than trusted.
+// Truncated to the second because a JWT "iat" claim is integer seconds: an
+// untruncated startedAt is later than the iat of a token issued in the same
+// second, which would refuse a token this process had just issued.
+var startedAt = time.Now().Truncate(time.Second)
+
 // initBlacklistTable creates the jwt_blacklist table if it doesn't exist.
-func (s *Service) initBlacklistTable() {
+func (s *Service) initBlacklistTable() error {
 	if s.db == nil {
-		return
+		return nil
 	}
 	_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS jwt_blacklist (
 		token_hash TEXT PRIMARY KEY,
 		expires_at TEXT NOT NULL
 	)`)
 	if err != nil {
-		log.Warn().Err(err).Msg("failed to create jwt_blacklist table")
+		return fmt.Errorf("create jwt_blacklist table: %w", err)
 	}
+	return nil
 }
 
 // loadBlacklistFromDB restores revoked tokens from the database on startup.
-func (s *Service) loadBlacklistFromDB() {
+func (s *Service) loadBlacklistFromDB() error {
 	if s.db == nil {
-		return
+		return nil
 	}
 	rows, err := s.db.Query("SELECT token_hash, expires_at FROM jwt_blacklist WHERE expires_at > datetime('now')")
 	if err != nil {
-		log.Warn().Err(err).Msg("failed to load JWT blacklist from DB")
-		return
+		return fmt.Errorf("query jwt_blacklist: %w", err)
 	}
 	defer rows.Close()
 	s.jwtBlacklistMu.Lock()
@@ -107,7 +126,11 @@ func (s *Service) loadBlacklistFromDB() {
 			}
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("scan jwt_blacklist: %w", err)
+	}
 	log.Info().Int("count", len(s.jwtBlacklist)).Msg("JWT blacklist loaded from DB")
+	return nil
 }
 
 // HashPassword produces a bcrypt hash of plaintext.
@@ -167,6 +190,11 @@ func (s *Service) ValidateRefreshToken(tokenStr string) (string, error) {
 	if tokenType != "refresh" {
 		return "", errors.New("not a refresh token")
 	}
+	if s.blacklistUnavailable.Load() {
+		if iat, err := claims.GetIssuedAt(); err != nil || iat == nil || iat.Time.Before(startedAt) {
+			return "", errors.New("revocation store unavailable — re-authenticate")
+		}
+	}
 	username, _ := claims["sub"].(string)
 	if username == "" {
 		return "", errors.New("missing subject")
@@ -195,6 +223,16 @@ func (s *Service) ValidateJWT(tokenStr string) (string, error) {
 	// authenticate API requests. Refresh tokens go through ValidateRefreshToken.
 	if t, _ := claims["type"].(string); t == "refresh" {
 		return "", errors.New("refresh token not accepted on access path")
+	}
+
+	// Fail closed when the revocation store is unavailable. An empty blacklist
+	// is indistinguishable from "nothing was ever revoked", so a token that
+	// predates this process cannot be shown to be un-revoked and is refused;
+	// tokens issued since startup are known to this process (SECURE-ERR-02).
+	if s.blacklistUnavailable.Load() {
+		if iat, err := claims.GetIssuedAt(); err != nil || iat == nil || iat.Time.Before(startedAt) {
+			return "", errors.New("revocation store unavailable — re-authenticate")
+		}
 	}
 
 	// Check revocation AFTER signature validation so we don't leak state about
@@ -243,26 +281,32 @@ func (s *Service) tokenExpiry(tokenStr string) time.Time {
 // persistRevocation writes a blacklisted token hash to the DB for restart
 // survival. Failure is non-fatal (revocation still works in-memory until
 // restart) but is logged so operators can detect in-memory/DB divergence.
-func (s *Service) persistRevocation(h string, exp time.Time) {
+func (s *Service) persistRevocation(h string, exp time.Time) error {
 	if s.db == nil {
-		return
+		return nil
 	}
 	if _, err := s.db.Exec(
 		"INSERT OR REPLACE INTO jwt_blacklist(token_hash, expires_at) VALUES(?,?)",
 		h, exp.Format(time.RFC3339),
 	); err != nil {
 		log.Warn().Err(err).Msg("failed to persist revoked JWT to blacklist DB — revocation will not survive restart")
+		return fmt.Errorf("persist revocation: %w", err)
 	}
+	return nil
 }
 
 // RevokeJWT adds a token to the blacklist (in memory + DB).
-func (s *Service) RevokeJWT(tokenStr string) {
+// RevokeJWT blacklists a token in memory and persists it. It returns an error
+// when the revocation could not be persisted: the token is refused by THIS
+// process but would be accepted again after a restart, so the caller must not
+// report an unqualified success (SECURE-ERR-03).
+func (s *Service) RevokeJWT(tokenStr string) error {
 	exp := s.tokenExpiry(tokenStr)
 	h := tokenHash(tokenStr)
 	s.jwtBlacklistMu.Lock()
 	s.jwtBlacklist[h] = exp
 	s.jwtBlacklistMu.Unlock()
-	s.persistRevocation(h, exp)
+	return s.persistRevocation(h, exp)
 }
 
 // RevokeJWTOnce atomically blacklists a token and reports whether THIS call was
@@ -280,7 +324,9 @@ func (s *Service) RevokeJWTOnce(tokenStr string) bool {
 	}
 	s.jwtBlacklist[h] = exp
 	s.jwtBlacklistMu.Unlock()
-	s.persistRevocation(h, exp)
+	if err := s.persistRevocation(h, exp); err != nil {
+		log.Warn().Err(err).Msg("refresh-token rotation: revocation not persisted")
+	}
 	return true
 }
 
@@ -497,6 +543,12 @@ func trustedProxy(remoteAddr string) bool {
 	}
 	return false
 }
+
+// ClientIP is the exported form of clientIP, so callers outside this package
+// (the login handler's alerting path) derive the client address through the
+// same trusted-peer policy as the rate limiter instead of reading the raw
+// header (SECURE-AUTH-03).
+func ClientIP(r *http.Request) string { return clientIP(r) }
 
 func clientIP(r *http.Request) string {
 	// Only trust X-Forwarded-For from known reverse proxies (nginx, Docker network)

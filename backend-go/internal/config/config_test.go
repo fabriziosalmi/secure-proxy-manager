@@ -83,3 +83,40 @@ func TestSecretKeyStrengthError(t *testing.T) {
 		}
 	}
 }
+
+// SECURE-CONF-01: an operator-supplied ENCRYPTION_KEY must be validated, never
+// silently discarded in favour of a generated one.
+func TestEncryptionKeyError(t *testing.T) {
+	valid := strings.Repeat("ab", 32) // 64 hex chars -> 32 bytes
+	cases := []struct {
+		name    string
+		key     string
+		wantErr bool
+	}{
+		{"valid 32-byte hex", valid, false},
+		{"truncated by one", valid[:63], true},
+		{"one char too long", valid + "c", true},
+		{"right length, not hex", strings.Repeat("z", 64), true},
+		{"empty", "", true},
+		{"16 bytes", strings.Repeat("ab", 16), true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := encryptionKeyError(tc.key); (err != nil) != tc.wantErr {
+				t.Errorf("encryptionKeyError(%d chars) error = %v, wantErr %v", len(tc.key), err, tc.wantErr)
+			}
+		})
+	}
+}
+
+// SECURE-CONF-01 (wiring): a valid operator-supplied ENCRYPTION_KEY must be
+// returned as-is. The finding was that a key failing the length test was
+// silently discarded in favour of a file or a generated key, so the positive
+// path is what proves the env value is honoured rather than dropped.
+func TestLoadOrGenerateEncKeyHonoursSuppliedKey(t *testing.T) {
+	want := strings.Repeat("ab", 32)
+	t.Setenv("ENCRYPTION_KEY", want)
+	if got := loadOrGenerateEncKey(); got != want {
+		t.Errorf("supplied ENCRYPTION_KEY was not used: got %q (len %d), want the supplied key", got, len(got))
+	}
+}

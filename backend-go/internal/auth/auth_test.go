@@ -2,11 +2,15 @@ package auth
 
 import (
 	"net/http/httptest"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 )
 
 // RevokeJWTOnce must let exactly one caller consume a given token even under
@@ -163,7 +167,7 @@ func TestRateLimit(t *testing.T) {
 	_, _, _ = s.Authenticate(r)
 	// 2nd fail
 	_, _, _ = s.Authenticate(r)
-	
+
 	// 3rd attempt should be blocked
 	_, _, err := s.Authenticate(r)
 	if err == nil || err.Error() != "too many failed attempts, try again later" {
@@ -203,5 +207,104 @@ func TestTrustedProxy(t *testing.T) {
 	}
 	if trustedProxy("8.8.8.8:1234") {
 		t.Error("8.8.8.8 should not be trusted")
+	}
+}
+
+// SECURE-ERR-02: an unreadable revocation store must not be read as "nothing is
+// revoked". A token that predates this process cannot be checked against the
+// blacklist, so it must be refused rather than trusted.
+func TestValidateJWTFailsClosedWhenBlacklistUnavailable(t *testing.T) {
+	cfg := &config.Config{
+		SecretKey:         "super-secret-key-for-testing-1234567",
+		JWTExpireDuration: 1 * time.Hour,
+	}
+	svc := NewService(cfg, nil)
+
+	tok, err := svc.IssueJWT("admin")
+	if err != nil {
+		t.Fatalf("IssueJWT: %v", err)
+	}
+	if _, err := svc.ValidateJWT(tok); err != nil {
+		t.Fatalf("token issued after startup must validate: %v", err)
+	}
+
+	// Simulate the store being unavailable at boot.
+	svc.blacklistUnavailable.Store(true)
+
+	// A token issued after this process started is still known to it.
+	if _, err := svc.ValidateJWT(tok); err != nil {
+		t.Errorf("post-start token should still validate, got %v", err)
+	}
+
+	// A token that predates startup cannot be checked and must be refused.
+	old := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":  "admin",
+		"type": "access",
+		"iat":  startedAt.Add(-time.Hour).Unix(),
+		"exp":  time.Now().Add(time.Hour).Unix(),
+	})
+	oldStr, err := old.SignedString([]byte(cfg.SecretKey))
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	if _, err := svc.ValidateJWT(oldStr); err == nil {
+		t.Error("pre-start token was accepted while the revocation store was unavailable — fail-open")
+	}
+}
+
+// SECURE-ERR-03: a revocation that cannot be persisted must be reported, not
+// swallowed, so the caller does not promise a logout it cannot keep.
+func TestRevokeJWTReportsPersistFailure(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "auth.db")
+	db, err := database.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	svc := NewService(&config.Config{
+		SecretKey:         "super-secret-key-for-testing-1234567",
+		JWTExpireDuration: 1 * time.Hour,
+	}, db)
+
+	tok, err2 := svc.IssueJWT("admin")
+	if err2 != nil {
+		t.Fatalf("IssueJWT: %v", err2)
+	}
+	if err := svc.RevokeJWT(tok); err != nil {
+		t.Fatalf("healthy revoke should succeed: %v", err)
+	}
+
+	// Drop the table out from under it: the write now fails.
+	if _, err := db.Exec("DROP TABLE jwt_blacklist"); err != nil {
+		t.Fatalf("drop: %v", err)
+	}
+	tok2, _ := svc.IssueJWT("admin")
+	if err := svc.RevokeJWT(tok2); err == nil {
+		t.Error("RevokeJWT returned nil when the revocation could not be persisted")
+	}
+}
+
+// SECURE-ERR-02 (refresh path): the same fail-closed guard must apply to
+// refresh tokens, which are long-lived and therefore the more valuable replay.
+func TestValidateRefreshTokenFailsClosedWhenBlacklistUnavailable(t *testing.T) {
+	cfg := &config.Config{
+		SecretKey:         "super-secret-key-for-testing-1234567",
+		JWTExpireDuration: 1 * time.Hour,
+	}
+	svc := NewService(cfg, nil)
+	svc.blacklistUnavailable.Store(true)
+
+	old := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":  "admin",
+		"type": "refresh",
+		"iat":  startedAt.Add(-time.Hour).Unix(),
+		"exp":  time.Now().Add(24 * time.Hour).Unix(),
+	})
+	oldStr, err := old.SignedString([]byte(cfg.SecretKey))
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	if _, err := svc.ValidateRefreshToken(oldStr); err == nil {
+		t.Error("pre-start refresh token was accepted while the revocation store was unavailable — fail-open")
 	}
 }
