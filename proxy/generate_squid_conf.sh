@@ -631,3 +631,13 @@ fi
 [ -f /config/domain_blacklist.txt ] && cp /config/domain_blacklist.txt /etc/squid/blacklists/domain/local.txt
 [ -f /config/dst_allow_ip.txt ]     && cp /config/dst_allow_ip.txt /etc/squid/allowlists/dst_ip/local.txt
 [ -f /config/dst_allow_domain.txt ] && cp /config/dst_allow_domain.txt /etc/squid/allowlists/dst_domain/local.txt
+
+# Exit status must reflect whether the CONFIG was generated, not whether the
+# last optional file happened to exist. Without this the script exited 1
+# whenever /config/dst_allow_domain.txt was absent — the normal case on a fresh
+# install and whenever the egress allowlist is empty — because the final
+# `[ -f ... ] && cp` short-circuits and its test result becomes the exit status.
+# Callers that check the return code (the watchdog now refuses to reconfigure
+# on a failed generation, SECURE-ERR-07) would otherwise treat every successful
+# run as a failure and never apply a change.
+exit 0

@@ -152,6 +152,24 @@ jobs:
       - name: Lint the shell that builds the data plane
         run: shellcheck --severity=warning proxy/*.sh deploy/*.sh scripts/*.sh tests/*.sh
 
+  # ── 5d. Squid config generation (fixture tests) ───────────────────────
+  # SECURE-TEST-01, second half. shellcheck catches shape; this catches
+  # behaviour. It runs the real generator inside the real proxy image against
+  # fixture /config states and asserts on the squid.conf produced — including
+  # that squid itself parses it, that the egress fail-closed rule lands exactly
+  # once, and that a hostile /config cannot become squid configuration.
+  #
+  # Writing it immediately found a live bug: the generator exited 1 whenever
+  # /config/dst_allow_domain.txt was absent (the normal case), because the
+  # final `[ -f ... ] && cp` short-circuit became the exit status.
+  test-squid-config:
+    name: Squid config generation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Generate squid.conf against fixture /config states
+        run: bash tests/shell/generate_squid_conf_test.sh
+
   # ── 6. Security scanning (gosec) ─────────────────────────────────────
   security-scan:
     name: Security scanning
