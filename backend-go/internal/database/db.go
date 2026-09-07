@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -275,7 +276,16 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 }
 
 // ExportBlacklistsToFiles writes the live blacklist tables to flat files used by Squid and dnsmasq.
+// exportMu serialises ExportBlacklistsToFiles. Four contexts call it — the
+// detached propagate goroutines, the blacklist-refresh worker and two
+// maintenance handlers — and the six files it writes are consumed together, so
+// they must be published as one consistent set rather than interleaved between
+// two concurrent exports (SECURE-CONC-01).
+var exportMu sync.Mutex
+
 func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
+	exportMu.Lock()
+	defer exportMu.Unlock()
 	// 1. ip_blacklist.txt
 	if err := exportLines(db, configDir+"/ip_blacklist.txt",
 		"SELECT ip FROM ip_blacklist ORDER BY ip"); err != nil {
@@ -313,22 +323,47 @@ func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
 // atomicWrite writes content to a temp file then renames to target path.
 // Prevents torn reads by Squid/dnsmasq during concurrent writes.
 func atomicWrite(path string, writeFn func(f *os.File) error) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	// #nosec G304
-	f, err := os.Create(tmp)
+	// A UNIQUE temp file per writer, not path+".tmp". With a fixed name, a
+	// second exporter's os.Create (O_TRUNC) reset the first one's file to zero
+	// length while its handle was still open at its own offset, and whichever
+	// renamed first published a short or NUL-padded ACL straight to Squid
+	// (SECURE-CONC-01).
+	f, err := os.CreateTemp(dir, filepath.Base(path)+".tmp*")
 	if err != nil {
 		return err
 	}
+	tmp := f.Name()
+	defer os.Remove(tmp) // no-op once the rename succeeds
+
 	if err := writeFn(f); err != nil {
 		f.Close()
-		os.Remove(tmp)
 		return err
 	}
-	f.Close()
-	return os.Rename(tmp, path)
+	// fsync before the rename: Close flushes to the kernel but does not force
+	// the data to disk, so on ext4 with delayed allocation a crash just after
+	// the rename could leave a present, correctly named, ZERO-LENGTH file —
+	// which Squid loads as an empty ACL and stops blocking (SECURE-DATA-05).
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return fmt.Errorf("sync %s: %w", tmp, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	// Sync the directory too, so the rename itself is durable rather than only
+	// the file contents.
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		d.Close()
+	}
+	return nil
 }
 
 func exportLines(db *sql.DB, path, query string) error {

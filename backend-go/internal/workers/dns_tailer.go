@@ -97,7 +97,7 @@ func (c *boundedDNSCache) evictLocked(now time.Time) {
 // StartDNSTailer tails the dnsmasq log and inserts blocked queries into proxy_logs.
 func StartDNSTailer(ctx context.Context, db *sql.DB, logPath, stateDir string, hub *websocket.Hub) {
 	posPath := filepath.Join(stateDir, filepath.Base(logPath)+".pos")
-	go func() {
+	track(func() {
 		offset := readOffset(posPath)
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
@@ -165,7 +165,7 @@ func StartDNSTailer(ctx context.Context, db *sql.DB, logPath, stateDir string, h
 			}
 			writeOffset(posPath, offset)
 		}
-	}()
+	})
 	log.Info().Str("path", logPath).Msg("dns tailer started")
 }
 

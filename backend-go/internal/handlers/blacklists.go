@@ -8,10 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +20,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
 type BlacklistHandlers struct {
@@ -138,7 +136,7 @@ func deleteByIDHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 			return
 		}
 		if cfg != nil {
-			go propagate(db, cfg, kindFromTable(table))
+			requestExport()
 		}
 		// Audit log
 		if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
@@ -168,7 +166,7 @@ func bulkDeleteHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 		}
 		deleted, _ := res.RowsAffected()
 		if deleted > 0 && cfg != nil {
-			go propagate(db, cfg, kindFromTable(table))
+			requestExport()
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"status": "success", "data": map[string]any{"deleted": deleted}})
 	}
@@ -184,7 +182,7 @@ func clearAllHandler(db *sql.DB, table string, cfg *config.Config, col string) h
 			return
 		}
 		if cfg != nil {
-			go propagate(db, cfg, kindFromTable(table))
+			requestExport()
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"status": "success", "message": fmt.Sprintf("Cleared %d entries", count)})
 	}
@@ -216,7 +214,7 @@ func (h *BlacklistHandlers) AddIP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	go propagate(h.db, h.cfg, "ip")
+	requestExport()
 	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
 		database.Audit(h.db, user, "add_ip_blacklist", ip, item.Description)
 	}
@@ -277,7 +275,7 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	go propagate(h.db, h.cfg, "domain")
+	requestExport()
 	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
 		database.Audit(h.db, user, "add_domain_blacklist", domain, item.Description)
 	}
@@ -314,7 +312,7 @@ func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	go propagate(h.db, h.cfg, "dst")
+	requestExport()
 	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
 		database.Audit(h.db, user, "add_egress_allowlist", entry, item.Description)
 	}
@@ -515,7 +513,7 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	added -= insertFailed
 	skipped += insertFailed
 	if added > 0 {
-		go propagate(h.db, h.cfg, blType)
+		requestExport()
 	}
 	msg := fmt.Sprintf("Successfully imported %d entries (%d skipped/invalid)", added, skipped)
 	if bogonSkipped > 0 {
@@ -676,7 +674,7 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, strings.Join(fetchErrors, "; "))
 		return
 	}
-	go propagate(h.db, h.cfg, "ip")
+	requestExport()
 	resp := map[string]any{
 		"status":  "success",
 		"message": fmt.Sprintf("Imported %d IP blocks for %d of %d countries", totalImported, importedCountries, len(req.Countries)),
@@ -737,29 +735,11 @@ func (h *BlacklistHandlers) ImportDomainLegacy(w http.ResponseWriter, r *http.Re
 
 // ── propagate ─────────────────────────────────────────────────────────────────
 
-func propagate(db *sql.DB, cfg *config.Config, kind string) {
-	if err := database.ExportBlacklistsToFiles(db, cfg.ConfigDir); err != nil {
-		log.Warn().Err(err).Msg("export blacklists failed")
-	}
-
-	// IP/domain ACL reload for Squid is handled by the proxy-side watchdog
-	// (proxy/blacklist_watchdog.py): it polls the mtime of the /config blacklist
-	// files we just exported above, copies them into Squid's ACL dir and runs
-	// `squid -k reconfigure`. There is no Squid HTTP reload endpoint — a previous
-	// POST to proxy:3128/api/reload was a dead no-op (3128 is the forward-proxy
-	// port, which has no /api/reload).
-
-	// Signal dnsmasq to reload blocklist (using shared reload-dns file)
-	if kind == "domain" || kind == "all" {
-		reloadFile := filepath.Join(cfg.ConfigDir, ".reload-dns")
-		// #nosec G306 — reload trigger, must be readable by the proxy/dns container
-		if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
-			log.Warn().Err(err).Msg("dns reload file trigger failed in propagate")
-		} else {
-			log.Info().Msg("dnsmasq reload file trigger written in propagate")
-		}
-	}
-}
+// requestExport asks the owned exporter to publish the lists. It replaces the
+// eight detached `go propagate(...)` spawns, which had no context, no owner, no
+// concurrency bound and no way to report failure, and which ran the six-file
+// export concurrently with itself (SECURE-CONC-03, SECURE-ERR-05).
+func requestExport() { workers.RequestExport() }
 
 func kindFromTable(table string) string {
 	if strings.Contains(table, "domain") {

@@ -17,11 +17,11 @@ import (
 
 // UpdateInfo holds the latest release info from GitHub.
 type UpdateInfo struct {
-	Available  bool   `json:"available"`
-	Latest     string `json:"latest,omitempty"`
-	Current    string `json:"current"`
-	URL        string `json:"url,omitempty"`
-	CheckedAt  string `json:"checked_at,omitempty"`
+	Available bool   `json:"available"`
+	Latest    string `json:"latest,omitempty"`
+	Current   string `json:"current"`
+	URL       string `json:"url,omitempty"`
+	CheckedAt string `json:"checked_at,omitempty"`
 }
 
 var (
@@ -42,7 +42,7 @@ func StartUpdateChecker(ctx context.Context, repo string) {
 		repo = "fabriziosalmi/secure-proxy-manager"
 	}
 
-	go func() {
+	track(func() {
 		// First check after 30s (let the system boot)
 		select {
 		case <-ctx.Done():
@@ -62,7 +62,7 @@ func StartUpdateChecker(ctx context.Context, repo string) {
 				check(repo)
 			}
 		}
-	}()
+	})
 
 	log.Info().Str("repo", repo).Msg("update checker started (every 6h)")
 }

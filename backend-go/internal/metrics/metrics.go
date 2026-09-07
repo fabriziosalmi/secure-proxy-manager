@@ -94,3 +94,26 @@ func (c *dbStatsCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(descWaitCnt, prometheus.CounterValue, float64(s.WaitCount))
 	ch <- prometheus.MustNewConstMetric(descWaitSecs, prometheus.CounterValue, s.WaitDuration.Seconds())
 }
+
+// Blacklist export outcome. A failed export leaves Squid enforcing a stale ACL
+// while the API reports success, so it must be alertable rather than a log line
+// (SECURE-ERR-05, SECURE-OBS-01).
+var (
+	exportTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "spm_blacklist_export_total",
+		Help: "Blacklist exports to /config, by outcome.",
+	}, []string{"outcome"})
+	exportLastSuccess = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "spm_blacklist_export_last_success_timestamp_seconds",
+		Help: "Unix timestamp of the last successful blacklist export.",
+	})
+)
+
+// ExportSuccess records a successful export.
+func ExportSuccess() {
+	exportTotal.WithLabelValues("success").Inc()
+	exportLastSuccess.SetToCurrentTime()
+}
+
+// ExportFailure records a failed export.
+func ExportFailure() { exportTotal.WithLabelValues("failure").Inc() }

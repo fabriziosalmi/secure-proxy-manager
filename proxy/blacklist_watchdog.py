@@ -19,8 +19,10 @@ squid-supervisor.conf (rather than generated at runtime) so supervisord always
 picks it up on a fresh boot.
 """
 import os
+import shutil
 import socket
 import subprocess
+import tempfile
 import time
 
 # (source in /config written by the backend, destination Squid reads)
@@ -67,9 +69,45 @@ def resolved_ips():
     return ",".join(ips)
 
 
-def main():
-    import shutil
+def atomic_copy(src, dst):
+    """Copy src onto dst without dst ever being observed partially written.
 
+    shutil.copy2 opens the destination with 'wb', truncating it, then streams —
+    so a `squid -k reconfigure` landing mid-stream loaded a truncated blacklist,
+    and a kill mid-stream left one on disk permanently. Writing to a temporary
+    file in the same directory and renaming makes the swap atomic
+    (SECURE-DATA-03).
+    """
+    d = os.path.dirname(dst) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=os.path.basename(dst) + ".tmp")
+    try:
+        with os.fdopen(fd, "wb") as out, open(src, "rb") as inp:
+            shutil.copyfileobj(inp, out)
+            out.flush()
+            os.fsync(out.fileno())
+        shutil.copystat(src, tmp)
+        os.replace(tmp, dst)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def squid_config_ok():
+    """Whether squid accepts the current config. Used as a gate before
+    reconfigure, so an unparsable ACL set is refused rather than loaded."""
+    try:
+        res = subprocess.run(["/usr/sbin/squid", "-k", "parse"],
+                             capture_output=True, timeout=15)
+        return res.returncode == 0
+    except Exception as exc:  # noqa: BLE001
+        print(f"[watchdog] squid -k parse failed to run: {exc}", flush=True)
+        return False
+
+
+def main():
     mtimes = {src: mtime(src) for src, _ in PAIRS}
     mtimes["/config/.reload-squid"] = mtime("/config/.reload-squid")
     mtimes["/config/.clear-cache"] = mtime("/config/.clear-cache")
@@ -152,9 +190,20 @@ def main():
                     # Run the configuration generator script
                     gen_res = subprocess.run(["/usr/local/bin/generate_squid_conf.sh"], capture_output=True, timeout=30)
                     print(f"[watchdog] generate_squid_conf.sh rc={gen_res.returncode}", flush=True)
-                    # Reconfigure Squid
-                    rec_res = subprocess.run(["/usr/sbin/squid", "-k", "reconfigure"], capture_output=True, timeout=10)
-                    print(f"[watchdog] squid reconfigure rc={rec_res.returncode}", flush=True)
+                    # A failed generation leaves squid.conf part-mutated — the
+                    # base was already copied over it, so the egress
+                    # default-deny may be missing. Applying that is a fail-OPEN.
+                    # Keep the running config instead (SECURE-ERR-07).
+                    if gen_res.returncode != 0:
+                        print("[watchdog] generation FAILED — keeping the running config, not reconfiguring",
+                              flush=True)
+                        print(gen_res.stderr.decode("utf-8", "replace")[:2000], flush=True)
+                    elif not squid_config_ok():
+                        print("[watchdog] generated config does not parse — refusing to reconfigure",
+                              flush=True)
+                    else:
+                        rec_res = subprocess.run(["/usr/sbin/squid", "-k", "reconfigure"], capture_output=True, timeout=10)
+                        print(f"[watchdog] squid reconfigure rc={rec_res.returncode}", flush=True)
                 except Exception as exc:
                     print(f"[watchdog] reload error: {exc}", flush=True)
 
@@ -178,14 +227,20 @@ def main():
         for src, dst in PAIRS:
             mt = mtime(src)
             if mt != mtimes[src]:
-                mtimes[src] = mt
                 if os.path.exists(src):
                     try:
-                        shutil.copy2(src, dst)
+                        atomic_copy(src, dst)
+                        # Record the mtime only AFTER a successful copy. Setting
+                        # it first meant a transient failure was never retried:
+                        # the next poll saw no change and Squid kept enforcing a
+                        # truncated or stale ACL indefinitely (SECURE-DATA-03).
+                        mtimes[src] = mt
                         changed = True
                         print(f"[watchdog] synced {src} -> {dst}", flush=True)
                     except OSError as exc:
-                        print(f"[watchdog] copy failed: {exc}", flush=True)
+                        print(f"[watchdog] copy failed, will retry: {exc}", flush=True)
+                else:
+                    mtimes[src] = mt
 
         if changed:
             try:

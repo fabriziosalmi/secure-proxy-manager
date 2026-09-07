@@ -137,6 +137,10 @@ func run() error {
 	workers.StartDNSTailer(workerCtx, db, cfg.DNSLogPath, filepath.Dir(cfg.DatabasePath), hub)
 	workers.StartLogRetention(workerCtx, db)
 	workers.StartBlacklistRefresh(workerCtx, db, cfg.ConfigDir)
+	// Owns the blacklist export: coalesces concurrent requests, is bound to the
+	// worker context so shutdown can stop it, and reports failure as a metric
+	// (SECURE-CONC-03, SECURE-ERR-05).
+	workers.StartExporter(workerCtx, db, cfg.ConfigDir)
 	workers.StartUpdateChecker(workerCtx, "")
 	workers.CheckSquidCVEs()
 
@@ -285,12 +289,30 @@ func run() error {
 
 	<-quit
 	log.Info().Msg("shutdown signal received")
-	workerCancel() // stop background workers first
+
+	// Drain the HTTP server FIRST, so in-flight requests finish while the
+	// workers they may depend on are still running. Cancelling the workers
+	// first — as this did — meant a request still being served for up to five
+	// more seconds ran against stopped workers (SECURE-CONC-02).
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error().Err(err).Msg("shutdown error")
 	}
+
+	// Then stop the workers and actually WAIT for them. workerCancel only
+	// closes a channel; without the wait the process could exit with a tailer
+	// holding a read-but-uncommitted batch, losing it with no record.
+	workerCancel()
+	drained := make(chan struct{})
+	go func() { workers.Wait(); close(drained) }()
+	select {
+	case <-drained:
+		log.Info().Msg("background workers drained")
+	case <-time.After(5 * time.Second):
+		log.Warn().Msg("background workers did not drain within 5s — exiting anyway")
+	}
+
 	log.Info().Msg("shutdown complete")
 	return nil
 }
