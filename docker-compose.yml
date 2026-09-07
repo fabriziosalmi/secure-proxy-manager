@@ -61,10 +61,15 @@ services:
     # Port 1344 (ICAP) is internal only — not exposed on the host
     volumes:
       - ./config:/config:ro
-      - ./data:/data:ro
+      # NOTE: ./data is deliberately NOT mounted here. It holds .jwt_secret (the
+      # key that signs every session token), .enc_key (which decrypts every
+      # stored notification credential) and proxy_manager.db. The WAF is the
+      # component that parses attacker-controlled request bodies, so it is the
+      # last container that should be able to read them. Its only reference to
+      # /data was the trafficLogPath default, which WAF_TRAFFIC_LOG_PATH below
+      # overrides onto the dedicated volume.
       # Dedicated writable volume for the traffic feature log, so it persists
-      # across restarts and stays off the memory-backed /tmp tmpfs while /data
-      # stays read-only (issue #112).
+      # across restarts and stays off the memory-backed /tmp tmpfs (issue #112).
       - waf-traffic:/var/lib/waf
     environment:
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
@@ -212,7 +217,12 @@ services:
       - "${PROXY_BIND_IP:-0.0.0.0}:3128:3128"
     volumes:
       - ./config:/config
-      - ./data:/data:ro
+      # NOTE: ./data is deliberately NOT mounted here. Nothing in the proxy
+      # image references /data — not startup.sh, generate_squid_conf.sh, the
+      # watchdog, squid.conf or the supervisor config — while the directory
+      # holds .jwt_secret, .enc_key and the database. Squid is the
+      # internet-facing data plane and runs with a broad capability set, so
+      # it is the last container that should be able to read them.
       - ./logs:/var/log/squid
       - squid-cache:/var/spool/squid
     depends_on:

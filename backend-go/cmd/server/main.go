@@ -100,6 +100,25 @@ func run() error {
 		return err
 	}
 
+	// Reconcile the exported /config lists against the database before serving.
+	//
+	// The export is otherwise only a side effect of a mutation, performed by a
+	// detached goroutine AFTER the handler has already returned 200. A crash in
+	// that window — SIGKILL, OOM, host reboot, a container recreate — leaves the
+	// row committed and the exported file stale, and nothing ever compares them
+	// again: the UI lists the entry as blocked, Squid never blocks it, and the
+	// divergence persists until the same list is mutated again or the (optional)
+	// auto-refresh worker happens to fire. For a product whose function is
+	// blocking, that is a silent, indefinite fail-open on the primary control.
+	//
+	// Fatal rather than a warning: if /config is unwritable the proxy would be
+	// enforcing rules that no longer match the database, and refusing to start is
+	// the only outcome that cannot be mistaken for working.
+	if err := database.ExportBlacklistsToFiles(db, cfg.ConfigDir); err != nil {
+		return fmt.Errorf("startup blacklist export to %s: %w", cfg.ConfigDir, err)
+	}
+	log.Info().Str("config_dir", cfg.ConfigDir).Msg("blacklists exported at startup (db → /config reconciled)")
+
 	// Load bcrypt hash from DB so auth uses it instead of plaintext env-var.
 	var dbHash string
 	if err := db.QueryRow("SELECT password FROM users WHERE username = ?", cfg.AdminUsername).Scan(&dbHash); err == nil && dbHash != "" {

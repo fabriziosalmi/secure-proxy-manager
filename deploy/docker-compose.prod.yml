@@ -57,8 +57,16 @@ services:
     image: ghcr.io/fabriziosalmi/secure-proxy-manager-waf:latest
     volumes:
       - ./config:/config:ro
-      - ./data:/data:ro
+      # NOTE: ./data is deliberately NOT mounted here — see the comment in the
+      # dev compose. It holds .jwt_secret, .enc_key and the database, and the
+      # WAF has no code that reads any of them.
+      # Dedicated writable volume for the traffic feature log, matching the dev
+      # compose. Previously prod set neither this volume nor WAF_TRAFFIC_LOG_PATH,
+      # so the log fell back to the memory-backed /tmp tmpfs (capped at 16MB) and
+      # every event-ID forensic record was lost on each restart.
+      - waf-traffic:/var/lib/waf
     environment:
+      - WAF_TRAFFIC_LOG_PATH=${WAF_TRAFFIC_LOG_PATH:-/var/lib/waf/waf_traffic.jsonl}
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
       - WAF_BLOCK_THRESHOLD=${WAF_BLOCK_THRESHOLD:-10}
@@ -193,7 +201,12 @@ services:
       - "${PROXY_BIND_IP:-0.0.0.0}:3128:3128"
     volumes:
       - ./config:/config
-      - ./data:/data:ro
+      # NOTE: ./data is deliberately NOT mounted here. Nothing in the proxy
+      # image references /data — not startup.sh, generate_squid_conf.sh, the
+      # watchdog, squid.conf or the supervisor config — while the directory
+      # holds .jwt_secret, .enc_key and the database. Squid is the
+      # internet-facing data plane and runs with a broad capability set, so
+      # it is the last container that should be able to read them.
       - ./logs:/var/log/squid
       - squid-cache:/var/spool/squid
     depends_on:
@@ -310,6 +323,8 @@ networks:
 
 volumes:
   squid-cache:
+    driver: local
+  waf-traffic:
     driver: local
   tailscale-data:
     driver: local

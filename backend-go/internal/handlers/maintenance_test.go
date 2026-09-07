@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -109,6 +111,27 @@ func TestMaintenanceHandlers_CheckCertSecurity(t *testing.T) {
 	}
 }
 
+// assertTrigger fails unless name exists in cfg.ConfigDir and holds a plausible
+// unix timestamp. The trigger file IS the observable effect of these handlers —
+// the proxy watchdog polls its mtime — so asserting only on the 200 would let
+// the write be deleted outright without a test noticing, since every one of
+// these handlers reports success whether or not the write succeeded.
+func assertTrigger(t *testing.T, dir, name string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	body, err := os.ReadFile(path) // #nosec G304 — test-controlled temp dir
+	if err != nil {
+		t.Fatalf("trigger %s was not written: %v", name, err)
+	}
+	ts, err := strconv.ParseInt(strings.TrimSpace(string(body)), 10, 64)
+	if err != nil {
+		t.Fatalf("trigger %s: want a unix timestamp, got %q", name, body)
+	}
+	if delta := time.Since(time.Unix(ts, 0)); delta < 0 || delta > time.Minute {
+		t.Errorf("trigger %s: timestamp %d is %v away from now", name, ts, delta)
+	}
+}
+
 func TestMaintenanceHandlers_ReloadConfig(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -121,13 +144,38 @@ func TestMaintenanceHandlers_ReloadConfig(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
-	time.Sleep(100 * time.Millisecond)
+	assertTrigger(t, cfg.ConfigDir, ".reload-squid")
+
+	// A second call must re-trigger: the watchdog compares mtime, so an
+	// unchanged file would be a silently ignored reload.
+	before, err := os.Stat(filepath.Join(cfg.ConfigDir, ".reload-squid"))
+	if err != nil {
+		t.Fatalf("stat trigger: %v", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	h.ReloadConfig(httptest.NewRecorder(), httptest.NewRequest("POST", "/api/maintenance/reload-config", nil))
+	after, err := os.Stat(filepath.Join(cfg.ConfigDir, ".reload-squid"))
+	if err != nil {
+		t.Fatalf("stat trigger after second reload: %v", err)
+	}
+	if !after.ModTime().After(before.ModTime()) {
+		t.Errorf("second reload did not advance the trigger mtime (%v -> %v)", before.ModTime(), after.ModTime())
+	}
+
+	// ReloadConfig also exports the blacklists before signalling.
+	if _, err := os.Stat(filepath.Join(cfg.ConfigDir, "ip_blacklist.txt")); err != nil {
+		t.Errorf("reload did not export ip_blacklist.txt: %v", err)
+	}
 }
 
 func TestMaintenanceHandlers_ReloadDNS(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
 	h := NewMaintenanceHandlers(db, cfg)
+
+	if _, err := db.Exec("INSERT INTO domain_blacklist (domain) VALUES (?)", "blocked.example"); err != nil {
+		t.Fatalf("seed domain_blacklist: %v", err)
+	}
 
 	r := httptest.NewRequest("POST", "/api/maintenance/reload-dns", nil)
 	w := httptest.NewRecorder()
@@ -136,7 +184,26 @@ func TestMaintenanceHandlers_ReloadDNS(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
-	time.Sleep(100 * time.Millisecond)
+	assertTrigger(t, cfg.ConfigDir, ".reload-dns")
+
+	// The seeded domain must reach the exported file the DNS sinkhole reads,
+	// and the reported count must match what was exported.
+	exported, err := os.ReadFile(filepath.Join(cfg.ConfigDir, "domain_blacklist.txt")) // #nosec G304
+	if err != nil {
+		t.Fatalf("domain_blacklist.txt was not exported: %v", err)
+	}
+	if !strings.Contains(string(exported), "blocked.example") {
+		t.Errorf("exported blacklist is missing the seeded domain: %q", exported)
+	}
+	var resp struct {
+		Data struct {
+			Domains int `json:"domains"`
+		} `json:"data"`
+	}
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Data.Domains != 1 {
+		t.Errorf("Expected 1 domain reported, got %d", resp.Data.Domains)
+	}
 }
 
 func TestMaintenanceHandlers_ClearCache(t *testing.T) {
@@ -151,5 +218,5 @@ func TestMaintenanceHandlers_ClearCache(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
-	time.Sleep(100 * time.Millisecond)
+	assertTrigger(t, cfg.ConfigDir, ".clear-cache")
 }
