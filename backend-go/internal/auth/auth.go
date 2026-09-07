@@ -316,9 +316,34 @@ func (s *Service) verifyPassword(username, password string) error {
 	if subtle.ConstantTimeCompare([]byte(username), []byte(s.cfg.AdminUsername)) != 1 {
 		return errors.New("unknown user")
 	}
-	// Primary: bcrypt hash stored in DB (set at startup or after password change).
-	if s.cfg.AdminPasswordHash != "" {
-		if bcrypt.CompareHashAndPassword([]byte(s.cfg.AdminPasswordHash), []byte(password)) == nil {
+
+	// The hash is read from the database on every attempt, not from a copy taken
+	// at startup.
+	//
+	// cfg.AdminPasswordHash is filled once in main() and never refreshed, while
+	// ChangePassword writes the new hash to the users table. Comparing against
+	// the copy meant a rotation was recorded, acknowledged with "Password
+	// changed successfully", and had no effect until the container restarted:
+	// the old password kept working and the new one was refused (#230). A
+	// credential rotation that reports success without taking effect is worse
+	// than one that fails, because the operator believes the old password is
+	// retired.
+	//
+	// The users table is already the source of truth: ChangePassword reads it to
+	// check the current password before writing the new one. One indexed lookup
+	// on a single-row table, on a path that is rate limited and already followed
+	// by bcrypt, is not a cost worth caching around.
+	hash, err := s.currentPasswordHash(username)
+	if err != nil {
+		// Refusing here rather than falling back to the startup copy: a database
+		// that cannot be read is not a reason to accept a password that may have
+		// been rotated out. Everything else in the API needs the database too,
+		// and /api/ready reports unready for the same condition.
+		log.Error().Err(err).Msg("cannot read stored password hash; refusing authentication")
+		return errors.New("password store unavailable")
+	}
+	if hash != "" {
+		if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil {
 			return nil
 		}
 		return errors.New("password mismatch")
@@ -329,6 +354,27 @@ func (s *Service) verifyPassword(username, password string) error {
 		return nil
 	}
 	return errors.New("password mismatch")
+}
+
+// currentPasswordHash returns the bcrypt hash stored for a user, or an empty
+// string when the row exists without one and on first boot before the seed has
+// run. An unreadable database is an error rather than an empty result, so the
+// caller can tell "no password set yet" from "cannot tell".
+func (s *Service) currentPasswordHash(username string) (string, error) {
+	if s.db == nil {
+		return s.cfg.AdminPasswordHash, nil
+	}
+	var stored string
+	switch err := s.db.QueryRow(
+		"SELECT password FROM users WHERE username = ?", username,
+	).Scan(&stored); {
+	case err == nil:
+		return stored, nil
+	case errors.Is(err, sql.ErrNoRows):
+		return "", nil
+	default:
+		return "", err
+	}
 }
 
 func (s *Service) checkRateLimit(r *http.Request) error {
