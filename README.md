@@ -104,6 +104,14 @@ To send traffic through the proxy, point a client at `http://<host>:3128`
 | 3128 | Proxy | Point clients here. Only RFC1918/localhost sources are allowed by default. |
 | 5001 | Backend API | Bound to `127.0.0.1` on the host; the UI proxies it internally. |
 
+These have to be free on the host before you start. A web server already on port
+80 is the usual clash, and it is the one case that fails quietly: the container
+cannot bind, and the stack looks like it is merely slow to come up. `install.sh`
+checks every published port first and names the process holding it. Free it
+(`systemctl stop nginx`), or change the host side of the mapping in
+`docker-compose.yml`, or set `SKIP_PORT_CHECK=1` if you know the conflict is
+harmless.
+
 ## Configuration
 
 All configuration is environment-driven via `.env` (see `.env.example` for the
