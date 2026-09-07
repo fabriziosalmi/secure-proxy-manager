@@ -191,7 +191,7 @@ func (s *Service) ValidateRefreshToken(tokenStr string) (string, error) {
 		return "", errors.New("not a refresh token")
 	}
 	if s.blacklistUnavailable.Load() {
-		if iat, err := claims.GetIssuedAt(); err != nil || iat == nil || iat.Time.Before(startedAt) {
+		if iat, err := claims.GetIssuedAt(); err != nil || iat == nil || iat.Before(startedAt) {
 			return "", errors.New("revocation store unavailable — re-authenticate")
 		}
 	}
@@ -230,7 +230,7 @@ func (s *Service) ValidateJWT(tokenStr string) (string, error) {
 	// predates this process cannot be shown to be un-revoked and is refused;
 	// tokens issued since startup are known to this process (SECURE-ERR-02).
 	if s.blacklistUnavailable.Load() {
-		if iat, err := claims.GetIssuedAt(); err != nil || iat == nil || iat.Time.Before(startedAt) {
+		if iat, err := claims.GetIssuedAt(); err != nil || iat == nil || iat.Before(startedAt) {
 			return "", errors.New("revocation store unavailable — re-authenticate")
 		}
 	}

@@ -34,10 +34,10 @@ func NewNotifyQueue(db *sql.DB, encKey string) NotifyQueue {
 }
 
 type SecurityHandlers struct {
-	db      *sql.DB
-	svc     *auth.Service
-	cfg     *config.Config
-	notify  NotifyQueue
+	db     *sql.DB
+	svc    *auth.Service
+	cfg    *config.Config
+	notify NotifyQueue
 }
 
 func NewSecurityHandlers(db *sql.DB, svc *auth.Service, cfg *config.Config, notify NotifyQueue) *SecurityHandlers {
@@ -90,8 +90,8 @@ func (h *SecurityHandlers) GetRateLimits(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "success", "data": data,
 		"meta": map[string]any{
-			"max_attempts":    h.cfg.MaxAttempts,
-			"window_seconds":  int(h.cfg.RateLimitWindow.Seconds()),
+			"max_attempts":   h.cfg.MaxAttempts,
+			"window_seconds": int(h.cfg.RateLimitWindow.Seconds()),
 		},
 	})
 }
@@ -203,9 +203,10 @@ func sendSecurityNotification(db *sql.DB, encKey string, event map[string]any) {
 	}
 
 	emoji := "ℹ️"
-	if event["level"] == "error" {
+	switch event["level"] {
+	case "error":
 		emoji = "🔴"
-	} else if event["level"] == "warning" {
+	case "warning":
 		emoji = "⚠️"
 	}
 	title := fmt.Sprintf("%s Secure Proxy Alert: %s", emoji,
@@ -296,9 +297,10 @@ func sendSecurityNotification(db *sql.DB, encKey string, event map[string]any) {
 			u += "/"
 		}
 		prio := "default"
-		if event["level"] == "error" {
+		switch event["level"] {
+		case "error":
 			prio = "urgent"
-		} else if event["level"] == "warning" {
+		case "warning":
 			prio = "high"
 		}
 		safePost(u+topic, []byte(plainText), map[string]string{

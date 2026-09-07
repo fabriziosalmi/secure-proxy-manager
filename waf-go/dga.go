@@ -25,16 +25,17 @@ var commonBigrams = map[string]float64{
 	"ma": 0.57, "si": 0.55, "om": 0.55, "ur": 0.54, "ca": 0.53,
 }
 
-// DGAScore analyzes a domain name and returns a risk score 0-100.
-// Higher = more likely DGA. Threshold ~70 for blocking.
+// DGAResult is the outcome of analysing a domain for DGA characteristics: a
+// risk score 0-100 where higher means more likely generated, with the component
+// scores behind it. Threshold ~70 for blocking.
 type DGAResult struct {
-	Score           int     `json:"score"`
-	EntropyScore    float64 `json:"entropy_score"`
-	BigramScore     float64 `json:"bigram_score"`
-	LengthScore     float64 `json:"length_score"`
-	ConsonantRatio  float64 `json:"consonant_ratio"`
-	DigitRatio      float64 `json:"digit_ratio"`
-	IsDGA           bool    `json:"is_dga"`
+	Score          int     `json:"score"`
+	EntropyScore   float64 `json:"entropy_score"`
+	BigramScore    float64 `json:"bigram_score"`
+	LengthScore    float64 `json:"length_score"`
+	ConsonantRatio float64 `json:"consonant_ratio"`
+	DigitRatio     float64 `json:"digit_ratio"`
+	IsDGA          bool    `json:"is_dga"`
 }
 
 // AnalyzeDGA returns a DGA risk assessment for a domain.

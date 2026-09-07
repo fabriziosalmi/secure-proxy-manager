@@ -1033,7 +1033,7 @@ func (h *MgmtHandlers) StatsHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *MgmtHandlers) ResetHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "POST only", 405)
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
 	stats.reset()
@@ -1069,7 +1069,7 @@ func (h *MgmtHandlers) CategoriesHandler(w http.ResponseWriter, r *http.Request)
 
 func (h *MgmtHandlers) CategoriesToggleHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "POST only", 405)
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
 	// Bound the request body — this endpoint accepts a tiny JSON object.
@@ -1081,7 +1081,7 @@ func (h *MgmtHandlers) CategoriesToggleHandler(w http.ResponseWriter, r *http.Re
 		Enabled  bool   `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Category == "" {
-		http.Error(w, `{"error":"category required"}`, 400)
+		http.Error(w, `{"error":"category required"}`, http.StatusBadRequest)
 		return
 	}
 	disabledCatMu.Lock()
@@ -1115,7 +1115,7 @@ func (h *MgmtHandlers) HeuristicsHandler(w http.ResponseWriter, r *http.Request)
 // the WAF stop serving pre-toggle decisions.
 func (h *MgmtHandlers) HeuristicsToggleHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "POST only", 405)
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
 	// Bound the body — this endpoint accepts a tiny JSON object; without a cap an
@@ -1126,11 +1126,11 @@ func (h *MgmtHandlers) HeuristicsToggleHandler(w http.ResponseWriter, r *http.Re
 		Enabled   bool   `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Heuristic == "" {
-		http.Error(w, `{"error":"heuristic required"}`, 400)
+		http.Error(w, `{"error":"heuristic required"}`, http.StatusBadRequest)
 		return
 	}
 	if !setHeuristicEnabled(req.Heuristic, req.Enabled) {
-		http.Error(w, `{"error":"unknown heuristic"}`, 400)
+		http.Error(w, `{"error":"unknown heuristic"}`, http.StatusBadRequest)
 		return
 	}
 	atomic.AddUint64(&istagEpoch, 1)

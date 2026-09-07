@@ -153,7 +153,7 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to start transaction")
 		return
 	}
-	defer tx.Rollback() //nolint:errcheck — no-op once committed
+	defer tx.Rollback() //nolint:errcheck // no-op once committed
 	for k, v := range body {
 		// Only known-safe, writable keys may be set (rejects internally-managed
 		// state like default_password_changed and any non-conforming key name).

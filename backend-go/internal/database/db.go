@@ -2,6 +2,7 @@
 package database
 
 import (
+	"bufio"
 	"database/sql"
 	"fmt"
 	"os"
@@ -337,7 +338,7 @@ func atomicWrite(path string, writeFn func(f *os.File) error) error {
 		return err
 	}
 	tmp := f.Name()
-	defer os.Remove(tmp) // no-op once the rename succeeds
+	defer func() { _ = os.Remove(tmp) }() // best-effort; a no-op once the rename succeeds
 
 	if err := writeFn(f); err != nil {
 		f.Close()
@@ -381,10 +382,13 @@ func exportLines(db *sql.DB, path, query string) error {
 		}
 	}
 	return atomicWrite(path, func(f *os.File) error {
+		w := bufio.NewWriter(f)
 		for _, l := range lines {
-			fmt.Fprintln(f, l)
+			if _, err := fmt.Fprintln(w, l); err != nil {
+				return fmt.Errorf("write %s: %w", path, err)
+			}
 		}
-		return nil
+		return w.Flush()
 	})
 }
 
@@ -421,10 +425,13 @@ func exportDomainBlacklist(db *sql.DB, path string, exclusions map[string]struct
 		}
 	}
 	return atomicWrite(path, func(f *os.File) error {
+		w := bufio.NewWriter(f)
 		for _, d := range domains {
-			fmt.Fprintln(f, d)
+			if _, err := fmt.Fprintln(w, d); err != nil {
+				return fmt.Errorf("write %s: %w", path, err)
+			}
 		}
-		return nil
+		return w.Flush()
 	})
 }
 
@@ -454,10 +461,13 @@ func writeDnsmasqBlocklist(db *sql.DB, path string, exclusions map[string]struct
 	// (Trade-off: hosts entries are exact-match, not the `/domain/` subdomain
 	// wildcard; the imported lists are explicit domains, so this matches them.)
 	return atomicWrite(path, func(f *os.File) error {
+		w := bufio.NewWriter(f)
 		for _, e := range entries {
-			fmt.Fprintf(f, "0.0.0.0 %s\n:: %s\n", e.domain, e.domain)
+			if _, err := fmt.Fprintf(w, "0.0.0.0 %s\n:: %s\n", e.domain, e.domain); err != nil {
+				return fmt.Errorf("write %s: %w", path, err)
+			}
 		}
-		return nil
+		return w.Flush()
 	})
 }
 

@@ -367,7 +367,9 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 
 	var total, blocked int
 	var firstSeen, lastSeen sql.NullString
-	h.db.QueryRow( //nolint:errcheck
+	// A no-rows or scan error leaves the zero values, which is the correct
+	// answer for a client with no logged requests.
+	_ = h.db.QueryRow(
 		`SELECT COUNT(*), `+blockedCase+`, MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE source_ip = ?`,
 		ip,
 	).Scan(&total, &blocked, &firstSeen, &lastSeen)

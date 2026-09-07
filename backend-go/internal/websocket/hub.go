@@ -80,7 +80,7 @@ func (h *Hub) Unregister(c *Client) {
 		close(c.send)
 	}
 	h.mu.Unlock()
-	c.conn.Close()
+	_ = c.conn.Close() // the client is being torn down; a close error changes nothing
 }
 
 // ClientCount returns the number of connected clients.

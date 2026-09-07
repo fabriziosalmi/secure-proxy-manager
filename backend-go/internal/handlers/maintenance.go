@@ -71,7 +71,7 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, "failed to start transaction")
 		return
 	}
-	defer tx.Rollback() //nolint:errcheck — no-op once committed
+	defer tx.Rollback() //nolint:errcheck // no-op once committed
 
 	restored, skipped := 0, 0
 	for k, v := range body.Config {

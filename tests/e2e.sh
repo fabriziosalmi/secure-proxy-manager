@@ -11,6 +11,7 @@ PASS="${3:-password}"
 API="https://${HOST}:8443"
 PROXY="${HOST}:3128"
 # Accept self-signed certs for all curl calls
+# shellcheck disable=SC2034  # kept for callers that source this script
 CURL_OPTS="-k"
 
 # ── Colors ────────────────────────────────────────────────────────────────
@@ -146,7 +147,7 @@ for i in $(seq 1 5); do
     printf "  ${D}Sample $i:${N} ${ms}ms\n"
 done
 if [ ${#times[@]} -gt 0 ]; then
-    sorted=($(printf '%s\n' "${times[@]}" | sort -n))
+    mapfile -t sorted < <(printf '%s\n' "${times[@]}" | sort -n)
     p50=${sorted[$(( ${#sorted[@]} / 2 ))]}
     printf "\n  ${C}P50: ${BOLD}${p50}ms${N}\n"
 fi

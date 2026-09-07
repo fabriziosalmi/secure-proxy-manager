@@ -7,6 +7,7 @@ set -euo pipefail
 
 PROXY="${1:-192.168.100.253}:${2:-3128}"
 TARGET="http://httpbin.org"
+# shellcheck disable=SC2034  # reserved for the backend-direct probes below
 BACKEND="http://${1:-192.168.100.253}:5001"
 TOTAL_PASS=0; TOTAL_FAIL=0; TOTAL=0
 
@@ -134,10 +135,10 @@ latencies=()
 for i in $(seq 1 20); do
     ms=$(curl -s -o /dev/null -w "%{time_total}" --max-time 15 -x "$PROXY" "$TARGET/get?q=lat$i" 2>/dev/null)
     ms_int=$(echo "$ms * 1000" | bc | cut -d. -f1)
-    latencies+=($ms_int)
+    latencies+=("$ms_int")
     printf "  %2d: %sms\n" "$i" "$ms_int"
 done
-sorted=($(printf '%s\n' "${latencies[@]:2}" | sort -n))
+mapfile -t sorted < <(printf '%s\n' "${latencies[@]:2}" | sort -n)
 count=${#sorted[@]}
 sum=0; for v in "${sorted[@]}"; do sum=$((sum + v)); done
 avg=$((sum / count))

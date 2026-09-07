@@ -695,7 +695,7 @@ func insertGeoBatch(db *sql.DB, rows [][2]string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("begin: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck — no-op once committed
+	defer tx.Rollback() //nolint:errcheck // no-op once committed
 
 	stmt, err := tx.Prepare("INSERT INTO ip_blacklist(ip, description) VALUES(?,?)")
 	if err != nil {
@@ -724,7 +724,9 @@ func insertGeoBatch(db *sql.DB, rows [][2]string) (int, error) {
 	return inserted, nil
 }
 
-// Legacy aliases — redirect to unified import endpoint.
+// ImportIPLegacy is a retired alias: it answers 410 Gone naming the
+// replacement call. Kept registered so an old client gets a machine-readable
+// status and a migration instruction rather than a 404.
 func (h *BlacklistHandlers) ImportIPLegacy(w http.ResponseWriter, r *http.Request) {
 	writeError(w, http.StatusGone, "Use POST /api/blacklists/import with type=ip instead")
 }
