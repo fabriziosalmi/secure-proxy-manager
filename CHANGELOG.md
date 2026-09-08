@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+**Reading this for API changes.** Anything that alters the HTTP surface — a
+route removed, a response shape changed, a status code changed — appears under
+a `### Removed` or `### Changed` heading with the phrase **BREAKING** and the
+`X-API-Version` it corresponds to. Endpoint removals used to be recorded under
+`### Fixed`, so a caller had to read every bullet of every release to find the
+changes affecting it. Retired routes answer `410 Gone` naming their replacement
+for at least one minor release before disappearing.
+
 ## [3.11.6] - 2026-08-03
 
 Pre-release hardening pass (360° audit round 1): accessibility, performance,

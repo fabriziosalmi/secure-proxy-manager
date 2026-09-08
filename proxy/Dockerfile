@@ -45,8 +45,8 @@ COPY startup.sh /startup.sh
 COPY generate_squid_conf.sh /usr/local/bin/generate_squid_conf.sh
 COPY blacklist_watchdog.py /usr/local/bin/blacklist_watchdog.py
 # Staged outside /etc/squid because that path is a tmpfs at runtime (which would
-# overmount and wipe a baked-in copy). startup.sh installs these into
-# /etc/squid/error-pages on boot.
+# overmount and wipe a baked-in copy). generate_squid_conf.sh installs these
+# into /etc/squid/error-pages on every run, boot and reload alike.
 COPY error-pages/ /opt/squid-error-pages/
 COPY squid-supervisor.conf /etc/supervisor/conf.d/
 

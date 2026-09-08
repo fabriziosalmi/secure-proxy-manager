@@ -96,7 +96,7 @@ func TestHandleReqmod_Blocked(t *testing.T) {
 	// Set threshold low enough to block
 	blockThreshold = 1
 	handleReqmod(w, req)
-	
+
 	// Should be 200 OK with the block page attached to the response
 	if w.code != 200 {
 		t.Errorf("Expected 200 for block, got %d", w.code)
@@ -111,7 +111,7 @@ func TestHandleRespmod_Safe(t *testing.T) {
 	w := &mockResponseWriter{}
 	req := &icap.Request{
 		Response: &http.Response{
-			Header: make(http.Header),
+			Header:     make(http.Header),
 			StatusCode: 200,
 		},
 	}
@@ -125,9 +125,9 @@ func TestHandleRespmod_Blocked(t *testing.T) {
 	w := &mockResponseWriter{}
 	req := &icap.Request{
 		Response: &http.Response{
-			Header: http.Header{"Content-Type": []string{"application/x-msdownload"}},
+			Header:     http.Header{"Content-Type": []string{"application/x-msdownload"}},
 			StatusCode: 200,
-			Body: io.NopCloser(bytes.NewReader([]byte("fake executable data"))),
+			Body:       io.NopCloser(bytes.NewReader([]byte("fake executable data"))),
 		},
 	}
 	handleRespmod(w, req)
@@ -150,7 +150,7 @@ func TestHealthEndpoint(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 	h.HealthHandler(w, req)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
@@ -167,7 +167,7 @@ func TestStatsEndpoint(t *testing.T) {
 	req := httptest.NewRequest("GET", "/stats", nil)
 	w := httptest.NewRecorder()
 	h.StatsHandler(w, req)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
@@ -180,31 +180,31 @@ func TestResetEndpoint(t *testing.T) {
 	req := httptest.NewRequest("POST", "/reset", nil)
 	w := httptest.NewRecorder()
 	h.ResetHandler(w, req)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
 }
 
 func TestCategoriesEndpoint(t *testing.T) {
-    h := &MgmtHandlers{}
-    req := httptest.NewRequest("GET", "/categories", nil)
-    w := httptest.NewRecorder()
-    h.CategoriesHandler(w, req)
-    
-    if w.Code != http.StatusOK {
-        t.Errorf("Expected 200, got %d", w.Code)
-    }
+	h := &MgmtHandlers{}
+	req := httptest.NewRequest("GET", "/categories", nil)
+	w := httptest.NewRecorder()
+	h.CategoriesHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d", w.Code)
+	}
 }
 
 func TestCategoriesToggleEndpoint(t *testing.T) {
 	h := &MgmtHandlers{}
 	body, _ := json.Marshal(map[string]any{"category": "SQLI", "enabled": false})
-    req := httptest.NewRequest("POST", "/categories/toggle", bytes.NewReader(body))
-    w := httptest.NewRecorder()
-    h.CategoriesToggleHandler(w, req)
-    
-    if w.Code != http.StatusOK {
-        t.Errorf("Expected 200, got %d", w.Code)
-    }
+	req := httptest.NewRequest("POST", "/categories/toggle", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	h.CategoriesToggleHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d", w.Code)
+	}
 }

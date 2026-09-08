@@ -1,0 +1,61 @@
+# SECURE-QUAL-01. The tree carried 86 //nolint:errcheck directives while no
+# linter that reads them was ever run: CI's only Go static analysis was `go vet`
+# plus a gosec invocation that excluded G104, the unhandled-error rule. Those
+# suppressions therefore suppressed nothing — no tool had confirmed any of the
+# discarded errors was safe to discard, and a new unchecked error arriving
+# without a marker would not have been flagged.
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck      # the rule the 86 directives claim to suppress
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+  settings:
+    errcheck:
+      # Left at default strictness deliberately. check-blank would flag every
+      # `_ = f()` in the tree (139 sites) and the gate has to PASS to be a gate;
+      # the point of this file is that errcheck runs at all and that the 86
+      # existing //nolint:errcheck markers finally mean something. Ratchet these
+      # on once the backlog is worked through.
+      check-type-assertions: false
+      check-blank: false
+      # Deferred cleanup whose error is genuinely not actionable: the operation
+      # has already succeeded or already failed, and there is nothing the caller
+      # can do with a Close error on a read path. Excluded explicitly, with the
+      # reason recorded, rather than silently — that is the difference between
+      # this gate and the 86 markers it replaces.
+      exclude-functions:
+        - (*database/sql.Rows).Close
+        - (*database/sql.Stmt).Close
+        - (*database/sql.DB).Close
+        - (*database/sql.Tx).Rollback
+        - (*os.File).Close
+        - (io.Closer).Close
+        - (*net/http.Response).Body.Close
+        # Writing a response body: if the peer has gone away there is nothing
+        # the handler can do about it, and the status is already committed.
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (net/http.ResponseWriter).Write
+    staticcheck:
+      checks:
+        - all
+        - -ST1000   # package comments: not a house convention here
+        - -ST1003   # naming: would churn the existing API surface
+
+  exclusions:
+    generated: lax
+    rules:
+      # Tests may ignore errors on setup helpers where the assertion is the
+      # point of the test, not the plumbing around it.
+      - path: _test\.go
+        linters: [errcheck]
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

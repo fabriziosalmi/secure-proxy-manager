@@ -25,7 +25,9 @@ export interface EgressEntry {
 export interface DomainWhitelistEntry {
   id: number;
   domain: string;
-  type: 'fqdn' | 'url-regex';
+  /** Only 'fqdn' is reachable: url-regex entries were persisted but read by
+   *  nothing, so they are now refused at the API (SECURE-DOM-07). */
+  type: 'fqdn';
   description: string | null;
   added_date: string;
 }
@@ -40,18 +42,29 @@ export interface WhitelistEntry {
 export interface LogEntry {
   id?: number;
   timestamp: string;
-  client_ip: string;
+  source_ip: string;
   method: string;
   destination: string;
   status: string;
   bytes: number | null;
 }
 
-export interface LogsPageData {
-  data?: LogEntry[];
-  logs?: LogEntry[];
-  total?: number;
+/** Pagination envelope shared by every collection endpoint (SECURE-API-02). */
+export interface ListMeta {
+  total: number;
+  limit: number;
+  offset: number;
 }
+
+/** A paginated collection. `data` always holds the collection; `meta` always
+ *  holds the pagination. The previous `data? | logs?` union existed because the
+ *  API returned three different shapes and the client could not tell which. */
+export interface ListResponse<T> {
+  data: T[];
+  meta: ListMeta;
+}
+
+export type LogsPageData = ListResponse<LogEntry>;
 
 export interface AuditEntry {
   id: number;
@@ -62,12 +75,7 @@ export interface AuditEntry {
   timestamp: string;
 }
 
-export interface AuditPageData {
-  data?: AuditEntry[];
-  total?: number;
-  limit?: number;
-  offset?: number;
-}
+export type AuditPageData = ListResponse<AuditEntry>;
 
 export interface ClientStat {
   ip_address: string;
@@ -77,10 +85,7 @@ export interface ClientStat {
   status: string;
 }
 
-export interface ClientsData {
-  total_clients: number;
-  clients: ClientStat[];
-}
+export type ClientsData = ListResponse<ClientStat>;
 
 export interface ClientDomain {
   destination: string;
@@ -174,12 +179,10 @@ export interface TopDomain {
 
 export interface CacheStats {
   hit_rate: number;
-  hit_ratio?: number;
   byte_hit_rate: number;
   cache_size: string;
   objects_cached: number;
   bandwidth_saved?: string;
-  bytes_saved?: number;
   hits?: number;
   misses?: number;
   requests?: number;

@@ -74,7 +74,7 @@ func (h *DNSDetectHandlers) Detect(w http.ResponseWriter, r *http.Request) {
 
 	// Scan common IPs in parallel
 	ipsToScan := []string{
-		subnet + ".1",   // gateway (common for router DNS)
+		subnet + ".1", // gateway (common for router DNS)
 		subnet + ".2",
 		subnet + ".3",
 		subnet + ".4",
@@ -82,7 +82,7 @@ func (h *DNSDetectHandlers) Detect(w http.ResponseWriter, r *http.Request) {
 		subnet + ".10",
 		subnet + ".20",
 		subnet + ".50",
-		subnet + ".53",  // sometimes DNS is on .53
+		subnet + ".53", // sometimes DNS is on .53
 		subnet + ".100",
 		subnet + ".200",
 		subnet + ".254",

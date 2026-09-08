@@ -88,7 +88,7 @@ The `frontend` network connects `web` to `backend`. The `proxy-internal` network
 - Anti-evasion input normalization: multi-pass URL/HTML decode, inline SQL/HTML comment stripping (so `UNION/**/SELECT` is caught), and NFKC Unicode folding to defeat fullwidth/homoglyph keyword variants.
 - Loads custom regex patterns from `/config/waf_custom_rules.txt` at startup (one pattern per line, `#` for comments); over-broad patterns that would match everything are rejected.
 - Tar-pits repeat offenders: clients seen with three or more blocks within sixty seconds are delayed by ten seconds per request.
-- Notifies the backend of blocks via authenticated `POST /api/internal/alert`.
+- Notifies the backend of blocks via `POST /api/internal/alert`, authenticated with `INTERNAL_ALERT_TOKEN` — a credential scoped to that endpoint, so the WAF never holds the admin password.
 - Emits an `ISTag` (RFC 3507) on ICAP responses, derived from the ruleset and bumped on category toggles, so Squid invalidates cached verdicts when rules change.
 - Prometheus metrics at `:8080/metrics`: aggregate counters, a REQMOD latency histogram, and coverage-gap counters (traffic-log enabled/dropped, oversize bodies, uninspectable compressed responses).
 

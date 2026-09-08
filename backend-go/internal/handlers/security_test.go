@@ -15,15 +15,15 @@ import (
 func TestSecurityHandlers_ReceiveAlert(t *testing.T) {
 	db, _, _, cleanup := setupTestDB(t)
 	defer cleanup()
-	
+
 	notify := NewNotifyQueue(db, "0000000000000000000000000000000000000000000000000000000000000000")
 	h := NewSecurityHandlers(db, nil, nil, notify)
 
 	alert := models.InternalAlert{
 		EventType: "test_event",
-		Message:    "test message",
-		Level:      "info",
-		Details:    map[string]any{"foo": "bar"},
+		Message:   "test message",
+		Level:     "info",
+		Details:   map[string]any{"foo": "bar"},
 	}
 	body, _ := json.Marshal(alert)
 	r := httptest.NewRequest("POST", "/api/internal/alert", bytes.NewBuffer(body))
@@ -62,7 +62,7 @@ func TestSecurityHandlers_ClearRateLimit(t *testing.T) {
 	r := httptest.NewRequest("DELETE", "/api/security/rate-limits/1.1.1.1", nil)
 	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 	w := httptest.NewRecorder()
-	
+
 	// Should be 404 because no active rate limit for 1.1.1.1
 	h.ClearRateLimit(w, r)
 	if w.Code != http.StatusNotFound {
@@ -103,5 +103,59 @@ func TestSecurityHandlers_CVECheck(t *testing.T) {
 	h.CVECheck(w, r)
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
+	}
+}
+
+// SECURE-AUTH-02. The WAF used to authenticate to /api/internal/alert with
+// BASIC_AUTH_USERNAME/PASSWORD, so the container that parses
+// attacker-controlled request bodies held a credential that opens every
+// administrative endpoint. The route now takes a dedicated token.
+//
+// This goes through Register and a real chi router rather than calling
+// ReceiveAlert directly: the defect being fixed is in the WIRING, and a test
+// that calls the handler passes either way.
+func TestReceiveAlert_RequiresServiceToken(t *testing.T) {
+	// authMW that accepts everything — it stands in for a valid admin session.
+	// If admin auth still reached ReceiveAlert, the unauthenticated cases below
+	// would return 200 and the finding would be open.
+	acceptAll := func(next http.Handler) http.Handler { return next }
+
+	post := func(t *testing.T, token, header string) int {
+		t.Helper()
+		db, svc, cfg, cleanup := setupTestDB(t)
+		defer cleanup()
+		cfg.AlertToken = token
+		r := chi.NewRouter()
+		NewSecurityHandlers(db, svc, cfg, NewNotifyQueue(db, "0000000000000000000000000000000000000000000000000000000000000000")).Register(r, acceptAll)
+
+		body, _ := json.Marshal(models.InternalAlert{EventType: "waf_block", Message: "blocked by rule 42", Level: "warning"})
+		req := httptest.NewRequest("POST", "/api/internal/alert", bytes.NewReader(body))
+		if header != "" {
+			req.Header.Set("Authorization", header)
+		}
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	if code := post(t, "s3rv1ce-t0ken", "Bearer s3rv1ce-t0ken"); code != http.StatusOK {
+		t.Errorf("the WAF's own token was rejected: got %d, want 200", code)
+	}
+	if code := post(t, "s3rv1ce-t0ken", ""); code != http.StatusUnauthorized {
+		t.Errorf("an admin session reached the internal alert route: got %d, want 401", code)
+	}
+	if code := post(t, "s3rv1ce-t0ken", "Bearer wrong-token"); code != http.StatusUnauthorized {
+		t.Errorf("a wrong token was accepted: got %d, want 401", code)
+	}
+	// A prefix of the real token must not pass — the length check has to run
+	// before the constant-time compare, which returns 0 for unequal lengths.
+	if code := post(t, "s3rv1ce-t0ken", "Bearer s3rv1ce"); code != http.StatusUnauthorized {
+		t.Errorf("a token prefix was accepted: got %d, want 401", code)
+	}
+
+	// Fallback: with no token configured the route keeps accepting admin auth,
+	// so an in-place upgrade does not silently stop delivering alerts.
+	if code := post(t, "", ""); code != http.StatusOK {
+		t.Errorf("with no token configured the admin fallback must still work: got %d, want 200", code)
 	}
 }

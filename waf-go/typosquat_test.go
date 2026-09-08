@@ -6,7 +6,7 @@ import (
 
 func TestCheckTyposquat(t *testing.T) {
 	tests := []struct {
-		domain    string
+		domain     string
 		suspicious bool
 	}{
 		{"google.com", false},

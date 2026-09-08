@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -81,5 +82,77 @@ func TestSecretKeyStrengthError(t *testing.T) {
 		if err := secretKeyStrengthError(s); err != nil {
 			t.Errorf("expected %q to be accepted, got error: %v", s, err)
 		}
+	}
+}
+
+// SECURE-CONF-01: an operator-supplied ENCRYPTION_KEY must be validated, never
+// silently discarded in favour of a generated one.
+func TestEncryptionKeyError(t *testing.T) {
+	valid := strings.Repeat("ab", 32) // 64 hex chars -> 32 bytes
+	cases := []struct {
+		name    string
+		key     string
+		wantErr bool
+	}{
+		{"valid 32-byte hex", valid, false},
+		{"truncated by one", valid[:63], true},
+		{"one char too long", valid + "c", true},
+		{"right length, not hex", strings.Repeat("z", 64), true},
+		{"empty", "", true},
+		{"16 bytes", strings.Repeat("ab", 16), true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := encryptionKeyError(tc.key); (err != nil) != tc.wantErr {
+				t.Errorf("encryptionKeyError(%d chars) error = %v, wantErr %v", len(tc.key), err, tc.wantErr)
+			}
+		})
+	}
+}
+
+// SECURE-CONF-01 (wiring): a valid operator-supplied ENCRYPTION_KEY must be
+// returned as-is. The finding was that a key failing the length test was
+// silently discarded in favour of a file or a generated key, so the positive
+// path is what proves the env value is honoured rather than dropped.
+func TestLoadOrGenerateEncKeyHonoursSuppliedKey(t *testing.T) {
+	want := strings.Repeat("ab", 32)
+	t.Setenv("ENCRYPTION_KEY", want)
+	if got := loadOrGenerateEncKey(); got != want {
+		t.Errorf("supplied ENCRYPTION_KEY was not used: got %q (len %d), want the supplied key", got, len(got))
+	}
+}
+
+// SECURE-CONF-04: the JWT secret and the encryption key must live beside the
+// database, not at a hardcoded /data. Relocating DATABASE_PATH used to leave
+// them behind, and every restart then rotated both — invalidating every session
+// and making previously encrypted settings undecryptable.
+func TestSecretsFollowTheDatabaseDirectory(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DATABASE_PATH", filepath.Join(dir, "custom", "spm.db"))
+	t.Setenv("SECRET_KEY", "")
+	t.Setenv("ENCRYPTION_KEY", "")
+
+	if got, want := stateDir(), filepath.Join(dir, "custom"); got != want {
+		t.Fatalf("stateDir() = %q, want %q", got, want)
+	}
+
+	secret := loadOrGenerateSecret()
+	encKey := loadOrGenerateEncKey()
+	if secret == "" || encKey == "" {
+		t.Fatal("keys were not generated")
+	}
+	for _, name := range []string{".jwt_secret", ".enc_key"} {
+		p := filepath.Join(dir, "custom", name)
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s was not persisted beside the database: %v", name, err)
+		}
+	}
+
+	// Second load must reuse them, not rotate.
+	if loadOrGenerateSecret() != secret {
+		t.Error("JWT secret rotated on the second load — every session would be invalidated on restart")
+	}
+	if loadOrGenerateEncKey() != encKey {
+		t.Error("encryption key rotated on the second load — encrypted settings would become undecryptable")
 	}
 }

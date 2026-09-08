@@ -68,7 +68,7 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 		limit, offset,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "list_logs", err)
 		return
 	}
 	defer rows.Close()
@@ -84,9 +84,13 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 			ip = maskIP(ip)
 		}
 		logs = append(logs, map[string]any{
-			"id":          id,
-			"timestamp":   ts.String,
-			"client_ip":   ip,
+			"id":        id,
+			"timestamp": ts.String,
+			// source_ip on the wire as well as in the schema: the address used
+			// to be client_ip here, source_ip in the dashboard payload and
+			// ip_address in the clients endpoint — three names for one concept
+			// in one API consumed by one UI (SECURE-DOM-08).
+			"source_ip":   ip,
 			"method":      method.String,
 			"destination": dest.String,
 			"status":      status.String,
@@ -96,9 +100,7 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 	if logs == nil {
 		logs = []map[string]any{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "success", "data": logs, "total": total, "limit": limit, "offset": offset,
-	})
+	writeList(w, logs, ListMeta{Total: total, Limit: limit, Offset: offset})
 }
 
 func (h *LogHandlers) Stats(w http.ResponseWriter, r *http.Request) {

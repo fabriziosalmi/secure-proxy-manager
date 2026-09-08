@@ -97,16 +97,17 @@ func TestAnalyticsHandlers_ClientStats(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
+	// The collection is under `data` like every other list endpoint, with the
+	// count in `meta` — it used to be nested under data.clients (SECURE-API-02).
 	var resp struct {
-		Data struct {
-			Clients []struct {
-				IPAddress string `json:"ip_address"`
-			} `json:"clients"`
+		Data []struct {
+			IPAddress string `json:"ip_address"`
 		} `json:"data"`
+		Meta ListMeta `json:"meta"`
 	}
 	_ = json.NewDecoder(w.Body).Decode(&resp)
 	var hasRecent, hasOld bool
-	for _, c := range resp.Data.Clients {
+	for _, c := range resp.Data {
 		if c.IPAddress == "1.2.3.4" {
 			hasRecent = true
 		}

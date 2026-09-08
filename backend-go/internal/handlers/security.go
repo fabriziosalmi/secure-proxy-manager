@@ -15,7 +15,10 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/auth"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	appcrypto "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/crypto"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
+	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/validate"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
@@ -34,10 +37,10 @@ func NewNotifyQueue(db *sql.DB, encKey string) NotifyQueue {
 }
 
 type SecurityHandlers struct {
-	db      *sql.DB
-	svc     *auth.Service
-	cfg     *config.Config
-	notify  NotifyQueue
+	db     *sql.DB
+	svc    *auth.Service
+	cfg    *config.Config
+	notify NotifyQueue
 }
 
 func NewSecurityHandlers(db *sql.DB, svc *auth.Service, cfg *config.Config, notify NotifyQueue) *SecurityHandlers {
@@ -45,7 +48,16 @@ func NewSecurityHandlers(db *sql.DB, svc *auth.Service, cfg *config.Config, noti
 }
 
 func (h *SecurityHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {
-	r.With(authMW).Post("/api/internal/alert", h.ReceiveAlert)
+	// /api/internal/alert is service-to-service, not operator-facing: the WAF
+	// posts block notifications to it. It gets its own credential so the WAF
+	// does not need the admin password (SECURE-AUTH-02). With no token
+	// configured ServiceAuth returns authMW unchanged, which is the pre-upgrade
+	// behaviour.
+	alertToken := ""
+	if h.cfg != nil {
+		alertToken = h.cfg.AlertToken
+	}
+	r.With(appMW.ServiceAuth(alertToken, authMW)).Post("/api/internal/alert", h.ReceiveAlert)
 	r.With(authMW).Get("/api/security/rate-limits", h.GetRateLimits)
 	r.With(authMW).Delete("/api/security/rate-limits/{ip}", h.ClearRateLimit)
 	r.With(authMW).Get("/api/security/score", h.Score)
@@ -64,6 +76,10 @@ func (h *SecurityHandlers) ReceiveAlert(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid alert payload")
 		return
 	}
+	if err := validate.Struct(&alert); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	event := map[string]any{
 		"timestamp":  time.Now().Format(time.RFC3339),
 		"event_type": alert.EventType,
@@ -77,6 +93,7 @@ func (h *SecurityHandlers) ReceiveAlert(w http.ResponseWriter, r *http.Request) 
 	select {
 	case h.notify <- event:
 	default:
+		metrics.NotificationDropped()
 		log.Warn().Msg("notification queue full — alert dropped")
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
@@ -90,8 +107,8 @@ func (h *SecurityHandlers) GetRateLimits(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "success", "data": data,
 		"meta": map[string]any{
-			"max_attempts":    h.cfg.MaxAttempts,
-			"window_seconds":  int(h.cfg.RateLimitWindow.Seconds()),
+			"max_attempts":   h.cfg.MaxAttempts,
+			"window_seconds": int(h.cfg.RateLimitWindow.Seconds()),
 		},
 	})
 }
@@ -103,6 +120,23 @@ func (h *SecurityHandlers) ClearRateLimit(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Rate limit cleared for " + ip})
+}
+
+// channelOf labels a delivery by its destination kind, so the metric is keyed
+// by channel without ever carrying the URL (which is a credential).
+func channelOf(url string) string {
+	switch {
+	case strings.Contains(url, "gotify"):
+		return "gotify"
+	case strings.Contains(url, "telegram"):
+		return "telegram"
+	case strings.Contains(url, "ntfy"):
+		return "ntfy"
+	case strings.Contains(url, "office.com"), strings.Contains(url, "webhook.office"):
+		return "teams"
+	default:
+		return "webhook"
+	}
 }
 
 func (h *SecurityHandlers) Score(w http.ResponseWriter, r *http.Request) {
@@ -203,9 +237,10 @@ func sendSecurityNotification(db *sql.DB, encKey string, event map[string]any) {
 	}
 
 	emoji := "ℹ️"
-	if event["level"] == "error" {
+	switch event["level"] {
+	case "error":
 		emoji = "🔴"
-	} else if event["level"] == "warning" {
+	case "warning":
 		emoji = "⚠️"
 	}
 	title := fmt.Sprintf("%s Secure Proxy Alert: %s", emoji,
@@ -237,15 +272,29 @@ func sendSecurityNotification(db *sql.DB, encKey string, event map[string]any) {
 			}
 			resp, err := client.Do(req)
 			if err == nil {
+				status := resp.StatusCode
 				resp.Body.Close()
-				if resp.StatusCode < 500 {
-					return // success or client error — don't retry
+				if status < 400 {
+					metrics.NotificationSent(channelOf(url))
+					return
+				}
+				if status < 500 {
+					// A 4xx is not worth retrying, but it IS a failure: an
+					// expired Gotify token or a rotated webhook answers 401/404
+					// and the alert never arrives. This used to return silently,
+					// so the channel by which an operator learns about attacks
+					// could stop working with no signal at all (SECURE-OBS-02).
+					metrics.NotificationFailed(channelOf(url))
+					log.Warn().Str("channel", channelOf(url)).Int("status", status).
+						Msg("notification rejected — check the channel credentials")
+					return
 				}
 			}
 			if attempt < maxRetries-1 {
 				time.Sleep(time.Duration(1<<uint(attempt)) * time.Second) // 1s, 2s, 4s
 			}
 		}
+		metrics.NotificationFailed(channelOf(url))
 		log.Warn().Str("url", url).Msg("notification delivery failed after retries")
 	}
 
@@ -296,9 +345,10 @@ func sendSecurityNotification(db *sql.DB, encKey string, event map[string]any) {
 			u += "/"
 		}
 		prio := "default"
-		if event["level"] == "error" {
+		switch event["level"] {
+		case "error":
 			prio = "urgent"
-		} else if event["level"] == "warning" {
+		case "warning":
 			prio = "high"
 		}
 		safePost(u+topic, []byte(plainText), map[string]string{

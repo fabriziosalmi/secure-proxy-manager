@@ -1,9 +1,13 @@
 package database
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -251,5 +255,103 @@ func TestAudit(t *testing.T) {
 	_ = db.QueryRow("SELECT count(*) FROM audit_log").Scan(&count)
 	if count != 1 {
 		t.Errorf("Expected 1 audit entry, got %d", count)
+	}
+}
+
+// SECURE-DOM-05: migrations must now surface real errors while still tolerating
+// the one expected failure. The regression risk of that change is idempotency —
+// Init runs on every start and the ALTERs must keep being no-ops after the
+// first run, not hard errors.
+func TestInitIsIdempotentAcrossRestarts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "idem.db")
+	for i := 1; i <= 3; i++ {
+		db, err := Open(path)
+		if err != nil {
+			t.Fatalf("run %d: open: %v", i, err)
+		}
+		if err := Init(db, "admin", "$2a$10$abcdefghijklmnopqrstuv"); err != nil {
+			t.Fatalf("run %d: Init returned an error on a database that is already migrated: %v", i, err)
+		}
+		db.Close()
+	}
+}
+
+func TestIsDuplicateColumnErr(t *testing.T) {
+	if isDuplicateColumnErr(nil) {
+		t.Error("nil must not be treated as a duplicate-column error")
+	}
+	if !isDuplicateColumnErr(errors.New("SQL logic error: duplicate column name: blocked (1)")) {
+		t.Error("SQLite's duplicate-column error was not recognised — Init would fail on every restart")
+	}
+	if isDuplicateColumnErr(errors.New("attempt to write a readonly database")) {
+		t.Error("an unrelated error was swallowed as duplicate-column — that is the original bug")
+	}
+}
+
+// SECURE-CONC-01: concurrent exports must not corrupt each other. With a fixed
+// path+".tmp" the second writer's os.Create truncated the first one's file
+// mid-write, and whichever renamed first published a short or NUL-padded ACL
+// straight to Squid.
+func TestExportBlacklistsToFilesIsConcurrencySafe(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(filepath.Join(dir, "conc.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+	if err := Init(db, "admin", "$2a$10$abcdefghijklmnopqrstuv"); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	// Enough rows that each export takes long enough to overlap.
+	for i := 0; i < 3000; i++ {
+		if _, err := db.Exec("INSERT OR IGNORE INTO ip_blacklist(ip) VALUES(?)",
+			fmt.Sprintf("203.0.113.%d/32", i%256)); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	var want int
+	if err := db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&want); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+
+	cfgDir := filepath.Join(dir, "config")
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := ExportBlacklistsToFiles(db, cfgDir); err != nil {
+				t.Errorf("export: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	// The published file must be a complete, uncorrupted export — not a
+	// truncated or NUL-padded interleaving of two writers.
+	data, err := os.ReadFile(filepath.Join(cfgDir, "ip_blacklist.txt"))
+	if err != nil {
+		t.Fatalf("read exported file: %v", err)
+	}
+	if bytes.ContainsRune(data, 0) {
+		t.Error("exported blacklist contains NUL bytes — a concurrent writer truncated it")
+	}
+	got := 0
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if strings.TrimSpace(line) != "" {
+			got++
+		}
+	}
+	if got != want {
+		t.Errorf("exported %d entries, want %d — the file was published partially written", got, want)
+	}
+
+	// No temp files may survive a completed export.
+	entries, _ := os.ReadDir(cfgDir)
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".tmp") {
+			t.Errorf("temp file left behind: %s", e.Name())
+		}
 	}
 }

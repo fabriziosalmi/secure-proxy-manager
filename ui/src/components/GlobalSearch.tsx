@@ -118,7 +118,7 @@ export function GlobalSearch() {
           logs.forEach((l: LogEntry) => {
             items.push({
               type: 'log', label: `${l.method || '-'} ${l.destination}`,
-              description: `${l.client_ip} — ${l.status}`,
+              description: `${l.source_ip} — ${l.status}`,
               action: () => { navigate('/logs'); setOpen(false); },
             });
           });

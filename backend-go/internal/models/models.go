@@ -1,4 +1,13 @@
 // Package models contains request/response structs used across handlers.
+//
+// The `validate:` tags are enforced by internal/validate, which every handler
+// runs against the decoded body. They were inert for the life of the package —
+// no validator was ever registered — so the length bounds in particular
+// described limits nothing applied (SECURE-DOM-02). Three types were removed
+// with that fix rather than wired up: RestoreConfigRequest, SettingUpdate and
+// SettingsBulkUpdate had no reference outside this file, and two of them
+// described request shapes the API does not accept (BulkUpdate takes a bare
+// object, not {"settings": {...}}), so they read as a contract and were not one.
 package models
 
 type LoginRequest struct {
@@ -9,10 +18,6 @@ type LoginRequest struct {
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"current_password" validate:"required"`
 	NewPassword     string `json:"new_password"     validate:"required,min=8"`
-}
-
-type RestoreConfigRequest struct {
-	Config map[string]string `json:"config" validate:"required"`
 }
 
 type IPListItem struct {
@@ -45,14 +50,6 @@ type ImportBlacklistRequest struct {
 
 type ImportGeoBlacklistRequest struct {
 	Countries []string `json:"countries" validate:"required,min=1,max=50"`
-}
-
-type SettingUpdate struct {
-	Value string `json:"value" validate:"max=10000"`
-}
-
-type SettingsBulkUpdate struct {
-	Settings map[string]string `json:"settings" validate:"required"`
 }
 
 type BulkDeleteRequest struct {

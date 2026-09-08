@@ -70,7 +70,7 @@ export function Clients() {
     refetchInterval: 30_000,
   });
 
-  const clients: ClientStat[] = data?.clients ?? EMPTY_CLIENTS;
+  const clients: ClientStat[] = data?.data ?? EMPTY_CLIENTS;
 
   const rows = useMemo(() => {
     const t = search.trim().toLowerCase();
@@ -92,7 +92,7 @@ export function Clients() {
             Clients
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Source IPs seen in the last 7 days{typeof data?.total_clients === 'number' ? ` — ${data.total_clients}` : ''}. Select a row for details.
+            Source IPs seen in the last 7 days{typeof data?.meta?.total === 'number' ? ` — ${data.meta.total}` : ''}. Select a row for details.
           </p>
         </div>
         <button

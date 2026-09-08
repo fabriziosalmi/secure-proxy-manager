@@ -94,11 +94,20 @@ func wafPostBreaker(ctx context.Context, cfg *config.Config, path, contentType s
 type AnalyticsHandlers struct {
 	db  *sql.DB
 	cfg *config.Config
+	// sys supplies update/CVE state. Injected rather than read from another
+	// package's globals (SECURE-ARCH-04); nil is valid and omits those fields.
+	sys SysInfo
 
 	// domain_blacklist is re-read on every DomainStats request and only changes
 	// when the blacklist-refresh worker runs (minutes apart), so a short-TTL
 	// snapshot avoids reloading the whole table on each dashboard poll. Snapshots
 	// are immutable once published, so callers may read them without the lock.
+	// Lifetime request counts, cached: see lifetimeCounts (SECURE-PERF-01).
+	countsMu      sync.Mutex
+	countsTotal   int
+	countsBlocked int
+	countsFetched time.Time
+
 	blMu      sync.Mutex
 	blSet     map[string]struct{}
 	blWild    []string
@@ -107,6 +116,31 @@ type AnalyticsHandlers struct {
 
 func NewAnalyticsHandlers(db *sql.DB, cfg *config.Config) *AnalyticsHandlers {
 	return &AnalyticsHandlers{db: db, cfg: cfg}
+}
+
+// WithSysInfo attaches the update/CVE provider. Kept separate from the
+// constructor so existing call sites and tests need no change.
+func (h *AnalyticsHandlers) WithSysInfo(s SysInfo) *AnalyticsHandlers {
+	h.sys = s
+	return h
+}
+
+// lifetimeCountsTTL is short enough that the dashboard stays live and long
+// enough that N open tabs cost one pair of scans rather than N.
+const lifetimeCountsTTL = 25 * time.Second
+
+// lifetimeCounts returns the total and blocked request counts, recomputing at
+// most once per lifetimeCountsTTL. See the call site for why (SECURE-PERF-01).
+func (h *AnalyticsHandlers) lifetimeCounts() (total, blocked int) {
+	h.countsMu.Lock()
+	defer h.countsMu.Unlock()
+	if time.Since(h.countsFetched) < lifetimeCountsTTL {
+		return h.countsTotal, h.countsBlocked
+	}
+	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs`).Scan(&total)
+	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1`).Scan(&blocked)
+	h.countsTotal, h.countsBlocked, h.countsFetched = total, blocked, time.Now()
+	return total, blocked
 }
 
 const domainBlacklistTTL = 30 * time.Second
@@ -178,7 +212,10 @@ func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 	proxyPort := "3128"
 	h.db.QueryRow("SELECT setting_value FROM settings WHERE setting_name = 'proxy_port'").Scan(&proxyPort) //nolint:errcheck
 
-	writeOK(w, map[string]any{
+	// The Squid version, its known CVEs and the update check live here, behind
+	// authMW, rather than on the unauthenticated /api/health where they
+	// fingerprinted the deployment for any pre-auth caller (SECURE-AUTH-04).
+	out := map[string]any{
 		"proxy_status":   proxyStatus,
 		"proxy_host":     h.cfg.ProxyHost,
 		"proxy_port":     proxyPort,
@@ -188,7 +225,19 @@ func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 		"memory_usage":   "N/A",
 		"cpu_usage":      "N/A",
 		"uptime":         "N/A",
-	})
+		"commit":         config.GitCommit,
+	}
+	if h.sys != nil {
+		if upd := h.sys.UpdateInfo(); upd.Available {
+			out["update_available"] = upd.Latest
+			out["update_url"] = upd.URL
+		}
+		if cve := h.sys.CVEInfo(); cve.Version != "" {
+			out["squid_version"] = cve.Version
+			out["squid_cves"] = len(cve.CVEs)
+		}
+	}
+	writeOK(w, out)
 }
 
 func (h *AnalyticsHandlers) TrafficStats(w http.ResponseWriter, r *http.Request) {
@@ -350,7 +399,10 @@ func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) 
 	}
 	var total int
 	h.db.QueryRow("SELECT COUNT(DISTINCT source_ip) FROM proxy_logs WHERE source_ip IS NOT NULL AND source_ip != '' AND unix_timestamp >= ?", since).Scan(&total) //nolint:errcheck
-	writeOK(w, map[string]any{"total_clients": total, "clients": clients})
+	// The collection goes under data like every other list, with its count in
+	// meta — not nested under data.clients with the count beside it, which was
+	// the third of the three shapes (SECURE-API-02).
+	writeList(w, clients, ListMeta{Total: total, Limit: len(clients), Offset: 0})
 }
 
 // ClientDetails returns a per-client drill-down for a single source IP:
@@ -367,7 +419,9 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 
 	var total, blocked int
 	var firstSeen, lastSeen sql.NullString
-	h.db.QueryRow( //nolint:errcheck
+	// A no-rows or scan error leaves the zero values, which is the correct
+	// answer for a client with no logged requests.
+	_ = h.db.QueryRow(
 		`SELECT COUNT(*), `+blockedCase+`, MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE source_ip = ?`,
 		ip,
 	).Scan(&total, &blocked, &firstSeen, &lastSeen)
@@ -483,7 +537,7 @@ func parseSquidInfo(raw string) map[string]any {
 	result := map[string]any{
 		"hit_rate": 0.0, "byte_hit_rate": 0.0, "cache_size": "N/A",
 		"max_cache_size": "N/A", "objects_cached": 0, "hits": 0,
-		"misses": 0, "requests": 0, "bytes_saved": 0, "simulated": false,
+		"misses": 0, "requests": 0, "simulated": false,
 	}
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)
@@ -528,19 +582,18 @@ func parseSquidInfo(raw string) map[string]any {
 					result["hits"] = n
 				}
 			}
-		case strings.Contains(line, "client_http.errors"):
-			// use as proxy for misses (hits + misses ≈ requests)
-		case strings.Contains(line, "Number of clients accessing cache:"):
-			// optional metric
 		}
 	}
-	// Compute misses from requests - hits
+	// Compute misses from requests - hits. hit_ratio is deliberately NOT
+	// emitted: it was a SECOND cache hit rate, computed over the lifetime
+	// counters while hit_rate comes from Squid's 5-minute window. They measure
+	// different things and diverge, and the two UI surfaces read different ones
+	// — the Dashboard preferred hit_ratio, the Settings service panel used
+	// hit_rate — so the same deployment showed two different numbers under the
+	// same label. hit_rate is the single definition (SECURE-DOM-03).
 	if reqs, ok := result["requests"].(int); ok {
 		if hits, ok := result["hits"].(int); ok {
 			result["misses"] = reqs - hits
-			if reqs > 0 {
-				result["hit_ratio"] = float64(hits) / float64(reqs)
-			}
 		}
 	}
 	return result
@@ -589,9 +642,17 @@ func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request
 func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Request) {
 	result := map[string]any{}
 
-	var totalReqs, blockedReqs, todayReqs, todayBlocked int
-	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs`).Scan(&totalReqs)                     //nolint:errcheck
-	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1`).Scan(&blockedReqs) //nolint:errcheck
+	// The lifetime counts come from a short-TTL cache, not from two COUNT(*)
+	// scans per poll. SQLite keeps no cached row count, so an unqualified
+	// COUNT(*) walks an index end to end — over proxy_logs, the one table whose
+	// size tracks traffic rather than configuration — and the Dashboard and
+	// Threat Intel pages both poll this endpoint every 30 seconds, per open tab,
+	// on a container limited to 0.25 CPU. The ETag on this route does not help:
+	// it hashes the response body, so every query has already run by the time
+	// the 304 is decided (SECURE-PERF-01).
+	totalReqs, blockedReqs := h.lifetimeCounts()
+
+	var todayReqs, todayBlocked int
 
 	todayStart := time.Now().UTC().Truncate(24 * time.Hour).Unix()
 	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE unix_timestamp >= ?`, todayStart).Scan(&todayReqs)                    //nolint:errcheck
@@ -973,7 +1034,7 @@ func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
 	h.db.QueryRow("SELECT COUNT(*) FROM audit_log").Scan(&total) //nolint:errcheck
 	rows, err := h.db.Query("SELECT * FROM audit_log ORDER BY id DESC LIMIT ? OFFSET ?", limit, offset)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "audit_log", err)
 		return
 	}
 	defer rows.Close()
@@ -995,9 +1056,7 @@ func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
 	if entries == nil {
 		entries = []map[string]any{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "success", "data": entries, "total": total, "limit": limit, "offset": offset,
-	})
+	writeList(w, entries, ListMeta{Total: total, Limit: limit, Offset: offset})
 }
 
 // WAFCategories proxies GET /categories from the WAF container.
@@ -1069,7 +1128,7 @@ func (h *AnalyticsHandlers) TestRule(w http.ResponseWriter, r *http.Request) {
 		sinceUnix(time.Duration(req.Hours)*time.Hour),
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "waf_test_rule", err)
 		return
 	}
 	defer rows.Close()

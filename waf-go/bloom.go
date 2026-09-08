@@ -15,12 +15,12 @@ import (
 // a bounded hash set with TTL eviction. Simpler, deterministic, and
 // sufficient for our use case.
 type SafeURLCache struct {
-	mu       sync.RWMutex
-	entries  map[uint64]time.Time // hash → last seen
-	maxSize  int
-	ttl      time.Duration
-	hits     atomic.Int64
-	misses   atomic.Int64
+	mu        sync.RWMutex
+	entries   map[uint64]time.Time // hash → last seen
+	maxSize   int
+	ttl       time.Duration
+	hits      atomic.Int64
+	misses    atomic.Int64
 	evictions atomic.Int64
 }
 
@@ -91,10 +91,10 @@ func (c *SafeURLCache) Stats() map[string]int64 {
 		hitRate = (hits * 100) / total
 	}
 	return map[string]int64{
-		"cache_size":     size,
-		"cache_hits":     hits,
-		"cache_misses":   misses,
-		"cache_hit_rate": hitRate,
+		"cache_size":      size,
+		"cache_hits":      hits,
+		"cache_misses":    misses,
+		"cache_hit_rate":  hitRate,
 		"cache_evictions": c.evictions.Load(),
 	}
 }

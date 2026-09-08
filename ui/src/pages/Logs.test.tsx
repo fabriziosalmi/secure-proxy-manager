@@ -21,7 +21,7 @@ const mockLogs = {
       {
         id: 1,
         timestamp: '2026-04-04 12:00:00',
-        client_ip: '192.168.1.10',
+        source_ip: '192.168.1.10',
         method: 'CONNECT',
         destination: 'example.com:443',
         status: 'TCP_TUNNEL/200',
@@ -30,7 +30,7 @@ const mockLogs = {
       {
         id: 2,
         timestamp: '2026-04-04 12:01:00',
-        client_ip: '192.168.1.10',
+        source_ip: '192.168.1.10',
         method: 'GET',
         destination: 'malware.com',
         status: 'TCP_DENIED/403',

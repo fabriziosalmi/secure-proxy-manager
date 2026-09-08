@@ -5,12 +5,17 @@
 # ╚═══════════════════════════════════════════════════════════════════════╝
 set -uo pipefail
 
-HOST="${1:-192.168.100.253}"
+# localhost, not a hardcoded address on the author's network. Running this with
+# no argument used to aim at 192.168.100.253 and fail with connection timeouts
+# that named no cause — or, on a network reusing that range, probe an unrelated
+# machine with 17 attack vectors (SECURE-DOC-02).
+HOST="${1:-localhost}"
 USER="${2:-fab}"
 PASS="${3:-password}"
 API="https://${HOST}:8443"
 PROXY="${HOST}:3128"
 # Accept self-signed certs for all curl calls
+# shellcheck disable=SC2034  # kept for callers that source this script
 CURL_OPTS="-k"
 
 # ── Colors ────────────────────────────────────────────────────────────────
@@ -146,7 +151,7 @@ for i in $(seq 1 5); do
     printf "  ${D}Sample $i:${N} ${ms}ms\n"
 done
 if [ ${#times[@]} -gt 0 ]; then
-    sorted=($(printf '%s\n' "${times[@]}" | sort -n))
+    mapfile -t sorted < <(printf '%s\n' "${times[@]}" | sort -n)
     p50=${sorted[$(( ${#sorted[@]} / 2 ))]}
     printf "\n  ${C}P50: ${BOLD}${p50}ms${N}\n"
 fi

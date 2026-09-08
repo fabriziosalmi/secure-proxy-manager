@@ -2,11 +2,13 @@
 package database
 
 import (
+	"bufio"
 	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -19,7 +21,18 @@ func Open(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("mkdir for db: %w", err)
 	}
 	// modernc.org/sqlite uses _pragma= syntax (not _journal_mode= like mattn/go-sqlite3).
-	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)&_pragma=synchronous(NORMAL)"
+	// Every PRAGMA goes in the DSN, where the driver applies it on each
+	// connection it opens. cache_size, mmap_size and temp_store used to be
+	// issued afterwards with db.Exec against a four-connection pool, which
+	// configures whichever ONE connection serves that call — so the intended
+	// 25x page-cache increase was absent from three connections out of four,
+	// and from all of them once ConnMaxLifetime retired the configured one.
+	// The comment above them claimed "applied per-connection"; it was not.
+	// PRAGMA page_size was dropped: it cannot take effect after the database
+	// has been created without a VACUUM (SECURE-PERF-02).
+	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)" +
+		"&_pragma=synchronous(NORMAL)&_pragma=cache_size(-50000)&_pragma=mmap_size(268435456)" +
+		"&_pragma=temp_store(MEMORY)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("sql.Open: %w", err)
@@ -38,20 +51,21 @@ func Open(path string) (*sql.DB, error) {
 		log.Info().Str("journal_mode", journalMode).Msg("SQLite journal mode")
 	}
 
-	// Performance PRAGMAs — applied per-connection.
-	for _, pragma := range []string{
-		"PRAGMA cache_size = -50000",   // 50 MB page cache (vs default 2 MB)
-		"PRAGMA mmap_size = 536870912", // 512 MB memory-mapped I/O
-		"PRAGMA temp_store = MEMORY",   // temp tables in RAM, not /tmp
-		"PRAGMA page_size = 4096",      // optimal for SSD
-	} {
-		if _, err := db.Exec(pragma); err != nil {
-			log.Warn().Str("pragma", pragma).Err(err).Msg("pragma failed (non-fatal)")
-		}
+	// Verify the per-connection settings actually took, rather than assuming.
+	var cacheSize int
+	if err := db.QueryRow("PRAGMA cache_size").Scan(&cacheSize); err == nil {
+		log.Info().Int("cache_size", cacheSize).Msg("SQLite page cache")
 	}
 
 	log.Info().Str("path", path).Msg("database opened")
 	return db, nil
+}
+
+// isDuplicateColumnErr reports whether err is SQLite's "duplicate column name"
+// error, which ALTER TABLE ADD COLUMN returns when the migration already ran.
+// That one is expected on every start after the first; nothing else is.
+func isDuplicateColumnErr(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "duplicate column")
 }
 
 // Init runs an integrity check, creates tables, applies migrations, and seeds the admin user.
@@ -155,7 +169,14 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		"ALTER TABLE domain_whitelist ADD COLUMN type TEXT DEFAULT 'fqdn'",
 	}
 	for _, m := range migrations {
-		_, _ = db.Exec(m) // "duplicate column" error is harmless
+		// Only the expected "duplicate column" error is harmless — it means the
+		// migration already ran. Discarding every error meant a locked,
+		// read-only or full database produced a schema the process believed it
+		// had, with the failure surfacing later as a missing column at query
+		// time, or not at all (SECURE-DOM-05).
+		if _, err := db.Exec(m); err != nil && !isDuplicateColumnErr(err) {
+			return fmt.Errorf("migration %q: %w", m, err)
+		}
 	}
 
 	// Indexes on migrated columns must be created AFTER the ALTERs above add the
@@ -261,7 +282,16 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 }
 
 // ExportBlacklistsToFiles writes the live blacklist tables to flat files used by Squid and dnsmasq.
+// exportMu serialises ExportBlacklistsToFiles. Four contexts call it — the
+// detached propagate goroutines, the blacklist-refresh worker and two
+// maintenance handlers — and the six files it writes are consumed together, so
+// they must be published as one consistent set rather than interleaved between
+// two concurrent exports (SECURE-CONC-01).
+var exportMu sync.Mutex
+
 func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
+	exportMu.Lock()
+	defer exportMu.Unlock()
 	// 1. ip_blacklist.txt
 	if err := exportLines(db, configDir+"/ip_blacklist.txt",
 		"SELECT ip FROM ip_blacklist ORDER BY ip"); err != nil {
@@ -299,22 +329,51 @@ func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
 // atomicWrite writes content to a temp file then renames to target path.
 // Prevents torn reads by Squid/dnsmasq during concurrent writes.
 func atomicWrite(path string, writeFn func(f *os.File) error) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	// #nosec G304
-	f, err := os.Create(tmp)
+	// A UNIQUE temp file per writer, not path+".tmp". With a fixed name, a
+	// second exporter's os.Create (O_TRUNC) reset the first one's file to zero
+	// length while its handle was still open at its own offset, and whichever
+	// renamed first published a short or NUL-padded ACL straight to Squid
+	// (SECURE-CONC-01).
+	f, err := os.CreateTemp(dir, filepath.Base(path)+".tmp*")
 	if err != nil {
 		return err
 	}
+	tmp := f.Name()
+	defer func() { _ = os.Remove(tmp) }() // best-effort; a no-op once the rename succeeds
+
 	if err := writeFn(f); err != nil {
 		f.Close()
-		os.Remove(tmp)
 		return err
 	}
-	f.Close()
-	return os.Rename(tmp, path)
+	// fsync before the rename: Close flushes to the kernel but does not force
+	// the data to disk, so on ext4 with delayed allocation a crash just after
+	// the rename could leave a present, correctly named, ZERO-LENGTH file —
+	// which Squid loads as an empty ACL and stops blocking (SECURE-DATA-05).
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return fmt.Errorf("sync %s: %w", tmp, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	// Sync the directory too, so the rename itself is durable rather than only
+	// the file contents.
+	//
+	// #nosec G304 — dir is filepath.Dir(path), and path is built by the caller
+	// from the configured ConfigDir, never from request input. It is opened
+	// read-only and never read: the handle exists only to fsync the directory.
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		d.Close()
+	}
+	return nil
 }
 
 func exportLines(db *sql.DB, path, query string) error {
@@ -332,10 +391,13 @@ func exportLines(db *sql.DB, path, query string) error {
 		}
 	}
 	return atomicWrite(path, func(f *os.File) error {
+		w := bufio.NewWriter(f)
 		for _, l := range lines {
-			fmt.Fprintln(f, l)
+			if _, err := fmt.Fprintln(w, l); err != nil {
+				return fmt.Errorf("write %s: %w", path, err)
+			}
 		}
-		return nil
+		return w.Flush()
 	})
 }
 
@@ -372,10 +434,13 @@ func exportDomainBlacklist(db *sql.DB, path string, exclusions map[string]struct
 		}
 	}
 	return atomicWrite(path, func(f *os.File) error {
+		w := bufio.NewWriter(f)
 		for _, d := range domains {
-			fmt.Fprintln(f, d)
+			if _, err := fmt.Fprintln(w, d); err != nil {
+				return fmt.Errorf("write %s: %w", path, err)
+			}
 		}
-		return nil
+		return w.Flush()
 	})
 }
 
@@ -405,10 +470,13 @@ func writeDnsmasqBlocklist(db *sql.DB, path string, exclusions map[string]struct
 	// (Trade-off: hosts entries are exact-match, not the `/domain/` subdomain
 	// wildcard; the imported lists are explicit domains, so this matches them.)
 	return atomicWrite(path, func(f *os.File) error {
+		w := bufio.NewWriter(f)
 		for _, e := range entries {
-			fmt.Fprintf(f, "0.0.0.0 %s\n:: %s\n", e.domain, e.domain)
+			if _, err := fmt.Fprintf(w, "0.0.0.0 %s\n:: %s\n", e.domain, e.domain); err != nil {
+				return fmt.Errorf("write %s: %w", path, err)
+			}
 		}
-		return nil
+		return w.Flush()
 	})
 }
 

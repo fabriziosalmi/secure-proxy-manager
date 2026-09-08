@@ -10,6 +10,17 @@ RUN npm run build
 FROM nginx:1.31.3-alpine@sha256:4a73073bd557c65b759505da037898b61f1be6cbcc3c2c3aeac22d2a470c1752
 
 # openssl for self-signed cert generation at boot
+# Distribution packages are installed without a version constraint. That is a
+# deliberate trade-off: pinning an exact apk/apt version breaks the build the
+# moment the repository rotates it, which for a project that rebuilds on every
+# release costs more than it buys. The consequence is accepted and bounded —
+# a rebuild of a tagged release resolves different package versions than the
+# one that was published and signed, so a rebuild cannot be used to verify the
+# original (SECURE-BLD-03).
+#
+# Where a package DOES carry security weight the version is asserted after
+# install instead: see proxy/Dockerfile, which fails the build if squid-openssl
+# is older than its CVE floor.
 RUN apk add --no-cache openssl && rm /etc/nginx/conf.d/default.conf
 
 COPY --from=frontend-builder /frontend/dist /usr/share/nginx/html

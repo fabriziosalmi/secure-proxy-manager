@@ -57,10 +57,24 @@ services:
     image: ghcr.io/fabriziosalmi/secure-proxy-manager-waf:latest
     volumes:
       - ./config:/config:ro
-      - ./data:/data:ro
+      # NOTE: ./data is deliberately NOT mounted here — see the comment in the
+      # dev compose. It holds .jwt_secret, .enc_key and the database, and the
+      # WAF has no code that reads any of them.
+      # Dedicated writable volume for the traffic feature log, matching the dev
+      # compose. Previously prod set neither this volume nor WAF_TRAFFIC_LOG_PATH,
+      # so the log fell back to the memory-backed /tmp tmpfs (capped at 16MB) and
+      # every event-ID forensic record was lost on each restart.
+      - waf-traffic:/var/lib/waf
     environment:
-      - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
-      - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
+      - WAF_TRAFFIC_LOG_PATH=${WAF_TRAFFIC_LOG_PATH:-/var/lib/waf/waf_traffic.jsonl}
+      # Service credential for POST /api/internal/alert, scoped to that one
+      # route. The WAF used to be handed BASIC_AUTH_USERNAME/PASSWORD — the
+      # admin credential — which gave the container that parses
+      # attacker-controlled request bodies full control of the management API
+      # (SECURE-AUTH-02). If this is empty the backend still accepts admin auth
+      # here for upgrade compatibility, but the WAF no longer has it, so alerts
+      # are dropped with a log line until the token is set on both services.
+      - INTERNAL_ALERT_TOKEN=${INTERNAL_ALERT_TOKEN:-}
       - WAF_BLOCK_THRESHOLD=${WAF_BLOCK_THRESHOLD:-10}
       - WAF_H_ENTROPY=${WAF_H_ENTROPY:-1}
       - WAF_H_ENTROPY_MAX=${WAF_H_ENTROPY_MAX:-7.5}
@@ -111,6 +125,7 @@ services:
       - PROXY_CONTAINER_NAME=${PROXY_CONTAINER_NAME:-secure-proxy-manager-proxy}
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
+      - INTERNAL_ALERT_TOKEN=${INTERNAL_ALERT_TOKEN:-}
       - SECRET_KEY=${SECRET_KEY}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://localhost:8443}
     deploy:
@@ -128,6 +143,14 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # The backend was the only service with a writable root filesystem, and it
+    # is also the one documented as running as root — so a process that achieved
+    # execution here could modify /server itself and persist across a restart,
+    # which is not possible in the four siblings. Its three write targets
+    # (/data, /config, /logs) are bind mounts and stay writable (SECURE-OPS-03).
+    read_only: true
+    tmpfs:
+      - /tmp
     logging:
       driver: json-file
       options:
@@ -189,11 +212,20 @@ services:
     container_name: secure-proxy-manager-proxy
     environment:
       - GUI_IP_WHITELIST=${GUI_IP_WHITELIST:-}
+      # Governs Squid's ICAP bypass as well as the WAF's own handler behaviour,
+      # so one switch covers both an erroring WAF and an unreachable one
+      # (SECURE-REL-02).
+      - WAF_FAIL_OPEN=${WAF_FAIL_OPEN:-0}
     ports:
       - "${PROXY_BIND_IP:-0.0.0.0}:3128:3128"
     volumes:
       - ./config:/config
-      - ./data:/data:ro
+      # NOTE: ./data is deliberately NOT mounted here. Nothing in the proxy
+      # image references /data — not startup.sh, generate_squid_conf.sh, the
+      # watchdog, squid.conf or the supervisor config — while the directory
+      # holds .jwt_secret, .enc_key and the database. Squid is the
+      # internet-facing data plane and runs with a broad capability set, so
+      # it is the last container that should be able to read them.
       - ./logs:/var/log/squid
       - squid-cache:/var/spool/squid
     depends_on:
@@ -207,7 +239,14 @@ services:
           cpus: '0.50'
           memory: 512M
     healthcheck:
-      test: ["CMD-SHELL", "(squidclient -h 127.0.0.1 -p 3128 mgr:info 2>/dev/null | grep -q 'Squid Object Cache') || curl -sf --max-time 3 -x http://127.0.0.1:3128 http://www.gstatic.com/generate_204 -o /dev/null"]
+      # Probes BOTH processes. The watchdog is the only path by which a
+      # configuration change reaches Squid, and it used to be invisible: this
+      # check tested squid alone, so a dead watchdog left the container
+      # reporting healthy while every change silently stopped applying
+      # (SECURE-REL-01). The watchdog touches watchdog.heartbeat on every
+      # 2s poll, so a stale mtime means it has stopped — a quiet system
+      # still writes it, an absent one does not.
+      test: ["CMD-SHELL", "((squidclient -h 127.0.0.1 -p 3128 mgr:info 2>/dev/null | grep -q 'Squid Object Cache') || curl -sf --max-time 3 -x http://127.0.0.1:3128 http://www.gstatic.com/generate_204 -o /dev/null) && [ $(( $(date +%s) - $(stat -c %Y /var/log/squid/watchdog.heartbeat 2>/dev/null || echo 0) )) -lt 120 ]"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -281,8 +320,27 @@ services:
   grafana:
     image: grafana/grafana:11.4.0@sha256:d8ea37798ccc41061a62ab080f2676dda6bf7815558499f901bdb0f533a456fb
     container_name: secure-proxy-manager-grafana
+    # Grafana refuses to start without an explicit admin password. This file is
+    # what install.sh deploys, and it defaulted GF_SECURITY_ADMIN_PASSWORD to
+    # the literal string "admin" — in a project whose backend refuses to boot
+    # when BASIC_AUTH_PASSWORD is "admin". The dashboard displays the same proxy
+    # data (SECURE-CONF-05).
+    #
+    # The check is an entrypoint guard, not a `${VAR:?}` interpolation: compose
+    # resolves interpolation for the WHOLE file before it looks at profiles, so
+    # `:?` would make every compose command fail for everyone who never enables
+    # observability. This fires when the service is actually started.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        if [ -z "$$GF_SECURITY_ADMIN_PASSWORD" ]; then
+          echo "GRAFANA_ADMIN_PASSWORD is not set. Refusing to start Grafana with the default admin/admin credential — set it in .env (openssl rand -base64 24)." >&2
+          exit 1
+        fi
+        exec /run.sh
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_ANALYTICS_REPORTING_ENABLED=false
       - GF_ANALYTICS_CHECK_FOR_UPDATES=false
@@ -310,6 +368,8 @@ networks:
 
 volumes:
   squid-cache:
+    driver: local
+  waf-traffic:
     driver: local
   tailscale-data:
     driver: local

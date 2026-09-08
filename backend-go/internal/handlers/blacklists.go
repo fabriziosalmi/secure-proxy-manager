@@ -3,14 +3,12 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +19,9 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/validate"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
 type BlacklistHandlers struct {
@@ -95,7 +96,7 @@ func listHandler(db *sql.DB, table, col string) http.HandlerFunc {
 			rows, err = db.Query(fmt.Sprintf("SELECT * FROM %s ORDER BY id DESC LIMIT ? OFFSET ?", table), limit, offset)
 		}
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeInternalError(w, "list_blacklist", err)
 			return
 		}
 		defer rows.Close()
@@ -117,9 +118,7 @@ func listHandler(db *sql.DB, table, col string) http.HandlerFunc {
 		if result == nil {
 			result = []map[string]any{}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"status": "success", "data": result, "total": total, "limit": limit, "offset": offset,
-		})
+		writeList(w, result, ListMeta{Total: total, Limit: limit, Offset: offset})
 	}
 }
 
@@ -128,7 +127,7 @@ func deleteByIDHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 		id := chi.URLParam(r, "id")
 		res, err := db.Exec(fmt.Sprintf("DELETE FROM %s WHERE id=?", table), id)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeInternalError(w, "delete_blacklist_entry", err)
 			return
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
@@ -136,7 +135,7 @@ func deleteByIDHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 			return
 		}
 		if cfg != nil {
-			go propagate(db, cfg, kindFromTable(table))
+			requestExport()
 		}
 		// Audit log
 		if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
@@ -149,8 +148,13 @@ func deleteByIDHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 func bulkDeleteHandler(db *sql.DB, table string, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req models.BulkDeleteRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "ids required")
+			return
+		}
+		// `required,min=1` — the empty-list check this replaces.
+		if err := validate.Struct(&req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		placeholders := strings.Repeat("?,", len(req.IDs))
@@ -166,7 +170,7 @@ func bulkDeleteHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 		}
 		deleted, _ := res.RowsAffected()
 		if deleted > 0 && cfg != nil {
-			go propagate(db, cfg, kindFromTable(table))
+			requestExport()
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"status": "success", "data": map[string]any{"deleted": deleted}})
 	}
@@ -178,11 +182,11 @@ func clearAllHandler(db *sql.DB, table string, cfg *config.Config, col string) h
 		var count int
 		db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&count) //nolint:errcheck
 		if _, err := db.Exec(fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-			writeError(w, http.StatusInternalServerError, "database error: "+err.Error())
+			writeInternalError(w, "clear_all_blacklist", err)
 			return
 		}
 		if cfg != nil {
-			go propagate(db, cfg, kindFromTable(table))
+			requestExport()
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"status": "success", "message": fmt.Sprintf("Cleared %d entries", count)})
 	}
@@ -194,6 +198,10 @@ func (h *BlacklistHandlers) AddIP(w http.ResponseWriter, r *http.Request) {
 	var item models.IPListItem
 	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := validate.Struct(&item); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	ip := strings.TrimSpace(item.IP)
@@ -211,10 +219,10 @@ func (h *BlacklistHandlers) AddIP(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "IP address already in blacklist")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "add_ip_blacklist", err)
 		return
 	}
-	go propagate(h.db, h.cfg, "ip")
+	requestExport()
 	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
 		database.Audit(h.db, user, "add_ip_blacklist", ip, item.Description)
 	}
@@ -225,6 +233,10 @@ func (h *BlacklistHandlers) AddIPWhitelist(w http.ResponseWriter, r *http.Reques
 	var item models.IPListItem
 	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := validate.Struct(&item); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	ip := strings.TrimSpace(item.IP)
@@ -238,7 +250,7 @@ func (h *BlacklistHandlers) AddIPWhitelist(w http.ResponseWriter, r *http.Reques
 			writeError(w, http.StatusBadRequest, "IP already in whitelist")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "add_ip_whitelist", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "IP added to whitelist"})
@@ -250,6 +262,10 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 	var item models.DomainListItem
 	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := validate.Struct(&item); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	domain := strings.TrimSpace(strings.ToLower(item.Domain))
@@ -272,10 +288,10 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "domain already in blacklist")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "add_domain_blacklist", err)
 		return
 	}
-	go propagate(h.db, h.cfg, "domain")
+	requestExport()
 	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
 		database.Audit(h.db, user, "add_domain_blacklist", domain, item.Description)
 	}
@@ -289,6 +305,10 @@ func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) 
 	var item models.EgressAllowItem
 	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := validate.Struct(&item); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	entry := strings.TrimSpace(strings.ToLower(item.Entry))
@@ -309,10 +329,10 @@ func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) 
 			writeError(w, http.StatusBadRequest, "entry already in allowlist")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "add_egress_allowlist", err)
 		return
 	}
-	go propagate(h.db, h.cfg, "dst")
+	requestExport()
 	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
 		database.Audit(h.db, user, "add_egress_allowlist", entry, item.Description)
 	}
@@ -325,25 +345,36 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if err := validate.Struct(&item); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	domain := strings.TrimSpace(strings.ToLower(item.Domain))
 	if domain == "" || strings.ContainsAny(domain, " ") {
 		writeError(w, http.StatusBadRequest, "invalid domain format")
 		return
 	}
-	entryType := "fqdn"
+	// A metacharacter used to be classified as type="url-regex", persisted, and
+	// listed in the UI — while the ONLY reader of this table filters on
+	// type='fqdn'. So `*.example.com` was accepted, shown as whitelisted, and
+	// silently did nothing: the user believed a domain was exempt and it was
+	// not. Refuse it rather than store an entry no consumer honours
+	// (SECURE-DOM-07).
 	for _, c := range []string{"*", "?", "[", "(", "|", "\\"} {
 		if strings.Contains(domain, c) {
-			entryType = "url-regex"
-			break
+			writeError(w, http.StatusBadRequest,
+				"wildcards and regular expressions are not supported here — enter an exact domain (a parent domain covers its subdomains)")
+			return
 		}
 	}
+	entryType := "fqdn"
 	_, err := h.db.Exec("INSERT INTO domain_whitelist(domain, type, description) VALUES(?,?,?)", domain, entryType, item.Description)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			writeError(w, http.StatusBadRequest, "domain already in whitelist")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "add_domain_whitelist", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": fmt.Sprintf("Domain added to whitelist (type: %s)", entryType)})
@@ -351,12 +382,21 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 
 // ── Import ─────────────────────────────────────────────────────────────────────
 
-const maxImportSize = 200 * 1024 * 1024 // 200 MB
+// maxImportSize bounds a blacklist download. It is deliberately far below the
+// container's memory limit (128M in both compose files): downloadWithRetry
+// buffers the whole response and the parse then builds a dedupe set over it, so
+// a cap above the budget means the process is OOM-killed before the cap can
+// fire — the guard would read as protection and provide none (SECURE-INPT-01).
+const maxImportSize = 32 * 1024 * 1024 // 32 MB
 
 func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	var req models.ImportBlacklistRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := validate.Struct(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	blType := strings.ToLower(req.Type)
@@ -508,7 +548,7 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	added -= insertFailed
 	skipped += insertFailed
 	if added > 0 {
-		go propagate(h.db, h.cfg, blType)
+		requestExport()
 	}
 	msg := fmt.Sprintf("Successfully imported %d entries (%d skipped/invalid)", added, skipped)
 	if bogonSkipped > 0 {
@@ -521,12 +561,40 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// maxGeoCountries mirrors the bound declared on ImportGeoBlacklistRequest.
+const maxGeoCountries = 50
+
 func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 	var req models.ImportGeoBlacklistRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Countries) == 0 {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "countries list required")
 		return
 	}
+	// `required,min=1,max=50`. The upper bound is load-bearing, not hygiene:
+	// without it an authenticated caller could post millions of entries and,
+	// since duplicates were not collapsed, drive two 30s outbound fetches per
+	// element from inside the request goroutine — an unbounded amplifier that
+	// never returns (SECURE-DOM-01). It was enforced here by hand because the
+	// tag that declared it was inert; now the tag is the enforcement
+	// (SECURE-DOM-02), and maxGeoCountries below asserts the two agree.
+	if err := validate.Struct(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	seen := make(map[string]struct{}, len(req.Countries))
+	countries := make([]string, 0, len(req.Countries))
+	for _, c := range req.Countries {
+		cc := strings.ToLower(strings.TrimSpace(c))
+		if cc == "" {
+			continue
+		}
+		if _, dup := seen[cc]; dup {
+			continue
+		}
+		seen[cc] = struct{}{}
+		countries = append(countries, cc)
+	}
+	req.Countries = countries
 
 	existing := map[string]struct{}{}
 	rows, _ := h.db.Query("SELECT ip FROM ip_blacklist")
@@ -540,8 +608,32 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	totalImported := 0
+	importedCountries := 0
 	var fetchErrors []string
-	client := &http.Client{Timeout: 30 * time.Second}
+	// SECURE-INPT-03. The default feeds are third-party hosts we do not control,
+	// so a hijacked or compromised upstream must not be able to redirect us at
+	// an internal address: those go through the SSRF-safe client, which
+	// validates at dial time and on every redirect hop.
+	//
+	// An operator-supplied GEOIP_URL is a different case — pointing it at a
+	// mirror on the LAN is a legitimate self-hosting configuration, and the
+	// SSRF client would refuse exactly that. It gets a plain client with a
+	// bounded redirect chain instead: the operator chose the endpoint, so the
+	// address is their decision, but an unbounded redirect chain is not.
+	var client *http.Client
+	if h.cfg.GeoIPURL == "" {
+		client = netguard.SSRFSafeClient()
+	} else {
+		client = &http.Client{
+			CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+				if len(via) >= 5 {
+					return errors.New("stopped after 5 redirects")
+				}
+				return nil
+			},
+		}
+	}
+	client.Timeout = 30 * time.Second
 
 	ccRe := regexp.MustCompile(`^[a-zA-Z]{2}$`)
 	for _, country := range req.Countries {
@@ -590,39 +682,88 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 			if _, ex := existing[ip]; !ex {
 				toInsert = append(toInsert, [2]string{ip, "GeoIP: " + strings.ToUpper(cc)})
 				existing[ip] = struct{}{}
-				totalImported++
 			}
 		}
-		if len(toInsert) > 0 {
-			tx, err := h.db.Begin()
-			if err == nil {
-				stmt, err := tx.Prepare("INSERT INTO ip_blacklist(ip, description) VALUES(?,?)")
-				if err == nil {
-					for _, pair := range toInsert {
-						stmt.Exec(pair[0], pair[1]) //nolint:errcheck
-					}
-					stmt.Close()
-					tx.Commit() //nolint:errcheck
-				} else {
-					tx.Rollback() //nolint:errcheck
-				}
-			}
+		if len(toInsert) == 0 {
+			continue
 		}
+		// Count rows that COMMITTED, not rows queued in memory. The previous
+		// code incremented before any database work and discarded the errors
+		// from Begin, Prepare, Exec and Commit, so a locked or read-only SQLite
+		// produced a 200 reporting tens of thousands of imported blocks with
+		// nothing written (SECURE-ERR-01).
+		committed, err := insertGeoBatch(h.db, toInsert)
+		if err != nil {
+			// Roll the in-memory dedupe set back so a retry can re-attempt these.
+			for _, pair := range toInsert {
+				delete(existing, pair[0])
+			}
+			fetchErrors = append(fetchErrors, strings.ToUpper(cc)+": "+err.Error())
+			continue
+		}
+		totalImported += committed
+		importedCountries++
 	}
 
-	if len(fetchErrors) > 0 && totalImported == 0 {
+	// A failure that imported nothing is a failure; a partial import must say
+	// which countries failed rather than reporting an unqualified success.
+	if totalImported == 0 && len(fetchErrors) > 0 {
 		writeError(w, http.StatusBadGateway, strings.Join(fetchErrors, "; "))
 		return
 	}
-	go propagate(h.db, h.cfg, "ip")
-	writeJSON(w, http.StatusOK, map[string]any{
+	requestExport()
+	resp := map[string]any{
 		"status":  "success",
-		"message": fmt.Sprintf("Imported %d IP blocks for %d countries", totalImported, len(req.Countries)),
-		"data":    map[string]any{"imported": totalImported},
-	})
+		"message": fmt.Sprintf("Imported %d IP blocks for %d of %d countries", totalImported, importedCountries, len(req.Countries)),
+		"data":    map[string]any{"imported": totalImported, "countries_imported": importedCountries, "countries_requested": len(req.Countries)},
+	}
+	if len(fetchErrors) > 0 {
+		resp["status"] = "partial"
+		resp["data"].(map[string]any)["errors"] = fetchErrors
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
-// Legacy aliases — redirect to unified import endpoint.
+// insertGeoBatch writes one country's blocks in a single transaction and
+// returns how many rows were actually committed. Every error is checked: the
+// caller reports a count, and a count that is not backed by a commit is a lie.
+func insertGeoBatch(db *sql.DB, rows [][2]string) (int, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op once committed
+
+	stmt, err := tx.Prepare("INSERT INTO ip_blacklist(ip, description) VALUES(?,?)")
+	if err != nil {
+		return 0, fmt.Errorf("prepare: %w", err)
+	}
+	defer stmt.Close()
+
+	inserted := 0
+	for _, pair := range rows {
+		res, err := stmt.Exec(pair[0], pair[1])
+		if err != nil {
+			// A UNIQUE collision is expected (the row is already blacklisted)
+			// and is not a batch failure; anything else is.
+			if strings.Contains(err.Error(), "UNIQUE") {
+				continue
+			}
+			return 0, fmt.Errorf("insert %s: %w", pair[0], err)
+		}
+		if n, err := res.RowsAffected(); err == nil {
+			inserted += int(n)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+	return inserted, nil
+}
+
+// ImportIPLegacy is a retired alias: it answers 410 Gone naming the
+// replacement call. Kept registered so an old client gets a machine-readable
+// status and a migration instruction rather than a 404.
 func (h *BlacklistHandlers) ImportIPLegacy(w http.ResponseWriter, r *http.Request) {
 	writeError(w, http.StatusGone, "Use POST /api/blacklists/import with type=ip instead")
 }
@@ -633,29 +774,11 @@ func (h *BlacklistHandlers) ImportDomainLegacy(w http.ResponseWriter, r *http.Re
 
 // ── propagate ─────────────────────────────────────────────────────────────────
 
-func propagate(db *sql.DB, cfg *config.Config, kind string) {
-	if err := database.ExportBlacklistsToFiles(db, cfg.ConfigDir); err != nil {
-		log.Warn().Err(err).Msg("export blacklists failed")
-	}
-
-	// IP/domain ACL reload for Squid is handled by the proxy-side watchdog
-	// (proxy/blacklist_watchdog.py): it polls the mtime of the /config blacklist
-	// files we just exported above, copies them into Squid's ACL dir and runs
-	// `squid -k reconfigure`. There is no Squid HTTP reload endpoint — a previous
-	// POST to proxy:3128/api/reload was a dead no-op (3128 is the forward-proxy
-	// port, which has no /api/reload).
-
-	// Signal dnsmasq to reload blocklist (using shared reload-dns file)
-	if kind == "domain" || kind == "all" {
-		reloadFile := filepath.Join(cfg.ConfigDir, ".reload-dns")
-		// #nosec G306 — reload trigger, must be readable by the proxy/dns container
-		if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
-			log.Warn().Err(err).Msg("dns reload file trigger failed in propagate")
-		} else {
-			log.Info().Msg("dnsmasq reload file trigger written in propagate")
-		}
-	}
-}
+// requestExport asks the owned exporter to publish the lists. It replaces the
+// eight detached `go propagate(...)` spawns, which had no context, no owner, no
+// concurrency bound and no way to report failure, and which ran the six-file
+// export concurrently with itself (SECURE-CONC-03, SECURE-ERR-05).
+func requestExport() { workers.RequestExport() }
 
 func kindFromTable(table string) string {
 	if strings.Contains(table, "domain") {

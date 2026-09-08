@@ -10,7 +10,7 @@ func TestStatsCollector(t *testing.T) {
 		categoryCounts: make(map[string]int),
 		uaCounts:       make(map[string]int),
 	}
-	
+
 	feat := TrafficFeature{
 		Host:        "example.com",
 		URLEntropy:  2.0,
@@ -21,11 +21,11 @@ func TestStatsCollector(t *testing.T) {
 	// Test recording
 	s.record(feat, true, []string{"SQLI"})
 	s.record(feat, false, []string{})
-	
+
 	feat2 := TrafficFeature{
-		Host:        "google.com",
-		URLEntropy:  5.0, // High entropy
-		UserAgent:   "Curl/7.68.0",
+		Host:       "google.com",
+		URLEntropy: 5.0, // High entropy
+		UserAgent:  "Curl/7.68.0",
 	}
 	s.record(feat2, true, []string{"XSS", "WAF"})
 
@@ -58,8 +58,8 @@ func TestStatsCollector(t *testing.T) {
 }
 
 func TestStatsCollector_StartRecentCounter(t *testing.T) {
-    s := &statsCollector{}
-    // We can just call it to cover the goroutine start logic.
-    // In a real test we'd want to wait and check, but for coverage this is enough.
-    go s.startRecentCounter()
+	s := &statsCollector{}
+	// We can just call it to cover the goroutine start logic.
+	// In a real test we'd want to wait and check, but for coverage this is enough.
+	go s.startRecentCounter()
 }

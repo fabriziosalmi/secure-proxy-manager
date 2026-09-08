@@ -25,7 +25,7 @@ import (
 // the log directory itself is typically not writable by the backend's user.
 func StartLogTailer(ctx context.Context, db *sql.DB, logPath, stateDir string, hub *websocket.Hub) {
 	posPath := filepath.Join(stateDir, filepath.Base(logPath)+".pos")
-	go func() {
+	track(func() {
 		// Restore the persisted byte offset so a backend restart does not re-read
 		// the whole file from the start and re-insert every still-present line.
 		offset := readOffset(posPath)
@@ -63,17 +63,46 @@ func StartLogTailer(ctx context.Context, db *sql.DB, logPath, stateDir string, h
 			}
 			scanner := bufio.NewScanner(f)
 			scanner.Buffer(make([]byte, 64*1024), 256*1024) // 64KB default, 256KB max line
+
 			batch := make([]map[string]any, 0, 256)
+			// Bytes consumed by lines we actually processed. Needed because
+			// bufio.Scanner reads AHEAD: after an early break, the file position
+			// is past the last line we handled, so seeking would skip records.
+			var consumed int64
+			truncatedBatch := false
 			for scanner.Scan() {
-				line := strings.TrimSpace(scanner.Text())
+				raw := scanner.Bytes()
+				consumed += int64(len(raw)) + 1 // +1 for the newline the scanner strips
+				line := strings.TrimSpace(string(raw))
 				if line == "" {
 					continue
 				}
 				if entry := parseSquidLine(line); entry != nil {
 					batch = append(batch, entry)
+					// The proxy's own outcome, counted where every line is already
+					// parsed — one Inc on a path that is doing a DB write anyway
+					// (SECURE-OBS-01).
+					metrics.ProxyRequest(entry["blocked"] == 1)
+					if len(batch) >= maxBatchLines {
+						truncatedBatch = true
+						break
+					}
 				}
 			}
-			newOffset, seekErr := f.Seek(0, io.SeekCurrent)
+
+			var newOffset int64
+			var seekErr error
+			if truncatedBatch {
+				// Resume exactly after the last line we processed.
+				newOffset = offset + consumed
+				if newOffset > fi.Size() {
+					newOffset = fi.Size()
+				}
+				log.Debug().Int("lines", len(batch)).Int64("offset", newOffset).
+					Msg("log tailer: batch capped, continuing next tick")
+			} else {
+				newOffset, seekErr = f.Seek(0, io.SeekCurrent)
+			}
 			f.Close()
 
 			// Insert the whole tick in one transaction. If it fails, leave the
@@ -84,11 +113,14 @@ func StartLogTailer(ctx context.Context, db *sql.DB, logPath, stateDir string, h
 				continue
 			}
 			// Broadcast only committed rows, so a retry does not double-emit.
-			for _, entry := range batch {
-				if msg, err := json.Marshal(entry); err == nil {
-					select {
-					case hub.Broadcast <- msg:
-					default:
+			// The hub is optional: nil means nothing is streaming.
+			if hub != nil {
+				for _, entry := range batch {
+					if msg, err := json.Marshal(entry); err == nil {
+						select {
+						case hub.Broadcast <- msg:
+						default:
+						}
 					}
 				}
 			}
@@ -100,9 +132,20 @@ func StartLogTailer(ctx context.Context, db *sql.DB, logPath, stateDir string, h
 			}
 			writeOffset(posPath, offset)
 		}
-	}()
+	})
 	log.Info().Str("path", logPath).Msg("log tailer started")
 }
+
+// maxBatchLines bounds the memory a single tailer tick can consume. Without it
+// the batch was sized by the BACKLOG: a backend down for an hour, or a traffic
+// burst, read every line since the saved offset into one slice of maps against
+// a 128M container limit — an OOM kill during recovery, which on restart
+// re-read the same backlog and looped. The offset is persisted per batch, so a
+// backlog now catches up over successive ticks (SECURE-SCAL-02).
+//
+// At roughly 500 bytes per parsed entry this caps a tick near 2.5MB, comfortably
+// inside the container budget even with the transaction and the dedupe on top.
+const maxBatchLines = 5000
 
 func readOffset(posPath string) int64 {
 	data, err := os.ReadFile(posPath) // #nosec G304 — derived from configured data dir
@@ -184,15 +227,19 @@ func parseSquidLine(line string) map[string]any {
 	return map[string]any{
 		"timestamp":      timestamp,
 		"unix_timestamp": unixSec,
-		"client_ip":      clientIP,
-		"source_ip":      clientIP, // kept for DB insert compatibility
-		"method":         method,
-		"destination":    destination,
-		"status":         statusStr,
-		"bytes":          bytesInt,
-		"elapsed_ms":     elapsed,
-		"blocked":        blocked,
-		"event_id":       eventID,
+		// One name for one concept. The address used to be carried twice in the
+		// same map — client_ip for the WebSocket payload and source_ip for the
+		// DB insert — and appeared as a third name, ip_address, in the clients
+		// endpoint. source_ip is what the schema and the highest-volume insert
+		// already use (SECURE-DOM-08).
+		"source_ip":   clientIP,
+		"method":      method,
+		"destination": destination,
+		"status":      statusStr,
+		"bytes":       bytesInt,
+		"elapsed_ms":  elapsed,
+		"blocked":     blocked,
+		"event_id":    eventID,
 	}
 }
 

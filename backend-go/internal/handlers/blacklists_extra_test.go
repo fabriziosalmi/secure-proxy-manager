@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
+	"github.com/go-chi/chi/v5"
 )
 
 func TestBlacklistHandlers_Register(t *testing.T) {
@@ -32,21 +32,27 @@ func TestBlacklistHandlers_AdditionalAdds(t *testing.T) {
 	r := httptest.NewRequest("POST", "/api/blacklists/ip-whitelist", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	h.AddIPWhitelist(w, r)
-	if w.Code != http.StatusOK { t.Errorf("AddIPWhitelist failed: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("AddIPWhitelist failed: %d", w.Code)
+	}
 
 	// 2. AddDomain
 	body, _ = json.Marshal(map[string]string{"domain": "example.com", "description": "test"})
 	r = httptest.NewRequest("POST", "/api/blacklists/domain", bytes.NewBuffer(body))
 	w = httptest.NewRecorder()
 	h.AddDomain(w, r)
-	if w.Code != http.StatusOK { t.Errorf("AddDomain failed: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("AddDomain failed: %d", w.Code)
+	}
 
 	// 3. AddDomainWhitelist
 	body, _ = json.Marshal(map[string]string{"domain": "goodsite.com", "description": "test"})
 	r = httptest.NewRequest("POST", "/api/blacklists/domain-whitelist", bytes.NewBuffer(body))
 	w = httptest.NewRecorder()
 	h.AddDomainWhitelist(w, r)
-	if w.Code != http.StatusOK { t.Errorf("AddDomainWhitelist failed: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("AddDomainWhitelist failed: %d", w.Code)
+	}
 
 	// Allow async export to finish to prevent TempDir cleanup failures
 	time.Sleep(100 * time.Millisecond)
@@ -75,21 +81,27 @@ func TestBlacklistHandlers_ImportGeo(t *testing.T) {
 	r := httptest.NewRequest("POST", "/api/blacklists/import-geo", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	h.ImportGeo(w, r)
-	if w.Code != http.StatusOK { t.Errorf("Expected 200 for success, got %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200 for success, got %d", w.Code)
+	}
 
 	// Validation Failure (empty countries)
 	body, _ = json.Marshal(models.ImportGeoBlacklistRequest{Countries: []string{}})
 	r = httptest.NewRequest("POST", "/api/blacklists/import-geo", bytes.NewBuffer(body))
 	w = httptest.NewRecorder()
 	h.ImportGeo(w, r)
-	if w.Code != http.StatusBadRequest { t.Errorf("Expected 400 for empty, got %d", w.Code) }
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 for empty, got %d", w.Code)
+	}
 
 	// Fetch Failure (unreachable country)
 	body, _ = json.Marshal(models.ImportGeoBlacklistRequest{Countries: []string{"XX"}})
 	r = httptest.NewRequest("POST", "/api/blacklists/import-geo", bytes.NewBuffer(body))
 	w = httptest.NewRecorder()
 	h.ImportGeo(w, r)
-	if w.Code != http.StatusBadGateway { t.Errorf("Expected 502 for failure, got %d", w.Code) }
+	if w.Code != http.StatusBadGateway {
+		t.Errorf("Expected 502 for failure, got %d", w.Code)
+	}
 
 	// Allow async export to finish to prevent TempDir cleanup failures
 	time.Sleep(100 * time.Millisecond)
@@ -103,10 +115,46 @@ func TestBlacklistHandlers_Legacy(t *testing.T) {
 	r := httptest.NewRequest("POST", "/api/blacklists/import/ip", nil)
 	w := httptest.NewRecorder()
 	h.ImportIPLegacy(w, r)
-	if w.Code != http.StatusGone { t.Errorf("Expected 410, got %d", w.Code) }
+	if w.Code != http.StatusGone {
+		t.Errorf("Expected 410, got %d", w.Code)
+	}
 
 	r = httptest.NewRequest("POST", "/api/blacklists/import/domain", nil)
 	w = httptest.NewRecorder()
 	h.ImportDomainLegacy(w, r)
-	if w.Code != http.StatusGone { t.Errorf("Expected 410, got %d", w.Code) }
+	if w.Code != http.StatusGone {
+		t.Errorf("Expected 410, got %d", w.Code)
+	}
+}
+
+// SECURE-DOM-01: the max=50 the model declares must actually be enforced, and
+// duplicates must be collapsed — without both, one request drove two 30s
+// outbound fetches per element with no bound.
+func TestImportGeo_EnforcesCountryBound(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewBlacklistHandlers(db, cfg)
+
+	many := make([]string, 51)
+	for i := range many {
+		many[i] = "it"
+	}
+	body, _ := json.Marshal(map[string]any{"countries": many})
+	w := httptest.NewRecorder()
+	h.ImportGeo(w, httptest.NewRequest("POST", "/api/ip-blacklist/import-geo", bytes.NewBuffer(body)))
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for %d countries (max %d), got %d: %s",
+			len(many), maxGeoCountries, w.Code, w.Body.String())
+	}
+}
+
+// SECURE-INPT-01: the accepted import size must sit below the container's
+// memory budget, or the process is OOM-killed before the bound can fire.
+func TestImportSizeCapIsBelowContainerBudget(t *testing.T) {
+	const containerLimitBytes = 128 * 1024 * 1024 // compose: memory: 128M
+	if maxImportSize >= containerLimitBytes {
+		t.Errorf("maxImportSize (%d) >= container memory limit (%d): the cap can never fire",
+			maxImportSize, containerLimitBytes)
+	}
 }

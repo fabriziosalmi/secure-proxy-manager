@@ -374,8 +374,8 @@ func TestParseDNSLine(t *testing.T) {
 	if entry == nil {
 		t.Fatal("expected entry to be parsed for block reply")
 	}
-	if entry["client_ip"] != "192.168.1.5" {
-		t.Errorf("expected client_ip 192.168.1.5, got %v", entry["client_ip"])
+	if entry["source_ip"] != "192.168.1.5" {
+		t.Errorf("expected source_ip 192.168.1.5, got %v", entry["source_ip"])
 	}
 	if entry["destination"] != "evil.com" {
 		t.Errorf("expected destination evil.com, got %v", entry["destination"])
@@ -438,5 +438,77 @@ func TestBoundedDNSCache(t *testing.T) {
 	}
 	if small.len() == 0 || small.len() > 8 {
 		t.Fatalf("expected 1..8 entries after churn, got %d", small.len())
+	}
+}
+
+// SECURE-SCAL-02: a large backlog must be ingested across several ticks
+// without loss and without reading it all into memory at once. The failure
+// mode this guards against is an OOM during recovery — the moment the backlog
+// is largest — which on restart re-read the same backlog and looped.
+func TestLogTailerCapsBatchAndLosesNoLines(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "tail.db")
+	db, err := database.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+	if err := database.Init(db, "admin", "$2a$10$abcdefghijklmnopqrstuv"); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	// A backlog larger than one capped batch.
+	const lines = 12000
+	logPath := filepath.Join(dir, "access.log")
+	f, err := os.Create(logPath)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	base := time.Now().Unix()
+	for i := 0; i < lines; i++ {
+		fmt.Fprintf(f, "%d.000 100 10.0.0.%d TCP_MISS/200 512 GET http://example.com/%d - HIER_DIRECT/93.184.216.34 text/html\n",
+			base, i%254+1, i)
+	}
+	f.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	StartLogTailer(ctx, db, logPath, dir, nil)
+
+	// Poll until the tailer has drained the backlog, or give up.
+	deadline := time.Now().Add(25 * time.Second)
+	var got int
+	for time.Now().Before(deadline) {
+		if err := db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&got); err != nil {
+			t.Fatalf("count: %v", err)
+		}
+		if got >= lines {
+			break
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	cancel()
+
+	if got != lines {
+		t.Errorf("ingested %d of %d lines — the cap lost records or stalled", got, lines)
+	}
+	// Ingesting 12000 lines needs more than one 5000-line batch, so this also
+	// proves the offset survives a capped tick.
+	if got > 0 && got < lines {
+		t.Errorf("partial ingest (%d) — the resume offset after a capped batch is wrong", got)
+	}
+}
+
+// SECURE-SCAL-02: the per-tick bound must sit well inside the container budget,
+// or it does not bound anything — the process is killed before it fires. This
+// is the same class of mistake as an import cap set above the memory limit.
+func TestTailerBatchCapFitsTheContainerBudget(t *testing.T) {
+	const (
+		approxBytesPerEntry = 500               // map[string]any with ~10 string keys
+		containerLimitBytes = 128 * 1024 * 1024 // compose: memory: 128M
+	)
+	peak := maxBatchLines * approxBytesPerEntry
+	if peak > containerLimitBytes/8 {
+		t.Errorf("a capped batch peaks near %d bytes, more than an eighth of the %d byte container limit — too little headroom for the transaction and the rest of the process",
+			peak, containerLimitBytes)
 	}
 }

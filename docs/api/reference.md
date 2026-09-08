@@ -5,7 +5,25 @@ Base URLs:
 - Through the `web` reverse proxy (recommended): `https://localhost:8443/api`
 - Directly to the backend (localhost only): `http://127.0.0.1:5001/api`
 
-Every endpoint accepts either HTTP Basic or JWT bearer authentication unless noted otherwise. Most successful responses follow the envelope `{"status": "success", "data": ...}`; the authentication endpoints (`/api/auth/login`, `/api/auth/refresh`, `/api/ws-token`, `/api/logout`, `/api/change-password`) return a flat object with `status` and the payload fields at the top level. Errors are always `{"status": "error", "detail": "..."}`.
+Every endpoint accepts either HTTP Basic or JWT bearer authentication unless noted otherwise. Most successful responses follow the envelope `{"status": "success", "data": ...}`; the authentication endpoints (`/api/auth/login`, `/api/auth/refresh`, `/api/ws-token`, `/api/logout`, `/api/change-password`) return a flat object with `status` and the payload fields at the top level. Errors are always `{"status": "error", "detail": "..."}`, and a 500 additionally carries `"code": "internal_error"` — `detail` is a stable string this project controls and never a message from a dependency, so match on `code`, not on prose.
+
+### Collections
+
+Every endpoint that returns a collection uses one shape: the collection under `data`, the pagination under `meta`.
+
+```json
+{
+  "status": "success",
+  "data": [ ... ],
+  "meta": { "total": 1234, "limit": 100, "offset": 0 }
+}
+```
+
+`total`, `limit` and `offset` are also still emitted at the top level. They are **deprecated** and will be removed in the next contract version — read `meta`. Before v3.11.7 collections came back in three incompatible shapes (pagination as top-level siblings, no pagination at all, or the collection nested under `data.clients`), so a client had to special-case each endpoint.
+
+### Contract version
+
+Every response carries an `X-API-Version` header. It is the version of the request and response **shapes**, not the product build version, so it changes only when something a client depends on changes — unlike the `version` field in `/api/health`, which advances on every release. It is `1` at this commit.
 
 ## Authentication
 
@@ -111,7 +129,7 @@ Optional default-deny outbound egress. Off by default (the `egress_default_deny`
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/internal/alert` | Receives WAF block notifications. Authentication required; the WAF authenticates with `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` |
+| `POST` | `/api/internal/alert` | Receives WAF block notifications. The WAF authenticates with `Authorization: Bearer $INTERNAL_ALERT_TOKEN`, a credential scoped to this route only. When `INTERNAL_ALERT_TOKEN` is unset the route falls back to normal admin authentication, for upgrade compatibility |
 | `POST` | `/api/dns/detect` | Probe a target subnet for Pi-hole or AdGuard instances |
 
 ## WebSocket

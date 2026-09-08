@@ -48,8 +48,8 @@ func TestRequiredLiteralDisjunction(t *testing.T) {
 	}{
 		{`(?i)UNION\s+SELECT`, []string{"union", "select"}}, // concat picks the more-selective literal
 		{`(?i)<script[\s>]`, []string{"<script"}},           // required prefix is "<script" (more selective)
-		{`\d{3}-\d{2}-\d{4}`, nil},   // pure char classes → ungated
-		{`(\.\./){2,}`, nil},         // "../" is len 3 but repeated group; simplify may vary — accept ungated
+		{`\d{3}-\d{2}-\d{4}`, nil},                          // pure char classes → ungated
+		{`(\.\./){2,}`, nil},                                // "../" is len 3 but repeated group; simplify may vary — accept ungated
 		{`AKIA[0-9A-Z]{16}`, []string{"akia"}},
 		{`(?i)(ldap|rmi|ldaps)://`, nil}, // alternate: "://" required after; concat picks "://"? len 3 ok
 		{`.*`, nil},

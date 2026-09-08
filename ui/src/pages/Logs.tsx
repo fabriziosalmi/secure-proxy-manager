@@ -25,7 +25,7 @@ export function Logs() {
     // prepends live entries onto it. This deliberately mirrors async query data
     // into local state (the buffer is a merge of fetch + WS and is reset on
     // clear), which is exactly what set-state-in-effect flags — vetted exception.
-    const initial = data?.data ?? data?.logs;
+    const initial = data?.data;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (initial) setRealtimeLogs(initial.slice(0, 200));
   }, [data]);
@@ -122,7 +122,7 @@ export function Logs() {
     if (!term) return realtimeLogs;
     return realtimeLogs.filter((log) =>
       log.destination?.toLowerCase().includes(term) ||
-      log.client_ip?.includes(searchTerm) ||
+      log.source_ip?.includes(searchTerm) ||
       log.status?.toLowerCase().includes(term)
     );
   }, [realtimeLogs, searchTerm]);
@@ -313,7 +313,7 @@ export function Logs() {
                     <td className="px-6 py-3 text-muted-foreground whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleString()}
                     </td>
-                    <td className="px-6 py-3 text-foreground"><IpBadge ip={log.client_ip} /></td>
+                    <td className="px-6 py-3 text-foreground"><IpBadge ip={log.source_ip} /></td>
                     <td className="px-6 py-3 text-primary">{log.method}</td>
                     <td className="px-6 py-3 text-muted-foreground truncate max-w-xs" title={log.destination}>
                       {log.destination}

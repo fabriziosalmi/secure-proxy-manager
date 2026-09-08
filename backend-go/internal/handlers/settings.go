@@ -5,10 +5,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/mail"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
@@ -19,8 +22,80 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// settingValidators gives the values a server-side domain. The table was
+// TEXT-to-TEXT with no per-key validation, so the only shape checking for
+// ports, emails and booleans was a zod schema running in the BROWSER — bypassed
+// by any direct API call. proxy_port='abc' was persisted and then written into
+// the file Squid's config generator sources (SECURE-DOM-06).
+var settingValidators = map[string]func(string) error{
+	"proxy_port":             validPort,
+	"cache_size":             validNonNegativeInt,
+	"memory_cache":           validNonNegativeInt,
+	"log_retention_days":     validPositiveInt,
+	"bandwidth_limit_mbps":   validPositiveInt,
+	"time_restriction_start": validTimeOfDay,
+	"time_restriction_end":   validTimeOfDay,
+	"admin_email":            validEmailOrEmpty,
+}
+
+func validPort(v string) error {
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 || n > 65535 {
+		return fmt.Errorf("must be a port between 1 and 65535")
+	}
+	return nil
+}
+
+func validNonNegativeInt(v string) error {
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return fmt.Errorf("must be a non-negative number")
+	}
+	return nil
+}
+
+func validPositiveInt(v string) error {
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return fmt.Errorf("must be a positive number")
+	}
+	return nil
+}
+
+func validTimeOfDay(v string) error {
+	if !timeOfDayRE.MatchString(v) {
+		return fmt.Errorf("must be a time of day as HH:MM")
+	}
+	return nil
+}
+
+func validEmailOrEmpty(v string) error {
+	if v == "" {
+		return nil
+	}
+	if _, err := mail.ParseAddress(v); err != nil {
+		return fmt.Errorf("must be a valid email address")
+	}
+	return nil
+}
+
+// validateSettingValue applies the value domain for a key, if it has one. Keys
+// without an entry are free-form text, bounded only by length.
+func validateSettingValue(key, value string) error {
+	if fn, ok := settingValidators[key]; ok {
+		if err := fn(value); err != nil {
+			return fmt.Errorf("%s: %w", key, err)
+		}
+	}
+	return nil
+}
+
 // validKeyRE enforces that settings key names are alphanumeric + underscore only.
 var validKeyRE = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+
+// timeOfDayRE bounds the values written into /config/time_restrictions.conf,
+// which the proxy sources as shell.
+var timeOfDayRE = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
 
 type SettingsHandlers struct {
 	db  *sql.DB
@@ -40,7 +115,7 @@ func (h *SettingsHandlers) Register(r chi.Router, authMW func(http.Handler) http
 func (h *SettingsHandlers) GetAll(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query("SELECT setting_name, setting_value FROM settings")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "list_settings", err)
 		return
 	}
 	defer rows.Close()
@@ -49,20 +124,31 @@ func (h *SettingsHandlers) GetAll(w http.ResponseWriter, r *http.Request) {
 	type settingRow struct {
 		Name  string `json:"setting_name"`
 		Value string `json:"setting_value"`
+		// DecryptFailed marks a sensitive value that could not be decrypted
+		// (wrong or rotated key). The UI must render it as unreadable and must
+		// not submit it back, or the Save would overwrite the secret.
+		DecryptFailed bool `json:"decrypt_failed,omitempty"`
 	}
 	var settings []settingRow
 	for rows.Next() {
 		var k, v string
 		rows.Scan(&k, &v) //nolint:errcheck
 		// Decrypt sensitive settings transparently.
+		decryptFailed := false
 		if appcrypto.IsSensitive(k) {
 			if dec, err := appcrypto.Decrypt(v, h.cfg.EncryptionKey); err == nil {
 				v = dec
 			} else {
-				log.Warn().Str("key", k).Err(err).Msg("failed to decrypt setting, returning raw")
+				// Returning the raw enc:: blob would put ciphertext in the form
+				// field; the next Save would re-encrypt it as if it were the
+				// plaintext, destroying the secret irrecoverably. Return an
+				// empty value and flag it instead (SECURE-ERR-06).
+				log.Error().Str("key", k).Err(err).Msg("failed to decrypt setting — returning empty and flagging")
+				v = ""
+				decryptFailed = true
 			}
 		}
-		settings = append(settings, settingRow{Name: k, Value: v})
+		settings = append(settings, settingRow{Name: k, Value: v, DecryptFailed: decryptFailed})
 	}
 	if settings == nil {
 		settings = []settingRow{} // never return null
@@ -72,8 +158,12 @@ func (h *SettingsHandlers) GetAll(w http.ResponseWriter, r *http.Request) {
 
 func (h *SettingsHandlers) Update(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	if len(name) > 100 || !validKeyRE.MatchString(name) {
-		writeError(w, http.StatusBadRequest, "invalid setting name")
+	// isWritableSettingKey subsumes the length and character checks AND rejects
+	// internally-managed keys. Previously this path checked only the shape, so
+	// PUT /api/settings/default_password_changed could rewrite trusted internal
+	// state that BulkUpdate and RestoreConfig both refuse (SECURE-DOM-04).
+	if !isWritableSettingKey(name) {
+		writeError(w, http.StatusBadRequest, "invalid or protected setting name")
 		return
 	}
 	var body struct {
@@ -87,20 +177,29 @@ func (h *SettingsHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "value too long")
 		return
 	}
+	if err := validateSettingValue(name, body.Value); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	val := body.Value
 	if appcrypto.IsSensitive(name) && val != "" {
-		if enc, err := appcrypto.Encrypt(val, h.cfg.EncryptionKey); err == nil {
-			val = enc
-		} else {
-			log.Warn().Str("key", name).Err(err).Msg("failed to encrypt setting")
+		enc, err := appcrypto.Encrypt(val, h.cfg.EncryptionKey)
+		if err != nil {
+			// Refuse rather than downgrade. Storing a value the project itself
+			// classifies as sensitive in cleartext, and reporting success, is
+			// worse than failing the write (SECURE-ERR-04).
+			log.Error().Str("key", name).Err(err).Msg("refusing to store sensitive setting: encryption failed")
+			writeError(w, http.StatusInternalServerError, "encryption unavailable — sensitive setting not saved")
+			return
 		}
+		val = enc
 	}
 	_, err := h.db.Exec(
 		"INSERT INTO settings(setting_name,setting_value) VALUES(?,?) ON CONFLICT(setting_name) DO UPDATE SET setting_value=excluded.setting_value",
 		name, val,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "update_setting", err)
 		return
 	}
 	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
@@ -129,13 +228,17 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to start transaction")
 		return
 	}
-	defer tx.Rollback() //nolint:errcheck — no-op once committed
+	defer tx.Rollback() //nolint:errcheck // no-op once committed
 	for k, v := range body {
 		// Only known-safe, writable keys may be set (rejects internally-managed
 		// state like default_password_changed and any non-conforming key name).
 		if !isWritableSettingKey(k) || len(v) > 10000 {
 			log.Warn().Str("key", k).Msg("BulkUpdate: skipping invalid or protected key")
 			continue
+		}
+		if err := validateSettingValue(k, v); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
 		}
 		val := v
 		if appcrypto.IsSensitive(k) && val != "" && !appcrypto.IsEncrypted(val) {
@@ -156,6 +259,9 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to commit settings")
 		return
 	}
+
+	// Artefacts that could not be written, reported to the caller below.
+	var failedArtifacts []string
 
 	// Push heuristic toggles to the running WAF so they take effect immediately —
 	// the WAF otherwise only reads WAF_H_* env at startup (issue #102).
@@ -205,7 +311,10 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 					domains = append(domains, "."+strings.TrimPrefix(d, "."))
 				}
 			}
-			os.WriteFile(bypassFile, []byte(strings.Join(domains, "\n")+"\n"), 0o600) //nolint:errcheck
+			if err := os.WriteFile(bypassFile, []byte(strings.Join(domains, "\n")+"\n"), 0o600); err != nil {
+				log.Warn().Err(err).Msg("ssl bypass list write failed")
+				failedArtifacts = append(failedArtifacts, "ssl_bypass_domains.txt")
+			}
 		}
 	}
 
@@ -225,7 +334,10 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 					exts = append(exts, `\`+ext+`$`)
 				}
 			}
-			os.WriteFile(ftFile, []byte(strings.Join(exts, "\n")+"\n"), 0o600) //nolint:errcheck
+			if err := os.WriteFile(ftFile, []byte(strings.Join(exts, "\n")+"\n"), 0o600); err != nil {
+				log.Warn().Err(err).Msg("blocked file types write failed")
+				failedArtifacts = append(failedArtifacts, "blocked_file_types.txt")
+			}
 		}
 	}
 
@@ -242,8 +354,22 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 	// Write squid_settings.env so startup.sh can pick up port/cache changes on restart.
 	if err := h.writeSquidSettingsEnv(body); err != nil {
 		log.Warn().Err(err).Msg("squid_settings.env write failed — proxy restart will use previous values")
+		failedArtifacts = append(failedArtifacts, "squid_settings.env")
 	}
 
+	// The handler reads as settings persistence and is in fact a fan-out: after
+	// the transaction it writes six configuration artefacts and makes an
+	// outbound call to the WAF. Every one of those writes used to be discarded,
+	// so a full disk or a read-only /config produced a 200 while the artefacts
+	// that make the settings take effect did not exist (SECURE-QUAL-03).
+	if len(failedArtifacts) > 0 {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":  "partial",
+			"message": "settings saved, but some proxy configuration files could not be written",
+			"data":    map[string]any{"failed": failedArtifacts},
+		})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Settings updated"})
 }
 
@@ -261,9 +387,14 @@ var heuristicSettingKeys = map[string]bool{
 
 // pushHeuristicsToWAF propagates any heuristic toggles in the just-saved settings
 // to the WAF's runtime config (POST /heuristics/toggle). Best-effort: the DB is
-// the source of truth, so a WAF hiccup is logged but never fails the save — the
-// value still applies on the WAF's next restart via WAF_H_* env, and re-saving
-// re-pushes.
+// the source of truth, so a WAF hiccup is logged but never fails the save.
+//
+// The database is authoritative and a restarted WAF is brought back to it by
+// workers.StartWAFReconciler. This comment used to claim the value "still
+// applies on the WAF's next restart via WAF_H_* env" — it does not: those
+// variables come from the compose file and never carry the stored value, so a
+// WAF restart silently reverted every toggle to the compose default while the
+// UI kept showing the operator's choice (SECURE-CONF-02).
 func (h *SettingsHandlers) pushHeuristicsToWAF(ctx context.Context, body map[string]string) {
 	for key, val := range body {
 		if !heuristicSettingKeys[key] {
@@ -329,6 +460,14 @@ func (h *SettingsHandlers) writeTimeRestrictions(body map[string]string) {
 	end := h.dbSetting("time_restriction_end", "18:00")
 	if v, ok := body["time_restriction_end"]; ok && v != "" {
 		end = v
+	}
+	// These values are written into a file the proxy's ROOT shell sources.
+	// safe_source rejects shell metacharacters but permits any KEY=VALUE, so an
+	// unsanitised newline injects an arbitrary variable assignment (PATH, IFS)
+	// into that shell. A time is HH:MM and nothing else (SECURE-INPT-02).
+	if !timeOfDayRE.MatchString(start) || !timeOfDayRE.MatchString(end) {
+		log.Warn().Str("start", start).Str("end", end).Msg("invalid time restriction values — not written")
+		return
 	}
 	content := "TIME_START=" + start + "\nTIME_END=" + end + "\n"
 	os.WriteFile(filepath.Join(h.cfg.ConfigDir, "time_restrictions.conf"), []byte(content), 0o600) //nolint:errcheck

@@ -188,9 +188,13 @@ func (tl *TrafficLogger) drainLoop() {
 
 // rotate swaps the log file. Must be called under tl.mu lock.
 func (tl *TrafficLogger) rotate() {
-	tl.writer.Flush()
-	tl.file.Close()
-	os.Remove(tl.path + ".1")
+	// A failed flush here silently drops the tail of the previous file — the
+	// most recent forensic records, which are the ones an incident needs.
+	if err := tl.writer.Flush(); err != nil {
+		log.Printf("traffic log: flush before rotate failed, records lost: %v\n", err)
+	}
+	_ = tl.file.Close()
+	_ = os.Remove(tl.path + ".1")
 	_ = os.Rename(tl.path, tl.path+".1")
 	f, err := os.OpenFile(tl.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -213,7 +217,9 @@ func (tl *TrafficLogger) Flush() {
 	}
 	tl.mu.Lock()
 	defer tl.mu.Unlock()
-	tl.writer.Flush()
+	if err := tl.writer.Flush(); err != nil {
+		log.Printf("traffic log: flush failed, buffered records lost: %v\n", err)
+	}
 }
 
 // Close gracefully shuts down the logger.
@@ -225,6 +231,8 @@ func (tl *TrafficLogger) Close() {
 	<-tl.done
 	tl.mu.Lock()
 	defer tl.mu.Unlock()
-	tl.writer.Flush()
-	tl.file.Close()
+	if err := tl.writer.Flush(); err != nil {
+		log.Printf("traffic log: final flush failed, records lost: %v\n", err)
+	}
+	_ = tl.file.Close()
 }

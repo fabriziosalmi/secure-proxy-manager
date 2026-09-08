@@ -35,7 +35,7 @@ All configuration lives in the `.env` file in the project root, which is read by
 
 | Variable | Default | Description |
 |---|---|---|
-| `BASIC_AUTH_USERNAME` / `BASIC_AUTH_PASSWORD` | (required) | Used to authenticate the WAF when it calls back to `POST /api/internal/alert` |
+| `INTERNAL_ALERT_TOKEN` | (empty) | Service credential the WAF uses for `POST /api/internal/alert`, scoped to that one route. Generate with `openssl rand -hex 32` and set it on **both** the `waf` and `backend` services. It replaces `BASIC_AUTH_*` on that path so the WAF — the component that parses attacker-controlled request bodies — no longer holds the admin credential. Left empty, the backend still accepts admin auth there, but the shipped compose no longer passes the admin credential to the WAF, so alerts are dropped with a log line in both containers |
 | `WAF_BLOCK_THRESHOLD` | `10` | Anomaly score at or above which a request is blocked |
 | `WAF_DISABLED_CATEGORIES` | _empty_ | Comma-separated rule category names to disable globally (for example `DEBUG_LEAK,RESPONSE_ANOMALY`) |
 | `WAF_H_ENTROPY` | `1` | Toggle the Shannon entropy heuristic |

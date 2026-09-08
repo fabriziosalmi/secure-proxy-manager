@@ -145,9 +145,8 @@ var (
 	csMutex      sync.Mutex
 )
 
-func getClientState(ip string) *clientState {
-	csMutex.Lock()
-	defer csMutex.Unlock()
+// getClientStateLocked resolves an entry. csMutex must already be held.
+func getClientStateLocked(ip string) *clientState {
 	cs, ok := clientStates[ip]
 	if !ok {
 		// Cap at 10K IPs to prevent unbounded memory growth
@@ -186,12 +185,21 @@ func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize 
 	// One consistent snapshot of the (runtime-mutable) config for this request.
 	cfg := loadHeuristicCfg()
 
-	cs := getClientState(clientIP)
 	now := time.Now()
 
 	// ── Snapshot & update client state under a single lock ─────────────
 	// This avoids 4-5 separate lock/unlock cycles per request.
+	//
+	// The entry is resolved INSIDE this acquisition. getClientState used to
+	// return the pointer and release the lock, so between that and the
+	// re-acquisition here another request could evict the map entry — the cap
+	// evicts an arbitrary one — and this goroutine then wrote the client's
+	// beaconing, sharding and sequence state into an object nothing would read
+	// again. Not a data race (both accesses are locked) so the race detector
+	// could never see it: a lost update, silently resetting a client's
+	// behavioural history (SECURE-CONC-04).
 	csMutex.Lock()
+	cs := getClientStateLocked(clientIP)
 	// H2: trim old beaconing entries
 	var validTimes []time.Time
 	var validSizes []int

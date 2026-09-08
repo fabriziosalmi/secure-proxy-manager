@@ -115,6 +115,15 @@ updates:
 
   # Keep the SHA-pinned GitHub Actions (ci.yml, multi-arch.yml, docs.yml)
   # patched — pinning to a digest means we don't get upstream fixes otherwise.
+  # SECURE-DEP-02: mcp/ had no ecosystem entry at all, so its Python
+  # dependencies were proposed by nothing and scanned by nothing — osv-scanner
+  # reads lockfiles and this component has none.
+  - package-ecosystem: "pip"
+    directory: "/mcp"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

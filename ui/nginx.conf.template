@@ -95,7 +95,13 @@ server {
         proxy_set_header      Connection        "upgrade";
         proxy_set_header      Host              $host;
         proxy_set_header      X-Real-IP         $remote_addr;
-        proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
+        # $remote_addr, NOT $proxy_add_x_forwarded_for: the latter PREPENDS the
+        # client-supplied X-Forwarded-For, and the backend keys its failed-login
+        # lockout and per-IP rate limit on the LEFT-MOST entry (auth.clientIP).
+        # An attacker rotating the header would therefore never accumulate
+        # failures under any key, making MAX_LOGIN_ATTEMPTS unenforceable.
+        # nginx is the only proxy in this topology, so replacing is correct.
+        proxy_set_header      X-Forwarded-For   $remote_addr;
         proxy_set_header      X-Forwarded-Proto $scheme;
         proxy_read_timeout    86400s;
         proxy_send_timeout    86400s;
@@ -111,7 +117,13 @@ server {
         proxy_set_header      Connection        "";
         proxy_set_header      Host              $host;
         proxy_set_header      X-Real-IP         $remote_addr;
-        proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
+        # $remote_addr, NOT $proxy_add_x_forwarded_for: the latter PREPENDS the
+        # client-supplied X-Forwarded-For, and the backend keys its failed-login
+        # lockout and per-IP rate limit on the LEFT-MOST entry (auth.clientIP).
+        # An attacker rotating the header would therefore never accumulate
+        # failures under any key, making MAX_LOGIN_ATTEMPTS unenforceable.
+        # nginx is the only proxy in this topology, so replacing is correct.
+        proxy_set_header      X-Forwarded-For   $remote_addr;
         proxy_set_header      X-Forwarded-Proto $scheme;
 
         proxy_read_timeout    ${REQUEST_TIMEOUT}s;

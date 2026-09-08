@@ -36,6 +36,11 @@ services:
       - adv-config:/config:ro
       - adv-data:/data:ro
     environment:
+      # The WAF authenticates to POST /api/internal/alert with this scoped
+      # token, not with the admin credential (SECURE-AUTH-02). BASIC_AUTH_* is
+      # still set here because the WAF's OWN management API uses it — that is
+      # the credential the backend presents when it pushes config (below).
+      - INTERNAL_ALERT_TOKEN=adv-alert-token-not-a-real-secret
       - BASIC_AUTH_USERNAME=adv
       - BASIC_AUTH_PASSWORD=adv-not-a-real-secret
       - WAF_BLOCK_THRESHOLD=10
@@ -174,6 +179,7 @@ services:
     environment:
       - BASIC_AUTH_USERNAME=testadmin
       - BASIC_AUTH_PASSWORD=TestP@ss123!
+      - INTERNAL_ALERT_TOKEN=adv-alert-token-not-a-real-secret
       - SECRET_KEY=adv-e2e-secret-not-for-production
       - CORS_ALLOWED_ORIGINS=http://localhost:8011
       - DATABASE_PATH=/data/secure_proxy_adv.db

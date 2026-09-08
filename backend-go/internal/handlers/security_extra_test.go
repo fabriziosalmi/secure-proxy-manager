@@ -14,7 +14,7 @@ func TestSecurityHandlers_Score_Variations(t *testing.T) {
 
 	// All OFF (Note: default_password_changed might be true from setupTestDB depending on logic)
 	_, _ = db.Exec("UPDATE settings SET setting_value='false' WHERE setting_name IN ('enable_ip_blacklist', 'enable_domain_blacklist', 'block_direct_ip', 'enable_content_filtering', 'enable_waf', 'ssl_bump_enabled', 'default_password_changed', 'enable_time_restrictions')")
-	
+
 	r := httptest.NewRequest("GET", "/api/security/score", nil)
 	w := httptest.NewRecorder()
 	h.Score(w, r)

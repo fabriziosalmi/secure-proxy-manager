@@ -100,6 +100,25 @@ func run() error {
 		return err
 	}
 
+	// Reconcile the exported /config lists against the database before serving.
+	//
+	// The export is otherwise only a side effect of a mutation, performed by a
+	// detached goroutine AFTER the handler has already returned 200. A crash in
+	// that window — SIGKILL, OOM, host reboot, a container recreate — leaves the
+	// row committed and the exported file stale, and nothing ever compares them
+	// again: the UI lists the entry as blocked, Squid never blocks it, and the
+	// divergence persists until the same list is mutated again or the (optional)
+	// auto-refresh worker happens to fire. For a product whose function is
+	// blocking, that is a silent, indefinite fail-open on the primary control.
+	//
+	// Fatal rather than a warning: if /config is unwritable the proxy would be
+	// enforcing rules that no longer match the database, and refusing to start is
+	// the only outcome that cannot be mistaken for working.
+	if err := database.ExportBlacklistsToFiles(db, cfg.ConfigDir); err != nil {
+		return fmt.Errorf("startup blacklist export to %s: %w", cfg.ConfigDir, err)
+	}
+	log.Info().Str("config_dir", cfg.ConfigDir).Msg("blacklists exported at startup (db → /config reconciled)")
+
 	// Load bcrypt hash from DB so auth uses it instead of plaintext env-var.
 	var dbHash string
 	if err := db.QueryRow("SELECT password FROM users WHERE username = ?", cfg.AdminUsername).Scan(&dbHash); err == nil && dbHash != "" {
@@ -118,6 +137,14 @@ func run() error {
 	workers.StartDNSTailer(workerCtx, db, cfg.DNSLogPath, filepath.Dir(cfg.DatabasePath), hub)
 	workers.StartLogRetention(workerCtx, db)
 	workers.StartBlacklistRefresh(workerCtx, db, cfg.ConfigDir)
+	// Owns the blacklist export: coalesces concurrent requests, is bound to the
+	// worker context so shutdown can stop it, and reports failure as a metric
+	// (SECURE-CONC-03, SECURE-ERR-05).
+	workers.StartExporter(workerCtx, db, cfg.ConfigDir)
+	// Brings a restarted WAF back to the stored heuristic configuration; without
+	// it a WAF restart silently reverted every toggle to the compose default
+	// while the UI kept showing the operator's choice (SECURE-CONF-02).
+	workers.StartWAFReconciler(workerCtx, db, cfg.WAFURL, cfg.WAFServiceUser, cfg.WAFServicePass)
 	workers.StartUpdateChecker(workerCtx, "")
 	workers.CheckSquidCVEs()
 
@@ -129,10 +156,22 @@ func run() error {
 	r.Use(appMW.AccessLog) // one structured log line per request
 	r.Use(appMW.CORS(cfg))
 	r.Use(appMW.SecurityHeaders)
+	r.Use(appMW.APIVersion)
 	r.Use(appMW.GlobalRateLimit(20, 60))       // 20 req/s sustained, 60 burst per IP
 	r.Use(appMW.MaxBodySize(55 * 1024 * 1024)) // 55MB max (for large blacklist imports)
 
 	authMW := appMW.Auth(authSvc)
+
+	// Without a dedicated token the WAF has to authenticate to
+	// /api/internal/alert with the admin credential, which means the container
+	// that parses attacker-controlled bodies holds full control of the
+	// management API (SECURE-AUTH-02). We keep accepting it so an upgrade does
+	// not silently stop delivering alerts, but say so once, loudly.
+	if cfg.AlertToken == "" {
+		log.Warn().Msg("INTERNAL_ALERT_TOKEN is not set: /api/internal/alert still accepts the admin credential, " +
+			"so the WAF container needs BASIC_AUTH_PASSWORD. Set INTERNAL_ALERT_TOKEN (openssl rand -hex 32) " +
+			"on both the backend and the waf service to scope it down.")
+	}
 
 	// Register handler groups.
 	handlers.NewAuthHandlers(db, authSvc, cfg, notify, hub).Register(r)
@@ -141,7 +180,7 @@ func run() error {
 	handlers.NewBlacklistHandlers(db, cfg).Register(r, authMW)
 	handlers.NewSecurityHandlers(db, authSvc, cfg, notify).Register(r, authMW)
 	handlers.NewMaintenanceHandlers(db, cfg).Register(r, authMW)
-	handlers.NewAnalyticsHandlers(db, cfg).Register(r, authMW)
+	handlers.NewAnalyticsHandlers(db, cfg).WithSysInfo(handlers.WorkerSysInfo{}).Register(r, authMW)
 	handlers.NewDatabaseHandlers(db).Register(r, authMW)
 	handlers.NewDNSDetectHandlers(db).Register(r, authMW)
 	handlers.RegisterAPIDocs(r, authMW)
@@ -266,12 +305,30 @@ func run() error {
 
 	<-quit
 	log.Info().Msg("shutdown signal received")
-	workerCancel() // stop background workers first
+
+	// Drain the HTTP server FIRST, so in-flight requests finish while the
+	// workers they may depend on are still running. Cancelling the workers
+	// first — as this did — meant a request still being served for up to five
+	// more seconds ran against stopped workers (SECURE-CONC-02).
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error().Err(err).Msg("shutdown error")
 	}
+
+	// Then stop the workers and actually WAIT for them. workerCancel only
+	// closes a channel; without the wait the process could exit with a tailer
+	// holding a read-but-uncommitted batch, losing it with no record.
+	workerCancel()
+	drained := make(chan struct{})
+	go func() { workers.Wait(); close(drained) }()
+	select {
+	case <-drained:
+		log.Info().Msg("background workers drained")
+	case <-time.After(5 * time.Second):
+		log.Warn().Msg("background workers did not drain within 5s — exiting anyway")
+	}
+
 	log.Info().Msg("shutdown complete")
 	return nil
 }

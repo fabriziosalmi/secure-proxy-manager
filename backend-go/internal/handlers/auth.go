@@ -17,8 +17,8 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/validate"
 	ws "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/websocket"
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -55,8 +55,10 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.Username == "" || req.Password == "" {
-		writeError(w, http.StatusBadRequest, "username and password required")
+	// `required,min=1,max=128` on both fields — the presence check this
+	// replaced, plus the upper bound that was declared and never applied.
+	if err := validate.Struct(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -68,10 +70,10 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 
 	username, _, err := h.svc.Authenticate(tmpR)
 	if err != nil {
-		clientAddr := r.Header.Get("X-Forwarded-For")
-		if clientAddr == "" {
-			clientAddr = r.RemoteAddr
-		}
+		// Use the same trusted-peer policy as the rate limiter rather than the
+		// raw header: an attacker who can set X-Forwarded-For would otherwise
+		// choose the address the operator sees in the alert (SECURE-AUTH-03).
+		clientAddr := auth.ClientIP(r)
 
 		if err.Error() == "too many failed attempts, try again later" {
 			h.alertLoginFailure(req.Username, clientAddr, "rate_limited")
@@ -143,11 +145,24 @@ func (h *AuthHandlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
+	var revokeErr error
 	if strings.HasPrefix(authHeader, "Bearer ") && len(authHeader) > 7 {
-		h.svc.RevokeJWT(authHeader[7:])
+		revokeErr = h.svc.RevokeJWT(authHeader[7:])
 	}
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
 	database.Audit(h.db, username, "logout", "", "")
+
+	// The token is revoked in this process either way, but if the revocation
+	// could not be persisted it becomes valid again after a restart. Logout
+	// exists so a user on a shared or compromised machine can rely on it, so
+	// say so rather than returning an unqualified success (SECURE-ERR-03).
+	if revokeErr != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"status": "error",
+			"detail": "token could not be revoked durably — it may remain valid until it expires; change your password if this session may be compromised",
+		})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Logged out successfully"})
 }
 
@@ -160,8 +175,11 @@ func (h *AuthHandlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if len(req.NewPassword) < 8 {
-		writeError(w, http.StatusBadRequest, "new password must be at least 8 characters")
+	// `required` on both, `min=8` on the new password. The length rule is now
+	// counted in characters rather than bytes, so an 8-character passphrase
+	// with multi-byte runes is measured the way the policy is written.
+	if err := validate.Struct(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if !pwdStrong.MatchString(req.NewPassword) || !pwdSpecial.MatchString(req.NewPassword) {
@@ -240,22 +258,16 @@ func (h *AuthHandlers) Ready(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandlers) Health(w http.ResponseWriter, r *http.Request) {
+	// SECURE-AUTH-04: this endpoint is unauthenticated and reachable through the
+	// public TLS listener, so it must not fingerprint the deployment. The Squid
+	// version and its CVE count moved to the authenticated /api/status — a
+	// liveness probe needs to say whether the process is up, not which known
+	// vulnerabilities apply to it.
 	resp := map[string]any{
 		"status":  "healthy",
 		"version": config.AppVersion,
+		"commit":  config.GitCommit,
 		"runtime": "go",
-	}
-	upd := workers.GetUpdateInfo()
-	if upd.Available {
-		resp["update_available"] = upd.Latest
-		resp["update_url"] = upd.URL
-	}
-	cve := workers.GetCVEInfo()
-	if cve.Version != "" {
-		resp["squid_version"] = cve.Version
-		if len(cve.CVEs) > 0 {
-			resp["squid_cves"] = len(cve.CVEs)
-		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
