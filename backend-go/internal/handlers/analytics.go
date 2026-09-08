@@ -99,6 +99,12 @@ type AnalyticsHandlers struct {
 	// when the blacklist-refresh worker runs (minutes apart), so a short-TTL
 	// snapshot avoids reloading the whole table on each dashboard poll. Snapshots
 	// are immutable once published, so callers may read them without the lock.
+	// Lifetime request counts, cached: see lifetimeCounts (SECURE-PERF-01).
+	countsMu      sync.Mutex
+	countsTotal   int
+	countsBlocked int
+	countsFetched time.Time
+
 	blMu      sync.Mutex
 	blSet     map[string]struct{}
 	blWild    []string
@@ -107,6 +113,24 @@ type AnalyticsHandlers struct {
 
 func NewAnalyticsHandlers(db *sql.DB, cfg *config.Config) *AnalyticsHandlers {
 	return &AnalyticsHandlers{db: db, cfg: cfg}
+}
+
+// lifetimeCountsTTL is short enough that the dashboard stays live and long
+// enough that N open tabs cost one pair of scans rather than N.
+const lifetimeCountsTTL = 25 * time.Second
+
+// lifetimeCounts returns the total and blocked request counts, recomputing at
+// most once per lifetimeCountsTTL. See the call site for why (SECURE-PERF-01).
+func (h *AnalyticsHandlers) lifetimeCounts() (total, blocked int) {
+	h.countsMu.Lock()
+	defer h.countsMu.Unlock()
+	if time.Since(h.countsFetched) < lifetimeCountsTTL {
+		return h.countsTotal, h.countsBlocked
+	}
+	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs`).Scan(&total)
+	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1`).Scan(&blocked)
+	h.countsTotal, h.countsBlocked, h.countsFetched = total, blocked, time.Now()
+	return total, blocked
 }
 
 const domainBlacklistTTL = 30 * time.Second
@@ -594,9 +618,17 @@ func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request
 func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Request) {
 	result := map[string]any{}
 
-	var totalReqs, blockedReqs, todayReqs, todayBlocked int
-	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs`).Scan(&totalReqs)                     //nolint:errcheck
-	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1`).Scan(&blockedReqs) //nolint:errcheck
+	// The lifetime counts come from a short-TTL cache, not from two COUNT(*)
+	// scans per poll. SQLite keeps no cached row count, so an unqualified
+	// COUNT(*) walks an index end to end — over proxy_logs, the one table whose
+	// size tracks traffic rather than configuration — and the Dashboard and
+	// Threat Intel pages both poll this endpoint every 30 seconds, per open tab,
+	// on a container limited to 0.25 CPU. The ETag on this route does not help:
+	// it hashes the response body, so every query has already run by the time
+	// the 304 is decided (SECURE-PERF-01).
+	totalReqs, blockedReqs := h.lifetimeCounts()
+
+	var todayReqs, todayBlocked int
 
 	todayStart := time.Now().UTC().Truncate(24 * time.Hour).Unix()
 	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE unix_timestamp >= ?`, todayStart).Scan(&todayReqs)                    //nolint:errcheck

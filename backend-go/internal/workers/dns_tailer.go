@@ -149,11 +149,13 @@ func StartDNSTailer(ctx context.Context, db *sql.DB, logPath, stateDir string, h
 				log.Warn().Err(err).Int("lines", len(batch)).Msg("dns tailer: batch insert failed, will retry")
 				continue
 			}
-			for _, entry := range batch {
-				if msg, err := json.Marshal(entry); err == nil {
-					select {
-					case hub.Broadcast <- msg:
-					default:
+			if hub != nil {
+				for _, entry := range batch {
+					if msg, err := json.Marshal(entry); err == nil {
+						select {
+						case hub.Broadcast <- msg:
+						default:
+						}
 					}
 				}
 			}

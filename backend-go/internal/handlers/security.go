@@ -15,6 +15,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/auth"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	appcrypto "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/crypto"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
@@ -77,6 +78,7 @@ func (h *SecurityHandlers) ReceiveAlert(w http.ResponseWriter, r *http.Request) 
 	select {
 	case h.notify <- event:
 	default:
+		metrics.NotificationDropped()
 		log.Warn().Msg("notification queue full — alert dropped")
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
@@ -103,6 +105,23 @@ func (h *SecurityHandlers) ClearRateLimit(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Rate limit cleared for " + ip})
+}
+
+// channelOf labels a delivery by its destination kind, so the metric is keyed
+// by channel without ever carrying the URL (which is a credential).
+func channelOf(url string) string {
+	switch {
+	case strings.Contains(url, "gotify"):
+		return "gotify"
+	case strings.Contains(url, "telegram"):
+		return "telegram"
+	case strings.Contains(url, "ntfy"):
+		return "ntfy"
+	case strings.Contains(url, "office.com"), strings.Contains(url, "webhook.office"):
+		return "teams"
+	default:
+		return "webhook"
+	}
 }
 
 func (h *SecurityHandlers) Score(w http.ResponseWriter, r *http.Request) {
@@ -238,15 +257,29 @@ func sendSecurityNotification(db *sql.DB, encKey string, event map[string]any) {
 			}
 			resp, err := client.Do(req)
 			if err == nil {
+				status := resp.StatusCode
 				resp.Body.Close()
-				if resp.StatusCode < 500 {
-					return // success or client error — don't retry
+				if status < 400 {
+					metrics.NotificationSent(channelOf(url))
+					return
+				}
+				if status < 500 {
+					// A 4xx is not worth retrying, but it IS a failure: an
+					// expired Gotify token or a rotated webhook answers 401/404
+					// and the alert never arrives. This used to return silently,
+					// so the channel by which an operator learns about attacks
+					// could stop working with no signal at all (SECURE-OBS-02).
+					metrics.NotificationFailed(channelOf(url))
+					log.Warn().Str("channel", channelOf(url)).Int("status", status).
+						Msg("notification rejected — check the channel credentials")
+					return
 				}
 			}
 			if attempt < maxRetries-1 {
 				time.Sleep(time.Duration(1<<uint(attempt)) * time.Second) // 1s, 2s, 4s
 			}
 		}
+		metrics.NotificationFailed(channelOf(url))
 		log.Warn().Str("url", url).Msg("notification delivery failed after retries")
 	}
 

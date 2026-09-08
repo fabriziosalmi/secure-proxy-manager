@@ -117,3 +117,88 @@ func ExportSuccess() {
 
 // ExportFailure records a failed export.
 func ExportFailure() { exportTotal.WithLabelValues("failure").Inc() }
+
+// Proxied traffic. The metric set covered this backend's own HTTP surface, its
+// workers, its build and its database pool — and nothing derived from
+// proxy_logs, so the product's PRIMARY outcome (a request was proxied, a
+// blacklisted destination was refused) had no series behind it. That is the one
+// number that would reveal most of the silent failures in this system: a failed
+// export, a dead watchdog, a truncated ACL and disabled retention all show up
+// as the block rate or the request rate going to zero (SECURE-OBS-01).
+var proxyRequests = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "spm_proxy_requests_total",
+	Help: "Requests seen by the proxy, by outcome (allowed or blocked).",
+}, []string{"outcome"})
+
+// ProxyRequest records one ingested proxy log line.
+func ProxyRequest(blocked bool) {
+	if blocked {
+		proxyRequests.WithLabelValues("blocked").Inc()
+		return
+	}
+	proxyRequests.WithLabelValues("allowed").Inc()
+}
+
+// Notification delivery. The channel by which an operator learns about security
+// events reported its own failures as log lines only, so an expired token or a
+// rotated webhook left a system that looks entirely healthy and simply stops
+// telling anyone when something is attacked (SECURE-OBS-02).
+var (
+	notificationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "spm_notifications_total",
+		Help: "Notification delivery attempts, by channel and outcome.",
+	}, []string{"channel", "outcome"})
+	notificationLastSuccess = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "spm_notification_last_success_timestamp_seconds",
+		Help: "Unix timestamp of the last successful delivery, per channel.",
+	}, []string{"channel"})
+)
+
+// NotificationSent records a successful delivery on a channel.
+func NotificationSent(channel string) {
+	notificationsTotal.WithLabelValues(channel, "success").Inc()
+	notificationLastSuccess.WithLabelValues(channel).SetToCurrentTime()
+}
+
+// NotificationFailed records a failed delivery on a channel.
+func NotificationFailed(channel string) {
+	notificationsTotal.WithLabelValues(channel, "failure").Inc()
+}
+
+// NotificationDropped records an alert discarded because the queue was full.
+func NotificationDropped() {
+	notificationsTotal.WithLabelValues("queue", "dropped").Inc()
+}
+
+// Log retention. It is the only bound on the growth of proxy_logs, and it could
+// be switched off by an unparseable setting value with no signal at all — the
+// worker still emitted its heartbeat and the success line only fired when rows
+// were actually deleted (SECURE-SCAL-03).
+var (
+	retentionLastRun = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "spm_log_retention_last_run_timestamp_seconds",
+		Help: "Unix timestamp of the last retention pass that actually ran.",
+	})
+	retentionEnabled = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "spm_log_retention_enabled",
+		Help: "1 when retention is configured and running, 0 when it is not pruning.",
+	})
+	retentionDays = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "spm_log_retention_days",
+		Help: "Configured retention window in days.",
+	})
+)
+
+// RetentionRan records a retention pass that executed with the given window.
+func RetentionRan(days int) {
+	retentionLastRun.SetToCurrentTime()
+	retentionEnabled.Set(1)
+	retentionDays.Set(float64(days))
+}
+
+// RetentionDisabled records that retention is configured in a way that prunes
+// nothing, so proxy_logs is growing without bound.
+func RetentionDisabled() {
+	retentionEnabled.Set(0)
+	retentionDays.Set(0)
+}

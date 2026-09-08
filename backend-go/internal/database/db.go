@@ -21,7 +21,18 @@ func Open(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("mkdir for db: %w", err)
 	}
 	// modernc.org/sqlite uses _pragma= syntax (not _journal_mode= like mattn/go-sqlite3).
-	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)&_pragma=synchronous(NORMAL)"
+	// Every PRAGMA goes in the DSN, where the driver applies it on each
+	// connection it opens. cache_size, mmap_size and temp_store used to be
+	// issued afterwards with db.Exec against a four-connection pool, which
+	// configures whichever ONE connection serves that call — so the intended
+	// 25x page-cache increase was absent from three connections out of four,
+	// and from all of them once ConnMaxLifetime retired the configured one.
+	// The comment above them claimed "applied per-connection"; it was not.
+	// PRAGMA page_size was dropped: it cannot take effect after the database
+	// has been created without a VACUUM (SECURE-PERF-02).
+	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)" +
+		"&_pragma=synchronous(NORMAL)&_pragma=cache_size(-50000)&_pragma=mmap_size(268435456)" +
+		"&_pragma=temp_store(MEMORY)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("sql.Open: %w", err)
@@ -40,16 +51,10 @@ func Open(path string) (*sql.DB, error) {
 		log.Info().Str("journal_mode", journalMode).Msg("SQLite journal mode")
 	}
 
-	// Performance PRAGMAs — applied per-connection.
-	for _, pragma := range []string{
-		"PRAGMA cache_size = -50000",   // 50 MB page cache (vs default 2 MB)
-		"PRAGMA mmap_size = 536870912", // 512 MB memory-mapped I/O
-		"PRAGMA temp_store = MEMORY",   // temp tables in RAM, not /tmp
-		"PRAGMA page_size = 4096",      // optimal for SSD
-	} {
-		if _, err := db.Exec(pragma); err != nil {
-			log.Warn().Str("pragma", pragma).Err(err).Msg("pragma failed (non-fatal)")
-		}
+	// Verify the per-connection settings actually took, rather than assuming.
+	var cacheSize int
+	if err := db.QueryRow("PRAGMA cache_size").Scan(&cacheSize); err == nil {
+		log.Info().Int("cache_size", cacheSize).Msg("SQLite page cache")
 	}
 
 	log.Info().Str("path", path).Msg("database opened")
