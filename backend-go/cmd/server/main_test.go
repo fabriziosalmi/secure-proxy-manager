@@ -52,9 +52,9 @@ func TestRun(t *testing.T) {
 // TestWsTokenFromSubprotocol verifies the token extraction helper.
 func TestWsTokenFromSubprotocol(t *testing.T) {
 	tests := []struct {
-		name     string
-		header   string
-		wantTok  string
+		name    string
+		header  string
+		wantTok string
 	}{
 		{
 			name:    "valid subprotocol",
@@ -212,4 +212,3 @@ func TestWSLogsSubprotocolAuth(t *testing.T) {
 		}
 	})
 }
-

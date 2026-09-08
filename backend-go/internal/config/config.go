@@ -230,6 +230,11 @@ func loadOrGenerateEncKey() string {
 	// restart then rotated both — invalidating every session and making every
 	// previously encrypted setting undecryptable (SECURE-CONF-04).
 	encFile := filepath.Join(stateDir(), ".enc_key")
+	// #nosec G304 — stateDir() derives from DATABASE_PATH, deployment
+	// configuration set by the operator, and the filename is a constant. No
+	// request-supplied value reaches this path. gosec flags it only because the
+	// directory stopped being a literal when the two keys were made to follow
+	// the database (SECURE-CONF-04).
 	data, err := os.ReadFile(encFile)
 	if err == nil && len(strings.TrimSpace(string(data))) == 64 {
 		return strings.TrimSpace(string(data))
@@ -259,6 +264,11 @@ func loadOrGenerateSecret() string {
 		return s
 	}
 	jwtFile := filepath.Join(stateDir(), ".jwt_secret")
+	// #nosec G304 — stateDir() derives from DATABASE_PATH, deployment
+	// configuration set by the operator, and the filename is a constant. No
+	// request-supplied value reaches this path. gosec flags it only because the
+	// directory stopped being a literal when the two keys were made to follow
+	// the database (SECURE-CONF-04).
 	data, err := os.ReadFile(jwtFile)
 	if err == nil && len(strings.TrimSpace(string(data))) >= 32 {
 		return strings.TrimSpace(string(data))

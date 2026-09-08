@@ -347,12 +347,27 @@ services:
   grafana:
     image: grafana/grafana:11.4.0@sha256:d8ea37798ccc41061a62ab080f2676dda6bf7815558499f901bdb0f533a456fb
     container_name: secure-proxy-manager-grafana
+    # Grafana refuses to start without an explicit admin password. This project
+    # refuses to boot when BASIC_AUTH_PASSWORD is the literal string "admin";
+    # shipping the dashboard that displays the same proxy data with admin/admin
+    # was the one place that position was not applied (SECURE-CONF-05).
+    #
+    # The check is an entrypoint guard rather than a `${VAR:?}` interpolation.
+    # Compose resolves interpolation for the WHOLE file before it looks at
+    # profiles, so `:?` made every compose command — build, up, ps, config —
+    # fail for everyone who never enables observability. The guard fires at the
+    # only moment it should: when this service is actually started.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        if [ -z "$$GF_SECURITY_ADMIN_PASSWORD" ]; then
+          echo "GRAFANA_ADMIN_PASSWORD is not set. Refusing to start Grafana with the default admin/admin credential — set it in .env (openssl rand -base64 24)." >&2
+          exit 1
+        fi
+        exec /run.sh
     environment:
-      # Required, not defaulted. This project refuses to boot when
-      # BASIC_AUTH_PASSWORD is the literal string "admin"; shipping the
-      # dashboard that displays the same proxy data with admin/admin was the
-      # one place that position was not applied (SECURE-CONF-05).
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD to enable the observability profile}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_ANALYTICS_REPORTING_ENABLED=false
       - GF_ANALYTICS_CHECK_FOR_UPDATES=false

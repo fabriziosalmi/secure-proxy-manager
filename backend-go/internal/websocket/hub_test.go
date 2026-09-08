@@ -14,7 +14,7 @@ var upgrader = websocket.Upgrader{}
 
 func TestHub(t *testing.T) {
 	hub := NewHub()
-	
+
 	// Create a mock server to handle WS upgrades
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)

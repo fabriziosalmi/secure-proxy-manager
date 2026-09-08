@@ -232,14 +232,14 @@ func parseSquidLine(line string) map[string]any {
 		// DB insert — and appeared as a third name, ip_address, in the clients
 		// endpoint. source_ip is what the schema and the highest-volume insert
 		// already use (SECURE-DOM-08).
-		"source_ip":      clientIP,
-		"method":         method,
-		"destination":    destination,
-		"status":         statusStr,
-		"bytes":          bytesInt,
-		"elapsed_ms":     elapsed,
-		"blocked":        blocked,
-		"event_id":       eventID,
+		"source_ip":   clientIP,
+		"method":      method,
+		"destination": destination,
+		"status":      statusStr,
+		"bytes":       bytesInt,
+		"elapsed_ms":  elapsed,
+		"blocked":     blocked,
+		"event_id":    eventID,
 	}
 }
 

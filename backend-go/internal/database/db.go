@@ -365,6 +365,10 @@ func atomicWrite(path string, writeFn func(f *os.File) error) error {
 	}
 	// Sync the directory too, so the rename itself is durable rather than only
 	// the file contents.
+	//
+	// #nosec G304 — dir is filepath.Dir(path), and path is built by the caller
+	// from the configured ConfigDir, never from request input. It is opened
+	// read-only and never read: the handle exists only to fsync the directory.
 	if d, err := os.Open(dir); err == nil {
 		_ = d.Sync()
 		d.Close()
