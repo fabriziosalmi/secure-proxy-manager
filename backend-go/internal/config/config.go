@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -173,6 +174,12 @@ func validateSecretKeyStrength(secret string) {
 	}
 }
 
+// stateDir is where the JWT secret and the encryption key live: the directory
+// holding the database, so the three pieces of persistent state move together.
+func stateDir() string {
+	return filepath.Dir(envOrDefault("DATABASE_PATH", "/data/proxy_manager.db"))
+}
+
 func envOrDefault(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -208,7 +215,12 @@ func loadOrGenerateEncKey() string {
 		}
 		return s
 	}
-	const encFile = "/data/.enc_key"
+	// Derived from the database directory, not hardcoded. DATABASE_PATH is
+	// configurable, so relocating the database used to leave these two keys
+	// behind in an unmounted /data: the loaders warned and continued, and every
+	// restart then rotated both — invalidating every session and making every
+	// previously encrypted setting undecryptable (SECURE-CONF-04).
+	encFile := filepath.Join(stateDir(), ".enc_key")
 	data, err := os.ReadFile(encFile)
 	if err == nil && len(strings.TrimSpace(string(data))) == 64 {
 		return strings.TrimSpace(string(data))
@@ -221,12 +233,12 @@ func loadOrGenerateEncKey() string {
 	// Persist so the same key is reused across restarts. Failure here means
 	// every container restart will rotate the key, making any data encrypted
 	// with the previous key unrecoverable — that must not happen silently.
-	if err := os.MkdirAll("/data", 0o700); err != nil {
-		log.Warn().Err(err).Msg("encryption key: cannot create /data — key will not survive restart")
+	if err := os.MkdirAll(stateDir(), 0o700); err != nil {
+		log.Warn().Err(err).Str("dir", stateDir()).Msg("encryption key: cannot create the state directory — key will not survive restart")
 		return key
 	}
 	if err := os.WriteFile(encFile, []byte(key), 0o600); err != nil {
-		log.Warn().Err(err).Msg("encryption key: cannot persist to /data/.enc_key — key will not survive restart")
+		log.Warn().Err(err).Str("path", encFile).Msg("encryption key: cannot persist — key will not survive restart")
 	}
 	return key
 }
@@ -237,7 +249,7 @@ func loadOrGenerateSecret() string {
 		validateSecretKeyStrength(s) // fail-closed on predictable secrets
 		return s
 	}
-	const jwtFile = "/data/.jwt_secret"
+	jwtFile := filepath.Join(stateDir(), ".jwt_secret")
 	data, err := os.ReadFile(jwtFile)
 	if err == nil && len(strings.TrimSpace(string(data))) >= 32 {
 		return strings.TrimSpace(string(data))
@@ -250,12 +262,12 @@ func loadOrGenerateSecret() string {
 	secret := hex.EncodeToString(b)
 	// Persist so JWTs survive restart. If we can't, log it — every restart
 	// will invalidate every active session otherwise.
-	if err := os.MkdirAll("/data", 0o700); err != nil {
-		log.Warn().Err(err).Msg("JWT secret: cannot create /data — sessions will not survive restart")
+	if err := os.MkdirAll(stateDir(), 0o700); err != nil {
+		log.Warn().Err(err).Str("dir", stateDir()).Msg("JWT secret: cannot create the state directory — sessions will not survive restart")
 		return secret
 	}
 	if err := os.WriteFile(jwtFile, []byte(secret), 0o600); err != nil {
-		log.Warn().Err(err).Msg("JWT secret: cannot persist to /data/.jwt_secret — sessions will not survive restart")
+		log.Warn().Err(err).Str("path", jwtFile).Msg("JWT secret: cannot persist — sessions will not survive restart")
 	}
 	return secret
 }

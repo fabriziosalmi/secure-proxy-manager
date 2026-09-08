@@ -141,6 +141,10 @@ func run() error {
 	// worker context so shutdown can stop it, and reports failure as a metric
 	// (SECURE-CONC-03, SECURE-ERR-05).
 	workers.StartExporter(workerCtx, db, cfg.ConfigDir)
+	// Brings a restarted WAF back to the stored heuristic configuration; without
+	// it a WAF restart silently reverted every toggle to the compose default
+	// while the UI kept showing the operator's choice (SECURE-CONF-02).
+	workers.StartWAFReconciler(workerCtx, db, cfg.WAFURL, cfg.WAFServiceUser, cfg.WAFServicePass)
 	workers.StartUpdateChecker(workerCtx, "")
 	workers.CheckSquidCVEs()
 

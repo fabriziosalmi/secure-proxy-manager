@@ -69,6 +69,9 @@ def resolved_ips():
     return ",".join(ips)
 
 
+HEARTBEAT = "/var/log/squid/watchdog.heartbeat"
+
+
 def atomic_copy(src, dst):
     """Copy src onto dst without dst ever being observed partially written.
 
@@ -130,6 +133,19 @@ def main():
 
     while True:
         time.sleep(2)
+
+        # Liveness heartbeat. The container healthcheck reads this file's mtime,
+        # because the watchdog is the only path by which a configuration change
+        # reaches Squid and its death was otherwise invisible: the healthcheck
+        # probed squid, which keeps serving, so the container stayed "healthy"
+        # while every change silently stopped applying (SECURE-REL-01).
+        # It must be touched every poll, not only when something happens —
+        # a quiet system is not a dead one.
+        try:
+            with open(HEARTBEAT, "w") as hb:
+                hb.write(str(int(time.time())))
+        except OSError:
+            pass
 
         # Self-heal stale dnsmasq/waf IPs: if either service was recreated and
         # got a new IP, squid's baked dns_nameservers / ICAP URL now point at a

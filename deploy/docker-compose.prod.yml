@@ -197,6 +197,10 @@ services:
     container_name: secure-proxy-manager-proxy
     environment:
       - GUI_IP_WHITELIST=${GUI_IP_WHITELIST:-}
+      # Governs Squid's ICAP bypass as well as the WAF's own handler behaviour,
+      # so one switch covers both an erroring WAF and an unreachable one
+      # (SECURE-REL-02).
+      - WAF_FAIL_OPEN=${WAF_FAIL_OPEN:-0}
     ports:
       - "${PROXY_BIND_IP:-0.0.0.0}:3128:3128"
     volumes:
@@ -220,7 +224,14 @@ services:
           cpus: '0.50'
           memory: 512M
     healthcheck:
-      test: ["CMD-SHELL", "(squidclient -h 127.0.0.1 -p 3128 mgr:info 2>/dev/null | grep -q 'Squid Object Cache') || curl -sf --max-time 3 -x http://127.0.0.1:3128 http://www.gstatic.com/generate_204 -o /dev/null"]
+      # Probes BOTH processes. The watchdog is the only path by which a
+      # configuration change reaches Squid, and it used to be invisible: this
+      # check tested squid alone, so a dead watchdog left the container
+      # reporting healthy while every change silently stopped applying
+      # (SECURE-REL-01). The watchdog touches watchdog.heartbeat on every
+      # 2s poll, so a stale mtime means it has stopped — a quiet system
+      # still writes it, an absent one does not.
+      test: ["CMD-SHELL", "((squidclient -h 127.0.0.1 -p 3128 mgr:info 2>/dev/null | grep -q 'Squid Object Cache') || curl -sf --max-time 3 -x http://127.0.0.1:3128 http://www.gstatic.com/generate_204 -o /dev/null) && [ $(( $(date +%s) - $(stat -c %Y /var/log/squid/watchdog.heartbeat 2>/dev/null || echo 0) )) -lt 120 ]"]
       interval: 15s
       timeout: 5s
       retries: 5

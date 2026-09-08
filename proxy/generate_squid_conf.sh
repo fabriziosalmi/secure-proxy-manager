@@ -100,8 +100,18 @@ fi
 
 if [ ! -f /config/ssl_cert.pem ] || [ ! -f /config/ssl_key.pem ]; then
     echo "Generating SSL certificates for HTTPS filtering..."
-    openssl genrsa -out /config/ssl_key.pem 2048
-    openssl req -new -key /config/ssl_key.pem -x509 -days 3650 -out /config/ssl_cert.pem \
+    # umask 077 in a subshell so the key is NEVER created world-readable. The
+    # chmod below used to be the only protection, and it runs two commands
+    # later — an interruption in between left a 0644 private key on a
+    # bind-mounted host directory permanently, because the next boot sees both
+    # files present and skips this whole block (SECURE-SEC-05).
+    (umask 077; openssl genrsa -out /config/ssl_key.pem 2048)
+    # 825 days, not 3650. A ten-year CA with no rotation procedure outlives the
+    # deployment: if it leaks there is no rehearsed way back, and every client
+    # has it installed. 825 days is the CA/Browser Forum maximum for a leaf and
+    # a lifetime an operator will actually be prompted to replace
+    # (SECURE-SEC-03). See DEPLOYMENT.md "Rotating the SSL-bump CA".
+    openssl req -new -key /config/ssl_key.pem -x509 -days 825 -out /config/ssl_cert.pem \
         -subj "/C=US/ST=CA/L=SanFrancisco/O=SecureProxy/CN=secure-proxy.local"
     chmod 400 /config/ssl_key.pem
     chmod 444 /config/ssl_cert.pem
@@ -125,6 +135,18 @@ touch /etc/squid/blacklists/domain/local.txt
 touch /etc/squid/whitelists/ip/local.txt
 
 # ── Read dynamic settings from backend DB (via config files written on save) ─
+
+# SECURE-REL-02. WAF_FAIL_OPEN governed only panics INSIDE the WAF process; an
+# unreachable WAF container was decided here, by a hardcoded bypass=0, which no
+# setting reached. So an operator who set WAF_FAIL_OPEN=1 — explicitly trading
+# security for availability — still lost all proxying when the WAF died, which
+# is the failure they were guarding against. One switch now governs both.
+# Default stays 0: fail closed.
+case "$(printf '%s' "${WAF_FAIL_OPEN:-0}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes) ICAP_REQMOD_BYPASS=1
+                echo "WAF_FAIL_OPEN=1 — an unreachable WAF will ALLOW traffic (availability over security)" ;;
+    *)          ICAP_REQMOD_BYPASS=0 ;;
+esac
 
 SQUID_PORT="${PROXY_PORT:-3128}"
 SQUID_CACHE_MB="${PROXY_CACHE_SIZE_MB:-2000}"
@@ -271,7 +293,7 @@ icap_client_username_encode off
 icap_client_username_header X-Client-Username
 icap_preview_enable on
 icap_preview_size 4096
-icap_service service_req reqmod_precache bypass=0 icap://waf:1344/waf
+icap_service service_req reqmod_precache bypass=${ICAP_REQMOD_BYPASS} icap://waf:1344/waf
 adaptation_access service_req allow all
 icap_service service_resp respmod_precache bypass=1 icap://waf:1344/waf
 adaptation_access service_resp allow all
@@ -498,8 +520,24 @@ if [ -f /config/proxy_auth_enabled ]; then
     # Create password file if it doesn't exist (admin user same as dashboard)
     if [ ! -f /config/proxy_users.htpasswd ]; then
         if [ -n "$BASIC_AUTH_USERNAME" ] && [ -n "$BASIC_AUTH_PASSWORD" ]; then
-            htpasswd -bc /config/proxy_users.htpasswd "$BASIC_AUTH_USERNAME" "$BASIC_AUTH_PASSWORD" 2>/dev/null || \
-                echo "${BASIC_AUTH_USERNAME}:$(openssl passwd -apr1 "$BASIC_AUTH_PASSWORD")" > /config/proxy_users.htpasswd
+            # SECURE-SEC-02: the password goes in on STDIN, never as an argv
+            # element. The previous `htpasswd -b ... "$BASIC_AUTH_PASSWORD"`
+            # (and its `openssl passwd -apr1 "$..."` fallback) put the plaintext
+            # in /proc/<pid>/cmdline for the life of the call, readable by
+            # anything sharing the PID namespace — and this is the credential
+            # that authenticates the whole management API, not a proxy-only one.
+            #
+            # SECURE-SEC-04: -6 is SHA-512 crypt. The previous -apr1 is a
+            # 1000-iteration MD5 construction with no work factor, for the same
+            # password the dashboard protects with bcrypt. htpasswd is not
+            # installed in this image at all, so the -apr1 fallback was in fact
+            # the ONLY path ever taken; openssl is the single path now rather
+            # than a fallback behind a command that does not exist.
+            # squid's basic_ncsa_auth verifies crypt(3) formats, $6$ included.
+            umask 077
+            printf '%s:%s\n' "$BASIC_AUTH_USERNAME" \
+                "$(printf '%s' "$BASIC_AUTH_PASSWORD" | openssl passwd -6 -stdin)" \
+                > /config/proxy_users.htpasswd
             echo "Created proxy auth file with admin user"
         fi
     fi

@@ -285,9 +285,14 @@ var heuristicSettingKeys = map[string]bool{
 
 // pushHeuristicsToWAF propagates any heuristic toggles in the just-saved settings
 // to the WAF's runtime config (POST /heuristics/toggle). Best-effort: the DB is
-// the source of truth, so a WAF hiccup is logged but never fails the save — the
-// value still applies on the WAF's next restart via WAF_H_* env, and re-saving
-// re-pushes.
+// the source of truth, so a WAF hiccup is logged but never fails the save.
+//
+// The database is authoritative and a restarted WAF is brought back to it by
+// workers.StartWAFReconciler. This comment used to claim the value "still
+// applies on the WAF's next restart via WAF_H_* env" — it does not: those
+// variables come from the compose file and never carry the stored value, so a
+// WAF restart silently reverted every toggle to the compose default while the
+// UI kept showing the operator's choice (SECURE-CONF-02).
 func (h *SettingsHandlers) pushHeuristicsToWAF(ctx context.Context, body map[string]string) {
 	for key, val := range body {
 		if !heuristicSettingKeys[key] {

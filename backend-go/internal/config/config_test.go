@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -118,5 +119,40 @@ func TestLoadOrGenerateEncKeyHonoursSuppliedKey(t *testing.T) {
 	t.Setenv("ENCRYPTION_KEY", want)
 	if got := loadOrGenerateEncKey(); got != want {
 		t.Errorf("supplied ENCRYPTION_KEY was not used: got %q (len %d), want the supplied key", got, len(got))
+	}
+}
+
+// SECURE-CONF-04: the JWT secret and the encryption key must live beside the
+// database, not at a hardcoded /data. Relocating DATABASE_PATH used to leave
+// them behind, and every restart then rotated both — invalidating every session
+// and making previously encrypted settings undecryptable.
+func TestSecretsFollowTheDatabaseDirectory(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DATABASE_PATH", filepath.Join(dir, "custom", "spm.db"))
+	t.Setenv("SECRET_KEY", "")
+	t.Setenv("ENCRYPTION_KEY", "")
+
+	if got, want := stateDir(), filepath.Join(dir, "custom"); got != want {
+		t.Fatalf("stateDir() = %q, want %q", got, want)
+	}
+
+	secret := loadOrGenerateSecret()
+	encKey := loadOrGenerateEncKey()
+	if secret == "" || encKey == "" {
+		t.Fatal("keys were not generated")
+	}
+	for _, name := range []string{".jwt_secret", ".enc_key"} {
+		p := filepath.Join(dir, "custom", name)
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s was not persisted beside the database: %v", name, err)
+		}
+	}
+
+	// Second load must reuse them, not rotate.
+	if loadOrGenerateSecret() != secret {
+		t.Error("JWT secret rotated on the second load — every session would be invalidated on restart")
+	}
+	if loadOrGenerateEncKey() != encKey {
+		t.Error("encryption key rotated on the second load — encrypted settings would become undecryptable")
 	}
 }
