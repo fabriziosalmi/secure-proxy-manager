@@ -16,6 +16,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	appcrypto "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/crypto"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
+	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
@@ -46,7 +47,16 @@ func NewSecurityHandlers(db *sql.DB, svc *auth.Service, cfg *config.Config, noti
 }
 
 func (h *SecurityHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {
-	r.With(authMW).Post("/api/internal/alert", h.ReceiveAlert)
+	// /api/internal/alert is service-to-service, not operator-facing: the WAF
+	// posts block notifications to it. It gets its own credential so the WAF
+	// does not need the admin password (SECURE-AUTH-02). With no token
+	// configured ServiceAuth returns authMW unchanged, which is the pre-upgrade
+	// behaviour.
+	alertToken := ""
+	if h.cfg != nil {
+		alertToken = h.cfg.AlertToken
+	}
+	r.With(appMW.ServiceAuth(alertToken, authMW)).Post("/api/internal/alert", h.ReceiveAlert)
 	r.With(authMW).Get("/api/security/rate-limits", h.GetRateLimits)
 	r.With(authMW).Delete("/api/security/rate-limits/{ip}", h.ClearRateLimit)
 	r.With(authMW).Get("/api/security/score", h.Score)

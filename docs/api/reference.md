@@ -129,7 +129,7 @@ Optional default-deny outbound egress. Off by default (the `egress_default_deny`
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/internal/alert` | Receives WAF block notifications. Authentication required; the WAF authenticates with `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` |
+| `POST` | `/api/internal/alert` | Receives WAF block notifications. The WAF authenticates with `Authorization: Bearer $INTERNAL_ALERT_TOKEN`, a credential scoped to this route only. When `INTERNAL_ALERT_TOKEN` is unset the route falls back to normal admin authentication, for upgrade compatibility |
 | `POST` | `/api/dns/detect` | Probe a target subnet for Pi-hole or AdGuard instances |
 
 ## WebSocket

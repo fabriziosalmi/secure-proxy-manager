@@ -72,8 +72,14 @@ services:
       # across restarts and stays off the memory-backed /tmp tmpfs (issue #112).
       - waf-traffic:/var/lib/waf
     environment:
-      - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
-      - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
+      # Service credential for POST /api/internal/alert, scoped to that one
+      # route. The WAF used to be handed BASIC_AUTH_USERNAME/PASSWORD — the
+      # admin credential — which gave the container that parses
+      # attacker-controlled request bodies full control of the management API
+      # (SECURE-AUTH-02). If this is empty the backend still accepts admin auth
+      # here for upgrade compatibility, but the WAF no longer has it, so alerts
+      # are dropped with a log line until the token is set on both services.
+      - INTERNAL_ALERT_TOKEN=${INTERNAL_ALERT_TOKEN:-}
       - WAF_TRAFFIC_LOG_PATH=${WAF_TRAFFIC_LOG_PATH:-/var/lib/waf/waf_traffic.jsonl}
       - WAF_BLOCK_THRESHOLD=${WAF_BLOCK_THRESHOLD:-10}
       # Heuristic engine toggles (1=on, 0=off)
@@ -128,6 +134,7 @@ services:
       - PROXY_CONTAINER_NAME=${PROXY_CONTAINER_NAME:-secure-proxy-manager-proxy}
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
+      - INTERNAL_ALERT_TOKEN=${INTERNAL_ALERT_TOKEN:-}
       - SECRET_KEY=${SECRET_KEY}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://localhost:8443}
     deploy:

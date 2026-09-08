@@ -265,15 +265,40 @@ func init() {
 
 // ── Backend notification ────────────────────────────────────────────────────
 
+// warnNoAlertCredential logs at most once a minute. notifyBackend is called on
+// every block, so an unconfigured deployment under attack would otherwise turn
+// its own log into the flood.
+var lastCredWarn atomic.Int64
+
+func warnNoAlertCredential() {
+	now := time.Now().Unix()
+	prev := lastCredWarn.Load()
+	if now-prev < 60 || !lastCredWarn.CompareAndSwap(prev, now) {
+		return
+	}
+	log.Printf("no backend alert credential: set INTERNAL_ALERT_TOKEN (openssl rand -hex 32) " +
+		"on both the waf and backend services; alerts are being dropped\n")
+}
+
 func notifyBackend(data map[string]interface{}) {
 	backendURL := os.Getenv("BACKEND_URL")
 	if backendURL == "" {
 		backendURL = "http://backend:5000"
 	}
+	// A dedicated token scoped to /api/internal/alert is the supported way to
+	// authenticate here. The WAF used to send BASIC_AUTH_USERNAME/PASSWORD —
+	// the admin credential — so this process, the one that parses
+	// attacker-controlled request bodies, could drive every administrative
+	// endpoint on the backend (SECURE-AUTH-02).
+	//
+	// The basic-auth path is kept only as a fallback for deployments upgrading
+	// with a hand-written compose file that still passes BASIC_AUTH_* here. The
+	// shipped compose files no longer do.
+	alertToken := strings.TrimSpace(os.Getenv("INTERNAL_ALERT_TOKEN"))
 	authUser := os.Getenv("BASIC_AUTH_USERNAME")
 	authPass := os.Getenv("BASIC_AUTH_PASSWORD")
-	if authUser == "" || authPass == "" {
-		log.Printf("BASIC_AUTH_USERNAME/PASSWORD not set, skipping backend alert notification\n")
+	if alertToken == "" && (authUser == "" || authPass == "") {
+		warnNoAlertCredential()
 		return
 	}
 
@@ -289,7 +314,11 @@ func notifyBackend(data map[string]interface{}) {
 		return
 	}
 
-	req.SetBasicAuth(authUser, authPass)
+	if alertToken != "" {
+		req.Header.Set("Authorization", "Bearer "+alertToken)
+	} else {
+		req.SetBasicAuth(authUser, authPass)
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	client := notifyClient

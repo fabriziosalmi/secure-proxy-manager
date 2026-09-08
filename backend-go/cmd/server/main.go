@@ -162,6 +162,17 @@ func run() error {
 
 	authMW := appMW.Auth(authSvc)
 
+	// Without a dedicated token the WAF has to authenticate to
+	// /api/internal/alert with the admin credential, which means the container
+	// that parses attacker-controlled bodies holds full control of the
+	// management API (SECURE-AUTH-02). We keep accepting it so an upgrade does
+	// not silently stop delivering alerts, but say so once, loudly.
+	if cfg.AlertToken == "" {
+		log.Warn().Msg("INTERNAL_ALERT_TOKEN is not set: /api/internal/alert still accepts the admin credential, " +
+			"so the WAF container needs BASIC_AUTH_PASSWORD. Set INTERNAL_ALERT_TOKEN (openssl rand -hex 32) " +
+			"on both the backend and the waf service to scope it down.")
+	}
+
 	// Register handler groups.
 	handlers.NewAuthHandlers(db, authSvc, cfg, notify, hub).Register(r)
 	handlers.NewLogHandlers(db).Register(r, authMW)

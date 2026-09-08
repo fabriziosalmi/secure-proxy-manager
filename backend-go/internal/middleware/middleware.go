@@ -3,9 +3,11 @@ package middleware
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/auth"
@@ -29,6 +31,46 @@ func Auth(svc *auth.Service) func(http.Handler) http.Handler {
 				return
 			}
 			ctx := context.WithValue(r.Context(), CtxUsername, username)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// ServiceAuth gates an internal service-to-service endpoint on a dedicated
+// bearer token rather than on the human admin credential.
+//
+// The WAF posts block notifications to /api/internal/alert and used to
+// authenticate with BASIC_AUTH_USERNAME/PASSWORD — so the one container whose
+// job is to parse attacker-controlled request bodies was also holding a
+// credential that opens every administrative endpoint, over plain HTTP on the
+// internal network. A token scoped to this one route removes that: a WAF
+// compromise yields the ability to post alerts, and nothing else
+// (SECURE-AUTH-02).
+//
+// When token is empty no dedicated credential is configured, and the endpoint
+// falls back to `fallback` (the normal admin auth) so an in-place upgrade keeps
+// delivering alerts instead of silently dropping them. When it IS set, admin
+// auth is no longer accepted here: the point is that this route needs a
+// credential the WAF has and an operator's browser session does not.
+func ServiceAuth(token string, fallback func(http.Handler) http.Handler) func(http.Handler) http.Handler {
+	if token == "" {
+		return fallback
+	}
+	want := []byte(token)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+			// Constant time in the length that matters: ConstantTimeCompare
+			// returns 0 for unequal lengths without comparing, and takes time
+			// independent of WHERE two equal-length values first differ, so a
+			// caller cannot walk the token out one byte at a time.
+			if subtle.ConstantTimeCompare([]byte(got), want) != 1 {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="Secure Proxy Manager internal"`)
+				writeJSON(w, http.StatusUnauthorized,
+					map[string]string{"status": "error", "detail": "invalid service credential"})
+				return
+			}
+			ctx := context.WithValue(r.Context(), CtxUsername, "waf")
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

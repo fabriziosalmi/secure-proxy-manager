@@ -43,6 +43,14 @@ type Config struct {
 	ProxyURL       string
 	GeoIPURL       string
 
+	// AlertToken authenticates the WAF when it posts to /api/internal/alert.
+	// It exists so the WAF does not need the admin credential: that container
+	// is the one that parses attacker-controlled request bodies, and holding
+	// BASIC_AUTH_PASSWORD gave it full control of the management API
+	// (SECURE-AUTH-02). Empty means no token is configured, and the endpoint
+	// keeps accepting admin auth so an in-place upgrade does not lose alerts.
+	AlertToken string
+
 	// Encryption key for sensitive settings (hex-encoded 32 bytes)
 	EncryptionKey string
 }
@@ -99,6 +107,7 @@ func Load() *Config {
 		WAFServiceUser: envOrDefault("WAF_SERVICE_USERNAME", username),
 		WAFServicePass: envOrDefault("WAF_SERVICE_PASSWORD", password),
 		ProxyURL:       envOrDefault("PROXY_URL", "http://proxy:3128"),
+		AlertToken:     strings.TrimSpace(os.Getenv("INTERNAL_ALERT_TOKEN")),
 		GeoIPURL:       envOrDefault("GEOIP_URL", ""), // Empty means use defaults
 		EncryptionKey:  loadOrGenerateEncKey(),
 	}
