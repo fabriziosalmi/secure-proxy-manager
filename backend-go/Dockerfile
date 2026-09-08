@@ -23,6 +23,17 @@ FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec4
 # /var/run/docker.sock into this container, and shipping a host-root-equivalent
 # client for a capability the service does not have pre-installs an escalation
 # path for any future change that mounts the socket (SECURE-BLD-01).
+# Distribution packages are installed without a version constraint. That is a
+# deliberate trade-off: pinning an exact apk/apt version breaks the build the
+# moment the repository rotates it, which for a project that rebuilds on every
+# release costs more than it buys. The consequence is accepted and bounded —
+# a rebuild of a tagged release resolves different package versions than the
+# one that was published and signed, so a rebuild cannot be used to verify the
+# original (SECURE-BLD-03).
+#
+# Where a package DOES carry security weight the version is asserted after
+# install instead: see proxy/Dockerfile, which fails the build if squid-openssl
+# is older than its CVE floor.
 RUN apk add --no-cache ca-certificates
 
 COPY --from=builder /bin/server /server

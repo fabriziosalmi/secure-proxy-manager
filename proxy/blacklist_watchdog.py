@@ -18,6 +18,7 @@ This is shipped as a real file and registered statically in
 squid-supervisor.conf (rather than generated at runtime) so supervisord always
 picks it up on a fresh boot.
 """
+import json
 import os
 import shutil
 import socket
@@ -70,6 +71,35 @@ def resolved_ips():
 
 
 HEARTBEAT = "/var/log/squid/watchdog.heartbeat"
+
+
+def write_result(trigger, trigger_mtime, gen_rc, reconf_rc):
+    """Acknowledge a trigger so the backend can tell whether it was applied.
+
+    The backend touches /config/.reload-squid and reports success to the API
+    caller as soon as the file is written — whether the watchdog is alive,
+    whether the generator succeeded and whether squid accepted the config were
+    all invisible to it, so a user toggling egress default-deny saw a success
+    toast regardless of whether the rule reached Squid (SECURE-ARCH-02).
+
+    The result carries the trigger's own mtime, so the backend can tell an
+    acknowledgement of ITS request from one for an earlier trigger.
+    """
+    path = f"/config/.{trigger}.result"
+    payload = {
+        "trigger_mtime": trigger_mtime,
+        "generator_rc": gen_rc,
+        "reconfigure_rc": reconf_rc,
+        "applied": gen_rc == 0 and reconf_rc == 0,
+        "at": int(time.time()),
+    }
+    try:
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(payload, f)
+        os.replace(tmp, path)
+    except OSError as exc:
+        print(f"[watchdog] could not write {path}: {exc}", flush=True)
 
 
 def atomic_copy(src, dst):
@@ -214,12 +244,15 @@ def main():
                         print("[watchdog] generation FAILED — keeping the running config, not reconfiguring",
                               flush=True)
                         print(gen_res.stderr.decode("utf-8", "replace")[:2000], flush=True)
+                        write_result("reload-squid", mt_reload, gen_res.returncode, None)
                     elif not squid_config_ok():
                         print("[watchdog] generated config does not parse — refusing to reconfigure",
                               flush=True)
+                        write_result("reload-squid", mt_reload, 0, 1)
                     else:
                         rec_res = subprocess.run(["/usr/sbin/squid", "-k", "reconfigure"], capture_output=True, timeout=10)
                         print(f"[watchdog] squid reconfigure rc={rec_res.returncode}", flush=True)
+                        write_result("reload-squid", mt_reload, gen_res.returncode, rec_res.returncode)
                 except Exception as exc:
                     print(f"[watchdog] reload error: {exc}", flush=True)
 

@@ -28,9 +28,14 @@ func TestCheckRequestHeuristics(t *testing.T) {
 	t3 := t2.Add(6 * time.Second)
 	t4 := t3.Add(6 * time.Second)
 	t5 := t4.Add(6 * time.Second)
-	cs := getClientState("1.2.3.5")
+	// Seed under the same lock the production path uses: resolution and mutation
+	// must not be split, or an eviction in between discards the write
+	// (SECURE-CONC-04).
+	csMutex.Lock()
+	cs := getClientStateLocked("1.2.3.5")
 	cs.reqTimes = []time.Time{t1, t2, t3, t4, t5}
 	cs.reqSizes = []int{100, 100, 100, 100, 100}
+	csMutex.Unlock()
 
 	// Set config to allow beaconing to trigger
 	heuristicCfg.BeaconingMinRequests = 5
