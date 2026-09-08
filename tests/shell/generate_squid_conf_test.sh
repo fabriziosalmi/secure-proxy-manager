@@ -87,5 +87,53 @@ echo "── injection: a hostile /config must not become squid config ──"
 conf="$(generate 'printf "SQUID_PORT=3128\nEVIL=\$(touch /tmp/pwned)\n" > /config/squid_settings.env')"
 grep -q 'pwned' <<<"$conf" && bad "safe_source rejects command substitution" || ok "safe_source rejects command substitution"
 
+echo "── boot path: startup.sh sources the generator and must survive it ──"
+# SECURE-ARCH-01. startup.sh used to carry a byte-identical copy of the
+# generator (407 of its 490 lines) and was deduplicated down to the boot-only
+# steps, leaving the generator as the single producer of squid.conf. That makes
+# the source at the top of startup.sh load-bearing in a way it was not before:
+# a bare `exit` in the generator now terminates the whole entrypoint. It did,
+# once — the container reached neither the swap init nor supervisord, and came
+# up with no squid and no watchdog while every earlier assertion here still
+# passed, because they all invoke the generator as a subprocess. These run the
+# real entrypoint instead.
+boot="$(docker run --rm --cap-add NET_ADMIN --entrypoint /bin/bash "$IMAGE" -c '
+  sed -i "s|^exec /usr/bin/supervisord.*|echo __REACHED_SUPERVISORD__|" /startup.sh
+  /startup.sh 2>&1
+  echo "__STARTUP_RC__=$?"
+' 2>/dev/null)"
+grep -q '__REACHED_SUPERVISORD__' <<<"$boot" \
+  && ok "startup.sh runs to the supervisord hand-off" \
+  || bad "startup.sh runs to the supervisord hand-off" "the entrypoint stopped early — sourcing the generator must return, not exit"
+grep -q '__STARTUP_RC__=0' <<<"$boot" && ok "startup.sh exits 0" || bad "startup.sh exits 0"
+grep -q 'Configuration syntax is valid' <<<"$boot" \
+  && ok "boot validates its own squid.conf" || bad "boot validates its own squid.conf"
+
+# Executed as a subprocess (the watchdog's contract) it must still exit 0, and
+# sourced (startup.sh's contract) it must hand control back.
+docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+  mkdir -p /config /etc/squid
+  /usr/local/bin/generate_squid_conf.sh >/dev/null 2>&1' >/dev/null 2>&1 \
+  && ok "generator exits 0 when executed" || bad "generator exits 0 when executed"
+srcd="$(docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+  mkdir -p /config /etc/squid
+  . /usr/local/bin/generate_squid_conf.sh >/dev/null 2>&1
+  echo "__AFTER_SOURCE__=$?"' 2>/dev/null)"
+grep -q '__AFTER_SOURCE__=0' <<<"$srcd" \
+  && ok "generator returns 0 when sourced" \
+  || bad "generator returns 0 when sourced" "sourcing it killed the caller"
+
+echo "── startup.sh stays deduplicated ──"
+# The duplication is what ARCH-01 removed; catch it coming back.
+dup="$(docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+  echo "lines=$(wc -l < /startup.sh)"
+  echo "mutations=$(grep -cE ">>? /etc/squid/squid\\.conf( |$)" /startup.sh)"' 2>/dev/null)"
+n=$(sed -n 's/^lines=//p' <<<"$dup")
+[ "${n:-999}" -lt 150 ] && ok "startup.sh is boot-only (<150 lines, is $n)" \
+                        || bad "startup.sh is boot-only" "grown back to $n lines"
+m=$(sed -n 's/^mutations=//p' <<<"$dup")
+[ "${m:-1}" = 0 ] && ok "startup.sh writes no squid.conf of its own" \
+                  || bad "startup.sh writes no squid.conf of its own" "found $m heredoc writes"
+
 printf "\n  %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -678,4 +678,11 @@ fi
 # Callers that check the return code (the watchdog now refuses to reconfigure
 # on a failed generation, SECURE-ERR-07) would otherwise treat every successful
 # run as a failure and never apply a change.
-exit 0
+#
+# `return` when sourced, `exit` when executed. This script has two callers with
+# two invocation styles: the watchdog runs it as a subprocess, while startup.sh
+# SOURCES it (it shares the helper functions). A bare `exit 0` terminates the
+# sourcing shell — it silently killed startup.sh right here, before the
+# directory setup, the swap init and the supervisord exec, so the container
+# came up with no squid and no watchdog at all.
+return 0 2>/dev/null || exit 0
