@@ -17,6 +17,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/validate"
 	ws "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/websocket"
 
 	"github.com/go-chi/chi/v5"
@@ -54,8 +55,10 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.Username == "" || req.Password == "" {
-		writeError(w, http.StatusBadRequest, "username and password required")
+	// `required,min=1,max=128` on both fields — the presence check this
+	// replaced, plus the upper bound that was declared and never applied.
+	if err := validate.Struct(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -172,8 +175,11 @@ func (h *AuthHandlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if len(req.NewPassword) < 8 {
-		writeError(w, http.StatusBadRequest, "new password must be at least 8 characters")
+	// `required` on both, `min=8` on the new password. The length rule is now
+	// counted in characters rather than bytes, so an 8-character passphrase
+	// with multi-byte runes is measured the way the policy is written.
+	if err := validate.Struct(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if !pwdStrong.MatchString(req.NewPassword) || !pwdSpecial.MatchString(req.NewPassword) {

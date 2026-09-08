@@ -18,6 +18,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/validate"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
@@ -73,6 +74,10 @@ func (h *SecurityHandlers) ReceiveAlert(w http.ResponseWriter, r *http.Request) 
 	var alert models.InternalAlert
 	if err := json.NewDecoder(r.Body).Decode(&alert); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid alert payload")
+		return
+	}
+	if err := validate.Struct(&alert); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	event := map[string]any{

@@ -20,6 +20,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/validate"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
@@ -147,8 +148,13 @@ func deleteByIDHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 func bulkDeleteHandler(db *sql.DB, table string, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req models.BulkDeleteRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "ids required")
+			return
+		}
+		// `required,min=1` — the empty-list check this replaces.
+		if err := validate.Struct(&req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		placeholders := strings.Repeat("?,", len(req.IDs))
@@ -194,6 +200,10 @@ func (h *BlacklistHandlers) AddIP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if err := validate.Struct(&item); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	ip := strings.TrimSpace(item.IP)
 	if !isValidCIDR(ip) {
 		writeError(w, http.StatusBadRequest, "invalid IP address or CIDR format")
@@ -225,6 +235,10 @@ func (h *BlacklistHandlers) AddIPWhitelist(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if err := validate.Struct(&item); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	ip := strings.TrimSpace(item.IP)
 	if !isValidCIDR(ip) {
 		writeError(w, http.StatusBadRequest, "invalid IP/Network format")
@@ -248,6 +262,10 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 	var item models.DomainListItem
 	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := validate.Struct(&item); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	domain := strings.TrimSpace(strings.ToLower(item.Domain))
@@ -289,6 +307,10 @@ func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if err := validate.Struct(&item); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	entry := strings.TrimSpace(strings.ToLower(item.Entry))
 	if entry == "" || strings.ContainsAny(entry, " ") {
 		writeError(w, http.StatusBadRequest, "invalid entry")
@@ -321,6 +343,10 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 	var item models.DomainListItem
 	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := validate.Struct(&item); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	domain := strings.TrimSpace(strings.ToLower(item.Domain))
@@ -367,6 +393,10 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	var req models.ImportBlacklistRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := validate.Struct(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	blType := strings.ToLower(req.Type)
@@ -536,17 +566,19 @@ const maxGeoCountries = 50
 
 func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 	var req models.ImportGeoBlacklistRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Countries) == 0 {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "countries list required")
 		return
 	}
-	// Enforce the bound the model declares. Without it an authenticated caller
-	// could post millions of entries and, since duplicates were not collapsed,
-	// drive two 30s outbound fetches per element from inside the request
-	// goroutine — an unbounded amplifier that never returns (SECURE-DOM-01).
-	if len(req.Countries) > maxGeoCountries {
-		writeError(w, http.StatusBadRequest,
-			fmt.Sprintf("too many countries: %d (max %d)", len(req.Countries), maxGeoCountries))
+	// `required,min=1,max=50`. The upper bound is load-bearing, not hygiene:
+	// without it an authenticated caller could post millions of entries and,
+	// since duplicates were not collapsed, drive two 30s outbound fetches per
+	// element from inside the request goroutine — an unbounded amplifier that
+	// never returns (SECURE-DOM-01). It was enforced here by hand because the
+	// tag that declared it was inert; now the tag is the enforcement
+	// (SECURE-DOM-02), and maxGeoCountries below asserts the two agree.
+	if err := validate.Struct(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	seen := make(map[string]struct{}, len(req.Countries))

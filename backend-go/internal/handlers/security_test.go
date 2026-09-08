@@ -128,7 +128,7 @@ func TestReceiveAlert_RequiresServiceToken(t *testing.T) {
 		r := chi.NewRouter()
 		NewSecurityHandlers(db, svc, cfg, NewNotifyQueue(db, "0000000000000000000000000000000000000000000000000000000000000000")).Register(r, acceptAll)
 
-		body, _ := json.Marshal(models.InternalAlert{EventType: "waf_block", Level: "warning"})
+		body, _ := json.Marshal(models.InternalAlert{EventType: "waf_block", Message: "blocked by rule 42", Level: "warning"})
 		req := httptest.NewRequest("POST", "/api/internal/alert", bytes.NewReader(body))
 		if header != "" {
 			req.Header.Set("Authorization", header)
