@@ -1,7 +1,7 @@
 package config
 
 // AppVersion is the semantic version of this backend build.
-const AppVersion = "3.11.6"
+const AppVersion = "3.12.0"
 
 // APIVersion is the version of the HTTP CONTRACT — request and response shapes,
 // status codes, header semantics. It is deliberately separate from AppVersion:

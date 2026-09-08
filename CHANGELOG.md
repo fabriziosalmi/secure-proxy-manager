@@ -13,6 +13,173 @@ a `### Removed` or `### Changed` heading with the phrase **BREAKING** and the
 changes affecting it. Retired routes answer `410 Gone` naming their replacement
 for at least one minor release before disappearing.
 
+## [3.12.0] - 2026-09-08
+
+Remediation of a full code-metrics audit of `19c3e90b`: 81 findings admitted,
+81 closed (#261). Every security-relevant fix is mutation-verified — the
+original bug restored, the test required to fail. This is a minor, not a patch:
+three changes below need action on upgrade.
+
+First release to send `X-API-Version: 1`. Releases up to 3.11.6 carried no
+contract version, so the shape changes below are BREAKING relative to them.
+
+### Action required when upgrading from 3.11.x
+
+- **`INTERNAL_ALERT_TOKEN` must be set**, on both the `waf` and `backend`
+  services. The shipped compose files no longer hand the WAF
+  `BASIC_AUTH_USERNAME`/`PASSWORD`, so with no token the WAF cannot
+  authenticate its block notifications and drops them, with a log line in both
+  containers. `deploy/install.sh` generates one on a fresh install and appends
+  one to an existing `.env` that predates the variable; set it by hand
+  (`openssl rand -hex 32`) if you do not run the installer. The backend still
+  accepts admin auth on that route when the token is unset, so a hand-written
+  compose that still passes `BASIC_AUTH_*` to the WAF keeps working.
+- **`GRAFANA_ADMIN_PASSWORD` must be set to use the `observability` profile.**
+  Grafana now refuses to start without it instead of coming up on
+  `admin`/`admin`. Only affects that profile; the rest of the stack is
+  unaffected.
+- **Requests that exceed the documented field limits are now rejected with
+  400.** The `validate:` bounds on the request models were never enforced, so
+  an over-long `description`, `domain` or import `url` was accepted and stored.
+  A client sending values past those limits will start seeing 400s.
+
+Two startup paths also became fatal that previously degraded silently: an
+`ENCRYPTION_KEY` that is not exactly 32 bytes of hex, and a failure to export
+the blacklists to `/config`. Both refuse to start and name the remedy.
+
+### Security
+
+- **The WAF no longer holds the admin credential.** It authenticates to
+  `POST /api/internal/alert` with `INTERNAL_ALERT_TOKEN`, scoped to that one
+  route and compared in constant time. The container that parses
+  attacker-controlled request bodies previously carried
+  `BASIC_AUTH_USERNAME`/`PASSWORD` — full control of the management API, over
+  plain HTTP on the internal network. (SECURE-AUTH-02)
+- **`./data` is no longer mounted into the WAF or the proxy.** It holds
+  `.jwt_secret` (signs every session token), `.enc_key` (decrypts every stored
+  notification credential) and the database. Reachable now only by the backend
+  that owns it. (SECURE-SEC-01)
+- **The login lockout is enforceable again.** nginx sent
+  `$proxy_add_x_forwarded_for`, which prepends the client's own header, and the
+  left-most entry was taken as the client address — so an attacker rotating
+  `X-Forwarded-For` never accumulated failures under any key and
+  `MAX_LOGIN_ATTEMPTS` did nothing. (SECURE-AUTH-01, SECURE-AUTH-03)
+- **JWT revocation fails closed.** An unreadable revocation store was read as
+  "nothing is revoked". Tokens issued before the process started are now
+  refused while the store is unavailable; tokens issued since are known to this
+  process and still work. `/api/logout` answers 500 when the revocation cannot
+  be persisted, instead of 200 for a token that comes back after a restart.
+  (SECURE-ERR-02, SECURE-ERR-03)
+- **Grafana no longer ships with `admin`/`admin`** in the production compose
+  file — the one `install.sh` deploys. (SECURE-CONF-05)
+- **The proxy CA and the htpasswd file.** The CA is 825 days behind a
+  `umask 077` rather than 3650 days with a world-readable key; the basic-auth
+  password is hashed through `openssl passwd -6` on stdin instead of `htpasswd
+  -bc`, which put it in `argv`. (SECURE-SEC-03/04/05)
+- **`WAF_FAIL_OPEN` reaches the data plane.** It now derives the ICAP
+  `bypass=` directive; previously the switch existed and changed nothing.
+- A sensitive setting whose encryption fails is refused with a 500 rather than
+  written in cleartext with a 200, and a value that fails to decrypt is
+  returned empty with `decrypt_failed` rather than as raw `enc::` ciphertext
+  that the next Save re-encrypted, destroying the secret. (SECURE-ERR-04,
+  SECURE-ERR-06)
+
+### Added
+
+- `internal/validate` enforces the `validate:` struct tags — `required`,
+  `omitempty`, `min`, `max`, `oneof` — at all 11 request-decode sites. Strings
+  are measured in runes. No new dependency. (SECURE-DOM-02)
+- **CI quality gates that are real:** `golangci-lint` on both Go modules with an
+  explicit, justified exclusion list; `shellcheck`; a squid-config fixture suite
+  that runs the real generator *and the real entrypoint* in the real image; a
+  WAF coverage floor; and a check that the WAF heuristic key set stays identical
+  across its 7 files. `gosec` no longer excludes G104. (SECURE-QUAL-01,
+  SECURE-TEST-01)
+- `scripts/restore.sh`, which verifies backup integrity **before** swapping.
+  (SECURE-DATA-02)
+- `X-API-Version` on every response, deliberately separate from the build
+  version. (SECURE-API-03)
+- Prometheus now measures the product's own outcome — requests allowed vs
+  blocked — counted where every log line is already parsed. (SECURE-OBS-01)
+
+### Changed
+
+- **BREAKING** (`X-API-Version: 1`) — `GET /api/analytics/clients` returns the
+  collection under `data`, not `data.clients`. Every list endpoint now goes
+  through one helper: collection under `data`, pagination under `meta`. The
+  top-level `total`/`limit`/`offset` are still emitted and marked deprecated,
+  so the old pagination shape stays reachable for a release. (SECURE-API-02)
+- **BREAKING** (`X-API-Version: 1`) — Backup Config exports a versioned
+  envelope carrying the five lists (both blacklists, both whitelists, the
+  egress allowlist) alongside the settings. It previously exported the settings
+  table alone, so an operator who exported before a risky change and imported
+  afterwards had restored only the toggles. The v1 import shape is still
+  accepted. (SECURE-DATA-04)
+- **BREAKING** (`X-API-Version: 1`) — 14 handlers stopped passing `err.Error()`
+  into the contractual `detail` field, so a 500 no longer returns whatever the
+  SQLite driver said. They return a stable detail plus a machine-readable code
+  and log the cause. The 400s that echo the caller's own input keep their
+  message. (SECURE-API-04)
+- One name for the client address in a log record: `source_ip`, which the
+  schema and the highest-volume insert already used. It was previously carried
+  as `client_ip` in the WebSocket payload, `source_ip` in the DB insert and
+  `ip_address` in the clients endpoint. (SECURE-DOM-08)
+- Config reload is acknowledged rather than assumed. The watchdog writes back
+  the trigger's own mtime and both return codes; the handler reports "success"
+  only when the proxy applied it, an explicit error when it refused and kept
+  the previous config, and "pending" when nothing answered. (SECURE-ARCH-02)
+- `/api/docs` is walked from the live router instead of hand-maintained. The
+  hand-written list had drifted to 63 entries against 81 routes, silently
+  omitting the entire egress-allowlist resource and `POST /api/auth/refresh`.
+  A test asserts the catalogue and the router agree. (SECURE-API-01)
+- `generate_squid_conf.sh` is the sole producer of `squid.conf`. 407 of
+  `startup.sh`'s 490 lines were a byte-identical copy of it, so every unguarded
+  mutation ran twice and every security edit had to land in two files or the
+  boot path and the reload path diverged — which they had. (SECURE-ARCH-01)
+- `handleReqmod` is split into named inspection stages: CCN 48 → 13, 226 → 50
+  NLOC, every extracted helper CCN ≤ 8. Verdicts pinned by a characterization
+  suite before the split and byte-identical after. (SECURE-QUAL-02)
+
+### Fixed
+
+- **Log ingestion dropped records.** `bufio.Scanner` reads ahead, so seeking to
+  the file position after an early break skipped every line already buffered —
+  476 of 12,000 in a mutation test. Consumed bytes are now tracked explicitly.
+- **Log ingestion could OOM the backend during recovery.** A tick's batch was
+  sized by the backlog, so a backend down for an hour read every line since the
+  saved offset into one slice against a 128M limit, was killed, and re-read the
+  same backlog on restart. Batches are bounded and transactional, and the
+  offset is persisted per batch. (SECURE-SCAL-02)
+- **The blacklist export could publish a truncated ACL.** Every write to the
+  enforcement path — exports and watchdog copies — is now atomic (temp file,
+  fsync, rename, directory sync) and serialized. The startup export is fatal on
+  failure: a proxy enforcing rules that no longer match the database must not
+  start silently. (SECURE-DATA-01)
+- **The squid config generator always exited 1**, because its last line is a
+  `[ -f … ] && cp` whose short-circuit becomes the exit status. Shipped
+  alongside the watchdog change that makes a non-zero return refuse to
+  reconfigure, every config reload would have stopped reaching the proxy while
+  the container reported healthy. Found by the new fixture suite.
+- **The proxy container could come up with no squid and no watchdog.** The
+  generator is sourced by `startup.sh`, and a bare `exit 0` in it terminated
+  the entrypoint before the swap init and the supervisord hand-off. It now
+  returns when sourced and exits when executed. The fixture suite runs the real
+  entrypoint end to end.
+- A lost update in the WAF heuristics: `getClientState` returned a pointer and
+  released the mutex before the caller re-acquired it, so an eviction in the gap
+  left the request writing state into an object nothing would read again. Both
+  accesses were locked, so the race detector could never see it.
+  (SECURE-CONC-04)
+- Supervisord no longer gives up on squid or the watchdog after a finite retry
+  count — it marked them FATAL and kept running as PID 1, so nothing recovered
+  the container and a transient failure became permanent. (SECURE-REL-01)
+
+### Removed
+
+- `RestoreConfigRequest`, `SettingUpdate` and `SettingsBulkUpdate` from
+  `internal/models`: unreferenced, and two of them described request shapes the
+  API does not accept. They read as a contract and were not one.
+
 ## [3.11.6] - 2026-08-03
 
 Pre-release hardening pass (360° audit round 1): accessibility, performance,
