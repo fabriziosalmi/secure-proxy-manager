@@ -377,6 +377,44 @@ func nextEventID(t time.Time) string {
 	return strconv.FormatInt(t.UnixNano(), 36) + "-" + strconv.FormatUint(n, 36)
 }
 
+// inspection accumulates everything one REQMOD pass learns about a request.
+// It exists so the stages below can be separate functions that still share the
+// running score: handleReqmod used to be a single 226-line body at cyclomatic
+// complexity 48, on the hottest path in the product, with no seam a test could
+// reach (SECURE-QUAL-02).
+type inspection struct {
+	eventID   string
+	startTime time.Time
+
+	rawURL   string
+	clientIP string
+
+	// Accumulated signals. score is the sum of every match's Score, and the
+	// block decision is score >= blockThreshold — checked once, at the end.
+	matches []MatchResult
+	score   int
+
+	// Body inspection results, needed later for the traffic feature and to
+	// decide whether a clean verdict may be cached.
+	bodyStr  string
+	bodySize int
+
+	headerCount int
+
+	// Safe-URL cache addressing, computed once up front and reused at the end.
+	cacheable bool
+	cacheKey  string
+}
+
+// blocked reports the verdict. Every stage adds to score; nothing else decides.
+func (in *inspection) blocked() bool { return in.score >= blockThreshold }
+
+// add records a signal and its contribution to the score.
+func (in *inspection) add(m MatchResult) {
+	in.matches = append(in.matches, m)
+	in.score += m.Score
+}
+
 func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	w.Header().Set("ISTag", currentISTag())
 	if req.Request == nil || req.Request.URL == nil {
@@ -386,14 +424,17 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 
 	startTime := time.Now()
 	defer func() { reqmodLatency.Observe(time.Since(startTime)) }()
-	eventID := nextEventID(startTime)
 
-	rawURL := req.Request.URL.String()
+	in := &inspection{
+		eventID:   nextEventID(startTime),
+		startTime: startTime,
+		rawURL:    req.Request.URL.String(),
+		clientIP:  clientIPFrom(req),
+	}
 
-	// Skip WAF inspection for LAN destinations (proxy UI, backend, local services)
-	// These are legitimate internal traffic, not SSRF attempts
-	host := req.Request.Host
-	if isLANHost(host) {
+	// Skip WAF inspection for LAN destinations (proxy UI, backend, local
+	// services). These are legitimate internal traffic, not SSRF attempts.
+	if isLANHost(req.Request.Host) {
 		w.WriteHeader(204, nil, false)
 		return
 	}
@@ -404,267 +445,318 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	// request carries an attacker-controlled body and headers we have not seen
 	// (the previous rawURL-only key let a benign GET poison the cache so a later
 	// malicious POST skipped ALL inspection).
-	cacheable := req.Request.Method == http.MethodGet || req.Request.Method == http.MethodHead
-	cacheKey := req.Request.Method + "\x00" + rawURL
-	if cacheable && safeCache.IsSafe(cacheKey) {
+	in.cacheable = req.Request.Method == http.MethodGet || req.Request.Method == http.MethodHead
+	in.cacheKey = req.Request.Method + "\x00" + in.rawURL
+	if in.cacheable && safeCache.IsSafe(in.cacheKey) {
 		w.WriteHeader(204, nil, false)
 		return
 	}
 
-	normalizedURL := normalizeInput(rawURL)
+	scanSignatures(in, req.Request)
+	scanDomainReputation(in, req.Request.Host)
 
-	// Also check request headers for injection (Log4Shell, SSRF)
-	var headerStr string
-	headerCount := 0
-	for _, hdr := range []string{"User-Agent", "Referer", "X-Forwarded-For", "X-Forwarded-Host", "Accept", "Cookie"} {
-		if v := req.Request.Header.Get(hdr); v != "" {
-			headerStr += " " + v
-			headerCount++
-		}
-	}
-	normalizedHeaders := normalizeInput(headerStr)
+	feature := in.feature(req.Request)
+	applyHeuristics(in, req.Request, &feature)
 
-	// Combine URL + headers for scoring
-	combined := normalizedURL + " " + normalizedHeaders
-	matches, score := matchRulesScored(combined)
-
-	// Also check raw (pre-decoded) URL for encoded evasion patterns like %c0%af
-	// that get decoded by normalizeInput and lose their detectable pattern
-	if score < blockThreshold && rawURL != normalizedURL {
-		rawMatches, rawScore := matchRulesScored(rawURL)
-		if rawScore > 0 {
-			matches = append(matches, rawMatches...)
-			score += rawScore
-		}
-	}
-
-	// Check request body if score not yet over threshold
-	var bodyStr string
-	var bodySize int
-	if score < blockThreshold && req.Request.Body != nil {
-		ct := req.Request.Header.Get("Content-Type")
-		if shouldInspectBody(ct) {
-			// Read one byte past the inspection limit so we can tell whether the
-			// body was truncated (i.e. a payload may be hiding past the limit).
-			bodyBytes, readErr := io.ReadAll(io.LimitReader(req.Request.Body, maxBodyInspectSize+1))
-			if readErr == nil && len(bodyBytes) > 0 {
-				truncated := len(bodyBytes) > maxBodyInspectSize
-				if truncated {
-					bodyBytes = bodyBytes[:maxBodyInspectSize]
-				}
-				bodyStr = normalizeInput(string(bodyBytes))
-				bodySize = len(bodyBytes)
-				req.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-				bodyMatches, bodyScore := matchRulesScored(bodyStr)
-				matches = append(matches, bodyMatches...)
-				score += bodyScore
-
-				// An over-limit body is a coverage gap, not a clean allow. Add a
-				// corroborating signal (below blockThreshold, so it can't block on
-				// its own — pairs with any other rule/heuristic hit) and count it.
-				if truncated {
-					bodyTruncatedCount.Add(1)
-					const oversizeBodyScore = 4
-					matches = append(matches, MatchResult{RuleID: "WAF-BODY-OVERSIZE", Category: "BODY_OVERSIZE", Score: oversizeBodyScore})
-					score += oversizeBodyScore
-				}
-			}
-		}
-	}
-
-	// ── ML-lite: DGA + Typosquatting detection ─────────────────────────
-	// Probabilistic signals: each contributes LESS than blockThreshold so it
-	// cannot block on its own — corroboration from another signal or a signature
-	// rule is required. This avoids false-positive blocks on real domains
-	// (e.g. a typosquat near-miss alone is observed, not blocked).
-	if score < blockThreshold && host != "" {
-		const dgaScore, typoScore = 6, 5
-		if isCategoryEnabled("DGA_DOMAIN") {
-			dgaResult := cachedAnalyzeDGA(host)
-			if dgaResult.IsDGA {
-				matches = append(matches, MatchResult{RuleID: "ML-DGA-001", Category: "DGA_DOMAIN", Score: dgaScore})
-				score += dgaScore
-				// %q quotes + escapes control bytes so an attacker-controlled Host
-				// header (newline, tab, ANSI escapes) cannot forge log entries.
-				log.Printf("WAF ML-DGA score=%d domain=%q dga_score=%d\n", dgaResult.Score, host, dgaResult.Score)
-			}
-		}
-		if isCategoryEnabled("TYPOSQUATTING") {
-			typoResult := CheckTyposquat(host)
-			if typoResult.Suspicious {
-				matches = append(matches, MatchResult{RuleID: "ML-TYPO-001", Category: "TYPOSQUATTING", Score: typoScore})
-				score += typoScore
-				log.Printf("WAF ML-TYPO target=%q technique=%q distance=%d domain=%q\n",
-					typoResult.Target, typoResult.Technique, typoResult.Distance, host)
-			}
-		}
-	}
-
-	// ── Feature extraction ──────────────────────────────────────────────
-	clientIP := "unknown"
-	if ipHeaders := req.Header.Values("X-Client-Ip"); len(ipHeaders) > 0 {
-		if parsed := net.ParseIP(strings.TrimSpace(ipHeaders[0])); parsed != nil {
-			clientIP = parsed.String()
-		}
-	}
-
-	ruleIDs := make([]string, len(matches))
-	categories := make([]string, 0)
-	catSet := make(map[string]bool)
-	for i, m := range matches {
-		ruleIDs[i] = m.RuleID
-		if !catSet[m.Category] {
-			categories = append(categories, m.Category)
-			catSet[m.Category] = true
-		}
-	}
-
-	action := "allow"
-	if score >= blockThreshold {
-		action = "block"
-	}
-
-	feature := TrafficFeature{
-		EventID:         eventID,
-		Timestamp:       startTime.UTC().Format(time.RFC3339),
-		ClientIP:        clientIP,
-		Method:          req.Request.Method,
-		Host:            req.Request.Host,
-		Path:            req.Request.URL.Path,
-		URLLength:       len(rawURL),
-		URLEntropy:      shannonEntropy(rawURL),
-		QueryParamCount: len(req.Request.URL.Query()),
-		BodySize:        bodySize,
-		BodyEntropy:     shannonEntropy(bodyStr),
-		ContentType:     req.Request.Header.Get("Content-Type"),
-		HeaderCount:     headerCount,
-		UserAgent:       req.Request.Header.Get("User-Agent"),
-		IsTLS:           req.Request.URL.Scheme == "https",
-		DestPort:        req.Request.URL.Port(),
-		WAFScore:        score,
-		WAFRules:        ruleIDs,
-		Action:          action,
-		LatencyUS:       time.Since(startTime).Microseconds(),
-	}
-
-	// ── Behavioral heuristics (stateful, time-windowed) ────────────────
-	hResults, hScore := CheckRequestHeuristics(
-		clientIP, req.Request.Method, req.Request.Host, req.Request.URL.Path,
-		bodyStr, bodySize, feature.BodyEntropy, feature.URLEntropy,
-	)
-	for _, hr := range hResults {
-		matches = append(matches, MatchResult{
-			Category: hr.Category,
-			RuleID:   hr.ID,
-			Pattern:  hr.Detail,
-			Score:    hr.Score,
-		})
-		ruleIDs = append(ruleIDs, hr.ID)
-		if !catSet[hr.Category] {
-			categories = append(categories, hr.Category)
-			catSet[hr.Category] = true
-		}
-	}
-	score += hScore
-	if score >= blockThreshold {
-		action = "block"
-	}
-	feature.WAFScore = score
+	ruleIDs, categories := summarize(in.matches)
+	feature.WAFScore = in.score
 	feature.WAFRules = ruleIDs
-	feature.Action = action
+	feature.Action = "allow"
+	if in.blocked() {
+		feature.Action = "block"
+	}
 
 	// Non-blocking: Write() enqueues to bounded channel, record() uses atomics
 	trafficLog.Write(feature)
-	stats.record(feature, score >= blockThreshold, categories)
+	stats.record(feature, in.blocked(), categories)
 
 	// Log all matches for observability, even if below threshold
-	if len(matches) > 0 && score < blockThreshold {
+	if len(in.matches) > 0 && !in.blocked() {
 		log.Printf("WAF OBSERVE score=%d/%d rules=[%s] url=%q\n",
-			score, blockThreshold, strings.Join(ruleIDs, ","), truncate(rawURL, 200))
+			in.score, blockThreshold, strings.Join(ruleIDs, ","), truncate(in.rawURL, 200))
 	}
 
-	// Block if score meets threshold
-	if score >= blockThreshold {
-		source := "URL"
-		if bodyStr != "" {
-			source = "URL+BODY"
-		}
-		primaryCategory := "UNKNOWN"
-		if len(categories) > 0 {
-			primaryCategory = categories[0]
-		}
-
-		log.Printf("WAF BLOCKED score=%d/%d categories=[%s] rules=[%s] source=%s url=%q\n",
-			score, blockThreshold, strings.Join(categories, ","), strings.Join(ruleIDs, ","),
-			source, truncate(rawURL, 200))
-
-		// Tar-pitting for repeat offenders
-		if clientIP != "unknown" {
-			trackerMutex.Lock()
-			now := time.Now()
-			var validBlocks []time.Time
-			for _, t := range ipBlockTracker[clientIP] {
-				if now.Sub(t) < 60*time.Second {
-					validBlocks = append(validBlocks, t)
-				}
-			}
-			validBlocks = append(validBlocks, now)
-
-			// Cap tracker size to prevent unbounded growth under DDoS
-			if len(ipBlockTracker) > 10000 {
-				for ip := range ipBlockTracker {
-					if ip != clientIP {
-						delete(ipBlockTracker, ip)
-						break // remove one stale entry per block event
-					}
-				}
-			}
-
-			ipBlockTracker[clientIP] = validBlocks
-			blockCount := len(validBlocks)
-			trackerMutex.Unlock()
-
-			if blockCount > 3 {
-				log.Printf("TAR-PITTING IP %s (blocks=%d) — delaying response %v\n", clientIP, blockCount, tarPitDelay)
-				time.Sleep(tarPitDelay)
-				log.Printf("TAR-PIT released for %s\n", clientIP)
-			}
-		}
-
-		alertData := map[string]interface{}{
-			"event_type": "waf_block",
-			"message":    fmt.Sprintf("WAF blocked %s — score %d, categories: %s", source, score, strings.Join(categories, ", ")),
-			"details": map[string]interface{}{
-				"event_id":   eventID,
-				"category":   primaryCategory,
-				"categories": categories,
-				"rules":      ruleIDs,
-				"score":      score,
-				"threshold":  blockThreshold,
-				"url":        truncate(rawURL, 500),
-				"client_ip":  clientIP,
-				"source":     source,
-			},
-			"level": "error",
-		}
-		// Non-blocking enqueue — drops if backend can't keep up (circuit breaker)
-		select {
-		case notifyChan <- alertData:
-		default:
-			notifyDropped.Add(1)
-		}
-
-		sendBlockResponse(w, primaryCategory, score, eventID)
+	if in.blocked() {
+		block(w, in, ruleIDs, categories)
 		return
 	}
 
 	// URL passed all checks — mark as safe for future requests. Only cache a
 	// clean verdict for body-less idempotent methods where no body was inspected,
 	// so a pass can never authorize a later request that carries a body.
-	if cacheable && bodySize == 0 {
-		safeCache.MarkSafe(cacheKey)
+	if in.cacheable && in.bodySize == 0 {
+		safeCache.MarkSafe(in.cacheKey)
 	}
 	w.WriteHeader(204, nil, false)
+}
+
+// clientIPFrom reads the address Squid stamped on the ICAP request. Anything
+// that does not parse as an IP is reported as "unknown" rather than echoed,
+// so an attacker-controlled value cannot reach the logs or the tar-pit map.
+func clientIPFrom(req *icap.Request) string {
+	if ipHeaders := req.Header.Values("X-Client-Ip"); len(ipHeaders) > 0 {
+		if parsed := net.ParseIP(strings.TrimSpace(ipHeaders[0])); parsed != nil {
+			return parsed.String()
+		}
+	}
+	return "unknown"
+}
+
+// headersToInspect are the request headers scanned for injection payloads
+// (Log4Shell, SSRF). Kept as a package-level list so the set is one thing to
+// audit rather than a literal buried in the hot path.
+var headersToInspect = []string{"User-Agent", "Referer", "X-Forwarded-For", "X-Forwarded-Host", "Accept", "Cookie"}
+
+// scanSignatures runs the regex rule set over the URL, the inspected headers
+// and — if nothing has crossed the threshold yet — the request body.
+func scanSignatures(in *inspection, r *http.Request) {
+	normalizedURL := normalizeInput(in.rawURL)
+
+	var headerStr string
+	for _, hdr := range headersToInspect {
+		if v := r.Header.Get(hdr); v != "" {
+			headerStr += " " + v
+			in.headerCount++
+		}
+	}
+
+	// Combine URL + headers for scoring
+	combined := normalizedURL + " " + normalizeInput(headerStr)
+	matches, score := matchRulesScored(combined)
+	in.matches = append(in.matches, matches...)
+	in.score += score
+
+	// Also check raw (pre-decoded) URL for encoded evasion patterns like %c0%af
+	// that get decoded by normalizeInput and lose their detectable pattern
+	if !in.blocked() && in.rawURL != normalizedURL {
+		rawMatches, rawScore := matchRulesScored(in.rawURL)
+		if rawScore > 0 {
+			in.matches = append(in.matches, rawMatches...)
+			in.score += rawScore
+		}
+	}
+
+	if !in.blocked() {
+		scanBody(in, r)
+	}
+}
+
+// scanBody inspects the request body, up to maxBodyInspectSize, and restores it
+// so the request can still be forwarded. Bodies of types the rule set cannot
+// meaningfully match are skipped.
+func scanBody(in *inspection, r *http.Request) {
+	if r.Body == nil || !shouldInspectBody(r.Header.Get("Content-Type")) {
+		return
+	}
+	// Read one byte past the inspection limit so we can tell whether the body
+	// was truncated (i.e. a payload may be hiding past the limit).
+	bodyBytes, readErr := io.ReadAll(io.LimitReader(r.Body, maxBodyInspectSize+1))
+	if readErr != nil || len(bodyBytes) == 0 {
+		return
+	}
+	truncated := len(bodyBytes) > maxBodyInspectSize
+	if truncated {
+		bodyBytes = bodyBytes[:maxBodyInspectSize]
+	}
+	in.bodyStr = normalizeInput(string(bodyBytes))
+	in.bodySize = len(bodyBytes)
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	bodyMatches, bodyScore := matchRulesScored(in.bodyStr)
+	in.matches = append(in.matches, bodyMatches...)
+	in.score += bodyScore
+
+	// An over-limit body is a coverage gap, not a clean allow. Add a
+	// corroborating signal (below blockThreshold, so it can't block on its own
+	// — pairs with any other rule/heuristic hit) and count it.
+	if truncated {
+		bodyTruncatedCount.Add(1)
+		const oversizeBodyScore = 4
+		in.add(MatchResult{RuleID: "WAF-BODY-OVERSIZE", Category: "BODY_OVERSIZE", Score: oversizeBodyScore})
+	}
+}
+
+// scanDomainReputation applies the ML-lite signals: DGA and typosquatting.
+//
+// Both are probabilistic, so each contributes LESS than blockThreshold and
+// cannot block on its own — corroboration from another signal or a signature
+// rule is required. That is what keeps a typosquat near-miss on a real domain
+// observed rather than blocked.
+func scanDomainReputation(in *inspection, host string) {
+	if in.blocked() || host == "" {
+		return
+	}
+	const dgaScore, typoScore = 6, 5
+
+	if isCategoryEnabled("DGA_DOMAIN") {
+		if dgaResult := cachedAnalyzeDGA(host); dgaResult.IsDGA {
+			in.add(MatchResult{RuleID: "ML-DGA-001", Category: "DGA_DOMAIN", Score: dgaScore})
+			// %q quotes + escapes control bytes so an attacker-controlled Host
+			// header (newline, tab, ANSI escapes) cannot forge log entries.
+			log.Printf("WAF ML-DGA score=%d domain=%q dga_score=%d\n", dgaResult.Score, host, dgaResult.Score)
+		}
+	}
+	if isCategoryEnabled("TYPOSQUATTING") {
+		if typoResult := CheckTyposquat(host); typoResult.Suspicious {
+			in.add(MatchResult{RuleID: "ML-TYPO-001", Category: "TYPOSQUATTING", Score: typoScore})
+			log.Printf("WAF ML-TYPO target=%q technique=%q distance=%d domain=%q\n",
+				typoResult.Target, typoResult.Technique, typoResult.Distance, host)
+		}
+	}
+}
+
+// feature builds the traffic record for this request. The score and action it
+// carries are provisional: the heuristics run against its entropy fields, so
+// they are recomputed by the caller once those have contributed.
+func (in *inspection) feature(r *http.Request) TrafficFeature {
+	ruleIDs, _ := summarize(in.matches)
+	action := "allow"
+	if in.blocked() {
+		action = "block"
+	}
+	return TrafficFeature{
+		EventID:         in.eventID,
+		Timestamp:       in.startTime.UTC().Format(time.RFC3339),
+		ClientIP:        in.clientIP,
+		Method:          r.Method,
+		Host:            r.Host,
+		Path:            r.URL.Path,
+		URLLength:       len(in.rawURL),
+		URLEntropy:      shannonEntropy(in.rawURL),
+		QueryParamCount: len(r.URL.Query()),
+		BodySize:        in.bodySize,
+		BodyEntropy:     shannonEntropy(in.bodyStr),
+		ContentType:     r.Header.Get("Content-Type"),
+		HeaderCount:     in.headerCount,
+		UserAgent:       r.Header.Get("User-Agent"),
+		IsTLS:           r.URL.Scheme == "https",
+		DestPort:        r.URL.Port(),
+		WAFScore:        in.score,
+		WAFRules:        ruleIDs,
+		Action:          action,
+		LatencyUS:       time.Since(in.startTime).Microseconds(),
+	}
+}
+
+// applyHeuristics runs the stateful, time-windowed behavioural checks. They are
+// scored against the feature's entropy fields, which is why they run after it
+// is built rather than alongside the signature scan.
+func applyHeuristics(in *inspection, r *http.Request, feature *TrafficFeature) {
+	hResults, hScore := CheckRequestHeuristics(
+		in.clientIP, r.Method, r.Host, r.URL.Path,
+		in.bodyStr, in.bodySize, feature.BodyEntropy, feature.URLEntropy,
+	)
+	for _, hr := range hResults {
+		in.matches = append(in.matches, MatchResult{
+			Category: hr.Category,
+			RuleID:   hr.ID,
+			Pattern:  hr.Detail,
+			Score:    hr.Score,
+		})
+	}
+	// The returned total is used rather than re-summing the results. It is the
+	// same number today — every heuristic that appends a result also adds its
+	// score — but taking the function at its word keeps this independent of
+	// that internal detail.
+	in.score += hScore
+}
+
+// summarize flattens the matches into the rule IDs and the de-duplicated
+// categories, preserving first-seen order — the first category is what the
+// block page and the alert report as the primary one.
+func summarize(matches []MatchResult) (ruleIDs, categories []string) {
+	ruleIDs = make([]string, len(matches))
+	categories = make([]string, 0)
+	seen := make(map[string]bool, len(matches))
+	for i, m := range matches {
+		ruleIDs[i] = m.RuleID
+		if !seen[m.Category] {
+			categories = append(categories, m.Category)
+			seen[m.Category] = true
+		}
+	}
+	return ruleIDs, categories
+}
+
+// block logs the decision, applies the tar-pit to repeat offenders, notifies
+// the backend and writes the block page.
+func block(w icap.ResponseWriter, in *inspection, ruleIDs, categories []string) {
+	source := "URL"
+	if in.bodyStr != "" {
+		source = "URL+BODY"
+	}
+	primaryCategory := "UNKNOWN"
+	if len(categories) > 0 {
+		primaryCategory = categories[0]
+	}
+
+	log.Printf("WAF BLOCKED score=%d/%d categories=[%s] rules=[%s] source=%s url=%q\n",
+		in.score, blockThreshold, strings.Join(categories, ","), strings.Join(ruleIDs, ","),
+		source, truncate(in.rawURL, 200))
+
+	tarPit(in.clientIP)
+
+	alertData := map[string]interface{}{
+		"event_type": "waf_block",
+		"message":    fmt.Sprintf("WAF blocked %s — score %d, categories: %s", source, in.score, strings.Join(categories, ", ")),
+		"details": map[string]interface{}{
+			"event_id":   in.eventID,
+			"category":   primaryCategory,
+			"categories": categories,
+			"rules":      ruleIDs,
+			"score":      in.score,
+			"threshold":  blockThreshold,
+			"url":        truncate(in.rawURL, 500),
+			"client_ip":  in.clientIP,
+			"source":     source,
+		},
+		"level": "error",
+	}
+	// Non-blocking enqueue — drops if backend can't keep up (circuit breaker)
+	select {
+	case notifyChan <- alertData:
+	default:
+		notifyDropped.Add(1)
+	}
+
+	sendBlockResponse(w, primaryCategory, in.score, in.eventID)
+}
+
+// tarPit delays the response to an address that has been blocked repeatedly in
+// the last minute, so a scanner pays for each attempt.
+func tarPit(clientIP string) {
+	if clientIP == "unknown" {
+		return
+	}
+	trackerMutex.Lock()
+	now := time.Now()
+	var validBlocks []time.Time
+	for _, t := range ipBlockTracker[clientIP] {
+		if now.Sub(t) < 60*time.Second {
+			validBlocks = append(validBlocks, t)
+		}
+	}
+	validBlocks = append(validBlocks, now)
+
+	// Cap tracker size to prevent unbounded growth under DDoS
+	if len(ipBlockTracker) > 10000 {
+		for ip := range ipBlockTracker {
+			if ip != clientIP {
+				delete(ipBlockTracker, ip)
+				break // remove one stale entry per block event
+			}
+		}
+	}
+
+	ipBlockTracker[clientIP] = validBlocks
+	blockCount := len(validBlocks)
+	trackerMutex.Unlock()
+
+	if blockCount > 3 {
+		log.Printf("TAR-PITTING IP %s (blocks=%d) — delaying response %v\n", clientIP, blockCount, tarPitDelay)
+		time.Sleep(tarPitDelay)
+		log.Printf("TAR-PIT released for %s\n", clientIP)
+	}
 }
 
 func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
