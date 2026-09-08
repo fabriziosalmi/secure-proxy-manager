@@ -42,7 +42,7 @@ export function ServiceStatus() {
   const status = useQuery<StatusData>({ queryKey: ['status'], queryFn: () => api_get('status'), ...opts });
   const summary = useQuery<{ today_blocked?: number }>({ queryKey: ['dash-summary-mini'], queryFn: () => api_get('dashboard/summary'), ...opts });
   const cache = useQuery<{ hit_rate?: number }>({ queryKey: ['cache-mini'], queryFn: () => api_get('cache/statistics'), ...opts });
-  const clients = useQuery<{ total_clients?: number }>({ queryKey: ['clients-mini'], queryFn: () => api_get('clients/statistics'), ...opts });
+  const clients = useQuery<{ meta?: { total?: number } }>({ queryKey: ['clients-mini'], queryFn: () => api_get('clients/statistics'), ...opts });
 
   const s = status.data;
   const running = s?.proxy_status === 'running';
@@ -70,7 +70,7 @@ export function ServiceStatus() {
 
           <Tile icon={Server} label="Listen" value={<span className="font-mono text-xs">{s?.proxy_host ?? 'proxy'}:{s?.proxy_port ?? '3128'}</span>} />
           <Tile icon={Tag} label="Version" value={s?.version ? `v${s.version}` : '—'} />
-          <Tile icon={Users} label="Clients" value={num(clients.data?.total_clients)} accent />
+          <Tile icon={Users} label="Clients" value={num(clients.data?.meta?.total)} accent />
           <Tile icon={ArrowDownUp} label="Requests 24h" value={num(s?.requests_count)} />
           <Tile icon={Ban} label="Blocked 24h" value={num(summary.data?.today_blocked)} tone={(summary.data?.today_blocked ?? 0) > 0 ? 'text-orange-600 dark:text-orange-300' : ''} />
           <Tile icon={Database} label="Cache hit" value={hitPct} />

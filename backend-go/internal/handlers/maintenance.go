@@ -42,7 +42,7 @@ func (h *MaintenanceHandlers) Register(r chi.Router, authMW func(http.Handler) h
 func (h *MaintenanceHandlers) BackupConfig(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query("SELECT setting_name, setting_value FROM settings")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "backup_config", err)
 		return
 	}
 	defer rows.Close()
@@ -188,7 +188,7 @@ func (h *MaintenanceHandlers) ReloadConfig(w http.ResponseWriter, r *http.Reques
 
 func (h *MaintenanceHandlers) ReloadDNS(w http.ResponseWriter, r *http.Request) {
 	if err := database.ExportBlacklistsToFiles(h.db, h.cfg.ConfigDir); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "reload_dns_export", err)
 		return
 	}
 	reloadFile := filepath.Join(h.cfg.ConfigDir, ".reload-dns")

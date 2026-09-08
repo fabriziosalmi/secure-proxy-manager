@@ -25,7 +25,7 @@ export function Logs() {
     // prepends live entries onto it. This deliberately mirrors async query data
     // into local state (the buffer is a merge of fetch + WS and is reset on
     // clear), which is exactly what set-state-in-effect flags — vetted exception.
-    const initial = data?.data ?? data?.logs;
+    const initial = data?.data;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (initial) setRealtimeLogs(initial.slice(0, 200));
   }, [data]);

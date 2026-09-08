@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
 )
 
@@ -21,9 +23,60 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v) //nolint:errcheck
 }
 
-// writeError sends a JSON error response.
+// writeError sends a JSON error response. The shape is contractual —
+// docs/api/reference.md states that errors are ALWAYS
+// {"status": "error", "detail": "..."} — so detail must be a stable string
+// this project controls, never a message from a dependency.
 func writeError(w http.ResponseWriter, status int, detail string) {
 	writeJSON(w, status, map[string]string{"status": "error", "detail": detail})
+}
+
+// writeInternalError reports a server-side failure to the caller with a stable
+// message, and puts the real cause in the log where it belongs.
+//
+// Fourteen handlers used to pass err.Error() straight into detail, so a
+// contractual response string was whatever text the SQLite driver produced:
+// unstable across a dependency bump this project's changelog would not mention,
+// and useless to a UI that wanted to map it to something actionable
+// (SECURE-API-04).
+func writeInternalError(w http.ResponseWriter, op string, err error) {
+	log.Error().Str("op", op).Err(err).Msg("request failed")
+	writeJSON(w, http.StatusInternalServerError, map[string]string{
+		"status": "error",
+		"code":   "internal_error",
+		"detail": "the server could not complete the request",
+	})
+}
+
+// ListMeta is the pagination envelope shared by every collection endpoint.
+type ListMeta struct {
+	Total  int `json:"total"`
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
+}
+
+// writeList is the single way a collection leaves this API.
+//
+// Collections used to come back in three incompatible shapes: the collection
+// under data with the pagination as top-level siblings, the collection under
+// data with no metadata at all, and the collection nested one level deeper
+// under data.clients with its count beside it. No client-side helper could
+// read a list without special-casing the endpoint, which is why the frontend
+// carried `data?.data ?? data?.logs` (SECURE-API-02).
+//
+// The top-level total/limit/offset are still emitted alongside meta, marked
+// deprecated: this API is published (docs/api/, an MCP server) so the old shape
+// is kept reachable for a release rather than removed silently. Read meta.
+func writeList(w http.ResponseWriter, items any, meta ListMeta) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status": "success",
+		"data":   items,
+		"meta":   meta,
+		// Deprecated: read meta instead. Removed in the next contract version.
+		"total":  meta.Total,
+		"limit":  meta.Limit,
+		"offset": meta.Offset,
+	})
 }
 
 // writeOK sends a JSON success response.

@@ -57,7 +57,7 @@ export function Audit() {
   });
 
   const entries: AuditEntry[] = data?.data ?? EMPTY_ENTRIES;
-  const total = data?.total ?? 0;
+  const total = data?.meta?.total ?? 0;
 
   const filtered = useMemo(() => {
     const t = search.trim().toLowerCase();

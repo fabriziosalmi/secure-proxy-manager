@@ -68,7 +68,7 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 		limit, offset,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "list_logs", err)
 		return
 	}
 	defer rows.Close()
@@ -96,9 +96,7 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 	if logs == nil {
 		logs = []map[string]any{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "success", "data": logs, "total": total, "limit": limit, "offset": offset,
-	})
+	writeList(w, logs, ListMeta{Total: total, Limit: limit, Offset: offset})
 }
 
 func (h *LogHandlers) Stats(w http.ResponseWriter, r *http.Request) {

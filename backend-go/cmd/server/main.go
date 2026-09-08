@@ -152,6 +152,7 @@ func run() error {
 	r.Use(appMW.AccessLog) // one structured log line per request
 	r.Use(appMW.CORS(cfg))
 	r.Use(appMW.SecurityHeaders)
+	r.Use(appMW.APIVersion)
 	r.Use(appMW.GlobalRateLimit(20, 60))       // 20 req/s sustained, 60 burst per IP
 	r.Use(appMW.MaxBodySize(55 * 1024 * 1024)) // 55MB max (for large blacklist imports)
 

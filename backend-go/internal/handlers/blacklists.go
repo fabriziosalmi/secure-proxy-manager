@@ -95,7 +95,7 @@ func listHandler(db *sql.DB, table, col string) http.HandlerFunc {
 			rows, err = db.Query(fmt.Sprintf("SELECT * FROM %s ORDER BY id DESC LIMIT ? OFFSET ?", table), limit, offset)
 		}
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeInternalError(w, "list_blacklist", err)
 			return
 		}
 		defer rows.Close()
@@ -117,9 +117,7 @@ func listHandler(db *sql.DB, table, col string) http.HandlerFunc {
 		if result == nil {
 			result = []map[string]any{}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"status": "success", "data": result, "total": total, "limit": limit, "offset": offset,
-		})
+		writeList(w, result, ListMeta{Total: total, Limit: limit, Offset: offset})
 	}
 }
 
@@ -128,7 +126,7 @@ func deleteByIDHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 		id := chi.URLParam(r, "id")
 		res, err := db.Exec(fmt.Sprintf("DELETE FROM %s WHERE id=?", table), id)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeInternalError(w, "delete_blacklist_entry", err)
 			return
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
@@ -178,7 +176,7 @@ func clearAllHandler(db *sql.DB, table string, cfg *config.Config, col string) h
 		var count int
 		db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&count) //nolint:errcheck
 		if _, err := db.Exec(fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-			writeError(w, http.StatusInternalServerError, "database error: "+err.Error())
+			writeInternalError(w, "clear_all_blacklist", err)
 			return
 		}
 		if cfg != nil {
@@ -211,7 +209,7 @@ func (h *BlacklistHandlers) AddIP(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "IP address already in blacklist")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "add_ip_blacklist", err)
 		return
 	}
 	requestExport()
@@ -238,7 +236,7 @@ func (h *BlacklistHandlers) AddIPWhitelist(w http.ResponseWriter, r *http.Reques
 			writeError(w, http.StatusBadRequest, "IP already in whitelist")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "add_ip_whitelist", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "IP added to whitelist"})
@@ -272,7 +270,7 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "domain already in blacklist")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "add_domain_blacklist", err)
 		return
 	}
 	requestExport()
@@ -309,7 +307,7 @@ func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) 
 			writeError(w, http.StatusBadRequest, "entry already in allowlist")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "add_egress_allowlist", err)
 		return
 	}
 	requestExport()
@@ -343,7 +341,7 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 			writeError(w, http.StatusBadRequest, "domain already in whitelist")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "add_domain_whitelist", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": fmt.Sprintf("Domain added to whitelist (type: %s)", entryType)})

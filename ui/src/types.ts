@@ -47,11 +47,22 @@ export interface LogEntry {
   bytes: number | null;
 }
 
-export interface LogsPageData {
-  data?: LogEntry[];
-  logs?: LogEntry[];
-  total?: number;
+/** Pagination envelope shared by every collection endpoint (SECURE-API-02). */
+export interface ListMeta {
+  total: number;
+  limit: number;
+  offset: number;
 }
+
+/** A paginated collection. `data` always holds the collection; `meta` always
+ *  holds the pagination. The previous `data? | logs?` union existed because the
+ *  API returned three different shapes and the client could not tell which. */
+export interface ListResponse<T> {
+  data: T[];
+  meta: ListMeta;
+}
+
+export type LogsPageData = ListResponse<LogEntry>;
 
 export interface AuditEntry {
   id: number;
@@ -62,12 +73,7 @@ export interface AuditEntry {
   timestamp: string;
 }
 
-export interface AuditPageData {
-  data?: AuditEntry[];
-  total?: number;
-  limit?: number;
-  offset?: number;
-}
+export type AuditPageData = ListResponse<AuditEntry>;
 
 export interface ClientStat {
   ip_address: string;
@@ -77,10 +83,7 @@ export interface ClientStat {
   status: string;
 }
 
-export interface ClientsData {
-  total_clients: number;
-  clients: ClientStat[];
-}
+export type ClientsData = ListResponse<ClientStat>;
 
 export interface ClientDomain {
   destination: string;

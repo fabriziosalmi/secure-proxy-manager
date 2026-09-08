@@ -34,6 +34,17 @@ func Auth(svc *auth.Service) func(http.Handler) http.Handler {
 	}
 }
 
+// APIVersion stamps the contract version on every response so a client has
+// something stable to assert on. Without it the only version a caller could
+// read was the product build version from /api/health, which changes on every
+// patch release whether or not any shape moved (SECURE-API-03).
+func APIVersion(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-API-Version", config.APIVersion)
+		next.ServeHTTP(w, r)
+	})
+}
+
 // CORS appends per-request CORS headers for configured origins.
 func CORS(cfg *config.Config) func(http.Handler) http.Handler {
 	allowed := make(map[string]struct{}, len(cfg.CORSAllowedOrigins))

@@ -350,7 +350,10 @@ func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) 
 	}
 	var total int
 	h.db.QueryRow("SELECT COUNT(DISTINCT source_ip) FROM proxy_logs WHERE source_ip IS NOT NULL AND source_ip != '' AND unix_timestamp >= ?", since).Scan(&total) //nolint:errcheck
-	writeOK(w, map[string]any{"total_clients": total, "clients": clients})
+	// The collection goes under data like every other list, with its count in
+	// meta — not nested under data.clients with the count beside it, which was
+	// the third of the three shapes (SECURE-API-02).
+	writeList(w, clients, ListMeta{Total: total, Limit: len(clients), Offset: 0})
 }
 
 // ClientDetails returns a per-client drill-down for a single source IP:
@@ -975,7 +978,7 @@ func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
 	h.db.QueryRow("SELECT COUNT(*) FROM audit_log").Scan(&total) //nolint:errcheck
 	rows, err := h.db.Query("SELECT * FROM audit_log ORDER BY id DESC LIMIT ? OFFSET ?", limit, offset)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "audit_log", err)
 		return
 	}
 	defer rows.Close()
@@ -997,9 +1000,7 @@ func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
 	if entries == nil {
 		entries = []map[string]any{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "success", "data": entries, "total": total, "limit": limit, "offset": offset,
-	})
+	writeList(w, entries, ListMeta{Total: total, Limit: limit, Offset: offset})
 }
 
 // WAFCategories proxies GET /categories from the WAF container.
@@ -1071,7 +1072,7 @@ func (h *AnalyticsHandlers) TestRule(w http.ResponseWriter, r *http.Request) {
 		sinceUnix(time.Duration(req.Hours)*time.Hour),
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "waf_test_rule", err)
 		return
 	}
 	defer rows.Close()

@@ -44,7 +44,7 @@ func (h *SettingsHandlers) Register(r chi.Router, authMW func(http.Handler) http
 func (h *SettingsHandlers) GetAll(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query("SELECT setting_name, setting_value FROM settings")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "list_settings", err)
 		return
 	}
 	defer rows.Close()
@@ -124,7 +124,7 @@ func (h *SettingsHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		name, val,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, "update_setting", err)
 		return
 	}
 	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
