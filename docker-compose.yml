@@ -145,6 +145,14 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # The backend was the only service with a writable root filesystem, and it
+    # is also the one documented as running as root — so a process that achieved
+    # execution here could modify /server itself and persist across a restart,
+    # which is not possible in the four siblings. Its three write targets
+    # (/data, /config, /logs) are bind mounts and stay writable (SECURE-OPS-03).
+    read_only: true
+    tmpfs:
+      - /tmp
     logging:
       driver: json-file
       options:

@@ -39,6 +39,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: bash scripts/check-version-sync.sh
+      # SECURE-QUAL-05: the WAF heuristic key list is maintained in seven places
+      # and had already drifted. Same treatment as version drift.
+      - run: bash scripts/check-waf-keys.sh
 
   # ── 2. Go backend build ────────────────────────────────────────────────
   build-backend:

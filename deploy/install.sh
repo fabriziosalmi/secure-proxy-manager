@@ -200,6 +200,13 @@ docker compose pull --quiet
 # migration (no-op on a fresh install). Keep the 3 most recent backups.
 if [ -d data ]; then
     backup="data.bak.$(date +%Y%m%d-%H%M%S)"
+    # Stop the backend first. Copying data/ while it holds the database open
+    # walks proxy_manager.db, -wal and -shm at three different instants, and the
+    # backend may commit in between — the copy can be internally inconsistent
+    # and SQLite may open it, reject it, or present a torn state. This is the
+    # artefact an operator falls back on when a migration goes wrong, which is
+    # the worst moment to find out it is unreadable (SECURE-DATA-02).
+    docker compose stop backend >/dev/null 2>&1 || true
     cp -a data "$backup" && ok "Backed up data/ -> ${backup}"
     ls -1dt data.bak.* 2>/dev/null | tail -n +4 | xargs -r rm -rf
 fi

@@ -5,7 +5,11 @@
 # ╚═══════════════════════════════════════════════════════════════════════╝
 set -uo pipefail
 
-HOST="${1:-192.168.100.253}"
+# localhost, not a hardcoded address on the author's network. Running this with
+# no argument used to aim at 192.168.100.253 and fail with connection timeouts
+# that named no cause — or, on a network reusing that range, probe an unrelated
+# machine with 17 attack vectors (SECURE-DOC-02).
+HOST="${1:-localhost}"
 USER="${2:-fab}"
 PASS="${3:-password}"
 API="https://${HOST}:8443"

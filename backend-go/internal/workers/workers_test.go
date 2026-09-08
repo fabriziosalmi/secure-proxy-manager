@@ -374,8 +374,8 @@ func TestParseDNSLine(t *testing.T) {
 	if entry == nil {
 		t.Fatal("expected entry to be parsed for block reply")
 	}
-	if entry["client_ip"] != "192.168.1.5" {
-		t.Errorf("expected client_ip 192.168.1.5, got %v", entry["client_ip"])
+	if entry["source_ip"] != "192.168.1.5" {
+		t.Errorf("expected source_ip 192.168.1.5, got %v", entry["source_ip"])
 	}
 	if entry["destination"] != "evil.com" {
 		t.Errorf("expected destination evil.com, got %v", entry["destination"])

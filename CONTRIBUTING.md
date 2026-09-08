@@ -30,7 +30,7 @@ docker compose up -d --build  # start all services
 ```bash
 cd backend-go
 go build ./...              # compile
-go test -race ./...         # run tests (if any)
+go test -race ./...         # unit tests — CI gates on these AND on 60% coverage
 go vet ./...                # static analysis
 ```
 
@@ -47,8 +47,17 @@ go test -v -race ./...      # unit + fuzz tests
 ```bash
 cd ui
 npm ci                      # install deps
+npm test                    # Vitest suites — CI gates on these
+npm run lint                # ESLint — CI gates on this
 npm run build               # build (includes tsc check)
 npx tsc --noEmit            # type check only
+```
+
+### Lint (both Go modules)
+
+```bash
+golangci-lint run           # from backend-go/ or waf-go/ — CI gates on this
+shellcheck --severity=warning proxy/*.sh deploy/*.sh scripts/*.sh tests/*.sh
 ```
 
 ### Full Stack (Docker)
@@ -83,15 +92,34 @@ docs: short description
 chore: short description
 ```
 
+## Reproducing the CI gates locally
+
+Everything below blocks a merge. Running them before opening a PR avoids a
+round trip:
+
+| Command | Gate |
+|---|---|
+| `cd ui && npm run lint && npm test && npm run build` | UI lint, tests, build |
+| `cd backend-go && go build ./... && go vet ./... && golangci-lint run` | Go build, vet, lint |
+| `cd backend-go && go test -race ./...` | Backend tests + 60% coverage floor |
+| `cd waf-go && go test -race ./...` | WAF tests + 70% coverage floor |
+| `shellcheck --severity=warning proxy/*.sh deploy/*.sh scripts/*.sh tests/*.sh` | Shell lint |
+| `bash tests/shell/generate_squid_conf_test.sh` | Squid config generation |
+| `make adversarial` | Adversarial block-matrix (the suite README leads with) |
+| `bash scripts/check-version-sync.sh` | Version consistency |
+
 ## E2E Testing
 
+**Prerequisite:** the stack must already be running and reachable — this drives
+a live deployment, it does not start one. `docker compose up -d` first.
+
 ```bash
-# Run full suite (104 checks)
-./tests/e2e.sh <host> <user> <password>
+# Run full suite (104 checks) against a running stack
+./tests/e2e.sh <host> <user> <password>   # host defaults to localhost
 
 # Example
 ./tests/e2e.sh localhost admin mypassword
-./tests/e2e.sh 192.168.1.100 fab secretkey
+./tests/e2e.sh 10.0.0.5 admin mypassword   # a remote deployment
 ```
 
 The test suite covers:

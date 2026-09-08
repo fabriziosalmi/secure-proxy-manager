@@ -279,8 +279,12 @@ Schedule the cold copy with cron if desired:
 ## Updating
 
 ```bash
-# 1. Back up first (see above)
-cp -r data data.backup && cp -r config config.backup
+# 1. Stop the stack, THEN back up. Copying data/ while the backend is running
+#    walks proxy_manager.db, -wal and -shm at three different instants and
+#    cannot produce a restorable snapshot of a WAL-mode database — and this is
+#    the artefact you fall back on precisely when the upgrade went wrong.
+docker compose down
+cp -a data data.backup && cp -a config config.backup
 
 # 2. Pull the latest code
 git pull origin main          # or: deploy/install.sh re-run does a ff-only pull
@@ -294,6 +298,27 @@ docker compose logs -f
 ```
 
 The database, generated CA, and named volumes are preserved across updates.
+
+## Rolling back
+
+```bash
+# 1. Stop, and keep the current state in case you need to come back to it
+docker compose down
+cp -a data data.failed-upgrade
+
+# 2. Return to the previous release
+git checkout v<previous>      # `git tag --list 'v*' | tail -5` to find it
+
+# 3. Rebuild and start
+docker compose up -d --build
+```
+
+**State compatibility.** Schema changes are additive only — `ALTER TABLE ADD
+COLUMN` replayed on every start, with no `schema_version` gate — so an older
+binary reads a database a newer one has migrated: it simply does not select the
+columns it does not know about. Restoring `data.backup` is therefore optional,
+and only needed if the newer version wrote values the older one misreads. Any
+release that breaks this will say so in CHANGELOG.md under `### Removed`.
 
 ## Troubleshooting
 

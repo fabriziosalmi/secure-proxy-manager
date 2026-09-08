@@ -328,13 +328,20 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusBadRequest, "invalid domain format")
 		return
 	}
-	entryType := "fqdn"
+	// A metacharacter used to be classified as type="url-regex", persisted, and
+	// listed in the UI — while the ONLY reader of this table filters on
+	// type='fqdn'. So `*.example.com` was accepted, shown as whitelisted, and
+	// silently did nothing: the user believed a domain was exempt and it was
+	// not. Refuse it rather than store an entry no consumer honours
+	// (SECURE-DOM-07).
 	for _, c := range []string{"*", "?", "[", "(", "|", "\\"} {
 		if strings.Contains(domain, c) {
-			entryType = "url-regex"
-			break
+			writeError(w, http.StatusBadRequest,
+				"wildcards and regular expressions are not supported here — enter an exact domain (a parent domain covers its subdomains)")
+			return
 		}
 	}
+	entryType := "fqdn"
 	_, err := h.db.Exec("INSERT INTO domain_whitelist(domain, type, description) VALUES(?,?,?)", domain, entryType, item.Description)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {

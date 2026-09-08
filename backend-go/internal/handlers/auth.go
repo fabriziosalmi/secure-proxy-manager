@@ -18,7 +18,6 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 	ws "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/websocket"
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -253,22 +252,16 @@ func (h *AuthHandlers) Ready(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandlers) Health(w http.ResponseWriter, r *http.Request) {
+	// SECURE-AUTH-04: this endpoint is unauthenticated and reachable through the
+	// public TLS listener, so it must not fingerprint the deployment. The Squid
+	// version and its CVE count moved to the authenticated /api/status — a
+	// liveness probe needs to say whether the process is up, not which known
+	// vulnerabilities apply to it.
 	resp := map[string]any{
 		"status":  "healthy",
 		"version": config.AppVersion,
+		"commit":  config.GitCommit,
 		"runtime": "go",
-	}
-	upd := workers.GetUpdateInfo()
-	if upd.Available {
-		resp["update_available"] = upd.Latest
-		resp["update_url"] = upd.URL
-	}
-	cve := workers.GetCVEInfo()
-	if cve.Version != "" {
-		resp["squid_version"] = cve.Version
-		if len(cve.CVEs) > 0 {
-			resp["squid_cves"] = len(cve.CVEs)
-		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

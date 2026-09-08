@@ -227,8 +227,12 @@ func parseSquidLine(line string) map[string]any {
 	return map[string]any{
 		"timestamp":      timestamp,
 		"unix_timestamp": unixSec,
-		"client_ip":      clientIP,
-		"source_ip":      clientIP, // kept for DB insert compatibility
+		// One name for one concept. The address used to be carried twice in the
+		// same map — client_ip for the WebSocket payload and source_ip for the
+		// DB insert — and appeared as a third name, ip_address, in the clients
+		// endpoint. source_ip is what the schema and the highest-volume insert
+		// already use (SECURE-DOM-08).
+		"source_ip":      clientIP,
 		"method":         method,
 		"destination":    destination,
 		"status":         statusStr,

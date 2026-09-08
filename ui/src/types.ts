@@ -25,7 +25,9 @@ export interface EgressEntry {
 export interface DomainWhitelistEntry {
   id: number;
   domain: string;
-  type: 'fqdn' | 'url-regex';
+  /** Only 'fqdn' is reachable: url-regex entries were persisted but read by
+   *  nothing, so they are now refused at the API (SECURE-DOM-07). */
+  type: 'fqdn';
   description: string | null;
   added_date: string;
 }
@@ -40,7 +42,7 @@ export interface WhitelistEntry {
 export interface LogEntry {
   id?: number;
   timestamp: string;
-  client_ip: string;
+  source_ip: string;
   method: string;
   destination: string;
   status: string;
@@ -177,12 +179,10 @@ export interface TopDomain {
 
 export interface CacheStats {
   hit_rate: number;
-  hit_ratio?: number;
   byte_hit_rate: number;
   cache_size: string;
   objects_cached: number;
   bandwidth_saved?: string;
-  bytes_saved?: number;
   hits?: number;
   misses?: number;
   requests?: number;

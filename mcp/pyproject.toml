@@ -7,9 +7,12 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Fabrizio Salmi" }]
 keywords = ["mcp", "model-context-protocol", "proxy", "waf", "secure-web-gateway", "self-hosted"]
+# Upper bounds so a new major of either is adopted deliberately rather than by
+# whichever build happens to run next. There is no lockfile for this component,
+# so the constraint is the only thing pinning it (SECURE-DEP-02).
 dependencies = [
-    "mcp>=2.0.0",
-    "httpx>=0.27",
+    "mcp>=2.0.0,<3.0.0",
+    "httpx>=0.27,<1.0.0",
 ]
 
 [project.scripts]

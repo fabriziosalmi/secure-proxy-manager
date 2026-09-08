@@ -231,9 +231,12 @@ export function Dashboard() {
           </CardHeader>
           <CardContent className="p-2">
             {cache ? (() => {
-              const hitRate = cache.hit_ratio != null ? (cache.hit_ratio * 100).toFixed(1) : cache.hits && cache.requests ? ((cache.hits / cache.requests) * 100).toFixed(1) : '0';
-              const saved = Number(cache.bytes_saved || 0);
-              const formatBytes = (b: number) => { if (b < 1024) return `${b} B`; if (b < 1048576) return `${(b/1024).toFixed(1)} KB`; if (b < 1073741824) return `${(b/1048576).toFixed(1)} MB`; return `${(b/1073741824).toFixed(2)} GB`; };
+              // One definition of hit rate: hit_rate, Squid's own 5-minute
+              // window. hit_ratio was a second, lifetime-based figure — this card
+              // read it while the Settings service panel read hit_rate, so the
+              // same deployment showed two different numbers under the same
+              // label (SECURE-DOM-03).
+              const hitRate = cache.hit_rate != null ? (cache.hit_rate * 100).toFixed(1) : '0';
               return (
                 <div className="space-y-2">
                   <div className="flex items-baseline justify-between">
@@ -256,12 +259,6 @@ export function Dashboard() {
                       <p className="text-sm font-bold">{(cache.misses || 0).toLocaleString()}</p>
                     </div>
                   </div>
-                  {saved > 0 && (
-                    <div className="pt-1 border-t border-border/50">
-                      <p className="text-[10px] text-muted-foreground">Bandwidth Saved</p>
-                      <p className="text-sm font-bold text-emerald-500">{formatBytes(saved)}</p>
-                    </div>
-                  )}
                 </div>
               );
             })() : (

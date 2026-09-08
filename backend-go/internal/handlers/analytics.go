@@ -94,6 +94,9 @@ func wafPostBreaker(ctx context.Context, cfg *config.Config, path, contentType s
 type AnalyticsHandlers struct {
 	db  *sql.DB
 	cfg *config.Config
+	// sys supplies update/CVE state. Injected rather than read from another
+	// package's globals (SECURE-ARCH-04); nil is valid and omits those fields.
+	sys SysInfo
 
 	// domain_blacklist is re-read on every DomainStats request and only changes
 	// when the blacklist-refresh worker runs (minutes apart), so a short-TTL
@@ -113,6 +116,13 @@ type AnalyticsHandlers struct {
 
 func NewAnalyticsHandlers(db *sql.DB, cfg *config.Config) *AnalyticsHandlers {
 	return &AnalyticsHandlers{db: db, cfg: cfg}
+}
+
+// WithSysInfo attaches the update/CVE provider. Kept separate from the
+// constructor so existing call sites and tests need no change.
+func (h *AnalyticsHandlers) WithSysInfo(s SysInfo) *AnalyticsHandlers {
+	h.sys = s
+	return h
 }
 
 // lifetimeCountsTTL is short enough that the dashboard stays live and long
@@ -202,7 +212,10 @@ func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 	proxyPort := "3128"
 	h.db.QueryRow("SELECT setting_value FROM settings WHERE setting_name = 'proxy_port'").Scan(&proxyPort) //nolint:errcheck
 
-	writeOK(w, map[string]any{
+	// The Squid version, its known CVEs and the update check live here, behind
+	// authMW, rather than on the unauthenticated /api/health where they
+	// fingerprinted the deployment for any pre-auth caller (SECURE-AUTH-04).
+	out := map[string]any{
 		"proxy_status":   proxyStatus,
 		"proxy_host":     h.cfg.ProxyHost,
 		"proxy_port":     proxyPort,
@@ -212,7 +225,19 @@ func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 		"memory_usage":   "N/A",
 		"cpu_usage":      "N/A",
 		"uptime":         "N/A",
-	})
+		"commit":         config.GitCommit,
+	}
+	if h.sys != nil {
+		if upd := h.sys.UpdateInfo(); upd.Available {
+			out["update_available"] = upd.Latest
+			out["update_url"] = upd.URL
+		}
+		if cve := h.sys.CVEInfo(); cve.Version != "" {
+			out["squid_version"] = cve.Version
+			out["squid_cves"] = len(cve.CVEs)
+		}
+	}
+	writeOK(w, out)
 }
 
 func (h *AnalyticsHandlers) TrafficStats(w http.ResponseWriter, r *http.Request) {
@@ -512,7 +537,7 @@ func parseSquidInfo(raw string) map[string]any {
 	result := map[string]any{
 		"hit_rate": 0.0, "byte_hit_rate": 0.0, "cache_size": "N/A",
 		"max_cache_size": "N/A", "objects_cached": 0, "hits": 0,
-		"misses": 0, "requests": 0, "bytes_saved": 0, "simulated": false,
+		"misses": 0, "requests": 0, "simulated": false,
 	}
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)
@@ -557,19 +582,18 @@ func parseSquidInfo(raw string) map[string]any {
 					result["hits"] = n
 				}
 			}
-		case strings.Contains(line, "client_http.errors"):
-			// use as proxy for misses (hits + misses ≈ requests)
-		case strings.Contains(line, "Number of clients accessing cache:"):
-			// optional metric
 		}
 	}
-	// Compute misses from requests - hits
+	// Compute misses from requests - hits. hit_ratio is deliberately NOT
+	// emitted: it was a SECOND cache hit rate, computed over the lifetime
+	// counters while hit_rate comes from Squid's 5-minute window. They measure
+	// different things and diverge, and the two UI surfaces read different ones
+	// — the Dashboard preferred hit_ratio, the Settings service panel used
+	// hit_rate — so the same deployment showed two different numbers under the
+	// same label. hit_rate is the single definition (SECURE-DOM-03).
 	if reqs, ok := result["requests"].(int); ok {
 		if hits, ok := result["hits"].(int); ok {
 			result["misses"] = reqs - hits
-			if reqs > 0 {
-				result["hit_ratio"] = float64(hits) / float64(reqs)
-			}
 		}
 	}
 	return result

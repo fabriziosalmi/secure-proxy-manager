@@ -59,8 +59,11 @@ The stack is five containers (plus an optional sixth):
 | `dns` | dnsmasq | DNS resolver that sinkholes blacklisted domains at the network layer. |
 | `tailscale` | Tailscale (optional) | Sidecar for remote access over a private network. Enabled with a compose profile. |
 
-The backend talks to Squid and dnsmasq through the Docker Engine API to apply
-blacklist and config changes without restarting the host.
+The backend applies blacklist and config changes by writing to the shared
+`./config` volume: it exports the lists as flat files and touches a trigger
+(`.reload-squid`, `.reload-dns`, `.clear-cache`). Each container's own watchdog
+notices the change and reloads in place — no Docker socket is mounted into the
+backend, and nothing calls the Docker Engine API.
 
 ## Quick start
 
@@ -114,8 +117,9 @@ harmless.
 
 ## Configuration
 
-All configuration is environment-driven via `.env` (see `.env.example` for the
-full list with comments). The essentials:
+All configuration is environment-driven via `.env`. `.env.example` documents the
+variables an operator normally sets; the complete set the backend reads is in
+`backend-go/internal/config/config.go`. The essentials:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -130,6 +134,29 @@ full list with comments). The essentials:
 
 Most runtime behaviour (WAF categories, blocklists, filtering toggles,
 notifications) is managed from the UI and stored in the database, not in `.env`.
+
+## Capacity
+
+Single node by design: the login-attempt counters and the JWT revocation list
+are in-process, the state lives on bind mounts, and each container generates its
+own configuration — so a second instance would not share what matters. Running
+more of them is not a supported way to grow. These are the ceilings the design
+imposes and what happens at each:
+
+| Ceiling | Value | At the limit |
+|---|---|---|
+| Write throughput | one SQLite writer, pool of 4 | Writes queue (`busy_timeout` 5s), so it shows as latency, not errors |
+| WAF behavioural tracking | 10,000 client IPs | Beyond it an entry is evicted, so beaconing/sharding history resets for some clients |
+| Live log stream | 256 queued messages, 64 per viewer | Lines are dropped for a slow viewer rather than stalling the stream |
+| API rate limit | 20 req/s per IP, burst 60 | `429` |
+| Concurrent DNS scans | 2 | `429` |
+| Request body | 55 MB; blacklist import 32 MB | `413` / the import is refused |
+| Log ingest | 5,000 lines per 500 ms tick | A backlog catches up over successive ticks |
+| Backend resources | 0.25 CPU, 128 MB | Raise `deploy.resources.limits` in the compose file |
+
+`proxy_logs` grows with traffic and is pruned only by `log_retention_days`
+(default 30). If that setting is not a positive number the pruning stops and
+`spm_log_retention_enabled` goes to 0.
 
 ## Features
 

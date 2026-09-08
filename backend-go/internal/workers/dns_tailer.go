@@ -199,7 +199,6 @@ func parseDNSLine(line string) map[string]any {
 			return map[string]any{
 				"timestamp":      time.Now().UTC().Format("2006-01-02 15:04:05"),
 				"unix_timestamp": time.Now().Unix(),
-				"client_ip":      clientIP,
 				"source_ip":      clientIP,
 				"method":         "DNS",
 				"destination":    domain,

@@ -169,7 +169,7 @@ func run() error {
 	handlers.NewBlacklistHandlers(db, cfg).Register(r, authMW)
 	handlers.NewSecurityHandlers(db, authSvc, cfg, notify).Register(r, authMW)
 	handlers.NewMaintenanceHandlers(db, cfg).Register(r, authMW)
-	handlers.NewAnalyticsHandlers(db, cfg).Register(r, authMW)
+	handlers.NewAnalyticsHandlers(db, cfg).WithSysInfo(handlers.WorkerSysInfo{}).Register(r, authMW)
 	handlers.NewDatabaseHandlers(db).Register(r, authMW)
 	handlers.NewDNSDetectHandlers(db).Register(r, authMW)
 	handlers.RegisterAPIDocs(r, authMW)

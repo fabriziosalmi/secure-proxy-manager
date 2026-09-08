@@ -1,5 +1,17 @@
 # Benchmarks — Secure Proxy Manager v3.8.0
 
+> [!WARNING]
+> **These numbers are from v3.8.0 (2026-03-26) and have not been regenerated.**
+> The current release is later, and changes since then affect what is measured
+> here — the aho-corasick prefilter that skips the rule set on benign input, two
+> additional response rule packs, the WAF ISTag change to Squid's verdict
+> caching, and ETag revalidation on the analytics routes. Treat the figures as
+> indicative of the approach, not of the shipped build.
+>
+> The numbers that gate the build ARE current: the adversarial harness measures
+> p50/p95/p99 and proxy+ICAP overhead on every CI run and fails below its
+> thresholds. Run `make adversarial` for figures from the code you have.
+
 Reproducible security and performance benchmarks. All numbers are from real traffic on a LAN-deployed stack.
 
 ## Environment
