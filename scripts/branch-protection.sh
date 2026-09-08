@@ -11,6 +11,17 @@
 # reviewed in a PR, diffed against reality, and restored after someone relaxes
 # it "just for a minute".
 #
+# ONE FIELD DOES NOT APPLY THROUGH THIS API. `allow_force_pushes: false` is
+# accepted, returns 200, and every other field in the same request lands — but
+# the setting stays `true`. Reproduced on repeated applies against this repo,
+# with no ruleset present to explain it; setting it in the web UI works.
+#
+# That matters most in the situation this script exists for: an `apply` run to
+# RESTORE protection after someone relaxed it will not restore force-push
+# blocking. `verify` compares the field precisely so the gap is visible rather
+# than assumed — if it ever reports drift on allow_force_pushes, fix it under
+# Settings -> Branches -> main, not by re-running apply.
+#
 #   scripts/branch-protection.sh verify   # diff live state against the file (default)
 #   scripts/branch-protection.sh apply    # write the file's state to GitHub
 #

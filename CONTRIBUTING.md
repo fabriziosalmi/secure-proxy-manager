@@ -155,6 +155,11 @@ GitHub-managed, where a change to the analysed language set would leave a
 required check pending forever. Their findings still surface — in the job log
 and in the Security tab.
 
+`apply` restores everything except one field: GitHub's branch-protection API
+accepts `allow_force_pushes: false` and silently leaves it enabled. `verify`
+compares it, so the gap shows up as drift; fix that one under
+**Settings → Branches → main**.
+
 `strict` is on, so a PR must be up to date with `main` before it merges. If
 Dependabot churn makes that painful, that is the one setting to relax; the
 required-check list is not.
