@@ -136,6 +136,29 @@ The test suite covers:
 5. Run E2E tests if possible
 6. Open a PR with description of what and why
 
+### What blocks a merge
+
+`main` requires a pull request and 17 green checks. The list is not a
+convention — it is `.github/branch-protection.json`, applied to GitHub and
+checkable against it:
+
+```bash
+scripts/branch-protection.sh verify   # diff the live protection against the file
+scripts/branch-protection.sh apply    # push the file's state to GitHub (needs admin:repo)
+```
+
+Everything in that list is deterministic and derived from the code, so a red
+check means the PR broke something. Two checks run but deliberately do **not**
+gate: *Verify popular list URLs* reaches third-party hosts, where an upstream
+outage would block every unrelated merge, and the CodeQL *Analyze* jobs are
+GitHub-managed, where a change to the analysed language set would leave a
+required check pending forever. Their findings still surface — in the job log
+and in the Security tab.
+
+`strict` is on, so a PR must be up to date with `main` before it merges. If
+Dependabot churn makes that painful, that is the one setting to relax; the
+required-check list is not.
+
 ## Reporting Issues
 
 - Use [GitHub Issues](https://github.com/fabriziosalmi/secure-proxy-manager/issues)
