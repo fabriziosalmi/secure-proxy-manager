@@ -41,6 +41,42 @@ export default defineConfig({
     ['meta', { name: 'twitter:card', content: 'summary' }],
     ['meta', { name: 'twitter:title', content: 'Secure Proxy Manager — Self-hosted Secure Web Gateway' }],
     ['meta', { name: 'twitter:description', content: OG_DESCRIPTION }],
+    // Let Google Discover use large image previews. This belongs in a <meta>,
+    // not in robots.txt: a *.github.io project page is a sub-path, and crawlers
+    // read robots.txt only from the domain root — which this repository does
+    // not own, so a directive placed there would never be read.
+    ['meta', { name: 'robots', content: 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' }],
+    // Structured data for search engines and AI crawlers (Schema.org). WebSite
+    // describes the documentation site, SoftwareApplication the project it
+    // documents; emitted site-wide so any entry page carries it.
+    [
+      'script',
+      { type: 'application/ld+json' },
+      JSON.stringify({
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'WebSite',
+            name: 'Secure Proxy Manager',
+            url: `${SITE_URL}/`,
+            description: OG_DESCRIPTION,
+          },
+          {
+            '@type': 'SoftwareApplication',
+            name: 'Secure Proxy Manager',
+            description: OG_DESCRIPTION,
+            url: `${SITE_URL}/`,
+            applicationCategory: 'SecurityApplication',
+            operatingSystem: 'Linux, macOS',
+            programmingLanguage: ['Go', 'TypeScript'],
+            license: 'https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/LICENSE',
+            codeRepository: 'https://github.com/fabriziosalmi/secure-proxy-manager',
+            author: { '@type': 'Person', name: 'Fabrizio Salmi' },
+            offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
+          },
+        ],
+      }),
+    ] as [string, Record<string, string>, string],
     // Everything this site loads is first-party. 'unsafe-inline' is required
     // because VitePress emits an inline appearance script and inline styles.
     // Applied to the built site only: `vitepress dev` serves HMR over a

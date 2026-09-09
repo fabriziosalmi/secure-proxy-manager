@@ -1,0 +1,34 @@
+# Secure Proxy Manager
+
+> Self-hosted Secure Web Gateway: a Squid forward proxy, a real WAF speaking ICAP, a DNS sinkhole and a modern web UI, in one Docker Compose stack. It gives a network a single controllable egress point — the self-hosted counterpart to a cloud SWG, with no traffic leaving your network.
+
+Five containers: a React UI behind nginx, a Go backend (chi + SQLite in WAL mode), a Go WAF that Squid calls over ICAP for every request, Squid itself with optional SSL-bump, and dnsmasq as a sinkhole. The WAF carries 172 regex rules across 21 categories plus seven behavioural heuristics, screened by an Aho-Corasick pre-filter so benign traffic skips the rule set. Images are published multi-arch and signed with cosign.
+
+## Documentation
+
+- [What is Secure Proxy Manager?](https://fabriziosalmi.github.io/secure-proxy-manager/guide/introduction): what it does, who it is for, and what it is not
+- [Getting started](https://fabriziosalmi.github.io/secure-proxy-manager/guide/getting-started): from clone to a running stack
+- [Architecture](https://fabriziosalmi.github.io/secure-proxy-manager/guide/architecture): the five containers, the request path, and the /config contract between them
+
+## Configuration
+
+- [Environment variables](https://fabriziosalmi.github.io/secure-proxy-manager/guide/configuration): every variable, its default, and what breaks without it
+- [Blacklists and whitelists](https://fabriziosalmi.github.io/secure-proxy-manager/guide/blacklists): source and destination lists, imports, and the egress default-deny mode
+- [Security](https://fabriziosalmi.github.io/secure-proxy-manager/guide/security): the WAF, SSL-bump, authentication, and the hardening choices
+- [Security advisories](https://fabriziosalmi.github.io/secure-proxy-manager/guide/security-advisories): published advisories and the fixed versions
+
+## API
+
+- [API overview](https://fabriziosalmi.github.io/secure-proxy-manager/api/reference): conventions, pagination, and the X-API-Version contract
+- [Authentication](https://fabriziosalmi.github.io/secure-proxy-manager/api/authentication): JWT issue, refresh and revocation
+- [Blacklists and whitelists](https://fabriziosalmi.github.io/secure-proxy-manager/api/blacklists): list, add, import and geo-import endpoints
+- [Logs and analytics](https://fabriziosalmi.github.io/secure-proxy-manager/api/logs): access logs, filtering, and the analytics aggregates
+- [Settings and maintenance](https://fabriziosalmi.github.io/secure-proxy-manager/api/settings): bulk settings, config reload, backup and restore
+- [WebSocket](https://fabriziosalmi.github.io/secure-proxy-manager/api/websocket): the live event stream and its single-use token
+
+## Source
+
+- [GitHub repository](https://github.com/fabriziosalmi/secure-proxy-manager): source, issues and releases
+- [Changelog](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/CHANGELOG.md): release notes, with the breaking changes called out per release
+- [Deployment guide](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/DEPLOYMENT.md): install, upgrade, and key rotation
+- [Contributing](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/CONTRIBUTING.md): the local commands that reproduce each CI gate
