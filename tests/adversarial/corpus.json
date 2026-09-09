@@ -55,6 +55,45 @@
     "desc": "comment terminator truncating the password check (SECURE-INPT-01)"
   },
   {
+    "id": "sqli-comment-body",
+    "category": "SQL_INJECTION",
+    "kind": "malicious",
+    "vector": "body",
+    "method": "POST",
+    "path": "/login",
+    "content_type": "application/x-www-form-urlencoded",
+    "body": "user=admin'--&pass=x",
+    "expect": "block",
+    "gate": "hard",
+    "desc": "comment terminator in a form body — a login form posts credentials, and there the %27 signal SQLi-018 used to lean on does not exist (#266)"
+  },
+  {
+    "id": "sqli-comment-hash-body",
+    "category": "SQL_INJECTION",
+    "kind": "malicious",
+    "vector": "body",
+    "method": "POST",
+    "path": "/login",
+    "content_type": "application/x-www-form-urlencoded",
+    "body": "user=admin'#&pass=x",
+    "expect": "block",
+    "gate": "hard",
+    "desc": "MySQL hash comment terminator in a form body (#266)"
+  },
+  {
+    "id": "benign-cli-flags-body",
+    "category": "SQL_INJECTION",
+    "kind": "benign",
+    "vector": "body",
+    "method": "POST",
+    "path": "/api/run",
+    "content_type": "application/json",
+    "body": "{\"args\":[\"--json\",\"--verbose\"],\"style\":\"--brand-color\"}",
+    "expect": "allow",
+    "gate": "hard",
+    "desc": "a quote OPENING a literal that starts with dashes — the shape the pre-#266 rule could not tell from an attack"
+  },
+  {
     "id": "benign-equality-prose",
     "category": "SQL_INJECTION",
     "kind": "benign",
@@ -313,7 +352,7 @@
     "path": "/p?u=%E2%80%8Badmin",
     "expect": "block",
     "gate": "soft",
-    "desc": "Zero-width space obfuscation (UNI-001) \u2014 soft: interacts with NFKC normalization"
+    "desc": "Zero-width space obfuscation (UNI-001) — soft: interacts with NFKC normalization"
   },
   {
     "id": "financial-single-card",
@@ -324,7 +363,7 @@
     "path": "/p?cc=4111111111111111",
     "expect": "pass",
     "gate": "soft",
-    "desc": "Single Visa PAN \u2014 sub-threshold by design (FIN-001 score 2 < 10), corroborating signal only"
+    "desc": "Single Visa PAN — sub-threshold by design (FIN-001 score 2 < 10), corroborating signal only"
   },
   {
     "id": "benign-index",

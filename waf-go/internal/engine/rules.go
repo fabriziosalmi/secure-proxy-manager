@@ -76,12 +76,23 @@ var blockRules = []CategoryRules{
 			// URL-encoded-quote signal is absent and nothing else would
 			// corroborate it.
 			r("SQLi-017", `(?i)\b(?:OR|AND)\s+\(?\s*['"]?[\w.\-]{0,32}['"]?\s*=\s*['"]?[\w.\-]{0,32}['"]?`, 10, 2),
-			// SQLi-018: a quote immediately followed by a comment introducer,
-			// which truncates the rest of the statement — admin'-- defeats a
-			// password check without needing a tautology. Below the threshold on
-			// purpose: it pairs with SQLi-015 in a URL, and a lone '-- in prose
-			// should not block on its own.
-			r("SQLi-018", `(?i)['"]\s*(?:--|#)`, 6, 3),
+			// SQLi-018: a quote CLOSING a literal and immediately followed by a
+			// comment introducer, which truncates the rest of the statement —
+			// admin'-- defeats a password check without needing a tautology.
+			//
+			// The leading [\w)] is what makes this safe to score on its own. The
+			// rule used to be ['"]\s*(?:--|#) at severity 6, which also matches a
+			// quote OPENING a literal that happens to start with dashes or a
+			// hash: {"args":["--json"]}, "--custom-brand-color", "# heading".
+			// Six of eight benign JSON/CSS samples matched it, which is why it
+			// could not block alone — and that left a real gap. In a URL it
+			// paired with SQLi-015 (the %27 on the raw URL) to reach 10, but a
+			// login form submits credentials in a BODY, where no percent-encoded
+			// quote exists: admin'-- scored 6 there and passed. Requiring a word
+			// character or a closing paren before the quote distinguishes the
+			// end of a quoted literal from the start of one, and drops those
+			// false positives to zero, so the rule can carry the block itself.
+			r("SQLi-018", `(?i)[\w)]\s*['"]\s*\)?\s*(?:--|#)`, 10, 2),
 		},
 	},
 
