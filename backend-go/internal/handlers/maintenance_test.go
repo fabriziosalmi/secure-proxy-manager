@@ -328,6 +328,33 @@ func TestReloadConfigReportsWhatTheProxyDid(t *testing.T) {
 		t.Error("reported success with no acknowledgement from the proxy")
 	}
 
+	// A payload in the shape the REAL producer emits. The Python watchdog builds
+	// this with json.dump, and the fixture below is a byte-for-byte capture of
+	// that output — not a Go struct marshalled back, which is what the writeAck
+	// helper does. That distinction is the whole point: json.Marshal from an
+	// int64 emits an integer, so a Go-built fixture exercises the decoder against
+	// the one shape it cannot disagree with, and passed for the entire life of a
+	// mechanism that never worked in production (SECURE-TEST-01, SECURE-API-01).
+	t.Run("decodes the payload the Python watchdog actually writes", func(t *testing.T) {
+		var res reloadResult
+		if err := json.Unmarshal([]byte(
+			`{"trigger_mtime": 1788937285, "generator_rc": 0, "reconfigure_rc": 0, "applied": true, "at": 1788937286}`,
+		), &res); err != nil {
+			t.Fatalf("the watchdog's acknowledgement did not decode: %v", err)
+		}
+		if !res.Applied || res.TriggerMtime != 1788937285 {
+			t.Errorf("decoded wrong: applied=%v trigger_mtime=%d", res.Applied, res.TriggerMtime)
+		}
+		// And the shape that broke it: a float, which is what os.path.getmtime
+		// produced before the watchdog started writing int(). If this ever
+		// decodes cleanly the guard below is no longer needed; if it does not,
+		// the producer must keep emitting an integer.
+		var bad reloadResult
+		if err := json.Unmarshal([]byte(`{"trigger_mtime": 1788937285.959049}`), &bad); err == nil {
+			t.Error("a float trigger_mtime decoded into int64 — the producer-side int() is no longer load-bearing, update this test")
+		}
+	})
+
 	// A watchdog that applied it.
 	stamp := time.Now().Unix() + 1
 	writeAck := func(applied bool) {

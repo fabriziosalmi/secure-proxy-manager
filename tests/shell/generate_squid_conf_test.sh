@@ -135,5 +135,34 @@ m=$(sed -n 's/^mutations=//p' <<<"$dup")
 [ "${m:-1}" = 0 ] && ok "startup.sh writes no squid.conf of its own" \
                   || bad "startup.sh writes no squid.conf of its own" "found $m heredoc writes"
 
+echo "── cross-language: the watchdog's acknowledgement must decode as Go int64 ──"
+# SECURE-API-01 / SECURE-TEST-01. The backend decodes .reload-squid.result into
+# a struct whose trigger_mtime is int64, and Go's encoding/json refuses ANY JSON
+# float for an integer field — including one with a .0 fraction. The producer is
+# Python, where os.path.getmtime returns a float, so for the life of the feature
+# every acknowledgement failed to parse and the reload endpoint could answer only
+# "pending". The Go test could not catch it because it built its fixture with
+# json.Marshal from an int64 — the one shape that cannot disagree with itself.
+# This asserts the REAL producer's output, in the real image.
+ack="$(docker run --rm -v "$PWD/proxy/blacklist_watchdog.py:/w.py:ro" --entrypoint sh "$IMAGE" -c '
+  mkdir -p /config
+  python3 - <<PYEOF
+import time
+g = {}
+exec(open("/w.py").read().split("def main()")[0], g)
+open("/config/.reload-squid", "w").write(str(int(time.time())))
+g["write_result"]("reload-squid", g["trigger_stamp"]("/config/.reload-squid", 0), 0, 0)
+print(open("/config/.reload-squid.result").read().strip())
+PYEOF' 2>/dev/null | tail -1)"
+case "$ack" in
+  *'"trigger_mtime":'*[0-9].[0-9]*) bad "trigger_mtime is emitted as a float" "$ack" ;;
+  *'"trigger_mtime":'*[0-9]*)       ok  "trigger_mtime is emitted as an integer" ;;
+  *)                                bad "watchdog produced no acknowledgement" "$ack" ;;
+esac
+case "$ack" in
+  *'"applied": true'*|*'"applied":true'*) ok "acknowledgement reports applied" ;;
+  *)                                      bad "acknowledgement reports applied" "$ack" ;;
+esac
+
 printf "\n  %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

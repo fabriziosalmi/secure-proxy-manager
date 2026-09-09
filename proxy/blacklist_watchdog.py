@@ -52,6 +52,26 @@ def mtime(path):
         return 0
 
 
+def trigger_stamp(path, fallback):
+    """The stamp the backend wrote INTO the trigger file, as an int.
+
+    The backend writes strconv.FormatInt(time.Now().Unix()) as the file's
+    CONTENT and then waits for an acknowledgement carrying a trigger_mtime it
+    can compare against that value. Reading the content rather than the file's
+    mtime removes two failure modes at once: os.path.getmtime returns a float,
+    and Go's encoding/json refuses any float for the int64 field it decodes
+    into — so every acknowledgement failed to parse and the endpoint could only
+    ever answer "pending" (SECURE-API-01). Using the content also makes the
+    comparison independent of filesystem timestamp granularity and of any skew
+    between the writer's clock and the file's recorded mtime.
+    """
+    try:
+        with open(path) as fh:
+            return int(fh.read().strip())
+    except (OSError, ValueError):
+        return int(fallback)
+
+
 def resolved_ips():
     """Current IPs of the dns + waf service names (via Docker's embedded DNS).
 
@@ -87,7 +107,9 @@ def write_result(trigger, trigger_mtime, gen_rc, reconf_rc):
     """
     path = f"/config/.{trigger}.result"
     payload = {
-        "trigger_mtime": trigger_mtime,
+        # Always an int: Go decodes this into an int64 and encoding/json
+        # refuses any JSON float for an integer field (SECURE-API-01).
+        "trigger_mtime": int(trigger_mtime),
         "generator_rc": gen_rc,
         "reconfigure_rc": reconf_rc,
         "applied": gen_rc == 0 and reconf_rc == 0,
@@ -229,9 +251,18 @@ def main():
         # Check reload-squid trigger
         mt_reload = mtime("/config/.reload-squid")
         if mt_reload != mtimes["/config/.reload-squid"]:
-            mtimes["/config/.reload-squid"] = mt_reload
+            # The mtime is NOT recorded here. Doing so consumed the trigger
+            # before the work was attempted, so any exception below jumped to
+            # the handler, wrote no acknowledgement, and left the next poll
+            # seeing no change — the operator's configuration change was
+            # dropped permanently and never retried, while the database and the
+            # UI showed it as applied (SECURE-ERR-01). It is recorded after the
+            # attempt completes, which is the same rule the blacklist copy path
+            # below already follows.
+            stamp = trigger_stamp("/config/.reload-squid", mt_reload)
             if os.path.exists("/config/.reload-squid"):
                 print("[watchdog] reload-squid trigger detected, regenerating config...", flush=True)
+                applied = False
                 try:
                     # Run the configuration generator script
                     gen_res = subprocess.run(["/usr/local/bin/generate_squid_conf.sh"], capture_output=True, timeout=30)
@@ -244,17 +275,30 @@ def main():
                         print("[watchdog] generation FAILED — keeping the running config, not reconfiguring",
                               flush=True)
                         print(gen_res.stderr.decode("utf-8", "replace")[:2000], flush=True)
-                        write_result("reload-squid", mt_reload, gen_res.returncode, None)
+                        write_result("reload-squid", stamp, gen_res.returncode, None)
                     elif not squid_config_ok():
                         print("[watchdog] generated config does not parse — refusing to reconfigure",
                               flush=True)
-                        write_result("reload-squid", mt_reload, 0, 1)
+                        write_result("reload-squid", stamp, 0, 1)
                     else:
                         rec_res = subprocess.run(["/usr/sbin/squid", "-k", "reconfigure"], capture_output=True, timeout=10)
                         print(f"[watchdog] squid reconfigure rc={rec_res.returncode}", flush=True)
-                        write_result("reload-squid", mt_reload, gen_res.returncode, rec_res.returncode)
-                except Exception as exc:
+                        write_result("reload-squid", stamp, gen_res.returncode, rec_res.returncode)
+                    applied = True
+                except (OSError, subprocess.SubprocessError) as exc:
+                    # Narrow, and it reports rather than absorbing: the backend
+                    # is waiting for an acknowledgement and would otherwise time
+                    # out into "pending" with no record that the attempt failed.
                     print(f"[watchdog] reload error: {exc}", flush=True)
+                    write_result("reload-squid", stamp, 1, None)
+                if applied:
+                    # Consume the trigger only once the attempt has run to
+                    # completion. On an exception the mtime stays where it was,
+                    # so the next 2s poll retries instead of dropping the
+                    # operator's change (SECURE-ERR-01).
+                    mtimes["/config/.reload-squid"] = mt_reload
+            else:
+                mtimes["/config/.reload-squid"] = mt_reload
 
         # Check clear-cache trigger
         mt_clear = mtime("/config/.clear-cache")
