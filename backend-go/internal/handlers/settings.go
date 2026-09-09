@@ -208,25 +208,66 @@ func (h *SettingsHandlers) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Setting updated"})
 }
 
+// BulkUpdate saves a batch of settings and then fans the result out to the
+// artefacts that make those settings take effect. The three phases are kept
+// separate deliberately: the database is authoritative and committed first, the
+// artefacts are best-effort and reported, and only the artefact phase may
+// partially fail (SECURE-QUAL-01).
 func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 	var body map[string]string
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok && len(body) > 0 {
-		keys := make([]string, 0, len(body))
-		for k := range body {
-			keys = append(keys, k)
-		}
-		database.Audit(h.db, user, "update_settings", strings.Join(keys, ","), "")
+	h.auditBulkUpdate(r, body)
+
+	if status, msg := h.persistSettings(body); status != 0 {
+		writeError(w, status, msg)
+		return
 	}
-	// Persist all settings atomically so a mid-loop failure can't leave the DB
-	// half-updated relative to the toggle files written below.
+
+	// Push heuristic toggles to the running WAF so they take effect immediately —
+	// the WAF otherwise only reads WAF_H_* env at startup (issue #102).
+	h.pushHeuristicsToWAF(r.Context(), body)
+
+	// The handler reads as settings persistence and is in fact a fan-out: after
+	// the transaction it writes six configuration artefacts and makes an
+	// outbound call to the WAF. Every one of those writes used to be discarded,
+	// so a full disk or a read-only /config produced a 200 while the artefacts
+	// that make the settings take effect did not exist (SECURE-QUAL-03).
+	if failedArtifacts := h.writeSquidArtefacts(body); len(failedArtifacts) > 0 {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":  "partial",
+			"message": "settings saved, but some proxy configuration files could not be written",
+			"data":    map[string]any{"failed": failedArtifacts},
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Settings updated"})
+}
+
+// auditBulkUpdate records the attempt with the key names — never the values,
+// which may be secrets — before anything is written.
+func (h *SettingsHandlers) auditBulkUpdate(r *http.Request, body map[string]string) {
+	user, ok := r.Context().Value(middleware.CtxUsername).(string)
+	if !ok || len(body) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(body))
+	for k := range body {
+		keys = append(keys, k)
+	}
+	database.Audit(h.db, user, "update_settings", strings.Join(keys, ","), "")
+}
+
+// persistSettings writes every writable key in body inside a single transaction,
+// so a mid-loop failure cannot leave the database half-updated relative to the
+// artefacts written afterwards. It returns (0, "") on success, or the HTTP
+// status and message the caller must send.
+func (h *SettingsHandlers) persistSettings(body map[string]string) (int, string) {
 	tx, err := h.db.Begin()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to start transaction")
-		return
+		return http.StatusInternalServerError, "failed to start transaction"
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op once committed
 	for k, v := range body {
@@ -237,8 +278,7 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if err := validateSettingValue(k, v); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
+			return http.StatusBadRequest, err.Error()
 		}
 		val := v
 		if appcrypto.IsSensitive(k) && val != "" && !appcrypto.IsEncrypted(val) {
@@ -251,93 +291,45 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 			k, val,
 		); err != nil {
 			log.Error().Str("key", k).Err(err).Msg("BulkUpdate: failed to save setting — rolling back")
-			writeError(w, http.StatusInternalServerError, "failed to save settings (rolled back)")
-			return
+			return http.StatusInternalServerError, "failed to save settings (rolled back)"
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to commit settings")
-		return
+		return http.StatusInternalServerError, "failed to commit settings"
 	}
+	return 0, ""
+}
 
-	// Artefacts that could not be written, reported to the caller below.
+// writeSquidArtefacts writes the /config files the proxy reads, and names the
+// ones that could not be written. Only the env file and the two ACL lists are
+// reported: the rest are advisory and already logged where they fail.
+func (h *SettingsHandlers) writeSquidArtefacts(body map[string]string) []string {
 	var failedArtifacts []string
 
-	// Push heuristic toggles to the running WAF so they take effect immediately —
-	// the WAF otherwise only reads WAF_H_* env at startup (issue #102).
-	h.pushHeuristicsToWAF(r.Context(), body)
+	h.writeToggleFiles(body)
 
-	// Toggle files — Squid reads these at container startup.
-	toggles := []struct {
-		key  string
-		file string
-	}{
-		{"ssl_bump_enabled", "ssl_bump_enabled"},
-		{"egress_default_deny", "egress_default_deny"},
-		{"aggressive_caching_enabled", "aggressive_caching_enabled"},
-		{"enable_offline_mode", "offline_mode_enabled"},
-		{"enable_content_filtering", "content_filtering_enabled"},
-		{"enable_safesearch", "safesearch_enabled"},
-		{"enable_youtube_restricted", "youtube_restricted_enabled"},
-		{"enable_proxy_auth", "proxy_auth_enabled"},
-		{"enable_bandwidth_limits", "bandwidth_limits_enabled"},
-		{"enable_time_restrictions", "time_restrictions_enabled"},
-	}
-	for _, tg := range toggles {
-		if v, ok := body[tg.key]; ok {
-			toggleFile := filepath.Join(h.cfg.ConfigDir, tg.file)
-			if v == "true" {
-				if err := os.WriteFile(toggleFile, []byte("1"), 0o600); err != nil {
-					log.Warn().Str("path", toggleFile).Err(err).Msg("toggle file write failed")
-				}
-			} else {
-				if err := os.Remove(toggleFile); err != nil && !os.IsNotExist(err) {
-					log.Warn().Str("path", toggleFile).Err(err).Msg("toggle file remove failed")
-				}
-			}
-		}
-	}
-
-	// Cache bypass domains — write as newline-separated file for Squid ACL.
+	// Cache bypass domains — Squid matches a dstdomain ACL, which needs the
+	// leading dot to cover subdomains.
 	if v, ok := body["cache_bypass_domains"]; ok {
-		bypassFile := filepath.Join(h.cfg.ConfigDir, "cache_bypass_domains.txt")
-		if v == "" {
-			os.Remove(bypassFile) //nolint:errcheck
-		} else {
-			var domains []string
-			for _, d := range strings.Split(v, ",") {
-				d = strings.TrimSpace(strings.ToLower(d))
-				if d != "" {
-					domains = append(domains, "."+strings.TrimPrefix(d, "."))
-				}
-			}
-			if err := os.WriteFile(bypassFile, []byte(strings.Join(domains, "\n")+"\n"), 0o600); err != nil {
-				log.Warn().Err(err).Msg("ssl bypass list write failed")
-				failedArtifacts = append(failedArtifacts, "ssl_bypass_domains.txt")
-			}
+		if err := h.writeListArtefact("cache_bypass_domains.txt", v, func(d string) string {
+			return "." + strings.TrimPrefix(d, ".")
+		}); err != nil {
+			log.Warn().Err(err).Msg("ssl bypass list write failed")
+			failedArtifacts = append(failedArtifacts, "ssl_bypass_domains.txt")
 		}
 	}
 
-	// Write blocked_file_types list for Squid ACL.
+	// Blocked file types — Squid matches a urlpath_regex ACL, so each extension
+	// becomes an anchored pattern.
 	if v, ok := body["blocked_file_types"]; ok {
-		ftFile := filepath.Join(h.cfg.ConfigDir, "blocked_file_types.txt")
-		if v == "" {
-			os.Remove(ftFile) //nolint:errcheck
-		} else {
-			var exts []string
-			for _, ext := range strings.Split(v, ",") {
-				ext = strings.TrimSpace(strings.ToLower(ext))
-				if ext != "" {
-					if !strings.HasPrefix(ext, ".") {
-						ext = "." + ext
-					}
-					exts = append(exts, `\`+ext+`$`)
-				}
+		if err := h.writeListArtefact("blocked_file_types.txt", v, func(ext string) string {
+			if !strings.HasPrefix(ext, ".") {
+				ext = "." + ext
 			}
-			if err := os.WriteFile(ftFile, []byte(strings.Join(exts, "\n")+"\n"), 0o600); err != nil {
-				log.Warn().Err(err).Msg("blocked file types write failed")
-				failedArtifacts = append(failedArtifacts, "blocked_file_types.txt")
-			}
+			return `\` + ext + `$`
+		}); err != nil {
+			log.Warn().Err(err).Msg("blocked file types write failed")
+			failedArtifacts = append(failedArtifacts, "blocked_file_types.txt")
 		}
 	}
 
@@ -356,21 +348,67 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		log.Warn().Err(err).Msg("squid_settings.env write failed — proxy restart will use previous values")
 		failedArtifacts = append(failedArtifacts, "squid_settings.env")
 	}
+	return failedArtifacts
+}
 
-	// The handler reads as settings persistence and is in fact a fan-out: after
-	// the transaction it writes six configuration artefacts and makes an
-	// outbound call to the WAF. Every one of those writes used to be discarded,
-	// so a full disk or a read-only /config produced a 200 while the artefacts
-	// that make the settings take effect did not exist (SECURE-QUAL-03).
-	if len(failedArtifacts) > 0 {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"status":  "partial",
-			"message": "settings saved, but some proxy configuration files could not be written",
-			"data":    map[string]any{"failed": failedArtifacts},
-		})
-		return
+// squidToggleFiles maps a boolean setting to the marker file Squid's startup
+// reads. Presence is the signal; the content is never parsed.
+var squidToggleFiles = []struct {
+	key  string
+	file string
+}{
+	{"ssl_bump_enabled", "ssl_bump_enabled"},
+	{"egress_default_deny", "egress_default_deny"},
+	{"aggressive_caching_enabled", "aggressive_caching_enabled"},
+	{"enable_offline_mode", "offline_mode_enabled"},
+	{"enable_content_filtering", "content_filtering_enabled"},
+	{"enable_safesearch", "safesearch_enabled"},
+	{"enable_youtube_restricted", "youtube_restricted_enabled"},
+	{"enable_proxy_auth", "proxy_auth_enabled"},
+	{"enable_bandwidth_limits", "bandwidth_limits_enabled"},
+	{"enable_time_restrictions", "time_restrictions_enabled"},
+}
+
+// writeToggleFiles creates or removes the marker files for the toggles present
+// in body. Failures are logged and not reported: a stale marker only survives
+// until the next successful save, and Squid reads them at startup.
+func (h *SettingsHandlers) writeToggleFiles(body map[string]string) {
+	for _, tg := range squidToggleFiles {
+		v, ok := body[tg.key]
+		if !ok {
+			continue
+		}
+		toggleFile := filepath.Join(h.cfg.ConfigDir, tg.file)
+		if v == "true" {
+			if err := os.WriteFile(toggleFile, []byte("1"), 0o600); err != nil {
+				log.Warn().Str("path", toggleFile).Err(err).Msg("toggle file write failed")
+			}
+			continue
+		}
+		if err := os.Remove(toggleFile); err != nil && !os.IsNotExist(err) {
+			log.Warn().Str("path", toggleFile).Err(err).Msg("toggle file remove failed")
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Settings updated"})
+}
+
+// writeListArtefact writes a comma-separated setting as the newline-separated
+// file a Squid ACL loads, applying transform to each non-empty element. An
+// empty value removes the file, so clearing a list in the UI cannot leave a
+// stale ACL enforcing the old one.
+func (h *SettingsHandlers) writeListArtefact(file, value string, transform func(string) string) error {
+	path := filepath.Join(h.cfg.ConfigDir, file)
+	if value == "" {
+		os.Remove(path) //nolint:errcheck
+		return nil
+	}
+	var items []string
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(strings.ToLower(item))
+		if item != "" {
+			items = append(items, transform(item))
+		}
+	}
+	return os.WriteFile(path, []byte(strings.Join(items, "\n")+"\n"), 0o600)
 }
 
 // heuristicSettingKeys are the WAF heuristic toggles that must be propagated to
