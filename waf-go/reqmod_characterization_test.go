@@ -129,7 +129,37 @@ func TestHandleReqmodVerdicts(t *testing.T) {
 				return httptest.NewRequest("GET", "http://example.com/login?user=admin%27--&pass=x", nil)
 			},
 			clientIP: "198.51.100.21",
-			want:     verdict{ICAPCode: 200, HTTPStatus: 403, Action: "block", Score: 10, Rules: "SQLi-015,SQLi-018", FeatureFound: true},
+			// SQLi-018 carries this alone now. It used to need SQLi-015 — the
+			// %27 on the raw URL — to reach the threshold, which is exactly why
+			// the same payload passed in a request body, where no percent-
+			// encoded quote exists (#266).
+			want: verdict{ICAPCode: 200, HTTPStatus: 403, Action: "block", Score: 10, Rules: "SQLi-018", FeatureFound: true},
+		},
+		{
+			// The gap #266 left open: a login form submits credentials in a
+			// body, and there the URL-encoded-quote signal is absent.
+			name: "comment-terminator in a form body blocks",
+			request: func() *http.Request {
+				r := httptest.NewRequest("POST", "http://example.com/login-body",
+					strings.NewReader("user=admin'--&pass=x"))
+				r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				return r
+			},
+			clientIP: "198.51.100.22",
+			want:     verdict{ICAPCode: 200, HTTPStatus: 403, Action: "block", Score: 10, Rules: "SQLi-018", FeatureFound: true},
+		},
+		{
+			// The shape the old rule could not tell apart from an attack: a
+			// quote OPENING a literal that starts with dashes. Must not block.
+			name: "a JSON body carrying CLI-style flags is allowed",
+			request: func() *http.Request {
+				r := httptest.NewRequest("POST", "http://example.com/api/run",
+					strings.NewReader(`{"args":["--json","--verbose"],"style":"--brand-color"}`))
+				r.Header.Set("Content-Type", "application/json")
+				return r
+			},
+			clientIP: "198.51.100.23",
+			want:     verdict{ICAPCode: 204, Action: "allow", Score: 0, Rules: "", FeatureFound: true},
 		},
 		{
 			name: "quoted equality in prose is allowed",
