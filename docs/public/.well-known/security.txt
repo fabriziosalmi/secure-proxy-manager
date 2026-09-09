@@ -1,0 +1,13 @@
+# Secure Proxy Manager — vulnerability disclosure (RFC 9116)
+#
+# Note on location: RFC 9116 places this file at the DOMAIN root. This project
+# is served from a *.github.io project path, so the copy below lives at
+# /secure-proxy-manager/.well-known/security.txt and the authoritative
+# domain-root copy is owned by the fabriziosalmi.github.io apex repository.
+# Report to either; both reach the same person.
+Contact: https://github.com/fabriziosalmi/secure-proxy-manager/security/advisories/new
+Contact: mailto:fabrizio.salmi@gmail.com
+Policy: https://fabriziosalmi.github.io/secure-proxy-manager/guide/security
+Preferred-Languages: en, it
+Expires: 2027-09-09T00:00:00.000Z
+Canonical: https://fabriziosalmi.github.io/secure-proxy-manager/.well-known/security.txt
