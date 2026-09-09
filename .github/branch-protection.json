@@ -55,6 +55,12 @@
       },
       {
         "context": "Adversarial block-matrix (proxy + WAF)"
+      },
+      {
+        "context": "Python tests (watchdog)"
+      },
+      {
+        "context": "Restore drill (backup verification)"
       }
     ]
   },

@@ -30,7 +30,11 @@ BACKUP="$1"
 if command -v sqlite3 >/dev/null 2>&1; then
     res=$(sqlite3 "$BACKUP/proxy_manager.db" 'PRAGMA integrity_check' 2>&1 | head -1)
     [ "$res" = "ok" ] || fail "integrity check on the backup failed: $res"
-    ok "backup passes PRAGMA integrity_check"
+    # integrity_check validates pages that hold data. It returns "ok" for
+    # damage confined to a header or to free space — verified directly on a
+    # 24KB database, where corruption at byte 2000 and 4200 is not detected and
+    # 8300 is. So this is "structurally sound", not "byte-for-byte intact".
+    ok "backup passes PRAGMA integrity_check (structural: pages and indexes)"
 else
     warn "sqlite3 not installed — skipping the integrity check on the backup"
 fi

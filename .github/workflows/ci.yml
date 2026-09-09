@@ -171,6 +171,35 @@ jobs:
       - name: Lint the sidecar that applies configuration to Squid
         run: ruff check proxy/ mcp/
 
+  # ── 5c-ter. Python unit tests ─────────────────────────────────────────
+  # The watchdog had no test of any kind: its happy path was covered only
+  # transitively by the compose-up e2e, and the branches that decide whether a
+  # failed reload is retried, reported or dropped had never run (SECURE-TEST-02).
+  test-python:
+    name: Python tests (watchdog)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pytest
+        run: pipx install pytest==8.4.2
+      - name: Test the sidecar's failure branches
+        run: sudo mkdir -p /config && sudo chmod 777 /config && pytest tests/python -q
+
+  # ── 5c-quater. Restore drill ──────────────────────────────────────────
+  # scripts/restore.sh is what an operator runs during an incident and nothing
+  # had ever run it, so its one design property — verify the archive BEFORE
+  # replacing the live database — was unestablished at the moment it matters
+  # (SECURE-DATA-02).
+  test-restore:
+    name: Restore drill (backup verification)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install sqlite3
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3
+      - name: Refuse a corrupt backup, keep the live data
+        run: bash tests/shell/restore_test.sh
+
   # ── 5d. Squid config generation (fixture tests) ───────────────────────
   # SECURE-TEST-01, second half. shellcheck catches shape; this catches
   # behaviour. It runs the real generator inside the real proxy image against

@@ -105,6 +105,8 @@ round trip:
 | `cd waf-go && go test -race ./...` | WAF tests + 70% coverage floor |
 | `shellcheck --severity=warning proxy/*.sh deploy/*.sh scripts/*.sh tests/*.sh` | Shell lint |
 | `ruff check proxy/ mcp/` | Python lint |
+| `pytest tests/python -q` | Python tests (watchdog) |
+| `bash tests/shell/restore_test.sh` | Restore drill |
 | `docker compose -f docker-compose.yml config -q` | Compose validation |
 | `cd backend-go && gosec -severity medium -confidence medium ./...` | Security scanning (gosec half) |
 | `bash tests/shell/generate_squid_conf_test.sh` | Squid config generation |
