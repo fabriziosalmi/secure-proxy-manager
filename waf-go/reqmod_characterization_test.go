@@ -101,7 +101,13 @@ func TestHandleReqmodVerdicts(t *testing.T) {
 				return httptest.NewRequest("GET", "http://example.com/login?u=%27+OR+1%3D1--", nil)
 			},
 			clientIP: "198.51.100.11",
-			want:     verdict{ICAPCode: 200, HTTPStatus: 403, Action: "block", Score: 11, Rules: "SQLi-006,SQLi-015", FeatureFound: true},
+			// Score and rules changed deliberately when SQLi-017 was added for
+			// quoted tautologies (SECURE-INPT-01): this payload now matches it
+			// too, so the normalized scan alone crosses the threshold and the
+			// raw-URL rescan — which contributed SQLi-015 — is skipped. The
+			// DECISION is unchanged; the golden is updated because detection
+			// improved, not because a refactor moved something.
+			want: verdict{ICAPCode: 200, HTTPStatus: 403, Action: "block", Score: 17, Rules: "SQLi-006,SQLi-017", FeatureFound: true},
 		},
 		{
 			name: "XSS in the query string blocks",
@@ -110,6 +116,30 @@ func TestHandleReqmodVerdicts(t *testing.T) {
 			},
 			clientIP: "198.51.100.12",
 			want:     verdict{ICAPCode: 200, HTTPStatus: 403, Action: "block", Score: 10, Rules: "XSS-001", FeatureFound: true},
+		},
+		{
+			name: "quoted SQL tautology blocks",
+			request: func() *http.Request {
+				return httptest.NewRequest("GET", "http://example.com/login?user=admin%27+OR+%271%27%3D%271&pass=x", nil)
+			},
+			clientIP: "198.51.100.20",
+			want:     verdict{ICAPCode: 200, HTTPStatus: 403, Action: "block", Score: 10, Rules: "SQLi-017", FeatureFound: true},
+		},
+		{
+			name: "comment-terminator blocks",
+			request: func() *http.Request {
+				return httptest.NewRequest("GET", "http://example.com/login?user=admin%27--&pass=x", nil)
+			},
+			clientIP: "198.51.100.21",
+			want:     verdict{ICAPCode: 200, HTTPStatus: 403, Action: "block", Score: 10, Rules: "SQLi-015,SQLi-018", FeatureFound: true},
+		},
+		{
+			name: "quoted equality in prose is allowed",
+			request: func() *http.Request {
+				return httptest.NewRequest("GET", "http://example.com/faq?q=is+%27true%27+%3D+%27true%27+in+python", nil)
+			},
+			clientIP: "198.51.100.22",
+			want:     verdict{ICAPCode: 204, Action: "allow", Score: 4, Rules: "SQLi-015", FeatureFound: true},
 		},
 		{
 			name:     "path traversal blocks",
