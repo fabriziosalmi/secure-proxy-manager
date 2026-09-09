@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -990,7 +991,15 @@ func mgmtAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		u, p, ok := r.BasicAuth()
-		if !ok || u != user || p != pass {
+		// Constant time, and both fields are always compared so the total does
+		// not reveal which one failed. Plain != short-circuits on the first
+		// differing byte, and this credential guards /categories/toggle — the
+		// route that can switch off SQL-injection inspection — on the internal
+		// bridge, where an attacker who already holds another container has a
+		// low-jitter path (SECURE-SEC-02).
+		okUser := subtle.ConstantTimeCompare([]byte(u), []byte(user))
+		okPass := subtle.ConstantTimeCompare([]byte(p), []byte(pass))
+		if !ok || okUser&okPass != 1 {
 			w.Header().Set("WWW-Authenticate", `Basic realm="WAF Management"`)
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return

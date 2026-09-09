@@ -301,6 +301,18 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 // AddDstAllow adds an entry to the egress destination allowlist (default-deny
 // egress). The entry is auto-classified: an IP or CIDR is stored as 'cidr'
 // (Squid `dst`), anything else as a domain (Squid `dstdomain`).
+// egressEntryType classifies an egress allowlist entry into the two values the
+// exporter understands. It is the single definition of that rule: the value
+// decides which enforcement file the entry reaches, and having a second writer
+// (the config restore) guess differently is what let a restored CIDR land in
+// the domain ACL (SECURE-DOM-01).
+func egressEntryType(entry string) string {
+	if isValidCIDR(entry) || net.ParseIP(entry) != nil {
+		return "cidr"
+	}
+	return "domain"
+}
+
 func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) {
 	var item models.EgressAllowItem
 	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
@@ -316,10 +328,8 @@ func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid entry")
 		return
 	}
-	typ := "domain"
-	if isValidCIDR(entry) || net.ParseIP(entry) != nil {
-		typ = "cidr"
-	} else if !strings.Contains(entry, ".") || strings.HasPrefix(entry, "-") {
+	typ := egressEntryType(entry)
+	if typ != "cidr" && (!strings.Contains(entry, ".") || strings.HasPrefix(entry, "-")) {
 		writeError(w, http.StatusBadRequest, "entry must be an IP, CIDR, or domain")
 		return
 	}

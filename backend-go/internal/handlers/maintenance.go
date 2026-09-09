@@ -83,7 +83,7 @@ func (h *MaintenanceHandlers) BackupConfig(w http.ResponseWriter, r *http.Reques
 		{"ip_whitelist", "SELECT ip, COALESCE(description,'') FROM ip_whitelist ORDER BY ip"},
 		{"domain_blacklist", "SELECT domain, COALESCE(description,'') FROM domain_blacklist ORDER BY domain"},
 		{"domain_whitelist", "SELECT domain, COALESCE(description,'') FROM domain_whitelist ORDER BY domain"},
-		{"dst_allowlist", "SELECT entry, COALESCE(description,'') FROM dst_allowlist ORDER BY entry"},
+		{"dst_allowlist", "SELECT entry, COALESCE(description,'') FROM dst_allowlist ORDER BY entry"}, // type is re-derived on restore, see restoreEgressType
 	} {
 		entries := []map[string]string{}
 		lrows, err := h.db.Query(spec.query)
@@ -190,10 +190,28 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 			if value == "" {
 				continue
 			}
-			if _, err := tx.Exec(
-				fmt.Sprintf("INSERT OR IGNORE INTO %s(%s, description) VALUES(?,?)", target[0], target[1]),
-				value, e["description"],
-			); err != nil {
+			// dst_allowlist.type decides which enforcement file an entry reaches:
+			// WHERE type='cidr' goes to dst_allow_ip.txt (a Squid `dst` ACL) and
+			// type='domain' to dst_allow_domain.txt (a `dstdomain` ACL). Inserting
+			// without it took the column DEFAULT 'domain', so a restored CIDR
+			// landed in the domain ACL where dstdomain can never match it — under
+			// egress default-deny, a destination the UI lists as allowed and the
+			// proxy refuses (SECURE-DOM-01). Re-derived here with the same
+			// predicate AddDstAllow uses, so backups already taken without the
+			// column are repaired rather than merely no longer broken.
+			var err error
+			if target[0] == "dst_allowlist" {
+				_, err = tx.Exec(
+					"INSERT OR IGNORE INTO dst_allowlist(entry, type, description) VALUES(?,?,?)",
+					value, egressEntryType(value), e["description"],
+				)
+			} else {
+				_, err = tx.Exec(
+					fmt.Sprintf("INSERT OR IGNORE INTO %s(%s, description) VALUES(?,?)", target[0], target[1]),
+					value, e["description"],
+				)
+			}
+			if err != nil {
 				log.Error().Str("list", name).Err(err).Msg("RestoreConfig: list insert failed — rolling back")
 				writeError(w, http.StatusInternalServerError, "failed to restore lists (rolled back)")
 				return
