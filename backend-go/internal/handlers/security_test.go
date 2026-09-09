@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 	"github.com/go-chi/chi/v5"
@@ -16,7 +19,7 @@ func TestSecurityHandlers_ReceiveAlert(t *testing.T) {
 	db, _, _, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	notify := NewNotifyQueue(db, "0000000000000000000000000000000000000000000000000000000000000000")
+	notify := NewNotifyQueue(t.Context(), db, "0000000000000000000000000000000000000000000000000000000000000000")
 	h := NewSecurityHandlers(db, nil, nil, notify)
 
 	alert := models.InternalAlert{
@@ -126,7 +129,7 @@ func TestReceiveAlert_RequiresServiceToken(t *testing.T) {
 		defer cleanup()
 		cfg.AlertToken = token
 		r := chi.NewRouter()
-		NewSecurityHandlers(db, svc, cfg, NewNotifyQueue(db, "0000000000000000000000000000000000000000000000000000000000000000")).Register(r, acceptAll)
+		NewSecurityHandlers(db, svc, cfg, NewNotifyQueue(t.Context(), db, "0000000000000000000000000000000000000000000000000000000000000000")).Register(r, acceptAll)
 
 		body, _ := json.Marshal(models.InternalAlert{EventType: "waf_block", Message: "blocked by rule 42", Level: "warning"})
 		req := httptest.NewRequest("POST", "/api/internal/alert", bytes.NewReader(body))
@@ -157,5 +160,45 @@ func TestReceiveAlert_RequiresServiceToken(t *testing.T) {
 	// so an in-place upgrade does not silently stop delivering alerts.
 	if code := post(t, "", ""); code != http.StatusOK {
 		t.Errorf("with no token configured the admin fallback must still work: got %d, want 200", code)
+	}
+}
+
+// SECURE-CONC-01 / SECURE-OBS-01. The notification worker was spawned with no
+// owner: nothing cancelled it, the channel was never closed, and it was not
+// covered by the shutdown drain — so queued security alerts were discarded at
+// exit. It also emitted no liveness signal, and because zero notifications is
+// the healthy state for a quiet system, it could stop with no observable
+// difference.
+func TestNotifyQueueIsOwnedAndReportsLiveness(t *testing.T) {
+	db, _, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// The worker must register itself with the shutdown drain, so Wait() blocks
+	// until it returns and unblocks once the context is cancelled. If it were
+	// untracked, Wait() would return immediately whether or not it had stopped.
+	ctx, cancel := context.WithCancel(context.Background())
+	_ = NewNotifyQueue(ctx, db, "0000000000000000000000000000000000000000000000000000000000000000")
+
+	stopped := make(chan struct{})
+	go func() { workers.Wait(); close(stopped) }()
+
+	select {
+	case <-stopped:
+		t.Fatal("workers.Wait() returned while the notification worker was still running — it is not tracked")
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	cancel()
+	select {
+	case <-stopped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the notification worker did not stop when its context was cancelled")
+	}
+
+	// And it reports liveness, so a stopped worker is distinguishable from an
+	// idle one. WorkerHeartbeat is called before the first receive, so the
+	// gauge is set even though nothing was ever enqueued.
+	if ts := metrics.WorkerHeartbeatSeconds("notify_queue"); ts == 0 {
+		t.Error("the notification worker emitted no liveness signal — a stopped queue looks exactly like a quiet one")
 	}
 }

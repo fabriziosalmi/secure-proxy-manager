@@ -13,7 +13,7 @@ import (
 
 // StartLogRetention runs a daily cleanup of aged-out proxy_logs rows.
 func StartLogRetention(ctx context.Context, db *sql.DB) {
-	track(func() {
+	Track(func() {
 		// Run once at startup.
 		runRetention(db)
 		ticker := time.NewTicker(24 * time.Hour)

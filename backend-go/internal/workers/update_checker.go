@@ -42,7 +42,7 @@ func StartUpdateChecker(ctx context.Context, repo string) {
 		repo = "fabriziosalmi/secure-proxy-manager"
 	}
 
-	track(func() {
+	Track(func() {
 		// First check after 30s (let the system boot)
 		select {
 		case <-ctx.Done():

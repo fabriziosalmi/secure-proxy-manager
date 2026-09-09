@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -26,13 +27,48 @@ import (
 type NotifyQueue chan map[string]any
 
 // NewNotifyQueue creates a queue and starts its worker goroutine.
-func NewNotifyQueue(db *sql.DB, encKey string) NotifyQueue {
+// NewNotifyQueue creates the queue and starts its worker under ctx.
+//
+// The worker used to be spawned with no owner: nothing tracked it, nothing
+// cancelled it, and the channel was never closed, so shutdown discarded
+// whatever was still buffered — up to 256 events plus the one being delivered,
+// on the path that carries login-failure and WAF-block alerts. The restart most
+// likely to lose them is a restart during an attack (SECURE-CONC-01).
+//
+// It also emitted no liveness signal. The six background workers report a
+// last-success timestamp precisely so an idle worker is distinguishable from a
+// stopped one; this queue's counters stay flat when it dies, and flat is also
+// what a quiet week looks like — so it could stop with no observable difference
+// (SECURE-OBS-01).
+func NewNotifyQueue(ctx context.Context, db *sql.DB, encKey string) NotifyQueue {
 	q := make(NotifyQueue, 256)
-	go func() {
-		for event := range q {
-			sendSecurityNotification(db, encKey, event)
+	workers.Track(func() {
+		// Heartbeat before the receive as well as after a delivery, so the
+		// signal reports that the loop is alive rather than that something was
+		// recently sent — a queue with nothing to do must still look alive.
+		metrics.WorkerHeartbeat("notify_queue")
+		for {
+			select {
+			case <-ctx.Done():
+				// Drain what is already queued before returning. Shutdown
+				// bounds the wait, so a wedged webhook cannot hold the process.
+				for {
+					select {
+					case event := <-q:
+						sendSecurityNotification(db, encKey, event)
+					default:
+						log.Info().Msg("notification queue drained")
+						return
+					}
+				}
+			case event := <-q:
+				sendSecurityNotification(db, encKey, event)
+				metrics.WorkerHeartbeat("notify_queue")
+			case <-time.After(30 * time.Second):
+				metrics.WorkerHeartbeat("notify_queue")
+			}
 		}
-	}()
+	})
 	return q
 }
 

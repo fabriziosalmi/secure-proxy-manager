@@ -25,7 +25,7 @@ import (
 // the log directory itself is typically not writable by the backend's user.
 func StartLogTailer(ctx context.Context, db *sql.DB, logPath, stateDir string, hub *websocket.Hub) {
 	posPath := filepath.Join(stateDir, filepath.Base(logPath)+".pos")
-	track(func() {
+	Track(func() {
 		// Restore the persisted byte offset so a backend restart does not re-read
 		// the whole file from the start and re-insert every still-present line.
 		offset := readOffset(posPath)

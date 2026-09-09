@@ -8,8 +8,10 @@ import "sync"
 // record that anything had been dropped (SECURE-CONC-02).
 var wg sync.WaitGroup
 
-// track runs fn as a tracked worker goroutine.
-func track(fn func()) {
+// Track runs fn as a tracked worker goroutine. Exported so a worker that lives
+// outside this package — the handlers' security-notification queue — is covered
+// by the same shutdown drain as the six started here (SECURE-CONC-01).
+func Track(fn func()) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()

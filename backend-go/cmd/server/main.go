@@ -128,11 +128,15 @@ func run() error {
 	// ── services ─────────────────────────────────────────────────────────────
 	authSvc := auth.NewService(cfg, db)
 	hub := ws.NewHub()
-	notify := handlers.NewNotifyQueue(db, cfg.EncryptionKey)
 
 	// ── background workers ───────────────────────────────────────────────────
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
+
+	// The notification queue is a worker like the six below: cancelled by the
+	// same context and covered by the same drain, so shutdown does not silently
+	// discard queued security alerts (SECURE-CONC-01).
+	notify := handlers.NewNotifyQueue(workerCtx, db, cfg.EncryptionKey)
 	workers.StartLogTailer(workerCtx, db, cfg.LogPath, filepath.Dir(cfg.DatabasePath), hub)
 	workers.StartDNSTailer(workerCtx, db, cfg.DNSLogPath, filepath.Dir(cfg.DatabasePath), hub)
 	workers.StartLogRetention(workerCtx, db)

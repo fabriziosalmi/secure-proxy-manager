@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	dto "github.com/prometheus/client_model/go"
 )
 
 var (
@@ -57,6 +58,22 @@ func SetBuildInfo(version string) {
 // WorkerHeartbeat marks a worker as having completed a successful unit of work now.
 func WorkerHeartbeat(name string) {
 	workerHeartbeat.WithLabelValues(name).SetToCurrentTime()
+}
+
+// WorkerHeartbeatSeconds reads back a worker's last-heartbeat timestamp, 0 when
+// it has never reported. Exported for tests: the property worth asserting is
+// that a worker reports liveness at all, because a queue that has stopped and
+// one that is merely idle produce identical counters.
+func WorkerHeartbeatSeconds(name string) float64 {
+	var m dto.Metric
+	g, err := workerHeartbeat.GetMetricWithLabelValues(name)
+	if err != nil {
+		return 0
+	}
+	if err := g.Write(&m); err != nil {
+		return 0
+	}
+	return m.GetGauge().GetValue()
 }
 
 // Handler returns the Prometheus exposition HTTP handler for /metrics.

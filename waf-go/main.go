@@ -132,9 +132,23 @@ func overlyBroadRule(re *regexp.Regexp) string {
 }
 
 func loadCustomRules() {
-	content, err := os.ReadFile("/config/waf_custom_rules.txt")
+	const customRulesPath = "/config/waf_custom_rules.txt"
+	content, err := os.ReadFile(customRulesPath)
 	if err != nil {
-		log.Printf("Custom rules file not found or unreadable, using default rules only.\n")
+		// Absence is the normal case; unreadable is not, and the two used to
+		// produce the same line with the error discarded entirely. /config is a
+		// bind-mounted volume and this container runs read-only with dropped
+		// capabilities, so a permission or ownership problem is realistic — and
+		// it left an operator running with strictly less detection than they
+		// configured, told nothing distinguishable from having written no rules
+		// (SECURE-ERR-02). Every other failure in this function names the rule
+		// and the reason; only the one that disables all of them was anonymous.
+		if os.IsNotExist(err) {
+			log.Printf("No custom rules file at %s, using default rules only.\n", customRulesPath)
+		} else {
+			log.Printf("WARNING: custom rules file %s could not be read (%v) — "+
+				"running with DEFAULT RULES ONLY; any custom detections are not loaded\n", customRulesPath, err)
+		}
 		return
 	}
 
