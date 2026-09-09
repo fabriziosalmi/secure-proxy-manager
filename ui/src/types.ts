@@ -178,6 +178,10 @@ export interface TopDomain {
 }
 
 export interface CacheStats {
+  /** True when the backend could not read cache_stats.txt and is returning
+   *  zeros rather than measurements. Rendering those zeros as a hit rate shows
+   *  an idle cache where there is simply no data (SECURE-CONF-02). */
+  simulated?: boolean;
   hit_rate: number;
   byte_hit_rate: number;
   cache_size: string;

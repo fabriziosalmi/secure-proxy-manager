@@ -155,6 +155,22 @@ jobs:
       - name: Lint the shell that builds the data plane
         run: shellcheck --severity=warning proxy/*.sh deploy/*.sh scripts/*.sh tests/*.sh
 
+  # ── 5c-bis. Python lint ───────────────────────────────────────────────
+  # Go is gated by golangci-lint and Shell by shellcheck; Python was gated by
+  # nothing, and it is not a peripheral language here — proxy/blacklist_watchdog.py
+  # is the sidecar that applies every blacklist change and every config reload to
+  # Squid, and it holds the repository's third most complex function
+  # (SECURE-QUAL-03).
+  lint-python:
+    name: Python lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install ruff
+        run: pipx install ruff==0.14.2
+      - name: Lint the sidecar that applies configuration to Squid
+        run: ruff check proxy/ mcp/
+
   # ── 5d. Squid config generation (fixture tests) ───────────────────────
   # SECURE-TEST-01, second half. shellcheck catches shape; this catches
   # behaviour. It runs the real generator inside the real proxy image against

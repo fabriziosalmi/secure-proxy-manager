@@ -230,7 +230,16 @@ export function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-2">
-            {cache ? (() => {
+            {cache?.simulated ? (
+              // The backend could not read cache_stats.txt, so every figure
+              // below would be a zero presented as a measurement — an idle
+              // cache rather than an absent one (SECURE-CONF-02).
+              <div className="flex h-full min-h-[92px] items-center justify-center px-2 text-center">
+                <span className="text-[11px] text-muted-foreground">
+                  Cache statistics are not being collected
+                </span>
+              </div>
+            ) : cache ? (() => {
               // One definition of hit rate: hit_rate, Squid's own 5-minute
               // window. hit_ratio was a second, lifetime-based figure — this card
               // read it while the Settings service panel read hit_rate, so the

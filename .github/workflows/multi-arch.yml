@@ -126,6 +126,12 @@ jobs:
           # Dockerfile does not declare APT_REFRESH.
           build-args: |
             APT_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
+            # Without this the published binaries embed the ARG default,
+            # "unknown", and report it through /api/health — so every release
+            # told anyone who asked that it was not built by the release
+            # pipeline, which is the one thing the field exists to answer
+            # (SECURE-BLD-01). Verified against the shipped v3.12.0 image.
+            GIT_SHA=${{ github.sha }}
           # Attach an SBOM and SLSA build provenance attestation to each image so
           # consumers can audit contents and verify the build origin.
           sbom: true

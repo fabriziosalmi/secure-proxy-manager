@@ -30,6 +30,9 @@
         "context": "Shell lint (shellcheck)"
       },
       {
+        "context": "Python lint (ruff)"
+      },
+      {
         "context": "Squid config generation"
       },
       {
