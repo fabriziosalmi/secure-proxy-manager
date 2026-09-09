@@ -164,5 +164,40 @@ case "$ack" in
   *)                                      bad "acknowledgement reports applied" "$ack" ;;
 esac
 
+echo "── documentation: the claims that are mechanically checkable ──"
+# SECURE-DOC-01. This repository already proves it can gate doc-code agreement:
+# the API catalogue is walked from the live router with a test asserting the two
+# agree, and the version is gated across four files. Prose had no such gate, and
+# this audit found three statements describing the previous release — all of them
+# about the proxy container or its CA, which is what an operator reads when
+# enforcement is misbehaving. These are the claims a script can check.
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+grep -q 'generate_squid_conf.sh` is the \*\*sole producer\*\*' "$repo_root/docs/guide/architecture.md" \
+  && ok "architecture.md names the real producer of squid.conf" \
+  || bad "architecture.md names the real producer of squid.conf" "it still attributes generation to startup.sh"
+
+if grep -qE 'startup\.sh.*generates .squid\.conf' "$repo_root/docs/guide/architecture.md"; then
+  bad "architecture.md no longer attributes generation to startup.sh" "the old claim is still present"
+else
+  ok "architecture.md no longer attributes generation to startup.sh"
+fi
+
+# The CA lifetime is a number in two places; they must agree.
+gen_days="$(grep -oE '\-days [0-9]+' "$repo_root/proxy/generate_squid_conf.sh" | head -1 | awk '{print $2}')"
+if [ -n "$gen_days" ] && grep -q "\*\*${gen_days} days\*\*" "$repo_root/DEPLOYMENT.md"; then
+  ok "DEPLOYMENT.md states the CA lifetime the generator uses (${gen_days} days)"
+else
+  bad "DEPLOYMENT.md states the CA lifetime the generator uses" "generator says ${gen_days:-?} days"
+fi
+
+# The code points at a rotation procedure; it has to exist.
+if grep -q 'See DEPLOYMENT.md "Rotating the SSL-bump CA"' "$repo_root/proxy/generate_squid_conf.sh"; then
+  grep -q '^### Rotating the SSL-bump CA' "$repo_root/DEPLOYMENT.md" \
+    && ok "the rotation procedure the code cites exists" \
+    || bad "the rotation procedure the code cites exists" "generate_squid_conf.sh points at a section that is not in DEPLOYMENT.md"
+fi
+
 printf "\n  %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

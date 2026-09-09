@@ -148,6 +148,7 @@ imposes and what happens at each:
 | Write throughput | one SQLite writer, pool of 4 | Writes queue (`busy_timeout` 5s), so it shows as latency, not errors |
 | WAF behavioural tracking | 10,000 client IPs | Beyond it an entry is evicted, so beaconing/sharding history resets for some clients |
 | Live log stream | 256 queued messages, 64 per viewer | Lines are dropped for a slow viewer rather than stalling the stream |
+| WAF security alerts | 64 queued, 8 delivery workers | Alerts are dropped and counted in `notifyDropped` on `/metrics`. Blocks are still enforced and logged — only the notification is lost, and the queue fills exactly during an attack |
 | API rate limit | 20 req/s per IP, burst 60 | `429` |
 | Concurrent DNS scans | 2 | `429` |
 | Request body | 55 MB; blacklist import 32 MB | `413` / the import is refused |
