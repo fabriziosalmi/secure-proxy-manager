@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"log"
-	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -24,28 +23,6 @@ const (
 // full. Exposed via /metrics so operators can see forensics being shed under
 // load instead of it failing silently.
 var trafficLogDropped atomic.Int64
-
-// ── Shannon Entropy ─────────────────────────────────────────────────────────
-
-func shannonEntropy(s string) float64 {
-	if len(s) == 0 {
-		return 0
-	}
-	var freq [256]int
-	for i := 0; i < len(s); i++ {
-		freq[s[i]]++
-	}
-	length := float64(len(s))
-	entropy := 0.0
-	for _, count := range freq {
-		if count == 0 {
-			continue
-		}
-		p := float64(count) / length
-		entropy -= p * math.Log2(p)
-	}
-	return math.Round(entropy*100) / 100
-}
 
 // ── Traffic Feature Extraction ──────────────────────────────────────────────
 

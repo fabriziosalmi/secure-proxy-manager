@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"fmt"
@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -39,20 +38,15 @@ type HeuristicResult struct {
 	Detail   string
 }
 
-// heuristicCfg is read on the request hot path (Check{Request,Response}Heuristics)
+// Heuristics returns a consistent copy of the current heuristic config. The
+// config is read on the request hot path (Check{Request,Response}Heuristics)
 // and mutated at runtime via the /heuristics/toggle mgmt endpoint, so every
-// access goes through heuristicCfgMu. Hot-path readers take ONE RLock snapshot
-// per call (loadHeuristicCfg) instead of locking per field.
-var (
-	heuristicCfg   HeuristicConfig
-	heuristicCfgMu sync.RWMutex
-)
-
-// loadHeuristicCfg returns a consistent copy of the current heuristic config.
-func loadHeuristicCfg() HeuristicConfig {
-	heuristicCfgMu.RLock()
-	defer heuristicCfgMu.RUnlock()
-	return heuristicCfg
+// access goes through heurMu. Hot-path readers take ONE RLock snapshot per
+// call instead of locking per field.
+func (e *Engine) Heuristics() HeuristicConfig {
+	e.heurMu.RLock()
+	defer e.heurMu.RUnlock()
+	return e.heur
 }
 
 // heuristicToggles maps the DB/UI setting key to a pointer-setter on the config.
@@ -67,10 +61,10 @@ var heuristicToggles = map[string]func(*HeuristicConfig, bool){
 	"waf_h_sequence":  func(c *HeuristicConfig, v bool) { c.SequenceValidation = v },
 }
 
-// heuristicStates returns the current on/off state keyed by the DB/UI `waf_h_*`
+// HeuristicStates returns the current on/off state keyed by the DB/UI `waf_h_*`
 // key (the read counterpart of heuristicToggles).
-func heuristicStates() map[string]bool {
-	cfg := loadHeuristicCfg()
+func (e *Engine) HeuristicStates() map[string]bool {
+	cfg := e.Heuristics()
 	return map[string]bool{
 		"waf_h_entropy":   cfg.EntropyThreshold,
 		"waf_h_beaconing": cfg.BeaconingDetection,
@@ -81,20 +75,23 @@ func heuristicStates() map[string]bool {
 	}
 }
 
-// setHeuristicEnabled flips one heuristic at runtime under the write lock.
-// Returns false if the key is not a known heuristic toggle.
-func setHeuristicEnabled(key string, enabled bool) bool {
+// SetHeuristicEnabled flips one heuristic at runtime under the write lock,
+// keyed by its `waf_h_*` name. Returns false if the key is not a known toggle.
+func (e *Engine) SetHeuristicEnabled(key string, enabled bool) bool {
 	apply, ok := heuristicToggles[key]
 	if !ok {
 		return false
 	}
-	heuristicCfgMu.Lock()
-	apply(&heuristicCfg, enabled)
-	heuristicCfgMu.Unlock()
+	e.heurMu.Lock()
+	apply(&e.heur, enabled)
+	e.heurMu.Unlock()
 	return true
 }
 
-func initHeuristics() {
+// HeuristicsFromEnv reads the WAF_H_* environment into a config for New. The
+// parsing lives here, next to the fields it fills; the decision to consult the
+// environment at all belongs to the composition root, which calls it.
+func HeuristicsFromEnv() HeuristicConfig {
 	cfg := HeuristicConfig{
 		EntropyThreshold:     envBool("WAF_H_ENTROPY", true),
 		EntropyMax:           envFloat("WAF_H_ENTROPY_MAX", 7.5),
@@ -108,10 +105,6 @@ func initHeuristics() {
 		ProtocolGhosting:     envBool("WAF_H_GHOSTING", true),
 		SequenceValidation:   envBool("WAF_H_SEQUENCE", false), // Off by default (needs tuning)
 	}
-	heuristicCfgMu.Lock()
-	heuristicCfg = cfg
-	heuristicCfgMu.Unlock()
-
 	enabled := 0
 	for _, on := range []bool{
 		cfg.EntropyThreshold, cfg.BeaconingDetection, cfg.PIICounter,
@@ -122,6 +115,7 @@ func initHeuristics() {
 		}
 	}
 	log.Printf("Heuristic engine: %d/6 rules enabled\n", enabled)
+	return cfg
 }
 
 // ── State tracking ──────────────────────────────────────────────────────────
@@ -140,36 +134,32 @@ type clientState struct {
 	lastPath   string
 }
 
-var (
-	clientStates = make(map[string]*clientState)
-	csMutex      sync.Mutex
-)
-
-// getClientStateLocked resolves an entry. csMutex must already be held.
-func getClientStateLocked(ip string) *clientState {
-	cs, ok := clientStates[ip]
+// getClientStateLocked resolves an entry. e.csMu must already be held.
+func (e *Engine) getClientStateLocked(ip string) *clientState {
+	cs, ok := e.clientStates[ip]
 	if !ok {
 		// Cap at 10K IPs to prevent unbounded memory growth
-		if len(clientStates) >= 10000 {
-			for k := range clientStates {
-				delete(clientStates, k)
+		if len(e.clientStates) >= 10000 {
+			for k := range e.clientStates {
+				delete(e.clientStates, k)
 				break // evict one random entry
 			}
 		}
 		cs = &clientState{dests: make(map[string]time.Time)}
-		clientStates[ip] = cs
+		e.clientStates[ip] = cs
 	}
 	return cs
 }
 
-// Periodic cleanup — called from main.go
-func cleanupClientStates() {
-	csMutex.Lock()
-	defer csMutex.Unlock()
+// CleanupClientStates drops per-IP heuristic history that has gone quiet.
+// Called periodically from the transport.
+func (e *Engine) CleanupClientStates() {
+	e.csMu.Lock()
+	defer e.csMu.Unlock()
 	cutoff := time.Now().Add(-10 * time.Minute)
-	for ip, cs := range clientStates {
+	for ip, cs := range e.clientStates {
 		if cs.destLast.Before(cutoff) && len(cs.reqTimes) == 0 {
-			delete(clientStates, ip)
+			delete(e.clientStates, ip)
 		}
 	}
 }
@@ -178,12 +168,12 @@ func cleanupClientStates() {
 
 // CheckRequestHeuristics evaluates behavioral heuristics for a request.
 // Returns additional score and match results.
-func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize int, bodyEntropy, urlEntropy float64) ([]HeuristicResult, int) {
+func (e *Engine) CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize int, bodyEntropy, urlEntropy float64) ([]HeuristicResult, int) {
 	var results []HeuristicResult
 	totalScore := 0
 
 	// One consistent snapshot of the (runtime-mutable) config for this request.
-	cfg := loadHeuristicCfg()
+	cfg := e.Heuristics()
 
 	now := time.Now()
 
@@ -198,8 +188,8 @@ func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize 
 	// again. Not a data race (both accesses are locked) so the race detector
 	// could never see it: a lost update, silently resetting a client's
 	// behavioural history (SECURE-CONC-04).
-	csMutex.Lock()
-	cs := getClientStateLocked(clientIP)
+	e.csMu.Lock()
+	cs := e.getClientStateLocked(clientIP)
 	// H2: trim old beaconing entries
 	var validTimes []time.Time
 	var validSizes []int
@@ -246,7 +236,7 @@ func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize 
 		cs.lastMethod = method
 		cs.lastPath = path
 	}
-	csMutex.Unlock()
+	e.csMu.Unlock()
 	// ── End single-lock section ────────────────────────────────────────
 
 	// ── H1: Entropy Thresholding ────────────────────────────────────────
@@ -336,8 +326,8 @@ func CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize 
 }
 
 // CheckResponseHeuristics checks response body for PII leaks (H3).
-func CheckResponseHeuristics(body string) ([]HeuristicResult, int) {
-	cfg := loadHeuristicCfg()
+func (e *Engine) CheckResponseHeuristics(body string) ([]HeuristicResult, int) {
+	cfg := e.Heuristics()
 	if !cfg.PIICounter || len(body) == 0 {
 		return nil, 0
 	}

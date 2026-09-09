@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+
+	"secure-proxy-waf/internal/engine"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -133,10 +135,10 @@ func TestEvasionFuzzing(t *testing.T) {
 
 		for i, variant := range variants {
 			totalTests++
-			normalized := normalizeInput(variant)
-			_, score := matchRulesScored(normalized)
+			normalized := engine.NormalizeInput(variant)
+			_, score := eng.MatchRulesScored(normalized)
 
-			if score < blockThreshold {
+			if score < eng.BlockThreshold() {
 				bypasses++
 				t.Logf("EVASION BYPASS [%s] variant=%d score=%d input=%q",
 					attack.category, i, score, truncate(variant, 100))
@@ -216,10 +218,10 @@ func TestFalsePositiveFuzzing(t *testing.T) {
 	falsePositives := 0
 	for i := 0; i < iterations; i++ {
 		input := generateLegitimateInput(rng)
-		normalized := normalizeInput(input)
-		matches, score := matchRulesScored(normalized)
+		normalized := engine.NormalizeInput(input)
+		matches, score := eng.MatchRulesScored(normalized)
 
-		if score >= blockThreshold {
+		if score >= eng.BlockThreshold() {
 			falsePositives++
 			ids := make([]string, len(matches))
 			for j, m := range matches {
@@ -243,7 +245,7 @@ func TestFalsePositiveFuzzing(t *testing.T) {
 // STABILITY FUZZING: random bytes must never crash the WAF
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// FuzzNormalizeInput tests that normalizeInput never panics on any input.
+// FuzzNormalizeInput tests that engine.NormalizeInput never panics on any input.
 func FuzzNormalizeInput(f *testing.F) {
 	// Seed corpus
 	f.Add("hello world")
@@ -258,11 +260,11 @@ func FuzzNormalizeInput(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, input string) {
 		// Must not panic
-		normalizeInput(input)
+		engine.NormalizeInput(input)
 	})
 }
 
-// FuzzMatchRules tests that matchRulesScored never panics on any input.
+// FuzzMatchRules tests that eng.MatchRulesScored never panics on any input.
 func FuzzMatchRules(f *testing.F) {
 	f.Add("hello world")
 	f.Add("' OR 1=1--")
@@ -272,13 +274,13 @@ func FuzzMatchRules(f *testing.F) {
 	f.Add("\x00\x01\x02\xff")
 
 	f.Fuzz(func(t *testing.T, input string) {
-		normalized := normalizeInput(input)
+		normalized := engine.NormalizeInput(input)
 		// Must not panic
-		matchRulesScored(normalized)
+		eng.MatchRulesScored(normalized)
 	})
 }
 
-// FuzzShannonEntropy tests that shannonEntropy never panics.
+// FuzzShannonEntropy tests that engine.ShannonEntropy never panics.
 func FuzzShannonEntropy(f *testing.F) {
 	f.Add("hello")
 	f.Add("")
@@ -286,7 +288,7 @@ func FuzzShannonEntropy(f *testing.F) {
 	f.Add("\x00\xff")
 
 	f.Fuzz(func(t *testing.T, input string) {
-		e := shannonEntropy(input)
+		e := engine.ShannonEntropy(input)
 		if e < 0 {
 			t.Errorf("entropy cannot be negative: %f for input len=%d", e, len(input))
 		}
@@ -303,8 +305,8 @@ func BenchmarkEvasionVariants(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for _, v := range variants {
-			normalized := normalizeInput(v)
-			matchRulesScored(normalized)
+			normalized := engine.NormalizeInput(v)
+			eng.MatchRulesScored(normalized)
 		}
 	}
 }
@@ -318,7 +320,7 @@ func BenchmarkFalsePositiveCheck(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		input := inputs[i%len(inputs)]
-		normalized := normalizeInput(input)
-		matchRulesScored(normalized)
+		normalized := engine.NormalizeInput(input)
+		eng.MatchRulesScored(normalized)
 	}
 }

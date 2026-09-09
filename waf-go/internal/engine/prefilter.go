@@ -1,4 +1,4 @@
-package main
+package engine
 
 // Cheap pre-filter to skip the full rule set on benign input (issue #110).
 //
@@ -44,10 +44,10 @@ var (
 	prefilterMu     sync.RWMutex
 )
 
-// buildPrefilter (re)computes the screen from the current blockRules. Call after
+// BuildPrefilter (re)computes the screen from the current blockRules. Call after
 // loadCustomRules() and whenever the effective rule set changes. On any doubt a
 // rule is placed in `ungated`, so the result is always sound.
-func buildPrefilter() {
+func BuildPrefilter() {
 	pf := &prefilter{
 		lit2rule: make(map[string][]string),
 		ungated:  make(map[string]struct{}),

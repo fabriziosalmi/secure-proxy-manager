@@ -17,7 +17,7 @@ keys_in() {
         | tr 'A-Z' 'a-z' | sort -u
 }
 
-REF_FILE="waf-go/heuristics.go"
+REF_FILE="waf-go/internal/engine/heuristics.go"
 REF="$(keys_in "$REF_FILE")"
 [ -n "$REF" ] || { echo "FAIL: no heuristic keys found in $REF_FILE"; exit 1; }
 

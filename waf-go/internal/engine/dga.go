@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"math"
@@ -54,7 +54,7 @@ func AnalyzeDGA(domain string) DGAResult {
 	var result DGAResult
 
 	// 1. Shannon entropy of the SLD
-	entropy := shannonEntropy(sld)
+	entropy := ShannonEntropy(sld)
 	// Normal domains: entropy 2.5-3.5, DGA: 3.8+
 	result.EntropyScore = math.Min(100, math.Max(0, (entropy-2.5)*50))
 

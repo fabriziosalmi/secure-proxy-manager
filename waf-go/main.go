@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"regexp"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -22,6 +21,8 @@ import (
 	"time"
 
 	"github.com/go-icap/icap"
+
+	"secure-proxy-waf/internal/engine"
 )
 
 const (
@@ -32,8 +33,6 @@ const (
 // ── Configuration ───────────────────────────────────────────────────────────
 
 var (
-	blockThreshold = 10 // Configurable via WAF_BLOCK_THRESHOLD env
-
 	// wafFailOpen controls behaviour when a REQMOD handler panics. Default is
 	// fail-CLOSED (block the request) — a handler that crashed cannot vouch for
 	// traffic. Operators who prefer availability over inspection can set
@@ -65,133 +64,7 @@ var (
 		MaxIdleConnsPerHost: 5,
 		IdleConnTimeout:     60 * time.Second,
 	}}
-
-	// Safe URL cache — URLs scanned and found clean skip regex on repeat visits.
-	// 50K entries, 5 min TTL. Saves ~80% CPU on repetitive traffic.
-	safeCache = NewSafeURLCache(50000, 5*time.Minute)
-
-	// DGA result cache — avoids recomputing entropy+bigram for same domains.
-	// 10K domains, 10 min TTL.
-	dgaCacheMu  sync.RWMutex
-	dgaCacheMap = make(map[string]dgaCacheEntry, 10000)
 )
-
-type dgaCacheEntry struct {
-	result DGAResult
-	ts     time.Time
-}
-
-func cachedAnalyzeDGA(host string) DGAResult {
-	dgaCacheMu.RLock()
-	if e, ok := dgaCacheMap[host]; ok && time.Since(e.ts) < 10*time.Minute {
-		dgaCacheMu.RUnlock()
-		return e.result
-	}
-	dgaCacheMu.RUnlock()
-
-	result := AnalyzeDGA(host)
-	dgaCacheMu.Lock()
-	if len(dgaCacheMap) >= 10000 {
-		// Evict ~10% randomly
-		i := 0
-		for k := range dgaCacheMap {
-			delete(dgaCacheMap, k)
-			i++
-			if i >= 1000 {
-				break
-			}
-		}
-	}
-	dgaCacheMap[host] = dgaCacheEntry{result: result, ts: time.Now()}
-	dgaCacheMu.Unlock()
-	return result
-}
-
-// ── Custom rules loader ─────────────────────────────────────────────────────
-
-// overlyBroadRule reports a reason string if a compiled custom rule is
-// dangerously broad — it matches the empty string, or matches every entry in a
-// small benign corpus — which would make it fire on essentially all traffic.
-// Returns "" when the rule is acceptably specific.
-func overlyBroadRule(re *regexp.Regexp) string {
-	if re.MatchString("") {
-		return "matches the empty string (would match everything)"
-	}
-	benign := []string{
-		"https://example.com/index.html?lang=en",
-		`{"user":"alice","action":"view","id":42}`,
-		"GET /assets/app.css HTTP/1.1",
-		"the quick brown fox jumps over the lazy dog",
-	}
-	for _, b := range benign {
-		if !re.MatchString(b) {
-			return "" // distinguishes at least one benign input → specific enough
-		}
-	}
-	return "matches all benign sample inputs (too broad)"
-}
-
-func loadCustomRules() {
-	const customRulesPath = "/config/waf_custom_rules.txt"
-	content, err := os.ReadFile(customRulesPath)
-	if err != nil {
-		// Absence is the normal case; unreadable is not, and the two used to
-		// produce the same line with the error discarded entirely. /config is a
-		// bind-mounted volume and this container runs read-only with dropped
-		// capabilities, so a permission or ownership problem is realistic — and
-		// it left an operator running with strictly less detection than they
-		// configured, told nothing distinguishable from having written no rules
-		// (SECURE-ERR-02). Every other failure in this function names the rule
-		// and the reason; only the one that disables all of them was anonymous.
-		if os.IsNotExist(err) {
-			log.Printf("No custom rules file at %s, using default rules only.\n", customRulesPath)
-		} else {
-			log.Printf("WARNING: custom rules file %s could not be read (%v) — "+
-				"running with DEFAULT RULES ONLY; any custom detections are not loaded\n", customRulesPath, err)
-		}
-		return
-	}
-
-	lines := strings.Split(string(content), "\n")
-	var customRules []Rule
-
-	for i, line := range lines {
-		line = strings.TrimSpace(line)
-		if line != "" && !strings.HasPrefix(line, "#") {
-			if len(line) > 512 {
-				log.Printf("Custom rule %d skipped: exceeds 512 char limit\n", i+1)
-				continue
-			}
-			if strings.ContainsRune(line, 0) {
-				log.Printf("Custom rule %d skipped: contains null byte\n", i+1)
-				continue
-			}
-			compiled, err := regexp.Compile("(?i)" + line)
-			if err != nil {
-				log.Printf("Error compiling custom rule %s: %v\n", line, err)
-			} else if reason := overlyBroadRule(compiled); reason != "" {
-				// A rule that matches everything (".*", "", "a?", …) would score 7
-				// on every request → mass false-positive blocks. Reject at load.
-				log.Printf("Custom rule %d skipped: %s (pattern %q)\n", i+1, reason, line)
-			} else {
-				customRules = append(customRules, Rule{
-					ID:       fmt.Sprintf("CUSTOM-%03d", i+1),
-					Pattern:  compiled,
-					Severity: 7,
-					Tier:     2,
-				})
-			}
-		}
-	}
-
-	if len(customRules) > 0 {
-		blockRules = append(blockRules, CategoryRules{
-			Category: "CUSTOM_USER_RULES",
-			Rules:    customRules,
-		})
-		log.Printf("Loaded %d custom WAF rules.\n", len(customRules))
-	}
-}
 
 // ── ICAP ISTag (RFC 3507 §4.7) ───────────────────────────────────────────────
 // Squid uses the ISTag to decide whether a cached ICAP verdict is still valid.
@@ -209,19 +82,19 @@ var (
 // populated, so both are folded into the base digest.
 func initISTag() {
 	h := sha256.New()
-	for _, cr := range blockRules {
+	for _, cr := range engine.BlockRules() {
 		fmt.Fprintf(h, "C:%s\n", cr.Category)
 		for _, r := range cr.Rules {
 			fmt.Fprintf(h, "R:%s:%d:%d\n", r.ID, r.Severity, r.Tier)
 		}
 	}
 	// Fold the startup disabled set so a different WAF_DISABLED_CATEGORIES env
-	// yields a different ISTag across restarts.
-	disabledCatMu.RLock()
-	for cat := range disabledCats {
+	// yields a different ISTag across restarts. The set arrives sorted: it used
+	// to be folded in Go map order, so two restarts with the same configuration
+	// could publish different ISTags and needlessly invalidate Squid's cache.
+	for _, cat := range eng.DisabledCategories() {
 		fmt.Fprintf(h, "D:%s\n", cat)
 	}
-	disabledCatMu.RUnlock()
 	istagBase = hex.EncodeToString(h.Sum(nil))[:16]
 }
 
@@ -230,52 +103,54 @@ func currentISTag() string {
 	return `"` + istagBase + "-" + strconv.FormatUint(atomic.LoadUint64(&istagEpoch), 36) + `"`
 }
 
-// disabledCategories tracks which WAF rule categories are turned off.
-var (
-	disabledCatMu sync.RWMutex
-	disabledCats  = map[string]bool{}
-)
+// eng is the WAF's detection engine: the single wire from this composition root
+// into internal/engine. Everything that decides whether a request is refused —
+// the threshold, the rule categories, the safe-URL cache, the heuristic config
+// and its per-client history — lives behind it, and can only be reached through
+// its methods (SECURE-ARCH-03). This file is the ICAP transport.
+var eng *engine.Engine
 
-func isCategoryEnabled(cat string) bool {
-	disabledCatMu.RLock()
-	defer disabledCatMu.RUnlock()
-	return !disabledCats[cat]
+// engineConfigFromEnv reads the operator's environment into the engine's
+// configuration: the score at which a request is refused, the categories
+// switched off at startup, and the heuristic toggles.
+func engineConfigFromEnv() engine.Config {
+	cfg := engine.Config{Heuristics: engine.HeuristicsFromEnv()}
+	if envThreshold := os.Getenv("WAF_BLOCK_THRESHOLD"); envThreshold != "" {
+		if v, err := strconv.Atoi(envThreshold); err == nil && v > 0 {
+			cfg.BlockThreshold = v
+		}
+	}
+	if disabled := os.Getenv("WAF_DISABLED_CATEGORIES"); disabled != "" {
+		for _, cat := range strings.Split(disabled, ",") {
+			if cat = strings.TrimSpace(cat); cat != "" {
+				cfg.DisabledCategories = append(cfg.DisabledCategories, cat)
+			}
+		}
+		log.Printf("Disabled WAF categories: %v\n", disabled)
+	}
+	return cfg
 }
 
 func init() {
-	if envThreshold := os.Getenv("WAF_BLOCK_THRESHOLD"); envThreshold != "" {
-		if v, err := strconv.Atoi(envThreshold); err == nil && v > 0 {
-			blockThreshold = v
-		}
-	}
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("WAF_FAIL_OPEN"))) {
 	case "1", "true", "yes", "on":
 		wafFailOpen = true
 		log.Printf("WAF_FAIL_OPEN=1 — REQMOD handler panics will ALLOW traffic (availability over security)\n")
 	}
-	// Load disabled categories from env (comma-separated)
-	if disabled := os.Getenv("WAF_DISABLED_CATEGORIES"); disabled != "" {
-		for _, cat := range strings.Split(disabled, ",") {
-			cat = strings.TrimSpace(cat)
-			if cat != "" {
-				disabledCats[cat] = true
-			}
-		}
-		log.Printf("Disabled WAF categories: %v\n", disabled)
-	}
 
-	loadCustomRules()
-	buildPrefilter() // #110: after loadCustomRules so custom rules are gated too
+	// Rules first: the pre-filter gates the custom rules too (#110), and the
+	// ISTag digest must cover the set actually loaded.
+	engine.LoadCustomRules(engine.DefaultCustomRulesPath)
+	engine.BuildPrefilter()
+	eng = engine.New(engineConfigFromEnv())
 	initISTag()
-	initHeuristics()
 
-	// Log rule counts
 	total := 0
-	for _, cr := range blockRules {
+	for _, cr := range engine.BlockRules() {
 		total += len(cr.Rules)
 	}
 	log.Printf("WAF engine initialized: %d regex rules + 7 heuristic checks across %d categories (block threshold: %d)\n",
-		total, len(blockRules), blockThreshold)
+		total, len(engine.BlockRules()), eng.BlockThreshold())
 }
 
 // ── Backend notification ────────────────────────────────────────────────────
@@ -362,7 +237,7 @@ func recoverICAP(w icap.ResponseWriter, method string) {
 	if r := recover(); r != nil {
 		log.Printf("PANIC in %s handler: %v\n%s", method, r, debug.Stack())
 		if method == "REQMOD" && !wafFailOpen {
-			sendBlockResponse(w, "WAF_INTERNAL_ERROR", blockThreshold, "")
+			sendBlockResponse(w, "WAF_INTERNAL_ERROR", eng.BlockThreshold(), "")
 			return
 		}
 		w.WriteHeader(204, nil, false)
@@ -405,8 +280,8 @@ type inspection struct {
 	clientIP string
 
 	// Accumulated signals. score is the sum of every match's Score, and the
-	// block decision is score >= blockThreshold — checked once, at the end.
-	matches []MatchResult
+	// block decision is Blocked(score) — checked once, at the end.
+	matches []engine.MatchResult
 	score   int
 
 	// Body inspection results, needed later for the traffic feature and to
@@ -422,10 +297,10 @@ type inspection struct {
 }
 
 // blocked reports the verdict. Every stage adds to score; nothing else decides.
-func (in *inspection) blocked() bool { return in.score >= blockThreshold }
+func (in *inspection) blocked() bool { return eng.Blocked(in.score) }
 
 // add records a signal and its contribution to the score.
-func (in *inspection) add(m MatchResult) {
+func (in *inspection) add(m engine.MatchResult) {
 	in.matches = append(in.matches, m)
 	in.score += m.Score
 }
@@ -449,7 +324,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 
 	// Skip WAF inspection for LAN destinations (proxy UI, backend, local
 	// services). These are legitimate internal traffic, not SSRF attempts.
-	if isLANHost(req.Request.Host) {
+	if engine.IsLANHost(req.Request.Host) {
 		w.WriteHeader(204, nil, false)
 		return
 	}
@@ -462,7 +337,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	// malicious POST skipped ALL inspection).
 	in.cacheable = req.Request.Method == http.MethodGet || req.Request.Method == http.MethodHead
 	in.cacheKey = req.Request.Method + "\x00" + in.rawURL
-	if in.cacheable && safeCache.IsSafe(in.cacheKey) {
+	if in.cacheable && eng.SafeCache().IsSafe(in.cacheKey) {
 		w.WriteHeader(204, nil, false)
 		return
 	}
@@ -488,7 +363,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	// Log all matches for observability, even if below threshold
 	if len(in.matches) > 0 && !in.blocked() {
 		log.Printf("WAF OBSERVE score=%d/%d rules=[%s] url=%q\n",
-			in.score, blockThreshold, strings.Join(ruleIDs, ","), truncate(in.rawURL, 200))
+			in.score, eng.BlockThreshold(), strings.Join(ruleIDs, ","), truncate(in.rawURL, 200))
 	}
 
 	if in.blocked() {
@@ -500,7 +375,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	// clean verdict for body-less idempotent methods where no body was inspected,
 	// so a pass can never authorize a later request that carries a body.
 	if in.cacheable && in.bodySize == 0 {
-		safeCache.MarkSafe(in.cacheKey)
+		eng.SafeCache().MarkSafe(in.cacheKey)
 	}
 	w.WriteHeader(204, nil, false)
 }
@@ -525,7 +400,7 @@ var headersToInspect = []string{"User-Agent", "Referer", "X-Forwarded-For", "X-F
 // scanSignatures runs the regex rule set over the URL, the inspected headers
 // and — if nothing has crossed the threshold yet — the request body.
 func scanSignatures(in *inspection, r *http.Request) {
-	normalizedURL := normalizeInput(in.rawURL)
+	normalizedURL := engine.NormalizeInput(in.rawURL)
 
 	var headerStr string
 	for _, hdr := range headersToInspect {
@@ -536,15 +411,15 @@ func scanSignatures(in *inspection, r *http.Request) {
 	}
 
 	// Combine URL + headers for scoring
-	combined := normalizedURL + " " + normalizeInput(headerStr)
-	matches, score := matchRulesScored(combined)
+	combined := normalizedURL + " " + engine.NormalizeInput(headerStr)
+	matches, score := eng.MatchRulesScored(combined)
 	in.matches = append(in.matches, matches...)
 	in.score += score
 
 	// Also check raw (pre-decoded) URL for encoded evasion patterns like %c0%af
-	// that get decoded by normalizeInput and lose their detectable pattern
+	// that get decoded by engine.NormalizeInput and lose their detectable pattern
 	if !in.blocked() && in.rawURL != normalizedURL {
-		rawMatches, rawScore := matchRulesScored(in.rawURL)
+		rawMatches, rawScore := eng.MatchRulesScored(in.rawURL)
 		if rawScore > 0 {
 			in.matches = append(in.matches, rawMatches...)
 			in.score += rawScore
@@ -560,7 +435,7 @@ func scanSignatures(in *inspection, r *http.Request) {
 // so the request can still be forwarded. Bodies of types the rule set cannot
 // meaningfully match are skipped.
 func scanBody(in *inspection, r *http.Request) {
-	if r.Body == nil || !shouldInspectBody(r.Header.Get("Content-Type")) {
+	if r.Body == nil || !engine.ShouldInspectBody(r.Header.Get("Content-Type")) {
 		return
 	}
 	// Read one byte past the inspection limit so we can tell whether the body
@@ -573,27 +448,27 @@ func scanBody(in *inspection, r *http.Request) {
 	if truncated {
 		bodyBytes = bodyBytes[:maxBodyInspectSize]
 	}
-	in.bodyStr = normalizeInput(string(bodyBytes))
+	in.bodyStr = engine.NormalizeInput(string(bodyBytes))
 	in.bodySize = len(bodyBytes)
 	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
-	bodyMatches, bodyScore := matchRulesScored(in.bodyStr)
+	bodyMatches, bodyScore := eng.MatchRulesScored(in.bodyStr)
 	in.matches = append(in.matches, bodyMatches...)
 	in.score += bodyScore
 
 	// An over-limit body is a coverage gap, not a clean allow. Add a
-	// corroborating signal (below blockThreshold, so it can't block on its own
-	// — pairs with any other rule/heuristic hit) and count it.
+	// corroborating signal (below the block threshold, so it can't block on its
+	// own — pairs with any other rule/heuristic hit) and count it.
 	if truncated {
 		bodyTruncatedCount.Add(1)
 		const oversizeBodyScore = 4
-		in.add(MatchResult{RuleID: "WAF-BODY-OVERSIZE", Category: "BODY_OVERSIZE", Score: oversizeBodyScore})
+		in.add(engine.MatchResult{RuleID: "WAF-BODY-OVERSIZE", Category: "BODY_OVERSIZE", Score: oversizeBodyScore})
 	}
 }
 
 // scanDomainReputation applies the ML-lite signals: DGA and typosquatting.
 //
-// Both are probabilistic, so each contributes LESS than blockThreshold and
+// Both are probabilistic, so each contributes LESS than the block threshold and
 // cannot block on its own — corroboration from another signal or a signature
 // rule is required. That is what keeps a typosquat near-miss on a real domain
 // observed rather than blocked.
@@ -603,17 +478,17 @@ func scanDomainReputation(in *inspection, host string) {
 	}
 	const dgaScore, typoScore = 6, 5
 
-	if isCategoryEnabled("DGA_DOMAIN") {
-		if dgaResult := cachedAnalyzeDGA(host); dgaResult.IsDGA {
-			in.add(MatchResult{RuleID: "ML-DGA-001", Category: "DGA_DOMAIN", Score: dgaScore})
+	if eng.CategoryEnabled("DGA_DOMAIN") {
+		if dgaResult := eng.AnalyzeDGACached(host); dgaResult.IsDGA {
+			in.add(engine.MatchResult{RuleID: "ML-DGA-001", Category: "DGA_DOMAIN", Score: dgaScore})
 			// %q quotes + escapes control bytes so an attacker-controlled Host
 			// header (newline, tab, ANSI escapes) cannot forge log entries.
 			log.Printf("WAF ML-DGA score=%d domain=%q dga_score=%d\n", dgaResult.Score, host, dgaResult.Score)
 		}
 	}
-	if isCategoryEnabled("TYPOSQUATTING") {
-		if typoResult := CheckTyposquat(host); typoResult.Suspicious {
-			in.add(MatchResult{RuleID: "ML-TYPO-001", Category: "TYPOSQUATTING", Score: typoScore})
+	if eng.CategoryEnabled("TYPOSQUATTING") {
+		if typoResult := engine.CheckTyposquat(host); typoResult.Suspicious {
+			in.add(engine.MatchResult{RuleID: "ML-TYPO-001", Category: "TYPOSQUATTING", Score: typoScore})
 			log.Printf("WAF ML-TYPO target=%q technique=%q distance=%d domain=%q\n",
 				typoResult.Target, typoResult.Technique, typoResult.Distance, host)
 		}
@@ -637,10 +512,10 @@ func (in *inspection) feature(r *http.Request) TrafficFeature {
 		Host:            r.Host,
 		Path:            r.URL.Path,
 		URLLength:       len(in.rawURL),
-		URLEntropy:      shannonEntropy(in.rawURL),
+		URLEntropy:      engine.ShannonEntropy(in.rawURL),
 		QueryParamCount: len(r.URL.Query()),
 		BodySize:        in.bodySize,
-		BodyEntropy:     shannonEntropy(in.bodyStr),
+		BodyEntropy:     engine.ShannonEntropy(in.bodyStr),
 		ContentType:     r.Header.Get("Content-Type"),
 		HeaderCount:     in.headerCount,
 		UserAgent:       r.Header.Get("User-Agent"),
@@ -657,12 +532,12 @@ func (in *inspection) feature(r *http.Request) TrafficFeature {
 // scored against the feature's entropy fields, which is why they run after it
 // is built rather than alongside the signature scan.
 func applyHeuristics(in *inspection, r *http.Request, feature *TrafficFeature) {
-	hResults, hScore := CheckRequestHeuristics(
+	hResults, hScore := eng.CheckRequestHeuristics(
 		in.clientIP, r.Method, r.Host, r.URL.Path,
 		in.bodyStr, in.bodySize, feature.BodyEntropy, feature.URLEntropy,
 	)
 	for _, hr := range hResults {
-		in.matches = append(in.matches, MatchResult{
+		in.matches = append(in.matches, engine.MatchResult{
 			Category: hr.Category,
 			RuleID:   hr.ID,
 			Pattern:  hr.Detail,
@@ -679,7 +554,7 @@ func applyHeuristics(in *inspection, r *http.Request, feature *TrafficFeature) {
 // summarize flattens the matches into the rule IDs and the de-duplicated
 // categories, preserving first-seen order — the first category is what the
 // block page and the alert report as the primary one.
-func summarize(matches []MatchResult) (ruleIDs, categories []string) {
+func summarize(matches []engine.MatchResult) (ruleIDs, categories []string) {
 	ruleIDs = make([]string, len(matches))
 	categories = make([]string, 0)
 	seen := make(map[string]bool, len(matches))
@@ -706,7 +581,7 @@ func block(w icap.ResponseWriter, in *inspection, ruleIDs, categories []string) 
 	}
 
 	log.Printf("WAF BLOCKED score=%d/%d categories=[%s] rules=[%s] source=%s url=%q\n",
-		in.score, blockThreshold, strings.Join(categories, ","), strings.Join(ruleIDs, ","),
+		in.score, eng.BlockThreshold(), strings.Join(categories, ","), strings.Join(ruleIDs, ","),
 		source, truncate(in.rawURL, 200))
 
 	tarPit(in.clientIP)
@@ -720,7 +595,7 @@ func block(w icap.ResponseWriter, in *inspection, ruleIDs, categories []string) 
 			"categories": categories,
 			"rules":      ruleIDs,
 			"score":      in.score,
-			"threshold":  blockThreshold,
+			"threshold":  eng.BlockThreshold(),
 			"url":        truncate(in.rawURL, 500),
 			"client_ip":  in.clientIP,
 			"source":     source,
@@ -801,37 +676,21 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 	// Compressed text bodies are uninspectable by the regex rules (they'd match
 	// against compressed bytes). Flag the coverage gap rather than silently
 	// returning a clean verdict. Decompression is deferred to a later phase.
-	if req.Response.Body != nil && isTextContent(contentType) && isCompressedEncoding(req.Response.Header.Get("Content-Encoding")) {
+	if req.Response.Body != nil && engine.IsTextContent(contentType) && engine.IsCompressedEncoding(req.Response.Header.Get("Content-Encoding")) {
 		respmodUninspectable.Add(1)
 		w.WriteHeader(204, nil, false)
 		return
 	}
 
 	// Inspect text response bodies for reflected XSS and secret leaks
-	if req.Response.Body != nil && isTextContent(contentType) {
+	if req.Response.Body != nil && engine.IsTextContent(contentType) {
 		bodyBytes, err := io.ReadAll(io.LimitReader(req.Response.Body, maxBodyInspectSize))
 		if err == nil && len(bodyBytes) > 0 {
 			req.Response.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 			body := string(bodyBytes)
-			totalScore := 0
-			var matchedRules []string
-			var matchedCat string
-			for _, cr := range respRules {
-				if !isCategoryEnabled(cr.Category) {
-					continue
-				}
-				for _, rule := range cr.Rules {
-					if rule.Pattern.MatchString(body) {
-						totalScore += rule.Severity
-						matchedRules = append(matchedRules, rule.ID)
-						if matchedCat == "" {
-							matchedCat = cr.Category
-						}
-					}
-				}
-			}
+			totalScore, matchedRules, matchedCat := eng.MatchResponseRules(body)
 			// H3: PII counter heuristic on response body
-			piiResults, piiScore := CheckResponseHeuristics(body)
+			piiResults, piiScore := eng.CheckResponseHeuristics(body)
 			for _, pr := range piiResults {
 				totalScore += pr.Score
 				matchedRules = append(matchedRules, pr.ID)
@@ -840,7 +699,7 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 				}
 			}
 
-			if totalScore >= blockThreshold {
+			if eng.Blocked(totalScore) {
 				log.Printf("RESPMOD BLOCKED score=%d rules=[%s] content-type=%s\n",
 					totalScore, strings.Join(matchedRules, ","), contentType)
 				sendBlockResponse(w, matchedCat, totalScore, "")
@@ -959,7 +818,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(60 * time.Second)
-			cleanupClientStates()
+			eng.CleanupClientStates()
 		}
 	}()
 
@@ -1036,15 +895,13 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 
 	totalRules := 0
-	for _, cr := range blockRules {
+	for _, cr := range engine.BlockRules() {
 		totalRules += len(cr.Rules)
 	}
 
-	disabledCatMu.RLock()
-	disabledCatCount := len(disabledCats)
-	disabledCatMu.RUnlock()
+	disabledCatCount := eng.DisabledCategoryCount()
 
-	hcfg := loadHeuristicCfg()
+	hcfg := eng.Heuristics()
 	heuristicsEnabled := 0
 	for _, on := range []bool{
 		hcfg.EntropyThreshold, hcfg.BeaconingDetection,
@@ -1056,7 +913,7 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	cacheStats := safeCache.Stats()
+	cacheStats := eng.SafeCache().Stats()
 
 	fmt.Fprintf(w,
 		"# HELP waf_requests_total Total ICAP requests inspected.\n"+
@@ -1091,9 +948,9 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		stats.highEntropyCount.Load(),
 		stats.recentCount.Load(),
 		totalRules,
-		len(blockRules),
+		len(engine.BlockRules()),
 		disabledCatCount,
-		blockThreshold,
+		eng.BlockThreshold(),
 		heuristicsEnabled,
 	)
 
@@ -1146,12 +1003,12 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *MgmtHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	total := 0
-	for _, cr := range blockRules {
+	for _, cr := range engine.BlockRules() {
 		total += len(cr.Rules)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	hcfg := loadHeuristicCfg()
+	hcfg := eng.Heuristics()
 	hEnabled := 0
 	for _, on := range []bool{hcfg.EntropyThreshold, hcfg.BeaconingDetection, hcfg.PIICounter, hcfg.DestinationSharding, hcfg.ProtocolGhosting, hcfg.SequenceValidation} {
 		if on {
@@ -1159,7 +1016,7 @@ func (h *MgmtHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	fmt.Fprintf(w, `{"status":"healthy","rules":%d,"categories":%d,"threshold":%d,"heuristics":%d}`,
-		total, len(blockRules), blockThreshold, hEnabled)
+		total, len(engine.BlockRules()), eng.BlockThreshold(), hEnabled)
 }
 
 func (h *MgmtHandlers) StatsHandler(w http.ResponseWriter, r *http.Request) {
@@ -1167,7 +1024,7 @@ func (h *MgmtHandlers) StatsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	snap := stats.snapshot()
 	// Merge cache stats
-	for k, v := range safeCache.Stats() {
+	for k, v := range eng.SafeCache().Stats() {
 		snap[k] = v
 	}
 	if err := json.NewEncoder(w).Encode(snap); err != nil {
@@ -1181,7 +1038,7 @@ func (h *MgmtHandlers) ResetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stats.reset()
-	safeCache.Invalidate()
+	eng.SafeCache().Invalidate()
 	log.Println("WAF stats + safe cache reset via API")
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write([]byte(`{"status":"ok","message":"stats reset"}`))
@@ -1196,16 +1053,14 @@ func (h *MgmtHandlers) CategoriesHandler(w http.ResponseWriter, r *http.Request)
 		Rules   int    `json:"rules"`
 		Enabled bool   `json:"enabled"`
 	}
-	disabledCatMu.RLock()
 	var cats []catInfo
-	for _, cr := range blockRules {
+	for _, cr := range engine.BlockRules() {
 		cats = append(cats, catInfo{
 			Name:    cr.Category,
 			Rules:   len(cr.Rules),
-			Enabled: !disabledCats[cr.Category],
+			Enabled: eng.CategoryEnabled(cr.Category),
 		})
 	}
-	disabledCatMu.RUnlock()
 	if err := json.NewEncoder(w).Encode(map[string]any{"status": "ok", "data": cats}); err != nil {
 		log.Printf("CategoriesHandler encode error: %v\n", err)
 	}
@@ -1228,15 +1083,9 @@ func (h *MgmtHandlers) CategoriesToggleHandler(w http.ResponseWriter, r *http.Re
 		http.Error(w, `{"error":"category required"}`, http.StatusBadRequest)
 		return
 	}
-	disabledCatMu.Lock()
-	if req.Enabled {
-		delete(disabledCats, req.Category)
-	} else {
-		disabledCats[req.Category] = true
-	}
-	disabledCatMu.Unlock()
+	eng.SetCategoryEnabled(req.Category, req.Enabled)
 	atomic.AddUint64(&istagEpoch, 1) // effective ruleset changed → new ISTag so Squid drops cached verdicts
-	safeCache.Invalidate()           // Clear cache since rules changed
+	eng.SafeCache().Invalidate()     // Clear cache since rules changed
 	log.Printf("Category %s: enabled=%v\n", req.Category, req.Enabled)
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status":"ok","category":"%s","enabled":%v}`, req.Category, req.Enabled)
@@ -1248,7 +1097,7 @@ func (h *MgmtHandlers) CategoriesToggleHandler(w http.ResponseWriter, r *http.Re
 func (h *MgmtHandlers) HeuristicsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if err := json.NewEncoder(w).Encode(map[string]any{"status": "ok", "data": heuristicStates()}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]any{"status": "ok", "data": eng.HeuristicStates()}); err != nil {
 		log.Printf("HeuristicsHandler encode error: %v\n", err)
 	}
 }
@@ -1273,12 +1122,12 @@ func (h *MgmtHandlers) HeuristicsToggleHandler(w http.ResponseWriter, r *http.Re
 		http.Error(w, `{"error":"heuristic required"}`, http.StatusBadRequest)
 		return
 	}
-	if !setHeuristicEnabled(req.Heuristic, req.Enabled) {
+	if !eng.SetHeuristicEnabled(req.Heuristic, req.Enabled) {
 		http.Error(w, `{"error":"unknown heuristic"}`, http.StatusBadRequest)
 		return
 	}
 	atomic.AddUint64(&istagEpoch, 1)
-	safeCache.Invalidate()
+	eng.SafeCache().Invalidate()
 	log.Printf("Heuristic %s: enabled=%v\n", req.Heuristic, req.Enabled)
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status":"ok","heuristic":"%s","enabled":%v}`, req.Heuristic, req.Enabled)

@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"strings"
@@ -16,14 +16,14 @@ func TestMatchRulesScored_CompactCollapse(t *testing.T) {
 		{"xss-space-insertion", "<scr ipt>alert(1)</scr ipt>"}, // only the compact pass catches this
 	}
 	for _, c := range blocked {
-		if _, score := matchRulesScored(c.payload); score == 0 {
+		if _, score := testEngine.MatchRulesScored(c.payload); score == 0 {
 			t.Errorf("%s: expected block (score>0), got 0 for %q", c.name, c.payload)
 		}
 	}
 
 	clean := []string{"hello-world", "user=alice&page=2", "/api/v1/items/42"}
 	for _, c := range clean {
-		if m, score := matchRulesScored(c); score != 0 || len(m) != 0 {
+		if m, score := testEngine.MatchRulesScored(c); score != 0 || len(m) != 0 {
 			t.Errorf("clean input %q false-positived: score=%d matches=%v", c, score, m)
 		}
 	}
@@ -58,8 +58,8 @@ func TestIsLANHost(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if got := isLANHost(tt.host); got != tt.want {
-			t.Errorf("isLANHost(%q) = %v, want %v", tt.host, got, tt.want)
+		if got := IsLANHost(tt.host); got != tt.want {
+			t.Errorf("IsLANHost(%q) = %v, want %v", tt.host, got, tt.want)
 		}
 	}
 }
@@ -78,8 +78,8 @@ func TestIsTextContent(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if got := isTextContent(tt.ct); got != tt.want {
-			t.Errorf("isTextContent(%q) = %v, want %v", tt.ct, got, tt.want)
+		if got := IsTextContent(tt.ct); got != tt.want {
+			t.Errorf("IsTextContent(%q) = %v, want %v", tt.ct, got, tt.want)
 		}
 	}
 }
@@ -110,11 +110,11 @@ func TestPercentDecodeTolerant(t *testing.T) {
 // invalid percent-token disabled all decoding, letting an encoded payload slip
 // through unscanned.
 func TestNormalizeDefeatsInvalidEscapeBypass(t *testing.T) {
-	got := normalizeInput("/?x=%3Cscript%3Ealert(1)%3C/script%3E%ZZ")
+	got := NormalizeInput("/?x=%3Cscript%3Ealert(1)%3C/script%3E%ZZ")
 	if !strings.Contains(got, "<script>") {
 		t.Fatalf("expected decoded <script> in %q — invalid-escape bypass not closed", got)
 	}
-	if _, score := matchRulesScored(got); score == 0 {
+	if _, score := testEngine.MatchRulesScored(got); score == 0 {
 		t.Errorf("expected the decoded payload to score > 0, got 0 (input still evades rules)")
 	}
 }
@@ -135,8 +135,8 @@ func TestShouldInspectBody(t *testing.T) {
 		{"AUDIO/mpeg", false},
 	}
 	for _, tt := range tests {
-		if got := shouldInspectBody(tt.ct); got != tt.want {
-			t.Errorf("shouldInspectBody(%q) = %v, want %v", tt.ct, got, tt.want)
+		if got := ShouldInspectBody(tt.ct); got != tt.want {
+			t.Errorf("ShouldInspectBody(%q) = %v, want %v", tt.ct, got, tt.want)
 		}
 	}
 }

@@ -1,4 +1,4 @@
-package main
+package engine
 
 import "regexp"
 
@@ -471,9 +471,9 @@ var respRules = []CategoryRules{
 
 // ── Rule matching engine ────────────────────────────────────────────────────
 
-// matchRulesScored evaluates input against all rules in tiered order.
+// MatchRulesScored evaluates input against all rules in tiered order.
 // Returns all matches and the total anomaly score.
-func matchRulesScored(input string) ([]MatchResult, int) {
+func (e *Engine) MatchRulesScored(input string) ([]MatchResult, int) {
 	var matches []MatchResult
 	totalScore := 0
 	matched := make(map[string]bool) // Deduplicate by rule ID
@@ -501,12 +501,12 @@ func matchRulesScored(input string) ([]MatchResult, int) {
 	var compactReady bool
 
 	for tier := 1; tier <= 3; tier++ {
-		if totalScore >= blockThreshold {
+		if e.Blocked(totalScore) {
 			break // Early exit — score already over threshold, no need to check more rules
 		}
 
 		for _, cr := range blockRules {
-			if !isCategoryEnabled(cr.Category) {
+			if !e.CategoryEnabled(cr.Category) {
 				continue // Security Pack disabled
 			}
 			for _, rule := range cr.Rules {
@@ -549,4 +549,31 @@ func matchRulesScored(input string) ([]MatchResult, int) {
 	}
 
 	return matches, totalScore
+}
+
+// BlockRules is the request-side rule set, for callers that need to describe
+// the configuration (the ISTag digest, the /rules listing). The slice is not
+// copied: it is written once at startup by LoadCustomRules and read-only after.
+func BlockRules() []CategoryRules { return blockRules }
+
+// MatchResponseRules evaluates a response body against the response-side rule
+// set, returning the anomaly score, the rule IDs that fired and the first
+// category to fire. It lives here rather than in the transport because it is
+// the same decision as MatchRulesScored, on the other direction of traffic.
+func (e *Engine) MatchResponseRules(body string) (score int, ruleIDs []string, category string) {
+	for _, cr := range respRules {
+		if !e.CategoryEnabled(cr.Category) {
+			continue
+		}
+		for _, rule := range cr.Rules {
+			if rule.Pattern.MatchString(body) {
+				score += rule.Severity
+				ruleIDs = append(ruleIDs, rule.ID)
+				if category == "" {
+					category = cr.Category
+				}
+			}
+		}
+	}
+	return score, ruleIDs, category
 }

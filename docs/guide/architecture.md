@@ -82,6 +82,7 @@ The `frontend` network connects `web` to `backend`. The `proxy-internal` network
 
 ### `waf` — Go ICAP server
 
+- Two packages, and the split is the security boundary. `waf-go/internal/engine` is the detection core — the rule set, the pre-filter, the heuristics, DGA and typosquat analysis — and it owns everything the block decision depends on: the threshold, the enabled categories, the safe-URL and DGA caches, the per-client heuristic history. All of it hangs off an `engine.Engine` value that the caller constructs. Package `main` is the ICAP transport and the composition root: it builds one engine from the environment at startup and reaches the verdict only through that engine's methods. Nothing outside `internal/engine` can assign to the state behind a block.
 - Listens for ICAP `REQMOD` (and limited `RESPMOD`) on port `1344`.
 - Applies 170 regex rules across 21 categories (SQL injection, XSS, directory traversal, command injection, Unicode homograph obfuscation, response XSS, response secret leak, and more).
 - Seven behavioural heuristics: entropy thresholding, C2 beaconing detection, PII leak counting, destination sharding, protocol ghosting, header morphing, sequence validation. Each heuristic is individually toggleable via the `WAF_H_*` environment variables.

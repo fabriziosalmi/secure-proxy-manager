@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"regexp/syntax"
@@ -92,7 +92,7 @@ func containsAny(got, want []string) bool {
 // A soundness bug in the literal extractor surfaces here as a skipped positive.
 
 func TestPrefilter_RulePositiveCoverage(t *testing.T) {
-	buildPrefilter()
+	BuildPrefilter()
 	tested, skipped := 0, 0
 	for _, cr := range blockRules {
 		for _, rule := range cr.Rules {
@@ -141,10 +141,10 @@ func withoutPrefilter(fn func()) {
 
 func assertEquivalent(t *testing.T, input string) {
 	t.Helper()
-	buildPrefilter()
-	_, gotScore := matchRulesScored(input)
+	BuildPrefilter()
+	_, gotScore := testEngine.MatchRulesScored(input)
 	var fullScore int
-	withoutPrefilter(func() { _, fullScore = matchRulesScored(input) })
+	withoutPrefilter(func() { _, fullScore = testEngine.MatchRulesScored(input) })
 	if gotScore != fullScore {
 		t.Errorf("prefilter changed result for %q: score %d (prefiltered) != %d (full scan)", input, gotScore, fullScore)
 	}
@@ -184,10 +184,10 @@ func FuzzPrefilterEquivalence(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, input string) {
-		buildPrefilter()
-		_, gotScore := matchRulesScored(input)
+		BuildPrefilter()
+		_, gotScore := testEngine.MatchRulesScored(input)
 		var fullScore int
-		withoutPrefilter(func() { _, fullScore = matchRulesScored(input) })
+		withoutPrefilter(func() { _, fullScore = testEngine.MatchRulesScored(input) })
 		if gotScore != fullScore {
 			t.Fatalf("prefilter diverged for %q: %d != %d", input, gotScore, fullScore)
 		}
@@ -198,10 +198,10 @@ func FuzzPrefilterEquivalence(f *testing.F) {
 
 func BenchmarkMatchRules_Benign(b *testing.B) {
 	const benign = "http://cdn.example.com/assets/app.1a2b3c.js?v=42&lang=en-us"
-	buildPrefilter()
+	BuildPrefilter()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = matchRulesScored(benign)
+		_, _ = testEngine.MatchRulesScored(benign)
 	}
 }
 
@@ -210,7 +210,7 @@ func BenchmarkMatchRules_Benign_NoPrefilter(b *testing.B) {
 	withoutPrefilter(func() {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = matchRulesScored(benign)
+			_, _ = testEngine.MatchRulesScored(benign)
 		}
 	})
 }

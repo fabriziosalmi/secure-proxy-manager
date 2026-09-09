@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"secure-proxy-waf/internal/engine"
 )
 
 func TestNextEventID(t *testing.T) {
@@ -36,7 +38,7 @@ func TestShannonEntropy(t *testing.T) {
 		{"aabbc", 1.52},
 	}
 	for _, c := range cases {
-		got := shannonEntropy(c.input)
+		got := engine.ShannonEntropy(c.input)
 		if got != c.expected {
 			t.Errorf("shannonEntropy(%q) = %v, expected %v", c.input, got, c.expected)
 		}
