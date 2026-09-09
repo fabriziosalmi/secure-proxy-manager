@@ -112,6 +112,7 @@ round trip:
 | `bash tests/shell/generate_squid_conf_test.sh` | Squid config generation |
 | `make adversarial` | Adversarial block-matrix (the suite README leads with) |
 | `bash scripts/check-version-sync.sh` | Version consistency |
+| `bash scripts/check-config-contract.sh` | /config filename contract (Go/Python/shell) |
 
 The remaining required checks run only in CI because they need to build and
 start the whole stack: the image build, the compose-up smoke test, the Playwright

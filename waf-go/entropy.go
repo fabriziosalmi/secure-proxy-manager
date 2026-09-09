@@ -50,9 +50,16 @@ func shannonEntropy(s string) float64 {
 // ── Traffic Feature Extraction ──────────────────────────────────────────────
 
 type TrafficFeature struct {
-	EventID         string   `json:"event_id"`
-	Timestamp       string   `json:"ts"`
-	ClientIP        string   `json:"client_ip"`
+	EventID   string `json:"event_id"`
+	Timestamp string `json:"ts"`
+	// source_ip, matching the backend's schema and its wire shape. The two
+	// records are designed to be correlated through event_id, and calling the
+	// same fact client_ip here and source_ip there meant an analyst joining them
+	// had to know both names for one concept. The backend collapsed a three-way
+	// split of this same field; the WAF was not included in that pass, so the
+	// split sat on the service boundary instead of inside one service
+	// (SECURE-DOM-03).
+	ClientIP        string   `json:"source_ip"`
 	Method          string   `json:"method"`
 	Host            string   `json:"host"`
 	Path            string   `json:"path"`

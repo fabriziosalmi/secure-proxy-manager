@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -574,6 +575,14 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 // maxGeoCountries mirrors the bound declared on ImportGeoBlacklistRequest.
 const maxGeoCountries = 50
 
+// geoFetchConcurrency bounds the parallel feed downloads, and geoFeedTimeout
+// bounds each one. Together they keep a 50-country import inside the server's
+// 60-second WriteTimeout instead of outliving it (SECURE-PERF-01).
+const (
+	geoFetchConcurrency = 8
+	geoFeedTimeout      = 10 * time.Second
+)
+
 func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 	var req models.ImportGeoBlacklistRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -643,37 +652,72 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 	}
-	client.Timeout = 30 * time.Second
 
 	ccRe := regexp.MustCompile(`^[a-zA-Z]{2}$`)
-	for _, country := range req.Countries {
+
+	// Fetch the feeds CONCURRENTLY, bounded. Sequentially this was up to 50
+	// countries times two candidate URLs at a 30-second timeout each, inside the
+	// request goroutine, against a server WriteTimeout of 60 seconds — so a
+	// large import reliably outlived its own response deadline while continuing
+	// to insert rows, and the operator was told it failed for work that was
+	// done. The bound is the same 8 the WAF uses for its notification pool, and
+	// the per-feed timeout drops to 10s: a country zone file that has not
+	// started arriving by then is not going to help (SECURE-PERF-01).
+	client.Timeout = geoFeedTimeout
+	type fetched struct {
+		cc      string
+		content string
+		err     string
+	}
+	results := make([]fetched, len(req.Countries))
+	sem := make(chan struct{}, geoFetchConcurrency)
+	var wg sync.WaitGroup
+	for i, country := range req.Countries {
 		cc := strings.ToLower(country)
 		if !ccRe.MatchString(cc) {
-			fetchErrors = append(fetchErrors, cc+": invalid country code")
+			results[i] = fetched{cc: cc, err: cc + ": invalid country code"}
 			continue
 		}
-		urls := []string{}
-		if h.cfg.GeoIPURL != "" {
-			urls = append(urls, h.cfg.GeoIPURL+"?cc="+cc)
-		} else {
-			urls = append(urls,
-				"https://www.ipdeny.com/ipblocks/data/countries/"+cc+".zone",
-				"https://raw.githubusercontent.com/herrbischoff/country-ip-blocks/master/ipv4/"+cc+".cidr",
-			)
-		}
-		var content string
-		for _, u := range urls {
-			resp, err := client.Get(u)
-			if err == nil && resp.StatusCode == 200 {
-				data, _ := readAll(resp.Body)
-				resp.Body.Close()
-				content = string(data)
-				break
+		wg.Add(1)
+		go func(i int, cc string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			urls := []string{}
+			if h.cfg.GeoIPURL != "" {
+				urls = append(urls, h.cfg.GeoIPURL+"?cc="+cc)
+			} else {
+				urls = append(urls,
+					"https://www.ipdeny.com/ipblocks/data/countries/"+cc+".zone",
+					"https://raw.githubusercontent.com/herrbischoff/country-ip-blocks/master/ipv4/"+cc+".cidr",
+				)
 			}
-			if resp != nil {
-				resp.Body.Close()
+			for _, u := range urls {
+				resp, err := client.Get(u)
+				if err != nil {
+					continue
+				}
+				if resp.StatusCode == 200 {
+					data, _ := readAll(resp.Body)
+					resp.Body.Close() //nolint:errcheck
+					results[i] = fetched{cc: cc, content: string(data)}
+					return
+				}
+				resp.Body.Close() //nolint:errcheck
 			}
+			results[i] = fetched{cc: cc, err: strings.ToUpper(cc) + ": no data"}
+		}(i, cc)
+	}
+	wg.Wait()
+
+	for _, res := range results {
+		cc := res.cc
+		if res.err != "" {
+			fetchErrors = append(fetchErrors, res.err)
+			continue
 		}
+		content := res.content
 		if content == "" {
 			fetchErrors = append(fetchErrors, strings.ToUpper(cc)+": no data")
 			continue

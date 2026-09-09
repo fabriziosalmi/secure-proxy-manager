@@ -8,6 +8,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -200,5 +201,40 @@ func TestNotifyQueueIsOwnedAndReportsLiveness(t *testing.T) {
 	// gauge is set even though nothing was ever enqueued.
 	if ts := metrics.WorkerHeartbeatSeconds("notify_queue"); ts == 0 {
 		t.Error("the notification worker emitted no liveness signal — a stopped queue looks exactly like a quiet one")
+	}
+}
+
+// SECURE-CONF-01. An empty INTERNAL_ALERT_TOKEN silently disables WAF block
+// alerts while every visible part of the notification feature keeps working —
+// the settings page saves, login-failure alerts still arrive, and the test
+// button succeeds, because that test is generated inside the backend and never
+// traverses the path that is broken. The test response must say so.
+func TestTestNotificationReportsTheWAFAlertGap(t *testing.T) {
+	call := func(token string) map[string]any {
+		db, svc, cfg, cleanup := setupTestDB(t)
+		defer cleanup()
+		cfg.AlertToken = token
+		h := NewSecurityHandlers(db, svc, cfg, NewNotifyQueue(t.Context(), db, cfg.EncryptionKey))
+		w := httptest.NewRecorder()
+		h.TestNotification(w, httptest.NewRequest("POST", "/api/notifications/test", nil))
+		var body map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &body)
+		return body
+	}
+
+	unset := call("")
+	if unset["waf_alerts_delivered"] != false {
+		t.Error("with no token the response claims WAF alerts are delivered")
+	}
+	if w, _ := unset["warning"].(string); !strings.Contains(w, "INTERNAL_ALERT_TOKEN") {
+		t.Errorf("the response does not name the variable that is missing: %v", unset["warning"])
+	}
+
+	set := call("a-configured-token")
+	if set["waf_alerts_delivered"] != true {
+		t.Error("with a token configured the response should not warn")
+	}
+	if _, warned := set["warning"]; warned {
+		t.Error("warned about a gap that does not exist")
 	}
 }
