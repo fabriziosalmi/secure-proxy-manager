@@ -21,6 +21,7 @@ Compose. The stack is a set of Go and container services orchestrated by
 - [Configuration](#configuration)
 - [Volumes and Persistence](#volumes-and-persistence)
 - [HTTPS and the SSL-Bump CA](#https-and-the-ssl-bump-ca)
+  - [Rotating the SSL-bump CA](#rotating-the-ssl-bump-ca)
 - [Backups](#backups)
 - [Updating](#updating)
 - [Troubleshooting](#troubleshooting)
@@ -238,9 +239,10 @@ There are two distinct TLS surfaces:
 
 2. **Proxy SSL-bump CA.** When SSL-bump is enabled (Settings), Squid intercepts
    TLS using a locally generated CA so the WAF can inspect decrypted requests.
-   `proxy/startup.sh` generates `config/ssl_cert.pem` and `config/ssl_key.pem`
-   on first boot if they are absent (2048-bit RSA, 10-year cert) and initializes
-   `config/ssl_db/`. These files are **gitignored** (`config/*.pem`,
+   `proxy/generate_squid_conf.sh` generates `config/ssl_cert.pem` and
+   `config/ssl_key.pem` on first boot if they are absent (2048-bit RSA, **825
+   days**) and initializes `config/ssl_db/`. The key is created under
+   `umask 077` so it is never world-readable, even briefly. These files are **gitignored** (`config/*.pem`,
    `config/ssl_db/`) and are **never committed** — each deployment has its own
    unique CA. The startup script additionally detects and deletes a
    known-compromised CA key that was historically committed, regenerating a
@@ -249,6 +251,55 @@ There are two distinct TLS surfaces:
    To inspect HTTPS on clients, install the generated CA (Settings → download CA)
    on every device that should trust the bump. Without SSL-bump, HTTPS is
    tunnelled via `CONNECT` and the WAF only sees connection metadata.
+
+### Rotating the SSL-bump CA
+
+The CA is valid for **825 days**, not the ten years it used to be. That was a
+deliberate trade: a decade-long CA with no rehearsed replacement outlives the
+deployment, so if it leaks there is no way back. The shorter lifetime only helps
+if the replacement is actually rehearsed, so here it is.
+
+Rotate **before** the certificate expires, and update clients before the old one
+stops working — not after. Every device told to trust the old CA loses HTTPS
+inspection the moment it is replaced, until it trusts the new one.
+
+```bash
+# 1. Check what you have. This is also how you find out how long you have left.
+docker compose exec proxy openssl x509 -in /config/ssl_cert.pem -noout -subject -enddate
+
+# 2. Stop the stack and keep the old CA — you need it if a client is slow to update.
+docker compose down
+mv config/ssl_cert.pem config/ssl_cert.pem.old
+mv config/ssl_key.pem  config/ssl_key.pem.old
+
+# 3. Clear the generated-certificate database, which is keyed to the old CA.
+rm -rf config/ssl_db
+
+# 4. Start. generate_squid_conf.sh regenerates both, under umask 077, on boot.
+docker compose up -d
+docker compose exec proxy openssl x509 -in /config/ssl_cert.pem -noout -enddate
+
+# 5. Distribute the new CA to every client: Settings -> download CA.
+#    Until a client installs it, HTTPS inspection fails for that client.
+
+# 6. Once every client is updated:
+rm config/ssl_cert.pem.old config/ssl_key.pem.old
+```
+
+### Rotating the other two keys
+
+`.jwt_secret` rotates cleanly: delete it (or set `SECRET_KEY`) and restart. Every
+session is invalidated and users log in again; nothing else is lost.
+
+`.enc_key` **cannot be rotated without loss.** Nothing re-encrypts the values it
+protects, so replacing it leaves every stored notification credential
+undecryptable — the settings page will render them as unreadable rather than
+silently corrupting them, but they are gone. If you must replace it: note your
+SMTP and webhook credentials first, delete `data/.enc_key`, restart, and enter
+them again.
+
+If SSL-bump is not enabled, none of this applies — without it HTTPS is tunnelled
+via `CONNECT` and the CA is unused.
 
 ## Backups
 
@@ -277,6 +328,18 @@ Schedule the cold copy with cron if desired:
 ```
 
 ## Updating
+
+**Read the CHANGELOG entry for the version you are moving to first.** Some
+releases need a configuration change before they will work correctly, and it is
+listed there under **Action required** — the commands below do not and cannot
+apply it. Upgrading to 3.12.0, for example, requires `INTERNAL_ALERT_TOKEN` in
+`.env` (without it the WAF silently stops sending block notifications) and
+`GRAFANA_ADMIN_PASSWORD` if you use the observability profile (without it
+Grafana refuses to start rather than coming up on admin/admin).
+
+Re-running `deploy/install.sh` is the safer route for exactly this reason: it
+does the fast-forward pull AND adds variables your `.env` predates. The manual
+sequence below does not.
 
 ```bash
 # 1. Stop the stack, THEN back up. Copying data/ while the backend is running

@@ -222,3 +222,26 @@ func TestListEndpointsShareOneShape(t *testing.T) {
 		})
 	}
 }
+
+// SECURE-AUTH-01. RegisterAPIDocs accepted authMW and never applied it, so the
+// catalogue — every route, with a flag naming which need no credentials — was
+// served unauthenticated through nginx's `location /api/` proxy.
+//
+// The middleware here REFUSES, which is what distinguishes this from the
+// pass-through used elsewhere in these tests: with a pass-through, an ungated
+// route and a gated one both answer 200 and the test proves nothing.
+func TestAPIDocsIsGated(t *testing.T) {
+	denyAll := func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+		})
+	}
+	r := chi.NewRouter()
+	RegisterAPIDocs(r, denyAll)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/api/docs", nil))
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("GET /api/docs bypassed the middleware it was given: got %d, want 401", w.Code)
+	}
+}

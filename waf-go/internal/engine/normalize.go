@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"html"
@@ -33,10 +33,10 @@ var (
 	reHTMLComment  = regexp.MustCompile(`(?s)<!--.*?-->`)
 )
 
-// normalizeInput applies anti-evasion transformations to the input.
+// NormalizeInput applies anti-evasion transformations to the input.
 // It iterates URL decoding up to maxDecodeIterations times to defeat
 // multi-layer encoding evasion (e.g. triple encoding %25252e).
-func normalizeInput(input string) string {
+func NormalizeInput(input string) string {
 	const maxDecodeIterations = 10
 
 	s := input
@@ -97,12 +97,12 @@ func isASCII(s string) bool {
 
 // compactInput strips ALL whitespace — catches evasion via space insertion
 // inside keywords (e.g. "<scr ipt>" → "<script>"). Comments are already turned
-// into spaces by normalizeInput, so by here they are just whitespace.
+// into spaces by NormalizeInput, so by here they are just whitespace.
 func compactInput(s string) string {
 	return reAllSpace.ReplaceAllString(s, "")
 }
 
-// isLANHost returns true if the host is a private/LAN destination.
+// IsLANHost returns true if the host is a private/LAN destination.
 // These destinations should bypass WAF inspection (not SSRF).
 //
 // SECURITY: previous implementation used naive string prefix matching like
@@ -110,7 +110,7 @@ func compactInput(s string) string {
 // (e.g. 172.200.0.1) and incorrectly bypassed the WAF for them. We now use
 // net.ParseIP + IsPrivate/IsLoopback/IsLinkLocalUnicast which correctly
 // covers RFC1918 (10/8, 172.16/12, 192.168/16), 127/8, ::1, fc00::/7, fe80::/10.
-func isLANHost(host string) bool {
+func IsLANHost(host string) bool {
 	if host == "" {
 		return false
 	}
@@ -132,9 +132,9 @@ func isLANHost(host string) bool {
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
 }
 
-// isCompressedEncoding reports whether a Content-Encoding marks the body as
+// IsCompressedEncoding reports whether a Content-Encoding marks the body as
 // compressed (so the raw bytes are not scannable by the plaintext rules).
-func isCompressedEncoding(enc string) bool {
+func IsCompressedEncoding(enc string) bool {
 	enc = strings.ToLower(strings.TrimSpace(enc))
 	if enc == "" || enc == "identity" {
 		return false
@@ -147,7 +147,7 @@ func isCompressedEncoding(enc string) bool {
 	return false
 }
 
-func isTextContent(contentType string) bool {
+func IsTextContent(contentType string) bool {
 	ct := strings.ToLower(contentType)
 	for _, prefix := range textContentTypes {
 		if strings.HasPrefix(ct, prefix) {
@@ -211,12 +211,12 @@ var nonInspectableMedia = []string{
 	"image/", "video/", "audio/", "font/", "application/font",
 }
 
-// shouldInspectBody decides whether a request body is worth scanning. Crucially
+// ShouldInspectBody decides whether a request body is worth scanning. Crucially
 // it must NOT let the attacker-declared Content-Type be used to SKIP inspection:
 // the previous text-only gate let any body through as long as it was labelled
 // e.g. application/octet-stream. We therefore inspect by default and only skip a
 // small set of genuinely opaque media types.
-func shouldInspectBody(contentType string) bool {
+func ShouldInspectBody(contentType string) bool {
 	ct := strings.ToLower(strings.TrimSpace(contentType))
 	for _, skip := range nonInspectableMedia {
 		if strings.HasPrefix(ct, skip) {

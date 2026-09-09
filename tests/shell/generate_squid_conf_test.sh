@@ -135,5 +135,69 @@ m=$(sed -n 's/^mutations=//p' <<<"$dup")
 [ "${m:-1}" = 0 ] && ok "startup.sh writes no squid.conf of its own" \
                   || bad "startup.sh writes no squid.conf of its own" "found $m heredoc writes"
 
+echo "── cross-language: the watchdog's acknowledgement must decode as Go int64 ──"
+# SECURE-API-01 / SECURE-TEST-01. The backend decodes .reload-squid.result into
+# a struct whose trigger_mtime is int64, and Go's encoding/json refuses ANY JSON
+# float for an integer field — including one with a .0 fraction. The producer is
+# Python, where os.path.getmtime returns a float, so for the life of the feature
+# every acknowledgement failed to parse and the reload endpoint could answer only
+# "pending". The Go test could not catch it because it built its fixture with
+# json.Marshal from an int64 — the one shape that cannot disagree with itself.
+# This asserts the REAL producer's output, in the real image.
+ack="$(docker run --rm -v "$PWD/proxy/blacklist_watchdog.py:/w.py:ro" --entrypoint sh "$IMAGE" -c '
+  mkdir -p /config
+  python3 - <<PYEOF
+import time
+g = {}
+exec(open("/w.py").read().split("def main()")[0], g)
+open("/config/.reload-squid", "w").write(str(int(time.time())))
+g["write_result"]("reload-squid", g["trigger_stamp"]("/config/.reload-squid", 0), 0, 0)
+print(open("/config/.reload-squid.result").read().strip())
+PYEOF' 2>/dev/null | tail -1)"
+case "$ack" in
+  *'"trigger_mtime":'*[0-9].[0-9]*) bad "trigger_mtime is emitted as a float" "$ack" ;;
+  *'"trigger_mtime":'*[0-9]*)       ok  "trigger_mtime is emitted as an integer" ;;
+  *)                                bad "watchdog produced no acknowledgement" "$ack" ;;
+esac
+case "$ack" in
+  *'"applied": true'*|*'"applied":true'*) ok "acknowledgement reports applied" ;;
+  *)                                      bad "acknowledgement reports applied" "$ack" ;;
+esac
+
+echo "── documentation: the claims that are mechanically checkable ──"
+# SECURE-DOC-01. This repository already proves it can gate doc-code agreement:
+# the API catalogue is walked from the live router with a test asserting the two
+# agree, and the version is gated across four files. Prose had no such gate, and
+# this audit found three statements describing the previous release — all of them
+# about the proxy container or its CA, which is what an operator reads when
+# enforcement is misbehaving. These are the claims a script can check.
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+grep -q 'generate_squid_conf.sh` is the \*\*sole producer\*\*' "$repo_root/docs/guide/architecture.md" \
+  && ok "architecture.md names the real producer of squid.conf" \
+  || bad "architecture.md names the real producer of squid.conf" "it still attributes generation to startup.sh"
+
+if grep -qE 'startup\.sh.*generates .squid\.conf' "$repo_root/docs/guide/architecture.md"; then
+  bad "architecture.md no longer attributes generation to startup.sh" "the old claim is still present"
+else
+  ok "architecture.md no longer attributes generation to startup.sh"
+fi
+
+# The CA lifetime is a number in two places; they must agree.
+gen_days="$(grep -oE '\-days [0-9]+' "$repo_root/proxy/generate_squid_conf.sh" | head -1 | awk '{print $2}')"
+if [ -n "$gen_days" ] && grep -q "\*\*${gen_days} days\*\*" "$repo_root/DEPLOYMENT.md"; then
+  ok "DEPLOYMENT.md states the CA lifetime the generator uses (${gen_days} days)"
+else
+  bad "DEPLOYMENT.md states the CA lifetime the generator uses" "generator says ${gen_days:-?} days"
+fi
+
+# The code points at a rotation procedure; it has to exist.
+if grep -q 'See DEPLOYMENT.md "Rotating the SSL-bump CA"' "$repo_root/proxy/generate_squid_conf.sh"; then
+  grep -q '^### Rotating the SSL-bump CA' "$repo_root/DEPLOYMENT.md" \
+    && ok "the rotation procedure the code cites exists" \
+    || bad "the rotation procedure the code cites exists" "generate_squid_conf.sh points at a section that is not in DEPLOYMENT.md"
+fi
+
 printf "\n  %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

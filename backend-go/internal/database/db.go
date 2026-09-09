@@ -110,10 +110,17 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 			description TEXT,
 			added_date TEXT DEFAULT (datetime('now'))
 		)`,
+		// CHECK on type: the column decides which enforcement file an entry
+		// reaches, and both export queries are equality tests — so a row with
+		// any third value is listed in the UI and written to NEITHER file
+		// (SECURE-DOM-02). New databases get the constraint here; existing ones
+		// cannot, because SQLite requires a table rebuild to add one and
+		// CREATE TABLE IF NOT EXISTS is a no-op for them. The exporter below
+		// therefore also refuses to run silently past an unrecognised type.
 		`CREATE TABLE IF NOT EXISTS dst_allowlist (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			entry TEXT UNIQUE NOT NULL,
-			type TEXT NOT NULL DEFAULT 'domain',
+			type TEXT NOT NULL DEFAULT 'domain' CHECK (type IN ('cidr','domain')),
 			description TEXT,
 			added_date TEXT DEFAULT (datetime('now'))
 		)`,
@@ -309,6 +316,20 @@ func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
 	}
 	// 3b. Egress destination allowlist (default-deny mode): split by type into a
 	// CIDR/IP list and a domain list that Squid reads as `dst` / `dstdomain`.
+	// Refuse to export past a row the split does not understand. Both queries
+	// below are equality tests, so an unrecognised type is silently dropped from
+	// both files while the UI keeps listing it — an allowlist entry with no
+	// effect and no error. On a pre-CHECK database this is the only guard
+	// (SECURE-DOM-02).
+	var strayTypes int
+	if err := db.QueryRow(
+		"SELECT COUNT(*) FROM dst_allowlist WHERE type NOT IN ('cidr','domain')").Scan(&strayTypes); err != nil {
+		return fmt.Errorf("dst_allowlist type check: %w", err)
+	}
+	if strayTypes > 0 {
+		return fmt.Errorf("dst_allowlist holds %d row(s) whose type is neither 'cidr' nor 'domain'; "+
+			"they would reach neither enforcement file — fix them before the allowlist can be exported", strayTypes)
+	}
 	if err := exportLines(db, configDir+"/dst_allow_ip.txt",
 		"SELECT entry FROM dst_allowlist WHERE type='cidr' ORDER BY entry"); err != nil {
 		return err

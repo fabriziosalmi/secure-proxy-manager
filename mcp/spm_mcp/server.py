@@ -24,6 +24,11 @@ import httpx
 from mcp.server import MCPServer
 
 SPM_URL = os.environ.get("SPM_URL", "http://localhost:5001").rstrip("/")
+
+# Named so the two branches below read as status classes rather than as
+# literals a reader has to decode.
+HTTP_UNAUTHORIZED = 401
+HTTP_BAD_REQUEST = 400
 SPM_USERNAME = os.environ.get("SPM_USERNAME", "admin")
 SPM_PASSWORD = os.environ.get("SPM_PASSWORD", "")
 SPM_VERIFY = os.environ.get("SPM_VERIFY", "true").lower() != "false"
@@ -45,9 +50,9 @@ def _req(method: str, path: str, **kw: Any) -> Any:
         r = _client.request(method, path, **kw)
     except httpx.HTTPError as e:  # network/DNS/TLS
         return {"error": f"request failed: {e}", "hint": f"is SPM_URL={SPM_URL} reachable?"}
-    if r.status_code == 401:
+    if r.status_code == HTTP_UNAUTHORIZED:
         return {"error": "unauthorized (401)", "hint": "check SPM_USERNAME / SPM_PASSWORD"}
-    if r.status_code >= 400:
+    if r.status_code >= HTTP_BAD_REQUEST:
         return {"error": f"HTTP {r.status_code}", "body": r.text[:1000]}
     ctype = r.headers.get("content-type", "")
     return r.json() if "application/json" in ctype else r.text

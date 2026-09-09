@@ -153,7 +153,58 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
       - name: Lint the shell that builds the data plane
-        run: shellcheck --severity=warning proxy/*.sh deploy/*.sh scripts/*.sh tests/*.sh
+        run: shellcheck --severity=warning proxy/*.sh deploy/*.sh scripts/*.sh tests/*.sh tests/shell/*.sh
+      # The /config filenames are a contract across three languages and nothing
+      # compared the copies: rename one on the Go side and both proxy-side
+      # copiers keep looking for the old name, silently, in the enforcement path
+      # (SECURE-ARCH-02).
+      - name: Check the /config filename contract
+        run: bash scripts/check-config-contract.sh
+
+  # ── 5c-bis. Python lint ───────────────────────────────────────────────
+  # Go is gated by golangci-lint and Shell by shellcheck; Python was gated by
+  # nothing, and it is not a peripheral language here — proxy/blacklist_watchdog.py
+  # is the sidecar that applies every blacklist change and every config reload to
+  # Squid, and it holds the repository's third most complex function
+  # (SECURE-QUAL-03).
+  lint-python:
+    name: Python lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install ruff
+        run: pipx install ruff==0.14.2
+      - name: Lint the sidecar that applies configuration to Squid
+        run: ruff check proxy/ mcp/
+
+  # ── 5c-ter. Python unit tests ─────────────────────────────────────────
+  # The watchdog had no test of any kind: its happy path was covered only
+  # transitively by the compose-up e2e, and the branches that decide whether a
+  # failed reload is retried, reported or dropped had never run (SECURE-TEST-02).
+  test-python:
+    name: Python tests (watchdog)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pytest
+        run: pipx install pytest==8.4.2
+      - name: Test the sidecar's failure branches
+        run: sudo mkdir -p /config && sudo chmod 777 /config && pytest tests/python -q
+
+  # ── 5c-quater. Restore drill ──────────────────────────────────────────
+  # scripts/restore.sh is what an operator runs during an incident and nothing
+  # had ever run it, so its one design property — verify the archive BEFORE
+  # replacing the live database — was unestablished at the moment it matters
+  # (SECURE-DATA-02).
+  test-restore:
+    name: Restore drill (backup verification)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install sqlite3
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3
+      - name: Refuse a corrupt backup, keep the live data
+        run: bash tests/shell/restore_test.sh
 
   # ── 5d. Squid config generation (fixture tests) ───────────────────────
   # SECURE-TEST-01, second half. shellcheck catches shape; this catches
@@ -228,6 +279,58 @@ jobs:
           # justified in scripts/npm-audit-allowlist.json, and prints those it
           # ignores on every run. Moderate stays ungated.
           node ../scripts/npm-audit-gate.mjs
+
+  # ── 6a-bis. Licence inventory ─────────────────────────────────────────
+  # The product ships as five container images, so every transitive dependency
+  # is REDISTRIBUTED rather than merely linked at the user's site — the case
+  # where licence obligations actually bite. Nothing checked them: CVEs were
+  # gated, npm audit severity was gated, the WAF heuristic key set was gated,
+  # and licences were the one supply-chain property with no check at all
+  # (SECURE-DEP-02). The allowlist is permissive-only; a copyleft package
+  # entering through a grouped Dependabot update now fails here instead of
+  # arriving unnoticed.
+  licences:
+    name: Licence inventory
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache-dependency-path: backend-go/go.sum
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '25'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install go-licenses
+        run: go install github.com/google/go-licenses@v1.6.0
+      - name: Check Go module licences (both modules)
+        run: |
+          ALLOWED="Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,MPL-2.0"
+          # Ignored, with the reason, rather than by widening ALLOWED:
+          #  - this project's own packages: the LICENSE is at the repository
+          #    root and the modules are subdirectories, so go-licenses cannot
+          #    locate it and reports every internal package as Unknown.
+          #  - modernc.org/mathutil: ships a LICENSE whose text IS the standard
+          #    three-clause BSD (both redistribution clauses and the
+          #    "Neither the name" clause are present, checked by hand) but
+          #    carries no SPDX identifier, so the classifier returns Unknown.
+          IGNORE="github.com/fabriziosalmi/secure-proxy-manager,secure-proxy-waf,modernc.org/mathutil"
+          for m in backend-go waf-go; do
+            echo "── $m ──"
+            (cd "$m" && go-licenses check ./... --allowed_licenses="$ALLOWED" --ignore="$IGNORE")
+          done
+      - name: Check npm licences (runtime dependencies)
+        working-directory: ui
+        run: |
+          npm ci
+          # --excludePrivatePackages skips this repository's own UI package,
+          # which is "private": true and UNLICENSED by design; pinning it by
+          # name@version would break on every release.
+          npx --yes license-checker-rseidelsohn@4.4.2 \
+            --production --summary --excludePrivatePackages \
+            --onlyAllow "MIT;ISC;Apache-2.0;BSD-2-Clause;BSD-3-Clause;0BSD;Unlicense;CC0-1.0;BlueOak-1.0.0;Python-2.0;MIT AND ISC"
 
   # ── 6b. Trivy filesystem CVE + misconfiguration scan ──────────────────
   # Catches vulnerable OS/library packages and IaC misconfigurations that gosec

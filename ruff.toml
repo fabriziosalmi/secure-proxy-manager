@@ -1,0 +1,41 @@
+# Python lint configuration.
+#
+# The default rule set is E/F only, which passes on this repository and would
+# make the CI job a decorative gate — the exact failure the gate exists to
+# prevent. The rules below are the ones that found real problems in the sidecar
+# that applies every configuration change to Squid: subprocess calls whose
+# return code is not explicitly handled, and blind `except Exception` handlers
+# that turn a failed reconfigure into a silent one (SECURE-QUAL-03).
+line-length = 120
+
+[lint]
+select = [
+    "E", "F",      # pycodestyle errors, pyflakes
+    "W",           # pycodestyle warnings
+    "B",           # bugbear
+    "BLE",         # blind except
+    "PL",          # pylint subset (PLW1510: subprocess.run without check=)
+    "EXE",         # shebang/executable-bit consistency
+    "S",           # bandit: security
+    "RUF",
+]
+ignore = [
+    # subprocess with a fixed argv and no shell is the intended pattern here;
+    # every call site is a constant command, and S603/S607 flag the mechanism
+    # rather than a defect. The argv construction is what matters and it is
+    # reviewed at each site.
+    "S603", "S607",
+    # The watchdog prints to stdout on purpose: supervisord captures it and it
+    # is the container's log.
+    "T201",
+]
+
+[lint.per-file-ignores]
+"mcp/**" = ["PLR0913"]
+# main() is the watchdog's 2-second poll loop: a flat sequence of independent
+# checks (blacklist sync, reload trigger, cache clear, log permissions, DNS
+# drift, log rotation). lizard measures it at CCN 31, the third highest in the
+# repository, and splitting it is a real change to the enforcement path that
+# belongs in its own commit with the Python tests that do not exist yet
+# (SECURE-TEST-02). Recorded here rather than silently excluded.
+"proxy/blacklist_watchdog.py" = ["PLR0912", "PLR0915"]

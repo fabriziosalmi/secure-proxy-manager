@@ -104,9 +104,20 @@ round trip:
 | `cd backend-go && go test -race ./...` | Backend tests + 60% coverage floor |
 | `cd waf-go && go test -race ./...` | WAF tests + 70% coverage floor |
 | `shellcheck --severity=warning proxy/*.sh deploy/*.sh scripts/*.sh tests/*.sh` | Shell lint |
+| `ruff check proxy/ mcp/` | Python lint |
+| `pytest tests/python -q` | Python tests (watchdog) |
+| `bash tests/shell/restore_test.sh` | Restore drill |
+| `docker compose -f docker-compose.yml config -q` | Compose validation |
+| `cd backend-go && gosec -severity medium -confidence medium ./...` | Security scanning (gosec half) |
 | `bash tests/shell/generate_squid_conf_test.sh` | Squid config generation |
 | `make adversarial` | Adversarial block-matrix (the suite README leads with) |
 | `bash scripts/check-version-sync.sh` | Version consistency |
+| `bash scripts/check-config-contract.sh` | /config filename contract (Go/Python/shell) |
+
+The remaining required checks run only in CI because they need to build and
+start the whole stack: the image build, the compose-up smoke test, the Playwright
+E2E suite, and Trivy. Their absence from this table is deliberate, not an
+omission — everything above is cheap enough to run before every push.
 
 ## E2E Testing
 

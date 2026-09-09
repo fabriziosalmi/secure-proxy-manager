@@ -28,7 +28,7 @@ var heuristicKeys = []string{
 // compose defaults while the database and the Settings page went on showing
 // the operator's choices (SECURE-CONF-02).
 func StartWAFReconciler(ctx context.Context, db *sql.DB, wafURL, user, pass string) {
-	track(func() {
+	Track(func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		wasReachable := false

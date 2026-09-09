@@ -355,3 +355,55 @@ func TestExportBlacklistsToFilesIsConcurrencySafe(t *testing.T) {
 		}
 	}
 }
+
+// SECURE-DOM-02. dst_allowlist.type routes an entry to one of two enforcement
+// files, and both export queries are equality tests — so a row with any third
+// value reaches neither, while the API and the UI keep listing it. New
+// databases carry a CHECK; existing ones cannot, because SQLite needs a table
+// rebuild to add one. The export must therefore refuse rather than silently
+// drop the row.
+func TestExportRefusesUnknownEgressType(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+	if err := Init(db, "admin", "hash"); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	// The CHECK protects a fresh database directly.
+	if _, err := db.Exec("INSERT INTO dst_allowlist(entry,type) VALUES('x.test','regex')"); err == nil {
+		t.Error("the CHECK constraint accepted a type outside {cidr,domain}")
+	}
+
+	// Simulate the pre-CHECK database an upgrade produces, where the constraint
+	// could not be added, and assert the exporter refuses instead of writing
+	// two files that both omit the row.
+	if _, err := db.Exec("PRAGMA writable_schema=ON"); err != nil {
+		t.Skipf("cannot simulate a pre-CHECK schema: %v", err)
+	}
+	if _, err := db.Exec(
+		"UPDATE sqlite_master SET sql=replace(sql, \" CHECK (type IN ('cidr','domain'))\", '') WHERE name='dst_allowlist'",
+	); err != nil {
+		t.Skipf("cannot rewrite the schema: %v", err)
+	}
+	if _, err := db.Exec("PRAGMA writable_schema=OFF"); err != nil {
+		t.Fatalf("writable_schema off: %v", err)
+	}
+	db.Close()
+	db2, err := Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer db2.Close()
+	if _, err := db2.Exec("INSERT INTO dst_allowlist(entry,type) VALUES('y.test','regex')"); err != nil {
+		t.Skipf("pre-CHECK schema not reproduced: %v", err)
+	}
+	if err := ExportBlacklistsToFiles(db2, dir); err == nil {
+		t.Error("the exporter wrote both allowlist files while a row belonged in neither")
+	} else if !strings.Contains(err.Error(), "neither 'cidr' nor 'domain'") {
+		t.Errorf("refused for the wrong reason: %v", err)
+	}
+}

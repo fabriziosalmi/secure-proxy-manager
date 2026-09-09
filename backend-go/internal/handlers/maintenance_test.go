@@ -328,6 +328,33 @@ func TestReloadConfigReportsWhatTheProxyDid(t *testing.T) {
 		t.Error("reported success with no acknowledgement from the proxy")
 	}
 
+	// A payload in the shape the REAL producer emits. The Python watchdog builds
+	// this with json.dump, and the fixture below is a byte-for-byte capture of
+	// that output — not a Go struct marshalled back, which is what the writeAck
+	// helper does. That distinction is the whole point: json.Marshal from an
+	// int64 emits an integer, so a Go-built fixture exercises the decoder against
+	// the one shape it cannot disagree with, and passed for the entire life of a
+	// mechanism that never worked in production (SECURE-TEST-01, SECURE-API-01).
+	t.Run("decodes the payload the Python watchdog actually writes", func(t *testing.T) {
+		var res reloadResult
+		if err := json.Unmarshal([]byte(
+			`{"trigger_mtime": 1788937285, "generator_rc": 0, "reconfigure_rc": 0, "applied": true, "at": 1788937286}`,
+		), &res); err != nil {
+			t.Fatalf("the watchdog's acknowledgement did not decode: %v", err)
+		}
+		if !res.Applied || res.TriggerMtime != 1788937285 {
+			t.Errorf("decoded wrong: applied=%v trigger_mtime=%d", res.Applied, res.TriggerMtime)
+		}
+		// And the shape that broke it: a float, which is what os.path.getmtime
+		// produced before the watchdog started writing int(). If this ever
+		// decodes cleanly the guard below is no longer needed; if it does not,
+		// the producer must keep emitting an integer.
+		var bad reloadResult
+		if err := json.Unmarshal([]byte(`{"trigger_mtime": 1788937285.959049}`), &bad); err == nil {
+			t.Error("a float trigger_mtime decoded into int64 — the producer-side int() is no longer load-bearing, update this test")
+		}
+	})
+
 	// A watchdog that applied it.
 	stamp := time.Now().Unix() + 1
 	writeAck := func(applied bool) {
@@ -362,5 +389,71 @@ func TestReloadConfigReportsWhatTheProxyDid(t *testing.T) {
 		if r3["status"] == "success" {
 			t.Error("a refused reload was reported as success — the exact failure this closes")
 		}
+	}
+}
+
+// SECURE-DOM-01. dst_allowlist.type decides which enforcement file an entry
+// reaches, and the backup omits the column. A restore that takes the column
+// default silently reclassifies a CIDR as a domain, so it is written to the
+// dstdomain ACL where Squid can never match it — under egress default-deny the
+// UI lists the destination as allowed and the proxy refuses it.
+//
+// This asserts the round trip preserves the classification, not just the entry.
+func TestBackupRestorePreservesEgressEntryType(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewMaintenanceHandlers(db, cfg)
+
+	for _, q := range []string{
+		`INSERT INTO dst_allowlist(entry, type, description) VALUES('10.0.0.0/8','cidr','lan')`,
+		`INSERT INTO dst_allowlist(entry, type, description) VALUES('example.test','domain','site')`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+
+	// Export through the real handler.
+	req := withUserContext(httptest.NewRequest(http.MethodGet, "/api/maintenance/backup-config", nil), "admin")
+	rec := httptest.NewRecorder()
+	h.BackupConfig(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("backup returned %d: %s", rec.Code, rec.Body.String())
+	}
+	backup := rec.Body.Bytes()
+
+	// Wipe and restore through the real handler.
+	if _, err := db.Exec("DELETE FROM dst_allowlist"); err != nil {
+		t.Fatalf("wipe: %v", err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(backup, &envelope); err != nil {
+		t.Fatalf("backup is not JSON: %v", err)
+	}
+	body, _ := json.Marshal(envelope["data"])
+	req = withUserContext(httptest.NewRequest(http.MethodPost, "/api/maintenance/restore-config", bytes.NewReader(body)), "admin")
+	rec = httptest.NewRecorder()
+	h.RestoreConfig(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("restore returned %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// The classification must survive, because it is what routes the entry.
+	for entry, want := range map[string]string{"10.0.0.0/8": "cidr", "example.test": "domain"} {
+		var got string
+		if err := db.QueryRow("SELECT type FROM dst_allowlist WHERE entry=?", entry).Scan(&got); err != nil {
+			t.Fatalf("%s did not survive the restore: %v", entry, err)
+		}
+		if got != want {
+			t.Errorf("%s came back as type=%q, want %q — it would be exported to the wrong ACL file", entry, got, want)
+		}
+	}
+	// And the enforcement split must therefore be right.
+	var nIP int
+	if err := db.QueryRow("SELECT COUNT(*) FROM dst_allowlist WHERE type='cidr'").Scan(&nIP); err != nil {
+		t.Fatal(err)
+	}
+	if nIP != 1 {
+		t.Errorf("dst_allow_ip.txt would receive %d rows, want 1", nIP)
 	}
 }

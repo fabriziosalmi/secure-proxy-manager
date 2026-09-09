@@ -1,4 +1,4 @@
-package main
+package engine
 
 import "regexp"
 
@@ -58,6 +58,30 @@ var blockRules = []CategoryRules{
 			r("SQLi-014", `(?i)(0x[0-9a-f]{6,}|UNHEX\s*\(|CHAR\s*\(|CAST\s*\(|CONVERT\s*\()`, 4, 3),
 			r("SQLi-015", `(?i)(%27|%23|%2d%2d)`, 4, 3),
 			r("SQLi-016", `/\*.*\*/`, 2, 3),
+			// SQLi-017: the tautology, which SQLi-006 could not see. That rule's
+			// comparands are bare digits (\d+), so admin' OR '1'='1 matched
+			// nothing — the digits are inside quotes — and ' OR 'a'='a has no
+			// digits at all. What fired instead was SQLi-015 at 4, the
+			// URL-encoded-quote signal that is deliberately below the threshold,
+			// and nothing corroborated it: the heuristics are behavioural and a
+			// single short login request triggers none. So the most commonly
+			// attempted SQLi shape passed (SECURE-INPT-01).
+			//
+			// Matched on SHAPE, not on the two sides being equal: RE2 has no
+			// backreferences, so `'x'='x'` cannot be expressed. Requiring OR/AND
+			// immediately before the comparison is what keeps prose out — an
+			// equality between quoted literals is common in text, an equality
+			// preceded by a bare OR is not. Scored to block alone, like
+			// UNION SELECT, because it also occurs in a request body where the
+			// URL-encoded-quote signal is absent and nothing else would
+			// corroborate it.
+			r("SQLi-017", `(?i)\b(?:OR|AND)\s+\(?\s*['"]?[\w.\-]{0,32}['"]?\s*=\s*['"]?[\w.\-]{0,32}['"]?`, 10, 2),
+			// SQLi-018: a quote immediately followed by a comment introducer,
+			// which truncates the rest of the statement — admin'-- defeats a
+			// password check without needing a tautology. Below the threshold on
+			// purpose: it pairs with SQLi-015 in a URL, and a lone '-- in prose
+			// should not block on its own.
+			r("SQLi-018", `(?i)['"]\s*(?:--|#)`, 6, 3),
 		},
 	},
 
@@ -447,9 +471,9 @@ var respRules = []CategoryRules{
 
 // ── Rule matching engine ────────────────────────────────────────────────────
 
-// matchRulesScored evaluates input against all rules in tiered order.
+// MatchRulesScored evaluates input against all rules in tiered order.
 // Returns all matches and the total anomaly score.
-func matchRulesScored(input string) ([]MatchResult, int) {
+func (e *Engine) MatchRulesScored(input string) ([]MatchResult, int) {
 	var matches []MatchResult
 	totalScore := 0
 	matched := make(map[string]bool) // Deduplicate by rule ID
@@ -477,12 +501,12 @@ func matchRulesScored(input string) ([]MatchResult, int) {
 	var compactReady bool
 
 	for tier := 1; tier <= 3; tier++ {
-		if totalScore >= blockThreshold {
+		if e.Blocked(totalScore) {
 			break // Early exit — score already over threshold, no need to check more rules
 		}
 
 		for _, cr := range blockRules {
-			if !isCategoryEnabled(cr.Category) {
+			if !e.CategoryEnabled(cr.Category) {
 				continue // Security Pack disabled
 			}
 			for _, rule := range cr.Rules {
@@ -525,4 +549,31 @@ func matchRulesScored(input string) ([]MatchResult, int) {
 	}
 
 	return matches, totalScore
+}
+
+// BlockRules is the request-side rule set, for callers that need to describe
+// the configuration (the ISTag digest, the /rules listing). The slice is not
+// copied: it is written once at startup by LoadCustomRules and read-only after.
+func BlockRules() []CategoryRules { return blockRules }
+
+// MatchResponseRules evaluates a response body against the response-side rule
+// set, returning the anomaly score, the rule IDs that fired and the first
+// category to fire. It lives here rather than in the transport because it is
+// the same decision as MatchRulesScored, on the other direction of traffic.
+func (e *Engine) MatchResponseRules(body string) (score int, ruleIDs []string, category string) {
+	for _, cr := range respRules {
+		if !e.CategoryEnabled(cr.Category) {
+			continue
+		}
+		for _, rule := range cr.Rules {
+			if rule.Pattern.MatchString(body) {
+				score += rule.Severity
+				ruleIDs = append(ruleIDs, rule.ID)
+				if category == "" {
+					category = cr.Category
+				}
+			}
+		}
+	}
+	return score, ruleIDs, category
 }

@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/atomicfile"
 )
 
 // Config holds all runtime configuration values.
@@ -251,7 +253,11 @@ func loadOrGenerateEncKey() string {
 		log.Warn().Err(err).Str("dir", stateDir()).Msg("encryption key: cannot create the state directory — key will not survive restart")
 		return key
 	}
-	if err := os.WriteFile(encFile, []byte(key), 0o600); err != nil {
+	// Atomic: a torn write here is not recoverable. The read side above accepts
+	// the file only if it trims to exactly 64 characters, so a short file is
+	// rejected and a NEW key is generated — silently orphaning every setting the
+	// old one encrypted (SECURE-DATA-01).
+	if err := atomicfile.Write(encFile, []byte(key), 0o600); err != nil {
 		log.Warn().Err(err).Str("path", encFile).Msg("encryption key: cannot persist — key will not survive restart")
 	}
 	return key
@@ -285,7 +291,10 @@ func loadOrGenerateSecret() string {
 		log.Warn().Err(err).Str("dir", stateDir()).Msg("JWT secret: cannot create the state directory — sessions will not survive restart")
 		return secret
 	}
-	if err := os.WriteFile(jwtFile, []byte(secret), 0o600); err != nil {
+	// Atomic, for the same reason as the encryption key: a short file is
+	// rejected on read and replaced, which invalidates every live session
+	// (SECURE-DATA-01).
+	if err := atomicfile.Write(jwtFile, []byte(secret), 0o600); err != nil {
 		log.Warn().Err(err).Str("path", jwtFile).Msg("JWT secret: cannot persist — sessions will not survive restart")
 	}
 	return secret

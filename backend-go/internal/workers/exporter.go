@@ -37,7 +37,7 @@ var exporter *Exporter
 func StartExporter(ctx context.Context, db *sql.DB, configDir string) *Exporter {
 	e := &Exporter{db: db, configDir: configDir, signal: make(chan struct{}, 1)}
 	exporter = e
-	track(func() {
+	Track(func() {
 		for {
 			select {
 			case <-ctx.Done():

@@ -147,7 +147,21 @@ Truncates every exported table except `users`. Use with care.
 POST /api/maintenance/reload-config
 ```
 
-Asks the proxy to regenerate `squid.conf` from the latest blacklist/whitelist files and reload. Equivalent to `squid -k reconfigure`.
+Asks the proxy to regenerate `squid.conf` from the latest blacklist/whitelist
+files and reload.
+
+**This call blocks.** It writes a trigger file and then waits up to **8 seconds**
+for the proxy's watchdog to acknowledge what it did, so a client should allow at
+least that. There are three outcomes, and a `200` does not on its own mean the
+reload was applied:
+
+| HTTP | `status` | Meaning |
+|---|---|---|
+| `200` | `success` | The generator ran, squid accepted the config, and it is live |
+| `500` | `error` (`code: reload_failed`) | The proxy refused the new config and **kept the previous one**. `data.generator_rc` and `data.reconfigure_rc` say which step failed |
+| `200` | `pending` | Nothing acknowledged within the timeout — check that the proxy container is running |
+
+A caller that treats any `200` as success will read `pending` as applied.
 
 ---
 

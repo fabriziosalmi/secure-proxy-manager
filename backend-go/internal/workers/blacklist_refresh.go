@@ -34,7 +34,7 @@ var defaultDomainLists = []string{
 // each export it signals dnsmasq to reload (Squid's blacklists are picked up
 // separately by the proxy-side watchdog; only the DNS sinkhole needs the nudge).
 func StartBlacklistRefresh(ctx context.Context, db *sql.DB, configDir string) {
-	track(func() {
+	Track(func() {
 		for {
 			// Re-read settings on each cycle so changes take effect.
 			enabled, interval := readRefreshSettings(db)

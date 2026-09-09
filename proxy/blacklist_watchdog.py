@@ -52,6 +52,26 @@ def mtime(path):
         return 0
 
 
+def trigger_stamp(path, fallback):
+    """The stamp the backend wrote INTO the trigger file, as an int.
+
+    The backend writes strconv.FormatInt(time.Now().Unix()) as the file's
+    CONTENT and then waits for an acknowledgement carrying a trigger_mtime it
+    can compare against that value. Reading the content rather than the file's
+    mtime removes two failure modes at once: os.path.getmtime returns a float,
+    and Go's encoding/json refuses any float for the int64 field it decodes
+    into — so every acknowledgement failed to parse and the endpoint could only
+    ever answer "pending" (SECURE-API-01). Using the content also makes the
+    comparison independent of filesystem timestamp granularity and of any skew
+    between the writer's clock and the file's recorded mtime.
+    """
+    try:
+        with open(path) as fh:
+            return int(fh.read().strip())
+    except (OSError, ValueError):
+        return int(fallback)
+
+
 def resolved_ips():
     """Current IPs of the dns + waf service names (via Docker's embedded DNS).
 
@@ -72,6 +92,9 @@ def resolved_ips():
 
 HEARTBEAT = "/var/log/squid/watchdog.heartbeat"
 
+# Seconds between the periodic maintenance passes inside the 2s poll loop.
+STATS_INTERVAL_S = 10
+
 
 def write_result(trigger, trigger_mtime, gen_rc, reconf_rc):
     """Acknowledge a trigger so the backend can tell whether it was applied.
@@ -87,7 +110,9 @@ def write_result(trigger, trigger_mtime, gen_rc, reconf_rc):
     """
     path = f"/config/.{trigger}.result"
     payload = {
-        "trigger_mtime": trigger_mtime,
+        # Always an int: Go decodes this into an int64 and encoding/json
+        # refuses any JSON float for an integer field (SECURE-API-01).
+        "trigger_mtime": int(trigger_mtime),
         "generator_rc": gen_rc,
         "reconfigure_rc": reconf_rc,
         "applied": gen_rc == 0 and reconf_rc == 0,
@@ -133,7 +158,7 @@ def squid_config_ok():
     reconfigure, so an unparsable ACL set is refused rather than loaded."""
     try:
         res = subprocess.run(["/usr/sbin/squid", "-k", "parse"],
-                             capture_output=True, timeout=15)
+                             check=False, capture_output=True, timeout=15)
         return res.returncode == 0
     except Exception as exc:  # noqa: BLE001
         print(f"[watchdog] squid -k parse failed to run: {exc}", flush=True)
@@ -150,11 +175,11 @@ def main():
 
     # Write Squid version at startup to /config/squid_version.txt
     try:
-        res = subprocess.run(["/usr/sbin/squid", "-v"], capture_output=True, timeout=5, text=True)
+        res = subprocess.run(["/usr/sbin/squid", "-v"], check=False, capture_output=True, timeout=5, text=True)
         if res.returncode == 0:
             with open("/config/squid_version.txt", "w") as f:
                 f.write(res.stdout)
-    except Exception as exc:
+    except (OSError, subprocess.SubprocessError) as exc:
         print(f"[watchdog] squid version check failed: {exc}", flush=True)
 
     # Baseline = the IPs squid was configured with at startup (startup.sh ran
@@ -186,27 +211,26 @@ def main():
         if fp != resolv_fp and all(fp.split(",")):
             print(f"[watchdog] resolver drift {resolv_fp} -> {fp}, regenerating config...", flush=True)
             try:
-                subprocess.run(["/usr/local/bin/generate_squid_conf.sh"], capture_output=True, timeout=30)
-                subprocess.run(["/usr/sbin/squid", "-k", "reconfigure"], capture_output=True, timeout=10)
+                subprocess.run(["/usr/local/bin/generate_squid_conf.sh"], check=False, capture_output=True, timeout=30)
+                subprocess.run(["/usr/sbin/squid", "-k", "reconfigure"], check=False, capture_output=True, timeout=10)
                 resolv_fp = fp
             except Exception as exc:  # noqa: BLE001
                 print(f"[watchdog] resolver-drift reload error: {exc}", flush=True)
 
         # Periodically dump Squid cache stats to a shared file in /config
-        if time.time() - last_stats_time > 10:
+        if time.time() - last_stats_time > STATS_INTERVAL_S:
             last_stats_time = time.time()
-            try:
-                res = subprocess.run(
-                    ["/usr/sbin/squidclient", "-h", "127.0.0.1", "-p", "3128", "mgr:info"],
-                    capture_output=True,
-                    timeout=5,
-                    text=True
-                )
-                if res.returncode == 0:
-                    with open("/config/cache_stats.txt", "w") as f:
-                        f.write(res.stdout)
-            except Exception as exc:
-                print(f"[watchdog] stats extraction error: {exc}", flush=True)
+        # Cache statistics are NOT collected here. This used to invoke
+        # /usr/sbin/squidclient, which is absent from the image and is not
+        # packaged for Ubuntu 26.04, so every attempt raised FileNotFoundError
+        # into a blind handler and /config/cache_stats.txt was never written —
+        # the dashboard has shown zeros since the feature was added
+        # (SECURE-CONF-02). Squid's own cache manager is reachable only at
+        # /squid-internal-mgr/, which this configuration denies, so making it
+        # work would mean opening an internal endpoint for a dashboard panel.
+        # The backend already reports "simulated": true when the file is
+        # missing; the UI now renders that as "not collected" instead of as a
+        # cache with a 0% hit rate.
 
         # Keep Squid logs world-readable for the backend tailer.
         for log in LOGS:
@@ -221,7 +245,7 @@ def main():
         if day != last_rotate_day:
             last_rotate_day = day
             try:
-                subprocess.run(["/usr/sbin/squid", "-k", "rotate"], capture_output=True, timeout=10)
+                subprocess.run(["/usr/sbin/squid", "-k", "rotate"], check=False, capture_output=True, timeout=10)
                 print("[watchdog] daily squid -k rotate", flush=True)
             except Exception as exc:  # noqa: BLE001
                 print(f"[watchdog] rotate error: {exc}", flush=True)
@@ -229,12 +253,23 @@ def main():
         # Check reload-squid trigger
         mt_reload = mtime("/config/.reload-squid")
         if mt_reload != mtimes["/config/.reload-squid"]:
-            mtimes["/config/.reload-squid"] = mt_reload
+            # The mtime is NOT recorded here. Doing so consumed the trigger
+            # before the work was attempted, so any exception below jumped to
+            # the handler, wrote no acknowledgement, and left the next poll
+            # seeing no change — the operator's configuration change was
+            # dropped permanently and never retried, while the database and the
+            # UI showed it as applied (SECURE-ERR-01). It is recorded after the
+            # attempt completes, which is the same rule the blacklist copy path
+            # below already follows.
+            stamp = trigger_stamp("/config/.reload-squid", mt_reload)
             if os.path.exists("/config/.reload-squid"):
                 print("[watchdog] reload-squid trigger detected, regenerating config...", flush=True)
+                applied = False
                 try:
                     # Run the configuration generator script
-                    gen_res = subprocess.run(["/usr/local/bin/generate_squid_conf.sh"], capture_output=True, timeout=30)
+                    gen_res = subprocess.run(
+                        ["/usr/local/bin/generate_squid_conf.sh"],
+                        check=False, capture_output=True, timeout=30)
                     print(f"[watchdog] generate_squid_conf.sh rc={gen_res.returncode}", flush=True)
                     # A failed generation leaves squid.conf part-mutated — the
                     # base was already copied over it, so the egress
@@ -244,17 +279,32 @@ def main():
                         print("[watchdog] generation FAILED — keeping the running config, not reconfiguring",
                               flush=True)
                         print(gen_res.stderr.decode("utf-8", "replace")[:2000], flush=True)
-                        write_result("reload-squid", mt_reload, gen_res.returncode, None)
+                        write_result("reload-squid", stamp, gen_res.returncode, None)
                     elif not squid_config_ok():
                         print("[watchdog] generated config does not parse — refusing to reconfigure",
                               flush=True)
-                        write_result("reload-squid", mt_reload, 0, 1)
+                        write_result("reload-squid", stamp, 0, 1)
                     else:
-                        rec_res = subprocess.run(["/usr/sbin/squid", "-k", "reconfigure"], capture_output=True, timeout=10)
+                        rec_res = subprocess.run(
+                            ["/usr/sbin/squid", "-k", "reconfigure"],
+                            check=False, capture_output=True, timeout=10)
                         print(f"[watchdog] squid reconfigure rc={rec_res.returncode}", flush=True)
-                        write_result("reload-squid", mt_reload, gen_res.returncode, rec_res.returncode)
-                except Exception as exc:
+                        write_result("reload-squid", stamp, gen_res.returncode, rec_res.returncode)
+                    applied = True
+                except (OSError, subprocess.SubprocessError) as exc:
+                    # Narrow, and it reports rather than absorbing: the backend
+                    # is waiting for an acknowledgement and would otherwise time
+                    # out into "pending" with no record that the attempt failed.
                     print(f"[watchdog] reload error: {exc}", flush=True)
+                    write_result("reload-squid", stamp, 1, None)
+                if applied:
+                    # Consume the trigger only once the attempt has run to
+                    # completion. On an exception the mtime stays where it was,
+                    # so the next 2s poll retries instead of dropping the
+                    # operator's change (SECURE-ERR-01).
+                    mtimes["/config/.reload-squid"] = mt_reload
+            else:
+                mtimes["/config/.reload-squid"] = mt_reload
 
         # Check clear-cache trigger
         mt_clear = mtime("/config/.clear-cache")
@@ -263,12 +313,16 @@ def main():
             if os.path.exists("/config/.clear-cache"):
                 print("[watchdog] clear-cache trigger detected, purging cache...", flush=True)
                 try:
-                    purge_res = subprocess.run(["/usr/sbin/squid", "-k", "purge"], capture_output=True, timeout=20)
+                    purge_res = subprocess.run(
+                        ["/usr/sbin/squid", "-k", "purge"],
+                        check=False, capture_output=True, timeout=20)
                     print(f"[watchdog] squid -k purge rc={purge_res.returncode}", flush=True)
                     if purge_res.returncode != 0:
                         print("[watchdog] purge failed, trying fallback shutdown...", flush=True)
-                        subprocess.run(["/usr/sbin/squid", "-k", "shutdown"], capture_output=True, timeout=20)
-                except Exception as exc:
+                        subprocess.run(
+                            ["/usr/sbin/squid", "-k", "shutdown"],
+                            check=False, capture_output=True, timeout=20)
+                except (OSError, subprocess.SubprocessError) as exc:
                     print(f"[watchdog] clear cache error: {exc}", flush=True)
 
         # Sync changed blacklist files and reconfigure Squid.
@@ -295,7 +349,7 @@ def main():
             try:
                 result = subprocess.run(
                     ["/usr/sbin/squid", "-k", "reconfigure"],
-                    capture_output=True,
+                    check=False, capture_output=True,
                     timeout=10,
                 )
                 print(f"[watchdog] squid reconfigure rc={result.returncode}", flush=True)

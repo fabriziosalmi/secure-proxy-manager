@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/go-icap/icap"
+
+	"secure-proxy-waf/internal/engine"
 )
 
 // SECURE-QUAL-02. handleReqmod was 226 NLOC at cyclomatic complexity 48 — the
@@ -77,11 +79,7 @@ func runReqmod(t *testing.T, r *http.Request, clientIP string) verdict {
 }
 
 func TestHandleReqmodVerdicts(t *testing.T) {
-	// blockThreshold is a package-level global that other tests in this package
-	// overwrite, so pin it here and restore it.
-	prev := blockThreshold
-	blockThreshold = 10
-	t.Cleanup(func() { blockThreshold = prev })
+	withEngine(t, engine.Config{BlockThreshold: 10})
 
 	cases := []struct {
 		name     string
@@ -101,7 +99,13 @@ func TestHandleReqmodVerdicts(t *testing.T) {
 				return httptest.NewRequest("GET", "http://example.com/login?u=%27+OR+1%3D1--", nil)
 			},
 			clientIP: "198.51.100.11",
-			want:     verdict{ICAPCode: 200, HTTPStatus: 403, Action: "block", Score: 11, Rules: "SQLi-006,SQLi-015", FeatureFound: true},
+			// Score and rules changed deliberately when SQLi-017 was added for
+			// quoted tautologies (SECURE-INPT-01): this payload now matches it
+			// too, so the normalized scan alone crosses the threshold and the
+			// raw-URL rescan — which contributed SQLi-015 — is skipped. The
+			// DECISION is unchanged; the golden is updated because detection
+			// improved, not because a refactor moved something.
+			want: verdict{ICAPCode: 200, HTTPStatus: 403, Action: "block", Score: 17, Rules: "SQLi-006,SQLi-017", FeatureFound: true},
 		},
 		{
 			name: "XSS in the query string blocks",
@@ -110,6 +114,30 @@ func TestHandleReqmodVerdicts(t *testing.T) {
 			},
 			clientIP: "198.51.100.12",
 			want:     verdict{ICAPCode: 200, HTTPStatus: 403, Action: "block", Score: 10, Rules: "XSS-001", FeatureFound: true},
+		},
+		{
+			name: "quoted SQL tautology blocks",
+			request: func() *http.Request {
+				return httptest.NewRequest("GET", "http://example.com/login?user=admin%27+OR+%271%27%3D%271&pass=x", nil)
+			},
+			clientIP: "198.51.100.20",
+			want:     verdict{ICAPCode: 200, HTTPStatus: 403, Action: "block", Score: 10, Rules: "SQLi-017", FeatureFound: true},
+		},
+		{
+			name: "comment-terminator blocks",
+			request: func() *http.Request {
+				return httptest.NewRequest("GET", "http://example.com/login?user=admin%27--&pass=x", nil)
+			},
+			clientIP: "198.51.100.21",
+			want:     verdict{ICAPCode: 200, HTTPStatus: 403, Action: "block", Score: 10, Rules: "SQLi-015,SQLi-018", FeatureFound: true},
+		},
+		{
+			name: "quoted equality in prose is allowed",
+			request: func() *http.Request {
+				return httptest.NewRequest("GET", "http://example.com/faq?q=is+%27true%27+%3D+%27true%27+in+python", nil)
+			},
+			clientIP: "198.51.100.22",
+			want:     verdict{ICAPCode: 204, Action: "allow", Score: 4, Rules: "SQLi-015", FeatureFound: true},
 		},
 		{
 			name:     "path traversal blocks",
@@ -186,9 +214,7 @@ func TestHandleReqmodVerdicts(t *testing.T) {
 // let a clean GET vouch for a POST to the same URL — the cache key is scoped by
 // method precisely because that was once possible.
 func TestHandleReqmodSafeCacheScoping(t *testing.T) {
-	prev := blockThreshold
-	blockThreshold = 10
-	t.Cleanup(func() { blockThreshold = prev })
+	withEngine(t, engine.Config{BlockThreshold: 10})
 
 	const u = "http://example.com/cache-scope-probe"
 	first := runReqmod(t, httptest.NewRequest("GET", u, nil), "198.51.100.30")
@@ -215,9 +241,6 @@ func TestHandleReqmodSafeCacheScoping(t *testing.T) {
 // threshold around a rule of known score rather than by constructing a payload
 // that happens to land on it.
 func TestHandleReqmodBlocksAtExactlyTheThreshold(t *testing.T) {
-	prev := blockThreshold
-	t.Cleanup(func() { blockThreshold = prev })
-
 	const xssScore = 10 // XSS-001, pinned by TestHandleReqmodVerdicts above
 
 	newReq := func(n int) *http.Request {
@@ -225,13 +248,13 @@ func TestHandleReqmodBlocksAtExactlyTheThreshold(t *testing.T) {
 		return httptest.NewRequest("GET", fmt.Sprintf("http://example.com/thr%d?q=<script>alert(1)</script>", n), nil)
 	}
 
-	blockThreshold = xssScore
+	withEngine(t, engine.Config{BlockThreshold: xssScore})
 	if v := runReqmod(t, newReq(1), "198.51.100.40"); v.Action != "block" {
-		t.Errorf("score %d at threshold %d was not blocked: %s", xssScore, blockThreshold, v)
+		t.Errorf("score %d at threshold %d was not blocked: %s", xssScore, eng.BlockThreshold(), v)
 	}
 
-	blockThreshold = xssScore + 1
+	withEngine(t, engine.Config{BlockThreshold: xssScore + 1})
 	if v := runReqmod(t, newReq(2), "198.51.100.41"); v.Action != "allow" {
-		t.Errorf("score %d below threshold %d was blocked: %s", xssScore, blockThreshold, v)
+		t.Errorf("score %d below threshold %d was blocked: %s", xssScore, eng.BlockThreshold(), v)
 	}
 }

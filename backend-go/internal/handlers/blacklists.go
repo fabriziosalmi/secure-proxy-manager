@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -301,6 +302,18 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 // AddDstAllow adds an entry to the egress destination allowlist (default-deny
 // egress). The entry is auto-classified: an IP or CIDR is stored as 'cidr'
 // (Squid `dst`), anything else as a domain (Squid `dstdomain`).
+// egressEntryType classifies an egress allowlist entry into the two values the
+// exporter understands. It is the single definition of that rule: the value
+// decides which enforcement file the entry reaches, and having a second writer
+// (the config restore) guess differently is what let a restored CIDR land in
+// the domain ACL (SECURE-DOM-01).
+func egressEntryType(entry string) string {
+	if isValidCIDR(entry) || net.ParseIP(entry) != nil {
+		return "cidr"
+	}
+	return "domain"
+}
+
 func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) {
 	var item models.EgressAllowItem
 	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
@@ -316,10 +329,8 @@ func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid entry")
 		return
 	}
-	typ := "domain"
-	if isValidCIDR(entry) || net.ParseIP(entry) != nil {
-		typ = "cidr"
-	} else if !strings.Contains(entry, ".") || strings.HasPrefix(entry, "-") {
+	typ := egressEntryType(entry)
+	if typ != "cidr" && (!strings.Contains(entry, ".") || strings.HasPrefix(entry, "-")) {
 		writeError(w, http.StatusBadRequest, "entry must be an IP, CIDR, or domain")
 		return
 	}
@@ -389,6 +400,12 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 // fire — the guard would read as protection and provide none (SECURE-INPT-01).
 const maxImportSize = 32 * 1024 * 1024 // 32 MB
 
+// Import ingests a blacklist feed, from a URL or an inline body, into the IP or
+// domain blacklist. It was a single 155-line body at CCN 41 — the repository's
+// most complex unit (SECURE-QUAL-02) — mixing four separable jobs: deciding
+// where the bytes come from, classifying each line, de-duplicating against what
+// is already stored, and writing the result in batches. Each is now its own
+// function, and this one is the sequence of them.
 func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	var req models.ImportBlacklistRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -400,54 +417,92 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	blType := strings.ToLower(req.Type)
-	if blType != "ip" && blType != "domain" {
+	table, col, ok := importTarget(blType)
+	if !ok {
 		writeError(w, http.StatusBadRequest, "type must be 'ip' or 'domain'")
 		return
 	}
 
-	var content string
-	if req.URL != "" {
-		// SSRF protection.
-		if ssrf, err := isSSRFTarget(req.URL); err != nil || ssrf {
-			if err != nil {
-				writeError(w, http.StatusBadRequest, "URL validation failed: "+err.Error())
-			} else {
-				writeError(w, http.StatusForbidden, "requests to private/reserved networks are blocked")
-			}
-			return
-		}
-		body, err := downloadWithRetry(req.URL, maxImportSize)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "failed to fetch URL: "+err.Error())
-			return
-		}
-		content = string(body)
-	} else if req.Content != "" {
-		content = req.Content
-	} else {
-		writeError(w, http.StatusBadRequest, "either 'url' or 'content' must be provided")
+	content, status, detail := resolveImportSource(&req)
+	if status != 0 {
+		writeError(w, status, detail)
 		return
 	}
 
-	table := "ip_blacklist"
-	col := "ip"
-	if blType == "domain" {
-		table = "domain_blacklist"
-		col = "domain"
-	}
-
-	// Load existing entries — used for in-memory de-duplication of the
-	// import. A scan failure means we silently lose track of an existing
-	// row and may try to re-insert it (INSERT OR IGNORE saves us at the
-	// SQL layer, but the resulting "added" counter will be wrong). Log
-	// and surface a server error if we can't even open the cursor.
-	existing := map[string]struct{}{}
-	rows, err := h.db.Query(fmt.Sprintf("SELECT %s FROM %s", col, table))
+	existing, err := h.existingEntries(table, col)
 	if err != nil {
 		log.Error().Err(err).Str("table", table).Msg("import: cannot read existing entries")
 		writeError(w, http.StatusInternalServerError, "database error reading existing entries")
 		return
 	}
+
+	toInsert, stats := parseImport(content, blType, existing)
+	insertFailed := h.insertImported(table, col, toInsert)
+	stats.added -= insertFailed
+	stats.skipped += insertFailed
+
+	if stats.added > 0 {
+		requestExport()
+	}
+	msg := fmt.Sprintf("Successfully imported %d entries (%d skipped/invalid)", stats.added, stats.skipped)
+	if stats.bogonSkipped > 0 {
+		msg += fmt.Sprintf(" — %d private/bogon ranges were dropped (a source IP blacklist must not include LAN ranges)", stats.bogonSkipped)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":  "success",
+		"message": msg,
+		"data":    map[string]any{"added": stats.added, "skipped": stats.skipped, "bogon_skipped": stats.bogonSkipped},
+	})
+}
+
+// importTarget maps the request's list type to the table and column it feeds.
+// An unknown type reports ok=false rather than defaulting to a table, so a typo
+// cannot silently populate the IP blacklist with domains.
+func importTarget(blType string) (table, col string, ok bool) {
+	switch blType {
+	case "ip":
+		return "ip_blacklist", "ip", true
+	case "domain":
+		return "domain_blacklist", "domain", true
+	default:
+		return "", "", false
+	}
+}
+
+// resolveImportSource returns the feed body to parse, or the HTTP status and
+// detail the caller must send. A URL is fetched only after the SSRF check, and
+// the download is bounded by maxImportSize.
+func resolveImportSource(req *models.ImportBlacklistRequest) (content string, status int, detail string) {
+	if req.URL != "" {
+		if ssrf, err := isSSRFTarget(req.URL); err != nil || ssrf {
+			if err != nil {
+				return "", http.StatusBadRequest, "URL validation failed: " + err.Error()
+			}
+			return "", http.StatusForbidden, "requests to private/reserved networks are blocked"
+		}
+		body, err := downloadWithRetry(req.URL, maxImportSize)
+		if err != nil {
+			return "", http.StatusBadRequest, "failed to fetch URL: " + err.Error()
+		}
+		return string(body), 0, ""
+	}
+	if req.Content != "" {
+		return req.Content, 0, ""
+	}
+	return "", http.StatusBadRequest, "either 'url' or 'content' must be provided"
+}
+
+// existingEntries loads the entries already stored, for in-memory de-duplication
+// of the import. A single malformed row is logged and skipped: INSERT OR IGNORE
+// still protects the table, only the "added" counter would drift. Failing to
+// open the cursor at all is an error, because then every entry looks new.
+func (h *BlacklistHandlers) existingEntries(table, col string) (map[string]struct{}, error) {
+	rows, err := h.db.Query(fmt.Sprintf("SELECT %s FROM %s", col, table))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close() //nolint:errcheck
+	existing := map[string]struct{}{}
 	for rows.Next() {
 		var v string
 		if err := rows.Scan(&v); err != nil {
@@ -459,63 +514,117 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	if err := rows.Err(); err != nil {
 		log.Warn().Err(err).Str("table", table).Msg("import: dedup cursor terminated with error — duplicate count may be off")
 	}
-	rows.Close()
+	return existing, nil
+}
 
-	var toInsert [][2]string
+// entryVerdict is what the parser decided about one feed line. The distinction
+// between ignored and invalid is what keeps the response counters honest: a
+// comment is not a rejected entry, and must not inflate "skipped".
+type entryVerdict int
+
+const (
+	entryIgnored  entryVerdict = iota // blank line or comment — not counted at all
+	entryAccepted                     // importable
+	entryInvalid                      // counted as skipped
+	entryBogon                        // counted as skipped and as bogon_skipped
+)
+
+// importStats are the counters returned to the caller.
+type importStats struct {
+	added        int
+	skipped      int
+	bogonSkipped int
+}
+
+// parseImport classifies every line of the feed and returns the rows to write.
+// It de-duplicates against existing, and against itself: existing is updated as
+// it goes, so a feed that repeats an entry contributes it once.
+func parseImport(content, blType string, existing map[string]struct{}) ([][2]string, importStats) {
 	importDesc := "Imported on " + time.Now().Format("2006-01-02")
-	added, skipped, bogonSkipped := 0, 0, 0
+	var toInsert [][2]string
+	var stats importStats
 	for _, line := range strings.Split(content, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+		entry, verdict := classifyImportEntry(line, blType)
+		switch verdict {
+		case entryIgnored:
 			continue
-		}
-		parts := strings.Fields(line)
-		if len(parts) == 0 {
+		case entryBogon:
+			stats.bogonSkipped++
+			stats.skipped++
 			continue
-		}
-		entry := parts[len(parts)-1]
-		if blType == "ip" {
-			if !isValidCIDR(entry) {
-				skipped++
-				continue
-			}
-			// Firehol/bogon feeds include RFC1918 + loopback ranges; importing
-			// them into the source ip_blacklist would lock out the LAN clients.
-			if isLANBogonCIDR(entry) {
-				bogonSkipped++
-				skipped++
-				continue
-			}
-		} else {
-			// Strip URL scheme.
-			if strings.HasPrefix(entry, "http://") || strings.HasPrefix(entry, "https://") {
-				u, err := url.Parse(entry)
-				if err != nil || u.Host == "" {
-					skipped++
-					continue
-				}
-				entry = u.Host
-			}
-			if !strings.Contains(entry, ".") || strings.HasPrefix(entry, ".") || strings.HasSuffix(entry, ".") {
-				skipped++
-				continue
-			}
+		case entryInvalid:
+			stats.skipped++
+			continue
+		case entryAccepted:
 		}
 		if _, exists := existing[entry]; exists {
-			skipped++
+			stats.skipped++
 			continue
 		}
 		existing[entry] = struct{}{}
 		toInsert = append(toInsert, [2]string{entry, importDesc})
-		added++
+		stats.added++
 	}
+	return toInsert, stats
+}
 
-	// Batch insert: 5000 rows per transaction. Track per-statement failures
-	// so the response counter reflects what actually landed in the DB.
-	const batchSize = 5000
+// classifyImportEntry extracts the entry from one feed line and judges it. The
+// entry is the last field, which handles both a bare list and the hosts-file
+// form ("0.0.0.0 evil.example").
+func classifyImportEntry(line, blType string) (string, entryVerdict) {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+		return "", entryIgnored
+	}
+	parts := strings.Fields(line)
+	if len(parts) == 0 {
+		return "", entryIgnored
+	}
+	entry := parts[len(parts)-1]
+	if blType == "ip" {
+		return classifyImportIP(entry)
+	}
+	return classifyImportDomain(entry)
+}
+
+func classifyImportIP(entry string) (string, entryVerdict) {
+	if !isValidCIDR(entry) {
+		return "", entryInvalid
+	}
+	// Firehol/bogon feeds include RFC1918 + loopback ranges; importing them
+	// into the source ip_blacklist would lock out the LAN clients.
+	if isLANBogonCIDR(entry) {
+		return "", entryBogon
+	}
+	return entry, entryAccepted
+}
+
+func classifyImportDomain(entry string) (string, entryVerdict) {
+	// Strip URL scheme.
+	if strings.HasPrefix(entry, "http://") || strings.HasPrefix(entry, "https://") {
+		u, err := url.Parse(entry)
+		if err != nil || u.Host == "" {
+			return "", entryInvalid
+		}
+		entry = u.Host
+	}
+	if !strings.Contains(entry, ".") || strings.HasPrefix(entry, ".") || strings.HasSuffix(entry, ".") {
+		return "", entryInvalid
+	}
+	return entry, entryAccepted
+}
+
+// importBatchSize bounds one transaction. A feed of hundreds of thousands of
+// entries is committed in chunks so a single failure costs one batch, not the
+// whole import.
+const importBatchSize = 5000
+
+// insertImported writes the parsed rows and returns how many did not land, so
+// the response counters describe the database rather than the parse.
+func (h *BlacklistHandlers) insertImported(table, col string, toInsert [][2]string) int {
 	insertFailed := 0
-	for i := 0; i < len(toInsert); i += batchSize {
-		end := i + batchSize
+	for i := 0; i < len(toInsert); i += importBatchSize {
+		end := i + importBatchSize
 		if end > len(toInsert) {
 			end = len(toInsert)
 		}
@@ -538,31 +647,26 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 				log.Debug().Err(err).Str("entry", pair[0]).Msg("import: row insert failed")
 			}
 		}
-		stmt.Close()
+		stmt.Close() //nolint:errcheck
 		if err := tx.Commit(); err != nil {
 			_ = tx.Rollback()
 			log.Error().Err(err).Msg("batch insert commit failed")
 			insertFailed += end - i
 		}
 	}
-	added -= insertFailed
-	skipped += insertFailed
-	if added > 0 {
-		requestExport()
-	}
-	msg := fmt.Sprintf("Successfully imported %d entries (%d skipped/invalid)", added, skipped)
-	if bogonSkipped > 0 {
-		msg += fmt.Sprintf(" — %d private/bogon ranges were dropped (a source IP blacklist must not include LAN ranges)", bogonSkipped)
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status":  "success",
-		"message": msg,
-		"data":    map[string]any{"added": added, "skipped": skipped, "bogon_skipped": bogonSkipped},
-	})
+	return insertFailed
 }
 
 // maxGeoCountries mirrors the bound declared on ImportGeoBlacklistRequest.
 const maxGeoCountries = 50
+
+// geoFetchConcurrency bounds the parallel feed downloads, and geoFeedTimeout
+// bounds each one. Together they keep a 50-country import inside the server's
+// 60-second WriteTimeout instead of outliving it (SECURE-PERF-01).
+const (
+	geoFetchConcurrency = 8
+	geoFeedTimeout      = 10 * time.Second
+)
 
 func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 	var req models.ImportGeoBlacklistRequest
@@ -633,37 +737,72 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 	}
-	client.Timeout = 30 * time.Second
 
 	ccRe := regexp.MustCompile(`^[a-zA-Z]{2}$`)
-	for _, country := range req.Countries {
+
+	// Fetch the feeds CONCURRENTLY, bounded. Sequentially this was up to 50
+	// countries times two candidate URLs at a 30-second timeout each, inside the
+	// request goroutine, against a server WriteTimeout of 60 seconds — so a
+	// large import reliably outlived its own response deadline while continuing
+	// to insert rows, and the operator was told it failed for work that was
+	// done. The bound is the same 8 the WAF uses for its notification pool, and
+	// the per-feed timeout drops to 10s: a country zone file that has not
+	// started arriving by then is not going to help (SECURE-PERF-01).
+	client.Timeout = geoFeedTimeout
+	type fetched struct {
+		cc      string
+		content string
+		err     string
+	}
+	results := make([]fetched, len(req.Countries))
+	sem := make(chan struct{}, geoFetchConcurrency)
+	var wg sync.WaitGroup
+	for i, country := range req.Countries {
 		cc := strings.ToLower(country)
 		if !ccRe.MatchString(cc) {
-			fetchErrors = append(fetchErrors, cc+": invalid country code")
+			results[i] = fetched{cc: cc, err: cc + ": invalid country code"}
 			continue
 		}
-		urls := []string{}
-		if h.cfg.GeoIPURL != "" {
-			urls = append(urls, h.cfg.GeoIPURL+"?cc="+cc)
-		} else {
-			urls = append(urls,
-				"https://www.ipdeny.com/ipblocks/data/countries/"+cc+".zone",
-				"https://raw.githubusercontent.com/herrbischoff/country-ip-blocks/master/ipv4/"+cc+".cidr",
-			)
-		}
-		var content string
-		for _, u := range urls {
-			resp, err := client.Get(u)
-			if err == nil && resp.StatusCode == 200 {
-				data, _ := readAll(resp.Body)
-				resp.Body.Close()
-				content = string(data)
-				break
+		wg.Add(1)
+		go func(i int, cc string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			urls := []string{}
+			if h.cfg.GeoIPURL != "" {
+				urls = append(urls, h.cfg.GeoIPURL+"?cc="+cc)
+			} else {
+				urls = append(urls,
+					"https://www.ipdeny.com/ipblocks/data/countries/"+cc+".zone",
+					"https://raw.githubusercontent.com/herrbischoff/country-ip-blocks/master/ipv4/"+cc+".cidr",
+				)
 			}
-			if resp != nil {
-				resp.Body.Close()
+			for _, u := range urls {
+				resp, err := client.Get(u)
+				if err != nil {
+					continue
+				}
+				if resp.StatusCode == 200 {
+					data, _ := readAll(resp.Body)
+					resp.Body.Close() //nolint:errcheck
+					results[i] = fetched{cc: cc, content: string(data)}
+					return
+				}
+				resp.Body.Close() //nolint:errcheck
 			}
+			results[i] = fetched{cc: cc, err: strings.ToUpper(cc) + ": no data"}
+		}(i, cc)
+	}
+	wg.Wait()
+
+	for _, res := range results {
+		cc := res.cc
+		if res.err != "" {
+			fetchErrors = append(fetchErrors, res.err)
+			continue
 		}
+		content := res.content
 		if content == "" {
 			fetchErrors = append(fetchErrors, strings.ToUpper(cc)+": no data")
 			continue

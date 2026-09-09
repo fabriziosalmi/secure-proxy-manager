@@ -112,7 +112,14 @@ var publicRoutes = map[string]bool{
 // this call — /metrics, the /debug/pprof subtree, the WebSocket upgrade — are
 // included too.
 func RegisterAPIDocs(r chi.Router, authMW func(http.Handler) http.Handler) {
-	r.Get("/api/docs", func(w http.ResponseWriter, _ *http.Request) {
+	// Authenticated. The parameter was accepted and never applied, so the full
+	// catalogue — 80 routes, each with an "auth" flag naming which need no
+	// credentials — was served to anyone who could reach the UI, through the
+	// nginx `location /api/` proxy. That is a machine-readable map of the
+	// unauthenticated attack surface (SECURE-AUTH-01). Go does not error on an
+	// unused parameter and none of the enabled linters reports one, which is
+	// why unparam is now in .golangci.yml.
+	r.With(authMW).Get("/api/docs", func(w http.ResponseWriter, _ *http.Request) {
 		docs := CatalogueRoutes(r)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":    "success",

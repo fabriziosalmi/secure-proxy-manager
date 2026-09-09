@@ -3,16 +3,15 @@ package main
 import (
 	"io"
 	"net/http/httptest"
-	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/go-icap/icap"
+
+	"secure-proxy-waf/internal/engine"
 )
 
 func nopRC(s string) io.ReadCloser { return io.NopCloser(strings.NewReader(s)) }
-
-func mustCompileCI(p string) *regexp.Regexp { return regexp.MustCompile("(?i)" + p) }
 
 // Comment-based and homoglyph evasions must be normalized so the existing
 // signature rules still fire. We feed input through the same normalize → match
@@ -33,9 +32,9 @@ func TestNormalizationDefeatsEvasion(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			norm := normalizeInput(c.raw)
-			_, score := matchRulesScored(norm)
-			blocked := score >= blockThreshold
+			norm := engine.NormalizeInput(c.raw)
+			_, score := eng.MatchRulesScored(norm)
+			blocked := score >= eng.BlockThreshold()
 			if blocked != c.block {
 				t.Errorf("raw=%q normalized=%q score=%d blocked=%v want %v", c.raw, norm, score, blocked, c.block)
 			}
@@ -45,12 +44,12 @@ func TestNormalizationDefeatsEvasion(t *testing.T) {
 
 func TestIsCompressedEncoding(t *testing.T) {
 	for _, e := range []string{"gzip", "br", "deflate", "compress", "zstd", "GZIP", " gzip "} {
-		if !isCompressedEncoding(e) {
+		if !engine.IsCompressedEncoding(e) {
 			t.Errorf("isCompressedEncoding(%q) = false, want true", e)
 		}
 	}
 	for _, e := range []string{"", "identity", "  "} {
-		if isCompressedEncoding(e) {
+		if engine.IsCompressedEncoding(e) {
 			t.Errorf("isCompressedEncoding(%q) = true, want false", e)
 		}
 	}
@@ -94,22 +93,5 @@ func TestRespmodCompressedIsUninspectable(t *testing.T) {
 	}
 	if got := respmodUninspectable.Load(); got != before+1 {
 		t.Errorf("respmodUninspectable = %d, want %d", got, before+1)
-	}
-}
-
-func TestOverlyBroadRule(t *testing.T) {
-	broad := []string{".*", ".+", "", "a?", "(?i).*", "[\\s\\S]*", ".{0,}"}
-	ok := []string{"union\\s+select", "<script", "etc/passwd", "\\.\\./"}
-	for _, p := range broad {
-		re := mustCompileCI(p)
-		if reason := overlyBroadRule(re); reason == "" {
-			t.Errorf("overlyBroadRule(%q) accepted a catch-all pattern", p)
-		}
-	}
-	for _, p := range ok {
-		re := mustCompileCI(p)
-		if reason := overlyBroadRule(re); reason != "" {
-			t.Errorf("overlyBroadRule(%q) rejected a specific pattern: %s", p, reason)
-		}
 	}
 }

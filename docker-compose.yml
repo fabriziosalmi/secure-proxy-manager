@@ -262,7 +262,17 @@ services:
       # (SECURE-REL-01). The watchdog touches watchdog.heartbeat on every
       # 2s poll, so a stale mtime means it has stopped — a quiet system
       # still writes it, an absent one does not.
-      test: ["CMD-SHELL", "((squidclient -h 127.0.0.1 -p 3128 mgr:info 2>/dev/null | grep -q 'Squid Object Cache') || curl -sf --max-time 3 -x http://127.0.0.1:3128 http://www.gstatic.com/generate_204 -o /dev/null) && [ $(( $(date +%s) - $(stat -c %Y /var/log/squid/watchdog.heartbeat 2>/dev/null || echo 0) )) -lt 120 ]"]
+      #
+      # Squid liveness is `ss` on the listening port, NOT a proxied request to a
+      # third party. The old probe called squidclient, which is not installed in
+      # this image and is not packaged for Ubuntu 26.04, so that clause always
+      # failed and every 15s check fell through to fetching gstatic.com through
+      # the proxy — making container liveness contingent on internet
+      # reachability, sending ~5,700 requests a day to a Google host, and
+      # putting the probe's own destination into the access log the product
+      # analyses. Verified: an air-gapped container with a healthy squid failed
+      # that fallback (curl rc=22) while ss saw the port listening.
+      test: ["CMD-SHELL", "ss -ltn 2>/dev/null | grep -q ':3128' && [ $(( $(date +%s) - $(stat -c %Y /var/log/squid/watchdog.heartbeat 2>/dev/null || echo 0) )) -lt 120 ]"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -328,6 +338,7 @@ services:
     container_name: secure-proxy-manager-prometheus
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml

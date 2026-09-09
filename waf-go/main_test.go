@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/go-icap/icap"
+
+	"secure-proxy-waf/internal/engine"
 )
 
 // mockResponseWriter implements icap.ResponseWriter
@@ -93,8 +95,10 @@ func TestHandleReqmod_Blocked(t *testing.T) {
 	req := &icap.Request{
 		Request: httptest.NewRequest("GET", "http://example.com/login?u='OR+1=1--", nil),
 	}
-	// Set threshold low enough to block
-	blockThreshold = 1
+	// Set threshold low enough to block. withEngine restores it: this
+	// assignment used to be `blockThreshold = 1` on a package var with no
+	// cleanup, so every test that ran afterwards inherited it.
+	withEngine(t, engine.Config{BlockThreshold: 1})
 	handleReqmod(w, req)
 
 	// Should be 200 OK with the block page attached to the response
@@ -207,4 +211,16 @@ func TestCategoriesToggleEndpoint(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
+}
+
+// withEngine swaps the transport's detection engine for the duration of one
+// test and restores it afterwards. A test that needs a different block
+// threshold builds a different engine: the value is immutable, so there is no
+// longer a shared int for one test to leave changed for the next
+// (SECURE-ARCH-03).
+func withEngine(t *testing.T, cfg engine.Config) {
+	t.Helper()
+	prev := eng
+	eng = engine.New(cfg)
+	t.Cleanup(func() { eng = prev })
 }
