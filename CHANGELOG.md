@@ -13,6 +13,138 @@ a `### Removed` or `### Changed` heading with the phrase **BREAKING** and the
 changes affecting it. Retired routes answer `410 Gone` naming their replacement
 for at least one minor release before disappearing.
 
+## [3.13.0] - 2026-09-09
+
+Remediation of a full code-metrics audit of `1c81e762` — the 3.12.0 release
+itself: 36 findings admitted, 36 closed (#303). Every security-relevant fix is
+mutation-verified — the original defect restored, the test required to fail.
+
+This is a minor, not a patch: a route that used to answer without credentials
+now requires them, and an endpoint that could never report success now can.
+
+`X-API-Version` stays `1`. No documented request or response shape changed;
+the one contract change below is to a route the reference never listed as
+public, and bumping the contract version would tell every client to re-verify
+shapes that did not move.
+
+### Action required when upgrading from 3.12.0
+
+- **`GET /api/docs` now requires authentication.** **BREAKING** for any caller
+  that fetched the route catalogue anonymously — it now answers `401`.
+  `RegisterAPIDocs` accepted an auth middleware and never applied it, so the
+  complete list of 80 routes, each with a flag naming which need no
+  credentials, was served to anyone who could reach the API.
+- **`POST /api/maintenance/reload-config` can now return `success`.** It could
+  not before (see below). A caller that treated `pending` as the terminal
+  outcome, or polled around it, should re-read `docs/api/settings.md`: the
+  three outcomes and their blocking behaviour are documented there now.
+- **The WAF's source layout moved.** Detection now lives in
+  `waf-go/internal/engine`; `package main` is the ICAP transport. Nothing about
+  the running service changes, but local patches against `waf-go/*.go` need to
+  be re-applied against the new paths. The first restart after upgrading also
+  publishes a new `ISTag`, so Squid drops its cached verdicts once.
+
+### Fixed
+
+- **`POST /api/maintenance/reload-config` could never return success.** The
+  watchdog wrote `trigger_mtime` from `os.path.getmtime` — a float — and the
+  backend decodes it into an `int64`, which Go's `encoding/json` refuses for
+  every float form including `.0`. So every acknowledgement failed to parse,
+  the handler spun for its full 8-second deadline, and only the `pending`
+  branch was reachable. The stamp now comes from the trigger file's *content*,
+  which the backend already writes as an integer — removing the float, the
+  filesystem timestamp granularity and any clock skew at once. The test that
+  should have caught this built its fixture with `json.Marshal` from a Go
+  `int64`; the regression guard now runs the real Python producer in the real
+  image.
+- **The watchdog dropped reload triggers.** It recorded the trigger's mtime
+  *before* attempting the reload, so a reload that failed was never retried —
+  the trigger looked handled. The mtime is now recorded only after the attempt.
+- **A CIDR did not survive backup and restore.** The export omitted
+  `dst_allowlist.type` and the restore inserted without it, so a CIDR came back
+  classified as a domain and was written to the `dstdomain` ACL, where Squid can
+  never match it. Under egress default-deny that is a destination the UI lists
+  as allowed and the proxy refuses. The type is now re-derived on restore, and
+  a `CHECK` constraint keeps the column to the two values the exporter
+  understands.
+- **The WAF missed `admin' OR '1'='1`.** The tautology rule's comparands were
+  bare digits, so the canonical quoted form did not match. The corpus that
+  reports FN=0 for the WAF contained exactly one SQL-injection case —
+  `UNION SELECT` — and no tautology at all, so the gap was invisible to the
+  suite that certifies the detection. Both are fixed: two rules added, four
+  tautology cases added to the corpus.
+- **The proxy healthcheck depended on the internet.** Its "cheap local probe"
+  called `squidclient`, which is not in the image and is not packaged for
+  Ubuntu 26.04, so every 15-second check fell through to proxying a request to
+  an external host. Verified in an air-gapped container: the old check declared
+  a healthy Squid dead. It now uses `ss` against the listening port.
+- **Released binaries reported that they were not built by the release
+  pipeline.** The release workflow never passed `GIT_SHA` to the image build, so
+  `GitCommit` shipped as `unknown`. Confirmed against the published v3.12.0
+  image.
+- **The encryption key and the JWT secret were written non-atomically.** They
+  were the only persisted state using a plain `os.WriteFile` — truncate in
+  place, then write. A torn write there is answered by generating a *new* key,
+  silently orphaning every stored credential. Both now go through the same
+  create-temp/fsync/rename discipline the log-tailer offset already had.
+- **The security-notification queue had no owner.** Its goroutine was never
+  cancelled, waited for or drained, so alerts in flight were lost on shutdown.
+  It is now tracked, cancellable and drained, and emits a heartbeat — zero
+  notifications is a normal state, so silence could not previously be
+  distinguished from a dead worker.
+- **The WAF reported an unreadable custom-rules file as an absent one.**
+  `/config` is a bind mount and the container runs read-only with dropped
+  capabilities, so a permission problem is realistic — and it left an operator
+  running with strictly less detection than they configured, told nothing
+  distinguishable from having written no rules.
+
+### Changed
+
+- **The WAF's management credential is compared in constant time.** Both
+  fields are always compared and the results combined with a bitwise AND, so
+  the total does not reveal which one failed. This credential guards
+  `/categories/toggle` — the route that can switch off SQL-injection
+  inspection — on the internal bridge, where an attacker holding another
+  container has a low-jitter path.
+- **`POST /api/blacklists/import-geo` fetches concurrently.** Up to 50
+  countries were fetched sequentially at a 30-second timeout each, inside a
+  request bounded by a 60-second write timeout. Bounded at 8 in flight with a
+  10-second per-feed timeout: measured 244 ms against 1.92 s for the sequential
+  path.
+- **Three units were refactored behind characterization suites** written
+  against the pre-refactor code: `SettingsHandlers.BulkUpdate` (cyclomatic
+  complexity 37 to 4), `BlacklistHandlers.Import` (41 to 8), and the WAF's flat
+  package. Behaviour is unchanged and pinned.
+- **The SSL-bump CA rotation procedure exists.** The code cited a documented
+  procedure for the 825-day lifetime that had never been written.
+  `DEPLOYMENT.md` now carries it, along with rotation for the other two keys,
+  and its Updating section names the two env variables an upgrade needs.
+
+### Added
+
+- **Python is linted and tested in CI.** The proxy's enforcement-path sidecar
+  had neither. `ruff.toml` selects beyond the default `E`/`F` — the default set
+  passes on this repository, which would have made the gate decorative — and
+  surfaced 19 real findings. Eight unit tests now cover the sidecar's failure
+  branches.
+- **A restore drill.** `scripts/restore.sh` was invoked by no test and no
+  Makefile target. The drill proves it refuses a corrupt backup and that `data/`
+  survives the refusal. `PRAGMA integrity_check` returns `ok` for corruption in
+  headers and free space — verified directly — so the drill corrupts a data page
+  and the script's message says "structural" rather than implying the backup is
+  byte-perfect.
+- **Prometheus alert rules**, six of them, shipped with the observability
+  profile that previously ran a Prometheus with no rule files at all. Writing
+  them produced the failure they exist to prevent: the first draft alerted on
+  `outcome="failed"` while the code emits `"failure"`, so it would have been
+  permanently inert. A test now asserts every metric name and label value used
+  in the rules exists in the code.
+- **Two consistency gates**: one comparing the five `/config` filenames across
+  the three components that agree on them, one comparing the WAF heuristic key
+  set across the seven files that enumerate it.
+- **A worker heartbeat metric**, so a queue that is idle can be told apart from
+  one that has died.
+
 ## [3.12.0] - 2026-09-08
 
 Remediation of a full code-metrics audit of `19c3e90b`: 81 findings admitted,
