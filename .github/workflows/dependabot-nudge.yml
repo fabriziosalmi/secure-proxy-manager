@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'fabriziosalmi/secure-proxy-manager'
     permissions:
+      contents: read
       pull-requests: write
     steps:
       - name: Ask Dependabot to rebase the next queued pull request
@@ -40,10 +41,14 @@ jobs:
           for n in $(gh pr list --repo "$REPO" --author app/dependabot --state open --limit 100 \
                        --json number,autoMergeRequest,updatedAt \
                        --jq "sort_by(.number) | .[] | select(.autoMergeRequest != null and .updatedAt < \"$cutoff\") | .number"); do
-            state=$(gh pr view "$n" --repo "$REPO" --json mergeStateStatus,statusCheckRollup \
-              --jq '"\(.mergeStateStatus) " + ([.statusCheckRollup[]? | (.conclusion // .state // "") | select(. != "SUCCESS" and . != "SKIPPED" and . != "NEUTRAL")] | length | tostring)')
-            echo "#$n: $state"
-            if [ "$state" = "BEHIND 0" ]; then next="$n"; break; fi
+            # mergeStateStatus is always UNKNOWN for the GITHUB_TOKEN (GitHub
+            # computes it lazily), so "behind" is measured with the compare API.
+            info=$(gh pr view "$n" --repo "$REPO" --json baseRefName,headRefOid,mergeable,statusCheckRollup \
+              --jq '"\(.baseRefName) \(.headRefOid) \(.mergeable) " + ([.statusCheckRollup[]? | (.conclusion // .state // "") | select(. != "SUCCESS" and . != "SKIPPED" and . != "NEUTRAL")] | length | tostring)')
+            read -r base head mergeable red <<< "$info"
+            behind=$(gh api "repos/$REPO/compare/$base...$head" --jq .behind_by)
+            echo "#$n: behind=$behind mergeable=$mergeable checks_not_green=$red"
+            if [ "$behind" -gt 0 ] && [ "$red" = "0" ] && [ "$mergeable" != "CONFLICTING" ]; then next="$n"; break; fi
           done
           if [ -z "$next" ]; then echo "Nothing to nudge."; exit 0; fi
           if [ "${DRY_RUN:-false}" = "true" ]; then echo "Would ask Dependabot to rebase #$next"; exit 0; fi
