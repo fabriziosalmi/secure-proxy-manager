@@ -39,7 +39,9 @@ jobs:
           TITLE: ${{ github.event.pull_request.title }}
           BODY: ${{ github.event.pull_request.body }}
         run: |
-          set -uo pipefail
+          # GitHub runs this with `bash -e -o pipefail`, and grep exits 1 when it
+          # finds nothing: every grep below is tolerated with `|| true`.
+          set -u
           ok=true; why="patch or minor"
           case "$UPDATE_TYPE" in
             version-update:semver-patch|version-update:semver-minor) ;;
@@ -48,8 +50,8 @@ jobs:
           V='`?(v|>=|\^|~)?[0-9][^ `|]*`?'
           pairs="$RUNNER_TEMP/pairs"
           {
-            printf '%s\n%s\n' "$TITLE" "$BODY" | grep -oE "from $V to $V" | sed -E 's/^from //; s/ to / /'
-            printf '%s\n' "$BODY" | grep -oE "^\| .* \| $V \| $V \|" | awk -F'|' '{print $(NF-2), $(NF-1)}'
+            printf '%s\n%s\n' "$TITLE" "$BODY" | { grep -oE "from $V to $V" || true; } | sed -E 's/^from //; s/ to / /'
+            printf '%s\n' "$BODY" | { grep -oE "^\| .* \| $V \| $V \|" || true; } | awk -F'|' '{print $(NF-2), $(NF-1)}'
           } | tr -d '`' | sort -u > "$pairs"
           if [ ! -s "$pairs" ]; then ok=false; why="no version pair found in title or body"; fi
           while read -r a b; do
@@ -70,7 +72,8 @@ jobs:
       # A rebase can retarget the pull request to a new major after auto-merge
       # was already on: switch it off rather than let it merge.
       - name: Disable auto-merge
-        if: steps.decide.outputs.ok != 'true' && github.event.pull_request.auto_merge != null
+        # always(): if Decide itself fails, fail closed and switch auto-merge off.
+        if: always() && steps.decide.outputs.ok != 'true' && github.event.pull_request.auto_merge != null
         run: gh pr merge --disable-auto "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
