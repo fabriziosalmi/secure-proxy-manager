@@ -1,10 +1,17 @@
 name: Dependabot auto-merge
 
 # Turns on GitHub auto-merge for Dependabot pull requests that only bump patch
-# or minor versions. Auto-merge waits for every required status check of the
-# branch protection, so nothing merges unless CI is green. Major bumps, and
-# grouped updates that contain one, stay manual: fetch-metadata reports the
-# highest semver change in the pull request.
+# or minor versions, and turns it off again if a later push makes the pull
+# request stop qualifying. Auto-merge waits for every required status check of
+# the branch protection, so nothing merges unless CI is green.
+#
+# Two independent checks must both pass:
+#   1. fetch-metadata's update-type (the highest change in the pull request)
+#   2. every "from X to Y" version pair in the title and body, and every row of
+#      a grouped update's table, keeps the same major version
+# The second exists because Dependabot has been seen to retarget a pull request
+# to a new major on rebase while keeping the old commit metadata: vitest
+# 4.1.6 -> 5.0.1 was reported as semver-patch 4.1.9, and fetch-metadata trusted it.
 #
 # `pull_request`, not `pull_request_target`: this job never checks out the pull
 # request's code, and on Dependabot events the token is read-only unless the
@@ -25,9 +32,46 @@ jobs:
         id: meta
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
 
-      - name: Enable auto-merge (patch and minor only)
-        if: steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor'
+      - name: Decide (patch and minor only)
+        id: decide
+        env:
+          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -uo pipefail
+          ok=true; why="patch or minor"
+          case "$UPDATE_TYPE" in
+            version-update:semver-patch|version-update:semver-minor) ;;
+            *) ok=false; why="metadata update-type is '${UPDATE_TYPE:-none}'" ;;
+          esac
+          V='`?(v|>=|\^|~)?[0-9][^ `|]*`?'
+          pairs="$RUNNER_TEMP/pairs"
+          {
+            printf '%s\n%s\n' "$TITLE" "$BODY" | grep -oE "from $V to $V" | sed -E 's/^from //; s/ to / /'
+            printf '%s\n' "$BODY" | grep -oE "^\| .* \| $V \| $V \|" | awk -F'|' '{print $(NF-2), $(NF-1)}'
+          } | tr -d '`' | sort -u > "$pairs"
+          if [ ! -s "$pairs" ]; then ok=false; why="no version pair found in title or body"; fi
+          while read -r a b; do
+            x=$(printf '%s' "$a" | sed -E 's/^[^0-9]*//; s/[^0-9].*//')
+            y=$(printf '%s' "$b" | sed -E 's/^[^0-9]*//; s/[^0-9].*//')
+            if [ -z "$x" ] || [ "$x" != "$y" ]; then ok=false; why="major version change: $a -> $b"; break; fi
+          done < "$pairs"
+          echo "Decision: ok=$ok ($why), $(wc -l < "$pairs" | tr -d ' ') version pairs checked"
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+
+      - name: Enable auto-merge
+        if: steps.decide.outputs.ok == 'true'
         run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # A rebase can retarget the pull request to a new major after auto-merge
+      # was already on: switch it off rather than let it merge.
+      - name: Disable auto-merge
+        if: steps.decide.outputs.ok != 'true' && github.event.pull_request.auto_merge != null
+        run: gh pr merge --disable-auto "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
