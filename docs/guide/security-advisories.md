@@ -6,16 +6,20 @@ security pocket.
 
 ## How SPM keeps Squid patched
 
-The proxy image is built `FROM ubuntu:22.04` and installs `squid-openssl` from
-Ubuntu's repositories. The *package revision* (e.g. `5.9-0ubuntu0.22.04.7`), not
-the upstream `5.9`, is what carries security fixes. Two mechanisms guarantee a
+The proxy image is built `FROM ubuntu:26.04` and installs `squid-openssl` from
+Ubuntu's repositories. The *package revision* (e.g. `7.2-2ubuntu2.2`), not the
+upstream `7.2`, is what carries security fixes. Two mechanisms guarantee a
 published image is patched:
 
 1. **Version floor (fail-closed).** `proxy/Dockerfile` declares
    `ARG SQUID_MIN_VERSION` and asserts, after install, that the installed
    `squid-openssl` is `>=` that floor. If it is older, **the build fails** — an
    unpatched proxy image can never be produced. Bump `SQUID_MIN_VERSION`
-   whenever Ubuntu jammy ships a new Squid CVE fix.
+   whenever the Ubuntu release in `FROM` ships a new Squid CVE fix.
+   The floor only means something for the release it was written for, because
+   dpkg orders by upstream version first: `ARG SQUID_FLOOR_FOR` names that
+   release, the build refuses to run on a different one, and
+   `scripts/check-image-pins.sh` (a CI gate) compares it with the `FROM` line.
 2. **apt cache bust.** `ARG APT_REFRESH` is changed on every CI run
    (`.github/workflows/multi-arch.yml` passes `github.run_id`), so a stale
    buildx/GHA cache layer can never reinstall an old Squid after Ubuntu
@@ -37,11 +41,11 @@ server they control. The bug dates back to 1997 and affects **Squid &lt; 7.6**.
 
 - **Severity:** Medium (CVSS 6.5), but high impact in shared-proxy environments
   (multiple users behind one Squid), which is exactly SPM's use case.
-- **Fixed in:** upstream Squid 7.6; Ubuntu 22.04 (jammy) `5.9-0ubuntu0.22.04.7`.
+- **Fixed in:** upstream Squid 7.6; Ubuntu 26.04 (resolute) `7.2-2ubuntu2.2`, per its package changelog.
 
 ### SPM mitigations (defence in depth)
 
-1. **Patched package.** `SQUID_MIN_VERSION` is set to the fixed jammy revision,
+1. **Patched package.** `SQUID_MIN_VERSION` is set to the fixed revision for the Ubuntu release in `FROM`,
    so builds refuse anything older.
 2. **FTP gateway disabled.** SPM never proxies FTP. The Squid config
    (`proxy/squid.conf` and the generated config) denies the FTP scheme outright
