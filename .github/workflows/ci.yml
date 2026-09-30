@@ -5,6 +5,15 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Required before a merge queue can be enabled on main. GitHub's own wording:
+  # "You must use the merge_group event to trigger your GitHub Actions workflow
+  # when a pull request is added to a merge queue. Otherwise, status checks will
+  # not be triggered when you add a pull request to a merge queue. The merge
+  # will fail as the required status check will not be reported."
+  #
+  # So this lands FIRST, on its own. Turning the queue on before it would leave
+  # every pull request waiting forever for seventeen checks that never run.
+  merge_group:
   # Daily, because two of the gates here answer a question whose answer changes
   # WITHOUT a commit: npm audit, govulncheck and Trivy read advisory databases
   # that are updated upstream, so unchanged code can turn insecure overnight.
@@ -388,12 +397,16 @@ jobs:
       #
       # The list is derived from the compose files rather than written out here,
       # so a future bump cannot leave this job scanning a version nobody runs.
+      # That is how tailscale was found: it was pinned in the production compose
+      # at a version twenty-two minors behind the Dockerfile, and it was not on
+      # the list anyone would have typed.
       - name: Scan the images the compose files pin
         run: |
           set -euo pipefail
           imgs=$(grep -hoE '^[[:space:]]+image:[[:space:]]+[^[:space:]]+' \
                    docker-compose.yml docker-compose.test.yml \
                    deploy/docker-compose.prod.yml \
+                   tests/adversarial/docker-compose.adversarial.yml \
                  | awk '{print $2}' | grep -v 'secure-proxy-manager' | sort -u)
           echo "$imgs" | sed 's/^/  /'
           rc=0

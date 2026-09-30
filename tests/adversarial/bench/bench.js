@@ -29,10 +29,28 @@ export const options = {
     http_req_duration: ['p(95)<' + (__ENV.P95_MS || '800')],
   },
   // Keep the end-of-test stdout summary compact; the machine-readable numbers
-  // come from --summary-export (see run.sh).
+  // come from handleSummary below (see run.sh).
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
 };
 
 export default function () {
   http.get(`${TARGET}?i=${__VU}x${__ITER}`);
+}
+
+// k6 v1 removed --summary-export, which run.sh used to get the machine-readable
+// numbers. handleSummary replaces it, and deliberately reproduces the SHAPE
+// that flag emitted — metrics.<name>.<stat>, flat, no ".values" — so the report
+// builder in run.sh reads the same JSON it always did and did not have to move.
+//
+// SUMMARY_PATH is passed per invocation because the plane runs twice, baseline
+// and proxied, and each needs its own file.
+export function handleSummary(data) {
+  const flat = {};
+  for (const [name, metric] of Object.entries(data.metrics || {})) {
+    flat[name] = { ...(metric.values || {}) };
+  }
+  const out = {};
+  out[__ENV.SUMMARY_PATH || '/report/bench-summary.json'] =
+    JSON.stringify({ metrics: flat }, null, 2);
+  return out;
 }
