@@ -10,6 +10,7 @@ import (
 	"html"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -135,8 +136,9 @@ func engineConfigFromEnv() engine.Config {
 			// threshold set to make the WAF stricter and silently ignored is
 			// worse than one that fails loudly: they would believe the change
 			// took effect.
-			log.Printf("WAF_BLOCK_THRESHOLD=%q rejected (%v); using the built-in threshold of %d\n",
-				envThreshold, err, engine.DefaultBlockThreshold)
+			slog.Warn("WAF_BLOCK_THRESHOLD rejected; using the built-in threshold",
+				"variable", "WAF_BLOCK_THRESHOLD", "value", envThreshold, "reason", err.Error(),
+				"in_use", engine.DefaultBlockThreshold)
 		} else {
 			cfg.BlockThreshold = v
 		}
@@ -147,16 +149,17 @@ func engineConfigFromEnv() engine.Config {
 				cfg.DisabledCategories = append(cfg.DisabledCategories, cat)
 			}
 		}
-		log.Printf("Disabled WAF categories: %v\n", disabled)
+		slog.Info("WAF categories disabled at start-up", "categories", cfg.DisabledCategories)
 	}
 	return cfg
 }
 
 func init() {
+	setupLogging()
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("WAF_FAIL_OPEN"))) {
 	case "1", "true", "yes", "on":
 		wafFailOpen = true
-		log.Printf("WAF_FAIL_OPEN=1 — REQMOD handler panics will ALLOW traffic (availability over security)\n")
+		slog.Warn("WAF_FAIL_OPEN=1: REQMOD handler panics will ALLOW traffic (availability over security)")
 	}
 
 	// Rules first: the pre-filter gates the custom rules too (#110), and the
@@ -256,7 +259,7 @@ func notifyBackend(data map[string]interface{}) {
 // fires before a normal WriteHeader has run.
 func recoverICAP(w icap.ResponseWriter, method string) {
 	if r := recover(); r != nil {
-		log.Printf("PANIC in %s handler: %v\n%s", method, r, debug.Stack())
+		slog.Error("PANIC in ICAP handler", "method", method, "panic", fmt.Sprint(r), "stack", string(debug.Stack()))
 		if method == "REQMOD" && !wafFailOpen {
 			sendBlockResponse(w, "WAF_INTERNAL_ERROR", eng.BlockThreshold(), "")
 			return
@@ -383,8 +386,8 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 
 	// Log all matches for observability, even if below threshold
 	if len(in.matches) > 0 && !in.blocked() {
-		log.Printf("WAF OBSERVE score=%d/%d rules=[%s] url=%q\n",
-			in.score, eng.BlockThreshold(), strings.Join(ruleIDs, ","), truncate(in.rawURL, 200))
+		slog.Info("WAF OBSERVE", "event_id", in.eventID, "client_ip", in.clientIP,
+			"score", in.score, "threshold", eng.BlockThreshold(), "rules", ruleIDs, "url", truncate(in.rawURL, 200))
 	}
 
 	if in.blocked() {
@@ -504,14 +507,14 @@ func scanDomainReputation(in *inspection, host string) {
 			in.add(engine.MatchResult{RuleID: "ML-DGA-001", Category: "DGA_DOMAIN", Score: dgaScore})
 			// %q quotes + escapes control bytes so an attacker-controlled Host
 			// header (newline, tab, ANSI escapes) cannot forge log entries.
-			log.Printf("WAF ML-DGA score=%d domain=%q dga_score=%d\n", dgaResult.Score, host, dgaResult.Score)
+			slog.Info("WAF ML-DGA", "event_id", in.eventID, "client_ip", in.clientIP, "domain", host, "dga_score", dgaResult.Score)
 		}
 	}
 	if eng.CategoryEnabled("TYPOSQUATTING") {
 		if typoResult := engine.CheckTyposquat(host); typoResult.Suspicious {
 			in.add(engine.MatchResult{RuleID: "ML-TYPO-001", Category: "TYPOSQUATTING", Score: typoScore})
-			log.Printf("WAF ML-TYPO target=%q technique=%q distance=%d domain=%q\n",
-				typoResult.Target, typoResult.Technique, typoResult.Distance, host)
+			slog.Info("WAF ML-TYPO", "event_id", in.eventID, "client_ip", in.clientIP, "domain", host,
+				"target", typoResult.Target, "technique", typoResult.Technique, "distance", typoResult.Distance)
 		}
 	}
 }
@@ -601,9 +604,9 @@ func block(w icap.ResponseWriter, in *inspection, ruleIDs, categories []string) 
 		primaryCategory = categories[0]
 	}
 
-	log.Printf("WAF BLOCKED score=%d/%d categories=[%s] rules=[%s] source=%s url=%q\n",
-		in.score, eng.BlockThreshold(), strings.Join(categories, ","), strings.Join(ruleIDs, ","),
-		source, truncate(in.rawURL, 200))
+	slog.Info("WAF BLOCKED", "event_id", in.eventID, "client_ip", in.clientIP,
+		"score", in.score, "threshold", eng.BlockThreshold(), "categories", categories, "rules", ruleIDs,
+		"source", source, "url", truncate(in.rawURL, 200))
 
 	tarPit(in.clientIP)
 
@@ -664,9 +667,9 @@ func tarPit(clientIP string) {
 	trackerMutex.Unlock()
 
 	if blockCount > 3 {
-		log.Printf("TAR-PITTING IP %s (blocks=%d) — delaying response %v\n", clientIP, blockCount, tarPitDelay)
+		slog.Info("TAR-PITTING", "client_ip", clientIP, "blocks_last_minute", blockCount, "delay", tarPitDelay.String())
 		time.Sleep(tarPitDelay)
-		log.Printf("TAR-PIT released for %s\n", clientIP)
+		slog.Info("TAR-PIT released", "client_ip", clientIP)
 	}
 }
 
@@ -688,7 +691,7 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 	}
 	for _, dt := range dangerousTypes {
 		if strings.Contains(contentTypeLower, dt) {
-			log.Printf("RESPMOD blocked dangerous content-type: %s\n", contentType)
+			slog.Info("RESPMOD blocked dangerous content-type", "content_type", contentType)
 			sendBlockResponse(w, "DANGEROUS_CONTENT_TYPE", 10, "")
 			return
 		}
@@ -721,8 +724,7 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 			}
 
 			if eng.Blocked(totalScore) {
-				log.Printf("RESPMOD BLOCKED score=%d rules=[%s] content-type=%s\n",
-					totalScore, strings.Join(matchedRules, ","), contentType)
+				slog.Info("RESPMOD BLOCKED", "score", totalScore, "rules", matchedRules, "content_type", contentType)
 				sendBlockResponse(w, matchedCat, totalScore, "")
 				return
 			}
@@ -1124,7 +1126,7 @@ func (h *MgmtHandlers) CategoriesToggleHandler(w http.ResponseWriter, r *http.Re
 	eng.SetCategoryEnabled(req.Category, req.Enabled)
 	atomic.AddUint64(&istagEpoch, 1) // effective ruleset changed → new ISTag so Squid drops cached verdicts
 	eng.SafeCache().Invalidate()     // Clear cache since rules changed
-	log.Printf("Category %s: enabled=%v\n", req.Category, req.Enabled)
+	slog.Info("WAF category toggled", "category", req.Category, "enabled", req.Enabled)
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status":"ok","category":"%s","enabled":%v}`, req.Category, req.Enabled)
 }
@@ -1166,7 +1168,7 @@ func (h *MgmtHandlers) HeuristicsToggleHandler(w http.ResponseWriter, r *http.Re
 	}
 	atomic.AddUint64(&istagEpoch, 1)
 	eng.SafeCache().Invalidate()
-	log.Printf("Heuristic %s: enabled=%v\n", req.Heuristic, req.Enabled)
+	slog.Info("WAF heuristic toggled", "heuristic", req.Heuristic, "enabled", req.Enabled)
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status":"ok","heuristic":"%s","enabled":%v}`, req.Heuristic, req.Enabled)
 }

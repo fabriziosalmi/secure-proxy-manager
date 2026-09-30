@@ -2,19 +2,21 @@ package main
 
 import (
 	"bytes"
-	"log"
-	"os"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"secure-proxy-waf/internal/engine"
 )
 
+// captureLog routes the structured logger into a buffer for the test, as JSON
+// lines, and restores the previous default afterwards.
 func captureLog(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
-	log.SetOutput(&buf)
-	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
 	return &buf
 }
 
