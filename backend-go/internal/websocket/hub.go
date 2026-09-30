@@ -34,37 +34,84 @@ type Client struct {
 type Hub struct {
 	mu        sync.RWMutex
 	clients   map[*Client]struct{}
+	closed    bool
 	Broadcast chan []byte
+
+	// done stops the dispatcher; stopped is closed when it has returned. Close
+	// uses both so it can wait for the goroutine it started.
+	done      chan struct{}
+	stopped   chan struct{}
+	closeOnce sync.Once
 }
 
-// NewHub creates and starts a Hub.
+// NewHub creates and starts a Hub. Call Close to stop it: the dispatcher used
+// to range over Broadcast, which nothing closes (producers send to it, so it
+// must not be closed), so it could never be stopped and each NewHub leaked one
+// goroutine for the life of the process.
 func NewHub() *Hub {
 	h := &Hub{
 		clients:   make(map[*Client]struct{}),
 		Broadcast: make(chan []byte, 256),
+		done:      make(chan struct{}),
+		stopped:   make(chan struct{}),
 	}
 	go h.run()
 	return h
 }
 
 func (h *Hub) run() {
-	for msg := range h.Broadcast {
-		h.mu.RLock()
-		for c := range h.clients {
-			select {
-			case c.send <- msg:
-			default:
-				// Slow client — drop message rather than block.
+	defer close(h.stopped)
+	for {
+		select {
+		case <-h.done:
+			return
+		case msg := <-h.Broadcast:
+			h.mu.RLock()
+			for c := range h.clients {
+				select {
+				case c.send <- msg:
+				default:
+					// Slow client — drop message rather than block.
+				}
 			}
+			h.mu.RUnlock()
 		}
-		h.mu.RUnlock()
 	}
+}
+
+// Close stops the dispatcher, waits for it to return, and disconnects every
+// client. It is safe to call more than once. Broadcast is left open: producers
+// send to it with a non-blocking select, so messages sent after Close are
+// dropped rather than blocking or panicking. Call it after the producers (the
+// tailers) have stopped.
+func (h *Hub) Close() {
+	h.closeOnce.Do(func() {
+		close(h.done)
+		<-h.stopped
+
+		h.mu.Lock()
+		h.closed = true
+		clients := make([]*Client, 0, len(h.clients))
+		for c := range h.clients {
+			clients = append(clients, c)
+		}
+		h.mu.Unlock()
+		for _, c := range clients {
+			h.Unregister(c)
+		}
+	})
 }
 
 // Register adds a WebSocket connection to the hub.
 func (h *Hub) Register(conn *websocket.Conn) *Client {
 	c := &Client{conn: conn, send: make(chan []byte, 64), hub: h}
 	h.mu.Lock()
+	if h.closed {
+		// A connection that arrives after Close has nobody to serve it.
+		h.mu.Unlock()
+		_ = conn.Close()
+		return nil
+	}
 	h.clients[c] = struct{}{}
 	h.mu.Unlock()
 	go c.writePump()
