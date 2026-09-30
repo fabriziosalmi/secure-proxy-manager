@@ -1,4 +1,8 @@
-import '@testing-library/jest-dom'
+// jest-dom 7 moved the matcher type augmentation into a Vitest-specific entry
+// point: importing the package root still registers the matchers at runtime,
+// but no longer teaches TypeScript about toBeInTheDocument and friends, so the
+// suite passed while `tsc` failed on every assertion.
+import '@testing-library/jest-dom/vitest'
 
 // Polyfill localStorage for Vitest jsdom workers
 const store: Record<string, string> = {}

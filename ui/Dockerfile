@@ -1,5 +1,11 @@
 # Pin: node 20.19 alpine 3.21 (2025-04)
-FROM node:25-alpine3.21@sha256:32509199057d74a987fdd88cde00fdfd48ef52469adbd6bd11969fc701477761 AS frontend-builder
+# 26, not 25: vitest 5, jsdom 30 and jest-dom 7 declare
+# node ^22.22.2 || ^24.15.0 || >=26.0.0, which 25 does not satisfy. Installing
+# them on 25 only warns (EBADENGINE) and the build still produced correct
+# assets, but building the product on a runtime its own toolchain calls
+# unsupported is not a thing to leave standing. 26 also sits above 25, so a
+# later Dependabot bump cannot quietly put it back.
+FROM node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS frontend-builder
 WORKDIR /frontend
 COPY ./ui/package*.json ./
 RUN npm ci
