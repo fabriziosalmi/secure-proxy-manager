@@ -1,0 +1,48 @@
+# Advisories Trivy must not fail the compose-image scan on.
+#
+# ONLY for a vulnerability in a THIRD-PARTY image where the only remedy in our
+# hands — moving to a newer tag — has already been taken. Everything below is
+# upstream's to rebuild: a Go module vendored inside Grafana's own binary, or
+# an Alpine package whose fixed build has not been published in the image yet.
+#
+# Every entry carries an expiry. When it lapses the scan goes red again and the
+# image gets looked at, which is the point: an ignore without an expiry is how
+# a known vulnerability becomes permanent furniture. This is the same bargain
+# as scripts/npm-audit-allowlist.json, which is deliberately empty.
+#
+# Recorded 2026-09-30, after the bump that took these four images from 340
+# fixable HIGH/CRITICAL findings to 9.
+vulnerabilities:
+  # grafana/grafana:13.2.3 — vendored Go modules inside the Grafana binary.
+  # Fixing them means Grafana shipping a release built against the patched
+  # module; there is no tag available to us that does.
+  - id: CVE-2026-84445
+    statement: "google.golang.org/grpc v1.83.1 vendored in grafana/grafana:13.2.3; no Grafana release carries the patched module yet."
+    expired_at: 2026-12-31
+  - id: CVE-2026-84304
+    statement: "google.golang.org/grpc v1.83.0 vendored in grafana/grafana:13.2.3; same, upstream rebuild required."
+    expired_at: 2026-12-31
+  - id: CVE-2026-21728
+    statement: "github.com/grafana/tempo vendored in grafana/grafana:13.2.3; Grafana pins a pre-release of it, so no tag of ours fixes this."
+    expired_at: 2026-12-31
+  - id: CVE-2026-28377
+    statement: "github.com/grafana/tempo vendored in grafana/grafana:13.2.3; same."
+    expired_at: 2026-12-31
+  # nginx:1.31.6-alpine — Alpine package, fixed build not in the image yet.
+  - id: CVE-2026-93990
+    statement: "libexpat 2.8.4-r0 in nginx:1.31.6-alpine; fixed in 2.8.5-r0, which nginx has not rebuilt against. Test-only image (the mock upstream)."
+    expired_at: 2026-12-31
+  # tailscale/tailscale:v1.102.5 — vendored Go modules inside the tailscale
+  # binary. This pin now matches overlay/tailscale/Dockerfile, which is what
+  # scripts/check-image-pins.sh enforces; before that it sat at v1.80.3 with
+  # 122 fixable findings, because Dependabot watches the Dockerfile and cannot
+  # see a compose file.
+  - id: CVE-2026-56854
+    statement: "golang.org/x/crypto v0.54.0 vendored in tailscale/tailscale:v1.102.5; needs an upstream rebuild."
+    expired_at: 2026-12-31
+  - id: CVE-2026-46602
+    statement: "golang.org/x/image v0.41.0 vendored in tailscale/tailscale:v1.102.5; needs an upstream rebuild."
+    expired_at: 2026-12-31
+  - id: CVE-2026-46603
+    statement: "golang.org/x/image v0.41.0 vendored in tailscale/tailscale:v1.102.5; needs an upstream rebuild."
+    expired_at: 2026-12-31

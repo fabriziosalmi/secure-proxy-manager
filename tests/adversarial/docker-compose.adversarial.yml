@@ -153,7 +153,7 @@ services:
   # Benign 200 for any path; special endpoints emit response-side attack content
   # (RESPMOD): reflected-XSS payload and a leaked private key.
   mock-upstream:
-    image: nginx:1.27-alpine
+    image: nginx:1.31.6-alpine
     volumes:
       - ./mock-upstream/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     healthcheck:

@@ -54,6 +54,12 @@ jobs:
       # SECURE-QUAL-05: the WAF heuristic key list is maintained in seven places
       # and had already drifted. Same treatment as version drift.
       - run: bash scripts/check-waf-keys.sh
+      # The tailscale image is pinned twice: overlay/tailscale/Dockerfile, which
+      # Dependabot updates, and deploy/docker-compose.prod.yml, which it cannot
+      # see. They had drifted twenty-two minor versions apart — 122 fixable
+      # HIGH/CRITICAL findings in the image an operator deploys against 5 in the
+      # one a developer builds.
+      - run: bash scripts/check-image-pins.sh
 
   # ── 2. Go backend build ────────────────────────────────────────────────
   build-backend:
@@ -369,6 +375,30 @@ jobs:
           trivy fs --scanners vuln \
             --severity HIGH,CRITICAL --ignore-unfixed \
             --exit-code 1 --no-progress .
+      # The filesystem scan above reads lockfiles and Dockerfiles. It does NOT
+      # pull the third-party images the compose files pin — grafana, prometheus,
+      # nginx — so nothing was looking at them, and Dependabot cannot either:
+      # its docker ecosystem reads Dockerfiles and Kubernetes YAML, not compose.
+      # They carried 271 fixable HIGH/CRITICAL findings between them until the
+      # bump that landed with this job.
+      #
+      # The list is derived from the compose files rather than written out here,
+      # so a future bump cannot leave this job scanning a version nobody runs.
+      - name: Scan the images the compose files pin
+        run: |
+          set -euo pipefail
+          imgs=$(grep -hoE '^[[:space:]]+image:[[:space:]]+[^[:space:]]+' \
+                   docker-compose.yml docker-compose.test.yml \
+                   deploy/docker-compose.prod.yml \
+                 | awk '{print $2}' | grep -v 'secure-proxy-manager' | sort -u)
+          echo "$imgs" | sed 's/^/  /'
+          rc=0
+          for img in $imgs; do
+            echo "── $img"
+            trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+              --ignorefile .trivyignore.yaml --exit-code 1 --no-progress "$img" || rc=1
+          done
+          exit $rc
       - name: Report IaC misconfigurations (non-gating)
         run: |
           trivy fs --scanners misconfig \
