@@ -13,6 +13,69 @@ a `### Removed` or `### Changed` heading with the phrase **BREAKING** and the
 changes affecting it. Retired routes answer `410 Gone` naming their replacement
 for at least one minor release before disappearing.
 
+## [3.13.2] - 2026-09-30
+
+Two fixes in the UI, and a sweep of the container images the compose files
+pin — which nothing had been watching, because Dependabot's docker ecosystem
+reads Dockerfiles and Kubernetes YAML and never a compose file.
+
+Nothing is required on upgrade and `X-API-Version` stays 1.
+
+### Action worth taking if you run the observability profile
+
+Grafana moves 11.4.0 to 13.2.3 and Prometheus v3.1.0 to v3.15.0. Both were
+exercised before release: Prometheus loads all six alert rules across the
+three groups, and Grafana comes up healthy and provisions the datasource
+unchanged (`apiVersion: 1` is still accepted two majors later). Only the
+`observability` profile is affected.
+
+### Fixed
+
+- **The blacklist import forms could be submitted twice.** `handleBulkAdd`,
+  `handleImport` and `handleGeoBlock` had no pending state, so a second click
+  sent a second POST and imported twice. The single-add form and the
+  popular-list import already guarded themselves; these three did not.
+- **Two-character strings that are not country codes reached the geo-import
+  API.** The handler parsed inline with a length check only, so `12` and `A1`
+  were accepted. It now uses `parseGeoCountries` from `lib/validation`, which
+  also requires `/^[A-Z]{2}$/` and is covered by tests — the inline copy was a
+  weaker reimplementation of a validator that already existed.
+- **`sanitiseSort` returns the whitelist literal rather than the request
+  parameter.** The two compare equal on that path, so behaviour is unchanged,
+  but only one of them is a constant this codebase controls. The value is
+  interpolated into a query, and keeping the caller's string alive that far is
+  what a taint analyser follows; returning the literal makes the property
+  provable instead of argued.
+
+### Security
+
+- **The images pinned in the compose files carried 462 fixable HIGH/CRITICAL
+  findings between them; they now carry 14**, and the 14 are upstream's — Go
+  modules vendored inside the Grafana and tailscale binaries, and Alpine
+  packages not yet rebuilt.
+
+  The one worth reading twice: `deploy/docker-compose.prod.yml` pulled
+  `tailscale/tailscale:v1.80.3` while `overlay/tailscale/Dockerfile` was at
+  v1.102.5. Twenty-two minor versions apart, 122 fixable findings against 5 —
+  and the file an operator deploys with was the one left behind, because
+  Dependabot updates the Dockerfile and cannot see a compose file.
+
+  `scripts/check-image-pins.sh` now fails when a version pinned in more than
+  one place disagrees with itself, and a new CI step scans the compose-pinned
+  images, deriving the list from the compose files so a later bump cannot
+  leave it pointed at a version nobody runs.
+
+### Internal
+
+- CI runs on a daily schedule as well as on pull requests: `npm audit`,
+  `govulncheck` and Trivy answer a question whose answer changes without a
+  commit, and the default branch had gone eleven days without being evaluated.
+- The Playwright image and `@playwright/test` are kept on one version; they
+  had drifted three ways, which made every E2E test fail at 0ms — the suite
+  never started.
+- The UI test toolchain takes four major bumps (vitest 5, jsdom 30, jest-dom 7,
+  @types/node 26) together with the Node version they require.
+
 ## [3.13.1] - 2026-09-30
 
 A patch for one WAF bypass. `admin'--` in a **request body** scored 6 against a
