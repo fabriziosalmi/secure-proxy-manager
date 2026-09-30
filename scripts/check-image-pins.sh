@@ -17,6 +17,34 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 rc=0
 
+# playwright: the browsers live in the image, the runner library in package.json,
+# and Playwright refuses to start when the two disagree. Dependabot bumps them
+# from different ecosystems (docker and npm) and cannot know they are one
+# version: #341 moved the image to v1.63.0 while tests/e2e/package.json stayed
+# pinned at 1.62.0, and every E2E test failed at 0ms — the suite never started.
+# ui/package.json carries the same library and must agree too.
+img_pw=$(sed -nE 's#^FROM[[:space:]]+mcr\.microsoft\.com/playwright:v([0-9]+\.[0-9]+)\.[0-9]+.*#\1#p' \
+           tests/e2e/Dockerfile | head -1)
+e2e_pw=$(sed -nE 's#.*"@playwright/test"[[:space:]]*:[[:space:]]*"[^0-9]*([0-9]+\.[0-9]+)\..*#\1#p' \
+           tests/e2e/package.json | head -1)
+ui_pw=$(sed -nE 's#.*"@playwright/test"[[:space:]]*:[[:space:]]*"[^0-9]*([0-9]+\.[0-9]+)\..*#\1#p' \
+          ui/package.json | head -1)
+
+if [ -z "$img_pw" ] || [ -z "$e2e_pw" ] || [ -z "$ui_pw" ]; then
+    echo "FAIL: could not read all three playwright pins (image='$img_pw' e2e='$e2e_pw' ui='$ui_pw')" >&2
+    rc=1
+elif [ "$img_pw" != "$e2e_pw" ] || [ "$img_pw" != "$ui_pw" ]; then
+    echo "FAIL: the playwright version disagrees with itself" >&2
+    echo "  tests/e2e/Dockerfile (browsers) : $img_pw" >&2
+    echo "  tests/e2e/package.json (runner) : $e2e_pw" >&2
+    echo "  ui/package.json (runner)        : $ui_pw" >&2
+    echo "  The library and the browsers must be the same minor, or the suite" >&2
+    echo "  fails to start and every test reports 0ms." >&2
+    rc=1
+else
+    echo "OK: the playwright version agrees across the image and both package.json ($img_pw)"
+fi
+
 # tailscale: FROM in the Dockerfile vs image: in the production compose.
 dockerfile_pin=$(sed -nE 's#^FROM[[:space:]]+(tailscale/tailscale:[^[:space:]]+).*#\1#p' \
                    overlay/tailscale/Dockerfile | head -1)
