@@ -1,12 +1,8 @@
 package workers
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
-	"encoding/json"
-	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -109,66 +105,24 @@ func StartDNSTailer(ctx context.Context, db *sql.DB, logPath, stateDir string, h
 			case <-ticker.C:
 			}
 			metrics.WorkerHeartbeat("dns_tailer")
-
-			f, err := os.Open(logPath) // #nosec G304 — logPath is the configured DNS log path
-			if err != nil {
-				continue
+			var persist bool
+			offset, persist = tailOnce(db, hub, logPath, offset, dnsTail)
+			if persist {
+				writeOffset(posPath, offset)
 			}
-			fi, err := f.Stat()
-			if err != nil {
-				f.Close()
-				continue
-			}
-			if fi.Size() < offset {
-				offset = 0
-			}
-			if fi.Size() == offset {
-				f.Close()
-				continue
-			}
-			if _, err := f.Seek(offset, io.SeekStart); err != nil {
-				f.Close()
-				continue
-			}
-			scanner := bufio.NewScanner(f)
-			scanner.Buffer(make([]byte, 64*1024), 256*1024)
-			batch := make([]map[string]any, 0, 256)
-			for scanner.Scan() {
-				line := strings.TrimSpace(scanner.Text())
-				if line == "" {
-					continue
-				}
-				if entry := parseDNSLine(line); entry != nil {
-					batch = append(batch, entry)
-				}
-			}
-			newOffset, seekErr := f.Seek(0, io.SeekCurrent)
-			f.Close()
-
-			if err := insertLogBatch(db, batch); err != nil {
-				log.Warn().Err(err).Int("lines", len(batch)).Msg("dns tailer: batch insert failed, will retry")
-				continue
-			}
-			if hub != nil {
-				for _, entry := range batch {
-					if msg, err := json.Marshal(entry); err == nil {
-						select {
-						case hub.Broadcast <- msg:
-						default:
-						}
-					}
-				}
-			}
-
-			if seekErr == nil {
-				offset = newOffset
-			} else {
-				offset = fi.Size()
-			}
-			writeOffset(posPath, offset)
 		}
 	})
 	log.Info().Str("path", logPath).Msg("dns tailer started")
+}
+
+// dnsTail is the dnsmasq log tailer. It shares tailOnce with the Squid tailer,
+// and so its per-tick line cap: it had none, so a backlog was read into one
+// slice, the same unbounded-memory shape the Squid tailer was capped for
+// (SECURE-SCAL-02).
+var dnsTail = tailSpec{
+	name:     "dns tailer",
+	parse:    parseDNSLine,
+	maxLines: maxBatchLines,
 }
 
 func parseDNSLine(line string) map[string]any {
