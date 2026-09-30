@@ -407,3 +407,95 @@ func TestExportRefusesUnknownEgressType(t *testing.T) {
 		t.Errorf("refused for the wrong reason: %v", err)
 	}
 }
+
+// SECURE-DOM-02/03. A database created before the CHECK constraints existed is
+// rebuilt once, keeps its good rows, repairs what can be re-derived, drops what
+// nothing read, and records the version so the rebuild does not run again.
+func TestVersionedMigrationAddsTypeConstraints(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	// The pre-constraint shapes, with rows a constraint would have refused.
+	for _, s := range []string{
+		`CREATE TABLE dst_allowlist (id INTEGER PRIMARY KEY AUTOINCREMENT, entry TEXT UNIQUE NOT NULL,
+			type TEXT NOT NULL DEFAULT 'domain', description TEXT, added_date TEXT DEFAULT (datetime('now')))`,
+		`CREATE TABLE domain_whitelist (id INTEGER PRIMARY KEY AUTOINCREMENT, domain TEXT UNIQUE NOT NULL,
+			type TEXT DEFAULT 'fqdn', description TEXT, added_date TEXT DEFAULT (datetime('now')))`,
+		`INSERT INTO dst_allowlist(entry,type) VALUES('a.test','domain'),('10.0.0.0/8','cidr'),('b.test','regex'),('192.0.2.7','regex')`,
+		`INSERT INTO domain_whitelist(domain,type) VALUES('ok.test','fqdn'),('old.test',NULL),('.*x','url-regex')`,
+	} {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	if err := Init(db, "admin", "hash"); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	types := map[string]string{}
+	rows, _ := db.Query("SELECT entry, type FROM dst_allowlist")
+	for rows.Next() {
+		var e, ty string
+		_ = rows.Scan(&e, &ty)
+		types[e] = ty
+	}
+	rows.Close()
+	want := map[string]string{"a.test": "domain", "10.0.0.0/8": "cidr", "b.test": "domain", "192.0.2.7": "cidr"}
+	for e, ty := range want {
+		if types[e] != ty {
+			t.Errorf("dst_allowlist %q: type %q, want %q", e, types[e], ty)
+		}
+	}
+	var n int
+	_ = db.QueryRow("SELECT COUNT(*) FROM domain_whitelist").Scan(&n)
+	if n != 2 {
+		t.Errorf("domain_whitelist kept %d rows, want 2 (fqdn and NULL-typed; the url-regex row read by nothing is dropped)", n)
+	}
+
+	if _, err := db.Exec("INSERT INTO dst_allowlist(entry,type) VALUES('z.test','regex')"); err == nil {
+		t.Error("dst_allowlist accepted a bad type after migration")
+	}
+	if _, err := db.Exec("INSERT INTO domain_whitelist(domain,type) VALUES('z.test','url-regex')"); err == nil {
+		t.Error("domain_whitelist accepted a bad type after migration")
+	}
+
+	var v int
+	_ = db.QueryRow("PRAGMA user_version").Scan(&v)
+	if v != schemaVersion {
+		t.Errorf("user_version = %d, want %d", v, schemaVersion)
+	}
+	// Second run is a no-op: rows added since must survive.
+	if _, err := db.Exec("INSERT INTO dst_allowlist(entry,type) VALUES('keep.test','domain')"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Init(db, "admin", "hash"); err != nil {
+		t.Fatalf("Init #2: %v", err)
+	}
+	_ = db.QueryRow("SELECT COUNT(*) FROM dst_allowlist WHERE entry='keep.test'").Scan(&n)
+	if n != 1 {
+		t.Error("the migration ran again and lost a row")
+	}
+}
+
+func TestFreshDatabaseIsAtCurrentSchemaVersion(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "fresh.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Init(db, "admin", "hash"); err != nil {
+		t.Fatal(err)
+	}
+	var v int
+	_ = db.QueryRow("PRAGMA user_version").Scan(&v)
+	if v != schemaVersion {
+		t.Errorf("user_version = %d, want %d", v, schemaVersion)
+	}
+	if _, err := db.Exec("INSERT INTO domain_whitelist(domain,type) VALUES('x.test','url-regex')"); err == nil {
+		t.Error("a fresh domain_whitelist accepted a type other than fqdn")
+	}
+}

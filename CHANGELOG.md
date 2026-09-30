@@ -13,6 +13,36 @@ a `### Removed` or `### Changed` heading with the phrase **BREAKING** and the
 changes affecting it. Retired routes answer `410 Gone` naming their replacement
 for at least one minor release before disappearing.
 
+## [Unreleased]
+
+### Action worth knowing about on upgrade
+
+The database gains a schema version (`PRAGMA user_version`) and, on the first
+start after upgrading, two tables are rebuilt once so that `dst_allowlist.type`
+and `domain_whitelist.type` carry the same `CHECK` constraint a new database
+already had. Existing databases could not receive it before, because SQLite
+needs a table rebuild to add a constraint. **Take a backup first, as for any
+upgrade;** the rebuild runs in one transaction and is not repeated.
+
+It touches data only where a row already violated the constraint, and each case
+is logged as a warning with a row count:
+
+- **`dst_allowlist`:** a row whose `type` was neither `cidr` nor `domain` has its
+  type re-derived from the entry (an address or CIDR becomes `cidr`, anything
+  else `domain`). Such a row was listed in the UI but reached neither Squid
+  file, so it now starts to take effect: an entry you believed was allowed, and
+  which did nothing, will begin to allow that destination.
+- **`domain_whitelist`:** a row whose `type` was anything other than `fqdn`
+  (the old `url-regex` type) is **not carried over**. Nothing read those rows,
+  so enforcement does not change, but they disappear from the list. Rows with no
+  type become `fqdn`.
+
+The exporter also refuses to write the lists if a `domain_whitelist` row with a
+type other than `fqdn` is ever found, as it already did for `dst_allowlist`.
+
+Nothing is required if neither table held such rows; the log line
+`schema migrated` (version 2) confirms the migration ran.
+
 ## [3.13.2] - 2026-09-30
 
 Two fixes in the UI, and a sweep of the container images the compose files
