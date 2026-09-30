@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -76,4 +77,59 @@ func TestTrafficLogger(t *testing.T) {
 	}
 
 	tl.Close()
+}
+
+// SECURE-ERR-02. When the log file cannot be reopened after rotation and the
+// rotated file cannot be either, the logger used to point at /dev/null: every
+// later record vanished with no signal and the sink never came back. It must
+// now say it is down, count what it drops, and recover when the directory
+// returns.
+func TestTrafficLoggerReportsAndRecoversFromALostSink(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "logs")
+	path := filepath.Join(dir, "t.jsonl")
+	tl := newTrafficLogger(path, 200)
+	if tl == nil {
+		t.Fatal("no logger")
+	}
+	tl.retryEvery = 20 * time.Millisecond
+	before := trafficLogSinkDropped.Load()
+
+	feat := TrafficFeature{ClientIP: "1.2.3.4", Method: "GET", Host: "example.com", Path: "/x"}
+	// Fill the first file, then remove its directory so rotation cannot reopen
+	// anything.
+	tl.Write(feat)
+	time.Sleep(50 * time.Millisecond)
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 10 && tl.Writable(); i++ {
+		tl.Write(feat)
+		time.Sleep(20 * time.Millisecond)
+	}
+	if tl.Writable() {
+		t.Fatal("the logger still reports a writable sink after its directory was removed")
+	}
+	tl.Write(feat)
+	time.Sleep(30 * time.Millisecond)
+	if trafficLogSinkDropped.Load() <= before {
+		t.Error("records were discarded without being counted")
+	}
+
+	// The directory returns; the next record after the retry interval recovers.
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(40 * time.Millisecond)
+	for i := 0; i < 20 && !tl.Writable(); i++ {
+		tl.Write(feat)
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !tl.Writable() {
+		t.Fatal("the logger did not recover after the directory came back")
+	}
+	tl.Flush()
+	tl.Close()
+	if info, err := os.Stat(path); err != nil || info.Size() == 0 {
+		t.Errorf("no record was written after recovery: %v", err)
+	}
 }

@@ -90,11 +90,15 @@ func listHandler(db *sql.DB, table, col string) http.HandlerFunc {
 			// Escape LIKE metacharacters
 			escaped := strings.NewReplacer("%", "\\%", "_", "\\_").Replace(search)
 			like := "%" + escaped + "%"
-			db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'", table, col), like, like).Scan(&total) //nolint:errcheck
-			rows, err = db.Query(fmt.Sprintf("SELECT * FROM %s WHERE %s LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT ? OFFSET ?", table, col), like, like, limit, offset)
+			total, err = countRows(db, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'", table, col), like, like)
+			if err == nil {
+				rows, err = db.Query(fmt.Sprintf("SELECT * FROM %s WHERE %s LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT ? OFFSET ?", table, col), like, like, limit, offset)
+			}
 		} else {
-			db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&total) //nolint:errcheck
-			rows, err = db.Query(fmt.Sprintf("SELECT * FROM %s ORDER BY id DESC LIMIT ? OFFSET ?", table), limit, offset)
+			total, err = countRows(db, fmt.Sprintf("SELECT COUNT(*) FROM %s", table))
+			if err == nil {
+				rows, err = db.Query(fmt.Sprintf("SELECT * FROM %s ORDER BY id DESC LIMIT ? OFFSET ?", table), limit, offset)
+			}
 		}
 		if err != nil {
 			writeInternalError(w, "list_blacklist", err)
