@@ -13,6 +13,26 @@ a `### Removed` or `### Changed` heading with the phrase **BREAKING** and the
 changes affecting it. Retired routes answer `410 Gone` naming their replacement
 for at least one minor release before disappearing.
 
+## [3.14.1] - 2026-09-30
+
+UI-only. Nothing is required on upgrade and `X-API-Version` stays 1.
+
+### Fixed
+
+- **Search fields and icon-only buttons have an accessible name.** The filter and
+  search inputs (Clients, Audit, Logs, Blacklists, the egress allowlist), the
+  regex playground's period select and the copy buttons carry an `aria-label`; a
+  placeholder is not a name. The mobile menu toggle also reports `aria-expanded`
+  and controls the sidebar.
+- **Small muted text is legible.** Text in the sidebar, the global search and the
+  presets that was layered at 50-60% opacity now uses the solid muted colour.
+
+### Changed
+
+- `parseUtc` and `relative` (timestamps as "5m ago") exist once, in
+  `ui/src/lib/utils.ts`, instead of being copied into two pages, and the change
+  password form uses the shared password rule. No visible change.
+
 ## [3.14.0] - 2026-09-30
 
 A sweep of the findings of a code-metrics audit, one category at a time. Nothing
