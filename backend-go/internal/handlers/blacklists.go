@@ -698,163 +698,23 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	seen := make(map[string]struct{}, len(req.Countries))
-	countries := make([]string, 0, len(req.Countries))
-	for _, c := range req.Countries {
-		cc := strings.ToLower(strings.TrimSpace(c))
-		if cc == "" {
-			continue
-		}
-		if _, dup := seen[cc]; dup {
-			continue
-		}
-		seen[cc] = struct{}{}
-		countries = append(countries, cc)
-	}
-	req.Countries = countries
+	req.Countries = normaliseCountryCodes(req.Countries)
 
-	existing := map[string]struct{}{}
-	rows, _ := h.db.Query("SELECT ip FROM ip_blacklist")
-	if rows != nil {
-		for rows.Next() {
-			var v string
-			rows.Scan(&v) //nolint:errcheck
-			existing[v] = struct{}{}
-		}
-		rows.Close()
-	}
+	existing := h.existingBlacklistIPs()
+	results := h.fetchGeoFeeds(req.Countries)
 
-	totalImported := 0
-	importedCountries := 0
+	totalImported, importedCountries := 0, 0
 	var fetchErrors []string
-	// SECURE-INPT-03. The default feeds are third-party hosts we do not control,
-	// so a hijacked or compromised upstream must not be able to redirect us at
-	// an internal address: those go through the SSRF-safe client, which
-	// validates at dial time and on every redirect hop.
-	//
-	// An operator-supplied GEOIP_URL is a different case — pointing it at a
-	// mirror on the LAN is a legitimate self-hosting configuration, and the
-	// SSRF client would refuse exactly that. It gets a plain client with a
-	// bounded redirect chain instead: the operator chose the endpoint, so the
-	// address is their decision, but an unbounded redirect chain is not.
-	var client *http.Client
-	if h.cfg.GeoIPURL == "" {
-		client = netguard.SSRFSafeClient()
-	} else {
-		client = &http.Client{
-			CheckRedirect: func(_ *http.Request, via []*http.Request) error {
-				if len(via) >= 5 {
-					return errors.New("stopped after 5 redirects")
-				}
-				return nil
-			},
-		}
-	}
-
-	ccRe := regexp.MustCompile(`^[a-zA-Z]{2}$`)
-
-	// Fetch the feeds CONCURRENTLY, bounded. Sequentially this was up to 50
-	// countries times two candidate URLs at a 30-second timeout each, inside the
-	// request goroutine, against a server WriteTimeout of 60 seconds — so a
-	// large import reliably outlived its own response deadline while continuing
-	// to insert rows, and the operator was told it failed for work that was
-	// done. The bound is the same 8 the WAF uses for its notification pool, and
-	// the per-feed timeout drops to 10s: a country zone file that has not
-	// started arriving by then is not going to help (SECURE-PERF-01).
-	client.Timeout = geoFeedTimeout
-	type fetched struct {
-		cc      string
-		content string
-		err     string
-	}
-	results := make([]fetched, len(req.Countries))
-	sem := make(chan struct{}, geoFetchConcurrency)
-	var wg sync.WaitGroup
-	for i, country := range req.Countries {
-		cc := strings.ToLower(country)
-		if !ccRe.MatchString(cc) {
-			results[i] = fetched{cc: cc, err: cc + ": invalid country code"}
-			continue
-		}
-		wg.Add(1)
-		go func(i int, cc string) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			urls := []string{}
-			if h.cfg.GeoIPURL != "" {
-				urls = append(urls, h.cfg.GeoIPURL+"?cc="+cc)
-			} else {
-				urls = append(urls,
-					"https://www.ipdeny.com/ipblocks/data/countries/"+cc+".zone",
-					"https://raw.githubusercontent.com/herrbischoff/country-ip-blocks/master/ipv4/"+cc+".cidr",
-				)
-			}
-			for _, u := range urls {
-				resp, err := client.Get(u)
-				if err != nil {
-					continue
-				}
-				if resp.StatusCode == 200 {
-					data, _ := readAll(resp.Body)
-					resp.Body.Close() //nolint:errcheck
-					results[i] = fetched{cc: cc, content: string(data)}
-					return
-				}
-				resp.Body.Close() //nolint:errcheck
-			}
-			results[i] = fetched{cc: cc, err: strings.ToUpper(cc) + ": no data"}
-		}(i, cc)
-	}
-	wg.Wait()
-
 	for _, res := range results {
-		cc := res.cc
-		if res.err != "" {
-			fetchErrors = append(fetchErrors, res.err)
-			continue
-		}
-		content := res.content
-		if content == "" {
-			fetchErrors = append(fetchErrors, strings.ToUpper(cc)+": no data")
-			continue
-		}
-		var toInsert [][2]string
-		for _, line := range strings.Split(content, "\n") {
-			ip := strings.TrimSpace(line)
-			if ip == "" || strings.HasPrefix(ip, "#") {
-				continue
-			}
-			// Same guards as the regular import: valid CIDR/IP, and never a
-			// private/bogon range (the ip_blacklist is a source ACL).
-			if !isValidCIDR(ip) || isLANBogonCIDR(ip) {
-				continue
-			}
-			if _, ex := existing[ip]; !ex {
-				toInsert = append(toInsert, [2]string{ip, "GeoIP: " + strings.ToUpper(cc)})
-				existing[ip] = struct{}{}
-			}
-		}
-		if len(toInsert) == 0 {
-			continue
-		}
-		// Count rows that COMMITTED, not rows queued in memory. The previous
-		// code incremented before any database work and discarded the errors
-		// from Begin, Prepare, Exec and Commit, so a locked or read-only SQLite
-		// produced a 200 reporting tens of thousands of imported blocks with
-		// nothing written (SECURE-ERR-01).
-		committed, err := insertGeoBatch(h.db, toInsert)
-		if err != nil {
-			// Roll the in-memory dedupe set back so a retry can re-attempt these.
-			for _, pair := range toInsert {
-				delete(existing, pair[0])
-			}
-			fetchErrors = append(fetchErrors, strings.ToUpper(cc)+": "+err.Error())
+		committed, counted, errMsg := h.importGeoCountry(res, existing)
+		if errMsg != "" {
+			fetchErrors = append(fetchErrors, errMsg)
 			continue
 		}
 		totalImported += committed
-		importedCountries++
+		if counted {
+			importedCountries++
+		}
 	}
 
 	// A failure that imported nothing is a failure; a partial import must say
@@ -874,6 +734,191 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 		resp["data"].(map[string]any)["errors"] = fetchErrors
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// normaliseCountryCodes lowercases, trims and de-duplicates the requested
+// codes, dropping empty ones.
+func normaliseCountryCodes(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, c := range in {
+		cc := strings.ToLower(strings.TrimSpace(c))
+		if cc == "" {
+			continue
+		}
+		if _, dup := seen[cc]; dup {
+			continue
+		}
+		seen[cc] = struct{}{}
+		out = append(out, cc)
+	}
+	return out
+}
+
+// existingBlacklistIPs is the set of addresses already in ip_blacklist, so an
+// import does not insert what is there.
+func (h *BlacklistHandlers) existingBlacklistIPs() map[string]struct{} {
+	existing := map[string]struct{}{}
+	rows, _ := h.db.Query("SELECT ip FROM ip_blacklist")
+	if rows == nil {
+		return existing
+	}
+	for rows.Next() {
+		var v string
+		rows.Scan(&v) //nolint:errcheck
+		existing[v] = struct{}{}
+	}
+	rows.Close()
+	return existing
+}
+
+// geoFetched is one country's feed, or why it could not be had.
+type geoFetched struct {
+	cc      string
+	content string
+	err     string
+}
+
+// geoClient picks the HTTP client for the feeds.
+//
+// SECURE-INPT-03. The default feeds are third-party hosts we do not control,
+// so a hijacked or compromised upstream must not be able to redirect us at
+// an internal address: those go through the SSRF-safe client, which
+// validates at dial time and on every redirect hop.
+//
+// An operator-supplied GEOIP_URL is a different case — pointing it at a
+// mirror on the LAN is a legitimate self-hosting configuration, and the
+// SSRF client would refuse exactly that. It gets a plain client with a
+// bounded redirect chain instead: the operator chose the endpoint, so the
+// address is their decision, but an unbounded redirect chain is not.
+func (h *BlacklistHandlers) geoClient() *http.Client {
+	if h.cfg.GeoIPURL == "" {
+		return netguard.SSRFSafeClient()
+	}
+	return &http.Client{
+		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return errors.New("stopped after 5 redirects")
+			}
+			return nil
+		},
+	}
+}
+
+// geoFeedURLs are the candidate URLs for one country's zone file.
+func (h *BlacklistHandlers) geoFeedURLs(cc string) []string {
+	if h.cfg.GeoIPURL != "" {
+		return []string{h.cfg.GeoIPURL + "?cc=" + cc}
+	}
+	return []string{
+		"https://www.ipdeny.com/ipblocks/data/countries/" + cc + ".zone",
+		"https://raw.githubusercontent.com/herrbischoff/country-ip-blocks/master/ipv4/" + cc + ".cidr",
+	}
+}
+
+// fetchGeoFeed tries each candidate URL until one answers 200.
+func fetchGeoFeed(client *http.Client, cc string, urls []string) geoFetched {
+	for _, u := range urls {
+		resp, err := client.Get(u)
+		if err != nil {
+			continue
+		}
+		if resp.StatusCode == 200 {
+			data, _ := readAll(resp.Body)
+			resp.Body.Close() //nolint:errcheck
+			return geoFetched{cc: cc, content: string(data)}
+		}
+		resp.Body.Close() //nolint:errcheck
+	}
+	return geoFetched{cc: cc, err: strings.ToUpper(cc) + ": no data"}
+}
+
+var geoCountryRE = regexp.MustCompile(`^[a-zA-Z]{2}$`)
+
+// fetchGeoFeeds fetches the feeds CONCURRENTLY, bounded. Sequentially this was
+// up to 50 countries times two candidate URLs at a 30-second timeout each,
+// inside the request goroutine, against a server WriteTimeout of 60 seconds —
+// so a large import reliably outlived its own response deadline while
+// continuing to insert rows, and the operator was told it failed for work that
+// was done. The bound is the same 8 the WAF uses for its notification pool, and
+// the per-feed timeout drops to 10s: a country zone file that has not started
+// arriving by then is not going to help (SECURE-PERF-01).
+func (h *BlacklistHandlers) fetchGeoFeeds(countries []string) []geoFetched {
+	client := h.geoClient()
+	client.Timeout = geoFeedTimeout
+	results := make([]geoFetched, len(countries))
+	sem := make(chan struct{}, geoFetchConcurrency)
+	var wg sync.WaitGroup
+	for i, country := range countries {
+		cc := strings.ToLower(country)
+		if !geoCountryRE.MatchString(cc) {
+			results[i] = geoFetched{cc: cc, err: cc + ": invalid country code"}
+			continue
+		}
+		wg.Add(1)
+		go func(i int, cc string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			results[i] = fetchGeoFeed(client, cc, h.geoFeedURLs(cc))
+		}(i, cc)
+	}
+	wg.Wait()
+	return results
+}
+
+// parseGeoZone is the rows a country's zone file adds: valid CIDR/IP lines that
+// are not a private/bogon range (the ip_blacklist is a source ACL, the same
+// guards as the regular import) and not already present. It records what it
+// returns in existing.
+func parseGeoZone(content, cc string, existing map[string]struct{}) [][2]string {
+	var toInsert [][2]string
+	for _, line := range strings.Split(content, "\n") {
+		ip := strings.TrimSpace(line)
+		if ip == "" || strings.HasPrefix(ip, "#") {
+			continue
+		}
+		if !isValidCIDR(ip) || isLANBogonCIDR(ip) {
+			continue
+		}
+		if _, ex := existing[ip]; !ex {
+			toInsert = append(toInsert, [2]string{ip, "GeoIP: " + strings.ToUpper(cc)})
+			existing[ip] = struct{}{}
+		}
+	}
+	return toInsert
+}
+
+// importGeoCountry inserts one country's feed. It returns the rows that
+// COMMITTED, whether the country counts as imported (it had rows to insert and
+// they went through, even if the database ignored them all as duplicates), and,
+// when the country failed, the message for the response.
+//
+// Count rows that COMMITTED, not rows queued in memory. The previous code
+// incremented before any database work and discarded the errors from Begin,
+// Prepare, Exec and Commit, so a locked or read-only SQLite produced a 200
+// reporting tens of thousands of imported blocks with nothing written
+// (SECURE-ERR-01).
+func (h *BlacklistHandlers) importGeoCountry(res geoFetched, existing map[string]struct{}) (committed int, counted bool, errMsg string) {
+	if res.err != "" {
+		return 0, false, res.err
+	}
+	if res.content == "" {
+		return 0, false, strings.ToUpper(res.cc) + ": no data"
+	}
+	toInsert := parseGeoZone(res.content, res.cc, existing)
+	if len(toInsert) == 0 {
+		return 0, false, ""
+	}
+	committed, err := insertGeoBatch(h.db, toInsert)
+	if err != nil {
+		// Roll the in-memory dedupe set back so a retry can re-attempt these.
+		for _, pair := range toInsert {
+			delete(existing, pair[0])
+		}
+		return 0, false, strings.ToUpper(res.cc) + ": " + err.Error()
+	}
+	return committed, true, ""
 }
 
 // insertGeoBatch writes one country's blocks in a single transaction and
