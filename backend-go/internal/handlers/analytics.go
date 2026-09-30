@@ -1030,8 +1030,11 @@ func (h *AnalyticsHandlers) TopDomains(w http.ResponseWriter, r *http.Request) {
 func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
 	limit := clamp(queryInt(r, "limit", 50), 1, 200)
 	offset := max0(queryInt(r, "offset", 0))
-	var total int
-	h.db.QueryRow("SELECT COUNT(*) FROM audit_log").Scan(&total) //nolint:errcheck
+	total, err := countRows(h.db, "SELECT COUNT(*) FROM audit_log")
+	if err != nil {
+		writeInternalError(w, "audit_log_count", err)
+		return
+	}
 	rows, err := h.db.Query("SELECT * FROM audit_log ORDER BY id DESC LIMIT ? OFFSET ?", limit, offset)
 	if err != nil {
 		writeInternalError(w, "audit_log", err)

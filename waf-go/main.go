@@ -974,6 +974,13 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	if trafficLog != nil {
 		trafficEnabled = 1
 	}
+	// 1 while records reach a file; 0 when the logger exists but its sink is
+	// down (disk full, directory removed). Distinct from enabled, which only
+	// says a sink was found at start-up.
+	trafficWritable := 0
+	if trafficLog.Writable() {
+		trafficWritable = 1
+	}
 	fmt.Fprintf(w,
 		"# HELP waf_trafficlog_enabled Whether the WAF traffic feature log has a writable sink (1) or is disabled (0).\n"+
 			"# TYPE waf_trafficlog_enabled gauge\n"+
@@ -981,6 +988,12 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 			"# HELP waf_trafficlog_dropped_total Traffic feature records dropped because the queue was full.\n"+
 			"# TYPE waf_trafficlog_dropped_total counter\n"+
 			"waf_trafficlog_dropped_total %d\n"+
+			"# HELP waf_trafficlog_writable Whether records are currently reaching a file (1) or the sink is down (0).\n"+
+			"# TYPE waf_trafficlog_writable gauge\n"+
+			"waf_trafficlog_writable %d\n"+
+			"# HELP waf_trafficlog_sink_dropped_total Traffic feature records dropped because no log file could be opened.\n"+
+			"# TYPE waf_trafficlog_sink_dropped_total counter\n"+
+			"waf_trafficlog_sink_dropped_total %d\n"+
 			"# HELP waf_notify_dropped_total Backend notifications (alerts) dropped because the queue was full.\n"+
 			"# TYPE waf_notify_dropped_total counter\n"+
 			"waf_notify_dropped_total %d\n"+
@@ -992,6 +1005,8 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 			"waf_respmod_uninspectable_total %d\n",
 		trafficEnabled,
 		trafficLogDropped.Load(),
+		trafficWritable,
+		trafficLogSinkDropped.Load(),
 		notifyDropped.Load(),
 		bodyTruncatedCount.Load(),
 		respmodUninspectable.Load(),

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +40,19 @@ func writeError(w http.ResponseWriter, status int, detail string) {
 // unstable across a dependency bump this project's changelog would not mention,
 // and useless to a UI that wanted to map it to something actionable
 // (SECURE-API-04).
+// countRows runs a COUNT query for a pagination envelope. The error is returned,
+// not discarded: a failed count left total at 0 next to a page that the list
+// query, run a moment later, might well have filled, so the response described a
+// non-empty page as belonging to an empty collection and the caller could not
+// tell.
+func countRows(db *sql.DB, query string, args ...any) (int, error) {
+	var n int
+	if err := db.QueryRow(query, args...).Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 func writeInternalError(w http.ResponseWriter, op string, err error) {
 	log.Error().Str("op", op).Err(err).Msg("request failed")
 	writeJSON(w, http.StatusInternalServerError, map[string]string{

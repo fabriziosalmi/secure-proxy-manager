@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const (
@@ -23,6 +24,17 @@ const (
 // full. Exposed via /metrics so operators can see forensics being shed under
 // load instead of it failing silently.
 var trafficLogDropped atomic.Int64
+
+// trafficLogSinkDropped counts records discarded because the log file could not
+// be (re)opened, as distinct from trafficLogDropped (queue full). Both are
+// forensics lost; the operator needs to tell "shedding load" from "the disk is
+// gone".
+var trafficLogSinkDropped atomic.Int64
+
+// trafficLogRetryEvery bounds how often a logger whose sink is down tries to
+// reopen it, so a dead disk costs one failed open per interval, not one per
+// record.
+const trafficLogRetryEvery = 30 * time.Second
 
 // ── Traffic Feature Extraction ──────────────────────────────────────────────
 
@@ -69,7 +81,20 @@ type TrafficLogger struct {
 	maxSize int64
 	written int64
 	done    chan struct{}
+
+	// sinkDown is set when the file could not be reopened after rotation and
+	// the fallback failed too. While it is set, file and writer are nil,
+	// records are counted in trafficLogSinkDropped, and drainLoop retries the
+	// reopen every retryEvery. It replaces the old behaviour of pointing the
+	// writer at /dev/null, which discarded every later record with no signal
+	// and never recovered.
+	sinkDown     atomic.Bool
+	retryEvery   time.Duration
+	lastReopenAt time.Time
 }
+
+// Writable reports whether records are reaching a file.
+func (tl *TrafficLogger) Writable() bool { return tl != nil && !tl.sinkDown.Load() }
 
 var trafficLog *TrafficLogger
 
@@ -129,6 +154,8 @@ func newTrafficLogger(path string, maxSize int64) *TrafficLogger {
 		maxSize: maxSize,
 		written: written,
 		done:    make(chan struct{}),
+
+		retryEvery: trafficLogRetryEvery,
 	}
 
 	// Single writer goroutine — no lock contention on hot path
@@ -160,8 +187,15 @@ func (tl *TrafficLogger) drainLoop() {
 		data = append(data, '\n')
 
 		tl.mu.Lock()
-		if tl.written+int64(len(data)) > tl.maxSize {
+		if tl.file == nil {
+			tl.tryReopen()
+		} else if tl.written+int64(len(data)) > tl.maxSize {
 			tl.rotate()
+		}
+		if tl.file == nil {
+			trafficLogSinkDropped.Add(1)
+			tl.mu.Unlock()
+			continue
 		}
 		n, _ := tl.writer.Write(data)
 		tl.written += int64(n)
@@ -183,15 +217,53 @@ func (tl *TrafficLogger) rotate() {
 	f, err := os.OpenFile(tl.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Printf("Failed to rotate traffic log: %v\n", err)
-		// Fallback: reopen the .1 file to avoid FD leak
-		f, _ = os.OpenFile(tl.path+".1", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if f == nil {
-			f, _ = os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+		// Fall back to appending to the rotated file rather than losing the
+		// sink and leaking the descriptor.
+		f, err = os.OpenFile(tl.path+".1", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			tl.markDown(err)
+			return
 		}
 	}
 	tl.file = f
 	tl.writer = bufio.NewWriterSize(f, 64*1024)
 	tl.written = 0
+}
+
+// markDown records that no file could be opened. Must be called under tl.mu.
+func (tl *TrafficLogger) markDown(cause error) {
+	tl.file = nil
+	tl.writer = nil
+	tl.lastReopenAt = time.Now()
+	if tl.sinkDown.CompareAndSwap(false, true) {
+		log.Printf("traffic log: DOWN, no file could be opened (%v); forensic records are being dropped and counted in waf_trafficlog_sink_dropped_total, retrying every %v\n",
+			cause, tl.retryEvery)
+	}
+}
+
+// tryReopen retries the sink, at most once per retryEvery. Must be called under
+// tl.mu with tl.file == nil.
+func (tl *TrafficLogger) tryReopen() {
+	if time.Since(tl.lastReopenAt) < tl.retryEvery {
+		return
+	}
+	tl.lastReopenAt = time.Now()
+	if err := os.MkdirAll(filepath.Dir(tl.path), 0o755); err != nil {
+		return
+	}
+	f, err := os.OpenFile(tl.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	info, _ := f.Stat()
+	tl.file = f
+	tl.writer = bufio.NewWriterSize(f, 64*1024)
+	tl.written = 0
+	if info != nil {
+		tl.written = info.Size()
+	}
+	tl.sinkDown.Store(false)
+	log.Printf("traffic log: recovered, writing to %s again\n", tl.path)
 }
 
 // Flush flushes the buffered writer.
@@ -201,6 +273,9 @@ func (tl *TrafficLogger) Flush() {
 	}
 	tl.mu.Lock()
 	defer tl.mu.Unlock()
+	if tl.writer == nil {
+		return
+	}
 	if err := tl.writer.Flush(); err != nil {
 		log.Printf("traffic log: flush failed, buffered records lost: %v\n", err)
 	}
@@ -215,6 +290,9 @@ func (tl *TrafficLogger) Close() {
 	<-tl.done
 	tl.mu.Lock()
 	defer tl.mu.Unlock()
+	if tl.writer == nil || tl.file == nil {
+		return
+	}
 	if err := tl.writer.Flush(); err != nil {
 		log.Printf("traffic log: final flush failed, records lost: %v\n", err)
 	}

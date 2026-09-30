@@ -57,8 +57,11 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 	order := sanitiseOrder(r.URL.Query().Get("order"))
 	gdpr := h.gdprEnabled()
 
-	var total int
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&total) //nolint:errcheck
+	total, err := countRows(h.db, "SELECT COUNT(*) FROM proxy_logs")
+	if err != nil {
+		writeInternalError(w, "logs_count", err)
+		return
+	}
 
 	// sort and order are sanitised against whitelists (sanitiseSort/sanitiseOrder) — safe for interpolation.
 	// #nosec G202
