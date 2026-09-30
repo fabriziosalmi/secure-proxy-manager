@@ -9,6 +9,19 @@
 # must refuse a corrupt or incomplete backup, and it must leave data/ untouched
 # when it refuses. The parts that need Docker (compose down/up) are not driven
 # here; what is verified is everything up to and including the refusal.
+# +e on purpose, and it must be explicit. GitHub invokes a run step as
+# `bash -e {0}`, so errexit is already ON before the script's first line, and
+# `set -uo pipefail` does not clear it. This harness is built to run every
+# assertion and print a summary, so the first command that returns non-zero —
+# a grep that does not match, a restore.sh that correctly refuses with a
+# non-zero status — would end the run silently instead of failing a check.
+#
+# That is what actually broke this drill in CI. It reported
+# "a corrupt backup is refused BEFORE the swap" with an EMPTY detail, which
+# reads as restore.sh accepting a corrupt backup; the truth was that the script
+# had been killed by errexit and never captured the output. Verified by running
+# it on Linux both ways: 6 passed without -e, dead at the first section with it.
+set +e
 set -uo pipefail
 
 PASS=0; FAIL=0
