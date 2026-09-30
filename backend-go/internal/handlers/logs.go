@@ -200,10 +200,21 @@ func max0(v int) int {
 	return v
 }
 
+// sanitiseSort maps a caller-supplied sort key onto the whitelist, returning
+// the DEFAULT for anything not on it.
+//
+// It returns `a`, the whitelist element, and not `s`, the request parameter
+// they compare equal on this path, so the two are interchangeable at runtime —
+// but only one of them is a constant this file controls. Returning the
+// parameter kept the caller's string alive all the way into the query text,
+// which is why CodeQL reported go/sql-injection here (alert on logs.go:67)
+// even though the value can only ever be one of six literals. Returning the
+// literal makes that provable instead of arguable, to the analyser and to a
+// reader, and costs nothing.
 func sanitiseSort(s string, allowed []string, def string) string {
 	for _, a := range allowed {
 		if s == a {
-			return s
+			return a
 		}
 	}
 	return def
