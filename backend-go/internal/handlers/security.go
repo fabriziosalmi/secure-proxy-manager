@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/auth"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
-	appcrypto "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/crypto"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
@@ -26,8 +24,10 @@ import (
 // NotifyQueue is a bounded channel for fire-and-forget security notifications.
 type NotifyQueue chan map[string]any
 
-// NewNotifyQueue creates a queue and starts its worker goroutine.
-// NewNotifyQueue creates the queue and starts its worker under ctx.
+// NewNotifyQueue creates the queue and starts its dispatcher under ctx. The
+// dispatcher turns each event into one delivery per configured channel and
+// hands each to that channel's own worker (see notify.go), so a channel that is
+// down delays only itself.
 //
 // The worker used to be spawned with no owner: nothing tracked it, nothing
 // cancelled it, and the channel was never closed, so shutdown discarded
@@ -42,27 +42,37 @@ type NotifyQueue chan map[string]any
 // (SECURE-OBS-01).
 func NewNotifyQueue(ctx context.Context, db *sql.DB, encKey string) NotifyQueue {
 	q := make(NotifyQueue, 256)
+	fan := newNotifyFanout()
 	workers.Track(func() {
 		// Heartbeat before the receive as well as after a delivery, so the
 		// signal reports that the loop is alive rather than that something was
 		// recently sent — a queue with nothing to do must still look alive.
 		metrics.WorkerHeartbeat("notify_queue")
+		dispatch := func(event map[string]any) {
+			for _, d := range planNotifications(db, encKey, event) {
+				fan.submit(d)
+			}
+		}
 		for {
 			select {
 			case <-ctx.Done():
-				// Drain what is already queued before returning. Shutdown
-				// bounds the wait, so a wedged webhook cannot hold the process.
+				// Hand what is already queued to the channel workers, then close
+				// their queues: each drains what it holds and returns, so a
+				// restart during an attack does not discard queued alerts.
+				// Shutdown bounds the wait, so a wedged webhook cannot hold the
+				// process.
 				for {
 					select {
 					case event := <-q:
-						sendSecurityNotification(db, encKey, event)
+						dispatch(event)
 					default:
+						fan.close()
 						log.Info().Msg("notification queue drained")
 						return
 					}
 				}
 			case event := <-q:
-				sendSecurityNotification(db, encKey, event)
+				dispatch(event)
 				metrics.WorkerHeartbeat("notify_queue")
 			case <-time.After(30 * time.Second):
 				metrics.WorkerHeartbeat("notify_queue")
@@ -158,23 +168,6 @@ func (h *SecurityHandlers) ClearRateLimit(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Rate limit cleared for " + ip})
 }
 
-// channelOf labels a delivery by its destination kind, so the metric is keyed
-// by channel without ever carrying the URL (which is a credential).
-func channelOf(url string) string {
-	switch {
-	case strings.Contains(url, "gotify"):
-		return "gotify"
-	case strings.Contains(url, "telegram"):
-		return "telegram"
-	case strings.Contains(url, "ntfy"):
-		return "ntfy"
-	case strings.Contains(url, "office.com"), strings.Contains(url, "webhook.office"):
-		return "teams"
-	default:
-		return "webhook"
-	}
-}
-
 func (h *SecurityHandlers) Score(w http.ResponseWriter, r *http.Request) {
 	keys := []string{
 		"enable_ip_blacklist", "enable_domain_blacklist", "block_direct_ip",
@@ -265,156 +258,6 @@ func (h *SecurityHandlers) TestNotification(w http.ResponseWriter, r *http.Reque
 }
 
 // ── notification dispatcher ───────────────────────────────────────────────────
-
-func sendSecurityNotification(db *sql.DB, encKey string, event map[string]any) {
-	rows, err := db.Query(
-		"SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?,?,?,?,?,?,?,?,?)",
-		"enable_notifications", "webhook_url", "gotify_url", "gotify_token",
-		"teams_webhook_url", "telegram_bot_token", "telegram_chat_id",
-		"ntfy_url", "ntfy_topic",
-	)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-	settings := map[string]string{}
-	for rows.Next() {
-		var k, v string
-		rows.Scan(&k, &v) //nolint:errcheck
-		// Decrypt sensitive values transparently.
-		if appcrypto.IsSensitive(k) {
-			if dec, err := appcrypto.Decrypt(v, encKey); err == nil {
-				v = dec
-			}
-		}
-		settings[k] = v
-	}
-	if settings["enable_notifications"] != "true" {
-		return
-	}
-
-	emoji := "ℹ️"
-	switch event["level"] {
-	case "error":
-		emoji = "🔴"
-	case "warning":
-		emoji = "⚠️"
-	}
-	title := fmt.Sprintf("%s Secure Proxy Alert: %s", emoji,
-		titleCase(strings.ReplaceAll(fmt.Sprintf("%v", event["event_type"]), "_", " ")))
-
-	var msgLines []string
-	msgLines = append(msgLines, fmt.Sprintf("**Message:** %v", event["message"]))
-	msgLines = append(msgLines, fmt.Sprintf("**Time:** %v", event["timestamp"]))
-	msgLines = append(msgLines, fmt.Sprintf("**Client IP:** %v", event["client_ip"]))
-	for k, v := range event {
-		if k != "timestamp" && k != "client_ip" && k != "event_type" && k != "message" && k != "level" {
-			msgLines = append(msgLines, fmt.Sprintf("**%s:** %v", titleCase(k), v))
-		}
-	}
-	plainText := title + "\n\n" + strings.Join(msgLines, "\n")
-
-	client := &http.Client{Timeout: 5 * time.Second}
-
-	// safePost sends a POST with up to 3 retries and exponential backoff.
-	safePost := func(url string, body []byte, headers map[string]string) {
-		const maxRetries = 3
-		for attempt := 0; attempt < maxRetries; attempt++ {
-			req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
-			if err != nil {
-				return
-			}
-			for k, v := range headers {
-				req.Header.Set(k, v)
-			}
-			resp, err := client.Do(req)
-			if err == nil {
-				status := resp.StatusCode
-				resp.Body.Close()
-				if status < 400 {
-					metrics.NotificationSent(channelOf(url))
-					return
-				}
-				if status < 500 {
-					// A 4xx is not worth retrying, but it IS a failure: an
-					// expired Gotify token or a rotated webhook answers 401/404
-					// and the alert never arrives. This used to return silently,
-					// so the channel by which an operator learns about attacks
-					// could stop working with no signal at all (SECURE-OBS-02).
-					metrics.NotificationFailed(channelOf(url))
-					log.Warn().Str("channel", channelOf(url)).Int("status", status).
-						Msg("notification rejected — check the channel credentials")
-					return
-				}
-			}
-			if attempt < maxRetries-1 {
-				time.Sleep(time.Duration(1<<uint(attempt)) * time.Second) // 1s, 2s, 4s
-			}
-		}
-		metrics.NotificationFailed(channelOf(url))
-		log.Warn().Str("url", url).Msg("notification delivery failed after retries")
-	}
-
-	// 1. Custom webhook.
-	if u := settings["webhook_url"]; u != "" {
-		payload, _ := json.Marshal(event)
-		safePost(u, payload, map[string]string{"Content-Type": "application/json"})
-	}
-
-	// 2. Gotify.
-	if u, tok := settings["gotify_url"], settings["gotify_token"]; u != "" && tok != "" {
-		if !strings.HasSuffix(u, "/") {
-			u += "/"
-		}
-		prio := 5
-		if event["level"] == "error" {
-			prio = 8
-		}
-		payload, _ := json.Marshal(map[string]any{"title": title, "message": plainText, "priority": prio})
-		safePost(u+"message?token="+tok, payload, map[string]string{"Content-Type": "application/json"})
-	}
-
-	// 3. Microsoft Teams.
-	if u := settings["teams_webhook_url"]; u != "" {
-		color := "FFA500"
-		if event["level"] == "error" {
-			color = "FF0000"
-		}
-		payload, _ := json.Marshal(map[string]any{
-			"@type": "MessageCard", "@context": "http://schema.org/extensions",
-			"themeColor": color, "summary": title,
-			"sections": []map[string]any{{"activityTitle": title, "text": plainText}},
-		})
-		safePost(u, payload, map[string]string{"Content-Type": "application/json"})
-	}
-
-	// 4. Telegram.
-	if tok, chatID := settings["telegram_bot_token"], settings["telegram_chat_id"]; tok != "" && chatID != "" {
-		payload, _ := json.Marshal(map[string]any{
-			"chat_id": chatID, "text": "*" + title + "*\n\n" + strings.Join(msgLines, "\n"), "parse_mode": "Markdown",
-		})
-		safePost("https://api.telegram.org/bot"+tok+"/sendMessage", payload, map[string]string{"Content-Type": "application/json"})
-	}
-
-	// 5. ntfy.sh (self-hosted push notifications).
-	if u, topic := settings["ntfy_url"], settings["ntfy_topic"]; u != "" && topic != "" {
-		if !strings.HasSuffix(u, "/") {
-			u += "/"
-		}
-		prio := "default"
-		switch event["level"] {
-		case "error":
-			prio = "urgent"
-		case "warning":
-			prio = "high"
-		}
-		safePost(u+topic, []byte(plainText), map[string]string{
-			"Title": title, "Priority": prio, "Tags": "shield",
-		})
-	}
-
-	log.Debug().Str("event_type", fmt.Sprintf("%v", event["event_type"])).Msg("security notification sent")
-}
 
 // titleCase replaces deprecated strings.Title — capitalises first letter of each word.
 func titleCase(s string) string {
