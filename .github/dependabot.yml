@@ -50,56 +50,43 @@ updates:
           - "minor"
           - "patch"
 
+  # One entry for every Dockerfile in the tree, using `directories` (plural,
+  # glob-capable) rather than nine separate `directory` entries. The nine were
+  # producing nine independent pull requests, and with "require branches to be
+  # up to date" each merge put the other eight behind: thirteen dependency pull
+  # requests were open at once, the oldest three weeks old, none of them able
+  # to merge. Grouping them collapses a base-image sweep into one.
+  #
+  # Two of the old entries watched directories with no Dockerfile in them —
+  # "/" and "/deploy", which hold compose files. Dependabot's docker ecosystem
+  # reads Dockerfiles and Kubernetes YAML only, so "/deploy" failed every week
+  # with "No Dockerfiles nor Kubernetes YAML found in /deploy" and "/" produced
+  # nothing. Both are dropped.
+  #
+  # Two real Dockerfiles had no entry at all and were therefore proposed by
+  # nothing: /mcp and /tests/adversarial/attacker. Same shape as SECURE-DEP-02.
+  #
+  # NOT covered here, and deliberately: the images pinned in the compose files
+  # (grafana, prometheus, k6, nginx, tailscale). Dependabot cannot see them in
+  # this ecosystem and Trivy's filesystem scan does not pull them, so they are
+  # currently watched by nothing. Tracked separately rather than papered over.
   - package-ecosystem: "docker"
-    directory: "/"
+    directories:
+      - "/backend-go"
+      - "/waf-go"
+      - "/ui"
+      - "/dns"
+      - "/proxy"
+      - "/mcp"
+      - "/overlay/tailscale"
+      - "/tests/e2e"
+      - "/tests/adversarial/attacker"
     schedule:
       interval: "weekly"
     groups:
       docker-dependencies:
         patterns:
           - "*"
-
-  # Per-directory Docker entries so Dependabot bumps digest-pinned base images
-  # in each Dockerfile independently (a root "/" entry only watches that one file).
-  - package-ecosystem: "docker"
-    directory: "/backend-go"
-    schedule:
-      interval: "weekly"
-
-  - package-ecosystem: "docker"
-    directory: "/waf-go"
-    schedule:
-      interval: "weekly"
-
-  - package-ecosystem: "docker"
-    directory: "/ui"
-    schedule:
-      interval: "weekly"
-
-  - package-ecosystem: "docker"
-    directory: "/dns"
-    schedule:
-      interval: "weekly"
-
-  - package-ecosystem: "docker"
-    directory: "/proxy"
-    schedule:
-      interval: "weekly"
-
-  - package-ecosystem: "docker"
-    directory: "/overlay/tailscale"
-    schedule:
-      interval: "weekly"
-
-  - package-ecosystem: "docker"
-    directory: "/tests/e2e"
-    schedule:
-      interval: "weekly"
-
-  - package-ecosystem: "docker"
-    directory: "/deploy"
-    schedule:
-      interval: "weekly"
 
   - package-ecosystem: "npm"
     directory: "/docs"

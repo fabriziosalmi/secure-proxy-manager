@@ -54,7 +54,29 @@ jobs:
             printf '%s\n' "$BODY" | { grep -oE "^\| .* \| $V \| $V \|" || true; } | awk -F'|' '{print $(NF-2), $(NF-1)}'
           } | tr -d '`' | sort -u > "$pairs"
           if [ ! -s "$pairs" ]; then ok=false; why="no version pair found in title or body"; fi
+          # A Docker digest re-pin is not a version change: the tag is unchanged
+          # and only the sha moved, so it is at most a patch. Dependabot writes
+          # the pair as two bare hex strings, and because a digest usually
+          # starts with digits the numeric comparison below read
+          # `28bd5fe` -> `294b683` as a major bump of 28 -> 294. Every
+          # digest-only update ever opened was refused on that reading — #255
+          # and #329 sat for three weeks with the log line
+          # "major version change: 28bd5fe -> 294b683".
+          # The hex test already excludes every real version string, because a
+          # version carries a dot or a suffix and "." is not a hex digit:
+          # 4.1.2, 1.31.6-alpine and v1.102.5 all fail it. The length floor
+          # then rules out a short bare number. Requiring a letter a-f as well
+          # was tried and rejected: it refused ubuntu `3131b4c` -> `2260313`,
+          # whose second digest happens to be all digits, which is exactly the
+          # pull request this is meant to unblock.
+          is_digest() {
+            case "$1" in
+              *[!0-9a-f]*) return 1 ;;
+            esac
+            [ ${#1} -ge 7 ]
+          }
           while read -r a b; do
+            if is_digest "$a" && is_digest "$b"; then continue; fi
             x=$(printf '%s' "$a" | sed -E 's/^[^0-9]*//; s/[^0-9].*//')
             y=$(printf '%s' "$b" | sed -E 's/^[^0-9]*//; s/[^0-9].*//')
             if [ -z "$x" ] || [ "$x" != "$y" ]; then ok=false; why="major version change: $a -> $b"; break; fi
