@@ -82,7 +82,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27'
+          go-version: '1.27' # go-toolchain: images
           cache-dependency-path: backend-go/go.sum
       - run: go build -v ./...
         working-directory: backend-go
@@ -97,7 +97,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27'
+          go-version: '1.27' # go-toolchain: images
           cache-dependency-path: waf-go/go.sum
       - run: go build -v ./...
         working-directory: waf-go
@@ -112,7 +112,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27'
+          go-version: '1.27' # go-toolchain: images
           cache-dependency-path: backend-go/go.sum
       - run: go test -v -race -count=1 -coverprofile=coverage.out ./...
         working-directory: backend-go
@@ -132,7 +132,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27'
+          go-version: '1.27' # go-toolchain: images
           cache-dependency-path: waf-go/go.sum
       - run: go test -v -race -count=1 -coverprofile=coverage.out ./...
         working-directory: waf-go
@@ -162,7 +162,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27'
+          # golangci-lint v2.12.2 and gosec v2.22.4 are built with Go 1.26 and cannot
+          # type-check Go 1.27 source ('file requires newer Go version go1.27'); a
+          # newer gosec also reports new taint findings that need triage. Move this
+          # with the tools, not with the images.
+          go-version: "1.26" # go-toolchain: tools
           cache-dependency-path: ${{ matrix.module }}/go.sum
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
@@ -263,7 +267,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27'
+          # golangci-lint v2.12.2 and gosec v2.22.4 are built with Go 1.26 and cannot
+          # type-check Go 1.27 source ('file requires newer Go version go1.27'); a
+          # newer gosec also reports new taint findings that need triage. Move this
+          # with the tools, not with the images.
+          go-version: "1.26" # go-toolchain: tools
           cache-dependency-path: backend-go/go.sum
 
       - name: Install gosec
@@ -327,7 +335,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27'
+          go-version: '1.27' # go-toolchain: images
           cache-dependency-path: backend-go/go.sum
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

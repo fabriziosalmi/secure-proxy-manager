@@ -70,7 +70,10 @@ fi
 # Dependabot moves the Dockerfiles; this fails until CI follows.
 go_images=$(sed -nE 's#^FROM[[:space:]]+golang:([0-9]+\.[0-9]+)[^[:space:]]*.*#\1#p' \
               backend-go/Dockerfile waf-go/Dockerfile | sort -u)
-go_ci=$(sed -nE "s#^[[:space:]]*go-version:[[:space:]]*'?([0-9]+\.[0-9]+)'?[[:space:]]*\$#\1#p" \
+# Only the setup-go lines marked "# go-toolchain: images" are compared: those are
+# the jobs that build and test what ships. The lint and gosec jobs are marked
+# "tools" and pinned to what golangci-lint and gosec can type-check (see ci.yml).
+go_ci=$(sed -nE "s#^[[:space:]]*go-version:[[:space:]]*'?([0-9]+\\.[0-9]+)'?[[:space:]]*\\# go-toolchain: images[[:space:]]*\$#\\1#p" \
           .github/workflows/ci.yml | sort -u)
 if [ -z "$go_images" ] || [ -z "$go_ci" ]; then
     echo "FAIL: could not read the Go versions (images='$go_images' ci='$go_ci')" >&2
@@ -78,7 +81,7 @@ if [ -z "$go_images" ] || [ -z "$go_ci" ]; then
 elif [ "$(wc -l <<<"$go_images" | tr -d ' ')" != 1 ] || [ "$go_images" != "$go_ci" ]; then
     echo "FAIL: the Go toolchain disagrees between CI and the images" >&2
     echo "  Dockerfiles (golang:)      : $(tr '\n' ' ' <<<"$go_images")" >&2
-    echo "  ci.yml (setup-go versions) : $(tr '\n' ' ' <<<"$go_ci")" >&2
+    echo "  ci.yml (go-toolchain: images) : $(tr '\n' ' ' <<<"$go_ci")" >&2
     echo "  Both images and every CI job must use the same Go minor." >&2
     rc=1
 else
