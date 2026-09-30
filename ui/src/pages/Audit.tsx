@@ -124,6 +124,7 @@ export function Audit() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          aria-label="Filter audit entries on this page"
           placeholder="Filter this page by user, action, target…"
           className="w-full pl-9 pr-3 py-2 rounded-lg bg-secondary/40 border border-border/70 text-sm focus:outline-none focus:border-cyan-500/40 focus:bg-secondary/60 transition-colors"
         />

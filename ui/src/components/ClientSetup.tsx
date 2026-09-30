@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 function CopyBtn({ text, label, copied, onCopy }: { text: string; label: string; copied: string; onCopy: (text: string, label: string) => void }) {
   return (
     <button type="button" onClick={() => onCopy(text, label)}
+      aria-label={`Copy ${label}`}
       className="p-1 rounded hover:bg-secondary/50 transition-colors shrink-0">
       {copied === label ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
     </button>
@@ -175,6 +176,7 @@ export function ClientSetup() {
               {active.cmd}
             </pre>
             <button type="button" onClick={() => copy(active.cmd!, 'cmd')}
+              aria-label="Copy command"
               className="absolute top-2 right-2 p-1 rounded bg-secondary/80 hover:bg-secondary">
               {copied === 'cmd' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-muted-foreground" />}
             </button>

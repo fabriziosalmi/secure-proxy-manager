@@ -63,11 +63,13 @@ export function RegexPlayground() {
             type="text"
             value={regex}
             onChange={(e) => setRegex(e.target.value)}
+            aria-label="Regular expression to test"
             placeholder="e.g. (?i)\.torrent$"
             className="flex-1 bg-background border border-border rounded-md px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
             onKeyDown={(e) => e.key === 'Enter' && handleTest()}
           />
           <select
+            aria-label="Period to test against"
             value={hours}
             onChange={(e) => setHours(Number(e.target.value))}
             className="bg-background border border-border rounded-md px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary"

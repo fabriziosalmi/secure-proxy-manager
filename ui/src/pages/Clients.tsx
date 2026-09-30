@@ -109,6 +109,7 @@ export function Clients() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          aria-label="Filter clients by IP"
           placeholder="Filter by IP…"
           className="w-full pl-9 pr-3 py-2 rounded-lg bg-secondary/40 border border-border/70 text-sm focus:outline-none focus:border-cyan-500/40 focus:bg-secondary/60 transition-colors"
         />

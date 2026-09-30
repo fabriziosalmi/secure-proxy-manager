@@ -20,7 +20,7 @@ export function Layout({ onLogout }: { onLogout?: () => void }) {
       )}
 
       {/* Sidebar */}
-      <div className={`
+      <div id="app-sidebar" className={`
         fixed inset-y-0 left-0 z-50 lg:static lg:z-auto
         transform transition-transform duration-200 ease-in-out
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
@@ -35,6 +35,9 @@ export function Layout({ onLogout }: { onLogout?: () => void }) {
           <button
             type="button"
             onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={mobileOpen}
+            aria-controls="app-sidebar"
             className="p-1.5 rounded-md hover:bg-secondary btn-press"
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}

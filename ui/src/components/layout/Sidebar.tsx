@@ -74,7 +74,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
           </kbd>
         </button>
 
-        <div className="text-[10px] font-medium text-muted-foreground/60 mb-3 uppercase tracking-[0.15em]">
+        <div className="text-[10px] font-medium text-muted-foreground mb-3 uppercase tracking-[0.15em]">
           Navigation
         </div>
 
@@ -137,7 +137,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
                 <p className="text-[11px] font-semibold leading-none text-foreground">
                   {apiStatus === 'connected' ? 'System Online' : apiStatus === 'disconnected' ? 'Disconnected' : 'Connecting...'}
                 </p>
-                <p className="text-[9px] text-muted-foreground/60 mt-0.5">API backend</p>
+                <p className="text-[9px] text-muted-foreground mt-0.5">API backend</p>
               </div>
             </div>
             <div className={`px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider ${
@@ -154,7 +154,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
           {/* Version + Runtime row */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-muted-foreground/50 font-mono leading-none">
+              <span className="text-[10px] text-muted-foreground font-mono leading-none">
                 {backendInfo.version || '—'}
               </span>
               {backendInfo.runtime && (
@@ -224,7 +224,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
           <button
             type="button"
             onClick={onLogout}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium text-muted-foreground/60 hover:text-destructive hover:bg-destructive/8 transition-all btn-press"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all btn-press"
           >
             <LogOut className="w-3 h-3" />
             Sign out

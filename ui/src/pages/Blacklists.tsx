@@ -502,6 +502,7 @@ export function Blacklists() {
         <div className="relative flex-1 max-w-sm">
           <input
             type="text"
+            aria-label="Search this list"
             placeholder={`Search ${activeTab === 'domain' ? 'domains' : activeTab === 'domain-whitelist' ? 'whitelisted domains' : 'IPs'}...`}
             value={searchTerm}
             onChange={(e) => { setSearchTerm(e.target.value); resetPage(); }}

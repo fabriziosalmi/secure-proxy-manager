@@ -97,6 +97,7 @@ export function EgressAllowlist() {
               value={newItem}
               onChange={e => setNewItem(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
+              aria-label="Destination to allow (domain or CIDR)"
               placeholder="example.com  or  203.0.113.0/24"
               className="flex-1 px-3 py-2 rounded-md bg-background border border-input text-sm"
             />
@@ -104,6 +105,7 @@ export function EgressAllowlist() {
               value={newDesc}
               onChange={e => setNewDesc(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
+              aria-label="Description (optional)"
               placeholder="Description (optional)"
               className="flex-1 px-3 py-2 rounded-md bg-background border border-input text-sm"
             />
@@ -119,6 +121,7 @@ export function EgressAllowlist() {
           <input
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
+            aria-label="Search the allowlist"
             placeholder="Search..."
             className="w-full px-3 py-2 rounded-md bg-background border border-input text-sm"
           />
