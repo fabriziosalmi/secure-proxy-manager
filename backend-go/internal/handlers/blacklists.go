@@ -270,18 +270,22 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	domain := strings.TrimSpace(strings.ToLower(item.Domain))
-	if domain == "" || strings.ContainsAny(domain, " ") || strings.HasPrefix(domain, "-") {
-		writeError(w, http.StatusBadRequest, "invalid domain format")
-		return
-	}
 	// Strip URL scheme if present.
 	if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
 		u, err := url.Parse(domain)
-		if err != nil || u.Host == "" {
+		if err != nil || u.Hostname() == "" {
 			writeError(w, http.StatusBadRequest, "invalid domain URL")
 			return
 		}
-		domain = u.Host
+		domain = u.Hostname()
+	}
+	// The value is written, one per line, into the Squid ACL file and the
+	// dnsmasq hosts file. Checking only for a space let a tab or a newline
+	// through, and a second line in a hosts file is a second DNS record
+	// (audit: domain-newline-into-hosts-file). Validate the syntax, not the absence of one character.
+	if !isValidDomainEntry(domain) {
+		writeError(w, http.StatusBadRequest, "invalid domain format")
+		return
 	}
 	_, err := h.db.Exec("INSERT INTO domain_blacklist(domain, description) VALUES(?,?)", domain, item.Description)
 	if err != nil {
@@ -330,7 +334,7 @@ func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	typ := egressEntryType(entry)
-	if typ != "cidr" && (!strings.Contains(entry, ".") || strings.HasPrefix(entry, "-")) {
+	if typ != "cidr" && (!strings.Contains(entry, ".") || !isValidDomainEntry(entry)) {
 		writeError(w, http.StatusBadRequest, "entry must be an IP, CIDR, or domain")
 		return
 	}
@@ -377,6 +381,10 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 				"wildcards and regular expressions are not supported here — enter an exact domain (a parent domain covers its subdomains)")
 			return
 		}
+	}
+	if !isValidHostname(domain) {
+		writeError(w, http.StatusBadRequest, "invalid domain format")
+		return
 	}
 	entryType := "fqdn"
 	_, err := h.db.Exec("INSERT INTO domain_whitelist(domain, type, description) VALUES(?,?,?)", domain, entryType, item.Description)
@@ -603,12 +611,13 @@ func classifyImportDomain(entry string) (string, entryVerdict) {
 	// Strip URL scheme.
 	if strings.HasPrefix(entry, "http://") || strings.HasPrefix(entry, "https://") {
 		u, err := url.Parse(entry)
-		if err != nil || u.Host == "" {
+		if err != nil || u.Hostname() == "" {
 			return "", entryInvalid
 		}
-		entry = u.Host
+		entry = u.Hostname()
 	}
-	if !strings.Contains(entry, ".") || strings.HasPrefix(entry, ".") || strings.HasSuffix(entry, ".") {
+	if !strings.Contains(entry, ".") || strings.HasPrefix(entry, ".") || strings.HasSuffix(entry, ".") ||
+		!isValidDomainEntry(entry) {
 		return "", entryInvalid
 	}
 	return entry, entryAccepted

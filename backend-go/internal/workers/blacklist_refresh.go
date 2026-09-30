@@ -169,6 +169,9 @@ func insertBlacklistEntries(db *sql.DB, table, col, data string, existing map[st
 		if col == "ip" && (!netguard.IsValidCIDR(entry) || netguard.IsLANBogonCIDR(entry)) {
 			continue
 		}
+		if col == "domain" && !netguard.IsValidDomainEntry(entry) {
+			continue
+		}
 		if _, ex := existing[entry]; !ex {
 			stmt.Exec(entry, "Auto-refresh: "+time.Now().Format("2006-01-02")) //nolint:errcheck
 			existing[entry] = struct{}{}

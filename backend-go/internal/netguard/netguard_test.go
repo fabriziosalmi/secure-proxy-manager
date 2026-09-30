@@ -2,6 +2,7 @@ package netguard
 
 import (
 	"net"
+	"strings"
 	"testing"
 )
 
@@ -127,6 +128,40 @@ func TestIsSSRFTarget(t *testing.T) {
 		}
 		if got != c.ssrf {
 			t.Errorf("IsSSRFTarget(%q) = %v, want %v", c.url, got, c.ssrf)
+		}
+	}
+}
+
+func TestIsValidHostname(t *testing.T) {
+	valid := []string{"example.com", "a.b.c.example.org", "xn--bcher-kva.example", "_dmarc.example.com",
+		"localhost", "EXAMPLE.com", "a-b.example.com", "1.example.com", strings.Repeat("a", 63) + ".com"}
+	invalid := []string{
+		"", ".", "example.com.", ".example.com", "a..b", "-a.com", "a-.com", "a.-b.com",
+		"example.com\n203.0.113.9\tevil.example", "a b.com", "a\tb.com", "a\x00b.com", "a\rb.com",
+		"exa mple.com", "example.com:8080", "http://example.com", "example.com/path", "ex@mple.com",
+		"*.example.com", "exämple.com", strings.Repeat("a", 64) + ".com", strings.Repeat("a.", 130) + "com",
+	}
+	for _, s := range valid {
+		if !IsValidHostname(s) {
+			t.Errorf("IsValidHostname(%q) = false, want true", s)
+		}
+	}
+	for _, s := range invalid {
+		if IsValidHostname(s) {
+			t.Errorf("IsValidHostname(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestIsValidDomainEntryAllowsTheSubdomainPrefixes(t *testing.T) {
+	for _, s := range []string{"example.com", "*.example.com", ".example.com"} {
+		if !IsValidDomainEntry(s) {
+			t.Errorf("IsValidDomainEntry(%q) = false", s)
+		}
+	}
+	for _, s := range []string{"*.", "*.*.example.com", "..example.com", "*.example.com\nx", "*"} {
+		if IsValidDomainEntry(s) {
+			t.Errorf("IsValidDomainEntry(%q) = true", s)
 		}
 	}
 }

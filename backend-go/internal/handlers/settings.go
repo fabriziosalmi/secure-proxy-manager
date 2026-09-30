@@ -502,7 +502,7 @@ func (h *SettingsHandlers) writeTimeRestrictions(body map[string]string) {
 	// These values are written into a file the proxy's ROOT shell sources.
 	// safe_source rejects shell metacharacters but permits any KEY=VALUE, so an
 	// unsanitised newline injects an arbitrary variable assignment (PATH, IFS)
-	// into that shell. A time is HH:MM and nothing else (SECURE-INPT-02).
+	// into that shell. A time is HH:MM and nothing else (audit: domain-newline-into-hosts-file).
 	if !timeOfDayRE.MatchString(start) || !timeOfDayRE.MatchString(end) {
 		log.Warn().Str("start", start).Str("end", end).Msg("invalid time restriction values — not written")
 		return

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -125,4 +126,58 @@ func SSRFSafeClient() *http.Client {
 			},
 		},
 	}
+}
+
+const (
+	maxDomainLen = 253
+	maxLabelLen  = 63
+)
+
+// IsValidHostname reports whether s is a syntactically valid DNS name: labels
+// of letters, digits, hyphens and underscores (blocklists carry underscores),
+// separated by single dots, each 1-63 bytes and not starting or ending with a
+// hyphen, 253 bytes in all. A trailing dot is not accepted.
+//
+// It exists because domain entries are written, one per line, into files that
+// other programs parse by line (Squid ACLs, dnsmasq's hosts file). A value that
+// carried a newline, a tab or a space was a second record in those files. The
+// character set here has no such bytes by construction.
+func IsValidHostname(s string) bool {
+	if s == "" || len(s) > maxDomainLen {
+		return false
+	}
+	labelLen := 0
+	prev := byte('.')
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '.':
+			if labelLen == 0 || prev == '-' {
+				return false
+			}
+			labelLen = 0
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_':
+			labelLen++
+		case c == '-':
+			if labelLen == 0 {
+				return false
+			}
+			labelLen++
+		default:
+			return false
+		}
+		if labelLen > maxLabelLen {
+			return false
+		}
+		prev = c
+	}
+	return labelLen > 0 && prev != '-'
+}
+
+// IsValidDomainEntry is IsValidHostname plus the two prefixes a blacklist entry
+// may carry to mean "and its subdomains": "*." (which the dnsmasq exporter
+// strips) and a leading "." (Squid's dstdomain form).
+func IsValidDomainEntry(s string) bool {
+	s = strings.TrimPrefix(strings.TrimPrefix(s, "*."), ".")
+	return IsValidHostname(s)
 }

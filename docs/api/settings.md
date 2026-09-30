@@ -213,6 +213,8 @@ POST /api/maintenance/restore-config
 
 Restores from a backup created by `/api/maintenance/backup-config`.
 
+List entries are checked with the same rules as the endpoints that add them. An entry that fails is skipped, not fatal, and the response reports how many in `skipped_entries` (alongside `restored` and `skipped`, which count settings).
+
 ---
 
 ## Check certificate security

@@ -90,6 +90,8 @@ func writeOK(w http.ResponseWriter, data any) {
 func isValidCIDR(s string) bool           { return netguard.IsValidCIDR(s) }
 func isBlockedIP(ip net.IP) bool          { return netguard.IsBlockedIP(ip) }
 func isLANBogonCIDR(s string) bool        { return netguard.IsLANBogonCIDR(s) }
+func isValidHostname(s string) bool       { return netguard.IsValidHostname(s) }
+func isValidDomainEntry(s string) bool    { return netguard.IsValidDomainEntry(s) }
 func isSSRFTarget(u string) (bool, error) { return netguard.IsSSRFTarget(u) }
 func ssrfSafeClient() *http.Client        { return netguard.SSRFSafeClient() }
 
