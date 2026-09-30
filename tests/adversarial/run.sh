@@ -46,7 +46,8 @@ bench_report() {
   local bl=report/bench-baseline.json pr=report/bench-proxied.json
   command -v jq >/dev/null 2>&1 || { echo "warning: jq not found; skipping bench report"; return; }
   [ -f "$pr" ] || { echo "warning: no proxied bench summary produced"; return; }
-  # k6 --summary-export is FLAT: .metrics.<name>.<stat> (no ".values").
+  # The summary is FLAT: .metrics.<name>.<stat> (no ".values"). handleSummary
+  # in bench.js keeps that shape on purpose — see the comment there.
   local dur='.metrics.http_req_duration'
   local p_p50 p_p95 p_p99 p_rps p_err b_p50 b_p95 b_rps
   p_p50=$(jq -r "${dur}.med // 0"       "$pr"); p_p95=$(jq -r "${dur}[\"p(95)\"] // 0" "$pr")
@@ -199,12 +200,18 @@ echo "── plane 2: API attacker (backend auth boundary) ──"
 # run through proxy + WAF carries the thresholds and is the gate.
 echo "── plane 3: bench/latency (k6 through proxy + WAF) ──"
 # --user 0: k6's image drops root, but the ./report bind mount is owned by the
-# host/CI user, so a non-root k6 can't write the --summary-export file there
-# (works on Docker Desktop only because it remaps ownership). Run as uid 0.
+# host/CI user, so a non-root k6 can't write the summary file there (works on
+# Docker Desktop only because it remaps ownership). Run as uid 0.
+#
+# SUMMARY_PATH, not --summary-export: k6 v1 removed that flag. handleSummary in
+# bench.js writes the same flat shape to the path given here, so bench_report
+# above is unchanged.
 "${DC[@]}" run --rm --user 0 -e TARGET=http://mock-upstream/bench \
-  k6 run --quiet --summary-export=/report/bench-baseline.json /bench/bench.js >/dev/null 2>&1 || true
+  -e SUMMARY_PATH=/report/bench-baseline.json \
+  k6 run --quiet /bench/bench.js >/dev/null 2>&1 || true
 "${DC[@]}" run --rm --user 0 -e TARGET=http://upstream.test/bench -e HTTP_PROXY=http://proxy:3128 \
-  k6 run --quiet --summary-export=/report/bench-proxied.json /bench/bench.js; p3=$?
+  -e SUMMARY_PATH=/report/bench-proxied.json \
+  k6 run --quiet /bench/bench.js; p3=$?
 bench_report
 
 # Plane 5 — config-matrix: settings actually change live proxy/WAF behaviour

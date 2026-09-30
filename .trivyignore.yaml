@@ -46,3 +46,10 @@ vulnerabilities:
   - id: CVE-2026-46603
     statement: "golang.org/x/image v0.41.0 vendored in tailscale/tailscale:v1.102.5; needs an upstream rebuild."
     expired_at: 2026-12-31
+  # grafana/k6:2.3.0 — Alpine packages whose fixed build k6 has not published
+  # in the image yet. Test-only (the bench plane). Carried here rather than
+  # left out of the scan: 0.55.0 had 69 findings, and excluding the image was
+  # the reason it went unnoticed.
+  - id: CVE-2026-14456
+    statement: "libcrypto3/libssl3 3.5.7-r0 in grafana/k6:2.3.0; fixed in 3.5.8-r0, pending an upstream rebuild."
+    expired_at: 2026-12-31
