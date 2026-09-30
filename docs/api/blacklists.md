@@ -114,6 +114,7 @@ POST /api/domain-blacklist
 ```
 
 `domain` accepts an exact FQDN or a wildcard subdomain pattern (`*.example.com`).
+A URL is reduced to its hostname (a port is dropped). Anything else is refused with `400`: only letters, digits, hyphens, underscores and dots are allowed, with labels of 1-63 characters and no more than 253 in all. In particular, whitespace, tabs, newlines and colons are refused, because entries are written one per line into the proxy and DNS files.
 
 ### Delete entry
 

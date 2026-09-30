@@ -32,6 +32,25 @@ for at least one minor release before disappearing.
   instead of the database handle. No behaviour change; the other handler groups
   still take the handle.
 
+### Fixed
+
+- **A domain entry could plant extra records in the DNS blocklist file.** The
+  add endpoints refused a space but not a tab or a newline, and the restore
+  endpoint checked nothing, so an authenticated caller (or a crafted backup) could
+  store `x.test<newline>203.0.113.9<tab>update.example.com` and dnsmasq would
+  answer `update.example.com` with that address for every client. Domain entries
+  are now validated as DNS names at every entry point (add, import, restore and
+  the automatic refresh), the exporters skip any row that contains whitespace or
+  a control character, and the restore reports what it skipped as
+  `skipped_entries`.
+
+  What changes for you: a domain with a port (`example.com:8080`), a trailing
+  dot, or any character outside letters, digits, hyphen, underscore and dot is
+  now refused when added or imported, where before it was stored. A URL is still
+  accepted and reduced to its hostname (the port is dropped). Entries already in
+  your database are not removed; the exporter skips only the ones that could not
+  be read back as a single line, and logs how many.
+
 ### Action worth knowing about on upgrade
 
 The database gains a schema version (`PRAGMA user_version`) and, on the first

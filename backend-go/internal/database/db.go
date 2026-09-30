@@ -432,12 +432,18 @@ func exportLines(db *sql.DB, path, query string) error {
 	defer rows.Close()
 
 	var lines []string
+	unsafe := 0
 	for rows.Next() {
 		var line string
 		if rows.Scan(&line) == nil && line != "" {
+			if !lineSafe(line) {
+				unsafe++
+				continue
+			}
 			lines = append(lines, line)
 		}
 	}
+	reportUnsafe(path, unsafe)
 	return atomicWrite(path, func(f *os.File) error {
 		w := bufio.NewWriter(f)
 		for _, l := range lines {
@@ -447,6 +453,27 @@ func exportLines(db *sql.DB, path, query string) error {
 		}
 		return w.Flush()
 	})
+}
+
+// lineSafe reports whether v can be written as one line of a list file without
+// being read back as more than one record: no whitespace and no control bytes.
+// It is deliberately weaker than the syntax check the add endpoints apply, so
+// an entry stored before that check existed is not silently dropped from
+// enforcement; it removes only what could split a line.
+func lineSafe(v string) bool {
+	for i := 0; i < len(v); i++ {
+		if c := v[i]; c <= ' ' || c == 0x7f {
+			return false
+		}
+	}
+	return v != ""
+}
+
+func reportUnsafe(path string, n int) {
+	if n > 0 {
+		log.Warn().Str("file", filepath.Base(path)).Int("rows", n).
+			Msg("export: skipped rows containing whitespace or control characters; they would not be one list entry")
+	}
 }
 
 func loadWhitelistSet(db *sql.DB) map[string]struct{} {
@@ -473,14 +500,20 @@ func exportDomainBlacklist(db *sql.DB, path string, exclusions map[string]struct
 	defer rows.Close()
 
 	var domains []string
+	unsafe := 0
 	for rows.Next() {
 		var domain string
 		if rows.Scan(&domain) == nil && domain != "" {
+			if !lineSafe(domain) {
+				unsafe++
+				continue
+			}
 			if _, excluded := exclusions[domain]; !excluded {
 				domains = append(domains, domain)
 			}
 		}
 	}
+	reportUnsafe(path, unsafe)
 	return atomicWrite(path, func(f *os.File) error {
 		w := bufio.NewWriter(f)
 		for _, d := range domains {
@@ -501,15 +534,24 @@ func writeDnsmasqBlocklist(db *sql.DB, path string, exclusions map[string]struct
 
 	type entry struct{ domain string }
 	var entries []entry
+	unsafe := 0
 	for rows.Next() {
 		var domain string
 		if rows.Scan(&domain) == nil && domain != "" {
+			// A hosts file is parsed by line: a value carrying a newline or a
+			// tab would be a second record, and dnsmasq would answer it. Skip
+			// it here whatever the write path let in (SECURE-INPT-02).
+			if !lineSafe(domain) {
+				unsafe++
+				continue
+			}
 			if _, excluded := exclusions[domain]; !excluded {
 				d := strings.TrimPrefix(domain, "*.")
 				entries = append(entries, entry{d})
 			}
 		}
 	}
+	reportUnsafe(path, unsafe)
 	// Emit a hosts-format file (consumed via dnsmasq addn-hosts) rather than
 	// `address=` directives in a conf-dir file: dnsmasq RE-READS addn-hosts on
 	// SIGHUP, so a blacklist change applies on reload instead of needing a full

@@ -179,6 +179,7 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		"domain_whitelist": {"domain_whitelist", "domain"},
 		"dst_allowlist":    {"dst_allowlist", "entry"},
 	}
+	skippedEntries := 0
 	for name, entries := range body.Lists {
 		target, known := listTargets[name]
 		if !known {
@@ -188,6 +189,16 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		for _, e := range entries {
 			value := strings.TrimSpace(e["value"])
 			if value == "" {
+				continue
+			}
+			// A backup is a file an operator may have received from anywhere,
+			// and these values are written into Squid and dnsmasq files one per
+			// line. Apply the checks the add endpoints apply; a value that
+			// fails them is skipped and counted, not fatal to the restore
+			// (SECURE-INPT-02).
+			if !validRestoredListValue(name, value) {
+				log.Warn().Str("list", name).Msg("RestoreConfig: skipping an entry that fails validation")
+				skippedEntries++
 				continue
 			}
 			// dst_allowlist.type decides which enforcement file an entry reaches:
@@ -234,7 +245,27 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		"message":  "Configuration restored successfully",
 		"restored": restored,
 		"skipped":  skipped,
+		// Entries in the lists that failed validation and were not restored.
+		"skipped_entries": skippedEntries,
 	})
+}
+
+// validRestoredListValue applies to a restored list entry the same rule its add
+// endpoint applies.
+func validRestoredListValue(list, value string) bool {
+	switch list {
+	case "ip_blacklist":
+		return isValidCIDR(value) && !isLANBogonCIDR(value)
+	case "ip_whitelist":
+		return isValidCIDR(value)
+	case "domain_blacklist":
+		return isValidDomainEntry(value)
+	case "domain_whitelist":
+		return isValidHostname(value)
+	case "dst_allowlist":
+		return egressEntryType(value) == "cidr" || (strings.Contains(value, ".") && isValidDomainEntry(value))
+	}
+	return false
 }
 
 func (h *MaintenanceHandlers) DownloadCA(w http.ResponseWriter, r *http.Request) {
