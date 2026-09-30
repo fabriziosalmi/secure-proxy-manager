@@ -84,46 +84,61 @@ func field(name string, v reflect.Value, tag string) error {
 	rules := strings.Split(tag, ",")
 	// omitempty short-circuits everything after it, so an absent optional field
 	// is not then rejected by its own max=. It has to be resolved before the
-	// loop because it may appear anywhere in the list.
-	for _, rule := range rules {
-		if rule == "omitempty" && isEmpty(v) {
-			return nil
-		}
+	// rules run because it may appear anywhere in the list.
+	if slices.Contains(rules, "omitempty") && isEmpty(v) {
+		return nil
 	}
 	for _, rule := range rules {
-		verb, arg, _ := strings.Cut(rule, "=")
-		switch verb {
-		case "", "omitempty":
-			// handled above
-		case "required":
-			if isEmpty(v) {
-				return &Error{name, rule, "is required"}
-			}
-		case "min":
-			n, err := bound(arg)
-			if err != nil {
-				return err
-			}
-			if size, unit, ok := measure(v); ok && size < n {
-				return &Error{name, rule, fmt.Sprintf("must be at least %d %s", n, unit)}
-			}
-		case "max":
-			n, err := bound(arg)
-			if err != nil {
-				return err
-			}
-			if size, unit, ok := measure(v); ok && size > n {
-				return &Error{name, rule, fmt.Sprintf("must be at most %d %s", n, unit)}
-			}
-		case "oneof":
-			allowed := strings.Fields(arg)
-			if !slices.Contains(allowed, v.String()) {
-				return &Error{name, rule, "must be one of: " + strings.Join(allowed, ", ")}
-			}
-		default:
-			// Not a client error — the tag itself is wrong.
-			return fmt.Errorf("validate: unsupported rule %q on field %q", rule, name)
+		if err := applyRule(name, v, rule); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// applyRule checks one rule of a field's tag.
+func applyRule(name string, v reflect.Value, rule string) error {
+	verb, arg, _ := strings.Cut(rule, "=")
+	switch verb {
+	case "", "omitempty":
+		return nil // handled by field
+	case "required":
+		if isEmpty(v) {
+			return &Error{name, rule, "is required"}
+		}
+		return nil
+	case "min":
+		return checkSize(name, v, rule, arg, false)
+	case "max":
+		return checkSize(name, v, rule, arg, true)
+	case "oneof":
+		allowed := strings.Fields(arg)
+		if !slices.Contains(allowed, v.String()) {
+			return &Error{name, rule, "must be one of: " + strings.Join(allowed, ", ")}
+		}
+		return nil
+	default:
+		// Not a client error — the tag itself is wrong.
+		return fmt.Errorf("validate: unsupported rule %q on field %q", rule, name)
+	}
+}
+
+// checkSize applies min= (upper false) or max= (upper true) to the field's
+// measured size.
+func checkSize(name string, v reflect.Value, rule, arg string, upper bool) error {
+	n, err := bound(arg)
+	if err != nil {
+		return err
+	}
+	size, unit, ok := measure(v)
+	if !ok {
+		return nil
+	}
+	if upper && size > n {
+		return &Error{name, rule, fmt.Sprintf("must be at most %d %s", n, unit)}
+	}
+	if !upper && size < n {
+		return &Error{name, rule, fmt.Sprintf("must be at least %d %s", n, unit)}
 	}
 	return nil
 }
