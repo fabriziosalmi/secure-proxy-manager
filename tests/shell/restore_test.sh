@@ -121,5 +121,25 @@ out="$(run "$SANDBOX/data.bak.good")"
 grep -q 'passes PRAGMA integrity_check' <<<"$out" && ok "a sound backup passes verification" \
                                                   || bad "a sound backup passes verification" "$out"
 
+echo "── a host without sqlite3 must not skip verification silently ──"
+# A PATH holding only what the script needs before the verification stage, so
+# sqlite3 (and docker) cannot be found. The script is run by absolute bash.
+NOBIN="$(mktemp -d)"
+for tool in dirname cat; do ln -s "$(command -v "$tool")" "$NOBIN/$tool"; done
+run_nosqlite() { ( cd "$SANDBOX" && printf 'restore\n' | env PATH="$NOBIN" "$(command -v bash)" scripts/restore.sh "$@" 2>&1 ); }
+
+out="$(run_nosqlite "$SANDBOX/data.bak.good")"
+if grep -q 'sqlite3 is not installed' <<<"$out" && grep -q -- '--skip-check' <<<"$out" \
+   && [ "$(cat "$SANDBOX/data/marker" 2>/dev/null)" = "LIVE" ]; then
+  ok "no sqlite3 -> refuses, names the escape hatch, and data/ is untouched"
+else
+  bad "no sqlite3 -> refuses before touching data/" "$out"
+fi
+
+out="$(run_nosqlite --skip-check "$SANDBOX/data.bak.good")"
+grep -q 'WITHOUT verifying' <<<"$out" && ok "--skip-check proceeds, and says it is unverified" \
+                                     || bad "--skip-check proceeds, and says it is unverified" "$out"
+rm -rf "$NOBIN"
+
 printf "\n  %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -369,7 +369,11 @@ func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
 	// conf-dir address= file so it doesn't double-load with stale, restart-only data.
 	_ = os.Remove(configDir + "/dnsmasq.d/blocklist.conf")
 	if err := writeDnsmasqBlocklist(db, configDir+"/dnsmasq.d/blocklist.hosts", exclusions); err != nil {
-		log.Warn().Err(err).Msg("dnsmasq blocklist write failed (non-fatal)")
+		// Not swallowed: the Squid lists above were written, so a domain added
+		// now would be enforced by Squid and not by dnsmasq, and the caller
+		// would be told the export succeeded. Returning the error makes a
+		// partial export a reported one; the caller can see which half is stale.
+		return fmt.Errorf("dnsmasq blocklist not written (the Squid lists were): %w", err)
 	}
 	return nil
 }

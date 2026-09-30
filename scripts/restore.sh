@@ -13,8 +13,17 @@ fail() { printf "${R}[FAIL]${N} %s\n" "$1"; exit 1; }
 
 cd "$(dirname "$0")/.."
 
+SKIP_CHECK=0
+if [ "${1:-}" = "--skip-check" ]; then
+    SKIP_CHECK=1
+    shift
+fi
+
 if [ $# -lt 1 ]; then
-    echo "Usage: $0 <backup-dir>"
+    echo "Usage: $0 [--skip-check] <backup-dir>"
+    echo
+    echo "  --skip-check  restore without verifying the backup. Only for a host that"
+    echo "                has no sqlite3, and only if you have checked the backup another way."
     echo
     echo "Available backups:"
     ls -1dt data.bak.* 2>/dev/null | sed 's/^/  /' || echo "  (none)"
@@ -35,8 +44,13 @@ if command -v sqlite3 >/dev/null 2>&1; then
     # 24KB database, where corruption at byte 2000 and 4200 is not detected and
     # 8300 is. So this is "structurally sound", not "byte-for-byte intact".
     ok "backup passes PRAGMA integrity_check (structural: pages and indexes)"
+elif [ "$SKIP_CHECK" = 1 ]; then
+    warn "sqlite3 not installed and --skip-check given: restoring WITHOUT verifying the backup"
 else
-    warn "sqlite3 not installed — skipping the integrity check on the backup"
+    # The check is the only thing this script does before replacing the live
+    # database, and the comment above is why it must come first. Proceeding
+    # without it would turn "cannot verify" into "verified".
+    fail "sqlite3 is not installed, so the backup cannot be verified before it replaces data/. Install sqlite3 (apt-get install sqlite3), or re-run with --skip-check if you have checked it another way."
 fi
 
 echo "This will replace ./data with $BACKUP."

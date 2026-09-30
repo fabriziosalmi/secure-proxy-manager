@@ -566,3 +566,36 @@ func TestManifestCoversTheWatchdogPairs(t *testing.T) {
 		t.Errorf("watchdog PAIRS %v != manifestLists %v", got, want)
 	}
 }
+
+// The dnsmasq write used to be logged as non-fatal and the export reported
+// success, so Squid enforced a new domain and dnsmasq did not, with only a log
+// line to say so.
+func TestExportReportsAFailedDnsmasqWrite(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(filepath.Join(dir, "d.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Init(db, "admin", "hash"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO domain_blacklist(domain) VALUES('blocked.test')"); err != nil {
+		t.Fatal(err)
+	}
+	// A regular file where the dnsmasq directory must be: the Squid lists can
+	// still be written, the hosts file cannot.
+	if err := os.WriteFile(filepath.Join(dir, "dnsmasq.d"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err = ExportBlacklistsToFiles(db, dir)
+	if err == nil {
+		t.Fatal("the export reported success although the dnsmasq blocklist was not written")
+	}
+	if !strings.Contains(err.Error(), "dnsmasq") || !strings.Contains(err.Error(), "Squid lists were") {
+		t.Errorf("the error does not say which half failed: %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "domain_blacklist.txt")); !strings.Contains(string(b), "blocked.test") {
+		t.Errorf("the Squid list was not written before the failure: %q", b)
+	}
+}
