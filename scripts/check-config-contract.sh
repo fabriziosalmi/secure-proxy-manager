@@ -22,9 +22,11 @@ fail=0
 go_names="$(grep -oE 'configDir\+"/[a-z_]+\.txt"' backend-go/internal/database/db.go \
             | sed 's|.*/||; s|"||' | sort -u)"
 
-# The sources the watchdog copies, from its PAIRS table.
+# The sources the watchdog copies, from its PAIRS table. The sources are written
+# as f"{CONFIG_DIR}/name.txt" (one constant for the directory, so the manifest
+# path can share it); the literal "/config/name.txt" form is still accepted.
 py_names="$(sed -n '/^PAIRS = \[/,/^\]/p' proxy/blacklist_watchdog.py \
-            | grep -oE '"/config/[a-z_]+\.txt"' | sed 's|.*/||; s|"||' | sort -u)"
+            | grep -oE '(\{CONFIG_DIR\}|"/config)/[a-z_]+\.txt' | sed 's|.*/||' | sort -u)"
 
 # The sources the generator copies.
 sh_names="$(grep -oE '/config/[a-z_]+\.txt' proxy/generate_squid_conf.sh \

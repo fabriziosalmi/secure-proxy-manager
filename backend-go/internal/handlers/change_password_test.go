@@ -28,7 +28,7 @@ func TestChangedPasswordIsTheOneThatWorks(t *testing.T) {
 		newPassword = "Str0nger-pass!"
 	)
 
-	h := NewAuthHandlers(db, svc, cfg, nil, nil)
+	h := NewAuthHandlers(authStore(db), svc, cfg, nil, nil)
 
 	body, _ := json.Marshal(map[string]string{
 		"current_password": oldPassword,

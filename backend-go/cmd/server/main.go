@@ -178,7 +178,7 @@ func run() error {
 	}
 
 	// Register handler groups.
-	handlers.NewAuthHandlers(db, authSvc, cfg, notify, hub).Register(r)
+	handlers.NewAuthHandlers(database.NewAuthStore(db), authSvc, cfg, notify, hub).Register(r)
 	handlers.NewLogHandlers(db).Register(r, authMW)
 	handlers.NewSettingsHandlers(db, cfg).Register(r, authMW)
 	handlers.NewBlacklistHandlers(db, cfg).Register(r, authMW)

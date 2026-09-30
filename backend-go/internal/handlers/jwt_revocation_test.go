@@ -57,7 +57,7 @@ func TestJWTRevocationBypassThroughHTTP(t *testing.T) {
 	defer cleanup()
 
 	router := chi.NewRouter()
-	NewAuthHandlers(db, service, cfg, nil, nil).Register(router)
+	NewAuthHandlers(authStore(db), service, cfg, nil, nil).Register(router)
 	server := httptest.NewServer(router)
 	defer server.Close()
 

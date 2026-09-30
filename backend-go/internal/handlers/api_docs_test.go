@@ -22,7 +22,7 @@ func buildFullRouter(t *testing.T) chi.Router {
 
 	r := chi.NewRouter()
 	authMW := func(next http.Handler) http.Handler { return next }
-	NewAuthHandlers(db, svc, cfg, nil, nil).Register(r)
+	NewAuthHandlers(authStore(db), svc, cfg, nil, nil).Register(r)
 	NewLogHandlers(db).Register(r, authMW)
 	NewSettingsHandlers(db, cfg).Register(r, authMW)
 	NewBlacklistHandlers(db, cfg).Register(r, authMW)

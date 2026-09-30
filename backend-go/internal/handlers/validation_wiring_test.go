@@ -85,7 +85,7 @@ func TestDeclaredBoundsAreEnforcedOnTheWire(t *testing.T) {
 func TestChangePasswordEnforcesDeclaredMinimum(t *testing.T) {
 	db, svc, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAuthHandlers(db, svc, cfg, nil, nil)
+	h := NewAuthHandlers(authStore(db), svc, cfg, nil, nil)
 
 	// 7 characters: one under min=8, and otherwise strong enough that the
 	// regex checks after the validator would not be what rejects it.

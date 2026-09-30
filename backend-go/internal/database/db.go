@@ -358,6 +358,13 @@ func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
 		"SELECT entry FROM dst_allowlist WHERE type='domain' ORDER BY entry"); err != nil {
 		return err
 	}
+	// 3c. Manifest of the five lists Squid enforces, written after all of them
+	// so the proxy can verify what it is about to load (SECURE-ARCH-01). A
+	// failure here fails the export: the lists are on disk but not vouched for,
+	// and the proxy will keep its previous copies until the next export.
+	if err := writeListsManifest(configDir); err != nil {
+		return err
+	}
 	// 4. dnsmasq blocklist (hosts format, re-read on SIGHUP). Remove the legacy
 	// conf-dir address= file so it doesn't double-load with stale, restart-only data.
 	_ = os.Remove(configDir + "/dnsmasq.d/blocklist.conf")
