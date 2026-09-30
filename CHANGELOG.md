@@ -15,6 +15,23 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- **The backend now vouches for the lists Squid enforces.** After writing the
+  five exported lists (`ip_blacklist`, `ip_whitelist`, `domain_blacklist`,
+  `dst_allow_ip`, `dst_allow_domain`) it writes `/config/lists.manifest.json`
+  with a version and a sha256 per list. The proxy's watchdog hashes the bytes
+  as it copies and publishes a list only if they match. On a mismatch, an
+  unlisted file or an unreadable manifest it keeps the previous good list,
+  retries, and logs `REFUSED` once per state. Before, a truncated list was
+  copied verbatim and became the live blocklist with no signal. A backend
+  that predates the manifest is still accepted, with one warning, so a
+  mixed-version upgrade keeps working; the boot-time copy in
+  `generate_squid_conf.sh` is not yet verified.
+- The authentication handlers are given a small store (`database.AuthStore`)
+  instead of the database handle. No behaviour change; the other handler groups
+  still take the handle.
+
 ### Action worth knowing about on upgrade
 
 The database gains a schema version (`PRAGMA user_version`) and, on the first
