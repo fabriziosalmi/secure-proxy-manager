@@ -47,10 +47,11 @@ func StartExporter(ctx context.Context, db *sql.DB, configDir string) *Exporter 
 				metrics.WorkerHeartbeat("blacklist_exporter")
 				if err := database.ExportBlacklistsToFiles(e.db, e.configDir); err != nil {
 					// Surfaced as a metric as well as a log line: a failed
-					// export means Squid keeps enforcing the previous list
-					// while the UI shows the new one (SECURE-ERR-05).
+					// export means an enforcement file is stale while the UI
+					// shows the new list (SECURE-ERR-05). The error says which
+					// half, when only one of Squid's lists and dnsmasq's failed.
 					metrics.ExportFailure()
-					log.Error().Err(err).Msg("blacklist export failed — the proxy is enforcing a stale list")
+					log.Error().Err(err).Msg("blacklist export failed — at least one enforcement file is stale")
 					continue
 				}
 				metrics.ExportSuccess()
