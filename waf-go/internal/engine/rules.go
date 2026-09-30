@@ -482,13 +482,56 @@ var respRules = []CategoryRules{
 
 // ── Rule matching engine ────────────────────────────────────────────────────
 
+// scanInput matches patterns against one input and its whitespace-stripped
+// form, which it builds only if a pattern misses.
+//
+// The compacted form catches evasion via space insertion (e.g. "<scr ipt>",
+// "UNION  SELECT"). It is built lazily on the first miss. Crucially, it's only
+// re-scanned when it actually DIFFERS from input — i.e. the input contained
+// whitespace. With no whitespace, compactInput is a no-op and MatchString(compact)
+// is identical to the MatchString(input) already run, so the second scan is pure
+// redundant work. Skipping it there halves the per-rule regex evaluations on the
+// common case (whitespace-free URLs/queries) with zero change to what gets
+// detected.
+type scanInput struct {
+	input        string
+	compact      string
+	checkCompact bool
+	compactReady bool
+}
+
+func (s *scanInput) hits(p *regexp.Regexp) bool {
+	if p.MatchString(s.input) {
+		return true
+	}
+	// Lazy-init compact on the first miss, and decide once whether it can
+	// differ from input at all.
+	if !s.compactReady {
+		s.compact = compactInput(s.input)
+		s.checkCompact = s.compact != s.input
+		s.compactReady = true
+	}
+	return s.checkCompact && p.MatchString(s.compact)
+}
+
+// ruleEligible reports whether a rule should be evaluated in this tier: it
+// belongs to the tier, has not already matched (matches are de-duplicated by
+// rule ID), and survived the pre-filter when there is one.
+func ruleEligible(rule Rule, tier int, matched map[string]bool, active map[string]struct{}, gated bool) bool {
+	if rule.Tier != tier || matched[rule.ID] {
+		return false
+	}
+	if gated {
+		if _, ok := active[rule.ID]; !ok {
+			return false // pre-filtered out: no required literal present
+		}
+	}
+	return true
+}
+
 // MatchRulesScored evaluates input against all rules in tiered order.
 // Returns all matches and the total anomaly score.
 func (e *Engine) MatchRulesScored(input string) ([]MatchResult, int) {
-	var matches []MatchResult
-	totalScore := 0
-	matched := make(map[string]bool) // Deduplicate by rule ID
-
 	// Cheap pre-filter (#110): screen the input against required-literal keywords
 	// derived from the patterns. On benign input no gated rule's literal is
 	// present, so `active` holds only the always-scan (ungated) rules — the vast
@@ -499,62 +542,31 @@ func (e *Engine) MatchRulesScored(input string) ([]MatchResult, int) {
 		return nil, 0
 	}
 
-	// Compacted (whitespace-stripped) form, to catch evasion via space insertion
-	// (e.g. "<scr ipt>", "UNION  SELECT"). Built lazily on the first rule miss.
-	// Crucially, it's only re-scanned when it actually DIFFERS from input — i.e.
-	// the input contained whitespace. With no whitespace, compactInput is a no-op
-	// and MatchString(compact) is identical to the MatchString(input) we already
-	// ran, so the second scan is pure redundant work. Skipping it there halves the
-	// per-rule regex evaluations on the common case (whitespace-free URLs/queries)
-	// with zero change to what gets detected.
-	var compact string
-	var checkCompact bool
-	var compactReady bool
+	var matches []MatchResult
+	totalScore := 0
+	matched := make(map[string]bool) // Deduplicate by rule ID
+	scan := scanInput{input: input}
 
 	for tier := 1; tier <= 3; tier++ {
 		if e.Blocked(totalScore) {
 			break // Early exit — score already over threshold, no need to check more rules
 		}
-
 		for _, cr := range blockRules {
 			if !e.CategoryEnabled(cr.Category) {
 				continue // Security Pack disabled
 			}
 			for _, rule := range cr.Rules {
-				if rule.Tier != tier {
+				if !ruleEligible(rule, tier, matched, active, gated) || !scan.hits(rule.Pattern) {
 					continue
 				}
-				if matched[rule.ID] {
-					continue
-				}
-				if gated {
-					if _, ok := active[rule.ID]; !ok {
-						continue // pre-filtered out: no required literal present
-					}
-				}
-				hit := rule.Pattern.MatchString(input)
-				if !hit {
-					// Lazy-init compact on the first miss, and decide once whether
-					// it can differ from input at all.
-					if !compactReady {
-						compact = compactInput(input)
-						checkCompact = compact != input
-						compactReady = true
-					}
-					if checkCompact {
-						hit = rule.Pattern.MatchString(compact)
-					}
-				}
-				if hit {
-					matched[rule.ID] = true
-					matches = append(matches, MatchResult{
-						Category: cr.Category,
-						RuleID:   rule.ID,
-						Pattern:  rule.Pattern.String(),
-						Score:    rule.Severity,
-					})
-					totalScore += rule.Severity
-				}
+				matched[rule.ID] = true
+				matches = append(matches, MatchResult{
+					Category: cr.Category,
+					RuleID:   rule.ID,
+					Pattern:  rule.Pattern.String(),
+					Score:    rule.Severity,
+				})
+				totalScore += rule.Severity
 			}
 		}
 	}
