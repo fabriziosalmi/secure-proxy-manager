@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/helpers'
 import { Blacklists } from './Blacklists'
@@ -93,4 +93,60 @@ describe('Blacklists', () => {
       })
     }
   })
+  // #219 M8 + M10b. Both were real: a second click fired a second POST and
+  // imported twice, and the inline country parser filtered on length alone, so
+  // "12" reached the API as a country code.
+  describe('geo import guards', () => {
+    const openGeoPanel = async (user: ReturnType<typeof userEvent.setup>) => {
+      await waitFor(() => expect(screen.getByText('10.0.0.1')).toBeInTheDocument())
+      await user.click(screen.getByRole('button', { name: /geo-block/i }))
+      return screen.getByPlaceholderText(/e\.g\. CN, RU, KP/i)
+    }
+
+    it('rejects a country code that is two characters but not two letters', async () => {
+      const user = userEvent.setup()
+      renderWithProviders(<Blacklists />)
+      const input = await openGeoPanel(user)
+      await user.type(input, '12')
+      await user.click(screen.getByRole('button', { name: /download & block ips/i }))
+      // parseGeoCountries drops it, so the handler returns before any request.
+      expect(api.post).not.toHaveBeenCalledWith('blacklists/import-geo', expect.anything())
+    })
+
+    it('does not submit twice when the button is clicked twice', async () => {
+      const user = userEvent.setup()
+      let resolve!: (v: unknown) => void
+      vi.mocked(api.post).mockReturnValueOnce(new Promise(r => { resolve = r }) as never)
+      renderWithProviders(<Blacklists />)
+      const input = await openGeoPanel(user)
+      await user.type(input, 'CN')
+      const btn = screen.getByRole('button', { name: /download & block ips/i })
+      await user.click(btn)
+      await waitFor(() => expect(btn).toBeDisabled())
+      await user.click(btn)
+      const geoCalls = vi.mocked(api.post).mock.calls.filter(c => c[0] === 'blacklists/import-geo')
+      expect(geoCalls).toHaveLength(1)
+      resolve({ data: { data: { imported: 1 } } })
+    })
+
+    // The test above passes on the disabled attribute alone, so it would still
+    // pass with the handler's own guard removed. This one submits the form
+    // directly, which is the path a disabled button cannot cover — and the one
+    // that matters if the attribute is ever dropped from the markup.
+    it('the handler itself refuses a second submit while one is in flight', async () => {
+      const user = userEvent.setup()
+      let resolve!: (v: unknown) => void
+      vi.mocked(api.post).mockReturnValueOnce(new Promise(r => { resolve = r }) as never)
+      renderWithProviders(<Blacklists />)
+      const input = await openGeoPanel(user)
+      await user.type(input, 'CN')
+      const form = input.closest('form')!
+      fireEvent.submit(form)
+      fireEvent.submit(form)
+      const geoCalls = vi.mocked(api.post).mock.calls.filter(c => c[0] === 'blacklists/import-geo')
+      expect(geoCalls).toHaveLength(1)
+      resolve({ data: { data: { imported: 1 } } })
+    })
+  })
+
 })

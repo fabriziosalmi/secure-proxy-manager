@@ -1,6 +1,6 @@
 import { Card, CardContent } from '../components/ui/card';
 import { api, getErrorMessage } from '../lib/api';
-import { isValidIP, isValidDomain } from '../lib/validation';
+import { isValidIP, isValidDomain, parseGeoCountries } from '../lib/validation';
 import type { IpEntry, DomainEntry, WhitelistEntry, DomainWhitelistEntry } from '../types';
 import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, CheckCircle, ShieldCheck, Loader2, RefreshCw, FileDown, XCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -132,9 +132,17 @@ export function Blacklists() {
     addMutation.mutate({ endpoint, payload });
   };
 
+  // One flag naming which form is in flight, not one boolean each: the three
+  // can be open at once, and a pending import must not disable the others.
+  // The single-add form already guarded itself with addMutation.isPending;
+  // these three did not, so a second click fired a second POST and imported
+  // twice (#219, M8).
+  const [submitting, setSubmitting] = useState<'bulk' | 'url' | 'geo' | null>(null);
+
   const handleBulkAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bulkText.trim()) return;
+    if (!bulkText.trim() || submitting) return;
+    setSubmitting('bulk');
     const loadingToast = toast.loading(`Importing ${activeTab} entries...`);
     try {
       const response = await api.post('blacklists/import', {
@@ -149,6 +157,8 @@ export function Blacklists() {
       invalidateActive();
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to import entries'), { id: loadingToast });
+    } finally {
+      setSubmitting(null);
     }
   };
 
@@ -163,7 +173,8 @@ export function Blacklists() {
 
   const handleImport = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!importUrl) return;
+    if (!importUrl || submitting) return;
+    setSubmitting('url');
     const loadingToast = toast.loading(`Importing ${activeTab}s from URL...`);
     try {
       const response = await api.post('blacklists/import', { type: activeTab, url: importUrl });
@@ -173,14 +184,20 @@ export function Blacklists() {
       invalidateActive();
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to import rules'), { id: loadingToast });
+    } finally {
+      setSubmitting(null);
     }
   };
 
   const handleGeoBlock = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!geoCountry) return;
-    const countries = geoCountry.split(/[\s,]+/).map(c => c.trim().toUpperCase()).filter(c => c.length === 2);
+    if (!geoCountry || submitting) return;
+    // The shared, already-tested parser. The copy that used to live here
+    // filtered on length alone, so "12" and "A1" were accepted as country
+    // codes and sent to the API (#219, M10b).
+    const countries = parseGeoCountries(geoCountry);
     if (countries.length === 0) return;
+    setSubmitting('geo');
     const loadingToast = toast.loading(`Importing IP blocks for ${countries.join(', ')}...`);
     try {
       const response = await api.post('blacklists/import-geo', { countries });
@@ -190,6 +207,8 @@ export function Blacklists() {
       queryClient.invalidateQueries({ queryKey: ['blacklist', 'ip'] });
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to import GeoIP blocks'), { id: loadingToast });
+    } finally {
+      setSubmitting(null);
     }
   };
 
@@ -389,7 +408,7 @@ export function Blacklists() {
               </div>
               <p className="text-xs text-muted-foreground">Lines starting with # are ignored. Invalid entries are skipped.</p>
               <div className="flex gap-2">
-                <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors">Add All</button>
+                <button type="submit" disabled={submitting === 'bulk'} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{submitting === 'bulk' ? 'Adding…' : 'Add All'}</button>
                 <button type="button" onClick={() => setIsBulkAdding(false)} className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors">Cancel</button>
               </div>
             </form>
@@ -406,7 +425,7 @@ export function Blacklists() {
                 <input id="bl-import-url" type="url" value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="https://raw.githubusercontent.com/..."
                   className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
               </div>
-              <button type="submit" className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10">Import List</button>
+              <button type="submit" disabled={submitting === 'url'} className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10 disabled:opacity-50 disabled:cursor-not-allowed">{submitting === 'url' ? 'Importing…' : 'Import List'}</button>
             </form>
             <p className="text-xs text-muted-foreground mt-3">The URL must point to a plain text file with one {activeTab} per line. Comments starting with # are ignored.</p>
           </CardContent>
@@ -444,7 +463,7 @@ export function Blacklists() {
                 <input id="bl-geo-country" type="text" value={geoCountry} onChange={(e) => setGeoCountry(e.target.value.toUpperCase())} placeholder="e.g. CN, RU, KP"
                   className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
               </div>
-              <button type="submit" className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10">Download & Block IPs</button>
+              <button type="submit" disabled={submitting === 'geo'} className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10 disabled:opacity-50 disabled:cursor-not-allowed">{submitting === 'geo' ? 'Importing…' : 'Download & Block IPs'}</button>
             </form>
             <p className="text-xs text-muted-foreground mt-3">Fetches all known IPv4 blocks for each country and adds them to your IP Blacklist. Use 2-letter ISO codes: CN, RU, KP, IR...</p>
           </CardContent>
