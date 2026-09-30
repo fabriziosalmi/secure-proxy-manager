@@ -55,8 +55,36 @@ grep -q 'does not contain proxy_manager.db' <<<"$out" && ok "a directory with no
 
 echo "── refuses a CORRUPT backup, which is the point ──"
 mkgood "$SANDBOX/data.bak.corrupt"
-# Corrupt a page that holds data, which is what integrity_check inspects.
-dd if=/dev/urandom of="$SANDBOX/data.bak.corrupt/proxy_manager.db" bs=1 seek=8300 count=600 conv=notrunc status=none
+# Corrupt a page that holds data, which is what integrity_check inspects, and
+# then CHECK that SQLite agrees the file is corrupt before asserting anything
+# about restore.sh.
+#
+# A fixed offset alone was not enough. This used to write 600 random bytes at
+# 8300 and trust that to be inside a data page, which held on the machine it
+# was written on and failed once in CI: page layout depends on the SQLite build
+# and version, so the damage can land in free space, where integrity_check
+# returns "ok" by design. The test then reported that restore.sh had failed to
+# refuse a corrupt backup, when the backup SQLite was handed was not corrupt in
+# any way it recognises. A security gate that is sometimes wrong gets ignored,
+# which is worse than not having it.
+#
+# So: damage progressively deeper until SQLite itself says the file is broken.
+# The assertion below then tests the real property — given a backup SQLite
+# considers corrupt, restore.sh must refuse it before touching data/.
+corrupt_until_sqlite_notices() {
+  local db="$1" off
+  for off in 8300 12400 16500 20600 24700; do
+    dd if=/dev/urandom of="$db" bs=1 seek="$off" count=600 conv=notrunc status=none 2>/dev/null
+    if [ "$(sqlite3 "$db" 'PRAGMA integrity_check;' 2>&1 | head -1)" != "ok" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+if ! corrupt_until_sqlite_notices "$SANDBOX/data.bak.corrupt/proxy_manager.db"; then
+  bad "the test could not produce a backup SQLite considers corrupt" \
+      "integrity_check still reports ok after damaging five data pages"
+fi
 out="$(run "$SANDBOX/data.bak.corrupt")"
 if grep -qi 'integrity check on the backup failed' <<<"$out"; then
   ok "a corrupt backup is refused BEFORE the swap"
