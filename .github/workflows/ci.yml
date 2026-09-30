@@ -5,6 +5,18 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Daily, because two of the gates here answer a question whose answer changes
+  # WITHOUT a commit: npm audit, govulncheck and Trivy read advisory databases
+  # that are updated upstream, so unchanged code can turn insecure overnight.
+  #
+  # And because main was not being evaluated at all. Dependabot's auto-merge
+  # pushes with GITHUB_TOKEN, and a push made with that token does not trigger
+  # workflows: commits landed on 2026-09-21 and 2026-09-28 with the last run on
+  # main dated 2026-09-19. In that window four HIGH npm advisories appeared and
+  # nothing reported them — the branch looked green because nothing ran.
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
