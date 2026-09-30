@@ -219,3 +219,43 @@ func RetentionDisabled() {
 	retentionEnabled.Set(0)
 	retentionDays.Set(0)
 }
+
+// WAF reconciler. The worker that re-pushes the stored heuristic configuration
+// to a restarted WAF used to report nothing: no heartbeat, no counters, and no
+// log line when the WAF was unreachable, so it could stop, or never reach the
+// WAF, while the Settings page went on showing toggles the WAF no longer had
+// (SECURE-OBS-01).
+var (
+	wafReconcileTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "spm_waf_reconcile_total",
+		Help: "WAF reconciliation passes, by outcome: success, unreachable, push_failed.",
+	}, []string{"outcome"})
+	wafReconcileLastSuccess = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "spm_waf_reconcile_last_success_timestamp_seconds",
+		Help: "Unix timestamp of the last pass after which the WAF matched the stored configuration.",
+	})
+)
+
+func init() {
+	// Create the series at zero so a rule on increase() sees them from the start.
+	for _, o := range []string{"success", "unreachable", "push_failed"} {
+		wafReconcileTotal.WithLabelValues(o)
+	}
+}
+
+// WAFReconcile records the outcome of one reconciliation pass.
+func WAFReconcile(outcome string) {
+	wafReconcileTotal.WithLabelValues(outcome).Inc()
+	if outcome == "success" {
+		wafReconcileLastSuccess.SetToCurrentTime()
+	}
+}
+
+// WAFReconcileCount reads a pass counter back, for tests.
+func WAFReconcileCount(outcome string) float64 {
+	m := &dto.Metric{}
+	if err := wafReconcileTotal.WithLabelValues(outcome).Write(m); err != nil {
+		return 0
+	}
+	return m.GetCounter().GetValue()
+}

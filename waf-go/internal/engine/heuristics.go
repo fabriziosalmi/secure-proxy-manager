@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"regexp"
 	"strconv"
@@ -488,7 +489,7 @@ func envBool(key string, def bool) bool {
 	case "0", "false", "no", "off":
 		return false
 	}
-	log.Printf("%s=%q is not a boolean (use 1/0, true/false, yes/no, on/off); keeping %v\n", key, v, def)
+	slog.Warn("setting rejected: not a boolean (use 1/0, true/false, yes/no, on/off)", "variable", key, "value", v, "in_use", def)
 	return def
 }
 
@@ -499,7 +500,7 @@ func envFloat(key string, def float64) float64 {
 	}
 	f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
 	if err != nil {
-		log.Printf("%s=%q is not a number; keeping %v\n", key, v, def)
+		slog.Warn("setting rejected: not a number", "variable", key, "value", v, "in_use", def)
 		return def
 	}
 	return f
@@ -512,7 +513,7 @@ func envInt(key string, def int) int {
 	}
 	i, err := strconv.Atoi(strings.TrimSpace(v))
 	if err != nil {
-		log.Printf("%s=%q is not an integer; keeping %v\n", key, v, def)
+		slog.Warn("setting rejected: not an integer", "variable", key, "value", v, "in_use", def)
 		return def
 	}
 	return i

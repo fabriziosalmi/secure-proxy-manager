@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -104,12 +104,12 @@ var trafficLog *TrafficLogger
 func openTrafficFile(path string) *os.File {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		log.Printf("traffic log: cannot create dir %s: %v\n", dir, err)
+		slog.Warn("traffic log: cannot create directory", "dir", dir, "error", err.Error())
 		return nil
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Printf("traffic log: cannot open %s: %v\n", path, err)
+		slog.Warn("traffic log: cannot open file", "path", path, "error", err.Error())
 		return nil
 	}
 	return f
@@ -125,7 +125,8 @@ func newTrafficLogger(path string, maxSize int64) *TrafficLogger {
 
 	f := openTrafficFile(path)
 	if f == nil && path != trafficLogFallback {
-		log.Printf("traffic log: primary path %s unwritable, falling back to %s — forensics will NOT survive a restart\n", path, trafficLogFallback)
+		slog.Warn("traffic log: primary path unwritable, falling back; forensics will NOT survive a restart",
+			"path", path, "fallback", trafficLogFallback)
 		path = trafficLogFallback
 		f = openTrafficFile(path)
 		// The fallback is a memory-backed tmpfs; shrink the rotation cap so the
@@ -135,10 +136,10 @@ func newTrafficLogger(path string, maxSize int64) *TrafficLogger {
 		}
 	}
 	if f == nil {
-		log.Printf("traffic log: DISABLED — no writable path (records will be dropped, see waf_trafficlog_enabled metric)\n")
+		slog.Error("traffic log: DISABLED, no writable path; records will be dropped (see waf_trafficlog_enabled)")
 		return nil
 	}
-	log.Printf("traffic log: writing to %s\n", path)
+	slog.Info("traffic log: writing", "path", path)
 
 	info, _ := f.Stat()
 	written := int64(0)
@@ -209,14 +210,14 @@ func (tl *TrafficLogger) rotate() {
 	// A failed flush here silently drops the tail of the previous file — the
 	// most recent forensic records, which are the ones an incident needs.
 	if err := tl.writer.Flush(); err != nil {
-		log.Printf("traffic log: flush before rotate failed, records lost: %v\n", err)
+		slog.Error("traffic log: flush before rotate failed, records lost", "error", err.Error())
 	}
 	_ = tl.file.Close()
 	_ = os.Remove(tl.path + ".1")
 	_ = os.Rename(tl.path, tl.path+".1")
 	f, err := os.OpenFile(tl.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Printf("Failed to rotate traffic log: %v\n", err)
+		slog.Error("traffic log: rotation failed", "path", tl.path, "error", err.Error())
 		// Fall back to appending to the rotated file rather than losing the
 		// sink and leaking the descriptor.
 		f, err = os.OpenFile(tl.path+".1", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -236,8 +237,8 @@ func (tl *TrafficLogger) markDown(cause error) {
 	tl.writer = nil
 	tl.lastReopenAt = time.Now()
 	if tl.sinkDown.CompareAndSwap(false, true) {
-		log.Printf("traffic log: DOWN, no file could be opened (%v); forensic records are being dropped and counted in waf_trafficlog_sink_dropped_total, retrying every %v\n",
-			cause, tl.retryEvery)
+		slog.Error("traffic log: DOWN, no file could be opened; forensic records are being dropped (waf_trafficlog_sink_dropped_total)",
+			"path", tl.path, "error", cause.Error(), "retry_every", tl.retryEvery.String())
 	}
 }
 
@@ -263,7 +264,7 @@ func (tl *TrafficLogger) tryReopen() {
 		tl.written = info.Size()
 	}
 	tl.sinkDown.Store(false)
-	log.Printf("traffic log: recovered, writing to %s again\n", tl.path)
+	slog.Info("traffic log: recovered", "path", tl.path)
 }
 
 // Flush flushes the buffered writer.
@@ -277,7 +278,7 @@ func (tl *TrafficLogger) Flush() {
 		return
 	}
 	if err := tl.writer.Flush(); err != nil {
-		log.Printf("traffic log: flush failed, buffered records lost: %v\n", err)
+		slog.Error("traffic log: flush failed, buffered records lost", "error", err.Error())
 	}
 }
 
@@ -294,7 +295,7 @@ func (tl *TrafficLogger) Close() {
 		return
 	}
 	if err := tl.writer.Flush(); err != nil {
-		log.Printf("traffic log: final flush failed, records lost: %v\n", err)
+		slog.Error("traffic log: final flush failed, records lost", "error", err.Error())
 	}
 	_ = tl.file.Close()
 }
