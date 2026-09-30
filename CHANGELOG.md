@@ -13,7 +13,12 @@ a `### Removed` or `### Changed` heading with the phrase **BREAKING** and the
 changes affecting it. Retired routes answer `410 Gone` naming their replacement
 for at least one minor release before disappearing.
 
-## [Unreleased]
+## [3.14.0] - 2026-09-30
+
+A sweep of the findings of a code-metrics audit, one category at a time. Nothing
+is removed and `X-API-Version` stays 1. Read **Action worth knowing about on
+upgrade** below (a one-time schema migration) and the **Changed** list for the
+few behaviours that differ.
 
 ### Changed
 
@@ -31,6 +36,33 @@ for at least one minor release before disappearing.
 - The authentication handlers are given a small store (`database.AuthStore`)
   instead of the database handle. No behaviour change; the other handler groups
   still take the handle.
+
+- **The WAF logs JSON.** Its records are structured (`log/slog`), one JSON object
+  per line, like the backend's; `LOG_FORMAT=pretty` restores readable text for
+  development. Anything parsing the old free-text WAF lines must be updated. The
+  WAF also exposes `waf_build_info`, `waf_trafficlog_writable` and
+  `waf_trafficlog_sink_dropped_total`.
+- **The WAF says so when it rejects a setting.** A numeric or boolean environment
+  value it cannot parse is logged and the default is used, where before it was
+  dropped silently. Boolean values are now case-insensitive (`TRUE` works).
+- **The backend reports a failed WAF reconciliation.** The reconciler that pushes
+  the stored heuristic configuration to a restarted WAF now retries until it
+  succeeds and exports `spm_waf_reconcile_total{outcome}` and
+  `spm_waf_reconcile_last_success_timestamp_seconds`; the observability profile
+  ships an alert, `SPMWafReconcileFailing`.
+- **Notifications are delivered per channel.** Each configured channel has its own
+  bounded queue and retries, so a slow or failing channel no longer delays the
+  others; the failure log no longer prints the webhook URL. Queued alerts are
+  drained on shutdown, and the WebSocket hub is closed after the workers stop.
+- **The DNS log tailer caps its per-tick read**, as the Squid tailer already did,
+  and both share one implementation.
+- **Build and CI.** CI and the images build with Go 1.27 (the linters stay on
+  1.26 until they can type-check 1.27); `scripts/check-image-pins.sh` fails when
+  the Go, Playwright, tailscale or Squid pins drift, and the proxy image refuses
+  to build with a Squid older than its floor. The WAF binary is built with
+  `-trimpath` and carries its git commit.
+- **Every function is now at or under cyclomatic complexity 15** (the worst was
+  30). No intended behaviour change.
 
 ### Fixed
 
@@ -50,6 +82,18 @@ for at least one minor release before disappearing.
   accepted and reduced to its hostname (the port is dropped). Entries already in
   your database are not removed; the exporter skips only the ones that could not
   be read back as a single line, and logs how many.
+
+- **A failed dnsmasq write is reported.** The export used to succeed when only the
+  dnsmasq blocklist could not be written; it now returns an error saying the
+  Squid lists were written and the dnsmasq one was not.
+- **A failed `COUNT` is an error, not a zero.** List and log endpoints no longer
+  answer an empty total when the count query failed.
+- **The WAF no longer latches its traffic log to `/dev/null`** after a transient
+  failure: it retries and recovers, and reports the state as a metric.
+- **The log feed in the UI never gives up reconnecting.** It backs off to 30 s and
+  reconnects at once when the tab becomes visible or the network returns.
+- **`restore.sh` refuses to restore a backup it cannot verify.** It needs
+  `sqlite3` for the integrity check; pass `--skip-check` to restore without one.
 
 ### Action worth knowing about on upgrade
 
