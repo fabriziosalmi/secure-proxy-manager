@@ -35,7 +35,9 @@ type Config struct {
 }
 
 const (
-	defaultBlockThreshold = 10
+	// DefaultBlockThreshold is used when the configuration supplies none, or an
+	// unusable value.
+	DefaultBlockThreshold = 10
 	defaultSafeCacheSize  = 50000
 	defaultSafeCacheTTL   = 5 * time.Minute
 )
@@ -70,7 +72,7 @@ type Engine struct {
 func New(cfg Config) *Engine {
 	threshold := cfg.BlockThreshold
 	if threshold <= 0 {
-		threshold = defaultBlockThreshold
+		threshold = DefaultBlockThreshold
 	}
 	size := cfg.SafeCacheSize
 	if size <= 0 {

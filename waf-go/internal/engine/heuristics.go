@@ -473,12 +473,23 @@ func isInvalidSequence(prevMethod, prevPath, curMethod, curPath string) bool {
 
 // ── Env helpers ─────────────────────────────────────────────────────────────
 
+// envBool reads a boolean. Anything that is neither a recognised true nor a
+// recognised false keeps the default AND is logged: "TRUE" or "on" used to be
+// read as false without a word, which for a protection toggle silently turned
+// the protection off.
 func envBool(key string, def bool) bool {
 	v := os.Getenv(key)
 	if v == "" {
 		return def
 	}
-	return v == "1" || v == "true" || v == "yes"
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	}
+	log.Printf("%s=%q is not a boolean (use 1/0, true/false, yes/no, on/off); keeping %v\n", key, v, def)
+	return def
 }
 
 func envFloat(key string, def float64) float64 {
@@ -486,8 +497,9 @@ func envFloat(key string, def float64) float64 {
 	if v == "" {
 		return def
 	}
-	f, err := strconv.ParseFloat(v, 64)
+	f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
 	if err != nil {
+		log.Printf("%s=%q is not a number; keeping %v\n", key, v, def)
 		return def
 	}
 	return f
@@ -498,8 +510,9 @@ func envInt(key string, def int) int {
 	if v == "" {
 		return def
 	}
-	i, err := strconv.Atoi(v)
+	i, err := strconv.Atoi(strings.TrimSpace(v))
 	if err != nil {
+		log.Printf("%s=%q is not an integer; keeping %v\n", key, v, def)
 		return def
 	}
 	return i
