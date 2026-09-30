@@ -70,7 +70,7 @@ services:
   # without hitting the internet.
 
   mock-lists:
-    image: nginx:1.27-alpine
+    image: nginx:1.31.6-alpine
     volumes:
       - ./tests/mock-lists/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./tests/mock-lists:/usr/share/nginx/html:ro
