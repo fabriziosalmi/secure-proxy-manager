@@ -170,160 +170,192 @@ func (e *Engine) CleanupClientStates() {
 // CheckRequestHeuristics evaluates behavioral heuristics for a request.
 // Returns additional score and match results.
 func (e *Engine) CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize int, bodyEntropy, urlEntropy float64) ([]HeuristicResult, int) {
-	var results []HeuristicResult
-	totalScore := 0
-
 	// One consistent snapshot of the (runtime-mutable) config for this request.
 	cfg := e.Heuristics()
 
-	now := time.Now()
+	snap := e.recordClientRequest(cfg, clientIP, method, host, path, bodySize, time.Now())
 
-	// ── Snapshot & update client state under a single lock ─────────────
-	// This avoids 4-5 separate lock/unlock cycles per request.
-	//
-	// The entry is resolved INSIDE this acquisition. getClientState used to
-	// return the pointer and release the lock, so between that and the
-	// re-acquisition here another request could evict the map entry — the cap
-	// evicts an arbitrary one — and this goroutine then wrote the client's
-	// beaconing, sharding and sequence state into an object nothing would read
-	// again. Not a data race (both accesses are locked) so the race detector
-	// could never see it: a lost update, silently resetting a client's
-	// behavioural history (SECURE-CONC-04).
+	// Each heuristic looks only at the config, the request and the snapshot of
+	// the client's history taken above; none of them touches shared state.
+	var results []HeuristicResult
+	results = append(results, heuristicEntropy(cfg, bodyEntropy, urlEntropy, bodySize)...)
+	results = append(results, heuristicBeaconing(cfg, snap)...)
+	results = append(results, heuristicSharding(cfg, snap.destCount)...)
+	results = append(results, heuristicGhosting(cfg, body)...)
+	results = append(results, heuristicSequence(cfg, snap, method, path)...)
+
+	totalScore := 0
+	for _, r := range results {
+		totalScore += r.Score
+	}
+	return results, totalScore
+}
+
+// clientSnapshot is what one request learned from, and wrote to, its client's
+// history: read after the lock is released, by heuristics that need no lock.
+type clientSnapshot struct {
+	validTimes []time.Time
+	validSizes []int
+	destCount  int
+	prevMethod string
+	prevPath   string
+}
+
+// maxBeaconHistory bounds the per-client beaconing ring buffer.
+const maxBeaconHistory = 1000
+
+// recordClientRequest records this request in the client's history and returns
+// a snapshot of it, all under a single lock acquisition.
+//
+// This avoids 4-5 separate lock/unlock cycles per request. The entry is
+// resolved INSIDE the acquisition: getClientState used to return the pointer
+// and release the lock, so between that and the re-acquisition another request
+// could evict the map entry — the cap evicts an arbitrary one — and this
+// goroutine then wrote the client's beaconing, sharding and sequence state into
+// an object nothing would read again. Not a data race (both accesses are
+// locked) so the race detector could never see it: a lost update, silently
+// resetting a client's behavioural history (SECURE-CONC-04).
+func (e *Engine) recordClientRequest(cfg HeuristicConfig, clientIP, method, host, path string, bodySize int, now time.Time) clientSnapshot {
 	e.csMu.Lock()
+	defer e.csMu.Unlock()
 	cs := e.getClientStateLocked(clientIP)
-	// H2: trim old beaconing entries
+	var snap clientSnapshot
+	if cfg.BeaconingDetection {
+		snap.validTimes, snap.validSizes = recordBeaconing(cs, cfg, now, bodySize)
+	}
+	if cfg.DestinationSharding {
+		snap.destCount = recordDestination(cs, host, now)
+	}
+	if cfg.SequenceValidation {
+		snap.prevMethod, snap.prevPath = cs.lastMethod, cs.lastPath
+		cs.lastMethod, cs.lastPath = method, path
+	}
+	return snap
+}
+
+// recordBeaconing (H2) drops entries older than the window, appends this
+// request, caps the buffer, and returns the resulting history.
+func recordBeaconing(cs *clientState, cfg HeuristicConfig, now time.Time, bodySize int) ([]time.Time, []int) {
 	var validTimes []time.Time
 	var validSizes []int
-	if cfg.BeaconingDetection {
-		window := time.Duration(cfg.BeaconingWindow) * time.Second
-		cutoff := now.Add(-window)
-		for i, t := range cs.reqTimes {
-			if t.After(cutoff) {
-				validTimes = append(validTimes, t)
-				if i < len(cs.reqSizes) {
-					validSizes = append(validSizes, cs.reqSizes[i])
-				}
-			}
-		}
-		validTimes = append(validTimes, now)
-		validSizes = append(validSizes, bodySize)
-		// Cap ring buffer at 1000 entries to bound memory
-		if len(validTimes) > 1000 {
-			validTimes = validTimes[len(validTimes)-1000:]
-			validSizes = validSizes[len(validSizes)-1000:]
-		}
-		cs.reqTimes = validTimes
-		cs.reqSizes = validSizes
-	}
-
-	// H4: clean old dests, record new
-	var destCount int
-	if cfg.DestinationSharding {
-		for d, t := range cs.dests {
-			if now.Sub(t) > 60*time.Second {
-				delete(cs.dests, d)
-			}
-		}
-		cs.dests[host] = now
-		cs.destLast = now
-		destCount = len(cs.dests)
-	}
-
-	// H7: snapshot last method/path
-	var prevMethod, prevPath string
-	if cfg.SequenceValidation {
-		prevMethod = cs.lastMethod
-		prevPath = cs.lastPath
-		cs.lastMethod = method
-		cs.lastPath = path
-	}
-	e.csMu.Unlock()
-	// ── End single-lock section ────────────────────────────────────────
-
-	// ── H1: Entropy Thresholding ────────────────────────────────────────
-	if cfg.EntropyThreshold {
-		if bodyEntropy > cfg.EntropyMax && bodySize > 256 {
-			r := HeuristicResult{
-				ID:       "H1-ENTROPY",
-				Category: "HEURISTIC_ENTROPY",
-				Score:    6, // probabilistic: below blockThreshold, needs corroboration
-				Detail:   fmt.Sprintf("body entropy %.2f > %.1f (size=%d)", bodyEntropy, cfg.EntropyMax, bodySize),
-			}
-			results = append(results, r)
-			totalScore += r.Score
-		}
-		if urlEntropy > cfg.EntropyMax {
-			r := HeuristicResult{
-				ID:       "H1-URL-ENTROPY",
-				Category: "HEURISTIC_ENTROPY",
-				Score:    7,
-				Detail:   fmt.Sprintf("URL entropy %.2f > %.1f", urlEntropy, cfg.EntropyMax),
-			}
-			results = append(results, r)
-			totalScore += r.Score
-		}
-	}
-
-	// ── H2: Beaconing Detection ─────────────────────────────────────────
-	if cfg.BeaconingDetection {
-		if len(validTimes) >= cfg.BeaconingMinRequests {
-			// Check for regular intervals (beaconing)
-			if isBeaconing(validTimes) && isUniformSize(validSizes) {
-				r := HeuristicResult{
-					ID:       "H2-BEACON",
-					Category: "HEURISTIC_BEACONING",
-					Score:    6, // probabilistic: below blockThreshold, needs corroboration
-					Detail:   fmt.Sprintf("regular interval pattern detected (%d reqs in %ds)", len(validTimes), cfg.BeaconingWindow),
-				}
-				results = append(results, r)
-				totalScore += r.Score
+	cutoff := now.Add(-time.Duration(cfg.BeaconingWindow) * time.Second)
+	for i, t := range cs.reqTimes {
+		if t.After(cutoff) {
+			validTimes = append(validTimes, t)
+			if i < len(cs.reqSizes) {
+				validSizes = append(validSizes, cs.reqSizes[i])
 			}
 		}
 	}
+	validTimes = append(validTimes, now)
+	validSizes = append(validSizes, bodySize)
+	// Cap ring buffer to bound memory.
+	if len(validTimes) > maxBeaconHistory {
+		validTimes = validTimes[len(validTimes)-maxBeaconHistory:]
+		validSizes = validSizes[len(validSizes)-maxBeaconHistory:]
+	}
+	cs.reqTimes = validTimes
+	cs.reqSizes = validSizes
+	return validTimes, validSizes
+}
 
-	// ── H4: Destination Sharding ────────────────────────────────────────
-	if cfg.DestinationSharding {
-		if destCount > cfg.ShardingMaxDests {
-			r := HeuristicResult{
-				ID:       "H4-SHARDING",
-				Category: "HEURISTIC_SHARDING",
-				Score:    6, // probabilistic: below blockThreshold, needs corroboration
-				Detail:   fmt.Sprintf("%d unique destinations in 60s (max=%d)", destCount, cfg.ShardingMaxDests),
-			}
-			results = append(results, r)
-			totalScore += r.Score
+// recordDestination (H4) forgets destinations not seen for 60s, records this
+// one, and returns how many distinct destinations the client used in the window.
+func recordDestination(cs *clientState, host string, now time.Time) int {
+	for d, t := range cs.dests {
+		if now.Sub(t) > 60*time.Second {
+			delete(cs.dests, d)
 		}
 	}
+	cs.dests[host] = now
+	cs.destLast = now
+	return len(cs.dests)
+}
 
-	// ── H6: Protocol Ghosting ───────────────────────────────────────────
-	if cfg.ProtocolGhosting {
-		if ghost := detectProtocolGhosting(body); ghost != "" {
-			r := HeuristicResult{
-				ID:       "H6-GHOST",
-				Category: "HEURISTIC_GHOSTING",
-				Score:    7, // probabilistic: below blockThreshold, needs corroboration
-				Detail:   fmt.Sprintf("encapsulated protocol detected: %s", ghost),
-			}
-			results = append(results, r)
-			totalScore += r.Score
-		}
+// heuristicEntropy (H1): high-entropy bodies and URLs suggest encrypted or
+// compressed exfiltration.
+func heuristicEntropy(cfg HeuristicConfig, bodyEntropy, urlEntropy float64, bodySize int) []HeuristicResult {
+	if !cfg.EntropyThreshold {
+		return nil
 	}
-
-	// ── H7: Sequence Validation ─────────────────────────────────────────
-	if cfg.SequenceValidation {
-		if isInvalidSequence(prevMethod, prevPath, method, path) {
-			r := HeuristicResult{
-				ID:       "H7-SEQUENCE",
-				Category: "HEURISTIC_SEQUENCE",
-				Score:    7,
-				Detail:   fmt.Sprintf("suspicious sequence: %s %s → %s %s", prevMethod, prevPath, method, path),
-			}
-			results = append(results, r)
-			totalScore += r.Score
-		}
+	var out []HeuristicResult
+	if bodyEntropy > cfg.EntropyMax && bodySize > 256 {
+		out = append(out, HeuristicResult{
+			ID:       "H1-ENTROPY",
+			Category: "HEURISTIC_ENTROPY",
+			Score:    6, // probabilistic: below blockThreshold, needs corroboration
+			Detail:   fmt.Sprintf("body entropy %.2f > %.1f (size=%d)", bodyEntropy, cfg.EntropyMax, bodySize),
+		})
 	}
+	if urlEntropy > cfg.EntropyMax {
+		out = append(out, HeuristicResult{
+			ID:       "H1-URL-ENTROPY",
+			Category: "HEURISTIC_ENTROPY",
+			Score:    7,
+			Detail:   fmt.Sprintf("URL entropy %.2f > %.1f", urlEntropy, cfg.EntropyMax),
+		})
+	}
+	return out
+}
 
-	return results, totalScore
+// heuristicBeaconing (H2): regular intervals and uniform sizes suggest C2.
+func heuristicBeaconing(cfg HeuristicConfig, snap clientSnapshot) []HeuristicResult {
+	if !cfg.BeaconingDetection || len(snap.validTimes) < cfg.BeaconingMinRequests {
+		return nil
+	}
+	if !isBeaconing(snap.validTimes) || !isUniformSize(snap.validSizes) {
+		return nil
+	}
+	return []HeuristicResult{{
+		ID:       "H2-BEACON",
+		Category: "HEURISTIC_BEACONING",
+		Score:    6, // probabilistic: below blockThreshold, needs corroboration
+		Detail:   fmt.Sprintf("regular interval pattern detected (%d reqs in %ds)", len(snap.validTimes), cfg.BeaconingWindow),
+	}}
+}
+
+// heuristicSharding (H4): many destinations in a minute suggests scanning or
+// exfiltration spread across hosts.
+func heuristicSharding(cfg HeuristicConfig, destCount int) []HeuristicResult {
+	if !cfg.DestinationSharding || destCount <= cfg.ShardingMaxDests {
+		return nil
+	}
+	return []HeuristicResult{{
+		ID:       "H4-SHARDING",
+		Category: "HEURISTIC_SHARDING",
+		Score:    6, // probabilistic: below blockThreshold, needs corroboration
+		Detail:   fmt.Sprintf("%d unique destinations in 60s (max=%d)", destCount, cfg.ShardingMaxDests),
+	}}
+}
+
+// heuristicGhosting (H6): another protocol carried inside an HTTP body.
+func heuristicGhosting(cfg HeuristicConfig, body string) []HeuristicResult {
+	if !cfg.ProtocolGhosting {
+		return nil
+	}
+	ghost := detectProtocolGhosting(body)
+	if ghost == "" {
+		return nil
+	}
+	return []HeuristicResult{{
+		ID:       "H6-GHOST",
+		Category: "HEURISTIC_GHOSTING",
+		Score:    7, // probabilistic: below blockThreshold, needs corroboration
+		Detail:   fmt.Sprintf("encapsulated protocol detected: %s", ghost),
+	}}
+}
+
+// heuristicSequence (H7): a request that cannot follow the previous one.
+func heuristicSequence(cfg HeuristicConfig, snap clientSnapshot, method, path string) []HeuristicResult {
+	if !cfg.SequenceValidation || !isInvalidSequence(snap.prevMethod, snap.prevPath, method, path) {
+		return nil
+	}
+	return []HeuristicResult{{
+		ID:       "H7-SEQUENCE",
+		Category: "HEURISTIC_SEQUENCE",
+		Score:    7,
+		Detail:   fmt.Sprintf("suspicious sequence: %s %s → %s %s", snap.prevMethod, snap.prevPath, method, path),
+	}}
 }
 
 // CheckResponseHeuristics checks response body for PII leaks (H3).
