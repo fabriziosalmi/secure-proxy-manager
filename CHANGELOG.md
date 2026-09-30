@@ -13,6 +13,43 @@ a `### Removed` or `### Changed` heading with the phrase **BREAKING** and the
 changes affecting it. Retired routes answer `410 Gone` naming their replacement
 for at least one minor release before disappearing.
 
+## [3.13.1] - 2026-09-30
+
+A patch for one WAF bypass. `admin'--` in a **request body** scored 6 against a
+threshold of 10 and passed — and a login form submits its credentials in a
+body, so that was the realistic delivery of the payload rather than an exotic
+one.
+
+In a URL the same input blocked, because SQLi-018 paired with SQLi-015, which
+sees the `%27` on the raw URL and adds 4. A body has no percent-encoded quote
+to pair with. The rule's own comment had anticipated this and the conclusion
+was never carried over.
+
+### Fixed
+
+- **SQLi-018 blocks a comment terminator on its own, in a body as well as a
+  URL** (#266). Raising the severity alone would have been wrong: the old
+  pattern `['"]\s*(?:--|#)` also matches a quote *opening* a literal that
+  begins with dashes or a hash — `{"args":["--json"]}`, `"--brand-color"`,
+  `"# heading"` — six of eight benign JSON and CSS samples, which is exactly
+  why it could not carry a block. Requiring a word character or a closing
+  paren before the quote separates the end of a quoted literal from the start
+  of one: zero false positives on those samples, seven attack shapes matched.
+
+  Three cases were added to the adversarial corpus — the two body payloads
+  that used to pass, and the JSON-with-CLI-flags shape the old rule could not
+  tell from an attack. The gap had been invisible precisely because the corpus
+  that reports FN=0 for the WAF held no SQL-injection payload in a body at all.
+  The suite now runs 41/41 with FN=0 and FP=0 across 22 categories.
+
+### Documentation
+
+- The published site carries Schema.org JSON-LD, an `llms.txt` in the
+  llmstxt.org format, and `max-image-preview:large`. The last of these is a
+  `<meta>` rather than a `robots.txt` directive on purpose: the site is a
+  `*.github.io` project sub-path, and crawlers read `robots.txt` only from the
+  domain root, which this repository does not own.
+
 ## [3.13.0] - 2026-09-09
 
 Remediation of a full code-metrics audit of `1c81e762` — the 3.12.0 release
