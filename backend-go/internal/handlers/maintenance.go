@@ -141,8 +141,43 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op once committed
 
-	restored, skipped := 0, 0
-	for k, v := range body.Config {
+	restored, skipped, err := h.restoreSettings(tx, body.Config)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to restore configuration (rolled back)")
+		return
+	}
+	// Restore the lists in the SAME transaction as the settings, so a partial
+	// restore cannot leave the toggles applied and the blacklists not.
+	listsRestored, skippedEntries, err := restoreLists(tx, body.Lists)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to restore lists (rolled back)")
+		return
+	}
+	restored += listsRestored
+
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit configuration")
+		return
+	}
+	// The lists just changed, so the exported files must be republished.
+	workers.RequestExport()
+
+	username, _ := r.Context().Value(middleware.CtxUsername).(string)
+	database.Audit(h.db, username, "restore_config", "", fmt.Sprintf("%d settings restored, %d skipped", restored, skipped))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":   "success",
+		"message":  "Configuration restored successfully",
+		"restored": restored,
+		"skipped":  skipped,
+		// Entries in the lists that failed validation and were not restored.
+		"skipped_entries": skippedEntries,
+	})
+}
+
+// restoreSettings writes the restorable keys of a backup inside tx. A failed
+// write aborts (the caller rolls back); an invalid key is skipped and counted.
+func (h *MaintenanceHandlers) restoreSettings(tx *sql.Tx, config map[string]string) (restored, skipped int, err error) {
+	for k, v := range config {
 		// Same guard as BulkUpdate: only known-safe, writable keys; reject
 		// internally-managed state and non-conforming key names. (Previously this
 		// path upserted ANY key/value with no validation — a mass-assignment hole.)
@@ -165,13 +200,17 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 			k, val,
 		); err != nil {
 			log.Error().Str("key", k).Err(err).Msg("RestoreConfig: failed to save setting — rolling back")
-			writeError(w, http.StatusInternalServerError, "failed to restore configuration (rolled back)")
-			return
+			return restored, skipped, err
 		}
 		restored++
 	}
-	// Restore the lists in the SAME transaction as the settings, so a partial
-	// restore cannot leave the toggles applied and the blacklists not.
+	return restored, skipped, nil
+}
+
+// restoreLists inserts the lists of a backup inside tx, validating each entry
+// as its add endpoint would. An invalid entry is skipped and counted; a failed
+// insert aborts (the caller rolls back).
+func restoreLists(tx *sql.Tx, lists map[string][]map[string]string) (restored, skippedEntries int, err error) {
 	listTargets := map[string][2]string{
 		"ip_blacklist":     {"ip_blacklist", "ip"},
 		"ip_whitelist":     {"ip_whitelist", "ip"},
@@ -179,8 +218,7 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		"domain_whitelist": {"domain_whitelist", "domain"},
 		"dst_allowlist":    {"dst_allowlist", "entry"},
 	}
-	skippedEntries := 0
-	for name, entries := range body.Lists {
+	for name, entries := range lists {
 		target, known := listTargets[name]
 		if !known {
 			log.Warn().Str("list", name).Msg("RestoreConfig: unknown list, skipped")
@@ -210,7 +248,6 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 			// proxy refuses (SECURE-DOM-01). Re-derived here with the same
 			// predicate AddDstAllow uses, so backups already taken without the
 			// column are repaired rather than merely no longer broken.
-			var err error
 			if target[0] == "dst_allowlist" {
 				_, err = tx.Exec(
 					"INSERT OR IGNORE INTO dst_allowlist(entry, type, description) VALUES(?,?,?)",
@@ -224,30 +261,12 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 			}
 			if err != nil {
 				log.Error().Str("list", name).Err(err).Msg("RestoreConfig: list insert failed — rolling back")
-				writeError(w, http.StatusInternalServerError, "failed to restore lists (rolled back)")
-				return
+				return restored, skippedEntries, err
 			}
 			restored++
 		}
 	}
-
-	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to commit configuration")
-		return
-	}
-	// The lists just changed, so the exported files must be republished.
-	workers.RequestExport()
-
-	username, _ := r.Context().Value(middleware.CtxUsername).(string)
-	database.Audit(h.db, username, "restore_config", "", fmt.Sprintf("%d settings restored, %d skipped", restored, skipped))
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status":   "success",
-		"message":  "Configuration restored successfully",
-		"restored": restored,
-		"skipped":  skipped,
-		// Entries in the lists that failed validation and were not restored.
-		"skipped_entries": skippedEntries,
-	})
+	return restored, skippedEntries, nil
 }
 
 // validRestoredListValue applies to a restored list entry the same rule its add

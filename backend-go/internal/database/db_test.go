@@ -554,9 +554,17 @@ func TestManifestCoversTheWatchdogPairs(t *testing.T) {
 	if err != nil {
 		t.Skipf("watchdog source not reachable from here: %v", err)
 	}
+	// Only the PAIRS table: the file mentions other /config names elsewhere.
+	block := string(src)
+	if i := strings.Index(block, "PAIRS = ["); i >= 0 {
+		block = block[i:]
+		if j := strings.Index(block, "\n]"); j >= 0 {
+			block = block[:j]
+		}
+	}
 	re := regexp.MustCompile(`\(f"\{CONFIG_DIR\}/([a-z_]+\.txt)"`)
 	var got []string
-	for _, m := range re.FindAllStringSubmatch(string(src), -1) {
+	for _, m := range re.FindAllStringSubmatch(block, -1) {
 		got = append(got, m[1])
 	}
 	sort.Strings(got)

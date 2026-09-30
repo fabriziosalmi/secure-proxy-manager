@@ -39,101 +39,145 @@ func StartLogTailer(ctx context.Context, db *sql.DB, logPath, stateDir string, h
 			case <-ticker.C:
 			}
 			metrics.WorkerHeartbeat("log_tailer")
-			// #nosec G304
-			f, err := os.Open(logPath)
-			if err != nil {
-				continue
+			var persist bool
+			offset, persist = tailOnce(db, hub, logPath, offset, squidTail)
+			if persist {
+				writeOffset(posPath, offset)
 			}
-			fi, err := f.Stat()
-			if err != nil {
-				f.Close()
-				continue
-			}
-			// Detect log rotation / truncation.
-			if fi.Size() < offset {
-				offset = 0
-			}
-			if fi.Size() == offset {
-				f.Close()
-				continue
-			}
-			if _, err := f.Seek(offset, io.SeekStart); err != nil {
-				f.Close()
-				continue
-			}
-			scanner := bufio.NewScanner(f)
-			scanner.Buffer(make([]byte, 64*1024), 256*1024) // 64KB default, 256KB max line
-
-			batch := make([]map[string]any, 0, 256)
-			// Bytes consumed by lines we actually processed. Needed because
-			// bufio.Scanner reads AHEAD: after an early break, the file position
-			// is past the last line we handled, so seeking would skip records.
-			var consumed int64
-			truncatedBatch := false
-			for scanner.Scan() {
-				raw := scanner.Bytes()
-				consumed += int64(len(raw)) + 1 // +1 for the newline the scanner strips
-				line := strings.TrimSpace(string(raw))
-				if line == "" {
-					continue
-				}
-				if entry := parseSquidLine(line); entry != nil {
-					batch = append(batch, entry)
-					// The proxy's own outcome, counted where every line is already
-					// parsed — one Inc on a path that is doing a DB write anyway
-					// (SECURE-OBS-01).
-					metrics.ProxyRequest(entry["blocked"] == 1)
-					if len(batch) >= maxBatchLines {
-						truncatedBatch = true
-						break
-					}
-				}
-			}
-
-			var newOffset int64
-			var seekErr error
-			if truncatedBatch {
-				// Resume exactly after the last line we processed.
-				newOffset = offset + consumed
-				if newOffset > fi.Size() {
-					newOffset = fi.Size()
-				}
-				log.Debug().Int("lines", len(batch)).Int64("offset", newOffset).
-					Msg("log tailer: batch capped, continuing next tick")
-			} else {
-				newOffset, seekErr = f.Seek(0, io.SeekCurrent)
-			}
-			f.Close()
-
-			// Insert the whole tick in one transaction. If it fails, leave the
-			// offset where it was and retry next tick rather than silently
-			// dropping rows (and advancing past them).
-			if err := insertLogBatch(db, batch); err != nil {
-				log.Warn().Err(err).Int("lines", len(batch)).Msg("log tailer: batch insert failed, will retry")
-				continue
-			}
-			// Broadcast only committed rows, so a retry does not double-emit.
-			// The hub is optional: nil means nothing is streaming.
-			if hub != nil {
-				for _, entry := range batch {
-					if msg, err := json.Marshal(entry); err == nil {
-						select {
-						case hub.Broadcast <- msg:
-						default:
-						}
-					}
-				}
-			}
-
-			if seekErr == nil {
-				offset = newOffset
-			} else {
-				offset = fi.Size()
-			}
-			writeOffset(posPath, offset)
 		}
 	})
 	log.Info().Str("path", logPath).Msg("log tailer started")
+}
+
+// tailSpec is what differs between the tailers that share tailOnce: how a line
+// is parsed, how many lines one tick may take, and what to do with each parsed
+// entry.
+type tailSpec struct {
+	name     string // for log messages
+	parse    func(line string) map[string]any
+	maxLines int                        // lines per tick; the memory bound
+	onEntry  func(entry map[string]any) // may be nil
+}
+
+// squidTail is the Squid access-log tailer.
+var squidTail = tailSpec{
+	name:     "log tailer",
+	parse:    parseSquidLine,
+	maxLines: maxBatchLines,
+	// The proxy's own outcome, counted where every line is already parsed — one
+	// Inc on a path that is doing a DB write anyway (SECURE-OBS-01).
+	onEntry: func(entry map[string]any) { metrics.ProxyRequest(entry["blocked"] == 1) },
+}
+
+// tailOnce reads what has been appended to the log since offset, stores it, and
+// returns the offset to continue from. persist is true only when the offset
+// moved because rows were committed; on any failure the offset is left where it
+// was (or reset to 0 on rotation) and persist is false, so the next tick tries
+// again rather than skipping records.
+func tailOnce(db *sql.DB, hub *websocket.Hub, logPath string, offset int64, spec tailSpec) (newOffset int64, persist bool) {
+	// #nosec G304
+	f, err := os.Open(logPath)
+	if err != nil {
+		return offset, false
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return offset, false
+	}
+	// Detect log rotation / truncation.
+	if fi.Size() < offset {
+		offset = 0
+	}
+	if fi.Size() == offset {
+		return offset, false
+	}
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return offset, false
+	}
+
+	batch, next, seekErr := readBatch(f, fi.Size(), offset, spec)
+
+	// Insert the whole tick in one transaction. If it fails, leave the
+	// offset where it was and retry next tick rather than silently
+	// dropping rows (and advancing past them).
+	if err := insertLogBatch(db, batch); err != nil {
+		log.Warn().Err(err).Int("lines", len(batch)).Msg(spec.name + ": batch insert failed, will retry")
+		return offset, false
+	}
+	// Broadcast only committed rows, so a retry does not double-emit.
+	broadcastBatch(hub, batch)
+
+	if seekErr != nil {
+		return fi.Size(), true
+	}
+	return next, true
+}
+
+// readBatch parses up to maxBatchLines lines from f, which is positioned at
+// offset, and returns them with the offset to resume from. seekErr is non-nil
+// when the position could not be read back after a complete scan.
+func readBatch(f *os.File, size, offset int64, spec tailSpec) (batch []map[string]any, next int64, seekErr error) {
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 64*1024), 256*1024) // 64KB default, 256KB max line
+
+	batch = make([]map[string]any, 0, 256)
+	// Bytes consumed by lines we actually processed. Needed because
+	// bufio.Scanner reads AHEAD: after an early break, the file position
+	// is past the last line we handled, so seeking would skip records.
+	var consumed int64
+	truncated := false
+	for scanner.Scan() {
+		raw := scanner.Bytes()
+		consumed += int64(len(raw)) + 1 // +1 for the newline the scanner strips
+		line := strings.TrimSpace(string(raw))
+		if line == "" {
+			continue
+		}
+		entry := spec.parse(line)
+		if entry == nil {
+			continue
+		}
+		batch = append(batch, entry)
+		if spec.onEntry != nil {
+			spec.onEntry(entry)
+		}
+		if len(batch) >= spec.maxLines {
+			truncated = true
+			break
+		}
+	}
+
+	if !truncated {
+		next, seekErr = f.Seek(0, io.SeekCurrent)
+		return batch, next, seekErr
+	}
+	// Resume exactly after the last line we processed.
+	next = offset + consumed
+	if next > size {
+		next = size
+	}
+	log.Debug().Int("lines", len(batch)).Int64("offset", next).
+		Msg(spec.name + ": batch capped, continuing next tick")
+	return batch, next, nil
+}
+
+// broadcastBatch streams committed rows to the WebSocket hub. The hub is
+// optional: nil means nothing is streaming. A full hub drops the message.
+func broadcastBatch(hub *websocket.Hub, batch []map[string]any) {
+	if hub == nil {
+		return
+	}
+	for _, entry := range batch {
+		msg, err := json.Marshal(entry)
+		if err != nil {
+			continue
+		}
+		select {
+		case hub.Broadcast <- msg:
+		default:
+		}
+	}
 }
 
 // maxBatchLines bounds the memory a single tailer tick can consume. Without it

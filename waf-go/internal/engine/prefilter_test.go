@@ -2,6 +2,7 @@ package engine
 
 import (
 	"regexp/syntax"
+	"strings"
 	"testing"
 )
 
@@ -224,34 +225,13 @@ func sampleForRegex(re *syntax.Regexp) (string, bool) {
 	case syntax.OpLiteral:
 		return string(re.Rune), true
 	case syntax.OpConcat:
-		var sb []byte
-		for _, sub := range re.Sub {
-			s, ok := sampleForRegex(sub)
-			if !ok {
-				return "", false
-			}
-			sb = append(sb, s...)
-		}
-		return string(sb), true
-	case syntax.OpAlternate:
-		return sampleForRegex(re.Sub[0])
-	case syntax.OpCapture, syntax.OpPlus:
+		return sampleConcat(re.Sub)
+	case syntax.OpAlternate, syntax.OpCapture, syntax.OpPlus:
 		return sampleForRegex(re.Sub[0])
 	case syntax.OpStar, syntax.OpQuest:
 		return "", true // zero reps
 	case syntax.OpRepeat:
-		if re.Min == 0 {
-			return "", true
-		}
-		s, ok := sampleForRegex(re.Sub[0])
-		if !ok {
-			return "", false
-		}
-		out := ""
-		for i := 0; i < re.Min; i++ {
-			out += s
-		}
-		return out, true
+		return sampleRepeat(re)
 	case syntax.OpCharClass:
 		if len(re.Rune) >= 2 {
 			return string(rune(re.Rune[0])), true
@@ -265,4 +245,27 @@ func sampleForRegex(re *syntax.Regexp) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+func sampleConcat(subs []*syntax.Regexp) (string, bool) {
+	var sb []byte
+	for _, sub := range subs {
+		s, ok := sampleForRegex(sub)
+		if !ok {
+			return "", false
+		}
+		sb = append(sb, s...)
+	}
+	return string(sb), true
+}
+
+func sampleRepeat(re *syntax.Regexp) (string, bool) {
+	if re.Min == 0 {
+		return "", true
+	}
+	s, ok := sampleForRegex(re.Sub[0])
+	if !ok {
+		return "", false
+	}
+	return strings.Repeat(s, re.Min), true
 }

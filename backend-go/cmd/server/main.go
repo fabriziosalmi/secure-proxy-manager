@@ -53,26 +53,8 @@ func wsTokenFromSubprotocol(req *http.Request) string {
 }
 
 func run() error {
-	// ── healthcheck mode (for Docker HEALTHCHECK in distroless) ──────────────
 	if len(os.Args) > 1 && os.Args[1] == "-healthcheck" {
-		port := os.Getenv("PORT")
-		if port == "" {
-			port = "5000"
-		}
-		// Strict parsing to prevent SSRF path manipulation via port var (G704 fix)
-		portNum, err := strconv.Atoi(port)
-		if err != nil || portNum <= 0 || portNum > 65535 {
-			os.Exit(1)
-		}
-		// Probe readiness (DB reachable), not just liveness, so a wedged DB makes
-		// the container report unhealthy instead of falsely healthy.
-		// #nosec G107 -- localhost readiness probe; portNum is a validated
-		// 1-65535 int (checked above) and the URL is not user input.
-		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/readyz", portNum))
-		if err != nil || resp.StatusCode != 200 {
-			os.Exit(1)
-		}
-		os.Exit(0)
+		healthcheck() // exits
 	}
 
 	// ── logging ──────────────────────────────────────────────────────────────
@@ -194,7 +176,75 @@ func run() error {
 	metrics.RegisterDBStats(db)
 	r.Handle("/metrics", metrics.Handler())
 
-	// ── pprof (auth-protected) ───────────────────────────────────────────────
+	mountPprof(r, authMW)
+
+	mountWebSocket(r, cfg, authSvc, hub)
+
+	// ── HTTP server ───────────────────────────────────────────────────────────
+	addr := ":" + cfg.Port
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      r,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+
+	log.Info().Str("addr", addr).Msg("HTTP server starting")
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			// In test mode we might not want to fatal.
+			// We'll just log error.
+			log.Error().Err(err).Msg("server error")
+		}
+	}()
+
+	// ── graceful shutdown ────────────────────────────────────────────────────
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	// Allow for automated testing shutdown
+	if os.Getenv("TEST_MODE") == "true" {
+		time.Sleep(500 * time.Millisecond)
+		log.Info().Msg("test mode: auto-shutting down")
+		quit <- syscall.SIGTERM
+	}
+
+	<-quit
+	log.Info().Msg("shutdown signal received")
+
+	shutdown(srv, workerCancel, hub)
+
+	log.Info().Msg("shutdown complete")
+	return nil
+}
+
+// healthcheck is the Docker HEALTHCHECK entry point (distroless has no curl). It
+// exits the process: 0 when the backend is ready, 1 otherwise.
+func healthcheck() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "5000"
+	}
+	// Strict parsing to prevent SSRF path manipulation via port var (G704 fix)
+	portNum, err := strconv.Atoi(port)
+	if err != nil || portNum <= 0 || portNum > 65535 {
+		os.Exit(1)
+	}
+	// Probe readiness (DB reachable), not just liveness, so a wedged DB makes
+	// the container report unhealthy instead of falsely healthy.
+	// #nosec G107 -- localhost readiness probe; portNum is a validated
+	// 1-65535 int (checked above) and the URL is not user input.
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/readyz", portNum))
+	if err != nil || resp.StatusCode != 200 {
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+// mountPprof serves the runtime profiles behind the auth middleware.
+func mountPprof(r chi.Router, authMW func(http.Handler) http.Handler) {
 	r.Route("/debug/pprof", func(pr chi.Router) {
 		pr.Use(authMW)
 		pr.HandleFunc("/", pprof.Index)
@@ -209,8 +259,11 @@ func run() error {
 		pr.Handle("/mutex", pprof.Handler("mutex"))
 		pr.Handle("/threadcreate", pprof.Handler("threadcreate"))
 	})
+}
 
-	// ── WebSocket ─────────────────────────────────────────────────────────────
+// mountWebSocket registers the log feed. The one-time token is negotiated by hand
+// (see the handler), so the upgrader carries no Subprotocols list.
+func mountWebSocket(r chi.Router, cfg *config.Config, authSvc *auth.Service, hub *ws.Hub) {
 	wsAllowed := make(map[string]struct{}, len(cfg.CORSAllowedOrigins))
 	for _, o := range cfg.CORSAllowedOrigins {
 		wsAllowed[o] = struct{}{}
@@ -275,41 +328,10 @@ func run() error {
 		}
 		hub.Register(conn)
 	})
+}
 
-	// ── HTTP server ───────────────────────────────────────────────────────────
-	addr := ":" + cfg.Port
-	srv := &http.Server{
-		Addr:         addr,
-		Handler:      r,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  120 * time.Second,
-	}
-
-	log.Info().Str("addr", addr).Msg("HTTP server starting")
-
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			// In test mode we might not want to fatal.
-			// We'll just log error.
-			log.Error().Err(err).Msg("server error")
-		}
-	}()
-
-	// ── graceful shutdown ────────────────────────────────────────────────────
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-
-	// Allow for automated testing shutdown
-	if os.Getenv("TEST_MODE") == "true" {
-		time.Sleep(500 * time.Millisecond)
-		log.Info().Msg("test mode: auto-shutting down")
-		quit <- syscall.SIGTERM
-	}
-
-	<-quit
-	log.Info().Msg("shutdown signal received")
-
+// shutdown stops the server and the workers in the order that loses nothing.
+func shutdown(srv *http.Server, workerCancel context.CancelFunc, hub *ws.Hub) {
 	// Drain the HTTP server FIRST, so in-flight requests finish while the
 	// workers they may depend on are still running. Cancelling the workers
 	// first — as this did — meant a request still being served for up to five
@@ -337,7 +359,4 @@ func run() error {
 	// disconnect the WebSocket clients, which the HTTP server's Shutdown does not
 	// touch (a hijacked connection is no longer its own).
 	hub.Close()
-
-	log.Info().Msg("shutdown complete")
-	return nil
 }

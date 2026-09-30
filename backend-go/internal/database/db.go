@@ -68,104 +68,105 @@ func isDuplicateColumnErr(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "duplicate column")
 }
 
-// Init runs an integrity check, creates tables, applies migrations, and seeds the admin user.
-func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
-	// Integrity check.
-	var integrityResult string
-	if err := db.QueryRow("PRAGMA integrity_check").Scan(&integrityResult); err != nil || integrityResult != "ok" {
-		return fmt.Errorf("integrity check failed: %v (result=%s)", err, integrityResult)
-	}
+var schemaStatements = []string{
+	`CREATE TABLE IF NOT EXISTS users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT UNIQUE NOT NULL,
+		password TEXT NOT NULL,
+		email TEXT,
+		added_date TEXT DEFAULT (datetime('now')),
+		last_login TEXT
+	)`,
+	`CREATE TABLE IF NOT EXISTS ip_whitelist (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ip TEXT UNIQUE NOT NULL,
+		description TEXT,
+		added_date TEXT DEFAULT (datetime('now'))
+	)`,
+	`CREATE TABLE IF NOT EXISTS ip_blacklist (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ip TEXT UNIQUE NOT NULL,
+		description TEXT,
+		added_date TEXT DEFAULT (datetime('now'))
+	)`,
+	`CREATE TABLE IF NOT EXISTS domain_blacklist (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		domain TEXT UNIQUE NOT NULL,
+		description TEXT,
+		added_date TEXT DEFAULT (datetime('now'))
+	)`,
+	`CREATE TABLE IF NOT EXISTS domain_whitelist (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		domain TEXT UNIQUE NOT NULL,
+		type TEXT NOT NULL DEFAULT 'fqdn' CHECK (type IN ('fqdn')),
+		description TEXT,
+		added_date TEXT DEFAULT (datetime('now'))
+	)`,
+	// CHECK on type: the column decides which enforcement file an entry
+	// reaches, and both export queries are equality tests — so a row with
+	// any third value is listed in the UI and written to NEITHER file
+	// (SECURE-DOM-02). New databases get the constraint here; existing ones
+	// get it from the versioned migration in migrate.go, because SQLite
+	// needs a table rebuild to add one and CREATE TABLE IF NOT EXISTS is a
+	// no-op for them. The exporter below still refuses to run silently past
+	// an unrecognised type, as a second line of defence.
+	`CREATE TABLE IF NOT EXISTS dst_allowlist (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		entry TEXT UNIQUE NOT NULL,
+		type TEXT NOT NULL DEFAULT 'domain' CHECK (type IN ('cidr','domain')),
+		description TEXT,
+		added_date TEXT DEFAULT (datetime('now'))
+	)`,
+	`CREATE TABLE IF NOT EXISTS proxy_logs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		timestamp TEXT,
+		source_ip TEXT,
+		method TEXT,
+		destination TEXT,
+		status TEXT,
+		bytes INTEGER,
+		elapsed_ms INTEGER,
+		unix_timestamp INTEGER,
+		blocked INTEGER NOT NULL DEFAULT 0,
+		event_id TEXT
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_proxy_logs_timestamp ON proxy_logs(timestamp)`,
+	`CREATE INDEX IF NOT EXISTS idx_proxy_logs_source_ip ON proxy_logs(source_ip)`,
+	`CREATE INDEX IF NOT EXISTS idx_proxy_logs_ts_ip ON proxy_logs(timestamp, source_ip)`,
+	`CREATE INDEX IF NOT EXISTS idx_proxy_logs_ts_dest ON proxy_logs(timestamp, destination)`,
+	`CREATE INDEX IF NOT EXISTS idx_proxy_logs_status ON proxy_logs(status)`,
+	`CREATE INDEX IF NOT EXISTS idx_proxy_logs_unix_ts ON proxy_logs(unix_timestamp)`,
+	`CREATE INDEX IF NOT EXISTS idx_proxy_logs_dest ON proxy_logs(destination)`,
+	`CREATE TABLE IF NOT EXISTS settings (
+		setting_name TEXT PRIMARY KEY,
+		setting_value TEXT
+	)`,
+	`CREATE TABLE IF NOT EXISTS audit_log (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT,
+		action TEXT,
+		target TEXT,
+		details TEXT,
+		timestamp TEXT DEFAULT (datetime('now'))
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(timestamp)`,
+}
 
-	var schema = []string{
-		`CREATE TABLE IF NOT EXISTS users (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			username TEXT UNIQUE NOT NULL,
-			password TEXT NOT NULL,
-			email TEXT,
-			added_date TEXT DEFAULT (datetime('now')),
-			last_login TEXT
-		)`,
-		`CREATE TABLE IF NOT EXISTS ip_whitelist (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			ip TEXT UNIQUE NOT NULL,
-			description TEXT,
-			added_date TEXT DEFAULT (datetime('now'))
-		)`,
-		`CREATE TABLE IF NOT EXISTS ip_blacklist (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			ip TEXT UNIQUE NOT NULL,
-			description TEXT,
-			added_date TEXT DEFAULT (datetime('now'))
-		)`,
-		`CREATE TABLE IF NOT EXISTS domain_blacklist (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			domain TEXT UNIQUE NOT NULL,
-			description TEXT,
-			added_date TEXT DEFAULT (datetime('now'))
-		)`,
-		`CREATE TABLE IF NOT EXISTS domain_whitelist (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			domain TEXT UNIQUE NOT NULL,
-			type TEXT NOT NULL DEFAULT 'fqdn' CHECK (type IN ('fqdn')),
-			description TEXT,
-			added_date TEXT DEFAULT (datetime('now'))
-		)`,
-		// CHECK on type: the column decides which enforcement file an entry
-		// reaches, and both export queries are equality tests — so a row with
-		// any third value is listed in the UI and written to NEITHER file
-		// (SECURE-DOM-02). New databases get the constraint here; existing ones
-		// get it from the versioned migration in migrate.go, because SQLite
-		// needs a table rebuild to add one and CREATE TABLE IF NOT EXISTS is a
-		// no-op for them. The exporter below still refuses to run silently past
-		// an unrecognised type, as a second line of defence.
-		`CREATE TABLE IF NOT EXISTS dst_allowlist (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			entry TEXT UNIQUE NOT NULL,
-			type TEXT NOT NULL DEFAULT 'domain' CHECK (type IN ('cidr','domain')),
-			description TEXT,
-			added_date TEXT DEFAULT (datetime('now'))
-		)`,
-		`CREATE TABLE IF NOT EXISTS proxy_logs (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			timestamp TEXT,
-			source_ip TEXT,
-			method TEXT,
-			destination TEXT,
-			status TEXT,
-			bytes INTEGER,
-			elapsed_ms INTEGER,
-			unix_timestamp INTEGER,
-			blocked INTEGER NOT NULL DEFAULT 0,
-			event_id TEXT
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_timestamp ON proxy_logs(timestamp)`,
-		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_source_ip ON proxy_logs(source_ip)`,
-		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_ts_ip ON proxy_logs(timestamp, source_ip)`,
-		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_ts_dest ON proxy_logs(timestamp, destination)`,
-		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_status ON proxy_logs(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_unix_ts ON proxy_logs(unix_timestamp)`,
-		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_dest ON proxy_logs(destination)`,
-		`CREATE TABLE IF NOT EXISTS settings (
-			setting_name TEXT PRIMARY KEY,
-			setting_value TEXT
-		)`,
-		`CREATE TABLE IF NOT EXISTS audit_log (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			username TEXT,
-			action TEXT,
-			target TEXT,
-			details TEXT,
-			timestamp TEXT DEFAULT (datetime('now'))
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(timestamp)`,
-	}
-
-	for _, stmt := range schema {
+// createSchema creates every table and index the schema declares. It is
+// idempotent: each statement is CREATE ... IF NOT EXISTS.
+func createSchema(db *sql.DB) error {
+	for _, stmt := range schemaStatements {
 		if _, err := db.Exec(stmt); err != nil {
 			return fmt.Errorf("schema exec: %w", err)
 		}
 	}
 
+	return nil
+}
+
+// applyColumnMigrations is version 1 of the schema plus the versioned steps that
+// follow it: see the comments below.
+func applyColumnMigrations(db *sql.DB) error {
 	// Version 1 of the schema: column additions, replayed on every start and
 	// harmless once applied. Anything that cannot be replayed goes in
 	// applyVersionedMigrations (migrate.go), which records its progress in
@@ -194,6 +195,11 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		return err
 	}
 
+	return nil
+}
+
+// createPostMigrationIndexes creates the indexes that depend on migrated columns.
+func createPostMigrationIndexes(db *sql.DB) error {
 	// Indexes on migrated columns must be created AFTER the ALTERs above add the
 	// columns — a legacy proxy_logs predates `blocked`, so this partial index
 	// can't live in the schema slice (which runs before migrations) or its
@@ -210,7 +216,12 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 			return fmt.Errorf("post-migration index: %w", err)
 		}
 	}
+	return nil
+}
 
+// backfillProxyLogs fills columns added after rows already existed. Failures
+// are logged, not fatal: the rows are still readable without the backfill.
+func backfillProxyLogs(db *sql.DB) {
 	// Backfill unix_timestamp for rows written before it was populated, so the
 	// idx_proxy_logs_unix_ts index covers historical data and time-window
 	// analytics can range-scan on it instead of doing TEXT-date arithmetic.
@@ -232,7 +243,10 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 	); err != nil {
 		log.Warn().Err(err).Msg("backfill blocked flag failed (non-fatal)")
 	}
+}
 
+// seedDefaultSettings inserts any default setting that is not already present.
+func seedDefaultSettings(db *sql.DB) {
 	// Default settings.
 	defaultSettings := [][]string{
 		// Proxy configuration
@@ -277,7 +291,10 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 			kv[0], kv[1],
 		)
 	}
+}
 
+// seedAdmin creates the admin user if there is none.
+func seedAdmin(db *sql.DB, adminUsername, adminPasswordHash string) error {
 	// Seed admin user.
 	_, err := db.Exec(
 		"INSERT OR IGNORE INTO users(username,password) VALUES(?,?)",
@@ -285,6 +302,30 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 	)
 	if err != nil {
 		return fmt.Errorf("seed admin: %w", err)
+	}
+	return nil
+}
+
+// Init runs an integrity check, creates tables, applies migrations, and seeds the admin user.
+func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
+	// Integrity check.
+	var integrityResult string
+	if err := db.QueryRow("PRAGMA integrity_check").Scan(&integrityResult); err != nil || integrityResult != "ok" {
+		return fmt.Errorf("integrity check failed: %v (result=%s)", err, integrityResult)
+	}
+	if err := createSchema(db); err != nil {
+		return err
+	}
+	if err := applyColumnMigrations(db); err != nil {
+		return err
+	}
+	if err := createPostMigrationIndexes(db); err != nil {
+		return err
+	}
+	backfillProxyLogs(db)
+	seedDefaultSettings(db)
+	if err := seedAdmin(db, adminUsername, adminPasswordHash); err != nil {
+		return err
 	}
 
 	// Update query planner statistics for optimal index usage.

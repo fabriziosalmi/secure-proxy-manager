@@ -51,67 +51,12 @@ func AnalyzeDGA(domain string) DGAResult {
 		return DGAResult{} // Too short to analyze meaningfully
 	}
 
-	var result DGAResult
-
-	// 1. Shannon entropy of the SLD
-	entropy := ShannonEntropy(sld)
-	// Normal domains: entropy 2.5-3.5, DGA: 3.8+
-	result.EntropyScore = math.Min(100, math.Max(0, (entropy-2.5)*50))
-
-	// 2. Bigram frequency score
-	bigramHits := 0.0
-	bigramTotal := 0.0
-	for i := 0; i < len(sld)-1; i++ {
-		bigram := sld[i : i+2]
-		bigramTotal++
-		if freq, ok := commonBigrams[bigram]; ok {
-			bigramHits += freq
-		}
-	}
-	if bigramTotal > 0 {
-		avgBigramFreq := bigramHits / bigramTotal
-		// Normal domains: avg 0.8+, DGA: 0.1-0.3
-		result.BigramScore = math.Min(100, math.Max(0, (1.0-avgBigramFreq)*80))
-	}
-
-	// 3. Length score — DGA domains tend to be longer (12-30 chars)
-	if len(sld) > 15 {
-		result.LengthScore = math.Min(100, float64(len(sld)-15)*10)
-	}
-
-	// 4. Consonant ratio — DGA has unusual consonant clusters
-	consonants := 0
-	vowels := 0
-	digits := 0
-	for _, c := range sld {
-		switch {
-		case strings.ContainsRune("aeiou", c):
-			vowels++
-		case unicode.IsLetter(c):
-			consonants++
-		case unicode.IsDigit(c):
-			digits++
-		}
-	}
-	total := consonants + vowels
-	if total > 0 {
-		result.ConsonantRatio = float64(consonants) / float64(total)
-		// Normal: 0.55-0.65, DGA: 0.7+ or 0.4-
-		if result.ConsonantRatio > 0.75 || result.ConsonantRatio < 0.35 {
-			result.ConsonantRatio = 80
-		} else {
-			result.ConsonantRatio = math.Abs(result.ConsonantRatio-0.6) * 200
-		}
-	}
-
-	// 5. Digit ratio
-	if len(sld) > 0 {
-		result.DigitRatio = float64(digits) / float64(len(sld))
-		if result.DigitRatio > 0.3 {
-			result.DigitRatio = 90 // High digit ratio = very suspicious
-		} else {
-			result.DigitRatio = result.DigitRatio * 100
-		}
+	result := DGAResult{
+		EntropyScore:   dgaEntropyScore(sld),
+		BigramScore:    dgaBigramScore(sld),
+		LengthScore:    dgaLengthScore(sld),
+		ConsonantRatio: dgaConsonantScore(sld),
+		DigitRatio:     dgaDigitScore(sld),
 	}
 
 	// Weighted composite score
@@ -126,6 +71,75 @@ func AnalyzeDGA(domain string) DGAResult {
 	result.IsDGA = result.Score >= 70
 
 	return result
+}
+
+// dgaEntropyScore: Shannon entropy of the SLD.
+// Normal domains: entropy 2.5-3.5, DGA: 3.8+
+func dgaEntropyScore(sld string) float64 {
+	return math.Min(100, math.Max(0, (ShannonEntropy(sld)-2.5)*50))
+}
+
+// dgaBigramScore: how far the SLD's letter pairs are from common ones.
+// Normal domains: avg 0.8+, DGA: 0.1-0.3
+func dgaBigramScore(sld string) float64 {
+	bigramHits := 0.0
+	bigramTotal := 0.0
+	for i := 0; i < len(sld)-1; i++ {
+		bigramTotal++
+		if freq, ok := commonBigrams[sld[i:i+2]]; ok {
+			bigramHits += freq
+		}
+	}
+	if bigramTotal == 0 {
+		return 0
+	}
+	return math.Min(100, math.Max(0, (1.0-bigramHits/bigramTotal)*80))
+}
+
+// dgaLengthScore: DGA domains tend to be longer (12-30 chars).
+func dgaLengthScore(sld string) float64 {
+	if len(sld) <= 15 {
+		return 0
+	}
+	return math.Min(100, float64(len(sld)-15)*10)
+}
+
+// dgaConsonantScore: DGA has unusual consonant clusters.
+// Normal: 0.55-0.65, DGA: 0.7+ or 0.4-
+func dgaConsonantScore(sld string) float64 {
+	consonants, vowels := 0, 0
+	for _, c := range sld {
+		switch {
+		case strings.ContainsRune("aeiou", c):
+			vowels++
+		case unicode.IsLetter(c):
+			consonants++
+		}
+	}
+	total := consonants + vowels
+	if total == 0 {
+		return 0
+	}
+	ratio := float64(consonants) / float64(total)
+	if ratio > 0.75 || ratio < 0.35 {
+		return 80
+	}
+	return math.Abs(ratio-0.6) * 200
+}
+
+// dgaDigitScore: a high digit ratio is very suspicious.
+func dgaDigitScore(sld string) float64 {
+	digits := 0
+	for _, c := range sld {
+		if unicode.IsDigit(c) {
+			digits++
+		}
+	}
+	ratio := float64(digits) / float64(len(sld))
+	if ratio > 0.3 {
+		return 90
+	}
+	return ratio * 100
 }
 
 // shannonEntropy is defined in entropy.go — shared across DGA and heuristics.
