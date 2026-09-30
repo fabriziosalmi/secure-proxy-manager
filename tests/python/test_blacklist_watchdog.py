@@ -234,5 +234,201 @@ def test_refusals_are_logged_once_per_state(w, tmp_path, monkeypatch, capsys):
     assert capsys.readouterr().out.count("REFUSED") == 2
 
 
+# ── the poll loop's jobs (SECURE-QUAL-01) ────────────────────────────────────
+#
+# main() was one 142-line function at cyclomatic complexity 36 and the tests
+# loaded the module without running it, so none of these branches had a test.
+# Each job is now a function of a small state object; these run them one by one.
+
+class _Run:
+    """A stand-in for subprocess.run that records calls and can be told to fail."""
+
+    def __init__(self, returncodes=None, raises=None):
+        self.calls = []
+        self.returncodes = returncodes or {}
+        self.raises = raises
+
+    def __call__(self, argv, **_kw):
+        self.calls.append(list(argv))
+        if self.raises:
+            raise self.raises
+        rc = self.returncodes.get(argv[-1], 0)
+        return types.SimpleNamespace(returncode=rc, stdout="", stderr=b"boom")
+
+
+@pytest.fixture
+def state(w, tmp_path, monkeypatch):
+    trigger = tmp_path / ".reload-squid"
+    monkeypatch.setattr(w, "RELOAD_TRIGGER", str(trigger))
+    monkeypatch.setattr(w, "CLEAR_CACHE_TRIGGER", str(tmp_path / ".clear-cache"))
+    monkeypatch.setattr(w, "PAIRS", [])
+    monkeypatch.setattr(w, "resolved_ips", lambda: "1.1.1.1,2.2.2.2")
+    return w.WatchdogState(), trigger
+
+
+def _touch_trigger(trigger, content="1788937285"):
+    trigger.write_text(content)
+
+
+def test_reload_generation_failure_keeps_the_running_config(w, state, monkeypatch):
+    st, trigger = state
+    _touch_trigger(trigger)
+    run = _Run(returncodes={"/usr/local/bin/generate_squid_conf.sh": 2})
+    results = []
+    monkeypatch.setattr(w.subprocess, "run", run)
+    monkeypatch.setattr(w, "write_result", lambda *a: results.append(a))
+
+    w.check_reload_trigger(st)
+
+    assert results == [("reload-squid", 1788937285, 2, None)]
+    assert ["/usr/sbin/squid", "-k", "reconfigure"] not in run.calls
+    assert st.mtimes[w.RELOAD_TRIGGER] == w.mtime(w.RELOAD_TRIGGER)  # consumed: the result reports the failure
+
+
+def test_reload_refuses_a_config_that_does_not_parse(w, state, monkeypatch):
+    st, trigger = state
+    _touch_trigger(trigger)
+    run = _Run()
+    results = []
+    monkeypatch.setattr(w.subprocess, "run", run)
+    monkeypatch.setattr(w, "squid_config_ok", lambda: False)
+    monkeypatch.setattr(w, "write_result", lambda *a: results.append(a))
+
+    w.check_reload_trigger(st)
+
+    assert results == [("reload-squid", 1788937285, 0, 1)]
+    assert ["/usr/sbin/squid", "-k", "reconfigure"] not in run.calls
+
+
+def test_reload_success_reconfigures_and_acknowledges(w, state, monkeypatch):
+    st, trigger = state
+    _touch_trigger(trigger)
+    run = _Run()
+    results = []
+    monkeypatch.setattr(w.subprocess, "run", run)
+    monkeypatch.setattr(w, "squid_config_ok", lambda: True)
+    monkeypatch.setattr(w, "write_result", lambda *a: results.append(a))
+
+    w.check_reload_trigger(st)
+
+    assert results == [("reload-squid", 1788937285, 0, 0)]
+    assert ["/usr/sbin/squid", "-k", "reconfigure"] in run.calls
+    # An unchanged trigger is not acted on twice.
+    run.calls.clear()
+    w.check_reload_trigger(st)
+    assert run.calls == []
+
+
+def test_reload_exception_is_reported_and_retried_not_consumed(w, state, monkeypatch):
+    """SECURE-ERR-01: an exception must leave the trigger unconsumed."""
+    st, trigger = state
+    _touch_trigger(trigger)
+    results = []
+    monkeypatch.setattr(w.subprocess, "run", _Run(raises=OSError("no squid")))
+    monkeypatch.setattr(w, "write_result", lambda *a: results.append(a))
+    before = st.mtimes[w.RELOAD_TRIGGER]
+
+    w.check_reload_trigger(st)
+
+    assert results == [("reload-squid", 1788937285, 1, None)]
+    assert st.mtimes[w.RELOAD_TRIGGER] == before, "the failed attempt consumed the trigger"
+
+
+def test_clear_cache_purges_and_falls_back_to_shutdown(w, state, monkeypatch, tmp_path):
+    st, _ = state
+    (tmp_path / ".clear-cache").write_text("x")
+    run = _Run(returncodes={"purge": 1})
+    monkeypatch.setattr(w.subprocess, "run", run)
+
+    w.check_clear_cache_trigger(st)
+
+    assert ["/usr/sbin/squid", "-k", "purge"] in run.calls
+    assert ["/usr/sbin/squid", "-k", "shutdown"] in run.calls
+
+
+def test_rotation_happens_once_per_day_change(w, state, monkeypatch):
+    st, _ = state
+    run = _Run()
+    monkeypatch.setattr(w.subprocess, "run", run)
+    st.last_rotate_day = -1
+    w.rotate_logs_daily(st)
+    w.rotate_logs_daily(st)
+    assert run.calls.count(["/usr/sbin/squid", "-k", "rotate"]) == 1
+
+
+def test_resolver_drift_regenerates_only_when_both_services_resolve(w, state, monkeypatch):
+    st, _ = state
+    run = _Run()
+    monkeypatch.setattr(w.subprocess, "run", run)
+
+    monkeypatch.setattr(w, "resolved_ips", lambda: "1.1.1.1,")  # waf not resolvable yet
+    w.heal_resolver_drift(st)
+    assert run.calls == [] and st.resolv_fp == "1.1.1.1,2.2.2.2"
+
+    monkeypatch.setattr(w, "resolved_ips", lambda: "1.1.1.1,9.9.9.9")
+    w.heal_resolver_drift(st)
+    assert ["/usr/local/bin/generate_squid_conf.sh"] in run.calls
+    assert st.resolv_fp == "1.1.1.1,9.9.9.9"
+
+
+def test_logs_are_made_readable_and_a_missing_log_is_ignored(w, tmp_path, monkeypatch):
+    real = tmp_path / "access.log"
+    real.write_text("x")
+    real.chmod(0o600)
+    monkeypatch.setattr(w, "LOGS", [str(real), str(tmp_path / "absent.log")])
+    w.keep_logs_readable()
+    assert real.stat().st_mode & 0o777 == 0o644
+
+
+def test_lists_sync_only_when_the_manifest_agrees(w, tmp_path, monkeypatch):
+    src = tmp_path / "ip_blacklist.txt"
+    dst = tmp_path / "local.txt"
+    src.write_bytes(b"203.0.113.9\n")
+    monkeypatch.setattr(w, "PAIRS", [(str(src), str(dst))])
+    monkeypatch.setattr(w, "MANIFEST", str(tmp_path / "lists.manifest.json"))
+    st = w.WatchdogState()
+    st.mtimes[str(src)] = -1  # as if the file had just changed
+
+    # A manifest that names the file with different bytes: refused, Squid keeps
+    # what it had, and the change stays pending for the next poll.
+    _manifest(tmp_path, {"ip_blacklist.txt": _sha(b"something else\n")})
+    dst.write_bytes(b"previous\n")
+    assert w.sync_lists(st) is False
+    assert dst.read_bytes() == b"previous\n"
+    assert st.mtimes[str(src)] == -1
+
+    # The backend catches up: the same file now matches and is published.
+    _manifest(tmp_path, {"ip_blacklist.txt": _sha(b"203.0.113.9\n")})
+    assert w.sync_lists(st) is True
+    assert dst.read_bytes() == b"203.0.113.9\n"
+    assert w.sync_lists(st) is False  # unchanged since
+
+
+def test_a_list_missing_from_the_manifest_is_refused(w, tmp_path, monkeypatch):
+    src = tmp_path / "ip_blacklist.txt"
+    src.write_bytes(b"x\n")
+    monkeypatch.setattr(w, "PAIRS", [(str(src), str(tmp_path / "local.txt"))])
+    monkeypatch.setattr(w, "MANIFEST", str(tmp_path / "lists.manifest.json"))
+    st = w.WatchdogState()
+    st.mtimes[str(src)] = -1
+    _manifest(tmp_path, {"other.txt": "a" * 64})
+    assert w.sync_lists(st) is False
+
+
+def test_poll_once_runs_every_job_in_order(w, monkeypatch):
+    order = []
+    st = object()
+    for name in ("touch_heartbeat", "heal_resolver_drift", "keep_logs_readable", "rotate_logs_daily",
+                 "check_reload_trigger", "check_clear_cache_trigger"):
+        monkeypatch.setattr(w, name, lambda *a, _n=name: order.append(_n))
+    monkeypatch.setattr(w, "sync_lists", lambda s: order.append("sync_lists") or True)
+    monkeypatch.setattr(w, "reconfigure_squid", lambda: order.append("reconfigure_squid"))
+
+    w.poll_once(st)
+
+    assert order == ["touch_heartbeat", "heal_resolver_drift", "keep_logs_readable", "rotate_logs_daily",
+                     "check_reload_trigger", "check_clear_cache_trigger", "sync_lists", "reconfigure_squid"]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
