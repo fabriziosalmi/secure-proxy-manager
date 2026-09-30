@@ -106,7 +106,7 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		`CREATE TABLE IF NOT EXISTS domain_whitelist (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			domain TEXT UNIQUE NOT NULL,
-			type TEXT DEFAULT 'fqdn',
+			type TEXT NOT NULL DEFAULT 'fqdn' CHECK (type IN ('fqdn')),
 			description TEXT,
 			added_date TEXT DEFAULT (datetime('now'))
 		)`,
@@ -114,9 +114,10 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		// reaches, and both export queries are equality tests — so a row with
 		// any third value is listed in the UI and written to NEITHER file
 		// (SECURE-DOM-02). New databases get the constraint here; existing ones
-		// cannot, because SQLite requires a table rebuild to add one and
-		// CREATE TABLE IF NOT EXISTS is a no-op for them. The exporter below
-		// therefore also refuses to run silently past an unrecognised type.
+		// get it from the versioned migration in migrate.go, because SQLite
+		// needs a table rebuild to add one and CREATE TABLE IF NOT EXISTS is a
+		// no-op for them. The exporter below still refuses to run silently past
+		// an unrecognised type, as a second line of defence.
 		`CREATE TABLE IF NOT EXISTS dst_allowlist (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			entry TEXT UNIQUE NOT NULL,
@@ -165,7 +166,10 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		}
 	}
 
-	// Column migrations (idempotent).
+	// Version 1 of the schema: column additions, replayed on every start and
+	// harmless once applied. Anything that cannot be replayed goes in
+	// applyVersionedMigrations (migrate.go), which records its progress in
+	// PRAGMA user_version.
 	migrations := []string{
 		"ALTER TABLE proxy_logs ADD COLUMN source_ip TEXT",
 		"ALTER TABLE proxy_logs ADD COLUMN unix_timestamp INTEGER",
@@ -184,6 +188,10 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 		if _, err := db.Exec(m); err != nil && !isDuplicateColumnErr(err) {
 			return fmt.Errorf("migration %q: %w", m, err)
 		}
+	}
+
+	if err := applyVersionedMigrations(db); err != nil {
+		return err
 	}
 
 	// Indexes on migrated columns must be created AFTER the ALTERs above add the
@@ -308,6 +316,18 @@ func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
 	if err := exportLines(db, configDir+"/ip_whitelist.txt",
 		"SELECT ip FROM ip_whitelist ORDER BY ip"); err != nil {
 		return err
+	}
+	// The whitelist reader below filters on type='fqdn'; a row with any other
+	// type would be listed but never applied. The CHECK makes that impossible
+	// on migrated databases, and this refuses if one is ever reached anyway.
+	var strayWhitelist int
+	if err := db.QueryRow(
+		"SELECT COUNT(*) FROM domain_whitelist WHERE type IS NOT 'fqdn'").Scan(&strayWhitelist); err != nil {
+		return fmt.Errorf("domain_whitelist type check: %w", err)
+	}
+	if strayWhitelist > 0 {
+		return fmt.Errorf("domain_whitelist holds %d row(s) whose type is not 'fqdn'; "+
+			"nothing reads them — fix them before the lists can be exported", strayWhitelist)
 	}
 	// 3. domain_blacklist.txt (with whitelist exclusions)
 	exclusions := loadWhitelistSet(db)
