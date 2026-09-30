@@ -18,6 +18,7 @@ This is shipped as a real file and registered statically in
 squid-supervisor.conf (rather than generated at runtime) so supervisord always
 picks it up on a fresh boot.
 """
+import hashlib
 import json
 import os
 import shutil
@@ -26,17 +27,25 @@ import subprocess
 import tempfile
 import time
 
+CONFIG_DIR = "/config"
+
 # (source in /config written by the backend, destination Squid reads)
 PAIRS = [
-    ("/config/ip_blacklist.txt", "/etc/squid/blacklists/ip/local.txt"),
-    ("/config/ip_whitelist.txt", "/etc/squid/whitelists/ip/local.txt"),
-    ("/config/domain_blacklist.txt", "/etc/squid/blacklists/domain/local.txt"),
+    (f"{CONFIG_DIR}/ip_blacklist.txt", "/etc/squid/blacklists/ip/local.txt"),
+    (f"{CONFIG_DIR}/ip_whitelist.txt", "/etc/squid/whitelists/ip/local.txt"),
+    (f"{CONFIG_DIR}/domain_blacklist.txt", "/etc/squid/blacklists/domain/local.txt"),
     # Egress destination allowlists (default-deny mode). Enforced only when
     # /config/egress_default_deny exists; the lists sync regardless so a later
     # toggle picks them up on reconfigure.
-    ("/config/dst_allow_ip.txt", "/etc/squid/allowlists/dst_ip/local.txt"),
-    ("/config/dst_allow_domain.txt", "/etc/squid/allowlists/dst_domain/local.txt"),
+    (f"{CONFIG_DIR}/dst_allow_ip.txt", "/etc/squid/allowlists/dst_ip/local.txt"),
+    (f"{CONFIG_DIR}/dst_allow_domain.txt", "/etc/squid/allowlists/dst_domain/local.txt"),
 ]
+
+# The backend writes this AFTER the lists above, with a sha256 for each. A list
+# is copied into Squid's ACL directory only if the bytes being copied match it.
+MANIFEST = f"{CONFIG_DIR}/lists.manifest.json"
+MANIFEST_VERSION = 1
+SHA256_HEX_LEN = 64
 
 LOGS = [
     "/var/log/squid/access.log",
@@ -127,8 +136,61 @@ def write_result(trigger, trigger_mtime, gen_rc, reconf_rc):
         print(f"[watchdog] could not write {path}: {exc}", flush=True)
 
 
-def atomic_copy(src, dst):
+class _HashingWriter:
+    """Pass writes through to a file while feeding the same bytes to a hash."""
+
+    def __init__(self, fh, digest):
+        self._fh = fh
+        self._digest = digest
+
+    def write(self, chunk):
+        self._digest.update(chunk)
+        return self._fh.write(chunk)
+
+
+class ChecksumMismatch(Exception):
+    """The bytes read from a list do not match what the manifest promises."""
+
+
+def load_manifest(path=None):
+    """Read the lists manifest.
+
+    Returns ("missing", None) when there is none — a backend that predates the
+    manifest, or the first moments after boot — ("invalid", reason) when it
+    exists but cannot be trusted, and ("ok", {filename: sha256}) otherwise.
+    A manifest that exists and is unreadable is NOT treated as missing: that
+    would turn a corrupted file into permission to skip verification.
+    """
+    path = path or MANIFEST
+    try:
+        with open(path) as fh:
+            doc = json.load(fh)
+    except FileNotFoundError:
+        return "missing", None
+    except (OSError, ValueError) as exc:
+        return "invalid", f"unreadable: {exc}"
+    if not isinstance(doc, dict) or doc.get("version") != MANIFEST_VERSION:
+        return "invalid", f"unsupported version {doc.get('version') if isinstance(doc, dict) else doc!r}"
+    files = doc.get("files")
+    if not isinstance(files, dict):
+        return "invalid", "no files table"
+    sums = {}
+    for name, entry in files.items():
+        sha = entry.get("sha256") if isinstance(entry, dict) else None
+        if not isinstance(sha, str) or len(sha) != SHA256_HEX_LEN:
+            return "invalid", f"bad checksum for {name}"
+        sums[name] = sha
+    return "ok", sums
+
+
+def atomic_copy(src, dst, expected_sha256=None):
     """Copy src onto dst without dst ever being observed partially written.
+
+    With expected_sha256, the copy is hashed as it streams and is published
+    only if it matches; otherwise the temporary file is removed, dst keeps its
+    previous contents and ChecksumMismatch is raised. Hashing the bytes that
+    are copied, not re-reading the source, means there is no window between
+    checking a file and using it.
 
     shutil.copy2 opens the destination with 'wb', truncating it, then streams —
     so a `squid -k reconfigure` landing mid-stream loaded a truncated blacklist,
@@ -139,10 +201,14 @@ def atomic_copy(src, dst):
     d = os.path.dirname(dst) or "."
     fd, tmp = tempfile.mkstemp(dir=d, prefix=os.path.basename(dst) + ".tmp")
     try:
+        digest = hashlib.sha256()
         with os.fdopen(fd, "wb") as out, open(src, "rb") as inp:
-            shutil.copyfileobj(inp, out)
+            shutil.copyfileobj(inp, _HashingWriter(out, digest))
             out.flush()
             os.fsync(out.fileno())
+        if expected_sha256 is not None and digest.hexdigest() != expected_sha256:
+            raise ChecksumMismatch(
+                f"{os.path.basename(src)}: got {digest.hexdigest()[:12]}..., manifest says {expected_sha256[:12]}...")
         shutil.copystat(src, tmp)
         os.replace(tmp, dst)
     except BaseException:
@@ -165,8 +231,17 @@ def squid_config_ok():
         return False
 
 
+def note_refusal(refused, src, mt, reason):
+    """Log a refused list once per (file mtime, manifest mtime), not every poll."""
+    key = (mt, mtime(MANIFEST))
+    if refused.get(src) != key:
+        refused[src] = key
+        print(f"[watchdog] REFUSED {src}: {reason}; Squid keeps the previous list", flush=True)
+
+
 def main():
     mtimes = {src: mtime(src) for src, _ in PAIRS}
+    refused = {}
     mtimes["/config/.reload-squid"] = mtime("/config/.reload-squid")
     mtimes["/config/.clear-cache"] = mtime("/config/.clear-cache")
     last_rotate_day = time.gmtime().tm_yday
@@ -326,20 +401,46 @@ def main():
                     print(f"[watchdog] clear cache error: {exc}", flush=True)
 
         # Sync changed blacklist files and reconfigure Squid.
+        #
+        # Each list is verified against the manifest the backend writes after
+        # them. A list newer than the manifest, or one whose bytes disagree, is
+        # NOT copied: Squid keeps the previous good copy, the mtime is not
+        # recorded so the next poll tries again, and the refusal is logged once
+        # per distinct state rather than every two seconds.
         changed = False
+        manifest_state = None
         for src, dst in PAIRS:
             mt = mtime(src)
             if mt != mtimes[src]:
                 if os.path.exists(src):
+                    if manifest_state is None:
+                        manifest_state = load_manifest()
+                    kind, payload = manifest_state
+                    expected = None
+                    if kind == "invalid":
+                        note_refusal(refused, src, mt, f"manifest {payload}")
+                        continue
+                    if kind == "ok":
+                        expected = payload.get(os.path.basename(src))
+                        if expected is None:
+                            note_refusal(refused, src, mt, "not listed in the manifest")
+                            continue
+                    elif not refused.get("__legacy__"):
+                        refused["__legacy__"] = True
+                        print("[watchdog] no lists manifest: copying without verification "
+                              "(backend predates it)", flush=True)
                     try:
-                        atomic_copy(src, dst)
+                        atomic_copy(src, dst, expected)
                         # Record the mtime only AFTER a successful copy. Setting
                         # it first meant a transient failure was never retried:
                         # the next poll saw no change and Squid kept enforcing a
                         # truncated or stale ACL indefinitely (SECURE-DATA-03).
                         mtimes[src] = mt
+                        refused.pop(src, None)
                         changed = True
                         print(f"[watchdog] synced {src} -> {dst}", flush=True)
+                    except ChecksumMismatch as exc:
+                        note_refusal(refused, src, mt, f"checksum mismatch, keeping previous copy: {exc}")
                     except OSError as exc:
                         print(f"[watchdog] copy failed, will retry: {exc}", flush=True)
                 else:

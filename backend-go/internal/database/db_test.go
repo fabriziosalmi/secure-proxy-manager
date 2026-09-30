@@ -2,10 +2,13 @@ package database
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -497,5 +500,69 @@ func TestFreshDatabaseIsAtCurrentSchemaVersion(t *testing.T) {
 	}
 	if _, err := db.Exec("INSERT INTO domain_whitelist(domain,type) VALUES('x.test','url-regex')"); err == nil {
 		t.Error("a fresh domain_whitelist accepted a type other than fqdn")
+	}
+}
+
+// SECURE-ARCH-01. The exported lists are accompanied by a manifest whose
+// checksums match the files, so the proxy can refuse a truncated copy.
+func TestExportWritesAManifestMatchingTheLists(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(filepath.Join(dir, "m.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Init(db, "admin", "hash"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO ip_blacklist(ip) VALUES('203.0.113.9')"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ExportBlacklistsToFiles(db, dir); err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, ListsManifestName))
+	if err != nil {
+		t.Fatalf("no manifest: %v", err)
+	}
+	var m listsManifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("manifest is not JSON: %v", err)
+	}
+	if m.Version != ListsManifestVersion || len(m.Files) != len(manifestLists) {
+		t.Fatalf("manifest = %+v", m)
+	}
+	for _, name := range manifestLists {
+		sum, n, err := hashListFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if m.Files[name].SHA256 != sum || m.Files[name].Bytes != n {
+			t.Errorf("%s: manifest %+v does not match the file (%s, %d)", name, m.Files[name], sum, n)
+		}
+	}
+	if m.Files["ip_blacklist.txt"].Bytes == 0 {
+		t.Error("the manifest recorded the blacklist as empty")
+	}
+}
+
+// The manifest must cover exactly the lists the proxy's watchdog copies, or a
+// list is either unverified or refused for not being listed. The two sides are
+// in different languages, so this reads the Python source.
+func TestManifestCoversTheWatchdogPairs(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "..", "proxy", "blacklist_watchdog.py"))
+	if err != nil {
+		t.Skipf("watchdog source not reachable from here: %v", err)
+	}
+	re := regexp.MustCompile(`\(f"\{CONFIG_DIR\}/([a-z_]+\.txt)"`)
+	var got []string
+	for _, m := range re.FindAllStringSubmatch(string(src), -1) {
+		got = append(got, m[1])
+	}
+	sort.Strings(got)
+	want := append([]string(nil), manifestLists...)
+	sort.Strings(want)
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("watchdog PAIRS %v != manifestLists %v", got, want)
 	}
 }

@@ -161,5 +161,78 @@ def test_squid_config_ok_fails_closed_when_squid_cannot_be_run(w, monkeypatch):
     assert w.squid_config_ok() is False
 
 
+# ── list manifest (SECURE-ARCH-01) ───────────────────────────────────────────
+#
+# The backend writes lists.manifest.json after the lists; the watchdog must not
+# turn a list whose bytes disagree with it into a live Squid ACL.
+
+def _sha(data: bytes) -> str:
+    import hashlib
+    return hashlib.sha256(data).hexdigest()
+
+
+def _manifest(tmp_path, files, version=1):
+    p = tmp_path / "lists.manifest.json"
+    p.write_text(json.dumps({
+        "version": version,
+        "generated_at": 1,
+        "files": {n: {"sha256": h, "bytes": 0} for n, h in files.items()},
+    }))
+    return str(p)
+
+
+def test_matching_checksum_publishes_the_list(w, tmp_path):
+    src, dst = tmp_path / "ip_blacklist.txt", tmp_path / "local.txt"
+    src.write_bytes(b"203.0.113.9\n")
+    w.atomic_copy(str(src), str(dst), _sha(b"203.0.113.9\n"))
+    assert dst.read_bytes() == b"203.0.113.9\n"
+
+
+def test_mismatch_keeps_the_previous_copy_and_leaves_no_temp(w, tmp_path):
+    src, dst = tmp_path / "ip_blacklist.txt", tmp_path / "local.txt"
+    dst.write_bytes(b"previous good list\n")
+    src.write_bytes(b"203.0.113.")  # truncated mid-line
+    with pytest.raises(w.ChecksumMismatch):
+        w.atomic_copy(str(src), str(dst), _sha(b"203.0.113.9\n"))
+    assert dst.read_bytes() == b"previous good list\n"
+    assert [f.name for f in tmp_path.iterdir() if ".tmp" in f.name] == []
+
+
+def test_no_expected_checksum_copies_as_before(w, tmp_path):
+    src, dst = tmp_path / "a", tmp_path / "b"
+    src.write_bytes(b"x\n")
+    w.atomic_copy(str(src), str(dst))
+    assert dst.read_bytes() == b"x\n"
+
+
+def test_manifest_missing_is_distinct_from_invalid(w, tmp_path):
+    assert w.load_manifest(str(tmp_path / "absent.json")) == ("missing", None)
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    kind, reason = w.load_manifest(str(bad))
+    assert kind == "invalid" and "unreadable" in reason
+
+
+def test_manifest_with_unknown_version_or_bad_checksum_is_invalid(w, tmp_path):
+    kind, _ = w.load_manifest(_manifest(tmp_path, {"a": "0" * 64}, version=99))
+    assert kind == "invalid"
+    kind, reason = w.load_manifest(_manifest(tmp_path, {"a": "short"}))
+    assert kind == "invalid" and "bad checksum" in reason
+
+
+def test_valid_manifest_yields_the_checksums(w, tmp_path):
+    h = "a" * 64
+    assert w.load_manifest(_manifest(tmp_path, {"ip_blacklist.txt": h})) == ("ok", {"ip_blacklist.txt": h})
+
+
+def test_refusals_are_logged_once_per_state(w, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(w, "MANIFEST", str(tmp_path / "m.json"))
+    refused = {}
+    w.note_refusal(refused, "/config/x", 5.0, "why")
+    w.note_refusal(refused, "/config/x", 5.0, "why")
+    w.note_refusal(refused, "/config/x", 6.0, "why")
+    assert capsys.readouterr().out.count("REFUSED") == 2
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
