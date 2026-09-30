@@ -113,10 +113,31 @@ var eng *engine.Engine
 // engineConfigFromEnv reads the operator's environment into the engine's
 // configuration: the score at which a request is refused, the categories
 // switched off at startup, and the heuristic toggles.
+// parseBlockThreshold accepts a positive integer, the only values the engine
+// can act on.
+func parseBlockThreshold(raw string) (int, error) {
+	v, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, fmt.Errorf("not an integer")
+	}
+	if v <= 0 {
+		return 0, fmt.Errorf("must be greater than zero")
+	}
+	return v, nil
+}
+
 func engineConfigFromEnv() engine.Config {
 	cfg := engine.Config{Heuristics: engine.HeuristicsFromEnv()}
 	if envThreshold := os.Getenv("WAF_BLOCK_THRESHOLD"); envThreshold != "" {
-		if v, err := strconv.Atoi(envThreshold); err == nil && v > 0 {
+		v, err := parseBlockThreshold(envThreshold)
+		if err != nil {
+			// The default stays in force, and the operator is told so. A
+			// threshold set to make the WAF stricter and silently ignored is
+			// worse than one that fails loudly: they would believe the change
+			// took effect.
+			log.Printf("WAF_BLOCK_THRESHOLD=%q rejected (%v); using the built-in threshold of %d\n",
+				envThreshold, err, engine.DefaultBlockThreshold)
+		} else {
 			cfg.BlockThreshold = v
 		}
 	}
