@@ -1,7 +1,9 @@
 package main
 
 import (
+	"runtime"
 	"testing"
+	"time"
 )
 
 func TestStatsCollector(t *testing.T) {
@@ -57,9 +59,39 @@ func TestStatsCollector(t *testing.T) {
 	}
 }
 
-func TestStatsCollector_StartRecentCounter(t *testing.T) {
-	s := &statsCollector{}
-	// We can just call it to cover the goroutine start logic.
-	// In a real test we'd want to wait and check, but for coverage this is enough.
-	go s.startRecentCounter()
+// The resetter must actually reset, start only once however often it is asked,
+// and stop when told. The previous test only started it ("for coverage") and
+// asserted nothing, so a resetter that never reset, or one started twice, passed.
+func TestStatsCollector_RecentCounterResetsStartsOnceAndStops(t *testing.T) {
+	s := &statsCollector{recentEvery: 20 * time.Millisecond}
+
+	time.Sleep(20 * time.Millisecond)
+	before := runtime.NumGoroutine()
+	stop := s.startRecentCounter()
+	s.startRecentCounter()
+	s.startRecentCounter()
+	if grew := runtime.NumGoroutine() - before; grew != 1 {
+		t.Errorf("three calls started %d goroutines, want 1", grew)
+	}
+
+	s.recentCount.Store(5)
+	deadline := time.Now().Add(2 * time.Second)
+	for s.recentCount.Load() != 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := s.recentCount.Load(); got != 0 {
+		t.Errorf("the counter was not reset within the window: %d", got)
+	}
+
+	stop()
+	stop() // idempotent
+	time.Sleep(60 * time.Millisecond)
+	if after := runtime.NumGoroutine(); after > before {
+		t.Errorf("the resetter is still running after stop: %d goroutines, %d before", after, before)
+	}
+	s.recentCount.Store(7)
+	time.Sleep(60 * time.Millisecond)
+	if got := s.recentCount.Load(); got != 7 {
+		t.Errorf("the counter was reset after stop: %d", got)
+	}
 }

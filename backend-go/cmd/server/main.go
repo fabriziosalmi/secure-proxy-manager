@@ -333,6 +333,11 @@ func run() error {
 		log.Warn().Msg("background workers did not drain within 5s — exiting anyway")
 	}
 
+	// The tailers were the hub's producers; with them stopped, stop the hub and
+	// disconnect the WebSocket clients, which the HTTP server's Shutdown does not
+	// touch (a hijacked connection is no longer its own).
+	hub.Close()
+
 	log.Info().Msg("shutdown complete")
 	return nil
 }

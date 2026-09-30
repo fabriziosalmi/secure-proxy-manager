@@ -23,6 +23,13 @@ type statsCollector struct {
 	categoryCounts map[string]int
 	uaCounts       map[string]int
 	recentCount    atomic.Int64 // Approximate req/min via atomic counter
+
+	// The window reset is started at most once and can be stopped. recentEvery
+	// is the window; zero means recentWindow. Tests shorten it.
+	recentOnce     sync.Once
+	recentStopOnce sync.Once
+	recentStop     chan struct{}
+	recentEvery    time.Duration
 }
 
 var stats = &statsCollector{
@@ -65,14 +72,36 @@ func (s *statsCollector) record(feature TrafficFeature, blocked bool, categories
 	s.mu.Unlock()
 }
 
-// startRecentCounter resets the recent counter every 60s for req/min calculation.
-func (s *statsCollector) startRecentCounter() {
-	go func() {
-		for {
-			time.Sleep(60 * time.Second)
-			s.recentCount.Store(0)
+// recentWindow is the period over which requests_last_minute is counted.
+const recentWindow = 60 * time.Second
+
+// startRecentCounter resets the recent counter every window for the req/min
+// figure and returns a function that stops it. It is idempotent: a second call
+// does not start a second resetter, which would have reset the same counter at
+// two phases and halved its window. It used to be an unconditional sleep loop
+// that nothing could stop.
+func (s *statsCollector) startRecentCounter() (stop func()) {
+	s.recentOnce.Do(func() {
+		s.recentStop = make(chan struct{})
+		every := s.recentEvery
+		if every <= 0 {
+			every = recentWindow
 		}
-	}()
+		done := s.recentStop
+		go func() {
+			ticker := time.NewTicker(every)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					s.recentCount.Store(0)
+				case <-done:
+					return
+				}
+			}
+		}()
+	})
+	return func() { s.recentStopOnce.Do(func() { close(s.recentStop) }) }
 }
 
 type topEntry struct {
