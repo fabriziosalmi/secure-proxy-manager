@@ -397,12 +397,16 @@ jobs:
       #
       # The list is derived from the compose files rather than written out here,
       # so a future bump cannot leave this job scanning a version nobody runs.
+      # That is how tailscale was found: it was pinned in the production compose
+      # at a version twenty-two minors behind the Dockerfile, and it was not on
+      # the list anyone would have typed.
       - name: Scan the images the compose files pin
         run: |
           set -euo pipefail
           imgs=$(grep -hoE '^[[:space:]]+image:[[:space:]]+[^[:space:]]+' \
                    docker-compose.yml docker-compose.test.yml \
                    deploy/docker-compose.prod.yml \
+                   tests/adversarial/docker-compose.adversarial.yml \
                  | awk '{print $2}' | grep -v 'secure-proxy-manager' | sort -u)
           echo "$imgs" | sed 's/^/  /'
           rc=0
