@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { act, screen, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '../test/helpers'
 import { Logs } from './Logs'
 
@@ -121,5 +121,44 @@ describe('Logs', () => {
     expect(instance.url).not.toContain('token=')
     expect(instance.url).not.toContain('ws-tok')
   })
-})
 
+  // The feed used to give up after ten failed attempts (about three minutes of
+  // backoff) and stay frozen until the page was reloaded: a tab left open
+  // through a backend restart, which is when someone is watching it.
+  describe('reconnecting', () => {
+    const tokenCalls = () => vi.mocked(api.get).mock.calls.filter(([u]) => String(u).includes('ws-token')).length
+
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      vi.mocked(api.get).mockImplementation((url: string) => {
+        if (url.includes('ws-token')) return Promise.reject(new Error('backend down'))
+        if (url.includes('logs')) return Promise.resolve(mockLogs)
+        return Promise.resolve({ data: {} })
+      })
+    })
+    afterEach(() => { vi.useRealTimers() })
+
+    it('keeps retrying after more than ten failures, at a capped delay', async () => {
+      renderWithProviders(<Logs />)
+      // 1 + 2 + 4 + 8 + 16 s, then 30 s each: 15 attempts fit in ten minutes.
+      for (let i = 0; i < 40; i++) {
+        await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+      }
+      expect(tokenCalls()).toBeGreaterThan(15)
+    })
+
+    it('reconnects at once when the tab becomes visible again, instead of waiting out the backoff', async () => {
+      renderWithProviders(<Logs />)
+      for (let i = 0; i < 12; i++) {
+        await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+      }
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      const before = tokenCalls()
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(tokenCalls()).toBe(before + 1)
+    })
+  })
+})

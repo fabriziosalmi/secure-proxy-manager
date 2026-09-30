@@ -41,13 +41,31 @@ export function Logs() {
     }
 
     let ws: WebSocket | null = null;
-    let reconnectTimeout: ReturnType<typeof setTimeout>;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | undefined;
     let cancelled = false;
     let retryCount = 0;
-    const MAX_RETRIES = 10;
+    // True from the moment a connection attempt starts until it ends (the socket
+    // closes or the token request fails), so an immediate reconnect never
+    // doubles up on one already in progress.
+    let attempting = false;
+    // The delay doubles from 1 s to this cap and then stays there. There is no
+    // attempt limit: a feed that gave up after ten tries (about three minutes)
+    // stayed frozen on a tab left open through a backend restart, which is
+    // exactly when someone is watching it.
+    const MAX_DELAY_MS = 30000;
+
+    const scheduleRetry = () => {
+      attempting = false;
+      if (cancelled) return;
+      const delay = Math.min(1000 * Math.pow(2, retryCount), MAX_DELAY_MS);
+      retryCount++;
+      setWsStatus('connecting');
+      reconnectTimeout = setTimeout(connect, delay);
+    };
 
     const connect = () => {
       if (cancelled) return;
+      attempting = true;
       api.get('/ws-token').then(({ data }) => {
         if (cancelled) return;
 
@@ -85,31 +103,32 @@ export function Logs() {
 
         ws.onclose = () => {
           setWsStatus('disconnected');
-          if (!cancelled && retryCount < MAX_RETRIES) {
-            const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
-            retryCount++;
-            setWsStatus('connecting');
-            reconnectTimeout = setTimeout(connect, delay);
-          }
+          scheduleRetry();
         };
 
         ws.onerror = () => { /* onclose will fire */ };
-      }).catch(() => {
-        if (!cancelled && retryCount < MAX_RETRIES) {
-          const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
-          retryCount++;
-          setWsStatus('connecting');
-          reconnectTimeout = setTimeout(connect, delay);
-        } else {
-          setWsStatus('disconnected');
-        }
-      });
+      }).catch(scheduleRetry);
     };
+
+    // A tab that has been in the background, or a machine that has been offline,
+    // should not wait out a 30 s backoff once it can connect again.
+    const reconnectNow = () => {
+      if (cancelled || attempting) return;
+      if (ws && ws.readyState === 1 /* OPEN */) return;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      retryCount = 0;
+      connect();
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') reconnectNow(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', reconnectNow);
 
     connect();
 
     return () => {
       cancelled = true;
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', reconnectNow);
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
         ws.close();
