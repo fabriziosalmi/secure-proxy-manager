@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -14,7 +13,6 @@ import (
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/auth"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/validate"
@@ -23,16 +21,26 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// AuthStore is what the authentication handlers need from persistence. The
+// handlers are given this rather than the database handle, so they cannot run
+// arbitrary SQL and can be tested with a fake. database.AuthStore implements it.
+type AuthStore interface {
+	PasswordHash(username string) (string, error)
+	SetPassword(username, hash string) error
+	Audit(username, action, target, details string)
+	Ping(ctx context.Context) error
+}
+
 type AuthHandlers struct {
-	db     *sql.DB
+	store  AuthStore
 	svc    *auth.Service
 	cfg    *config.Config
 	notify NotifyQueue
 	hub    *ws.Hub
 }
 
-func NewAuthHandlers(db *sql.DB, svc *auth.Service, cfg *config.Config, notify NotifyQueue, hub *ws.Hub) *AuthHandlers {
-	return &AuthHandlers{db: db, svc: svc, cfg: cfg, notify: notify, hub: hub}
+func NewAuthHandlers(store AuthStore, svc *auth.Service, cfg *config.Config, notify NotifyQueue, hub *ws.Hub) *AuthHandlers {
+	return &AuthHandlers{store: store, svc: svc, cfg: cfg, notify: notify, hub: hub}
 }
 
 func (h *AuthHandlers) Register(r chi.Router) {
@@ -95,7 +103,7 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to issue refresh token")
 		return
 	}
-	database.Audit(h.db, username, "login", "", "")
+	h.store.Audit(username, "login", "", "")
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status":        "success",
 		"access_token":  token,
@@ -150,7 +158,7 @@ func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 		revokeErr = h.svc.RevokeJWT(authHeader[7:])
 	}
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
-	database.Audit(h.db, username, "logout", "", "")
+	h.store.Audit(username, "logout", "", "")
 
 	// The token is revoked in this process either way, but if the revocation
 	// could not be persisted it becomes valid again after a restart. Logout
@@ -189,8 +197,8 @@ func (h *AuthHandlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
 
-	var stored string
-	if err := h.db.QueryRow("SELECT password FROM users WHERE username=?", username).Scan(&stored); err != nil {
+	stored, err := h.store.PasswordHash(username)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "user lookup failed")
 		return
 	}
@@ -204,17 +212,12 @@ func (h *AuthHandlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to hash password")
 		return
 	}
-	if _, err := h.db.Exec("UPDATE users SET password=? WHERE username=?", newHash, username); err != nil {
+	if err := h.store.SetPassword(username, newHash); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update password")
 		return
 	}
 
-	// Mark default password as changed in settings.
-	_, _ = h.db.Exec(
-		"INSERT OR REPLACE INTO settings(setting_name,setting_value) VALUES(?,?)",
-		"default_password_changed", "true",
-	)
-	database.Audit(h.db, username, "change_password", "", "")
+	h.store.Audit(username, "change_password", "", "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Password changed successfully"})
 }
 
@@ -238,19 +241,12 @@ func (h *AuthHandlers) HealthLegacy(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandlers) Ready(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
-	if err := h.db.PingContext(ctx); err != nil {
+	// Ping also runs a trivial query, so it confirms the connection can
+	// execute, not just that one is open.
+	if err := h.store.Ping(ctx); err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"status": "unready",
-			"reason": "database unreachable",
-		})
-		return
-	}
-	// A trivial query confirms the connection can actually execute, not just ping.
-	var one int
-	if err := h.db.QueryRowContext(ctx, "SELECT 1").Scan(&one); err != nil || one != 1 {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"status": "unready",
-			"reason": "database query failed",
+			"reason": err.Error(),
 		})
 		return
 	}
@@ -282,7 +278,7 @@ func (h *AuthHandlers) alertLoginFailure(username, clientIP, reason string) {
 	now := time.Now().Format(time.RFC3339)
 
 	// Audit log entry for every failed attempt.
-	database.Audit(h.db, username, "login_failed", clientIP, reason)
+	h.store.Audit(username, "login_failed", clientIP, reason)
 
 	event := map[string]any{
 		"timestamp":  now,

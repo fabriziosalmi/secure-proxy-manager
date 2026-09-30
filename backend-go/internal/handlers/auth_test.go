@@ -15,7 +15,7 @@ import (
 func TestReadyHandler(t *testing.T) {
 	db, svc, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAuthHandlers(db, svc, cfg, nil, nil)
+	h := NewAuthHandlers(authStore(db), svc, cfg, nil, nil)
 
 	// Healthy DB → 200 ready.
 	r := httptest.NewRequest("GET", "/readyz", nil)
@@ -43,7 +43,7 @@ func TestReadyHandler(t *testing.T) {
 func TestLoginHandler(t *testing.T) {
 	db, svc, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAuthHandlers(db, svc, cfg, nil, nil)
+	h := NewAuthHandlers(authStore(db), svc, cfg, nil, nil)
 
 	// Success
 	loginReq := models.LoginRequest{Username: "admin", Password: "admin-12345"}
@@ -76,7 +76,7 @@ func TestLoginHandler(t *testing.T) {
 func TestLogoutHandler(t *testing.T) {
 	db, svc, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAuthHandlers(db, svc, cfg, nil, nil)
+	h := NewAuthHandlers(authStore(db), svc, cfg, nil, nil)
 
 	r := httptest.NewRequest("POST", "/api/logout", nil)
 	ctx := context.WithValue(r.Context(), middleware.CtxUsername, "admin")
@@ -92,7 +92,7 @@ func TestLogoutHandler(t *testing.T) {
 func TestChangePasswordHandler(t *testing.T) {
 	db, svc, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAuthHandlers(db, svc, cfg, nil, nil)
+	h := NewAuthHandlers(authStore(db), svc, cfg, nil, nil)
 
 	// Failure: complexity
 	cpReq := models.ChangePasswordRequest{CurrentPassword: "admin-12345", NewPassword: "sh"}
@@ -121,7 +121,7 @@ func TestChangePasswordHandler(t *testing.T) {
 func TestHealthHandlers(t *testing.T) {
 	db, svc, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewAuthHandlers(db, svc, cfg, nil, nil)
+	h := NewAuthHandlers(authStore(db), svc, cfg, nil, nil)
 
 	r := httptest.NewRequest("GET", "/api/health", nil)
 	w := httptest.NewRecorder()

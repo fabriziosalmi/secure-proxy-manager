@@ -60,3 +60,6 @@ func withUserContext(r *http.Request, username string) *http.Request {
 	ctx := context.WithValue(r.Context(), middleware.CtxUsername, username)
 	return r.WithContext(ctx)
 }
+
+// authStore adapts a test database to the AuthStore the auth handlers take.
+func authStore(db *sql.DB) AuthStore { return database.NewAuthStore(db) }
