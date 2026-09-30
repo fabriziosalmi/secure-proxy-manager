@@ -237,7 +237,7 @@ export function Presets({ formData, onApply }: Props) {
               <Icon className={`w-4 h-4 mb-1.5 ${p.color}`} />
               <p className={`text-xs font-bold ${p.color}`}>{p.name}</p>
               <p className="text-[10px] text-muted-foreground">{p.desc}</p>
-              <p className="text-[9px] text-muted-foreground/60 mt-1 line-clamp-2">{p.detail}</p>
+              <p className="text-[9px] text-muted-foreground mt-1 line-clamp-2">{p.detail}</p>
             </button>
           );
         })}

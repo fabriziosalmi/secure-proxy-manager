@@ -223,7 +223,7 @@ export function GlobalSearch() {
             <div className="py-8 text-center text-sm text-muted-foreground">No results for "{query}"</div>
           ) : (
             <div className="py-3 px-4">
-              <p className="text-[10px] text-muted-foreground/60 uppercase tracking-[0.15em] mb-2">Quick Navigation</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-[0.15em] mb-2">Quick Navigation</p>
               {PAGES.map((p, i) => (
                 <button
                   key={p.path}
@@ -241,7 +241,7 @@ export function GlobalSearch() {
         </div>
 
         {/* Footer hints */}
-        <div className="flex items-center justify-between px-4 py-2 border-t border-border/50 text-[10px] text-muted-foreground/50">
+        <div className="flex items-center justify-between px-4 py-2 border-t border-border/50 text-[10px] text-muted-foreground">
           <div className="flex items-center gap-3">
             <span><kbd className="px-1 py-0.5 bg-secondary/70 rounded font-mono">↑↓</kbd> navigate</span>
             <span><kbd className="px-1 py-0.5 bg-secondary/70 rounded font-mono">↵</kbd> select</span>

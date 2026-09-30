@@ -303,6 +303,7 @@ export function Logs() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
               type="text"
+              aria-label="Search logs by IP, domain or status"
               placeholder="Search by IP, domain, or status..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
