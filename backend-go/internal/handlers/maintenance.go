@@ -195,7 +195,7 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 			// and these values are written into Squid and dnsmasq files one per
 			// line. Apply the checks the add endpoints apply; a value that
 			// fails them is skipped and counted, not fatal to the restore
-			// (SECURE-INPT-02).
+			// (audit: domain-newline-into-hosts-file).
 			if !validRestoredListValue(name, value) {
 				log.Warn().Str("list", name).Msg("RestoreConfig: skipping an entry that fails validation")
 				skippedEntries++

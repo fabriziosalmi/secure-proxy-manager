@@ -282,7 +282,7 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 	// The value is written, one per line, into the Squid ACL file and the
 	// dnsmasq hosts file. Checking only for a space let a tab or a newline
 	// through, and a second line in a hosts file is a second DNS record
-	// (SECURE-INPT-02). Validate the syntax, not the absence of one character.
+	// (audit: domain-newline-into-hosts-file). Validate the syntax, not the absence of one character.
 	if !isValidDomainEntry(domain) {
 		writeError(w, http.StatusBadRequest, "invalid domain format")
 		return

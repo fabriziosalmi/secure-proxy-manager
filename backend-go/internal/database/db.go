@@ -540,7 +540,7 @@ func writeDnsmasqBlocklist(db *sql.DB, path string, exclusions map[string]struct
 		if rows.Scan(&domain) == nil && domain != "" {
 			// A hosts file is parsed by line: a value carrying a newline or a
 			// tab would be a second record, and dnsmasq would answer it. Skip
-			// it here whatever the write path let in (SECURE-INPT-02).
+			// it here whatever the write path let in (audit: domain-newline-into-hosts-file).
 			if !lineSafe(domain) {
 				unsafe++
 				continue

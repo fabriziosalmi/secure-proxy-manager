@@ -12,7 +12,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 )
 
-// SECURE-INPT-02. A domain entry is written, one per line, into the dnsmasq
+// Audit: domain-newline-into-hosts-file. A domain entry is written, one per line, into the dnsmasq
 // hosts file. Before, only a space was refused, so a tab or newline planted a
 // second record there: an authenticated caller could make the resolver answer
 // any name with any address. Reproduced against the unfixed code; these fail
