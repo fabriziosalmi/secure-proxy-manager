@@ -8,23 +8,9 @@ import { IpBadge } from '../components/IpBadge';
 import { ClientSetup } from '../components/ClientSetup';
 import { useModal } from '../hooks/useModal';
 import { getData } from '../lib/api';
+import { parseUtc, relative } from '../lib/utils';
 import type { ClientsData, ClientStat, ClientDetail } from '../types';
 
-function parseUtc(ts: string): Date {
-  return new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z');
-}
-function relative(ts: string): string {
-  if (!ts) return '—';
-  const d = parseUtc(ts).getTime();
-  if (Number.isNaN(d)) return ts;
-  const s = Math.max(0, Math.round((Date.now() - d) / 1000));
-  if (s < 60) return `${s}s ago`;
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.round(h / 24)}d ago`;
-}
 function rate(blocked: number, total: number): number {
   return total > 0 ? Math.round((blocked / total) * 1000) / 10 : 0;
 }

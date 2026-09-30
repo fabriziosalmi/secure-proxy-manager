@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui
 import { Key, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
+import { validatePassword } from '../../lib/validation';
 
 export function ChangePassword() {
   const [currentPwd, setCurrentPwd] = useState('');
@@ -12,9 +13,9 @@ export function ChangePassword() {
   const [showNew, setShowNew] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const isValid = currentPwd.length > 0 && newPwd.length >= 8 && newPwd === confirmPwd;
-  const hasNumber = /\d/.test(newPwd);
-  const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(newPwd);
+  // The shared, tested rule (lib/validation), not a private copy of it.
+  const { hasLength, hasNumber, hasSpecial } = validatePassword(newPwd);
+  const isValid = currentPwd.length > 0 && hasLength && newPwd === confirmPwd;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,8 +87,8 @@ export function ChangePassword() {
             </div>
             {newPwd.length > 0 && (
               <div id="cp-new-rules" className="flex gap-2 mt-1.5" aria-live="polite">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${newPwd.length >= 8 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'}`}>
-                  {newPwd.length >= 8 ? '✓' : '✗'} 8+ chars
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${hasLength ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'}`}>
+                  {hasLength ? '✓' : '✗'} 8+ chars
                 </span>
                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${hasNumber ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'}`}>
                   {hasNumber ? '✓' : '✗'} number

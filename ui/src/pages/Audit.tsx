@@ -7,6 +7,7 @@ import {
 import { Card, CardContent } from '../components/ui/card';
 import { IpBadge } from '../components/IpBadge';
 import { api } from '../lib/api';
+import { parseUtc, relative } from '../lib/utils';
 import type { AuditEntry, AuditPageData } from '../types';
 
 const PAGE_SIZE = 50;
@@ -25,23 +26,6 @@ function actionStyle(action: string): { label: string; cls: string; Icon: typeof
   if (a.includes('config') || a.includes('cache') || a.includes('clear') || a.includes('restore') || a.includes('reload'))
     return { label: action.replace(/_/g, ' '), cls: 'text-blue-600 dark:text-blue-300 bg-blue-500/10 border-blue-500/20 dark:border-blue-500/20', Icon: RotateCcw };
   return { label: action.replace(/_/g, ' '), cls: 'text-slate-600 dark:text-slate-300 bg-secondary/50 border-border/80 dark:border-border/30', Icon: ScrollText };
-}
-
-function parseUtc(ts: string): Date {
-  // Backend stores `datetime('now')` → "2026-06-04 14:30:00" (UTC, no tz).
-  return new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z');
-}
-
-function relative(ts: string): string {
-  const d = parseUtc(ts).getTime();
-  if (Number.isNaN(d)) return ts;
-  const s = Math.max(0, Math.round((Date.now() - d) / 1000));
-  if (s < 60) return `${s}s ago`;
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.round(h / 24)}d ago`;
 }
 
 const EMPTY_ENTRIES: AuditEntry[] = [];
