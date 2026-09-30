@@ -915,6 +915,8 @@ type MgmtHandlers struct{}
 func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 
+	fmt.Fprintf(w, "# HELP waf_build_info Source revision this WAF binary was built from.\n# TYPE waf_build_info gauge\nwaf_build_info{commit=%q} 1\n", GitCommit)
+
 	totalRules := 0
 	for _, cr := range engine.BlockRules() {
 		totalRules += len(cr.Rules)
@@ -1051,8 +1053,8 @@ func (h *MgmtHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 			hEnabled++
 		}
 	}
-	fmt.Fprintf(w, `{"status":"healthy","rules":%d,"categories":%d,"threshold":%d,"heuristics":%d}`,
-		total, len(engine.BlockRules()), eng.BlockThreshold(), hEnabled)
+	fmt.Fprintf(w, `{"status":"healthy","commit":%q,"rules":%d,"categories":%d,"threshold":%d,"heuristics":%d}`,
+		GitCommit, total, len(engine.BlockRules()), eng.BlockThreshold(), hEnabled)
 }
 
 func (h *MgmtHandlers) StatsHandler(w http.ResponseWriter, r *http.Request) {

@@ -6,7 +6,13 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o waf-server .
+# GIT_SHA is injected so a running WAF can say which commit it was built from
+# (/health and waf_build_info); -trimpath keeps the builder's paths out of the
+# binary. Same treatment as the backend image.
+ARG GIT_SHA=unknown
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
+    -ldflags="-s -w -X main.GitCommit=${GIT_SHA}" \
+    -o waf-server .
 
 # Pin: alpine 3.21.3 (2025-03)
 FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
