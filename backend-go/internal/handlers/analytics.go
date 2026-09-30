@@ -540,49 +540,7 @@ func parseSquidInfo(raw string) map[string]any {
 		"misses": 0, "requests": 0, "simulated": false,
 	}
 	for _, line := range strings.Split(raw, "\n") {
-		line = strings.TrimSpace(line)
-		switch {
-		case strings.HasPrefix(line, "Request Hit Ratios:"):
-			// "Request Hit Ratios:     5min: 42.3%, 60min: 38.1%"
-			if parts := strings.SplitN(line, "5min:", 2); len(parts) == 2 {
-				val := strings.TrimSpace(strings.SplitN(parts[1], "%", 2)[0])
-				if f, err := strconv.ParseFloat(val, 64); err == nil {
-					result["hit_rate"] = f / 100
-				}
-			}
-		case strings.HasPrefix(line, "Byte Hit Ratios:"):
-			if parts := strings.SplitN(line, "5min:", 2); len(parts) == 2 {
-				val := strings.TrimSpace(strings.SplitN(parts[1], "%", 2)[0])
-				if f, err := strconv.ParseFloat(val, 64); err == nil {
-					result["byte_hit_rate"] = f / 100
-				}
-			}
-		case strings.HasPrefix(line, "Storage Swap size:"):
-			// "Storage Swap size:	1234 KB"
-			result["cache_size"] = strings.TrimSpace(strings.TrimPrefix(line, "Storage Swap size:"))
-		case strings.HasPrefix(line, "Maximum Swap Size:"):
-			result["max_cache_size"] = strings.TrimSpace(strings.TrimPrefix(line, "Maximum Swap Size:"))
-		case strings.HasPrefix(line, "StoreEntries"):
-			// "StoreEntries                : 1234"
-			if parts := strings.SplitN(line, ":", 2); len(parts) == 2 {
-				val := strings.TrimSpace(parts[1])
-				if n, err := strconv.Atoi(val); err == nil {
-					result["objects_cached"] = n
-				}
-			}
-		case strings.Contains(line, "client_http.requests"):
-			if parts := strings.SplitN(line, "=", 2); len(parts) == 2 {
-				if n, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
-					result["requests"] = n
-				}
-			}
-		case strings.Contains(line, "client_http.hits"):
-			if parts := strings.SplitN(line, "=", 2); len(parts) == 2 {
-				if n, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
-					result["hits"] = n
-				}
-			}
-		}
+		parseSquidInfoLine(result, strings.TrimSpace(line))
 	}
 	// Compute misses from requests - hits. hit_ratio is deliberately NOT
 	// emitted: it was a SECOND cache hit rate, computed over the lifetime
@@ -597,6 +555,53 @@ func parseSquidInfo(raw string) map[string]any {
 		}
 	}
 	return result
+}
+
+// parseSquidInfoLine folds one (trimmed) line of the cache manager's info
+// report into result.
+func parseSquidInfoLine(result map[string]any, line string) {
+	switch {
+	case strings.HasPrefix(line, "Request Hit Ratios:"):
+		setFiveMinuteRatio(result, "hit_rate", line)
+	case strings.HasPrefix(line, "Byte Hit Ratios:"):
+		setFiveMinuteRatio(result, "byte_hit_rate", line)
+	case strings.HasPrefix(line, "Storage Swap size:"):
+		// "Storage Swap size:	1234 KB"
+		result["cache_size"] = strings.TrimSpace(strings.TrimPrefix(line, "Storage Swap size:"))
+	case strings.HasPrefix(line, "Maximum Swap Size:"):
+		result["max_cache_size"] = strings.TrimSpace(strings.TrimPrefix(line, "Maximum Swap Size:"))
+	case strings.HasPrefix(line, "StoreEntries"):
+		// "StoreEntries                : 1234"
+		setIntAfter(result, "objects_cached", line, ":")
+	case strings.Contains(line, "client_http.requests"):
+		setIntAfter(result, "requests", line, "=")
+	case strings.Contains(line, "client_http.hits"):
+		setIntAfter(result, "hits", line, "=")
+	}
+}
+
+// setFiveMinuteRatio stores the 5-minute window of a "Hit Ratios" line as a
+// fraction: "Request Hit Ratios:     5min: 42.3%, 60min: 38.1%" -> 0.423.
+func setFiveMinuteRatio(result map[string]any, key, line string) {
+	parts := strings.SplitN(line, "5min:", 2)
+	if len(parts) != 2 {
+		return
+	}
+	val := strings.TrimSpace(strings.SplitN(parts[1], "%", 2)[0])
+	if f, err := strconv.ParseFloat(val, 64); err == nil {
+		result[key] = f / 100
+	}
+}
+
+// setIntAfter stores the integer after the first sep in line, if there is one.
+func setIntAfter(result map[string]any, key, line, sep string) {
+	parts := strings.SplitN(line, sep, 2)
+	if len(parts) != 2 {
+		return
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
+		result[key] = n
+	}
 }
 
 func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {
