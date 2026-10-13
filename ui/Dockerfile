@@ -5,7 +5,7 @@
 # assets, but building the product on a runtime its own toolchain calls
 # unsupported is not a thing to leave standing. 26 also sits above 25, so a
 # later Dependabot bump cannot quietly put it back.
-FROM node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS frontend-builder
+FROM node:26-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a AS frontend-builder
 WORKDIR /frontend
 COPY ./ui/package*.json ./
 RUN npm ci
