@@ -105,6 +105,22 @@ else
   bad "a corrupt backup is refused BEFORE the swap" "$out"
 fi
 
+echo "── refuses a backup SQLite cannot even open, and says why ──"
+# Damage to the header makes sqlite3 exit non-zero ("file is not a database")
+# instead of printing an integrity report. Under set -euo pipefail that used to
+# end restore.sh on the spot with no message: the backup was still refused, but
+# the operator got nothing, and the random damage above hit this case on some
+# runs and the readable-but-corrupt one on others.
+mkgood "$SANDBOX/data.bak.unreadable"
+printf 'not a sqlite database at all, overwritten header..........................................' \
+  | dd of="$SANDBOX/data.bak.unreadable/proxy_manager.db" bs=1 seek=0 conv=notrunc status=none 2>/dev/null
+out="$(run "$SANDBOX/data.bak.unreadable")"
+if grep -qi 'integrity check on the backup failed' <<<"$out"; then
+  ok "an unreadable backup is refused with a reason"
+else
+  bad "an unreadable backup is refused with a reason" "$out"
+fi
+
 echo "── and the live data survives the refusal ──"
 if [ "$(cat "$SANDBOX/data/marker" 2>/dev/null)" = "LIVE" ]; then
   ok "data/ untouched after a refused restore"
