@@ -12,8 +12,8 @@ RUN npm ci
 COPY ./ui/ ./
 RUN npm run build
 
-# Pin: nginx 1.27.4 alpine (2025-03)
-FROM nginx:1.31.6-alpine@sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2
+# Pin: nginx 1.31.7 alpine (2026-10)
+FROM nginx:1.31.7-alpine@sha256:892bb2152464f0c5d8972593a5f5afaf8054552580b699d95f8ff4af08c2d33d
 
 # openssl for self-signed cert generation at boot
 # Distribution packages are installed without a version constraint. That is a
