@@ -37,8 +37,11 @@ BACKUP="$1"
 # Verify BEFORE swapping: a backup that does not pass an integrity check is not
 # a backup, and finding that out after replacing the live database is too late.
 if command -v sqlite3 >/dev/null 2>&1; then
-    res=$(sqlite3 "$BACKUP/proxy_manager.db" 'PRAGMA integrity_check' 2>&1 | head -1)
-    [ "$res" = "ok" ] || fail "integrity check on the backup failed: $res"
+    # sqlite3 exits non-zero when it cannot open the file at all ("file is not
+    # a database"). Without the `|| true`, set -euo pipefail ended the script
+    # here with no message: still a refusal, but a silent one.
+    res=$(sqlite3 "$BACKUP/proxy_manager.db" 'PRAGMA integrity_check' 2>&1 | head -1) || true
+    [ "$res" = "ok" ] || fail "integrity check on the backup failed: ${res:-sqlite3 could not read the file}"
     # integrity_check validates pages that hold data. It returns "ok" for
     # damage confined to a header or to free space — verified directly on a
     # 24KB database, where corruption at byte 2000 and 4200 is not detected and
