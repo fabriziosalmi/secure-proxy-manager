@@ -163,7 +163,7 @@ export function SetupWizard({ onComplete }: Props) {
   return (
     <div
       ref={modalRef}
-      className="fixed inset-0 z-[100] bg-background flex items-center justify-center p-4"
+      className="fixed inset-0 z-100 bg-background flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="setup-wizard-title"

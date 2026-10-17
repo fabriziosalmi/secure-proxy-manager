@@ -105,7 +105,7 @@ export function ClientSetup() {
   const active = tabs.find(t => t.id === activeTab)!;
 
   return (
-    <Card className="bg-card/50">
+    <Card>
       <CardHeader className="p-4 pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
           <QrCode className="w-4 h-4 text-primary" />
@@ -149,7 +149,7 @@ export function ClientSetup() {
                   setActiveTab(next.id);
                   document.getElementById(`os-tab-${next.id}`)?.focus();
                 }}
-                className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
+                className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded-md transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60 ${
                   selected ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground'
                 }`}>
                 <Icon className="w-3 h-3" /> {t.label}

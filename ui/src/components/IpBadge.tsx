@@ -31,7 +31,7 @@ function IpBadgeImpl({ ip, className = '' }: IpBadgeProps) {
             if (e.key === 'Escape') setEditing(false);
           }}
           placeholder="Name this IP..."
-          className="w-24 px-1.5 py-0.5 bg-background border border-primary/40 rounded text-[11px] outline-none focus:border-primary"
+          className="w-24 px-1.5 py-0.5 bg-background border border-primary/40 rounded text-[11px] outline-hidden focus:border-primary"
         />
         <button type="button" aria-label={`Save tag for ${ip}`} onClick={() => {
           if (tagName.trim()) { addAssetTag(ip, tagName.trim()); setEditing(false); }
@@ -47,7 +47,7 @@ function IpBadgeImpl({ ip, className = '' }: IpBadgeProps) {
         <span className="font-mono font-bold" title={ip}>{ip}</span>
         <button
           type="button"
-          className="text-[10px] px-1.5 py-0.5 rounded-full font-medium cursor-pointer hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          className="text-[10px] px-1.5 py-0.5 rounded-full font-medium cursor-pointer hover:opacity-80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
           style={{ backgroundColor: (tag.color || '#3b82f6') + '20', color: tag.color || '#3b82f6', border: `1px solid ${(tag.color || '#3b82f6')}30` }}
           onClick={(e) => { e.stopPropagation(); setTagName(tag.name); setEditing(true); }}
           title={`Click to edit — ${ip}`}

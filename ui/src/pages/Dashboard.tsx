@@ -53,7 +53,7 @@ export function Dashboard() {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Dashboard</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight bg-linear-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Dashboard</h1>
         </div>
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -73,7 +73,7 @@ export function Dashboard() {
       {dialog}
       {/* Header + proxy address */}
       <div className="flex flex-wrap gap-3 justify-between items-center">
-        <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Dashboard</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight bg-linear-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Dashboard</h1>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 px-3 py-1.5 glass-surface rounded-lg text-sm">
             <code className="font-mono font-semibold text-primary">{proxy}</code>

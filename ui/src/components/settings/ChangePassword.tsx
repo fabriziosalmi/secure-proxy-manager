@@ -40,7 +40,7 @@ export function ChangePassword() {
   };
 
   return (
-    <Card className="bg-card/50">
+    <Card>
       <CardHeader className="p-4 pb-2">
         <div className="flex items-center gap-2">
           <Key className="w-4 h-4 text-muted-foreground" />
@@ -60,7 +60,7 @@ export function ChangePassword() {
                 value={currentPwd}
                 onChange={(e) => setCurrentPwd(e.target.value)}
                 autoComplete="current-password"
-                className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm pr-8 focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm pr-8 focus:outline-hidden focus:ring-1 focus:ring-primary"
               />
               <button type="button" onClick={() => setShowCurrent(!showCurrent)} aria-label={showCurrent ? 'Hide current password' : 'Show current password'} className="absolute right-2 top-1.5 text-muted-foreground hover:text-foreground">
                 {showCurrent ? <EyeOff className="w-3.5 h-3.5" aria-hidden="true" /> : <Eye className="w-3.5 h-3.5" aria-hidden="true" />}
@@ -79,7 +79,7 @@ export function ChangePassword() {
                 onChange={(e) => setNewPwd(e.target.value)}
                 autoComplete="new-password"
                 aria-describedby="cp-new-rules"
-                className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm pr-8 focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm pr-8 focus:outline-hidden focus:ring-1 focus:ring-primary"
               />
               <button type="button" onClick={() => setShowNew(!showNew)} aria-label={showNew ? 'Hide new password' : 'Show new password'} className="absolute right-2 top-1.5 text-muted-foreground hover:text-foreground">
                 {showNew ? <EyeOff className="w-3.5 h-3.5" aria-hidden="true" /> : <Eye className="w-3.5 h-3.5" aria-hidden="true" />}
@@ -111,7 +111,7 @@ export function ChangePassword() {
               autoComplete="new-password"
               aria-describedby={confirmPwd && confirmPwd !== newPwd ? 'cp-confirm-err' : undefined}
               aria-invalid={confirmPwd !== '' && confirmPwd !== newPwd}
-              className={`w-full mt-1 bg-background border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary ${
+              className={`w-full mt-1 bg-background border rounded-md px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-primary ${
                 confirmPwd && confirmPwd !== newPwd ? 'border-destructive' : 'border-border'
               }`}
             />

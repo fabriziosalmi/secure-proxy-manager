@@ -208,7 +208,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
                   title={`${t.charAt(0).toUpperCase() + t.slice(1)} Mode`}
                   className={`p-1 rounded transition-colors ${
                     active
-                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      ? 'bg-primary text-primary-foreground shadow-xs'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary/40'
                   }`}
                 >

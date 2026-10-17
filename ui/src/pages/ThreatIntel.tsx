@@ -40,11 +40,11 @@ export function ThreatIntel() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Threat Intelligence</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight bg-linear-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Threat Intelligence</h1>
 
       {/* Compact metrics */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
-        <Card className="stagger-child border-destructive/20" style={{ '--stagger-index': 0 } as React.CSSProperties}>
+        <Card className="stagger-child" style={{ '--stagger-index': 0 } as React.CSSProperties}>
           <CardContent className="p-3 flex items-center justify-between">
             <div><p className="text-[10px] text-muted-foreground uppercase">Today</p><p className="text-2xl font-bold text-destructive">{animTodayBlocked.toLocaleString()}</p></div>
             <AlertTriangle className="w-6 h-6 text-destructive/30" />

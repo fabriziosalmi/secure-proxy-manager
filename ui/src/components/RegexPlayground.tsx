@@ -46,7 +46,7 @@ export function RegexPlayground() {
   };
 
   return (
-    <Card className="bg-card/50">
+    <Card>
       <CardHeader className="p-3 pb-0">
         <CardTitle className="text-sm flex items-center gap-1.5">
           <FlaskConical className="w-3.5 h-3.5 text-purple-500" />
@@ -65,14 +65,14 @@ export function RegexPlayground() {
             onChange={(e) => setRegex(e.target.value)}
             aria-label="Regular expression to test"
             placeholder="e.g. (?i)\.torrent$"
-            className="flex-1 bg-background border border-border rounded-md px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+            className="flex-1 bg-background border border-border rounded-md px-2 py-1.5 text-xs font-mono focus:outline-hidden focus:ring-1 focus:ring-primary"
             onKeyDown={(e) => e.key === 'Enter' && handleTest()}
           />
           <select
             aria-label="Period to test against"
             value={hours}
             onChange={(e) => setHours(Number(e.target.value))}
-            className="bg-background border border-border rounded-md px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+            className="bg-background border border-border rounded-md px-2 py-1.5 text-xs focus:outline-hidden focus:ring-1 focus:ring-primary"
           >
             <option value={1}>1h</option>
             <option value={6}>6h</option>

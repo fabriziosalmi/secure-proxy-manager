@@ -97,7 +97,7 @@ export function Clients() {
           onChange={(e) => setSearch(e.target.value)}
           aria-label="Filter clients by IP"
           placeholder="Filter by IP…"
-          className="w-full pl-9 pr-3 py-2 rounded-lg bg-secondary/40 border border-border/70 text-sm focus:outline-none focus:border-cyan-500/40 focus:bg-secondary/60 transition-colors"
+          className="w-full pl-9 pr-3 py-2 rounded-lg bg-secondary/40 border border-border/70 text-sm focus:outline-hidden focus:border-cyan-500/40 focus:bg-secondary/60 transition-colors"
         />
       </div>
 
@@ -160,7 +160,7 @@ export function Clients() {
                             type="button"
                             onClick={(e) => { e.stopPropagation(); setSelectedIp(c.ip_address); }}
                             aria-label={`View details for ${c.ip_address}`}
-                            className="p-1 rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                            className="p-1 rounded text-muted-foreground hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
                           >
                             <ChevronRight className="w-4 h-4" />
                           </button>
@@ -191,9 +191,9 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div ref={modalRef} className="relative w-full max-w-md h-full overflow-y-auto bg-[var(--card)] border-l border-border/70 shadow-2xl animate-in">
-        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-border/50 bg-[var(--card)]">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-xs" onClick={onClose} />
+      <div ref={modalRef} className="relative w-full max-w-md h-full overflow-y-auto bg-(--card) border-l border-border/70 shadow-2xl animate-in">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-border/50 bg-(--card)">
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
             <IpBadge ip={ip} />
