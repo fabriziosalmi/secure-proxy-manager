@@ -1,6 +1,304 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  space-y-* with Tailwind v3 semantics. v4 moved the gap to margin-bottom on
+  every child but the last; on an inline first child (the <label> above each
+  input here) a vertical margin does nothing, so v4 collapsed those gaps by a
+  few pixels across the UI. This puts the gap back on top of each following
+  sibling, as v3 did, and zeroes the v4 margin.
+*/
+/*
+  v3's placeholder colour (gray-400). v4 changed the default to the text
+  colour at 50% opacity, which reads darker on every input here.
+*/
+@layer base {
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af;
+  }
+}
+
+@utility space-y-* {
+  /* Cancel v4's own rule, which is :where() (specificity 0) and may be emitted
+     after this one. :not(x-tw-none) adds exactly one element's specificity
+     (0,0,1): enough to beat it, still below a class, so a child's explicit
+     mb-* wins, as it did in v3. */
+  :where(& > :not([hidden])):not(x-tw-none) {
+    margin-block-end: 0;
+  }
+  & > :not([hidden]) ~ :not([hidden]) {
+    margin-block-start: calc(var(--spacing) * --value(number));
+    margin-block-end: 0;
+  }
+}
+
+@theme {
+  /*
+    Tailwind v3 line-heights. v4 sets them as unitless ratios, which a child
+    with its own font-size (text-[10px] inside text-xs) recomputes against that
+    size; v3's absolute values were inherited as is. Restoring them keeps every
+    such child, and the layout around it, at its v3 height.
+  */
+  --text-xs--line-height: 1rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl--line-height: 2.5rem;
+  --text-5xl--line-height: 1;
+  --text-6xl--line-height: 1;
+  --text-7xl--line-height: 1;
+  --text-8xl--line-height: 1;
+  --text-9xl--line-height: 1;
+
+  /*
+    The v3 palette for the shades this UI uses. v4 redefined the default
+    palette in OKLCH with slightly different values; these keep every colour
+    exactly as it rendered under v3. Generated from tailwindcss@3 colors.
+  */
+  --color-amber-300: #fcd34d;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-cyan-300: #67e8f9;
+  --color-cyan-400: #22d3ee;
+  --color-cyan-500: #06b6d4;
+  --color-cyan-600: #0891b2;
+  --color-emerald-300: #6ee7b7;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  --color-gray-200: #e5e7eb;
+  --color-green-400: #4ade80;
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+  --color-indigo-500: #6366f1;
+  --color-orange-300: #fdba74;
+  --color-orange-400: #fb923c;
+  --color-orange-500: #f97316;
+  --color-orange-600: #ea580c;
+  --color-purple-400: #c084fc;
+  --color-purple-500: #a855f7;
+  --color-purple-600: #9333ea;
+  --color-red-300: #fca5a5;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-sky-500: #0ea5e9;
+  --color-slate-300: #cbd5e1;
+  --color-slate-600: #475569;
+  --color-violet-500: #8b5cf6;
+  --color-yellow-400: #facc15;
+  --color-yellow-500: #eab308;
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --animate-fade-in-up: fade-in-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-shimmer: shimmer 1.8s ease-in-out infinite;
+  --animate-glow-pulse: glow-pulse 3s ease-in-out infinite;
+  --animate-status-ping: status-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility glass-surface {
+  /* Glass surface — the core aerospace panel */
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    border-color: var(--glass-hover-border);
+    box-shadow: var(--glass-hover-shadow);
+  }
+}
+
+@utility skeleton-shimmer {
+  /* Shimmer skeleton replacement */
+  background: linear-gradient(
+    90deg,
+    hsl(var(--secondary)) 25%,
+    hsl(var(--secondary) / 0.5) 50%,
+    hsl(var(--secondary)) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+@utility status-dot {
+  /* Status indicator with ping ring */
+  @apply relative;
+  &::after {
+    content: '';
+    @apply absolute inset-0 rounded-full;
+    background: inherit;
+    animation: status-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+}
+
+@utility progress-glow {
+  /* Animated progress bar */
+  transform-origin: left;
+  animation: bar-fill 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@utility page-enter {
+  /* Page entrance animation */
+  animation: fade-in-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@utility stagger-child {
+  /* Stagger children — set --stagger-index via style */
+  animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--stagger-index, 0) * 60ms);
+}
+
+@utility btn-press {
+  /* Button micro-interaction */
+  @apply transition-all duration-150;
+  &:active {
+    transform: scale(0.97);
+  }
+}
+
+@utility focus-ring {
+  /* Focus ring animation */
+  @apply transition-all duration-200;
+  &:focus {
+    @apply outline-hidden ring-2 ring-primary/40 ring-offset-2 ring-offset-background;
+  }
+}
+
+@utility glow-emerald {
+  /* Glow variants for progress bars */
+  box-shadow:
+    0 0 8px rgba(16, 185, 129, 0.4),
+    0 0 20px rgba(16, 185, 129, 0.15);
+}
+
+@utility glow-yellow {
+  box-shadow:
+    0 0 8px rgba(234, 179, 8, 0.4),
+    0 0 20px rgba(234, 179, 8, 0.15);
+}
+
+@utility glow-destructive {
+  box-shadow:
+    0 0 8px rgba(239, 68, 68, 0.4),
+    0 0 20px rgba(239, 68, 68, 0.15);
+}
+
+@utility glow-primary {
+  box-shadow:
+    0 0 8px rgba(59, 130, 246, 0.4),
+    0 0 20px rgba(59, 130, 246, 0.15);
+}
+
+@utility row-hover {
+  /* Table row hover slide */
+  @apply transition-colors duration-150;
+  /* Highlight rows on hover with colour only — never move/scale data that is
+     being read (no transform). */
+  &:hover {
+    @apply bg-muted/40;
+  }
+}
+
+@utility ambient-glow {
+  /* Ambient background glow */
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    rgba(59, 130, 246, 0.08) 0%,
+    transparent 70%
+  );
+}
+
+@utility chart-tooltip {
+  /* Chart tooltip glass */
+  /* Theme-aware: was a hardcoded dark rgba that rendered a dark tooltip on the
+       light theme. Use the same tokens as the recharts TOOLTIP_STYLE. */
+  background: var(--tooltip-bg) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid var(--tooltip-border) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--tooltip-shadow) !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+@utility custom-scrollbar {
+  /* Scrollbar styling */
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: hsl(var(--secondary));
+    border-radius: 2px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.3);
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -96,174 +394,64 @@
   }
 }
 
-/* ── Keyframes ─────────────────────────────────────────────── */
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-@keyframes glow-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
-}
-
-@keyframes status-ping {
-  0% { transform: scale(1); opacity: 0.8; }
-  75% { transform: scale(2.5); opacity: 0; }
-  100% { transform: scale(2.5); opacity: 0; }
-}
-
-@keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes bar-fill {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
-}
-
-/* ── Utility Classes ───────────────────────────────────────── */
-
 @layer utilities {
-  /* Glass surface — the core aerospace panel */
-  .glass-surface {
-    background: var(--glass-bg);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid var(--glass-border);
-    box-shadow: var(--glass-shadow);
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  /* ── Keyframes ─────────────────────────────────────────────── */
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
   }
 
-  .glass-surface:hover {
-    border-color: var(--glass-hover-border);
-    box-shadow: var(--glass-hover-shadow);
+  @keyframes glow-pulse {
+    0%,
+    100% {
+      opacity: 0.4;
+    }
+    50% {
+      opacity: 1;
+    }
   }
 
-  /* Shimmer skeleton replacement */
-  .skeleton-shimmer {
-    background: linear-gradient(
-      90deg,
-      hsl(var(--secondary)) 25%,
-      hsl(var(--secondary) / 0.5) 50%,
-      hsl(var(--secondary)) 75%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.8s ease-in-out infinite;
+  @keyframes status-ping {
+    0% {
+      transform: scale(1);
+      opacity: 0.8;
+    }
+    75% {
+      transform: scale(2.5);
+      opacity: 0;
+    }
+    100% {
+      transform: scale(2.5);
+      opacity: 0;
+    }
   }
 
-  /* Status indicator with ping ring */
-  .status-dot {
-    @apply relative;
-  }
-  .status-dot::after {
-    content: '';
-    @apply absolute inset-0 rounded-full;
-    background: inherit;
-    animation: status-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-  }
-
-  /* Animated progress bar */
-  .progress-glow {
-    transform-origin: left;
-    animation: bar-fill 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
-  /* Page entrance animation */
-  .page-enter {
-    animation: fade-in-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  @keyframes bar-fill {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
   }
 
-  /* Stagger children — set --stagger-index via style */
-  .stagger-child {
-    animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-    animation-delay: calc(var(--stagger-index, 0) * 60ms);
-  }
-
-  /* Button micro-interaction */
-  .btn-press {
-    @apply transition-all duration-150;
-  }
-  .btn-press:active {
-    transform: scale(0.97);
-  }
-
-  /* Focus ring animation */
-  .focus-ring {
-    @apply transition-all duration-200;
-  }
-  .focus-ring:focus {
-    @apply outline-none ring-2 ring-primary/40 ring-offset-2 ring-offset-background;
-  }
-
-  /* Glow variants for progress bars */
-  .glow-emerald {
-    box-shadow: 0 0 8px rgba(16, 185, 129, 0.4), 0 0 20px rgba(16, 185, 129, 0.15);
-  }
-  .glow-yellow {
-    box-shadow: 0 0 8px rgba(234, 179, 8, 0.4), 0 0 20px rgba(234, 179, 8, 0.15);
-  }
-  .glow-destructive {
-    box-shadow: 0 0 8px rgba(239, 68, 68, 0.4), 0 0 20px rgba(239, 68, 68, 0.15);
-  }
-  .glow-primary {
-    box-shadow: 0 0 8px rgba(59, 130, 246, 0.4), 0 0 20px rgba(59, 130, 246, 0.15);
-  }
-
-  /* Table row hover slide */
-  .row-hover {
-    @apply transition-colors duration-150;
-  }
-  /* Highlight rows on hover with colour only — never move/scale data that is
-     being read (no transform). */
-  .row-hover:hover {
-    @apply bg-muted/40;
-  }
-
-  /* Ambient background glow */
-  .ambient-glow {
-    background: radial-gradient(
-      ellipse at 50% 40%,
-      rgba(59, 130, 246, 0.08) 0%,
-      transparent 70%
-    );
-  }
-
-  /* Chart tooltip glass */
-  .chart-tooltip {
-    /* Theme-aware: was a hardcoded dark rgba that rendered a dark tooltip on the
-       light theme. Use the same tokens as the recharts TOOLTIP_STYLE. */
-    background: var(--tooltip-bg) !important;
-    -webkit-backdrop-filter: blur(12px) !important;
-    backdrop-filter: blur(12px) !important;
-    border: 1px solid var(--tooltip-border) !important;
-    border-radius: 8px !important;
-    box-shadow: var(--tooltip-shadow) !important;
-    font-variant-numeric: tabular-nums !important;
-  }
-
-  /* Scrollbar styling */
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 4px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: hsl(var(--secondary));
-    border-radius: 2px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground) / 0.3);
-  }
+  /* ── Utility Classes ───────────────────────────────────────── */
 }
 
 /* ── Reduced motion ────────────────────────────────────────────

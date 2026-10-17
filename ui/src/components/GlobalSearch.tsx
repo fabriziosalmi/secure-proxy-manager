@@ -182,7 +182,7 @@ export function GlobalSearch() {
             onKeyDown={onKeyDown}
             placeholder="Search IPs, domains, logs, pages..."
             aria-label="Search IPs, domains, logs, pages"
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 outline-none"
+            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 outline-hidden"
           />
           {loading && (
             <div

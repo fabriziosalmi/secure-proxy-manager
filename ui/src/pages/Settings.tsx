@@ -184,7 +184,7 @@ export function Settings() {
     <div className="space-y-6">
       <div className="flex flex-wrap gap-3 justify-between items-center">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Settings</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight bg-linear-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Settings</h1>
           <p className="text-sm text-muted-foreground">Configure proxy behavior and security</p>
         </div>
         <button
@@ -236,8 +236,8 @@ export function Settings() {
 
       {/* Setting cards flow into two columns on wide screens to cut scrolling;
           break-inside-avoid keeps each card whole. */}
-      <div className="columns-1 xl:columns-2 xl:gap-6 [&>*]:mb-6 [&>*]:break-inside-avoid">
-        <Card id="sec-proxy" className="bg-transparent scroll-mt-24">
+      <div className="columns-1 xl:columns-2 xl:gap-6 *:mb-6 *:break-inside-avoid">
+        <Card id="sec-proxy" className="scroll-mt-24">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Network className="w-5 h-5 text-primary" />
@@ -255,7 +255,7 @@ export function Settings() {
                   name="proxy_port"
                   value={formData.proxy_port || 3128}
                   onChange={handleChange}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                 />
               </div>
               <div className="space-y-2">
@@ -266,7 +266,7 @@ export function Settings() {
                   name="cache_size"
                   value={formData.cache_size || 1000}
                   onChange={handleChange}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                 />
               </div>
               <div className="space-y-2">
@@ -277,7 +277,7 @@ export function Settings() {
                   name="memory_cache"
                   value={formData.memory_cache || 256}
                   onChange={handleChange}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                 />
               </div>
             </div>
@@ -289,7 +289,7 @@ export function Settings() {
                 name="allowed_networks"
                 value={formData.allowed_networks || '10.0.0.0/8 172.16.0.0/12 192.168.0.0/16'}
                 onChange={handleChange}
-                className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
               />
               <p className="text-xs text-muted-foreground">Space-separated list of CIDR subnets allowed to use the proxy.</p>
             </div>
@@ -302,7 +302,7 @@ export function Settings() {
                 value={formData.extra_ssl_ports || ''}
                 onChange={handleChange}
                 placeholder="8006 9090 8443"
-                className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
               />
               <p className="text-xs text-muted-foreground">Space-separated ports for HTTPS CONNECT (e.g. Proxmox 8006, Grafana 3000). Requires proxy restart.</p>
             </div>
@@ -344,12 +344,12 @@ export function Settings() {
                 <div className="flex-1 space-y-1">
                   <label htmlFor="tailscale_auth_key" className="text-[10px] text-muted-foreground">Auth Key</label>
                   <input type="password" id="tailscale_auth_key" name="tailscale_auth_key" value={formData.tailscale_auth_key || ''} onChange={handleChange} placeholder="tskey-auth-..."
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
+                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
                 <div className="flex-1 space-y-1">
                   <label htmlFor="tailscale_hostname" className="text-[10px] text-muted-foreground">Hostname</label>
                   <input type="text" id="tailscale_hostname" name="tailscale_hostname" value={formData.tailscale_hostname || 'secure-proxy'} onChange={handleChange}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
+                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
               </div>
             )}
@@ -359,19 +359,19 @@ export function Settings() {
                 <div className="flex-1 space-y-1">
                   <label htmlFor="ddns_provider" className="text-[10px] text-muted-foreground">Provider</label>
                   <select id="ddns_provider" name="ddns_provider" value={formData.ddns_provider || 'cloudflare'} onChange={handleChange}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all">
+                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all">
                     <option value="cloudflare">Cloudflare</option><option value="duckdns">DuckDNS</option><option value="noip">No-IP</option><option value="custom">Custom</option>
                   </select>
                 </div>
                 <div className="flex-1 space-y-1">
                   <label htmlFor="ddns_domain" className="text-[10px] text-muted-foreground">Domain</label>
                   <input type="text" id="ddns_domain" name="ddns_domain" value={formData.ddns_domain || ''} onChange={handleChange} placeholder="proxy.example.com"
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
+                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
                 <div className="flex-1 space-y-1">
                   <label htmlFor="ddns_token" className="text-[10px] text-muted-foreground">Token</label>
                   <input type="password" id="ddns_token" name="ddns_token" value={formData.ddns_token || ''} onChange={handleChange}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
+                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
               </div>
             )}
@@ -405,7 +405,7 @@ export function Settings() {
               <label htmlFor="cache_bypass_domains" className="text-[10px] text-muted-foreground">Cache Bypass Domains (comma-separated)</label>
               <input type="text" id="cache_bypass_domains" name="cache_bypass_domains" value={formData.cache_bypass_domains || ''} onChange={handleChange}
                 placeholder="banking.com, api.internal.local"
-                className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-hidden focus:ring-1 focus:ring-primary" />
             </div>
           </CardContent>
         </Card>
@@ -413,7 +413,7 @@ export function Settings() {
         {/* Client Setup — how to connect devices */}
         <ClientSetup />
 
-        <Card id="sec-notifications" className="bg-transparent scroll-mt-24">
+        <Card id="sec-notifications" className="scroll-mt-24">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Bell className="w-5 h-5 text-orange-500" />
@@ -450,7 +450,7 @@ export function Settings() {
                           value={formData.telegram_bot_token || ''}
                           onChange={handleChange}
                           placeholder="Bot Token (e.g. 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                         />
                         <input 
                           type="text" 
@@ -458,7 +458,7 @@ export function Settings() {
                           value={formData.telegram_chat_id || ''}
                           onChange={handleChange}
                           placeholder="Chat ID (e.g. -1001234567890)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                         />
                       </div>
                     </div>
@@ -473,7 +473,7 @@ export function Settings() {
                           value={formData.gotify_url || ''}
                           onChange={handleChange}
                           placeholder="Gotify URL (e.g. https://gotify.yourdomain.com)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                         />
                         <input 
                           type="text" 
@@ -481,7 +481,7 @@ export function Settings() {
                           value={formData.gotify_token || ''}
                           onChange={handleChange}
                           placeholder="App Token"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                         />
                       </div>
                     </div>
@@ -496,7 +496,7 @@ export function Settings() {
                           value={formData.ntfy_url || ''}
                           onChange={handleChange}
                           placeholder="Server URL (e.g. https://ntfy.sh or https://ntfy.yourdomain.com)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                         />
                         <input
                           type="text"
@@ -504,7 +504,7 @@ export function Settings() {
                           value={formData.ntfy_topic || ''}
                           onChange={handleChange}
                           placeholder="Topic (e.g. proxy-alerts)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                         />
                       </div>
                     </div>
@@ -518,7 +518,7 @@ export function Settings() {
                         value={formData.teams_webhook_url || ''}
                         onChange={handleChange}
                         placeholder="Teams Webhook URL"
-                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                       />
                     </div>
 
@@ -531,7 +531,7 @@ export function Settings() {
                         value={formData.webhook_url || ''}
                         onChange={handleChange}
                         placeholder="https://your-webhook-endpoint.com/receive"
-                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                       />
                     </div>
                   </div>
@@ -541,7 +541,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        <Card id="sec-dns-waf" className="bg-transparent scroll-mt-24">
+        <Card id="sec-dns-waf" className="scroll-mt-24">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Shield className="w-5 h-5 text-cyan-500" />
@@ -701,7 +701,7 @@ export function Settings() {
                   value={formData.log_retention_days || '30'}
                   onChange={handleChange}
                   min={1} max={365}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                 />
                 <p className="text-[10px] text-muted-foreground">Logs older than this are automatically deleted.</p>
               </div>
@@ -714,7 +714,7 @@ export function Settings() {
                   value={formData.waf_block_threshold || '10'}
                   onChange={handleChange}
                   min={1} max={100}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
                 />
                 <p className="text-[10px] text-muted-foreground">Anomaly score needed to block. Lower = stricter (default: 10).</p>
               </div>
@@ -739,7 +739,7 @@ export function Settings() {
                 <div className="mt-2 pt-2 border-t border-border/50">
                   <label htmlFor="auto_refresh_hours" className="text-xs text-muted-foreground">Refresh Interval (hours)</label>
                   <input type="number" id="auto_refresh_hours" name="auto_refresh_hours" value={formData.auto_refresh_hours || '24'} onChange={handleChange}
-                    min={1} max={168} className="w-full mt-1 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+                    min={1} max={168} className="w-full mt-1 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-hidden focus:ring-1 focus:ring-primary" />
                   <p className="text-[10px] text-muted-foreground mt-1">Default: 24h. Lists: Firehol L1, Spamhaus DROP, fabriziosalmi/blacklists.</p>
                 </div>
               )}
@@ -778,7 +778,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        <Card id="sec-access" className="bg-transparent scroll-mt-24">
+        <Card id="sec-access" className="scroll-mt-24">
           <CardHeader className="p-4 pb-2">
             <div className="flex items-center space-x-2">
               <Shield className="w-4 h-4 text-indigo-500" />
@@ -840,12 +840,12 @@ export function Settings() {
                 <div className="flex-1 space-y-1">
                   <label htmlFor="bandwidth_limit_mbps" className="text-[10px] text-muted-foreground">Total (Mbps)</label>
                   <input type="number" id="bandwidth_limit_mbps" name="bandwidth_limit_mbps" value={formData.bandwidth_limit_mbps || '10'} onChange={handleChange}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
+                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
                 <div className="flex-1 space-y-1">
                   <label htmlFor="bandwidth_limit_per_user_kbps" className="text-[10px] text-muted-foreground">Per-User (Kbps)</label>
                   <input type="number" id="bandwidth_limit_per_user_kbps" name="bandwidth_limit_per_user_kbps" value={formData.bandwidth_limit_per_user_kbps || '500'} onChange={handleChange}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
+                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
               </div>
             )}
@@ -854,12 +854,12 @@ export function Settings() {
                 <div className="flex-1 space-y-1">
                   <label htmlFor="time_restriction_start" className="text-[10px] text-muted-foreground">Start</label>
                   <input type="time" id="time_restriction_start" name="time_restriction_start" value={formData.time_restriction_start || '09:00'} onChange={handleChange}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
+                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
                 <div className="flex-1 space-y-1">
                   <label htmlFor="time_restriction_end" className="text-[10px] text-muted-foreground">End</label>
                   <input type="time" id="time_restriction_end" name="time_restriction_end" value={formData.time_restriction_end || '17:00'} onChange={handleChange}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
+                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
                 </div>
               </div>
             )}
@@ -867,7 +867,7 @@ export function Settings() {
               <div className="mt-3 p-3 border border-border/30 rounded-lg bg-secondary/20">
                 <label htmlFor="auth_method" className="text-[10px] text-muted-foreground">Auth Method</label>
                 <select id="auth_method" name="auth_method" value={formData.auth_method || 'basic'} onChange={handleChange}
-                  className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary">
+                  className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-hidden focus:ring-1 focus:ring-primary">
                   <option value="basic">Basic</option>
                   <option value="digest">Digest</option>
                 </select>
@@ -876,7 +876,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        <Card id="sec-certificates" className="bg-transparent scroll-mt-24">
+        <Card id="sec-certificates" className="scroll-mt-24">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Key className="w-5 h-5 text-yellow-500" />
@@ -949,7 +949,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        <Card id="sec-security" className="bg-transparent scroll-mt-24">
+        <Card id="sec-security" className="scroll-mt-24">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <Shield className="w-5 h-5 text-emerald-500" />
@@ -996,7 +996,7 @@ export function Settings() {
                       value={formData.waf_custom_rules || '# Example: block specific keyword\n# \\b(secret_project_x)\\b\n'}
                       onChange={handleChange}
                       rows={4}
-                      className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all font-mono text-xs"
+                      className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all font-mono text-xs"
                     />
                   </div>
                 )}
@@ -1031,7 +1031,7 @@ export function Settings() {
               <div className="mt-3 p-3 border border-border/30 rounded-lg bg-secondary/20">
                 <label htmlFor="blocked_file_types" className="text-[10px] text-muted-foreground">Blocked Extensions</label>
                 <input type="text" id="blocked_file_types" name="blocked_file_types" value={formData.blocked_file_types || 'exe,bat,cmd,dll,js'} onChange={handleChange}
-                  placeholder="exe,bat,mp4,zip" className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                  placeholder="exe,bat,mp4,zip" className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-hidden focus:ring-1 focus:ring-primary" />
               </div>
             )}
           </CardContent>
@@ -1044,7 +1044,7 @@ export function Settings() {
         </div>
 
         {/* Appearance Card */}
-        <Card id="sec-appearance" className="bg-transparent scroll-mt-24">
+        <Card id="sec-appearance" className="scroll-mt-24">
           <CardHeader>
             <div className="flex items-center space-x-2">
               <SunMoon className="w-5 h-5 text-violet-500" />

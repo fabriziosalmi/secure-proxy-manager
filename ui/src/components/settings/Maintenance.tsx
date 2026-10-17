@@ -67,7 +67,7 @@ export function Maintenance() {
   const handleReloadDns = () => action('Reload DNS', () => api.post('maintenance/reload-dns'));
 
   return (
-    <Card className="bg-card/50">
+    <Card>
       {dialog}
       <CardHeader className="p-4 pb-2">
         <div className="flex items-center gap-2">

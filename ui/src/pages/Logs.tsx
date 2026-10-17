@@ -189,7 +189,7 @@ export function Logs() {
     <div className="space-y-4">
       <div className="flex flex-wrap gap-3 justify-between items-center">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Access Logs</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight bg-linear-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Access Logs</h1>
           <p className="text-sm text-muted-foreground">Monitor real-time proxy traffic</p>
         </div>
         <div className="flex items-center gap-2">
@@ -307,7 +307,7 @@ export function Logs() {
               placeholder="Search by IP, domain, or status..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-secondary/30 border border-border/50 rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+              className="w-full bg-secondary/30 border border-border/50 rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
             />
           </div>
           <div className="ml-auto text-sm text-muted-foreground font-mono">
@@ -317,7 +317,7 @@ export function Logs() {
         <CardContent className="p-0">
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
             <table className="w-full text-sm text-left relative">
-              <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-secondary/30 border-b border-border/50 sticky top-0 -webkit-backdrop-blur-sm backdrop-blur-sm z-10">
+              <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-secondary/30 border-b border-border/50 sticky top-0 -webkit-backdrop-blur-sm backdrop-blur-xs z-10">
                 <tr>
                   <th scope="col" className="px-6 py-3 font-medium">Timestamp</th>
                   <th scope="col" className="px-6 py-3 font-medium">Client IP</th>

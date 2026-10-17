@@ -110,7 +110,7 @@ export function Audit() {
           onChange={(e) => setSearch(e.target.value)}
           aria-label="Filter audit entries on this page"
           placeholder="Filter this page by user, action, target…"
-          className="w-full pl-9 pr-3 py-2 rounded-lg bg-secondary/40 border border-border/70 text-sm focus:outline-none focus:border-cyan-500/40 focus:bg-secondary/60 transition-colors"
+          className="w-full pl-9 pr-3 py-2 rounded-lg bg-secondary/40 border border-border/70 text-sm focus:outline-hidden focus:border-cyan-500/40 focus:bg-secondary/60 transition-colors"
         />
       </div>
 
@@ -155,7 +155,7 @@ export function Audit() {
                             {label}
                           </span>
                         </td>
-                        <td className="px-5 py-3 font-mono text-xs text-muted-foreground max-w-[22rem] truncate" title={e.target ?? ''}>
+                        <td className="px-5 py-3 font-mono text-xs text-muted-foreground max-w-88 truncate" title={e.target ?? ''}>
                           {e.target ? (targetIsIp ? <IpBadge ip={e.target} /> : e.target) : <span className="text-muted-foreground/50">—</span>}
                         </td>
                         <td className="px-5 py-3 text-xs text-muted-foreground max-w-[24rem] truncate" title={e.details ?? ''}>

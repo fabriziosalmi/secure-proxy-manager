@@ -30,7 +30,7 @@ export function Toggle({ checked, onChange, label, name, size = 'sm', className 
       data-name={name}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex ${track} shrink-0 cursor-pointer items-center rounded-full transition-colors
-        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background
+        focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background
         ${checked ? 'bg-primary' : 'bg-secondary'} ${className ?? ''}`}
     >
       <span

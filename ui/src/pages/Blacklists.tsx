@@ -307,7 +307,7 @@ export function Blacklists() {
     <div className="space-y-6">
       <div className="flex flex-wrap gap-3 justify-between items-center">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Blacklists</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight bg-linear-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Blacklists</h1>
           <p className="text-muted-foreground">Manage IP and Domain blocking rules</p>
         </div>
         <div className="flex gap-2">
@@ -376,19 +376,19 @@ export function Blacklists() {
       </div>
 
       {isAdding && (
-        <Card className="border-primary/30">
+        <Card>
           <CardContent className="pt-6">
             <form onSubmit={handleAdd} className="flex gap-4 items-end">
               <div className="flex-1 space-y-2">
                 <label htmlFor="bl-new-item" className="text-sm font-medium">{activeTab === 'ip' ? 'IP Address' : activeTab === 'domain' ? 'Domain' : 'IP / CIDR Network'}</label>
                 <input id="bl-new-item" type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)}
                   placeholder={activeTab === 'ip' ? 'e.g. 192.168.1.100' : activeTab === 'domain' ? 'e.g. bad-domain.com' : activeTab === 'domain-whitelist' ? 'e.g. ads.google.com or .*\\.example\\.com' : 'e.g. 192.168.0.0/16'}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
+                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
               </div>
               <div className="flex-1 space-y-2">
                 <label htmlFor="bl-new-desc" className="text-sm font-medium">Description (Optional)</label>
                 <input id="bl-new-desc" type="text" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Why is this blocked?"
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" />
+                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" />
               </div>
               <button type="submit" disabled={addMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors h-10 disabled:opacity-50 disabled:cursor-not-allowed">{addMutation.isPending ? 'Saving...' : 'Save Rule'}</button>
             </form>
@@ -397,14 +397,14 @@ export function Blacklists() {
       )}
 
       {isBulkAdding && (
-        <Card className="border-primary/30">
+        <Card>
           <CardContent className="pt-6">
             <form onSubmit={handleBulkAdd} className="space-y-3">
               <div className="space-y-2">
                 <label htmlFor="bl-bulk-text" className="text-sm font-medium">{activeTab === 'domain' ? 'Domains' : 'IP Addresses / CIDR Networks'} — one per line</label>
                 <textarea id="bl-bulk-text" value={bulkText} onChange={(e) => setBulkText(e.target.value)}
                   placeholder={activeTab === 'domain' ? 'bad-domain.com\nanother-domain.net' : '192.168.1.100\n10.0.0.0/8'}
-                  rows={6} className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary resize-y" required />
+                  rows={6} className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm font-mono focus:outline-hidden focus:ring-1 focus:ring-primary resize-y" required />
               </div>
               <p className="text-xs text-muted-foreground">Lines starting with # are ignored. Invalid entries are skipped.</p>
               <div className="flex gap-2">
@@ -417,13 +417,13 @@ export function Blacklists() {
       )}
 
       {isImporting && (
-        <Card className="border-border/70">
+        <Card>
           <CardContent className="pt-6">
             <form onSubmit={handleImport} className="flex gap-4 items-end">
               <div className="flex-1 space-y-2">
                 <label htmlFor="bl-import-url" className="text-sm font-medium">List URL (e.g. GitHub raw file)</label>
                 <input id="bl-import-url" type="url" value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="https://raw.githubusercontent.com/..."
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
+                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
               </div>
               <button type="submit" disabled={submitting === 'url'} className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10 disabled:opacity-50 disabled:cursor-not-allowed">{submitting === 'url' ? 'Importing…' : 'Import List'}</button>
             </form>
@@ -435,7 +435,7 @@ export function Blacklists() {
       {isPopularLists && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           {(activeTab === 'ip' ? popularIpLists : popularDomainLists).map((list, idx) => (
-            <Card key={idx} className="border-primary/20 hover:border-primary/40 transition-colors">
+            <Card key={idx} className="hover:border-primary/40 transition-colors">
               <CardContent className="p-4 flex flex-col h-full justify-between">
                 <div>
                   <div className="flex items-center space-x-2 mb-2">
@@ -455,13 +455,13 @@ export function Blacklists() {
       )}
 
       {isGeoBlocking && activeTab === 'ip' && (
-        <Card className="border-border/70">
+        <Card>
           <CardContent className="pt-6">
             <form onSubmit={handleGeoBlock} className="flex gap-4 items-end">
               <div className="flex-1 space-y-2">
                 <label htmlFor="bl-geo-country" className="text-sm font-medium">Country Codes (comma or space separated)</label>
                 <input id="bl-geo-country" type="text" value={geoCountry} onChange={(e) => setGeoCountry(e.target.value.toUpperCase())} placeholder="e.g. CN, RU, KP"
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
+                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
               </div>
               <button type="submit" disabled={submitting === 'geo'} className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10 disabled:opacity-50 disabled:cursor-not-allowed">{submitting === 'geo' ? 'Importing…' : 'Download & Block IPs'}</button>
             </form>
@@ -473,25 +473,25 @@ export function Blacklists() {
       <div role="tablist" aria-label="Blacklist categories" className="flex space-x-1 glass-surface p-1 rounded-lg w-fit">
         <button role="tab" aria-selected={activeTab === 'ip'} aria-controls="bl-panel-ip" id="bl-tab-ip" tabIndex={activeTab === 'ip' ? 0 : -1} type="button"
           onClick={() => setActiveTab('ip')}
-          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'ip' ? 'bg-secondary text-foreground shadow-sm border border-border/30' : 'text-muted-foreground hover:text-foreground'}`}>
+          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'ip' ? 'bg-secondary text-foreground shadow-xs border border-border/30' : 'text-muted-foreground hover:text-foreground'}`}>
           <Server className="w-4 h-4 mr-2" aria-hidden="true" />IP Addresses
           <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{ipResult?.total ?? 0}</span>
         </button>
         <button role="tab" aria-selected={activeTab === 'domain'} aria-controls="bl-panel-domain" id="bl-tab-domain" tabIndex={activeTab === 'domain' ? 0 : -1} type="button"
           onClick={() => setActiveTab('domain')}
-          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain' ? 'bg-secondary text-foreground shadow-sm border border-border/30' : 'text-muted-foreground hover:text-foreground'}`}>
+          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain' ? 'bg-secondary text-foreground shadow-xs border border-border/30' : 'text-muted-foreground hover:text-foreground'}`}>
           <Globe className="w-4 h-4 mr-2" aria-hidden="true" />Domains
           <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{domainResult?.total ?? 0}</span>
         </button>
         <button role="tab" aria-selected={activeTab === 'whitelist'} aria-controls="bl-panel-whitelist" id="bl-tab-whitelist" tabIndex={activeTab === 'whitelist' ? 0 : -1} type="button"
           onClick={() => { setActiveTab('whitelist'); closeAllPanels(); resetPage(); }}
-          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/10 dark:bg-green-500/20 text-green-600 dark:text-green-400 shadow-sm' : 'text-muted-foreground hover:text-green-600 dark:hover:text-green-400'}`}>
+          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/10 dark:bg-green-500/20 text-green-600 dark:text-green-400 shadow-xs' : 'text-muted-foreground hover:text-green-600 dark:hover:text-green-400'}`}>
           <CheckCircle className="w-4 h-4 mr-2" aria-hidden="true" />IP Whitelist
           <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{whitelistResult?.total ?? 0}</span>
         </button>
         <button role="tab" aria-selected={activeTab === 'domain-whitelist'} aria-controls="bl-panel-dwhitelist" id="bl-tab-dwhitelist" tabIndex={activeTab === 'domain-whitelist' ? 0 : -1} type="button"
           onClick={() => { setActiveTab('domain-whitelist'); closeAllPanels(); resetPage(); }}
-          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain-whitelist' ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400'}`}>
+          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain-whitelist' ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shadow-xs' : 'text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400'}`}>
           <ShieldCheck className="w-4 h-4 mr-2" aria-hidden="true" />Domain Whitelist
           <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{domainWhitelistResult?.total ?? 0}</span>
         </button>
@@ -506,7 +506,7 @@ export function Blacklists() {
             placeholder={`Search ${activeTab === 'domain' ? 'domains' : activeTab === 'domain-whitelist' ? 'whitelisted domains' : 'IPs'}...`}
             value={searchTerm}
             onChange={(e) => { setSearchTerm(e.target.value); resetPage(); }}
-            className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all pl-9"
+            className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all pl-9"
           />
           <Ban className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         </div>
@@ -519,7 +519,7 @@ export function Blacklists() {
         role="tabpanel"
         id={`bl-panel-${activeTab === 'domain-whitelist' ? 'dwhitelist' : activeTab}`}
         aria-labelledby={`bl-tab-${activeTab === 'domain-whitelist' ? 'dwhitelist' : activeTab}`}
-        className="bg-transparent"
+       
       >
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm text-left">

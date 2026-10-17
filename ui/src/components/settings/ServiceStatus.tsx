@@ -27,7 +27,7 @@ function Tile({ icon: Icon, label, value, tone = '', accent = false }: {
   icon: typeof Activity; label: string; value: ReactNode; tone?: string; accent?: boolean;
 }) {
   return (
-    <div className={`rounded-lg border px-3 py-2.5 ${accent ? 'border-cyan-500/20 bg-cyan-500/[0.04]' : 'border-border/50 bg-secondary/30'}`}>
+    <div className={`rounded-lg border px-3 py-2.5 ${accent ? 'border-cyan-500/20 bg-cyan-500/4' : 'border-border/50 bg-secondary/30'}`}>
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
         <Icon className="w-3 h-3" />
         {label}
@@ -50,7 +50,7 @@ export function ServiceStatus() {
   const hitPct = typeof hit === 'number' ? `${(hit <= 1 ? hit * 100 : hit).toFixed(1)}%` : '—';
 
   return (
-    <Card className="bg-transparent">
+    <Card>
       <CardContent className="p-4">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
           <div className="rounded-lg border border-border/50 bg-secondary/30 px-3 py-2.5">
