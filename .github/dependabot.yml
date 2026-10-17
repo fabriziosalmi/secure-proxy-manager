@@ -13,11 +13,27 @@ version: 2
 # compatibility (a Go major changes the import path outright). Docker and
 # github-actions stay grouped: a major there is a tag change that CI validates
 # end to end, and splitting it would only add noise.
+#
+# Playwright is pinned in three places that must share one minor version: the
+# browser image in tests/e2e/Dockerfile and @playwright/test in both
+# tests/e2e/package.json and ui/package.json (scripts/check-image-pins.sh
+# enforces it). Dependabot proposes them from two ecosystems in separate pull
+# requests and never covered tests/e2e/package.json, so every Playwright bump
+# it opened failed that check (#379 moved the image to 1.64.1, #381 moved ui to
+# 1.64.0). It ignores Playwright everywhere; bump all three in one commit.
+#
+# typescript majors are ignored too: 7.0 (#370) is a compiler rewrite that
+# fails the build, the E2E jobs and the scans. It is a migration to plan, not a
+# bump to merge.
 updates:
   - package-ecosystem: "npm"
     directory: "/ui"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "@playwright/test"
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       ui-dependencies:
         patterns:
@@ -83,6 +99,8 @@ updates:
       - "/tests/adversarial/attacker"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "*playwright*"
     groups:
       docker-dependencies:
         patterns:
