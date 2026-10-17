@@ -23,6 +23,8 @@ rc=0
 # version: #341 moved the image to v1.63.0 while tests/e2e/package.json stayed
 # pinned at 1.62.0, and every E2E test failed at 0ms — the suite never started.
 # ui/package.json carries the same library and must agree too.
+# Dependabot now ignores Playwright in all three places (.github/dependabot.yml);
+# this check is what keeps a manual bump honest.
 img_pw=$(sed -nE 's#^FROM[[:space:]]+mcr\.microsoft\.com/playwright:v([0-9]+\.[0-9]+)\.[0-9]+.*#\1#p' \
            tests/e2e/Dockerfile | head -1)
 e2e_pw=$(sed -nE 's#.*"@playwright/test"[[:space:]]*:[[:space:]]*"[^0-9]*([0-9]+\.[0-9]+)\..*#\1#p' \
