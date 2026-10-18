@@ -66,6 +66,9 @@ vulnerabilities:
   - id: CVE-2026-97031
     statement: "Go stdlib < 1.26.9 / 1.27.2 in the same four images; same, upstream rebuild required."
     expired_at: 2026-11-30
+  - id: CVE-2026-100349
+    statement: "kin-openapi v0.144.0 in grafana/grafana:13.2.4; fixed in 0.146.0, same."
+    expired_at: 2026-11-30
   - id: CVE-2026-100351
     statement: "github.com/getkin/kin-openapi v0.144.0 vendored in grafana/grafana:13.2.4; fixed in 0.147.0, no Grafana release carries it yet."
     expired_at: 2026-11-30
@@ -77,4 +80,10 @@ vulnerabilities:
     expired_at: 2026-11-30
   - id: CVE-2026-100354
     statement: "kin-openapi v0.144.0 in grafana/grafana:13.2.4; fixed in 0.149.0, same."
+    expired_at: 2026-11-30
+  # nginx:1.31.7-alpine — libexpat 2.8.5-r0 in the image as published. The UI
+  # image this project ships upgrades it at build time (ui/Dockerfile); the
+  # plain image is pulled as-is only by the test compose files.
+  - id: CVE-2026-77214
+    statement: "libexpat 2.8.5-r0 in nginx:1.31.7-alpine as published; ui/Dockerfile installs 2.9.0-r0, the plain image is test-only until nginx rebuilds it."
     expired_at: 2026-11-30

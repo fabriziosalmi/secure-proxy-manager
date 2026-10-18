@@ -27,7 +27,10 @@ FROM nginx:1.31.7-alpine@sha256:892bb2152464f0c5d8972593a5f5afaf8054552580b699d9
 # Where a package DOES carry security weight the version is asserted after
 # install instead: see proxy/Dockerfile, which fails the build if squid-openssl
 # is older than its CVE floor.
-RUN apk add --no-cache openssl && rm /etc/nginx/conf.d/default.conf
+# libexpat carries a version floor: nginx:1.31.7-alpine ships 2.8.5-r0
+# (CVE-2026-77214, HIGH) while Alpine 3.24 already has the fix, so the image is
+# upgraded at build time, and the build fails if the fixed package is gone.
+RUN apk add --no-cache openssl 'libexpat>=2.9.0-r0' && rm /etc/nginx/conf.d/default.conf
 
 COPY --from=frontend-builder /frontend/dist /usr/share/nginx/html
 COPY ./ui/nginx.conf.template            /etc/nginx/templates/default.conf.template
