@@ -64,19 +64,27 @@ connect-src 'self' ws: wss:
 
 ## Verifying release images
 
-Every published GHCR image is keyless-signed with cosign and ships an SBOM and
-SLSA build provenance attestation. Verify a pulled image came from this repo's
-CI before trusting it:
+Every published release image is keyless-signed with cosign by the release
+workflow, for a `vX.Y.Z` tag of this repository, after it has been scanned.
+Each image also carries a BuildKit SBOM and SLSA build provenance attestation.
+Verify an image before trusting it; the identity is anchored, so a signature
+made by any other workflow or on any other ref does not match:
 
 ```bash
 cosign verify \
-  --certificate-identity-regexp 'https://github.com/fabriziosalmi/secure-proxy-manager/.github/workflows/.+' \
+  --certificate-identity-regexp '^https://github\.com/fabriziosalmi/secure-proxy-manager/\.github/workflows/multi-arch\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:latest
+  ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.14.1
 
-# Inspect the attached SBOM / provenance:
-cosign download sbom ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:latest
+# The SBOM and provenance are BuildKit attestations (not cosign artefacts):
+docker buildx imagetools inspect ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.14.1 --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.14.1 --format '{{ json .Provenance }}'
 ```
+
+This needs cosign 3 or later: the release signs with cosign 3, and cosign 2
+reports "no signatures found" for these bundles. `deploy/install.sh` runs the
+same `cosign verify` on every image when cosign 3+ is installed, and stops if
+one fails.
 
 ## Security Advisories
 
@@ -94,6 +102,5 @@ Component-specific advisories and how SPM mitigates them — e.g. the Squid
 
 | Version | Status |
 |---------|--------|
-| 3.10.x | Current |
-| 3.9.x | Security fixes only |
-| < 3.9 | EOL |
+| 3.14.x | Current: security fixes are released here |
+| < 3.14 | Not supported: upgrade to the latest 3.14.x |
