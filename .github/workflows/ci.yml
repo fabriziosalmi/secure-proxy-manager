@@ -323,18 +323,28 @@ jobs:
           go-version: '1.27' # go-toolchain: images
           check-latest: true
           cache: false
+      # v1.1.4 panicked on the 1.27 toolchain ("unexpected expr:
+      # *ast.KeyValueExpr") and continue-on-error turned the crash into a green
+      # step: the scan did not run and nothing said so.
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
 
-      - name: Run govulncheck on backend-go
-        working-directory: backend-go
-        continue-on-error: true
-        run: govulncheck ./...
-
-      - name: Run govulncheck on waf-go
-        working-directory: waf-go
-        continue-on-error: true
-        run: govulncheck ./...
+      # Exit 3 is "vulnerabilities found": reported, not gated, for the reason
+      # above. Any other non-zero exit means the tool itself failed, and that
+      # fails the step instead of passing for a scan that never happened.
+      - name: Run govulncheck on backend-go and waf-go
+        run: |
+          rc=0
+          for m in backend-go waf-go; do
+            echo "── $m"
+            (cd "$m" && govulncheck ./...) && r=0 || r=$?
+            case "$r" in
+              0) ;;
+              3) echo "::warning title=govulncheck ($m)::known vulnerabilities reachable, see the log" ;;
+              *) echo "::error title=govulncheck ($m)::govulncheck failed with exit $r"; rc=1 ;;
+            esac
+          done
+          exit "$rc"
 
       - name: npm audit (UI)
         working-directory: ui
@@ -420,7 +430,12 @@ jobs:
           # Download the pinned release binary directly — the upstream install.sh
           # is flaky in CI (exits 1 after resolving the version).
           VER=0.69.3
+          # sha256 from trivy_0.69.3_checksums.txt, checked against the
+          # downloaded file on 2026-10-24. The scanner that gates every merge
+          # was run from an unverified download.
+          SHA256=1816b632dfe529869c740c0913e36bd1629cb7688bd5634f4a858c1d57c88b75
           curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${VER}/trivy_${VER}_Linux-64bit.tar.gz" -o /tmp/trivy.tgz
+          echo "${SHA256}  /tmp/trivy.tgz" | sha256sum -c -
           tar -xzf /tmp/trivy.tgz -C /tmp trivy
           sudo install -m 0755 /tmp/trivy /usr/local/bin/trivy
           trivy --version
@@ -532,8 +547,7 @@ jobs:
   # Runs the maintained Playwright suite (tests/e2e/selfhoster.spec.ts) against
   # the test stack (backend + web + mock-lists) via docker-compose.test.yml.
   # The suite is green (59/59); 1 retry tolerates the occasional flake from the
-  # serial / shared-DB design. (To make it a hard merge gate, also add
-  # "E2E UI (Playwright)" to the branch's required status checks.)
+  # serial / shared-DB design. It is a required status check on main.
   e2e-ui:
     name: E2E UI (Playwright)
     runs-on: ubuntu-latest
@@ -554,9 +568,8 @@ jobs:
   # Drives attacker traffic THROUGH the real forward proxy + WAF/ICAP in an
   # isolated sandbox and gates on false negatives/positives (issue #200, Phase 1).
   # run.sh prints the block-matrix + FP/FN report to the job log and tears the
-  # stack down on exit; a hard FN>0 or FP>0 fails the job. (To make it a hard
-  # merge gate, also add "Adversarial block-matrix (proxy + WAF)" to the
-  # branch's required status checks.)
+  # stack down on exit; a hard FN>0 or FP>0 fails the job. It is a required
+  # status check on main (ruleset "main").
   adversarial:
     name: Adversarial block-matrix (proxy + WAF)
     runs-on: ubuntu-latest
@@ -564,3 +577,70 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Block-matrix through proxy + WAF/ICAP
         run: bash tests/adversarial/run.sh
+
+  # ── 11b. Go vulnerabilities in the toolchain the images ship ──────────
+  # setup-go serves the latest patch release, so the scan above answers "is
+  # this source vulnerable on a current Go". The images are built by the
+  # golang builder pinned by digest in the Dockerfiles, which can lag: v3.14.1
+  # shipped go1.27.1 binaries while CI was on a newer patch. This runs
+  # govulncheck INSIDE that pinned builder, so the stdlib it reports is the one
+  # in the published binaries. Not a required check (a new stdlib advisory is
+  # fixed by a digest bump, not by the pull request it would block); it fails
+  # the nightly, which opens an issue.
+  govulncheck-image-toolchain:
+    name: Go vulnerabilities (image toolchain)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: govulncheck in the pinned golang builder
+        run: |
+          set -euo pipefail
+          img=$(sed -n 's/^FROM \(golang:[^ ]*\) AS builder$/\1/p' backend-go/Dockerfile)
+          [ -n "$img" ] && [ "$img" = "$(sed -n 's/^FROM \(golang:[^ ]*\) AS builder$/\1/p' waf-go/Dockerfile)" ] \
+            || { echo "::error::backend-go and waf-go must build with the same pinned golang image"; exit 1; }
+          echo "builder: $img"
+          docker run --rm -v "$PWD:/src:ro" -e GOCACHE=/tmp/gocache -e GOPATH=/tmp/gopath "$img" sh -euc '
+            go version
+            go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+            for m in backend-go waf-go; do echo "── $m"; (cd /src/$m && /tmp/gopath/bin/govulncheck ./...); done'
+
+  # ── 12. Nightly failure report ───────────────────────────────────────
+  # The scheduled run is the only CI that sees main after a Dependabot
+  # auto-merge (see the schedule comment above), and it failed every night from
+  # 2026-10-02 to 2026-10-24 with nothing to say so: GitHub mails only whoever
+  # last edited the cron, if their settings allow it. A red nightly now opens
+  # one issue, or comments on the one already open, so it is seen.
+  nightly-alert:
+    name: Report a failed nightly
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    needs: [build-ui, version-sync, build-backend, build-waf, test-backend, test-waf, lint-go, lint-shell,
+            lint-python, test-python, test-restore, test-squid-config, security-scan, licences, trivy-scan,
+            docker-build, check-urls, validate-compose, e2e, e2e-ui, adversarial, govulncheck-image-toolchain]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read # gh run view: which jobs failed
+      issues: write
+    steps:
+      - name: Open or update the nightly-failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          gh label create nightly-failure --color B60205 \
+            --description "The scheduled CI run on main failed" --force >/dev/null
+          failed=$(gh run view "${{ github.run_id }}" --json jobs \
+            --jq '[.jobs[] | select(.conclusion == "failure") | .name] | join(", ")')
+          body="Scheduled CI on main failed at ${SHA}.
+
+          Failed jobs: ${failed:-unknown}
+
+          Run: ${RUN_URL}"
+          existing=$(gh issue list --label nightly-failure --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "Nightly CI on main is failing" --label nightly-failure --body "$body"
+          fi

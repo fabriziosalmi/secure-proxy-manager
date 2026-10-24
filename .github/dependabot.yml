@@ -30,6 +30,11 @@ updates:
     directory: "/ui"
     schedule:
       interval: "weekly"
+    # A release must age a week before it is proposed: a hijacked or broken
+    # publish is usually caught and yanked within days. Security updates are
+    # not delayed by this.
+    cooldown:
+      default-days: 7
     ignore:
       - dependency-name: "@playwright/test"
       - dependency-name: "typescript"
@@ -46,6 +51,11 @@ updates:
     directory: "/backend-go"
     schedule:
       interval: "weekly"
+    # A release must age a week before it is proposed: a hijacked or broken
+    # publish is usually caught and yanked within days. Security updates are
+    # not delayed by this.
+    cooldown:
+      default-days: 7
     groups:
       backend-go-dependencies:
         patterns:
@@ -58,6 +68,11 @@ updates:
     directory: "/waf-go"
     schedule:
       interval: "weekly"
+    # A release must age a week before it is proposed: a hijacked or broken
+    # publish is usually caught and yanked within days. Security updates are
+    # not delayed by this.
+    cooldown:
+      default-days: 7
     groups:
       waf-go-dependencies:
         patterns:
@@ -99,6 +114,11 @@ updates:
       - "/tests/adversarial/attacker"
     schedule:
       interval: "weekly"
+    # A release must age a week before it is proposed: a hijacked or broken
+    # publish is usually caught and yanked within days. Security updates are
+    # not delayed by this.
+    cooldown:
+      default-days: 7
     ignore:
       - dependency-name: "*playwright*"
     groups:
@@ -110,6 +130,11 @@ updates:
     directory: "/docs"
     schedule:
       interval: "weekly"
+    # A release must age a week before it is proposed: a hijacked or broken
+    # publish is usually caught and yanked within days. Security updates are
+    # not delayed by this.
+    cooldown:
+      default-days: 7
     groups:
       docs-dependencies:
         patterns:
@@ -127,12 +152,22 @@ updates:
     directory: "/mcp"
     schedule:
       interval: "weekly"
+    # A release must age a week before it is proposed: a hijacked or broken
+    # publish is usually caught and yanked within days. Security updates are
+    # not delayed by this.
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    # A release must age a week before it is proposed: a hijacked or broken
+    # publish is usually caught and yanked within days. Security updates are
+    # not delayed by this.
+    cooldown:
+      default-days: 7
     groups:
       actions-dependencies:
         patterns:
