@@ -43,7 +43,6 @@ All configuration lives in the `.env` file in the project root, which is read by
 | `WAF_H_BEACONING` | `1` | Toggle C2 beaconing detection |
 | `WAF_H_PII` | `1` | Toggle the PII leak heuristic |
 | `WAF_H_SHARDING` | `1` | Toggle the destination sharding heuristic |
-| `WAF_H_MORPHING` | `0` | Toggle the header morphing heuristic (off by default; noisy) |
 | `WAF_H_GHOSTING` | `1` | Toggle the protocol ghosting heuristic |
 | `WAF_H_SEQUENCE` | `0` | Toggle the request sequence heuristic (off by default; needs tuning) |
 

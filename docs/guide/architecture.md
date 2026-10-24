@@ -35,7 +35,7 @@ Secure Proxy Manager is a multi-service Docker Compose application. Each service
 │                         ▼                                       │
 │              waf  (internal port 1344)                          │
 │              Go ICAP server                                     │
-│              170 regex rules + 7 behavioural heuristics         │
+│              177 regex rules + 6 behavioural heuristics         │
 │              Notifies backend at POST /api/internal/alert       │
 │                                                                 │
 │              dns  (internal port 53)                            │
@@ -84,8 +84,8 @@ The `frontend` network connects `web` to `backend`. The `proxy-internal` network
 
 - Two packages, and the split is the security boundary. `waf-go/internal/engine` is the detection core — the rule set, the pre-filter, the heuristics, DGA and typosquat analysis — and it owns everything the block decision depends on: the threshold, the enabled categories, the safe-URL and DGA caches, the per-client heuristic history. All of it hangs off an `engine.Engine` value that the caller constructs. Package `main` is the ICAP transport and the composition root: it builds one engine from the environment at startup and reaches the verdict only through that engine's methods. Nothing outside `internal/engine` can assign to the state behind a block.
 - Listens for ICAP `REQMOD` (and limited `RESPMOD`) on port `1344`.
-- Applies 170 regex rules across 21 categories (SQL injection, XSS, directory traversal, command injection, Unicode homograph obfuscation, response XSS, response secret leak, and more).
-- Seven behavioural heuristics: entropy thresholding, C2 beaconing detection, PII leak counting, destination sharding, protocol ghosting, header morphing, sequence validation. Each heuristic is individually toggleable via the `WAF_H_*` environment variables.
+- Applies 172 request rules across 21 categories and 5 response rules across 2 (SQL injection, XSS, directory traversal, command injection, Unicode homograph obfuscation, response XSS, response secret leak, and more).
+- Six behavioural heuristics: entropy thresholding, C2 beaconing detection, PII leak counting, destination sharding, protocol ghosting, sequence validation. Each heuristic is individually toggleable via the `WAF_H_*` environment variables.
 - Anomaly scoring with a configurable threshold (`WAF_BLOCK_THRESHOLD`, default `10`).
 - Anti-evasion input normalization: multi-pass URL/HTML decode, inline SQL/HTML comment stripping (so `UNION/**/SELECT` is caught), and NFKC Unicode folding to defeat fullwidth/homoglyph keyword variants.
 - Loads custom regex patterns from `/config/waf_custom_rules.txt` at startup (one pattern per line, `#` for comments); over-broad patterns that would match everything are rejected.

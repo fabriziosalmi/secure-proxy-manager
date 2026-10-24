@@ -26,7 +26,7 @@ features:
   - title: Forward-proxy egress control
     details: One controllable egress point. Block domains and IPs (CIDR + wildcard), one-click import of curated blocklists, geo-based blocking, and an optional default-deny egress allowlist.
   - title: Real WAF over ICAP
-    details: A Go ICAP service inspects requests/responses — ~170 rules across 21 categories + behavioural heuristics, anomaly scoring. False negatives gated to 0 by an adversarial suite on every commit.
+    details: A Go ICAP service inspects requests/responses — 177 rules across 21 request and 2 response categories + behavioural heuristics, anomaly scoring. False negatives gated to 0 by an adversarial suite on every commit.
   - title: DNS sinkhole
     details: dnsmasq sinkholes blacklisted / malware / ad domains at the network layer, before a connection is ever made. SafeSearch and YouTube-restricted enforcement included.
   - title: MCP-native

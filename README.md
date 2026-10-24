@@ -55,7 +55,7 @@ The stack is five containers (plus an optional sixth):
 | `web` | React 19 + Vite, served by nginx | The management UI and HTTPS entry point. Terminates TLS, proxies the API and WebSocket. |
 | `backend` | Go (chi, modernc/sqlite, JWT) | REST API, log ingestion, settings, auth, background workers. ~20 MB RAM. |
 | `waf` | Go ICAP service | Inspects proxied requests/responses Squid hands off over ICAP. |
-| `proxy` | Squid (Ubuntu 22.04, `squid-openssl`) | The actual forward proxy on port 3128, with ICAP wired to the WAF. |
+| `proxy` | Squid (Ubuntu 26.04, `squid-openssl`) | The actual forward proxy on port 3128, with ICAP wired to the WAF. |
 | `dns` | dnsmasq | DNS resolver that sinkholes blacklisted domains at the network layer. |
 | `tailscale` | Tailscale (optional) | Sidecar for remote access over a private network. Enabled with a compose profile. |
 
@@ -151,7 +151,7 @@ imposes and what happens at each:
 | WAF security alerts | 64 queued, 8 delivery workers | Alerts are dropped and counted in `notifyDropped` on `/metrics`. Blocks are still enforced and logged — only the notification is lost, and the queue fills exactly during an attack |
 | API rate limit | 20 req/s per IP, burst 60 | `429` |
 | Concurrent DNS scans | 2 | `429` |
-| Request body | 55 MB; blacklist import 32 MB | `413` / the import is refused |
+| Request body | 10 MB through the web UI (nginx); 55 MB on the backend port; blacklist import 32 MB | `413` / the import is refused |
 | Log ingest | 5,000 lines per 500 ms tick | A backlog catches up over successive ticks |
 | Backend resources | 0.25 CPU, 128 MB | Raise `deploy.resources.limits` in the compose file |
 
@@ -173,10 +173,11 @@ imposes and what happens at each:
   Egress Allowlist page.
 
 **WAF**
-- 170 regex rules across 21 toggleable categories (SQLi, XSS, traversal, C2,
-  data-loss, etc.), each enableable/disableable at runtime.
-- 7 behavioural heuristics (entropy, beaconing, PII, sharding, morphing,
-  ghosting, sequence) plus DGA detection (bigram + entropy), typosquatting
+- 172 request rules across 21 toggleable categories (SQLi, XSS, traversal, C2,
+  data-loss, etc.), each enableable/disableable at runtime, and 5 response
+  rules in 2 categories.
+- 6 behavioural heuristics (entropy, beaconing, PII, sharding, ghosting,
+  sequence) plus DGA detection (bigram + entropy), typosquatting
   detection (edit distance + homoglyphs), and a safe-URL fast-path cache.
 - Anti-evasion input normalization and anomaly scoring; fails closed on internal
   errors by default.
@@ -286,7 +287,7 @@ ESLint, Go vet/test, and the UI build is at `scripts/pre-commit-validate.sh`.
 
 ## API
 
-The backend exposes a REST API (77 routes) used by the UI. A machine-readable
+The backend exposes a REST API used by the UI; every route is listed in [docs/api/reference.md](docs/api/reference.md). A machine-readable
 listing is available at `GET /api/docs`. Authenticate with HTTP Basic auth, or
 exchange credentials at `POST /api/auth/login` for a JWT and send it as a Bearer
 token.
