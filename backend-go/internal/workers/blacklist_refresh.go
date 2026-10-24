@@ -162,6 +162,8 @@ func insertBlacklistEntries(db *sql.DB, table, col, data string, existing map[st
 		return 0
 	}
 	added := 0
+	limit := database.DomainBlacklistLimit()
+	capped := 0
 	for _, line := range strings.Split(data, "\n") {
 		parts := strings.Fields(line)
 		if len(parts) == 0 || strings.HasPrefix(parts[0], "#") {
@@ -175,6 +177,12 @@ func insertBlacklistEntries(db *sql.DB, table, col, data string, existing map[st
 			continue
 		}
 		if _, ex := existing[entry]; !ex {
+			// The domain list is bounded by what dnsmasq can hold in memory
+			// (database.DomainBlacklistLimit); past it, stop adding and say so.
+			if col == "domain" && len(existing) >= limit {
+				capped++
+				continue
+			}
 			stmt.Exec(entry, "Auto-refresh: "+time.Now().Format("2006-01-02")) //nolint:errcheck
 			existing[entry] = struct{}{}
 			added++
@@ -182,5 +190,9 @@ func insertBlacklistEntries(db *sql.DB, table, col, data string, existing map[st
 	}
 	stmt.Close()
 	tx.Commit() //nolint:errcheck
+	if capped > 0 {
+		log.Warn().Int("not_added", capped).Int("limit", limit).
+			Msg("blacklist refresh: the domain blacklist is at SPM_DNS_BLOCKLIST_MAX_DOMAINS; entries past it were not added")
+	}
 	return added
 }

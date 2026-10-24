@@ -512,3 +512,18 @@ func TestTailerBatchCapFitsTheContainerBudget(t *testing.T) {
 			peak, containerLimitBytes)
 	}
 }
+
+// The auto-refresh adds what a remote feed serves; past the domain limit it
+// stops, so a growing feed cannot push dnsmasq over its memory.
+func TestRefreshStopsAtTheDomainLimit(t *testing.T) {
+	t.Setenv("SPM_DNS_BLOCKLIST_MAX_DOMAINS", "2")
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	added := insertBlacklistEntries(db, "domain_blacklist", "domain",
+		"0.0.0.0 a.example\n0.0.0.0 b.example\n0.0.0.0 c.example\n0.0.0.0 d.example\n", map[string]struct{}{})
+	var n int
+	_ = db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&n)
+	if added != 2 || n != 2 {
+		t.Errorf("refresh with a limit of 2 added %d, table holds %d", added, n)
+	}
+}

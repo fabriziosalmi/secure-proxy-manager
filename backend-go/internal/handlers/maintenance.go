@@ -224,6 +224,14 @@ func restoreLists(tx *sql.Tx, lists map[string][]map[string]string) (restored, s
 			log.Warn().Str("list", name).Msg("RestoreConfig: unknown list, skipped")
 			continue
 		}
+		// The domain blacklist is bounded by what dnsmasq can hold in memory;
+		// a backup from a deployment with a higher limit restores up to it.
+		domainRoom := -1
+		if name == "domain_blacklist" {
+			var n int
+			_ = tx.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&n)
+			domainRoom = database.DomainBlacklistLimit() - n
+		}
 		for _, e := range entries {
 			value := strings.TrimSpace(e["value"])
 			if value == "" {
@@ -236,6 +244,10 @@ func restoreLists(tx *sql.Tx, lists map[string][]map[string]string) (restored, s
 			// (audit: domain-newline-into-hosts-file).
 			if !validRestoredListValue(name, value) {
 				log.Warn().Str("list", name).Msg("RestoreConfig: skipping an entry that fails validation")
+				skippedEntries++
+				continue
+			}
+			if domainRoom == 0 {
 				skippedEntries++
 				continue
 			}
@@ -264,6 +276,9 @@ func restoreLists(tx *sql.Tx, lists map[string][]map[string]string) (restored, s
 				return restored, skippedEntries, err
 			}
 			restored++
+			if domainRoom > 0 {
+				domainRoom-- // counts a duplicate too: errs towards skipping, never past the limit
+			}
 		}
 	}
 	return restored, skippedEntries, nil

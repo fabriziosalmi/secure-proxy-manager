@@ -329,17 +329,20 @@ export function Blacklists() {
     { name: 'CINS Army', url: 'https://cinsarmy.com/list/ci-badguys.txt', desc: 'High-confidence malicious IP addresses' },
     { name: 'Stamparm Ipsum (L3+)', url: 'https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt', desc: 'Daily threat intelligence feed — IPs seen on 3+ blacklists' },
     { name: 'Blocklist.de All', url: 'https://lists.blocklist.de/lists/all.txt', desc: 'All attack IPs reported to blocklist.de in last 48h' },
-    { name: 'Talos Intelligence', url: 'https://www.talosintelligence.com/documents/ip-blacklist', desc: 'Cisco Talos IP reputation blacklist' },
   ];
 
+  // Every list here is fetched by the backend and must fit the DNS sinkhole:
+  // the domain blacklist is capped (SPM_DNS_BLOCKLIST_MAX_DOMAINS, default 1M)
+  // because dnsmasq holds it in memory, about 200 MiB per million. The
+  // aggregated list (5.5M on 2026-10-24) got dnsmasq OOM-killed at the
+  // default limits and is not offered; NoTracking (archived 2023) and Talos
+  // (403 to non-browsers) are gone. CI checks that each URL here answers 200.
   const popularDomainLists = [
-    { name: 'Aggregated Blacklist (Ads+Trackers+Malware)', url: 'https://github.com/fabriziosalmi/blacklists/releases/download/latest/blacklist.txt', desc: '2.9M+ domains from 61 aggregated sources, updated daily' },
     { name: 'StevenBlack Unified', url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', desc: 'Adware + malware hosts from multiple curated sources' },
     { name: 'URLhaus Malware', url: 'https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-hosts.txt', desc: 'Active malware distribution domains from abuse.ch URLhaus (malware-filter mirror)' },
     { name: 'Phishing Army', url: 'https://phishing.army/download/phishing_army_blocklist_extended.txt', desc: 'Domains actively involved in phishing campaigns' },
-    { name: 'OISD Big', url: 'https://big.oisd.nl/domainswild', desc: 'Comprehensive ad/tracking/malware domain list (1M+ entries)' },
-    { name: 'HaGeZi Multi Pro', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt', desc: 'Multi-source pro blocklist — ads, tracking, malware, phishing' },
-    { name: 'NoTracking', url: 'https://raw.githubusercontent.com/notracking/hosts-blocklists/master/hostnames.txt', desc: 'Tracking and advertising hostname blocklist' },
+    { name: 'OISD Big', url: 'https://big.oisd.nl/domainswild', desc: 'Comprehensive ad/tracking/malware domain list' },
+    { name: 'HaGeZi Multi Pro', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro-onlydomains.txt', desc: 'Multi-source pro blocklist (ads, tracking, malware, phishing); the listed names are blocked, not their subdomains' },
     { name: 'DanPollock Hosts', url: 'https://someonewhocares.org/hosts/zero/hosts', desc: 'Dan Pollock\'s hand-maintained hosts file (ads, trackers)' },
   ];
 

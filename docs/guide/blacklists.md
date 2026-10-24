@@ -110,18 +110,30 @@ In the web UI, open **Blacklists → Popular lists** to import any of the follow
 - CINS Army
 - Stamparm Ipsum (level 3+)
 - Blocklist.de (last 48 hours)
-- Talos Intelligence
 
 **Domain lists.**
 
-- Aggregated Blacklist (`fabriziosalmi/blacklists`, ~2.9 M entries)
 - StevenBlack Unified hosts
 - URLhaus malware domains (abuse.ch, through the [malware-filter](https://gitlab.com/malware-filter/urlhaus-filter) mirror: abuse.ch requires an Auth-Key for direct downloads)
 - Phishing Army
 - OISD Big
-- HaGeZi Multi Pro
-- NoTracking
+- HaGeZi Multi Pro (the listed names; subdomains are not covered)
 - DanPollock hosts
+
+### Size limit
+
+The domain blacklist holds at most `SPM_DNS_BLOCKLIST_MAX_DOMAINS` entries
+(default 1,000,000). dnsmasq keeps every blocked name in memory: measured at
+about 195 MiB per million domains, unchanged across reloads, against the dns
+container's 256 MiB limit. An import that would exceed the limit is refused
+whole, with the reason; the auto-refresh stops adding at the limit and logs it.
+To hold more, raise `SPM_DNS_BLOCKLIST_MAX_DOMAINS` on the backend and the dns
+service's memory limit together, roughly 200 MiB per additional million.
+
+The aggregated `fabriziosalmi/blacklists` list (5.5 million domains on
+2026-10-24) is not offered as a one-click import for this reason: at the
+default limits it got dnsmasq killed for lack of memory, and without DNS the
+proxy resolves nothing.
 
 The exact list, URLs, and descriptions are defined in `ui/src/pages/Blacklists.tsx` and may evolve between releases.
 

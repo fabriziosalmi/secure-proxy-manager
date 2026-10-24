@@ -191,6 +191,7 @@ notifications) is managed from the UI and stored in the database, not in `.env`.
 |----------|---------|-------------|
 | `TS_AUTHKEY` | empty | Tailscale auth key; the `tailscale` service runs only under its compose profile (`docker compose --profile tailscale up -d`) |
 | `REQUEST_TIMEOUT` | `120` | UI → backend request timeout (seconds) |
+| `SPM_DNS_BLOCKLIST_MAX_DOMAINS` | `1000000` | Most domains the blacklist may hold (backend). dnsmasq keeps them in memory, about 200 MiB per million against the dns service's 256 MiB limit; raise both together |
 
 ## Volumes and Persistence
 
