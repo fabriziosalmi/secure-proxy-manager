@@ -28,6 +28,9 @@ vulnerabilities:
   - id: CVE-2026-28377
     statement: "github.com/grafana/tempo vendored in grafana/grafana:13.2.4; same."
     expired_at: 2026-12-31
+  - id: CVE-2026-111943
+    statement: "Go stdlib crypto/x509 (fixed in 1.26.10 / 1.27.3) inside grafana/grafana:13.2.4's own binary and its bundled plugins, built with 1.26.6-1.27.1; 13.2.4 is the newest tag. Recorded 2026-10-24: it was the only finding of the image scan and it red-gated every dependency PR. Our own images move to 1.27.3 in the same change."
+    expired_at: 2026-11-30
   # tailscale/tailscale:v1.102.5 — vendored Go modules inside the tailscale
   # binary. This pin now matches overlay/tailscale/Dockerfile, which is what
   # scripts/check-image-pins.sh enforces; before that it sat at v1.80.3 with
@@ -81,9 +84,10 @@ vulnerabilities:
   - id: CVE-2026-100354
     statement: "kin-openapi v0.144.0 in grafana/grafana:13.2.4; fixed in 0.149.0, same."
     expired_at: 2026-11-30
-  # nginx:1.31.7-alpine — libexpat 2.8.5-r0 in the image as published. The UI
-  # image this project ships upgrades it at build time (ui/Dockerfile); the
-  # plain image is pulled as-is only by the test compose files.
-  - id: CVE-2026-77214
-    statement: "libexpat 2.8.5-r0 in nginx:1.31.7-alpine as published; ui/Dockerfile installs 2.9.0-r0, the plain image is test-only until nginx rebuilds it."
+  # nginx:1.31.8-alpine and grafana/grafana:13.2.4 — brotli-libs 1.2.0-r1 as
+  # published. The UI image this project ships upgrades it at build time
+  # (ui/Dockerfile); the plain nginx image is pulled as-is only by the test
+  # compose files, and Grafana only by the observability profile.
+  - id: CVE-2026-111497
+    statement: "brotli-libs 1.2.0-r1 in nginx:1.31.8-alpine and grafana/grafana:13.2.4 as published; ui/Dockerfile installs 1.2.1-r0, the plain images wait for an upstream rebuild. Recorded 2026-10-24."
     expired_at: 2026-11-30

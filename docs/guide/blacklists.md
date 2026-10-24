@@ -116,7 +116,7 @@ In the web UI, open **Blacklists → Popular lists** to import any of the follow
 
 - Aggregated Blacklist (`fabriziosalmi/blacklists`, ~2.9 M entries)
 - StevenBlack Unified hosts
-- URLhaus malware domains (abuse.ch)
+- URLhaus malware domains (abuse.ch, through the [malware-filter](https://gitlab.com/malware-filter/urlhaus-filter) mirror: abuse.ch requires an Auth-Key for direct downloads)
 - Phishing Army
 - OISD Big
 - HaGeZi Multi Pro
@@ -178,7 +178,7 @@ A background worker re-imports a fixed pair of public lists when auto-refresh is
 The defaults imported on each cycle are:
 
 - IP: Firehol Level 1, Stamparm Ipsum (level 1).
-- Domain: StevenBlack Unified hosts, URLhaus.
+- Domain: StevenBlack Unified hosts, URLhaus (malware-filter mirror).
 
 To schedule additional custom feeds, run a host cron job that calls the import endpoint:
 

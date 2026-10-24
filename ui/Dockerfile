@@ -12,8 +12,8 @@ RUN npm ci
 COPY ./ui/ ./
 RUN npm run build
 
-# Pin: nginx 1.31.7 alpine (2026-10)
-FROM nginx:1.31.7-alpine@sha256:892bb2152464f0c5d8972593a5f5afaf8054552580b699d95f8ff4af08c2d33d
+# Pin: nginx 1.31.8 alpine (2026-10)
+FROM nginx:1.31.8-alpine@sha256:1ef7ca94d7879df82421428ce13bd1eaa412404953859cf7a5b6512c25e67a60
 
 # openssl for self-signed cert generation at boot
 # Distribution packages are installed without a version constraint. That is a
@@ -27,10 +27,11 @@ FROM nginx:1.31.7-alpine@sha256:892bb2152464f0c5d8972593a5f5afaf8054552580b699d9
 # Where a package DOES carry security weight the version is asserted after
 # install instead: see proxy/Dockerfile, which fails the build if squid-openssl
 # is older than its CVE floor.
-# libexpat carries a version floor: nginx:1.31.7-alpine ships 2.8.5-r0
-# (CVE-2026-77214, HIGH) while Alpine 3.24 already has the fix, so the image is
-# upgraded at build time, and the build fails if the fixed package is gone.
-RUN apk add --no-cache openssl 'libexpat>=2.9.0-r0' && rm /etc/nginx/conf.d/default.conf
+# Version floors for packages the published base image lags on, so the build
+# fails rather than ships if the fixed package is gone: libexpat (CVE-2026-77214,
+# fixed in this base since 1.31.8, floor kept) and brotli-libs (CVE-2026-111497,
+# nginx:1.31.8-alpine still ships 1.2.0-r1 while Alpine 3.24 has 1.2.1-r0).
+RUN apk add --no-cache openssl 'libexpat>=2.9.0-r0' 'brotli-libs>=1.2.1-r0' && rm /etc/nginx/conf.d/default.conf
 
 COPY --from=frontend-builder /frontend/dist /usr/share/nginx/html
 COPY ./ui/nginx.conf.template            /etc/nginx/templates/default.conf.template

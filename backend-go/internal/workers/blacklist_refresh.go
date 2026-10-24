@@ -27,7 +27,9 @@ var defaultIPLists = []string{
 
 var defaultDomainLists = []string{
 	"https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
-	"https://urlhaus.abuse.ch/downloads/text/",
+	// URLhaus via the malware-filter mirror: abuse.ch answers 410 Gone on every
+	// unauthenticated download since 2026-10 and now requires an Auth-Key.
+	"https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-hosts.txt",
 }
 
 // StartBlacklistRefresh runs an auto-refresh loop based on DB settings. After

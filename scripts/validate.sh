@@ -87,7 +87,7 @@ check_url "Spamhaus DROP"      "https://www.spamhaus.org/drop/drop.txt"
 check_url "Emerging Threats"   "https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt"
 check_url "CINS Army"          "https://cinsarmy.com/list/ci-badguys.txt"
 check_url "StevenBlack hosts"  "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
-check_url "URLhaus domains"    "https://urlhaus.abuse.ch/downloads/hostfile/"
+check_url "URLhaus domains"    "https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-hosts.txt"
 check_url "Phishing Army"      "https://phishing.army/download/phishing_army_blocklist_extended.txt"
 
 if [ "$FAIL" -eq 0 ]; then pass "All list URLs reachable"; fi

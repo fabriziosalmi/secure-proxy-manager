@@ -287,7 +287,7 @@ export function Blacklists() {
   const popularDomainLists = [
     { name: 'Aggregated Blacklist (Ads+Trackers+Malware)', url: 'https://github.com/fabriziosalmi/blacklists/releases/download/latest/blacklist.txt', desc: '2.9M+ domains from 61 aggregated sources, updated daily' },
     { name: 'StevenBlack Unified', url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', desc: 'Adware + malware hosts from multiple curated sources' },
-    { name: 'URLhaus Malware', url: 'https://urlhaus.abuse.ch/downloads/hostfile/', desc: 'Active malware distribution domains from abuse.ch' },
+    { name: 'URLhaus Malware', url: 'https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-hosts.txt', desc: 'Active malware distribution domains from abuse.ch URLhaus (malware-filter mirror)' },
     { name: 'Phishing Army', url: 'https://phishing.army/download/phishing_army_blocklist_extended.txt', desc: 'Domains actively involved in phishing campaigns' },
     { name: 'OISD Big', url: 'https://big.oisd.nl/domainswild', desc: 'Comprehensive ad/tracking/malware domain list (1M+ entries)' },
     { name: 'HaGeZi Multi Pro', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt', desc: 'Multi-source pro blocklist — ads, tracking, malware, phishing' },
