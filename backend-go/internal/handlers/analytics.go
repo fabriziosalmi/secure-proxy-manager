@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
 // wafBreaker protects against cascading failures when the WAF service is down.
@@ -32,28 +34,32 @@ var (
 	probeClient = &http.Client{Timeout: 1 * time.Second}
 )
 
-// wafGet performs a GET request to the WAF management API with Basic Auth. The
-// request is bound to ctx, so a client disconnect (or the 3s client timeout)
-// cancels the upstream call instead of leaking it.
-// Uses dedicated WAF service credentials (WAFServiceUser/WAFServicePass) rather
-// than the human admin password, so WAF calls remain valid after an admin
-// password change.
+// wafAuth is the credential for the WAF management API: the service token when
+// INTERNAL_ALERT_TOKEN is set, otherwise the WAF service credentials, never the
+// human admin password as such (see workers.WAFAuth).
+func wafAuth(cfg *config.Config) workers.WAFAuth {
+	return workers.WAFAuth{Token: cfg.AlertToken, User: cfg.WAFServiceUser, Pass: cfg.WAFServicePass}
+}
+
+// wafGet performs a GET request to the WAF management API. The request is
+// bound to ctx, so a client disconnect (or the 3s client timeout) cancels the
+// upstream call instead of leaking it.
 func wafGet(ctx context.Context, cfg *config.Config, path string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", cfg.WAFURL+path, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.SetBasicAuth(cfg.WAFServiceUser, cfg.WAFServicePass)
+	wafAuth(cfg).Apply(req)
 	return wafClient.Do(req)
 }
 
-// wafPost performs a POST request to the WAF management API with Basic Auth.
+// wafPost performs a POST request to the WAF management API.
 func wafPost(ctx context.Context, cfg *config.Config, path, contentType string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, "POST", cfg.WAFURL+path, body)
 	if err != nil {
 		return nil, err
 	}
-	req.SetBasicAuth(cfg.WAFServiceUser, cfg.WAFServicePass)
+	wafAuth(cfg).Apply(req)
 	req.Header.Set("Content-Type", contentType)
 	return wafClient.Do(req)
 }
@@ -749,19 +755,46 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	// degrades only this sub-field (and counts toward tripping the breaker)
 	// instead of blocking every dashboard load for the full client timeout. The
 	// rest of the dashboard is DB-sourced and must still render.
+	//
+	// waf_status says WHY waf is null. It used to be null with no reason and
+	// no log line, and the UI hid its WAF cards, so a WAF that refused every
+	// management call looked like a deployment without a WAF.
+	result["waf"] = nil
+	result["waf_status"] = "unreachable"
 	if resp, err := wafGetBreaker(r.Context(), h.cfg, "/stats"); err == nil {
-		if resp.StatusCode == http.StatusOK {
+		switch resp.StatusCode {
+		case http.StatusOK:
 			var wafData any
-			json.NewDecoder(resp.Body).Decode(&wafData) //nolint:errcheck
-			result["waf"] = wafData
-		} else {
-			result["waf"] = nil
+			if json.NewDecoder(resp.Body).Decode(&wafData) == nil {
+				result["waf"] = wafData
+				result["waf_status"] = "ok"
+			} else {
+				result["waf_status"] = "error"
+			}
+		case http.StatusUnauthorized, http.StatusForbidden:
+			result["waf_status"] = "auth_failed"
+			warnWAFStatus("WAF management API refused the backend's credential: WAF statistics and toggles are unavailable. "+
+				"Set INTERNAL_ALERT_TOKEN to the same value on the waf and backend services.", resp.StatusCode)
+		default:
+			result["waf_status"] = "error"
+			warnWAFStatus("WAF management API returned an unexpected status", resp.StatusCode)
 		}
 		resp.Body.Close()
-	} else {
-		result["waf"] = nil
 	}
 	writeOK(w, result)
+}
+
+// warnWAFStatus logs a WAF management failure at most once per ten minutes:
+// the dashboard polls every 30 s per open tab.
+var lastWAFStatusWarn atomic.Int64
+
+func warnWAFStatus(msg string, status int) {
+	now := time.Now().Unix()
+	last := lastWAFStatusWarn.Load()
+	if now-last < 600 || !lastWAFStatusWarn.CompareAndSwap(last, now) {
+		return
+	}
+	log.Warn().Int("status", status).Msg(msg)
 }
 
 // knownSaaS maps domain suffixes to service names.

@@ -70,6 +70,31 @@ describe('Dashboard', () => {
     })
   })
 
+  // The WAF cards used to be hidden whenever waf was null, so a WAF that
+  // refused every management call looked like a deployment without one.
+  it('keeps the WAF card and says why its statistics are missing', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('dashboard/summary')) return Promise.resolve({ data: { data: { ...summaryData, waf: null, waf_status: 'auth_failed' } } })
+      return Promise.resolve({ data: { data: null } })
+    })
+    renderWithProviders(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByText('WAF Intelligence')).toBeInTheDocument()
+    })
+    expect(screen.getByText(/refused the backend credential.*INTERNAL_ALERT_TOKEN/)).toBeInTheDocument()
+  })
+
+  it('reports an unreachable WAF as such', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('dashboard/summary')) return Promise.resolve({ data: { data: { ...summaryData, waf: null, waf_status: 'unreachable' } } })
+      return Promise.resolve({ data: { data: null } })
+    })
+    renderWithProviders(<Dashboard />)
+    await waitFor(() => {
+      expect(screen.getByText(/management API is not reachable/)).toBeInTheDocument()
+    })
+  })
+
   it('displays security score', async () => {
     renderWithProviders(<Dashboard />)
     await waitFor(() => {
