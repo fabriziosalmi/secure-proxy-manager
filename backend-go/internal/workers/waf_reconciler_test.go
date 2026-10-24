@@ -50,23 +50,23 @@ func TestReconcilePassOutcomes(t *testing.T) {
 	waf := newFakeWAF(t)
 	ctx := context.Background()
 
-	if got := reconcileWAF(ctx, db, waf.srv.URL, "u", "p", true); got != reconcileOK || waf.pushCount() != 2 {
+	if got := reconcileWAF(ctx, db, waf.srv.URL, WAFAuth{User: "u", Pass: "p"}, true); got != reconcileOK || waf.pushCount() != 2 {
 		t.Fatalf("healthy WAF: outcome %v, %d pushes; want ok, 2", got, waf.pushCount())
 	}
 	// Not forced: a matching WAF is not rewritten.
-	if got := reconcileWAF(ctx, db, waf.srv.URL, "u", "p", false); got != reconcileOK || waf.pushCount() != 2 {
+	if got := reconcileWAF(ctx, db, waf.srv.URL, WAFAuth{User: "u", Pass: "p"}, false); got != reconcileOK || waf.pushCount() != 2 {
 		t.Fatalf("unforced pass: outcome %v, %d pushes; want ok, still 2", got, waf.pushCount())
 	}
 
 	// A WAF that answers but refuses the push (a changed credential) used to be
 	// reported as success.
 	waf.toggleStatus.Store(401)
-	if got := reconcileWAF(ctx, db, waf.srv.URL, "u", "p", true); got != reconcilePushFailed {
+	if got := reconcileWAF(ctx, db, waf.srv.URL, WAFAuth{User: "u", Pass: "p"}, true); got != reconcilePushFailed {
 		t.Errorf("rejected pushes: outcome %v, want push_failed", got)
 	}
 
 	waf.srv.Close()
-	if got := reconcileWAF(ctx, db, waf.srv.URL, "u", "p", true); got != reconcileUnreachable {
+	if got := reconcileWAF(ctx, db, waf.srv.URL, WAFAuth{User: "u", Pass: "p"}, true); got != reconcileUnreachable {
 		t.Errorf("dead WAF: outcome %v, want unreachable", got)
 	}
 }
@@ -90,7 +90,7 @@ func TestReconcilerReportsLivenessAndRetriesAFailedPush(t *testing.T) {
 	beforeOK := metrics.WAFReconcileCount("success")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	StartWAFReconciler(ctx, db, waf.srv.URL, "u", "p")
+	StartWAFReconciler(ctx, db, waf.srv.URL, WAFAuth{User: "u", Pass: "p"})
 
 	deadline := time.Now().Add(3 * time.Second)
 	for waf.pushCount() < 3 && time.Now().Before(deadline) {
@@ -147,7 +147,7 @@ func TestHeartbeatIsReportedWhenTheWAFIsUnreachable(t *testing.T) {
 	beforeU := metrics.WAFReconcileCount("unreachable")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	StartWAFReconciler(ctx, db, url, "u", "p")
+	StartWAFReconciler(ctx, db, url, WAFAuth{User: "u", Pass: "p"})
 	deadline := time.Now().Add(3 * time.Second)
 	for metrics.WAFReconcileCount("unreachable") <= beforeU && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)

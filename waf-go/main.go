@@ -874,16 +874,38 @@ func main() {
 
 // ── Management Auth Middleware ──────────────────────────────────────────────
 
-// mgmtAuthMiddleware protects management endpoints with Basic Auth using the
-// same BASIC_AUTH_USERNAME/PASSWORD credentials as the backend. Health endpoint
-// is intentionally excluded (used by Docker healthcheck without credentials).
+// mgmtAuthMiddleware protects the management endpoints. The credential is
+// INTERNAL_ALERT_TOKEN, the backend/WAF service token the shipped compose gives
+// both services, presented as "Authorization: Bearer". Basic auth against
+// BASIC_AUTH_USERNAME/PASSWORD is still accepted when those are set, for
+// deployments that pass the admin credential to the WAF themselves.
+//
+// It used to read BASIC_AUTH_* only. The compose stopped passing them to the
+// WAF (SECURE-AUTH-02), so on every real deployment this answered 403 "not
+// configured" to the backend, silently. /health and /metrics stay open (Docker
+// healthcheck, Prometheus).
 func mgmtAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	token := strings.TrimSpace(os.Getenv("INTERNAL_ALERT_TOKEN"))
 	user := os.Getenv("BASIC_AUTH_USERNAME")
 	pass := os.Getenv("BASIC_AUTH_PASSWORD")
 	return func(w http.ResponseWriter, r *http.Request) {
-		if user == "" || pass == "" {
+		if token == "" && (user == "" || pass == "") {
 			// No credentials configured — deny all management access
-			http.Error(w, `{"error":"management auth not configured"}`, http.StatusForbidden)
+			http.Error(w,
+				`{"error":"management auth not configured: set INTERNAL_ALERT_TOKEN on the waf and backend services"}`,
+				http.StatusForbidden)
+			return
+		}
+		if token != "" {
+			if bearer, found := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); found &&
+				subtle.ConstantTimeCompare([]byte(bearer), []byte(token)) == 1 {
+				next(w, r)
+				return
+			}
+		}
+		if user == "" || pass == "" {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="WAF Management"`)
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
 		u, p, ok := r.BasicAuth()

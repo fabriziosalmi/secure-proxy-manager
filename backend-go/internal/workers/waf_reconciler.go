@@ -33,7 +33,27 @@ var heuristicKeys = []string{
 // shorten it.
 var reconcileEvery = 30 * time.Second
 
-func StartWAFReconciler(ctx context.Context, db *sql.DB, wafURL, user, pass string) {
+// WAFAuth is how the backend authenticates to the WAF management API. The
+// shipped compose gives the WAF INTERNAL_ALERT_TOKEN, the backend/WAF service
+// credential, and not the admin credential (SECURE-AUTH-02), so the token is
+// what it checks. Basic with the WAF service credentials is sent only when no
+// token is configured. Sending Basic unconditionally is why every management
+// call was refused with 403 on real deployments.
+type WAFAuth struct {
+	Token      string
+	User, Pass string
+}
+
+// Apply sets the Authorization header on a request to the WAF.
+func (a WAFAuth) Apply(r *http.Request) {
+	if a.Token != "" {
+		r.Header.Set("Authorization", "Bearer "+a.Token)
+		return
+	}
+	r.SetBasicAuth(a.User, a.Pass)
+}
+
+func StartWAFReconciler(ctx context.Context, db *sql.DB, wafURL string, auth WAFAuth) {
 	Track(func() {
 		ticker := time.NewTicker(reconcileEvery)
 		defer ticker.Stop()
@@ -48,7 +68,7 @@ func StartWAFReconciler(ctx context.Context, db *sql.DB, wafURL, user, pass stri
 			// The heartbeat on every pass, reachable or not: it says the loop
 			// is alive, which is what the worker-staleness alert reads.
 			metrics.WorkerHeartbeat("waf_reconciler")
-			outcome := reconcileWAF(ctx, db, wafURL, user, pass, !synced)
+			outcome := reconcileWAF(ctx, db, wafURL, auth, !synced)
 			synced = outcome == reconcileOK
 			metrics.WAFReconcile(outcome.String())
 			// Log the transitions, not every pass: the first failure after a
@@ -97,7 +117,7 @@ func (o reconcileOutcome) String() string {
 // but at least one stored toggle could not be applied, and reconcileOK
 // otherwise. It only pushes when force is set, so a healthy, matching WAF is not
 // rewritten every 30 seconds.
-func reconcileWAF(ctx context.Context, db *sql.DB, wafURL, user, pass string, force bool) reconcileOutcome {
+func reconcileWAF(ctx context.Context, db *sql.DB, wafURL string, auth WAFAuth, force bool) reconcileOutcome {
 	hc := &http.Client{Timeout: 5 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wafURL+"/health", nil)
 	if err != nil {
@@ -131,7 +151,7 @@ func reconcileWAF(ctx context.Context, db *sql.DB, wafURL, user, pass string, fo
 			continue
 		}
 		r.Header.Set("Content-Type", "application/json")
-		r.SetBasicAuth(user, pass)
+		auth.Apply(r)
 		rs, err := hc.Do(r)
 		if err != nil {
 			log.Warn().Str("heuristic", key).Err(err).Msg("waf reconcile: push failed")

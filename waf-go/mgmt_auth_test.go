@@ -56,3 +56,38 @@ func TestMgmtAuthMiddleware(t *testing.T) {
 		t.Errorf("unconfigured management auth did not fail closed: %d", got)
 	}
 }
+
+// The shipped compose gives the WAF INTERNAL_ALERT_TOKEN and not the admin
+// credential (SECURE-AUTH-02), but the middleware read only BASIC_AUTH_*, so on
+// every real deployment it answered 403 "not configured" to the backend: WAF
+// stats, category and heuristic toggles, reset and the reconciler all failed,
+// and the dashboard hid its WAF cards. The service token is the credential now.
+func TestMgmtAuthAcceptsTheServiceToken(t *testing.T) {
+	t.Setenv("BASIC_AUTH_USERNAME", "")
+	t.Setenv("BASIC_AUTH_PASSWORD", "")
+	t.Setenv("INTERNAL_ALERT_TOKEN", "svc-token-0123456789")
+
+	call := func(set func(*http.Request)) int {
+		h := mgmtAuthMiddleware(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+		r := httptest.NewRequest("GET", "/categories", nil)
+		set(r)
+		w := httptest.NewRecorder()
+		h(w, r)
+		return w.Code
+	}
+	if got := call(func(r *http.Request) { r.Header.Set("Authorization", "Bearer svc-token-0123456789") }); got != http.StatusOK {
+		t.Errorf("the service token was rejected: %d", got)
+	}
+	for name, set := range map[string]func(*http.Request){
+		"wrong token":     func(r *http.Request) { r.Header.Set("Authorization", "Bearer svc-token-9999999999") },
+		"token prefix":    func(r *http.Request) { r.Header.Set("Authorization", "Bearer svc-token") },
+		"no header":       func(*http.Request) {},
+		"token as basic":  func(r *http.Request) { r.SetBasicAuth("svc", "svc-token-0123456789") },
+		"empty bearer":    func(r *http.Request) { r.Header.Set("Authorization", "Bearer ") },
+		"lowercase basic": func(r *http.Request) { r.Header.Set("Authorization", "basic Og==") },
+	} {
+		if got := call(set); got != http.StatusUnauthorized {
+			t.Errorf("%s: got %d, want 401", name, got)
+		}
+	}
+}

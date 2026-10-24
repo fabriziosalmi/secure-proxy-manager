@@ -140,7 +140,10 @@ export interface DashboardSummary {
   recent_blocks: { timestamp: string; source_ip: string; method: string; destination: string; status: string }[];
   ip_blacklist_count: number;
   domain_blacklist_count: number;
-  waf?: WafStats;
+  waf?: WafStats | null;
+  // Why waf is null: the WAF refused the backend's credential, could not be
+  // reached, or answered with an error. Absent from older backends.
+  waf_status?: 'ok' | 'auth_failed' | 'unreachable' | 'error';
 }
 
 export interface WafStats {

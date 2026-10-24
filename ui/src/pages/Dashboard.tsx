@@ -15,6 +15,22 @@ const DashboardCharts = lazy(() => import('../components/dashboard/DashboardChar
 
 const REFETCH = 30_000;
 
+// What the dashboard says when it has no WAF statistics. It used to hide the
+// WAF cards instead, so a WAF that refused every management call looked like
+// a deployment without one.
+function wafUnavailableReason(status?: DashboardSummary['waf_status']): string {
+  switch (status) {
+    case 'auth_failed':
+      return 'The WAF refused the backend credential. Set INTERNAL_ALERT_TOKEN to the same value on the waf and backend services.';
+    case 'unreachable':
+      return 'The WAF management API is not reachable.';
+    case 'error':
+      return 'The WAF management API returned an error.';
+    default:
+      return 'WAF statistics are not available.';
+  }
+}
+
 export function Dashboard() {
   const queryClient = useQueryClient();
   const { confirm, dialog } = useConfirm();
@@ -153,15 +169,22 @@ export function Dashboard() {
             <p className="text-[10px] text-muted-foreground">{(s?.domain_blacklist_count ?? 0).toLocaleString()} domains</p>
           </CardContent>
         </Card>
-        {w && (
-          <Card className="stagger-child" style={{ '--stagger-index': 5 } as React.CSSProperties}>
-            <CardContent className="p-3">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">WAF</p>
-              <p className="text-2xl font-bold">{w.requests_last_minute}<span className="text-sm text-muted-foreground">/min</span></p>
-              <p className="text-[10px] text-muted-foreground">{w.total_blocked} blocked, entropy {w.avg_url_entropy}</p>
-            </CardContent>
-          </Card>
-        )}
+        <Card className="stagger-child" style={{ '--stagger-index': 5 } as React.CSSProperties}>
+          <CardContent className="p-3">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">WAF</p>
+            {w ? (
+              <>
+                <p className="text-2xl font-bold">{w.requests_last_minute}<span className="text-sm text-muted-foreground">/min</span></p>
+                <p className="text-[10px] text-muted-foreground">{w.total_blocked} blocked, entropy {w.avg_url_entropy}</p>
+              </>
+            ) : (
+              <>
+                <p className="text-2xl font-bold text-yellow-500">n/a</p>
+                <p className="text-[10px] text-muted-foreground">stats unavailable</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Chart + Threat categories + Top blocked — 3 columns (lazy: recharts chunk) */}
@@ -199,11 +222,15 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        {w && (
-          <Card>
-            <CardHeader className="p-3 pb-0">
-              <CardTitle className="text-sm flex items-center gap-1.5"><Brain className="w-3.5 h-3.5 text-primary" />WAF Intelligence</CardTitle>
-            </CardHeader>
+        <Card>
+          <CardHeader className="p-3 pb-0">
+            <CardTitle className="text-sm flex items-center gap-1.5"><Brain className="w-3.5 h-3.5 text-primary" />WAF Intelligence</CardTitle>
+          </CardHeader>
+          {!w ? (
+            <CardContent className="p-2">
+              <p role="status" className="py-4 px-1 text-xs text-yellow-600 dark:text-yellow-500">{wafUnavailableReason(s?.waf_status)}</p>
+            </CardContent>
+          ) : (
             <CardContent className="p-2">
               <div className="grid grid-cols-3 gap-2 mb-2">
                 <div><p className="text-[10px] text-muted-foreground uppercase">Inspected</p><p className="text-lg font-bold">{(w.total_requests ?? 0).toLocaleString()}</p></div>
@@ -218,8 +245,8 @@ export function Dashboard() {
                 </div>
               )}
             </CardContent>
-          </Card>
-        )}
+          )}
+        </Card>
 
         {/* Cache Efficiency */}
         <Card>

@@ -130,7 +130,8 @@ func run() error {
 	// Brings a restarted WAF back to the stored heuristic configuration; without
 	// it a WAF restart silently reverted every toggle to the compose default
 	// while the UI kept showing the operator's choice (SECURE-CONF-02).
-	workers.StartWAFReconciler(workerCtx, db, cfg.WAFURL, cfg.WAFServiceUser, cfg.WAFServicePass)
+	workers.StartWAFReconciler(workerCtx, db, cfg.WAFURL,
+		workers.WAFAuth{Token: cfg.AlertToken, User: cfg.WAFServiceUser, Pass: cfg.WAFServicePass})
 	workers.StartUpdateChecker(workerCtx, "")
 	workers.CheckSquidCVEs()
 
@@ -154,9 +155,9 @@ func run() error {
 	// management API (SECURE-AUTH-02). We keep accepting it so an upgrade does
 	// not silently stop delivering alerts, but say so once, loudly.
 	if cfg.AlertToken == "" {
-		log.Warn().Msg("INTERNAL_ALERT_TOKEN is not set: /api/internal/alert still accepts the admin credential, " +
-			"so the WAF container needs BASIC_AUTH_PASSWORD. Set INTERNAL_ALERT_TOKEN (openssl rand -hex 32) " +
-			"on both the backend and the waf service to scope it down.")
+		log.Warn().Msg("INTERNAL_ALERT_TOKEN is not set: WAF block alerts are dropped and the WAF management API " +
+			"(stats, category and heuristic toggles) refuses the backend, because the shipped compose does not give " +
+			"the WAF the admin credential. Set INTERNAL_ALERT_TOKEN (openssl rand -hex 32) on both the backend and the waf service.")
 	}
 
 	// Register handler groups.
