@@ -17,12 +17,22 @@ go_v=$(sed -nE 's/.*AppVersion = "([^"]+)".*/\1/p' backend-go/internal/config/ve
 pkg_v=$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' ui/package.json | head -1)
 lock_v=$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' ui/package-lock.json | head -1)
 chg_v=$(sed -nE 's/^## \[([0-9]+\.[0-9]+\.[0-9]+)\].*/\1/p' CHANGELOG.md | head -1)
+# The production compose pins the image tag the installer pulls. It used to be
+# :latest, which any build of the release workflow could move; every SPM image
+# in it must default to the tag of this version.
+compose_tags=$(sed -nE 's#^[[:space:]]+image: ghcr\.io/fabriziosalmi/secure-proxy-manager-[a-z]+:\$\{SPM_IMAGE_TAG:-v([^}]+)\}$#\1#p' deploy/docker-compose.prod.yml | sort -u)
+compose_n=$(grep -cE '^[[:space:]]+image: ghcr\.io/fabriziosalmi/secure-proxy-manager-' deploy/docker-compose.prod.yml)
+compose_ok=$(grep -cE '^[[:space:]]+image: ghcr\.io/fabriziosalmi/secure-proxy-manager-[a-z]+:\$\{SPM_IMAGE_TAG:-v[^}]+\}$' deploy/docker-compose.prod.yml)
 
 printf 'version.go=%s  package.json=%s  package-lock.json=%s  CHANGELOG=%s\n' \
   "$go_v" "$pkg_v" "$lock_v" "$chg_v"
 
 rc=0
-for pair in "package.json:$pkg_v" "package-lock.json:$lock_v" "CHANGELOG:$chg_v"; do
+if [ "$compose_n" -eq 0 ] || [ "$compose_ok" -ne "$compose_n" ]; then
+  echo "ERROR: every SPM image in deploy/docker-compose.prod.yml must be :\${SPM_IMAGE_TAG:-v<version>} ($compose_ok of $compose_n are)" >&2
+  rc=1
+fi
+for pair in "package.json:$pkg_v" "package-lock.json:$lock_v" "CHANGELOG:$chg_v" "docker-compose.prod.yml:$compose_tags"; do
   name=${pair%%:*}; val=${pair#*:}
   if [ "$val" != "$go_v" ]; then
     echo "ERROR: $name version ($val) != version.go ($go_v)" >&2
@@ -32,7 +42,7 @@ done
 [ -n "$go_v" ] || { echo "ERROR: could not read AppVersion from version.go" >&2; rc=1; }
 
 if [ "$rc" -ne 0 ]; then
-  echo "Version drift detected — bump all four together (or run scripts/bump-version.sh)." >&2
+  echo "Version drift detected — bump version.go, ui/package.json, ui/package-lock.json, the CHANGELOG heading and the image tags in deploy/docker-compose.prod.yml together." >&2
   exit 1
 fi
 echo "OK: all version declarations agree on $go_v"

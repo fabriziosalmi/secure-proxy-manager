@@ -1,5 +1,14 @@
 name: Multi-Arch Build & Push
 
+# Release pipeline. A v* tag builds every image for amd64 and arm64, pushes it
+# by digest only, scans what was pushed, and only then gives it its tags
+# (version, latest, the Docker Hub mirror) and signs it. A digest that fails a
+# gate is left untagged: nothing an installer pulls points at it.
+#
+# workflow_dispatch is a DRY RUN of the same path on the selected ref: build,
+# push by digest, scan, and stop. It used to tag and push :latest from any
+# ref, unsigned, because signing ran only for tags; the production compose
+# pulled :latest, so any dispatch replaced what installers received.
 on:
   push:
     tags: ['v*']
@@ -8,10 +17,57 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+  RELEASE: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+
+permissions:
+  contents: read
 
 jobs:
+  # Gates that do not need an image: the tag names the version the code
+  # declares, and the Go the images are built with has no reachable known
+  # vulnerability (govulncheck inside the pinned builder, as in CI).
+  preflight:
+    name: Release preflight
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "$RELEASE" = true ]; then
+            version="${GITHUB_REF#refs/tags/}"
+            [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+              || { echo "::error::release tags are vX.Y.Z, got '$version'"; exit 1; }
+            code="v$(sed -nE 's/.*AppVersion = "([^"]+)".*/\1/p' backend-go/internal/config/version.go | head -1)"
+            [ "$version" = "$code" ] \
+              || { echo "::error::tag $version does not match AppVersion $code"; exit 1; }
+          else
+            version="dry-run"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release=$RELEASE version=$version"
+
+      - name: Version declarations agree
+        run: bash scripts/check-version-sync.sh
+
+      - name: govulncheck in the pinned golang builder
+        run: |
+          set -euo pipefail
+          img=$(sed -n 's/^FROM \(golang:[^ ]*\) AS builder$/\1/p' backend-go/Dockerfile)
+          [ -n "$img" ] && [ "$img" = "$(sed -n 's/^FROM \(golang:[^ ]*\) AS builder$/\1/p' waf-go/Dockerfile)" ] \
+            || { echo "::error::backend-go and waf-go must build with the same pinned golang image"; exit 1; }
+          docker run --rm -v "$PWD:/src:ro" -e GOCACHE=/tmp/gocache -e GOPATH=/tmp/gopath "$img" sh -euc '
+            go version
+            go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+            for m in backend-go waf-go; do echo "── $m"; (cd /src/$m && /tmp/gopath/bin/govulncheck ./...); done'
+
   build-and-push:
     name: Build ${{ matrix.image }}
+    needs: preflight
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -35,6 +91,10 @@ jobs:
           - image: dns
             context: ./dns
             dockerfile: ./dns/Dockerfile
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
+      IMAGE: ghcr.io/${{ github.repository }}-${{ matrix.image }}
+      IMG: ${{ matrix.image }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -71,89 +131,110 @@ jobs:
       # discovery). Mirror there too — but only when the credentials exist, so
       # the release still works with just GHCR if they are not configured.
       - name: Login to Docker Hub
-        if: ${{ steps.dh.outputs.enabled == 'true' }}
+        if: ${{ env.RELEASE == 'true' && steps.dh.outputs.enabled == 'true' }}
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: docker.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract version from tag
-        id: version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          else
-            echo "version=latest" >> $GITHUB_OUTPUT
-          fi
-
-      # Tag list. GHCR keeps a package per component (ghcr.io/…/…-<component>).
-      # Docker Hub uses a SINGLE repo (secure-proxy-manager) with the component in
-      # the tag (…:proxy-<version>, …:dns-latest, …) — added only when
-      # DOCKERHUB_USERNAME is set.
-      - name: Compute image tags
-        id: tags
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          IMG: ${{ matrix.image }}
-          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
-        run: |
-          {
-            echo "tags<<EOF"
-            echo "${IMAGE_PREFIX}-${IMG}:${VERSION}"
-            echo "${IMAGE_PREFIX}-${IMG}:latest"
-            if [ -n "$DH_USER" ]; then
-              echo "docker.io/${DH_USER}/secure-proxy-manager:${IMG}-${VERSION}"
-              echo "docker.io/${DH_USER}/secure-proxy-manager:${IMG}-latest"
-            fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build and push ${{ matrix.image }}
+      # Pushed by digest, with no tag: until the scans below pass, nothing
+      # names this image. No build cache: the GHA cache can be written by any
+      # workflow run on the repository, and a poisoned layer would otherwise be
+      # scanned, tagged and signed as the release.
+      #
+      # APT_REFRESH busts the proxy image's apt layer so it never reinstalls an
+      # unpatched squid (that Dockerfile also fails closed below its CVE floor);
+      # images whose Dockerfile does not declare it ignore it. GIT_SHA is what
+      # /api/health reports as the commit; without it the binaries embed the
+      # ARG default, "unknown" (SECURE-BLD-01).
+      - name: Build and push ${{ matrix.image }} by digest
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          # Busts the proxy image's apt layer every run so a cached layer can
-          # never reinstall an unpatched squid (the proxy Dockerfile also fails
-          # closed if squid is older than its CVE floor). Ignored by images whose
-          # Dockerfile does not declare APT_REFRESH.
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          no-cache: true
           build-args: |
             APT_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
-            # Without this the published binaries embed the ARG default,
-            # "unknown", and report it through /api/health — so every release
-            # told anyone who asked that it was not built by the release
-            # pipeline, which is the one thing the field exists to answer
-            # (SECURE-BLD-01). Verified against the shipped v3.12.0 image.
             GIT_SHA=${{ github.sha }}
-          # Attach an SBOM and SLSA build provenance attestation to each image so
-          # consumers can audit contents and verify the build origin.
+          # SBOM and SLSA build provenance attestations on each image.
           sbom: true
           provenance: mode=max
 
+      - name: Install Trivy
+        run: |
+          VER=0.69.3
+          SHA256=1816b632dfe529869c740c0913e36bd1629cb7688bd5634f4a858c1d57c88b75
+          curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${VER}/trivy_${VER}_Linux-64bit.tar.gz" -o /tmp/trivy.tgz
+          echo "${SHA256}  /tmp/trivy.tgz" | sha256sum -c -
+          tar -xzf /tmp/trivy.tgz -C /tmp trivy
+          sudo install -m 0755 /tmp/trivy /usr/local/bin/trivy
+
+      # The scan CI never ran: its image scan skips this project's own images
+      # (they are built, not pulled), and v3.14.1 shipped Go and Alpine
+      # advisories that had fixes. This scans the exact digest just pushed, both
+      # architectures, with no ignore file: the exceptions in .trivyignore.yaml
+      # are for third-party images and do not apply to what this project ships.
+      - name: Scan the pushed image (amd64 and arm64)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for platform in linux/amd64 linux/arm64; do
+            echo "── ${IMAGE}@${DIGEST} ${platform}"
+            trivy image --platform "$platform" --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+              --exit-code 1 --no-progress "${IMAGE}@${DIGEST}"
+          done
+
+      - name: Stop here on a dry run
+        if: ${{ env.RELEASE != 'true' }}
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          echo "Dry run ${GITHUB_REF}: ${IMAGE}@${DIGEST} built and scanned; not tagged, not signed."
+
+      - name: Tag the scanned digest
+        if: ${{ env.RELEASE == 'true' }}
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create -t "${IMAGE}:${VERSION}" -t "${IMAGE}:latest" "${IMAGE}@${DIGEST}"
+
+      # Docker Hub uses a SINGLE repo (secure-proxy-manager) with the component
+      # in the tag (…:proxy-<version>, …:dns-latest, …). The manifest is copied
+      # as is, so the digest, and the signature below, are the same.
+      - name: Mirror to Docker Hub
+        if: ${{ env.RELEASE == 'true' && steps.dh.outputs.enabled == 'true' }}
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            -t "docker.io/${DH_USER}/secure-proxy-manager:${IMG}-${VERSION}" \
+            -t "docker.io/${DH_USER}/secure-proxy-manager:${IMG}-latest" \
+            "${IMAGE}@${DIGEST}"
+
       # Keyless (OIDC) signature via cosign, so consumers can verify the image
-      # provenance against this repo's identity. Signing is required — the
-      # workflow fails if cosign cannot sign, preventing an unsigned image
-      # from being published.
+      # against this repository's release workflow identity. Signing is
+      # required: if it fails the job fails.
       - name: Install cosign
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.RELEASE == 'true' }}
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Sign the published image (keyless)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.RELEASE == 'true' }}
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
-          IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
       - name: Sign the Docker Hub image (keyless)
-        if: ${{ startsWith(github.ref, 'refs/tags/v') && steps.dh.outputs.enabled == 'true' }}
+        if: ${{ env.RELEASE == 'true' && steps.dh.outputs.enabled == 'true' }}
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
-          # Single repo; the digest identifies this component's manifest.
-          IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/secure-proxy-manager
-        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: cosign sign --yes "docker.io/${DH_USER}/secure-proxy-manager@${DIGEST}"

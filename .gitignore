@@ -67,3 +67,6 @@ config/ssl_db/
 
 # Claude Code working directory (worktrees, settings, transcripts)
 .claude/
+
+# Written by deploy/install.sh (production compose, selected via COMPOSE_FILE)
+compose.prod.yml

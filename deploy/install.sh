@@ -140,17 +140,33 @@ if ! command -v git &>/dev/null; then
 fi
 
 # ── Clone or update repo ─────────────────────────────────────────────
+# The production compose is copied to compose.prod.yml, which git does not
+# track, and selected with COMPOSE_FILE in .env (docker compose reads it). It
+# used to be copied over the TRACKED docker-compose.yml, so the next
+# `git pull` refused to run ("local changes would be overwritten") as soon as
+# upstream changed that file, and `set -e` ended the upgrade there.
 if [ -d "$INSTALL_DIR" ]; then
     info "Updating existing installation..."
     cd "$INSTALL_DIR"
+    # A docker-compose.yml written by an earlier version of this installer is
+    # restored before pulling. One that differs from the production compose
+    # was edited by someone, and is not thrown away.
+    if ! git diff --quiet -- docker-compose.yml 2>/dev/null; then
+        if cmp -s docker-compose.yml deploy/docker-compose.prod.yml; then
+            git checkout -- docker-compose.yml
+            ok "Restored docker-compose.yml (the production compose now lives in compose.prod.yml)"
+        else
+            fail "docker-compose.yml has local changes this installer did not make. Move them to compose.prod.yml or an override file, run 'git checkout -- docker-compose.yml', then re-run."
+        fi
+    fi
     git pull --ff-only origin "$BRANCH"
-    cp deploy/docker-compose.prod.yml docker-compose.yml
+    cp deploy/docker-compose.prod.yml compose.prod.yml
     ok "Updated to latest"
 else
     info "Cloning repository..."
     git clone --depth 1 -b "$BRANCH" "$REPO" "$INSTALL_DIR"
     cd "$INSTALL_DIR"
-    cp deploy/docker-compose.prod.yml docker-compose.yml
+    cp deploy/docker-compose.prod.yml compose.prod.yml
     ok "Cloned to $INSTALL_DIR"
 fi
 
@@ -173,6 +189,8 @@ BASIC_AUTH_PASSWORD=${ADMIN_PASS}
 SECRET_KEY=${SECRET_KEY}
 INTERNAL_ALERT_TOKEN=${ALERT_TOKEN}
 CORS_ALLOWED_ORIGINS=https://localhost:8443
+# The production compose (pre-built, signed GHCR images); see install.sh.
+COMPOSE_FILE=compose.prod.yml
 
 # HTTPS: uncomment for Let's Encrypt (requires public domain + port 80)
 # LETSENCRYPT_DOMAIN=
@@ -203,11 +221,35 @@ else
             "$(openssl rand -hex 32)" >> .env
         ok "Added INTERNAL_ALERT_TOKEN to .env (WAF alert credential)"
     fi
+    if ! grep -q '^COMPOSE_FILE=' .env; then
+        printf '\n# Added by install.sh — the production compose (see install.sh)\nCOMPOSE_FILE=compose.prod.yml\n' >> .env
+        ok "Added COMPOSE_FILE=compose.prod.yml to .env"
+    fi
 fi
 
 # ── Build and start ──────────────────────────────────────────────────
 info "Pulling pre-built containers from GitHub Container Registry (GHCR)..."
 docker compose pull --quiet
+
+# The images are signed keylessly by the release workflow, for a v* tag of
+# this repository only. With cosign installed the signature and that identity
+# are checked before anything starts; without it, say how to.
+SIGNER='^https://github\.com/fabriziosalmi/secure-proxy-manager/\.github/workflows/multi-arch\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$'
+cosign_major=$(cosign version 2>/dev/null | sed -nE 's/^GitVersion:[[:space:]]*v?([0-9]+)\..*/\1/p' | head -1)
+if command -v cosign &>/dev/null && [ "${cosign_major:-0}" -lt 3 ]; then
+    # The release signs with cosign 3, whose bundles cosign 2 does not find
+    # ("no signatures found"): that would refuse every image.
+    warn "cosign ${cosign_major:-?}.x is installed; verifying these signatures needs cosign 3 or later. Skipping verification."
+elif command -v cosign &>/dev/null; then
+    for img in $(docker compose config --images | grep '^ghcr\.io/fabriziosalmi/secure-proxy-manager-'); do
+        cosign verify --certificate-identity-regexp "$SIGNER" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com "$img" >/dev/null 2>&1 \
+            || fail "Signature verification failed for $img — not starting it."
+    done
+    ok "Image signatures verified (cosign)"
+else
+    warn "cosign not installed: image signatures were not verified. See SECURITY.md, 'Verifying images'."
+fi
 
 # Back up the data volume before launching new images that may run a DB
 # migration (no-op on a fresh install). Keep the 3 most recent backups.
