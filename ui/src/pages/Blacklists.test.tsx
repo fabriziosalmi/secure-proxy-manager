@@ -93,6 +93,33 @@ describe('Blacklists', () => {
       })
     }
   })
+  // Bulk Add on a whitelist tab posted to blacklists/import with type "ip" or
+  // "domain", which the backend maps to the BLACKLIST tables: an admin who
+  // meant to allow an address blocked it, and the toast said "Added".
+  describe.each([
+    ['IP Whitelist', /^ip whitelist/i, 'ip-whitelist', 'ip', '203.0.113.7\n198.51.100.0/24'],
+    ['Domain Whitelist', /^domain whitelist/i, 'domain-whitelist', 'domain', 'trusted.example.com\nok.example.org'],
+  ])('Bulk Add on the %s tab', (_label, tabName, endpoint, key, text) => {
+    it('adds each entry to the whitelist and never imports into a blacklist', async () => {
+      const user = userEvent.setup()
+      vi.mocked(api.post).mockResolvedValue({ data: { status: 'success' } })
+      renderWithProviders(<Blacklists />)
+      await waitFor(() => expect(screen.getByText('10.0.0.1')).toBeInTheDocument())
+
+      await user.click(screen.getByRole('tab', { name: tabName }))
+      await user.click(screen.getByRole('button', { name: /bulk add/i }))
+      fireEvent.change(document.getElementById('bl-bulk-text') as HTMLTextAreaElement, { target: { value: text } })
+      await user.click(screen.getByRole('button', { name: /add all/i }))
+
+      await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2), { timeout: 3000 })
+      const calls = vi.mocked(api.post).mock.calls
+      expect(calls.some(([url]) => url === 'blacklists/import')).toBe(false)
+      const [first, second] = text.split('\n')
+      expect(calls[0]).toEqual([endpoint, expect.objectContaining({ [key]: first })])
+      expect(calls[1]).toEqual([endpoint, expect.objectContaining({ [key]: second })])
+    })
+  })
+
   // #219 M8 + M10b. Both were real: a second click fired a second POST and
   // imported twice, and the inline country parser filtered on length alone, so
   // "12" reached the API as a country code.

@@ -72,7 +72,7 @@ server {
     add_header X-XSS-Protection           "1; mode=block"                          always;
     add_header Referrer-Policy            "strict-origin-when-cross-origin"        always;
     add_header Permissions-Policy         "camera=(), microphone=(), geolocation=()" always;
-    add_header Content-Security-Policy    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws: wss:" always;
+    add_header Content-Security-Policy    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'" always;
 
     # WPAD on HTTPS too
     location = /wpad.dat {
@@ -152,6 +152,10 @@ server {
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
         root      /usr/share/nginx/html;
         expires   1y;
+        # An add_header here used to replace the server-level ones, so every
+        # script, stylesheet and SVG was served without HSTS, nosniff, CSP or
+        # X-Frame-Options. merge keeps them and adds Cache-Control.
+        add_header_inherit merge;
         add_header Cache-Control "public, immutable";
         access_log off;
     }

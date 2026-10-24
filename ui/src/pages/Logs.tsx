@@ -97,6 +97,11 @@ export function Logs() {
         ws.onmessage = (event) => {
           try {
             const newLog = JSON.parse(event.data);
+            // The hub also carries events ({"type": "login_failure", ...}),
+            // sent unauthenticated by anyone who fails a login. They used to
+            // land here as blank "Invalid Date" rows and push real traffic out
+            // of the 200-row buffer. Only log rows are kept.
+            if (!newLog || typeof newLog !== 'object' || 'type' in newLog) return;
             setRealtimeLogs(prev => [newLog, ...prev].slice(0, 200));
           } catch { /* skip */ }
         };
