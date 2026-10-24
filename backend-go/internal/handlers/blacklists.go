@@ -291,6 +291,10 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid domain format")
 		return
 	}
+	if limit := database.DomainBlacklistLimit(); h.domainCount() >= limit {
+		writeError(w, http.StatusRequestEntityTooLarge, domainLimitMessage(limit))
+		return
+	}
 	_, err := h.db.Exec("INSERT INTO domain_blacklist(domain, description) VALUES(?,?)", domain, item.Description)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
@@ -448,7 +452,15 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	stored := len(existing) // parseImport adds what it accepts to existing (dedup)
 	toInsert, stats := parseImport(content, blType, existing)
+	// All or nothing: a partial import would leave an arbitrary slice of the
+	// list, and the limit is what keeps dnsmasq inside its memory.
+	if limit := database.DomainBlacklistLimit(); table == "domain_blacklist" && stored+len(toInsert) > limit {
+		writeError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf(
+			"import refused: the domain blacklist would hold %d entries; %s", stored+len(toInsert), domainLimitMessage(limit)))
+		return
+	}
 	insertFailed := h.insertImported(table, col, toInsert)
 	stats.added -= insertFailed
 	stats.skipped += insertFailed
@@ -465,6 +477,19 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 		"message": msg,
 		"data":    map[string]any{"added": stats.added, "skipped": stats.skipped, "bogon_skipped": stats.bogonSkipped},
 	})
+}
+
+// domainCount is the number of domains in the blacklist (0 if unreadable; the
+// insert that follows reports a database that cannot be read).
+func (h *BlacklistHandlers) domainCount() int {
+	var n int
+	_ = h.db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&n)
+	return n
+}
+
+func domainLimitMessage(limit int) string {
+	return fmt.Sprintf("the domain blacklist is limited to %d entries (SPM_DNS_BLOCKLIST_MAX_DOMAINS): "+
+		"dnsmasq holds every entry in memory, about 200 MiB per million; raise the limit together with the dns container's memory", limit)
 }
 
 // importTarget maps the request's list type to the table and column it feeds.

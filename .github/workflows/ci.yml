@@ -504,7 +504,7 @@ jobs:
           check_url() {
             local name="$1" url="$2"
             local code
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
+            code=$(curl -sL -o /dev/null -w "%{http_code}" --max-time 25 \
               -H "User-Agent: SecureProxyManager/CI" "$url")
             if [ "$code" = "200" ]; then
               echo "OK   [$code] $name"
@@ -513,10 +513,14 @@ jobs:
               FAILED=1
             fi
           }
-          check_url "Firehol Level 1"   "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset"
-          check_url "Spamhaus DROP"      "https://www.spamhaus.org/drop/drop.txt"
-          check_url "StevenBlack hosts"  "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
-          check_url "URLhaus domains"    "https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-hosts.txt"
+          # Every URL the UI offers in Popular Lists and every auto-refresh
+          # default, read from the source rather than listed here: four
+          # hand-picked URLs passed while HaGeZi answered 404 and Talos 403,
+          # and the UI kept offering them.
+          urls=$( { grep -oE "url: 'https://[^']+'" ui/src/pages/Blacklists.tsx | sed -E "s/^url: '//; s/'$//";
+                    grep -oE '"https://[^"]+"' backend-go/internal/workers/blacklist_refresh.go | tr -d '"'; } | sort -u)
+          [ -n "$urls" ] || { echo "no list URLs found in the sources"; exit 1; }
+          for url in $urls; do check_url "$url" "$url"; done
           [ "$FAILED" -ne 0 ] && exit 1 || true
 
   # ── 8b. Compose validation (incl. the prod file users actually run) ───
