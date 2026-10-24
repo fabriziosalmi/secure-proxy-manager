@@ -239,6 +239,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install pytest
         run: pipx install pytest==8.4.2
+      # The MCP server's tests import it; the bounds are mcp/pyproject.toml's.
+      # Without these they skip (importorskip) instead of running.
+      - name: Install the MCP server's dependencies into the pytest env
+        run: pipx inject pytest 'mcp>=2.0.0,<3.0.0' 'httpx>=0.27,<1.0.0'
       - name: Test the sidecar's failure branches
         run: sudo mkdir -p /config && sudo chmod 777 /config && pytest tests/python -q
 
