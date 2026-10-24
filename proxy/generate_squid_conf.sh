@@ -318,6 +318,15 @@ cache_store_log none
 connect_timeout 30 seconds
 dns_timeout 5 seconds
 
+# Squid caches a DNS answer for its TTL, up to positive_dns_ttl (6 hours by
+# default), and `squid -k reconfigure` does not clear that cache. Domains are
+# blocked by the dnsmasq sinkhole, so a domain that had just been visited kept
+# being served from the cached address after it was blacklisted (measured:
+# example.org still 200 after dnsmasq answered 0.0.0.0, and after a
+# reconfigure). dnsmasq is local, so a one-minute cap costs nothing and bounds
+# how long a newly blacklisted domain stays reachable.
+positive_dns_ttl 1 minute
+
 # ── Protocol Hardening ───────────────────────────────────────────────────────
 
 # Strip internal topology from outbound requests
