@@ -1,5 +1,13 @@
 # Pin: ubuntu 26.04 (resolute)
-FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
+FROM ubuntu:26.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944
+
+# The Ubuntu 26.04 base ships /usr/bin/pebble, Canonical's service manager,
+# outside any dpkg package. Nothing here uses it (supervisord runs the
+# processes), and it is a Go binary with its own stdlib: the release scan found
+# four fixable HIGH stdlib advisories in it (Go 1.26.7), in an image whose own
+# code has none. Removed, and the build fails if a base update brings it back
+# somewhere else.
+RUN rm -f /usr/bin/pebble && ! command -v pebble
 
 # Squid ships from the Ubuntu security pocket, so the package REVISION (here
 # 7.2-2ubuntu2.2), not the upstream "7.2", is what carries CVE fixes.
