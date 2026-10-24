@@ -36,6 +36,7 @@ jobs:
         id: decide
         env:
           UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          ECOSYSTEM: ${{ steps.meta.outputs.package-ecosystem }}
           TITLE: ${{ github.event.pull_request.title }}
           BODY: ${{ github.event.pull_request.body }}
         run: |
@@ -43,10 +44,6 @@ jobs:
           # finds nothing: every grep below is tolerated with `|| true`.
           set -u
           ok=true; why="patch or minor"
-          case "$UPDATE_TYPE" in
-            version-update:semver-patch|version-update:semver-minor) ;;
-            *) ok=false; why="metadata update-type is '${UPDATE_TYPE:-none}'" ;;
-          esac
           V='`?(v|>=|\^|~)?[0-9][^ `|]*`?'
           pairs="$RUNNER_TEMP/pairs"
           {
@@ -75,6 +72,25 @@ jobs:
             esac
             [ ${#1} -ge 7 ]
           }
+          # The update-type check used to run first and refused every digest
+          # re-pin before is_digest was ever consulted: Dependabot reports a
+          # digest-only update as semver-major (#390 was refused with
+          # "metadata update-type is 'version-update:semver-major'"). So the
+          # pairs are read first, and a Docker update whose every pair is a
+          # digest passes the update-type check.
+          all_digest=true
+          while read -r a b; do
+            is_digest "$a" && is_digest "$b" || all_digest=false
+          done < "$pairs"
+          [ -s "$pairs" ] || all_digest=false
+          case "$UPDATE_TYPE" in
+            version-update:semver-patch|version-update:semver-minor) ;;
+            *) if [ "$ECOSYSTEM" = "docker" ] && [ "$all_digest" = true ]; then :; else
+                 ok=false; why="metadata update-type is '${UPDATE_TYPE:-none}'"; fi ;;
+          esac
+          # Actions run inside the release job, which holds packages: write and
+          # id-token: write. An update to one is read by a person.
+          if [ "$ECOSYSTEM" = "github_actions" ]; then ok=false; why="github-actions updates are reviewed by hand"; fi
           while read -r a b; do
             if is_digest "$a" && is_digest "$b"; then continue; fi
             x=$(printf '%s' "$a" | sed -E 's/^[^0-9]*//; s/[^0-9].*//')

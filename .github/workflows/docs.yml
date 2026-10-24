@@ -9,10 +9,11 @@ on:
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
+# Least privilege per job: the build runs `npm ci`, which executes dependency
+# install scripts, so it must not hold the Pages deploy credential. Only the
+# deploy job needs pages: write and id-token: write.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -21,6 +22,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read # configure-pages reads the site configuration
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -28,7 +32,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: docs/package-lock.json
 
@@ -54,6 +58,9 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
