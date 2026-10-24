@@ -28,6 +28,9 @@ vulnerabilities:
   - id: CVE-2026-28377
     statement: "github.com/grafana/tempo vendored in grafana/grafana:13.2.4; same."
     expired_at: 2026-12-31
+  - id: CVE-2026-111943
+    statement: "Go stdlib crypto/x509 (fixed in 1.26.10 / 1.27.3) inside grafana/grafana:13.2.4's own binary and its bundled plugins, built with 1.26.6-1.27.1; 13.2.4 is the newest tag. Recorded 2026-10-24: it was the only finding of the image scan and it red-gated every dependency PR. Our own images move to 1.27.3 in the same change."
+    expired_at: 2026-11-30
   # tailscale/tailscale:v1.102.5 — vendored Go modules inside the tailscale
   # binary. This pin now matches overlay/tailscale/Dockerfile, which is what
   # scripts/check-image-pins.sh enforces; before that it sat at v1.80.3 with
