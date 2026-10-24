@@ -9,7 +9,7 @@ The web UI and API accept two authentication schemes interchangeably on every pr
 
 `POST /api/auth/login` accepts a JSON body `{username, password}` and returns both an access token and a refresh token. `POST /api/auth/refresh` exchanges a refresh token for a fresh pair. `POST /api/logout` blacklists the presented JWT (the blacklist is persisted in the `jwt_blacklist` table so it survives restarts).
 
-Passwords are stored using bcrypt. Legacy werkzeug-format hashes (`pbkdf2:sha256:...`) are detected and re-hashed as bcrypt on the first successful login.
+Passwords are stored using bcrypt.
 
 ## Rate limiting
 
@@ -39,7 +39,7 @@ Endpoints that fetch a remote URL — `POST /api/blacklists/import`, `POST /api/
 - Unspecified, multicast, or reserved ranges
 - The unspecified address `0.0.0.0/8`
 
-The HTTP client used for the download pins to the IP that was resolved during the safety check, so a hostname cannot rebind to a private address between resolution and connection. Imports are capped at 200 MB.
+The HTTP client used for the download pins to the IP that was resolved during the safety check, so a hostname cannot rebind to a private address between resolution and connection. Imports are capped at 32 MB.
 
 ## CORS
 
@@ -131,14 +131,11 @@ server {
 
 ## Transparent proxy {#transparent-proxy}
 
-To intercept client traffic without manual proxy configuration on each device, redirect ports 80 and 443 to the proxy on the gateway:
-
-```bash
-iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80  -j REDIRECT --to-port 3128
-iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j REDIRECT --to-port 3128
-```
-
-Then enable transparent mode in **Settings → Advanced → Transparent Mode**.
+Transparent (intercepting) proxying is not supported. Squid listens on 3128
+as an explicit forward proxy only: there is no `intercept` port, so traffic
+redirected to it with iptables is not served, and there is no setting for it in
+the UI. Configure clients explicitly, with the PAC file, or with WPAD (see
+Settings → Client Setup).
 
 ## Changing the admin password
 

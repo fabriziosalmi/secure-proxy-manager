@@ -2,17 +2,20 @@
 
 ## Architecture
 
-| Container | User | Privileges | Notes |
-|-----------|------|-----------|-------|
-| backend (Go) | `app` (UID 1000) | docker.sock:ro | Reload signals for Squid/dnsmasq |
-| waf (Go) | `waf` (UID 1000) | none | ICAP server, internal only |
-| web (Nginx) | `nginx` | none | TLS termination, static files |
-| proxy (Squid) | `proxy` | NET_ADMIN | Transparent proxy mode |
-| dns (dnsmasq) | `root` | none | Internal DNS only |
+As shipped in `docker-compose.yml`. Every service runs with a read-only root
+filesystem and `no-new-privileges`.
+
+| Container | Runs as | Capabilities | Notes |
+|-----------|---------|--------------|-------|
+| backend (Go) | root (the image sets no `USER`) | none (`cap_drop: ALL`) | No Docker socket. Reloads are requested with trigger files in `/config`, which the proxy's watchdog applies |
+| waf (Go) | `waf` (UID 1000) | none (`cap_drop: ALL`) | ICAP on 1344 and the management API on 8080, internal network only |
+| web (nginx) | master as root, workers as `nginx` | `CHOWN`, `SETUID`, `SETGID`, `NET_BIND_SERVICE` | TLS termination, static files, `/api` reverse proxy |
+| proxy (Squid) | supervisord and the watchdog as root; Squid as `proxy` | Docker's default set plus `NET_ADMIN` (no `cap_drop`) | `NET_ADMIN` is used only for iptables REDIRECT rules; transparent interception is not implemented (no intercept port) |
+| dns (dnsmasq) | root (`--user=root`) | `NET_BIND_SERVICE`, `DAC_OVERRIDE` | Internal DNS only, not published on the host |
 
 ### Docker Socket
 
-The backend mounts `/var/run/docker.sock:ro` to send SIGHUP to Squid/dnsmasq when blacklists change. Read-only, non-root, no `--privileged`. Remove the mount if not needed (manual reload required).
+No container mounts the Docker socket.
 
 ### Authentication
 
@@ -28,7 +31,7 @@ The backend mounts `/var/run/docker.sock:ro` to send SIGHUP to Squid/dnsmasq whe
 - **Sensitive settings encrypted at rest**: Webhook URLs, Gotify/Telegram/ntfy tokens stored with AES-256-GCM
 - Encryption key auto-generated and persisted to `/data/.enc_key` (mode 0600)
 - JWT secret auto-generated and persisted to `/data/.jwt_secret` (mode 0600)
-- TLS 1.2/1.3 only, strong ciphers (`HIGH:!aNULL:!MD5:!RC4`), HSTS 1 year
+- TLS 1.2/1.3 only, ECDHE key exchange with AES-GCM only (`ssl_ciphers` in `ui/nginx.conf.template`), HSTS 1 year
 
 ### Content Security Policy
 
@@ -43,15 +46,15 @@ connect-src 'self' ws: wss:
 
 ### WAF
 
-- 170 regex rules + 6 heuristics across 21 Security Packs (+ per-request feature-vector profiling)
-- Anomaly scoring, dual-scan (raw + decoded), 55MB body limit
+- 172 request rules in 21 categories and 5 response rules in 2, plus 6 heuristics (+ per-request feature-vector profiling)
+- Anomaly scoring, dual-scan (raw + decoded). Request bodies are inspected up to 1 MB; a larger body is flagged (`WAF-BODY-OVERSIZE`) and the rest is not inspected
 - All inputs validated with max-length constraints
 - Circuit breaker protects backend against WAF service failures
 
 ### Resilience
 
 - **Circuit breaker**: WAF calls trip after 3 failures, auto-recover after 30s
-- **Notification retry**: Failed deliveries retry 3x with exponential backoff (1s, 2s, 4s)
+- **Notification retry**: a delivery is attempted 3 times, with 1 s and then 2 s between attempts
 - **Graceful shutdown**: All background workers respond to SIGTERM via context cancellation
 - **Atomic file exports**: Temp file + rename pattern prevents torn reads by Squid/dnsmasq
 

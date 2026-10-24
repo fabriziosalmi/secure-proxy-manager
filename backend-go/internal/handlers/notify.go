@@ -37,7 +37,7 @@ const channelQueueSize = 64
 // Variables so tests can shorten them; production values are the defaults.
 var (
 	notifyTimeout    = 5 * time.Second
-	notifyBackoff    = func(attempt int) time.Duration { return time.Duration(1<<uint(attempt)) * time.Second } // 1s, 2s, 4s
+	notifyBackoff    = func(attempt int) time.Duration { return time.Duration(1<<uint(attempt)) * time.Second } // 1s then 2s: there is no sleep after the last of 3 attempts
 	notifyMaxTries   = 3
 	notifyHTTPClient = func() *http.Client { return &http.Client{Timeout: notifyTimeout} }
 )
