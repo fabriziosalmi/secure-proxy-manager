@@ -105,9 +105,11 @@ The API is therefore only reachable from the host machine. All external access g
 The shipped `web` service can either:
 
 - Generate a self-signed certificate and serve HTTPS on `:443` and `:8443` directly, or
-- Provision a real certificate via Let's Encrypt when both `LETSENCRYPT_DOMAIN` and `LETSENCRYPT_EMAIL` are set.
+- Serve a certificate you mount at `/etc/nginx/ssl/server.crt` and `/etc/nginx/ssl/server.key`.
 
-If you prefer to terminate TLS on an external reverse proxy (Caddy, Traefik, an upstream Nginx), point it at the unencrypted port `8011`:
+The shipped image does not include certbot, so it does not obtain Let's Encrypt certificates itself.
+
+If you prefer to terminate TLS on an external reverse proxy (Caddy, Traefik, an upstream Nginx), point it at the HTTPS port `8443` (the upstream certificate is the self-signed one unless you mount your own). Port `8011` answers every path except `/health`, `/wpad.dat` and ACME challenges with a redirect to `https://<host>:8443`, so a reverse proxy pointed at it gets redirects, not the UI:
 
 ```nginx
 server {
@@ -118,7 +120,11 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/proxy.example.com/privkey.pem;
 
     location / {
-        proxy_pass http://127.0.0.1:8011;
+        proxy_pass https://127.0.0.1:8443;
+        # The upstream certificate is SPM's self-signed one unless you mounted
+        # your own; trust it explicitly with proxy_ssl_trusted_certificate
+        # instead if you can.
+        proxy_ssl_verify off;
         proxy_set_header Host              $host;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;

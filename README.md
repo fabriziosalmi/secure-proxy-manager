@@ -125,7 +125,7 @@ variables an operator normally sets; the complete set the backend reads is in
 |----------|---------|---------|
 | `BASIC_AUTH_USERNAME` / `BASIC_AUTH_PASSWORD` | required | Admin login. The backend refuses to start if the password is empty, a common default, or shorter than 8 characters. |
 | `SECRET_KEY` | auto-generated | JWT signing secret. Leave empty to generate and persist one. If set, it must be unique, random, and 32+ chars; known/example values are rejected at startup. |
-| `LETSENCRYPT_DOMAIN` / `LETSENCRYPT_EMAIL` | empty | Set both to obtain a real certificate via certbot instead of the self-signed one. |
+| `LETSENCRYPT_DOMAIN` / `LETSENCRYPT_EMAIL` | empty | Only for an image that includes certbot; the shipped one does not, and serves a self-signed certificate (and logs why). Mount a certificate at `/etc/nginx/ssl/server.crt` and `server.key` instead. |
 | `CORS_ALLOWED_ORIGINS` | `https://localhost:8443` | Allowed UI origin(s). |
 | `DNS_UPSTREAM_1..3` | malware-blocking resolvers | Upstream DNS for dnsmasq. Override to use your own (e.g. Pi-hole). |
 | `PROXY_IP` | empty | Your LAN IP, to enable WPAD auto-discovery (`wpad.dat`) for browsers. |
@@ -205,7 +205,7 @@ imposes and what happens at each:
   retry and backoff.
 - WebSocket log streaming, JWT auth with a persistent revocation list, per-IP
   rate limiting, and AES-256-GCM encryption of sensitive settings at rest.
-- Optional Let's Encrypt, WPAD/PAC client auto-config, and a Tailscale sidecar.
+- WPAD/PAC client auto-config and a Tailscale sidecar.
 
 ## Using it
 

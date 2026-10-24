@@ -19,67 +19,74 @@ LE_EMAIL="${LETSENCRYPT_EMAIL:-}"
 
 mkdir -p "$CERT_DIR"
 
-# Priority: 1) Let's Encrypt  2) Mounted cert  3) Self-signed
+# Priority: 1) Let's Encrypt  2) Mounted cert  3) Self-signed.
+#
+# The container must come up with SOME certificate. The self-signed branch used
+# to be an `else` of the same chain as Let's Encrypt, so when LE was configured
+# and failed (always, in the shipped image: certbot is not installed and the
+# read-only root filesystem cannot install it at runtime) nginx started with no
+# certificate and the container exited, over and over. LE is now an attempt;
+# the fallbacks run whenever it did not produce a certificate.
+LE_ACTIVE=0
 if [ -n "$LE_DOMAIN" ] && [ -n "$LE_EMAIL" ]; then
     echo "[entrypoint] Let's Encrypt mode: domain=$LE_DOMAIN email=$LE_EMAIL"
-
-    # Install certbot if not present
-    if ! command -v certbot >/dev/null 2>&1; then
-        echo "[entrypoint] Installing certbot..."
-        apk add --no-cache certbot >/dev/null 2>&1 || true
-    fi
-
-    # Create webroot for ACME challenges
-    mkdir -p /var/www/certbot
-
-    # Check if we already have a valid cert
     LE_CERT="/etc/letsencrypt/live/$LE_DOMAIN/fullchain.pem"
     LE_KEY="/etc/letsencrypt/live/$LE_DOMAIN/privkey.pem"
 
-    if [ -f "$LE_CERT" ] && [ -f "$LE_KEY" ]; then
-        echo "[entrypoint] Existing Let's Encrypt certificate found — checking renewal"
-        certbot renew --quiet --webroot -w /var/www/certbot 2>/dev/null || true
+    if ! command -v certbot >/dev/null 2>&1; then
+        echo "[entrypoint] ERROR: LETSENCRYPT_DOMAIN is set but certbot is not in this image. Falling back; to use a CA certificate, mount it at $CERT_FILE and $KEY_FILE." >&2
     else
-        echo "[entrypoint] Requesting new certificate from Let's Encrypt..."
-        # Start nginx temporarily on port 80 for ACME challenge
-        cat > /tmp/acme-nginx.conf <<NGINX
-server {
-    listen 80;
-    server_name $LE_DOMAIN;
-    location /.well-known/acme-challenge/ { root /var/www/certbot; }
-    location / { return 444; }
+        mkdir -p /var/www/certbot
+        if [ -f "$LE_CERT" ] && [ -f "$LE_KEY" ]; then
+            echo "[entrypoint] Existing Let's Encrypt certificate found — checking renewal"
+            certbot renew --quiet --webroot -w /var/www/certbot || echo "[entrypoint] WARNING: certbot renew failed" >&2
+        else
+            echo "[entrypoint] Requesting new certificate from Let's Encrypt..."
+            # A complete, standalone nginx for the HTTP-01 challenge, on the
+            # container port that host port 80 maps to (8011). The old one was a
+            # bare server{} block (nginx rejects it) listening on 80.
+            cat > /tmp/acme-nginx.conf <<NGINX
+pid /tmp/acme-nginx.pid;
+events {}
+http {
+    access_log off;
+    client_body_temp_path /tmp/acme-body;
+    server {
+        listen 8011;
+        server_name $LE_DOMAIN;
+        location /.well-known/acme-challenge/ { root /var/www/certbot; }
+        location / { return 444; }
+    }
 }
 NGINX
-        nginx -c /tmp/acme-nginx.conf &
-        ACME_PID=$!
-        sleep 2
-
-        certbot certonly --webroot -w /var/www/certbot \
-            -d "$LE_DOMAIN" --email "$LE_EMAIL" \
-            --agree-tos --non-interactive --quiet 2>&1 || {
-            echo "[entrypoint] Let's Encrypt failed — falling back to self-signed"
-            kill $ACME_PID 2>/dev/null || true
-            LE_DOMAIN=""
-        }
-        kill $ACME_PID 2>/dev/null || true
+            nginx -c /tmp/acme-nginx.conf -g 'daemon off;' &
+            ACME_PID=$!
+            sleep 2
+            certbot certonly --webroot -w /var/www/certbot \
+                -d "$LE_DOMAIN" --email "$LE_EMAIL" \
+                --agree-tos --non-interactive --quiet \
+                || echo "[entrypoint] WARNING: Let's Encrypt issuance failed" >&2
+            kill "$ACME_PID" 2>/dev/null || true
+        fi
+        if [ -f "$LE_CERT" ] && [ -f "$LE_KEY" ]; then
+            ln -sf "$LE_CERT" "$CERT_FILE"
+            ln -sf "$LE_KEY" "$KEY_FILE"
+            LE_ACTIVE=1
+            echo "[entrypoint] Let's Encrypt certificate active for $LE_DOMAIN"
+            # Daily renewal check
+            (while true; do sleep 86400; certbot renew --quiet --webroot -w /var/www/certbot && nginx -s reload; done) &
+        fi
     fi
+fi
 
-    # If LE succeeded, symlink certs
-    if [ -n "$LE_DOMAIN" ] && [ -f "$LE_CERT" ]; then
-        ln -sf "$LE_CERT" "$CERT_FILE"
-        ln -sf "$LE_KEY" "$KEY_FILE"
-        echo "[entrypoint] Let's Encrypt certificate active for $LE_DOMAIN"
-
-        # Schedule daily renewal check
-        (while true; do sleep 86400; certbot renew --quiet --webroot -w /var/www/certbot && nginx -s reload; done) &
-    fi
-
+if [ "$LE_ACTIVE" = 1 ]; then
+    :
 elif [ -f "$CERT_FILE" ] && [ -f "$KEY_FILE" ]; then
     echo "[entrypoint] Using mounted TLS certificate"
-
 else
     echo "[entrypoint] Generating self-signed TLS certificate..."
-    apk add --no-cache openssl >/dev/null 2>&1 || true
+    # openssl is installed at build time (ui/Dockerfile); the root filesystem
+    # is read-only, so nothing can be installed here.
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout "$KEY_FILE" -out "$CERT_FILE" \
         -subj "/C=US/ST=Local/L=Local/O=SecureProxyManager/CN=proxy-manager" \
