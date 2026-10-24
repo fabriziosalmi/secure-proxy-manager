@@ -14,7 +14,7 @@ All configuration lives in the `.env` file in the project root, which is read by
 
 | Variable | Default | Description |
 |---|---|---|
-| `LETSENCRYPT_DOMAIN` | _empty_ | When set together with `LETSENCRYPT_EMAIL`, the `web` service obtains a real certificate via Let's Encrypt |
+| `LETSENCRYPT_DOMAIN` | _empty_ | Used only by an image that includes certbot; the shipped image does not include certbot, so the `web` container cannot obtain a Let's Encrypt certificate itself: with these set it serves a self-signed certificate and logs why. To use a CA certificate, mount it at `/etc/nginx/ssl/server.crt` and `/etc/nginx/ssl/server.key`, or terminate TLS on a reverse proxy in front |
 | `LETSENCRYPT_EMAIL` | _empty_ | Email address used for the ACME account |
 | `CORS_ALLOWED_ORIGINS` | `https://localhost:8443` | Comma-separated list of origins allowed by the backend CORS policy. Add your public hostname when fronting the UI behind your own domain. |
 

@@ -24,7 +24,7 @@ No container mounts the Docker socket.
 - Per-IP login rate limiting: 5 attempts / 5 min
 - **Global rate limiting**: Token bucket per-IP (20 req/s, 60 burst) on all endpoints
 - WebSocket origin validation against CORS allowlist
-- HTTPS by default (self-signed 1-year cert or Let's Encrypt)
+- HTTPS by default (self-signed 1-year cert, or a certificate mounted at `/etc/nginx/ssl/`)
 
 ### Encryption
 

@@ -485,6 +485,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build all images
         run: docker compose build web backend waf proxy dns
+      # The web container exited on every start when LETSENCRYPT_DOMAIN was
+      # set: certbot is not in the image and the self-signed fallback never
+      # ran. This starts it under the compose runtime flags in each TLS mode.
+      - name: Web container starts with a certificate in every TLS mode
+        run: bash tests/shell/ui_tls_entrypoint_test.sh
 
   # ── 8. Popular list URL health check ──────────────────────────────────
   check-urls:

@@ -182,7 +182,7 @@ notifications) is managed from the UI and stored in the database, not in `.env`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LETSENCRYPT_DOMAIN` | empty | Set with `LETSENCRYPT_EMAIL` to obtain a real cert via certbot instead of the self-signed one |
+| `LETSENCRYPT_DOMAIN` | empty | Used only by an image that includes certbot; the shipped image does not include certbot, so the `web` container cannot obtain a Let's Encrypt certificate itself: with these set it serves a self-signed certificate and logs why. To use a CA certificate, mount it at `/etc/nginx/ssl/server.crt` and `/etc/nginx/ssl/server.key`, or terminate TLS on a reverse proxy in front |
 | `LETSENCRYPT_EMAIL` | empty | Contact email for ACME |
 
 ### Optional
@@ -233,9 +233,10 @@ you `./data` is preserved.
 There are two distinct TLS surfaces:
 
 1. **Web UI TLS.** `web` serves HTTPS on `8443`/`443` with a self-signed cert by
-   default. Set `LETSENCRYPT_DOMAIN` + `LETSENCRYPT_EMAIL` (and a public
-   domain + reachable port `80`) to get a real certificate via certbot; certs
-   persist in the `letsencrypt` volume.
+   default. For a CA certificate, mount it at `/etc/nginx/ssl/server.crt` and
+   `/etc/nginx/ssl/server.key` (a mounted pair is used in place of the
+   self-signed one), or put a reverse proxy in front. The shipped image does
+   not include certbot, so `LETSENCRYPT_DOMAIN` alone does not produce one.
 
 2. **Proxy SSL-bump CA.** When SSL-bump is enabled (Settings), Squid intercepts
    TLS using a locally generated CA so the WAF can inspect decrypted requests.

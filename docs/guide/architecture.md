@@ -12,7 +12,7 @@ Secure Proxy Manager is a multi-service Docker Compose application. Each service
 │  web  (host ports 80, 443, 8011, 8443)                          │
 │  Nginx reverse proxy + compiled React SPA static assets         │
 │  Reverse-proxies /api/* and /api/ws/* to backend:5000           │
-│  Optional Let's Encrypt for real certificates                   │
+│  Self-signed, or a mounted certificate                          │
 └────────────────────────┬────────────────────────────────────────┘
                          │ HTTP / WebSocket (frontend network)
                          ▼
@@ -53,7 +53,7 @@ The `frontend` network connects `web` to `backend`. The `proxy-internal` network
 - Serves the compiled React SPA.
 - Reverse-proxies `/api/*` and `/api/ws/*` to the backend at `backend:5000`.
 - Applies HTTP security headers (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy).
-- Generates its Nginx configuration at startup. When `LETSENCRYPT_DOMAIN` and `LETSENCRYPT_EMAIL` are set, it provisions Let's Encrypt certificates; otherwise a self-signed certificate is used.
+- Generates its Nginx configuration at startup and serves a mounted certificate from `/etc/nginx/ssl/` if one is there, otherwise a self-signed one. The shipped image has no certbot, so it does not obtain Let's Encrypt certificates itself.
 
 ### `backend` — Go API server
 
