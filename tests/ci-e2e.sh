@@ -103,12 +103,20 @@ hc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' http://example.com
 sc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' https://example.com/)
 [ "$sc" = 200 ] && ok "proxy HTTPS egress (200)" || bad "proxy HTTPS egress (got $sc)"
 
-# Live blacklist reload. Add a non-resolvable host (so the Squid ACL gives a
-# clean 403 with no DNS in the way), then poll until the watchdog has copied it
-# from /config into the Squid ACL list — a deterministic signal that avoids
-# guessing how long the slow CI runner needs — and finally confirm the request
-# is denied.
-BLOCK_HOST='ci-block.invalid'
+# Live blacklist reload. Domains are blocked by the dnsmasq sinkhole (answer
+# 0.0.0.0), not by a Squid ACL. This used to blacklist ci-block.invalid, which
+# never resolves, and expect 403: the request failed with 503 whether or not
+# the blacklist worked, so the check could never pass and proved nothing. It
+# now blacklists a host that resolves. The control resolves it through dnsmasq
+# rather than fetching it through the proxy: a fetch would put it in Squid's
+# HTTP cache, and cached objects of a blacklisted domain are still served
+# (TCP_MEM_HIT), which the sinkhole cannot stop because no DNS lookup happens.
+BLOCK_HOST='example.net'
+pre=$(docker compose exec -T dns nslookup "$BLOCK_HOST" 127.0.0.1 2>/dev/null | awk '/^Address/ && !/#53/ {print $NF}' | head -1)
+case "$pre" in
+  ""|0.0.0.0|::) bad "control: ${BLOCK_HOST} does not resolve before it is blacklisted (${pre:-none})" ;;
+  *)             ok "control: ${BLOCK_HOST} resolves before it is blacklisted ($pre)" ;;
+esac
 curl -s -m 10 -u "$AUTH" -X POST -H 'Content-Type: application/json' \
   -d "{\"domain\":\"${BLOCK_HOST}\"}" "$API/api/domain-blacklist" >/dev/null
 synced=0
@@ -130,16 +138,17 @@ done
 # WARN, not a gate. The gating signal above is that the watchdog synced the
 # file — that is the deploy-critical piece. (Follow-up: Squid reconfigure ACL
 # reload behaviour under the CI runtime.)
-bc=000
+sinkholed=0
 for _ in $(seq 1 20); do # up to ~40s
-  bc=$(docker exec secure-proxy-manager-proxy \
-        curl -s -m 10 -x http://127.0.0.1:3128 -o /dev/null -w '%{http_code}' \
-        "http://${BLOCK_HOST}/" 2>/dev/null || echo 000)
-  [ "$bc" = 403 ] && break
+  ans=$(docker compose exec -T dns nslookup "$BLOCK_HOST" 127.0.0.1 2>/dev/null | awk '/^Address/ && !/#53/ {print $NF}' | head -1)
+  [ "$ans" = 0.0.0.0 ] && { sinkholed=1; break; }
   sleep 2
 done
-[ "$bc" = 403 ] && ok "blacklisted host denied (403)" \
-                || warn "blacklisted host not denied in this environment (got $bc; watchdog sync confirmed above)"
+[ "$sinkholed" = 1 ] && ok "dnsmasq sinkholes the blacklisted host (0.0.0.0)" \
+                     || bad "dnsmasq does not sinkhole ${BLOCK_HOST} (answer: ${ans:-none})"
+bc=$(curl -s -m 20 -x "$PROXY" -o /dev/null -w '%{http_code}' "http://${BLOCK_HOST}/")
+[ "$bc" != 200 ] && ok "blacklisted host no longer served through the proxy (got $bc)" \
+                 || bad "blacklisted host still served through the proxy (200)"
 
 # Log pipeline — generate some proxied traffic, then the dashboard must count it
 # (this fails if the backend cannot read Squid's access.log).
@@ -202,17 +211,28 @@ done
 [ "$rule_found" = 1 ] && ok "default-deny rule injected into squid.conf" \
                       || bad "default-deny rule missing from squid.conf"
 
-# A non-allowlisted destination must be denied; retry to absorb the restart
-# settle window.
+# A non-allowlisted destination must be denied. The probe used to run inside
+# the proxy container against 127.0.0.1, i.e. from localhost, which the
+# default-deny exempts by design, so it got 200 and could only WARN. It now
+# connects to the container's own non-loopback address, a localnet source,
+# like a LAN client. Retry to absorb the reconfigure window.
+lan_probe() { # url -> status, from a localnet source
+  docker exec secure-proxy-manager-proxy sh -c \
+    'ip=$(hostname -i | awk "{print \$1}"); curl -s -m 10 -x "http://$ip:3128" -o /dev/null -w "%{http_code}" "$1"' _ "$1" 2>/dev/null || echo 000
+}
 dc=000
 for _ in $(seq 1 15); do
-  dc=$(docker exec secure-proxy-manager-proxy \
-        curl -s -m 10 -x http://127.0.0.1:3128 -o /dev/null -w '%{http_code}' http://example.org/ 2>/dev/null || echo 000)
+  dc=$(lan_probe http://example.org/)
   [ "$dc" = 403 ] && break
   sleep 2
 done
-[ "$dc" = 403 ] && ok "non-allowlisted destination denied (example.org → 403)" \
-                || warn "non-allowlisted destination not denied (example.org → $dc)"
+[ "$dc" = 403 ] && ok "non-allowlisted destination denied to a LAN client (example.org → 403)" \
+                || bad "non-allowlisted destination not denied to a LAN client (example.org → $dc)"
+ac_lan=$(lan_probe http://example.com/)
+case "$ac_lan" in
+  200|301|302) ok "allowlisted destination reachable for a LAN client (example.com → $ac_lan)" ;;
+  *)           bad "allowlisted destination unreachable for a LAN client (example.com → $ac_lan)" ;;
+esac
 
 echo
 echo "── result: ${PASS} passed, ${FAIL} failed ──"
