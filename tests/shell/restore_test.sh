@@ -7,8 +7,10 @@
 #
 # These tests exercise the decision the script exists to make, in a sandbox: it
 # must refuse a corrupt or incomplete backup, and it must leave data/ untouched
-# when it refuses. The parts that need Docker (compose down/up) are not driven
-# here; what is verified is everything up to and including the refusal.
+# when it refuses. Docker is a stub that records its arguments: the good-backup
+# case types "restore", so restore.sh reaches `docker compose down`, and with the
+# real binary that command acts on whatever COMPOSE_PROJECT_NAME names on the
+# host running the test, even with no compose file in the sandbox.
 # +e on purpose, and it must be explicit. GitHub invokes a run step as
 # `bash -e {0}`, so errexit is already ON before the script's first line, and
 # `set -uo pipefail` does not clear it. This harness is built to run every
@@ -54,7 +56,15 @@ mkgood() {
   done | sqlite3 "$1/proxy_manager.db"
 }
 
-run() { ( cd "$SANDBOX" && printf 'restore\n' | bash scripts/restore.sh "$1" 2>&1 ); }
+STUB="$SANDBOX/stub-bin"
+mkdir -p "$STUB"
+cat > "$STUB/docker" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$DOCKER_CALLS"
+EOF
+chmod +x "$STUB/docker"
+export DOCKER_CALLS="$SANDBOX/docker.calls"
+run() { ( cd "$SANDBOX" && printf 'restore\n' | PATH="$STUB:$PATH" bash scripts/restore.sh "$1" 2>&1 ); }
 
 echo "── refuses what is not a backup ──"
 out="$(run "$SANDBOX/data.bak.missing")"
@@ -131,11 +141,24 @@ live="$(sqlite3 "$SANDBOX/data/proxy_manager.db" 'SELECT x FROM live' 2>&1)"
 [ "$live" = "current" ] && ok "the live database is still the live one" \
                         || bad "the live database is still the live one" "$live"
 
-echo "── accepts a good backup (verification stage only) ──"
+[ -e "$DOCKER_CALLS" ] && bad "no docker command before a refusal" "$(cat "$DOCKER_CALLS")" \
+                       || ok "no docker command before a refusal"
+
+echo "── accepts a good backup, stops the stack, swaps, starts it ──"
 mkgood "$SANDBOX/data.bak.good"
 out="$(run "$SANDBOX/data.bak.good")"
 grep -q 'passes PRAGMA integrity_check' <<<"$out" && ok "a sound backup passes verification" \
                                                   || bad "a sound backup passes verification" "$out"
+calls="$(cat "$DOCKER_CALLS" 2>/dev/null)"
+[ "$calls" = "$(printf 'compose down\ncompose up -d')" ] && ok "compose down before the swap, up after" \
+                                                         || bad "compose down before the swap, up after" "$calls"
+rows="$(sqlite3 "$SANDBOX/data/proxy_manager.db" 'SELECT count(*) FROM t' 2>&1)"
+[ "$rows" = "400" ] && ok "data/ now holds the backup" || bad "data/ now holds the backup" "$rows"
+aside="$(ls -1d "$SANDBOX"/data.before-restore.* 2>/dev/null | head -1)"
+[ -n "$aside" ] && [ "$(cat "$aside/marker" 2>/dev/null)" = "LIVE" ] \
+  && ok "the previous data/ is kept aside" || bad "the previous data/ is kept aside" "${aside:-none}"
+# Put the live directory back for the cases below.
+[ -n "$aside" ] && rm -rf "$SANDBOX/data" && mv "$aside" "$SANDBOX/data"
 
 echo "── a host without sqlite3 must not skip verification silently ──"
 # A PATH holding only what the script needs before the verification stage, so
