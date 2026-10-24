@@ -56,8 +56,16 @@ export function Audit() {
       ['timestamp', 'username', 'action', 'target', 'details'],
       ...filtered.map((e) => [e.timestamp, e.username ?? '', e.action, e.target ?? '', e.details ?? '']),
     ];
+    // A cell that starts with = + - @ (or a tab/CR) is a formula to Excel,
+    // LibreOffice and Sheets, and these fields are attacker-controlled: a
+    // failed login stores whatever username was sent, unauthenticated. A
+    // leading apostrophe makes the spreadsheet show the text as text.
+    const cell = (c: unknown) => {
+      const s = String(c);
+      return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+    };
     const csv = rows
-      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      .map((r) => r.map((c) => `"${cell(c).replace(/"/g, '""')}"`).join(','))
       .join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const link = document.createElement('a');

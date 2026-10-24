@@ -28,7 +28,6 @@ const settingsSchema = z.object({
     return port > 0 && port <= 65535;
   }, "Port must be between 1 and 65535").optional().or(z.literal('')),
   cache_size: z.string().regex(/^\d+$/, "Size must be a number").optional().or(z.literal('')),
-  custom_squid_conf: z.string().optional()
 }).catchall(z.string());
 
 // Sections for the sticky quick-nav. `id` must match the matching section's

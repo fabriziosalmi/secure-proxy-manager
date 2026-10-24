@@ -139,14 +139,61 @@ export function Blacklists() {
   // twice (#219, M8).
   const [submitting, setSubmitting] = useState<'bulk' | 'url' | 'geo' | null>(null);
 
+  // Bulk Add on a whitelist tab used to post to blacklists/import with type
+  // "ip" or "domain", which the backend maps to the BLACKLIST tables: the
+  // entries an admin meant to allow were blocked, and the toast said "Added".
+  // The import endpoint has no whitelist target, so whitelist entries go one
+  // by one through the same endpoint (and validation) as a single add, paced
+  // under the nginx limit of 20 requests per second.
+  const BULK_WHITELIST_MAX = 200;
+  const addWhitelistEntries = async (lines: string[]) => {
+    const endpoint = activeTab === 'whitelist' ? 'ip-whitelist' : 'domain-whitelist';
+    const key = activeTab === 'whitelist' ? 'ip' : 'domain';
+    let added = 0;
+    let refused = 0;
+    for (const [i, value] of lines.entries()) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 55));
+      try {
+        await api.post(endpoint, { [key]: value, description: 'Bulk add' });
+        added++;
+      } catch {
+        refused++;
+      }
+    }
+    return { added, refused };
+  };
+
   const handleBulkAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bulkText.trim() || submitting) return;
+    if (activeTab === 'whitelist' || activeTab === 'domain-whitelist') {
+      const lines = bulkText.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+      if (lines.length > BULK_WHITELIST_MAX) {
+        toast.error(`At most ${BULK_WHITELIST_MAX} whitelist entries at a time (got ${lines.length})`);
+        return;
+      }
+      setSubmitting('bulk');
+      const loadingToast = toast.loading(`Adding ${lines.length} whitelist entries...`);
+      try {
+        const { added, refused } = await addWhitelistEntries(lines);
+        if (refused > 0) {
+          toast.error(`Added ${added} to the whitelist, ${refused} refused (invalid or duplicate)`, { id: loadingToast });
+        } else {
+          toast.success(`Added ${added} entries to the whitelist`, { id: loadingToast });
+        }
+        setBulkText('');
+        setIsBulkAdding(false);
+        invalidateActive();
+      } finally {
+        setSubmitting(null);
+      }
+      return;
+    }
     setSubmitting('bulk');
     const loadingToast = toast.loading(`Importing ${activeTab} entries...`);
     try {
       const response = await api.post('blacklists/import', {
-        type: (activeTab === 'whitelist') ? 'ip' : (activeTab === 'domain-whitelist') ? 'domain' : activeTab,
+        type: activeTab,
         content: bulkText
       });
       const added = response.data.data?.added || 0;
@@ -218,7 +265,8 @@ export function Blacklists() {
     try {
       const response = await api.post('blacklists/import', {
         url: listUrl,
-        type: activeTab === 'whitelist' ? 'ip' : activeTab
+        // Popular Lists is offered on the blacklist tabs only.
+        type: activeTab
       });
       const added = response.data.data?.added || 0;
       const skipped = response.data.data?.skipped || 0;

@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Zap, Download, Copy, Check, Brain, RotateCcw } from 'lucide-react';
+import { Zap, Copy, Check, Brain, RotateCcw } from 'lucide-react';
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -119,10 +119,6 @@ export function Dashboard() {
             }}
             className="flex items-center px-3 py-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg text-sm font-medium btn-press transition-colors">
             <RotateCcw className="w-3.5 h-3.5 mr-1.5" />Reset
-          </button>
-          <button type="button" onClick={() => window.open('/api/analytics/report/pdf', '_blank')}
-            className="flex items-center px-3 py-1.5 glass-surface text-foreground hover:bg-secondary/70 rounded-lg text-sm font-medium btn-press transition-colors">
-            <Download className="w-3.5 h-3.5 mr-1.5" />PDF
           </button>
         </div>
       </div>

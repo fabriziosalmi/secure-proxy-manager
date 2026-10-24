@@ -43,6 +43,7 @@ const mockLogs = {
 
 // Capture WebSocket constructor calls so we can assert on the protocols argument.
 const mockWebSocketInstances: Array<{ url: string; protocols?: string | string[] }> = []
+const mockSockets: Array<{ onmessage: ((e: MessageEvent) => void) | null }> = []
 
 vi.stubGlobal('WebSocket', class MockWebSocket {
   url: string
@@ -57,6 +58,7 @@ vi.stubGlobal('WebSocket', class MockWebSocket {
     this.url = url
     this.protocols = protocols
     mockWebSocketInstances.push({ url, protocols })
+    mockSockets.push(this)
   }
 
   close() {}
@@ -66,6 +68,7 @@ describe('Logs', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockWebSocketInstances.length = 0
+    mockSockets.length = 0
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url.includes('logs')) return Promise.resolve(mockLogs)
       if (url.includes('ws-token')) return Promise.resolve({ data: { token: 'ws-tok' } })
@@ -98,6 +101,22 @@ describe('Logs', () => {
     renderWithProviders(<Logs />)
     const searchInputs = screen.getAllByRole('textbox')
     expect(searchInputs.length).toBeGreaterThan(0)
+  })
+
+  // The hub also carries {"type":"login_failure", ...} events, which anyone can
+  // cause by failing a login. They were added to the table as blank rows dated
+  // "Invalid Date" and pushed real traffic out of the 200-row buffer.
+  it('keeps only log rows from the live feed', async () => {
+    renderWithProviders(<Logs />)
+    await waitFor(() => expect(mockSockets.length).toBeGreaterThan(0))
+    const sock = mockSockets[0]
+    await waitFor(() => expect(sock.onmessage).toBeTruthy())
+    act(() => {
+      sock.onmessage!({ data: JSON.stringify({ type: 'login_failure', data: { username: 'x', client_ip: '203.0.113.5' } }) } as MessageEvent)
+      sock.onmessage!({ data: JSON.stringify({ timestamp: new Date().toISOString(), client_ip: '192.168.1.77', method: 'GET', destination: 'fresh.example.org', status: 'TCP_MISS/200', bytes: 10 }) } as MessageEvent)
+    })
+    await waitFor(() => expect(screen.getByText('fresh.example.org')).toBeInTheDocument())
+    expect(screen.queryByText(/invalid date/i)).not.toBeInTheDocument()
   })
 
   it('passes token via Sec-WebSocket-Protocol subprotocol, not query string', async () => {
