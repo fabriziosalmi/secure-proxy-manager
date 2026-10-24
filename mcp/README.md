@@ -20,8 +20,15 @@ block/allow lists, toggle WAF rule categories, and reload config.
 | `spm_allow_egress` | **mutate** — add to the egress allowlist |
 | `spm_reload_config` | **mutate** — apply pending changes |
 
-Read tools are safe; mutating tools change live proxy behaviour and are named
-with an explicit verb. Approve mutating tool calls deliberately.
+**The server is read-only by default.** The mutating tools are registered only
+with `SPM_MCP_READONLY=false`. The read tools return traffic data that anyone
+whose requests cross the proxy can shape (URLs, domains, user agents), so text
+in a log row can try to instruct the model; with the mutating tools available,
+an auto-approved call could disable a WAF category or open egress. Traffic
+output is wrapped in `{"untrusted_data_notice": ..., "data": ...}`, and every
+tool carries MCP annotations (`readOnlyHint`, `destructiveHint`) for the
+client's approval prompt. If you enable the mutating tools, do not auto-approve
+them.
 
 ## Configure
 
@@ -31,6 +38,7 @@ with an explicit verb. Approve mutating tool calls deliberately.
 | `SPM_USERNAME` | `admin` | SPM admin user (Basic auth) |
 | `SPM_PASSWORD` | — | SPM admin password |
 | `SPM_VERIFY` | `true` | `false` to skip TLS verify for self-signed HTTPS |
+| `SPM_MCP_READONLY` | `true` | `false` to also expose the mutating tools |
 
 ## Run
 
