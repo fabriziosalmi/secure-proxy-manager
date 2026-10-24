@@ -1,5 +1,5 @@
 # Pin: ubuntu 26.04 (resolute)
-FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
+FROM ubuntu:26.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944
 
 # Squid ships from the Ubuntu security pocket, so the package REVISION (here
 # 7.2-2ubuntu2.2), not the upstream "7.2", is what carries CVE fixes.
