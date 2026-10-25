@@ -17,7 +17,8 @@
  * Not here any more, because the Overview or the Access logs have it: the
  * most blocked destinations, the live feed of blocks and the hourly timeline.
  * The security score is not shown on any page (GET /api/security/score is
- * still served): Protection coverage says what the score only summed up. The
+ * retired and answers 410): Protection coverage says what the score only
+ * summed up. The
  * top-domains word cloud and the regex playground are gone from this page.
  */
 import { Link } from 'react-router';
