@@ -1,175 +1,82 @@
-# Tests Directory
+# Tests
 
-This directory contains test suites for Secure Proxy Manager.
+The suites in this directory, what each needs, and how CI runs it. The Go unit
+tests live next to the code (`go test ./...` in `backend-go/` and `waf-go/`),
+and the UI unit tests in `ui/src` (`cd ui && npm test`).
 
-## Available Tests
+| Path | What it tests | Needs | CI check |
+|---|---|---|---|
+| `e2e.sh` | A running deployment, client side and admin side | A running stack | none |
+| `ci-e2e.sh` | Compose up of the full stack and the core path | Docker; a throwaway checkout | *E2E (compose up + smoke)* |
+| `e2e/` | Playwright UI suite in a container | `docker-compose.test.yml` | *E2E UI (Playwright)* |
+| `adversarial/` | Attacks through the real proxy and WAF, the API boundary, latency, settings, resilience | Docker | *Adversarial block-matrix (proxy + WAF)* |
+| `python/` | The proxy watchdog, the cache statistics parser, the MCP server | `pytest` | *Python tests (watchdog)* |
+| `shell/generate_squid_conf_test.sh` | The `squid.conf` the generator writes for fixture `/config` states, parsed by Squid | Docker | *Squid config generation* |
+| `shell/squid_acl_matrix_test.sh` | The access policy: real Squid, WAF and dnsmasq, clients on three networks | Docker | *Squid config generation* |
+| `shell/restore_test.sh` | `scripts/restore.sh` refuses a corrupt backup and keeps `data/` | `sqlite3` | *Restore drill (backup verification)* |
+| `shell/ui_tls_entrypoint_test.sh` | The `web` container starts with a certificate in every TLS mode | Docker | *Docker build (all images)* |
+| `mock-lists/` | Fixture lists served to the test stack | | |
 
-### 🧪 [e2e_test.py](e2e_test.py)
-
-Comprehensive end-to-end testing script that validates:
-- Proxy connectivity and basic functionality
-- Domain and IP blacklisting
-- HTTPS filtering and SSL inspection
-- Direct IP blocking
-- API endpoints and authentication
-- Configuration validation
-
-## Running Tests
-
-### Prerequisites
-
-Install required Python packages:
-
-```bash
-pip install rich requests
-```
-
-Or use the automatic installation (script will install dependencies if missing).
-
-### Basic Test Execution
+## e2e.sh: against a running stack
 
 ```bash
-# Make sure Secure Proxy Manager is running
-docker-compose up -d
-
-# Run tests from the repository root
-cd tests
-python3 e2e_test.py
+docker compose up -d                       # the stack must already run
+./tests/e2e.sh <host> <user> <password>    # host defaults to localhost
 ```
 
-### Test Options
+It talks to `https://<host>:8443` and to the proxy at `<host>:3128`. It adds
+and removes list entries and changes settings, so use a test instance.
+
+## ci-e2e.sh: the CI smoke test
 
 ```bash
-# Verbose output
-python3 e2e_test.py -v
-
-# Custom proxy configuration
-python3 e2e_test.py --proxy-host localhost --proxy-port 3128
-
-# Custom UI configuration
-python3 e2e_test.py --ui-host localhost --ui-port 8011
+bash tests/ci-e2e.sh      # from the repository root
 ```
 
-### Command Line Arguments
+It writes its own `.env` (overwriting yours), makes `config/` and `data/`
+world-writable, changes the owner of `logs/`, runs
+`docker compose up -d --build`, waits for the five services, checks proxy
+egress, blocking, the log pipeline and the audit log, and on exit runs
+`docker compose down -v --remove-orphans` and deletes `.env`. **Never run it
+in a checkout that holds a real deployment.**
 
-| Argument | Description | Default |
-|----------|-------------|---------|
-| `--proxy-host` | Proxy server hostname | `localhost` |
-| `--proxy-port` | Proxy server port | `3128` |
-| `--ui-host` | Web UI hostname | `localhost` |
-| `--ui-port` | Web UI port | `8011` |
-| `-v, --verbose` | Enable verbose output | `False` |
-
-## Test Coverage
-
-The end-to-end test suite validates:
-
-1. **Proxy Connectivity**
-   - HTTP proxy connection
-   - HTTPS proxy connection
-   - Basic request forwarding
-
-2. **Security Features**
-   - Domain blacklist enforcement
-   - IP blacklist enforcement
-   - Direct IP access blocking
-   - HTTPS filtering capabilities
-
-3. **API Functionality**
-   - Authentication
-   - Blacklist management endpoints
-   - Configuration endpoints
-   - Status and health checks
-
-4. **Configuration Validation**
-   - Squid configuration parsing
-   - Security settings verification
-   - ACL rule validation
-
-## Understanding Test Results
-
-Tests use color-coded output:
-- ✅ **Green**: Test passed
-- ❌ **Red**: Test failed
-- ⚠️ **Yellow**: Warning or skipped
-- ℹ️ **Blue**: Information
-
-## Continuous Integration
-
-These tests can be integrated into CI/CD pipelines. Example for GitHub Actions:
-
-```yaml
-- name: Run End-to-End Tests
-  run: |
-    docker-compose up -d
-    sleep 15  # Wait for services to be ready
-    cd tests
-    pip install rich requests
-    python3 e2e_test.py
-```
-
-## Contributing Test Cases
-
-When adding new features, please:
-
-1. Add corresponding test cases to `e2e_test.py`
-2. Ensure tests are atomic and independent
-3. Use descriptive test names
-4. Include both positive and negative test cases
-5. Document any special setup requirements
-
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for detailed guidelines.
-
-## Troubleshooting Tests
-
-### Tests Failing to Connect
+## e2e/: Playwright
 
 ```bash
-# Check if services are running
-docker-compose ps
-
-# View service logs
-docker-compose logs backend
-docker-compose logs proxy
-
-# Restart services
-docker-compose restart
+docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from test-runner
+docker compose -f docker-compose.test.yml down -v
 ```
 
-### Permission Errors
+The test stack runs the backend, the `web` container, a mock list server and
+the Playwright runner; the proxy and the WAF are not part of it.
+
+## adversarial/
 
 ```bash
-# Ensure script has execute permissions
-chmod +x e2e_test.py
-
-# Check Python version (3.6+ required)
-python3 --version
+make adversarial          # or: bash tests/adversarial/run.sh
 ```
 
-### Import Errors
+See [adversarial/README.md](adversarial/README.md).
+
+## python/
 
 ```bash
-# Install missing dependencies
-pip install -r ../backend/requirements.txt
-pip install rich requests
+pytest tests/python -q
 ```
 
-## Test Development
+CI creates a writable `/config` before running it and installs the MCP
+server's dependencies (`mcp`, `httpx`) into the pytest environment.
 
-To add new tests:
+## shell/
 
-1. Follow the existing test structure in `e2e_test.py`
-2. Use the `ProxyTester` class framework
-3. Add clear assertions and error messages
-4. Test both success and failure scenarios
-5. Update this README with new test descriptions
+```bash
+bash tests/shell/generate_squid_conf_test.sh
+bash tests/shell/squid_acl_matrix_test.sh
+bash tests/shell/restore_test.sh
+bash tests/shell/ui_tls_entrypoint_test.sh
+```
 
-## Additional Resources
+The first, second and fourth build or use the proxy, WAF, dns and web images;
+`restore_test.sh` runs `scripts/restore.sh` in a sandbox with a stub `docker`.
 
-- [Main README](../README.md) - Project documentation
-- [API Documentation](../README.md#api): API reference
-- [Contributing Guide](../CONTRIBUTING.md) - Contribution guidelines
-
----
-
-**Note:** Always run tests against a test/development instance, not production systems.
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full list of CI gates.

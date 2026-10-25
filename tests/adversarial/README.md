@@ -34,9 +34,13 @@ plane 2:  attacker ────────────────────�
 make adversarial          # or: bash tests/adversarial/run.sh
 ```
 
-The run builds the sandbox, executes both planes, prints their reports, and
-tears the stack down. Exit code is the CI gate: **non-zero if plane 1 has a hard
-false negative/positive, or plane 2 has a hard auth/authorization regression.**
+The run builds the sandbox, runs the five planes (1, 2, 3, 5, then 4, which
+disrupts the stack), prints their reports, and tears the stack down. The exit
+code is the CI gate (the required check *Adversarial block-matrix (proxy +
+WAF)*): **non-zero if any plane fails**: a hard false negative or false
+positive in plane 1, a hard auth or authorization regression in plane 2, a
+breached k6 threshold in plane 3, a fail-open or a failed recovery in plane 4,
+a setting that does not change the data plane in plane 5.
 
 Useful env:
 
@@ -46,7 +50,10 @@ Useful env:
 | `NO_BUILD=1` | Skip image rebuild (faster re-runs after a corpus-only edit). |
 
 Reports are written to `tests/adversarial/report/` (git-ignored):
-`report.md`, `report.json`, `results.json`.
+`report.md`, `report.json` and `results.json` (plane 1), `api-report.md`,
+`api-report.json` and `api-results.json` (plane 2), `bench-report.md`,
+`bench-baseline.json` and `bench-proxied.json` (plane 3),
+`resilience-report.md` (plane 4) and `config-matrix-report.md` (plane 5).
 
 ## How it works
 
@@ -77,12 +84,14 @@ Reports are written to `tests/adversarial/report/` (git-ignored):
 | `expect` | `block` \| `pass` (ground truth) |
 | `gate` | `hard` (fails the run on a miss) \| `soft` (reported only) |
 
-Coverage today: the 19 request-side WAF categories that block on a single
-payload, `PROTOCOL_ANOMALY` (scanner signature in UA), two response-side rules
-(`RESPONSE_XSS`, `RESPONSE_SECRET_LEAK`), plus benign FP-stress traffic. Two
-`soft` cases document known-nuanced behaviour: `UNICODE_OBFUSCATION` (interacts
-with NFKC normalization) and `FINANCIAL_DATA` (sub-threshold by design: a
-single card is a corroborating signal, score 2 < 10, so it correctly passes).
+Coverage today (41 cases, counted in `corpus.json`): 28 hard malicious cases
+across 19 of the 21 request-side categories (`PROTOCOL_ANOMALY` through a
+scanner signature in the User-Agent among them) and the two response-side
+categories (`RESPONSE_XSS`, `RESPONSE_SECRET_LEAK`), and 11 hard benign cases
+as false-positive stress. Two `soft` cases document known-nuanced behaviour
+and do not gate: `UNICODE_OBFUSCATION` (interacts with NFKC normalization) and
+`FINANCIAL_DATA` (sub-threshold by design: a single card is a corroborating
+signal, score 2 < 10, so it correctly passes).
 
 Extend it "as attackers": add cases, re-run with `NO_BUILD=1`, watch FN/FP.
 
@@ -96,12 +105,13 @@ Extend it "as attackers": add cases, re-run with `NO_BUILD=1`, watch FN/FP.
 | `expect` | `unauthorized` (401/403) \| `ok` (2xx control) \| `ratelimited` (burst → 429) |
 | `gate` | `hard` \| `soft` |
 
-Covers: auth-bypass on protected endpoints (status, settings, audit-log,
-database export/reset, change-password), forged JWTs (**alg=none** confusion,
-mutated signature, garbage), **login SQL-injection**, wrong-password, per-IP
-**rate-limit** enforcement, plus control cases proving legitimate Basic/JWT
-access still works. A protected endpoint returning 2xx unauthenticated is a
-**bypass** and fails the gate.
+Covers (18 cases, all `hard`): auth-bypass on protected endpoints (status,
+settings, audit-log, rate-limits, database export/reset, change-password),
+forged JWTs (**alg=none** confusion, mutated signature, garbage), **login
+SQL-injection**, wrong-password, per-IP **rate-limit** enforcement, plus four
+control cases proving the public health endpoint, login and legitimate
+Basic/JWT access still work. A protected endpoint returning 2xx
+unauthenticated is a **bypass** and fails the gate.
 
 ### Plane 3: bench / latency
 

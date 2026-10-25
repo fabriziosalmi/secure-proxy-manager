@@ -1,149 +1,108 @@
-# Blacklist Import Examples
+# Importing lists through the API
 
-This document provides examples for importing blacklists using the Secure Proxy Manager API.
+All imports go through `POST /api/blacklists/import` (and
+`POST /api/blacklists/import-geo` for countries). The per-type endpoints
+`POST /api/domain-blacklist/import` and `POST /api/ip-blacklist/import` are
+retired and answer `410 Gone`.
 
-## Domain Blacklist Import
-
-### From Plain Text URL (Recommended)
-
-The user's example file format works perfectly:
-
-```bash
-curl -X POST http://localhost:8011/api/domain-blacklist/import \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
-  -d '{"url": "https://example.com/blacklist.txt"}'
-```
-
-**Example blacklist.txt file:**
-```
-0123movies.10s.live
-0123movies.com
-0123movies.is
-0123movies.net
-0123movies.org
-0123movies.st
-0123movies4u.com
-0123movieshd.com
-# This is a comment and will be ignored
-*.malicious-ads.com
-```
-
-### Direct Content Import
+The examples use the UI's HTTPS port. The certificate is self-signed unless you
+mounted your own, hence `-k`; plain HTTP on port 8011 redirects and does not
+reach the API.
 
 ```bash
-curl -X POST http://localhost:8011/api/domain-blacklist/import \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
-  -d '{
-    "content": "example.com\n*.badsite.org\nmalicious.net\n# Comment line"
-  }'
+SPM=https://localhost:8443
+AUTH="Authorization: Basic $(printf '%s' 'admin:your_password' | base64)"
 ```
 
-### JSON Format Import
+## Domains
+
+### From a URL
 
 ```bash
-curl -X POST http://localhost:8011/api/domain-blacklist/import \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
-  -d '{
-    "content": "[\"example.com\", \"badsite.org\", \"*.malicious.com\"]"
-  }'
+curl -k -X POST $SPM/api/blacklists/import \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"type": "domain", "url": "https://example.com/blacklist.txt", "name": "Example list"}'
 ```
 
-## IP Blacklist Import
+`name` is optional; it labels the source on the Blocked domains tab. The URL's
+host must resolve to a public address, and the download is limited to 32 MB.
 
-### From Plain Text URL
+A file such as:
+
+```
+# comment lines are ignored
+0123movies.example
+0.0.0.0 ads.example
+https://tracker.example/path
+*.malicious-ads.example
+```
+
+imports `0123movies.example`, `ads.example` (the last field of a hosts line),
+`tracker.example` (a URL is reduced to its host) and `*.malicious-ads.example`,
+which blocks `malicious-ads.example` itself, not its subdomains.
+
+### Pasted content
 
 ```bash
-curl -X POST http://localhost:8011/api/ip-blacklist/import \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
-  -d '{"url": "https://example.com/ip-blacklist.txt"}'
+curl -k -X POST $SPM/api/blacklists/import \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"type": "domain", "content": "example.com\nbadsite.example\n# a comment"}'
 ```
 
-**Example ip-blacklist.txt file:**
-```
-192.168.1.100
-10.0.0.5
-172.16.0.1
-203.0.113.0/24
-# CIDR notation is supported
-198.51.100.0/24
-```
-
-### Direct Content Import
+## IP addresses and ranges
 
 ```bash
-curl -X POST http://localhost:8011/api/ip-blacklist/import \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
-  -d '{
-    "content": "192.168.1.100\n10.0.0.5\n172.16.0.0/24"
-  }'
+curl -k -X POST $SPM/api/blacklists/import \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"type": "ip", "content": "203.0.113.7\n198.51.100.0/24\n192.168.1.100"}'
 ```
 
-## Alternative: Generic Import Endpoint
+Single addresses and CIDR ranges are accepted. Private, loopback, link-local,
+CGNAT and other non-routable ranges are refused: `192.168.1.100` above is
+skipped and counted in `bogon_skipped`.
 
-You can also use the generic endpoint with a type parameter:
+## Response
 
-### Domain Import
-```bash
-curl -X POST http://localhost:8011/api/blacklists/import \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
-  -d '{"url": "https://example.com/blacklist.txt", "type": "domain"}'
-```
-
-### IP Import
-```bash
-curl -X POST http://localhost:8011/api/blacklists/import \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n YOUR_USER:YOUR_PASS | base64)" \
-  -d '{"url": "https://example.com/blacklist.txt", "type": "ip"}'
-```
-
-## Response Format
-
-All endpoints return a JSON response:
+For the IP example above, on an empty list:
 
 ```json
 {
   "status": "success",
-  "message": "Import completed: 8 entries imported",
-  "imported_count": 8,
-  "error_count": 0,
-  "errors": []
+  "message": "Successfully imported 2 entries (1 skipped/invalid) ...",
+  "data": { "added": 2, "skipped": 1, "bogon_skipped": 1 }
 }
 ```
 
-If there are errors:
+`skipped` counts entries already listed or not valid, including the
+non-routable ranges that `bogon_skipped` counts; when `bogon_skipped` is not
+zero, `message` adds a sentence saying how many private ranges were dropped.
+Read the numbers from `data`, not from `message`.
 
-```json
-{
-  "status": "success",
-  "message": "Import completed: 6 entries imported, 2 errors",
-  "imported_count": 6,
-  "error_count": 2,
-  "errors": [
-    "Invalid domain format: not-a-valid-domain",
-    "Invalid IP format: 999.999.999.999"
-  ]
-}
+## Formats
+
+- One entry per line; for a hosts file, the last field of the line.
+- Blank lines and lines starting with `#` or `;` are ignored.
+- JSON arrays are not parsed: send one entry per line.
+- Domains: letters, digits, hyphens, underscores and dots; an optional leading
+  `*.` is accepted and dropped by the exporters.
+
+## Countries
+
+```bash
+curl -k -X POST $SPM/api/blacklists/import-geo \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"countries": ["RU", "CN"]}'
 ```
-
-## Supported Formats
-
-- **Plain Text**: One entry per line (most common format)
-- **JSON Array**: `["entry1", "entry2", "entry3"]`
-- **JSON Objects**: `[{"domain": "example.com", "description": "Blocked"}]`
-- **Comments**: Lines starting with `#` are ignored
-- **CIDR Notation**: Supported for IP addresses (e.g., `192.168.1.0/24`)
-- **Wildcards**: Supported for domains (e.g., `*.example.com`)
 
 ## Notes
 
-- Duplicate entries are automatically skipped
-- Invalid entries are logged but don't stop the import process
-- The system automatically updates the proxy configuration after import
-- Large files are supported (tested with lists containing thousands of entries)
+- An entry already on the list is skipped; a feed that repeats an entry adds it
+  once.
+- An invalid line is skipped and counted; it does not stop the import.
+- After an import that added entries, the backend exports the lists, and the
+  proxy and dnsmasq pick them up within a few seconds.
+- An import that would take the domain blacklist past
+  `SPM_DNS_BLOCKLIST_MAX_DOMAINS` (default 1,000,000) is refused whole with
+  `413`.
+
+More detail: [Blacklist and Whitelist API](../docs/api/blacklists.md#import).

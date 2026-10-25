@@ -1,7 +1,10 @@
 # Block reasons and client attribution
 
-Status: implemented on branch `feat/block-reasons`. Line references marked
-`main:` are to `origin/main` at 8d9166e; the others are to this branch.
+Status: implemented and merged; this page is the design record. Line
+references marked `main:` are to `main` at 8d9166e, before the change. The
+other line numbers were taken on the `feat/block-reasons` branch ("this
+branch" below) and have since moved: search the named file for the rule or
+function instead. The measurements are those taken on that branch.
 
 ## 1. Problem, as measured on the test deployment
 
@@ -78,8 +81,9 @@ action and status, which is what the deployment showed.
 
 Harness: the proxy image running the real generator, the real WAF image and a
 real dnsmasq (dns image, blocklist written as the backend writes it) on one
-docker network. The same cases run in `tests/shell/squid_acl_matrix_test.sh`
-(81 assertions). Lines as written by Squid (timestamp and client trimmed):
+docker network. The same cases run in `tests/shell/squid_acl_matrix_test.sh`,
+which CI runs as part of the required check *Squid config generation*. Lines
+as written by Squid (timestamp and client trimmed):
 
 | Request | Client sees | Logged |
 |---|---|---|
