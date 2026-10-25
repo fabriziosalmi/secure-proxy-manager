@@ -31,7 +31,7 @@ Browsers cannot send custom headers during a WebSocket handshake, so the log str
 
 ## SSRF protection
 
-Endpoints that fetch a remote URL — `POST /api/blacklists/import`, `POST /api/ip-blacklist/import`, `POST /api/domain-blacklist/import` — perform DNS resolution before opening the connection and reject any host that resolves to:
+Endpoints that fetch a remote URL (`POST /api/blacklists/import`, `POST /api/ip-blacklist/import`, `POST /api/domain-blacklist/import`) perform DNS resolution before opening the connection and reject any host that resolves to:
 
 - Loopback (`127.0.0.0/8`, `::1`)
 - Private RFC1918 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`)
@@ -58,7 +58,7 @@ Squid is configured to reject requests to raw IP addresses by default, preventin
 
 ## Default-deny egress
 
-The domain and IP blacklists and direct-IP blocking are deny-lists: a client may reach any destination that is not explicitly forbidden. Default-deny egress inverts this for environments that require a strict, allow-only outbound policy. When enabled, the proxy refuses all outbound egress from local clients except destinations on an explicit allowlist; every other destination is denied with an HTTP 403. Restricting outbound traffic to an approved set of endpoints reduces the exfiltration and lateral-movement surface and supports sovereign or strictly scoped egress policies — for example, allowing an application behind the proxy to reach only a CA/ACME server, a package mirror, and an internal API, and nothing else.
+The domain and IP blacklists and direct-IP blocking are deny-lists: a client may reach any destination that is not explicitly forbidden. Default-deny egress inverts this for environments that require a strict, allow-only outbound policy. When enabled, the proxy refuses all outbound egress from local clients except destinations on an explicit allowlist; every other destination is denied with an HTTP 403. Restricting outbound traffic to an approved set of endpoints reduces the exfiltration and lateral-movement surface and supports sovereign or strictly scoped egress policies: for example, allowing an application behind the proxy to reach only a CA/ACME server, a package mirror, and an internal API, and nothing else.
 
 This mode is **off by default**. With the `egress_default_deny` setting set to `false` (the default), behaviour is unchanged and clients may reach any destination not on a blacklist. Enabling it only restricts egress; it does not affect any other rule.
 

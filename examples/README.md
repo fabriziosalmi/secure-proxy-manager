@@ -28,8 +28,8 @@ Each example file contains complete, copy-paste ready code snippets. Make sure t
 
 If you'd like to see examples for specific use cases:
 
-1. Check the [API Documentation](../README.md#-api-documentation) in the main README
-2. Review the [FAQ](../README.md#-frequently-asked-questions-faq) section
+1. Check the [API](../README.md#api) section in the main README
+2. Review the [Troubleshooting](../README.md#troubleshooting) section
 3. [Open an issue](https://github.com/fabriziosalmi/secure-proxy-manager/issues) to request new examples
 
 ## Contributing Examples

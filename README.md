@@ -9,11 +9,11 @@
 
 📖 **Documentation:** <https://fabriziosalmi.github.io/secure-proxy-manager/>
 
-A **self-hosted Secure Web Gateway (SWG)** — one controllable egress point for a
+A **self-hosted Secure Web Gateway (SWG)**: one controllable egress point for a
 home, lab, or small-office network. It combines a Squid forward proxy, a custom
 **WAF** (request/response inspection over ICAP), a **DNS sinkhole**, and a modern
 web UI + API into a single Docker Compose stack: the self-hosted counterpart to
-cloud SWGs like Zscaler / Cloudflare Gateway — with **no traffic leaving your
+cloud SWGs like Zscaler / Cloudflare Gateway, with **no traffic leaving your
 network**.
 
 Block domains and IPs, enforce a default-deny egress allowlist, inspect requests
@@ -22,7 +22,7 @@ every client is reaching.
 
 ![Malicious requests blocked by the proxy + WAF, benign traffic allowed](docs/public/demo/adversarial-demo.svg)
 
-<sub>Malicious requests get **403**'d at the proxy by the WAF; benign traffic passes. Every category is verified with an adversarial test suite — see [Tested like an attacker](#tested-like-an-attacker).</sub>
+<sub>Malicious requests get **403**'d at the proxy by the WAF; benign traffic passes. Every category is verified with an adversarial test suite. See [Tested like an attacker](#tested-like-an-attacker).</sub>
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
@@ -33,17 +33,17 @@ control, request inspection, and DNS sinkholing in a single stack:
 
 | Capability | Pi-hole / AdGuard | Nginx Proxy Manager | Cloud SWG (Zscaler…) | **Secure Proxy Manager** |
 |---|:---:|:---:|:---:|:---:|
-| DNS sinkhole (block at resolve time) | ✅ | — | ✅ | ✅ |
-| Forward proxy (outbound egress control) | — | — | ✅ | ✅ |
-| HTTP request/body inspection (WAF) | — | — | ✅ | ✅ |
-| Default-deny egress allowlist | — | — | ✅ | ✅ |
-| Reverse proxy / ingress | — | ✅ | — | — |
-| **Self-hosted — traffic stays on your network** | ✅ | ✅ | — | ✅ |
-| **Free / no per-seat cost** | ✅ | ✅ | — | ✅ |
+| DNS sinkhole (block at resolve time) | Yes | No | Yes | Yes |
+| Forward proxy (outbound egress control) | No | No | Yes | Yes |
+| HTTP request/body inspection (WAF) | No | No | Yes | Yes |
+| Default-deny egress allowlist | No | No | Yes | Yes |
+| Reverse proxy / ingress | No | Yes | No | No |
+| **Self-hosted: traffic stays on your network** | Yes | Yes | No | Yes |
+| **Free / no per-seat cost** | Yes | Yes | No | Yes |
 
 Pi-hole/AdGuard block only at the DNS layer; Nginx Proxy Manager is reverse-proxy
 *ingress*; cloud SWGs do all of this but as a paid SaaS your traffic flows
-through. SPM is the **self-hosted outbound** counterpart — one controllable
+through. SPM is the **self-hosted outbound** counterpart: one controllable
 egress point with WAF inspection and DNS sinkholing combined, on your own metal.
 
 ## What it is
@@ -62,7 +62,7 @@ The stack is five containers (plus an optional sixth):
 The backend applies blacklist and config changes by writing to the shared
 `./config` volume: it exports the lists as flat files and touches a trigger
 (`.reload-squid`, `.reload-dns`, `.clear-cache`). Each container's own watchdog
-notices the change and reloads in place — no Docker socket is mounted into the
+notices the change and reloads in place; no Docker socket is mounted into the
 backend, and nothing calls the Docker Engine API.
 
 ## Quick start
@@ -139,7 +139,7 @@ notifications) is managed from the UI and stored in the database, not in `.env`.
 
 Single node by design: the login-attempt counters and the JWT revocation list
 are in-process, the state lives on bind mounts, and each container generates its
-own configuration — so a second instance would not share what matters. Running
+own configuration, so a second instance would not share what matters. Running
 more of them is not a supported way to grow. These are the ceilings the design
 imposes and what happens at each:
 
@@ -148,7 +148,7 @@ imposes and what happens at each:
 | Write throughput | one SQLite writer, pool of 4 | Writes queue (`busy_timeout` 5s), so it shows as latency, not errors |
 | WAF behavioural tracking | 10,000 client IPs | Beyond it an entry is evicted, so beaconing/sharding history resets for some clients |
 | Live log stream | 256 queued messages, 64 per viewer | Lines are dropped for a slow viewer rather than stalling the stream |
-| WAF security alerts | 64 queued, 8 delivery workers | Alerts are dropped and counted in `notifyDropped` on `/metrics`. Blocks are still enforced and logged — only the notification is lost, and the queue fills exactly during an attack |
+| WAF security alerts | 64 queued, 8 delivery workers | Alerts are dropped and counted in `notifyDropped` on `/metrics`. Blocks are still enforced and logged; only the notification is lost, and the queue fills exactly during an attack |
 | API rate limit | 20 req/s per IP, burst 60 | `429` |
 | Concurrent DNS scans | 2 | `429` |
 | Request body | 10 MB through the web UI (nginx); 55 MB on the backend port; blacklist import 32 MB | `413` / the import is refused |
@@ -198,7 +198,7 @@ imposes and what happens at each:
   runtime) and the WAF at `:8080/metrics` (counters plus a REQMOD latency
   histogram). An opt-in `observability` Compose profile ships Prometheus +
   Grafana: `docker compose --profile observability up -d`.
-- Health probes: `/livez` (process up) and `/readyz` (database reachable — the
+- Health probes: `/livez` (process up) and `/readyz` (database reachable; the
   container healthcheck uses this so a wedged DB surfaces as unhealthy).
   Structured per-request access logs on the backend.
 - Notifications to a custom webhook, Gotify, Telegram, or Microsoft Teams, with
@@ -308,19 +308,19 @@ Most proxies and WAFs ship rules and hope. SPM has an **adversarial e2e harness*
 running proxy + WAF in an isolated sandbox and **fails the build on any
 regression**. Five planes:
 
-- **block-matrix** — SQLi / XSS / RCE / SSRF / traversal / secret-exfil / … across
+- **block-matrix**: SQLi / XSS / RCE / SSRF / traversal / secret-exfil / … across
   the **21 WAF categories**: malicious → **403**, benign → allowed. Gate: **false
   negatives = 0, false positives = 0**.
-- **API attacker** — auth-bypass, forged / tampered JWTs (incl. `alg=none`), login
+- **API attacker**: auth-bypass, forged / tampered JWTs (incl. `alg=none`), login
   SQL-injection, rate-limit probing → **no bypass** (401/403/429 as expected).
-- **bench / latency** — p50/p95 + proxy + ICAP overhead, with a regression gate.
-- **config-matrix** — flips a setting through the real API and proves the data
+- **bench / latency**: p50/p95 + proxy + ICAP overhead, with a regression gate.
+- **config-matrix**: flips a setting through the real API and proves the data
   plane changes (disable a rule category → that attack now passes; re-enable →
   blocked again, selectively).
-- **resilience** — kill the WAF and the proxy **fails closed** (no fail-open
+- **resilience**: kill the WAF and the proxy **fails closed** (no fail-open
   hole); restart it and the stack **self-heals**.
 
-Run it yourself — it brings up the sandbox, attacks it, prints a block-matrix +
+Run it yourself. It brings up the sandbox, attacks it, prints a block-matrix +
 FP/FN report, and tears down:
 
 ```bash
@@ -333,7 +333,7 @@ See [`tests/adversarial/`](tests/adversarial/).
 
 SPM ships an optional [Model Context Protocol](https://modelcontextprotocol.io)
 server ([`mcp/`](mcp/)) that exposes the management API as tools, so an assistant
-or agent (e.g. Claude) can **drive your Secure Web Gateway in natural language** —
+or agent (e.g. Claude) can **drive your Secure Web Gateway in natural language**:
 "what are my top egressing domains?", "is anything reaching AI APIs?", "block
 `evil.example`", "disable the SQL_INJECTION category for 5 minutes". Read tools
 are safe; mutating tools (block/toggle/reload) are explicit and approved per call.
@@ -354,8 +354,8 @@ See [`mcp/README.md`](mcp/README.md) for the tool list and Claude Desktop config
 - Sensitive settings (webhook URLs, tokens) are encrypted at rest; JWT secrets
   and the encryption key are generated and persisted under `data/`.
 - Squid is kept patched against upstream CVEs (e.g. Squidbleed / CVE-2026-47729)
-  via a fail-closed version floor in the proxy image and a disabled FTP gateway —
-  see [Security Advisories](docs/guide/security-advisories.md).
+  via a fail-closed version floor in the proxy image and a disabled FTP gateway.
+  See [Security Advisories](docs/guide/security-advisories.md).
 
 ## Contributing
 

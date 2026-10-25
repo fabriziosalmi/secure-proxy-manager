@@ -4,7 +4,7 @@ layout: home
 hero:
   name: "Secure Proxy Manager"
   text: "Self-hosted Secure Web Gateway"
-  tagline: One controllable egress point for your network — Squid forward proxy + a real WAF (ICAP) + DNS sinkhole + a modern UI, in a single Docker Compose stack. The self-hosted counterpart to cloud SWGs, with no traffic leaving your network.
+  tagline: One controllable egress point for your network. Squid forward proxy + a real WAF (ICAP) + DNS sinkhole + a modern UI, in a single Docker Compose stack. The self-hosted counterpart to cloud SWGs, with no traffic leaving your network.
   image:
     src: /hero-icon.svg
     alt: Secure Proxy Manager
@@ -26,13 +26,13 @@ features:
   - title: Forward-proxy egress control
     details: One controllable egress point. Block domains and IPs (CIDR + wildcard), one-click import of curated blocklists, geo-based blocking, and an optional default-deny egress allowlist.
   - title: Real WAF over ICAP
-    details: A Go ICAP service inspects requests/responses — 177 rules across 21 request and 2 response categories + behavioural heuristics, anomaly scoring. False negatives gated to 0 by an adversarial suite on every commit.
+    details: A Go ICAP service inspects requests/responses with 177 rules across 21 request and 2 response categories + behavioural heuristics, anomaly scoring. False negatives gated to 0 by an adversarial suite on every commit.
   - title: DNS sinkhole
     details: dnsmasq sinkholes blacklisted / malware / ad domains at the network layer, before a connection is ever made. SafeSearch and YouTube-restricted enforcement included.
   - title: MCP-native
-    details: Ships an optional Model Context Protocol server — inspect and drive the gateway from Claude or any agent in natural language ("what's reaching AI APIs?", "block evil.example").
+    details: Ships an optional Model Context Protocol server to inspect and drive the gateway from Claude or any agent in natural language ("what's reaching AI APIs?", "block evil.example").
   - title: Real-time logs & analytics
-    details: Live log streaming over WebSocket, filter/search/aggregate, top-domains, shadow-IT, per-client views — and a correlation event-id linking a blocked request to its WAF event end-to-end.
+    details: Live log streaming over WebSocket, filter/search/aggregate, top-domains, shadow-IT, per-client views, and a correlation event-id linking a blocked request to its WAF event end-to-end.
   - title: Hardened, signed, self-hosted
     details: Basic + JWT auth, login rate-limit, SSRF guards, bcrypt, backend bound to localhost. Cosign-signed multi-arch images on GHCR + Docker Hub. Runs entirely on your hardware, SQLite, no cloud.
 ---
@@ -47,19 +47,19 @@ Malicious requests get **403**'d at the proxy by the WAF; benign traffic passes.
 
 | Capability | Pi-hole / AdGuard | Nginx Proxy Manager | Cloud SWG (Zscaler…) | [Zion](https://github.com/fabriziosalmi/zion) | **Secure Proxy Manager** |
 |---|:---:|:---:|:---:|:---:|:---:|
-| DNS sinkhole | ✅ | — | ✅ | — | ✅ |
-| Forward proxy (egress control) | — | — | ✅ | — | ✅ |
-| HTTP request/body inspection (WAF) | — | — | ✅ | ✅ | ✅ |
-| Default-deny egress allowlist | — | — | ✅ | — | ✅ |
-| Reverse proxy / ingress | — | ✅ | — | ✅ | — |
-| Self-hosted — traffic stays local | ✅ | ✅ | — | ✅ | ✅ |
-| Free / no per-seat cost | ✅ | ✅ | — | ✅ | ✅ |
+| DNS sinkhole | Yes | No | Yes | No | Yes |
+| Forward proxy (egress control) | No | No | Yes | No | Yes |
+| HTTP request/body inspection (WAF) | No | No | Yes | Yes | Yes |
+| Default-deny egress allowlist | No | No | Yes | No | Yes |
+| Reverse proxy / ingress | No | Yes | No | Yes | No |
+| Self-hosted, traffic stays local | Yes | Yes | No | Yes | Yes |
+| Free / no per-seat cost | Yes | Yes | No | Yes | Yes |
 
-SPM is the **self-hosted outbound** counterpart to a cloud Secure Web Gateway —
+SPM is the **self-hosted outbound** counterpart to a cloud Secure Web Gateway:
 WAF inspection + DNS sinkholing + egress control, on your own metal.
 
-Pair it with **[Zion](https://github.com/fabriziosalmi/zion)** — a single-binary
-Rust TLS **reverse** proxy with a built-in WAF — to cover the other direction:
+Pair it with **[Zion](https://github.com/fabriziosalmi/zion)**, a single-binary
+Rust TLS **reverse** proxy with a built-in WAF, to cover the other direction:
 Zion inspects traffic coming **in**, SPM controls what goes **out**. Both
 self-hosted, both single-purpose, no cloud.
 
@@ -67,13 +67,13 @@ self-hosted, both single-purpose, no cloud.
 
 An **adversarial e2e harness** (`make adversarial`, gated in CI) drives real
 attack traffic *through* the running proxy + WAF and fails the build on any
-regression — five planes:
+regression, in five planes:
 
-- **block-matrix** — SQLi / XSS / RCE / SSRF / … across 21 categories → **false negatives = 0**, benign → **false positives = 0**.
-- **API attacker** — auth-bypass, forged/tampered JWTs, login SQLi, rate-limit → no bypass.
-- **bench/latency** — p95 + ICAP overhead, regression-gated.
-- **config-matrix** — flip a setting → prove the data plane changes.
-- **resilience** — kill the WAF → the proxy **fails closed**, then self-heals.
+- **block-matrix**: SQLi / XSS / RCE / SSRF / … across 21 categories → **false negatives = 0**, benign → **false positives = 0**.
+- **API attacker**: auth-bypass, forged/tampered JWTs, login SQLi, rate-limit → no bypass.
+- **bench/latency**: p95 + ICAP overhead, regression-gated.
+- **config-matrix**: flip a setting → prove the data plane changes.
+- **resilience**: kill the WAF → the proxy **fails closed**, then self-heals.
 
 ## Manage it from an agent (MCP)
 

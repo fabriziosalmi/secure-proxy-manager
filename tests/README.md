@@ -167,7 +167,7 @@ To add new tests:
 ## Additional Resources
 
 - [Main README](../README.md) - Project documentation
-- [API Documentation](../README.md#-api-documentation) - API reference
+- [API Documentation](../README.md#api): API reference
 - [Contributing Guide](../CONTRIBUTING.md) - Contribution guidelines
 
 ---

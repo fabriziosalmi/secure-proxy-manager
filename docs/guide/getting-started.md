@@ -89,7 +89,7 @@ docker compose ps
 # Backend liveness (localhost only)
 curl -k https://localhost:8443/health
 
-# Backend readiness — checks the database is reachable (503 if not)
+# Backend readiness: checks the database is reachable (503 if not)
 docker compose exec backend wget -qO- http://localhost:5000/readyz
 
 # Test proxy connectivity

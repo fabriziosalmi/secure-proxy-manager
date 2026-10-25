@@ -83,7 +83,7 @@ Hourly request and block counts.
 
 | Parameter | Default | Range |
 |---|---|---|
-| `hours` | `24` | `1`–`720` |
+| `hours` | `24` | `1` to `720` |
 
 **Response:**
 
@@ -137,7 +137,7 @@ Deletes log entries older than the configured retention period (`log_retention_d
 GET /api/security/score
 ```
 
-A 0–100 score derived from the current settings (direct-IP blocking, WAF state, HTTPS filtering, rate limiting, and so on) plus a list of recommendations.
+A 0 to 100 score derived from the current settings (direct-IP blocking, WAF state, HTTPS filtering, rate limiting, and so on) plus a list of recommendations.
 
 **Response:**
 

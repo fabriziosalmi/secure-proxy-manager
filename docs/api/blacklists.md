@@ -192,8 +192,8 @@ POST /api/blacklists/import
 **Supported file formats:**
 
 - Plain text, one entry per line.
-- JSON array — `["entry1", "entry2"]`.
-- JSON objects — `[{"domain": "example.com"}]`.
+- JSON array: `["entry1", "entry2"]`.
+- JSON objects: `[{"domain": "example.com"}]`.
 - Lines beginning with `#` are ignored.
 
 ::: warning SSRF protection
@@ -279,7 +279,7 @@ GET /api/domain-whitelist
       "id": 1,
       "domain": "github.com",
       "type": "fqdn",
-      "description": "Essential — code hosting",
+      "description": "Essential: code hosting",
       "added_date": "2026-03-01T12:00:00"
     }
   ]
@@ -295,7 +295,7 @@ POST /api/domain-whitelist
 ```json
 {
   "domain": "github.com",
-  "description": "Essential — code hosting"
+  "description": "Essential: code hosting"
 }
 ```
 
@@ -309,7 +309,7 @@ DELETE /api/domain-whitelist/{id}
 
 ## Egress allowlist {#egress-allowlist}
 
-The egress allowlist is the deny-by-default complement to the blacklists. It is consulted only when default-deny egress is enabled (the `egress_default_deny` setting, default `false`). While that setting is off — the default — behaviour is unchanged: clients may reach any destination not on a blacklist, and this allowlist has no effect. When it is on, the proxy denies all outbound egress from local clients except destinations on this allowlist; everything else is refused with a Squid 403.
+The egress allowlist is the deny-by-default complement to the blacklists. It is consulted only when default-deny egress is enabled (the `egress_default_deny` setting, default `false`). While that setting is off (the default), behaviour is unchanged: clients may reach any destination not on a blacklist, and this allowlist has no effect. When it is on, the proxy denies all outbound egress from local clients except destinations on this allowlist; everything else is refused with a Squid 403.
 
 The `egress_default_deny` toggle is set via the bulk settings endpoint (`POST /api/settings`, flat `{name: value}` body), not through this group.
 

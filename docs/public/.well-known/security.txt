@@ -1,4 +1,4 @@
-# Secure Proxy Manager — vulnerability disclosure (RFC 9116)
+# Secure Proxy Manager: vulnerability disclosure (RFC 9116)
 #
 # Note on location: RFC 9116 places this file at the DOMAIN root. This project
 # is served from a *.github.io project path, so the copy below lives at

@@ -1,9 +1,9 @@
-# Benchmarks — Secure Proxy Manager v3.8.0
+# Benchmarks: Secure Proxy Manager v3.8.0
 
 > [!WARNING]
 > **These numbers are from v3.8.0 (2026-03-26) and have not been regenerated.**
 > The current release is later, and changes since then affect what is measured
-> here — the aho-corasick prefilter that skips the rule set on benign input, two
+> here: the aho-corasick prefilter that skips the rule set on benign input, two
 > additional response rule packs, the WAF ISTag change to Squid's verdict
 > caching, and ETag revalidation on the analytics routes. Treat the figures as
 > indicative of the approach, not of the shipped build.
@@ -19,7 +19,7 @@ Reproducible security and performance benchmarks. All numbers are from real traf
 | Component | Detail |
 |-----------|--------|
 | Version | 3.8.0 |
-| WAF Engine | Go ICAP 2.0 — 170 rules, 21 categories, anomaly scoring (+2 response packs) |
+| WAF Engine | Go ICAP 2.0: 170 rules, 21 categories, anomaly scoring (+2 response packs) |
 | Proxy | Squid 5.9 |
 | Backend | Go (chi) + modernc/sqlite (WAL) |
 | Frontend | React 19 + Vite + Tailwind |
@@ -252,5 +252,5 @@ curl -u user:pass http://BACKEND:5001/api/waf/stats
 3. **HTTPS inspection**: requires Squid SSL Bump enabled and client trusting the proxy CA.
 4. **Regex-based detection**: inherent limits vs semantic analysis (e.g., libinjection for SQL).
 5. **Backend API latency**: ~450ms on large DBs (67MB, 500K+ logs). Fresh DB: <10ms.
-6. **Anomaly scoring threshold**: default 10. Low-severity rules (score 2-4) won't block alone — by design.
+6. **Anomaly scoring threshold**: default 10. Low-severity rules (score 2-4) won't block alone, by design.
 7. **RESPMOD**: inspects response Content-Type and text bodies for XSS/secrets. No binary/AV scanning.

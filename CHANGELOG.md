@@ -5,8 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Reading this for API changes.** Anything that alters the HTTP surface — a
-route removed, a response shape changed, a status code changed — appears under
+**Reading this for API changes.** Anything that alters the HTTP surface (a
+route removed, a response shape changed, a status code changed) appears under
 a `### Removed` or `### Changed` heading with the phrase **BREAKING** and the
 `X-API-Version` it corresponds to. Endpoint removals used to be recorded under
 `### Fixed`, so a caller had to read every bullet of every release to find the
@@ -282,7 +282,7 @@ Nothing is required if neither table held such rows; the log line
 ## [3.13.2] - 2026-09-30
 
 Two fixes in the UI, and a sweep of the container images the compose files
-pin — which nothing had been watching, because Dependabot's docker ecosystem
+pin, which nothing had been watching, because Dependabot's docker ecosystem
 reads Dockerfiles and Kubernetes YAML and never a compose file.
 
 Nothing is required on upgrade and `X-API-Version` stays 1.
@@ -304,7 +304,7 @@ unchanged (`apiVersion: 1` is still accepted two majors later). Only the
 - **Two-character strings that are not country codes reached the geo-import
   API.** The handler parsed inline with a length check only, so `12` and `A1`
   were accepted. It now uses `parseGeoCountries` from `lib/validation`, which
-  also requires `/^[A-Z]{2}$/` and is covered by tests — the inline copy was a
+  also requires `/^[A-Z]{2}$/` and is covered by tests; the inline copy was a
   weaker reimplementation of a validator that already existed.
 - **`sanitiseSort` returns the whitelist literal rather than the request
   parameter.** The two compare equal on that path, so behaviour is unchanged,
@@ -316,13 +316,13 @@ unchanged (`apiVersion: 1` is still accepted two majors later). Only the
 ### Security
 
 - **The images pinned in the compose files carried 462 fixable HIGH/CRITICAL
-  findings between them; they now carry 14**, and the 14 are upstream's — Go
+  findings between them; they now carry 14**, and the 14 are upstream's: Go
   modules vendored inside the Grafana and tailscale binaries, and Alpine
   packages not yet rebuilt.
 
   The one worth reading twice: `deploy/docker-compose.prod.yml` pulled
   `tailscale/tailscale:v1.80.3` while `overlay/tailscale/Dockerfile` was at
-  v1.102.5. Twenty-two minor versions apart, 122 fixable findings against 5 —
+  v1.102.5. Twenty-two minor versions apart, 122 fixable findings against 5,
   and the file an operator deploys with was the one left behind, because
   Dependabot updates the Dockerfile and cannot see a compose file.
 
@@ -337,7 +337,7 @@ unchanged (`apiVersion: 1` is still accepted two majors later). Only the
   `govulncheck` and Trivy answer a question whose answer changes without a
   commit, and the default branch had gone eleven days without being evaluated.
 - The Playwright image and `@playwright/test` are kept on one version; they
-  had drifted three ways, which made every E2E test fail at 0ms — the suite
+  had drifted three ways, which made every E2E test fail at 0ms: the suite
   never started.
 - The UI test toolchain takes four major bumps (vitest 5, jsdom 30, jest-dom 7,
   @types/node 26) together with the Node version they require.
@@ -345,7 +345,7 @@ unchanged (`apiVersion: 1` is still accepted two majors later). Only the
 ## [3.13.1] - 2026-09-30
 
 A patch for one WAF bypass. `admin'--` in a **request body** scored 6 against a
-threshold of 10 and passed — and a login form submits its credentials in a
+threshold of 10 and passed, and a login form submits its credentials in a
 body, so that was the realistic delivery of the payload rather than an exotic
 one.
 
@@ -359,13 +359,13 @@ was never carried over.
 - **SQLi-018 blocks a comment terminator on its own, in a body as well as a
   URL** (#266). Raising the severity alone would have been wrong: the old
   pattern `['"]\s*(?:--|#)` also matches a quote *opening* a literal that
-  begins with dashes or a hash — `{"args":["--json"]}`, `"--brand-color"`,
-  `"# heading"` — six of eight benign JSON and CSS samples, which is exactly
+  begins with dashes or a hash (`{"args":["--json"]}`, `"--brand-color"`,
+  `"# heading"`), six of eight benign JSON and CSS samples, which is exactly
   why it could not carry a block. Requiring a word character or a closing
   paren before the quote separates the end of a quoted literal from the start
   of one: zero false positives on those samples, seven attack shapes matched.
 
-  Three cases were added to the adversarial corpus — the two body payloads
+  Three cases were added to the adversarial corpus: the two body payloads
   that used to pass, and the JSON-with-CLI-flags shape the old rule could not
   tell from an attack. The gap had been invisible precisely because the corpus
   that reports FN=0 for the WAF held no SQL-injection payload in a body at all.
@@ -381,9 +381,9 @@ was never carried over.
 
 ## [3.13.0] - 2026-09-09
 
-Remediation of a full code-metrics audit of `1c81e762` — the 3.12.0 release
+Remediation of a full code-metrics audit of `1c81e762`, the 3.12.0 release
 itself: 36 findings admitted, 36 closed (#303). Every security-relevant fix is
-mutation-verified — the original defect restored, the test required to fail.
+mutation-verified: the original defect restored, the test required to fail.
 
 This is a minor, not a patch: a route that used to answer without credentials
 now requires them, and an endpoint that could never report success now can.
@@ -396,7 +396,7 @@ shapes that did not move.
 ### Action required when upgrading from 3.12.0
 
 - **`GET /api/docs` now requires authentication.** **BREAKING** for any caller
-  that fetched the route catalogue anonymously — it now answers `401`.
+  that fetched the route catalogue anonymously: it now answers `401`.
   `RegisterAPIDocs` accepted an auth middleware and never applied it, so the
   complete list of 80 routes, each with a flag naming which need no
   credentials, was served to anyone who could reach the API.
@@ -413,18 +413,18 @@ shapes that did not move.
 ### Fixed
 
 - **`POST /api/maintenance/reload-config` could never return success.** The
-  watchdog wrote `trigger_mtime` from `os.path.getmtime` — a float — and the
+  watchdog wrote `trigger_mtime` from `os.path.getmtime` (a float) and the
   backend decodes it into an `int64`, which Go's `encoding/json` refuses for
   every float form including `.0`. So every acknowledgement failed to parse,
   the handler spun for its full 8-second deadline, and only the `pending`
   branch was reachable. The stamp now comes from the trigger file's *content*,
-  which the backend already writes as an integer — removing the float, the
+  which the backend already writes as an integer. That removes the float, the
   filesystem timestamp granularity and any clock skew at once. The test that
   should have caught this built its fixture with `json.Marshal` from a Go
   `int64`; the regression guard now runs the real Python producer in the real
   image.
 - **The watchdog dropped reload triggers.** It recorded the trigger's mtime
-  *before* attempting the reload, so a reload that failed was never retried —
+  *before* attempting the reload, so a reload that failed was never retried:
   the trigger looked handled. The mtime is now recorded only after the attempt.
 - **A CIDR did not survive backup and restore.** The export omitted
   `dst_allowlist.type` and the restore inserted without it, so a CIDR came back
@@ -435,8 +435,8 @@ shapes that did not move.
   understands.
 - **The WAF missed `admin' OR '1'='1`.** The tautology rule's comparands were
   bare digits, so the canonical quoted form did not match. The corpus that
-  reports FN=0 for the WAF contained exactly one SQL-injection case —
-  `UNION SELECT` — and no tautology at all, so the gap was invisible to the
+  reports FN=0 for the WAF contained exactly one SQL-injection case
+  (`UNION SELECT`) and no tautology at all, so the gap was invisible to the
   suite that certifies the detection. Both are fixed: two rules added, four
   tautology cases added to the corpus.
 - **The proxy healthcheck depended on the internet.** Its "cheap local probe"
@@ -449,18 +449,18 @@ shapes that did not move.
   `GitCommit` shipped as `unknown`. Confirmed against the published v3.12.0
   image.
 - **The encryption key and the JWT secret were written non-atomically.** They
-  were the only persisted state using a plain `os.WriteFile` — truncate in
+  were the only persisted state using a plain `os.WriteFile`: truncate in
   place, then write. A torn write there is answered by generating a *new* key,
   silently orphaning every stored credential. Both now go through the same
   create-temp/fsync/rename discipline the log-tailer offset already had.
 - **The security-notification queue had no owner.** Its goroutine was never
   cancelled, waited for or drained, so alerts in flight were lost on shutdown.
-  It is now tracked, cancellable and drained, and emits a heartbeat — zero
+  It is now tracked, cancellable and drained, and emits a heartbeat: zero
   notifications is a normal state, so silence could not previously be
   distinguished from a dead worker.
 - **The WAF reported an unreadable custom-rules file as an absent one.**
   `/config` is a bind mount and the container runs read-only with dropped
-  capabilities, so a permission problem is realistic — and it left an operator
+  capabilities, so a permission problem is realistic, and it left an operator
   running with strictly less detection than they configured, told nothing
   distinguishable from having written no rules.
 
@@ -469,8 +469,8 @@ shapes that did not move.
 - **The WAF's management credential is compared in constant time.** Both
   fields are always compared and the results combined with a bitwise AND, so
   the total does not reveal which one failed. This credential guards
-  `/categories/toggle` — the route that can switch off SQL-injection
-  inspection — on the internal bridge, where an attacker holding another
+  `/categories/toggle` (the route that can switch off SQL-injection
+  inspection) on the internal bridge, where an attacker holding another
   container has a low-jitter path.
 - **`POST /api/blacklists/import-geo` fetches concurrently.** Up to 50
   countries were fetched sequentially at a 30-second timeout each, inside a
@@ -489,14 +489,14 @@ shapes that did not move.
 ### Added
 
 - **Python is linted and tested in CI.** The proxy's enforcement-path sidecar
-  had neither. `ruff.toml` selects beyond the default `E`/`F` — the default set
-  passes on this repository, which would have made the gate decorative — and
+  had neither. `ruff.toml` selects beyond the default `E`/`F` (the default set
+  passes on this repository, which would have made the gate decorative) and
   surfaced 19 real findings. Eight unit tests now cover the sidecar's failure
   branches.
 - **A restore drill.** `scripts/restore.sh` was invoked by no test and no
   Makefile target. The drill proves it refuses a corrupt backup and that `data/`
   survives the refusal. `PRAGMA integrity_check` returns `ok` for corruption in
-  headers and free space — verified directly — so the drill corrupts a data page
+  headers and free space (verified directly), so the drill corrupts a data page
   and the script's message says "structural" rather than implying the backup is
   byte-perfect.
 - **Prometheus alert rules**, six of them, shipped with the observability
@@ -514,7 +514,7 @@ shapes that did not move.
 ## [3.12.0] - 2026-09-08
 
 Remediation of a full code-metrics audit of `19c3e90b`: 81 findings admitted,
-81 closed (#261). Every security-relevant fix is mutation-verified — the
+81 closed (#261). Every security-relevant fix is mutation-verified: the
 original bug restored, the test required to fail. This is a minor, not a patch:
 three changes below need action on upgrade.
 
@@ -551,7 +551,7 @@ the blacklists to `/config`. Both refuse to start and name the remedy.
   `POST /api/internal/alert` with `INTERNAL_ALERT_TOKEN`, scoped to that one
   route and compared in constant time. The container that parses
   attacker-controlled request bodies previously carried
-  `BASIC_AUTH_USERNAME`/`PASSWORD` — full control of the management API, over
+  `BASIC_AUTH_USERNAME`/`PASSWORD`: full control of the management API, over
   plain HTTP on the internal network. (SECURE-AUTH-02)
 - **`./data` is no longer mounted into the WAF or the proxy.** It holds
   `.jwt_secret` (signs every session token), `.enc_key` (decrypts every stored
@@ -559,7 +559,7 @@ the blacklists to `/config`. Both refuse to start and name the remedy.
   that owns it. (SECURE-SEC-01)
 - **The login lockout is enforceable again.** nginx sent
   `$proxy_add_x_forwarded_for`, which prepends the client's own header, and the
-  left-most entry was taken as the client address — so an attacker rotating
+  left-most entry was taken as the client address, so an attacker rotating
   `X-Forwarded-For` never accumulated failures under any key and
   `MAX_LOGIN_ATTEMPTS` did nothing. (SECURE-AUTH-01, SECURE-AUTH-03)
 - **JWT revocation fails closed.** An unreadable revocation store was read as
@@ -569,7 +569,7 @@ the blacklists to `/config`. Both refuse to start and name the remedy.
   be persisted, instead of 200 for a token that comes back after a restart.
   (SECURE-ERR-02, SECURE-ERR-03)
 - **Grafana no longer ships with `admin`/`admin`** in the production compose
-  file — the one `install.sh` deploys. (SECURE-CONF-05)
+  file, the one `install.sh` deploys. (SECURE-CONF-05)
 - **The proxy CA and the htpasswd file.** The CA is 825 days behind a
   `umask 077` rather than 3650 days with a world-readable key; the basic-auth
   password is hashed through `openssl passwd -6` on stdin instead of `htpasswd
@@ -584,8 +584,8 @@ the blacklists to `/config`. Both refuse to start and name the remedy.
 
 ### Added
 
-- `internal/validate` enforces the `validate:` struct tags — `required`,
-  `omitempty`, `min`, `max`, `oneof` — at all 11 request-decode sites. Strings
+- `internal/validate` enforces the `validate:` struct tags (`required`,
+  `omitempty`, `min`, `max`, `oneof`) at all 11 request-decode sites. Strings
   are measured in runes. No new dependency. (SECURE-DOM-02)
 - **CI quality gates that are real:** `golangci-lint` on both Go modules with an
   explicit, justified exclusion list; `shellcheck`; a squid-config fixture suite
@@ -597,23 +597,23 @@ the blacklists to `/config`. Both refuse to start and name the remedy.
   (SECURE-DATA-02)
 - `X-API-Version` on every response, deliberately separate from the build
   version. (SECURE-API-03)
-- Prometheus now measures the product's own outcome — requests allowed vs
-  blocked — counted where every log line is already parsed. (SECURE-OBS-01)
+- Prometheus now measures the product's own outcome, requests allowed vs
+  blocked, counted where every log line is already parsed. (SECURE-OBS-01)
 
 ### Changed
 
-- **BREAKING** (`X-API-Version: 1`) — `GET /api/analytics/clients` returns the
+- **BREAKING** (`X-API-Version: 1`): `GET /api/analytics/clients` returns the
   collection under `data`, not `data.clients`. Every list endpoint now goes
   through one helper: collection under `data`, pagination under `meta`. The
   top-level `total`/`limit`/`offset` are still emitted and marked deprecated,
   so the old pagination shape stays reachable for a release. (SECURE-API-02)
-- **BREAKING** (`X-API-Version: 1`) — Backup Config exports a versioned
+- **BREAKING** (`X-API-Version: 1`): Backup Config exports a versioned
   envelope carrying the five lists (both blacklists, both whitelists, the
   egress allowlist) alongside the settings. It previously exported the settings
   table alone, so an operator who exported before a risky change and imported
   afterwards had restored only the toggles. The v1 import shape is still
   accepted. (SECURE-DATA-04)
-- **BREAKING** (`X-API-Version: 1`) — 14 handlers stopped passing `err.Error()`
+- **BREAKING** (`X-API-Version: 1`): 14 handlers stopped passing `err.Error()`
   into the contractual `detail` field, so a 500 no longer returns whatever the
   SQLite driver said. They return a stable detail plus a machine-readable code
   and log the cause. The 400s that echo the caller's own input keep their
@@ -633,7 +633,7 @@ the blacklists to `/config`. Both refuse to start and name the remedy.
 - `generate_squid_conf.sh` is the sole producer of `squid.conf`. 407 of
   `startup.sh`'s 490 lines were a byte-identical copy of it, so every unguarded
   mutation ran twice and every security edit had to land in two files or the
-  boot path and the reload path diverged — which they had. (SECURE-ARCH-01)
+  boot path and the reload path diverged, which they had. (SECURE-ARCH-01)
 - `handleReqmod` is split into named inspection stages: CCN 48 → 13, 226 → 50
   NLOC, every extracted helper CCN ≤ 8. Verdicts pinned by a characterization
   suite before the split and byte-identical after. (SECURE-QUAL-02)
@@ -641,7 +641,7 @@ the blacklists to `/config`. Both refuse to start and name the remedy.
 ### Fixed
 
 - **Log ingestion dropped records.** `bufio.Scanner` reads ahead, so seeking to
-  the file position after an early break skipped every line already buffered —
+  the file position after an early break skipped every line already buffered:
   476 of 12,000 in a mutation test. Consumed bytes are now tracked explicitly.
 - **Log ingestion could OOM the backend during recovery.** A tick's batch was
   sized by the backlog, so a backend down for an hour read every line since the
@@ -649,7 +649,7 @@ the blacklists to `/config`. Both refuse to start and name the remedy.
   same backlog on restart. Batches are bounded and transactional, and the
   offset is persisted per batch. (SECURE-SCAL-02)
 - **The blacklist export could publish a truncated ACL.** Every write to the
-  enforcement path — exports and watchdog copies — is now atomic (temp file,
+  enforcement path, exports and watchdog copies, is now atomic (temp file,
   fsync, rename, directory sync) and serialized. The startup export is fatal on
   failure: a proxy enforcing rules that no longer match the database must not
   start silently. (SECURE-DATA-01)
@@ -669,7 +669,7 @@ the blacklists to `/config`. Both refuse to start and name the remedy.
   accesses were locked, so the race detector could never see it.
   (SECURE-CONC-04)
 - Supervisord no longer gives up on squid or the watchdog after a finite retry
-  count — it marked them FATAL and kept running as PID 1, so nothing recovered
+  count: it marked them FATAL and kept running as PID 1, so nothing recovered
   the container and a transient failure became permanent. (SECURE-REL-01)
 
 ### Removed
@@ -685,7 +685,7 @@ SEO, and polish. No functional/API changes.
 
 ### Added
 
-- Docs "How it compares" table now lists **Zion** — the single-binary Rust TLS
+- Docs "How it compares" table now lists **Zion**, the single-binary Rust TLS
   reverse-proxy + WAF that complements SPM (ingress vs egress). (#217)
 - Docs site SEO: Open Graph / Twitter card meta, per-page canonical + `og:url`,
   a generated `sitemap.xml`, and `robots.txt`. (#215)
@@ -699,7 +699,7 @@ SEO, and polish. No functional/API changes.
   `id`/`htmlFor`; login errors announce with `role="alert"`; tag and icon-only
   controls get accessible names. (#215, #218)
 - **Performance:** `IpBadge` reads the asset-tag map from a shared, parse-once
-  store (`useSyncExternalStore`) and is memoized — removes up to ~200 synchronous
+  store (`useSyncExternalStore`) and is memoized, which removes up to ~200 synchronous
   `localStorage`/`JSON.parse` calls per streamed log line in the Logs table. (#215)
 - Shared recharts tooltip style extracted to `lib/chart.ts`; App reuses the
   tested `isTokenExpired()` helper instead of an inline JWT decode. (#218)
@@ -742,7 +742,7 @@ SEO, and polish. No functional/API changes.
 
 ### Added
 
-- **Adversarial e2e harness** (`tests/adversarial/`, `make adversarial`) — drives
+- **Adversarial e2e harness** (`tests/adversarial/`, `make adversarial`): drives
   attacker-style traffic against the running product in an isolated sandbox and
   gates on security regressions, as a new **Adversarial block-matrix (proxy +
   WAF)** CI job. Four planes: (1) data-plane **block-matrix** through the real
@@ -753,7 +753,7 @@ SEO, and polish. No functional/API changes.
 - **Correlation event-id in the proxy access log.** The WAF stamps
   `X-WAF-Event-Id` on the 403 it returns via ICAP; Squid's new `spm` logformat
   carries it as an 11th field, and it lands in a new `proxy_logs.event_id`
-  column — so a blocked request in the Logs page / analytics joins end-to-end to
+  column, so a blocked request in the Logs page / analytics joins end-to-end to
   its WAF traffic-log record and notification. (#107)
 
 ### Changed
@@ -761,7 +761,7 @@ SEO, and polish. No functional/API changes.
 - **WAF pre-filter (performance).** Before evaluating the ~170 RE2 rules, the WAF
   screens the input with an in-repo Aho-Corasick automaton over required-literal
   keywords derived programmatically from the patterns, skipping the rule set on
-  benign traffic (~4.4× faster on benign input). Sound by construction — rules
+  benign traffic (~4.4× faster on benign input). Sound by construction: rules
   with no extractable required literal always run, verified by a 170/170
   rule-positive coverage test + a differential-equivalence fuzzer. (#110)
 
@@ -771,15 +771,15 @@ SEO, and polish. No functional/API changes.
 
 - **React Router upgraded v7 → v8** (`react-router@8.3.0`; the `react-router-dom`
   package is dropped in v8, so all imports move to `react-router`). This clears
-  **GHSA-qwww-vcr4-c8h2** (RSC-mode CSRF, fixed in 8.3.0) — the last remaining
+  **GHSA-qwww-vcr4-c8h2** (RSC-mode CSRF, fixed in 8.3.0), the last remaining
   entry in the CVE-audit allowlist. `scripts/npm-audit-allowlist.json` and
   `.trivyignore` are now empty: the `npm audit` + Trivy gates pass with **zero**
   standing exceptions.
 
 ### Also
 
-- WAF heuristic toggles are now wired end-to-end (runtime, no container restart)
-  — see [#102].
+- WAF heuristic toggles are now wired end-to-end (runtime, no container restart);
+  see [#102].
 
 [#102]: https://github.com/fabriziosalmi/secure-proxy-manager/issues/102
 
@@ -792,7 +792,7 @@ SEO, and polish. No functional/API changes.
   by the SHA-256 of the compact JWT string, but `golang-jwt` decodes Base64URL
   non-strictly by default: a token whose final signature character is swapped for
   an equivalent spelling (only unused bits differ) decodes to the same signature
-  bytes — so it still validates — yet hashes to a different blacklist key. A
+  bytes, so it still validates, yet hashes to a different blacklist key. A
   holder of a valid token could therefore keep authenticating after logout, and
   defeat one-time refresh-token rotation, using an equivalent spelling. Fixed by
   pinning `jwt.WithStrictDecoding()` at all three parse sites (`ValidateJWT`,
@@ -810,7 +810,7 @@ SEO, and polish. No functional/API changes.
 - **Proxy 502 after the dns (or waf) container is recreated.** squid bakes the
   dnsmasq IP (`dns_nameservers`) and the WAF ICAP IP into its config at
   generation time; when those containers are recreated they get new IPs, leaving
-  squid pointing at dead addresses — every request 502s (dns) or skips ICAP
+  squid pointing at dead addresses: every request 502s (dns) or skips ICAP
   (waf) until the proxy is manually restarted. The in-container watchdog now
   tracks the resolved dns/waf IPs and, on drift, regenerates the squid config
   and reconfigures in place (self-healing within ~2s, no proxy restart). This
@@ -821,7 +821,7 @@ SEO, and polish. No functional/API changes.
 ## [3.11.0] - 2026-06-29
 
 Hardening sweep across CI/release rigor, UX correctness, deployment robustness,
-and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy churn.
+and adoption, driven by a focused audit after the 3.10.3 to 3.10.5 deploy churn.
 
 ### Added
 
@@ -853,7 +853,7 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 
 - **WAF heuristic toggles (#102, UI part):** SetupWizard/Presets wrote
   `heuristic_*` keys while Settings used `waf_h_*`, so selections never
-  round-tripped — unified on `waf_h_*` (matching the WAF's `WAF_H_*` env), and
+  round-tripped. Unified on `waf_h_*` (matching the WAF's `WAF_H_*` env), and
   corrected the misleading "Proxy restarted" save copy.
 - **React Query "data undefined" crash class:** all queryFns now unwrap the API
   envelope via shared `lib/api` helpers (null-coalescing) instead of raw
@@ -946,7 +946,7 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 ### Added
 
 - **Observability stack.** The backend now exposes Prometheus metrics at
-  `/metrics` (internal network only — nginx does not proxy it): RED metrics per
+  `/metrics` (internal network only: nginx does not proxy it): RED metrics per
   matched route (`spm_http_requests_total`, `spm_http_request_duration_seconds`,
   `spm_http_requests_in_flight`), database connection-pool gauges
   (`spm_db_connections_*`), per-worker heartbeats
@@ -1013,7 +1013,7 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
   "Default-deny egress" toggle in Settings: a client behind the proxy may then
   reach only the destinations on the new **Egress Allowlist** (CIDR/IP or
   domain); everything else is denied. This turns the forward proxy from
-  default-allow-destination into default-deny-destination — the basis for a
+  default-allow-destination into default-deny-destination, the basis for a
   sovereign / data-residency egress. Includes a managed allowlist page, a REST
   API (`/api/egress-allowlist`), and Squid `dst`/`dstdomain` enforcement driven
   by the existing list + toggle plumbing. Off by default.
@@ -1030,7 +1030,7 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 ### Added
 
 - **Audit Log page (#82).** A paginated, filterable view of administrative
-  actions — logins, blacklist and settings changes, maintenance — with
+  actions (logins, blacklist and settings changes, maintenance) with
   per-action badges and CSV export, backed by the existing `/api/audit-log`.
   Backend audit coverage was widened to also record blacklist additions and
   settings changes.
@@ -1044,9 +1044,9 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
   screens to cut the scrolling, and `/api/status` reports the configured
   `proxy_port` from the database instead of a hard-coded value.
 - **End-to-end CI smoke job (#85).** A new `E2E (compose up + smoke)` job runs
-  the whole stack with `docker compose up` and exercises the core path —
-  service health, proxy egress, the blacklist watchdog, the Squid→backend log
-  pipeline, and the audit log — so fresh-deploy breakage can no longer ship
+  the whole stack with `docker compose up` and exercises the core path
+  (service health, proxy egress, the blacklist watchdog, the Squid→backend log
+  pipeline, and the audit log), so fresh-deploy breakage can no longer ship
   green. It is enforced as a required status check via branch protection.
 
 ### Changed
@@ -1063,12 +1063,12 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 - **A fresh `docker compose up` now works end-to-end (#80).** Six bugs broke a
   clean deploy and none were caught by CI (which builds the images but never
   runs the stack): the backend could not write its bind-mounted volumes
-  (SQLite `CANTOPEN` — it now runs as root like the sibling proxy/dns/waf
+  (SQLite `CANTOPEN`; it now runs as root like the sibling proxy/dns/waf
   containers, because su-exec/gosu privilege drop fails on Proxmox/unprivileged
   LXC); `dns` crash-looped on a missing `config/dnsmasq.d/` (now shipped via a
   `.gitkeep`); the proxy and dns had no internet egress (they sat only on an
-  `internal: true` network — both are now also on `frontend`); the blacklist
-  watchdog never started (it was generated at runtime — it is now shipped as
+  `internal: true` network; both are now also on `frontend`); the blacklist
+  watchdog never started (it was generated at runtime; it is now shipped as
   `proxy/blacklist_watchdog.py` and registered statically in supervisord); and
   the dashboard / Logs page stayed empty because Squid's `0640` access.log was
   unreadable by the backend container (the watchdog now re-asserts `0644`).
@@ -1089,15 +1089,15 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 
 ### Fixed
 
-- **proxy: live blacklist reload** — added `blacklist_watchdog.py` (Python 3,
+- **proxy: live blacklist reload**: added `blacklist_watchdog.py` (Python 3,
   runs under supervisord) that polls `/config/{ip,domain}_blacklist.txt` every
   2 s and calls `squid -k reconfigure` when either file changes.  Previously
   the backend updated the database and rewrote the config files but Squid only
   picked up the new rules on a container restart.
-- **proxy: ssl_db ownership** — `chmod 700 /config/ssl_db` replaced by
+- **proxy: ssl_db ownership**: `chmod 700 /config/ssl_db` replaced by
   `chown proxy:proxy /config/ssl_db && chmod 750`.  The old mode blocked Squid
   (running as `proxy`) from writing dynamic certificates during SSL bump.
-- **proxy: log world-readable** — added `chmod 755 /var/log/squid` so the
+- **proxy: log world-readable**: added `chmod 755 /var/log/squid` so the
   backend container (different UID) can read `access.log` for real-time
   analytics without requiring a shared group.
 - **backend-go: version bump** `3.4.4` → `3.4.5`.
@@ -1106,13 +1106,13 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 
 ### Security
 
-- **axios `^1.13.6` → `^1.16.0`** — patches 13 high-severity CVEs in the UI:
+- **axios `^1.13.6` → `^1.16.0`**: patches 13 high-severity CVEs in the UI:
   prototype pollution, CRLF injection, header injection, `no_proxy` bypass
   SSRF, and authentication bypass. `follow-redirects` is now pinned to
   `^1.16.0` via override (auth-header leak on cross-domain redirects).
-- **postcss `^8.5.8` → `^8.5.10`** — fixes XSS via an unescaped `</style>`
+- **postcss `^8.5.8` → `^8.5.10`**: fixes XSS via an unescaped `</style>`
   sequence; applied as a dependency override in both `ui/` and `docs/`.
-- **vite `^6.4.2`** — pinned via override in `docs/` (path-traversal in
+- **vite `^6.4.2`**: pinned via override in `docs/` (path-traversal in
   optimised-deps `.map` handling).
 
 ### Documentation
@@ -1179,11 +1179,11 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 
 - **WAF LAN bypass fixed (CRITICAL)**: `isLANHost` previously used a naive
   `strings.HasPrefix(host, "172.2")` check, which incorrectly classified the
-  entire `172.200.0.0/8` public range (and similar) as LAN — traffic to those
+  entire `172.200.0.0/8` public range (and similar) as LAN: traffic to those
   IPs bypassed all WAF inspection. Replaced with `net.ParseIP` +
   `IsPrivate / IsLoopback / IsLinkLocal{Unicast,Multicast} / IsUnspecified`,
   with regression tests for `172.200.0.1`, `172.255.255.255`, `100.64.0.0/10`
-  (CGNAT — must be inspected), `[::1]:port`, `fe80::`, and `fc00::`.
+  (CGNAT: must be inspected), `[::1]:port`, `fe80::`, and `fc00::`.
   Verified live: 5 forced requests to `172.200.0.1` increased WAF
   `total_requests` by 5 (previously 0); 3 SQLi probes returned HTTP 403.
 - **JWT type confusion fixed (HIGH)**: `ValidateJWT` did not check
@@ -1215,12 +1215,12 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 
 ### Added
 
-- **WAF Prometheus `/metrics` endpoint** — unauthenticated text-exposition
+- **WAF Prometheus `/metrics` endpoint**: unauthenticated text-exposition
   emitting only aggregate counters: `waf_requests_total`, `waf_blocked_total`,
   `waf_high_entropy_total`, `waf_requests_last_minute`, `waf_rules_total`,
   `waf_categories_total`, `waf_categories_disabled`, `waf_block_threshold`,
   `waf_heuristics_enabled`, `waf_safe_cache_hits_total`,
-  `waf_safe_cache_size`. No rule names, destinations, or User-Agents — leak
+  `waf_safe_cache_size`. No rule names, destinations, or User-Agents. Leak
   surface ≤ existing `/health`.
 - New tests: `TestValidateJWTRejectsRefreshToken`,
   `TestDNSDetectHandlers_Detect_RejectsPublicSubnet`, regression cases for
@@ -1311,7 +1311,7 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 
 ### Added
 
-- **Glass morphism UI**: Full design system overhaul — `backdrop-blur` glass surfaces, animated number counters (rAF with ease-out cubic), staggered card entrance animations, progress bar glow effects with color-matched `box-shadow`, frosted ⌘K search modal, ambient login glow, custom 4px themed scrollbars, and gradient typography across all pages
+- **Glass morphism UI**: Full design system overhaul: `backdrop-blur` glass surfaces, animated number counters (rAF with ease-out cubic), staggered card entrance animations, progress bar glow effects with color-matched `box-shadow`, frosted ⌘K search modal, ambient login glow, custom 4px themed scrollbars, and gradient typography across all pages
 - **Sidebar active pill indicator**: Animated sliding bar with `transition-all duration-300` that follows the active nav item
 - **Status panel redesign**: Sidebar footer rebuilt with concentric pulse ring indicator, hierarchical status text, version/runtime/update row, and deprioritized sign-out
 - **`useAnimatedNumber` hook**: `requestAnimationFrame`-based counter interpolation with ease-out cubic, used on Dashboard, ThreatIntel, and Logs pages
@@ -1378,7 +1378,7 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 - **Plaintext password eliminated**: bcrypt is now the primary auth method; plaintext env-var fallback only used during first boot before DB seed completes
 - **Sensitive tokens encrypted at rest**: Webhook URLs, Gotify/Telegram/ntfy tokens stored with AES-256-GCM in the database (new `internal/crypto` package)
 - **JWT blacklist persisted**: Revoked tokens survive container restarts via new `jwt_blacklist` SQLite table with TTL-based cleanup
-- **AdminPasswordHash loaded from DB**: Previously missing — the bcrypt hash is now loaded at startup so auth uses it correctly
+- **AdminPasswordHash loaded from DB**: Previously missing; the bcrypt hash is now loaded at startup so auth uses it correctly
 
 #### New Security Infrastructure
 - **Global rate limiting**: Token bucket per-IP middleware (20 req/s sustained, 60 burst) on all endpoints, not just login
@@ -1389,7 +1389,7 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 - **Self-signed cert reduced**: Validity 10 years → 1 year for better security hygiene
 
 #### Performance & Reliability
-- **3 new SQLite indexes**: `idx_proxy_logs_ts_ip`, `idx_proxy_logs_ts_dest`, `idx_proxy_logs_status` — accelerates analytics queries on large DBs
+- **3 new SQLite indexes**: `idx_proxy_logs_ts_ip`, `idx_proxy_logs_ts_dest`, `idx_proxy_logs_status`. Accelerates analytics queries on large DBs
 - **Query LIMIT clauses**: UserAgents (50), FileExtensions (50000) prevent unbounded result sets
 - **Worker graceful shutdown**: All 4 background workers now accept `context.Context` and stop cleanly on SIGTERM
 - **pprof endpoint**: `/debug/pprof/*` routes (auth-protected) for production CPU/memory profiling
@@ -1400,24 +1400,24 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 - **npm audit**: Frontend dependency audit (high severity) in CI pipeline
 
 ### Added
-- `backend-go/internal/crypto/` — AES-256-GCM encryption package with tests
-- `backend-go/internal/middleware/ratelimit.go` — Per-IP token bucket rate limiter
-- `backend-go/internal/middleware/circuitbreaker.go` — Circuit breaker (closed/open/half-open)
-- `PLAN.md` — Comprehensive project analysis and action plan
+- `backend-go/internal/crypto/`: AES-256-GCM encryption package with tests
+- `backend-go/internal/middleware/ratelimit.go`: Per-IP token bucket rate limiter
+- `backend-go/internal/middleware/circuitbreaker.go`: Circuit breaker (closed/open/half-open)
+- `PLAN.md`: Comprehensive project analysis and action plan
 
 ### Changed
-- `auth.go` — bcrypt-first password verification, JWT blacklist uses SHA-256 hashed keys
-- `main.go` — Worker context propagation, pprof routes, WS origin check, DB hash loading
-- `settings.go` — Transparent encrypt-on-write / decrypt-on-read for sensitive settings
-- `security.go` — Notification retry with backoff, encrypted settings decryption
-- `analytics.go` — Circuit breaker on WAF calls, LIMIT on queries
-- `ci.yml` — 3 new jobs (backend tests, gosec, npm audit)
-- `docker-entrypoint.sh` — Cert validity 3650 → 365 days
-- `nginx.conf.template` — CSP aligned with backend middleware
+- `auth.go`: bcrypt-first password verification, JWT blacklist uses SHA-256 hashed keys
+- `main.go`: Worker context propagation, pprof routes, WS origin check, DB hash loading
+- `settings.go`: Transparent encrypt-on-write / decrypt-on-read for sensitive settings
+- `security.go`: Notification retry with backoff, encrypted settings decryption
+- `analytics.go`: Circuit breaker on WAF calls, LIMIT on queries
+- `ci.yml`: 3 new jobs (backend tests, gosec, npm audit)
+- `docker-entrypoint.sh`: Cert validity 3650 → 365 days
+- `nginx.conf.template`: CSP aligned with backend middleware
 
 ## [3.0.0] - 2026-03-28
 
-### Added — 17 New Features
+### Added: 17 New Features
 - **Setup Wizard**: 3-step first-login onboarding (environment → devices → strictness)
 - **6 Presets**: Basic, Family, Standard, Paranoid, DevOps, Kiosk
 - **Security Packs**: 21 toggleable WAF categories via API
@@ -1433,7 +1433,7 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 - **Let's Encrypt**: Auto-HTTPS with certbot (optional, fallback to self-signed)
 - **One-Click Cloud Deploy**: install.sh + cloud-init.yaml for any VPS
 - **Squid CVE Alert**: Detects known vulnerabilities in Squid version
-- **API Documentation**: GET /api/docs — 60+ endpoints with descriptions
+- **API Documentation**: GET /api/docs, 60+ endpoints with descriptions
 - **Multi-Arch ARM64**: GitHub Actions builds for linux/amd64 + linux/arm64
 
 ### Changed
@@ -1643,7 +1643,7 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 
 ### Added
 - WebSocket log streaming with one-time token authentication (`/api/ws-token` + `/api/ws/logs`)
-- IP whitelist management UI and backend (`/api/ip-whitelist` CRUD) — bypass direct-IP block for trusted LAN IPs
+- IP whitelist management UI and backend (`/api/ip-whitelist` CRUD): bypass direct-IP block for trusted LAN IPs
 - Geo-based IP blocklist import (`/api/blacklists/import-geo`)
 - PDF analytics report export (`/api/analytics/report/pdf`)
 - SIEM syslog forwarding with JSON formatter
@@ -1659,7 +1659,7 @@ and adoption — driven by a focused audit after the 3.10.3–3.10.5 deploy chur
 - Blacklists page field names aligned to API response (`ip`, `added_date` instead of `ip_address`, `created_at`)
 - Settings page initialization now correctly converts the API's array format to a key/value map
 - Sidebar API health indicator now polls `/health` and shows real connected/disconnected state
-- Backend API port bound to `127.0.0.1:5001` only — no external exposure
+- Backend API port bound to `127.0.0.1:5001` only: no external exposure
 
 ### Security
 - SSRF protection on import URLs using `ipaddress` module (blocks all private, loopback, link-local, reserved ranges)
