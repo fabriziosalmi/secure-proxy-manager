@@ -787,9 +787,27 @@ test.describe('UI — Settings page', () => {
     await page.waitForTimeout(1_500);
   });
 
-  test('page renders all sections without crash', async ({ page }) => {
-    await expect(page.getByText('Something went wrong')).not.toBeVisible();
-    await expect(page.locator('body')).toBeVisible();
+  test('/settings opens Overview and every section has its own URL', async ({ page }) => {
+    await expect(page).toHaveURL(/\/settings\/overview$/);
+    const nav = page.getByRole('navigation', { name: 'Settings sections' });
+    await expect(nav.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
+    for (const [label, path] of [
+      ['Clients and access', 'access'], ['Filtering', 'filtering'], ['Inspection', 'inspection'], ['Alerts', 'alerts'],
+      ['Logs and privacy', 'logs'], ['Admin and backup', 'admin'], ['Proxy engine', 'engine'],
+    ]) {
+      await nav.getByRole('link', { name: label }).click();
+      await expect(page).toHaveURL(new RegExp(`/settings/${path}$`));
+      await expect(page.getByRole('heading', { level: 2, name: label })).toBeVisible();
+      await expect(page.getByText('Something went wrong')).not.toBeVisible();
+    }
+    // The sidebar keeps Settings active on every section.
+    await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  test('a deep link opens its section', async ({ page }) => {
+    await page.goto('/settings/engine');
+    await expect(page.getByRole('heading', { level: 2, name: 'Proxy engine' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByLabel('Proxy Port')).toHaveValue('3128');
   });
 
   test('Save button is present and enabled', async ({ page }) => {
@@ -806,6 +824,7 @@ test.describe('UI — Settings page', () => {
   });
 
   test('Backup Config triggers file download', async ({ page }) => {
+    await page.goto('/settings/admin');
     const [download] = await Promise.all([
       page.waitForEvent('download', { timeout: 15_000 }),
       page.getByRole('button', { name: /Backup Config/i }).click(),
@@ -814,6 +833,7 @@ test.describe('UI — Settings page', () => {
   });
 
   test('Clear Cache button is visible', async ({ page }) => {
+    await page.goto('/settings/admin');
     await expect(page.getByRole('button', { name: /Clear Cache/i })).toBeVisible({ timeout: 10_000 });
   });
 });
@@ -873,7 +893,7 @@ test.describe('Full onboarding flow', () => {
     await expect(page.getByText('Something went wrong')).not.toBeVisible();
 
     // 6. Backup from settings
-    await page.goto('/settings');
+    await page.goto('/settings/admin');
     await page.waitForTimeout(1_000);
     const [dl] = await Promise.all([
       page.waitForEvent('download', { timeout: 15_000 }),

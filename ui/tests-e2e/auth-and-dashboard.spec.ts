@@ -34,7 +34,7 @@ test.describe('Secure Proxy Manager E2E', () => {
 
     // Sidebar navigation -> Settings ("/settings").
     await page.getByRole('link', { name: 'Settings' }).click();
-    await expect(page).toHaveURL(/\/settings\/?$/);
+    await expect(page).toHaveURL(/\/settings\/overview$/);
     await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible();
 
     // Back to the Overview via the sidebar link, which is named Dashboard.

@@ -175,7 +175,9 @@ function AppContent() {
                   <Route path="logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
                   <Route path="audit" element={<ErrorBoundary><Audit /></ErrorBoundary>} />
                   <Route path="egress" element={<ErrorBoundary><EgressAllowlist /></ErrorBoundary>} />
-                  <Route path="settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
+                  {/* One section per URL; /settings opens the first one. */}
+                  <Route path="settings" element={<Navigate to="/settings/overview" replace />} />
+                  <Route path="settings/:section" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
                   <Route path="*" element={<NotFound />} />
                 </Route>
               </Routes>

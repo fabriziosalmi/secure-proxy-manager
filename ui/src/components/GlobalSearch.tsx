@@ -4,6 +4,7 @@ import { Search, ArrowRight, Ban, Shield, List, Settings, LayoutDashboard, X } f
 import { api } from '../lib/api';
 import { useModal } from '../hooks/useModal';
 import type { IpEntry, DomainEntry, LogEntry } from '../types';
+import { SECTIONS as SETTINGS_SECTIONS, sectionPath } from '../lib/settingsMeta';
 
 interface SearchResult {
   type: 'page' | 'ip' | 'domain' | 'log' | 'setting';
@@ -17,7 +18,7 @@ const PAGES: { path: string; label: string; icon: typeof LayoutDashboard; keywor
   { path: '/blacklists', label: 'Blacklists', icon: Ban, keywords: ['ip', 'domain', 'block', 'whitelist', 'geo'] },
   { path: '/analytics', label: 'Analytics', icon: Shield, keywords: ['waf', 'threat', 'attack', 'security', 'intel'] },
   { path: '/logs', label: 'Access Logs', icon: List, keywords: ['log', 'traffic', 'request', 'access'] },
-  { path: '/settings', label: 'Settings', icon: Settings, keywords: ['config', 'proxy', 'port', 'cache', 'tailscale', 'dns'] },
+  { path: '/settings/overview', label: 'Settings', icon: Settings, keywords: ['config', 'preferences'] },
 ];
 
 export function GlobalSearch() {
@@ -78,6 +79,13 @@ export function GlobalSearch() {
     PAGES.forEach(p => {
       if (p.label.toLowerCase().includes(lower) || p.keywords.some(k => k.includes(lower))) {
         items.push({ type: 'page', label: p.label, description: `Go to ${p.label}`, action: () => { navigate(p.path); setOpen(false); } });
+      }
+    });
+
+    // Settings sections, by name or by what they hold
+    SETTINGS_SECTIONS.forEach(sec => {
+      if (sec.label.toLowerCase().includes(lower) || sec.keywords.some(k => k.includes(lower))) {
+        items.push({ type: 'setting', label: `Settings: ${sec.label}`, description: sec.purpose, action: () => { navigate(sectionPath(sec.id)); setOpen(false); } });
       }
     });
 

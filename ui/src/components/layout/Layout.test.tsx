@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within, waitFor, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
+import { MemoryRouter, Routes, Route, Link, useLocation } from 'react-router'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from '../ThemeProvider'
 import { GlobalSearch } from '../GlobalSearch'
@@ -146,6 +146,42 @@ describe('shell on a wide screen', () => {
     shell('/settings/alerts')
     expect(within(mainNav()).getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page')
     expect(within(mainNav()).getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current')
+  })
+
+  it('keeps the page mounted between its sections and mounts a new page fresh', async () => {
+    const user = userEvent.setup()
+    function Sections() {
+      return (
+        <>
+          <input aria-label="Draft" />
+          <Link to="/settings/b">Section b</Link>
+          <Link to="/logs">Logs</Link>
+        </>
+      )
+    }
+    const client = createTestQueryClient()
+    render(
+      <QueryClientProvider client={client}>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/settings/a']}>
+            <Routes>
+              <Route path="/" element={<Layout />}>
+                <Route path="settings/:section" element={<Sections />} />
+                <Route path="logs" element={<Sections />} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </QueryClientProvider>,
+    )
+    await user.type(screen.getByLabelText('Draft'), 'typed')
+    const page = screen.getByLabelText('Draft').closest('.page-enter')
+    await user.click(screen.getByRole('link', { name: 'Section b' }))
+    expect(screen.getByLabelText('Draft')).toHaveValue('typed')
+    expect(screen.getByLabelText('Draft').closest('.page-enter')).toBe(page)
+    await user.click(screen.getByRole('link', { name: 'Logs' }))
+    expect(screen.getByLabelText('Draft')).toHaveValue('')
+    expect(screen.getByLabelText('Draft').closest('.page-enter')).not.toBe(page)
   })
 
   it('shows the product, the host and the backend version', async () => {

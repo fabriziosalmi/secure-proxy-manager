@@ -9,14 +9,16 @@
  * close button or any route change close it, and focus returns to the menu
  * button. The closed drawer is inert, so its links are not in the tab order.
  *
- * The page is keyed by path, so each route mounts fresh with its entrance
- * animation; error boundaries sit around each route in App.
+ * The page is keyed by the first path segment, so each page mounts fresh
+ * with its entrance animation, while moving between the sections of one page
+ * (/settings/access to /settings/alerts) keeps it mounted, with whatever was
+ * typed in it. Error boundaries sit around each route in App.
  */
 import { useCallback, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { Menu, Search, X } from 'lucide-react';
 import { Sidebar, SIDEBAR_ID } from './Sidebar';
-import { pageLabel, readCollapsed, writeCollapsed } from './nav';
+import { firstSegment, pageLabel, readCollapsed, writeCollapsed } from './nav';
 import { useMediaQuery, DESKTOP_QUERY } from '../../hooks/useMediaQuery';
 import { useModal } from '../../hooks/useModal';
 import { cn } from '../../lib/utils';
@@ -95,8 +97,8 @@ export function Layout({ onLogout }: { onLogout?: () => void }) {
           </button>
         </div>
 
-        {/* Page content, keyed by path for the entrance animation */}
-        <div key={location.pathname} className="page-enter mx-auto w-full max-w-[1320px] px-4 py-4 lg:px-10 lg:pb-12 lg:pt-8">
+        {/* Page content, keyed by page (first path segment) for the entrance animation */}
+        <div key={firstSegment(location.pathname)} className="page-enter mx-auto w-full max-w-[1320px] px-4 py-4 lg:px-10 lg:pb-12 lg:pt-8">
           <Outlet />
         </div>
       </main>
