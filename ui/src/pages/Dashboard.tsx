@@ -286,7 +286,7 @@ export function Dashboard() {
       </div>
 
       <div className="flex flex-wrap gap-4">
-        {/* Not on a phone, as in Mobile.dc.html: Analytics has the same list. */}
+        {/* Not on a phone, as in Mobile.dc.html: the Access logs list every block. */}
         <Section title="Most blocked destinations" flush action={{ label: 'Open analytics', to: '/analytics' }} className="hidden flex-[1_1_420px] sm:block">
           <DataTable
             caption="Most blocked destinations in the last 24 hours"

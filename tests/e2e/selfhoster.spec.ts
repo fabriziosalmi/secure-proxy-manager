@@ -566,6 +566,89 @@ test.describe('UI: Clients', () => {
   });
 });
 
+// ─── UI: Analytics ────────────────────────────────────────────────────────────
+
+test.describe('UI: Analytics', () => {
+  test.beforeEach(async ({ page, request }) => { await injectAuth(page, request); });
+
+  // The days are the viewer's: the backend resolves an IANA zone on its
+  // runtime image (time/tzdata is embedded; alpine has no zoneinfo).
+  test('blocked-by-day returns the 7 calendar days of a zone, and coverage says what is on', async ({ request }) => {
+    const token = await apiToken(request);
+    const headers = { Authorization: `Bearer ${token}` };
+    const res = await request.get(`${API_URL}/api/analytics/blocked-by-day?tz=Europe/Rome`, { headers });
+    expect(res.ok(), await res.text()).toBeTruthy();
+    const { data } = (await res.json()) as {
+      data: { tz: string; days: { date: string; start: number; end: number; blocked: number; reasons: unknown[] }[]; reasons: unknown[] };
+    };
+    expect(data.tz).toBe('Europe/Rome');
+    expect(data.days).toHaveLength(7);
+    for (let i = 0; i < data.days.length; i++) {
+      const d = data.days[i];
+      expect(d.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(Array.isArray(d.reasons)).toBeTruthy();
+      expect([23, 24, 25]).toContain((d.end - d.start) / 3600);
+      if (i > 0) expect(d.start).toBe(data.days[i - 1].end);
+    }
+    const bad = await request.get(`${API_URL}/api/analytics/blocked-by-day?tz=Mars/Olympus`, { headers });
+    expect(bad.status()).toBe(400);
+
+    const cov = await request.get(`${API_URL}/api/analytics/coverage`, { headers });
+    expect(cov.ok()).toBeTruthy();
+    const c = ((await cov.json()) as { data: Record<string, unknown> }).data;
+    expect(Object.keys(c).sort()).toEqual(['alerts', 'domain_blacklist', 'https_inspection', 'ip_blacklist', 'proxy_login', 'waf']);
+    expect(['ok', 'auth_failed', 'unreachable', 'error']).toContain((c.waf as { status: string }).status);
+  });
+
+  test('shows the sections of the mockup, and the old Threat Intel address leads here', async ({ page }) => {
+    await page.goto('/threats');
+    await expect(page).toHaveURL(/\/analytics$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Analytics' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Last 7 days, client traffic only. Times are your local time.')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText([
+      'Blocked requests per day, by rule',
+      'Protection coverage',
+      'WAF categories',
+      'Cloud services in use',
+      'Traffic by kind of service',
+      'Downloads by file type',
+    ]);
+    const perDay = page.getByRole('region', { name: 'Blocked requests per day, by rule' });
+    await expect(
+      perDay.getByRole('img', { name: /^Blocked requests per day, today and the 6 days before: / })
+        .or(perDay.getByText('No blocked requests in the last 7 days')),
+    ).toBeVisible();
+    await expect(perDay.getByText(/midnight to midnight in your time zone \(.+\)\./)).toBeVisible();
+    // Six coverage lines from analytics/coverage. The e2e stack has no proxy
+    // and no WAF, so those say they did not report; what the backend reads
+    // from its own database is always there.
+    const coverage = page.getByRole('region', { name: 'Protection coverage' });
+    await expect(coverage.getByRole('listitem')).toHaveCount(6);
+    await expect(coverage.getByText(/^Domain blacklist: (empty|[\d,]+ entr)/)).toBeVisible();
+    await expect(coverage.getByText(/^IP blacklist: (empty|[\d,]+ entr)/)).toBeVisible();
+    await expect(coverage.getByText(/^WAF: ([\d,]+ |did not answer|refuses|answered|every)/)).toBeVisible();
+    await expect(coverage.getByText(/^(HTTPS inspection|Proxy login): (on|off),/)).toHaveCount(2);
+    await expect(coverage.getByText(/could not (count|read)/)).toHaveCount(0);
+    for (const gone of ['Top Blocked', 'Live Feed', 'Top Domains', 'Regex Playground', 'Shadow IT']) {
+      await expect(page.getByText(gone, { exact: true })).toHaveCount(0);
+    }
+    await expect(page.getByRole('link', { name: 'Every request: Access logs' })).toHaveAttribute('href', '/logs');
+  });
+
+  test('fits a 390 px wide screen without horizontal scrolling', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/analytics');
+    await expect(page.getByRole('heading', { level: 1, name: 'Analytics' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('region', { name: 'Protection coverage' }).getByRole('listitem')).toHaveCount(6);
+    await expect(page.getByRole('region', { name: 'Downloads by file type' })).toBeVisible();
+    const overflow = await page.evaluate(() => {
+      const main = document.querySelector('main')!;
+      return { doc: document.documentElement.scrollWidth - window.innerWidth, main: main.scrollWidth - main.clientWidth };
+    });
+    expect(overflow).toEqual({ doc: 0, main: 0 });
+  });
+});
+
 // ─── UI — Navigation ─────────────────────────────────────────────────────────
 
 test.describe('UI — Navigation', () => {

@@ -28,10 +28,12 @@ type docMeta struct {
 // omitting the whole egress-allowlist resource and POST /api/auth/refresh —
 // the call a non-browser client needs to stay authenticated (SECURE-API-01).
 var routeDocs = map[string]docMeta{
-	"GET /api/analytics/file-extensions":        {auth: true, desc: "File extension distribution by category (Web, Images, Code, Archives)"},
-	"GET /api/analytics/shadow-it":              {auth: true, desc: "Detected SaaS services (35+ categories: file sharing, messaging, AI, social)"},
+	"GET /api/analytics/blocked-by-day":         {auth: true, desc: "Blocked client requests per calendar day by rule, today and the 6 days before (?tz=Europe/Rome, default UTC)"},
+	"GET /api/analytics/coverage":               {auth: true, desc: "Protection switched on now: blacklist entries and where enforced, WAF rule counts, HTTPS inspection, proxy login, alerts"},
+	"GET /api/analytics/file-extensions":        {auth: true, desc: "Client requests of the last 7 days whose URL path ends in a file extension, by extension and group (newest 10,000 URL rows)"},
+	"GET /api/analytics/shadow-it":              {auth: true, desc: "Client requests of the last 7 days to known services (file sharing, messaging, AI, social), by host"},
 	"GET /api/analytics/top-domains":            {auth: true, desc: "Top 50 accessed domains (for word cloud)"},
-	"GET /api/analytics/user-agents":            {auth: true, desc: "HTTP method + service type breakdown"},
+	"GET /api/analytics/user-agents":            {auth: true, desc: "Client requests of the last 7 days by HTTP method and by kind of service (from the host)"},
 	"GET /api/audit-log":                        {auth: true, desc: "Admin action audit trail (who changed what, when)"},
 	"POST /api/auth/login":                      {auth: false, desc: "JWT login — returns access_token"},
 	"POST /api/blacklists/import":               {auth: true, desc: "Import blacklist from URL or text ({type: 'ip'|'domain', url?, content?, name?}); the entries are recorded under the URL, or a new pasted-list source"},

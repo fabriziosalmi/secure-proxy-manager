@@ -262,21 +262,28 @@ export interface DashboardSummary {
   waf?: WafStats | null;
   // Why waf is null: the WAF refused the backend's credential, could not be
   // reached, or answered with an error. Absent from older backends.
-  waf_status?: 'ok' | 'auth_failed' | 'unreachable' | 'error';
+  waf_status?: WafStatus;
 }
 
+/** Why the backend has, or has no, figures from the WAF. */
+export type WafStatus = 'ok' | 'auth_failed' | 'unreachable' | 'error';
+
+/**
+ * The WAF's own counters (waf-go stats.go snapshot), since it last started
+ * or its counters were reset. top_blocked_categories are the 10 rule
+ * categories that matched the most requests, blocked or not.
+ */
 export interface WafStats {
-  total_inspected: number;
+  /** Requests the WAF inspected. */
   total_requests: number;
   total_blocked: number;
-  avg_entropy: number;
   avg_url_entropy: number;
   high_entropy_count: number;
-  requests_per_min: number;
   requests_last_minute: number;
   top_blocked_categories: { key: string; count: number }[];
 }
 
+/** GET /api/analytics/shadow-it: client requests of the last 7 days to known services. */
 export interface ShadowItService {
   name: string;
   domain: string;
@@ -284,11 +291,19 @@ export interface ShadowItService {
   category: string;
 }
 
+/**
+ * GET /api/analytics/file-extensions: client requests of the last 7 days
+ * whose URL path ends in a file extension. The backend reads the newest
+ * `limit` URL rows of the window and says how many it read (examined).
+ */
 export interface FileExtData {
   extensions: { ext: string; count: number }[];
   categories: { category: string; count: number }[];
+  examined?: number;
+  limit?: number;
 }
 
+/** GET /api/analytics/user-agents: client requests of the last 7 days by method and by kind of service. */
 export interface ServiceTypeData {
   methods: { name: string; count: number }[];
   service_types: { name: string; count: number }[];
@@ -297,6 +312,51 @@ export interface ServiceTypeData {
 export interface TopDomain {
   domain: string;
   count: number;
+}
+
+/** One calendar day of GET /api/analytics/blocked-by-day, in the zone asked for. */
+export interface BlockedDay {
+  /** YYYY-MM-DD in that zone. */
+  date: string;
+  /** Unix times of the day's midnights; a day is 23 or 25 hours across a clock change. */
+  start: number;
+  end: number;
+  blocked: number;
+  reasons: ReasonCount[];
+}
+
+/** GET /api/analytics/blocked-by-day: today and the 6 days before, every day present. */
+export interface BlockedByDay {
+  tz: string;
+  days: BlockedDay[];
+  /** The totals of the 7 days, largest first. */
+  reasons: ReasonCount[];
+  /** Internal sources whose rows no day counts. */
+  internal_sources: number;
+}
+
+/** GET /api/analytics/coverage: what protection is switched on now. Null where the backend could not read it. */
+export interface Coverage {
+  domain_blacklist: { entries: number | null; squid_acl: SquidDomainAcl | null };
+  /** squid_acl: what Squid loaded, as the proxy recorded it; null when it has not. */
+  ip_blacklist: { entries: number | null; squid_acl: IpAclStatus | null };
+  /** The WAF's own rule counts, from GET /categories; null unless status is ok. */
+  waf: {
+    status: WafStatus;
+    categories: number | null;
+    categories_enabled: number | null;
+    rules: number | null;
+    rules_enabled: number | null;
+  };
+  https_inspection: boolean | null;
+  proxy_login: boolean | null;
+  alerts: {
+    enabled: boolean | null;
+    /** The channels an alert would be sent to now. */
+    channels: number | null;
+    /** Whether WAF block alerts reach the backend (INTERNAL_ALERT_TOKEN is set). */
+    waf_alerts_delivered: boolean;
+  };
 }
 
 /**
