@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
 import { renderWithProviders, simulateItalianLocale } from '../test/helpers'
 import { api } from '../lib/api'
 import { Clients } from './Clients'
@@ -35,6 +35,13 @@ describe('Clients', () => {
       expect(screen.getByRole('button', { name: 'View details for 192.168.0.109' })).toBeInTheDocument()
     })
     expect(screen.queryByText(/No client traffic/)).not.toBeInTheDocument()
+  })
+
+  it('opens the client detail drawer outside the page, directly in document.body', async () => {
+    renderWithProviders(<Clients />)
+    fireEvent.click(await screen.findByRole('button', { name: 'View details for 192.168.0.109' }))
+    const drawer = await screen.findByRole('dialog')
+    expect(drawer.parentElement).toBe(document.body)
   })
 
   it('writes the request count with en-US grouping in any browser locale', async () => {

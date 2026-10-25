@@ -28,6 +28,16 @@ describe('useConfirm', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
+  it('renders the dialog into document.body, outside the page that opened it', async () => {
+    // A position: fixed overlay inside a transformed or filtered ancestor is
+    // laid out against that ancestor, not the window.
+    render(<div style={{ transform: 'translateY(0)' }}><Harness onResult={vi.fn()} /></div>);
+    fireEvent.click(screen.getByText('trigger'));
+    const dialog = await screen.findByRole('alertdialog');
+    const overlay = dialog.closest('.fixed') as HTMLElement;
+    expect(overlay.parentElement).toBe(document.body);
+  });
+
   it('resolves false on cancel and never fires the action', async () => {
     const onResult = vi.fn();
     render(<Harness onResult={onResult} />);

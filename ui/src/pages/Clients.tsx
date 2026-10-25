@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -193,7 +194,11 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
   const br = data ? rate(data.blocked, data.total_requests) : 0;
   const modalRef = useModal<HTMLDivElement>(true, onClose);
 
-  return (
+  // Rendered into document.body: a position: fixed overlay is laid out
+  // against the viewport only when no ancestor has a transform, filter or
+  // backdrop-filter, and the page wrapper and cards here have had all three.
+  // Inside the page the drawer covered the page box, not the window.
+  return createPortal(
     <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-xs" onClick={onClose} />
       <div ref={modalRef} className="relative w-full max-w-md h-full overflow-y-auto bg-card border-l border-border/70 shadow-2xl animate-in">
@@ -270,6 +275,7 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

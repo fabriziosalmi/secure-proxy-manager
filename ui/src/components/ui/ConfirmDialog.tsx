@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useModal } from '../../hooks/useModal';
 
 export interface ConfirmOptions {
@@ -22,7 +23,9 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmOptions & { onConfirm: () => void; onCancel: () => void }) {
   const ref = useModal<HTMLDivElement>(true, onCancel);
-  return (
+  // Into document.body, so no transformed or filtered ancestor of the page
+  // that opened it can confine the overlay to its own box.
+  return createPortal(
     <div className="fixed inset-0 z-120 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-xs" onClick={onCancel} aria-hidden="true" />
       <div
@@ -56,6 +59,7 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
