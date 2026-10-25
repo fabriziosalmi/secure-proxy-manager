@@ -498,6 +498,74 @@ test.describe('UI: Access logs', () => {
   });
 });
 
+// ─── UI: Clients ──────────────────────────────────────────────────────────────
+
+test.describe('UI: Clients', () => {
+  test.beforeEach(async ({ page, request }) => { await injectAuth(page, request); });
+
+  // The client list marks the stack's own addresses, and the dashboard says
+  // how many it left out of its counts.
+  test('the client list and the summary say which sources are internal', async ({ request }) => {
+    const token = await apiToken(request);
+    const headers = { Authorization: `Bearer ${token}` };
+    const list = await request.get(`${API_URL}/api/clients/statistics`, { headers });
+    expect(list.ok()).toBeTruthy();
+    const body = (await list.json()) as {
+      data: { ip_address: string; internal: unknown; kind: unknown }[];
+      meta: { total: number; internal: unknown };
+    };
+    expect(Array.isArray(body.data)).toBeTruthy();
+    expect(typeof body.meta.internal).toBe('number');
+    for (const row of body.data) {
+      expect(typeof row.internal, row.ip_address).toBe('boolean');
+      expect(typeof row.kind, row.ip_address).toBe('string');
+    }
+    expect(body.data.filter((r) => r.internal === true)).toHaveLength(body.meta.internal as number);
+
+    const summary = await request.get(`${API_URL}/api/dashboard/summary`, { headers });
+    expect(summary.ok()).toBeTruthy();
+    const s = (await summary.json()) as { data: Record<string, unknown> };
+    expect(typeof s.data.last_24h_internal_sources).toBe('number');
+    expect(typeof s.data.last_24h_internal_requests).toBe('number');
+  });
+
+  test('shows the page from the mockup, with internal addresses hidden until the viewer shows them', async ({ page }) => {
+    await page.goto('/clients');
+    await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Devices that sent traffic through the proxy in the last 7 days.')).toBeVisible();
+    await expect(page.getByRole('searchbox', { name: 'Filter clients by IP address' })).toBeVisible();
+
+    const toggle = page.getByRole('switch', { name: /^Show internal addresses \(\d+\)$/ });
+    await expect(toggle).toHaveAttribute('aria-checked', 'false');
+    await expect(page.getByRole('table', { name: 'Clients in the last 7 days' })).toBeVisible();
+    await expect(page.getByText(/^\d+ (client|clients) (shown|matches the filter)\./)).toBeVisible();
+    // The choice is kept for this viewer across a reload.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-checked', 'true');
+    await page.reload();
+    await expect(page.getByRole('switch', { name: /^Show internal addresses \(\d+\)$/ })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByText(/Internal traffic is not counted on the Overview\./)).toBeVisible();
+
+    const connect = page.getByRole('button', { name: 'Connect a device' }).first();
+    await expect(connect).toHaveAttribute('aria-expanded', 'false');
+    await connect.click();
+    await expect(connect).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByText('Connect Your Devices')).toBeVisible();
+  });
+
+  test('fits a 390 px wide screen without horizontal scrolling', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/clients');
+    await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('table', { name: 'Clients in the last 7 days' })).toBeAttached();
+    const overflow = await page.evaluate(() => {
+      const main = document.querySelector('main')!;
+      return { doc: document.documentElement.scrollWidth - window.innerWidth, main: main.scrollWidth - main.clientWidth };
+    });
+    expect(overflow).toEqual({ doc: 0, main: 0 });
+  });
+});
+
 // ─── UI — Navigation ─────────────────────────────────────────────────────────
 
 test.describe('UI — Navigation', () => {

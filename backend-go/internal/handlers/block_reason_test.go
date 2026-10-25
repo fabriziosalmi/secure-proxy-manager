@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
 // The test deployment in small. One LAN client (192.168.0.109) and the proxy
@@ -217,7 +219,11 @@ func TestClientStatsAttributeRequestsToTheClient(t *testing.T) {
 				Blocked  int           `json:"blocked"`
 				ByReason []reasonCount `json:"blocked_by_reason"`
 				Recent   []struct {
-					Reason string `json:"reason"`
+					Destination string `json:"destination"`
+					Status      string `json:"status"`
+					Blocked     bool   `json:"blocked"`
+					Reason      string `json:"reason"`
+					Label       string `json:"reason_label"`
 				} `json:"recent"`
 			} `json:"data"`
 		}
@@ -235,6 +241,19 @@ func TestClientStatsAttributeRequestsToTheClient(t *testing.T) {
 			}
 			if len(det.Data.Recent) == 0 || det.Data.Recent[0].Reason == "" {
 				t.Errorf("recent rows carry no reason: %+v", det.Data.Recent)
+			}
+			// Each recent request says whether it was blocked, from the row's
+			// flag, and names the rule: the origin's own 403 is not a block.
+			for _, rr := range det.Data.Recent {
+				if rr.Label == "" || rr.Label != workers.ReasonLabel(rr.Reason) {
+					t.Errorf("recent %s (%s) is labelled %q", rr.Destination, rr.Reason, rr.Label)
+				}
+				if rr.Destination == "http://o403.test/" && rr.Blocked {
+					t.Errorf("the origin's 403 is reported as blocked: %+v", rr)
+				}
+				if rr.Reason == "waf" && !rr.Blocked {
+					t.Errorf("the WAF block is reported as not blocked: %+v", rr)
+				}
 			}
 		}
 	}

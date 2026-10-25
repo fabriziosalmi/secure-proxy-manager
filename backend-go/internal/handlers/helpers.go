@@ -67,6 +67,9 @@ type ListMeta struct {
 	Total  int `json:"total"`
 	Limit  int `json:"limit"`
 	Offset int `json:"offset"`
+	// Internal: on the client list, how many internal sources (the stack's
+	// own traffic) it holds besides the Total clients.
+	Internal *int `json:"internal,omitempty"`
 }
 
 // writeList is the single way a collection leaves this API.

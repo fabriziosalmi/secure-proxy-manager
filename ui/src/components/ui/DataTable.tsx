@@ -13,7 +13,10 @@
  *   readers), error (what failed, with an optional Retry) and empty (an
  *   EmptyState saying what is missing and what to do) states;
  * - pagination as "1 to 50 of 50,772" with Previous and Next, counts written
- *   through formatCount.
+ *   through formatCount;
+ * - an optional selected row (isRowSelected), drawn in the accent tint, for
+ *   a list whose selection is shown next to it. The control that selects a
+ *   row lives in a cell and says its state itself (aria-pressed).
  *
  * Numbers go in right-aligned columns (align: 'right'), drawn in tabular
  * figures so they line up.
@@ -73,6 +76,8 @@ export interface DataTableProps<T> {
   onRetry?: () => void;
   empty: { title: string; description: ReactNode; action?: ReactNode };
   pagination?: TablePagination;
+  /** The row shown as selected, if any. */
+  isRowSelected?: (row: T) => boolean;
   className?: string;
 }
 
@@ -92,6 +97,7 @@ export function DataTable<T>({
   onRetry,
   empty,
   pagination,
+  isRowSelected,
   className,
 }: DataTableProps<T>) {
   const captionId = useId();
@@ -138,15 +144,22 @@ export function DataTable<T>({
       </tr>
     );
   } else {
-    body = rows.map((row) => (
-      <tr key={rowKey(row)} className="border-t border-line-subtle transition-colors hover:bg-surface-muted">
-        {columns.map((c, i) => (
-          <td key={c.id} className={cn('py-2.5 align-middle', cellPad(i), c.align === 'right' && 'text-right tabular-nums', c.className)}>
-            {c.cell(row)}
-          </td>
-        ))}
-      </tr>
-    ));
+    body = rows.map((row) => {
+      const selected = isRowSelected?.(row) ?? false;
+      return (
+        <tr
+          key={rowKey(row)}
+          data-selected={selected || undefined}
+          className={cn('border-t border-line-subtle transition-colors', selected ? 'bg-accent-subtle' : 'hover:bg-surface-muted')}
+        >
+          {columns.map((c, i) => (
+            <td key={c.id} className={cn('py-2.5 align-middle', cellPad(i), c.align === 'right' && 'text-right tabular-nums', c.className)}>
+              {c.cell(row)}
+            </td>
+          ))}
+        </tr>
+      );
+    });
   }
 
   const canPage = pagination && !loading && !error && rows.length > 0;
