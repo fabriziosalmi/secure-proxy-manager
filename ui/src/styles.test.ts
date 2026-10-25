@@ -46,4 +46,18 @@ describe('styles', () => {
       expect(transform === undefined || transform === 'none', `${utility} ends on transform: ${transform}`).toBe(true)
     }
   })
+
+  it('paints the search and confirm dialogs on an opaque surface', () => {
+    // Both used glass-surface, a translucent panel, and the shadcn-era
+    // text-muted-foreground and bg-secondary. Over the dimmed page the search
+    // panel read as grey on grey, its placeholder and hints barely visible.
+    for (const file of ['./components/GlobalSearch.tsx', './components/ui/ConfirmDialog.tsx']) {
+      const text = sources[file]
+      expect(text, file).toBeTruthy()
+      expect(text, file).toMatch(/\bbg-surface\b/)
+      for (const stale of ['glass-surface', 'text-muted-foreground', 'bg-secondary', 'backdrop-blur']) {
+        expect(text.includes(stale), `${file} uses ${stale}`).toBe(false)
+      }
+    }
+  })
 })

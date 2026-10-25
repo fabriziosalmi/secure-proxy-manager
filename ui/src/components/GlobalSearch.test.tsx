@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/helpers'
 import { GlobalSearch } from './GlobalSearch'
+import { NAV_GROUPS } from './layout/nav'
 
 vi.mock('../lib/api', () => ({
   api: {
@@ -90,5 +91,19 @@ describe('GlobalSearch', () => {
     expect(new URLSearchParams(call.split('?')[1]).get('q')).toBe('ads')
     await user.click(hit)
     expect(window.location.pathname + window.location.search).toBe('/logs?q=ads')
+  })
+
+  // Quick navigation had a list of its own: five pages, no Clients, Egress or
+  // Audit log, Analytics drawn with a shield. It now follows the sidebar.
+  it('offers every sidebar page in the sidebar order, in a dialog on document.body', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<GlobalSearch />)
+    await user.keyboard('{Meta>}k{/Meta}')
+    const dialog = await screen.findByRole('dialog', { name: 'Global search' })
+    expect(dialog.parentElement).toBe(document.body)
+    const labels = NAV_GROUPS.flatMap((g) => g.items).map((i) => i.label)
+    const buttons = within(dialog).getAllByRole('button').filter((b) => /^\D.*\d+$/.test(b.textContent ?? ''))
+    expect(buttons.map((b) => b.textContent)).toEqual(labels.map((l, i) => `${l}${i + 1}`))
+    expect(labels).toEqual(expect.arrayContaining(['Clients', 'Egress allowlist', 'Audit log']))
   })
 })
