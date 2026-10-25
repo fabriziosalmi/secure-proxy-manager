@@ -36,33 +36,61 @@ function batchLabel(s: ListSource): string {
   return label;
 }
 
+/** The source cell: the width the other columns leave, its text cut to fit. */
+const SOURCE_CELL = 'w-full max-w-0';
+/** The action cell: as wide as its button, never narrower. */
+const ACTION_CELL = 'w-px whitespace-nowrap';
+
+/** "2026-10-25 08:00 to 08:02", which may break before "to" and nowhere else. */
+function AddedRange({ first, last }: { first: string; last: string }) {
+  const text = addedRange(first, last);
+  const at = text.indexOf(' to ');
+  if (at < 0) return <span className="whitespace-nowrap">{text}</span>;
+  return (
+    <>
+      <span className="whitespace-nowrap">{text.slice(0, at)}</span>{' '}
+      <span className="whitespace-nowrap">{text.slice(at + 1)}</span>
+    </>
+  );
+}
+
 export function SourcesSection({ list, sources, loading, error, onRetry, onRemove, className }: SourcesSectionProps) {
+  // The source column takes the width the others leave (w-full) and no more
+  // (max-w-0), so a long URL or list name is cut with an ellipsis, its whole
+  // text in the title, instead of pushing Remove batch out of the card. The
+  // action column is as narrow as its button and never narrower. The Added
+  // range may break before "to"; on a phone it moves under the source name
+  // and the button reads Remove.
   const columns: Column<ListSource>[] = [
     {
       id: 'source',
       header: 'Source',
+      className: SOURCE_CELL,
       cell: (s) => {
+        const title = sourceTitle(s);
         const detail = sourceDetail(s);
         return (
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="font-medium text-ink">{sourceTitle(s)}</span>
-            {detail && (
-              <span title={detail} className="block max-w-[18rem] truncate text-xs text-ink-muted sm:max-w-[24rem]">{detail}</span>
-            )}
+          <div className="flex min-w-[6rem] flex-col gap-0.5">
+            <span title={title} className="block truncate font-medium text-ink">{title}</span>
+            {detail && <span title={detail} className="block truncate text-xs text-ink-muted">{detail}</span>}
+            <span className="text-xs text-ink-muted sm:hidden">Added <AddedRange first={s.first_added} last={s.last_added} /></span>
           </div>
         );
       },
     },
-    { id: 'entries', header: 'Entries', align: 'right', cell: (s) => <span className="font-medium">{formatCount(s.entries)}</span> },
-    { id: 'added', header: 'Added', className: 'whitespace-nowrap text-ink-muted', cell: (s) => addedRange(s.first_added, s.last_added) },
+    { id: 'entries', header: 'Entries', align: 'right', className: 'whitespace-nowrap', cell: (s) => <span className="font-medium">{formatCount(s.entries)}</span> },
+    { id: 'added', header: 'Added', hideOnPhone: true, className: 'text-ink-muted', cell: (s) => <AddedRange first={s.first_added} last={s.last_added} /> },
     {
       id: 'actions',
       header: 'Actions',
       headerHidden: true,
       align: 'right',
+      className: ACTION_CELL,
       cell: (s) => (
         <Button size="sm" aria-label={batchLabel(s)} onClick={() => onRemove(s)}>
-          Remove batch
+          {/* "Remove" on a phone leaves the source name room; the name of the button is the same. */}
+          <span className="sm:hidden">Remove</span>
+          <span className="hidden sm:inline">Remove batch</span>
         </Button>
       ),
     },

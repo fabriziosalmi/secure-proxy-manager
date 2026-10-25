@@ -241,8 +241,9 @@ describe('Blacklists', () => {
         const row = (name: string) => within(table).getByText(name).closest('tr')!
         expect(within(row('Firehol Level 1')).getByText('https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset')).toBeInTheDocument()
         expect(within(row('Firehol Level 1')).getByText('4,521')).toBeInTheDocument()
-        expect(within(row('Firehol Level 1')).getByText('2026-10-25 11:00 to 11:02')).toBeInTheDocument()
-        expect(within(row('Manual')).getByText('2026-10-25 10:00')).toBeInTheDocument()
+        // The Added column (the range is also under the name, for a phone).
+        expect(row('Firehol Level 1').cells[2]).toHaveTextContent(/^2026-10-25 11:00 to 11:02$/)
+        expect(row('Manual').cells[2]).toHaveTextContent(/^2026-10-25 10:00$/)
         expect(within(row('Source not recorded')).getByText('Added before this release recorded where entries come from')).toBeInTheDocument()
         expect(within(row('Source not recorded')).getByText('50,772')).toBeInTheDocument()
       } finally { restoreTz() }

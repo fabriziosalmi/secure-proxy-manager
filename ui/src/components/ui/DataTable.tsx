@@ -28,6 +28,9 @@ import { formatRange } from '../../lib/format';
 import { Button } from './Button';
 import { EmptyState } from './EmptyState';
 
+/** A column left out on a phone (hideOnPhone). */
+const PHONE_HIDDEN = 'hidden sm:table-cell';
+
 export type SortDirection = 'ascending' | 'descending';
 
 export interface SortState {
@@ -47,6 +50,11 @@ export interface Column<T> {
   /** Direction of the first sort on this column; counts read best descending. */
   firstSort?: SortDirection;
   className?: string;
+  /**
+   * Leave the column out below the sm breakpoint, header and cells alike, for
+   * a column the row repeats elsewhere on a phone.
+   */
+  hideOnPhone?: boolean;
 }
 
 export interface TablePagination {
@@ -120,7 +128,7 @@ export function DataTable<T>({
     body = Array.from({ length: skeletonRows }, (_, r) => (
       <tr key={`skeleton-${r}`} aria-hidden="true" className="border-t border-line-subtle">
         {columns.map((c, i) => (
-          <td key={c.id} className={cn('py-3', cellPad(i))}>
+          <td key={c.id} className={cn('py-3', cellPad(i), c.hideOnPhone && PHONE_HIDDEN)}>
             <span className={cn('block h-3.5 rounded bg-line-subtle animate-pulse', c.align === 'right' ? 'ml-auto w-12' : 'w-3/4')} />
           </td>
         ))}
@@ -156,7 +164,7 @@ export function DataTable<T>({
           className={cn('border-t border-line-subtle transition-colors', selected ? 'bg-accent-subtle' : 'hover:bg-surface-muted')}
         >
           {columns.map((c, i) => (
-            <td key={c.id} className={cn('py-2.5 align-middle', cellPad(i), c.align === 'right' && 'text-right tabular-nums', c.className)}>
+            <td key={c.id} className={cn('py-2.5 align-middle', cellPad(i), c.align === 'right' && 'text-right tabular-nums', c.className, c.hideOnPhone && PHONE_HIDDEN)}>
               {c.cell(row)}
             </td>
           ))}
@@ -202,6 +210,7 @@ export function DataTable<T>({
                       cellPad(i),
                       c.align === 'right' && 'text-right',
                       stickyHeader && 'sticky top-0 z-10',
+                      c.hideOnPhone && PHONE_HIDDEN,
                     )}
                   >
                     {c.headerHidden ? (
