@@ -52,8 +52,9 @@ func TestCacheStatsWithoutAFileIsNotCollectedAndHasNoValues(t *testing.T) {
 			t.Errorf("%s = %v (present %v), want null", k, v, ok)
 		}
 	}
-	if _, ok := got["simulated"]; ok {
-		t.Error("simulated is gone: the state says what there is")
+	// simulated survives for one release as a deprecated alias of the state.
+	if got["simulated"] != true {
+		t.Errorf("simulated = %v, want true while nothing is collected", got["simulated"])
 	}
 }
 
@@ -160,5 +161,34 @@ func TestCacheStatsAFileItCannotReadIsUnreadable(t *testing.T) {
 	}
 	if got := readCacheStats(cfg.ConfigDir, time.Now()); got.State != "unreadable" {
 		t.Errorf("a directory in its place: %s, want unreadable", got.State)
+	}
+}
+
+// The fields the endpoint answered with before collection worked stay, for
+// one release, as deprecated aliases of the measured values: removing them
+// would change the response shape under X-API-Version 1.
+func TestCacheStatsKeepsTheDeprecatedFields(t *testing.T) {
+	five, kb, cap, n := 64.7, int64(252), int64(51200), int64(64)
+	cur := withLegacyFields(CacheStatsReport{State: cacheStatsCurrent, cacheStatsValues: cacheStatsValues{
+		RequestHitRatio5minPct: &five, ByteHitRatio5minPct: &five, DiskUsedKB: &kb, DiskCapacityKB: &cap, StoreEntries: &n}})
+	body, err := json.Marshal(cur)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"hit_rate", "byte_hit_rate", "cache_size", "max_cache_size", "objects_cached", "hits", "misses", "requests", "simulated", "state", "request_hit_ratio_5min_pct"} {
+		if _, ok := m[k]; !ok {
+			t.Errorf("field %q missing from the response", k)
+		}
+	}
+	if m["hit_rate"] != 64.7 || m["cache_size"] != "252 KB" || m["max_cache_size"] != "51200 KB" || m["objects_cached"] != float64(64) || m["simulated"] != false {
+		t.Errorf("deprecated aliases = %v", m)
+	}
+	none := withLegacyFields(CacheStatsReport{State: cacheStatsNotCollected})
+	if !none.Simulated || none.CacheSize != "N/A" || none.HitRate != nil {
+		t.Errorf("not collected: simulated=%v cache_size=%q hit_rate=%v", none.Simulated, none.CacheSize, none.HitRate)
 	}
 }

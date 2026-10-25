@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -107,8 +108,47 @@ func readCacheStats(configDir string, now time.Time) CacheStatsReport {
 	}
 }
 
+// cacheStatsResponse adds the fields this endpoint answered with before
+// collection worked, so a caller written against them keeps working for one
+// release (X-API-Version stays 1). They are deprecated: hit_rate and
+// byte_hit_rate are the 5-minute ratios, cache_size and max_cache_size the
+// disk figures as text, objects_cached the store entries, simulated is true
+// whenever the values are not current. hits, misses and requests were never
+// measured and are null.
+type cacheStatsResponse struct {
+	CacheStatsReport
+	HitRate       *float64 `json:"hit_rate"`
+	ByteHitRate   *float64 `json:"byte_hit_rate"`
+	CacheSize     string   `json:"cache_size"`
+	MaxCacheSize  string   `json:"max_cache_size"`
+	ObjectsCached *int64   `json:"objects_cached"`
+	Hits          *int64   `json:"hits"`
+	Misses        *int64   `json:"misses"`
+	Requests      *int64   `json:"requests"`
+	Simulated     bool     `json:"simulated"`
+}
+
+func kbText(kb *int64) string {
+	if kb == nil {
+		return "N/A"
+	}
+	return strconv.FormatInt(*kb, 10) + " KB"
+}
+
+func withLegacyFields(r CacheStatsReport) cacheStatsResponse {
+	return cacheStatsResponse{
+		CacheStatsReport: r,
+		HitRate:          r.RequestHitRatio5minPct,
+		ByteHitRate:      r.ByteHitRatio5minPct,
+		CacheSize:        kbText(r.DiskUsedKB),
+		MaxCacheSize:     kbText(r.DiskCapacityKB),
+		ObjectsCached:    r.StoreEntries,
+		Simulated:        r.State != cacheStatsCurrent,
+	}
+}
+
 // CacheStats answers GET /api/cache/statistics from the proxy's last
 // collection. No file is "not_collected", never zeros.
 func (h *AnalyticsHandlers) CacheStats(w http.ResponseWriter, r *http.Request) {
-	writeOK(w, readCacheStats(h.cfg.ConfigDir, time.Now()))
+	writeOK(w, withLegacyFields(readCacheStats(h.cfg.ConfigDir, time.Now())))
 }

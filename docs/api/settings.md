@@ -206,6 +206,8 @@ Returns the proxy's last collection of Squid's cache statistics. The proxy's wat
 
 Squid takes its first statistics sample one minute after it starts and prints 0.0% until then, so the hit ratios are `null` for the first 60 s of uptime. Until Squid has run for an hour, its 60 minute window covers the time since it started (`uptime_s`). Each collection is one request Squid itself counts, as a miss, in these ratios.
 
+**Deprecated fields.** The fields this endpoint returned before collection worked are still present for one release, as aliases of the values above: `hit_rate` and `byte_hit_rate` (the 5 minute ratios), `cache_size` and `max_cache_size` (`disk_used_kb` and `disk_capacity_kb` as text, `"N/A"` when unknown), `objects_cached` (`store_entries`) and `simulated` (`true` whenever `state` is not `current`). `hits`, `misses` and `requests` were never measured and are `null`. Read the fields above instead; the aliases will be removed in the next contract version.
+
 ---
 
 ## Clear proxy cache
