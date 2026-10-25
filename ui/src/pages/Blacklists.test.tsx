@@ -22,11 +22,11 @@ const mockIpList = {
       { id: 1, ip: '10.0.0.1', description: 'Test IP', added_date: '2026-01-01' },
       { id: 2, ip: '192.168.1.0/24', description: 'Subnet', added_date: '2026-01-02' },
     ],
-    total: 2,
+    meta: { total: 2, limit: 50, offset: 0 },
   },
 }
 
-const emptyList = { data: { data: [], total: 0 } }
+const emptyList = { data: { data: [], meta: { total: 0, limit: 50, offset: 0 } } }
 
 describe('Blacklists', () => {
   beforeEach(() => {
@@ -45,6 +45,19 @@ describe('Blacklists', () => {
     await waitFor(() => {
       expect(screen.getByText('10.0.0.1')).toBeInTheDocument()
     })
+  })
+
+  // writeList puts the count in meta; the top-level total beside it is
+  // deprecated and goes away in the next contract version. The page read the
+  // deprecated field, so its tab counts would have dropped to 0 then.
+  it('counts entries from meta.total, not the deprecated top-level total', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('ip-blacklist')) return Promise.resolve({ data: { ...mockIpList.data, meta: { total: 2345, limit: 50, offset: 0 } } })
+      return Promise.resolve(emptyList)
+    })
+    renderWithProviders(<Blacklists />)
+    const tab = await screen.findByRole('tab', { name: /IP Addresses/i })
+    await waitFor(() => { expect(tab).toHaveTextContent('2345') })
   })
 
   it('displays IP entries from the API', async () => {

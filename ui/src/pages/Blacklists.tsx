@@ -30,24 +30,26 @@ export function Blacklists() {
   // Reset page when tab or search changes
   const resetPage = () => setPage(0);
 
+  // The count is read from meta (writeList); the top-level total beside it is
+  // deprecated and goes away in the next contract version.
   type PaginatedResponse<T> = { data: T[]; total: number };
 
   const { data: ipResult } = useQuery<PaginatedResponse<IpEntry>>({
     queryKey: ['blacklist', 'ip', page, searchTerm],
-    queryFn: () => api.get(`ip-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.total ?? 0 })),
+    queryFn: () => api.get(`ip-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.meta?.total ?? 0 })),
   });
   const { data: domainResult } = useQuery<PaginatedResponse<DomainEntry>>({
     queryKey: ['blacklist', 'domain', page, searchTerm],
-    queryFn: () => api.get(`domain-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.total ?? 0 })),
+    queryFn: () => api.get(`domain-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.meta?.total ?? 0 })),
   });
   const { data: whitelistResult } = useQuery<PaginatedResponse<WhitelistEntry>>({
     queryKey: ['whitelist', 'ip', page, searchTerm],
-    queryFn: () => api.get(`ip-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.total ?? 0 })),
+    queryFn: () => api.get(`ip-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.meta?.total ?? 0 })),
   });
 
   const { data: domainWhitelistResult } = useQuery<PaginatedResponse<DomainWhitelistEntry>>({
     queryKey: ['whitelist', 'domain', page, searchTerm],
-    queryFn: () => api.get(`domain-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.total ?? 0 })),
+    queryFn: () => api.get(`domain-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.meta?.total ?? 0 })),
   });
 
   const ips = ipResult?.data ?? [];
