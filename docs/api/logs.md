@@ -54,7 +54,10 @@ when the request was logged (see `docs/design/block-reasons.md`):
 `ip_blacklist`, `domain_blacklist`, `domain_blacklist_dns`, `direct_ip`,
 `egress_policy`, `waf`, `proxy_auth`, `time_restriction`, `content_filter`,
 `source_gate`, `port_policy`, `protocol_policy`, `other`; `none` when it was
-not blocked; `unclassified` for a row logged before reasons were recorded.
+not blocked; `unclassified` for a row logged before reasons were recorded;
+`domain_blacklist_dns_reconstructed` for such a row that the start-up step
+of schema version 3 reassigned: a `/503` to a name on the domain blacklist,
+logged after the name was added (see `docs/design/block-reasons.md`).
 The list holds every row, including the DNS sinkhole's own rows (method
 `DNS`, source the proxy container), which no statistic counts.
 

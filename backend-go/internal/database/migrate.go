@@ -11,7 +11,9 @@ import (
 // has run. Version 1 is everything that came before versioning existed: the
 // idempotent ADD COLUMN list in Init, which still runs on every start. Steps
 // numbered 2 and up run exactly once, in a transaction, and record themselves.
-const schemaVersion = 2
+// Version 3 is a data step: the reconstruction of sinkholed requests
+// (reconstruct.go).
+const schemaVersion = 3
 
 // applyVersionedMigrations runs the steps a database has not seen yet.
 //
@@ -31,6 +33,11 @@ func applyVersionedMigrations(db *sql.DB) error {
 	if v < 2 {
 		if err := migrateTypeConstraints(db); err != nil {
 			return fmt.Errorf("schema version 2: %w", err)
+		}
+	}
+	if v < 3 {
+		if err := reconstructSinkholedBlocks(db); err != nil {
+			return fmt.Errorf("schema version 3: %w", err)
 		}
 	}
 	return nil
