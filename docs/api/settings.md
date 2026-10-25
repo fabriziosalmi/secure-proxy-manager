@@ -181,7 +181,32 @@ Regenerates the dnsmasq blocklist (with whitelist exclusions) and signals the `d
 GET /api/cache/statistics
 ```
 
-Returns Squid cache metrics (hit ratio, memory and disk usage). When the Squid cache manager is unavailable, the response is annotated with `simulated: true` and zeroed values.
+Returns the proxy's last collection of Squid's cache statistics. The proxy's watchdog reads Squid's cache manager (the `info` page, and `storedir` for the disk capacity) from localhost once a minute and writes `/config/cache_stats.json`; this endpoint reports that file.
+
+`state` says what the values are:
+
+| `state` | Meaning |
+|---|---|
+| `current` | Collected within the last three collection intervals (180 s at the default 60 s). |
+| `stale` | Collected, but not since then: the values are the last ones and `age_s` says how old. |
+| `not_collected` | No file: a proxy that has not collected yet, or one older than this file. Every value is null. |
+| `unreadable` | A file this backend cannot read. Every value is null. |
+
+`collected_at` is UTC (`2026-10-25 12:15:28`), `age_s` and `stale_after_s` are seconds. The values are Squid's own, as it printed them; a value Squid did not print is `null`, never 0:
+
+| Field | Squid's line |
+|---|---|
+| `request_hit_ratio_5min_pct`, `request_hit_ratio_60min_pct` | `Hits as % of all requests` (percent) |
+| `byte_hit_ratio_5min_pct`, `byte_hit_ratio_60min_pct` | `Hits as % of bytes sent` (percent, can be negative) |
+| `disk_used_kb`, `disk_used_pct` | `Storage Swap size`, `Storage Swap capacity` |
+| `disk_capacity_kb` | storedir `Maximum Swap Size` |
+| `memory_used_kb`, `memory_used_pct` | `Storage Mem size`, `Storage Mem capacity` |
+| `uptime_s` | `UP Time` |
+| `store_entries`, `memory_objects`, `disk_objects` | `StoreEntries`, `Hot Object Cache Items`, `on-disk objects` |
+
+Squid takes its first statistics sample one minute after it starts and prints 0.0% until then, so the hit ratios are `null` for the first 60 s of uptime. Until Squid has run for an hour, its 60 minute window covers the time since it started (`uptime_s`). Each collection is one request Squid itself counts, as a miss, in these ratios.
+
+**Deprecated fields.** The fields this endpoint returned before collection worked are still present for one release, as aliases of the values above: `hit_rate` and `byte_hit_rate` (the 5 minute ratios), `cache_size` and `max_cache_size` (`disk_used_kb` and `disk_capacity_kb` as text, `"N/A"` when unknown), `objects_cached` (`store_entries`) and `simulated` (`true` whenever `state` is not `current`). `hits`, `misses` and `requests` were never measured and are `null`. Read the fields above instead; the aliases will be removed in the next contract version.
 
 ---
 

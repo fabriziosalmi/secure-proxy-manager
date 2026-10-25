@@ -242,17 +242,33 @@ export interface TopDomain {
   count: number;
 }
 
+/**
+ * GET /api/cache/statistics: the proxy's last collection of Squid's cache
+ * statistics (backend-go/internal/handlers/cache_stats.go). current: within
+ * three collection intervals; stale: collected, but not since then;
+ * not_collected: no record; unreadable: a record the backend cannot read.
+ */
+export type CacheStatsState = 'current' | 'stale' | 'not_collected' | 'unreadable';
+
+/** Squid's numbers as it printed them; null where it printed none, never 0. Percentages are percent (64.7). */
 export interface CacheStats {
-  /** True when the backend could not read cache_stats.txt and is returning
-   *  zeros rather than measurements. Rendering those zeros as a hit rate shows
-   *  an idle cache where there is simply no data (SECURE-CONF-02). */
-  simulated?: boolean;
-  hit_rate: number;
-  byte_hit_rate: number;
-  cache_size: string;
-  objects_cached: number;
-  bandwidth_saved?: string;
-  hits?: number;
-  misses?: number;
-  requests?: number;
+  state: CacheStatsState;
+  /** UTC, "2026-10-25 12:15:28". */
+  collected_at: string | null;
+  age_s: number | null;
+  interval_s: number | null;
+  stale_after_s: number | null;
+  request_hit_ratio_5min_pct: number | null;
+  request_hit_ratio_60min_pct: number | null;
+  byte_hit_ratio_5min_pct: number | null;
+  byte_hit_ratio_60min_pct: number | null;
+  disk_used_kb: number | null;
+  disk_capacity_kb: number | null;
+  disk_used_pct: number | null;
+  memory_used_kb: number | null;
+  memory_used_pct: number | null;
+  uptime_s: number | null;
+  store_entries: number | null;
+  memory_objects: number | null;
+  disk_objects: number | null;
 }

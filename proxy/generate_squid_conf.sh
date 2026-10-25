@@ -354,6 +354,12 @@ http_access deny !localnet !localhost spm_r_source_gate
 # Local stats only.
 http_access allow localhost manager spm_r_none
 http_access deny manager spm_r_other
+# The watchdog reads the info page from localhost once a minute for the cache
+# statistics. That request is not client traffic: it is kept out of the access
+# log the statistics are built from and out of the WAF (measured on 7.7: with
+# the WAF down and REQMOD fail-closed, the request got no answer until curl
+# gave up after 10 s, logged NONE_NONE_ABORTED/000).
+acl spm_self_mgr all-of localhost manager
 
 http_access deny ip_blacklist spm_r_ip_blacklist
 
@@ -440,8 +446,10 @@ icap_client_username_header X-Client-Username
 icap_preview_enable on
 icap_preview_size 4096
 icap_service service_req reqmod_precache bypass=${ICAP_REQMOD_BYPASS} icap://waf:1344/waf
+adaptation_access service_req deny spm_self_mgr
 adaptation_access service_req allow all
 icap_service service_resp respmod_precache bypass=1 icap://waf:1344/waf
+adaptation_access service_resp deny spm_self_mgr
 adaptation_access service_resp allow all
 
 # Logging — keep volume growth bounded: lower verbosity, disable the noisy
@@ -461,7 +469,7 @@ logfile_rotate 5
 # is read from the ICAP reply, not the HTTP one, so an upstream server cannot
 # forge it. Both log '-' when absent. Measured on Squid 7.7: docs/design/block-reasons.md.
 logformat spm %ts.%03tu %6tr %>a %Ss/%03>Hs %<st %rm %ru %[un %Sh/%<a %mt %{X-WAF-Event-Id}<h %{spm_reason}note %{X-SPM-Reason}adapt::<last_h
-access_log daemon:/var/log/squid/access.log spm
+access_log daemon:/var/log/squid/access.log spm !spm_self_mgr
 cache_log /var/log/squid/cache.log
 cache_store_log none
 

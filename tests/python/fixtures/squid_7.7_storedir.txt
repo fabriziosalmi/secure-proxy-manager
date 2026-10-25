@@ -1,0 +1,21 @@
+by kid0 {
+Store Directory Statistics:
+Store Entries          : 64
+Maximum Swap Size      : 51200 KB
+Current Store Swap Size: 252.00 KB
+Current Capacity       : 0.49% used, 99.51% free
+
+Store Directory #0 (ufs): /var/spool/squid
+FS Block Size 4096 Bytes
+First level subdirectories: 16
+Second level subdirectories: 256
+Maximum Size: 51200 KB
+Current Size: 252.00 KB
+Percent Used: 0.49%
+Filemap bits in use: 11 of 16384 (0%)
+Filesystem Space in use: 115013268/546308096 KB (21%)
+Filesystem Inodes in use: 0/0 (0%)
+Flags: SELECTED
+Removal policy: heap
+} by kid0
+

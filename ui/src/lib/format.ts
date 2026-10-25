@@ -72,3 +72,38 @@ export function formatShare(part: number, total: number): string | null {
   if (!(total > 0)) return null;
   return `${SHARE.format((part / total) * 100)}%`;
 }
+
+/** A percentage the backend already computed, with one decimal: 64.7 -> "64.7%", 0 -> "0.0%". */
+export function formatPercent(pct: number): string {
+  // -0.0 (Squid prints it for an idle byte hit ratio) is written as 0.0.
+  return `${SHARE.format(pct === 0 ? 0 : pct)}%`;
+}
+
+const SIZE_UNITS = ['KB', 'MB', 'GB', 'TB'];
+const SIZE_SMALL = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
+
+/**
+ * A size Squid reports in KB (1024 bytes) in the largest unit that keeps it
+ * at 1 or more: 252 -> "252 KB", 51200 -> "50 MB", 1258291 -> "1.2 GB".
+ * One decimal below 100 of a unit, none above.
+ */
+export function formatKilobytes(kb: number): string {
+  let v = kb;
+  let unit = 0;
+  while (Math.abs(v) >= 1024 && unit < SIZE_UNITS.length - 1) {
+    v /= 1024;
+    unit += 1;
+  }
+  return `${Math.abs(v) >= 100 ? COUNT.format(v) : SIZE_SMALL.format(v)} ${SIZE_UNITS[unit]}`;
+}
+
+/** "45s", "12 min", "3 h", "2 d": how long ago something was, from its age in seconds. */
+export function formatAge(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h} h`;
+  return `${Math.floor(h / 24)} d`;
+}
