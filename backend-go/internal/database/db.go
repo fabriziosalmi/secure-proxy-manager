@@ -221,6 +221,11 @@ func createPostMigrationIndexes(db *sql.DB) error {
 		// The lifetime total is COUNT(*) minus their count, and this partial
 		// index keeps that count from walking the table.
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_dns ON proxy_logs(unix_timestamp) WHERE method = 'DNS'`,
+		// The access log's rule filter (GET /api/logs?reason=). Blocked rows
+		// only, like idx_proxy_logs_blocked, and in id order within a rule, so
+		// the newest page of one rule is read straight from it and its count
+		// never touches the table. Measured on 1M rows: docs/api/logs.md.
+		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_blocked_reason ON proxy_logs(block_reason) WHERE blocked = 1`,
 	}
 	for _, stmt := range postMigrationIndexes {
 		if _, err := db.Exec(stmt); err != nil {

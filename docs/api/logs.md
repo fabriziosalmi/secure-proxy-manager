@@ -10,16 +10,32 @@ All endpoints require authentication (Basic or JWT). Response bodies follow the 
 GET /api/logs
 ```
 
-Returns proxy access log entries with pagination metadata.
+Returns proxy access log entries matching the filters, with pagination
+metadata.
 
 **Query parameters:**
 
 | Parameter | Default | Description |
 |---|---|---|
-| `limit` | `100` | Maximum number of entries to return |
+| `limit` | `25` | Maximum number of entries to return, 1 to 500 |
 | `offset` | `0` | Pagination offset |
-| `sort` | `timestamp` | Sort column: `timestamp`, `source_ip`, `destination`, `status`, `bytes`, `method` |
+| `sort` | `timestamp` | Sort column: `timestamp`, `source_ip`, `destination`, `status`, `bytes`, `method`, `id` |
 | `order` | `desc` | `asc` or `desc` |
+| `source_ip` | | One source address, exact. A named source is listed even when it is internal |
+| `outcome` | | `allowed` or `blocked`, from the `blocked` flag |
+| `reason` | | The rule that blocked the request (a `reason` value below); selects blocked rows only |
+| `q` | | A substring of `destination`, ASCII case-insensitive; `%` and `_` match themselves |
+| `include_internal` | `false` | Include the stack's own traffic (see below) |
+| `before_id` | | Cursor: only rows with a lower `id`. Sets the order to `id` descending and ignores `offset` |
+
+A malformed filter value is refused with `400`.
+
+**Internal sources.** The backend classifies each source address: loopback,
+the backend itself, the proxy, the Docker host and any other address on the
+networks the backend shares with the proxy are the stack's own traffic, not a
+device (the same classification as the client list). They are left out
+unless `include_internal=true` or `source_ip` names one of them; `meta.internal`
+then counts the matching rows that were left out.
 
 **Response:**
 
@@ -36,18 +52,30 @@ Returns proxy access log entries with pagination metadata.
       "status": "TCP_DENIED/403",
       "bytes": 4862,
       "blocked": true,
-      "reason": "domain_blacklist_dns"
+      "reason": "domain_blacklist_dns",
+      "reason_label": "Domain blacklist (DNS)",
+      "internal": false,
+      "kind": "Private network address"
     }
   ],
-  "meta": { "total": 15420, "limit": 100, "offset": 0 },
+  "meta": { "total": 15420, "limit": 100, "offset": 0, "internal": 2880 },
   "total": 15420,
   "limit": 100,
   "offset": 0
 }
 ```
 
-When GDPR mode is enabled in settings, `source_ip` is masked. The top-level
-`total`, `limit` and `offset` are deprecated copies of `meta`.
+`meta.total` counts the rows the filters match. `kind` says what the source
+is where the backend can tell ("Internal: the backend", "Internal: this
+host", "Private network address", "Public address"), and is empty
+otherwise.
+
+To page back through the log, pass the `id` of the last row received as
+`before_id`; a page shorter than `limit` is the last one.
+
+When GDPR mode is enabled in settings, `source_ip` is masked (the source is
+classified before it is masked). The top-level `total`, `limit` and `offset`
+are deprecated copies of `meta`.
 
 `reason` is the rule that blocked the request, recorded by Squid or the WAF
 when the request was logged (see `docs/design/block-reasons.md`):
@@ -58,8 +86,46 @@ not blocked; `unclassified` for a row logged before reasons were recorded;
 `domain_blacklist_dns_reconstructed` for such a row that the start-up step
 of schema version 3 reassigned: a `/503` to a name on the domain blacklist,
 logged after the name was added (see `docs/design/block-reasons.md`).
-The list holds every row, including the DNS sinkhole's own rows (method
-`DNS`, source the proxy container), which no statistic counts.
+With `include_internal=true` the list holds every row, including the DNS
+sinkhole's own rows (method `DNS`, source the proxy container), which no
+statistic counts.
+
+**Cost, measured on 1M rows** (20 devices, two internal sources holding 10% of
+the rows, 10% blocked over five rules; `limit=100`, best of three, Apple M4
+Pro, `TestLogFilters1M` in `backend-go/internal/handlers/logs_plan_test.go`):
+
+| Filter | Plan | Time |
+|---|---|---|
+| none (internal sources left out) | page in id order; counts: every row, then the internal rows by `idx_proxy_logs_source_ip` | 17 ms |
+| `include_internal=true` | page in id order; count by a covering index | 12 ms |
+| `source_ip` | `idx_proxy_logs_source_ip` | 3 ms |
+| `reason=waf` (1% of rows) | `idx_proxy_logs_blocked_reason` | 10 ms |
+| `reason=ip_blacklist` (0.1%) | `idx_proxy_logs_blocked_reason` | 1 ms |
+| `outcome=blocked` | `idx_proxy_logs_blocked` | 69 ms |
+| `outcome=allowed` | every row less the blocked ones | 87 ms |
+| `before_id` (deep) | rowid range | 18 ms |
+| `q` | no index can serve `LIKE '%x%'`: the table is read | 200 to 290 ms |
+
+Without `idx_proxy_logs_blocked_reason` a rule filter read every blocked row
+(133 to 139 ms); counting "not internal" and "allowed" directly read the
+whole table (123 and 226 ms).
+
+---
+
+## Export log entries
+
+```
+GET /api/logs/export
+```
+
+Streams, as CSV, every row `GET /api/logs` selects for the same filters
+(`source_ip`, `outcome`, `reason`, `q`, `include_internal`, `before_id`),
+newest first. `limit`, `offset` and `sort` do not apply. Columns: `id`,
+`timestamp_utc`, `source_ip`, `internal`, `kind`, `method`, `destination`,
+`status`, `bytes`, `blocked`, `reason`, `reason_label`. A cell that starts
+with `=`, `+`, `-` or `@` is written with a leading apostrophe, so a
+spreadsheet shows it as text rather than running it as a formula (a method
+logged as `-` is exported as `'-`).
 
 ---
 

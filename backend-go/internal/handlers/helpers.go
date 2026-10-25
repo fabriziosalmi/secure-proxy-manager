@@ -68,7 +68,9 @@ type ListMeta struct {
 	Limit  int `json:"limit"`
 	Offset int `json:"offset"`
 	// Internal: on the client list, how many internal sources (the stack's
-	// own traffic) it holds besides the Total clients.
+	// own traffic) it holds besides the Total clients. On the access log, how
+	// many rows matching the filters were left out because their source is
+	// internal; absent when none are left out (include_internal, source_ip).
 	Internal *int `json:"internal,omitempty"`
 }
 

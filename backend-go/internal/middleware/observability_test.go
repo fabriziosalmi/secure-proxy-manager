@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -58,6 +59,31 @@ func TestAccessLogPassesThrough(t *testing.T) {
 		if w.Body.String() != "ok" {
 			t.Errorf("%s: body not passed through", path)
 		}
+	}
+}
+
+// The access-log export streams for longer than the server's WriteTimeout and
+// moves its write deadline forward through http.ResponseController. Behind
+// Metrics and AccessLog that failed with ErrNotSupported: their recorder hid
+// the connection's writer, so the export was cut at 60 s.
+func TestRecorderLetsAHandlerMoveItsWriteDeadline(t *testing.T) {
+	h := Metrics(AccessLog(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(time.Minute)); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte("ok"))
+	})))
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/api/logs/export")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || string(body) != "ok" {
+		t.Errorf("SetWriteDeadline through the middleware: %d %q", resp.StatusCode, body)
 	}
 }
 
