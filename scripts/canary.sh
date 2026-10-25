@@ -54,9 +54,20 @@ BEFORE=$(git rev-parse --short HEAD)
 TARGET=$(git rev-parse --short origin/main)
 if [ "$BEFORE" != "$TARGET" ]; then
   echo "  $BEFORE -> $TARGET"
-  # reset --hard leaves untracked files alone, so .env and the runtime ACLs
-  # exported under config/ survive.
-  git reset --hard -q origin/main || { bad "git reset failed"; finish; exit 1; }
+  # reset --hard leaves untracked files alone, but three of the lists the
+  # backend exports are TRACKED (repository fixtures): the reset replaced a
+  # 640,929-domain and a 50,772-IP blacklist with one domain and two IPs, and
+  # Squid enforced those until the backend next exported (2026-10-25). They
+  # are kept across the reset.
+  keep=$(mktemp -d)
+  for f in config/domain_blacklist.txt config/ip_blacklist.txt config/ip_whitelist.txt; do
+    [ -f "$f" ] && cp -p "$f" "$keep/${f##*/}"
+  done
+  git reset --hard -q origin/main || { rm -rf "$keep"; bad "git reset failed"; finish; exit 1; }
+  for f in config/domain_blacklist.txt config/ip_blacklist.txt config/ip_whitelist.txt; do
+    [ -f "$keep/${f##*/}" ] && cp -p "$keep/${f##*/}" "$f"
+  done
+  rm -rf "$keep"
 else
   echo "  already at $TARGET"
 fi
