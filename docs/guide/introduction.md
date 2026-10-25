@@ -13,7 +13,7 @@ It is intended for homelab operators and small networks that need a manageable, 
 - **Domain whitelist.** Exact names taken out of the domain blacklist before it reaches the dnsmasq DNS sinkhole and Squid.
 - **WAF.** A Go ICAP server that inspects request payloads with 172 regex rules across 21 categories and 6 behavioural heuristics (entropy, beaconing, PII, sharding, ghosting, sequence). Limited response inspection (reflected XSS, secret leak, PII) is also performed.
 - **Real-time logs.** WebSocket-based live log stream with search, filters, and statistics.
-- **Dashboard.** Traffic timeline, security score, blocked counts, top domains and clients.
+- **Dashboard.** Traffic timeline, blocked counts, top domains and clients.
 - **Blocklist import.** Import from URL or inline content. One-click import of curated public lists (Firehol, Spamhaus, StevenBlack, URLhaus, Phishing Army, and others).
 
 ## What it is not

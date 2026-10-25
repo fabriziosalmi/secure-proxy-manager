@@ -88,7 +88,7 @@ Optional default-deny outbound egress. Off by default (the `egress_default_deny`
 | `GET`  | `/api/traffic/statistics` | Traffic statistics |
 | `GET`  | `/api/clients/statistics` | Client statistics |
 | `GET`  | `/api/domains/statistics` | Top accessed domains |
-| `GET`  | `/api/security/score` | Security score and recommendations |
+| `GET`  | `/api/security/score` | Retired: answers 410 Gone (it scored settings nothing enforced) |
 | `GET`  | `/api/security/cve` | CVE check for the bundled Squid version |
 | `GET`  | `/api/analytics/shadow-it` | Shadow-IT detection |
 | `GET`  | `/api/analytics/user-agents` | Service-type breakdown by user agent |
@@ -99,7 +99,8 @@ Optional default-deny outbound egress. Off by default (the `egress_default_deny`
 | `GET`  | `/api/waf/stats` | WAF statistics |
 | `GET`  | `/api/waf/categories` | WAF rule categories with toggle state |
 | `POST` | `/api/waf/categories/toggle` | Enable or disable a category at runtime |
-| `POST` | `/api/waf/test-rule` | Evaluate a regex rule against a sample request |
+| `GET`  | `/api/waf/heuristics` | The heuristics the running WAF applies, or `available: false` with the reason |
+| `POST` | `/api/waf/test-rule` | Match a Go regular expression against the URLs of recent requests (at most 10,000 read, 50 matches returned) |
 | `POST` | `/api/counters/reset` | Reset all counters |
 
 ## Settings and maintenance
@@ -124,7 +125,7 @@ Optional default-deny outbound egress. Off by default (the `egress_default_deny`
 | `GET`    | `/api/security/download-ca` | Download the proxy CA certificate |
 | `GET`    | `/api/security/rate-limits` | List IPs that are currently rate-limited |
 | `DELETE` | `/api/security/rate-limits/{ip}` | Clear the rate-limit lockout for an IP |
-| `POST`   | `/api/notifications/test` | Send a test notification (Gotify, Telegram, webhook, Teams, SIEM) |
+| `POST`   | `/api/notifications/test` | Send one test alert to every configured channel (webhook, Telegram, Gotify, ntfy, Teams); `data.channels` reports each delivery |
 
 ## Internal
 

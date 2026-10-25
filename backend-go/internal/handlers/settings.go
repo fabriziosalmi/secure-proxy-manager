@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"bytes"
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -19,6 +17,7 @@ import (
 	appcrypto "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/crypto"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 )
@@ -29,9 +28,12 @@ import (
 // by any direct API call. proxy_port='abc' was persisted and then written into
 // the file Squid's config generator sources (SECURE-DOM-06).
 var settingValidators = map[string]func(string) error{
-	"proxy_port":           validPort,
-	"cache_size":           validNonNegativeInt,
-	"memory_cache":         validNonNegativeInt,
+	"proxy_port": validPort,
+	// The proxy's generator reads at most 7 digits for the disk cache and 6
+	// for memory and silently keeps its default for anything longer
+	// (generate_squid_conf.sh), so a longer value was saved and never used.
+	"cache_size":           validMegabytes(7),
+	"memory_cache":         validMegabytes(6),
 	"log_retention_days":   validPositiveInt,
 	"bandwidth_limit_mbps": validPositiveInt,
 	// Both reach a file the proxy reads as root and had no rule at all:
@@ -42,6 +44,83 @@ var settingValidators = map[string]func(string) error{
 	"time_restriction_start":        validTimeOfDay,
 	"time_restriction_end":          validTimeOfDay,
 	"admin_email":                   validEmailOrEmpty,
+	// The refresh worker reads anything that is not a number as 0 and then
+	// never refreshes.
+	"auto_refresh_hours": validRefreshHours,
+	// Each entry becomes the urlpath_regex \.<entry>$; "*" became \.*$, which
+	// matches every path, and nothing checked it.
+	"blocked_file_types": validExtensionList,
+	// Each entry becomes a dstdomain line in a file Squid loads.
+	"cache_bypass_domains": validDomainList,
+	// Alert destinations the backend posts to (netguard.CheckNotifyURL).
+	"webhook_url":       validNotifyURL,
+	"gotify_url":        validNotifyURL,
+	"teams_webhook_url": validNotifyURL,
+	"ntfy_url":          validNotifyURL,
+}
+
+func validMegabytes(digits int) func(string) error {
+	max := 1
+	for i := 0; i < digits; i++ {
+		max *= 10
+	}
+	max--
+	return func(v string) error {
+		n, err := strconv.Atoi(v)
+		if err != nil || len(v) > digits || n < 1 || !digitsRE.MatchString(v) {
+			return fmt.Errorf("must be a whole number of megabytes, from 1 to %d", max)
+		}
+		return nil
+	}
+}
+
+var digitsRE = regexp.MustCompile(`^[0-9]+$`)
+
+func validRefreshHours(v string) error {
+	n, err := strconv.Atoi(v)
+	if err != nil || !digitsRE.MatchString(v) || n < 1 || n > 168 {
+		return fmt.Errorf("must be a whole number of hours, from 1 to 168")
+	}
+	return nil
+}
+
+// extensionRE is one file extension as the blocked_file_types list holds it.
+var extensionRE = regexp.MustCompile(`^\.?[a-zA-Z0-9]{1,10}$`)
+
+// listItems splits a comma-separated setting into its non-empty items.
+func listItems(v string) []string {
+	var out []string
+	for _, s := range strings.Split(v, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func validExtensionList(v string) error {
+	for _, ext := range listItems(v) {
+		if !extensionRE.MatchString(ext) {
+			return fmt.Errorf("%q is not a file extension: use letters and digits only, such as exe", ext)
+		}
+	}
+	return nil
+}
+
+func validDomainList(v string) error {
+	for _, d := range listItems(v) {
+		if !isValidDomainEntry(strings.ToLower(d)) {
+			return fmt.Errorf("%q is not a domain name, such as bank.example.com", d)
+		}
+	}
+	return nil
+}
+
+func validNotifyURL(v string) error {
+	if v == "" {
+		return nil
+	}
+	return netguard.CheckNotifyURL(v)
 }
 
 func validPort(v string) error {
@@ -102,8 +181,13 @@ func validEmailOrEmpty(v string) error {
 }
 
 // validateSettingValue applies the value domain for a key, if it has one. Keys
-// without an entry are free-form text, bounded only by length.
+// without an entry are free-form text, bounded only by length. A secret that
+// is already encrypted (a restored backup carries the enc:: column as it was)
+// cannot be inspected and is accepted as it is.
 func validateSettingValue(key, value string) error {
+	if appcrypto.IsSensitive(key) && appcrypto.IsEncrypted(value) {
+		return nil
+	}
 	if fn, ok := settingValidators[key]; ok {
 		if err := fn(value); err != nil {
 			return fmt.Errorf("%s: %w", key, err)
@@ -132,6 +216,7 @@ func (h *SettingsHandlers) Register(r chi.Router, authMW func(http.Handler) http
 	r.With(authMW).Get("/api/settings", h.GetAll)
 	r.With(authMW).Put("/api/settings/{name}", h.Update)
 	r.With(authMW).Post("/api/settings", h.BulkUpdate)
+	r.With(authMW).Get("/api/waf/heuristics", h.WAFHeuristics)
 }
 
 func (h *SettingsHandlers) GetAll(w http.ResponseWriter, r *http.Request) {
@@ -262,15 +347,30 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	h.auditBulkUpdate(r, body)
 
+	// Every refused value at once, before anything is written: the first one
+	// found used to be the only one reported, in map order, so a section with
+	// two bad fields took two round trips to learn about the second.
+	if errs := h.validateBody(body); len(errs) > 0 {
+		writeFieldErrors(w, errs)
+		return
+	}
+
 	kept, status, msg := h.persistSettings(body, clearKeys)
 	if status != 0 {
 		writeError(w, status, msg)
 		return
 	}
 
-	// Push heuristic toggles to the running WAF so they take effect immediately —
-	// the WAF otherwise only reads WAF_H_* env at startup (issue #102).
-	h.pushHeuristicsToWAF(r.Context(), body)
+	// Push heuristic toggles to the running WAF so they take effect immediately:
+	// the WAF otherwise only reads WAF_H_* env at startup (issue #102). What the
+	// WAF answered goes back to the caller, which used to be told "Settings
+	// updated" while the WAF refused every toggle for want of
+	// INTERNAL_ALERT_TOKEN.
+	waf := h.pushHeuristicsToWAF(r.Context(), body)
+	data := map[string]any{"kept": kept}
+	if waf != nil {
+		data["waf"] = waf
+	}
 
 	// The handler reads as settings persistence and is in fact a fan-out: after
 	// the transaction it writes six configuration artefacts and makes an
@@ -278,17 +378,18 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 	// so a full disk or a read-only /config produced a 200 while the artefacts
 	// that make the settings take effect did not exist (SECURE-QUAL-03).
 	if failedArtifacts := h.writeSquidArtefacts(body); len(failedArtifacts) > 0 {
+		data["failed"] = failedArtifacts
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":  "partial",
 			"message": "settings saved, but some proxy configuration files could not be written",
-			"data":    map[string]any{"failed": failedArtifacts, "kept": kept},
+			"data":    data,
 		})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
 		"message": "Settings updated",
-		"data":    map[string]any{"kept": kept},
+		"data":    data,
 	})
 }
 
@@ -363,9 +464,14 @@ func (h *SettingsHandlers) persistSettings(body map[string]string, clearKeys map
 		}
 		val := v
 		if appcrypto.IsSensitive(k) && val != "" && !appcrypto.IsEncrypted(val) {
-			if enc, err := appcrypto.Encrypt(val, h.cfg.EncryptionKey); err == nil {
-				val = enc
+			enc, err := appcrypto.Encrypt(val, h.cfg.EncryptionKey)
+			if err != nil {
+				// Refuse rather than store the secret in clear, as Update does
+				// (SECURE-ERR-04). This path kept the plaintext and answered 200.
+				log.Error().Str("key", k).Err(err).Msg("refusing to store sensitive setting: encryption failed")
+				return kept, http.StatusInternalServerError, "encryption unavailable: " + k + " not saved"
 			}
+			val = enc
 		}
 		if _, err := tx.Exec(
 			"INSERT INTO settings(setting_name,setting_value) VALUES(?,?) ON CONFLICT(setting_name) DO UPDATE SET setting_value=excluded.setting_value",
@@ -396,8 +502,8 @@ func (h *SettingsHandlers) writeSquidArtefacts(body map[string]string) []string 
 		if err := h.writeListArtefact("cache_bypass_domains.txt", v, func(d string) string {
 			return "." + strings.TrimPrefix(d, ".")
 		}); err != nil {
-			log.Warn().Err(err).Msg("ssl bypass list write failed")
-			failedArtifacts = append(failedArtifacts, "ssl_bypass_domains.txt")
+			log.Warn().Err(err).Msg("cache bypass list write failed")
+			failedArtifacts = append(failedArtifacts, "cache_bypass_domains.txt")
 		}
 	}
 
@@ -491,49 +597,6 @@ func (h *SettingsHandlers) writeListArtefact(file, value string, transform func(
 		}
 	}
 	return os.WriteFile(path, []byte(strings.Join(items, "\n")+"\n"), 0o600)
-}
-
-// heuristicSettingKeys are the WAF heuristic toggles that must be propagated to
-// the running WAF, which otherwise only reads WAF_H_* env at startup. Keep in
-// sync with the WAF's heuristicToggles map (waf-go/heuristics.go).
-var heuristicSettingKeys = map[string]bool{
-	"waf_h_entropy":   true,
-	"waf_h_beaconing": true,
-	"waf_h_pii":       true,
-	"waf_h_sharding":  true,
-	"waf_h_ghosting":  true,
-	"waf_h_sequence":  true,
-}
-
-// pushHeuristicsToWAF propagates any heuristic toggles in the just-saved settings
-// to the WAF's runtime config (POST /heuristics/toggle). Best-effort: the DB is
-// the source of truth, so a WAF hiccup is logged but never fails the save.
-//
-// The database is authoritative and a restarted WAF is brought back to it by
-// workers.StartWAFReconciler. This comment used to claim the value "still
-// applies on the WAF's next restart via WAF_H_* env" — it does not: those
-// variables come from the compose file and never carry the stored value, so a
-// WAF restart silently reverted every toggle to the compose default while the
-// UI kept showing the operator's choice (SECURE-CONF-02).
-func (h *SettingsHandlers) pushHeuristicsToWAF(ctx context.Context, body map[string]string) {
-	for key, val := range body {
-		if !heuristicSettingKeys[key] {
-			continue
-		}
-		payload, err := json.Marshal(map[string]any{"heuristic": key, "enabled": val == "true"})
-		if err != nil {
-			continue
-		}
-		resp, err := wafPostBreaker(ctx, h.cfg, "/heuristics/toggle", "application/json", bytes.NewReader(payload))
-		if err != nil {
-			log.Warn().Str("key", key).Err(err).Msg("failed to push heuristic toggle to WAF — applies on WAF restart")
-			continue
-		}
-		if resp.StatusCode != http.StatusOK {
-			log.Warn().Str("key", key).Int("status", resp.StatusCode).Msg("WAF rejected heuristic toggle")
-		}
-		resp.Body.Close() //nolint:errcheck
-	}
 }
 
 // writeSquidSettingsEnv writes a shell-sourceable env file to /config/squid_settings.env

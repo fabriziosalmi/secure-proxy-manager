@@ -26,7 +26,7 @@ import { api, getErrorMessage } from '../lib/api';
 import { formatCount, formatDateTime } from '../lib/format';
 import { egressTotalQuery, settingsQuery } from '../lib/queries';
 import { parseSettings } from '../lib/secrets';
-import { checkDestination, egressEntryKind, type EgressKind } from '../lib/egress';
+import { checkDestination, egressEntryKind, type EgressKind, LAN_DESTINATIONS } from '../lib/egress';
 import { cn } from '../lib/utils';
 import { useConfirm } from '../hooks/useConfirm';
 import { useDebounced } from '../hooks/useDebounced';
@@ -41,7 +41,8 @@ import { Button, IconButton } from '../components/ui/Button';
 const PAGE_SIZE = 50;
 
 /** The destinations local_dst lets through before the egress deny. */
-const LAN = '10.0.0.0/8 and 192.168.0.0/16';
+// One source with Settings: what proxy/generate_squid_conf.sh's local_dst holds.
+const LAN = LAN_DESTINATIONS.join(' and ');
 
 const FIELD =
   'h-9 w-full min-w-0 rounded-control border border-line-strong bg-surface px-3 text-sm text-ink placeholder:text-ink-subtle ' +

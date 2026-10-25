@@ -106,7 +106,7 @@ func (h *SecurityHandlers) Register(r chi.Router, authMW func(http.Handler) http
 	r.With(appMW.ServiceAuth(alertToken, authMW)).Post("/api/internal/alert", h.ReceiveAlert)
 	r.With(authMW).Get("/api/security/rate-limits", h.GetRateLimits)
 	r.With(authMW).Delete("/api/security/rate-limits/{ip}", h.ClearRateLimit)
-	r.With(authMW).Get("/api/security/score", h.Score)
+	r.With(authMW).Get("/api/security/score", h.ScoreGone)
 	r.With(authMW).Get("/api/security/cve", h.CVECheck)
 	r.With(authMW).Post("/api/notifications/test", h.TestNotification)
 }
@@ -168,59 +168,15 @@ func (h *SecurityHandlers) ClearRateLimit(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Rate limit cleared for " + ip})
 }
 
-func (h *SecurityHandlers) Score(w http.ResponseWriter, r *http.Request) {
-	keys := []string{
-		"enable_ip_blacklist", "enable_domain_blacklist", "block_direct_ip",
-		"enable_content_filtering", "enable_waf", "ssl_bump_enabled",
-		"default_password_changed", "enable_time_restrictions",
-	}
-	placeholders := strings.Repeat("?,", len(keys))
-	placeholders = placeholders[:len(placeholders)-1]
-
-	args := make([]any, len(keys))
-	for i, k := range keys {
-		args[i] = k
-	}
-	// #nosec G202
-	rows, err := h.db.Query(
-		"SELECT setting_name, setting_value FROM settings WHERE setting_name IN ("+placeholders+")",
-		args...,
-	)
-	settings := map[string]string{}
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var k, v string
-			rows.Scan(&k, &v) //nolint:errcheck
-			settings[k] = v
-		}
-	}
-
-	type check struct {
-		key    string
-		points int
-		rec    string
-	}
-	checks := []check{
-		{"enable_ip_blacklist", 15, "Enable IP blacklisting to block known malicious IP addresses"},
-		{"enable_domain_blacklist", 15, "Enable domain blacklisting to block malicious websites"},
-		{"block_direct_ip", 10, "Enable direct IP access blocking to prevent bypassing domain filters"},
-		{"enable_content_filtering", 10, "Enable content filtering to block risky file types"},
-		{"enable_waf", 25, "Enable Outbound WAF (ICAP) to block SQLi, XSS, and Data Leaks"},
-		{"ssl_bump_enabled", 15, "Consider enabling HTTPS inspection (SSL Bump) for complete security coverage"},
-		{"default_password_changed", 5, "Change the default admin password to improve security"},
-		{"enable_time_restrictions", 5, "Enable time restrictions to limit proxy usage to working hours"},
-	}
-	var score int
-	var recs []string
-	for _, c := range checks {
-		if settings[c.key] == "true" {
-			score += c.points
-		} else {
-			recs = append(recs, c.rec)
-		}
-	}
-	writeOK(w, map[string]any{"score": score, "max_score": 100, "recommendations": recs})
+// ScoreGone answers the retired GET /api/security/score. The score added
+// points for enable_ip_blacklist, enable_domain_blacklist, block_direct_ip and
+// enable_waf, which nothing else read: Squid always denies the blacklists and
+// direct-IP URLs and the WAF is always on the ICAP path, so a working install
+// scored low and a switch in Settings raised the score without changing what
+// the stack does. No page has shown the score since the Overview dropped it.
+// Retired routes answer 410 naming what to use instead (CHANGELOG).
+func (h *SecurityHandlers) ScoreGone(w http.ResponseWriter, _ *http.Request) {
+	writeError(w, http.StatusGone, "removed: the security score counted settings nothing enforced; Settings > Overview lists what needs attention")
 }
 
 func (h *SecurityHandlers) TestNotification(w http.ResponseWriter, r *http.Request) {
@@ -231,12 +187,37 @@ func (h *SecurityHandlers) TestNotification(w http.ResponseWriter, r *http.Reque
 		"level":      "info",
 		"client_ip":  r.RemoteAddr,
 	}
-	// Send synchronously so we can report success/failure to the caller.
-	sendSecurityNotification(h.db, h.cfg.EncryptionKey, event)
-
+	// Every channel that has all of its settings stored, whether or not alerts
+	// are switched on, so a channel can be proven before alerts are turned on.
+	// One attempt each, concurrently, and each channel's own result: the
+	// response used to say "sent to all configured channels" after a send
+	// whose outcome nobody looked at, with no channel configured, or with
+	// alerts off.
+	encKey := ""
+	if h.cfg != nil {
+		encKey = h.cfg.EncryptionKey
+	}
+	settings, enabled := loadNotificationSettings(h.db, encKey)
+	results := deliverEach(buildDeliveries(settings, event), 1)
+	delivered := 0
+	for _, r := range results {
+		if r.Delivered {
+			delivered++
+		}
+	}
+	var msg string
+	switch {
+	case len(results) == 0:
+		msg = "No alert channel has all of its settings stored: nothing was sent"
+	case delivered == len(results):
+		msg = fmt.Sprintf("Delivered to all %d configured channels", len(results))
+	default:
+		msg = fmt.Sprintf("Delivered to %d of %d configured channels", delivered, len(results))
+	}
 	resp := map[string]any{
 		"status":  "success",
-		"message": "Test notification sent to all configured channels",
+		"message": msg,
+		"data":    map[string]any{"notifications_enabled": enabled, "channels": results},
 	}
 	// This is the moment an operator concludes that notifications work, and it
 	// is exactly where the gap is invisible: a test notification is generated

@@ -45,13 +45,13 @@ func TestIsLANBogonCIDR(t *testing.T) {
 }
 
 func TestIsWritableSettingKey(t *testing.T) {
-	bad := []string{"default_password_changed", "has space", "semi;colon", "", "../etc"}
+	bad := []string{"default_password_changed", "has space", "semi;colon", "", "../etc", "tailscale_auth_key", "enable_waf", "block_direct_ip"}
 	for _, k := range bad {
 		if isWritableSettingKey(k) {
 			t.Errorf("isWritableSettingKey(%q) = true, want false", k)
 		}
 	}
-	good := []string{"enable_waf", "webhook_url", "proxy_port", "enable_safesearch"}
+	good := []string{"enable_notifications", "webhook_url", "proxy_port", "enable_safesearch"}
 	for _, k := range good {
 		if !isWritableSettingKey(k) {
 			t.Errorf("isWritableSettingKey(%q) = false, want true", k)

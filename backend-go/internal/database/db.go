@@ -263,6 +263,11 @@ func backfillProxyLogs(db *sql.DB) {
 	}
 }
 
+// DefaultBlockedFileTypes is the extension list a new install stores, the
+// same as the UI's Family profile. Not com: the pattern matches the end of
+// any URL path, and paths such as /whois/example.com end in .com.
+const DefaultBlockedFileTypes = "exe,bat,cmd,dll,msi,scr,ps1,vbs"
+
 // seedDefaultSettings inserts any default setting that is not already present.
 func seedDefaultSettings(db *sql.DB) {
 	// Default settings.
@@ -271,24 +276,48 @@ func seedDefaultSettings(db *sql.DB) {
 		{"proxy_port", "3128"},
 		{"cache_size", "1000"},
 		{"memory_cache", "256"},
-		{"allowed_networks", "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"},
 		// Feature toggles
 		{"ssl_bump_enabled", "false"},
 		{"egress_default_deny", "false"},
 		{"aggressive_caching_enabled", "false"},
 		{"cache_bypass_domains", ""},
 		{"enable_offline_mode", "false"},
-		{"tailscale_enabled", "false"},
-		{"ddns_enabled", "false"},
-		// Security
-		{"enable_ip_blacklist", "true"},
-		{"enable_domain_blacklist", "true"},
-		{"block_direct_ip", "false"},
 		{"extra_ssl_ports", ""},
+		{"enable_safesearch", "false"},
+		{"enable_youtube_restricted", "false"},
+		{"enable_proxy_auth", "false"},
+		// Content filtering is off, but its list is stored, so turning the
+		// switch on blocks something. Without a stored list the page showed
+		// "exe,bat,cmd,dll,js" as a fallback that was never saved, no file
+		// was written, and the generator left the rule out: on with nothing
+		// blocked. The list is the Windows formats that run on a double click
+		// and are how droppers arrive. No archives or documents (normal
+		// downloads), no js or css (every web page loads them; the pattern
+		// matches any URL path ending so).
 		{"enable_content_filtering", "false"},
-		{"enable_waf", "false"},
+		{"blocked_file_types", DefaultBlockedFileTypes},
+		// The values the backend writes when the switch is on and nothing is
+		// stored (writeBandwidthSettings, writeTimeRestrictions), stored so the
+		// page shows what will be applied instead of a value of its own.
+		{"enable_bandwidth_limits", "false"},
+		{"bandwidth_limit_mbps", "100"},
+		{"bandwidth_limit_per_user_kbps", "0"},
+		{"enable_time_restrictions", "false"},
+		{"time_restriction_start", "08:00"},
+		{"time_restriction_end", "18:00"},
+		// The WAF heuristics as the shipped compose starts the WAF
+		// (WAF_H_*: all on except sequence validation). With no row the page
+		// showed every heuristic on, sequence validation included, while the
+		// WAF ran it off.
+		{"waf_h_entropy", "true"},
+		{"waf_h_beaconing", "true"},
+		{"waf_h_pii", "true"},
+		{"waf_h_sharding", "true"},
+		{"waf_h_ghosting", "true"},
+		{"waf_h_sequence", "false"},
 		// Logging
 		{"log_retention_days", "30"},
+		{"gdpr_mode", "false"},
 		// Notifications
 		{"enable_notifications", "false"},
 		{"webhook_url", ""},

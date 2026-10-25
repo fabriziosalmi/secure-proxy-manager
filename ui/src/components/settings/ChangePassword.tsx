@@ -1,138 +1,108 @@
-import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
-import { Key, Eye, EyeOff } from 'lucide-react';
-import toast from 'react-hot-toast';
-import { api, setAuthToken } from '../../lib/api';
+/**
+ * Change the admin password (POST /api/change-password). The change ends
+ * every session issued before it, this one included; the response carries a
+ * fresh token so this session continues. The result is shown under the form,
+ * with the backend's own message when it refuses.
+ */
+import { useId, useState, type FormEvent } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
+import { api, getErrorMessage, setAuthToken } from '../../lib/api';
 import { validatePassword } from '../../lib/validation';
+import { cn } from '../../lib/utils';
+import { Section } from '../ui/Section';
+import { Button, IconButton } from '../ui/Button';
+
+const INPUT = 'h-9 w-full min-w-0 rounded-control border bg-surface px-3 text-sm text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent';
+
+function PasswordInput({ id, label, value, onChange, autoComplete, describedBy, invalid, reveal }: {
+  id: string; label: string; value: string; onChange: (v: string) => void; autoComplete: string;
+  describedBy?: string; invalid?: boolean; reveal?: boolean;
+}) {
+  const [shown, setShown] = useState(false);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-sm font-medium text-ink">{label}</label>
+      <div className="flex items-center gap-1">
+        <input
+          id={id}
+          type={shown ? 'text' : 'password'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          autoComplete={autoComplete}
+          aria-describedby={describedBy}
+          aria-invalid={invalid || undefined}
+          className={cn(INPUT, invalid ? 'border-danger-line' : 'border-line-strong')}
+        />
+        {reveal && (
+          <IconButton
+            aria-label={shown ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+            icon={shown ? <EyeOff /> : <Eye />}
+            onClick={() => setShown(!shown)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+type Result = { ok: boolean; text: string } | null;
 
 export function ChangePassword() {
+  const id = useId();
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState<Result>(null);
 
   // The shared, tested rule (lib/validation), not a private copy of it.
   const { hasLength, hasNumber, hasSpecial } = validatePassword(newPwd);
-  const isValid = currentPwd.length > 0 && hasLength && newPwd === confirmPwd;
+  const mismatch = confirmPwd !== '' && confirmPwd !== newPwd;
+  const isValid = currentPwd.length > 0 && hasLength && hasNumber && hasSpecial && newPwd === confirmPwd;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!isValid || !hasNumber || !hasSpecial) return;
-
+    if (!isValid || saving) return;
     setSaving(true);
+    setResult(null);
     try {
-      const res = await api.post('change-password', {
-        current_password: currentPwd,
-        new_password: newPwd,
-      });
-      // The change ends every session issued before it, this one included;
-      // the response carries a fresh token so this session continues.
+      const res = await api.post('change-password', { current_password: currentPwd, new_password: newPwd });
       const fresh = (res.data as { access_token?: string } | undefined)?.access_token;
       if (fresh) setAuthToken(fresh);
-      toast.success('Password changed. Other sessions were signed out.');
+      setResult({ ok: true, text: 'Password changed. Every other session was signed out; this one continues.' });
       setCurrentPwd('');
       setNewPwd('');
       setConfirmPwd('');
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed to change password';
-      toast.error(msg);
+    } catch (err) {
+      setResult({ ok: false, text: `Not changed: ${getErrorMessage(err, 'the backend did not answer')}.` });
     } finally {
       setSaving(false);
     }
   };
 
+  const rules: [boolean, string][] = [[hasLength, 'at least 8 characters'], [hasNumber, 'a number'], [hasSpecial, 'a special character']];
+
   return (
-    <Card>
-      <CardHeader className="p-4 pb-2">
-        <div className="flex items-center gap-2">
-          <Key className="w-4 h-4 text-muted-foreground" />
-          <CardTitle className="text-sm">Change Password</CardTitle>
+    <Section level={3} title="Admin password" description="The password of the dashboard account. The proxy login, if it is on, uses the .env credential instead.">
+      <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-4">
+        <div className="grid gap-4 md:grid-cols-3">
+          <PasswordInput id={`${id}-current`} label="Current Password" value={currentPwd} onChange={setCurrentPwd} autoComplete="current-password" reveal />
+          <PasswordInput id={`${id}-new`} label="New Password" value={newPwd} onChange={setNewPwd} autoComplete="new-password" describedBy={`${id}-rules`} reveal />
+          <PasswordInput id={`${id}-confirm`} label="Confirm New Password" value={confirmPwd} onChange={setConfirmPwd} autoComplete="new-password" describedBy={mismatch ? `${id}-mismatch` : undefined} invalid={mismatch} />
         </div>
-        <CardDescription className="text-xs">Update your admin credentials</CardDescription>
-      </CardHeader>
-      <CardContent className="p-4 pt-0">
-        <form onSubmit={handleSubmit} className="space-y-3">
-          {/* Current password */}
-          <div>
-            <label htmlFor="cp-current" className="text-xs font-medium text-muted-foreground">Current Password</label>
-            <div className="relative mt-1">
-              <input
-                id="cp-current"
-                type={showCurrent ? 'text' : 'password'}
-                value={currentPwd}
-                onChange={(e) => setCurrentPwd(e.target.value)}
-                autoComplete="current-password"
-                className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm pr-8 focus:outline-hidden focus:ring-1 focus:ring-primary"
-              />
-              <button type="button" onClick={() => setShowCurrent(!showCurrent)} aria-label={showCurrent ? 'Hide current password' : 'Show current password'} className="absolute right-2 top-1.5 text-muted-foreground hover:text-foreground">
-                {showCurrent ? <EyeOff className="w-3.5 h-3.5" aria-hidden="true" /> : <Eye className="w-3.5 h-3.5" aria-hidden="true" />}
-              </button>
-            </div>
-          </div>
-
-          {/* New password */}
-          <div>
-            <label htmlFor="cp-new" className="text-xs font-medium text-muted-foreground">New Password</label>
-            <div className="relative mt-1">
-              <input
-                id="cp-new"
-                type={showNew ? 'text' : 'password'}
-                value={newPwd}
-                onChange={(e) => setNewPwd(e.target.value)}
-                autoComplete="new-password"
-                aria-describedby="cp-new-rules"
-                className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm pr-8 focus:outline-hidden focus:ring-1 focus:ring-primary"
-              />
-              <button type="button" onClick={() => setShowNew(!showNew)} aria-label={showNew ? 'Hide new password' : 'Show new password'} className="absolute right-2 top-1.5 text-muted-foreground hover:text-foreground">
-                {showNew ? <EyeOff className="w-3.5 h-3.5" aria-hidden="true" /> : <Eye className="w-3.5 h-3.5" aria-hidden="true" />}
-              </button>
-            </div>
-            {newPwd.length > 0 && (
-              <div id="cp-new-rules" className="flex gap-2 mt-1.5" aria-live="polite">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${hasLength ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'}`}>
-                  {hasLength ? '✓' : '✗'} 8+ chars
-                </span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${hasNumber ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'}`}>
-                  {hasNumber ? '✓' : '✗'} number
-                </span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${hasSpecial ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'}`}>
-                  {hasSpecial ? '✓' : '✗'} special
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Confirm */}
-          <div>
-            <label htmlFor="cp-confirm" className="text-xs font-medium text-muted-foreground">Confirm New Password</label>
-            <input
-              id="cp-confirm"
-              type="password"
-              value={confirmPwd}
-              onChange={(e) => setConfirmPwd(e.target.value)}
-              autoComplete="new-password"
-              aria-describedby={confirmPwd && confirmPwd !== newPwd ? 'cp-confirm-err' : undefined}
-              aria-invalid={confirmPwd !== '' && confirmPwd !== newPwd}
-              className={`w-full mt-1 bg-background border rounded-md px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-primary ${
-                confirmPwd && confirmPwd !== newPwd ? 'border-destructive' : 'border-border'
-              }`}
-            />
-            {confirmPwd && confirmPwd !== newPwd && (
-              <p id="cp-confirm-err" className="text-[10px] text-destructive mt-0.5" role="alert">Passwords do not match</p>
-            )}
-          </div>
-
-          <button
-            type="submit"
-            disabled={!isValid || !hasNumber || !hasSpecial || saving}
-            className="w-full py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {saving ? 'Changing...' : 'Change Password'}
-          </button>
-        </form>
-      </CardContent>
-    </Card>
+        <ul id={`${id}-rules`} aria-label="Password rules" className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          {rules.map(([met, text]) => (
+            <li key={text} className={newPwd === '' ? 'text-ink-muted' : met ? 'text-success' : 'text-danger'}>
+              {newPwd === '' ? 'Needs' : met ? 'Has' : 'Missing'} {text}
+            </li>
+          ))}
+        </ul>
+        {mismatch && <p id={`${id}-mismatch`} className="text-sm text-danger">The two new passwords do not match.</p>}
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" variant="primary" disabled={!isValid || saving}>{saving ? 'Changing...' : 'Change Password'}</Button>
+          <p role="status" className={cn('text-sm', result?.ok ? 'text-success' : 'text-danger')}>{result?.text}</p>
+        </div>
+      </form>
+    </Section>
   );
 }

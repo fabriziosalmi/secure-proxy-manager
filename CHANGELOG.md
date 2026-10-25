@@ -13,6 +13,93 @@ a `### Removed` or `### Changed` heading with the phrase **BREAKING** and the
 changes affecting it. Retired routes answer `410 Gone` naming their replacement
 for at least one minor release before disappearing.
 
+## [Unreleased]
+
+### Removed
+
+- **BREAKING** (`X-API-Version: 1`): `GET /api/security/score` answers
+  `410 Gone`. The score counted four settings that nothing enforced:
+  `enable_ip_blacklist`, `enable_domain_blacklist`, `block_direct_ip` and
+  `enable_waf`. Squid always denies the IP and domain blacklists and direct-IP
+  URLs, and the WAF is always on the ICAP path, so a working install scored
+  low and flipping a switch raised the score without changing anything. No
+  page showed it. The MCP tool `spm_security_score` is removed with it.
+- **Deprecated/Removed: the settings `enable_ip_blacklist`,
+  `enable_domain_blacklist`, `enable_waf` and `block_direct_ip`, which nothing
+  enforced**, and the settings `tailscale_enabled`, `tailscale_auth_key`,
+  `tailscale_hostname`, `ddns_enabled`, `ddns_provider`, `ddns_domain`,
+  `ddns_token` and `auth_method`, which nothing read (Tailscale is configured
+  with `TS_AUTHKEY` in `.env`; the proxy only uses basic authentication). The
+  Tailscale and DDNS tokens were stored in clear. Schema version 6 deletes
+  their rows. `POST /api/settings` skips them as it skips the other keys it
+  does not write (the rest of the request is saved), `PUT /api/settings/{name}`
+  answers 400 for them, and a restore lists them as not restored.
+
+### Added
+
+- `POST /api/notifications/test` reports each channel's delivery
+  (`data.channels`: channel, delivered, HTTP status, reason) and whether alerts
+  are switched on (`data.notifications_enabled`). It tests every channel that
+  has all of its settings stored, also while alerts are off. Additive.
+- `webhook_bearer_token`: an optional secret sent as
+  `Authorization: Bearer <token>` with every webhook delivery, stored
+  encrypted and never returned, like the other channel secrets.
+- `GET /api/waf/heuristics`: which heuristics the running WAF applies, or why
+  the WAF could not be asked.
+- `GET /api/logs` filters on the server (`source_ip`, `outcome`, `reason`,
+  `q`, `include_internal`, `before_id`, `sort=id`), and each row carries
+  `reason_label`, `internal` and `kind`; `GET /api/logs/export` streams the
+  same filters as CSV. Additive. (#429)
+- `GET /api/audit-logs?category=changes|signins` filters on the server and
+  reports `meta.retention_days`. Additive. (#431)
+- `POST /api/settings` answers a refused request with every refused value in
+  `errors` (`{key: message}`); `detail` still names the first. A save that
+  carries WAF heuristics reports what the WAF did with each in `data.waf`.
+
+### Changed
+
+- Notifications are no longer delivered to loopback, link-local, multicast
+  or unspecified addresses, or into the networks the backend is attached to
+  (the WAF, the proxy and the other containers of the stack). LAN, Tailscale
+  and public addresses are delivered to as before. Redirects are not followed.
+- New validation in `POST /api/settings`: `cache_size` (1 to 9999999 MB) and
+  `memory_cache` (1 to 999999 MB), the limits the proxy's generator reads;
+  `auto_refresh_hours` (1 to 168); `blocked_file_types` (letters and digits);
+  `cache_bypass_domains` (domain names); notification URLs (http or https, no
+  credentials, not this host); the allowed-hours window must end after it
+  starts; content filtering needs at least one extension.
+- Where no value is stored, the backend now stores the defaults the services
+  apply: the WAF heuristics as the shipped compose starts the WAF (sequence
+  validation off), the bandwidth and time values the backend writes when
+  nothing is stored, and a blocked extension list
+  (`exe,bat,cmd,dll,msi,scr,ps1,vbs`) so content filtering that is on blocks
+  something. At startup the backend writes the blocked extensions and cache
+  bypass files from the stored settings when they differ, and asks the proxy
+  to reload. **Upgrade note:** an install that changed `WAF_H_*` in `.env` and
+  never saved the heuristics in Settings now has the compose defaults stored,
+  and the WAF reconciler applies them; set them in Settings, Inspection.
+- **Changed default:** `GET /api/logs`, its CSV export and the MCP tool
+  `spm_recent_logs` leave internal sources (the stack's own traffic) out
+  unless `include_internal=true`; a `source_ip` that names an internal
+  address is still shown, and `meta.internal` counts what was left out.
+  `X-API-Version` stays 1. (#429)
+- With GDPR mode on, the live log feed (`/api/ws/logs`) masks client
+  addresses as `GET /api/logs` does; it carried the full address.
+- The backend's proxy health probe opens and closes a connection instead of
+  sending `GET` to Squid, and Squid does not log a connection that sends no
+  request: the access log no longer gains a `NONE_NONE/400` row every 30
+  seconds per open tab. `proxy_status` now means the port accepts
+  connections. (#429)
+- Removing a list entry writes `remove_<list>` with the entry as target;
+  rows written before as `delete_ip` or `delete_domain` with `id=N` are still
+  read by the Audit page. Every list change now writes an audit row with its
+  counts. (#431)
+- `POST /api/egress-allowlist` and restore refuse `*.name`, which Squid
+  matches against nothing, and name the `.name` form. **Upgrade note:** schema
+  version 5 rewrites stored `*.name` egress entries to `.name` (one that is
+  already listed as `.name` is removed) and writes one audit row by `system`
+  naming them. (#431)
+
 ## [3.14.3] - 2026-10-25
 
 Fixes three defects found on a test deployment right after 3.14.2, two of

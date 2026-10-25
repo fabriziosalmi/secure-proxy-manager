@@ -74,29 +74,17 @@ func TestSecurityHandlers_ClearRateLimit(t *testing.T) {
 	}
 }
 
-func TestSecurityHandlers_Score(t *testing.T) {
-	db, _, _, cleanup := setupTestDB(t)
+// The score counted settings nothing enforced. The route is retired and says
+// so, as retired routes do, instead of answering 404 or a score.
+func TestSecurityScoreIsGone(t *testing.T) {
+	db, svc, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	h := NewSecurityHandlers(db, nil, nil, nil)
-
-	// Set some settings
-	_, _ = db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES ('enable_waf', 'true')")
-	_, _ = db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES ('enable_ip_blacklist', 'true')")
-
-	r := httptest.NewRequest("GET", "/api/security/score", nil)
+	r := chi.NewRouter()
+	NewSecurityHandlers(db, svc, cfg, nil).Register(r, func(next http.Handler) http.Handler { return next })
 	w := httptest.NewRecorder()
-	h.Score(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected 200, got %d", w.Code)
-	}
-
-	var resp map[string]any
-	_ = json.NewDecoder(w.Body).Decode(&resp)
-	data := resp["data"].(map[string]any)
-	score := data["score"].(float64)
-	if score < 40 { // 25 (WAF) + 15 (IP Blacklist) = 40
-		t.Errorf("Expected score at least 40, got %f", score)
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/api/security/score", nil))
+	if w.Code != http.StatusGone || !strings.Contains(w.Body.String(), "removed") {
+		t.Errorf("GET /api/security/score: %d %s, want 410 naming the removal", w.Code, w.Body.String())
 	}
 }
 

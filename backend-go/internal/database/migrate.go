@@ -14,8 +14,9 @@ import (
 // Version 3 is a data step: the reconstruction of sinkholed requests
 // (reconstruct.go). Version 4 records where list entries came from
 // (list_sources). Version 5 rewrites "*.name" egress entries to ".name"
-// (egress_wildcards.go).
-const schemaVersion = 5
+// (egress_wildcards.go). Version 6 deletes the settings nothing reads
+// (RetiredSettings, retired.go).
+const schemaVersion = 6
 
 // applyVersionedMigrations runs the steps a database has not seen yet.
 //
@@ -50,6 +51,11 @@ func applyVersionedMigrations(db *sql.DB) error {
 	if v < 5 {
 		if err := rewriteEgressWildcards(db); err != nil {
 			return fmt.Errorf("schema version 5: %w", err)
+		}
+	}
+	if v < 6 {
+		if err := deleteRetiredSettings(db); err != nil {
+			return fmt.Errorf("schema version 6: %w", err)
 		}
 	}
 	return nil

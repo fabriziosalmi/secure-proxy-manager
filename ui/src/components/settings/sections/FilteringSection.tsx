@@ -11,6 +11,7 @@ import { TextField, ToggleRow } from '../fields';
 import { egressTotalQuery } from '../../../lib/queries';
 import { formatCount } from '../../../lib/format';
 import { extensionPatterns } from '../../../lib/settingsValidation';
+import { EGRESS_DENY_HELP, EGRESS_EMPTY_REACH } from '../../../lib/egress';
 import type { SectionForm } from '../sectionForm';
 
 function Code({ children }: { children: string }) {
@@ -35,12 +36,12 @@ export function FilteringSection({ form }: { form: SectionForm }) {
           form={form}
           setting="egress_default_deny"
           label="Only allowlisted destinations"
-          help="Refuses every destination that is not on the egress allowlist. Sources on the IP whitelist are not affected."
+          help={EGRESS_DENY_HELP}
         />
         <p className="mt-3 text-sm text-ink-secondary">{allowlist}</p>
         {denyOn && egress.data === 0 && !form.error('egress_default_deny') && (
           <Notice tone="danger" title="The allowlist is empty" className="mt-3">
-            With this on, every destination is refused. <Link to="/egress" className="font-semibold underline">Add destinations</Link> first.
+            {EGRESS_EMPTY_REACH} <Link to="/egress" className="font-semibold underline">Add destinations</Link> first.
           </Notice>
         )}
       </Section>

@@ -55,8 +55,8 @@ describe('controls have an accessible name', () => {
 
   it('RegexPlayground regex field and period select', () => {
     renderWithProviders(<RegexPlayground />)
-    expect(screen.getByRole('textbox', { name: /regular expression/i })).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: /period/i })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Pattern' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Requests from the' })).toBeInTheDocument()
   })
 
   it('ClientSetup icon-only copy buttons', () => {

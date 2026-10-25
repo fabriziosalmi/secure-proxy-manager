@@ -106,13 +106,15 @@ describe('active item', () => {
 
 describe('service health line', () => {
   it('is healthy only when the status says the proxy is running', () => {
-    expect(summarizeHealth({ proxy_status: 'running' }, 'success')).toMatchObject({ tone: 'success', text: 'All 2 services healthy' })
-    expect(summarizeHealth({ proxy_status: 'error' }, 'success')).toMatchObject({ tone: 'warning', text: '1 of 2 services down', down: ['Proxy'] })
+    // /api/status answers for the backend and the proxy only, so the line
+    // names those two and claims nothing about the other services.
+    expect(summarizeHealth({ proxy_status: 'running' }, 'success')).toMatchObject({ tone: 'success', text: 'Backend and proxy running' })
+    expect(summarizeHealth({ proxy_status: 'error' }, 'success')).toMatchObject({ tone: 'warning', text: 'Proxy not running', down: ['Proxy'] })
   })
 
   it('never says healthy while loading or after a failure', () => {
-    expect(summarizeHealth(undefined, 'pending')).toMatchObject({ tone: 'unknown', text: 'Checking services' })
-    expect(summarizeHealth(undefined, 'error')).toMatchObject({ tone: 'unknown', text: 'Status unknown' })
+    expect(summarizeHealth(undefined, 'pending')).toMatchObject({ tone: 'unknown', text: 'Checking the backend and proxy' })
+    expect(summarizeHealth(undefined, 'error')).toMatchObject({ tone: 'unknown', text: 'Backend not reachable', down: ['Backend'] })
     expect(summarizeHealth(null, 'success')).toMatchObject({ tone: 'unknown', text: 'Status unknown' })
   })
 })
@@ -138,7 +140,7 @@ describe('shell on a wide screen', () => {
     expect(dash.className).toMatch(/bg-accent-subtle/)
     expect(dash.className).toMatch(/text-accent/)
     expect(within(mainNav()).getByRole('link', { name: 'Analytics' })).not.toHaveAttribute('aria-current')
-    await screen.findByText('All 2 services healthy')
+    await screen.findByText('Backend and proxy running')
     await expectNoAxeViolations(container)
   })
 
@@ -206,7 +208,7 @@ describe('shell on a wide screen', () => {
     expect(logs).toHaveAttribute('aria-current', 'page')
     expect(logs).not.toHaveTextContent('Access logs')
     expect(localStorage.getItem('spm.sidebar.collapsed')).toBe('1')
-    await screen.findByText('All 2 services healthy')
+    await screen.findByText('Backend and proxy running')
     await expectNoAxeViolations(container)
 
     unmount()
@@ -236,12 +238,25 @@ describe('shell on a wide screen', () => {
     expect(await screen.findByRole('dialog', { name: 'Global search' })).toBeInTheDocument()
   })
 
-  it('switches the theme from the footer', async () => {
+  // The theme is chosen in Settings, Appearance: the shell has no control
+  // for it, expanded or collapsed.
+  it('has no theme control, expanded or collapsed', async () => {
+    const { unmount } = shell('/')
+    expect(within(sidebar()).queryByRole('group', { name: 'Theme' })).not.toBeInTheDocument()
+    expect(within(sidebar()).queryByRole('button', { name: /theme/i })).not.toBeInTheDocument()
+    await userEvent.click(within(sidebar()).getByRole('button', { name: 'Collapse sidebar' }))
+    expect(within(sidebar()).queryByRole('button', { name: /theme/i })).not.toBeInTheDocument()
+    unmount()
+  })
+
+  it('shows the product mark from logo.svg in the header, not a lucide shield', () => {
     shell('/')
-    const dark = within(sidebar()).getByRole('button', { name: 'Dark theme' })
-    await userEvent.click(dark)
-    expect(dark).toHaveAttribute('aria-pressed', 'true')
-    expect(document.documentElement).toHaveClass('dark')
+    const mark = within(sidebar()).getByTestId('brand-mark')
+    expect(mark.tagName).toBe('IMG')
+    expect(mark).toHaveAttribute('src', '/logo.svg')
+    expect(mark).toHaveAttribute('aria-hidden', 'true')
+    expect(mark).toHaveAttribute('width', '32')
+    expect(sidebar().querySelector('svg.lucide-shield-check, svg.lucide-shield')).toBeNull()
   })
 
   it('signs out from the footer', async () => {
@@ -253,18 +268,18 @@ describe('shell on a wide screen', () => {
   it('reports a proxy that is down in amber with the count', async () => {
     answer({ proxy_status: 'error', version: '3.14.3' })
     shell('/')
-    const line = await within(sidebar()).findByText('1 of 2 services down')
+    const line = await within(sidebar()).findByText('Proxy not running')
     const status = line.closest('[role="status"]') as HTMLElement
     expect(status.className).toMatch(/text-warning/)
     expect(status).toHaveAttribute('title', 'Down: Proxy')
     expect(status.querySelector('[data-tone]')).toHaveAttribute('data-tone', 'warning')
   })
 
-  it('says "Status unknown" when the status request fails, not healthy', async () => {
+  it('says the backend is not reachable when the status request fails, not running', async () => {
     answer('fail')
     shell('/')
-    expect(await within(sidebar()).findByText('Status unknown')).toBeInTheDocument()
-    expect(within(sidebar()).queryByText(/healthy/)).not.toBeInTheDocument()
+    expect(await within(sidebar()).findByText('Backend not reachable')).toBeInTheDocument()
+    expect(within(sidebar()).queryByText(/running|healthy/)).not.toBeInTheDocument()
   })
 })
 
@@ -291,7 +306,7 @@ describe('shell on a small screen', () => {
     expect(dialog.contains(document.activeElement)).toBe(true)
     // The drawer is always expanded, with names visible.
     expect(within(dialog).getByRole('link', { name: 'Access logs' })).toHaveTextContent('Access logs')
-    await within(dialog).findByText('All 2 services healthy')
+    await within(dialog).findByText('Backend and proxy running')
     await expectNoAxeViolations(container)
   })
 

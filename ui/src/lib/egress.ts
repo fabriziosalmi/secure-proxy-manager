@@ -40,3 +40,19 @@ export function egressEntryKind(e: Pick<EgressEntry, 'entry' | 'type'>): string 
   if (e.type === 'cidr') return e.entry.includes('/') ? 'Network' : 'IP address';
   return e.entry.startsWith('.') ? 'Domain and its subdomains' : 'Exact domain';
 }
+
+/**
+ * What egress default-deny leaves reachable, from proxy/generate_squid_conf.sh:
+ * the deny rule is inserted before "http_access allow localnet", after
+ * "http_access allow ip_whitelist" (a dst ACL: the addresses on Allowed IPs
+ * are destinations) and "http_access allow local_dst", where
+ * "acl local_dst dst 10.0.0.0/8 192.168.0.0/16" (172.16.0.0/12 is left out
+ * because Docker's own networks use it). The Egress page says the same.
+ */
+export const LAN_DESTINATIONS = ['10.0.0.0/8', '192.168.0.0/16'];
+
+export const EGRESS_EMPTY_REACH =
+  'With default deny on and an empty list, clients reach only LAN destinations and the addresses on Allowed IPs.';
+
+export const EGRESS_DENY_HELP =
+  `Refuses every destination that is not on the egress allowlist, except LAN destinations (${LAN_DESTINATIONS.join(' and ')}) and the addresses on Allowed IPs, which the proxy allows before this rule.`;

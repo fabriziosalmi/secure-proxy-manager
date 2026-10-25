@@ -206,12 +206,6 @@ export interface TimelineEntry {
   blocked: number;
 }
 
-export interface SecurityScore {
-  score: number;
-  max_score: number;
-  recommendations: string[];
-}
-
 export interface SettingRow {
   setting_name: string;
   setting_value: string;

@@ -6,6 +6,7 @@
  */
 import type { SecretState } from './secrets';
 import type { SectionId } from './settingsMeta';
+import { EGRESS_EMPTY_REACH } from './egress';
 
 export interface AttentionItem {
   id: string;
@@ -51,7 +52,7 @@ export function needsAttention({ values, secrets, proxyStatus, egressTotal }: At
 
   if (on('egress_default_deny')) {
     if (egressTotal === 0) {
-      items.push({ id: 'egress-empty', tone: 'warning', title: 'Every destination is refused', body: 'Only allowlisted destinations is on and the egress allowlist is empty.', section: 'filtering', action: 'Filtering' });
+      items.push({ id: 'egress-empty', tone: 'warning', title: 'Clients reach only LAN destinations and Allowed IPs', body: `Only allowlisted destinations is on and the egress allowlist is empty. ${EGRESS_EMPTY_REACH}`, section: 'filtering', action: 'Filtering' });
     } else if (egressTotal === null) {
       items.push({ id: 'egress-unknown', tone: 'warning', title: 'The egress allowlist could not be read', body: 'Only allowlisted destinations is on, and this page cannot tell how many destinations are allowed.', section: 'filtering', action: 'Filtering' });
     }

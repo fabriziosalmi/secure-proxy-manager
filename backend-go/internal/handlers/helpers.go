@@ -14,7 +14,9 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 )
 
 // writeJSON serialises v as JSON and writes with the given status code.
@@ -127,9 +129,11 @@ var internallyManagedSettings = map[string]bool{
 
 // isWritableSettingKey reports whether a settings key may be written through the
 // bulk-update / restore-config endpoints: it must match the key-name convention,
-// be within the length bound, and not be an internally-managed key.
+// be within the length bound, and not be an internally-managed key or one of
+// database.RetiredSettings (which nothing reads; their rows were deleted by
+// schema version 5, and two of them held tokens in clear).
 func isWritableSettingKey(key string) bool {
-	return len(key) <= 100 && validKeyRE.MatchString(key) && !internallyManagedSettings[key]
+	return len(key) <= 100 && validKeyRE.MatchString(key) && !internallyManagedSettings[key] && !database.IsRetiredSetting(key)
 }
 
 // downloadWithRetry fetches a URL (max maxBytes) with up to 3 retries (exp backoff).
@@ -219,16 +223,6 @@ func extractDomain(dest string) string {
 	return strings.ToLower(d)
 }
 
-// maskIP anonymizes the last octet of an IPv4 address: 192.168.1.7 → 192.168.1.x
-func maskIP(ip string) string {
-	parts := strings.Split(ip, ".")
-	if len(parts) == 4 {
-		parts[3] = "x"
-		return strings.Join(parts, ".")
-	}
-	// IPv6 or other — mask last segment
-	if idx := strings.LastIndex(ip, ":"); idx > 0 {
-		return ip[:idx] + ":x"
-	}
-	return ip
-}
+// maskIP anonymizes the last octet of an IPv4 address: 192.168.1.7 to
+// 192.168.1.x. One implementation with the live log feed (package privacy).
+func maskIP(ip string) string { return privacy.MaskIP(ip) }

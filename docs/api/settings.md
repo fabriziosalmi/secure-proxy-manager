@@ -20,7 +20,7 @@ GET /api/settings
 }
 ```
 
-The alert channel settings are secrets: `webhook_url`, `gotify_url`, `gotify_token`, `teams_webhook_url`, `telegram_bot_token`, `telegram_chat_id`, `ntfy_url` and `ntfy_topic` (`crypto.SensitiveKeys` in the backend). They are stored encrypted and are write-only: their row carries `"secret": true`, an empty `setting_value`, `"is_set": true` when a value is stored, and `"decrypt_failed": true` when the stored value cannot be decrypted with the current key (`ENCRYPTION_KEY`, or the key the backend generated in its state directory when that is unset).
+The alert channel settings are secrets: `webhook_url`, `webhook_bearer_token` (sent as `Authorization: Bearer <token>` with each webhook delivery), `gotify_url`, `gotify_token`, `teams_webhook_url`, `telegram_bot_token`, `telegram_chat_id`, `ntfy_url` and `ntfy_topic` (`crypto.SensitiveKeys` in the backend). They are stored encrypted and are write-only: their row carries `"secret": true`, an empty `setting_value`, `"is_set": true` when a value is stored, and `"decrypt_failed": true` when the stored value cannot be decrypted with the current key (`ENCRYPTION_KEY`, or the key the backend generated in its state directory when that is unset).
 
 ```json
 { "setting_name": "gotify_token", "setting_value": "", "secret": true, "is_set": true }
@@ -58,7 +58,24 @@ The body is a flat object mapping setting names to their new values:
 }
 ```
 
-All updates are applied in a single transaction. The same name and value validation applies as for the single-setting endpoint. A value that fails validation answers `400` with `detail` starting with the key name, for example `"bandwidth_limit_mbps: must be a positive number"`.
+All updates are applied in a single transaction. The same name and value validation applies as for the single-setting endpoint. Every value is checked before anything is written; a request with refused values answers `400` with all of them in `errors` and the first, in key order, in `detail`:
+
+```json
+{
+  "status": "error",
+  "detail": "auto_refresh_hours: must be a whole number of hours, from 1 to 168",
+  "errors": {
+    "auto_refresh_hours": "must be a whole number of hours, from 1 to 168",
+    "cache_size": "must be a whole number of megabytes, from 1 to 9999999"
+  }
+}
+```
+
+Values that depend on each other are checked together, with the stored value for the half the request does not carry: with `enable_time_restrictions` on, `time_restriction_end` must be later than `time_restriction_start`; with `enable_content_filtering` on, `blocked_file_types` must list at least one extension. Notification URLs must be http or https, without credentials, and not point at this host; at delivery the backend also refuses any address of the networks it is attached to.
+
+The settings nothing reads (`tailscale_*`, `ddns_*`, `auth_method`, `enable_ip_blacklist`, `enable_domain_blacklist`, `enable_waf`, `block_direct_ip`) are skipped, like internally managed keys: the rest of the request is saved, `PUT` answers `400` for them, and a restore lists them as not restored.
+
+A request that carries WAF heuristics (`waf_h_*`) reports what the running WAF did with each in `data.waf`: `{"pushed": ["waf_h_pii"], "failed": [{"key": "waf_h_sequence", "reason": "..."}]}`.
 
 A secret sent with an empty value keeps its stored value, and the response lists it in `data.kept`. To remove a secret, name it in the `clear` query parameter (comma separated): `POST /api/settings?clear=gotify_token,gotify_url`. Only secrets can be cleared this way, and a key cannot be cleared and given a value in the same request (`400`).
 
@@ -228,7 +245,7 @@ Squid takes its first statistics sample one minute after it starts and prints 0.
 POST /api/maintenance/clear-cache
 ```
 
-Clears the Squid disk cache.
+Writes the clear-cache trigger. Squid has no command that empties its cache: the proxy's watchdog runs `squid -k purge`, which Squid 7.7 answers with its usage text and exit code 1, and then `squid -k shutdown`, after which supervisord starts Squid again. The memory cache is emptied, objects on disk stay, and clients lose their connections during the restart. The answer only says the trigger was written.
 
 ---
 

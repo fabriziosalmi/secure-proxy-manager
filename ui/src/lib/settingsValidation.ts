@@ -23,8 +23,8 @@ const TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 const CHECKS: Record<string, Check> = {
   proxy_port: port,
   // The generator reads at most 7 digits for the disk cache and 6 for memory.
-  cache_size: (v) => (digits(v, 7) ? undefined : 'must be a whole number of megabytes, at most 7 digits'),
-  memory_cache: (v) => (digits(v, 6) ? undefined : 'must be a whole number of megabytes, at most 6 digits'),
+  cache_size: (v) => (digits(v, 7) && Number(v) >= 1 ? undefined : 'must be a whole number of megabytes, from 1 to 9999999'),
+  memory_cache: (v) => (digits(v, 6) && Number(v) >= 1 ? undefined : 'must be a whole number of megabytes, from 1 to 999999'),
   extra_ssl_ports: (v) => {
     if (!/^\s*([0-9]{1,5}([ ,]+[0-9]{1,5})*)?\s*$/.test(v)) return 'must be port numbers separated by commas or spaces';
     for (const p of v.split(/[ ,]+/).filter(Boolean)) if (port(p, {})) return 'must be port numbers separated by commas or spaces';
@@ -65,7 +65,50 @@ const CHECKS: Record<string, Check> = {
     const bad = items.find((s) => !/^\.?[a-z0-9]{1,10}$/i.test(s));
     return bad ? `"${bad}" is not a file extension: use letters and digits only, such as exe` : undefined;
   },
+  cache_bypass_domains: (v) => {
+    const bad = v.split(',').map((s) => s.trim()).filter(Boolean).find((d) => !DOMAIN.test(d.replace(/^\*?\./, '')));
+    return bad ? `"${bad}" is not a domain name, such as bank.example.com` : undefined;
+  },
 };
+
+// A DNS name as netguard.IsValidHostname accepts it.
+const DOMAIN = /^(?=.{1,253}$)([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?)(\.[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?)*$/i;
+
+/** The alert destinations the backend posts to (netguard.CheckNotifyURL). */
+const NOTIFY_URL_KEYS = new Set(['webhook_url', 'gotify_url', 'teams_webhook_url', 'ntfy_url']);
+
+/**
+ * The same shape check the backend applies to a notification URL when it is
+ * saved: http or https, a host, no credentials, not this host. A name that
+ * resolves inside the stack is refused at delivery, where the address is known.
+ */
+export function checkNotifyUrl(raw: string): string | undefined {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return 'must be an http or https URL, such as https://alerts.example.com/hook';
+  }
+  if ((u.protocol !== 'http:' && u.protocol !== 'https:') || !u.hostname) return 'must be an http or https URL, such as https://alerts.example.com/hook';
+  if (u.username || u.password) return 'must not carry a user name or password: use the token setting instead';
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host === 'localhost' || host.endsWith('.localhost')) return 'must not point at this host: use an address the backend can reach on your network';
+  if (/^127\./.test(host) || host === '::1' || /^169\.254\./.test(host) || /^fe80:/i.test(host) || host === '0.0.0.0' || /^0\./.test(host) || /^2(2[4-9]|3[0-9])\./.test(host)) {
+    return 'must not point at a loopback, link-local or multicast address: use an address the backend can reach on your network';
+  }
+  return undefined;
+}
+
+/** The problems in the secrets a section is about to send (a typed URL only). */
+export function validateSecrets(id: SectionId, typed: Record<string, string>): Record<string, string> {
+  const errors: Record<string, string> = {};
+  for (const [key, value] of Object.entries(typed)) {
+    if (!SECTION_KEYS[id].includes(key) || !NOTIFY_URL_KEYS.has(key)) continue;
+    const msg = checkNotifyUrl(value);
+    if (msg) errors[key] = msg;
+  }
+  return errors;
+}
 
 /** Parameters a toggle needs: with the toggle on, the value must be there. */
 const REQUIRED_WHEN: Record<string, string> = {
@@ -93,6 +136,21 @@ export function validateSection(id: SectionId, values: Record<string, string>, s
     if (msg) errors[key] = msg;
   }
   return errors;
+}
+
+/**
+ * A backend 400 lists every key it refused in errors {key: message}; an
+ * older backend names only the first in detail. Null when neither names one.
+ */
+export function parseFieldErrors(data: unknown): Record<string, string> | null {
+  const d = data as { errors?: unknown; detail?: unknown } | null | undefined;
+  if (d && d.errors && typeof d.errors === 'object') {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(d.errors as Record<string, unknown>)) if (typeof v === 'string') out[k] = v;
+    if (Object.keys(out).length) return out;
+  }
+  const one = parseFieldError(d?.detail);
+  return one ? { [one.key]: one.message } : null;
 }
 
 /**

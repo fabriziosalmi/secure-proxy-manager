@@ -42,6 +42,12 @@ describe('needsAttention', () => {
     expect(ids(input({ values: on, egressTotal: 3 }))).not.toContain('warning:egress-empty')
     expect(ids(input({ values: on, egressTotal: null }))).toContain('warning:egress-unknown')
     expect(ids(input({ values: fresh, egressTotal: 0 }))).not.toContain('warning:egress-empty')
+    // What stays reachable, from the generator's rule order (lib/egress.ts):
+    // local_dst and ip_whitelist are allowed before the egress deny.
+    const item = needsAttention(input({ values: on, egressTotal: 0 })).find((a) => a.id === 'egress-empty')!
+    expect(item.title).toBe('Clients reach only LAN destinations and Allowed IPs')
+    expect(item.body).toContain('With default deny on and an empty list, clients reach only LAN destinations and the addresses on Allowed IPs.')
+    expect(item.body).not.toMatch(/every destination/i)
   })
 
   it('warns when download blocking is on with no extension', () => {

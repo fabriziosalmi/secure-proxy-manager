@@ -5,7 +5,8 @@
  * Header: product name, the host the UI is served from and the backend
  * version (GET /api/health). Search opens the GlobalSearch dialog through
  * its own shortcut. Footer: one line of service health from GET /api/status,
- * the theme switch, sign out and, on wide screens, the collapse button.
+ * sign out and, on wide screens, the collapse button. The theme is chosen in
+ * Settings, Appearance, not here.
  *
  * collapsed draws icons only (72px): labels are hidden, every link keeps
  * its aria-label and gets a tooltip. drawer is the small-screen variant,
@@ -16,21 +17,13 @@
 import { useId } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Search, LogOut, Sun, Moon, SunMoon, PanelLeftClose, PanelLeftOpen, ShieldCheck, X } from 'lucide-react';
-import { useTheme, type Theme } from '../ThemeProvider';
+import { Search, LogOut, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import { healthQuery, statusQuery } from '../../lib/queries';
 import { cn, safeExternalUrl } from '../../lib/utils';
 import { IconButton, Button } from '../ui/Button';
-import { SegmentedControl } from '../ui/SegmentedControl';
 import { NAV_GROUPS, isActivePath, summarizeHealth, type HealthTone } from './nav';
 
 export const SIDEBAR_ID = 'app-sidebar';
-
-const THEMES: { value: Theme; label: string; icon: typeof Sun }[] = [
-  { value: 'light', label: 'Light theme', icon: Sun },
-  { value: 'dark', label: 'Dark theme', icon: Moon },
-  { value: 'auto', label: 'Theme follows the system', icon: SunMoon },
-];
 
 const DOT: Record<HealthTone, string> = {
   success: 'bg-success-strong',
@@ -65,7 +58,6 @@ export interface SidebarProps {
 }
 
 export function Sidebar({ collapsed = false, onToggleCollapsed, drawer, onClose, onNavigate, onLogout }: SidebarProps) {
-  const { theme, setTheme } = useTheme();
   const location = useLocation();
   const groupId = useId();
   const status = useQuery({ ...statusQuery, refetchInterval: 30_000, staleTime: 10_000 });
@@ -79,8 +71,6 @@ export function Sidebar({ collapsed = false, onToggleCollapsed, drawer, onClose,
   const shortcut = isMac() ? '⌘K' : 'Ctrl K';
   const update = status.data?.update_available;
   const updateUrl = safeExternalUrl(status.data?.update_url);
-  const nextTheme = THEMES[(THEMES.findIndex((t) => t.value === theme) + 1) % THEMES.length];
-  const currentTheme = THEMES.find((t) => t.value === theme) ?? THEMES[2];
 
   return (
     <div
@@ -94,9 +84,9 @@ export function Sidebar({ collapsed = false, onToggleCollapsed, drawer, onClose,
         className={cn('flex h-16 shrink-0 items-center gap-2.5 border-b border-line-subtle', collapsed ? 'justify-center px-0' : 'px-4')}
         title={collapsed ? `Secure Proxy Manager, ${host}, ${version}` : undefined}
       >
-        <div aria-hidden="true" className="flex h-8 w-8 flex-none items-center justify-center rounded-control bg-ink text-surface">
-          <ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} />
-        </div>
+        {/* The product mark, the same file as the favicon. It is drawn on its
+            own dark disc with a blue ring, so it needs no tile behind it. */}
+        <img src="/logo.svg" alt="" aria-hidden="true" width={32} height={32} data-testid="brand-mark" className="h-8 w-8 flex-none" />
         {collapsed ? (
           <span className="sr-only">Secure Proxy Manager, {host}, {version}</span>
         ) : (
@@ -196,27 +186,6 @@ export function Sidebar({ collapsed = false, onToggleCollapsed, drawer, onClose,
               Update available: {update}
             </a>
           )
-        )}
-
-        {collapsed ? (
-          <IconButton
-            aria-label={`${currentTheme.label}. Switch to ${nextTheme.label.toLowerCase()}`}
-            title={currentTheme.label}
-            icon={<currentTheme.icon />}
-            onClick={() => setTheme(nextTheme.value)}
-            className="self-center"
-          />
-        ) : (
-          <div className="flex items-center justify-between gap-2 px-2">
-            <span aria-hidden="true" className="text-xs text-ink-muted">Theme</span>
-            <SegmentedControl
-              label="Theme"
-              size="sm"
-              value={theme}
-              onChange={setTheme}
-              options={THEMES.map((t) => ({ value: t.value, icon: <t.icon />, ariaLabel: t.label }))}
-            />
-          </div>
         )}
 
         {onLogout && (

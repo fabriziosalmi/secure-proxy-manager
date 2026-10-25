@@ -5,7 +5,7 @@ import type { SettingRow } from '../types';
 import { formatClock } from './format';
 import { describeApply, type ApplyOutcome } from './reload';
 import { secretPayload, type SecretEdit } from './secrets';
-import { APPLY_HELP, APPLY_MODE, SECTION_KEYS, isSecretKey, type ApplyMode, type SectionId } from './settingsMeta';
+import { APPLY_HELP, APPLY_MODE, SECTION_KEYS, fieldLabel as labelOf, isSecretKey, type ApplyMode, type SectionId } from './settingsMeta';
 
 export interface SectionRequest {
   /** The keys in the body that are not secrets. */
@@ -66,9 +66,22 @@ export function rowsAfterSave(rows: SettingRow[] | null | undefined, req: Pick<S
   return next;
 }
 
+/** What the running WAF did with the heuristic toggles of a save (data.waf). */
+export interface WafPush {
+  pushed: string[];
+  failed: { key: string; reason: string }[];
+}
+
+/** data.waf from a save response; undefined when the backend sent none. */
+export function wafPushOf(data: unknown): WafPush | undefined {
+  const w = (data as { waf?: Partial<WafPush> } | undefined)?.waf;
+  if (!w || !Array.isArray(w.pushed) || !Array.isArray(w.failed)) return undefined;
+  return { pushed: w.pushed, failed: w.failed };
+}
+
 /** The outcome of a section's last Save, as the page reports it. */
 export type SaveResult =
-  | { kind: 'saved'; at: Date; modes: ApplyMode[]; apply?: ApplyOutcome; failedFiles: string[] }
+  | { kind: 'saved'; at: Date; modes: ApplyMode[]; apply?: ApplyOutcome; failedFiles: string[]; waf?: WafPush }
   | { kind: 'invalid'; fields: string[]; outside?: string }
   | { kind: 'error'; message: string };
 
@@ -96,7 +109,22 @@ export function describeSave(result: SaveResult): { tone: Tone; lines: string[];
   } else {
     lines.push(`Saved at ${formatClock(result.at)}.`);
   }
-  for (const mode of ORDER) if (result.modes.includes(mode)) lines.push(APPLY_HELP[mode]);
+  for (const mode of ORDER) {
+    if (!result.modes.includes(mode)) continue;
+    if (mode === 'waf' && result.waf) {
+      const w = result.waf;
+      if (w.failed.length === 0) {
+        lines.push(`Applied to the running WAF (${w.pushed.length === 1 ? '1 heuristic' : `${w.pushed.length} heuristics`}).`);
+      } else {
+        tone = tone === 'danger' ? 'danger' : 'warning';
+        const reasons = [...new Set(w.failed.map((f) => f.reason))];
+        lines.push(`Saved, but the running WAF did not take ${w.failed.map((f) => labelOf(f.key)).join(', ')}: ${reasons.join('; ')}.`);
+        lines.push('The backend sends the stored values again every 30 seconds until the WAF takes them.');
+      }
+      continue;
+    }
+    lines.push(APPLY_HELP[mode]);
+  }
   if (result.failedFiles.length) {
     tone = tone === 'danger' ? 'danger' : 'warning';
     lines.push(`These proxy configuration files could not be written, so the proxy still uses the previous ones: ${result.failedFiles.join(', ')}.`);

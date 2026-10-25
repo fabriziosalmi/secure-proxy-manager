@@ -7,6 +7,7 @@ import type { SettingRow } from '../types';
  */
 export const SECRET_KEYS: ReadonlySet<string> = new Set([
   'webhook_url',
+  'webhook_bearer_token',
   'gotify_url',
   'gotify_token',
   'teams_webhook_url',

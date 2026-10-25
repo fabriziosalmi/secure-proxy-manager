@@ -20,6 +20,7 @@
  *   MOCK_LISTS_URL    http://mock-lists:8080   (SSRF-blocked in Docker — expected 403)
  */
 
+import { appendFileSync } from 'node:fs';
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -386,14 +387,13 @@ test.describe('API — logs, stats, security score', () => {
     expect(res.ok()).toBeTruthy();
   });
 
-  test('GET /api/security/score returns numeric score', async ({ request }) => {
+  test('GET /api/security/score is retired and says so', async ({ request }) => {
+    // It scored settings nothing enforced; retired routes answer 410.
     const res = await request.get(`${API_URL}/api/security/score`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    expect(res.ok()).toBeTruthy();
-    const body = (await res.json()) as { data?: { score: number } };
-    const score = body.data?.score ?? (body as Record<string, unknown>)['score'];
-    expect(typeof score).toBe('number');
+    expect(res.status()).toBe(410);
+    expect(((await res.json()) as { detail?: string }).detail).toContain('removed');
   });
 
   test('GET /api/cache/statistics returns data', async ({ request }) => {
@@ -1150,7 +1150,7 @@ test.describe('UI — Settings page', () => {
     await expect(nav.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
     for (const [label, path] of [
       ['Clients and access', 'access'], ['Filtering', 'filtering'], ['Inspection', 'inspection'], ['Alerts', 'alerts'],
-      ['Logs and privacy', 'logs'], ['Admin and backup', 'admin'], ['Proxy engine', 'engine'],
+      ['Logs and privacy', 'logs'], ['Admin and backup', 'admin'], ['Proxy engine', 'engine'], ['Appearance', 'appearance'],
     ]) {
       await nav.getByRole('link', { name: label }).click();
       await expect(page).toHaveURL(new RegExp(`/settings/${path}$`));
@@ -1164,12 +1164,14 @@ test.describe('UI — Settings page', () => {
   test('a deep link opens its section', async ({ page }) => {
     await page.goto('/settings/engine');
     await expect(page.getByRole('heading', { level: 2, name: 'Proxy engine' })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByLabel('Proxy Port')).toHaveValue('3128');
+    // Shown, not editable: compose and the health check pin it to 3128.
+    await expect(page.getByTestId('proxy-port')).toHaveText('3128');
+    await expect(page.locator('#proxy_port')).toHaveCount(0);
   });
 
   test('a section offers Save only once something changed, and Discard puts the stored value back', async ({ page }) => {
     await page.goto('/settings/logs');
-    const retention = page.getByLabel('Log Retention (days)');
+    const retention = page.getByLabel('Keep logs for (days)');
     await expect(retention).toHaveValue(/^\d+$/, { timeout: 10_000 });
     const stored = await retention.inputValue();
     await expect(page.getByRole('button', { name: 'Save section' })).toHaveCount(0);
@@ -1183,7 +1185,7 @@ test.describe('UI — Settings page', () => {
 
   test('saving a section says where the change takes effect', async ({ page }) => {
     await page.goto('/settings/logs');
-    const retention = page.getByLabel('Log Retention (days)');
+    const retention = page.getByLabel('Keep logs for (days)');
     await expect(retention).toHaveValue(/^\d+$/, { timeout: 10_000 });
     const stored = await retention.inputValue();
     const changed = String(Number(stored) + 1);
@@ -1194,9 +1196,9 @@ test.describe('UI — Settings page', () => {
     await expect(result).toContainText('Applied by the daily log cleanup.');
     // The backend has it: a reload of the page reads it back.
     await page.reload();
-    await expect(page.getByLabel('Log Retention (days)')).toHaveValue(changed, { timeout: 10_000 });
+    await expect(page.getByLabel('Keep logs for (days)')).toHaveValue(changed, { timeout: 10_000 });
     // Put it back for the tests that follow.
-    await page.getByLabel('Log Retention (days)').fill(stored);
+    await page.getByLabel('Keep logs for (days)').fill(stored);
     await page.getByRole('button', { name: 'Save section' }).click();
     await expect(page.getByTestId('save-result')).toContainText(/Saved at/);
   });
@@ -1205,8 +1207,8 @@ test.describe('UI — Settings page', () => {
     // The test stack runs no proxy container, so nothing acknowledges the
     // reload: the page must say so instead of claiming it was applied.
     await page.goto('/settings/engine');
-    const bypass = page.getByLabel(/Cache Bypass Domains/);
-    await expect(page.getByLabel('Proxy Port')).toHaveValue('3128', { timeout: 10_000 });
+    const bypass = page.getByLabel('Never cache these domains');
+    await expect(page.getByTestId('proxy-port')).toHaveText('3128', { timeout: 10_000 });
     const stored = await bypass.inputValue();
     await bypass.fill(stored ? `${stored}, e2e-bypass.test` : 'e2e-bypass.test');
     await page.getByRole('button', { name: 'Save section' }).click();
@@ -1221,11 +1223,12 @@ test.describe('UI — Settings page', () => {
 
   test('a value the proxy cannot use is named with its field, and nothing is saved', async ({ page }) => {
     await page.goto('/settings/engine');
-    await expect(page.getByLabel('Proxy Port')).toHaveValue('3128', { timeout: 10_000 });
-    await page.getByLabel('Memory Cache (MB)').fill('1234567');
+    await expect(page.getByTestId('proxy-port')).toHaveText('3128', { timeout: 10_000 });
+    await page.getByLabel('Memory cache (MB)').fill('1234567');
     await page.getByRole('button', { name: 'Save section' }).click();
-    await expect(page.getByTestId('save-bar').getByRole('status')).toHaveText('Not saved: Memory Cache (MB) needs attention');
-    await expect(page.getByRole('button', { name: /^Memory Cache \(MB\): must be a whole number/ })).toBeVisible();
+    await expect(page.getByTestId('save-bar').getByRole('status')).toHaveText('Not saved: Memory cache (MB) needs attention');
+    await expect(page.getByLabel('Memory cache (MB)')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByText('Must be a whole number of megabytes, from 1 to 999999')).toBeVisible();
     await page.getByRole('button', { name: 'Discard' }).click();
   });
 
@@ -1266,7 +1269,7 @@ test.describe('UI — Settings page', () => {
     await expect(page.getByRole('link', { name: 'Edit the allowlist' })).toHaveAttribute('href', '/egress');
   });
 
-  for (const section of ['overview', 'access', 'filtering']) {
+  for (const section of ['overview', 'access', 'filtering', 'inspection', 'alerts', 'logs', 'admin', 'engine', 'appearance']) {
     test(`/settings/${section} fits a 390 px wide screen without horizontal scrolling`, async ({ page }) => {
       await page.setViewportSize({ width: 390, height: 844 });
       await page.goto(`/settings/${section}`);
@@ -1281,11 +1284,57 @@ test.describe('UI — Settings page', () => {
     });
   }
 
-  test('Backup Config triggers file download', async ({ page }) => {
+  test('Inspection tests a pattern against logged requests and shows the backend error for an invalid one', async ({ page }) => {
+    // A request in the backend's access log (the tailer reads it every
+    // 500 ms), in the proxy's logformat, timestamped now so it is in range.
+    const logPath = process.env.SQUID_LOG_PATH ?? '/logs/access.log';
+    const stamp = (Date.now() / 1000).toFixed(3);
+    appendFileSync(logPath, `${stamp}      4 192.168.88.50 TCP_MISS/200 255 GET http://e2e-pattern.test/files/Sample.TORRENT - HIER_DIRECT/192.168.88.20 application/x-bittorrent - none -\n`);
+    await page.goto('/settings/inspection');
+    await expect(page.getByRole('heading', { level: 3, name: 'Test a pattern' })).toBeVisible({ timeout: 10_000 });
+    const pattern = page.getByRole('textbox', { name: 'Pattern' });
+    // Matched without regard to case, as the WAF compiles custom patterns.
+    await expect(async () => {
+      await pattern.fill('e2e-pattern\\.test/.*\\.torrent$');
+      await page.getByRole('button', { name: 'Test', exact: true }).click();
+      await expect(page.getByRole('list', { name: 'Matching URLs' })).toContainText('http://e2e-pattern.test/files/Sample.TORRENT', { timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
+    await expect(page.getByText(/^Matches \d+ of [\d,]+ requests? in the last 24 hours\.$/)).toBeVisible();
+    // Go's regexp decides, and its message is shown.
+    await pattern.fill('(unclosed');
+    await page.getByRole('button', { name: 'Test', exact: true }).click();
+    await expect(page.getByText('The pattern was not tested')).toBeVisible();
+    await expect(page.getByText(/^invalid regex: error parsing regexp: missing closing \)/)).toBeVisible();
+  });
+
+  test('Alerts sends a test alert and says what happened', async ({ page }) => {
+    await page.goto('/settings/alerts');
+    await page.getByRole('button', { name: 'Send a test alert' }).click();
+    // The test stack has no channel configured and no INTERNAL_ALERT_TOKEN.
+    await expect(page.getByText('No alert channel has all of its settings stored: nothing was sent')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('WAF block alerts do not arrive')).toBeVisible();
+  });
+
+  test('the sidebar has no theme control and Settings, Appearance switches the theme', async ({ page }) => {
+    await expect(page.locator('#app-sidebar').getByRole('group', { name: 'Theme' })).toHaveCount(0);
+    await expect(page.locator('#app-sidebar').getByRole('button', { name: /theme/i })).toHaveCount(0);
+    await expect(page.locator('#app-sidebar img[src="/logo.svg"]')).toBeVisible();
+    await page.goto('/settings/appearance');
+    await page.getByRole('radio', { name: /^Dark/ }).check();
+    await expect(page.locator('html')).toHaveClass(/(^|\s)dark(\s|$)/);
+    await page.reload();
+    await expect(page.getByRole('radio', { name: /^Dark/ })).toBeChecked({ timeout: 10_000 });
+    await expect(page.locator('html')).toHaveClass(/(^|\s)dark(\s|$)/);
+    await page.getByRole('radio', { name: /^Light/ }).check();
+    await expect(page.locator('html')).not.toHaveClass(/(^|\s)dark(\s|$)/);
+    await page.getByRole('radio', { name: /^System/ }).check();
+  });
+
+  test('Download a backup triggers a file download', async ({ page }) => {
     await page.goto('/settings/admin');
     const [download] = await Promise.all([
       page.waitForEvent('download', { timeout: 15_000 }),
-      page.getByRole('button', { name: /Backup Config/i }).click(),
+      page.getByRole('button', { name: 'Download a backup' }).click(),
     ]);
     expect(download.suggestedFilename()).toMatch(/proxy-backup.*\.json/);
   });
@@ -1355,7 +1404,7 @@ test.describe('Full onboarding flow', () => {
     await page.waitForTimeout(1_000);
     const [dl] = await Promise.all([
       page.waitForEvent('download', { timeout: 15_000 }),
-      page.getByRole('button', { name: /Backup Config/i }).click(),
+      page.getByRole('button', { name: 'Download a backup' }).click(),
     ]);
     expect(dl.suggestedFilename()).toMatch(/\.json$/);
 

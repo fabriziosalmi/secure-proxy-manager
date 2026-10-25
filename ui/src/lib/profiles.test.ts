@@ -13,6 +13,13 @@ describe('profiles', () => {
     }
   })
 
+  it('never block .js, which every web page loads', () => {
+    for (const p of PROFILES) {
+      const list = (p.values.blocked_file_types ?? '').split(',').map((s) => s.trim())
+      expect(list, p.name).not.toContain('js')
+    }
+  })
+
   it('carry the parameters of every toggle they turn on', () => {
     for (const p of PROFILES) {
       const v = p.values

@@ -1,9 +1,20 @@
-import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { FlaskConical, Play, AlertTriangle, Check } from 'lucide-react';
-import toast from 'react-hot-toast';
-import { api } from '../lib/api';
+/**
+ * RegexPlayground: tries a WAF custom pattern against the URLs of recent
+ * requests (POST /api/waf/test-rule, TestRule in backend-go). The backend
+ * compiles it with Go's regexp, the dialect the WAF uses, so the page does
+ * not check it with JavaScript's (which refuses (?i), for one); a pattern the
+ * backend refuses shows the backend's message.
+ *
+ * The WAF compiles each custom pattern with (?i) in front
+ * (waf-go/internal/engine/customrules.go), so the test does the same. The
+ * backend scans at most 10,000 requests of the period and returns at most 50
+ * matches, and the page says so when a limit was reached.
+ */
+import { useId, useState } from 'react';
+import { api, getErrorMessage } from '../lib/api';
 import { formatCount } from '../lib/format';
+import { Button } from './ui/Button';
+import { Notice } from './ui/Notice';
 
 interface TestResult {
   regex: string;
@@ -11,124 +22,113 @@ interface TestResult {
   scanned: number;
   matched: number;
   examples: string[];
-  would_block: boolean;
 }
 
-export function RegexPlayground() {
-  const [regex, setRegex] = useState('');
-  const [hours, setHours] = useState(24);
-  const [testing, setTesting] = useState(false);
-  const [result, setResult] = useState<TestResult | null>(null);
+const SCAN_LIMIT = 10_000;
+const MATCH_LIMIT = 50;
+const PERIODS = [
+  { hours: 1, label: 'last hour' },
+  { hours: 6, label: 'last 6 hours' },
+  { hours: 24, label: 'last 24 hours' },
+  { hours: 72, label: 'last 3 days' },
+  { hours: 168, label: 'last 7 days' },
+];
 
-  const handleTest = async () => {
-    if (!regex.trim()) return;
-    // Client-side regex validation to catch invalid patterns early
+type State =
+  | { kind: 'idle' | 'busy' }
+  | { kind: 'done'; result: TestResult }
+  | { kind: 'failed'; message: string };
+
+const CASE = '(?i)';
+
+export function RegexPlayground() {
+  const [pattern, setPattern] = useState('');
+  const [hours, setHours] = useState(24);
+  const [state, setState] = useState<State>({ kind: 'idle' });
+  const id = useId();
+
+  const test = async () => {
+    const p = pattern.trim();
+    if (!p) return;
+    setState({ kind: 'busy' });
     try {
-      new RegExp(regex.trim());
-    } catch {
-      toast.error('Invalid regex syntax');
-      return;
-    }
-    if (regex.trim().length > 1024) {
-      toast.error('Regex too long (max 1024 characters)');
-      return;
-    }
-    setTesting(true);
-    setResult(null);
-    try {
-      const res = await api.post('waf/test-rule', { regex: regex.trim(), hours });
-      setResult(res.data?.data ?? null);
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Test failed';
-      toast.error(msg);
-    } finally {
-      setTesting(false);
+      const res = await api.post('waf/test-rule', { regex: CASE + p, hours });
+      const r = res.data?.data as TestResult | undefined;
+      if (!r || typeof r.scanned !== 'number') throw new Error('the backend sent no result');
+      setState({ kind: 'done', result: r });
+    } catch (err) {
+      // The message names the pattern as the backend compiled it, with the
+      // case flag the page added; the operator typed it without.
+      setState({ kind: 'failed', message: getErrorMessage(err, 'the test did not run').split(CASE).join('') });
     }
   };
 
-  return (
-    <Card>
-      <CardHeader className="p-3 pb-0">
-        <CardTitle className="text-sm flex items-center gap-1.5">
-          <FlaskConical className="w-3.5 h-3.5 text-purple-500" />
-          Regex Playground
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-3 pt-2">
-        <p className="text-[10px] text-muted-foreground mb-2">
-          Test a regex against real proxy traffic before deploying as a WAF rule.
-        </p>
+  let summary = '';
+  if (state.kind === 'done') {
+    const r = state.result;
+    const matched = r.matched >= MATCH_LIMIT ? `at least ${formatCount(MATCH_LIMIT)}` : formatCount(r.matched);
+    const scanned = r.scanned >= SCAN_LIMIT ? `${formatCount(r.scanned)} requests (the most one test reads)` : `${r.scanned === 1 ? '1 request' : `${formatCount(r.scanned)} requests`}`;
+    const period = PERIODS.find((x) => x.hours === r.hours)?.label ?? `last ${r.hours} hours`;
+    summary = r.scanned === 0
+      ? `No request in the ${period} to test against.`
+      : `Matches ${matched} of ${scanned} in the ${period}.`;
+  }
 
-        <div className="flex gap-2 mb-2">
+  return (
+    <div className="flex flex-col gap-3">
+      <form
+        className="flex flex-wrap items-end gap-3"
+        onSubmit={(e) => { e.preventDefault(); void test(); }}
+      >
+        <div className="flex min-w-0 flex-[1_1_240px] flex-col gap-1.5">
+          <label htmlFor={`${id}-pattern`} className="text-sm font-medium text-ink">Pattern</label>
           <input
-            type="text"
-            value={regex}
-            onChange={(e) => setRegex(e.target.value)}
-            aria-label="Regular expression to test"
-            placeholder="e.g. (?i)\.torrent$"
-            className="flex-1 bg-background border border-border rounded-md px-2 py-1.5 text-xs font-mono focus:outline-hidden focus:ring-1 focus:ring-primary"
-            onKeyDown={(e) => e.key === 'Enter' && handleTest()}
+            id={`${id}-pattern`}
+            value={pattern}
+            onChange={(e) => setPattern(e.target.value)}
+            placeholder="\.torrent$"
+            spellCheck={false}
+            maxLength={1020}
+            aria-describedby={`${id}-hint`}
+            className="h-9 w-full min-w-0 rounded-control border border-line-strong bg-surface px-3 font-mono text-sm text-ink placeholder:text-ink-subtle focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
           />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={`${id}-period`} className="text-sm font-medium text-ink">Requests from the</label>
           <select
-            aria-label="Period to test against"
+            id={`${id}-period`}
             value={hours}
             onChange={(e) => setHours(Number(e.target.value))}
-            className="bg-background border border-border rounded-md px-2 py-1.5 text-xs focus:outline-hidden focus:ring-1 focus:ring-primary"
+            className="h-9 rounded-control border border-line-strong bg-surface px-2 text-sm text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
           >
-            <option value={1}>1h</option>
-            <option value={6}>6h</option>
-            <option value={24}>24h</option>
-            <option value={72}>72h</option>
-            <option value={168}>7d</option>
+            {PERIODS.map((p) => <option key={p.hours} value={p.hours}>{p.label}</option>)}
           </select>
-          <button
-            type="button"
-            onClick={handleTest}
-            disabled={testing || !regex.trim()}
-            className="flex items-center gap-1 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            <Play className="w-3 h-3" />
-            {testing ? 'Testing...' : 'Test'}
-          </button>
         </div>
-
-        {result && (
-          <div className="space-y-2">
-            {/* Summary */}
-            <div className={`flex items-center gap-2 p-2 rounded-lg text-xs ${
-              result.would_block ? 'bg-destructive/10 border border-destructive/20' : 'bg-emerald-500/10 border border-emerald-500/20'
-            }`}>
-              {result.would_block
-                ? <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0" />
-                : <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-              }
-              <span>
-                Scanned <strong>{formatCount(result.scanned)}</strong> URLs,{' '}
-                <strong className={result.would_block ? 'text-destructive' : 'text-emerald-500'}>
-                  {result.matched}
-                </strong> matched
-                {result.would_block ? ': this rule WOULD block traffic!' : ': safe to deploy.'}
-              </span>
-            </div>
-
-            {/* Examples */}
-            {result.examples.length > 0 && (
-              <div className="max-h-[120px] overflow-y-auto space-y-0.5">
-                {result.examples.slice(0, 10).map((url, i) => (
-                  <div key={i} className="text-[10px] font-mono text-muted-foreground truncate px-1" title={url}>
-                    {url}
-                  </div>
+        <Button type="submit" disabled={state.kind === 'busy' || !pattern.trim()}>
+          {state.kind === 'busy' ? 'Testing...' : 'Test'}
+        </Button>
+      </form>
+      <p id={`${id}-hint`} className="text-xs text-ink-muted">
+        Go regular expression syntax, as the WAF reads it, matched without regard to case. It is tested against request URLs only and shows
+        what the pattern matches, not what the WAF would block.
+      </p>
+      <div aria-live="polite">
+        {state.kind === 'failed' && (
+          <Notice tone="danger" title="The pattern was not tested">{state.message}</Notice>
+        )}
+        {state.kind === 'done' && (
+          <div className="flex flex-col gap-2">
+            <p role="status" className="text-sm font-medium text-ink">{summary}</p>
+            {state.result.examples.length > 0 && (
+              <ul aria-label="Matching URLs" className="flex max-h-48 flex-col gap-0.5 overflow-y-auto rounded-control border border-line bg-surface-muted px-3 py-2">
+                {state.result.examples.map((url, i) => (
+                  <li key={`${i}-${url}`} className="truncate font-mono text-[12px] text-ink-secondary" title={url}>{url}</li>
                 ))}
-                {result.matched > 10 && (
-                  <div className="text-[10px] text-muted-foreground px-1">
-                    ... and {result.matched - 10} more
-                  </div>
-                )}
-              </div>
+              </ul>
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

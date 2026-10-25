@@ -101,6 +101,10 @@ func run() error {
 		return fmt.Errorf("startup blacklist export to %s: %w", cfg.ConfigDir, err)
 	}
 	log.Info().Str("config_dir", cfg.ConfigDir).Msg("blacklists exported at startup (db → /config reconciled)")
+	// The same reconciliation for the two list settings the proxy reads from
+	// files (blocked file types, cache bypass domains): a value the database
+	// gained without a save (a seeded default) reaches the proxy too.
+	handlers.NewSettingsHandlers(db, cfg).SyncListArtefacts()
 
 	// Load bcrypt hash from DB so auth uses it instead of plaintext env-var.
 	var dbHash string

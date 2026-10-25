@@ -88,10 +88,13 @@ describe('SetupWizard', () => {
       expect(settings.enable_safesearch).toBe('true')
       expect(settings.enable_content_filtering).toBe('true')
       expect(settings.enable_youtube_restricted).toBe('true')
-      expect(settings.block_direct_ip).toBe('true')
+      expect(settings.blocked_file_types).toBe('exe,bat,cmd,dll,msi,scr,ps1,vbs')
       expect(settings.wizard_completed).toBe('true')
       // balanced strictness overrides
-      expect(settings.waf_block_threshold).toBe('8')
+      expect(settings.waf_h_ghosting).toBe('true')
+      // Keys nothing reads (block_direct_ip, waf_block_threshold) or that are
+      // not a strictness choice (offline mode) are not written.
+      for (const dead of ['block_direct_ip', 'waf_block_threshold', 'enable_offline_mode']) expect(settings).not.toHaveProperty(dead)
     })
   })
 })

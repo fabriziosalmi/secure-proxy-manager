@@ -87,7 +87,7 @@ describe('Settings', () => {
   afterEach(() => { vi.restoreAllMocks() })
 
   describe('sections', () => {
-    it('lists the eight sections in task order and marks the one in the URL', async () => {
+    it('lists the nine sections in task order, Appearance last, and marks the one in the URL', async () => {
       const { container } = renderAt('/settings/access')
       const links = within(sectionNav()).getAllByRole('link')
       expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
@@ -99,6 +99,7 @@ describe('Settings', () => {
         ['Logs and privacy', '/settings/logs'],
         ['Admin and backup', '/settings/admin'],
         ['Proxy engine', '/settings/engine'],
+        ['Appearance', '/settings/appearance'],
       ])
       expect(within(sectionNav()).getByRole('link', { name: 'Clients and access' })).toHaveAttribute('aria-current', 'page')
       expect(within(sectionNav()).getByRole('link', { name: 'Overview' })).not.toHaveAttribute('aria-current')
@@ -110,7 +111,7 @@ describe('Settings', () => {
     it('opens a deep link on its section, with the values from the API', async () => {
       renderAt('/settings/engine')
       expect(screen.getByRole('heading', { level: 2, name: 'Proxy engine' })).toBeInTheDocument()
-      await waitFor(() => expect(screen.getByLabelText('Cache Size (MB)')).toHaveValue(1000))
+      await waitFor(() => expect(screen.getByLabelText('Disk cache (MB)')).toHaveValue('1000'))
     })
 
     it('sends an unknown section to Overview', async () => {
@@ -121,14 +122,14 @@ describe('Settings', () => {
 
     it('keeps what was typed when moving to another section and back', async () => {
       renderAt('/settings/engine')
-      const cache = await screen.findByLabelText('Cache Size (MB)')
-      await waitFor(() => expect(cache).toHaveValue(1000))
+      const cache = await screen.findByLabelText('Disk cache (MB)')
+      await waitFor(() => expect(cache).toHaveValue('1000'))
       fireEvent.change(cache, { target: { value: '4000' } })
       fireEvent.click(within(sectionNav()).getByRole('link', { name: 'Logs and privacy' }))
       expect(screen.getByTestId('where')).toHaveTextContent('/settings/logs')
-      expect(screen.getByLabelText('Log Retention (days)')).toHaveValue(30)
+      expect(screen.getByLabelText('Keep logs for (days)')).toHaveValue('30')
       fireEvent.click(within(sectionNav()).getByRole('link', { name: /^Proxy engine/ }))
-      expect(screen.getByLabelText('Cache Size (MB)')).toHaveValue(4000)
+      expect(screen.getByLabelText('Disk cache (MB)')).toHaveValue('4000')
     })
 
     it('keeps the headings in order', async () => {
@@ -184,8 +185,8 @@ describe('Settings', () => {
 
     async function editCache(value: string) {
       renderAt('/settings/engine')
-      const cache = await screen.findByLabelText('Cache Size (MB)')
-      await waitFor(() => expect(cache).toHaveValue(1000))
+      const cache = await screen.findByLabelText('Disk cache (MB)')
+      await waitFor(() => expect(cache).toHaveValue('1000'))
       fireEvent.change(cache, { target: { value } })
       return cache
     }
@@ -195,17 +196,17 @@ describe('Settings', () => {
       expect(within(bar()).getByRole('status')).toHaveTextContent('1 unsaved change')
       expect(screen.getByTestId('dirty-engine')).toBeInTheDocument()
       expect(within(sectionNav()).getByRole('link', { name: /Proxy engine, 1 unsaved change/ })).toBeInTheDocument()
-      fireEvent.change(screen.getByLabelText('Memory Cache (MB)'), { target: { value: '512' } })
+      fireEvent.change(screen.getByLabelText('Memory cache (MB)'), { target: { value: '512' } })
       expect(within(bar()).getByRole('status')).toHaveTextContent('2 unsaved changes')
       // Typing the stored value back is no change.
-      fireEvent.change(screen.getByLabelText('Memory Cache (MB)'), { target: { value: '256' } })
+      fireEvent.change(screen.getByLabelText('Memory cache (MB)'), { target: { value: '256' } })
       expect(within(bar()).getByRole('status')).toHaveTextContent('1 unsaved change')
     })
 
     it('Discard puts the stored values back and removes the bar', async () => {
       const cache = await editCache('2000')
       fireEvent.click(within(bar()).getByRole('button', { name: 'Discard' }))
-      expect(cache).toHaveValue(1000)
+      expect(cache).toHaveValue('1000')
       expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument()
       expect(screen.queryByTestId('dirty-engine')).not.toBeInTheDocument()
     })
@@ -217,11 +218,12 @@ describe('Settings', () => {
       expect(await screen.findByText(/^Applied to the proxy at \d\d:\d\d\.$/)).toBeInTheDocument()
       expect(settingsPosts()).toHaveLength(1)
       const [, body, config] = settingsPosts()[0]
-      expect(body).toEqual({ proxy_port: '3128', cache_size: '2000', memory_cache: '256' })
+      // proxy_port is shown, not sent: this page does not change it.
+      expect(body).toEqual({ cache_size: '2000', memory_cache: '256' })
       expect(config?.params).toBeUndefined()
       expect(reloads()).toHaveLength(1)
       expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument()
-      expect(screen.getByLabelText('Cache Size (MB)')).toHaveValue(2000)
+      expect(screen.getByLabelText('Disk cache (MB)')).toHaveValue('2000')
     })
 
     it('says so when the proxy did not confirm, and Apply again asks it again', async () => {
@@ -266,16 +268,17 @@ describe('Settings', () => {
       )
       await editCache('2000')
       fireEvent.click(within(bar()).getByRole('button', { name: 'Save section' }))
-      expect(await within(bar()).findByText('Not saved: Cache Size (MB) needs attention')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Cache Size (MB): must be a non-negative number' })).toBeInTheDocument()
-      expect(screen.getByLabelText('Cache Size (MB)')).toHaveValue(2000)
+      expect(await within(bar()).findByText('Not saved: Disk cache (MB) needs attention')).toBeInTheDocument()
+      expect(screen.getByLabelText('Disk cache (MB)')).toHaveAccessibleDescription(/Must be a non-negative number/)
+      expect(screen.getByLabelText('Disk cache (MB)')).toHaveValue('2000')
       expect(reloads()).toHaveLength(0)
     })
 
     it('checks the generator limits before sending', async () => {
       await editCache('12345678')
       fireEvent.click(within(bar()).getByRole('button', { name: 'Save section' }))
-      expect(await screen.findByRole('button', { name: 'Cache Size (MB): must be a whole number of megabytes, at most 7 digits' })).toBeInTheDocument()
+      expect(await screen.findByText('Must be a whole number of megabytes, from 1 to 9999999')).toBeInTheDocument()
+      expect(screen.getByLabelText('Disk cache (MB)')).toHaveAttribute('aria-invalid', 'true')
       expect(settingsPosts()).toHaveLength(0)
     })
 
@@ -309,23 +312,23 @@ describe('Settings', () => {
           <Link to="/logs">Go to logs</Link>
         </SettingsDraftsProvider>,
       )
-      const cache = await screen.findByLabelText('Cache Size (MB)')
-      await waitFor(() => expect(cache).toHaveValue(1000))
+      const cache = await screen.findByLabelText('Disk cache (MB)')
+      await waitFor(() => expect(cache).toHaveValue('1000'))
       fireEvent.change(cache, { target: { value: '2000' } })
       fireEvent.click(screen.getByRole('link', { name: 'Go to logs' }))
-      expect(screen.queryByLabelText('Cache Size (MB)')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Disk cache (MB)')).not.toBeInTheDocument()
       // Closing the tab now asks first.
       const leave = new Event('beforeunload', { cancelable: true })
       window.dispatchEvent(leave)
       expect(leave.defaultPrevented).toBe(true)
       fireEvent.click(screen.getByRole('link', { name: 'Back to settings' }))
-      expect(await screen.findByLabelText('Cache Size (MB)')).toHaveValue(2000)
+      expect(await screen.findByLabelText('Disk cache (MB)')).toHaveValue('2000')
       expect(within(bar()).getByRole('status')).toHaveTextContent('1 unsaved change')
     })
 
     it('lets the tab close without asking when nothing is unsaved', async () => {
       renderAt('/settings/engine')
-      await screen.findByLabelText('Cache Size (MB)')
+      await screen.findByLabelText('Disk cache (MB)')
       const leave = new Event('beforeunload', { cancelable: true })
       window.dispatchEvent(leave)
       expect(leave.defaultPrevented).toBe(false)

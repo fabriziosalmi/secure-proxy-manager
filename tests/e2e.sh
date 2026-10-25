@@ -206,7 +206,7 @@ echo "$ws" | grep -q '"token"' && pass "WebSocket token issued" "" || warn "WS t
 section "B3. DASHBOARD & ANALYTICS (9 endpoints)"
 
 expect_api "Dashboard summary"   GET "/api/dashboard/summary"       "200"
-expect_api "Security score"      GET "/api/security/score"          "200"
+expect_api "Security score (retired)" GET "/api/security/score"     "410"
 expect_api "Cache statistics"    GET "/api/cache/statistics"        "200"
 expect_api "Traffic timeline"    GET "/api/logs/timeline"           "200"
 expect_api "Log stats"           GET "/api/logs/stats"              "200"
@@ -313,10 +313,6 @@ dash=$(auth_get "/api/dashboard/summary")
 for field in total_requests blocked_requests today_requests top_blocked ip_blacklist_count domain_blacklist_count recent_blocks threat_categories; do
     echo "$dash" | grep -q "\"$field\"" && pass "Dashboard field: $field" "present" || fail "Dashboard field: $field" "MISSING"
 done
-
-# Security score must contain score field
-score=$(auth_get "/api/security/score")
-echo "$score" | grep -q '"score"' && pass "Security score body" "has score field" || fail "Security score body" "missing score"
 
 # WAF stats (via dashboard waf field)
 echo "$dash" | grep -q '"waf"' && pass "WAF stats in dashboard" "present" || warn "WAF stats" "null (WAF may be unreachable)"

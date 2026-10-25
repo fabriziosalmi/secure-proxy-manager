@@ -254,9 +254,10 @@ tar czf config.bak.tgz config/ .env
 docker compose up -d
 ```
 
-Settings > Admin and backup has Backup Config, which downloads the settings and the
-five lists, and Restore Config, which reads that file back and says what it applied
-and skipped. The whole database can be exported via the API.
+Settings > Admin and backup has Download a backup, which downloads the settings and
+the five lists, and Restore from a file, which reads that file back and says what it
+applied and skipped. Export the database downloads every table, for analysis; Restore
+cannot read it.
 
 ## Health and testing
 

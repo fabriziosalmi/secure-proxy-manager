@@ -124,12 +124,6 @@ def spm_recent_logs(limit: int = 50) -> Any:
 
 
 @mcp.tool(annotations=READ)
-def spm_security_score() -> Any:
-    """Composite security posture score for the deployment."""
-    return _req("GET", "/api/security/score")
-
-
-@mcp.tool(annotations=READ)
 def spm_waf_categories() -> Any:
     """List the WAF rule categories and whether each is enabled."""
     return _req("GET", "/api/waf/categories")
