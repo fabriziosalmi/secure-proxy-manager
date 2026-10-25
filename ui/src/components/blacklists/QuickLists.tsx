@@ -78,7 +78,7 @@ export function EssentialWhitelist() {
     const dns = await reloadDns();
     setResult(describe(group.label, counts, dns));
     setBusy(null);
-    void queryClient.invalidateQueries({ queryKey: ['whitelist', 'domain'] });
+    void queryClient.invalidateQueries({ queryKey: ['lists'] });
   };
   return (
     <Section title="Add common services" description="Whitelists the domains these services need, so the DNS blocklist never blocks them, then reloads DNS.">
@@ -104,7 +104,7 @@ export function BlockDoh() {
     const dns = await reloadDns();
     setResult(describe('DoH resolvers', counts, dns));
     setBusy(false);
-    void queryClient.invalidateQueries({ queryKey: ['blacklist', 'domain'] });
+    void queryClient.invalidateQueries({ queryKey: ['lists'] });
   };
   return (
     <Section

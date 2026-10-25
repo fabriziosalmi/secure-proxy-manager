@@ -39,6 +39,57 @@ export interface WhitelistEntry {
   added_date: string;
 }
 
+/** Where list entries came from (list_sources); 'unrecorded' names the entries added before sources were recorded. */
+export type SourceKind = 'url' | 'manual' | 'geo' | 'paste' | 'restore' | 'unrecorded';
+
+/** One row of GET /api/{list}: an entry of any of the four lists, with its source (null when not recorded). */
+export interface ListEntry {
+  id: number;
+  ip?: string;
+  domain?: string;
+  description: string | null;
+  added_date: string;
+  source_id?: number | null;
+  source_kind?: SourceKind | null;
+  /** The URL of a URL source, the country code of a geo source. */
+  source?: string | null;
+  /** The Popular list name of a URL source. */
+  source_label?: string | null;
+}
+
+/** One row of GET /api/{list}/sources: a source and the entries it added. */
+export interface ListSource {
+  /** Null for the entries whose source was not recorded. */
+  id: number | null;
+  kind: SourceKind;
+  source: string;
+  label: string;
+  entries: number;
+  first_added: string;
+  last_added: string;
+}
+
+/** What the proxy recorded after merging an IP list for Squid. */
+export interface IpAclStatus {
+  entries: number;
+  /** Networks Squid loads after overlapping and adjacent entries are merged. */
+  networks: number;
+  /** Lines that were not an address or CIDR. */
+  dropped: number;
+  written_at: number;
+}
+
+/** GET /api/blacklists/enforcement. A record the proxy has not written is null. */
+export interface Enforcement {
+  dns_blocklist_limit: number;
+  domain_blacklist_entries: number;
+  /** Blocked domains whose exact name is on the allowed list: left out of what DNS and Squid receive. */
+  domain_blacklist_on_allowed: number;
+  squid_domain_acl: SquidDomainAcl | null;
+  squid_ip_blacklist: IpAclStatus | null;
+  squid_ip_whitelist: IpAclStatus | null;
+}
+
 export interface LogEntry {
   id?: number;
   timestamp: string;

@@ -46,7 +46,8 @@ describe('controls have an accessible name', () => {
 
   it('Blacklists search', () => {
     renderWithProviders(<Blacklists />)
-    expect(screen.getByRole('textbox', { name: /search this list/i })).toBeInTheDocument()
+    // SearchInput is a type="search" field: role searchbox, named per list.
+    expect(screen.getByRole('searchbox', { name: 'Search Blocked IPs' })).toBeInTheDocument()
   })
 
   it('RegexPlayground regex field and period select', () => {
