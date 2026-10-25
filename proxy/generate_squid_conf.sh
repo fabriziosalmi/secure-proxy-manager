@@ -762,8 +762,12 @@ fi
 
 if [ -f /config/content_filtering_enabled ] && [ -f /config/blocked_file_types.txt ] && [ -s /config/blocked_file_types.txt ]; then
     echo "Content filtering ENABLED — blocking file types"
+    # -i: the backend writes each extension as typed (\.exe$), and a server
+    # serves /setup.EXE or /setup.Exe as readily as /setup.exe. Without it the
+    # match was case-sensitive and only the lower-case spelling was refused.
+    # The patterns themselves are unchanged: anchored to the end of the path.
     insert_policy '# ── Content filtering (blocked file extensions) ──
-acl blocked_extensions urlpath_regex "/config/blocked_file_types.txt"
+acl blocked_extensions urlpath_regex -i "/config/blocked_file_types.txt"
 http_access deny blocked_extensions spm_r_content_filter' || { return 1 2>/dev/null || exit 1; }
     echo "Content filtering configured for $(wc -l < /config/blocked_file_types.txt) extensions"
 else

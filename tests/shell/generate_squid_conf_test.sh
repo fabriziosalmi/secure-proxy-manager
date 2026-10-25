@@ -104,6 +104,12 @@ grep -q '^http_access deny !localhost spm_r_proxy_auth !authenticated$' <<<"$con
   || bad "the auth ACL stays last on its rule" "$(grep 'authenticated' <<<"$conf" | grep http_access)"
 grep -qF '%{spm_reason}note %{X-SPM-Reason}adapt::<last_h' <<<"$conf" \
   && ok "the spm logformat carries the reason fields" || bad "the spm logformat carries the reason fields"
+# The backend writes each extension as typed (\.exe$); a server answers
+# /x.EXE as readily, so the ACL must ignore case (squid_acl_matrix_test.sh
+# asserts the 403 for .EXE and .Exe).
+grep -qxF 'acl blocked_extensions urlpath_regex -i "/config/blocked_file_types.txt"' <<<"$conf" \
+  && ok "the blocked-extensions ACL ignores case" \
+  || bad "the blocked-extensions ACL ignores case" "$(grep 'acl blocked_extensions' <<<"$conf")"
 
 echo "── SSL bump ON ──"
 conf="$(generate 'touch /config/ssl_bump_enabled')"
