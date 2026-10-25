@@ -55,7 +55,10 @@ describe('describeAudit', () => {
   })
 
   it('names the sign-ins and keeps a failed one apart', () => {
-    expect(describeAudit(row('login'))).toEqual({ event: 'Signed in', details: null, kind: 'signin' })
+    // Recorded before 3.15.0: no address.
+    expect(describeAudit(row('login'))).toEqual({ event: 'Signed in', details: 'Address not recorded', kind: 'signin' })
+    expect(describeAudit(row('login', '198.51.100.23'))).toEqual({ event: 'Signed in', details: 'From 198.51.100.23', kind: 'signin' })
+    expect(describeAudit(row('logout', '198.51.100.23'))).toEqual({ event: 'Signed out', details: 'From 198.51.100.23', kind: 'signin' })
     expect(describeAudit(row('logout')).kind).toBe('signin')
     expect(describeAudit(row('login_failed', '203.0.113.5', 'invalid credentials'))).toEqual({
       event: 'Sign-in failed', details: 'From 203.0.113.5. invalid credentials', kind: 'signin-failed',
