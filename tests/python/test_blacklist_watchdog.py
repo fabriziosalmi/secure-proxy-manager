@@ -517,6 +517,73 @@ def test_domain_acl_holds_the_list_up_to_the_limit_and_nothing_above(w, tmp_path
     assert not (tmp_path / "squid.txt.tmp").exists()
 
 
+def test_domain_acl_holds_exact_names_once(w, tmp_path, monkeypatch):
+    # "*.name" is a literal host to dstdomain and never matched; dnsmasq blocks
+    # the exact name, so Squid must hold that name.
+    src, dst = tmp_path / "local.txt", tmp_path / "squid.txt"
+    monkeypatch.setattr(w, "DOMAIN_LIST", str(src))
+    monkeypatch.setattr(w, "DOMAIN_ACL", str(dst))
+    monkeypatch.setenv("SPM_SQUID_DOMAIN_ACL_MAX", "10")
+    src.write_text("*.Evil.example\nevil.example\n.other.example\n# note\n\nthird.example # x\n")
+    w.refresh_domain_acl()
+    assert dst.read_text() == "evil.example\nother.example\nthird.example\n"
+
+
+def test_domain_acl_limit_counts_names_after_normalizing(w, tmp_path, monkeypatch):
+    src, dst = tmp_path / "local.txt", tmp_path / "squid.txt"
+    monkeypatch.setattr(w, "DOMAIN_LIST", str(src))
+    monkeypatch.setattr(w, "DOMAIN_ACL", str(dst))
+    monkeypatch.setenv("SPM_SQUID_DOMAIN_ACL_MAX", "1")
+    src.write_text("*.a.example\na.example\n")
+    w.refresh_domain_acl()
+    assert dst.read_text() == "a.example\n"
+
+
+# ── IP ACL files: collapsed, so Squid has no covered entry to warn about ─────
+
+def test_ip_lines_collapse_to_the_covering_networks(w):
+    lines = ["10.200.0.0/16", "10.200.3.7", "10.200.3.0/24", "192.0.2.0/25", "192.0.2.128/25",
+             "198.51.100.9", "198.51.100.9", "2001:db8::/32", "2001:db8::1", "# comment", "",
+             "203.0.113.5 # trailing note", "not-an-ip", "10.0.0.0/33"]
+    out, bad = w.normalize_ip_lines(lines)
+    assert out == ["10.200.0.0/16", "192.0.2.0/24", "198.51.100.9", "203.0.113.5", "2001:db8::/32"]
+    assert bad == 2
+
+
+def test_ip_lines_match_the_same_destinations(w):
+    import ipaddress
+    lines = [f"10.1.{i}.{j}" for i in range(4) for j in range(256)] + ["10.1.4.0/22", "172.16.5.5"]
+    out, _ = w.normalize_ip_lines(lines)
+    before = {ipaddress.ip_address(a) for net in lines for a in ipaddress.ip_network(net)}
+    after = {ipaddress.ip_address(a) for net in out for a in ipaddress.ip_network(net)}
+    assert before == after
+    assert out == ["10.1.0.0/21", "172.16.5.5"]
+
+
+def test_a_synced_ip_list_is_collapsed_and_others_are_copied_verbatim(w, state, tmp_path, monkeypatch):
+    st, _ = state
+    ip_src, ip_dst = tmp_path / "ip_blacklist.txt", tmp_path / "ip_local.txt"
+    dom_src, dom_dst = tmp_path / "dst_allow_domain.txt", tmp_path / "dom_local.txt"
+    ip_src.write_text("10.0.0.0/8\n10.1.2.3\n")
+    dom_src.write_text(".example.com\n")
+    monkeypatch.setattr(w, "IP_ACL_FILES", {str(ip_dst)})
+    monkeypatch.setattr(w, "load_manifest", lambda: None)
+    monkeypatch.setattr(w, "expected_checksum", lambda *a: (True, None))
+    st.mtimes = {str(ip_src): None, str(dom_src): None}
+    assert w.sync_list(st, str(ip_src), str(ip_dst), None)
+    assert w.sync_list(st, str(dom_src), str(dom_dst), None)
+    assert ip_dst.read_text() == "10.0.0.0/8\n"
+    assert dom_dst.read_text() == ".example.com\n"
+
+
+def test_normalize_cli_rewrites_ip_files_and_skips_missing_ones(w, tmp_path):
+    f = tmp_path / "list.txt"
+    f.write_text("192.0.2.1\n192.0.2.0/24\n")
+    assert w.normalize_cli(["ip", str(f), str(tmp_path / "absent.txt")]) == 0
+    assert f.read_text() == "192.0.2.0/24\n"
+    assert w.normalize_cli(["bogus"]) == 2
+
+
 def test_a_list_sync_refreshes_the_domain_acl_before_reconfiguring(w, state, monkeypatch):
     st, _ = state
     calls = []
