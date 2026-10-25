@@ -672,9 +672,17 @@ def empty_dir(path):
     """Remove everything inside path, not path itself: in the compose stack it
     is a volume's mount point. A symlink is removed, never followed. Returns
     the number of files that were below the top level (the stored objects of a
-    ufs/aufs/diskd cache, in its L1/L2 directories)."""
-    objects = sum(len(files) for top, _, files in os.walk(path) if top != path)
-    with os.scandir(path) as it:
+    ufs/aufs/diskd cache, in its L1/L2 directories).
+
+    It checks the path itself, whatever its caller checked: a path that does
+    not resolve to CACHE_ROOT or under it raises ValueError before anything is
+    read or removed."""
+    root = os.path.realpath(CACHE_ROOT)
+    real = os.path.realpath(path)
+    if real != root and not real.startswith(root + os.sep):
+        raise ValueError(f"refusing to empty {path}: it resolves to {real}, outside {root}")
+    objects = sum(len(files) for top, _, files in os.walk(real) if top != real)
+    with os.scandir(real) as it:
         for entry in it:
             if entry.is_dir(follow_symlinks=False):
                 shutil.rmtree(entry.path)
@@ -701,7 +709,7 @@ def _clear_stopped(paths, result):
     result and returns True when both steps worked."""
     try:
         result["objects_removed"] = sum(empty_dir(p) for p in paths)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         result.update(step="empty", detail=f"emptying the cache_dir failed: {exc}")
     # Run even after a failed emptying: whatever is missing is recreated, so
     # Squid can start on what is left.

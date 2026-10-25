@@ -477,6 +477,31 @@ def test_clear_cache_says_when_squid_does_not_start_again(w, cache, monkeypatch)
     assert res["applied"] is False and res["step"] == "start"
 
 
+@pytest.mark.parametrize("target", ["outside", "spool/../outside", "spool/link"])
+def test_empty_dir_refuses_a_path_outside_the_root_on_its_own(w, cache, target):
+    """empty_dir checks the path itself, whatever its caller checked. CACHE_ROOT
+    is tmp_path/spool here (the cache fixture) and every target is in tmp_path."""
+    _, root, outside, _, tmp_path = cache
+    with pytest.raises(ValueError, match="outside"):
+        w.empty_dir(str(tmp_path / target))
+    assert (outside / "keep.txt").read_text() == "not the cache"
+    assert (root / "00" / "00" / "00000001").exists() and (root / "link").is_symlink()
+
+
+def test_a_clear_whose_caller_check_is_bypassed_still_removes_nothing(w, cache, monkeypatch):
+    st, root, outside, _, tmp_path = cache
+    run = _ClearRun(root)
+    monkeypatch.setattr(w.subprocess, "run", run)
+    monkeypatch.setattr(w, "checked_cache_dirs", lambda _dirs: [str(outside)])
+
+    w.check_clear_cache_trigger(st)
+
+    assert (outside / "keep.txt").exists()
+    assert run.names()[-1] == "supervisorctl start"
+    res = _clear_result(tmp_path)
+    assert res["applied"] is False and res["step"] == "empty" and "outside" in res["detail"]
+
+
 def test_an_interrupted_clear_is_resumed_by_the_next_watchdog(w, cache, monkeypatch):
     _, root, _, _, tmp_path = cache
     run = _ClearRun(root)
