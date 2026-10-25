@@ -262,17 +262,24 @@ func mountPprof(r chi.Router, authMW func(http.Handler) http.Handler) {
 	})
 }
 
-// mountWebSocket registers the log feed. The one-time token is negotiated by hand
-// (see the handler), so the upgrader carries no Subprotocols list.
+// wsSubprotocol is the fixed subprotocol the log feed selects. A browser that
+// offers subprotocols fails the handshake unless the server selects one of
+// them (WHATWG WebSocket: the response's Sec-WebSocket-Protocol must be one of
+// the offered values), so selecting none closed every browser connection.
+// The client offers this value next to "spm-ws-token.<token>"; the server
+// selects this one, so the token is never echoed back.
+const wsSubprotocol = "spm.v1"
+
+// mountWebSocket registers the log feed. The token travels as a second
+// offered subprotocol and is read by wsTokenFromSubprotocol.
 func mountWebSocket(r chi.Router, cfg *config.Config, authSvc *auth.Service, hub *ws.Hub) {
 	wsAllowed := make(map[string]struct{}, len(cfg.CORSAllowedOrigins))
 	for _, o := range cfg.CORSAllowedOrigins {
 		wsAllowed[o] = struct{}{}
 	}
 	upgrader := websocket.Upgrader{
-		// No Subprotocols list here: gorilla's selectSubprotocol does exact
-		// matching, and the client's offered value is "spm-ws-token.<token>"
-		// (dynamic). We perform the subprotocol negotiation manually below.
+		// gorilla selects the first of these that the client offered.
+		Subprotocols: []string{wsSubprotocol},
 		CheckOrigin: func(r *http.Request) bool {
 			origin := r.Header.Get("Origin")
 			if origin == "" {
@@ -317,11 +324,12 @@ func mountWebSocket(r chi.Router, cfg *config.Config, authSvc *auth.Service, hub
 			next.ServeHTTP(w, req)
 		})
 	}).Get("/api/ws/logs", func(w http.ResponseWriter, req *http.Request) {
-		// The one-time token arrives in the client's Sec-WebSocket-Protocol
-		// request header and is extracted/validated by the middleware above.
-		// The server intentionally selects NO subprotocol: omitting
-		// Sec-WebSocket-Protocol from the 101 response is valid per RFC 6455
-		// §4.2.2, browsers accept it, and it avoids echoing the token at all.
+		// The one-time token arrives as an offered subprotocol and is checked by
+		// the middleware above; the upgrader selects wsSubprotocol. Selecting
+		// none, as this used to, is accepted by non-browser clients and
+		// rejected by every browser ("Sent non-empty Sec-WebSocket-Protocol
+		// header but no response was received"), so the live log feed never
+		// connected in the UI.
 		conn, err := upgrader.Upgrade(w, req, nil)
 		if err != nil {
 			log.Warn().Err(err).Msg("websocket upgrade failed")

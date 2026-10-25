@@ -136,4 +136,4 @@ Optional default-deny outbound egress. Off by default (the `egress_default_deny`
 
 | Path | Protocol | Description |
 |---|---|---|
-| `/api/ws/logs?token=<token>` | `ws://` or `wss://` | Real-time log stream (single-use token) |
+| `/api/ws/logs` | `ws://` or `wss://` | Real-time log stream; offer the subprotocols `spm.v1` and `spm-ws-token.<token>` (single-use token from `/api/ws-token`) |

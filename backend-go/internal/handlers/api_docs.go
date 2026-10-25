@@ -89,7 +89,7 @@ var routeDocs = map[string]docMeta{
 	"GET /api/traffic/statistics":              {auth: true, desc: "Traffic statistics by time period"},
 	"GET /api/waf/stats":                       {auth: true, desc: "WAF engine stats (inspected, blocked, entropy, categories, cache)"},
 	"GET /api/ws-token":                        {auth: true, desc: "Get one-time WebSocket auth token for live log streaming"},
-	"GET /api/ws/logs":                         {auth: false, desc: "WebSocket: real-time log stream (pass token from /api/ws-token as WebSocket subprotocol: spm-ws-token.<token>)"},
+	"GET /api/ws/logs":                         {auth: false, desc: "WebSocket: real-time log stream (offer the subprotocols spm.v1 and spm-ws-token.<token>, token from /api/ws-token; the server selects spm.v1)"},
 	"GET /health":                              {auth: false, desc: "Legacy health check (simple)"},
 }
 

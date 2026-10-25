@@ -25,8 +25,8 @@ When the request originates from a private or loopback address, the client IP is
 Browsers cannot send custom headers during a WebSocket handshake, so the log streaming endpoint uses a single-use token:
 
 1. The client calls `GET /api/ws-token` with Basic or JWT authentication.
-2. The backend issues a `secrets.token_urlsafe(32)` token, valid for two minutes, single-use.
-3. The client connects to `wss://<host>/api/ws/logs?token=<token>`.
+2. The backend issues a random token (32 bytes from `crypto/rand`, hex), valid for two minutes, single-use.
+3. The client connects to `wss://<host>/api/ws/logs` and offers the token as the subprotocol `spm-ws-token.<token>`, next to `spm.v1`, which the server selects. The token never appears in a URL, so it stays out of access logs, history and Referer headers; a token in the query string is refused.
 4. The token is consumed on the first connection. A second handshake with the same token is rejected.
 
 ## SSRF protection
