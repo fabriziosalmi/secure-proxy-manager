@@ -767,6 +767,11 @@ func sendBlockResponse(w icap.ResponseWriter, category string, score int, eventI
 	if eventID != "" {
 		resp.Header.Set("X-WAF-Event-Id", eventID)
 	}
+	// An ICAP response header, not an HTTP one: Squid logs it from the ICAP
+	// reply (%{X-SPM-Reason}adapt::<last_h in the spm logformat), which only
+	// this service writes, so the backend can tell a WAF block from a Squid
+	// deny (both are a 403) and an upstream server cannot claim to be the WAF.
+	w.Header().Set("X-SPM-Reason", "waf")
 	w.WriteHeader(200, resp, true)
 }
 

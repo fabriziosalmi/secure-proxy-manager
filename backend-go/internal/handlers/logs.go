@@ -67,7 +67,7 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 	// #nosec G202
 	// #nosec G701
 	rows, err := h.db.Query(
-		"SELECT id,timestamp,source_ip,method,destination,status,bytes FROM proxy_logs ORDER BY "+sort+" "+order+" LIMIT ? OFFSET ?",
+		"SELECT id,timestamp,source_ip,method,destination,status,bytes,blocked,block_reason FROM proxy_logs ORDER BY "+sort+" "+order+" LIMIT ? OFFSET ?",
 		limit, offset,
 	)
 	if err != nil {
@@ -79,9 +79,9 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 	var logs []map[string]any
 	for rows.Next() {
 		var id int64
-		var ts, srcIP, method, dest, status sql.NullString
-		var bytes sql.NullInt64
-		rows.Scan(&id, &ts, &srcIP, &method, &dest, &status, &bytes) //nolint:errcheck
+		var ts, srcIP, method, dest, status, reason sql.NullString
+		var bytes, blocked sql.NullInt64
+		rows.Scan(&id, &ts, &srcIP, &method, &dest, &status, &bytes, &blocked, &reason) //nolint:errcheck
 		ip := srcIP.String
 		if gdpr {
 			ip = maskIP(ip)
@@ -98,6 +98,11 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 			"destination": dest.String,
 			"status":      status.String,
 			"bytes":       bytes.Int64,
+			// The rule that blocked the request (workers/block_reason.go):
+			// "none" when it was not blocked, "unclassified" for a row logged
+			// before reasons were recorded.
+			"blocked": blocked.Int64 == 1,
+			"reason":  reason.String,
 		})
 	}
 	if logs == nil {
@@ -109,15 +114,21 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 func (h *LogHandlers) Stats(w http.ResponseWriter, r *http.Request) {
 	var total, blocked, ipBlocks int
 	var lastImport sql.NullString
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs").Scan(&total)                                                                                                    //nolint:errcheck
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1").Scan(&blocked)                                                                                //nolint:errcheck
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND (destination LIKE 'http://%.%.%.%' OR destination LIKE 'https://%.%.%.%')").Scan(&ipBlocks) //nolint:errcheck
-	h.db.QueryRow("SELECT MAX(timestamp) FROM proxy_logs").Scan(&lastImport)                                                                                         //nolint:errcheck
+	// Client requests only, like every other statistic (clientRows).
+	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE " + clientRows).Scan(&total)                   //nolint:errcheck
+	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND " + clientRows).Scan(&blocked) //nolint:errcheck
+	// Direct-IP blocks are the rows whose reason says so. A row logged before
+	// reasons were recorded keeps the count it always had, the URL heuristic,
+	// rather than being reassigned.
+	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND " + clientRows + ` AND (block_reason = 'direct_ip'
+		OR (block_reason = 'unclassified' AND (destination LIKE 'http://%.%.%.%' OR destination LIKE 'https://%.%.%.%')))`).Scan(&ipBlocks) //nolint:errcheck
+	h.db.QueryRow("SELECT MAX(timestamp) FROM proxy_logs").Scan(&lastImport) //nolint:errcheck
 	writeOK(w, map[string]any{
-		"total_count":     total,
-		"blocked_count":   blocked,
-		"ip_blocks_count": ipBlocks,
-		"last_import":     lastImport.String,
+		"total_count":       total,
+		"blocked_count":     blocked,
+		"ip_blocks_count":   ipBlocks,
+		"blocked_by_reason": blockedByReason(h.db, "1 = 1"),
+		"last_import":       lastImport.String,
 	})
 }
 
@@ -131,7 +142,7 @@ func (h *LogHandlers) Timeline(w http.ResponseWriter, r *http.Request) {
 		       COUNT(*) as total,
 		       SUM(blocked) as blocked
 		FROM proxy_logs
-		WHERE unix_timestamp >= ?
+		WHERE unix_timestamp >= ? AND `+clientRows+`
 		GROUP BY hour ORDER BY hour ASC`,
 		time.Now().Add(-time.Duration(hours)*time.Hour).Unix(),
 	)

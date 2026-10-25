@@ -216,6 +216,7 @@ func writeOffset(posPath string, offset int64) {
 
 // squid native access log format:
 // {unix_ts}.{ms}  {elapsed}  {client_ip}  {action}/{code}  {bytes}  {method}  {url}  {ident}  {peer}/{dest}  {type}
+// followed, in the spm logformat, by {waf_event_id} {spm_reason} {icap_x_spm_reason}.
 // Fields are separated by whitespace (one or more spaces).
 func parseSquidLine(line string) map[string]any {
 	fields := strings.Fields(line)
@@ -253,8 +254,22 @@ func parseSquidLine(line string) map[string]any {
 
 	statusStr := action + "/" + statusCode
 
+	// Fields 11 and 12: the spm_reason note and the X-SPM-Reason ICAP header
+	// (see classifySquid). The block flag follows the reason; only a line that
+	// carries no reason keeps the status heuristic.
+	note, icap := "-", "-"
+	if len(fields) >= squidReasonFields {
+		note, icap = fields[11], fields[12]
+	}
+	reason := classifySquid(len(fields), action, fields[8], note, icap)
 	blocked := 0
-	if isBlockedStatus(statusStr) {
+	switch reason {
+	case ReasonNone:
+	case ReasonUnclassified:
+		if isBlockedStatus(statusStr) {
+			blocked = 1
+		}
+	default:
 		blocked = 1
 	}
 
@@ -284,11 +299,15 @@ func parseSquidLine(line string) map[string]any {
 		"elapsed_ms":  elapsed,
 		"blocked":     blocked,
 		"event_id":    eventID,
+		"reason":      reason,
 	}
 }
 
 // isBlockedStatus reports whether a Squid "action/code" status string denotes a
-// blocked request. It mirrors the SQL backfill predicate
+// blocked request, for a line that carries no block reason (unclassified). It
+// cannot tell a Squid deny from a WAF block or an origin server's own 403, which
+// is why a line with the reason fields is not judged by it. It mirrors the SQL
+// backfill predicate
 // (status LIKE '%DENIED%' OR '%403%' OR '%BLOCKED%'). SQLite LIKE is
 // ASCII-case-insensitive, so we upper-case here to match it byte-for-byte —
 // then a row's flag is identical whether it was written at insert or by the
@@ -312,8 +331,8 @@ func insertLogBatch(db *sql.DB, entries []map[string]any) error {
 		return err
 	}
 	stmt, err := tx.Prepare(
-		`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, bytes, elapsed_ms, blocked, event_id)
-		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, bytes, elapsed_ms, blocked, event_id, block_reason)
+		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		_ = tx.Rollback()
 		return err
@@ -327,10 +346,16 @@ func insertLogBatch(db *sql.DB, entries []map[string]any) error {
 		if blocked == nil {
 			blocked = 0
 		}
+		// block_reason is NOT NULL as well; an entry without one says nothing
+		// about why it was or was not blocked.
+		reason, _ := e["reason"].(string)
+		if reason == "" {
+			reason = ReasonUnclassified
+		}
 		if _, err := stmt.Exec(
 			e["timestamp"], e["unix_timestamp"], e["source_ip"], e["method"],
 			e["destination"], e["status"], e["bytes"], e["elapsed_ms"], blocked,
-			e["event_id"],
+			e["event_id"], reason,
 		); err != nil {
 			_ = tx.Rollback()
 			return err

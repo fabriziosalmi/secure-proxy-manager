@@ -128,7 +128,8 @@ var schemaStatements = []string{
 		elapsed_ms INTEGER,
 		unix_timestamp INTEGER,
 		blocked INTEGER NOT NULL DEFAULT 0,
-		event_id TEXT
+		event_id TEXT,
+		block_reason TEXT NOT NULL DEFAULT 'unclassified'
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_proxy_logs_timestamp ON proxy_logs(timestamp)`,
 	`CREATE INDEX IF NOT EXISTS idx_proxy_logs_source_ip ON proxy_logs(source_ip)`,
@@ -178,6 +179,11 @@ func applyColumnMigrations(db *sql.DB) error {
 		"ALTER TABLE proxy_logs ADD COLUMN elapsed_ms INTEGER",
 		"ALTER TABLE proxy_logs ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE proxy_logs ADD COLUMN event_id TEXT", // WAF correlation id (#107)
+		// The rule that blocked the request, or 'none' (workers/block_reason.go).
+		// Rows that predate it read 'unclassified': their blocked flag came from
+		// the status heuristic and no reason was recorded, so none is invented.
+		// ADD COLUMN with a constant default rewrites no row.
+		"ALTER TABLE proxy_logs ADD COLUMN block_reason TEXT NOT NULL DEFAULT 'unclassified'",
 		"ALTER TABLE domain_whitelist ADD COLUMN type TEXT DEFAULT 'fqdn'",
 	}
 	for _, m := range migrations {
@@ -210,6 +216,10 @@ func createPostMigrationIndexes(db *sql.DB) error {
 		// Correlation-id lookup (join a WAF event → its proxy_logs row). Partial:
 		// only blocked rows carry an event_id, so the index stays tiny (#107).
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_event_id ON proxy_logs(event_id) WHERE event_id IS NOT NULL`,
+		// The dnsmasq rows (method DNS) are left out of every client statistic.
+		// The lifetime total is COUNT(*) minus their count, and this partial
+		// index keeps that count from walking the table.
+		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_dns ON proxy_logs(unix_timestamp) WHERE method = 'DNS'`,
 	}
 	for _, stmt := range postMigrationIndexes {
 		if _, err := db.Exec(stmt); err != nil {
@@ -235,10 +245,12 @@ func backfillProxyLogs(db *sql.DB) {
 	// Backfill the blocked flag for historical rows, using the exact same token
 	// set the insert path derives it from, so old and new rows agree and the
 	// idx_proxy_logs_blocked partial index covers all blocked rows. Idempotent:
-	// only flips rows still at the default 0 that match.
+	// only flips rows still at the default 0 that match. Only unclassified rows:
+	// a row with a reason has its flag from that reason, and an origin
+	// server's own 403 (reason none) is not a block.
 	if _, err := db.Exec(
 		`UPDATE proxy_logs SET blocked = 1
-		 WHERE blocked = 0
+		 WHERE blocked = 0 AND block_reason = 'unclassified'
 		   AND (status LIKE '%DENIED%' OR status LIKE '%403%' OR status LIKE '%BLOCKED%')`,
 	); err != nil {
 		log.Warn().Err(err).Msg("backfill blocked flag failed (non-fatal)")

@@ -28,13 +28,13 @@ acl direct_ip_host dstdom_regex -i ^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$
 acl direct_ipv6_url url_regex -i ^https?://\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\]
 acl direct_ipv6_host dstdom_regex -i ^\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\]$
 
-http_access allow ip_whitelist
-http_access deny direct_ip_url
-http_access deny direct_ip_host
-http_access deny direct_ipv6_url
-http_access deny direct_ipv6_host
-http_access deny CONNECT direct_ip_host
-http_access deny CONNECT direct_ipv6_host
+http_access allow ip_whitelist spm_r_none
+http_access deny direct_ip_url spm_r_direct_ip
+http_access deny direct_ip_host spm_r_direct_ip
+http_access deny direct_ipv6_url spm_r_direct_ip
+http_access deny direct_ipv6_host spm_r_direct_ip
+http_access deny CONNECT direct_ip_host spm_r_direct_ip
+http_access deny CONNECT direct_ipv6_host spm_r_direct_ip
 # ==== END CRITICAL SECURITY RULES ====
 EOL
         echo "Direct IP blocking rules added."
@@ -297,6 +297,29 @@ acl direct_ipv6_host dstdom_regex -i ^\[[:0-9a-fA-F]+(:[:0-9a-fA-F]*)+\]$
 # HTTP method definitions
 acl CONNECT method CONNECT
 
+# Block reasons. An annotate_transaction ACL always matches; its only effect is
+# to set the spm_reason note, which the spm logformat writes to the access log
+# and the backend stores as the request's block reason. Every deny rule below
+# ends with the one naming it, so the note records the rule that matched, not
+# a guess from the status code: a Squid deny and a WAF block both log 403, and
+# a request to a sinkholed name used to log 503. Every allow rule ends with
+# spm_r_none, which clears a note set by a rule that was evaluated but did not
+# deny (the proxy-auth rule, whose auth ACL has to stay last). The vocabulary
+# is shared with backend-go/internal/workers/log_tailer.go.
+acl spm_r_none annotate_transaction spm_reason=none
+acl spm_r_protocol_policy annotate_transaction spm_reason=protocol_policy
+acl spm_r_port_policy annotate_transaction spm_reason=port_policy
+acl spm_r_source_gate annotate_transaction spm_reason=source_gate
+acl spm_r_ip_blacklist annotate_transaction spm_reason=ip_blacklist
+acl spm_r_domain_blacklist annotate_transaction spm_reason=domain_blacklist
+acl spm_r_domain_blacklist_dns annotate_transaction spm_reason=domain_blacklist_dns
+acl spm_r_proxy_auth annotate_transaction spm_reason=proxy_auth
+acl spm_r_time_restriction annotate_transaction spm_reason=time_restriction
+acl spm_r_content_filter annotate_transaction spm_reason=content_filter
+acl spm_r_direct_ip annotate_transaction spm_reason=direct_ip
+acl spm_r_egress_policy annotate_transaction spm_reason=egress_policy
+acl spm_r_other annotate_transaction spm_reason=other
+
 # Protocol guard: Squid's built-in FTP gateway is the Squidbleed
 # (CVE-2026-47729) out-of-bounds-read surface. We never proxy FTP, so match and
 # deny the FTP scheme outright (denied first in the access rules below).
@@ -315,24 +338,24 @@ acl local_dst dst 10.0.0.0/8 192.168.0.0/16
 # alongside the rest of the access rules.
 acl Safe_methods method GET HEAD POST OPTIONS CONNECT
 acl Dangerous_methods method PUT DELETE PATCH TRACE TRACK
-http_access deny Dangerous_methods
-http_access deny !Safe_methods
+http_access deny Dangerous_methods spm_r_protocol_policy
+http_access deny !Safe_methods spm_r_protocol_policy
 
 # Access rules
-http_access deny ftp_proto
-http_access deny !Safe_ports
+http_access deny ftp_proto spm_r_protocol_policy
+http_access deny !Safe_ports spm_r_port_policy
 
 # Who may use the proxy at all. Every allow rule below is scoped by destination
 # only, so without this gate a client from ANY address could tunnel into the
 # LAN (CONNECT local_dst) or relay through it. Nothing below may come before it.
-http_access deny !localnet !localhost
+http_access deny !localnet !localhost spm_r_source_gate
 
 # The cache manager lists every in-flight request with its client and URL.
 # Local stats only.
-http_access allow localhost manager
-http_access deny manager
+http_access allow localhost manager spm_r_none
+http_access deny manager spm_r_other
 
-http_access deny ip_blacklist
+http_access deny ip_blacklist spm_r_ip_blacklist
 
 # Blacklisted domains are sinkholed by dnsmasq. They are also denied here
 # while the list is small enough for Squid to hold, because the sinkhole alone
@@ -345,28 +368,38 @@ http_access deny ip_blacklist
 # 3.5 s (about 1.4 s of refused requests while it reloads), 1M about 200 MB and
 # 13 s, 5.5M exhausted the 512 MB limit).
 acl domain_blacklist dstdomain "/etc/squid/blacklists/domain/squid.txt"
-http_access deny domain_blacklist
+http_access deny domain_blacklist spm_r_domain_blacklist
+
+# A blacklisted name that is not in Squid's own copy above (the list is over
+# SPM_SQUID_DOMAIN_ACL_MAX) is still sinkholed by dnsmasq, which answers
+# 0.0.0.0 and ::. Squid used to try to connect to that address and log
+# TCP_TUNNEL/503 or TCP_MISS/503: the client got a connection error instead of
+# the block page and the statistics counted nothing. A dst ACL matches the
+# address the name resolves to, so the sinkhole answer itself is denied here.
+# It costs no extra lookup: ip_blacklist above is a dst ACL too, so the name
+# is already resolved (and in Squid's ipcache) by the time this rule runs.
+acl dns_sinkhole dst 0.0.0.0 ::
+http_access deny dns_sinkhole spm_r_domain_blacklist_dns
 
 # @@SPM_POLICY@@ (proxy auth, time restrictions and content filtering are
 # inserted here, ahead of every allow rule; see insert_policy)
 
-http_access allow CONNECT local_dst
-http_access deny CONNECT !SSL_ports
+http_access allow CONNECT local_dst spm_r_none
+http_access deny CONNECT !SSL_ports spm_r_port_policy
 
 # Allow whitelisted + local network destinations before blocking direct IPs
-http_access allow ip_whitelist
-http_access allow local_dst
+http_access allow ip_whitelist spm_r_none
+http_access allow local_dst spm_r_none
 
-http_access deny direct_ip_url
-http_access deny direct_ip_host
-http_access deny direct_ipv6_url
-http_access deny direct_ipv6_host
-http_access deny CONNECT direct_ip_host
-http_access deny CONNECT direct_ipv6_host
-# domain_blacklist removed — handled by dnsmasq DNS blackhole at L3
-http_access allow localnet
-http_access allow localhost
-http_access deny all
+http_access deny direct_ip_url spm_r_direct_ip
+http_access deny direct_ip_host spm_r_direct_ip
+http_access deny direct_ipv6_url spm_r_direct_ip
+http_access deny direct_ipv6_host spm_r_direct_ip
+http_access deny CONNECT direct_ip_host spm_r_direct_ip
+http_access deny CONNECT direct_ipv6_host spm_r_direct_ip
+http_access allow localnet spm_r_none
+http_access allow localhost spm_r_none
+http_access deny all spm_r_other
 
 # Caching
 cache_mem ${SQUID_MEM_MB} MB
@@ -422,7 +455,12 @@ logfile_rotate 5
 # X-WAF-Event-Id on the 403 it returns via ICAP REQMOD; %{...}<h reads it from the
 # reply headers. Allowed requests carry no such header → Squid logs '-' there,
 # which parseSquidLine treats as empty (issue #107).
-logformat spm %ts.%03tu %6tr %>a %Ss/%03>Hs %<st %rm %ru %[un %Sh/%<a %mt %{X-WAF-Event-Id}<h
+# 12th field: the spm_reason note set by the access rule that decided the
+# request (see the spm_r_* ACLs). 13th field: the X-SPM-Reason header of the
+# last ICAP response, which the WAF sets to "waf" on every block it returns. It
+# is read from the ICAP reply, not the HTTP one, so an upstream server cannot
+# forge it. Both log '-' when absent. Measured on Squid 7.7: docs/design/block-reasons.md.
+logformat spm %ts.%03tu %6tr %>a %Ss/%03>Hs %<st %rm %ru %[un %Sh/%<a %mt %{X-WAF-Event-Id}<h %{spm_reason}note %{X-SPM-Reason}adapt::<last_h
 access_log daemon:/var/log/squid/access.log spm
 cache_log /var/log/squid/cache.log
 cache_store_log none
@@ -560,7 +598,7 @@ if [ -f /config/egress_default_deny ]; then
     sed -i '0,/^acl CONNECT method CONNECT$/s|^acl CONNECT method CONNECT$|acl CONNECT method CONNECT\nacl egress_dst_allow_ip dst "/etc/squid/allowlists/dst_ip/local.txt"\nacl egress_dst_allow_dom dstdomain "/etc/squid/allowlists/dst_domain/local.txt"|' "$SQUID_CONF"
     # Deny any localnet client whose destination is in neither allowlist,
     # immediately before the first catch-all "http_access allow localnet".
-    sed -i '0,/^http_access allow localnet$/s|^http_access allow localnet$|http_access deny localnet !egress_dst_allow_ip !egress_dst_allow_dom\nhttp_access allow localnet|' "$SQUID_CONF"
+    sed -i '0,/^http_access allow localnet spm_r_none$/s|^http_access allow localnet spm_r_none$|http_access deny localnet !egress_dst_allow_ip !egress_dst_allow_dom spm_r_egress_policy\nhttp_access allow localnet spm_r_none|' "$SQUID_CONF"
 
     # FAIL-CLOSED VERIFICATION. The toggle promises default-deny egress; a silent
     # default-allow (e.g. if the anchors above drifted and the sed no-op'd) would
@@ -569,7 +607,7 @@ if [ -f /config/egress_default_deny ]; then
     # neutralise the catch-all localnet allow so non-allowlisted egress falls
     # through to the final "http_access deny all" (hard fail-closed) rather than
     # leaking open.
-    DENY_RULE='http_access deny localnet !egress_dst_allow_ip !egress_dst_allow_dom'
+    DENY_RULE='http_access deny localnet !egress_dst_allow_ip !egress_dst_allow_dom spm_r_egress_policy'
     if ! grep -qF "$DENY_RULE" "$SQUID_CONF"; then
         echo "WARNING: egress deny rule not injected via primary anchor — applying tolerant fallback"
         grep -qF 'acl egress_dst_allow_ip dst' "$SQUID_CONF" || \
@@ -581,7 +619,7 @@ if [ -f /config/egress_default_deny ]; then
     fi
     if ! grep -qF "$DENY_RULE" "$SQUID_CONF"; then
         echo "CRITICAL: could not enforce egress default-deny — denying ALL localnet egress (fail-closed)"
-        sed -i 's|^[[:space:]]*http_access[[:space:]]\+allow[[:space:]]\+localnet.*|http_access deny localnet  # egress default-deny: enforcement injection failed — fail-closed|' "$SQUID_CONF"
+        sed -i 's|^[[:space:]]*http_access[[:space:]]\+allow[[:space:]]\+localnet.*|# egress default-deny: enforcement injection failed, fail-closed\nhttp_access deny localnet spm_r_egress_policy|' "$SQUID_CONF"
     else
         echo "Egress default-deny enforcement rule verified present"
     fi
@@ -687,14 +725,17 @@ if [ -f /config/proxy_auth_enabled ]; then
         # localhost is exempt (the container's own probes). authenticated stays
         # the LAST acl on the line: Squid answers 407 only when the rule that
         # denies is decided by an auth acl, otherwise the client gets a 403 and
-        # is never asked for credentials.
+        # is never asked for credentials. That is why spm_r_proxy_auth comes
+        # before it rather than after: it is evaluated for every request that
+        # reaches this rule, denied or not, and the allow rule that admits an
+        # authenticated request clears it again (spm_r_none).
         insert_policy '# ── Proxy Authentication (Basic Auth) ──
 auth_param basic program /usr/lib/squid/basic_ncsa_auth /config/proxy_users.htpasswd
 auth_param basic realm Secure Proxy Manager
 auth_param basic credentialsttl 8 hours
 auth_param basic casesensitive on
 acl authenticated proxy_auth REQUIRED
-http_access deny !localhost !authenticated' || { return 1 2>/dev/null || exit 1; }
+http_access deny !localhost spm_r_proxy_auth !authenticated' || { return 1 2>/dev/null || exit 1; }
         echo "Proxy auth configured with $(wc -l < /config/proxy_users.htpasswd) users"
     fi
 else
@@ -707,7 +748,7 @@ if [ -f /config/content_filtering_enabled ] && [ -f /config/blocked_file_types.t
     echo "Content filtering ENABLED — blocking file types"
     insert_policy '# ── Content filtering (blocked file extensions) ──
 acl blocked_extensions urlpath_regex "/config/blocked_file_types.txt"
-http_access deny blocked_extensions' || { return 1 2>/dev/null || exit 1; }
+http_access deny blocked_extensions spm_r_content_filter' || { return 1 2>/dev/null || exit 1; }
     echo "Content filtering configured for $(wc -l < /config/blocked_file_types.txt) extensions"
 else
     echo "Content filtering disabled"
@@ -730,7 +771,7 @@ if [ -f /config/time_restrictions_enabled ] && [ -f /config/time_restrictions.co
     END_M=$(echo "$TIME_END" | cut -d: -f2)
     insert_policy "# ── Time-based access restrictions ──
 acl allowed_hours time MTWHFAS ${START_H}:${START_M}-${END_H}:${END_M}
-http_access deny !allowed_hours localnet" || { return 1 2>/dev/null || exit 1; }
+http_access deny !allowed_hours localnet spm_r_time_restriction" || { return 1 2>/dev/null || exit 1; }
     echo "Access allowed only ${TIME_START}-${TIME_END}"
     fi
 else
