@@ -144,8 +144,8 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
 2. Squid evaluates its access rules, first match wins: dangerous methods and
    FTP, ports outside `Safe_ports`, sources outside the allowed client ranges,
    the cache manager, the IP blacklist, the domain blacklist, a name that
-   resolved to the sinkhole address, the inserted policy rules (proxy login,
-   blocked download extensions, allowed hours), `CONNECT` to a LAN destination
+   resolved to the sinkhole address, the policy rules inserted for the access
+   settings that are on, `CONNECT` to a LAN destination
    (allowed), `CONNECT` to a port outside `SSL_ports` (denied), Allowed IPs and
    LAN destinations (allowed), direct-IP URLs (denied), the egress rule when
    default-deny is on, and finally local clients (allowed) and everything else

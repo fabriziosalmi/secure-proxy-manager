@@ -134,9 +134,8 @@ process holding one; free it, change the host side of the mapping, or set
   destination only. Settings > Inspection > Inspect HTTPS traffic turns on
   SSL bump with a CA the proxy generates on first start; every client must
   trust that CA.
-- **Access policy settings.** Proxy login, allowed hours, bandwidth limits,
-  SafeSearch, YouTube restricted mode and blocked download extensions, in
-  Settings.
+- **Access policy settings.** Allowed hours, bandwidth limits, SafeSearch,
+  YouTube restricted mode and blocked download extensions, in Settings.
 - **Visibility.** Dashboard, Analytics, Access logs (server-side filters, CSV
   export, the stack's own traffic hidden by default), Clients, and an Audit log
   that records every list change and keeps rows for 365 days. A WebSocket feed
