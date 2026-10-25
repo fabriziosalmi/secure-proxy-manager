@@ -35,7 +35,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m
 const Blacklists = lazy(() => import('./pages/Blacklists').then(m => ({ default: m.Blacklists })));
 const Logs = lazy(() => import('./pages/Logs').then(m => ({ default: m.Logs })));
 const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
-const ThreatIntel = lazy(() => import('./pages/ThreatIntel').then(m => ({ default: m.ThreatIntel })));
+const Analytics = lazy(() => import('./pages/Analytics').then(m => ({ default: m.Analytics })));
 const Audit = lazy(() => import('./pages/Audit').then(m => ({ default: m.Audit })));
 const Clients = lazy(() => import('./pages/Clients').then(m => ({ default: m.Clients })));
 const EgressAllowlist = lazy(() => import('./pages/EgressAllowlist').then(m => ({ default: m.EgressAllowlist })));
@@ -171,7 +171,7 @@ function AppContent() {
                 <Route path="/" element={<Layout onLogout={handleLogout} />}>
                   <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
                   <Route path="blacklists" element={<ErrorBoundary><Blacklists /></ErrorBoundary>} />
-                  <Route path="analytics" element={<ErrorBoundary><ThreatIntel /></ErrorBoundary>} />
+                  <Route path="analytics" element={<ErrorBoundary><Analytics /></ErrorBoundary>} />
                   {/* The Threat Intel page is now Analytics; old links and bookmarks still land on it. */}
                   <Route path="threats" element={<Navigate to="/analytics" replace />} />
                   <Route path="clients" element={<ErrorBoundary><Clients /></ErrorBoundary>} />
