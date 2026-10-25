@@ -16,6 +16,7 @@ import (
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 )
 
 // writeJSON serialises v as JSON and writes with the given status code.
@@ -222,16 +223,6 @@ func extractDomain(dest string) string {
 	return strings.ToLower(d)
 }
 
-// maskIP anonymizes the last octet of an IPv4 address: 192.168.1.7 → 192.168.1.x
-func maskIP(ip string) string {
-	parts := strings.Split(ip, ".")
-	if len(parts) == 4 {
-		parts[3] = "x"
-		return strings.Join(parts, ".")
-	}
-	// IPv6 or other — mask last segment
-	if idx := strings.LastIndex(ip, ":"); idx > 0 {
-		return ip[:idx] + ":x"
-	}
-	return ip
-}
+// maskIP anonymizes the last octet of an IPv4 address: 192.168.1.7 to
+// 192.168.1.x. One implementation with the live log feed (package privacy).
+func maskIP(ip string) string { return privacy.MaskIP(ip) }

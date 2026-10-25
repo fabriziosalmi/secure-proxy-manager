@@ -11,12 +11,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/websocket"
 )
 
@@ -107,7 +109,7 @@ func tailOnce(db *sql.DB, hub *websocket.Hub, logPath string, offset int64, spec
 		return offset, false
 	}
 	// Broadcast only committed rows, so a retry does not double-emit.
-	broadcastBatch(hub, batch)
+	broadcastBatch(hub, batch, hub != nil && feedPrivacy(db).Enabled())
 
 	if seekErr != nil {
 		return fi.Size(), true
@@ -163,9 +165,24 @@ func readBatch(f *os.File, size, offset int64, spec tailSpec) (batch []map[strin
 	return batch, next, nil
 }
 
+// feedSettings caches gdpr_mode per database for the live feed.
+var feedSettings sync.Map // *sql.DB -> *privacy.Setting
+
+func feedPrivacy(db *sql.DB) *privacy.Setting {
+	if s, ok := feedSettings.Load(db); ok {
+		return s.(*privacy.Setting)
+	}
+	s, _ := feedSettings.LoadOrStore(db, privacy.NewSetting(db, 30*time.Second))
+	return s.(*privacy.Setting)
+}
+
 // broadcastBatch streams committed rows to the WebSocket hub. The hub is
 // optional: nil means nothing is streaming. A full hub drops the message.
-func broadcastBatch(hub *websocket.Hub, batch []map[string]any) {
+// With mask (gdpr_mode on) each message carries the masked client address,
+// as GET /api/logs does: the Logs page shows both, and the live rows used to
+// carry the full address while the table masked it. The stored row is not
+// changed.
+func broadcastBatch(hub *websocket.Hub, batch []map[string]any, mask bool) {
 	if hub == nil {
 		return
 	}
@@ -174,7 +191,12 @@ func broadcastBatch(hub *websocket.Hub, batch []map[string]any) {
 		for k, v := range row {
 			entry[k] = v
 		}
+		// Described first: whether the source is internal is read from the
+		// real address, which masking then hides from the feed.
 		describeLive(entry)
+		if ip, ok := entry["source_ip"].(string); ok && mask {
+			entry["source_ip"] = privacy.MaskIP(ip)
+		}
 		msg, err := json.Marshal(entry)
 		if err != nil {
 			continue
