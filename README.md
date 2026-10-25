@@ -5,20 +5,21 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Images: GHCR · cosign-signed](https://img.shields.io/badge/images-GHCR%20%C2%B7%20cosign--signed-2496ED?logo=docker&logoColor=white)](https://github.com/fabriziosalmi/secure-proxy-manager/pkgs/container/secure-proxy-manager-proxy)
 [![Docs](https://img.shields.io/badge/docs-website-22c55e)](https://fabriziosalmi.github.io/secure-proxy-manager/)
-[![WAF: 21 categories · FN=0 gated](https://img.shields.io/badge/WAF-21%20categories%20%C2%B7%20FN%3D0%20gated-3ddc84)](#tested-like-an-attacker)
 
-📖 **Documentation:** <https://fabriziosalmi.github.io/secure-proxy-manager/>
+Documentation: <https://fabriziosalmi.github.io/secure-proxy-manager/>
 
-A **self-hosted Secure Web Gateway (SWG)**: one controllable egress point for a
-home, lab, or small-office network. It combines a Squid forward proxy, a custom
-**WAF** (request/response inspection over ICAP), a **DNS sinkhole**, and a modern
-web UI + API into a single Docker Compose stack: the self-hosted counterpart to
-cloud SWGs like Zscaler / Cloudflare Gateway, with **no traffic leaving your
-network**.
+Secure Proxy Manager (SPM) is a self-hosted forward proxy for a home, lab or
+small-office network. It runs as one Docker Compose stack: a Squid forward
+proxy, a Go WAF that Squid calls over ICAP, a dnsmasq resolver that sinkholes
+blocked domains, a Go backend with a REST API, and a React web UI.
 
-Block domains and IPs, enforce a default-deny egress allowlist, inspect requests
-against WAF rules, sinkhole malware/ad domains at the DNS layer, and see what
-every client is reaching.
+It is for an operator who wants every client's outbound HTTP and HTTPS to pass
+through one point they control: block domains and IP ranges, optionally allow
+only an explicit list of destinations, inspect requests against WAF rules, and
+see which client reached what. The proxy, the WAF and the data run on your
+host. By default dnsmasq forwards lookups to public resolvers
+(`DNS_UPSTREAM_1..3`), and the backend asks GitHub for the latest release
+every 6 hours.
 
 ![Malicious requests blocked by the proxy + WAF, benign traffic allowed](docs/public/demo/adversarial-demo.svg)
 
@@ -28,340 +29,217 @@ every client is reaching.
 
 <sub>Click the screenshot for a 30-second tour of the dashboard.</sub>
 
-## How it compares
+## Services
 
-Most self-hosted network tools cover one layer. SPM combines forward-proxy egress
-control, request inspection, and DNS sinkholing in a single stack:
+| Service | Built from | Role |
+|---|---|---|
+| `web` | `ui/` (nginx serving the React build) | HTTPS entry point: serves the UI, proxies `/api/` and the WebSocket to the backend |
+| `backend` | `backend-go/` (Go, chi, SQLite) | REST API, authentication, settings, log ingestion, background workers |
+| `waf` | `waf-go/` (Go) | ICAP service on port 1344 that inspects what Squid hands it |
+| `proxy` | `proxy/` (Ubuntu 26.04, `squid-openssl`) | The forward proxy on port 3128 |
+| `dns` | `dns/` (Alpine, dnsmasq) | Resolver used only by Squid; answers `0.0.0.0` and `::` for blocked domains |
+| `tailscale` | `overlay/tailscale/` | Optional, started only with `--profile tailscale` |
 
-| Capability | Pi-hole / AdGuard | Nginx Proxy Manager | Cloud SWG (Zscaler…) | **Secure Proxy Manager** |
-|---|:---:|:---:|:---:|:---:|
-| DNS sinkhole (block at resolve time) | Yes | No | Yes | Yes |
-| Forward proxy (outbound egress control) | No | No | Yes | Yes |
-| HTTP request/body inspection (WAF) | No | No | Yes | Yes |
-| Default-deny egress allowlist | No | No | Yes | Yes |
-| Reverse proxy / ingress | No | Yes | No | No |
-| **Self-hosted: traffic stays on your network** | Yes | Yes | No | Yes |
-| **Free / no per-seat cost** | Yes | Yes | No | Yes |
-
-Pi-hole/AdGuard block only at the DNS layer; Nginx Proxy Manager is reverse-proxy
-*ingress*; cloud SWGs do all of this but as a paid SaaS your traffic flows
-through. SPM is the **self-hosted outbound** counterpart: one controllable
-egress point with WAF inspection and DNS sinkholing combined, on your own metal.
-
-## What it is
-
-The stack is five containers (plus an optional sixth):
-
-| Service | Tech | Role |
-|---------|------|------|
-| `web` | React 19 + Vite, served by nginx | The management UI and HTTPS entry point. Terminates TLS, proxies the API and WebSocket. |
-| `backend` | Go (chi, modernc/sqlite, JWT) | REST API, log ingestion, settings, auth, background workers. ~20 MB RAM. |
-| `waf` | Go ICAP service | Inspects proxied requests/responses Squid hands off over ICAP. |
-| `proxy` | Squid (Ubuntu 26.04, `squid-openssl`) | The actual forward proxy on port 3128, with ICAP wired to the WAF. |
-| `dns` | dnsmasq | DNS resolver that sinkholes blacklisted domains at the network layer. |
-| `tailscale` | Tailscale (optional) | Sidecar for remote access over a private network. Enabled with a compose profile. |
-
-The backend applies blacklist and config changes by writing to the shared
-`./config` volume: it exports the lists as flat files and touches a trigger
-(`.reload-squid`, `.reload-dns`, `.clear-cache`). Each container's own watchdog
-notices the change and reloads in place; no Docker socket is mounted into the
-backend, and nothing calls the Docker Engine API.
+The backend changes what the proxy enforces by writing files to the shared
+`./config` directory: the exported lists, toggle marker files and trigger files
+(`.reload-squid`, `.reload-dns`, `.clear-cache`). A watchdog in the proxy and
+one in the dns container notice the change and apply it. No container mounts
+the Docker socket. See [Architecture](docs/guide/architecture.md).
 
 ## Quick start
 
-Requirements: Docker 20.10+ with Compose v2, ~512 MB RAM, ~2 GB disk. Runs on
-x86_64 and ARM64.
+You need Docker with the Compose v2 plugin (`docker compose`). The published
+release images are built for `linux/amd64` and `linux/arm64`.
 
-**One command (fresh VPS or server):**
+**Installer (Linux server, run as root):**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/deploy/install.sh | sudo bash
 ```
 
-The installer checks for Docker, generates random admin credentials, pulls the
-pre-built signed images from GHCR, and starts the stack. It prints the
-credentials at the end (they are also saved to `.env`).
+`deploy/install.sh` installs Docker if it is missing, clones the repository to
+`/opt/secure-proxy-manager`, writes a `.env` with a random admin password,
+`SECRET_KEY` and `INTERNAL_ALERT_TOKEN`, checks that the host ports are free,
+pulls the release images from GHCR (and verifies their signatures when cosign
+3 or later is installed), and starts the stack. It prints the credentials at
+the end; they are also in `/opt/secure-proxy-manager/.env`.
 
-**Manual:**
+**From a clone (builds the images locally):**
 
 ```bash
 git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
 cd secure-proxy-manager
 cp .env.example .env
-# Set a strong BASIC_AUTH_PASSWORD in .env (the backend refuses to start with an
-# empty, common, or <8-char password). Leave SECRET_KEY empty to auto-generate.
+# Edit .env:
+#   BASIC_AUTH_PASSWORD   required: 8 or more characters, not a common default
+#   INTERNAL_ALERT_TOKEN  recommended: openssl rand -hex 32 (WAF alerts and WAF controls need it)
 docker compose up -d --build
 ```
 
-Then open <https://localhost:8443> and accept the self-signed certificate. Log in
-with the credentials from your `.env` (or the ones the installer printed). On
-first login a short wizard helps you pick a starting configuration.
+Then open <https://localhost:8443> (or `https://<host>`), accept the
+self-signed certificate and sign in with the credentials from `.env`. On the
+first sign-in a short setup wizard offers a starting configuration.
 
-To send traffic through the proxy, point a client at `http://<host>:3128`
-(Settings > Overview > Connect a device has per-OS instructions and a PAC file).
+Check that it works:
+
+```bash
+docker compose ps                                # all services healthy
+curl -sk https://localhost:8443/api/health       # {"status":"healthy",...}
+curl -x http://localhost:3128 -I http://example.com
+```
+
+To send a device through the proxy, set its HTTP and HTTPS proxy to
+`<host>:3128`. Settings > Overview > Connect a device has per-platform
+instructions and a PAC file. The proxy accepts clients from private IPv4
+ranges, IPv6 unique-local and link-local addresses and localhost; add other
+sources with `GUI_IP_WHITELIST`.
 
 ## Ports
 
-| Port | Service | Notes |
-|------|---------|-------|
-| 443, 8443 | Web UI (HTTPS) | Main interface. 8443 is the same UI on an alternate port. |
-| 80, 8011 | HTTP | Redirects to HTTPS; also serves ACME challenges for Let's Encrypt. |
-| 3128 | Proxy | Point clients here. Only RFC1918/localhost sources are allowed by default. |
-| 5001 | Backend API | Bound to `127.0.0.1` on the host; the UI proxies it internally. |
-
-These have to be free on the host before you start. A web server already on port
-80 is the usual clash, and it is the one case that fails quietly: the container
-cannot bind, and the stack looks like it is merely slow to come up. `install.sh`
-checks every published port first and names the process holding it. Free it
-(`systemctl stop nginx`), or change the host side of the mapping in
-`docker-compose.yml`, or set `SKIP_PORT_CHECK=1` if you know the conflict is
-harmless.
-
-## Configuration
-
-All configuration is environment-driven via `.env`. `.env.example` documents the
-variables an operator normally sets; the complete set the backend reads is in
-`backend-go/internal/config/config.go`. The essentials:
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `BASIC_AUTH_USERNAME` / `BASIC_AUTH_PASSWORD` | required | Admin login. The backend refuses to start if the password is empty, a common default, or shorter than 8 characters. |
-| `SECRET_KEY` | auto-generated | JWT signing secret. Leave empty to generate and persist one. If set, it must be unique, random, and 32+ chars; known/example values are rejected at startup. |
-| `LETSENCRYPT_DOMAIN` / `LETSENCRYPT_EMAIL` | empty | Only for an image that includes certbot; the shipped one does not, and serves a self-signed certificate (and logs why). Mount a certificate at `/etc/nginx/ssl/server.crt` and `server.key` instead. |
-| `CORS_ALLOWED_ORIGINS` | `https://localhost:8443` | Allowed UI origin(s). |
-| `DNS_UPSTREAM_1..3` | malware-blocking resolvers | Upstream DNS for dnsmasq. Override to use your own (e.g. Pi-hole). |
-| `PROXY_IP` | empty | Your LAN IP, to enable WPAD auto-discovery (`wpad.dat`) for browsers. |
-| `WAF_BLOCK_THRESHOLD` | `10` | Anomaly score at which a request is blocked (lower is stricter). |
-| `WAF_FAIL_OPEN` | `0` | If the WAF handler errors, block (`0`, fail-closed) or allow (`1`) the request. |
-
-Most runtime behaviour (WAF categories, blocklists, filtering toggles,
-notifications) is managed from the UI and stored in the database, not in `.env`.
-
-## Capacity
-
-Single node by design: the login-attempt counters and the JWT revocation list
-are in-process, the state lives on bind mounts, and each container generates its
-own configuration, so a second instance would not share what matters. Running
-more of them is not a supported way to grow. These are the ceilings the design
-imposes and what happens at each:
-
-| Ceiling | Value | At the limit |
+| Host port | Service | Notes |
 |---|---|---|
-| Write throughput | one SQLite writer, pool of 4 | Writes queue (`busy_timeout` 5s), so it shows as latency, not errors |
-| WAF behavioural tracking | 10,000 client IPs | Beyond it an entry is evicted, so beaconing/sharding history resets for some clients |
-| Live log stream | 256 queued messages, 64 per viewer | Lines are dropped for a slow viewer rather than stalling the stream |
-| WAF security alerts | 64 queued, 8 delivery workers | Alerts are dropped and counted in `notifyDropped` on `/metrics`. Blocks are still enforced and logged; only the notification is lost, and the queue fills exactly during an attack |
-| API rate limit | 20 req/s per IP, burst 60 | `429` |
-| Concurrent DNS scans | 2 | `429` |
-| Request body | 10 MB through the web UI (nginx); 55 MB on the backend port; blacklist import 32 MB | `413` / the import is refused |
-| Log ingest | 5,000 lines per 500 ms tick | A backlog catches up over successive ticks |
-| Backend resources | 0.25 CPU, 128 MB | Raise `deploy.resources.limits` in the compose file |
+| 443, 8443 | `web` (HTTPS) | The UI and the API under `/api/` |
+| 80, 8011 | `web` (HTTP) | Redirects to `https://<host>:8443`, except `/health`, `/wpad.dat` and `/.well-known/acme-challenge/` |
+| 3128 | `proxy` | Bound to `PROXY_BIND_IP` (default `0.0.0.0`) |
+| 127.0.0.1:5001 | `backend` | Reachable from the host only |
 
-`proxy_logs` grows with traffic and is pruned only by `log_retention_days`
-(default 30). If that setting is not a positive number the pruning stops and
-`spm_log_retention_enabled` goes to 0.
+All of them must be free before the stack starts. A web server already on port
+80 is the common clash: the `web` container cannot bind and the stack looks
+slow to come up. `install.sh` checks the published ports first and names the
+process holding one; free it, change the host side of the mapping, or set
+`SKIP_PORT_CHECK=1` to continue anyway.
 
-## Features
+## What it does
 
-**Filtering**
-- Domain and IP blacklists and whitelists, managed in the UI or via the API,
-  importable from URLs or pasted content (with CIDR support for IPs).
-- DNS sinkholing of blacklisted domains via dnsmasq, so blocked lookups never
-  reach the proxy at all.
-- Direct-IP-access blocking and a method whitelist in Squid.
-- Optional default-deny egress (off by default): instead of the deny-list
-  blacklists, allow outbound traffic only to an explicit CIDR/domain allowlist
-  and refuse everything else. Toggled in Settings > Filtering (Only allowlisted
-  destinations); destinations managed on the
-  Egress Allowlist page.
+- **Lists.** Blocked IPs, Blocked domains, Allowed IPs and Allowed domains, each
+  managed on the Blacklists page or through the API, importable from a URL,
+  pasted text, a curated list or a country's address blocks. Every entry
+  records the source that added it, so an import can be removed as a whole.
+  [Lists guide](docs/guide/blacklists.md).
+- **DNS sinkhole.** dnsmasq answers `0.0.0.0` and `::` for every blocked
+  domain, and Squid also denies those names itself while the list has at most
+  `SPM_SQUID_DOMAIN_ACL_MAX` (250,000) entries.
+- **Direct-IP and destination rules.** Squid always denies the IP blacklist and
+  URLs that address a public IP directly; Allowed IPs and LAN destinations
+  (`10.0.0.0/8`, `192.168.0.0/16`) are exempt from the direct-IP rule.
+- **Default-deny egress (off by default).** With Settings > Filtering > Only
+  allowlisted destinations on, clients reach only the entries on the Egress
+  allowlist page, LAN destinations and Allowed IPs.
+- **WAF.** 172 request rules in 21 categories and 5 response rules in 2
+  categories (counted in `waf-go/internal/engine/rules.go`), six behavioural
+  heuristics, anomaly scoring with a block threshold of 10, and runtime toggles
+  per category. It blocks responses with executable content types and fails
+  closed by default (`WAF_FAIL_OPEN=0`).
+- **HTTPS.** HTTPS is tunnelled with `CONNECT` by default, so the WAF sees the
+  destination only. Settings > Inspection > Inspect HTTPS traffic turns on
+  SSL bump with a CA the proxy generates on first start; every client must
+  trust that CA.
+- **Access policy settings.** Proxy login, allowed hours, bandwidth limits,
+  SafeSearch, YouTube restricted mode and blocked download extensions, in
+  Settings.
+- **Visibility.** Dashboard, Analytics, Access logs (server-side filters, CSV
+  export, the stack's own traffic hidden by default), Clients, and an Audit log
+  that records every list change and keeps rows for 365 days. A WebSocket feed
+  streams new log rows to the UI.
+- **Alerts.** WAF blocks and failed sign-ins can be sent to a webhook, Gotify,
+  Telegram, ntfy or Microsoft Teams.
+- **Operations.** Prometheus metrics on the internal network (backend
+  `:5000/metrics`, WAF `:8080/metrics`), health probes `/livez` and `/readyz`,
+  configuration backup and restore in Settings > Admin and backup.
 
-**WAF**
-- 172 request rules across 21 toggleable categories (SQLi, XSS, traversal, C2,
-  data-loss, etc.), each enableable/disableable at runtime, and 5 response
-  rules in 2 categories.
-- 6 behavioural heuristics (entropy, beaconing, PII, sharding, ghosting,
-  sequence) plus DGA detection (bigram + entropy), typosquatting
-  detection (edit distance + homoglyphs), and a safe-URL fast-path cache.
-- Anti-evasion input normalization and anomaly scoring; fails closed on internal
-  errors by default.
-
-**HTTPS inspection (optional)**
-- HTTPS is tunnelled via `CONNECT` by default - the WAF sees connection metadata
-  (host, port), not request contents.
-- Enabling SSL-bump in Settings > Inspection makes Squid intercept TLS with a locally
-  generated CA so the WAF can inspect decrypted requests. This requires
-  installing the generated CA (Settings > Inspection > download CA) on every client that
-  should trust it. The CA is generated per deployment at first boot.
-
-**Operations**
-- Live dashboard, per-client drill-down, searchable access logs, and an audit
-  log of configuration changes.
-- Prometheus metrics on the internal network: the backend at `:5000/metrics`
-  (RED metrics per route, DB connection-pool gauges, worker heartbeats, Go
-  runtime) and the WAF at `:8080/metrics` (counters plus a REQMOD latency
-  histogram). An opt-in `observability` Compose profile ships Prometheus +
-  Grafana: `docker compose --profile observability up -d`.
-- Health probes: `/livez` (process up) and `/readyz` (database reachable; the
-  container healthcheck uses this so a wedged DB surfaces as unhealthy).
-  Structured per-request access logs on the backend.
-- Notifications to a custom webhook, Gotify, Telegram, or Microsoft Teams, with
-  retry and backoff.
-- WebSocket log streaming, JWT auth with a persistent revocation list, per-IP
-  rate limiting, and AES-256-GCM encryption of sensitive settings at rest.
-- WPAD/PAC client auto-config and a Tailscale sidecar.
-
-## Using it
-
-**Point a client at the proxy.** Set the HTTP/HTTPS proxy to `http://<host>:3128`
-on the device, or use the PAC file / WPAD auto-discovery from Settings > Overview >
-Connect a device. Only RFC1918 and localhost sources are permitted by default.
-
-**Block a domain.** Blacklists > Domains > add `example.com`. The change is
-exported to Squid and dnsmasq within a couple of seconds. Whitelists take
-precedence.
-
-**Inspect HTTPS.** Settings > Inspection > enable SSL inspection, download the generated CA,
-and install it as trusted on your clients. Without this, HTTPS requests are only
-filtered by host/IP and DNS, not by WAF body rules.
-
-**Lock egress to an allowlist.** Settings > Filtering > turn on Only allowlisted
-destinations, then add
-the approved IPs/CIDRs and domains on the Egress Allowlist page. Local clients
-can then reach only those destinations; everything else is refused.
-
-**Import a blocklist.** Blacklists > Import supports popular public lists by URL
-or pasted content. Imports are size-bounded and fetched with an SSRF-safe client
-that refuses private/internal targets.
+Configuration is in `.env` (see [Configuration](docs/guide/configuration.md));
+everything else is a setting stored in the database and edited in the UI.
+The single-node design and its limits are in
+[Architecture: limits](docs/guide/architecture.md#limits).
 
 ## Updating
 
+Read the [CHANGELOG](CHANGELOG.md) entry for the version you move to first:
+some releases list an **Action required** step that the commands below do not
+perform. Re-running `deploy/install.sh` on an installed host pulls the new
+version, adds variables an older `.env` lacks and copies `data/` to
+`data.bak.<timestamp>` before it starts the new images. For a clone:
+
 ```bash
-cd secure-proxy-manager
 git pull
 docker compose up -d --build
 ```
 
-Your `.env`, database, and blacklists live in bind-mounted volumes and are
-preserved across updates. The backend checks GitHub for newer releases and shows
-a badge in the UI when one is available.
-
-## Backup and restore
-
-The database (`data/`), config (`config/`), and `.env` hold all state.
-
-```bash
-docker compose down
-cp data/proxy_manager.db proxy_manager.db.bak
-tar czf config.bak.tgz config/ .env
-docker compose up -d
-```
-
-Settings > Admin and backup has Download a backup, which downloads the settings and
-the five lists, and Restore from a file, which reads that file back and says what it
-applied and skipped. Export the database downloads every table, for analysis; Restore
-cannot read it.
-
-## Health and testing
-
-```bash
-# Service health
-curl -skI https://localhost:8443/            # UI
-curl -I http://127.0.0.1:5001/health         # backend API (localhost only)
-
-# Proxy a request
-curl -x http://localhost:3128 -I http://example.com
-
-# End-to-end suite (service health, proxy egress, blocking, log pipeline)
-bash tests/ci-e2e.sh
-```
-
-Go unit tests: `cd backend-go && go test ./...` and `cd waf-go && go test ./...`.
-UI tests: `cd ui && npm test`. A local pre-commit check that runs TypeScript,
-ESLint, Go vet/test, and the UI build is at `scripts/pre-commit-validate.sh`.
-
-## Troubleshooting
-
-- **Backend container won't start** - check `docker compose logs backend`. The
-  most common cause is an empty/weak `BASIC_AUTH_PASSWORD` or a known/short
-  `SECRET_KEY`; both are rejected by design.
-- **Can't reach the UI** - it is HTTPS on 8443 with a self-signed cert; accept
-  the certificate, or use `https://localhost:8443` (not `http://...:8011`).
-- **Clients aren't being filtered** - confirm the device's proxy is set to
-  `:3128` and the source IP is RFC1918/localhost (other sources are denied).
-- **HTTPS isn't inspected** - that is the default; enable SSL-bump and install
-  the CA to inspect request contents.
-
-## API
-
-The backend exposes a REST API used by the UI; every route is listed in [docs/api/reference.md](docs/api/reference.md). A machine-readable
-listing is available at `GET /api/docs`. Authenticate with HTTP Basic auth, or
-exchange credentials at `POST /api/auth/login` for a JWT and send it as a Bearer
-token.
-
-## Architecture and deployment docs
-
-- [DEPLOYMENT.md](DEPLOYMENT.md) - step-by-step deployment, reverse-proxy and
-  TLS setup, resource tuning.
-- [SECURITY.md](SECURITY.md) - security model and how to report issues.
-- [BENCHMARKS.md](BENCHMARKS.md) - reproducible performance and detection
-  benchmarks.
-- [CHANGELOG.md](CHANGELOG.md) - release history.
+Backups, restore and rollback are in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Tested like an attacker
 
-Most proxies and WAFs ship rules and hope. SPM has an **adversarial e2e harness**
-(`make adversarial`, gated in CI) that drives real attack traffic *through* the
-running proxy + WAF in an isolated sandbox and **fails the build on any
-regression**. Five planes:
+`make adversarial` (`bash tests/adversarial/run.sh`) builds an isolated
+sandbox of the real images, attacks it and tears it down. CI runs it as the
+required check *Adversarial block-matrix (proxy + WAF)* on every pull request
+and push to `main`, and daily. It fails if any of five planes fails:
 
-- **block-matrix**: SQLi / XSS / RCE / SSRF / traversal / secret-exfil / … across
-  the **21 WAF categories**: malicious → **403**, benign → allowed. Gate: **false
-  negatives = 0, false positives = 0**.
-- **API attacker**: auth-bypass, forged / tampered JWTs (incl. `alg=none`), login
-  SQL-injection, rate-limit probing → **no bypass** (401/403/429 as expected).
-- **bench / latency**: p50/p95 + proxy + ICAP overhead, with a regression gate.
-- **config-matrix**: flips a setting through the real API and proves the data
-  plane changes (disable a rule category → that attack now passes; re-enable →
-  blocked again, selectively).
-- **resilience**: kill the WAF and the proxy **fails closed** (no fail-open
-  hole); restart it and the stack **self-heals**.
+- **Block matrix.** 41 cases in `tests/adversarial/corpus.json` sent through
+  the proxy and the WAF: 28 malicious cases that must be blocked, covering 19
+  request categories and the 2 response categories, and 11 benign cases that
+  must pass. One false negative or false positive among them fails the run.
+  Two more cases (`UNICODE_OBFUSCATION`, `FINANCIAL_DATA`) are reported but do
+  not gate.
+- **API attacker.** 18 cases in `tests/adversarial/api-corpus.json` against
+  the backend: unauthenticated and forged-token requests (including
+  `alg=none`) must be refused, login SQL injection must fail, a login burst
+  must be rate limited, and valid Basic and JWT requests must succeed.
+- **Latency.** A k6 run through the proxy and the WAF must stay under a p95 of
+  800 ms and a 5% error rate.
+- **Config matrix.** Disabling a WAF category through the API lets that attack
+  through while another category still blocks; enabling it blocks again.
+- **Resilience.** With the WAF stopped, a request is not answered 200 (fail
+  closed); after a restart traffic flows and attacks are blocked again; the
+  dns container recovers after a restart.
 
-Run it yourself. It brings up the sandbox, attacks it, prints a block-matrix +
-FP/FN report, and tears down:
+Details: [tests/adversarial/README.md](tests/adversarial/README.md). Other
+suites: `cd backend-go && go test ./...`, `cd waf-go && go test ./...`,
+`cd ui && npm test`, and `scripts/pre-commit-validate.sh`, which runs the
+TypeScript check, ESLint, `go vet`, the Go tests and the UI build.
+`tests/ci-e2e.sh` is the CI smoke test: it writes its own `.env`, and on exit
+deletes `.env` and runs `docker compose down -v`, so never run it in an
+installed checkout.
 
-```bash
-make adversarial
-```
+## Manage it from an MCP client
 
-See [`tests/adversarial/`](tests/adversarial/).
-
-## Manage it from an AI agent (MCP)
-
-SPM ships an optional [Model Context Protocol](https://modelcontextprotocol.io)
-server ([`mcp/`](mcp/)) that exposes the management API as tools, so an assistant
-or agent (e.g. Claude) can **drive your Secure Web Gateway in natural language**:
-"what are my top egressing domains?", "is anything reaching AI APIs?", "block
-`evil.example`", "disable the SQL_INJECTION category for 5 minutes". Read tools
-are safe; mutating tools (block/toggle/reload) are explicit and approved per call.
+[`mcp/`](mcp/) is a Model Context Protocol server, published on PyPI as
+`spm-mcp`, that exposes part of the API as tools. It is read-only by default:
+the tools that change the proxy (block a domain, toggle a WAF category, add an
+egress entry, reload) are registered only with `SPM_MCP_READONLY=false`.
 
 ```bash
 SPM_URL=http://localhost:5001 SPM_USERNAME=admin SPM_PASSWORD=... uvx spm-mcp
 ```
 
-See [`mcp/README.md`](mcp/README.md) for the tool list and Claude Desktop config.
+See [mcp/README.md](mcp/README.md).
 
-## Security notes
+## Security
 
-- The SSL-bump CA is generated per deployment at first boot and never committed;
-  treat the private key under `config/` as sensitive and never share it.
-- Set strong admin credentials. The proxy only accepts RFC1918/localhost clients
-  by default - if you expose port 3128 publicly, put it behind authentication or
-  a private network (e.g. the Tailscale sidecar).
-- Sensitive settings (webhook URLs, tokens) are encrypted at rest; JWT secrets
-  and the encryption key are generated and persisted under `data/`.
-- Squid is kept patched against upstream CVEs (e.g. Squidbleed / CVE-2026-47729)
-  via a fail-closed version floor in the proxy image and a disabled FTP gateway.
-  See [Security Advisories](docs/guide/security-advisories.md).
+- The admin password must be 8 or more characters and not a common default;
+  the backend refuses to start otherwise. A `SECRET_KEY` you set must be 32 or
+  more characters and not a known example value.
+- The SSL-bump CA is generated per deployment under `config/` and is
+  gitignored. Treat `config/ssl_key.pem` as a secret.
+- Alert channel credentials are stored encrypted (AES-256-GCM) and are
+  write-only through the API.
+- The proxy denies FTP and keeps port 21 out of `Safe_ports`; the image build
+  refuses a `squid-openssl` older than the floor in `proxy/Dockerfile`. See
+  [Security Advisories](docs/guide/security-advisories.md).
+- If port 3128 is reachable from outside your network, put it behind a
+  firewall or a private network.
+
+Report vulnerabilities privately, as described in [SECURITY.md](SECURITY.md).
+
+## Documentation
+
+- [Getting started](docs/guide/getting-started.md),
+  [Configuration](docs/guide/configuration.md),
+  [Lists](docs/guide/blacklists.md), [Security](docs/guide/security.md)
+- [API reference](docs/api/reference.md); a running backend lists every
+  route at `GET /api/docs` (authenticated)
+- [DEPLOYMENT.md](DEPLOYMENT.md): installation, TLS, backups, upgrades
+- [BENCHMARKS.md](BENCHMARKS.md): what has been measured, and how
+- [CHANGELOG.md](CHANGELOG.md): release history
 
 ## Contributing
 
@@ -369,10 +247,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Issues and pull requests are welcome.
 
 ## Support
 
-SPM is MIT-licensed and free to self-host. If it's useful to you:
-
-- ⭐ **Star** the repo and [**sponsor**](https://github.com/sponsors/fabriziosalmi) to support development.
-- 🛠️ **Want it installed, hardened, or managed** for your network or organisation? Email **fabrizio.salmi@gmail.com**.
+SPM is MIT-licensed and free to self-host. You can
+[sponsor development](https://github.com/sponsors/fabriziosalmi). For
+installation, hardening or managed operation for your organisation, email
+fabrizio.salmi@gmail.com.
 
 ## License
 
