@@ -646,15 +646,19 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 
 	recent := []map[string]any{}
 	if rr, err := h.db.Query(
-		`SELECT timestamp, method, destination, status, bytes, block_reason
+		`SELECT timestamp, method, destination, status, bytes, blocked, block_reason
 		 FROM proxy_logs WHERE source_ip = ? AND `+clientRows+` ORDER BY id DESC LIMIT 20`, ip); err == nil {
 		for rr.Next() {
 			var ts, method, dest, status, reason string
 			var nbytes int64
-			rr.Scan(&ts, &method, &dest, &status, &nbytes, &reason) //nolint:errcheck
+			var blocked int
+			rr.Scan(&ts, &method, &dest, &status, &nbytes, &blocked, &reason) //nolint:errcheck
+			// blocked is the row's recorded flag, the one every blocked count
+			// sums; the status code alone does not say it (an origin 403 is
+			// not a block). reason_label names the rule, as on the dashboard.
 			recent = append(recent, map[string]any{
 				"timestamp": ts, "method": method, "destination": dest, "status": status, "bytes": nbytes,
-				"reason": reason,
+				"blocked": blocked == 1, "reason": reason, "reason_label": workers.ReasonLabel(reason),
 			})
 		}
 		rr.Close()
