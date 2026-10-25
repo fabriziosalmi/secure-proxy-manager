@@ -54,9 +54,20 @@ BEFORE=$(git rev-parse --short HEAD)
 TARGET=$(git rev-parse --short origin/main)
 if [ "$BEFORE" != "$TARGET" ]; then
   echo "  $BEFORE -> $TARGET"
-  # reset --hard leaves untracked files alone, so .env and the runtime ACLs
-  # exported under config/ survive.
-  git reset --hard -q origin/main || { bad "git reset failed"; finish; exit 1; }
+  # reset --hard leaves untracked files alone, but three of the lists the
+  # backend exports are TRACKED (repository fixtures): the reset replaced a
+  # 640,929-domain and a 50,772-IP blacklist with one domain and two IPs, and
+  # Squid enforced those until the backend next exported (2026-10-25). They
+  # are kept across the reset.
+  keep=$(mktemp -d)
+  for f in config/domain_blacklist.txt config/ip_blacklist.txt config/ip_whitelist.txt; do
+    [ -f "$f" ] && cp -p "$f" "$keep/${f##*/}"
+  done
+  git reset --hard -q origin/main || { rm -rf "$keep"; bad "git reset failed"; finish; exit 1; }
+  for f in config/domain_blacklist.txt config/ip_blacklist.txt config/ip_whitelist.txt; do
+    [ -f "$keep/${f##*/}" ] && cp -p "$keep/${f##*/}" "$f"
+  done
+  rm -rf "$keep"
 else
   echo "  already at $TARGET"
 fi
@@ -82,7 +93,28 @@ if [ -n "$VERSION" ]; then ok "backend healthy (v$VERSION)"; else bad "backend n
 down=$($COMPOSE ps --format '{{.Service}} {{.State}}' 2>/dev/null | awk '$2!="running"{print $1}' | tr '\n' ' ')
 if [ -z "$down" ]; then ok "all services running"; else bad "services not running: $down"; fi
 
+# "running" is not "accepting connections": the probes below ran about four
+# seconds after the restart, before Squid listened, and got 000 on every
+# deploy (2026-10-25, twice). Wait for the proxy's own healthcheck, which
+# probes Squid, and report a proxy that never gets there.
+PROXY_HEALTH=""
+for _ in $(seq 1 60); do
+  PROXY_HEALTH=$($COMPOSE ps proxy --format '{{.Health}}' 2>/dev/null)
+  [ "$PROXY_HEALTH" = "healthy" ] && break
+  sleep 3
+done
+if [ "$PROXY_HEALTH" = "healthy" ]; then ok "proxy healthy"; else bad "proxy not healthy after 180 s (${PROXY_HEALTH:-unknown})"; fi
+
 echo "── data plane ──"
+# The probes need a host the deployment does not blacklist: Squid denies a
+# listed domain with its own 403, which the benign probe would report as a WAF
+# false positive (it did, once example.com was blacklisted on the CI host).
+probe_name="${PROBE_HOST#*://}"; probe_name="${probe_name%%[/:]*}"
+if [ -f config/domain_blacklist.txt ] \
+   && grep -qixE "(\*\.)?${probe_name//./\\.}" config/domain_blacklist.txt; then
+  bad "probe host $probe_name is on this deployment's domain blacklist; set PROBE_HOST to another host"
+  finish; exit 1
+fi
 # A payload the WAF must refuse, in a BODY: the shape that passed until 3.13.1.
 code=$(curl -s -o /dev/null -w '%{http_code}' -x "$PROXY" --max-time 20 \
   -X POST "$PROBE_HOST/login" -d "user=admin'--&pass=x" 2>/dev/null) || code=000
