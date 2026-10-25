@@ -1,8 +1,14 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { Toggle } from './Toggle';
+import { expectNoAxeViolations } from '../../test/axe';
 
 describe('Toggle', () => {
+  it('passes axe', async () => {
+    const { container } = render(<Toggle checked={false} onChange={() => {}} label="WAF" />);
+    await expectNoAxeViolations(container);
+  });
+
   it('exposes role=switch with aria-checked reflecting state', () => {
     const { rerender } = render(<Toggle checked={false} onChange={() => {}} label="WAF" />);
     const sw = screen.getByRole('switch', { name: 'WAF' });

@@ -40,6 +40,10 @@ const TEXT_PAIRS: [string, string, number][] = [
   ['warning', 'surface', 4.5], ['warning', 'warning-bg', 4.5], ['warning-text', 'warning-bg', 4.5],
   ['success', 'surface', 4.5], ['success', 'success-bg', 4.5],
   ['danger-strong', 'surface', 3],
+  // Pairs the shared components draw: neutral Badge, the pressed
+  // SegmentedControl option, the info Notice, the sidebar's active item.
+  ['muted', 'border-subtle', 4.5], ['surface', 'text', 4.5], ['text', 'accent-subtle', 4.5],
+  ['subtle', 'surface-muted', 4.5],
 ]
 
 describe('design tokens', () => {
