@@ -149,6 +149,22 @@ style of `event_id`; a constant default rewrites no row). Partial index
 index count. The start-up `blocked` backfill is limited to `unclassified`
 rows, so it cannot flip an origin 403 (`none`) back to blocked.
 
+Schema version 3 (`backend-go/internal/database/reconstruct.go`) reassigns,
+once, the sinkholed requests logged before reasons were recorded: Squid
+logged them as a `/503` with `blocked = 0`. A row gets
+`domain_blacklist_dns_reconstructed` and `blocked = 1` when it is
+`unclassified`, its status ends in `/503`, its method is not `DNS`, its host
+(`database.HostKey`, lower case) is on the domain blacklist as `name` or
+`*.name` (compared in lower case) and not whitelisted, and it was logged at
+or after that entry's `added_date`. A `/503` from before the listing is left
+alone: it was an origin or network failure. The reason is separate from
+`domain_blacklist_dns` so a reconstructed block never reads as a recorded
+one. The step commits with `PRAGMA user_version = 3`, so it never runs twice.
+Measured on 1,000,000 rows and 640,000 names (200,000 rows reassigned): 3.3
+to 3.8 s on an M4, 27 to 31 s in a container with the backend's limits (128
+MiB, 0.25 CPU), peak anonymous memory 120 MiB against 118 MiB for the same
+start-up without the step.
+
 | Reason | Rule (this branch, `proxy/generate_squid_conf.sh`) |
 |---|---|
 | `ip_blacklist` | `deny ip_blacklist` (`:358`) |
@@ -164,6 +180,7 @@ rows, so it cannot flip an origin 403 (`none`) back to blocked.
 | `port_policy` | `deny !Safe_ports` (`:346`), `deny CONNECT !SSL_ports` (`:388`) |
 | `protocol_policy` | `deny Dangerous_methods`, `deny !Safe_methods`, `deny ftp_proto` (`:341-345`). Not in the original list: methods and the FTP scheme are neither ports nor "other" |
 | `other` | `deny manager` (`:356`), `deny all` (`:402`), a `TCP_DENIED` line without a note, an unknown note |
+| `domain_blacklist_dns_reconstructed` | not written at ingestion: a pre-reason `/503` to a listed name, reassigned once at start-up (schema version 3, section 7) |
 | `none` | not blocked |
 | `unclassified` | no reason recorded: rows from before this change, lines without the reason fields |
 
