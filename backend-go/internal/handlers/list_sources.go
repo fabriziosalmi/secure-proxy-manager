@@ -170,16 +170,16 @@ func readIPACLStatus(configDir, name string) *IPACLStatus {
 // list takes out of the exported files, and the proxy's own records of what
 // Squid holds. A record the proxy has not written is null, never a guess.
 func (h *BlacklistHandlers) Enforcement(w http.ResponseWriter, r *http.Request) {
-	var domains, allowed int
+	var domains int
 	if err := h.db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&domains); err != nil {
 		writeInternalError(w, "enforcement", err)
 		return
 	}
-	// The exporter leaves out a blocked domain whose exact name is on the
-	// allowed list (loadWhitelistSet), so neither dnsmasq nor Squid gets it.
-	if err := h.db.QueryRow(
-		"SELECT COUNT(*) FROM domain_blacklist WHERE domain IN (SELECT domain FROM domain_whitelist WHERE type = 'fqdn')",
-	).Scan(&allowed); err != nil {
+	// The exporter leaves out a blocked domain whose enforced name ("*." and
+	// a leading dot dropped, any case) is on the allowed list, so neither
+	// dnsmasq nor Squid gets it; the count is the exporter's own rule.
+	allowed, err := database.BlockedOnAllowed(h.db)
+	if err != nil {
 		writeInternalError(w, "enforcement", err)
 		return
 	}

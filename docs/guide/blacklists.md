@@ -7,7 +7,7 @@ Secure Proxy Manager keeps four lists, each with its own role in the request pat
 | Domain blacklist | dnsmasq, and Squid while the list is small enough | dnsmasq answers `0.0.0.0` and `::` for every entry; Squid also refuses the name itself while the list has at most `SPM_SQUID_DOMAIN_ACL_MAX` names (default 250,000) |
 | IP blacklist | Squid | Squid refuses requests to a matching destination IP or CIDR range |
 | IP whitelist | Squid | Matching destinations get past the direct-IP rule and the final deny; the blacklists are checked first, so it does not override them |
-| Domain whitelist | the export | An exact name on it is left out of the domain blacklist before dnsmasq and Squid receive it |
+| Domain whitelist | the export | A name on it takes the same name off the domain blacklist (written `name`, `*.name` or `.name` there) before dnsmasq and Squid receive it |
 
 Each tab has an **Enforcement** section that says what enforces the list from recorded state: the proxy writes what it loaded (`/config/domain_acl_status.json` for the domains, `/config/ip_blacklist_acl_status.json` and `/config/ip_whitelist_acl_status.json` for the networks Squid loads after merging overlapping entries), and the page says "Not reported" when a record is missing.
 
@@ -16,7 +16,7 @@ Each tab has an **Enforcement** section that says what enforces the list from re
 Blocks HTTP and HTTPS requests to matching destinations.
 
 - A name blocks that exact host, not its subdomains: `malicious.example` blocks `malicious.example`, and `ads.malicious.example` stays reachable unless it is listed too.
-- An entry written `*.ads.example.com` is accepted and blocks `ads.example.com` itself, in dnsmasq and in Squid alike: the exporter and the proxy both drop the `*.`. It does not cover subdomains.
+- An entry written `*.ads.example.com` or `.ads.example.com` is accepted and blocks `ads.example.com` itself, in dnsmasq and in Squid alike: the exporter and the proxy both drop the `*.` and the leading dot, and compare names in lower case. It does not cover subdomains.
 
 The list is limited to `SPM_DNS_BLOCKLIST_MAX_DOMAINS` entries; see [Size limit](#size-limit).
 
@@ -48,7 +48,7 @@ Manage via **Web UI → Blacklists → Allowed IPs** or the [API](/api/blacklist
 
 ## Domain whitelist
 
-A name on the domain whitelist is left out of the domain blacklist the backend exports, so neither dnsmasq nor Squid receives it. Use this for essential services (GitHub, Docker registries, package mirrors) before importing large blocklists that may include them. The match is exact: `github.com` here takes out a blacklist entry `github.com`, not `api.github.com`. Wildcards are refused.
+A name on the domain whitelist is left out of the domain blacklist the backend exports, so neither dnsmasq nor Squid receives it. Use this for essential services (GitHub, Docker registries, package mirrors) before importing large blocklists that may include them. The match is on the name the blacklist entry enforces: `github.com` here takes out a blacklist entry `github.com`, `*.github.com` or `.github.com` (each blocks `github.com` itself), in any case, and not `api.github.com`. A leading dot and wildcards are refused here, because an allowed name covers no subdomain.
 
 Manage via **Web UI → Blacklists → Allowed domains** or the [API](/api/blacklists#domain-whitelist).
 

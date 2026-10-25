@@ -4,8 +4,9 @@
  *
  * - Blocked domains: the DNS sinkhole gets every entry the allowed list does
  *   not take out (db.go writeDnsmasqBlocklist, an exact hosts entry each,
- *   "*." dropped); Squid holds its own copy only while the proxy's record
- *   says so (domain_acl_status.json, SPM_SQUID_DOMAIN_ACL_MAX).
+ *   "*." and a leading dot dropped, EnforcedDomain); Squid holds its own copy
+ *   only while the proxy's record says so (domain_acl_status.json,
+ *   SPM_SQUID_DOMAIN_ACL_MAX).
  * - Blocked and allowed IPs: Squid loads the list after merging overlapping
  *   and adjacent entries (normalize_ip_file); the merged count is the
  *   proxy's record, and "Not reported" when it has written none.
@@ -114,8 +115,8 @@ export function EnforcementSection({ list, total, data, loading, error, onReload
           <Row term="Limit">{formatCount(data.dns_blocklist_limit)} entries (SPM_DNS_BLOCKLIST_MAX_DOMAINS)</Row>
         </dl>
         <p className="text-[13px] leading-5 text-ink-muted">
-          A name blocks that exact host, not its subdomains. &quot;*.example.com&quot; blocks example.com itself, in the DNS sinkhole and in Squid
-          alike. Distinct names count each name once, with &quot;*.&quot; dropped.
+          A name blocks that exact host, not its subdomains. &quot;*.example.com&quot; and &quot;.example.com&quot; each block example.com itself, in the
+          DNS sinkhole and in Squid alike. Distinct names count each name once, in lower case, with &quot;*.&quot; and a leading dot dropped.
         </p>
         {onReloadDns && (
           <div><Button size="sm" onClick={onReloadDns}>Rewrite the DNS list</Button></div>
@@ -158,8 +159,9 @@ export function EnforcementSection({ list, total, data, loading, error, onReload
           <Row term="Blocked entries taken out">{formatCount(left)}</Row>
         </dl>
         <p className="text-[13px] leading-5 text-ink-muted">
-          A name here takes the identical name off Blocked domains before the lists reach the DNS sinkhole and Squid. It does not cover
-          subdomains, and wildcards are refused.
+          A name here takes the same name off Blocked domains before the lists reach the DNS sinkhole and Squid, however it is written
+          there: example.com also takes out *.example.com and .example.com, which block example.com itself. It does not cover subdomains,
+          so a leading dot or &quot;*.&quot; is refused here.
         </p>
       </>
     );

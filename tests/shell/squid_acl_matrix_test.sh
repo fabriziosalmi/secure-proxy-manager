@@ -222,6 +222,12 @@ start_proxy "echo $PUB_SVC > /config/ip_blacklist.txt" || exit 1
 check  "LAN client → blacklisted destination"            403 ip_blacklist  code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
 check  "LAN client → other destination still allowed"    200 none          code   "$PFX-lan" "$LAN_CLIENT" "http://$LAN_SVC/"
 
+echo "── an address on Blocked IPs and on Allowed IPs stays blocked ──"
+# The Blocked IPs deny runs before the Allowed IPs allow; the Enforcement
+# section of both tabs says so.
+start_proxy "echo $PUB_SVC > /config/ip_blacklist.txt; echo $PUB_SVC > /config/ip_whitelist.txt" || exit 1
+check  "LAN client → address on both lists"              403 ip_blacklist  code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+
 echo "── an IP list with 2,000 entries another entry covers ──"
 # Squid warns once per covered entry and aborts at startup past 1000 queued
 # messages (earlyMessages->size() < 1000): a real 50,772-entry import kept the
@@ -242,6 +248,12 @@ check  "LAN client → other destination still allowed"    200 none             
 # literal host that never matches. dnsmasq blocks the exact name, so must Squid.
 start_proxy "echo '*.pub.test' > /config/domain_blacklist.txt" || exit 1
 check  "LAN client → domain listed as *.name"            403 domain_blacklist code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+# ".name" is the domain and its subdomains to dstdomain, but a blacklist entry
+# blocks one exact name: the watchdog drops the dot, as the exporter does for
+# dnsmasq, whose hosts entries are exact.
+start_proxy "echo '.pub.test' > /config/domain_blacklist.txt" || exit 1
+check  "LAN client → domain listed as .name"             403 domain_blacklist code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+check  "LAN client → a name under a .name entry"         200 none             code   "$PFX-lan" "$LAN_CLIENT" http://www.pub.test/
 start_proxy "echo pub.test > /config/domain_blacklist.txt" -e SPM_SQUID_DOMAIN_ACL_MAX=0 || exit 1
 check  "over the limit: Squid leaves it to the sinkhole" 200 none             code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
 

@@ -1059,7 +1059,7 @@ test.describe('UI — Blacklists (Blocked domains)', () => {
     // This stack runs no proxy; a record left in ./config from another run
     // would say whether Squid holds a copy instead.
     await expect(enforcement.getByText(/^(Not reported: the proxy has not written domain_acl_status\.json|Its own copy of all|No copy:)/)).toBeVisible();
-    await expect(enforcement.getByText(/"\*\.example\.com" blocks example\.com itself/)).toBeVisible();
+    await expect(enforcement.getByText(/"\*\.example\.com" and "\.example\.com" each block example\.com itself/)).toBeVisible();
   });
 
   test('add a domain, find it, remove it', async ({ page }) => {

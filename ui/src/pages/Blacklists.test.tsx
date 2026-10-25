@@ -191,9 +191,9 @@ describe('Blacklists', () => {
       expect(within(section).getByText('Every entry but the 3 on Allowed domains')).toBeInTheDocument()
       expect(within(section).getByText('No copy: 473,936 names is over its limit of 250,000 (SPM_SQUID_DOMAIN_ACL_MAX)')).toBeInTheDocument()
       expect(within(section).getByText('1,000,000 entries (SPM_DNS_BLOCKLIST_MAX_DOMAINS)')).toBeInTheDocument()
-      // The semantics db.go and the watchdog implement: "*." is dropped, the
-      // exact name is blocked.
-      expect(within(section).getByText(/"\*\.example\.com" blocks example\.com itself, in the DNS sinkhole and in Squid alike/)).toBeInTheDocument()
+      // The semantics db.go (EnforcedDomain) and the watchdog implement: "*."
+      // and a leading dot are dropped, the exact name is blocked.
+      expect(within(section).getByText(/"\*\.example\.com" and "\.example\.com" each block example\.com itself, in the DNS sinkhole and in Squid alike/)).toBeInTheDocument()
     })
 
     it('blocked domains: a held copy, and no record at all, are each said as they are', async () => {
@@ -221,6 +221,13 @@ describe('Blacklists', () => {
       enforcement = { ...enforcementBody, squid_ip_blacklist: null }
       renderWithProviders(<Blacklists />)
       expect(await screen.findByText('Not reported: the proxy has not written ip_blacklist_acl_status.json')).toBeInTheDocument()
+    })
+
+    it('allowed domains: says which blocked forms a name takes out, as the exporter does', async () => {
+      go('?tab=allowed-domains')
+      renderWithProviders(<Blacklists />)
+      // db.go loadWhitelistSet compares EnforcedDomain of both sides.
+      expect(await screen.findByText(/example\.com also takes out \*\.example\.com and \.example\.com, which block example\.com itself\. It does not cover subdomains/)).toBeInTheDocument()
     })
 
     it('allowed IPs: says the blocked lists are checked first', async () => {
