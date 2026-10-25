@@ -90,6 +90,11 @@ export interface Enforcement {
   squid_ip_whitelist: IpAclStatus | null;
 }
 
+/**
+ * One access-log row: GET /api/logs, and the live feed (/api/ws/logs), which
+ * sends the same fields with blocked as 0 or 1. The fields after bytes are
+ * absent from an older backend.
+ */
 export interface LogEntry {
   id?: number;
   timestamp: string;
@@ -98,6 +103,14 @@ export interface LogEntry {
   destination: string;
   status: string;
   bytes: number | null;
+  blocked?: boolean | number;
+  /** The rule that blocked it (a block_reason key); "none" when allowed, "unclassified" when not recorded. */
+  reason?: string;
+  reason_label?: string;
+  /** The stack's own traffic (the backend, this host, loopback), not a device. */
+  internal?: boolean;
+  /** What the source is, where the backend can tell; may be empty. */
+  kind?: string;
 }
 
 /** Pagination envelope shared by every collection endpoint (SECURE-API-02). */
@@ -115,7 +128,10 @@ export interface ListResponse<T> {
   meta: ListMeta;
 }
 
-export type LogsPageData = ListResponse<LogEntry>;
+/** GET /api/logs: meta.total counts the rows the filters match, meta.internal the matching rows hidden as internal. */
+export interface LogsPageData extends ListResponse<LogEntry> {
+  meta: ListMeta & { internal?: number };
+}
 
 export interface AuditEntry {
   id: number;

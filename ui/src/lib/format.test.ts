@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest'
-import { formatAge, formatClock, formatCount, formatDate, formatDateTime, formatHourMinute, formatKilobytes, formatPercent, formatRange, formatShare, formatTime } from './format'
+import { formatAge, formatBytes, formatClock, formatCount, formatDate, formatDateTime, formatHourMinute, formatKilobytes, formatPercent, formatRange, formatShare, formatTime } from './format'
 import { simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 
 describe('formatRange', () => {
@@ -136,6 +136,21 @@ describe('formatPercent', () => {
     vi.resetModules()
     const fresh = await import('./format')
     expect(fresh.formatPercent(1234.56)).toBe('1,234.6%')
+  })
+})
+
+describe('formatBytes', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  // The access log used to write every size as KB with one decimal: a 205 B
+  // block page was "0.2 KB" and a 1.2 GB download "1258291.0 KB".
+  it('writes bytes under 1 KB as bytes and larger sizes in the largest unit', () => {
+    expect(formatBytes(0)).toBe('0 B')
+    expect(formatBytes(205)).toBe('205 B')
+    expect(formatBytes(1023)).toBe('1,023 B')
+    expect(formatBytes(6758)).toBe('6.6 KB')
+    expect(formatBytes(1258291)).toBe('1.2 MB')
+    expect(formatBytes(1288490189)).toBe('1.2 GB')
   })
 })
 
