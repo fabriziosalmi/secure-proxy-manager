@@ -106,7 +106,9 @@ Pro, `TestLogFilters1M` in `backend-go/internal/handlers/logs_plan_test.go`):
 | `before_id` (deep) | rowid range | 18 ms |
 | `q` | no index can serve `LIKE '%x%'`: the table is read | 200 to 290 ms |
 
-Without `idx_proxy_logs_blocked_reason` a rule filter read every blocked row
+Init creates `idx_proxy_logs_blocked_reason` on the first start after an
+upgrade; on the same 1M rows that took 138 ms. Without it a rule filter read
+every blocked row
 (133 to 139 ms); counting "not internal" and "allowed" directly read the
 whole table (123 and 226 ms).
 

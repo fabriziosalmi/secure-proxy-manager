@@ -124,6 +124,16 @@ func TestLogFilters1M(t *testing.T) {
 	start := time.Now()
 	seed1M(t, db, n)
 	t.Logf("seeded %d rows in %s", n, time.Since(start).Round(time.Millisecond))
+	// What the new index costs a deployment that upgrades with a full log:
+	// Init creates it once, on start-up.
+	if _, err := db.Exec("DROP INDEX idx_proxy_logs_blocked_reason"); err != nil {
+		t.Fatal(err)
+	}
+	created := time.Now()
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_proxy_logs_blocked_reason ON proxy_logs(block_reason) WHERE blocked = 1"); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("creating idx_proxy_logs_blocked_reason on %d rows took %s", n, time.Since(created).Round(time.Millisecond))
 	if _, err := db.Exec("ANALYZE"); err != nil {
 		t.Fatal(err)
 	}
