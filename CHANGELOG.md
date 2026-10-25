@@ -83,6 +83,9 @@ for at least one minor release before disappearing.
   unless `include_internal=true`; a `source_ip` that names an internal
   address is still shown, and `meta.internal` counts what was left out.
   `X-API-Version` stays 1. (#429)
+- A successful sign-in and a sign-out record the client address as the
+  audit row's target, as a failed sign-in already did; the Audit page shows
+  "From <address>", and "Address not recorded" for older rows.
 - With GDPR mode on, the live log feed (`/api/ws/logs`) masks client
   addresses as `GET /api/logs` does; it carried the full address.
 - The backend's proxy health probe opens and closes a connection instead of

@@ -42,10 +42,12 @@ const LISTS: Record<string, ListWords> = {
 const LIST_NAMES = Object.keys(LISTS).join('|');
 const LIST_ACTION = new RegExp(`^(add|remove|bulk_remove|clear|import|remove_source|restore)_(${LIST_NAMES})$`);
 
-const SIGN_INS: Record<string, AuditDescription> = {
-  login: { event: 'Signed in', details: null, kind: 'signin' },
-  logout: { event: 'Signed out', details: null, kind: 'signin' },
-};
+const SIGN_INS: Record<string, string> = { login: 'Signed in', logout: 'Signed out' };
+
+/** A sign-in or sign-out, from the address it records (none before 3.15.0). */
+function describeSignIn(e: AuditEntry, event: string): AuditDescription {
+  return { event, details: e.target ? `From ${e.target}` : 'Address not recorded', kind: 'signin' };
+}
 
 /** Fixed sentences for the actions that carry no counts. */
 const PLAIN: Record<string, string> = {
@@ -237,7 +239,7 @@ function describeLegacyDelete(e: AuditEntry): AuditDescription {
 
 export function describeAudit(e: AuditEntry): AuditDescription {
   const action = e.action ?? '';
-  if (SIGN_INS[action]) return SIGN_INS[action];
+  if (SIGN_INS[action]) return describeSignIn(e, SIGN_INS[action]);
   if (action === 'login_failed') {
     return { event: 'Sign-in failed', details: join([e.target ? `From ${e.target}` : null, e.details]), kind: 'signin-failed' };
   }

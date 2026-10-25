@@ -137,3 +137,36 @@ func TestHealthHandlers(t *testing.T) {
 		t.Errorf("Expected 200, got %d", w.Code)
 	}
 }
+
+// A successful sign-in and a sign-out record the client address as their
+// target, as a failed sign-in does; they recorded nothing, so the audit log
+// could not show where a session came from.
+func TestSignInAndOutRecordTheClientAddress(t *testing.T) {
+	db, svc, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewAuthHandlers(authStore(db), svc, cfg, nil, nil)
+
+	body, _ := json.Marshal(models.LoginRequest{Username: "admin", Password: "admin-12345"})
+	r := httptest.NewRequest("POST", "/api/auth/login", bytes.NewBuffer(body))
+	r.RemoteAddr = "198.51.100.23:51234"
+	w := httptest.NewRecorder()
+	h.Login(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("login = %d", w.Code)
+	}
+
+	r = httptest.NewRequest("POST", "/api/logout", nil)
+	r.RemoteAddr = "198.51.100.23:51235"
+	r = r.WithContext(context.WithValue(r.Context(), middleware.CtxUsername, "admin"))
+	h.Logout(httptest.NewRecorder(), r)
+
+	for _, action := range []string{"login", "logout"} {
+		var target string
+		if err := db.QueryRow("SELECT target FROM audit_log WHERE action = ? ORDER BY id DESC LIMIT 1", action).Scan(&target); err != nil {
+			t.Fatalf("%s: %v", action, err)
+		}
+		if target != "198.51.100.23" {
+			t.Errorf("%s target = %q, want the client address", action, target)
+		}
+	}
+}

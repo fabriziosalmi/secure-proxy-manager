@@ -138,7 +138,9 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to issue refresh token")
 		return
 	}
-	h.store.Audit(username, "login", "", "")
+	// The address is the target, as a failed sign-in records it: a sign-in
+	// from an address nobody uses is what an audit log is read for.
+	h.store.Audit(username, "login", auth.ClientIP(r), "")
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status":        "success",
 		"access_token":  token,
@@ -209,7 +211,7 @@ func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	h.store.Audit(username, "logout", "", "")
+	h.store.Audit(username, "logout", auth.ClientIP(r), "")
 
 	// The token is revoked in this process either way, but if the revocation
 	// could not be persisted it becomes valid again after a restart. Logout
