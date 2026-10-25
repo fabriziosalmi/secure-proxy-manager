@@ -15,10 +15,13 @@ GET /api/settings
   "status": "success",
   "data": [
     { "setting_name": "ssl_bump_enabled", "setting_value": "false" },
-    { "setting_name": "cache_size",       "setting_value": "2000"  }
+    { "setting_name": "cache_size",       "setting_value": "1000"  }
   ]
 }
 ```
+
+Values are strings. The defaults a new database gets are in
+`seedDefaultSettings` in `backend-go/internal/database/db.go`.
 
 The alert channel settings are secrets: `webhook_url`, `webhook_bearer_token` (sent as `Authorization: Bearer <token>` with each webhook delivery), `gotify_url`, `gotify_token`, `teams_webhook_url`, `telegram_bot_token`, `telegram_chat_id`, `ntfy_url` and `ntfy_topic` (`crypto.SensitiveKeys` in the backend). They are stored encrypted and are write-only: their row carries `"secret": true`, an empty `setting_value`, `"is_set": true` when a value is stored, and `"decrypt_failed": true` when the stored value cannot be decrypted with the current key (`ENCRYPTION_KEY`, or the key the backend generated in its state directory when that is unset).
 
@@ -38,7 +41,9 @@ PUT /api/settings/{setting_name}
 { "value": "true" }
 ```
 
-The key in the path must consist of alphanumeric characters and underscores only and be no longer than 100 characters. The value is capped at 10 000 characters.
+The key in the path must consist of letters, digits and underscores, at most 100 characters, and must not be an internally managed or retired setting (`400` otherwise). The value is capped at 10,000 characters and checked with the same rules as the bulk endpoint; a secret is encrypted before it is stored.
+
+This endpoint only stores the value. It writes none of the files the proxy and the DNS service read (toggle markers, `squid_settings.env`, list files), so a proxy setting changed here takes effect only after a later `POST /api/settings` that carries it. Use `POST /api/settings` for anything the proxy enforces.
 
 ---
 
@@ -58,7 +63,7 @@ The body is a flat object mapping setting names to their new values:
 }
 ```
 
-All updates are applied in a single transaction. The same name and value validation applies as for the single-setting endpoint. Every value is checked before anything is written; a request with refused values answers `400` with all of them in `errors` and the first, in key order, in `detail`:
+All updates are applied in a single transaction, and then the proxy's files are written: the toggle markers in `/config` for the toggles in the request, `squid_settings.env` (port, cache sizes, extra SSL ports) on every request, and the list, time and bandwidth files when their settings are in the request. The proxy picks them up on the next reload; the Settings page calls `POST /api/maintenance/reload-config` after a save that changes a proxy setting, and an API client should do the same. The same name and value validation applies as for the single-setting endpoint. Every value is checked before anything is written; a request with refused values answers `400` with all of them in `errors` and the first, in key order, in `detail`:
 
 ```json
 {
@@ -97,9 +102,9 @@ POST /api/settings
 { "egress_default_deny": "true" }
 ```
 
-`egress_default_deny` is a boolean setting (default `"false"`) toggled like any other value through the bulk or single-setting endpoints. It is also the "Only allowlisted destinations" toggle under Settings > Filtering, which refuses to save it while the allowlist is empty.
+`egress_default_deny` is a boolean setting, sent as the string `"true"` or `"false"` (default `"false"`). `POST /api/settings` writes or removes the marker file `/config/egress_default_deny`; `POST /api/maintenance/reload-config` then makes the proxy apply it. `PUT /api/settings/egress_default_deny` stores the value without writing the marker. The setting is also the "Only allowlisted destinations" toggle under Settings > Filtering, which refuses to save it while the allowlist is empty; the API does not refuse.
 
-When `"false"` (the default) behaviour is unchanged: local clients may reach any destination that is not on a blacklist. When `"true"` the proxy denies all outbound egress from local clients except destinations on an explicit allowlist; everything else is refused with a Squid 403.
+When `"false"` (the default) local clients may reach any destination that is not blocked. When `"true"` they may reach only the destinations on the egress allowlist, LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and Allowed IPs; everything else is refused with a Squid 403.
 
 The allowlist destinations themselves are not setting values. They are managed through the egress-allowlist endpoints (`/api/egress-allowlist`), where each entry is either an IP/CIDR or a domain. See the egress allowlist API for details.
 
@@ -107,16 +112,8 @@ The allowlist destinations themselves are not setting values. They are managed t
 
 ## Health
 
-```
-GET /health
-GET /api/health
-```
-
-Returns 200 if the backend is reachable. Authentication is not required.
-
-```json
-{ "status": "healthy", "version": "3.4.4" }
-```
+`GET /api/health`, `GET /health` and the readiness probes are described in
+[Authentication](./authentication.md#health). They need no authentication.
 
 ---
 
@@ -126,7 +123,13 @@ Returns 200 if the backend is reachable. Authentication is not required.
 GET /api/database/export
 ```
 
-Returns a JSON dump of every exported table. Columns named `password`, `secret`, or `token` are replaced with `***REDACTED***`. The download is served as `Content-Disposition: attachment`.
+Returns `{"status": "success", "data": {<table>: [rows]}}` for `users`,
+`ip_whitelist`, `ip_blacklist`, `domain_blacklist`, `domain_whitelist`,
+`list_sources`, `dst_allowlist`, `proxy_logs`, `settings` and `audit_log`,
+served as the attachment `database_export.json`. Columns named `password`,
+`secret` or `token` are replaced with `***REDACTED***`. The alert channel
+secrets are rows of `settings`, so they appear in their encrypted form
+(`enc::...`). Restore cannot read this file; use the configuration backup.
 
 ---
 
@@ -136,7 +139,7 @@ Returns a JSON dump of every exported table. Columns named `password`, `secret`,
 GET /api/database/stats
 ```
 
-Returns row counts for every exported table along with the file size.
+Returns the row count of each of the tables above.
 
 ---
 
@@ -156,7 +159,7 @@ Runs `VACUUM` and `REINDEX` on the SQLite database.
 GET /api/database/size
 ```
 
-Returns the database file size in bytes.
+Returns `size_bytes` (SQLite page count times page size) and `size_mb`.
 
 ---
 
@@ -166,7 +169,9 @@ Returns the database file size in bytes.
 POST /api/database/reset
 ```
 
-Truncates every exported table except `users`. Use with care.
+Deletes every row of the tables above except `users`, settings included; the
+default settings are inserted again at the next backend start. The audit row
+for the reset is written first and deleted with the rest. Use with care.
 
 ---
 
@@ -176,8 +181,8 @@ Truncates every exported table except `users`. Use with care.
 POST /api/maintenance/reload-config
 ```
 
-Asks the proxy to regenerate `squid.conf` from the latest blacklist/whitelist
-files and reload.
+Exports the lists, then asks the proxy to regenerate `squid.conf` from the
+current lists, marker files and settings files and reload.
 
 **This call blocks.** It writes a trigger file and then waits up to **8 seconds**
 for the proxy's watchdog to acknowledge what it did, so a client should allow at
@@ -200,7 +205,13 @@ A caller that treats any `200` as success will read `pending` as applied.
 POST /api/maintenance/reload-dns
 ```
 
-Regenerates the dnsmasq blocklist (with whitelist exclusions) and signals the `dns` container to reload (`SIGHUP`).
+Exports the lists, including the dnsmasq hosts file (Allowed domains left
+out), and writes `/config/.reload-dns`. The dns container's watchdog sends
+dnsmasq `SIGHUP` within about 2 seconds; the answer does not wait for it.
+
+```json
+{ "status": "success", "message": "DNS blocklist updated with 640929 domains", "data": { "domains": 640929 } }
+```
 
 ---
 
@@ -308,7 +319,14 @@ List entries are checked with the same rules as the endpoints that add them. An 
 GET /api/maintenance/check-cert-security
 ```
 
-Reports the strength and validity of the SSL bump certificate.
+Reports whether `/config/ssl_cert.pem` exists and whether `/config/ssl_db`
+holds a certificate database. It does not read the certificate.
+
+```json
+{ "status": "success", "message": "Certificate security check completed", "data": { "issues": [], "cert_found": true, "db_found": true } }
+```
+
+`status` is `"error"`, still with HTTP 200, when `issues` is not empty.
 
 ---
 
@@ -318,7 +336,9 @@ Reports the strength and validity of the SSL bump certificate.
 GET /api/security/download-ca
 ```
 
-Returns `/config/ssl_cert.pem`. Install it on client devices to suppress browser warnings when SSL bump is active.
+Returns `/config/ssl_cert.pem` as the attachment `secure-proxy-ca.pem`, or
+`404` when the proxy has not generated it yet. Clients must trust it while
+HTTPS inspection is on.
 
 ---
 
@@ -328,10 +348,21 @@ Returns `/config/ssl_cert.pem`. Install it on client devices to suppress browser
 GET /api/security/rate-limits
 ```
 
-Lists IPs currently locked out by the login-failure rate limiter, with the time at which the lockout expires.
+Lists the client addresses with counted Basic authentication attempts in the
+current window:
+
+```json
+{
+  "status": "success",
+  "data": [{ "ip": "192.168.1.20", "attempts": 5, "blocked": true }],
+  "meta": { "max_attempts": 5, "window_seconds": 300 }
+}
+```
+
+`blocked` is true when the address has reached `max_attempts`.
 
 ```
 DELETE /api/security/rate-limits/{ip}
 ```
 
-Removes the lockout for the given IP.
+Clears the address's count, or answers `404` when it has none.

@@ -1,16 +1,21 @@
 # WebSocket API
 
-The log stream is delivered over a WebSocket connection. Because browsers cannot send custom HTTP headers during the WebSocket handshake, a single-use token is exchanged first.
+The live log feed is a WebSocket. Browsers cannot send an `Authorization`
+header with the handshake, so a single-use token is fetched first.
 
 ## Connection flow
 
 1. `GET /api/ws-token` (HTTP Basic or JWT): fetch a single-use token.
-2. Open a WebSocket to `/api/ws/logs` on the same origin as the UI, offering the subprotocols `spm.v1` and `spm-ws-token.<token>`.
-3. Receive log entries as JSON messages.
+2. Open a WebSocket to `/api/ws/logs` on the same origin as the UI, offering
+   the subprotocols `spm.v1` and `spm-ws-token.<token>`.
+3. Receive log rows as JSON messages.
 
-The connection is kept alive by the **server**, which sends WebSocket protocol-level ping control frames roughly every 80 s; browsers answer them automatically. No application-level heartbeat is required: clients do not need to send anything after connecting.
+The server sends a WebSocket ping control frame about every 81 seconds and
+closes a connection that has not answered within 90 seconds. Browsers answer
+pings on their own; a client sends nothing after connecting, and anything it
+sends is discarded.
 
-## Step 1: Fetch a token
+## Step 1: fetch a token
 
 ```
 GET /api/ws-token
@@ -21,23 +26,29 @@ Authorization: Basic <base64(user:pass)>
 { "status": "success", "token": "xK9z2..." }
 ```
 
-The token is valid for **two minutes** and is consumed on first use.
+The token is valid for **two minutes** and is consumed by the first handshake
+that presents it.
 
-## Step 2: Connect
+## Step 2: connect
 
-The browser SPA opens the WebSocket on the same origin it was loaded from, at `wss://<your-host>/api/ws/logs`. The token is not part of the URL: it is offered as a WebSocket subprotocol, next to the fixed protocol `spm.v1`, which is the one the server selects (a browser closes the connection when it offers subprotocols and the server selects none):
+The token is not part of the URL. It is offered as a subprotocol next to the
+fixed `spm.v1`, which is the one the server selects (a browser closes the
+connection when it offers subprotocols and the server selects none):
 
 ```js
 new WebSocket('wss://<your-host>/api/ws/logs', ['spm.v1', 'spm-ws-token.xK9z2...'])
 ```
 
-A token in the query string is refused with **HTTP 401**. The `web` service proxies the upgrade to the backend on the internal network. If you are connecting from a script running on the host (and only on the host), you can also reach the backend directly at `ws://127.0.0.1:5001/api/ws/logs` with the same two subprotocols; the backend port is bound to `127.0.0.1` only.
+The `web` service forwards the upgrade to the backend. From the host itself you
+can also connect to the backend directly at `ws://127.0.0.1:5001/api/ws/logs`
+with the same two subprotocols.
 
-The token is single-use, so a second connection attempt with the same token is rejected with **HTTP 401** during the handshake, before the WebSocket upgrade completes (see [Authentication failures](#authentication-failures) below).
+The handshake is refused when its `Origin` header is set and is neither listed
+in `CORS_ALLOWED_ORIGINS` nor on the host name the request was sent to.
 
-## Step 3: Receive messages
+## Step 3: receive messages
 
-Each log message is a JSON object for one row just stored in the access log:
+Each message is one row just stored in the access log:
 
 ```json
 {
@@ -60,32 +71,34 @@ Each log message is a JSON object for one row just stored in the access log:
 ```
 
 `id`, `reason`, `reason_label`, `internal` and `kind` mean what they mean in
-`GET /api/logs` (see [Logs](./logs.md)); `blocked` is `0` or `1` here. The
-feed carries every row, internal sources included: a client that shows the
-log with filters applies them to each message. `source_ip` is not masked in
-GDPR mode.
+`GET /api/logs` (see [Logs](./logs.md)); `blocked` is `0` or `1` here. The feed
+carries every row, the stack's own traffic included: a client that shows the
+log with filters applies them to each message. With GDPR mode on, `source_ip`
+is masked as it is in `GET /api/logs`; `internal` and `kind` are worked out
+from the real address before masking.
 
-The same connection also carries events, which have a `type` field
-(`{"type": "login_failure", ...}`); a client that only wants log rows skips
-any message with a `type`.
+The same connection also carries events with a `type` field, such as
+`{"type": "login_failure", "data": {...}}` for a failed sign-in. A client that
+wants only log rows skips any message with a `type`.
 
 ## Authentication failures
 
-The token is validated **before** the WebSocket upgrade, so authentication problems surface as ordinary HTTP responses on the handshake request rather than as WebSocket close codes:
+The token is checked **before** the upgrade, so a failure is an ordinary HTTP
+response to the handshake:
 
 | Condition | Response |
 |---|---|
-| `token` query parameter missing | `HTTP 401` with `missing token` |
-| token invalid, expired, or already used (single-use) | `HTTP 401` with `invalid or expired token` |
+| No `spm-ws-token.<token>` subprotocol offered | `401`, `missing token` |
+| Token unknown, expired or already used | `401`, `invalid or expired token` |
 
-Once the upgrade succeeds, the connection follows standard WebSocket lifecycle close codes (`1000` normal, `1001` going away, `1006` abnormal). The server closes idle connections that stop answering protocol pings after ~90 s.
+A token in the query string is not read: the handshake answers `401`,
+`missing token`.
 
 ## JavaScript example
 
 ```javascript
-async function connectLogs() {
-  // Same-origin: cookies / Basic auth handled by the browser.
-  const tokenResp = await fetch('/api/ws-token', { credentials: 'include' });
+async function connectLogs(authHeader) {
+  const tokenResp = await fetch('/api/ws-token', { headers: { Authorization: authHeader } });
   const { token } = await tokenResp.json();
 
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -95,16 +108,15 @@ async function connectLogs() {
   const ws    = new WebSocket(url, ['spm.v1', `spm-ws-token.${token}`]);
 
   ws.onmessage = (event) => {
-    const log = JSON.parse(event.data);
-    console.log(log);
+    const msg = JSON.parse(event.data);
+    if (msg.type) return; // an event, not a log row
+    console.log(msg);
   };
-
-  // No keep-alive code needed: the server sends protocol-level pings and the
-  // browser answers them automatically.
   return ws;
 }
 ```
 
 ::: info Reverse-proxy note
-If you front the UI with your own reverse proxy, ensure the WebSocket upgrade is forwarded: set `Upgrade: websocket` and `Connection: Upgrade`, and use HTTP/1.1.
+If you put your own reverse proxy in front of the UI, forward the WebSocket
+upgrade: HTTP/1.1 with `Upgrade: websocket` and `Connection: Upgrade`.
 :::
