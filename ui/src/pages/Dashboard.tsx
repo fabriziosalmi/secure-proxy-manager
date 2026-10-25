@@ -7,6 +7,7 @@ import { api, getData } from '../lib/api';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import { useConfirm } from '../hooks/useConfirm';
 import type { TimelineEntry, SecurityScore, DashboardSummary, CacheStats } from '../types';
+import { formatCount } from '../lib/format';
 
 // Lazy-load the recharts-based chart cards. Recharts is ~110 KB gzipped
 // and was previously in the initial bundle even though the dashboard's
@@ -128,14 +129,14 @@ export function Dashboard() {
         <Card className="stagger-child" style={{ '--stagger-index': 0 } as React.CSSProperties}>
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Today</p>
-            <p className="text-2xl font-bold">{animToday.toLocaleString()}</p>
-            <p className="text-[10px] text-muted-foreground">{s?.today_blocked ?? 0} blocked</p>
+            <p className="text-2xl font-bold">{formatCount(animToday)}</p>
+            <p className="text-[10px] text-muted-foreground">{formatCount(s?.today_blocked ?? 0)} blocked</p>
           </CardContent>
         </Card>
         <Card className="stagger-child" style={{ '--stagger-index': 1 } as React.CSSProperties}>
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total</p>
-            <p className="text-2xl font-bold">{animTotal.toLocaleString()}</p>
+            <p className="text-2xl font-bold">{formatCount(animTotal)}</p>
             <p className="text-[10px] text-muted-foreground">all time</p>
           </CardContent>
         </Card>
@@ -143,7 +144,7 @@ export function Dashboard() {
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Block Rate</p>
             <p className={`text-2xl font-bold ${parseFloat(rate) > 50 ? 'text-destructive' : parseFloat(rate) > 10 ? 'text-yellow-500' : 'text-emerald-500'}`}>{rate}%</p>
-            <p className="text-[10px] text-muted-foreground">{animBlocked.toLocaleString()} blocked</p>
+            <p className="text-[10px] text-muted-foreground">{formatCount(animBlocked)} blocked</p>
           </CardContent>
         </Card>
         <Card className="stagger-child" style={{ '--stagger-index': 3 } as React.CSSProperties}>
@@ -168,8 +169,8 @@ export function Dashboard() {
         <Card className="stagger-child" style={{ '--stagger-index': 4 } as React.CSSProperties}>
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">IP Rules</p>
-            <p className="text-2xl font-bold">{animIpRules.toLocaleString()}</p>
-            <p className="text-[10px] text-muted-foreground">{(s?.domain_blacklist_count ?? 0).toLocaleString()} domains</p>
+            <p className="text-2xl font-bold">{formatCount(animIpRules)}</p>
+            <p className="text-[10px] text-muted-foreground">{formatCount(s?.domain_blacklist_count ?? 0)} domains</p>
           </CardContent>
         </Card>
         <Card className="stagger-child" style={{ '--stagger-index': 5 } as React.CSSProperties}>
@@ -177,8 +178,8 @@ export function Dashboard() {
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">WAF</p>
             {w ? (
               <>
-                <p className="text-2xl font-bold">{w.requests_last_minute}<span className="text-sm text-muted-foreground">/min</span></p>
-                <p className="text-[10px] text-muted-foreground">{w.total_blocked} blocked, entropy {w.avg_url_entropy}</p>
+                <p className="text-2xl font-bold">{formatCount(w.requests_last_minute)}<span className="text-sm text-muted-foreground">/min</span></p>
+                <p className="text-[10px] text-muted-foreground">{formatCount(w.total_blocked)} blocked, entropy {w.avg_url_entropy}</p>
               </>
             ) : (
               <>
@@ -236,14 +237,14 @@ export function Dashboard() {
           ) : (
             <CardContent className="p-2">
               <div className="grid grid-cols-3 gap-2 mb-2">
-                <div><p className="text-[10px] text-muted-foreground uppercase">Inspected</p><p className="text-lg font-bold">{(w.total_requests ?? 0).toLocaleString()}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase">Blocked</p><p className="text-lg font-bold text-destructive">{w.total_blocked ?? 0}</p></div>
+                <div><p className="text-[10px] text-muted-foreground uppercase">Inspected</p><p className="text-lg font-bold">{formatCount(w.total_requests ?? 0)}</p></div>
+                <div><p className="text-[10px] text-muted-foreground uppercase">Blocked</p><p className="text-lg font-bold text-destructive">{formatCount(w.total_blocked ?? 0)}</p></div>
                 <div><p className="text-[10px] text-muted-foreground uppercase">Entropy</p><p className="text-lg font-bold">{w.avg_url_entropy ?? '—'}</p></div>
               </div>
               {w.top_blocked_categories?.length > 0 && (
                 <div className="flex flex-wrap gap-1 pt-2 border-t border-border/50">
                   {w.top_blocked_categories.slice(0, 6).map((c: { key: string; count: number }) => (
-                    <span key={c.key} className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">{c.key} ({c.count})</span>
+                    <span key={c.key} className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">{c.key} ({formatCount(c.count)})</span>
                   ))}
                 </div>
               )}
@@ -300,11 +301,11 @@ export function Dashboard() {
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <div>
                       <p className="text-[10px] text-muted-foreground">Hits</p>
-                      <p className="text-sm font-bold">{(cache.hits || 0).toLocaleString()}</p>
+                      <p className="text-sm font-bold">{formatCount(cache.hits || 0)}</p>
                     </div>
                     <div>
                       <p className="text-[10px] text-muted-foreground">Misses</p>
-                      <p className="text-sm font-bold">{(cache.misses || 0).toLocaleString()}</p>
+                      <p className="text-sm font-bold">{formatCount(cache.misses || 0)}</p>
                     </div>
                   </div>
                 </div>

@@ -4,6 +4,7 @@ import { Activity, Server, Tag, Users, ArrowDownUp, Ban, Database } from 'lucide
 import { Card, CardContent } from '../ui/card';
 import { api, getData } from '../../lib/api';
 import type { CacheStats, ClientsData } from '../../types';
+import { formatCount } from '../../lib/format';
 
 interface StatusData {
   proxy_status?: string;
@@ -16,7 +17,7 @@ interface StatusData {
 // What a tile shows when it has no number: an ellipsis while the request is in
 // flight, then "Not reported", never a bare placeholder that reads as a value.
 function num(n: unknown, loading: boolean): string {
-  if (typeof n === 'number') return n.toLocaleString();
+  if (typeof n === 'number') return formatCount(n);
   return loading ? '…' : 'Not reported';
 }
 

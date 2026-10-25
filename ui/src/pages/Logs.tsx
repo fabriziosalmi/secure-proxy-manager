@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { useQuery } from '@tanstack/react-query';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { LogEntry, LogsPageData } from '../types';
+import { formatCount } from '../lib/format';
 
 export function Logs() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -257,7 +258,7 @@ export function Logs() {
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Total Requests</p>
-              <h3 className="text-2xl font-bold">{animTotal.toLocaleString()}</h3>
+              <h3 className="text-2xl font-bold">{formatCount(animTotal)}</h3>
             </div>
             <div className="p-2.5 bg-primary/10 rounded-xl text-primary">
               <Activity className="w-5 h-5" />
@@ -269,7 +270,7 @@ export function Logs() {
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Success</p>
-              <h3 className="text-2xl font-bold text-emerald-500">{animSuccess.toLocaleString()}</h3>
+              <h3 className="text-2xl font-bold text-emerald-500">{formatCount(animSuccess)}</h3>
             </div>
             <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-500">
               <CheckCircle2 className="w-5 h-5" />
@@ -281,7 +282,7 @@ export function Logs() {
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Blocked</p>
-              <h3 className="text-2xl font-bold text-orange-500">{animBlocked.toLocaleString()}</h3>
+              <h3 className="text-2xl font-bold text-orange-500">{formatCount(animBlocked)}</h3>
             </div>
             <div className="p-2.5 bg-orange-500/10 rounded-xl text-orange-500">
               <ShieldAlert className="w-5 h-5" />
@@ -293,7 +294,7 @@ export function Logs() {
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Errors</p>
-              <h3 className="text-2xl font-bold text-red-500">{animErrors.toLocaleString()}</h3>
+              <h3 className="text-2xl font-bold text-red-500">{formatCount(animErrors)}</h3>
             </div>
             <div className="p-2.5 bg-red-500/10 rounded-xl text-red-500">
               <AlertTriangle className="w-5 h-5" />
@@ -316,7 +317,7 @@ export function Logs() {
             />
           </div>
           <div className="ml-auto text-sm text-muted-foreground font-mono">
-            {filteredLogs.length} entries
+            {formatCount(filteredLogs.length)} entries
           </div>
         </div>
         <CardContent className="p-0">

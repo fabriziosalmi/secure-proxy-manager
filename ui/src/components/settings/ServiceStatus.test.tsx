@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
-import { renderWithProviders } from '../../test/helpers'
+import { renderWithProviders, simulateItalianLocale } from '../../test/helpers'
 import { api } from '../../lib/api'
 import { ServiceStatus } from './ServiceStatus'
 
@@ -45,6 +45,7 @@ describe('ServiceStatus', () => {
   // requests_count counts rows since the start of the day and today_blocked
   // since UTC midnight: neither is a rolling 24 hours.
   it('labels the request counts as today, which is the window the backend counts', async () => {
+    simulateItalianLocale()
     renderWithProviders(<ServiceStatus />)
     await waitFor(() => { expect(tileValue('Requests today')).toBe('50,772') })
     expect(tileValue('Blocked today')).toBe('1,328')

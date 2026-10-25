@@ -5,6 +5,7 @@ import type { TimelineEntry, DashboardSummary } from '../../types';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { TOOLTIP_STYLE } from '../../lib/chart';
 import { HourlyTrafficChart, HourlyTrafficLegend } from './HourlyTrafficChart';
+import { formatCount } from '../../lib/format';
 
 const C = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899'];
 
@@ -29,7 +30,7 @@ export default function DashboardCharts({ chart, summary }: Props) {
           <CardTitle className="text-sm flex items-center justify-between gap-2">Traffic 24h<HourlyTrafficLegend /></CardTitle>
         </CardHeader>
         <CardContent className="p-2">
-          <div className="h-[180px]" role="img" aria-label={`Traffic over the last 24 hours: ${totalReqs} requests, ${blockedReqs} blocked`}>
+          <div className="h-[180px]" role="img" aria-label={`Traffic over the last 24 hours: ${formatCount(totalReqs)} requests, ${formatCount(blockedReqs)} blocked`}>
             <HourlyTrafficChart data={chart} />
           </div>
         </CardContent>
@@ -43,7 +44,7 @@ export default function DashboardCharts({ chart, summary }: Props) {
         <CardContent className="p-2">
           {(summary?.threat_categories?.length ?? 0) > 0 && summary ? (
             <>
-              <div className="h-[130px]" role="img" aria-label={`Threat categories: ${summary.threat_categories.map(c => `${c.category} ${c.count}`).join(', ')}`}>
+              <div className="h-[130px]" role="img" aria-label={`Threat categories: ${summary.threat_categories.map(c => `${c.category} ${formatCount(c.count)}`).join(', ')}`}>
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <PieChart><Pie data={summary.threat_categories} dataKey="count" nameKey="category" cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={3} isAnimationActive={!reducedMotion}>
                     {summary.threat_categories.map((_: unknown, i: number) => <Cell key={i} fill={C[i % C.length]} />)}
@@ -51,7 +52,7 @@ export default function DashboardCharts({ chart, summary }: Props) {
                 </ResponsiveContainer>
               </div>
               <div className="flex flex-wrap gap-1 mt-1">{summary.threat_categories.map((c: { category: string; count: number }, i: number) => (
-                <span key={c.category} className="text-[10px] px-1.5 py-0.5 rounded-full border" style={{ borderColor: C[i % C.length] + '40', color: C[i % C.length] }}>{c.category} ({c.count})</span>
+                <span key={c.category} className="text-[10px] px-1.5 py-0.5 rounded-full border" style={{ borderColor: C[i % C.length] + '40', color: C[i % C.length] }}>{c.category} ({formatCount(c.count)})</span>
               ))}</div>
             </>
           ) : <div className="h-[180px] flex items-center justify-center text-muted-foreground text-xs">No threats</div>}
@@ -68,7 +69,7 @@ export default function DashboardCharts({ chart, summary }: Props) {
             {summary?.top_blocked?.slice(0, 8).map((item: { dest: string; count: number }, i: number) => (
               <div key={i} className="flex items-center justify-between py-1 text-xs row-hover rounded px-1">
                 <span className="truncate max-w-[200px] text-muted-foreground font-mono" title={item.dest}>{item.dest}</span>
-                <span className="font-bold text-destructive ml-2 shrink-0">{item.count}</span>
+                <span className="font-bold text-destructive ml-2 shrink-0">{formatCount(item.count)}</span>
               </div>
             ))}
             {(!summary?.top_blocked?.length) && <div className="text-center py-6 text-muted-foreground text-xs">No blocks in 24h</div>}

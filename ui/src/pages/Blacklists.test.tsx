@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { renderWithProviders } from '../test/helpers'
+import { renderWithProviders, simulateItalianLocale } from '../test/helpers'
 import { Blacklists } from './Blacklists'
 
 vi.mock('../lib/api', () => ({
@@ -39,6 +39,7 @@ describe('Blacklists', () => {
       return Promise.resolve(emptyList)
     })
   })
+  afterEach(() => { vi.restoreAllMocks() })
 
   it('renders with IP blacklist tab active by default', async () => {
     renderWithProviders(<Blacklists />)
@@ -57,7 +58,19 @@ describe('Blacklists', () => {
     })
     renderWithProviders(<Blacklists />)
     const tab = await screen.findByRole('tab', { name: /IP Addresses/i })
-    await waitFor(() => { expect(tab).toHaveTextContent('2345') })
+    await waitFor(() => { expect(tab).toHaveTextContent('2,345') })
+  })
+
+  it('writes the entry counts with en-US grouping in any browser locale', async () => {
+    simulateItalianLocale()
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('ip-blacklist')) return Promise.resolve({ data: { ...mockIpList.data, meta: { total: 50772, limit: 50, offset: 0 } } })
+      return Promise.resolve(emptyList)
+    })
+    renderWithProviders(<Blacklists />)
+    const tab = await screen.findByRole('tab', { name: /IP Addresses/i })
+    await waitFor(() => { expect(tab).toHaveTextContent('50,772') })
+    expect(screen.getByText(/50,772 total/)).toBeInTheDocument()
   })
 
   it('displays IP entries from the API', async () => {

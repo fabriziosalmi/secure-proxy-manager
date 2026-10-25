@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
-import { renderWithProviders } from '../test/helpers'
+import { renderWithProviders, simulateItalianLocale } from '../test/helpers'
 import { Dashboard } from './Dashboard'
 
 vi.mock('../lib/api', () => {
@@ -50,6 +50,7 @@ describe('Dashboard', () => {
       return Promise.resolve({ data: { data: null } })
     })
   })
+  afterEach(() => { vi.restoreAllMocks() })
 
   it('renders dashboard title', async () => {
     renderWithProviders(<Dashboard />)
@@ -109,6 +110,21 @@ describe('Dashboard', () => {
     const hit = await screen.findByText('Hit Rate')
     expect(hit.parentElement).toHaveTextContent('Not reported')
     expect(hit.parentElement).not.toHaveTextContent('%')
+  })
+
+  // toLocaleString followed the browser (50.772 in Italian) and some counts
+  // were not grouped at all (1328), side by side on the same page.
+  it('writes every count with en-US grouping in any browser locale', async () => {
+    simulateItalianLocale()
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('dashboard/summary')) return Promise.resolve({ data: { data: { ...summaryData, total_requests: 50772, today_blocked: 1328, top_blocked: [{ dest: 'malware.com', count: 1328 }] } } })
+      return Promise.resolve({ data: { data: null } })
+    })
+    renderWithProviders(<Dashboard />)
+    await waitFor(() => { expect(screen.getByText('50,772')).toBeInTheDocument() })
+    expect(screen.getByText('1,328 blocked')).toBeInTheDocument()
+    const topBlocked = await screen.findByTitle('malware.com')
+    expect(topBlocked.parentElement).toHaveTextContent('1,328')
   })
 
   it('displays security score', async () => {

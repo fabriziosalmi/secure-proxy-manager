@@ -10,6 +10,7 @@ import type { TimelineEntry, DashboardSummary, ShadowItService, FileExtData, Ser
 import { RegexPlayground } from '../components/RegexPlayground';
 import { HourlyTrafficChart, HourlyTrafficLegend } from '../components/dashboard/HourlyTrafficChart';
 import { TOOLTIP_STYLE } from '../lib/chart';
+import { formatCount } from '../lib/format';
 
 const C = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899', '#14b8a6', '#6366f1'];
 const CAT_COLORS: Record<string, string> = {
@@ -53,31 +54,31 @@ export function ThreatIntel() {
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
         <Card className="stagger-child" style={{ '--stagger-index': 0 } as React.CSSProperties}>
           <CardContent className="p-3 flex items-center justify-between">
-            <div><p className="text-[10px] text-muted-foreground uppercase">Today</p><p className="text-2xl font-bold text-destructive">{animTodayBlocked.toLocaleString()}</p></div>
+            <div><p className="text-[10px] text-muted-foreground uppercase">Today</p><p className="text-2xl font-bold text-destructive">{formatCount(animTodayBlocked)}</p></div>
             <AlertTriangle className="w-6 h-6 text-destructive/30" />
           </CardContent>
         </Card>
         <Card className="stagger-child" style={{ '--stagger-index': 1 } as React.CSSProperties}>
           <CardContent className="p-3 flex items-center justify-between">
-            <div><p className="text-[10px] text-muted-foreground uppercase">Total Blocks</p><p className="text-2xl font-bold">{animTotalBlocked.toLocaleString()}</p></div>
+            <div><p className="text-[10px] text-muted-foreground uppercase">Total Blocks</p><p className="text-2xl font-bold">{formatCount(animTotalBlocked)}</p></div>
             <Shield className="w-6 h-6 text-primary/30" />
           </CardContent>
         </Card>
         <Card className="stagger-child" style={{ '--stagger-index': 2 } as React.CSSProperties}>
           <CardContent className="p-3 flex items-center justify-between">
-            <div><p className="text-[10px] text-muted-foreground uppercase">WAF Blocks</p>{s?.waf ? <p className="text-2xl font-bold text-orange-500">{animWafBlocked.toLocaleString()}</p> : <WafUnavailable />}</div>
+            <div><p className="text-[10px] text-muted-foreground uppercase">WAF Blocks</p>{s?.waf ? <p className="text-2xl font-bold text-orange-500">{formatCount(animWafBlocked)}</p> : <WafUnavailable />}</div>
             <Activity className="w-6 h-6 text-orange-500/30" />
           </CardContent>
         </Card>
         <Card className="stagger-child" style={{ '--stagger-index': 3 } as React.CSSProperties}>
           <CardContent className="p-3 flex items-center justify-between">
-            <div><p className="text-[10px] text-muted-foreground uppercase">SaaS Detected</p><p className="text-2xl font-bold text-blue-500">{animSaas.toLocaleString()}</p></div>
+            <div><p className="text-[10px] text-muted-foreground uppercase">SaaS Detected</p><p className="text-2xl font-bold text-blue-500">{formatCount(animSaas)}</p></div>
             <Cloud className="w-6 h-6 text-blue-500/30" />
           </CardContent>
         </Card>
         <Card className="stagger-child" style={{ '--stagger-index': 4 } as React.CSSProperties}>
           <CardContent className="p-3 flex items-center justify-between">
-            <div><p className="text-[10px] text-muted-foreground uppercase">Entropy Alerts</p>{s?.waf ? <p className="text-2xl font-bold text-yellow-500">{animEntropy.toLocaleString()}</p> : <WafUnavailable />}</div>
+            <div><p className="text-[10px] text-muted-foreground uppercase">Entropy Alerts</p>{s?.waf ? <p className="text-2xl font-bold text-yellow-500">{formatCount(animEntropy)}</p> : <WafUnavailable />}</div>
             <TrendingUp className="w-6 h-6 text-yellow-500/30" />
           </CardContent>
         </Card>
@@ -88,7 +89,7 @@ export function ThreatIntel() {
         <Card className="lg:col-span-7">
           <CardHeader className="p-3 pb-0"><CardTitle className="text-sm flex items-center justify-between gap-2">Threat Timeline (72h)<HourlyTrafficLegend /></CardTitle></CardHeader>
           <CardContent className="p-2">
-            <div className="h-[180px]" role="img" aria-label={`Threat timeline over the last 72 hours: ${tlTotal} total events, ${tlBlocked} blocked`}>
+            <div className="h-[180px]" role="img" aria-label={`Threat timeline over the last 72 hours: ${formatCount(tlTotal)} total events, ${formatCount(tlBlocked)} blocked`}>
               <HourlyTrafficChart data={tl ?? []} />
             </div>
           </CardContent>
@@ -98,7 +99,7 @@ export function ThreatIntel() {
           <CardHeader className="p-3 pb-0"><CardTitle className="text-sm">WAF Categories</CardTitle></CardHeader>
           <CardContent className="p-2">
             {wafCats.length > 0 ? (
-              <div className="h-[180px]" role="img" aria-label={`Top WAF blocked categories: ${wafCats.slice(0, 8).map(c => `${c.key} ${c.count}`).join(', ')}`}>
+              <div className="h-[180px]" role="img" aria-label={`Top WAF blocked categories: ${wafCats.slice(0, 8).map(c => `${c.key} ${formatCount(c.count)}`).join(', ')}`}>
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <BarChart data={wafCats.slice(0, 8)} layout="vertical" margin={{ left: 80, right: 10 }}>
                     <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} />
@@ -129,7 +130,7 @@ export function ThreatIntel() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-secondary/70 text-muted-foreground">{svc.category}</span>
-                    <span className="font-bold text-muted-foreground w-8 text-right">{svc.requests}</span>
+                    <span className="font-bold text-muted-foreground w-8 text-right">{formatCount(svc.requests)}</span>
                   </div>
                 </div>
               )) : <div className="text-center py-6 text-muted-foreground text-xs">No SaaS services detected</div>}
@@ -144,7 +145,7 @@ export function ThreatIntel() {
           <CardContent className="p-2">
             {(fileExts?.categories?.length ?? 0) > 0 ? (
               <>
-                <div className="h-[120px]" role="img" aria-label={`File types: ${fileExts!.categories.slice(0, 8).map(c => `${c.category} ${c.count}`).join(', ')}`}>
+                <div className="h-[120px]" role="img" aria-label={`File types: ${fileExts!.categories.slice(0, 8).map(c => `${c.category} ${formatCount(c.count)}`).join(', ')}`}>
                   <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <PieChart><Pie data={fileExts!.categories.slice(0, 8)} dataKey="count" nameKey="category" cx="50%" cy="50%" innerRadius={30} outerRadius={50} paddingAngle={2} isAnimationActive={!reducedMotion}>
                       {fileExts!.categories.slice(0, 8).map((_, i) => <Cell key={i} fill={C[i % C.length]} />)}
@@ -153,7 +154,7 @@ export function ThreatIntel() {
                 </div>
                 <div className="flex flex-wrap gap-1 mt-1">
                   {fileExts!.categories.slice(0, 6).map((c, i) => (
-                    <span key={c.category} className="text-[9px] px-1.5 py-0.5 rounded-full border" style={{ borderColor: C[i % C.length] + '40', color: C[i % C.length] }}>{c.category} ({c.count})</span>
+                    <span key={c.category} className="text-[9px] px-1.5 py-0.5 rounded-full border" style={{ borderColor: C[i % C.length] + '40', color: C[i % C.length] }}>{c.category} ({formatCount(c.count)})</span>
                   ))}
                 </div>
               </>
@@ -176,7 +177,7 @@ export function ThreatIntel() {
                       <div className="flex-1 bg-secondary h-2 rounded-full overflow-hidden">
                         <div className="h-full rounded-full progress-glow" style={{ width: `${(st.count / max) * 100}%`, backgroundColor: C[i % C.length] }} />
                       </div>
-                      <span className="font-bold w-8 text-right text-muted-foreground">{st.count}</span>
+                      <span className="font-bold w-8 text-right text-muted-foreground">{formatCount(st.count)}</span>
                     </div>
                   );
                 })}
@@ -203,7 +204,7 @@ export function ThreatIntel() {
                       key={d.domain}
                       className="px-1.5 py-0.5 rounded cursor-default hover:bg-secondary/50 transition-colors font-mono"
                       style={{ fontSize: `${size}px`, opacity, color: C[i % C.length] }}
-                      title={`${d.domain}: ${d.count} requests`}
+                      title={`${d.domain}: ${formatCount(d.count)} requests`}
                     >
                       {d.domain}
                     </span>
@@ -225,7 +226,7 @@ export function ThreatIntel() {
                   <div className="w-12 bg-secondary h-1.5 rounded-full overflow-hidden shrink-0">
                     <div className="h-full bg-destructive rounded-full progress-glow glow-destructive" style={{ width: `${Math.min(100, (item.count / (s?.top_blocked?.[0]?.count || 1)) * 100)}%` }} />
                   </div>
-                  <span className="font-bold text-destructive w-6 text-right">{item.count}</span>
+                  <span className="font-bold text-destructive w-6 text-right">{formatCount(item.count)}</span>
                 </div>
               ))}
               {(!s?.top_blocked?.length) && <div className="text-center py-8 text-muted-foreground text-xs">No blocked destinations</div>}

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
-import { renderWithProviders } from '../test/helpers'
+import { renderWithProviders, simulateItalianLocale } from '../test/helpers'
 import { api } from '../lib/api'
 import { ThreatIntel } from './ThreatIntel'
 
@@ -42,5 +42,13 @@ describe('ThreatIntel', () => {
     await waitFor(() => { expect(card('Total Blocks')).toHaveTextContent('1,328') })
     expect(card('WAF Blocks')).toHaveTextContent('Not available')
     expect(card('Entropy Alerts')).toHaveTextContent('Not available')
+  })
+
+  it('writes every count with en-US grouping in any browser locale', async () => {
+    simulateItalianLocale()
+    serve({ ...summary, blocked_requests: 50772, top_blocked: [{ dest: 'malware.example', count: 1328 }] })
+    renderWithProviders(<ThreatIntel />)
+    await waitFor(() => { expect(card('Total Blocks')).toHaveTextContent('50,772') })
+    expect(screen.getByTitle('malware.example').parentElement).toHaveTextContent('1,328')
   })
 })

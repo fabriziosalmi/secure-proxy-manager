@@ -10,6 +10,7 @@ import { useModal } from '../hooks/useModal';
 import { api, getData } from '../lib/api';
 import { parseUtc, relative } from '../lib/utils';
 import type { ClientsData, ClientStat, ClientDetail } from '../types';
+import { formatCount } from '../lib/format';
 
 function rate(blocked: number, total: number): number {
   return total > 0 ? Math.round((blocked / total) * 1000) / 10 : 0;
@@ -81,7 +82,7 @@ export function Clients() {
             Clients
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Source IPs seen in the last 7 days{typeof data?.meta?.total === 'number' ? ` — ${data.meta.total}` : ''}. Select a row for details.
+            Source IPs seen in the last 7 days{typeof data?.meta?.total === 'number' ? ` — ${formatCount(data.meta.total)}` : ''}. Select a row for details.
           </p>
         </div>
         <button
@@ -144,9 +145,9 @@ export function Clients() {
                         className="row-hover cursor-pointer"
                       >
                         <td className="px-5 py-3"><IpBadge ip={c.ip_address} /></td>
-                        <td className="px-5 py-3 font-mono tabular-nums">{c.requests.toLocaleString()}</td>
+                        <td className="px-5 py-3 font-mono tabular-nums">{formatCount(c.requests)}</td>
                         <td className="px-5 py-3 font-mono tabular-nums">
-                          {c.blocked > 0 ? <span className="text-orange-600 dark:text-orange-300">{c.blocked.toLocaleString()}</span> : <span className="text-muted-foreground">0</span>}
+                          {c.blocked > 0 ? <span className="text-orange-600 dark:text-orange-300">{formatCount(c.blocked)}</span> : <span className="text-muted-foreground">0</span>}
                         </td>
                         <td className="px-5 py-3">
                           <span className={`font-mono tabular-nums text-xs ${br >= 20 ? 'text-red-600 dark:text-red-300' : br > 0 ? 'text-amber-600 dark:text-amber-300' : 'text-muted-foreground'}`}>
@@ -211,8 +212,8 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
         ) : (
           <div className="p-5 space-y-6">
             <div className="grid grid-cols-2 gap-3">
-              <Stat label="Requests" value={data.total_requests.toLocaleString()} />
-              <Stat label="Blocked" value={data.blocked.toLocaleString()} tone={data.blocked > 0 ? 'text-orange-600 dark:text-orange-300' : ''} />
+              <Stat label="Requests" value={formatCount(data.total_requests)} />
+              <Stat label="Blocked" value={formatCount(data.blocked)} tone={data.blocked > 0 ? 'text-orange-600 dark:text-orange-300' : ''} />
               <Stat label="Block rate" value={`${br}%`} tone={br >= 20 ? 'text-red-600 dark:text-red-300' : br > 0 ? 'text-amber-600 dark:text-amber-300' : ''} />
               <Stat label="Last seen" value={relative(data.last_seen)} />
             </div>
@@ -234,11 +235,11 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
                       <span className="font-mono text-xs truncate" title={d.destination}>{d.destination}</span>
                       <span className="flex items-center gap-2 shrink-0 text-xs tabular-nums">
                         {d.blocked > 0 && (
-                          <span className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-300" title={`${d.blocked} blocked`}>
-                            <Ban className="w-3 h-3" />{d.blocked}
+                          <span className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-300" title={`${formatCount(d.blocked)} blocked`}>
+                            <Ban className="w-3 h-3" />{formatCount(d.blocked)}
                           </span>
                         )}
-                        <span className="text-muted-foreground">{d.requests.toLocaleString()}</span>
+                        <span className="text-muted-foreground">{formatCount(d.requests)}</span>
                       </span>
                     </div>
                   ))}

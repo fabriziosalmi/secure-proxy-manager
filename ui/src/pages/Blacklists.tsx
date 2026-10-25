@@ -6,6 +6,7 @@ import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, Chec
 import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { formatCount } from '../lib/format';
 
 export function Blacklists() {
   const queryClient = useQueryClient();
@@ -175,7 +176,7 @@ export function Blacklists() {
         return;
       }
       setSubmitting('bulk');
-      const loadingToast = toast.loading(`Adding ${lines.length} whitelist entries...`);
+      const loadingToast = toast.loading(`Adding ${formatCount(lines.length)} whitelist entries...`);
       try {
         const { added, refused } = await addWhitelistEntries(lines);
         if (refused > 0) {
@@ -273,7 +274,7 @@ export function Blacklists() {
       const added = response.data.data?.added || 0;
       const skipped = response.data.data?.skipped || 0;
       toast.success(
-        `${listName}: added ${added.toLocaleString()} entries${skipped > 0 ? `, ${skipped.toLocaleString()} skipped` : ''}`,
+        `${listName}: added ${formatCount(added)} entries${skipped > 0 ? `, ${formatCount(skipped)} skipped` : ''}`,
         { id: loadingToast, duration: 6000 }
       );
       invalidateActive();
@@ -310,7 +311,7 @@ export function Blacklists() {
     a.download = `${activeTab}-list-${new Date().toISOString().slice(0, 10)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success(`Exported ${items.length} entries`);
+    toast.success(`Exported ${formatCount(items.length)} entries`);
   };
 
   const handleReloadDNS = async () => {
@@ -528,25 +529,25 @@ export function Blacklists() {
           onClick={() => setActiveTab('ip')}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'ip' ? 'bg-secondary text-foreground shadow-xs border border-border/30' : 'text-muted-foreground hover:text-foreground'}`}>
           <Server className="w-4 h-4 mr-2" aria-hidden="true" />IP Addresses
-          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{ipResult?.total ?? 0}</span>
+          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{formatCount(ipResult?.total ?? 0)}</span>
         </button>
         <button role="tab" aria-selected={activeTab === 'domain'} aria-controls="bl-panel-domain" id="bl-tab-domain" tabIndex={activeTab === 'domain' ? 0 : -1} type="button"
           onClick={() => setActiveTab('domain')}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain' ? 'bg-secondary text-foreground shadow-xs border border-border/30' : 'text-muted-foreground hover:text-foreground'}`}>
           <Globe className="w-4 h-4 mr-2" aria-hidden="true" />Domains
-          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{domainResult?.total ?? 0}</span>
+          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{formatCount(domainResult?.total ?? 0)}</span>
         </button>
         <button role="tab" aria-selected={activeTab === 'whitelist'} aria-controls="bl-panel-whitelist" id="bl-tab-whitelist" tabIndex={activeTab === 'whitelist' ? 0 : -1} type="button"
           onClick={() => { setActiveTab('whitelist'); closeAllPanels(); resetPage(); }}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/10 dark:bg-green-500/20 text-green-600 dark:text-green-400 shadow-xs' : 'text-muted-foreground hover:text-green-600 dark:hover:text-green-400'}`}>
           <CheckCircle className="w-4 h-4 mr-2" aria-hidden="true" />IP Whitelist
-          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{whitelistResult?.total ?? 0}</span>
+          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{formatCount(whitelistResult?.total ?? 0)}</span>
         </button>
         <button role="tab" aria-selected={activeTab === 'domain-whitelist'} aria-controls="bl-panel-dwhitelist" id="bl-tab-dwhitelist" tabIndex={activeTab === 'domain-whitelist' ? 0 : -1} type="button"
           onClick={() => { setActiveTab('domain-whitelist'); closeAllPanels(); resetPage(); }}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain-whitelist' ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shadow-xs' : 'text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400'}`}>
           <ShieldCheck className="w-4 h-4 mr-2" aria-hidden="true" />Domain Whitelist
-          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{domainWhitelistResult?.total ?? 0}</span>
+          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{formatCount(domainWhitelistResult?.total ?? 0)}</span>
         </button>
       </div>
 
@@ -564,7 +565,7 @@ export function Blacklists() {
           <Ban className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         </div>
         <span className="text-sm text-muted-foreground">
-          {activeTotal.toLocaleString()} total | Page {page + 1}/{Math.max(totalPages, 1)}
+          {formatCount(activeTotal)} total | Page {page + 1}/{Math.max(totalPages, 1)}
         </span>
       </div>
 

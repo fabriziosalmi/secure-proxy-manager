@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
-import { renderWithProviders } from '../test/helpers'
+import { renderWithProviders, simulateItalianLocale } from '../test/helpers'
 import { api } from '../lib/api'
 import { Clients } from './Clients'
 
@@ -35,5 +35,13 @@ describe('Clients', () => {
       expect(screen.getByRole('button', { name: 'View details for 192.168.0.109' })).toBeInTheDocument()
     })
     expect(screen.queryByText(/No client traffic/)).not.toBeInTheDocument()
+  })
+
+  it('writes the request count with en-US grouping in any browser locale', async () => {
+    simulateItalianLocale()
+    renderWithProviders(<Clients />)
+    const row = (await screen.findByRole('button', { name: 'View details for 192.168.0.109' })).closest('tr') as HTMLElement
+    expect(row).toHaveTextContent('1,172')
+    expect(row).not.toHaveTextContent('1.172')
   })
 })
