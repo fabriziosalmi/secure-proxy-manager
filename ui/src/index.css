@@ -3,6 +3,46 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
+  Inter and JetBrains Mono, vendored as variable woff2 (latin and latin-ext)
+  from @fontsource-variable 5.3.0, OFL-1.1, licence next to the files. The
+  CSP allows font-src 'self' only, so a font CDN is not an option. nginx
+  caches woff2 for a year as immutable: the version is in the directory name,
+  so a new release gets a new path.
+*/
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('/fonts/inter-5.3.0/inter-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('/fonts/inter-5.3.0/inter-latin-ext-wght-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('/fonts/jetbrains-mono-5.3.0/jetbrains-mono-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('/fonts/jetbrains-mono-5.3.0/jetbrains-mono-latin-ext-wght-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/*
   space-y-* with Tailwind v3 semantics. v4 moved the gap to margin-bottom on
   every child but the last; on an inline first child (the <label> above each
   input here) a vertical margin does nothing, so v4 collapsed those gaps by a
@@ -129,6 +169,47 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+
+  /*
+    Design tokens (the redesign). Semantic names, one value per theme in the
+    --ds-* variables below; the shell and components/ui use only these.
+    Red is for blocked and danger, amber for warnings, never decoration.
+  */
+  --color-ground: var(--ds-ground);
+  --color-surface: var(--ds-surface);
+  --color-surface-muted: var(--ds-surface-muted);
+  --color-line: var(--ds-border);
+  --color-line-subtle: var(--ds-border-subtle);
+  --color-line-strong: var(--ds-border-strong);
+  --color-ink: var(--ds-text);
+  --color-ink-secondary: var(--ds-text-secondary);
+  --color-ink-muted: var(--ds-muted);
+  --color-ink-subtle: var(--ds-subtle);
+  --color-accent: var(--ds-accent);
+  --color-accent-solid: var(--ds-accent-solid);
+  --color-accent-solid-hover: var(--ds-accent-solid-hover);
+  --color-accent-foreground: var(--ds-accent-foreground);
+  --color-accent-subtle: var(--ds-accent-subtle);
+  --color-accent-line: var(--ds-accent-border);
+  --color-danger: var(--ds-danger);
+  --color-danger-strong: var(--ds-danger-strong);
+  --color-danger-subtle: var(--ds-danger-bg);
+  --color-danger-line: var(--ds-danger-border);
+  --color-warning: var(--ds-warning);
+  --color-warning-strong: var(--ds-warning-strong);
+  --color-warning-ink: var(--ds-warning-text);
+  --color-warning-subtle: var(--ds-warning-bg);
+  --color-warning-line: var(--ds-warning-border);
+  --color-success: var(--ds-success);
+  --color-success-strong: var(--ds-success-strong);
+  --color-success-subtle: var(--ds-success-bg);
+  --color-chart-neutral: var(--ds-neutral-bar);
+
+  --radius-control: 8px;
+  --radius-panel: 12px;
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --animate-fade-in-up: fade-in-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-shimmer: shimmer 1.8s ease-in-out infinite;
@@ -333,6 +414,38 @@
     --tooltip-bg: rgba(255, 255, 255, 0.92);
     --tooltip-border: rgba(0, 0, 0, 0.08);
     --tooltip-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+
+    /* Design tokens, light. Text pairs measured at 4.5:1 or more on surface
+       and ground (WCAG 1.4.3); bars and dots at 3:1 where they carry meaning. */
+    --ds-ground: #F7F8FA;
+    --ds-surface: #FFFFFF;
+    --ds-surface-muted: #F9FAFB;
+    --ds-border: #E4E7EC;
+    --ds-border-subtle: #F2F4F7;
+    --ds-border-strong: #D0D5DD;
+    --ds-text: #101828;
+    --ds-text-secondary: #344054;
+    --ds-muted: #475467;
+    --ds-subtle: #667085;
+    --ds-accent: #1D4ED8;
+    --ds-accent-solid: #1D4ED8;
+    --ds-accent-solid-hover: #1E40AF;
+    --ds-accent-foreground: #FFFFFF;
+    --ds-accent-subtle: #EFF4FF;
+    --ds-accent-border: #C7D7FE;
+    --ds-danger: #B42318;
+    --ds-danger-strong: #D92D20;
+    --ds-danger-bg: #FEF3F2;
+    --ds-danger-border: #FECDCA;
+    --ds-warning: #B54708;
+    --ds-warning-strong: #F79009;
+    --ds-warning-text: #7A2E0E;
+    --ds-warning-bg: #FFFAEB;
+    --ds-warning-border: #FEDF89;
+    --ds-success: #067647;
+    --ds-success-strong: #12B76A;
+    --ds-success-bg: #ECFDF3;
+    --ds-neutral-bar: #98A2B3;
   }
 
   .dark {
@@ -367,6 +480,38 @@
     --tooltip-bg: rgba(15, 23, 42, 0.92);
     --tooltip-border: rgba(255, 255, 255, 0.08);
     --tooltip-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+
+    /* Design tokens, dark. Same roles; every text pair re-measured at 4.5:1
+       or more on the dark surface and ground. */
+    --ds-ground: #0C111D;
+    --ds-surface: #161B26;
+    --ds-surface-muted: #1F242F;
+    --ds-border: #333741;
+    --ds-border-subtle: #1F242F;
+    --ds-border-strong: #61646C;
+    --ds-text: #F5F5F6;
+    --ds-text-secondary: #CECFD2;
+    --ds-muted: #94969C;
+    --ds-subtle: #85888E;
+    --ds-accent: #84ADFF;
+    --ds-accent-solid: #1D4ED8;
+    --ds-accent-solid-hover: #2563EB;
+    --ds-accent-foreground: #FFFFFF;
+    --ds-accent-subtle: #102A56;
+    --ds-accent-border: #1D3A7A;
+    --ds-danger: #F97066;
+    --ds-danger-strong: #F04438;
+    --ds-danger-bg: #3B1613;
+    --ds-danger-border: #7A271A;
+    --ds-warning: #FDB022;
+    --ds-warning-strong: #F79009;
+    --ds-warning-text: #FEDF89;
+    --ds-warning-bg: #33200A;
+    --ds-warning-border: #93370D;
+    --ds-success: #47CD89;
+    --ds-success-strong: #17B26A;
+    --ds-success-bg: #0A2E1F;
+    --ds-neutral-bar: #85888E;
   }
 }
 
