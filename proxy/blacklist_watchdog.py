@@ -611,23 +611,181 @@ def check_reload_trigger(state):
         state.mtimes[RELOAD_TRIGGER] = mt_reload
 
 
+# ── Clear cache ──────────────────────────────────────────────────────────────
+#
+# This used to run `squid -k purge`, which is not a signal Squid 7.7 knows: it
+# printed its usage and exited 1, the fallback `squid -k shutdown` stopped
+# Squid, supervisord started it again at once, and the disk cache was still
+# there (measured: the next request was a TCP_HIT from disk). Emptying the
+# cache means stopping Squid where supervisord will not restart it, removing
+# what is in the cache_dir, recreating its layout with `squid -z`, and starting
+# Squid again. The memory cache goes with the restart.
+#
+# The only directory this may empty. generate_squid_conf.sh writes
+# "cache_dir ufs /var/spool/squid"; a cache_dir anywhere else is refused, not
+# emptied, and Squid is left running.
+CACHE_ROOT = "/var/spool/squid"
+CACHE_DIR_TYPES = ("ufs", "aufs", "diskd", "rock")
+SUPERVISORCTL = "/usr/bin/supervisorctl"
+CLEAR_CACHE_RESULT = f"{CONFIG_DIR}/.clear-cache.result"
+# Present while Squid is stopped for a clear. A watchdog that dies in between
+# would leave Squid stopped, since supervisord restarts only what exits on its
+# own: the next watchdog starts it (resume_interrupted_clear).
+CLEARING_MARK = "/run/spm-clearing-cache"
+
+
+def cache_dirs(conf=None):
+    """(type, path) of every cache_dir line in squid.conf."""
+    out = []
+    with open(conf or SQUID_CONF, encoding="utf-8", errors="replace") as f:
+        for raw in f:
+            # cache_dir TYPE PATH [options]
+            directive, *args = raw.split("#", 1)[0].split() or [""]
+            if directive == "cache_dir" and len(args) > 1:
+                out.append((args[0], args[1]))
+    return out
+
+
+def checked_cache_dirs(dirs, root=None):
+    """The resolved paths to empty. Raises ValueError, naming the reason, for
+    anything that is not a disk cache directory at or under root: no cache_dir
+    at all, a type without a directory of its own, a path that resolves
+    (through "..", or a symlink) anywhere else, or one that is not a
+    directory."""
+    root = os.path.realpath(root or CACHE_ROOT)
+    if not dirs:
+        raise ValueError("squid.conf has no cache_dir")
+    paths = []
+    for kind, path in dirs:
+        if kind not in CACHE_DIR_TYPES:
+            raise ValueError(f"cache_dir type {kind!r} is not one this can empty")
+        real = os.path.realpath(path)
+        if real != root and not real.startswith(root + os.sep):
+            raise ValueError(f"cache_dir {path} resolves to {real}, outside {root}")
+        if not os.path.isdir(real):
+            raise ValueError(f"cache_dir {path} is not a directory")
+        paths.append(real)
+    return paths
+
+
+def empty_dir(path):
+    """Remove everything inside path, not path itself: in the compose stack it
+    is a volume's mount point. A symlink is removed, never followed. Returns
+    the number of files that were below the top level (the stored objects of a
+    ufs/aufs/diskd cache, in its L1/L2 directories)."""
+    objects = sum(len(files) for top, _, files in os.walk(path) if top != path)
+    with os.scandir(path) as it:
+        for entry in it:
+            if entry.is_dir(follow_symlinks=False):
+                shutil.rmtree(entry.path)
+            else:
+                os.unlink(entry.path)
+    return objects
+
+
+def squid_stopped():
+    """True when no process named squid is left (pgrep exits 1 for none)."""
+    return subprocess.run(["pgrep", "-x", "squid"], check=False, capture_output=True, timeout=10).returncode == 1
+
+
+def supervise(action):
+    """supervisorctl ACTION squid; its exit code (0 once the state is reached)."""
+    res = subprocess.run([SUPERVISORCTL, action, "squid"], check=False, capture_output=True, timeout=60)
+    print(f"[watchdog] supervisorctl {action} squid rc={res.returncode}: "
+          f"{res.stdout.decode('utf-8', 'replace').strip()}", flush=True)
+    return res.returncode
+
+
+def _clear_stopped(paths, result):
+    """With Squid stopped: empty each cache_dir and recreate its layout. Fills
+    result and returns True when both steps worked."""
+    try:
+        result["objects_removed"] = sum(empty_dir(p) for p in paths)
+    except OSError as exc:
+        result.update(step="empty", detail=f"emptying the cache_dir failed: {exc}")
+    # Run even after a failed emptying: whatever is missing is recreated, so
+    # Squid can start on what is left.
+    z = subprocess.run([SQUID, "-z", "-N", "-f", SQUID_CONF], check=False, capture_output=True, timeout=120)
+    result["create_rc"] = z.returncode
+    if z.returncode != 0 and result["step"] is None:
+        result.update(step="create", detail="squid -z could not recreate the cache_dir")
+    return result["step"] is None
+
+
+def clear_cache():
+    """Empty Squid's disk cache. Returns the result the backend reads:
+    applied, the step it stopped at (None when every step worked), a detail,
+    and how many stored objects were removed. Squid is started again whatever
+    happened once it was stopped."""
+    result = {"applied": False, "step": None, "detail": None, "objects_removed": None, "create_rc": None}
+    try:
+        paths = checked_cache_dirs(cache_dirs())
+    except (OSError, ValueError) as exc:
+        # Nothing was stopped or removed.
+        result.update(step="check", detail=f"refused, nothing was removed: {exc}")
+        return result
+    open(CLEARING_MARK, "w").close()
+    try:
+        # stopsignal=INT (squid-supervisor.conf): Squid shuts down cleanly at
+        # once. TERM waits shutdown_lifetime (30 s), past supervisord's 10 s,
+        # which then kills it.
+        if supervise("stop") != 0 or not squid_stopped():
+            result.update(step="stop", detail="Squid did not stop; nothing was removed")
+        else:
+            _clear_stopped(paths, result)
+    finally:
+        started = supervise("start") == 0
+        try:
+            os.unlink(CLEARING_MARK)
+        except OSError:
+            pass
+    if not started and result["step"] is None:
+        result.update(step="start", detail="the cache was emptied but Squid did not start again")
+    result["applied"] = result["step"] is None
+    return result
+
+
+def write_clear_result(stamp, result):
+    """Acknowledge a clear-cache trigger, as write_result does for a reload."""
+    payload = {"trigger_mtime": int(stamp), **result, "at": int(time.time())}
+    try:
+        write_lines_atomic(CLEAR_CACHE_RESULT, [json.dumps(payload)])
+    except OSError as exc:
+        print(f"[watchdog] could not write {CLEAR_CACHE_RESULT}: {exc}", flush=True)
+
+
+def resume_interrupted_clear():
+    """Start Squid if a previous watchdog stopped it for a clear and died."""
+    if os.path.exists(CLEARING_MARK):
+        print("[watchdog] a cache clear was interrupted; starting Squid", flush=True)
+        try:
+            supervise("start")
+            os.unlink(CLEARING_MARK)
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(f"[watchdog] could not resume after the interrupted clear: {exc}", flush=True)
+
+
 def check_clear_cache_trigger(state):
-    """React to the backend touching /config/.clear-cache."""
+    """React to the backend writing /config/.clear-cache.
+
+    The trigger is consumed before the work, unlike a reload: a clear that
+    raised is acknowledged as failed rather than retried every 2 s, because
+    each attempt stops Squid."""
     mt_clear = mtime(CLEAR_CACHE_TRIGGER)
     if mt_clear == state.mtimes[CLEAR_CACHE_TRIGGER]:
         return
     state.mtimes[CLEAR_CACHE_TRIGGER] = mt_clear
     if not os.path.exists(CLEAR_CACHE_TRIGGER):
         return
-    print("[watchdog] clear-cache trigger detected, purging cache...", flush=True)
+    stamp = trigger_stamp(CLEAR_CACHE_TRIGGER, mt_clear)
+    print("[watchdog] clear-cache trigger detected, emptying the disk cache...", flush=True)
     try:
-        purge_res = subprocess.run([SQUID, "-k", "purge"], check=False, capture_output=True, timeout=20)
-        print(f"[watchdog] squid -k purge rc={purge_res.returncode}", flush=True)
-        if purge_res.returncode != 0:
-            print("[watchdog] purge failed, trying fallback shutdown...", flush=True)
-            subprocess.run([SQUID, "-k", "shutdown"], check=False, capture_output=True, timeout=20)
+        result = clear_cache()
     except (OSError, subprocess.SubprocessError) as exc:
-        print(f"[watchdog] clear cache error: {exc}", flush=True)
+        result = {"applied": False, "step": "error", "detail": str(exc), "objects_removed": None, "create_rc": None}
+    print(f"[watchdog] clear cache: applied={result['applied']} step={result['step']} "
+          f"objects_removed={result['objects_removed']} {result['detail'] or ''}", flush=True)
+    write_clear_result(stamp, result)
 
 
 def expected_checksum(state, src, mt, manifest_state):
@@ -926,6 +1084,7 @@ def normalize_cli(args):
 
 def main():
     print("[watchdog] started", flush=True)
+    resume_interrupted_clear()
     write_squid_version()
     state = WatchdogState()
     while True:

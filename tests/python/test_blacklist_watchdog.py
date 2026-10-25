@@ -335,16 +335,166 @@ def test_reload_exception_is_reported_and_retried_not_consumed(w, state, monkeyp
     assert st.mtimes[w.RELOAD_TRIGGER] == before, "the failed attempt consumed the trigger"
 
 
-def test_clear_cache_purges_and_falls_back_to_shutdown(w, state, monkeypatch, tmp_path):
+# ── Clear cache ──────────────────────────────────────────────────────────────
+#
+# The watchdog used to run `squid -k purge`, which Squid 7.7 does not know
+# (usage, exit 1), then `squid -k shutdown`; supervisord restarted Squid and the
+# disk cache survived. These run the new path against a cache_dir in tmp_path,
+# with supervisorctl, pgrep and squid -z faked.
+
+
+class _ClearRun:
+    """Fake subprocess.run for the clear-cache path: records each argv; pgrep
+    answers "no squid" unless squid_left, squid -z recreates one L1 dir."""
+
+    def __init__(self, root, squid_left=False, rcs=None):
+        self.root, self.squid_left, self.rcs, self.calls = root, squid_left, rcs or {}, []
+
+    def __call__(self, argv, **_kw):
+        argv = list(argv)
+        self.calls.append(argv)
+        if argv[0] == "pgrep":
+            return types.SimpleNamespace(returncode=0 if self.squid_left else 1, stdout=b"", stderr=b"")
+        if argv[:2] == ["/usr/sbin/squid", "-z"]:
+            (self.root / "00").mkdir(exist_ok=True)
+        rc = self.rcs.get(tuple(argv[1:2]), 0)
+        return types.SimpleNamespace(returncode=rc, stdout=b"squid: done", stderr=b"")
+
+    def names(self):
+        return [" ".join(a[:2]) if a[0] != "/usr/bin/supervisorctl" else "supervisorctl " + a[1] for a in self.calls]
+
+
+@pytest.fixture
+def cache(w, state, tmp_path, monkeypatch):
+    """A cache_dir with a stored object, the swap state, an empty L1 dir and a
+    symlink to a directory outside it, named by a squid.conf in tmp_path."""
     st, _ = state
-    (tmp_path / ".clear-cache").write_text("x")
-    run = _Run(returncodes={"purge": 1})
+    root = tmp_path / "spool"
+    (root / "00" / "00").mkdir(parents=True)
+    (root / "00" / "00" / "00000001").write_bytes(b"object")
+    (root / "01").mkdir()
+    (root / "swap.state").write_bytes(b"state")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("not the cache")
+    (root / "link").symlink_to(outside, target_is_directory=True)
+    conf = tmp_path / "squid.conf"
+    conf.write_text(f"cache_mem 64 MB\ncache_dir ufs {root} 100 16 256\ncoredump_dir {root}\n")
+    monkeypatch.setattr(w, "SQUID_CONF", str(conf))
+    monkeypatch.setattr(w, "CACHE_ROOT", str(root))
+    monkeypatch.setattr(w, "CLEAR_CACHE_RESULT", str(tmp_path / ".clear-cache.result"))
+    monkeypatch.setattr(w, "CLEARING_MARK", str(tmp_path / "clearing"))
+    (tmp_path / ".clear-cache").write_text("1788937285")
+    return st, root, outside, conf, tmp_path
+
+
+def _clear_result(tmp_path):
+    return json.loads((tmp_path / ".clear-cache.result").read_text())
+
+
+def test_clear_cache_empties_the_cache_dir_and_restarts_squid(w, cache, monkeypatch):
+    st, root, outside, _, tmp_path = cache
+    run = _ClearRun(root)
     monkeypatch.setattr(w.subprocess, "run", run)
 
     w.check_clear_cache_trigger(st)
 
-    assert ["/usr/sbin/squid", "-k", "purge"] in run.calls
-    assert ["/usr/sbin/squid", "-k", "shutdown"] in run.calls
+    assert run.names() == ["supervisorctl stop", "pgrep -x", "/usr/sbin/squid -z", "supervisorctl start"]
+    assert sorted(p.name for p in root.iterdir()) == ["00"], "only what squid -z recreated is left"
+    assert root.is_dir(), "the cache_dir itself stays: it is a volume's mount point"
+    assert (outside / "keep.txt").read_text() == "not the cache", "the symlink was followed"
+    res = _clear_result(tmp_path)
+    assert res["trigger_mtime"] == 1788937285 and isinstance(res["trigger_mtime"], int)
+    assert res["applied"] is True and res["step"] is None and res["objects_removed"] == 1
+    assert not (tmp_path / "clearing").exists()
+    # An unchanged trigger is not acted on twice.
+    run.calls.clear()
+    w.check_clear_cache_trigger(st)
+    assert run.calls == []
+
+
+# Every path here is inside tmp_path: should a guard regress, the test empties
+# a directory of its own and fails, never one of the machine running it.
+@pytest.mark.parametrize("line", [
+    "cache_dir ufs {root}/../outside 100 16 256",   # resolves outside the root
+    "cache_dir ufs {root}/link 100 16 256",         # a symlink out of the root
+    "cache_dir null {root}",                        # not a disk cache type
+    "cache_mem 64 MB",                              # no cache_dir at all
+])
+def test_clear_cache_refuses_anything_but_a_dir_under_the_root(w, cache, monkeypatch, line):
+    st, root, outside, conf, tmp_path = cache
+    conf.write_text(line.format(root=root) + "\n")
+    run = _ClearRun(root)
+    monkeypatch.setattr(w.subprocess, "run", run)
+
+    w.check_clear_cache_trigger(st)
+
+    assert run.calls == [], "Squid was stopped for a cache_dir that is refused"
+    assert (root / "00" / "00" / "00000001").exists() and (outside / "keep.txt").exists()
+    res = _clear_result(tmp_path)
+    assert res["applied"] is False and res["step"] == "check" and "nothing was removed" in res["detail"]
+
+
+def test_clear_cache_removes_nothing_when_squid_does_not_stop(w, cache, monkeypatch):
+    st, root, _, _, tmp_path = cache
+    run = _ClearRun(root, squid_left=True)
+    monkeypatch.setattr(w.subprocess, "run", run)
+
+    w.check_clear_cache_trigger(st)
+
+    assert "/usr/sbin/squid -z" not in run.names()
+    assert run.names()[-1] == "supervisorctl start"
+    assert (root / "00" / "00" / "00000001").exists()
+    res = _clear_result(tmp_path)
+    assert res["applied"] is False and res["step"] == "stop"
+
+
+def test_clear_cache_starts_squid_again_when_emptying_fails(w, cache, monkeypatch):
+    st, root, _, _, tmp_path = cache
+    run = _ClearRun(root)
+    monkeypatch.setattr(w.subprocess, "run", run)
+
+    def fail(_path):
+        raise PermissionError("read-only")
+    monkeypatch.setattr(w, "empty_dir", fail)
+
+    w.check_clear_cache_trigger(st)
+
+    # squid -z still runs, so Squid starts on whatever is left.
+    assert run.names() == ["supervisorctl stop", "pgrep -x", "/usr/sbin/squid -z", "supervisorctl start"]
+    res = _clear_result(tmp_path)
+    assert res["applied"] is False and res["step"] == "empty" and "read-only" in res["detail"]
+    assert not (tmp_path / "clearing").exists()
+
+
+def test_clear_cache_says_when_squid_does_not_start_again(w, cache, monkeypatch):
+    st, root, _, _, tmp_path = cache
+    monkeypatch.setattr(w.subprocess, "run", _ClearRun(root, rcs={("start",): 7}))
+
+    w.check_clear_cache_trigger(st)
+
+    res = _clear_result(tmp_path)
+    assert res["applied"] is False and res["step"] == "start"
+
+
+def test_an_interrupted_clear_is_resumed_by_the_next_watchdog(w, cache, monkeypatch):
+    _, root, _, _, tmp_path = cache
+    run = _ClearRun(root)
+    monkeypatch.setattr(w.subprocess, "run", run)
+    w.resume_interrupted_clear()
+    assert run.calls == [], "nothing to resume without the mark"
+    (tmp_path / "clearing").write_text("")
+    w.resume_interrupted_clear()
+    assert run.names() == ["supervisorctl start"] and not (tmp_path / "clearing").exists()
+
+
+def test_the_real_squid_conf_cache_dir_is_accepted(w):
+    """The cache_dir line generate_squid_conf.sh writes names the root itself."""
+    gen = open(os.path.join(os.path.dirname(WATCHDOG), "generate_squid_conf.sh")).read()
+    line = next(raw for raw in gen.splitlines() if raw.startswith("cache_dir "))
+    kind, path = line.split()[1:3]
+    assert (kind, path) == ("ufs", w.CACHE_ROOT)
+    assert kind in w.CACHE_DIR_TYPES
 
 
 def test_rotation_happens_once_per_day_change(w, state, monkeypatch):
