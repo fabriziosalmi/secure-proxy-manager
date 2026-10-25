@@ -60,7 +60,7 @@ func TestInsertBlacklistEntries(t *testing.T) {
 
 	// Routable IPs are inserted; the private 10.0.0.1 and the invalid line are
 	// dropped (the ip_blacklist is a source ACL).
-	added := insertBlacklistEntries(db, "ip_blacklist", "ip", "https://feed.test/ips.txt",
+	added, _ := insertBlacklistEntries(db, "ip_blacklist", "ip", "https://feed.test/ips.txt",
 		"1.1.1.1\n2.2.2.2\n10.0.0.1\n# comment\nnotanip", map[string]struct{}{})
 	if added != 2 {
 		t.Errorf("expected 2 inserted (bogon/invalid dropped), got %d", added)
@@ -365,7 +365,7 @@ func TestInsertBlacklistEntries_Domain(t *testing.T) {
 
 	// Domain lists are not CIDR/bogon-filtered; hosts-format lines take the last
 	// field. 0.0.0.0 example.com -> example.com.
-	added := insertBlacklistEntries(db, "domain_blacklist", "domain", "https://feed.test/hosts",
+	added, _ := insertBlacklistEntries(db, "domain_blacklist", "domain", "https://feed.test/hosts",
 		"0.0.0.0 evil.example\nbad.test\n# comment", map[string]struct{}{})
 	if added != 2 {
 		t.Errorf("expected 2 domains inserted, got %d", added)
@@ -551,7 +551,7 @@ func TestRefreshStopsAtTheDomainLimit(t *testing.T) {
 	t.Setenv("SPM_DNS_BLOCKLIST_MAX_DOMAINS", "2")
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
-	added := insertBlacklistEntries(db, "domain_blacklist", "domain", "https://feed.test/hosts",
+	added, _ := insertBlacklistEntries(db, "domain_blacklist", "domain", "https://feed.test/hosts",
 		"0.0.0.0 a.example\n0.0.0.0 b.example\n0.0.0.0 c.example\n0.0.0.0 d.example\n", map[string]struct{}{})
 	var n int
 	_ = db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&n)

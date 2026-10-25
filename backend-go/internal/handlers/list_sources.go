@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"bufio"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,7 +15,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 )
 
 // listRoute is one list the Blacklists page manages: its URL segment, its
@@ -61,19 +62,23 @@ func (h *BlacklistHandlers) removeSource(l listRoute) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		raw := chi.URLParam(r, "id")
 		var id int64
+		kind, source, label := database.SourceUnrecorded, "", ""
 		if raw != database.SourceUnrecorded {
 			n, err := strconv.ParseInt(raw, 10, 64)
 			if err != nil || n <= 0 {
 				writeError(w, http.StatusBadRequest, "id must be a source id or 'unrecorded'")
 				return
 			}
-			var known int
-			if err := h.db.QueryRow("SELECT COUNT(*) FROM list_sources WHERE id = ? AND list = ?", n, l.table).Scan(&known); err != nil {
-				writeInternalError(w, "remove_source", err)
+			// Read before the removal: the audit row names the source, which
+			// is gone afterwards.
+			err = h.db.QueryRow("SELECT kind, source, label FROM list_sources WHERE id = ? AND list = ?", n, l.table).
+				Scan(&kind, &source, &label)
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "source not found on this list")
 				return
 			}
-			if known == 0 {
-				writeError(w, http.StatusNotFound, "source not found on this list")
+			if err != nil {
+				writeInternalError(w, "remove_source", err)
 				return
 			}
 			id = n
@@ -86,9 +91,14 @@ func (h *BlacklistHandlers) removeSource(l listRoute) http.HandlerFunc {
 		if removed > 0 {
 			requestExport()
 		}
-		if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
-			database.Audit(h.db, user, "remove_source_"+l.table, "source="+raw, fmt.Sprintf("%d entries removed", removed))
+		details := map[string]any{"removed": removed, "kind": kind}
+		if label != "" {
+			details["name"] = label
 		}
+		if kind == database.SourceURL {
+			source = redactURL(source)
+		}
+		auditChange(h.db, r, "remove_source_"+l.table, source, details)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":  "success",
 			"message": fmt.Sprintf("Removed %d entries", removed),

@@ -150,7 +150,8 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 	}
 	// Restore the lists in the SAME transaction as the settings, so a partial
 	// restore cannot leave the toggles applied and the blacklists not.
-	listsRestored, skippedEntries, err := restoreLists(tx, body.Lists)
+	perList := map[string]*listRestore{}
+	listsRestored, skippedEntries, err := restoreLists(tx, body.Lists, perList)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to restore lists (rolled back)")
 		return
@@ -185,6 +186,17 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
 	database.Audit(h.db, username, "restore_config", "", fmt.Sprintf("%d settings restored, %d skipped", settingsRestored, skipped))
+	// One row per list the backup carried, with the entries that were new
+	// and the ones refused. The restore_config row above counts settings only.
+	names := make([]string, 0, len(perList))
+	for name := range perList {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		pl := perList[name]
+		auditChange(h.db, r, "restore_"+auditListName(name), "", map[string]any{"added": pl.added, "skipped": pl.skipped})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":   "success",
 		"message":  "Configuration restored successfully",
@@ -261,10 +273,17 @@ func (h *MaintenanceHandlers) restoreSettings(tx *sql.Tx, config map[string]stri
 	return restored, skipped, nil
 }
 
+// listRestore is what a restore did to one list: the entries that were new
+// (a duplicate of a stored entry is not counted) and the ones refused.
+type listRestore struct {
+	added, skipped int64
+}
+
 // restoreLists inserts the lists of a backup inside tx, validating each entry
 // as its add endpoint would. An invalid entry is skipped and counted; a failed
-// insert aborts (the caller rolls back).
-func restoreLists(tx *sql.Tx, lists map[string][]map[string]string) (restored, skippedEntries int, err error) {
+// insert aborts (the caller rolls back). per, when not nil, receives what
+// happened to each known list.
+func restoreLists(tx *sql.Tx, lists map[string][]map[string]string, per map[string]*listRestore) (restored, skippedEntries int, err error) {
 	listTargets := map[string][2]string{
 		"ip_blacklist":     {"ip_blacklist", "ip"},
 		"ip_whitelist":     {"ip_whitelist", "ip"},
@@ -289,7 +308,7 @@ func restoreLists(tx *sql.Tx, lists map[string][]map[string]string) (restored, s
 		// The entries this restore adds to a list share one "Restore" source,
 		// created with the first entry and dropped again if none was new.
 		var sourceID int64
-		var added int64
+		var added, skippedHere int64
 		for _, e := range entries {
 			value := strings.TrimSpace(e["value"])
 			if value == "" {
@@ -303,10 +322,12 @@ func restoreLists(tx *sql.Tx, lists map[string][]map[string]string) (restored, s
 			if !validRestoredListValue(name, value) {
 				log.Warn().Str("list", name).Msg("RestoreConfig: skipping an entry that fails validation")
 				skippedEntries++
+				skippedHere++
 				continue
 			}
 			if domainRoom == 0 {
 				skippedEntries++
+				skippedHere++
 				continue
 			}
 			// dst_allowlist.type decides which enforcement file an entry reaches:
@@ -319,10 +340,15 @@ func restoreLists(tx *sql.Tx, lists map[string][]map[string]string) (restored, s
 			// predicate AddDstAllow uses, so backups already taken without the
 			// column are repaired rather than merely no longer broken.
 			if target[0] == "dst_allowlist" {
-				_, err = tx.Exec(
+				var res sql.Result
+				res, err = tx.Exec(
 					"INSERT OR IGNORE INTO dst_allowlist(entry, type, description) VALUES(?,?,?)",
 					value, egressEntryType(value), e["description"],
 				)
+				if err == nil {
+					n, _ := res.RowsAffected()
+					added += n
+				}
 			} else {
 				if sourceID == 0 {
 					if sourceID, err = database.NewSource(tx, target[0], database.SourceRestore, ""); err != nil {
@@ -352,6 +378,9 @@ func restoreLists(tx *sql.Tx, lists map[string][]map[string]string) (restored, s
 			if _, err := tx.Exec("DELETE FROM list_sources WHERE id = ?", sourceID); err != nil {
 				return restored, skippedEntries, err
 			}
+		}
+		if per != nil {
+			per[name] = &listRestore{added: added, skipped: skippedHere}
 		}
 	}
 	return restored, skippedEntries, nil
