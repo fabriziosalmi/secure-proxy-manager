@@ -83,6 +83,19 @@ export function splitStatus(status: string | undefined): { squid: string; code: 
   return { squid: s.slice(0, i), code: s.slice(i + 1) };
 }
 
+/**
+ * The tone of a row's HTTP code. A block is danger. A request the proxy let
+ * through can still fail: a 503 to a name that does not resolve, a 404 from
+ * the origin, a 000 when the client went away. Those are warning, so a
+ * failure the proxy did not cause never reads as a success.
+ */
+export function statusTone(code: string, blocked: boolean): 'danger' | 'warning' | 'success' {
+  if (blocked) return 'danger';
+  const n = Number(code);
+  if (!Number.isInteger(n) || n === 0 || n >= 400) return 'warning';
+  return 'success';
+}
+
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 
 /**

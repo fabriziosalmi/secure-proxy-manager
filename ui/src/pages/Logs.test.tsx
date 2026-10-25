@@ -187,6 +187,19 @@ describe('Logs', () => {
     expect(within(old).getByText('Unclassified (no reason recorded)')).toHaveAttribute('data-tone', 'neutral')
   })
 
+  // A 503 to a name that does not resolve was let through by the proxy and
+  // failed upstream. Its code was painted green, as if it had succeeded.
+  it('paints a failure the proxy let through in amber, not as a success', async () => {
+    logsBody = () => page([row({ id: 9, destination: 'no-such-name.example:443', status: 'TCP_TUNNEL/503' })])
+    renderWithProviders(<Logs />)
+    await waitFor(() => expect(bodyRows()).toHaveLength(1))
+    const [failed] = bodyRows()
+    expect(within(failed).getByText('503')).toHaveClass('text-warning')
+    expect(within(failed).getByText('503')).not.toHaveClass('text-success')
+    expect(within(failed).getByText('Allowed')).toHaveAttribute('data-tone', 'success')
+    logsBody = () => page([allowed, dnsBlock, wafBlock, oldBlock])
+  })
+
   // The table read the zone-less UTC timestamp as local time.
   it('shows each entry at the viewer time, not at the UTC wall-clock time', async () => {
     const restoreTz = setRomeTimeZone()

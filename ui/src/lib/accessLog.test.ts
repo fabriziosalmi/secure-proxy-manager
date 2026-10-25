@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  allowableDomain, apiParams, matchesFilters, readFilters, requestHost, splitStatus, whyText, writeFilters, NO_FILTERS,
+  allowableDomain, apiParams, matchesFilters, readFilters, requestHost, splitStatus, statusTone, whyText, writeFilters, NO_FILTERS,
 } from './accessLog'
 import type { LogEntry } from '../types'
 
@@ -90,5 +90,22 @@ describe('row facts', () => {
     }
     expect(whyText(entry({ blocked: 1, reason: 'new_rule', reason_label: 'New rule' }))).toBe('Blocked by the rule "New rule".')
     expect(whyText(entry({ blocked: 1, reason: 'domain_blacklist_dns_reconstructed' }))).toMatch(/^Logged before the proxy recorded why/)
+  })
+})
+
+describe('statusTone', () => {
+  it('reads a block as danger whatever its code', () => {
+    expect(statusTone('403', true)).toBe('danger')
+    expect(statusTone('200', true)).toBe('danger')
+  })
+  it('reads a failure the proxy let through as warning, never as success', () => {
+    expect(statusTone('503', false)).toBe('warning') // a name that does not resolve
+    expect(statusTone('404', false)).toBe('warning')
+    expect(statusTone('000', false)).toBe('warning') // the client went away
+    expect(statusTone('', false)).toBe('warning')
+  })
+  it('reads 2xx and 3xx as success', () => {
+    expect(statusTone('200', false)).toBe('success')
+    expect(statusTone('304', false)).toBe('success')
   })
 })

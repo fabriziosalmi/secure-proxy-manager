@@ -29,7 +29,7 @@ import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData, getErrorMessage } from '../lib/api';
 import { formatBytes, formatCount, formatDate, formatDateTime, formatTime } from '../lib/format';
 import {
-  allowableDomain, apiParams, hasFilters, isBlocked, matchesFilters, readFilters, splitStatus, whyText, writeFilters,
+  allowableDomain, apiParams, hasFilters, isBlocked, matchesFilters, readFilters, splitStatus, statusTone, whyText, writeFilters,
   NO_FILTERS, type LogFilters, type Outcome,
 } from '../lib/accessLog';
 import { cn } from '../lib/utils';
@@ -81,11 +81,13 @@ function RuleBadge({ r }: { r: LogEntry }) {
   return <Badge tone={r.reason === 'unclassified' || !r.reason ? 'neutral' : 'danger'}>{label}</Badge>;
 }
 
+const TONE_TEXT = { danger: 'text-danger', warning: 'text-warning', success: 'text-success' } as const;
+
 function Result({ r }: { r: LogEntry }) {
   const { squid, code } = splitStatus(r.status);
   return (
     <span className="whitespace-nowrap">
-      {code && <span className={cn('font-semibold tabular-nums', isBlocked(r) ? 'text-danger' : 'text-success')}>{code}</span>}{' '}
+      {code && <span className={cn('font-semibold tabular-nums', TONE_TEXT[statusTone(code, isBlocked(r))])}>{code}</span>}{' '}
       <span className="text-xs text-ink-muted">{squid || 'Not recorded'}</span>
     </span>
   );
