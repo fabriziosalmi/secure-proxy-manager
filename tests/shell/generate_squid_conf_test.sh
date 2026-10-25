@@ -61,8 +61,12 @@ parses 'true' && ok "squid -k parse accepts it" || bad "squid -k parse accepts i
 # at the manager is still both: the ACL needs localhost AND manager.
 grep -q '^acl spm_self_mgr all-of localhost manager$' <<<"$conf" \
   && ok "spm_self_mgr is localhost AND manager" || bad "spm_self_mgr is localhost AND manager" "$(grep spm_self_mgr <<<"$conf")"
-grep -q '^access_log daemon:/var/log/squid/access.log spm !spm_self_mgr$' <<<"$conf" \
+grep -q '^access_log daemon:/var/log/squid/access.log spm !spm_self_mgr spm_has_request$' <<<"$conf" \
   && ok "the access log leaves out the watchdog's manager fetch" || bad "the access log leaves out the watchdog's manager fetch" "$(grep '^access_log' <<<"$conf")"
+# The backend's health probe connects and closes without a request; Squid
+# would log that as error:transaction-end-before-headers every 30 s.
+grep -q '^acl spm_has_request has request$' <<<"$conf" \
+  && ok "the access log leaves out connections that sent no request" || bad "the access log leaves out connections that sent no request" "$(grep spm_has_request <<<"$conf")"
 for svc in service_req service_resp; do
   first="$(grep -m1 "^adaptation_access $svc " <<<"$conf")"
   [ "$first" = "adaptation_access $svc deny spm_self_mgr" ] \

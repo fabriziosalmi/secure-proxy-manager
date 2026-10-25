@@ -469,7 +469,14 @@ logfile_rotate 5
 # is read from the ICAP reply, not the HTTP one, so an upstream server cannot
 # forge it. Both log '-' when absent. Measured on Squid 7.7: docs/design/block-reasons.md.
 logformat spm %ts.%03tu %6tr %>a %Ss/%03>Hs %<st %rm %ru %[un %Sh/%<a %mt %{X-WAF-Event-Id}<h %{spm_reason}note %{X-SPM-Reason}adapt::<last_h
-access_log daemon:/var/log/squid/access.log spm !spm_self_mgr
+# A connection that closes before it sends a request has nothing to log, yet
+# Squid logs it as "NONE_NONE/000 - error:transaction-end-before-headers"
+# (measured on 7.7). The backend's proxy health probe is exactly that: it
+# connects and closes, every 30 s per open UI tab, and the access log the
+# product analyses filled with its rows. Only transactions with a request are
+# logged; a request Squid cannot parse is still one ("- / NONE_NONE/400").
+acl spm_has_request has request
+access_log daemon:/var/log/squid/access.log spm !spm_self_mgr spm_has_request
 cache_log /var/log/squid/cache.log
 cache_store_log none
 
