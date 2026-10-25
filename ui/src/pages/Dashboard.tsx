@@ -191,6 +191,9 @@ function LatestBlocks({ rows, loading, error, now }: { rows?: RecentBlock[]; loa
   );
 }
 
+/** "1 IP", "4 domains". */
+const countOf = (n: number, one: string, many: string) => `${formatCount(n)} ${n === 1 ? one : many}`;
+
 export function Dashboard() {
   const visible = usePageVisible();
   const refetchInterval = visible ? REFETCH : false;
@@ -271,7 +274,7 @@ export function Dashboard() {
           label="Rules in force"
           loading={loading}
           value={rules}
-          sub={rules !== undefined ? `${formatCount(ipRules ?? 0)} IPs, ${formatCount(domainRules ?? 0)} domains` : undefined}
+          sub={rules !== undefined ? `${countOf(ipRules ?? 0, 'IP', 'IPs')}, ${countOf(domainRules ?? 0, 'domain', 'domains')}` : undefined}
         />
       </section>
 

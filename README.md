@@ -24,7 +24,9 @@ every client is reaching.
 
 <sub>Malicious requests get **403**'d at the proxy by the WAF; benign traffic passes. Every category is verified with an adversarial test suite. See [Tested like an attacker](#tested-like-an-attacker).</sub>
 
-![Dashboard](docs/screenshots/dashboard.png)
+[![The Overview: requests and blocks of the last 24 hours, blocks by rule, the most blocked destinations and the latest blocks](docs/screenshots/dashboard.png)](https://fabriziosalmi.github.io/secure-proxy-manager/guide/tour)
+
+<sub>Click the screenshot for a 30-second tour of the dashboard.</sub>
 
 ## How it compares
 
