@@ -95,7 +95,7 @@ Optional default-deny outbound egress. Off by default (the `egress_default_deny`
 | `GET`  | `/api/analytics/file-extensions` | File extension distribution |
 | `GET`  | `/api/analytics/top-domains` | Top domains for the cloud visualisation |
 | `GET`  | `/api/dashboard/summary` | Aggregated dashboard data in a single call |
-| `GET`  | `/api/audit-log` | Audit log of administrative actions |
+| `GET`  | `/api/audit-log` | Audit log of administrative actions, newest first. `?category=changes` or `?category=signins` filters on the server; `meta.retention_days` is how long a row is kept (365) |
 | `GET`  | `/api/waf/stats` | WAF statistics |
 | `GET`  | `/api/waf/categories` | WAF rule categories with toggle state |
 | `POST` | `/api/waf/categories/toggle` | Enable or disable a category at runtime |
