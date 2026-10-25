@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { SettingRow } from '../types';
 import { Save, Download, Shield, Network, Key, Bell, Lock, User, Sun, Moon, SunMoon } from 'lucide-react';
 import { useTheme } from '../components/ThemeProvider';
@@ -13,6 +13,8 @@ import { Presets } from '../components/settings/Presets';
 import { ServiceStatus } from '../components/settings/ServiceStatus';
 import { ClientSetup } from '../components/ClientSetup';
 import { Toggle } from '../components/ui/Toggle';
+import { SecretField } from '../components/settings/SecretField';
+import { parseSettings, secretPayload, secretStateOf, type SecretEdit, type SecretState } from '../lib/secrets';
 
 // Validation schema for settings form data
 const settingsSchema = z.object({
@@ -49,7 +51,17 @@ export function Settings() {
     queryKey: ['settings'],
     queryFn: () => getData<SettingRow[]>('settings'),
   });
+  const queryClient = useQueryClient();
   const [formData, setFormData] = useState<Record<string, string>>({});
+  // Secrets are write-only: the page knows only whether each one is stored,
+  // and sends one only when the operator typed or removed it.
+  const [secrets, setSecrets] = useState<Record<string, SecretState>>({});
+  const [secretEdits, setSecretEdits] = useState<Record<string, SecretEdit | undefined>>({});
+  const secretProps = (key: string) => ({
+    state: secretStateOf(secrets, key),
+    edit: secretEdits[key],
+    onEdit: (edit: SecretEdit | undefined) => setSecretEdits((prev) => ({ ...prev, [key]: edit })),
+  });
   const [isSaving, setIsSaving] = useState(false);
   // Synchronous latch: React batches the isSaving state update so the
   // disabled prop on the button doesn't reflect until the next render. A
@@ -89,15 +101,16 @@ export function Settings() {
 
   useEffect(() => {
     if (!loading && !error && Array.isArray(settingsData)) {
-      // API returns [{setting_name, setting_value}, ...]: convert to {key: value} map
-      const map: Record<string, string> = {};
-      settingsData.forEach((s) => { map[s.setting_name] = s.setting_value; });
+      // API returns [{setting_name, setting_value}, ...]: plain values become
+      // the form, secrets only their state (their value is never returned).
+      const parsed = parseSettings(settingsData);
       // Seeding an editable form's local state from the fetched settings is a
       // deliberate mirror of async query data into state, exactly what
       // set-state-in-effect flags. Vetted exception (a full key-reset refactor
       // isn't warranted here). See issue #192.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFormData(map);
+      setFormData(parsed.values);
+      setSecrets(parsed.secrets);
     }
   }, [settingsData, loading, error]);
 
@@ -134,12 +147,16 @@ export function Settings() {
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     
     try {
-      await api.post('settings', formData, {
+      const secret = secretPayload(secretEdits);
+      await api.post('settings', { ...formData, ...secret.body }, {
+        params: secret.clear.length ? { clear: secret.clear.join(',') } : undefined,
         headers: {
           'Idempotency-Key': idempotencyKey
         }
       });
       toast.success('Settings saved successfully!', { id: loadingToast });
+      setSecretEdits({});
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
       
       // Auto reload config after saving
       toast.promise(
@@ -442,96 +459,40 @@ export function Settings() {
                     {/* Telegram */}
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium text-blue-600 dark:text-blue-400">Telegram Bot</h4>
-                      <div className="grid gap-2">
-                        <input 
-                          type="text" 
-                          name="telegram_bot_token"
-                          value={formData.telegram_bot_token || ''}
-                          onChange={handleChange}
-                          placeholder="Bot Token (e.g. 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                        />
-                        <input 
-                          type="text" 
-                          name="telegram_chat_id"
-                          value={formData.telegram_chat_id || ''}
-                          onChange={handleChange}
-                          placeholder="Chat ID (e.g. -1001234567890)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                        />
+                      <div className="grid gap-3">
+                        <SecretField label="Bot token" placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11" {...secretProps('telegram_bot_token')} />
+                        <SecretField label="Chat ID" placeholder="-1001234567890" {...secretProps('telegram_chat_id')} />
                       </div>
                     </div>
 
                     {/* Gotify */}
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium text-green-600 dark:text-green-400">Gotify Server</h4>
-                      <div className="grid gap-2">
-                        <input 
-                          type="text" 
-                          name="gotify_url"
-                          value={formData.gotify_url || ''}
-                          onChange={handleChange}
-                          placeholder="Gotify URL (e.g. https://gotify.yourdomain.com)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                        />
-                        <input 
-                          type="text" 
-                          name="gotify_token"
-                          value={formData.gotify_token || ''}
-                          onChange={handleChange}
-                          placeholder="App Token"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                        />
+                      <div className="grid gap-3">
+                        <SecretField label="Gotify URL" placeholder="https://gotify.yourdomain.com" {...secretProps('gotify_url')} />
+                        <SecretField label="App token" {...secretProps('gotify_token')} />
                       </div>
                     </div>
 
                     {/* ntfy.sh */}
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium text-cyan-600 dark:text-cyan-400">ntfy.sh (Self-hosted Push)</h4>
-                      <div className="grid gap-2">
-                        <input
-                          type="text"
-                          name="ntfy_url"
-                          value={formData.ntfy_url || ''}
-                          onChange={handleChange}
-                          placeholder="Server URL (e.g. https://ntfy.sh or https://ntfy.yourdomain.com)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                        />
-                        <input
-                          type="text"
-                          name="ntfy_topic"
-                          value={formData.ntfy_topic || ''}
-                          onChange={handleChange}
-                          placeholder="Topic (e.g. proxy-alerts)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                        />
+                      <div className="grid gap-3">
+                        <SecretField label="ntfy server URL" placeholder="https://ntfy.sh" {...secretProps('ntfy_url')} />
+                        <SecretField label="ntfy topic" placeholder="proxy-alerts" {...secretProps('ntfy_topic')} />
                       </div>
                     </div>
 
                     {/* MS Teams */}
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium text-purple-600 dark:text-purple-400">Microsoft Teams</h4>
-                      <input 
-                        type="text" 
-                        name="teams_webhook_url"
-                        value={formData.teams_webhook_url || ''}
-                        onChange={handleChange}
-                        placeholder="Teams Webhook URL"
-                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                      />
+                      <SecretField label="Teams webhook URL" {...secretProps('teams_webhook_url')} />
                     </div>
 
                     {/* Custom Webhook */}
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium text-orange-600 dark:text-orange-400">Custom Webhook (JSON)</h4>
-                      <input 
-                        type="text" 
-                        name="webhook_url"
-                        value={formData.webhook_url || ''}
-                        onChange={handleChange}
-                        placeholder="https://your-webhook-endpoint.com/receive"
-                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                      />
+                      <SecretField label="Webhook URL" placeholder="https://your-webhook-endpoint.com/receive" {...secretProps('webhook_url')} />
                     </div>
                   </div>
                 )}

@@ -20,7 +20,11 @@ GET /api/settings
 }
 ```
 
-Setting values that are stored encrypted at rest (those whose key contains `password`, `secret`, `token`, or `webhook`) are decrypted before being returned.
+The alert channel settings are secrets: `webhook_url`, `gotify_url`, `gotify_token`, `teams_webhook_url`, `telegram_bot_token`, `telegram_chat_id`, `ntfy_url` and `ntfy_topic` (`crypto.SensitiveKeys` in the backend). They are stored encrypted and are write-only: their row carries `"secret": true`, an empty `setting_value`, `"is_set": true` when a value is stored, and `"decrypt_failed": true` when the stored value cannot be decrypted with the current key (`ENCRYPTION_KEY`, or the key the backend generated in its state directory when that is unset).
+
+```json
+{ "setting_name": "gotify_token", "setting_value": "", "secret": true, "is_set": true }
+```
 
 ---
 
@@ -54,7 +58,15 @@ The body is a flat object mapping setting names to their new values:
 }
 ```
 
-All updates are applied in a single transaction. The same name and value validation applies as for the single-setting endpoint.
+All updates are applied in a single transaction. The same name and value validation applies as for the single-setting endpoint. A value that fails validation answers `400` with `detail` starting with the key name, for example `"bandwidth_limit_mbps: must be a positive number"`.
+
+A secret sent with an empty value keeps its stored value, and the response lists it in `data.kept`. To remove a secret, name it in the `clear` query parameter (comma separated): `POST /api/settings?clear=gotify_token,gotify_url`. Only secrets can be cleared this way, and a key cannot be cleared and given a value in the same request (`400`).
+
+```json
+{ "status": "success", "message": "Settings updated", "data": { "kept": ["gotify_token"] } }
+```
+
+When some proxy configuration files could not be written the answer is still `200`, with `"status": "partial"` and the file names in `data.failed`.
 
 ---
 
