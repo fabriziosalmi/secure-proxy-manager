@@ -134,7 +134,7 @@ Details: [Settings and Maintenance API](./settings.md).
 | Method | Path | Description |
 |---|---|---|
 | `GET`    | `/api/settings` | Every setting; secrets are write-only |
-| `PUT`    | `/api/settings/{name}` | Store one value (writes no proxy file) |
+| `PUT`    | `/api/settings/{name}` | Set one value and write the proxy file it needs |
 | `POST`   | `/api/settings` | Store several values and write the proxy files they drive |
 | `GET`    | `/api/database/size` | Database size (`size_bytes`, `size_mb`) |
 | `GET`    | `/api/database/stats` | Row count per table |
