@@ -155,9 +155,9 @@ func (f *notifyFanout) close() {
 }
 
 // send posts one delivery with bounded retries and backoff. It records the
-// outcome on the channel's metrics.
-func (d delivery) send(client *http.Client) deliveryResult {
-	return d.sendTries(client, notifyMaxTries)
+// outcome on the channel's metrics; a caller that needs it uses sendTries.
+func (d delivery) send(client *http.Client) {
+	d.sendTries(client, notifyMaxTries)
 }
 
 // sendTries is send with its own attempt budget: the test endpoint makes one
