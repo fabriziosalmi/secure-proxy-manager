@@ -45,7 +45,12 @@ func (h *BlacklistHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	// IP whitelist
 	r.With(authMW).Get("/api/ip-whitelist", listHandler(h.db, "ip_whitelist", "ip"))
 	r.With(authMW).Post("/api/ip-whitelist", h.AddIPWhitelist)
-	r.With(authMW).Delete("/api/ip-whitelist/{id}", deleteByIDHandler(h.db, "ip_whitelist", nil))
+	// The allowed lists are exported too (ip_whitelist.txt for Squid, and the
+	// names the domain export leaves out), so a change requests an export like
+	// every other list change. They used to pass no config here and the add
+	// handlers requested nothing: an allowed entry took effect only at the
+	// next blacklist change.
+	r.With(authMW).Delete("/api/ip-whitelist/{id}", deleteByIDHandler(h.db, "ip_whitelist", h.cfg))
 
 	// Domain blacklist
 	r.With(authMW).Get("/api/domain-blacklist", listHandler(h.db, "domain_blacklist", "domain"))
@@ -57,7 +62,7 @@ func (h *BlacklistHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	// Domain whitelist
 	r.With(authMW).Get("/api/domain-whitelist", listHandler(h.db, "domain_whitelist", "domain"))
 	r.With(authMW).Post("/api/domain-whitelist", h.AddDomainWhitelist)
-	r.With(authMW).Delete("/api/domain-whitelist/{id}", deleteByIDHandler(h.db, "domain_whitelist", nil))
+	r.With(authMW).Delete("/api/domain-whitelist/{id}", deleteByIDHandler(h.db, "domain_whitelist", h.cfg))
 
 	// Egress destination allowlist (default-deny egress). Single table, entries
 	// classified as 'cidr' or 'domain'; pass h.cfg so deletes re-export.
@@ -277,6 +282,7 @@ func (h *BlacklistHandlers) AddIPWhitelist(w http.ResponseWriter, r *http.Reques
 		writeInternalError(w, "add_ip_whitelist", err)
 		return
 	}
+	requestExport()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "IP added to whitelist"})
 }
 
@@ -433,6 +439,7 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 		writeInternalError(w, "add_domain_whitelist", err)
 		return
 	}
+	requestExport()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": fmt.Sprintf("Domain added to whitelist (type: %s)", entryType)})
 }
 

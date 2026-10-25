@@ -351,6 +351,40 @@ func TestRemovingTheUnrecordedEntriesLeavesTheRecordedOnes(t *testing.T) {
 	}, "Squid IP list after removing the unrecorded entries")
 }
 
+// The allowed lists are exported files too. Their add and delete handlers
+// requested no export, so an allowed entry took effect at the next blacklist
+// change, whenever that was.
+func TestAllowedListChangesReachTheExportedFiles(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := listRouter(t, db, cfg)
+	if code, _ := call(t, h, "POST", "/api/domain-blacklist", `{"domain":"cdn.example"}`); code != http.StatusOK {
+		t.Fatal("blacklist add failed")
+	}
+	exportNow(t, db, cfg.ConfigDir)
+	hosts := filepath.Join(cfg.ConfigDir, "dnsmasq.d", "blocklist.hosts")
+	waitFor(t, hosts, func(s string) bool { return strings.Contains(s, "cdn.example") }, "blocked before allowing")
+	defer startExporter(db, cfg.ConfigDir)()
+
+	if code, _ := call(t, h, "POST", "/api/domain-whitelist", `{"domain":"cdn.example"}`); code != http.StatusOK {
+		t.Fatal("whitelist add failed")
+	}
+	waitFor(t, hosts, func(s string) bool { return !strings.Contains(s, "cdn.example") }, "DNS sinkhole after allowing")
+
+	if code, _ := call(t, h, "POST", "/api/ip-whitelist", `{"ip":"198.51.100.20"}`); code != http.StatusOK {
+		t.Fatal("IP whitelist add failed")
+	}
+	allowIPs := filepath.Join(cfg.ConfigDir, "ip_whitelist.txt")
+	waitFor(t, allowIPs, func(s string) bool { return strings.Contains(s, "198.51.100.20") }, "Squid allowed IPs after adding")
+
+	var id int
+	_ = db.QueryRow("SELECT id FROM ip_whitelist WHERE ip = '198.51.100.20'").Scan(&id)
+	if code, _ := call(t, h, "DELETE", "/api/ip-whitelist/"+itoa(id), ""); code != http.StatusOK {
+		t.Fatal("IP whitelist delete failed")
+	}
+	waitFor(t, allowIPs, func(s string) bool { return !strings.Contains(s, "198.51.100.20") }, "Squid allowed IPs after removing")
+}
+
 func TestEnforcementReportsOnlyWhatIsRecorded(t *testing.T) {
 	t.Setenv("SPM_DNS_BLOCKLIST_MAX_DOMAINS", "5000")
 	db, _, cfg, cleanup := setupTestDB(t)
