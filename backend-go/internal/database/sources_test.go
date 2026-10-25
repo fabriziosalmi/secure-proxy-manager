@@ -21,9 +21,9 @@ func openInit(t *testing.T) *sql.DB {
 
 // A database at version 2 holds entries whose source was never recorded. The
 // migration gives every list table a source_id, leaves those rows NULL (the
-// page says "not recorded" instead of guessing), records version 3, and a
+// page says "not recorded" instead of guessing), records version 4, and a
 // second start changes nothing.
-func TestVersion3GivesExistingEntriesAnUnrecordedSource(t *testing.T) {
+func TestVersion4GivesExistingEntriesAnUnrecordedSource(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "v2.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -55,8 +55,8 @@ func TestVersion3GivesExistingEntriesAnUnrecordedSource(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 	_ = db.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 3 {
-		t.Errorf("user_version = %d, want 3", v)
+	if v != 4 {
+		t.Errorf("user_version = %d, want 4", v)
 	}
 	for _, table := range listSourceTables {
 		var n, unrecorded int
