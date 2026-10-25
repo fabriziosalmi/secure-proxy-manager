@@ -29,6 +29,7 @@ import (
 //	remove_source_<list>  target the source's URL or country, details {"removed","kind","name"?}
 //	restore_<list>        details {"added","skipped"}
 //	refresh_blacklists    user "system", details per list {"added","fetched","failed","not_added"?}
+//	rewrite_egress_wildcards  user "system", schema version 5, details {"rewritten","dropped","entries"}
 //
 // Before these were recorded, clearing 640,929 domains and importing 71,140
 // left no row at all: the log held only sign-ins and settings saves.

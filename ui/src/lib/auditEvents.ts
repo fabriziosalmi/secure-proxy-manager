@@ -205,6 +205,25 @@ function describeGeo(e: AuditEntry): AuditDescription | null {
   };
 }
 
+/** Schema version 5: egress entries stored as "*.name", which Squid matches against nothing. */
+function describeEgressRewrite(e: AuditEntry): AuditDescription | null {
+  const f = fields(e.details);
+  const rewritten = num(f, 'rewritten');
+  const dropped = num(f, 'dropped');
+  if (rewritten === null || dropped === null) return null;
+  const entries = Array.isArray(f?.entries) ? (f.entries as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+  return {
+    event: `The upgrade rewrote ${count(rewritten, 'egress entry', 'egress entries')} from *.name to .name`,
+    details: join([
+      entries.length
+        ? entries.join(', ') + (rewritten > entries.length ? `, and ${formatCount(rewritten - entries.length)} more` : '')
+        : null,
+      dropped > 0 ? `${count(dropped, 'entry', 'entries')} removed: already listed as .name, or a bare *.` : null,
+    ]),
+    kind: 'change',
+  };
+}
+
 /** The legacy removal (before the lists were named): target "id=42", details the table. */
 function describeLegacyDelete(e: AuditEntry): AuditDescription {
   const list = LISTS[e.details ?? ''] ?? (e.details === 'dst_allowlist' ? LISTS.egress_allowlist : undefined);
@@ -231,6 +250,7 @@ export function describeAudit(e: AuditEntry): AuditDescription {
   if (action === 'delete_ip' || action === 'delete_domain') return describeLegacyDelete(e);
   if (action === 'refresh_blacklists') return describeRefresh(e) ?? verbatim(e);
   if (action === 'geo_block') return describeGeo(e) ?? verbatim(e);
+  if (action === 'rewrite_egress_wildcards') return describeEgressRewrite(e) ?? verbatim(e);
   const m = action.match(LIST_ACTION);
   if (m) return describeList(e, m[1], LISTS[m[2]]) ?? verbatim(e);
   return verbatim(e);

@@ -43,6 +43,17 @@ describe('describeAudit', () => {
     expect(d.details).toBe('3 of 4 lists read, 1 could not be fetched. 5 domains not added: the domain blacklist is at its limit')
   })
 
+  it('describes the upgrade step that rewrote *.name egress entries', () => {
+    const d = describeAudit({ ...row('rewrite_egress_wildcards', 'egress_allowlist', '{"dropped":2,"entries":["*.a.example > .a.example"],"rewritten":1}'), username: 'system' })
+    expect(d.event).toBe('The upgrade rewrote 1 egress entry from *.name to .name')
+    expect(d.details).toBe('*.a.example > .a.example. 2 entries removed: already listed as .name, or a bare *.')
+    expect(d.kind).toBe('change')
+    const capped = describeAudit(row('rewrite_egress_wildcards', 'egress_allowlist', '{"dropped":0,"entries":["*.a > .a"],"rewritten":51}'))
+    expect(capped.details).toBe('*.a > .a, and 50 more')
+    // A shape this module does not know is shown as recorded.
+    expect(describeAudit(row('rewrite_egress_wildcards', 'egress_allowlist', 'text')).event).toBe('rewrite_egress_wildcards')
+  })
+
   it('names the sign-ins and keeps a failed one apart', () => {
     expect(describeAudit(row('login'))).toEqual({ event: 'Signed in', details: null, kind: 'signin' })
     expect(describeAudit(row('logout')).kind).toBe('signin')
