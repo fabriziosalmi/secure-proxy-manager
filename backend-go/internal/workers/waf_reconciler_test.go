@@ -46,6 +46,8 @@ func (f *fakeWAF) pushCount() int { f.mu.Lock(); defer f.mu.Unlock(); return len
 func TestReconcilePassOutcomes(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
+	// Two stored heuristics: the seed's six rows go first.
+	_, _ = db.Exec("DELETE FROM settings WHERE setting_name LIKE 'waf_h_%'")
 	_, _ = db.Exec("INSERT OR REPLACE INTO settings(setting_name,setting_value) VALUES('waf_h_entropy','true'),('waf_h_pii','false')")
 	waf := newFakeWAF(t)
 	ctx := context.Background()
