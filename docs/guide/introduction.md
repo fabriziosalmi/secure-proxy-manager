@@ -1,48 +1,64 @@
 # What is Secure Proxy Manager?
 
-Secure Proxy Manager is a self-hosted, containerised forward proxy built on top of [Squid](http://www.squid-cache.org/). It provides a web UI for managing traffic filtering rules, monitoring access logs in real time, and enforcing security policies on HTTP and HTTPS traffic.
+Secure Proxy Manager is a self-hosted forward proxy built on
+[Squid](http://www.squid-cache.org/), with a web UI and a REST API for
+managing what clients may reach, inspecting requests with a WAF and reading
+the access log. It runs as a Docker Compose stack on your own host.
 
-It is intended for homelab operators and small networks that need a manageable, auditable forward proxy without a commercial appliance.
+It is meant for homelab operators and small networks that want one auditable
+egress point without a commercial appliance.
 
 ## Core capabilities
 
-- **Forward proxy.** HTTP and HTTPS (with optional SSL bump) traffic filtering through Squid.
-- **Blacklists.** Domain blocking by exact name (an entry written `*.example.com` blocks `example.com` itself, not its subdomains); IP blocking with single addresses or CIDR ranges. Every entry records the source that added it, so an imported list can be removed as a whole.
-- **Egress allowlist.** Optional default-deny outbound egress that turns the proxy into a strict egress gateway. When enabled, local clients may reach only the destinations on an explicit allowlist of IP/CIDR and domain entries; everything else is refused. Off by default; when off, behaviour is unchanged and clients may reach any destination not on a blacklist.
-- **IP whitelist.** Trusted destination IPs that bypass the direct-IP block rule. The IP and domain blacklists are checked first, so it does not override them.
-- **Domain whitelist.** Exact names taken out of the domain blacklist before it reaches the dnsmasq DNS sinkhole and Squid.
-- **WAF.** A Go ICAP server that inspects request payloads with 172 regex rules across 21 categories and 6 behavioural heuristics (entropy, beaconing, PII, sharding, ghosting, sequence). Limited response inspection (reflected XSS, secret leak, PII) is also performed.
-- **Real-time logs.** WebSocket-based live log stream with search, filters, and statistics.
-- **Dashboard.** Traffic timeline, blocked counts, top domains and clients.
-- **Blocklist import.** Import from URL or inline content. One-click import of curated public lists (Firehol, Spamhaus, StevenBlack, URLhaus, Phishing Army, and others).
+- **Forward proxy.** Clients send HTTP and HTTPS through Squid on port 3128.
+  HTTPS is a `CONNECT` tunnel unless SSL bump is turned on.
+- **Blocked domains.** Exact names. An entry written `*.example.com` blocks
+  `example.com` itself, not its subdomains. dnsmasq sinkholes every entry, and
+  Squid also denies the names while the list is small enough.
+- **Blocked IPs.** Single addresses or CIDR ranges of destinations. Private,
+  loopback and other non-routable ranges are refused.
+- **Allowed IPs.** Destination addresses exempt from the direct-IP rule. The
+  blocked lists are checked first, so this list does not override them.
+- **Allowed domains.** Exact names taken out of the blocked domains before they
+  reach dnsmasq and Squid.
+- **Egress allowlist.** Off by default. When Settings > Filtering > Only
+  allowlisted destinations is on, clients reach only the entries on this list,
+  LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and Allowed IPs.
+- **WAF.** A Go ICAP service with 172 request rules in 21 categories, 5
+  response rules in 2 categories and six behavioural heuristics (entropy,
+  beaconing, personal data, destination sharding, protocol ghosting, sequence
+  validation). Responses are checked for reflected XSS, secret leaks, personal
+  data and executable content types.
+- **Logs.** The access log with server-side filters and CSV export, and a live
+  feed over WebSocket.
+- **Imports.** From a URL, pasted text, a curated list under Popular lists, or
+  a country's address blocks. Each entry records the source that added it.
 
 ## What it is not
 
-- Not a full NGFW, IDS, or IPS.
-- Not a deep-packet-inspection appliance.
-- Not designed for high-throughput enterprise edge deployments.
+- Not a firewall: it filters what clients send through port 3128, and nothing
+  else. A client that is not configured to use the proxy is not filtered.
+- Not a transparent proxy: there is no intercept port.
+- Not a reverse proxy for inbound traffic.
+- Not a multi-node service: it runs on one host (see
+  [Architecture: limits](./architecture.md#limits)).
 
-## Minimum requirements
+## Resources
 
-| Resource | Minimum |
-|---|---|
-| CPU | 1 core |
-| RAM | 1 GB |
-| Disk | 5 GB |
-| Docker | 20.10.0+ |
-| Docker Compose | 2.0.0+ |
+The shipped `docker-compose.yml` sets these memory limits: `proxy` 512 MiB,
+`waf` 256 MiB, `dns` 256 MiB, `backend` 128 MiB, `web` 128 MiB. Squid's disk
+cache is 2000 MB until a settings save writes `/config/squid_settings.env`;
+from the next proxy reload on it is the Disk cache setting (stored default
+1000 MB). You need Docker with the Compose v2 plugin (`docker compose`).
 
 ## Network ports
 
-The `web` service exposes both HTTP and HTTPS on the host. The backend API is bound to `127.0.0.1` only and is reached through the `web` reverse proxy.
-
 | Host port | Service | Notes |
 |---|---|---|
-| `80` | Web UI (HTTP) | Redirects to HTTPS; serves ACME challenges |
-| `443` | Web UI (HTTPS) | Primary entry point |
-| `8011` | Web UI (HTTP, alt) | Backwards compatibility |
-| `8443` | Web UI (HTTPS, alt) | Backwards compatibility |
-| `3128` | Squid proxy | Configure clients to use this |
-| `127.0.0.1:5001` | Backend API | Localhost only, not reachable from the network |
+| `80`, `8011` | `web` (HTTP) | Redirect to `https://<host>:8443`; `/health`, `/wpad.dat` and ACME challenge paths are answered directly |
+| `443`, `8443` | `web` (HTTPS) | The UI and `/api/` |
+| `3128` | `proxy` | Configure clients to use this |
+| `127.0.0.1:5001` | `backend` | Localhost only, not reachable from the network |
 
-The WAF (ICAP, port `1344`) and DNS (dnsmasq, port `53`) services run on an internal Docker network and are not exposed on the host.
+The WAF (ICAP on `1344`, management and metrics on `8080`) and dnsmasq (`53`)
+are on the internal Docker network and publish no port on the host.

@@ -1,72 +1,70 @@
 # Security Advisories
 
-How Secure Proxy Manager (SPM) responds to upstream vulnerabilities in the
-components it bundles, most importantly Squid, which it ships from the Ubuntu
-security pocket.
+How Secure Proxy Manager (SPM) handles vulnerabilities in the components it
+ships, above all Squid, which it installs from Ubuntu's repositories.
 
-## How SPM keeps Squid patched
+## How the proxy image keeps Squid patched
 
 The proxy image is built `FROM ubuntu:26.04` and installs `squid-openssl` from
-Ubuntu's repositories. The *package revision* (e.g. `7.2-2ubuntu2.2`), not the
-upstream `7.2`, is what carries security fixes. Two mechanisms guarantee a
-published image is patched:
+the Ubuntu archive. Ubuntu ships security fixes as new package revisions, so
+the package version, not the upstream version, says whether a fix is in.
 
-1. **Version floor (fail-closed).** `proxy/Dockerfile` declares
-   `ARG SQUID_MIN_VERSION` and asserts, after install, that the installed
-   `squid-openssl` is `>=` that floor. If it is older, **the build fails**, so an
-   unpatched proxy image can never be produced. Bump `SQUID_MIN_VERSION`
-   whenever the Ubuntu release in `FROM` ships a new Squid CVE fix.
-   The floor only means something for the release it was written for, because
-   dpkg orders by upstream version first: `ARG SQUID_FLOOR_FOR` names that
-   release, the build refuses to run on a different one, and
-   `scripts/check-image-pins.sh` (a CI gate) compares it with the `FROM` line.
-2. **apt cache bust.** `ARG APT_REFRESH` is changed on every CI run
-   (`.github/workflows/multi-arch.yml` passes `github.run_id`), so a stale
-   buildx/GHA cache layer can never reinstall an old Squid after Ubuntu
-   publishes a fix.
+1. **Version floor.** `proxy/Dockerfile` declares `ARG SQUID_MIN_VERSION`
+   (currently `7.2-2ubuntu2.2`) and fails the build when the installed
+   `squid-openssl` is older. The floor is only meaningful for the Ubuntu
+   release it was written for, because dpkg compares the upstream version
+   first: `ARG SQUID_FLOOR_FOR` names that release, the build refuses to run on
+   another one, and `scripts/check-image-pins.sh`, run in CI, compares it with
+   the `FROM` line.
+2. **apt cache bust.** The release workflow
+   (`.github/workflows/multi-arch.yml`) passes a new `APT_REFRESH` build
+   argument on every run, so a cached apt layer cannot reinstall an older
+   Squid.
 
-The backend's CVE checker (`/api/health` → `squid_cves`) also matches the
-running Squid version line against a curated advisory list and logs a warning on
-startup.
+A build of the proxy image from this repository on 2026-10-25 installed
+`squid-openssl` `7.7-0ubuntu0.26.04.1` (Squid 7.7).
 
-> After pulling a Squid security update you must **rebuild and redeploy** the
-> proxy image: a running container keeps whatever package it was built with.
+At start the backend reads the Squid version the proxy wrote to
+`/config/squid_version.txt` and matches its major version against the list in
+`backend-go/internal/workers/cve_checker.go`. That list has entries for Squid
+3, 4 and 5 only, so the Squid 7 the image ships matches none.
+`GET /api/status` reports the version and the number of matches
+(`squid_version`, `squid_cves`), and `GET /api/security/cve` the details.
 
-## CVE-2026-47729: "Squidbleed"
+> A running container keeps the package it was built with. After a Squid
+> security update, rebuild (or pull) the proxy image and recreate the
+> container.
 
-An out-of-bounds read in Squid's **FTP gateway** that can leak heap memory
-(including other clients' HTTP `Authorization` headers, cookies and session
-tokens) to anyone who can make the proxy fetch a directory listing from an FTP
-server they control. The bug dates back to 1997 and affects **Squid &lt; 7.6**.
+## CVE-2026-47729 ("Squidbleed")
 
-- **Severity:** Medium (CVSS 6.5), but high impact in shared-proxy environments
-  (multiple users behind one Squid), which is exactly SPM's use case.
-- **Fixed in:** upstream Squid 7.6; Ubuntu 26.04 (resolute) `7.2-2ubuntu2.2`, per its package changelog.
+From the [Ubuntu entry](https://ubuntu.com/security/CVE-2026-47729): before
+Squid 7.6, the FTP gateway could read past its input buffer while parsing a
+directory listing from a misbehaving FTP server, so a client using the gateway
+could read memory from other, unrelated transactions. CVSS 3.0 base score 6.5
+(Medium). Fixed upstream in 7.6; Ubuntu 26.04 (resolute) is fixed in
+`7.2-2ubuntu2.2`.
 
-### SPM mitigations (defence in depth)
+### Mitigations in SPM
 
-1. **Patched package.** `SQUID_MIN_VERSION` is set to the fixed revision for the Ubuntu release in `FROM`,
-   so builds refuse anything older.
-2. **FTP gateway disabled.** SPM never proxies FTP. The Squid config
-   (`proxy/squid.conf` and the generated config) denies the FTP scheme outright
-   (`acl ftp_proto proto FTP` → `http_access deny ftp_proto`) and drops port 21
-   from `Safe_ports`. This removes the Squidbleed attack surface **regardless**
-   of the Squid package version.
+1. **Patched package.** `SQUID_MIN_VERSION` is the fixed resolute revision, so
+   the build refuses anything older.
+2. **FTP disabled.** The generated configuration denies the FTP scheme right
+   after the method rules, ahead of every allow rule (`acl ftp_proto proto FTP`,
+   `http_access deny ftp_proto`) and leaves port 21 out of `Safe_ports`, so the
+   FTP gateway is not reachable whatever the package version.
 
-If you run a customised Squid config, make sure FTP proxying stays disabled.
+If you add directives through `/config/custom_squid_extra.conf`, keep FTP
+disabled.
 
-## Related 2026 Squid advisories
+## Related Squid advisories
 
-These were fixed in the same Squid 7.6 / jammy updates. SPM is **not** exposed
-to them in its default configuration:
-
-| CVE | Issue | Applies only if |
-| --- | --- | --- |
-| CVE-2026-50012 | Heap overflow in `cache_digest` reply handling | Squid built `--enable-cache-digests` (Ubuntu's is not) |
-| CVE-2026-33526 / CVE-2026-32748 | DoS via the ICP protocol | ICP is enabled (SPM does not enable it) |
+| CVE | Issue (from Ubuntu's entry) | Applies only if | SPM |
+| --- | --- | --- | --- |
+| CVE-2026-50012 | Heap overflow in cache digest reply handling; fixed in 7.6, resolute in `7.2-2ubuntu2.2` | Squid built with `--enable-cache-digests` **and** configured with `cache_peer` entries | Ubuntu's build has `--enable-cache-digests` (from `squid -v`); the generated configuration defines no `cache_peer` |
+| CVE-2026-33526, CVE-2026-32748 | Denial of service through ICP; fixed in 7.5; resolute listed as not affected | a non-zero `icp_port` | The generated configuration sets no `icp_port` |
 
 ## References
 
-- [Ubuntu security tracker: CVE-2026-47729](https://ubuntu.com/security/CVE-2026-47729)
+- [Ubuntu: CVE-2026-47729](https://ubuntu.com/security/CVE-2026-47729)
+- [Ubuntu: CVE-2026-50012](https://ubuntu.com/security/CVE-2026-50012)
 - [Squid security advisories](https://github.com/squid-cache/squid/security/advisories)
-- [The Hacker News: Squidbleed](https://thehackernews.com/2026/06/29-year-old-squid-proxy-squidbleed.html)

@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: "Secure Proxy Manager"
-  text: "Self-hosted Secure Web Gateway"
-  tagline: One controllable egress point for your network. Squid forward proxy + a real WAF (ICAP) + DNS sinkhole + a modern UI, in a single Docker Compose stack. The self-hosted counterpart to cloud SWGs, with no traffic leaving your network.
+  text: "Self-hosted forward proxy with a WAF and a DNS sinkhole"
+  tagline: Squid, a Go ICAP WAF, dnsmasq, a Go API and a React UI in one Docker Compose stack, for one controllable egress point on your own network.
   image:
     src: /hero-icon.svg
     alt: Secure Proxy Manager
@@ -23,18 +23,18 @@ hero:
       link: https://github.com/fabriziosalmi/secure-proxy-manager
 
 features:
-  - title: Forward-proxy egress control
-    details: One controllable egress point. Block domains and IPs (CIDR + wildcard), one-click import of curated blocklists, geo-based blocking, and an optional default-deny egress allowlist.
-  - title: Real WAF over ICAP
-    details: A Go ICAP service inspects requests/responses with 177 rules across 21 request and 2 response categories + behavioural heuristics, anomaly scoring. False negatives gated to 0 by an adversarial suite on every commit.
+  - title: Egress control
+    details: Blocked and allowed IPs and domains (single addresses, CIDR ranges, exact names), imports from a URL, pasted text, curated lists or a country's address blocks, and an optional default-deny egress allowlist.
+  - title: WAF over ICAP
+    details: 172 request rules in 21 categories, 5 response rules in 2, six behavioural heuristics and anomaly scoring, with runtime toggles per category. Fails closed by default.
   - title: DNS sinkhole
-    details: dnsmasq sinkholes blacklisted / malware / ad domains at the network layer, before a connection is ever made. SafeSearch and YouTube-restricted enforcement included.
-  - title: MCP-native
-    details: Ships an optional Model Context Protocol server to inspect and drive the gateway from Claude or any agent in natural language ("what's reaching AI APIs?", "block evil.example").
-  - title: Real-time logs & analytics
-    details: Live log streaming over WebSocket, filter/search/aggregate, top-domains, shadow-IT, per-client views, and a correlation event-id linking a blocked request to its WAF event end-to-end.
-  - title: Hardened, signed, self-hosted
-    details: Basic + JWT auth, login rate-limit, SSRF guards, bcrypt, backend bound to localhost. Cosign-signed multi-arch images on GHCR + Docker Hub. Runs entirely on your hardware, SQLite, no cloud.
+    details: "dnsmasq answers 0.0.0.0 and :: for every blocked domain. SafeSearch and YouTube restricted mode are DNS overrides you can switch on."
+  - title: MCP server
+    details: An optional Model Context Protocol server (spm-mcp on PyPI) exposes traffic queries as tools; the tools that change the proxy are off unless you enable them.
+  - title: Logs and analytics
+    details: Access logs with server-side filters and CSV export, a live feed over WebSocket, per-client views, and an audit log of every list change.
+  - title: Signed images
+    details: Release images for amd64 and arm64 on GHCR and Docker Hub, signed with cosign. The GHCR images carry an SBOM and build provenance.
 ---
 
 ## See it block
@@ -43,54 +43,44 @@ features:
 
 Malicious requests get **403**'d at the proxy by the WAF; benign traffic passes.
 
-## How it compares
-
-| Capability | Pi-hole / AdGuard | Nginx Proxy Manager | Cloud SWG (Zscaler…) | [Zion](https://github.com/fabriziosalmi/zion) | **Secure Proxy Manager** |
-|---|:---:|:---:|:---:|:---:|:---:|
-| DNS sinkhole | Yes | No | Yes | No | Yes |
-| Forward proxy (egress control) | No | No | Yes | No | Yes |
-| HTTP request/body inspection (WAF) | No | No | Yes | Yes | Yes |
-| Default-deny egress allowlist | No | No | Yes | No | Yes |
-| Reverse proxy / ingress | No | Yes | No | Yes | No |
-| Self-hosted, traffic stays local | Yes | Yes | No | Yes | Yes |
-| Free / no per-seat cost | Yes | Yes | No | Yes | Yes |
-
-SPM is the **self-hosted outbound** counterpart to a cloud Secure Web Gateway:
-WAF inspection + DNS sinkholing + egress control, on your own metal.
-
-Pair it with **[Zion](https://github.com/fabriziosalmi/zion)**, a single-binary
-Rust TLS **reverse** proxy with a built-in WAF, to cover the other direction:
-Zion inspects traffic coming **in**, SPM controls what goes **out**. Both
-self-hosted, both single-purpose, no cloud.
-
 ## Tested like an attacker
 
-An **adversarial e2e harness** (`make adversarial`, gated in CI) drives real
-attack traffic *through* the running proxy + WAF and fails the build on any
-regression, in five planes:
+`make adversarial` builds an isolated sandbox of the real images, attacks it
+and tears it down. CI runs it on every pull request and push to `main`, and
+daily; any failing plane fails the run:
 
-- **block-matrix**: SQLi / XSS / RCE / SSRF / … across 21 categories → **false negatives = 0**, benign → **false positives = 0**.
-- **API attacker**: auth-bypass, forged/tampered JWTs, login SQLi, rate-limit → no bypass.
-- **bench/latency**: p95 + ICAP overhead, regression-gated.
-- **config-matrix**: flip a setting → prove the data plane changes.
-- **resilience**: kill the WAF → the proxy **fails closed**, then self-heals.
+- **Block matrix**: 28 malicious cases (19 request categories and the 2
+  response categories) must be blocked and 11 benign cases must pass, through
+  the real proxy and WAF.
+- **API attacker**: 18 cases of missing, forged and tampered credentials, login
+  SQL injection and a login burst against the backend.
+- **Latency**: a k6 run through the proxy and the WAF must keep p95 under
+  800 ms and errors under 5%.
+- **Config matrix**: disabling a WAF category lets that attack through and
+  re-enabling it blocks it again.
+- **Resilience**: with the WAF stopped the proxy does not answer 200; after a
+  restart it blocks again.
 
-## Manage it from an agent (MCP)
+Details are in
+[tests/adversarial/README.md](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/tests/adversarial/README.md).
+
+## Manage it from an MCP client
 
 ```bash
-SPM_URL=http://localhost:5001 SPM_USERNAME=admin SPM_PASSWORD=… uvx spm-mcp
+SPM_URL=http://localhost:5001 SPM_USERNAME=admin SPM_PASSWORD=... uvx spm-mcp
 ```
 
-Exposes the management API as MCP tools so an assistant/agent can query traffic,
-manage block/allow lists, toggle WAF categories, and reload config.
+Read-only by default; set `SPM_MCP_READONLY=false` to also register the tools
+that block domains, toggle WAF categories, add egress entries and reload the
+proxy.
 
-## 30-second start
+## Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/deploy/install.sh | sudo bash
 ```
 
-The installer checks Docker, generates random admin credentials, pulls the
-signed images, and starts the stack. Then point a client at the proxy on
-`:3128` and open the dashboard. See the [Getting Started](/guide/getting-started)
-guide.
+The installer installs Docker if it is missing, writes a `.env` with random
+credentials, pulls the release images and starts the stack. Then point a client
+at `<host>:3128` and open `https://<host>`. See
+[Getting Started](/guide/getting-started).
