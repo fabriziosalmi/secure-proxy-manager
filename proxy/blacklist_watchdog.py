@@ -147,24 +147,44 @@ def domain_acl_max():
         return 250000
 
 
+# What refresh_domain_acl decided, for the backend: how many names the list
+# has, the limit, and whether Squid holds them. SPM_SQUID_DOMAIN_ACL_MAX is set
+# on this container only, so the backend cannot tell on its own; the
+# dashboard says "blocked at DNS only" from this file, not from a guess.
+DOMAIN_ACL_STATUS = f"{CONFIG_DIR}/domain_acl_status.json"
+
+
+def write_domain_acl_status(names, limit, held):
+    try:
+        write_lines_atomic(DOMAIN_ACL_STATUS, [json.dumps(
+            {"version": 1, "names": names, "limit": limit, "held": held, "written_at": int(time.time())})])
+    except OSError as exc:
+        print(f"[watchdog] could not write {DOMAIN_ACL_STATUS}: {exc}", flush=True)
+
+
 def refresh_domain_acl():
     """Rewrite DOMAIN_ACL from DOMAIN_LIST, or empty it when the list is too
     large for Squid. Called after every list sync, so a list that grows past
-    the limit can never be loaded into Squid by a reconfigure."""
+    the limit can never be loaded into Squid by a reconfigure. The decision is
+    recorded in DOMAIN_ACL_STATUS."""
     try:
         with open(DOMAIN_LIST, encoding="utf-8", errors="replace") as f:
             names = normalize_domain_lines(f.read().splitlines())
     except OSError:
         names = []
-    limit = domain_acl_max()
-    if len(names) > limit:
-        print(f"[watchdog] domain blacklist has {len(names)} entries, over SPM_SQUID_DOMAIN_ACL_MAX={limit}: "
+    count, limit = len(names), domain_acl_max()
+    if count > limit:
+        print(f"[watchdog] domain blacklist has {count} entries, over SPM_SQUID_DOMAIN_ACL_MAX={limit}: "
               "Squid denies none of them itself, only the DNS sinkhole does", flush=True)
         names = []
     try:
         write_lines_atomic(DOMAIN_ACL, names)
     except OSError as exc:
         print(f"[watchdog] could not write {DOMAIN_ACL}: {exc}", flush=True)
+        # Whatever Squid's file holds now, it is not this list.
+        write_domain_acl_status(count, limit, False)
+        return
+    write_domain_acl_status(count, limit, count <= limit)
 
 
 # The backend writes this AFTER the lists above, with a sha256 for each. A list

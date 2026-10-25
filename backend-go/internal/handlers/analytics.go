@@ -820,6 +820,13 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	// Note: these two are on different tables so cannot be combined into the proxy_logs query above.
 	result["ip_blacklist_count"] = ipBLCount
 	result["domain_blacklist_count"] = domainBLCount
+	// Whether Squid holds the domain blacklist itself, as the proxy recorded
+	// it; null when the proxy has not written its record.
+	if s := readDomainACLStatus(h.cfg.ConfigDir); s != nil {
+		result["squid_domain_acl"] = s
+	} else {
+		result["squid_domain_acl"] = nil
+	}
 
 	// Top clients (last 24h)
 	var topClients []map[string]any
