@@ -250,7 +250,8 @@ Newest first, 50 rows a page by default (`limit` up to 200). `category` is
 `logout`), filtered on the server, so `meta.total` and the pages are those of
 the filtered log. `meta.retention_days` is how long a row is kept (365). Every
 change to a list (add, remove, bulk remove, clear, import, removal of a
-source, restore) writes a row.
+source, restore) writes a row. Sign-in, failed sign-in and sign-out rows carry
+the client address in `target`.
 
 ```json
 {
