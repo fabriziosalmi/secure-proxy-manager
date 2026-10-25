@@ -386,14 +386,13 @@ test.describe('API — logs, stats, security score', () => {
     expect(res.ok()).toBeTruthy();
   });
 
-  test('GET /api/security/score returns numeric score', async ({ request }) => {
+  test('GET /api/security/score is retired and says so', async ({ request }) => {
+    // It scored settings nothing enforced; retired routes answer 410.
     const res = await request.get(`${API_URL}/api/security/score`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    expect(res.ok()).toBeTruthy();
-    const body = (await res.json()) as { data?: { score: number } };
-    const score = body.data?.score ?? (body as Record<string, unknown>)['score'];
-    expect(typeof score).toBe('number');
+    expect(res.status()).toBe(410);
+    expect(((await res.json()) as { detail?: string }).detail).toContain('removed');
   });
 
   test('GET /api/cache/statistics returns data', async ({ request }) => {

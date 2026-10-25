@@ -238,6 +238,10 @@ func (h *MaintenanceHandlers) restoreSettings(tx *sql.Tx, config map[string]stri
 			skipped = append(skipped, skippedSetting{k, "managed by the application, not restored from a file"})
 			continue
 		}
+		if database.IsRetiredSetting(k) {
+			skipped = append(skipped, skippedSetting{k, "no longer used by this version, not restored"})
+			continue
+		}
 		if !isWritableSettingKey(k) || len(v) > 10000 {
 			log.Warn().Str("key", k).Msg("RestoreConfig: skipping invalid or protected key")
 			skipped = append(skipped, skippedSetting{k, "not a valid setting name, or a value longer than 10000 characters"})

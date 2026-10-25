@@ -13,7 +13,6 @@ block/allow lists, toggle WAF rule categories, and reload config.
 | `spm_status`, `spm_dashboard` | health + summary totals |
 | `spm_top_domains`, `spm_shadow_it`, `spm_user_agents` | analytics (incl. shadow-IT / agent egress) |
 | `spm_recent_logs` | recent proxy access-log rows |
-| `spm_security_score` | posture score |
 | `spm_waf_categories`, `spm_list_domain_blocklist` | current WAF/list state |
 | `spm_block_domain`, `spm_unblock_domain` | **mutate** the domain blocklist |
 | `spm_toggle_waf_category` | **mutate**: enable/disable a WAF category at runtime |

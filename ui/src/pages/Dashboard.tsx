@@ -5,8 +5,8 @@
  * those responses; a field the backend did not send is shown as "Not
  * reported", never as 0.
  *
- * Not here any more: the security score (GET /api/security/score is still
- * served, no page shows it), the WAF requests-per-minute and URL entropy
+ * Not here any more: the security score (GET /api/security/score is retired
+ * and answers 410), the WAF requests-per-minute and URL entropy
  * figures, and the Reset counters button, which is in Settings, Admin and backup,
  * behind the same confirmation.
  *

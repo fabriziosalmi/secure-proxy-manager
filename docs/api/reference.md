@@ -88,7 +88,7 @@ Optional default-deny outbound egress. Off by default (the `egress_default_deny`
 | `GET`  | `/api/traffic/statistics` | Traffic statistics |
 | `GET`  | `/api/clients/statistics` | Client statistics |
 | `GET`  | `/api/domains/statistics` | Top accessed domains |
-| `GET`  | `/api/security/score` | Security score and recommendations |
+| `GET`  | `/api/security/score` | Retired: answers 410 Gone (it scored settings nothing enforced) |
 | `GET`  | `/api/security/cve` | CVE check for the bundled Squid version |
 | `GET`  | `/api/analytics/shadow-it` | Shadow-IT detection |
 | `GET`  | `/api/analytics/user-agents` | Service-type breakdown by user agent |

@@ -225,28 +225,17 @@ Deletes log entries older than the configured retention period (`log_retention_d
 
 ---
 
-## Security score
+## Security score (retired)
 
 ```
 GET /api/security/score
 ```
 
-A 0 to 100 score derived from the current settings (direct-IP blocking, WAF state, HTTPS filtering, rate limiting, and so on) plus a list of recommendations.
-
-**Response:**
-
-```json
-{
-  "status": "success",
-  "data": {
-    "score": 85,
-    "max_score": 100,
-    "recommendations": [
-      "Enable HTTPS filtering for full request inspection."
-    ]
-  }
-}
-```
+Answers `410 Gone`. The score added points for four settings that nothing
+enforced (`enable_ip_blacklist`, `enable_domain_blacklist`, `block_direct_ip`,
+`enable_waf`): Squid always denies the blacklists and direct-IP URLs and the
+WAF is always on the ICAP path. Settings > Overview lists what needs attention,
+worked out from the running configuration.
 
 ---
 
