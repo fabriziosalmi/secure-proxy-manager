@@ -55,6 +55,8 @@ POST /api/ip-blacklist
 
 `ip` accepts a single address or a CIDR range. Wildcards are not supported for IPs.
 
+A refusal is a `400` whose `detail` names the value and the list as the page does: `"300.1.1.1" is not an IP address or network`, `"203.0.113.9" is already on Blocked IPs`. The domain lists and the allowed lists answer the same way (`is not a domain name: labels of letters, digits and hyphens separated by dots`, `is already on Allowed domains`).
+
 ### Delete entry
 
 ```
@@ -110,7 +112,7 @@ POST /api/domain-blacklist
 }
 ```
 
-`domain` accepts an exact name. A `*.` or `.` prefix is accepted too, but an entry blocks one exact name either way: `*.example.com` blocks `example.com` itself (the exporter and the proxy drop the `*.`), not its subdomains. While the list holds `SPM_DNS_BLOCKLIST_MAX_DOMAINS` entries (default 1,000,000) a new one is refused with `413`.
+`domain` accepts an exact name. A `*.` or `.` prefix is accepted too, but an entry blocks one exact name either way: `*.example.com` and `.example.com` block `example.com` itself (the exporter and the proxy drop the `*.` and the leading dot), not its subdomains. While the list holds `SPM_DNS_BLOCKLIST_MAX_DOMAINS` entries (default 1,000,000) a new one is refused with `413`.
 A URL is reduced to its hostname (a port is dropped). Anything else is refused with `400`: only letters, digits, hyphens, underscores and dots are allowed, with labels of 1-63 characters and no more than 253 in all. In particular, whitespace, tabs, newlines and colons are refused, because entries are written one per line into the proxy and DNS files.
 
 ### Delete entry
@@ -313,7 +315,7 @@ GET /api/blacklists/enforcement
 ```
 
 - `dns_blocklist_limit`: `SPM_DNS_BLOCKLIST_MAX_DOMAINS`.
-- `domain_blacklist_on_allowed`: blacklisted domains whose exact name is on the domain whitelist, left out of what dnsmasq and Squid receive.
+- `domain_blacklist_on_allowed`: blacklisted domains whose enforced name (lower case, `*.` and a leading dot dropped) is on the domain whitelist, left out of what dnsmasq and Squid receive.
 - `squid_domain_acl`: the proxy's record of Squid's own copy of the domain blacklist: the names after dropping `*.` and duplicates, `SPM_SQUID_DOMAIN_ACL_MAX`, and whether Squid holds them.
 - `squid_ip_blacklist`, `squid_ip_whitelist`: the proxy's record of each IP list after merging overlapping and adjacent entries: the lines it had, the networks Squid loads, and the lines that were not an address or CIDR.
 
@@ -360,6 +362,33 @@ POST /api/ip-whitelist
 }
 ```
 
+### Import a pasted list {#allowed-import}
+
+```
+POST /api/ip-whitelist/import
+POST /api/domain-whitelist/import
+```
+
+```json
+{ "content": "192.168.1.50\n# a comment\n10.0.0.0/24" }
+```
+
+One entry per line, at most 1 MiB; blank lines and lines starting with `#` are ignored. Each line is checked as the single add checks it, and the new entries are recorded under one source of kind `paste`, so the paste can be removed as a whole ([Remove a source](#sources)). An entry already on the list keeps the source that added it first.
+
+```json
+{
+  "status": "success",
+  "data": {
+    "added": 2,
+    "skipped": 0,
+    "refused": 1,
+    "refusals": [{ "entry": ".x.example", "reason": "\".x.example\" is not an exact name: write x.example. An allowed name takes that same name off Blocked domains, however it is written there, and covers no name under it" }]
+  }
+}
+```
+
+`skipped` counts the lines already listed or repeated in the paste; `refusals` lists the first 20 refused lines with their reasons, `refused` counts them all.
+
 ### Delete entry
 
 ```
@@ -370,7 +399,7 @@ DELETE /api/ip-whitelist/{id}
 
 ## Domain whitelist {#domain-whitelist}
 
-A blacklisted domain whose exact name is on the whitelist is left out of what the backend exports, so dnsmasq resolves it normally and Squid does not refuse it. The match is exact (no subdomains), and wildcards are refused. A change is exported at once.
+A blacklisted domain whose enforced name is on the whitelist is left out of what the backend exports, so dnsmasq resolves it normally and Squid does not refuse it: `example.com` here takes out `example.com`, `*.example.com` and `.example.com`, in any case. It covers no subdomain, so a leading dot and wildcards are refused. A change is exported at once.
 
 ### List entries
 
@@ -407,6 +436,8 @@ POST /api/domain-whitelist
   "description": "Essential: code hosting"
 }
 ```
+
+`domain` is stored in lower case. `.github.com` and `*.github.com` are refused with the name to write (`".github.com" is not an exact name: write github.com. ...`), since an allowed name covers no name under it. A pasted list goes to [`POST /api/domain-whitelist/import`](#allowed-import).
 
 ### Delete entry
 

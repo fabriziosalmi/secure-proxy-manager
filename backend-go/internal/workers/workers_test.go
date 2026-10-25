@@ -59,7 +59,7 @@ func TestInsertBlacklistEntries(t *testing.T) {
 	defer cleanup()
 
 	// Routable IPs are inserted; the private 10.0.0.1 and the invalid line are
-	// dropped (the ip_blacklist is a source ACL).
+	// dropped (the ip_blacklist is a dst ACL denied before LAN destinations).
 	added, _ := insertBlacklistEntries(db, "ip_blacklist", "ip", "https://feed.test/ips.txt",
 		"1.1.1.1\n2.2.2.2\n10.0.0.1\n# comment\nnotanip", map[string]struct{}{})
 	if added != 2 {

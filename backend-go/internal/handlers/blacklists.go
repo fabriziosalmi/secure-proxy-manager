@@ -44,6 +44,7 @@ func (h *BlacklistHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	// IP whitelist
 	r.With(authMW).Get("/api/ip-whitelist", listHandler(h.db, "ip_whitelist", "ip"))
 	r.With(authMW).Post("/api/ip-whitelist", h.AddIPWhitelist)
+	r.With(authMW).Post("/api/ip-whitelist/import", h.ImportAllowed("ip_whitelist", "ip", allowedIPValue))
 	// The allowed lists are exported too (ip_whitelist.txt for Squid, and the
 	// names the domain export leaves out), so a change requests an export like
 	// every other list change. They used to pass no config here and the add
@@ -61,6 +62,7 @@ func (h *BlacklistHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	// Domain whitelist
 	r.With(authMW).Get("/api/domain-whitelist", listHandler(h.db, "domain_whitelist", "domain"))
 	r.With(authMW).Post("/api/domain-whitelist", h.AddDomainWhitelist)
+	r.With(authMW).Post("/api/domain-whitelist/import", h.ImportAllowed("domain_whitelist", "domain", allowedDomainValue))
 	r.With(authMW).Delete("/api/domain-whitelist/{id}", deleteByIDHandler(h.db, "domain_whitelist", h.cfg))
 
 	// Egress destination allowlist (default-deny egress). Single table, entries
@@ -231,11 +233,11 @@ func (h *BlacklistHandlers) AddIP(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := strings.TrimSpace(item.IP)
 	if !isValidCIDR(ip) {
-		writeError(w, http.StatusBadRequest, "invalid IP address or CIDR format")
+		writeError(w, http.StatusBadRequest, notAnIPMessage(ip))
 		return
 	}
 	if isLANBogonCIDR(ip) {
-		writeError(w, http.StatusBadRequest, "private/RFC1918/bogon ranges cannot be blacklisted — the IP blacklist is a source ACL, so this would block your own LAN clients")
+		writeError(w, http.StatusBadRequest, "private, LAN and reserved ranges cannot be blocked: the IP blacklist is matched against destinations and denied before LAN destinations are allowed, so every client would lose the services on your network")
 		return
 	}
 	sourceID, err := manualSource(h.db, "ip_blacklist")
@@ -246,7 +248,7 @@ func (h *BlacklistHandlers) AddIP(w http.ResponseWriter, r *http.Request) {
 	_, err = h.db.Exec("INSERT INTO ip_blacklist(ip, description, source_id) VALUES(?,?,?)", ip, item.Description, sourceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			writeError(w, http.StatusBadRequest, "IP address already in blacklist")
+			writeError(w, http.StatusBadRequest, alreadyListedMessage(ip, "ip_blacklist"))
 			return
 		}
 		writeInternalError(w, "add_ip_blacklist", err)
@@ -267,9 +269,9 @@ func (h *BlacklistHandlers) AddIPWhitelist(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	ip := strings.TrimSpace(item.IP)
-	if !isValidCIDR(ip) {
-		writeError(w, http.StatusBadRequest, "invalid IP/Network format")
+	ip, refusal := allowedIPValue(item.IP)
+	if refusal != "" {
+		writeError(w, http.StatusBadRequest, refusal)
 		return
 	}
 	sourceID, err := manualSource(h.db, "ip_whitelist")
@@ -280,7 +282,7 @@ func (h *BlacklistHandlers) AddIPWhitelist(w http.ResponseWriter, r *http.Reques
 	_, err = h.db.Exec("INSERT INTO ip_whitelist(ip, description, source_id) VALUES(?,?,?)", ip, item.Description, sourceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			writeError(w, http.StatusBadRequest, "IP already in whitelist")
+			writeError(w, http.StatusBadRequest, alreadyListedMessage(ip, "ip_whitelist"))
 			return
 		}
 		writeInternalError(w, "add_ip_whitelist", err)
@@ -318,7 +320,7 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 	// through, and a second line in a hosts file is a second DNS record
 	// (audit: domain-newline-into-hosts-file). Validate the syntax, not the absence of one character.
 	if !isValidDomainEntry(domain) {
-		writeError(w, http.StatusBadRequest, "invalid domain format")
+		writeError(w, http.StatusBadRequest, notADomainMessage(domain))
 		return
 	}
 	if limit := database.DomainBlacklistLimit(); h.domainCount() >= limit {
@@ -333,7 +335,7 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 	_, err = h.db.Exec("INSERT INTO domain_blacklist(domain, description, source_id) VALUES(?,?,?)", domain, item.Description, sourceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			writeError(w, http.StatusBadRequest, "domain already in blacklist")
+			writeError(w, http.StatusBadRequest, alreadyListedMessage(domain, "domain_blacklist"))
 			return
 		}
 		writeInternalError(w, "add_domain_blacklist", err)
@@ -415,26 +417,9 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	domain := strings.TrimSpace(strings.ToLower(item.Domain))
-	if domain == "" || strings.ContainsAny(domain, " ") {
-		writeError(w, http.StatusBadRequest, "invalid domain format")
-		return
-	}
-	// A metacharacter used to be classified as type="url-regex", persisted, and
-	// listed in the UI — while the ONLY reader of this table filters on
-	// type='fqdn'. So `*.example.com` was accepted, shown as whitelisted, and
-	// silently did nothing: the user believed a domain was exempt and it was
-	// not. Refuse it rather than store an entry no consumer honours
-	// (SECURE-DOM-07).
-	for _, c := range []string{"*", "?", "[", "(", "|", "\\"} {
-		if strings.Contains(domain, c) {
-			writeError(w, http.StatusBadRequest,
-				"wildcards and regular expressions are not supported here — enter an exact domain (a parent domain covers its subdomains)")
-			return
-		}
-	}
-	if !isValidHostname(domain) {
-		writeError(w, http.StatusBadRequest, "invalid domain format")
+	domain, refusal := allowedDomainValue(item.Domain)
+	if refusal != "" {
+		writeError(w, http.StatusBadRequest, refusal)
 		return
 	}
 	entryType := "fqdn"
@@ -446,7 +431,7 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 	_, err = h.db.Exec("INSERT INTO domain_whitelist(domain, type, description, source_id) VALUES(?,?,?,?)", domain, entryType, item.Description, sourceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			writeError(w, http.StatusBadRequest, "domain already in whitelist")
+			writeError(w, http.StatusBadRequest, alreadyListedMessage(domain, "domain_whitelist"))
 			return
 		}
 		writeInternalError(w, "add_domain_whitelist", err)
@@ -531,7 +516,7 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	auditImport(h.db, r, table, &req, stats)
 	msg := fmt.Sprintf("Successfully imported %d entries (%d skipped/invalid)", stats.added, stats.skipped)
 	if stats.bogonSkipped > 0 {
-		msg += fmt.Sprintf(" — %d private/bogon ranges were dropped (a source IP blacklist must not include LAN ranges)", stats.bogonSkipped)
+		msg += fmt.Sprintf("; %d private, LAN or reserved ranges were dropped (blocking them would cut every client off from the services on your network)", stats.bogonSkipped)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
@@ -1005,8 +990,8 @@ func (h *BlacklistHandlers) fetchGeoFeeds(countries []string) []geoFetched {
 }
 
 // parseGeoZone is the rows a country's zone file adds: valid CIDR/IP lines that
-// are not a private/bogon range (the ip_blacklist is a source ACL, the same
-// guards as the regular import) and not already present. It records what it
+// are not a private/bogon range (the ip_blacklist is a dst ACL denied before
+// local_dst is allowed; the same guards as the regular import) and not already present. It records what it
 // returns in existing.
 func parseGeoZone(content string, existing map[string]struct{}) []string {
 	var toInsert []string

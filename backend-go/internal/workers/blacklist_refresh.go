@@ -170,7 +170,7 @@ func refreshList(db *sql.DB, table, col string, urls []string) refreshCount {
 	}
 
 	// The entries are validated as the import handler validates them, so the
-	// refresh cannot reintroduce private/bogon ranges into the source ACL.
+	// refresh cannot reintroduce private/bogon ranges into the destination ACL.
 	var c refreshCount
 	for _, u := range urls {
 		data, err := fetchRefreshFeed(u)
@@ -199,8 +199,8 @@ func refreshList(db *sql.DB, table, col string, urls []string) refreshCount {
 // committed) and, for domains, the new entries left out at the list's limit.
 // For IP lists it applies the same
 // validation as the import handler: valid CIDR/IP only, and never a
-// private/bogon range (the ip_blacklist is a source ACL — a LAN range would
-// lock out the proxy's own clients).
+// private/bogon range (the ip_blacklist is a dst ACL denied before local_dst
+// is allowed: a LAN range would cut every client off from LAN services).
 //
 // The entries are recorded under the URL's source, the same one an import of
 // that URL uses, so a refreshed list is still one source that can be removed

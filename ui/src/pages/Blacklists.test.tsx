@@ -3,6 +3,7 @@ import { screen, waitFor, fireEvent, within, act } from '@testing-library/react'
 import { AxiosError, AxiosHeaders } from 'axios'
 import { renderWithProviders, simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 import { expectNoAxeViolations } from '../test/axe'
+import toast from 'react-hot-toast'
 import { api } from '../lib/api'
 import { Blacklists } from './Blacklists'
 
@@ -191,9 +192,9 @@ describe('Blacklists', () => {
       expect(within(section).getByText('Every entry but the 3 on Allowed domains')).toBeInTheDocument()
       expect(within(section).getByText('No copy: 473,936 names is over its limit of 250,000 (SPM_SQUID_DOMAIN_ACL_MAX)')).toBeInTheDocument()
       expect(within(section).getByText('1,000,000 entries (SPM_DNS_BLOCKLIST_MAX_DOMAINS)')).toBeInTheDocument()
-      // The semantics db.go and the watchdog implement: "*." is dropped, the
-      // exact name is blocked.
-      expect(within(section).getByText(/"\*\.example\.com" blocks example\.com itself, in the DNS sinkhole and in Squid alike/)).toBeInTheDocument()
+      // The semantics db.go (EnforcedDomain) and the watchdog implement: "*."
+      // and a leading dot are dropped, the exact name is blocked.
+      expect(within(section).getByText(/"\*\.example\.com" and "\.example\.com" each block example\.com itself, in the DNS sinkhole and in Squid alike/)).toBeInTheDocument()
     })
 
     it('blocked domains: a held copy, and no record at all, are each said as they are', async () => {
@@ -223,6 +224,13 @@ describe('Blacklists', () => {
       expect(await screen.findByText('Not reported: the proxy has not written ip_blacklist_acl_status.json')).toBeInTheDocument()
     })
 
+    it('allowed domains: says which blocked forms a name takes out, as the exporter does', async () => {
+      go('?tab=allowed-domains')
+      renderWithProviders(<Blacklists />)
+      // db.go loadWhitelistSet compares EnforcedDomain of both sides.
+      expect(await screen.findByText(/example\.com also takes out \*\.example\.com and \.example\.com, which block example\.com itself\. It does not cover subdomains/)).toBeInTheDocument()
+    })
+
     it('allowed IPs: says the blocked lists are checked first', async () => {
       go('?tab=allowed-ips')
       renderWithProviders(<Blacklists />)
@@ -241,8 +249,9 @@ describe('Blacklists', () => {
         const row = (name: string) => within(table).getByText(name).closest('tr')!
         expect(within(row('Firehol Level 1')).getByText('https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset')).toBeInTheDocument()
         expect(within(row('Firehol Level 1')).getByText('4,521')).toBeInTheDocument()
-        expect(within(row('Firehol Level 1')).getByText('2026-10-25 11:00 to 11:02')).toBeInTheDocument()
-        expect(within(row('Manual')).getByText('2026-10-25 10:00')).toBeInTheDocument()
+        // The Added column (the range is also under the name, for a phone).
+        expect(row('Firehol Level 1').cells[2]).toHaveTextContent(/^2026-10-25 11:00 to 11:02$/)
+        expect(row('Manual').cells[2]).toHaveTextContent(/^2026-10-25 10:00$/)
         expect(within(row('Source not recorded')).getByText('Added before this release recorded where entries come from')).toBeInTheDocument()
         expect(within(row('Source not recorded')).getByText('50,772')).toBeInTheDocument()
       } finally { restoreTz() }
@@ -400,23 +409,50 @@ describe('Blacklists', () => {
 
     // A pasted list on an allowed tab used to post to blacklists/import, which
     // feeds the BLOCKED tables: an address meant to be allowed was blocked.
+    // Then it posted each line to the single add, which recorded every entry
+    // as Manual. It goes to the allowed list's own import, one paste source.
     describe.each([
-      ['allowed-ips', 'ip-whitelist', 'ip', '203.0.113.7\n198.51.100.0/24'],
-      ['allowed-domains', 'domain-whitelist', 'domain', 'trusted.example.com\nok.example.org'],
-    ])('a pasted list on %s', (tab, endpoint, key, text) => {
-      it('adds each entry to the allowed list and never imports into a blocked one', async () => {
+      ['allowed-ips', 'ip-whitelist', 'Allowed IPs', '203.0.113.7\n198.51.100.0/24'],
+      ['allowed-domains', 'domain-whitelist', 'Allowed domains', 'trusted.example.com\nok.example.org'],
+    ])('a pasted list on %s', (tab, endpoint, label, text) => {
+      it('goes to the allowed list\'s own import in one request, never to a blocked one', async () => {
         go(`?tab=${tab}`)
+        vi.spyOn(toast, 'success')
         renderWithProviders(<Blacklists />)
         open('Paste a list')
         fireEvent.change(screen.getByLabelText('Entries, one per line'), { target: { value: text } })
         fireEvent.click(screen.getByRole('button', { name: 'Add pasted entries' }))
-        await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2), { timeout: 3000 })
-        const calls = vi.mocked(api.post).mock.calls
-        expect(calls.some(([url]) => url === 'blacklists/import')).toBe(false)
-        const [first, second] = text.split('\n')
-        expect(calls[0]).toEqual([endpoint, expect.objectContaining({ [key]: first })])
-        expect(calls[1]).toEqual([endpoint, expect.objectContaining({ [key]: second })])
+        await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${endpoint}/import`, { content: text }))
+        expect(api.post).toHaveBeenCalledTimes(1)
+        await waitFor(() => expect(toast.success).toHaveBeenCalledWith(`Added 2 entries to ${label}`, expect.anything()))
       })
+    })
+
+    it('names each refused line of an allowed paste with its reason', async () => {
+      go('?tab=allowed-domains')
+      vi.mocked(api.post).mockResolvedValueOnce({ data: { status: 'success', data: {
+        added: 1, skipped: 1, refused: 2, refusals: [
+          { entry: '.dot.example', reason: '".dot.example" is not an exact name: write dot.example. An allowed name takes that same name off Blocked domains, however it is written there, and covers no name under it' },
+          { entry: 'bad name', reason: '"bad name" is not a domain name: labels of letters, digits and hyphens separated by dots' },
+        ] } } } as never)
+      renderWithProviders(<Blacklists />)
+      open('Paste a list')
+      fireEvent.change(screen.getByLabelText('Entries, one per line'), { target: { value: 'ok.example\nok.example\n.dot.example\nbad name' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add pasted entries' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Added 1 entry to Allowed domains, 1 already listed; 2 refused: ".dot.example" is not an exact name: write dot.example. ' +
+        'An allowed name takes that same name off Blocked domains, however it is written there, and covers no name under it; ' +
+        '"bad name" is not a domain name: labels of letters, digits and hyphens separated by dots.')
+    })
+
+    it('says the name to write for a leading dot on Allowed domains, before any request', async () => {
+      go('?tab=allowed-domains')
+      renderWithProviders(<Blacklists />)
+      open()
+      fireEvent.change(screen.getByLabelText('Domain'), { target: { value: '.github.com' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add entry' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('".github.com" is not an exact name: write github.com.')
+      expect(api.post).not.toHaveBeenCalled()
     })
 
     // #219 M8 + M10b. Both were real: a second click fired a second POST and

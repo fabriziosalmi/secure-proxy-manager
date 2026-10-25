@@ -983,6 +983,43 @@ test.describe('UI — Blacklists (Blocked IPs)', () => {
     await expect(page.getByText('Something went wrong')).not.toBeVisible();
   });
 
+  test('keeps Remove batch inside its card at 1440 px, with a long URL source among them', async ({ page, request }) => {
+    // Finding 29: a long URL widened the source column and pushed the button
+    // 240 px past the card's right edge. This stack cannot import from a URL
+    // (the SSRF guard refuses mock-lists), so the URL source is added to the
+    // real answer of /sources.
+    const token = await apiToken(request);
+    await request.post(`${API_URL}/api/blacklists/import`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { type: 'ip', content: '203.0.113.211\n203.0.113.212' },
+    });
+    const longUrl = 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/a/very/long/path/to/the/list/firehol_level1.netset';
+    await page.route('**/api/ip-blacklist/sources', async (route) => {
+      const res = await route.fetch();
+      const body = await res.json() as { data: unknown[] };
+      body.data.unshift({
+        id: 999999, kind: 'url', source: longUrl, label: '', entries: 50772,
+        first_added: '2026-10-25 08:00:00', last_added: '2026-10-26 09:00:00',
+      });
+      await route.fulfill({ response: res, json: body });
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.reload();
+    const card = page.getByRole('region', { name: 'Where the entries came from' });
+    const buttons = card.getByRole('button', { name: /^Remove batch:/ });
+    await expect(buttons.first()).toBeVisible({ timeout: 15_000 });
+    await expect(card.getByText(longUrl)).toHaveAttribute('title', longUrl);
+    const box = (await card.boundingBox())!;
+    const n = await buttons.count();
+    expect(n).toBeGreaterThan(1);
+    for (let i = 0; i < n; i++) {
+      const b = (await buttons.nth(i).boundingBox())!;
+      expect(b.x + b.width, `Remove batch ${i} ends inside the card`).toBeLessThanOrEqual(box.x + box.width);
+    }
+    const table = card.getByRole('region', { name: 'Sources of Blocked IPs' });
+    expect(await table.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+  });
+
   test('fits a 390 px wide screen without horizontal scrolling', async ({ page, request }) => {
     // With rows, both tables are wider than a phone and must scroll inside
     // their own boxes; an empty table would fit and prove nothing.
@@ -1022,7 +1059,7 @@ test.describe('UI — Blacklists (Blocked domains)', () => {
     // This stack runs no proxy; a record left in ./config from another run
     // would say whether Squid holds a copy instead.
     await expect(enforcement.getByText(/^(Not reported: the proxy has not written domain_acl_status\.json|Its own copy of all|No copy:)/)).toBeVisible();
-    await expect(enforcement.getByText(/"\*\.example\.com" blocks example\.com itself/)).toBeVisible();
+    await expect(enforcement.getByText(/"\*\.example\.com" and "\.example\.com" each block example\.com itself/)).toBeVisible();
   });
 
   test('add a domain, find it, remove it', async ({ page }) => {
@@ -1044,7 +1081,8 @@ test.describe('UI — Blacklists (Blocked domains)', () => {
     await openAdd(page, 'Paste a list');
     await page.getByLabel('Entries, one per line').fill(['bulk-test-1.test', 'bulk-test-2.test', '# skip', 'bulk-test-3.test'].join('\n'));
     await page.getByRole('button', { name: 'Add pasted entries' }).click();
-    await expect(page.getByText(/Added \d+/i)).toBeVisible({ timeout: 15_000 });
+    // The toast, not a source's "Added <date>" line (shown on a phone only).
+    await expect(page.getByText(/^Added \d+ entr/)).toBeVisible({ timeout: 15_000 });
   });
 
   test('the Blocked domains tab offers Block DNS-over-HTTPS, which used to sit in Settings', async ({ page }) => {
