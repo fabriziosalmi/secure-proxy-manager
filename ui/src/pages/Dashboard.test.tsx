@@ -114,6 +114,23 @@ describe('Dashboard (Overview)', () => {
     expect(card('Rules in force')).toHaveTextContent('50,772 IPs, 640,929 domains')
   })
 
+  // The backend leaves the stack's own addresses out of every count and
+  // says how many it left out; the Active clients card repeats it.
+  it('says how many internal addresses the counts leave out', async () => {
+    serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, last_24h_internal_sources: 3, last_24h_internal_requests: 40 } })
+    renderWithProviders(<Dashboard />)
+    await waitFor(() => { expect(card('Active clients')).toHaveTextContent('3 internal addresses not counted') })
+    expect(card('Active clients')).toHaveTextContent('192.168.0.109, last request 09:21')
+    expect(card('Active clients')).toHaveTextContent(/^Active clients1/)
+  })
+
+  it('says nothing about internal addresses when none were left out', async () => {
+    serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, last_24h_internal_sources: 0 } })
+    renderWithProviders(<Dashboard />)
+    await waitFor(() => { expect(card('Active clients')).toHaveTextContent('1192.168.0.109') })
+    expect(card('Active clients')).not.toHaveTextContent('internal')
+  })
+
   // The old header said TODAY 1,235 next to TOTAL 1,234; the cards now read
   // one window, the last 24 hours, and an older backend's missing field is
   // said, not drawn as 0.

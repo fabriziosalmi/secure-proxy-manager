@@ -227,6 +227,13 @@ export function Dashboard() {
   if (clients === 0) clientsSub = 'No client in the last 24 hours';
   else if (onlyClient) clientsSub = <><code className="font-mono text-xs">{onlyClient}</code>{lastRequest && `, last request ${lastRequest}`}</>;
   else if (lastRequest) clientsSub = `last request ${lastRequest}`;
+  // The stack's own addresses (the Docker host, the backend, loopback) are
+  // in no count on this page; say how many were left out.
+  const internal = s?.last_24h_internal_sources;
+  if (internal) {
+    const note = `${formatCount(internal)} internal ${internal === 1 ? 'address' : 'addresses'} not counted`;
+    clientsSub = clientsSub ? <span className="flex flex-col gap-0.5"><span>{clientsSub}</span><span>{note}</span></span> : note;
+  }
 
   let blockedSub: ReactNode;
   if (share) {
