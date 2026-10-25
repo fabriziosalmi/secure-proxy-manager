@@ -46,7 +46,11 @@ function ipLine(c: Coverage['ip_blacklist']): CoverageLine {
   const base = { id: 'ip' as const, link: BLACKLISTS };
   if (c.entries === null) return { ...base, state: 'unknown', text: 'IP blacklist: the backend could not count its entries' };
   if (c.entries === 0) return { ...base, state: 'off', text: 'IP blacklist: empty, no address is blocked' };
-  return { ...base, state: 'on', text: `IP blacklist: ${entries(c.entries)}, enforced by the proxy` };
+  const acl = c.squid_acl;
+  if (!acl) return { ...base, state: 'on', text: `IP blacklist: ${entries(c.entries)}; the proxy has not reported loading them` };
+  const nets = `${formatCount(acl.networks)} ${acl.networks === 1 ? 'network' : 'networks'}`;
+  const dropped = acl.dropped > 0 ? `; ${formatCount(acl.dropped)} ${acl.dropped === 1 ? 'line is' : 'lines are'} not an address and not loaded` : '';
+  return { ...base, state: 'on', text: `IP blacklist: ${entries(c.entries)}, enforced by the proxy as ${nets}${dropped}` };
 }
 
 function wafLine(c: Coverage): CoverageLine {

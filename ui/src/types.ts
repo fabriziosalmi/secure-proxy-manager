@@ -338,7 +338,8 @@ export interface BlockedByDay {
 /** GET /api/analytics/coverage: what protection is switched on now. Null where the backend could not read it. */
 export interface Coverage {
   domain_blacklist: { entries: number | null; squid_acl: SquidDomainAcl | null };
-  ip_blacklist: { entries: number | null };
+  /** squid_acl: what Squid loaded, as the proxy recorded it; null when it has not. */
+  ip_blacklist: { entries: number | null; squid_acl: IpAclStatus | null };
   /** The WAF's own rule counts, from GET /categories; null unless status is ok. */
   waf: {
     status: WafStatus;

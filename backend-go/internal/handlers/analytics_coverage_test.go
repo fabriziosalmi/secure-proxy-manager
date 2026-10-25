@@ -18,7 +18,8 @@ type coverageResp struct {
 			SquidACL *DomainACLStatus `json:"squid_acl"`
 		} `json:"domain_blacklist"`
 		IP struct {
-			Entries *int `json:"entries"`
+			Entries  *int         `json:"entries"`
+			SquidACL *IPACLStatus `json:"squid_acl"`
 		} `json:"ip_blacklist"`
 		WAF   wafCoverage `json:"waf"`
 		HTTPS *bool       `json:"https_inspection"`
@@ -57,6 +58,9 @@ func TestCoverageOfAFreshInstall(t *testing.T) {
 	var resp coverageResp
 	getJSON(t, NewAnalyticsHandlers(db, cfg).Coverage, "/api/analytics/coverage", &resp)
 	d := resp.Data
+	if d.IP.SquidACL != nil {
+		t.Errorf("ip squid_acl = %+v without a record, want null", d.IP.SquidACL)
+	}
 	if !intIs(d.Domain.Entries, 0) || d.Domain.SquidACL != nil || !intIs(d.IP.Entries, 0) {
 		t.Errorf("lists: domain %v (squid %v), ip %v; want 0, null, 0", val(d.Domain.Entries), d.Domain.SquidACL, val(d.IP.Entries))
 	}
@@ -95,6 +99,9 @@ func TestCoverageReportsWhatIsSwitchedOn(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := os.WriteFile(filepath.Join(cfg.ConfigDir, "ip_blacklist_acl_status.json"), []byte(`{"version":1,"entries":1,"networks":1,"dropped":0}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(cfg.ConfigDir, domainACLStatusFile), []byte(`{"version":1,"names":2,"limit":100000,"held":true}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +121,9 @@ func TestCoverageReportsWhatIsSwitchedOn(t *testing.T) {
 	d := resp.Data
 	if !intIs(d.Domain.Entries, 2) || !intIs(d.IP.Entries, 1) {
 		t.Errorf("entries: domain %v, ip %v; want 2 and 1", val(d.Domain.Entries), val(d.IP.Entries))
+	}
+	if d.IP.SquidACL == nil || d.IP.SquidACL.Networks != 1 {
+		t.Errorf("ip squid_acl = %+v; want the proxy record, 1 network", d.IP.SquidACL)
 	}
 	if d.Domain.SquidACL == nil || !d.Domain.SquidACL.Held || d.Domain.SquidACL.Names != 2 {
 		t.Errorf("squid_acl = %+v; want held with 2 names", d.Domain.SquidACL)

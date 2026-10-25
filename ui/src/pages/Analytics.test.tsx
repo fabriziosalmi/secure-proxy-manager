@@ -35,7 +35,7 @@ const blockedByDay: BlockedByDay = {
 
 const coverage: Coverage = {
   domain_blacklist: { entries: 640929, squid_acl: null },
-  ip_blacklist: { entries: 50772 },
+  ip_blacklist: { entries: 50772, squid_acl: { entries: 50772, networks: 48000, dropped: 0, written_at: 1 } },
   waf: { status: 'ok', categories: 4, categories_enabled: 4, rules: 31, rules_enabled: 31 },
   https_inspection: false,
   proxy_login: false,
@@ -142,7 +142,7 @@ describe('Analytics', () => {
     const cov = region('Protection coverage')
     await waitFor(() => { expect(within(cov).getAllByRole('listitem')).toHaveLength(6) })
     expect(within(cov).getByText("Domain blacklist: 640,929 entries, blocked at the DNS sinkhole; the proxy has not reported whether it holds its own copy")).toBeInTheDocument()
-    expect(within(cov).getByText('IP blacklist: 50,772 entries, enforced by the proxy')).toBeInTheDocument()
+    expect(within(cov).getByText('IP blacklist: 50,772 entries, enforced by the proxy as 48,000 networks')).toBeInTheDocument()
     expect(within(cov).getByText('WAF: 31 request rules in 4 categories, inspecting plain HTTP only')).toBeInTheDocument()
     expect(within(cov).getByText('Alerts: off, blocks are not reported anywhere')).toBeInTheDocument()
     expect(within(cov).getAllByRole('link', { name: 'Blacklists' })[0]).toHaveAttribute('href', '/blacklists')
@@ -203,7 +203,7 @@ describe('Analytics', () => {
   it('writes every count with en-US grouping in any browser locale', async () => {
     simulateItalianLocale()
     renderWithProviders(<Analytics />)
-    await waitFor(() => { expect(within(region('Protection coverage')).getByText('IP blacklist: 50,772 entries, enforced by the proxy')).toBeInTheDocument() })
+    await waitFor(() => { expect(within(region('Protection coverage')).getByText('IP blacklist: 50,772 entries, enforced by the proxy as 48,000 networks')).toBeInTheDocument() })
     await waitFor(() => { expect(within(region('Cloud services in use')).getByRole('table')).toHaveTextContent('1,328') })
   })
 

@@ -117,7 +117,11 @@ func (h *AnalyticsHandlers) Coverage(w http.ResponseWriter, r *http.Request) {
 			"entries":   h.countOrNil("SELECT COUNT(*) FROM domain_blacklist"),
 			"squid_acl": acl,
 		},
-		"ip_blacklist":     map[string]any{"entries": h.countOrNil("SELECT COUNT(*) FROM ip_blacklist")},
+		"ip_blacklist": map[string]any{
+			"entries": h.countOrNil("SELECT COUNT(*) FROM ip_blacklist"),
+			// What Squid loaded, as the proxy recorded it (#426); null when it has not.
+			"squid_acl": nullable(readIPACLStatus(h.cfg.ConfigDir, "ip_blacklist_acl_status.json")),
+		},
 		"waf":              h.wafRuleCoverage(r),
 		"https_inspection": flag("ssl_bump_enabled"),
 		"proxy_login":      flag("enable_proxy_auth"),

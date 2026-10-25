@@ -6,7 +6,7 @@ import { coverageLines } from './coverage'
 // a WAF that answers, and everything else off (analytics_coverage.go).
 const coverageBody: Coverage = {
   domain_blacklist: { entries: 640929, squid_acl: { names: 640929, limit: 100000, held: false, written_at: 1 } },
-  ip_blacklist: { entries: 50772 },
+  ip_blacklist: { entries: 50772, squid_acl: { entries: 50772, networks: 50770, dropped: 2, written_at: 1 } },
   waf: { status: 'ok', categories: 3, categories_enabled: 3, rules: 9, rules_enabled: 9 },
   https_inspection: false,
   proxy_login: false,
@@ -22,7 +22,7 @@ describe('coverageLines', () => {
     const l = lines(coverageBody)
     expect(Object.keys(l)).toEqual(['domain', 'ip', 'waf', 'https', 'login', 'alerts'])
     expect(l.domain).toMatchObject({ state: 'attention', text: "Domain blacklist: 640,929 entries, blocked at the DNS sinkhole only: 640,929 names are above the proxy's limit of 100,000" })
-    expect(l.ip).toMatchObject({ state: 'on', text: 'IP blacklist: 50,772 entries, enforced by the proxy' })
+    expect(l.ip).toMatchObject({ state: 'on', text: 'IP blacklist: 50,772 entries, enforced by the proxy as 50,770 networks; 2 lines are not an address and not loaded' })
     // The WAF's own count, not a number written into the UI.
     expect(l.waf).toMatchObject({ state: 'on', text: 'WAF: 9 request rules in 3 categories, inspecting plain HTTP only' })
     expect(l.https).toMatchObject({ state: 'off', text: 'HTTPS inspection: off, so the WAF does not see inside HTTPS' })
@@ -52,7 +52,7 @@ describe('coverageLines', () => {
   it('says what is missing instead of showing it as off', () => {
     const l = lines({
       domain_blacklist: { entries: null, squid_acl: null },
-      ip_blacklist: { entries: null },
+      ip_blacklist: { entries: null, squid_acl: null },
       waf: { status: 'auth_failed', categories: null, categories_enabled: null, rules: null, rules_enabled: null },
       https_inspection: null,
       proxy_login: null,
@@ -64,6 +64,7 @@ describe('coverageLines', () => {
     expect(l.alerts.text).toBe('Alerts: on, sent to 1 channel, but WAF block alerts do not arrive: INTERNAL_ALERT_TOKEN is not set')
     expect(lines({ ...coverageBody, waf: { ...coverageBody.waf, status: 'unreachable' } }).waf.text).toBe('WAF: did not answer the backend, so its rules are not reported')
     expect(lines({ ...coverageBody, alerts: { enabled: true, channels: 0, waf_alerts_delivered: true } }).alerts.text).toBe('Alerts: on, but no channel is set up, so they go nowhere')
+    expect(lines({ ...coverageBody, ip_blacklist: { entries: 3, squid_acl: null } }).ip.text).toBe('IP blacklist: 3 entries; the proxy has not reported loading them')
     expect(lines({ ...coverageBody, domain_blacklist: { entries: 0, squid_acl: null } }).domain).toMatchObject({ state: 'off', text: 'Domain blacklist: empty, no domain is blocked' })
   })
 })
