@@ -35,6 +35,16 @@ def w():
     return load_watchdog()
 
 
+@pytest.fixture(autouse=True)
+def lists_files(w, tmp_path, monkeypatch):
+    """The record of synced lists and the gate live in each test's directory,
+    never in /etc/squid."""
+    record, gate = tmp_path / "lists.synced.json", tmp_path / "lists_gate.txt"
+    monkeypatch.setattr(w, "LISTS_RECORD", str(record))
+    monkeypatch.setattr(w, "LISTS_GATE", str(gate))
+    return record, gate
+
+
 # ── trigger_stamp ────────────────────────────────────────────────────────────
 
 def test_trigger_stamp_reads_the_backend_written_content(w, tmp_path):
@@ -389,7 +399,8 @@ def test_a_parse_past_the_timeout_is_refused(w, tmp_path, monkeypatch):
 
 def _quiet_poll(w, monkeypatch, synced):
     for job in ("touch_heartbeat", "heal_resolver_drift", "keep_logs_readable", "rotate_logs_daily",
-                "check_reload_trigger", "check_clear_cache_trigger", "collect_cache_stats", "refresh_domain_acl"):
+                "check_reload_trigger", "check_clear_cache_trigger", "collect_cache_stats", "refresh_domain_acl",
+                "save_lists_state"):
         monkeypatch.setattr(w, job, lambda *a: None)
     monkeypatch.setattr(w, "sync_lists", lambda s: synced.pop(0) if synced else False)
 
@@ -707,6 +718,134 @@ def test_a_list_missing_from_the_manifest_is_refused(w, tmp_path, monkeypatch):
     assert w.sync_lists(st) is False
 
 
+# ── the generator's copy of the lists (finding 14) ───────────────────────────
+#
+# generate_squid_conf.sh copied the lists with cp at boot and on every
+# regeneration, without the manifest check. It now runs sync_lists_cli.
+
+@pytest.fixture
+def lists(w, tmp_path, monkeypatch):
+    """One blocklist and one allowlist in tmp_path, with their destinations."""
+    d = tmp_path / "cfg"
+    d.mkdir()
+    bl, al = d / "ip_blacklist.txt", d / "ip_whitelist.txt"
+    bl_dst, al_dst = tmp_path / "bl_local.txt", tmp_path / "al_local.txt"
+    bl.write_bytes(b"203.0.113.9\n")
+    al.write_bytes(b"192.0.2.10\n")
+    bl_dst.write_bytes(b"")
+    al_dst.write_bytes(b"")
+    monkeypatch.setattr(w, "PAIRS", [(str(bl), str(bl_dst)), (str(al), str(al_dst))])
+    monkeypatch.setattr(w, "BLOCKLIST_SOURCES", (str(bl),))
+    monkeypatch.setattr(w, "MANIFEST", str(tmp_path / "lists.manifest.json"))
+    monkeypatch.setattr(w, "IP_ACL_FILES", set())
+    return bl, al, bl_dst, al_dst
+
+
+def _gate(lists_files):
+    return lists_files[1].read_text().splitlines()
+
+
+def _record(lists_files):
+    return json.loads(lists_files[0].read_text())
+
+
+def test_boot_sync_copies_matching_lists_and_leaves_the_gate_open(w, tmp_path, lists, lists_files):
+    bl, al, bl_dst, al_dst = lists
+    _manifest(tmp_path, {"ip_blacklist.txt": _sha(b"203.0.113.9\n"), "ip_whitelist.txt": _sha(b"192.0.2.10\n")})
+    assert w.sync_lists_cli() == 0
+    assert bl_dst.read_bytes() == b"203.0.113.9\n" and al_dst.read_bytes() == b"192.0.2.10\n"
+    assert _gate(lists_files) == []
+    assert _record(lists_files) == {str(bl): w.mtime(str(bl)), str(al): w.mtime(str(al))}
+
+
+def test_boot_sync_refuses_a_torn_blocklist_and_closes_the_gate(w, tmp_path, lists, lists_files, capsys):
+    bl, al, bl_dst, al_dst = lists
+    _manifest(tmp_path, {"ip_blacklist.txt": _sha(b"203.0.113.9\n198.51.100.7\n"), "ip_whitelist.txt": _sha(b"192.0.2.10\n")})
+    w.sync_lists_cli()
+    assert bl_dst.read_bytes() == b"", "a list the manifest does not vouch for was loaded"
+    assert al_dst.read_bytes() == b"192.0.2.10\n", "a matching list was held back with it"
+    assert _gate(lists_files) == ["all"], "Squid would run with no blocklist"
+    assert str(bl) not in _record(lists_files)
+    assert "CRITICAL: no verified copy" in capsys.readouterr().out
+
+
+def test_boot_sync_starts_a_mismatched_allowlist_empty_with_the_gate_open(w, tmp_path, lists, lists_files):
+    _, _, bl_dst, al_dst = lists
+    _manifest(tmp_path, {"ip_blacklist.txt": _sha(b"203.0.113.9\n"), "ip_whitelist.txt": "0" * 64})
+    w.sync_lists_cli()
+    assert al_dst.read_bytes() == b"" and bl_dst.read_bytes() == b"203.0.113.9\n"
+    assert _gate(lists_files) == []
+
+
+def test_boot_sync_without_a_manifest_copies_unverified(w, lists, lists_files, capsys):
+    _, _, bl_dst, _ = lists
+    w.sync_lists_cli()
+    assert bl_dst.read_bytes() == b"203.0.113.9\n"
+    assert _gate(lists_files) == []
+    assert "no lists manifest" in capsys.readouterr().out
+
+
+def test_regeneration_keeps_the_verified_copy_of_a_list_that_no_longer_matches(w, tmp_path, lists, lists_files):
+    bl, _, bl_dst, _ = lists
+    _manifest(tmp_path, {"ip_blacklist.txt": _sha(b"203.0.113.9\n"), "ip_whitelist.txt": _sha(b"192.0.2.10\n")})
+    w.sync_lists_cli()
+    first = _record(lists_files)[str(bl)]
+    bl.write_bytes(b"10.9.9.9\n")
+    os.utime(bl, (first + 60, first + 60))
+    w.sync_lists_cli()
+    assert bl_dst.read_bytes() == b"203.0.113.9\n"
+    assert _gate(lists_files) == [], "a held, verified copy closed the gate"
+    assert _record(lists_files)[str(bl)] == first
+
+
+def test_the_poll_loop_starts_from_the_record_and_retries_what_boot_refused(w, tmp_path, lists, lists_files):
+    bl, al, bl_dst, _ = lists
+    lists_files[0].write_text(json.dumps({str(al): w.mtime(str(al))}))  # boot refused the blocklist
+    st = w.WatchdogState()
+    assert st.mtimes[str(bl)] is None and st.mtimes[str(al)] == w.mtime(str(al))
+    _manifest(tmp_path, {"ip_blacklist.txt": _sha(b"203.0.113.9\n"), "ip_whitelist.txt": _sha(b"192.0.2.10\n")})
+    assert w.sync_lists(st) is True
+    assert bl_dst.read_bytes() == b"203.0.113.9\n"
+
+
+def test_without_a_record_nothing_is_known_to_be_held(w, lists):
+    st = w.WatchdogState()
+    assert all(st.mtimes[src] is None for src, _ in w.PAIRS)
+
+
+def test_the_poll_loop_opens_the_gate_once_the_blocklist_is_verified(w, tmp_path, lists, lists_files, monkeypatch):
+    bl, al, bl_dst, _ = lists
+    _manifest(tmp_path, {"ip_blacklist.txt": "0" * 64, "ip_whitelist.txt": _sha(b"192.0.2.10\n")})
+    w.sync_lists_cli()
+    assert _gate(lists_files) == ["all"]
+    st = w.WatchdogState()
+    calls = []
+    for job in ("touch_heartbeat", "heal_resolver_drift", "keep_logs_readable", "rotate_logs_daily",
+                "check_reload_trigger", "check_clear_cache_trigger", "collect_cache_stats", "refresh_domain_acl"):
+        monkeypatch.setattr(w, job, lambda *a: None)
+    monkeypatch.setattr(w, "reconfigure_squid", lambda: calls.append("reconfigure") or 0)
+
+    w.poll_once(st)  # still refused: the gate stays closed, nothing to reconfigure
+    assert _gate(lists_files) == ["all"] and calls == []
+
+    _manifest(tmp_path, {"ip_blacklist.txt": _sha(b"203.0.113.9\n"), "ip_whitelist.txt": _sha(b"192.0.2.10\n")})
+    w.poll_once(st)
+    assert bl_dst.read_bytes() == b"203.0.113.9\n"
+    assert _gate(lists_files) == [] and calls == ["reconfigure"]
+    assert str(bl) in _record(lists_files)
+
+
+def test_the_poll_loop_reopens_a_gate_it_finds_closed_with_every_list_held(w, lists, lists_files, monkeypatch):
+    # The generator closes the gate itself when the sync cannot run at all.
+    bl, al, _, _ = lists
+    lists_files[0].write_text(json.dumps({str(bl): w.mtime(str(bl)), str(al): w.mtime(str(al))}))
+    lists_files[1].write_text("all\n")
+    st = w.WatchdogState()
+    assert w.save_lists_state(st) is True
+    assert _gate(lists_files) == []
+    assert w.save_lists_state(st) is False, "an unchanged gate was rewritten"
+
+
 def test_poll_once_runs_every_job_in_order(w, monkeypatch):
     order = []
     st = types.SimpleNamespace(reconfigure_pending=False)
@@ -714,14 +853,16 @@ def test_poll_once_runs_every_job_in_order(w, monkeypatch):
                  "check_reload_trigger", "check_clear_cache_trigger"):
         monkeypatch.setattr(w, name, lambda *a, _n=name: order.append(_n))
     monkeypatch.setattr(w, "sync_lists", lambda s: order.append("sync_lists") or True)
+    monkeypatch.setattr(w, "refresh_domain_acl", lambda: order.append("refresh_domain_acl"))
+    monkeypatch.setattr(w, "save_lists_state", lambda s: order.append("save_lists_state") and False)
     monkeypatch.setattr(w, "reconfigure_squid", lambda: order.append("reconfigure_squid"))
     monkeypatch.setattr(w, "collect_cache_stats", lambda s: order.append("collect_cache_stats"))
 
     w.poll_once(st)
 
     assert order == ["touch_heartbeat", "heal_resolver_drift", "keep_logs_readable", "rotate_logs_daily",
-                     "check_reload_trigger", "check_clear_cache_trigger", "sync_lists", "reconfigure_squid",
-                     "collect_cache_stats"]
+                     "check_reload_trigger", "check_clear_cache_trigger", "sync_lists", "refresh_domain_acl",
+                     "save_lists_state", "reconfigure_squid", "collect_cache_stats"]
 
 
 if __name__ == "__main__":
