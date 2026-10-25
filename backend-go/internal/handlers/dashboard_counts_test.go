@@ -92,3 +92,99 @@ func TestResetCountersClearsTheCachedAllTimeCount(t *testing.T) {
 		t.Errorf("after reset: total %d, today %d; want 1 and 1", after.Data.Total, after.Data.Today)
 	}
 }
+
+// The Overview shows the last 24 hours: requests, blocked, distinct clients,
+// the rules that blocked them and, per destination, which rule did.
+func TestDashboardReportsTheLast24Hours(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	seedBlockReasonFixture(t, db) // 18 client requests from lanClient, 13 blocked; 18 DNS rows
+	now := time.Now()
+	// Outside the window: a blocked request from another client 30 hours ago.
+	insertLogRow(t, db, now.Add(-30*time.Hour), "192.168.0.50", "GET", "http://ip.test/", 1, "ip_blacklist")
+	// Inside: a second client, and Squid's own ACL denying a sinkholed name.
+	insertLogRow(t, db, now, "192.168.0.20", "GET", "http://pub.test/", 0, "none")
+	insertLogRow(t, db, now, lanClient, "CONNECT", "sink.test:443", 1, "domain_blacklist")
+	h := NewAnalyticsHandlers(db, cfg)
+
+	var resp struct {
+		Data struct {
+			Requests    int             `json:"last_24h_requests"`
+			Blocked     int             `json:"last_24h_blocked"`
+			Clients     int             `json:"last_24h_clients"`
+			LastRequest *string         `json:"last_request_at"`
+			ByReason24h []reasonCount   `json:"blocked_by_reason_24h"`
+			ByReason7d  []reasonCount   `json:"blocked_by_reason"`
+			TopBlocked  []topBlockedRow `json:"top_blocked"`
+			Recent      []struct {
+				Destination string `json:"destination"`
+				Host        string `json:"host"`
+				Reason      string `json:"reason"`
+				Label       string `json:"reason_label"`
+			} `json:"recent_blocks"`
+		} `json:"data"`
+	}
+	getJSON(t, h.DashboardSummary, "/api/dashboard/summary", &resp)
+	d := resp.Data
+
+	// 18 + 2 client requests; 13 + 1 blocked; lanClient and .20 (the proxy's
+	// DNS rows are not a client, .50 is outside the window).
+	if d.Requests != 20 || d.Blocked != 14 || d.Clients != 2 {
+		t.Errorf("last 24h: %d requests, %d blocked, %d clients; want 20, 14, 2", d.Requests, d.Blocked, d.Clients)
+	}
+	if d.LastRequest == nil || *d.LastRequest == "" {
+		t.Error("last_request_at is missing")
+	}
+	got24 := countsByReason(d.ByReason24h)
+	want24 := map[string]int{"domain_blacklist_dns": 9, "domain_blacklist": 3, "waf": 1, "unclassified": 1}
+	if len(got24) != len(want24) {
+		t.Errorf("blocked_by_reason_24h = %v, want %v", got24, want24)
+	}
+	for k, v := range want24 {
+		if got24[k] != v {
+			t.Errorf("blocked_by_reason_24h[%s] = %d, want %d", k, got24[k], v)
+		}
+	}
+	if countsByReason(d.ByReason7d)["ip_blacklist"] != 1 {
+		t.Errorf("blocked_by_reason (7 days) lost the request from 30 hours ago: %v", countsByReason(d.ByReason7d))
+	}
+
+	// sink.test: 9 at the sinkhole, 1 by Squid's ACL, one row with both rules.
+	var sink *topBlockedRow
+	for i := range d.TopBlocked {
+		if d.TopBlocked[i].Dest == "sink.test" {
+			sink = &d.TopBlocked[i]
+		}
+	}
+	if sink == nil {
+		t.Fatalf("top_blocked misses sink.test: %+v", d.TopBlocked)
+	}
+	if sink.Count != 10 || len(sink.Reasons) != 2 ||
+		sink.Reasons[0].Reason != "domain_blacklist_dns" || sink.Reasons[0].Count != 9 || sink.Reasons[0].Label != "Domain blacklist (DNS)" ||
+		sink.Reasons[1].Reason != "domain_blacklist" || sink.Reasons[1].Count != 1 {
+		t.Errorf("top_blocked sink.test = %+v; want 10 blocked, 9 domain_blacklist_dns then 1 domain_blacklist", *sink)
+	}
+	if d.TopBlocked[0].Dest != "sink.test" {
+		t.Errorf("first top_blocked = %q, want sink.test", d.TopBlocked[0].Dest)
+	}
+
+	// The newest block is the ACL deny of sink.test:443.
+	if len(d.Recent) == 0 {
+		t.Fatal("recent_blocks is empty")
+	}
+	r := d.Recent[0]
+	if r.Destination != "sink.test:443" || r.Host != "sink.test" || r.Reason != "domain_blacklist" || r.Label != "Domain blacklist" {
+		t.Errorf("recent_blocks[0] = %+v", r)
+	}
+	for _, r := range d.Recent {
+		if r.Label == "" || (r.Label == "WAF") != (r.Reason == "waf") {
+			t.Errorf("recent block %q (%s) is labelled %q", r.Destination, r.Reason, r.Label)
+		}
+	}
+}
+
+type topBlockedRow struct {
+	Dest    string        `json:"dest"`
+	Count   int           `json:"count"`
+	Reasons []reasonCount `json:"reasons"`
+}

@@ -801,22 +801,19 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	result["blocked_requests"] = c.Blocked
 	result["today_requests"] = c.Today
 	result["today_blocked"] = c.TodayBlocked
+	// The last 24 hours, the window of top_blocked, top_clients and
+	// blocked_by_reason_24h. last_24h_clients counts the distinct source IPs,
+	// which top_clients (at most 10) cannot.
+	result["last_24h_requests"] = c.Day
+	result["last_24h_blocked"] = c.DayBlocked
+	result["last_24h_clients"] = c.Clients
+	if c.LastRequest != "" {
+		result["last_request_at"] = c.LastRequest
+	} else {
+		result["last_request_at"] = nil
+	}
 
-	var topBlocked []map[string]any
-	rows, _ := h.db.Query(`SELECT `+destinationKey+` AS dest, COUNT(*) AS cnt FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+` GROUP BY dest ORDER BY cnt DESC LIMIT 10`, sinceUnix(24*time.Hour))
-	if rows != nil {
-		for rows.Next() {
-			var dest string
-			var cnt int
-			rows.Scan(&dest, &cnt) //nolint:errcheck
-			topBlocked = append(topBlocked, map[string]any{"dest": dest, "count": cnt})
-		}
-		rows.Close()
-	}
-	if topBlocked == nil {
-		topBlocked = []map[string]any{}
-	}
-	result["top_blocked"] = topBlocked
+	result["top_blocked"] = h.topBlocked(sinceUnix(24 * time.Hour))
 
 	h.db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&ipBLCount)         //nolint:errcheck
 	h.db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&domainBLCount) //nolint:errcheck
@@ -854,17 +851,22 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	}
 	result["blocked_by_reason"] = byReason
 	result["threat_categories"] = threatCats
+	// The same, over the last 24 hours.
+	result["blocked_by_reason_24h"] = h.blockedByReason(`unix_timestamp >= ?`, sinceUnix(24*time.Hour))
 
 	// Recent blocks (last 10)
 	var recentBlocks []map[string]any
-	rRows, _ := h.db.Query(`SELECT timestamp, source_ip, method, destination, status, block_reason FROM proxy_logs WHERE blocked = 1 AND ` + clientRows + ` ORDER BY id DESC LIMIT 10`)
+	// #nosec G202 -- destinationKey and clientRows are constant expressions.
+	rRows, _ := h.db.Query(`SELECT timestamp, source_ip, method, destination, ` + destinationKey + `, status, block_reason
+		FROM proxy_logs WHERE blocked = 1 AND ` + clientRows + ` ORDER BY id DESC LIMIT 10`)
 	if rRows != nil {
 		for rRows.Next() {
-			var ts, srcIP, method, dest, status, reason sql.NullString
-			rRows.Scan(&ts, &srcIP, &method, &dest, &status, &reason) //nolint:errcheck
+			var ts, srcIP, method, dest, host, status, reason sql.NullString
+			rRows.Scan(&ts, &srcIP, &method, &dest, &host, &status, &reason) //nolint:errcheck
 			recentBlocks = append(recentBlocks, map[string]any{
 				"timestamp": ts.String, "source_ip": srcIP.String, "method": method.String,
-				"destination": dest.String, "status": status.String, "reason": reason.String,
+				"destination": dest.String, "host": host.String, "status": status.String,
+				"reason": reason.String, "reason_label": workers.ReasonLabel(reason.String),
 			})
 		}
 		rRows.Close()
@@ -905,6 +907,40 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 		resp.Body.Close()
 	}
 	writeOK(w, result)
+}
+
+// topBlocked lists the 10 hosts with the most blocked client requests since
+// the Unix time since, each with its count and the rules that blocked it
+// (largest first). A host can be blocked by more than one rule: the DNS
+// sinkhole and Squid's own domain ACL both block a blacklisted name.
+func (h *AnalyticsHandlers) topBlocked(since int64) []map[string]any {
+	out := []map[string]any{}
+	// #nosec G202 -- destinationKey and clientRows are constant expressions; values are bound.
+	rows, err := h.db.Query(`WITH b AS (
+			SELECT `+destinationKey+` AS dest, block_reason AS reason FROM proxy_logs
+			WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+`),
+		top AS (SELECT dest, COUNT(*) AS cnt FROM b GROUP BY dest ORDER BY cnt DESC, dest LIMIT 10)
+		SELECT top.dest, top.cnt, b.reason, COUNT(*) AS n FROM top JOIN b ON b.dest = top.dest
+		GROUP BY top.dest, b.reason ORDER BY top.cnt DESC, top.dest, n DESC, b.reason`, since)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	var cur map[string]any
+	for rows.Next() {
+		var dest, reason string
+		var cnt, n int
+		if rows.Scan(&dest, &cnt, &reason, &n) != nil {
+			continue
+		}
+		if cur == nil || cur["dest"] != dest {
+			cur = map[string]any{"dest": dest, "count": cnt, "reasons": []map[string]any{}}
+			out = append(out, cur)
+		}
+		cur["reasons"] = append(cur["reasons"].([]map[string]any),
+			map[string]any{"reason": reason, "label": workers.ReasonLabel(reason), "count": n})
+	}
+	return out
 }
 
 // warnWAFStatus logs a WAF management failure at most once per ten minutes:

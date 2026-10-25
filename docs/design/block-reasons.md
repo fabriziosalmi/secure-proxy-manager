@@ -179,6 +179,8 @@ added fields are additive, so X-API-Version stays 1.
 | | `top_blocked`, `top_clients`, `recent_blocks` | DNS rows out; the proxy is no longer a top client; `recent_blocks[].reason` added |
 | | `threat_categories` | same shape, `category` is now the reason's label from `GROUP BY block_reason` |
 | | `blocked_by_reason` | new: `[{reason, label, count}]`, 7 days |
+| | `blocked_by_reason_24h`, `last_24h_requests`, `last_24h_blocked`, `last_24h_clients`, `last_request_at` | new: the last 24 hours, the Overview's window |
+| | `top_blocked[].reasons`, `recent_blocks[].reason_label`, `recent_blocks[].host` | new: the rules that blocked each host, the label of each recent block, its destination reduced to the host |
 | `/api/clients/statistics` | `data[]`, `meta.total` | DNS rows out: the proxy container is not a client |
 | `/api/clients/{ip}/details` | totals, `top_domains`, `recent` | client requests; `recent[].reason` and `blocked_by_reason` added |
 | `/api/traffic/statistics`, `/api/logs/timeline` | buckets | client requests |
