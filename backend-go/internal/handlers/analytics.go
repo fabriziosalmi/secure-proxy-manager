@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -28,10 +30,41 @@ import (
 var wafBreaker = appMW.NewCircuitBreaker(3, 30*time.Second)
 
 // Shared HTTP clients — reused across requests to avoid per-request allocation.
-var (
-	wafClient   = &http.Client{Timeout: 3 * time.Second}
-	probeClient = &http.Client{Timeout: 1 * time.Second}
-)
+var wafClient = &http.Client{Timeout: 3 * time.Second}
+
+// probeDialer is the proxy health probe's: a connection that is accepted, then
+// closed without a request.
+var probeDialer = &net.Dialer{Timeout: 1 * time.Second}
+
+// probeProxy reports whether the proxy accepts connections at proxyURL
+// (http://proxy:3128). It opens a TCP connection and closes it without
+// sending anything.
+//
+// It used to GET the proxy URL itself: "GET / HTTP/1.1" is not a proxy
+// request, Squid answers 400 and logs it, and /api/status is polled every
+// 30 s by the sidebar of every open UI tab. The test deployment's access log
+// held a "- / NONE_NONE/400" row from the backend every 30 s, about 2,880 a
+// day, which the access log page then listed. Squid logs a connection that
+// closes before sending a request too (NONE_NONE/000
+// error:transaction-end-before-headers, measured on Squid 7.7), unless its
+// access_log is limited to transactions that have a request, which
+// proxy/generate_squid_conf.sh does (spm_has_request).
+func probeProxy(ctx context.Context, proxyURL string) bool {
+	u, err := url.Parse(proxyURL)
+	if err != nil || u.Hostname() == "" {
+		return false
+	}
+	port := u.Port()
+	if port == "" {
+		port = "3128"
+	}
+	conn, err := probeDialer.DialContext(ctx, "tcp", net.JoinHostPort(u.Hostname(), port))
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
 
 // wafAuth is the credential for the WAF management API: the service token when
 // INTERNAL_ALERT_TOKEN is set, otherwise the WAF service credentials, never the
@@ -304,12 +337,8 @@ func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 
 func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 	proxyStatus := "error"
-	resp, err := probeClient.Get(h.cfg.ProxyURL)
-	if err == nil {
-		resp.Body.Close()
-		if resp.StatusCode == 400 || resp.StatusCode == 200 {
-			proxyStatus = "running"
-		}
+	if probeProxy(r.Context(), h.cfg.ProxyURL) {
+		proxyStatus = "running"
 	}
 
 	var todayCount int

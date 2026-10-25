@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router';
-import { Search, ArrowRight, Ban, Shield, List, Settings, LayoutDashboard, X } from 'lucide-react';
+import { Search, ArrowRight, Ban, Globe, List, Settings, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { useModal } from '../hooks/useModal';
 import type { IpEntry, DomainEntry, LogEntry } from '../types';
 import { SECTIONS as SETTINGS_SECTIONS, sectionPath } from '../lib/settingsMeta';
+import { NAV_GROUPS } from './layout/nav';
+import { cn } from '../lib/utils';
 
 interface SearchResult {
   type: 'page' | 'ip' | 'domain' | 'log' | 'setting';
@@ -13,13 +16,29 @@ interface SearchResult {
   action: () => void;
 }
 
-const PAGES: { path: string; label: string; icon: typeof LayoutDashboard; keywords: string[] }[] = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard, keywords: ['home', 'overview', 'stats', 'traffic'] },
-  { path: '/blacklists', label: 'Blacklists', icon: Ban, keywords: ['ip', 'domain', 'block', 'whitelist', 'geo'] },
-  { path: '/analytics', label: 'Analytics', icon: Shield, keywords: ['waf', 'threat', 'attack', 'security', 'intel'] },
-  { path: '/logs', label: 'Access Logs', icon: List, keywords: ['log', 'traffic', 'request', 'access'] },
-  { path: '/settings/overview', label: 'Settings', icon: Settings, keywords: ['config', 'preferences'] },
-];
+// What else a page answers to, beyond its name.
+const KEYWORDS: Record<string, string[]> = {
+  '/': ['home', 'overview', 'stats', 'traffic'],
+  '/analytics': ['waf', 'threat', 'attack', 'security', 'intel', 'statistics'],
+  '/logs': ['log', 'traffic', 'request', 'access'],
+  '/clients': ['device', 'client', 'ip', 'host'],
+  '/blacklists': ['ip', 'domain', 'block', 'whitelist', 'allow', 'geo'],
+  '/egress': ['egress', 'allowlist', 'outbound', 'destination', 'deny'],
+  '/settings': ['config', 'preferences'],
+  '/audit': ['audit', 'history', 'change', 'sign-in', 'login'],
+};
+
+// The sidebar's pages, in its order: quick navigation and the 1 to N keys
+// follow the navigation instead of a list of their own.
+const PAGES = NAV_GROUPS.flatMap((g) => g.items).map((it) => ({ ...it, keywords: KEYWORDS[it.to] ?? [] }));
+
+const TYPE_LABEL: Record<SearchResult['type'], string> = {
+  page: 'Page', setting: 'Setting', ip: 'Blocked IP', domain: 'Blocked domain', log: 'Request',
+};
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return <kbd className="rounded border border-line bg-surface-muted px-1.5 py-px font-mono text-[11px] text-ink-secondary">{children}</kbd>;
+}
 
 export function GlobalSearch() {
   const [open, setOpen] = useState(false);
@@ -46,9 +65,9 @@ export function GlobalSearch() {
         const target = e.target as HTMLElement;
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
         const num = parseInt(e.key);
-        if (num >= 1 && num <= 5) {
+        if (num >= 1 && num <= PAGES.length) {
           e.preventDefault();
-          navigate(PAGES[num - 1].path);
+          navigate(PAGES[num - 1].to);
         }
       }
     };
@@ -78,7 +97,7 @@ export function GlobalSearch() {
     // Page matches
     PAGES.forEach(p => {
       if (p.label.toLowerCase().includes(lower) || p.keywords.some(k => k.includes(lower))) {
-        items.push({ type: 'page', label: p.label, description: `Go to ${p.label}`, action: () => { navigate(p.path); setOpen(false); } });
+        items.push({ type: 'page', label: p.label, description: `Go to ${p.label}`, action: () => { navigate(p.to); setOpen(false); } });
       }
     });
 
@@ -94,9 +113,14 @@ export function GlobalSearch() {
       setLoading(true);
       try {
         const [ipRes, domRes, logRes] = await Promise.allSettled([
-          api.get(`ip-blacklist?search=${encodeURIComponent(q)}&page=1&page_size=5`),
-          api.get(`domain-blacklist?search=${encodeURIComponent(q)}&page=1&page_size=5`),
-          api.get(`logs?search=${encodeURIComponent(q)}&limit=5`),
+          // The lists page with limit and offset; page and page_size were
+          // ignored, so up to 100 entries of each list came back.
+          api.get(`ip-blacklist?search=${encodeURIComponent(q)}&limit=5`),
+          api.get(`domain-blacklist?search=${encodeURIComponent(q)}&limit=5`),
+          // q is the access log's destination search. "search" was never a
+          // parameter of /api/logs: it was ignored and the five newest rows
+          // came back as matches for whatever was typed.
+          api.get(`logs?q=${encodeURIComponent(q)}&limit=5&sort=id&order=desc`),
         ]);
 
         if (ipRes.status === 'fulfilled') {
@@ -104,7 +128,7 @@ export function GlobalSearch() {
           ips.forEach((ip: IpEntry) => {
             items.push({
               type: 'ip', label: ip.ip,
-              description: ip.description || 'IP blacklist entry',
+              description: ip.description || 'On the blocked IPs',
               action: () => { navigate('/blacklists'); setOpen(false); },
             });
           });
@@ -115,7 +139,7 @@ export function GlobalSearch() {
           doms.forEach((d: DomainEntry) => {
             items.push({
               type: 'domain', label: d.domain,
-              description: d.description || 'Domain blacklist entry',
+              description: d.description || 'On the blocked domains',
               action: () => { navigate('/blacklists'); setOpen(false); },
             });
           });
@@ -127,7 +151,7 @@ export function GlobalSearch() {
             items.push({
               type: 'log', label: `${l.method || '-'} ${l.destination}`,
               description: `${l.source_ip}, ${l.status}`,
-              action: () => { navigate('/logs'); setOpen(false); },
+              action: () => { navigate(`/logs?q=${encodeURIComponent(q)}`); setOpen(false); },
             });
           });
         }
@@ -154,113 +178,115 @@ export function GlobalSearch() {
 
   if (!open) return null;
 
-  const typeIcon = (t: string) => {
+  const typeIcon = (t: SearchResult['type']) => {
+    const cls = 'h-4 w-4 shrink-0 text-ink-subtle';
     switch (t) {
-      case 'page': return <ArrowRight className="w-3.5 h-3.5 text-primary" />;
-      case 'ip': return <Ban className="w-3.5 h-3.5 text-destructive" />;
-      case 'domain': return <Shield className="w-3.5 h-3.5 text-orange-500" />;
-      case 'log': return <List className="w-3.5 h-3.5 text-blue-500" />;
-      case 'setting': return <Settings className="w-3.5 h-3.5 text-emerald-500" />;
-      default: return <Search className="w-3.5 h-3.5" />;
+      case 'page': return <ArrowRight className={cls} aria-hidden="true" />;
+      case 'ip': return <Ban className={cls} aria-hidden="true" />;
+      case 'domain': return <Globe className={cls} aria-hidden="true" />;
+      case 'log': return <List className={cls} aria-hidden="true" />;
+      case 'setting': return <Settings className={cls} aria-hidden="true" />;
     }
   };
 
-  return (
+  // Portalled to body: a transformed or filtered ancestor would otherwise
+  // become the containing block of this fixed overlay.
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
+      className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12vh]"
       onClick={() => setOpen(false)}
       role="dialog"
       aria-modal="true"
       aria-labelledby="global-search-title"
     >
       <h2 id="global-search-title" className="sr-only">Global search</h2>
-      <div className="fixed inset-0 bg-black/50 -webkit-backdrop-blur-xl backdrop-blur-xl" aria-hidden="true" />
+      <div className="fixed inset-0 bg-black/50" aria-hidden="true" />
       <div
         ref={dialogRef}
-        className="relative w-full max-w-lg glass-surface rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up"
+        className="relative w-full max-w-xl overflow-hidden rounded-panel border border-line bg-surface text-ink shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
-        {/* Search input */}
-        <div className="flex items-center px-4 py-3.5 border-b border-border/50">
-          <Search className="w-4 h-4 text-muted-foreground mr-3 shrink-0" aria-hidden="true" />
+        <div className="flex items-center gap-3 border-b border-line-subtle px-4 py-3">
+          <Search className="h-4 w-4 shrink-0 text-ink-subtle" aria-hidden="true" />
           <input
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Search IPs, domains, logs, pages..."
-            aria-label="Search IPs, domains, logs, pages"
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 outline-hidden"
+            placeholder="Search IPs, domains, requests, pages"
+            aria-label="Search IPs, domains, requests, pages"
+            className="h-8 min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-ink-subtle outline-hidden"
           />
           {loading && (
-            <div
-              role="status"
-              aria-label="Searching"
-              className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2"
-            />
+            <div role="status" aria-label="Searching" className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
           )}
-          <button type="button" onClick={() => setOpen(false)} aria-label="Close search" className="text-muted-foreground hover:text-foreground ml-2 btn-press">
-            <X className="w-4 h-4" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="Close search"
+            className="rounded-control p-1 text-ink-subtle hover:bg-surface-muted hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
-        {/* Results */}
-        <div className="max-h-[50vh] overflow-y-auto custom-scrollbar">
+        <div className="max-h-[55vh] overflow-y-auto">
           {results.length > 0 ? (
-            <div className="py-1">
+            <ul className="p-2">
               {results.map((r, i) => (
-                <button
-                  key={`${r.type}-${r.label}-${i}`}
-                  type="button"
-                  onClick={r.action}
-                  onMouseEnter={() => setSelected(i)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-all duration-150 ${
-                    i === selected ? 'bg-primary/10 border-l-2 border-l-primary' : 'border-l-2 border-l-transparent hover:bg-secondary/40'
-                  }`}
-                >
-                  {typeIcon(r.type)}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{r.label}</p>
-                    {r.description && <p className="text-[10px] text-muted-foreground truncate">{r.description}</p>}
-                  </div>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-secondary/70 text-muted-foreground uppercase shrink-0 font-mono">{r.type}</span>
-                </button>
+                <li key={`${r.type}-${r.label}-${i}`}>
+                  <button
+                    type="button"
+                    onClick={r.action}
+                    onMouseEnter={() => setSelected(i)}
+                    aria-current={i === selected ? 'true' : undefined}
+                    className={cn(
+                      'flex w-full items-center gap-3 rounded-control px-3 py-2 text-left',
+                      i === selected ? 'bg-accent-subtle' : 'hover:bg-surface-muted',
+                    )}
+                  >
+                    {typeIcon(r.type)}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-ink">{r.label}</span>
+                      {r.description && <span className="block truncate text-xs text-ink-muted">{r.description}</span>}
+                    </span>
+                    <span className="shrink-0 text-xs text-ink-muted">{TYPE_LABEL[r.type]}</span>
+                  </button>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : query.length > 0 && !loading ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">No results for "{query}"</div>
+            <p className="px-4 py-8 text-center text-sm text-ink-muted">No results for “{query}”</p>
           ) : (
-            <div className="py-3 px-4">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-[0.15em] mb-2">Quick Navigation</p>
-              {PAGES.map((p, i) => (
-                <button
-                  key={p.path}
-                  type="button"
-                  onClick={() => { navigate(p.path); setOpen(false); }}
-                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-secondary/50 transition-all duration-150"
-                >
-                  <p.icon className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-sm">{p.label}</span>
-                  <kbd className="ml-auto text-[10px] px-1.5 py-0.5 bg-secondary/70 rounded-md font-mono text-muted-foreground">{i + 1}</kbd>
-                </button>
-              ))}
+            <div className="p-2">
+              <p className="px-3 pb-1 pt-2 text-xs font-medium text-ink-muted">Go to</p>
+              <ul>
+                {PAGES.map((p, i) => (
+                  <li key={p.to}>
+                    <button
+                      type="button"
+                      onClick={() => { navigate(p.to); setOpen(false); }}
+                      className="flex w-full items-center gap-3 rounded-control px-3 py-2 text-left text-sm text-ink hover:bg-surface-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+                    >
+                      <p.icon className="h-4 w-4 shrink-0 text-ink-subtle" aria-hidden="true" />
+                      <span className="flex-1">{p.label}</span>
+                      <Kbd>{i + 1}</Kbd>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>
 
-        {/* Footer hints */}
-        <div className="flex items-center justify-between px-4 py-2 border-t border-border/50 text-[10px] text-muted-foreground">
-          <div className="flex items-center gap-3">
-            <span><kbd className="px-1 py-0.5 bg-secondary/70 rounded font-mono">↑↓</kbd> navigate</span>
-            <span><kbd className="px-1 py-0.5 bg-secondary/70 rounded font-mono">↵</kbd> select</span>
-            <span><kbd className="px-1 py-0.5 bg-secondary/70 rounded font-mono">esc</kbd> close</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {PAGES.map((_, i) => <span key={i}><kbd className="px-1 py-0.5 bg-secondary/70 rounded font-mono">{i+1}</kbd></span>)}
-            <span>quick nav</span>
-          </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line-subtle bg-surface-muted px-4 py-2 text-xs text-ink-muted">
+          <span className="flex items-center gap-1.5"><Kbd>↑</Kbd><Kbd>↓</Kbd> move</span>
+          <span className="flex items-center gap-1.5"><Kbd>↵</Kbd> open</span>
+          <span className="flex items-center gap-1.5"><Kbd>esc</Kbd> close</span>
+          <span className="ml-auto hidden sm:inline">Outside a field, keys 1 to {PAGES.length} open a page</span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

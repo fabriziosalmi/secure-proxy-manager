@@ -350,6 +350,27 @@ test.describe('API — logs, stats, security score', () => {
     expect(Array.isArray(body.data ?? body.logs ?? [])).toBeTruthy();
   });
 
+  test('GET /api/logs takes the access-log filters and refuses a malformed one', async ({ request }) => {
+    const headers = { Authorization: `Bearer ${token}` };
+    const ok = await request.get(`${API_URL}/api/logs?limit=5&outcome=blocked&reason=waf&q=example&include_internal=true&before_id=999999`, { headers });
+    expect(ok.status()).toBe(200);
+    const body = (await ok.json()) as { data: unknown[]; meta: { total: number } };
+    expect(Array.isArray(body.data)).toBeTruthy();
+    expect(typeof body.meta.total).toBe('number');
+    const bad = await request.get(`${API_URL}/api/logs?outcome=denied`, { headers });
+    expect(bad.status()).toBe(400);
+  });
+
+  test('GET /api/logs/export streams CSV with its header row', async ({ request }) => {
+    const res = await request.get(`${API_URL}/api/logs/export?outcome=blocked`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status()).toBe(200);
+    expect(res.headers()['content-type']).toContain('text/csv');
+    expect(res.headers()['content-disposition']).toContain('attachment');
+    expect((await res.text()).split('\n')[0]).toBe('id,timestamp_utc,source_ip,internal,kind,method,destination,status,bytes,blocked,reason,reason_label');
+  });
+
   test('GET /api/logs/stats returns counts', async ({ request }) => {
     const res = await request.get(`${API_URL}/api/logs/stats`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -492,9 +513,25 @@ test.describe('UI: Access logs', () => {
     const wsErrors: string[] = [];
     page.on('console', (m) => { if (m.type() === 'error' && /WebSocket/.test(m.text())) wsErrors.push(m.text()); });
     await page.goto('/logs');
-    await page.waitForSelector('h1:has-text("Access Logs")', { timeout: 15_000 });
-    await expect(page.getByRole('button', { name: 'Live', exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.waitForSelector('h1:has-text("Access logs")', { timeout: 15_000 });
+    // "Live" only once the socket is open: "Connecting" and "Reconnecting"
+    // before, "Paused" when switched off.
+    const live = page.getByRole('button', { name: 'Live', exact: true });
+    await expect(live).toBeVisible({ timeout: 15_000 });
+    await expect(live).toHaveAttribute('aria-pressed', 'true');
     expect(wsErrors).toEqual([]);
+  });
+
+  // The filters are in the URL, so a link opens the same view, and a change
+  // is written back to it.
+  test('the filters are read from the URL and written to it', async ({ page }) => {
+    await page.goto('/logs?outcome=blocked&q=example');
+    await page.waitForSelector('h1:has-text("Access logs")', { timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'Blocked', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('searchbox', { name: 'Search destinations' })).toHaveValue('example');
+    await page.getByRole('button', { name: 'Allowed', exact: true }).click();
+    await expect(page).toHaveURL(/[?&]outcome=allowed/);
+    await expect(page.getByRole('table', { name: 'Access log requests' })).toBeVisible();
   });
 });
 

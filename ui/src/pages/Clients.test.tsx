@@ -221,8 +221,12 @@ describe('Clients', () => {
       expect(within(panel).getByText('Not blocked')).toBeInTheDocument()
       // A recent request from another day carries its date, in the viewer's zone.
       expect(within(panel).getByText('2026-06-28 10:00')).toBeInTheDocument()
-      // The Logs page cannot filter by client: no link that would open it unfiltered.
-      expect(within(panel).queryByRole('link')).not.toBeInTheDocument()
+      // The access log filters by client now: the panel links to this
+      // client's requests (and only to them, not to the unfiltered log).
+      const links = within(panel).getAllByRole('link')
+      expect(links).toHaveLength(1)
+      expect(links[0]).toHaveAccessibleName("Show this client's requests in the access log")
+      expect(links[0]).toHaveAttribute('href', '/logs?client=192.168.0.109')
 
       fireEvent.click(screen.getByRole('button', { name: '172.20.5.9' }))
       expect(await screen.findByRole('region', { name: '172.20.5.9' })).toBeInTheDocument()
@@ -251,6 +255,7 @@ describe('Clients', () => {
       const drawer = await screen.findByRole('dialog', { name: '192.168.0.109' })
       expect(drawer.parentElement).toBe(document.body)
       await within(drawer).findByText('1,300')
+      expect(within(drawer).getByRole('link', { name: "Show this client's requests in the access log" })).toHaveAttribute('href', '/logs?client=192.168.0.109')
       await expectNoAxeViolations(drawer)
       fireEvent.click(within(drawer).getByRole('button', { name: 'Close' }))
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

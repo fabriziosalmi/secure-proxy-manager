@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useModal } from '../../hooks/useModal';
+import { Button } from './Button';
 
 export interface ConfirmOptions {
   title: string;
@@ -29,38 +30,22 @@ export function ConfirmDialog({
   // that opened it can confine the overlay to its own box.
   return createPortal(
     <div className="fixed inset-0 z-120 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-xs" onClick={onCancel} aria-hidden="true" />
+      <div className="absolute inset-0 bg-black/50" onClick={onCancel} aria-hidden="true" />
       <div
         ref={ref}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-title"
         aria-describedby={body ? 'confirm-body' : undefined}
-        className="relative w-full max-w-sm glass-surface rounded-xl p-5 shadow-2xl"
+        className="relative w-full max-w-md rounded-panel border border-line bg-surface p-5 text-ink shadow-2xl"
       >
-        <h2 id="confirm-title" className="text-sm font-semibold">{title}</h2>
+        <h2 id="confirm-title" className="text-base font-semibold text-ink">{title}</h2>
         {body && (typeof body === 'string'
-          ? <p id="confirm-body" className="mt-2 text-xs text-muted-foreground">{body}</p>
-          : <div id="confirm-body" className="mt-2 text-xs text-muted-foreground">{body}</div>)}
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-secondary/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
-            {cancelLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className={`px-3 py-1.5 text-xs rounded-lg text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-              destructive
-                ? 'bg-destructive hover:bg-destructive/90 focus-visible:ring-destructive'
-                : 'bg-primary hover:bg-primary/90 focus-visible:ring-primary'
-            }`}
-          >
-            {confirmLabel}
-          </button>
+          ? <p id="confirm-body" className="mt-2 text-sm text-ink-secondary">{body}</p>
+          : <div id="confirm-body" className="mt-2 text-sm text-ink-secondary">{body}</div>)}
+        <div className="mt-5 flex justify-end gap-2">
+          <Button onClick={onCancel}>{cancelLabel}</Button>
+          <Button variant={destructive ? 'danger-outline' : 'primary'} onClick={onConfirm}>{confirmLabel}</Button>
         </div>
       </div>
     </div>,

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -33,6 +34,7 @@ func (h *LogHandlers) WithSources(s *InternalSources) *LogHandlers {
 
 func (h *LogHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {
 	r.With(authMW).Get("/api/logs", h.GetLogs)
+	r.With(authMW).Get("/api/logs/export", h.Export)
 	r.With(authMW).Get("/api/logs/stats", h.Stats)
 	r.With(authMW).Get("/api/logs/timeline", h.Timeline)
 	r.With(authMW).Post("/api/logs/clear", h.Clear)
@@ -61,25 +63,43 @@ func (h *LogHandlers) gdprEnabled() bool {
 	return enabled
 }
 
+// GetLogs lists access-log rows matching the filters (logFilter), newest
+// first by default. meta.total counts the rows the filters match; when
+// internal sources are left out, meta.internal counts the rows that were left
+// out for that reason alone, so the page can say what it hides.
 func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
+	f, err := parseLogFilter(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	limit := clamp(queryInt(r, "limit", 25), 1, 500)
 	offset := max0(queryInt(r, "offset", 0))
-	sort := sanitiseSort(r.URL.Query().Get("sort"), []string{"timestamp", "source_ip", "destination", "status", "bytes", "method"}, "timestamp")
+	sort := sanitiseSort(r.URL.Query().Get("sort"), []string{"timestamp", "source_ip", "destination", "status", "bytes", "method", "id"}, "timestamp")
 	order := sanitiseOrder(r.URL.Query().Get("order"))
+	if f.beforeID > 0 {
+		// A cursor is a position in id order: the page after it is the next
+		// lower ids, whatever sort was asked for.
+		sort, order, offset = "id", "DESC", 0
+	}
 	gdpr := h.gdprEnabled()
+	internal := h.src.Present()
 
-	total, err := countRows(h.db, "SELECT COUNT(*) FROM proxy_logs")
+	total, hidden, err := countLogs(h.db, f, internal)
 	if err != nil {
 		writeInternalError(w, "logs_count", err)
 		return
 	}
+	meta := ListMeta{Total: total, Limit: limit, Offset: offset, Internal: hidden}
 
+	pageWhere, pageArgs := f.where(internal, true)
 	// sort and order are sanitised against whitelists (sanitiseSort/sanitiseOrder) — safe for interpolation.
+	// The conditions are constants with placeholders; every value is bound.
 	// #nosec G202
 	// #nosec G701
 	rows, err := h.db.Query(
-		"SELECT id,timestamp,source_ip,method,destination,status,bytes,blocked,block_reason FROM proxy_logs ORDER BY "+sort+" "+order+" LIMIT ? OFFSET ?",
-		limit, offset,
+		"SELECT "+logColumns+" FROM proxy_logs WHERE "+pageWhere+" ORDER BY "+sort+" "+order+" LIMIT ? OFFSET ?",
+		append(pageArgs, limit, offset)...,
 	)
 	if err != nil {
 		writeInternalError(w, "list_logs", err)
@@ -87,39 +107,69 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var logs []map[string]any
+	logs := []map[string]any{}
 	for rows.Next() {
-		var id int64
-		var ts, srcIP, method, dest, status, reason sql.NullString
-		var bytes, blocked sql.NullInt64
-		rows.Scan(&id, &ts, &srcIP, &method, &dest, &status, &bytes, &blocked, &reason) //nolint:errcheck
-		ip := srcIP.String
-		if gdpr {
-			ip = maskIP(ip)
+		row, err := scanLogRow(rows)
+		if err != nil {
+			writeInternalError(w, "scan_logs", err)
+			return
 		}
-		logs = append(logs, map[string]any{
-			"id":        id,
-			"timestamp": ts.String,
-			// source_ip on the wire as well as in the schema: the address used
-			// to be client_ip here, source_ip in the dashboard payload and
-			// ip_address in the clients endpoint — three names for one concept
-			// in one API consumed by one UI (SECURE-DOM-08).
-			"source_ip":   ip,
-			"method":      method.String,
-			"destination": dest.String,
-			"status":      status.String,
-			"bytes":       bytes.Int64,
-			// The rule that blocked the request (workers/block_reason.go):
-			// "none" when it was not blocked, "unclassified" for a row logged
-			// before reasons were recorded.
-			"blocked": blocked.Int64 == 1,
-			"reason":  reason.String,
-		})
+		logs = append(logs, row.wire(h.src, gdpr))
 	}
-	if logs == nil {
-		logs = []map[string]any{}
+	if err := rows.Err(); err != nil {
+		writeInternalError(w, "list_logs", err)
+		return
 	}
-	writeList(w, logs, ListMeta{Total: total, Limit: limit, Offset: offset})
+	writeList(w, logs, meta)
+}
+
+// logColumns are the proxy_logs columns a log row is read from, in the order
+// scanLogRow expects.
+const logColumns = "id,timestamp,source_ip,method,destination,status,bytes,blocked,block_reason"
+
+type logRow struct {
+	id                                      int64
+	ts, srcIP, method, dest, status, reason sql.NullString
+	bytes, blocked                          sql.NullInt64
+}
+
+func scanLogRow(rows *sql.Rows) (logRow, error) {
+	var l logRow
+	err := rows.Scan(&l.id, &l.ts, &l.srcIP, &l.method, &l.dest, &l.status, &l.bytes, &l.blocked, &l.reason)
+	return l, err
+}
+
+// wire is the row as GET /api/logs returns it. The source is classified on
+// the stored address, before GDPR mode masks it.
+func (l logRow) wire(src *InternalSources, gdpr bool) map[string]any {
+	ip := l.srcIP.String
+	internal, kind := src.Classify(ip)
+	if gdpr {
+		ip = maskIP(ip)
+	}
+	return map[string]any{
+		"id":        l.id,
+		"timestamp": l.ts.String,
+		// source_ip on the wire as well as in the schema: the address used
+		// to be client_ip here, source_ip in the dashboard payload and
+		// ip_address in the clients endpoint: three names for one concept
+		// in one API consumed by one UI (SECURE-DOM-08).
+		"source_ip":   ip,
+		"method":      l.method.String,
+		"destination": l.dest.String,
+		"status":      l.status.String,
+		"bytes":       l.bytes.Int64,
+		// The rule that blocked the request (workers/block_reason.go):
+		// "none" when it was not blocked, "unclassified" for a row logged
+		// before reasons were recorded.
+		"blocked":      l.blocked.Int64 == 1,
+		"reason":       l.reason.String,
+		"reason_label": workers.ReasonLabel(l.reason.String),
+		// The stack's own traffic (sources.Classifier) and what the address
+		// is, where that is known; kind is empty otherwise.
+		"internal": internal,
+		"kind":     kind,
+	}
 }
 
 func (h *LogHandlers) Stats(w http.ResponseWriter, r *http.Request) {

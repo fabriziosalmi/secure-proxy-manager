@@ -97,6 +97,15 @@ export function formatKilobytes(kb: number): string {
   return `${Math.abs(v) >= 100 ? COUNT.format(v) : SIZE_SMALL.format(v)} ${SIZE_UNITS[unit]}`;
 }
 
+/**
+ * A size in bytes (an access-log row's): "205 B" under 1 KB, then as
+ * formatKilobytes writes it: 6758 -> "6.6 KB", 1258291 -> "1.2 MB".
+ */
+export function formatBytes(bytes: number): string {
+  if (Math.abs(bytes) < 1024) return `${COUNT.format(bytes)} B`;
+  return formatKilobytes(bytes / 1024);
+}
+
 /** "45s", "12 min", "3 h", "2 d": how long ago something was, from its age in seconds. */
 export function formatAge(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));

@@ -37,21 +37,37 @@ The token is single-use, so a second connection attempt with the same token is r
 
 ## Step 3: Receive messages
 
-Each message is a JSON object representing a log entry:
+Each log message is a JSON object for one row just stored in the access log:
 
 ```json
 {
   "id": 1234,
   "timestamp": "2026-03-25 14:32:10",
-  "client_ip": "192.168.1.10",
+  "unix_timestamp": 1774449130,
+  "source_ip": "192.168.1.10",
   "method": "CONNECT",
   "destination": "example.com:443",
-  "status": "200 Connection established",
-  "bytes": 4096
+  "status": "TCP_TUNNEL/200",
+  "bytes": 4096,
+  "elapsed_ms": 12,
+  "blocked": 0,
+  "event_id": "",
+  "reason": "none",
+  "reason_label": "Not blocked",
+  "internal": false,
+  "kind": "Private network address"
 }
 ```
 
-Every application message is a JSON log entry; there are no sentinel/text messages to filter out.
+`id`, `reason`, `reason_label`, `internal` and `kind` mean what they mean in
+`GET /api/logs` (see [Logs](./logs.md)); `blocked` is `0` or `1` here. The
+feed carries every row, internal sources included: a client that shows the
+log with filters applies them to each message. `source_ip` is not masked in
+GDPR mode.
+
+The same connection also carries events, which have a `type` field
+(`{"type": "login_failure", ...}`); a client that only wants log rows skips
+any message with a `type`.
 
 ## Authentication failures
 

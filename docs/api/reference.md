@@ -78,7 +78,8 @@ Optional default-deny outbound egress. Off by default (the `egress_default_deny`
 
 | Method | Path | Description |
 |---|---|---|
-| `GET`  | `/api/logs` | Paginated proxy access logs |
+| `GET`  | `/api/logs` | Paginated proxy access logs, with filters (client, outcome, rule, destination, internal traffic) |
+| `GET`  | `/api/logs/export` | The same rows as streamed CSV |
 | `GET`  | `/api/logs/stats` | Aggregate counts (total, blocked, IP blocks) |
 | `GET`  | `/api/logs/timeline` | Per-hour traffic series |
 | `POST` | `/api/logs/clear` | Clear all logs |

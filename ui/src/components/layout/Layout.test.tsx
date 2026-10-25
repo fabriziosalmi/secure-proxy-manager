@@ -6,7 +6,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from '../ThemeProvider'
 import { GlobalSearch } from '../GlobalSearch'
 import { Layout } from './Layout'
-import { isActivePath, summarizeHealth } from './nav'
+import { isActivePath, summarizeHealth, NAV_GROUPS } from './nav'
 import { createTestQueryClient } from '../../test/helpers'
 import { expectNoAxeViolations } from '../../test/axe'
 import { DESKTOP_QUERY } from '../../hooks/useMediaQuery'
@@ -333,9 +333,10 @@ describe('shell on a small screen', () => {
     shell('/')
     await userEvent.click(screen.getByRole('button', { name: 'Open navigation menu' }))
     expect(screen.getByRole('dialog', { name: 'Navigation' })).toBeInTheDocument()
-    // GlobalSearch maps the number keys to pages; 2 is Blacklists.
+    // GlobalSearch maps the number keys to the sidebar's pages in its order.
+    const second = NAV_GROUPS.flatMap((g) => g.items)[1].to
     fireEvent.keyDown(window, { key: '2' })
-    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/blacklists'))
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(second))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 

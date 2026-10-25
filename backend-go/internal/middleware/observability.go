@@ -54,6 +54,10 @@ func (r *respRecorder) Flush() {
 	}
 }
 
+// Unwrap lets http.ResponseController reach the connection's writer, so a
+// streaming handler (the access-log export) can move its write deadline.
+func (r *respRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
 // routePattern returns the chi route pattern matched for r, or "unmatched".
 // It must be called AFTER the handler ran, once chi has populated the context.
 func routePattern(r *http.Request) string {

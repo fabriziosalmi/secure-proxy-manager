@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/helpers'
 import { GlobalSearch } from './GlobalSearch'
+import { NAV_GROUPS } from './layout/nav'
 
 vi.mock('../lib/api', () => ({
   api: {
@@ -71,5 +72,53 @@ describe('GlobalSearch', () => {
     const hit = await screen.findByText('Settings: Alerts')
     await user.click(hit)
     expect(window.location.pathname).toBe('/settings/alerts')
+  })
+
+  // It sent ?search=, which /api/logs never read: the five newest rows came
+  // back as "matches" for anything typed. The access log searches
+  // destinations with q, and a log result opens the log on that search.
+  it('searches the access log by destination and opens it filtered', async () => {
+    const { api } = await import('../lib/api')
+    vi.mocked(api.get).mockImplementation((url: string) => Promise.resolve({
+      data: { data: url.startsWith('logs?') ? [{ method: 'GET', destination: 'http://ads.example.com/', source_ip: '192.168.1.10', status: 'TCP_DENIED/403' }] : [] },
+    }))
+    const user = userEvent.setup()
+    renderWithProviders(<GlobalSearch />)
+    await user.keyboard('{Meta>}k{/Meta}')
+    await user.type(await screen.findByPlaceholderText(/search/i), 'ads')
+    const hit = await screen.findByText('GET http://ads.example.com/')
+    const call = vi.mocked(api.get).mock.calls.map(([u]) => String(u)).find((u) => u.startsWith('logs?'))!
+    expect(new URLSearchParams(call.split('?')[1]).get('q')).toBe('ads')
+    await user.click(hit)
+    expect(window.location.pathname + window.location.search).toBe('/logs?q=ads')
+  })
+
+  // Quick navigation had a list of its own: five pages, no Clients, Egress or
+  // Audit log, Analytics drawn with a shield. It now follows the sidebar.
+  it('offers every sidebar page in the sidebar order, in a dialog on document.body', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<GlobalSearch />)
+    await user.keyboard('{Meta>}k{/Meta}')
+    const dialog = await screen.findByRole('dialog', { name: 'Global search' })
+    expect(dialog.parentElement).toBe(document.body)
+    const labels = NAV_GROUPS.flatMap((g) => g.items).map((i) => i.label)
+    const buttons = within(dialog).getAllByRole('button').filter((b) => /^\D.*\d+$/.test(b.textContent ?? ''))
+    expect(buttons.map((b) => b.textContent)).toEqual(labels.map((l, i) => `${l}${i + 1}`))
+    expect(labels).toEqual(expect.arrayContaining(['Clients', 'Egress allowlist', 'Audit log']))
+  })
+
+  it('asks each list for five entries with the parameter the backend reads', async () => {
+    const { api } = await import('../lib/api')
+    const user = userEvent.setup()
+    renderWithProviders(<GlobalSearch />)
+    await user.keyboard('{Meta>}k{/Meta}')
+    await user.type(await screen.findByPlaceholderText(/search/i), 'goo')
+    await waitFor(() => expect(vi.mocked(api.get).mock.calls.some(([u]) => String(u).startsWith('domain-blacklist?'))).toBe(true))
+    for (const list of ['ip-blacklist', 'domain-blacklist']) {
+      const call = String(vi.mocked(api.get).mock.calls.map(([u]) => u).filter((u) => String(u).startsWith(`${list}?`)).at(-1))
+      const p = new URLSearchParams(call.split('?')[1])
+      expect(p.get('limit'), list).toBe('5')
+      expect(p.has('page_size'), list).toBe(false)
+    }
   })
 })

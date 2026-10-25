@@ -202,7 +202,7 @@ added fields are additive, so X-API-Version stays 1.
 | `/api/clients/{ip}/details` | totals, `top_domains`, `recent` | client requests; `recent[].reason` and `blocked_by_reason` added |
 | `/api/traffic/statistics`, `/api/logs/timeline` | buckets | client requests |
 | `/api/logs/stats` | counts | client requests; `ip_blocks_count` = reason `direct_ip`, legacy rows keep the URL heuristic; `blocked_by_reason` added |
-| `/api/logs` | rows | all rows (it is the log, DNS rows included); `blocked` and `reason` added |
+| `/api/logs`, `/api/logs/export` | rows | the log, internal sources left out unless `include_internal=true` (DNS rows come from the proxy, so they are internal); `blocked`, `reason` and `reason_label` added; filter by `reason` (`idx_proxy_logs_blocked_reason`) |
 | `/api/status`, `/api/domains/statistics`, `/api/analytics/*`, `/api/waf/test-rule` | | DNS rows out |
 
 ## 9. Upgrade
