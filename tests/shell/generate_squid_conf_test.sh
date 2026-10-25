@@ -74,6 +74,26 @@ conf="$(generate 'touch /config/ssl_bump_enabled')"
 grep -q 'ssl_bump' <<<"$conf" && ok "ssl_bump directives injected" || bad "ssl_bump directives injected"
 n=$(grep -c '^ssl_bump bump all' <<<"$conf")
 [ "$n" -le 1 ] && ok "ssl_bump block not duplicated" || bad "ssl_bump block not duplicated" "found $n"
+# The certificate database used to stay empty ("Cannot create /config/ssl_db"),
+# so Squid stopped as soon as SSL-bump was on: run it, do not just parse it.
+bump="$(docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+  mkdir -p /config /etc/squid /var/spool/squid /var/log/squid /run/squid
+  touch /config/ssl_bump_enabled
+  /usr/local/bin/generate_squid_conf.sh >/tmp/gen1.log 2>&1
+  [ -f /config/ssl_db/index.txt ] && echo db=ok || echo db=missing
+  grep -h "Cannot create" /tmp/gen1.log
+  chown -R proxy:proxy /var/spool/squid /var/log/squid /run/squid
+  squid -z -N >/dev/null 2>&1; rm -f /run/squid/squid.pid
+  # 124 = still running when timeout stopped it after 8 s.
+  timeout 8 squid -N -d1 >/tmp/sq.log 2>&1; echo "squid_rc=$?"
+  grep -m1 -E "FATAL|crashing too rapidly" /tmp/sq.log
+  /usr/local/bin/generate_squid_conf.sh >/tmp/gen2.log 2>&1
+  grep -q "Using existing SSL certificate database" /tmp/gen2.log && echo reuse=ok || echo reuse=no
+' 2>/dev/null)"
+grep -q 'db=ok' <<<"$bump" && ok "SSL-bump: the certificate database is created" || bad "SSL-bump: the certificate database is created" "$bump"
+grep -q 'reuse=ok' <<<"$bump" && ok "SSL-bump: an existing database is kept" || bad "SSL-bump: an existing database is kept" "$bump"
+grep -q 'squid_rc=124' <<<"$bump" && ! grep -qE 'FATAL|crashing' <<<"$bump" \
+  && ok "SSL-bump: Squid runs (the certificate helper does not crash)" || bad "SSL-bump: Squid runs" "$bump"
 
 echo "── GUI whitelist set ──"
 # GUI_IP_WHITELIST names extra client SOURCES. It must not create a destination
@@ -96,6 +116,16 @@ echo "── offline mode ON ──"
 conf="$(generate 'touch /config/offline_mode_enabled')"
 n=$(grep -c '^offline_mode on' <<<"$conf")
 [ "$n" -le 1 ] && ok "offline_mode not appended twice" || bad "offline_mode not appended twice" "found $n"
+
+echo "── an empty value its pattern allows is accepted ──"
+# The backend writes EXTRA_SSL_PORTS= by default; it was refused with a warning
+# on every boot of every default install.
+empty="$(docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+  mkdir -p /config /etc/squid
+  printf "SQUID_PORT=3128\nSQUID_CACHE_MB=1000\nSQUID_MEM_MB=256\nEXTRA_SSL_PORTS=\n" > /config/squid_settings.env
+  /usr/local/bin/generate_squid_conf.sh 2>&1 | grep -c "WARNING: /config/squid_settings.env"
+' 2>/dev/null)"
+[ "$empty" = "0" ] && ok "default squid_settings.env loads without a warning" || bad "default squid_settings.env loads without a warning" "$empty warning(s)"
 
 echo "── injection: nothing in a /config settings file is executed ──"
 # The previous check grepped squid.conf for "pwned", which says nothing about
