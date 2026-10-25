@@ -94,23 +94,17 @@ export interface HealthSummary {
 }
 
 /**
- * One line of service health from GET /api/status. That endpoint reports
- * two services: the backend (it answered) and the proxy (proxy_status).
- * Unknown while loading or when the request failed, never "healthy".
+ * One line of service health from GET /api/status. That endpoint answers for
+ * two of the stack's five services: the backend (it answered) and the proxy
+ * (proxy_status). The line names those two and nothing it was not told about:
+ * it used to read "All 2 services healthy", as if the stack had two.
+ * Unknown while loading or when the request failed, never "running".
  */
 export function summarizeHealth(status: StatusData | null | undefined, state: 'pending' | 'error' | 'success'): HealthSummary {
-  if (state === 'pending') return { tone: 'unknown', text: 'Checking services', down: [] };
-  if (state === 'error' || !status) return { tone: 'unknown', text: 'Status unknown', down: [] };
-  const services = [
-    { name: 'Backend', ok: true },
-    { name: 'Proxy', ok: status.proxy_status === 'running' },
-  ];
-  const down = services.filter((s) => !s.ok).map((s) => s.name);
-  const total = services.length;
-  if (down.length === 0) return { tone: 'success', text: `All ${total} services healthy`, down };
-  return {
-    tone: down.length === total ? 'danger' : 'warning',
-    text: `${down.length} of ${total} services down`,
-    down,
-  };
+  if (state === 'pending') return { tone: 'unknown', text: 'Checking the backend and proxy', down: [] };
+  if (state === 'error') return { tone: 'unknown', text: 'Backend not reachable', down: ['Backend'] };
+  // It answered without a status body: nothing is known about the proxy.
+  if (!status) return { tone: 'unknown', text: 'Status unknown', down: [] };
+  if (status.proxy_status === 'running') return { tone: 'success', text: 'Backend and proxy running', down: [] };
+  return { tone: 'warning', text: 'Proxy not running', down: ['Proxy'] };
 }

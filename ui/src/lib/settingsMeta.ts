@@ -5,7 +5,7 @@
  */
 import { SECRET_KEYS } from './secrets';
 
-export type SectionId = 'overview' | 'access' | 'filtering' | 'inspection' | 'alerts' | 'logs' | 'admin' | 'engine';
+export type SectionId = 'overview' | 'access' | 'filtering' | 'inspection' | 'alerts' | 'logs' | 'admin' | 'engine' | 'appearance';
 
 export interface SectionDef {
   id: SectionId;
@@ -25,6 +25,8 @@ export const SECTIONS: SectionDef[] = [
   { id: 'logs', label: 'Logs and privacy', purpose: 'How long logs are kept and what the log view shows.', keywords: ['retention', 'gdpr', 'privacy', 'mask'] },
   { id: 'admin', label: 'Admin and backup', purpose: 'Password, backup and restore, maintenance.', keywords: ['password', 'backup', 'restore', 'cache', 'reload', 'maintenance'] },
   { id: 'engine', label: 'Proxy engine', purpose: 'Rarely touched: a mistake here can stop every client.', keywords: ['port', 'cache', 'memory', 'ssl ports', 'offline', 'hit ratio', 'bypass'] },
+  // A preference of this browser, not a setting of the proxy: last.
+  { id: 'appearance', label: 'Appearance', purpose: 'How this dashboard looks in this browser.', keywords: ['theme', 'dark', 'light', 'colour', 'color'] },
 ];
 
 export const DEFAULT_SECTION: SectionId = 'overview';
@@ -75,6 +77,8 @@ export const SECTION_KEYS: Record<SectionId, string[]> = {
     'cache_size', 'memory_cache', 'extra_ssl_ports',
     'aggressive_caching_enabled', 'cache_bypass_domains', 'enable_offline_mode',
   ],
+  // Stored in the browser (ThemeProvider), never sent to the backend.
+  appearance: [],
 };
 
 /** The section a key belongs to, for a backend error that names it. */

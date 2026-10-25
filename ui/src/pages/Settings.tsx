@@ -32,6 +32,7 @@ import { AlertsSection } from '../components/settings/sections/AlertsSection';
 import { LogsSection } from '../components/settings/sections/LogsSection';
 import { AdminSection } from '../components/settings/sections/AdminSection';
 import { EngineSection } from '../components/settings/sections/EngineSection';
+import { AppearanceSection } from '../components/settings/sections/AppearanceSection';
 import { needsAttention, type AttentionItem } from '../lib/attention';
 import { egressTotalQuery, statusQuery } from '../lib/queries';
 import type { SectionForm } from '../components/settings/sectionForm';
@@ -66,6 +67,7 @@ function SectionBody({ section, form, rows, attention, attentionLoading, dirty }
     case 'logs': return <LogsSection form={form} />;
     case 'admin': return <AdminSection />;
     case 'engine': return <EngineSection form={form} />;
+    case 'appearance': return <AppearanceSection />;
   }
 }
 

@@ -87,7 +87,7 @@ describe('Settings', () => {
   afterEach(() => { vi.restoreAllMocks() })
 
   describe('sections', () => {
-    it('lists the eight sections in task order and marks the one in the URL', async () => {
+    it('lists the nine sections in task order, Appearance last, and marks the one in the URL', async () => {
       const { container } = renderAt('/settings/access')
       const links = within(sectionNav()).getAllByRole('link')
       expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
@@ -99,6 +99,7 @@ describe('Settings', () => {
         ['Logs and privacy', '/settings/logs'],
         ['Admin and backup', '/settings/admin'],
         ['Proxy engine', '/settings/engine'],
+        ['Appearance', '/settings/appearance'],
       ])
       expect(within(sectionNav()).getByRole('link', { name: 'Clients and access' })).toHaveAttribute('aria-current', 'page')
       expect(within(sectionNav()).getByRole('link', { name: 'Overview' })).not.toHaveAttribute('aria-current')
