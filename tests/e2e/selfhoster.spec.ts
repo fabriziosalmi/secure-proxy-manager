@@ -3,7 +3,8 @@
  *
  * Simulates the full onboarding → daily-use workflow of a self-hoster:
  *   Login · Dashboard · Blacklists (add / paste / URL import / geo-block / remove,
- *   sources, enforcement, tabs in the URL) · Logs page · Settings
+ *   sources, enforcement, tabs in the URL) · Egress allowlist · Audit log ·
+ *   Logs page · Settings
  *
  * Architecture notes:
  *   - API tests run via Playwright's `request` fixture (no browser overhead)
@@ -678,6 +679,155 @@ test.describe('UI: Analytics', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Analytics' })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('region', { name: 'Protection coverage' }).getByRole('listitem')).toHaveCount(6);
     await expect(page.getByRole('region', { name: 'Downloads by file type' })).toBeVisible();
+    const overflow = await page.evaluate(() => {
+      const main = document.querySelector('main')!;
+      return { doc: document.documentElement.scrollWidth - window.innerWidth, main: main.scrollWidth - main.clientWidth };
+    });
+    expect(overflow).toEqual({ doc: 0, main: 0 });
+  });
+});
+
+// ─── UI: Egress allowlist ─────────────────────────────────────────────────────
+
+test.describe('UI: Egress allowlist', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await injectAuth(page, request);
+    await page.goto('/egress');
+    await expect(page.getByRole('heading', { level: 1, name: 'Egress allowlist' })).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('says what the list does from the stored setting, and links to Filtering', async ({ page, request }) => {
+    const token = await apiToken(request);
+    const res = await request.get(`${API_URL}/api/settings`, { headers: { Authorization: `Bearer ${token}` } });
+    const rows = ((await res.json()) as { data: { setting_name: string; setting_value: string }[] }).data;
+    const on = rows.find((r) => r.setting_name === 'egress_default_deny')?.setting_value === 'true';
+    const title = on ? /^Default deny is on/ : /^Default deny is off, so this list has no effect$/;
+    const notice = page.getByRole('status').filter({ has: page.getByText(title) });
+    await expect(notice).toBeVisible({ timeout: 10_000 });
+    await expect(notice.getByRole('link', { name: 'Open Filtering' })).toHaveAttribute('href', '/settings/filtering');
+    await expect(page.getByText(/A domain allows that exact name only: example\.com does not cover www\.example\.com\./)).toBeVisible();
+  });
+
+  test('a destination of the wrong kind is refused at its field before anything is sent', async ({ page }) => {
+    let posted = false;
+    page.on('request', (r) => { if (r.url().endsWith('/api/egress-allowlist') && r.method() === 'POST') posted = true; });
+    await page.getByLabel('Destination', { exact: true }).fill('203.0.113.9');
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(page.getByText('This is an address: choose IP or network as the kind.')).toBeVisible();
+    await expect(page.getByLabel('Destination', { exact: true })).toHaveAttribute('aria-invalid', 'true');
+    expect(posted).toBe(false);
+  });
+
+  test('add a destination, see the backend refuse it twice at the field, and remove it after a confirmation naming it', async ({ page }) => {
+    // New on every attempt, so a retry does not meet its own leftover.
+    const dest = `e2e-${Date.now().toString(36)}.example.org`;
+    await page.getByLabel('Destination', { exact: true }).fill(dest);
+    await page.getByLabel('Note (optional)', { exact: true }).fill('playwright');
+    const [added] = await Promise.all([
+      page.waitForResponse(r => r.url().endsWith('/api/egress-allowlist') && r.request().method() === 'POST', { timeout: 15_000 }),
+      page.getByRole('button', { name: 'Add', exact: true }).click(),
+    ]);
+    expect(added.status()).toBe(200);
+    await page.getByRole('searchbox', { name: 'Search the egress allowlist' }).fill(dest);
+    const row = page.getByRole('table', { name: 'Allowed destinations' }).getByRole('row').filter({ has: page.getByText(dest, { exact: true }) });
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await expect(row.getByText('Exact domain')).toBeVisible();
+    await expect(row.getByText('playwright')).toBeVisible();
+
+    // The same destination again: the backend's refusal is shown at the field.
+    await page.getByLabel('Destination', { exact: true }).fill(dest);
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(page.getByText('entry already in allowlist')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByLabel('Destination', { exact: true })).toHaveAttribute('aria-invalid', 'true');
+
+    await row.getByRole('button', { name: `Remove ${dest}` }).click();
+    await expect(page.getByRole('alertdialog').getByText(`Remove ${dest}?`)).toBeVisible();
+    expect(await confirmDelete(page, 'Remove', '/api/egress-allowlist/')).toBe(200);
+    await expect(page.getByText(`No destination matches "${dest}"`)).toBeVisible({ timeout: 10_000 });
+
+    // Both changes are in the audit log, in words.
+    await page.goto('/audit');
+    await page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Changes' }).click();
+    const events = page.getByRole('table', { name: 'Audit events' });
+    await expect(events.getByText(`Added ${dest} to the egress allowlist`)).toBeVisible({ timeout: 10_000 });
+    await expect(events.getByText(`Removed ${dest} from the egress allowlist`)).toBeVisible();
+  });
+
+  test('fits a 390 px wide screen without horizontal scrolling', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/egress');
+    await expect(page.getByRole('heading', { level: 1, name: 'Egress allowlist' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('table', { name: 'Allowed destinations' })).toBeAttached();
+    const overflow = await page.evaluate(() => {
+      const main = document.querySelector('main')!;
+      return { doc: document.documentElement.scrollWidth - window.innerWidth, main: main.scrollWidth - main.clientWidth };
+    });
+    expect(overflow).toEqual({ doc: 0, main: 0 });
+  });
+});
+
+// ─── UI: Audit log ────────────────────────────────────────────────────────────
+
+test.describe('UI: Audit log', () => {
+  test.beforeEach(async ({ page, request }) => { await injectAuth(page, request); });
+
+  // On a test deployment 640,929 domains were cleared and 71,140 imported,
+  // and the audit log recorded neither.
+  test('a list import and the removal of its source are audited with their counts, and shown in words', async ({ page, request }) => {
+    const token = await apiToken(request);
+    const headers = { Authorization: `Bearer ${token}` };
+    const stamp = Date.now().toString(36);
+    const domains = [`a-${stamp}.audit.test`, `b-${stamp}.audit.test`];
+    const imp = await request.post(`${API_URL}/api/blacklists/import`, { headers, data: { type: 'domain', content: domains.join('\n') } });
+    expect(imp.ok(), await imp.text()).toBeTruthy();
+
+    const log = await request.get(`${API_URL}/api/audit-log?category=changes&limit=20`, { headers });
+    expect(log.ok()).toBeTruthy();
+    const body = (await log.json()) as { data: { action: string; details: string | null }[]; meta: { retention_days: number } };
+    expect(body.meta.retention_days).toBe(365);
+    const row = body.data.find((r) => r.action === 'import_domain_blacklist');
+    expect(row, 'an import_domain_blacklist row').toBeTruthy();
+    expect(JSON.parse(row!.details ?? '{}')).toMatchObject({ added: 2, from: 'paste' });
+    expect(body.data.every((r) => !['login', 'login_failed', 'logout'].includes(r.action))).toBe(true);
+    expect((await request.get(`${API_URL}/api/audit-log?category=bogus`, { headers })).status()).toBe(400);
+
+    // The pasted list is one source: remove it, and the removal is counted.
+    const sources = await request.get(`${API_URL}/api/domain-blacklist/sources`, { headers });
+    const paste = ((await sources.json()) as { data: { id: number | null; kind: string; entries: number; last_added: string }[] }).data
+      .find((s) => s.kind === 'paste' && s.entries === 2);
+    expect(paste?.id, 'the pasted source').toBeTruthy();
+    expect((await request.delete(`${API_URL}/api/domain-blacklist/sources/${paste!.id}`, { headers })).ok()).toBeTruthy();
+
+    await page.goto('/audit');
+    await expect(page.getByRole('heading', { level: 1, name: 'Audit log' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Who changed what, and every sign-in. Kept for 365 days.')).toBeVisible();
+    const events = page.getByRole('table', { name: 'Audit events' });
+    await expect(events.getByText('Removed 2 blocked domains from a pasted list').first()).toBeVisible({ timeout: 10_000 });
+    await expect(events.getByText('Added 2 domains to Blocked domains from a pasted list').first()).toBeVisible();
+  });
+
+  test('Sign-ins shows the session events only, filtered by the backend', async ({ page }) => {
+    await page.goto('/audit');
+    await expect(page.getByRole('heading', { level: 1, name: 'Audit log' })).toBeVisible({ timeout: 15_000 });
+    const [resp] = await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/audit-log') && r.url().includes('category=signins'), { timeout: 15_000 }),
+      page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Sign-ins' }).click(),
+    ]);
+    expect(resp.status()).toBe(200);
+    const events = page.getByRole('table', { name: 'Audit events' });
+    // This run has signed in many times.
+    await expect(events.getByText('Signed in').first()).toBeVisible({ timeout: 10_000 });
+    const texts = await events.locator('tbody tr td:nth-child(3)').allInnerTexts();
+    expect(texts.length).toBeGreaterThan(0);
+    for (const t of texts) expect(['Signed in', 'Signed out', 'Sign-in failed']).toContain(t.trim());
+    await expect(page.getByRole('button', { name: 'Newer' })).toBeDisabled();
+  });
+
+  test('fits a 390 px wide screen without horizontal scrolling', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/audit');
+    await expect(page.getByRole('heading', { level: 1, name: 'Audit log' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('table', { name: 'Audit events' })).toBeAttached();
     const overflow = await page.evaluate(() => {
       const main = document.querySelector('main')!;
       return { doc: document.documentElement.scrollWidth - window.innerWidth, main: main.scrollWidth - main.clientWidth };

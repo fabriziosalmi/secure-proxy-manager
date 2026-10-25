@@ -1,208 +1,192 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import {
-  ScrollText, RefreshCw, Search, Download, ChevronLeft, ChevronRight,
-  LogIn, LogOut, ShieldAlert, KeyRound, Plus, Trash2, Settings2, Database, RotateCcw,
-} from 'lucide-react';
-import { Card, CardContent } from '../components/ui/card';
-import { IpBadge } from '../components/IpBadge';
-import { api } from '../lib/api';
-import { relative } from '../lib/utils';
-import { formatDateTime } from '../lib/format';
+/**
+ * Audit log (route /audit, Audit.dc.html): who changed what, and every
+ * sign-in, newest first.
+ *
+ * - GET /api/audit-log, 50 a page, with ?category=all|changes|signins: the
+ *   filter is applied by the backend, so the count and Newer / Older page
+ *   through the filtered log, not through one page of it.
+ * - Each row in plain words (lib/auditEvents): "Imported 71,140 domains from
+ *   StevenBlack Unified", "Removed all 640,929 blocked domains". A key the
+ *   page does not know is shown verbatim.
+ * - How long rows are kept is meta.retention_days, the bound the backend's
+ *   retention worker applies (pruneAuditLog).
+ * - Export CSV writes the whole filtered log, with every cell that a
+ *   spreadsheet would read as a formula written as text.
+ */
+import { useState } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
+import { Download } from 'lucide-react';
+import { api, getErrorMessage } from '../lib/api';
+import { auditCsv, describeAudit, type AuditKind } from '../lib/auditEvents';
+import { formatCount, formatDateTime } from '../lib/format';
+import { cn } from '../lib/utils';
 import type { AuditEntry, AuditPageData } from '../types';
+import { PageHeader } from '../components/ui/PageHeader';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { DataTable, type Column } from '../components/ui/DataTable';
+import { Button } from '../components/ui/Button';
 
 const PAGE_SIZE = 50;
+const EXPORT_PAGE = 200; // the backend's largest page
+const EXPORT_MAX_PAGES = 1000;
 
-// Visual treatment per action. Colour only, never used to move the row.
-function actionStyle(action: string): { label: string; cls: string; Icon: typeof LogIn } {
-  const a = action.toLowerCase();
-  if (a === 'login') return { label: 'Login', cls: 'text-emerald-600 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/20 dark:border-emerald-500/20', Icon: LogIn };
-  if (a === 'login_failed') return { label: 'Login failed', cls: 'text-red-600 dark:text-red-300 bg-red-500/10 border-red-500/25 dark:border-red-500/25', Icon: ShieldAlert };
-  if (a === 'logout') return { label: 'Logout', cls: 'text-slate-600 dark:text-slate-300 bg-secondary/50 border-border/80 dark:border-border/30', Icon: LogOut };
-  if (a === 'change_password') return { label: 'Password change', cls: 'text-amber-600 dark:text-amber-300 bg-amber-500/10 border-amber-500/20 dark:border-amber-500/20', Icon: KeyRound };
-  if (a.startsWith('add_')) return { label: action.replace(/_/g, ' '), cls: 'text-emerald-600 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/20 dark:border-emerald-500/20', Icon: Plus };
-  if (a.startsWith('delete_') || a.includes('remove')) return { label: action.replace(/_/g, ' '), cls: 'text-orange-600 dark:text-orange-300 bg-orange-500/10 border-orange-500/20 dark:border-orange-500/20', Icon: Trash2 };
-  if (a.startsWith('update_set')) return { label: action.replace(/_/g, ' '), cls: 'text-cyan-600 dark:text-cyan-300 bg-cyan-500/10 border-cyan-500/20 dark:border-cyan-500/20', Icon: Settings2 };
-  if (a === 'database_reset') return { label: 'Database reset', cls: 'text-red-600 dark:text-red-300 bg-red-500/10 border-red-500/25 dark:border-red-500/25', Icon: Database };
-  if (a.includes('config') || a.includes('cache') || a.includes('clear') || a.includes('restore') || a.includes('reload'))
-    return { label: action.replace(/_/g, ' '), cls: 'text-blue-600 dark:text-blue-300 bg-blue-500/10 border-blue-500/20 dark:border-blue-500/20', Icon: RotateCcw };
-  return { label: action.replace(/_/g, ' '), cls: 'text-slate-600 dark:text-slate-300 bg-secondary/50 border-border/80 dark:border-border/30', Icon: ScrollText };
+type Category = 'all' | 'changes' | 'signins';
+
+const CATEGORIES: { value: Category; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'changes', label: 'Changes' },
+  { value: 'signins', label: 'Sign-ins' },
+];
+
+const EMPTY: Record<Category, { title: string; description: string }> = {
+  all: { title: 'No event recorded yet', description: 'Sign-ins and changes to settings and lists appear here as they happen.' },
+  changes: { title: 'No change recorded', description: 'Changes to settings, lists and the proxy appear here once someone makes one.' },
+  signins: { title: 'No sign-in recorded', description: 'Every sign-in, failed sign-in and sign-out appears here.' },
+};
+
+const KIND_STYLE: Record<AuditKind, string> = {
+  change: 'bg-accent-subtle text-accent',
+  signin: 'bg-line-subtle text-ink-muted',
+  'signin-failed': 'bg-warning-subtle text-warning',
+};
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function fetchWholeLog(category: Category): Promise<AuditEntry[]> {
+  const out: AuditEntry[] = [];
+  for (let page = 0, offset = 0; page < EXPORT_MAX_PAGES; page++) {
+    // Paced under the nginx limit of 20 requests per second.
+    if (page > 0) await pause(55);
+    const r = await api.get('audit-log', { params: { limit: EXPORT_PAGE, offset, category } });
+    const rows = (r.data?.data ?? []) as AuditEntry[];
+    out.push(...rows);
+    offset += rows.length;
+    const total = r.data?.meta?.total;
+    if (rows.length < EXPORT_PAGE || (typeof total === 'number' && offset >= total)) break;
+  }
+  return out;
 }
 
-const EMPTY_ENTRIES: AuditEntry[] = [];
+function timeZone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+}
 
 export function Audit() {
+  const [category, setCategory] = useState<Category>('all');
   const [offset, setOffset] = useState(0);
-  const [search, setSearch] = useState('');
+  const [exporting, setExporting] = useState(false);
 
-  const { data, isLoading, isFetching, refetch } = useQuery<AuditPageData>({
-    queryKey: ['audit-log', offset],
-    queryFn: () => api.get(`audit-log?limit=${PAGE_SIZE}&offset=${offset}`).then((r) => r.data),
+  const log = useQuery<AuditPageData>({
+    queryKey: ['audit-log', category, offset],
+    queryFn: () => api.get('audit-log', { params: { limit: PAGE_SIZE, offset, category } }).then((r) => r.data),
+    placeholderData: keepPreviousData,
     refetchInterval: 30_000,
   });
+  const rows = log.data?.data ?? [];
+  const total = log.data?.meta?.total ?? 0;
+  const retention = log.data?.meta?.retention_days;
 
-  const entries: AuditEntry[] = data?.data ?? EMPTY_ENTRIES;
-  const total = data?.meta?.total ?? 0;
-
-  const filtered = useMemo(() => {
-    const t = search.trim().toLowerCase();
-    if (!t) return entries;
-    return entries.filter((e) =>
-      [e.username, e.action, e.target, e.details].some((f) => (f ?? '').toLowerCase().includes(t)),
-    );
-  }, [entries, search]);
-
-  const exportCsv = () => {
-    const rows = [
-      ['timestamp', 'username', 'action', 'target', 'details'],
-      ...filtered.map((e) => [e.timestamp, e.username ?? '', e.action, e.target ?? '', e.details ?? '']),
-    ];
-    // A cell that starts with = + - @ (or a tab/CR) is a formula to Excel,
-    // LibreOffice and Sheets, and these fields are attacker-controlled: a
-    // failed login stores whatever username was sent, unauthenticated. A
-    // leading apostrophe makes the spreadsheet show the text as text.
-    const cell = (c: unknown) => {
-      const s = String(c);
-      return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
-    };
-    const csv = rows
-      .map((r) => r.map((c) => `"${cell(c).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+  const pick = (c: Category) => {
+    setCategory(c);
+    setOffset(0);
   };
 
-  const from = total === 0 ? 0 : offset + 1;
-  const to = offset + entries.length;
+  const exportCsv = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const all = await fetchWholeLog(category);
+      const url = URL.createObjectURL(new Blob([auditCsv(all)], { type: 'text/csv' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `audit-log-${category}-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${formatCount(all.length)} ${all.length === 1 ? 'event' : 'events'}`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Could not export the audit log'));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const columns: Column<AuditEntry>[] = [
+    {
+      id: 'time',
+      header: 'Time',
+      className: 'whitespace-nowrap font-mono text-xs text-ink-muted',
+      cell: (e) => formatDateTime(e.timestamp),
+    },
+    {
+      id: 'user',
+      header: 'User',
+      className: 'whitespace-nowrap',
+      cell: (e) => e.username || <span className="text-ink-muted">No user recorded</span>,
+    },
+    {
+      id: 'event',
+      header: 'Event',
+      className: 'min-w-[14rem]',
+      cell: (e) => {
+        const d = describeAudit(e);
+        return (
+          <span className={cn('inline-block rounded-md px-2 py-0.5 text-xs font-medium [overflow-wrap:anywhere]', KIND_STYLE[d.kind])}>
+            {d.event}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'details',
+      header: 'Details',
+      className: 'min-w-[12rem] text-[13px] text-ink-muted [overflow-wrap:anywhere]',
+      cell: (e) => describeAudit(e).details ?? 'No details',
+    },
+  ];
+
+  const zone = timeZone();
+  let description = 'Who changed what, and every sign-in.';
+  if (typeof retention === 'number') description += ` Kept for ${formatCount(retention)} days.`;
+  else if (log.isSuccess) description += ' How long events are kept is not reported.';
 
   return (
-    <div className="page-enter space-y-6">
-      {/* Header */}
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="System"
+        title="Audit log"
+        description={description}
+        actions={
+          <Button icon={<Download />} disabled={exporting || total === 0} onClick={() => { void exportCsv(); }}>
+            {exporting ? 'Exporting...' : 'Export CSV'}
+          </Button>
+        }
+      />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <ScrollText className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
-            Audit Log
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Administrative actions: logins, blacklist and settings changes, maintenance.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => refetch()}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-secondary/50 hover:bg-secondary/80 transition-colors btn-press"
-          >
-            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
-          <button
-            onClick={exportCsv}
-            disabled={filtered.length === 0}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-secondary/50 hover:bg-secondary/80 transition-colors btn-press disabled:opacity-40 disabled:pointer-events-none"
-          >
-            <Download className="w-4 h-4" />
-            CSV
-          </button>
-        </div>
+        <SegmentedControl<Category> label="Show" options={CATEGORIES} value={category} onChange={pick} />
+        <p className="text-[13px] text-ink-muted">
+          Newest first. Times are in your time zone{zone ? ` (${zone})` : ''}.
+        </p>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label="Filter audit entries on this page"
-          placeholder="Filter this page by user, action, target…"
-          className="w-full pl-9 pr-3 py-2 rounded-lg bg-secondary/40 border border-border/70 text-sm focus:outline-hidden focus:border-cyan-500/40 focus:bg-secondary/60 transition-colors"
+      <section aria-label="Events" className="min-w-0 overflow-hidden rounded-panel border border-line bg-surface">
+        <DataTable<AuditEntry>
+          caption="Audit events"
+          columns={columns}
+          rows={rows}
+          rowKey={(e) => String(e.id)}
+          loading={log.isPending}
+          error={log.isError ? 'The audit log did not answer.' : null}
+          onRetry={() => { void log.refetch(); }}
+          empty={EMPTY[category]}
+          pagination={{ offset, limit: PAGE_SIZE, total, onChange: setOffset, previousLabel: 'Newer', nextLabel: 'Older' }}
         />
-      </div>
-
-      {/* Table */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-secondary/30 border-b border-border/50">
-                <tr>
-                  <th className="px-5 py-3 font-medium">Time</th>
-                  <th className="px-5 py-3 font-medium">User</th>
-                  <th className="px-5 py-3 font-medium">Action</th>
-                  <th className="px-5 py-3 font-medium">Target</th>
-                  <th className="px-5 py-3 font-medium">Details</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/30">
-                {isLoading ? (
-                  <tr><td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">Loading…</td></tr>
-                ) : filtered.length === 0 ? (
-                  <tr><td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">
-                    {search ? 'No entries match the filter.' : 'No audit events recorded yet.'}
-                  </td></tr>
-                ) : (
-                  filtered.map((e) => {
-                    const { label, cls, Icon } = actionStyle(e.action);
-                    const targetIsIp = /^\d{1,3}(\.\d{1,3}){3}/.test(e.target ?? '');
-                    return (
-                      <tr key={e.id} className="row-hover align-top">
-                        <td className="px-5 py-3 whitespace-nowrap">
-                          <span className="text-foreground" title={formatDateTime(e.timestamp)}>
-                            {relative(e.timestamp)}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 whitespace-nowrap font-mono text-xs text-foreground">
-                          {e.username || <span className="text-muted-foreground">no user</span>}
-                        </td>
-                        <td className="px-5 py-3 whitespace-nowrap">
-                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-xs font-medium ${cls}`}>
-                            <Icon className="w-3.5 h-3.5" />
-                            {label}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 font-mono text-xs text-muted-foreground max-w-88 truncate" title={e.target ?? ''}>
-                          {e.target ? (targetIsIp ? <IpBadge ip={e.target} /> : e.target) : <span className="text-muted-foreground/50">no target</span>}
-                        </td>
-                        <td className="px-5 py-3 text-xs text-muted-foreground max-w-[24rem] truncate" title={e.details ?? ''}>
-                          {e.details || <span className="text-muted-foreground/50">no details</span>}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Pagination */}
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">
-          {total === 0 ? 'No entries' : `Showing ${from} to ${to} of ${total}`}
-          {search && entries.length !== filtered.length ? ` · ${filtered.length} match filter` : ''}
-        </span>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
-            disabled={offset === 0}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-secondary/50 hover:bg-secondary/80 transition-colors btn-press disabled:opacity-40 disabled:pointer-events-none"
-          >
-            <ChevronLeft className="w-4 h-4" /> Prev
-          </button>
-          <button
-            onClick={() => setOffset((o) => o + PAGE_SIZE)}
-            disabled={to >= total}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-secondary/50 hover:bg-secondary/80 transition-colors btn-press disabled:opacity-40 disabled:pointer-events-none"
-          >
-            Next <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+      </section>
     </div>
   );
 }

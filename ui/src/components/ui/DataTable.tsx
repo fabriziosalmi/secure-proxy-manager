@@ -55,6 +55,9 @@ export interface TablePagination {
   limit: number;
   total: number;
   onChange: (offset: number) => void;
+  /** The buttons' names, for a list where Previous and Next are ambiguous ("Newer", "Older"). */
+  previousLabel?: string;
+  nextLabel?: string;
 }
 
 export interface DataTableProps<T> {
@@ -240,14 +243,14 @@ export function DataTable<T>({
               disabled={pagination.offset <= 0}
               onClick={() => pagination.onChange(Math.max(0, pagination.offset - pagination.limit))}
             >
-              Previous
+              {pagination.previousLabel ?? 'Previous'}
             </Button>
             <Button
               size="sm"
               disabled={pagination.offset + pagination.limit >= pagination.total}
               onClick={() => pagination.onChange(pagination.offset + pagination.limit)}
             >
-              Next
+              {pagination.nextLabel ?? 'Next'}
             </Button>
           </div>
         </nav>

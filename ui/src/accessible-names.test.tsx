@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from './test/helpers'
 import { Clients } from './pages/Clients'
@@ -34,14 +34,17 @@ describe('controls have an accessible name', () => {
 
   it('Audit filter', () => {
     renderWithProviders(<Audit />)
-    expect(screen.getByRole('textbox', { name: /filter audit entries/i })).toBeInTheDocument()
+    // The filter is a named group of toggle buttons, each named by its text.
+    const group = screen.getByRole('group', { name: 'Show' })
+    for (const name of ['All', 'Changes', 'Sign-ins']) expect(within(group).getByRole('button', { name })).toBeInTheDocument()
   })
 
   it('EgressAllowlist inputs', () => {
     renderWithProviders(<EgressAllowlist />)
-    expect(screen.getByRole('textbox', { name: /destination to allow/i })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: /description/i })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: /search the allowlist/i })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Kind' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Destination' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Note (optional)' })).toBeInTheDocument()
+    expect(screen.getByRole('searchbox', { name: 'Search the egress allowlist' })).toBeInTheDocument()
   })
 
   it('Blacklists search', () => {

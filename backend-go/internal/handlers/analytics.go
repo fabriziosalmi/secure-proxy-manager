@@ -1301,41 +1301,6 @@ func (h *AnalyticsHandlers) TopDomains(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, result)
 }
 
-func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
-	limit := clamp(queryInt(r, "limit", 50), 1, 200)
-	offset := max0(queryInt(r, "offset", 0))
-	total, err := countRows(h.db, "SELECT COUNT(*) FROM audit_log")
-	if err != nil {
-		writeInternalError(w, "audit_log_count", err)
-		return
-	}
-	rows, err := h.db.Query("SELECT * FROM audit_log ORDER BY id DESC LIMIT ? OFFSET ?", limit, offset)
-	if err != nil {
-		writeInternalError(w, "audit_log", err)
-		return
-	}
-	defer rows.Close()
-	cols, _ := rows.Columns()
-	var entries []map[string]any
-	for rows.Next() {
-		vals := make([]any, len(cols))
-		ptrs := make([]any, len(cols))
-		for i := range vals {
-			ptrs[i] = &vals[i]
-		}
-		rows.Scan(ptrs...) //nolint:errcheck
-		row := map[string]any{}
-		for i, c := range cols {
-			row[c] = vals[i]
-		}
-		entries = append(entries, row)
-	}
-	if entries == nil {
-		entries = []map[string]any{}
-	}
-	writeList(w, entries, ListMeta{Total: total, Limit: limit, Offset: offset})
-}
-
 // WAFCategories proxies GET /categories from the WAF container.
 func (h *AnalyticsHandlers) WAFCategories(w http.ResponseWriter, r *http.Request) {
 	resp, err := wafGetBreaker(r.Context(), h.cfg, "/categories")

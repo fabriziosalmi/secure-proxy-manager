@@ -18,7 +18,6 @@ import (
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/validate"
@@ -144,6 +143,10 @@ func listHandler(db *sql.DB, table, col string) http.HandlerFunc {
 func deleteByIDHandler(db *sql.DB, table string, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
+		// The entry is read first so the audit row names it: "id=42" says
+		// nothing once the row is gone.
+		var entry string
+		_ = db.QueryRow(fmt.Sprintf("SELECT %s FROM %s WHERE id=?", listColumns[table], table), id).Scan(&entry)
 		res, err := db.Exec(fmt.Sprintf("DELETE FROM %s WHERE id=?", table), id)
 		if err != nil {
 			writeInternalError(w, "delete_blacklist_entry", err)
@@ -156,10 +159,7 @@ func deleteByIDHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 		if cfg != nil {
 			requestExport()
 		}
-		// Audit log
-		if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
-			database.Audit(db, user, "delete_"+kindFromTable(table), "id="+id, table)
-		}
+		auditChange(db, r, "remove_"+auditListName(table), entry, nil)
 		writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "entry removed"})
 	}
 }
@@ -191,6 +191,9 @@ func bulkDeleteHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 		if deleted > 0 && cfg != nil {
 			requestExport()
 		}
+		if deleted > 0 {
+			auditChange(db, r, "bulk_remove_"+auditListName(table), "", map[string]any{"removed": deleted})
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"status": "success", "data": map[string]any{"deleted": deleted}})
 	}
 }
@@ -198,15 +201,18 @@ func bulkDeleteHandler(db *sql.DB, table string, cfg *config.Config) http.Handle
 func clearAllHandler(db *sql.DB, table string, cfg *config.Config, col string) http.HandlerFunc {
 	_ = col
 	return func(w http.ResponseWriter, r *http.Request) {
-		var count int
-		db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&count) //nolint:errcheck
-		if _, err := db.Exec(fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+		res, err := db.Exec(fmt.Sprintf("DELETE FROM %s", table))
+		if err != nil {
 			writeInternalError(w, "clear_all_blacklist", err)
 			return
 		}
+		// The count is what the DELETE removed, not a COUNT read before it.
+		removed, _ := res.RowsAffected()
+		count := int(removed)
 		if cfg != nil {
 			requestExport()
 		}
+		auditChange(db, r, "clear_"+auditListName(table), "", map[string]any{"removed": removed})
 		writeJSON(w, http.StatusOK, map[string]any{"status": "success", "message": fmt.Sprintf("Cleared %d entries", count)})
 	}
 }
@@ -247,9 +253,7 @@ func (h *BlacklistHandlers) AddIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	requestExport()
-	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
-		database.Audit(h.db, user, "add_ip_blacklist", ip, item.Description)
-	}
+	database.Audit(h.db, requestUser(r), "add_ip_blacklist", ip, item.Description)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "IP added to blacklist"})
 }
 
@@ -283,6 +287,7 @@ func (h *BlacklistHandlers) AddIPWhitelist(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	requestExport()
+	database.Audit(h.db, requestUser(r), "add_ip_whitelist", ip, item.Description)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "IP added to whitelist"})
 }
 
@@ -335,11 +340,17 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	requestExport()
-	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
-		database.Audit(h.db, user, "add_domain_blacklist", domain, item.Description)
-	}
+	database.Audit(h.db, requestUser(r), "add_domain_blacklist", domain, item.Description)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Domain added to blacklist"})
 }
+
+// wildcardEgressMessage refuses "*.example.com" on the egress allowlist. The
+// domain entries reach Squid verbatim as a dstdomain ACL, which reads "*." as
+// part of a literal host name that matches nothing (the watchdog strips it from
+// the blacklist for the same reason): the entry would be listed as allowed and
+// allow nothing. A leading dot is the dstdomain form for a domain and every
+// name under it.
+const wildcardEgressMessage = "write .example.com, with a leading dot, to allow example.com and every name under it: *.example.com would match nothing"
 
 // AddDstAllow adds an entry to the egress destination allowlist (default-deny
 // egress). The entry is auto-classified: an IP or CIDR is stored as 'cidr'
@@ -376,6 +387,10 @@ func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "entry must be an IP, CIDR, or domain")
 		return
 	}
+	if typ == "domain" && strings.HasPrefix(entry, "*.") {
+		writeError(w, http.StatusBadRequest, wildcardEgressMessage)
+		return
+	}
 	_, err := h.db.Exec("INSERT INTO dst_allowlist(entry, type, description) VALUES(?,?,?)", entry, typ, item.Description)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
@@ -386,9 +401,7 @@ func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	requestExport()
-	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
-		database.Audit(h.db, user, "add_egress_allowlist", entry, item.Description)
-	}
+	database.Audit(h.db, requestUser(r), "add_egress_allowlist", entry, item.Description)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Entry added to egress allowlist"})
 }
 
@@ -440,6 +453,7 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 		return
 	}
 	requestExport()
+	database.Audit(h.db, requestUser(r), "add_domain_whitelist", domain, item.Description)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": fmt.Sprintf("Domain added to whitelist (type: %s)", entryType)})
 }
 
@@ -514,6 +528,7 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	} else if sourceID != 0 {
 		database.DropSourceIfEmpty(h.db, table, sourceID)
 	}
+	auditImport(h.db, r, table, &req, stats)
 	msg := fmt.Sprintf("Successfully imported %d entries (%d skipped/invalid)", stats.added, stats.skipped)
 	if stats.bogonSkipped > 0 {
 		msg += fmt.Sprintf(" — %d private/bogon ranges were dropped (a source IP blacklist must not include LAN ranges)", stats.bogonSkipped)
@@ -523,6 +538,28 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 		"message": msg,
 		"data":    map[string]any{"added": stats.added, "skipped": stats.skipped, "bogon_skipped": stats.bogonSkipped},
 	})
+}
+
+// auditImport records an import that ran: the URL it read (or none for pasted
+// text), the Popular list's name when the request names one, and the counts
+// the response reports. It is written whether or not anything was new, so an
+// import that added nothing is visible too.
+func auditImport(db *sql.DB, r *http.Request, table string, req *models.ImportBlacklistRequest, stats importStats) {
+	details := map[string]any{"added": stats.added, "skipped": stats.skipped}
+	if stats.bogonSkipped > 0 {
+		details["bogon_skipped"] = stats.bogonSkipped
+	}
+	target := ""
+	if req.URL != "" {
+		details["from"] = "url"
+		target = redactURL(req.URL)
+		if name := strings.TrimSpace(req.Name); name != "" {
+			details["name"] = name
+		}
+	} else {
+		details["from"] = "paste"
+	}
+	auditChange(db, r, "import_"+auditListName(table), target, details)
 }
 
 // importSource is the source an import's entries are recorded under: the URL
@@ -819,6 +856,11 @@ func (h *BlacklistHandlers) ImportGeo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	requestExport()
+	geoDetails := map[string]any{"added": totalImported, "countries": importedCountries, "requested": len(req.Countries)}
+	if len(fetchErrors) > 0 {
+		geoDetails["failed"] = fetchErrors
+	}
+	auditChange(h.db, r, "geo_block", strings.ToUpper(strings.Join(req.Countries, ",")), geoDetails)
 	resp := map[string]any{
 		"status":  "success",
 		"message": fmt.Sprintf("Imported %d IP blocks for %d of %d countries", totalImported, importedCountries, len(req.Countries)),
@@ -1075,10 +1117,3 @@ func (h *BlacklistHandlers) ImportDomainLegacy(w http.ResponseWriter, r *http.Re
 // concurrency bound and no way to report failure, and which ran the six-file
 // export concurrently with itself (SECURE-CONC-03, SECURE-ERR-05).
 func requestExport() { workers.RequestExport() }
-
-func kindFromTable(table string) string {
-	if strings.Contains(table, "domain") {
-		return "domain"
-	}
-	return "ip"
-}

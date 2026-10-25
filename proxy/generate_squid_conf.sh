@@ -597,8 +597,9 @@ fi
 # destinations in the allowlists (IP/CIDR via `dst`, domain via `dstdomain`);
 # anything else falls through to the final "deny all". This flips the forward
 # proxy from default-allow-destination to default-deny-destination — the basis
-# for a sovereign / EU-strict egress. Trusted sources (ip_whitelist) and local
-# infrastructure (local_dst) are allowed earlier and are unaffected.
+# for a sovereign / EU-strict egress. Allowed IPs (ip_whitelist, a dst ACL:
+# destinations, not sources) and local infrastructure (local_dst) are allowed
+# earlier and stay reachable.
 # The allowlist files always exist (managed by the backend + watchdog); only the
 # enforcement rule is gated by the toggle, so removing the toggle restores the
 # prior default-allow behaviour.

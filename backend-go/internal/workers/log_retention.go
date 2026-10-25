@@ -31,20 +31,20 @@ func StartLogRetention(ctx context.Context, db *sql.DB) {
 	log.Info().Msg("log retention worker started")
 }
 
-// auditRetentionDays bounds audit_log, which nothing pruned: unauthenticated
+// AuditRetentionDays bounds audit_log, which nothing pruned: unauthenticated
 // failed logins write to it, so it grew without limit. A year, independent of
 // log_retention_days, because an audit trail shorter than the traffic logs it
 // explains is not much of one.
-const auditRetentionDays = 365
+const AuditRetentionDays = 365
 
 func pruneAuditLog(db *sql.DB) {
-	res, err := db.Exec("DELETE FROM audit_log WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(auditRetentionDays)+" days")
+	res, err := db.Exec("DELETE FROM audit_log WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(AuditRetentionDays)+" days")
 	if err != nil {
 		log.Warn().Err(err).Msg("audit log retention cleanup failed")
 		return
 	}
 	if n, _ := res.RowsAffected(); n > 0 {
-		log.Info().Int64("deleted", n).Int("days", auditRetentionDays).Msg("audit log retention cleanup done")
+		log.Info().Int64("deleted", n).Int("days", AuditRetentionDays).Msg("audit log retention cleanup done")
 	}
 }
 

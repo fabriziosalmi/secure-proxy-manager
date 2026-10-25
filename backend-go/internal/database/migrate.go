@@ -13,8 +13,9 @@ import (
 // numbered 2 and up run exactly once, in a transaction, and record themselves.
 // Version 3 is a data step: the reconstruction of sinkholed requests
 // (reconstruct.go). Version 4 records where list entries came from
-// (list_sources).
-const schemaVersion = 4
+// (list_sources). Version 5 rewrites "*.name" egress entries to ".name"
+// (egress_wildcards.go).
+const schemaVersion = 5
 
 // applyVersionedMigrations runs the steps a database has not seen yet.
 //
@@ -44,6 +45,11 @@ func applyVersionedMigrations(db *sql.DB) error {
 	if v < 4 {
 		if err := migrateListSources(db); err != nil {
 			return fmt.Errorf("schema version 4: %w", err)
+		}
+	}
+	if v < 5 {
+		if err := rewriteEgressWildcards(db); err != nil {
+			return fmt.Errorf("schema version 5: %w", err)
 		}
 	}
 	return nil
@@ -108,7 +114,7 @@ func migrateListSources(db *sql.DB) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	log.Info().Int("version", 3).Msg("schema migrated: list entries record their source")
+	log.Info().Int("version", 4).Msg("schema migrated: list entries record their source")
 	return nil
 }
 

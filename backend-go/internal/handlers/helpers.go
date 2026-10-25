@@ -72,6 +72,9 @@ type ListMeta struct {
 	// many rows matching the filters were left out because their source is
 	// internal; absent when none are left out (include_internal, source_ip).
 	Internal *int `json:"internal,omitempty"`
+	// RetentionDays: on the audit log, how many days a row is kept before
+	// the retention worker prunes it (workers.AuditRetentionDays).
+	RetentionDays *int `json:"retention_days,omitempty"`
 }
 
 // writeList is the single way a collection leaves this API.

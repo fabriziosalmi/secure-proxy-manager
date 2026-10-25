@@ -1,193 +1,316 @@
+/**
+ * Egress allowlist (route /egress, Egress.dc.html): the destinations a client
+ * may reach when default deny is on.
+ *
+ * - A notice says what the list does right now, from the egress_default_deny
+ *   setting (GET /api/settings) and the size of the list (meta.total of
+ *   GET /api/egress-allowlist): no effect while default deny is off; with it
+ *   on and the list empty, only LAN destinations are reachable.
+ * - Add a destination: a domain or an IP/network, with an optional note.
+ *   What the backend refuses is shown at the field it concerns.
+ * - Allowed destinations: the list, 50 a page, searched on the backend,
+ *   each removed after a confirmation that names it.
+ *
+ * What the proxy does with an entry is read from proxy/generate_squid_conf.sh:
+ * the domains are a dstdomain ACL and the addresses a dst ACL, and the deny
+ * for every other destination comes after `allow ip_whitelist` and
+ * `allow local_dst` (10.0.0.0/8, 192.168.0.0/16), so those stay reachable.
+ */
+import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { Card, CardContent } from '../components/ui/card';
-import { api, getErrorMessage } from '../lib/api';
-import { isValidIP, isValidDomain } from '../lib/validation';
-import type { EgressEntry } from '../types';
-import { ArrowUpFromLine, Plus, Trash2, Globe, Network, ShieldCheck } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
+import { Trash2 } from 'lucide-react';
+import { api, getErrorMessage } from '../lib/api';
+import { formatCount, formatDateTime } from '../lib/format';
+import { egressTotalQuery, settingsQuery } from '../lib/queries';
+import { parseSettings } from '../lib/secrets';
+import { checkDestination, egressEntryKind, type EgressKind } from '../lib/egress';
+import { cn } from '../lib/utils';
+import { useConfirm } from '../hooks/useConfirm';
+import { useDebounced } from '../hooks/useDebounced';
+import type { EgressEntry } from '../types';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Notice } from '../components/ui/Notice';
+import { Section } from '../components/ui/Section';
+import { DataTable, type Column } from '../components/ui/DataTable';
+import { SearchInput } from '../components/ui/SearchInput';
+import { Button, IconButton } from '../components/ui/Button';
 
 const PAGE_SIZE = 50;
 
-export function EgressAllowlist() {
-  const queryClient = useQueryClient();
-  const [newItem, setNewItem] = useState('');
-  const [newDesc, setNewDesc] = useState('');
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
-  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+/** The destinations local_dst lets through before the egress deny. */
+const LAN = '10.0.0.0/8 and 192.168.0.0/16';
 
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
+const FIELD =
+  'h-9 w-full min-w-0 rounded-control border border-line-strong bg-surface px-3 text-sm text-ink placeholder:text-ink-subtle ' +
+  'focus:border-accent focus:outline-hidden focus:ring-2 focus:ring-accent/30 aria-invalid:border-danger';
 
-  const { data: result } = useQuery<{ data: EgressEntry[]; total: number }>({
-    queryKey: ['egress-allowlist', page, search],
-    queryFn: () => api
-      .get(`egress-allowlist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(search)}`)
-      .then(r => ({ data: r.data?.data ?? [], total: r.data?.total ?? 0 })),
-  });
-  const entries = result?.data ?? [];
-  const total = result?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+function Field({ id, label, error, hint, className, children }: {
+  id: string; label: string; error?: string | null; hint?: ReactNode; className?: string; children: ReactNode;
+}) {
+  return (
+    <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
+      <label htmlFor={id} className="text-[13px] font-medium text-ink-secondary">{label}</label>
+      {children}
+      {error && <p id={`${id}-error`} className="text-xs font-medium text-danger">{error}</p>}
+      {hint && !error && <p id={`${id}-hint`} className="text-xs text-ink-muted">{hint}</p>}
+    </div>
+  );
+}
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['egress-allowlist'] });
+function StateNotice({ denyOn, settingsFailed, total }: { denyOn: boolean | undefined; settingsFailed: boolean; total: number | null | undefined }) {
+  const open = <Link to="/settings/filtering" className="text-accent hover:underline">Open Filtering</Link>;
+  if (settingsFailed) {
+    return (
+      <Notice tone="warning" title="Whether default deny is on could not be read" action={open}>
+        The settings did not load, so this page cannot say whether this list is in force.
+      </Notice>
+    );
+  }
+  if (denyOn === undefined) return null;
+  if (!denyOn) {
+    return (
+      <Notice title="Default deny is off, so this list has no effect" action={open}>
+        Clients can reach any destination that no blacklist names. Turn it on in Settings, Filtering, after adding the destinations your clients need.
+      </Notice>
+    );
+  }
+  if (total === 0) {
+    return (
+      <Notice tone="danger" title="Default deny is on and this list is empty: clients reach only LAN destinations" action={open}>
+        Every destination outside {LAN} is refused, except the addresses on Allowed IPs. Add the destinations your clients need, or turn default deny off in Settings, Filtering.
+      </Notice>
+    );
+  }
+  if (typeof total !== 'number') {
+    return (
+      <Notice tone="warning" title="Default deny is on, and the size of this list could not be read" action={open}>
+        Clients reach only the destinations listed here, LAN destinations ({LAN}) and the addresses on Allowed IPs.
+      </Notice>
+    );
+  }
+  return (
+    <Notice title={`Default deny is on: clients reach only these ${formatCount(total)} ${total === 1 ? 'destination' : 'destinations'}`} action={open}>
+      LAN destinations ({LAN}) and the addresses on Allowed IPs stay reachable too. Everything else is refused.
+    </Notice>
+  );
+}
 
-  const addMutation = useMutation({
-    mutationFn: (payload: { entry: string; description: string }) => api.post('egress-allowlist', payload),
-    onSuccess: () => {
-      if (!mountedRef.current) return;
-      toast.success('Entry added to egress allowlist');
-      setNewItem('');
-      setNewDesc('');
-      invalidate();
-    },
-    onError: (err) => { if (mountedRef.current) toast.error(getErrorMessage(err, 'Failed to add entry')); },
-  });
+function AddDestination({ onAdded }: { onAdded: () => void }) {
+  const ids = useId();
+  const [kind, setKind] = useState<EgressKind>('domain');
+  const [value, setValue] = useState('');
+  const [note, setNote] = useState('');
+  const [entryError, setEntryError] = useState<string | null>(null);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const entryRef = useRef<HTMLInputElement>(null);
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`egress-allowlist/${id}`),
-    onSuccess: () => {
-      if (!mountedRef.current) return;
-      toast.success('Entry removed');
-      setPendingDeleteId(null);
-      invalidate();
-    },
-    onError: (err) => { if (mountedRef.current) toast.error(getErrorMessage(err, 'Failed to remove entry')); },
-  });
-
-  const handleAdd = () => {
-    const v = newItem.trim().toLowerCase();
-    if (!v) return;
-    if (!isValidIP(v) && !isValidDomain(v)) {
-      toast.error('Enter a valid IP, CIDR, or domain');
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (inFlight.current) return;
+    setFormError(null);
+    setNoteError(null);
+    const problem = checkDestination(kind, value);
+    setEntryError(problem);
+    if (problem) {
+      entryRef.current?.focus();
       return;
     }
-    addMutation.mutate({ entry: v, description: newDesc.trim() });
+    const entry = value.trim().toLowerCase();
+    inFlight.current = true;
+    setBusy(true);
+    try {
+      await api.post('egress-allowlist', { entry, description: note.trim() });
+      toast.success(`Added ${entry} to the egress allowlist`);
+      setValue('');
+      setNote('');
+      onAdded();
+    } catch (err) {
+      const msg = getErrorMessage(err, 'The destination could not be added');
+      // A refusal (400) is about one of the two fields: the backend names
+      // the description when it is the note; anything else is the entry.
+      if (isAxiosError(err) && err.response?.status === 400) {
+        if (/^description/i.test(msg)) setNoteError(msg);
+        else {
+          setEntryError(msg);
+          entryRef.current?.focus();
+        }
+      } else {
+        setFormError(msg);
+      }
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold tracking-tight bg-linear-to-b from-foreground to-foreground/70 bg-clip-text text-transparent flex items-center">
-          <ArrowUpFromLine className="w-6 h-6 mr-2 text-primary" />Egress Allowlist
-        </h1>
-        <p className="text-muted-foreground">Destinations a client may reach when default-deny egress is on</p>
-      </div>
-
-      <Card>
-        <CardContent className="p-4 flex items-start gap-3">
-          <ShieldCheck className="w-5 h-5 text-primary mt-0.5 shrink-0" />
-          <p className="text-sm text-muted-foreground">
-            When <span className="font-medium text-foreground">Only allowlisted destinations</span> is on in
-            {' '}<Link to="/settings/filtering" className="font-medium text-foreground underline">Settings, Filtering</Link>, a client behind the proxy may reach
-            {' '}<span className="font-medium text-foreground">only</span> the destinations listed here (CIDR/IP or
-            domain); everything else is denied. Turning it on or off reloads the proxy configuration. With it off, this
-            list has no effect.
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-4 space-y-3">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <input
-              value={newItem}
-              onChange={e => setNewItem(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
-              aria-label="Destination to allow (domain or CIDR)"
-              placeholder="example.com  or  203.0.113.0/24"
-              className="flex-1 px-3 py-2 rounded-md bg-background border border-input text-sm"
-            />
-            <input
-              value={newDesc}
-              onChange={e => setNewDesc(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
-              aria-label="Description (optional)"
-              placeholder="Description (optional)"
-              className="flex-1 px-3 py-2 rounded-md bg-background border border-input text-sm"
-            />
-            <button
-              type="button"
-              onClick={handleAdd}
-              disabled={addMutation.isPending}
-              className="flex items-center justify-center px-3 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+    <Section title="Add a destination">
+      <form onSubmit={(e) => { void submit(e); }} noValidate className="flex flex-col gap-3">
+        {formError && <p role="alert" className="rounded-control border border-danger-line bg-danger-subtle px-3 py-2 text-sm text-danger">{formError}</p>}
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
+          <Field id={`${ids}-kind`} label="Kind" className="sm:w-44">
+            <select
+              id={`${ids}-kind`}
+              value={kind}
+              onChange={(e) => { setKind(e.target.value as EgressKind); setEntryError(null); }}
+              className={FIELD}
             >
-              <Plus className="w-4 h-4 mr-1.5" />Add
-            </button>
-          </div>
-          <input
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(0); }}
-            aria-label="Search the allowlist"
-            placeholder="Search..."
-            className="w-full px-3 py-2 rounded-md bg-background border border-input text-sm"
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-0 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-muted-foreground">
-                <th className="px-4 py-2 font-medium">Destination</th>
-                <th className="px-4 py-2 font-medium">Type</th>
-                <th className="px-4 py-2 font-medium">Description</th>
-                <th className="px-4 py-2 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.length === 0 && (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No entries yet</td></tr>
-              )}
-              {entries.map(row => (
-                <tr key={row.id} className="border-b border-border/50 hover:bg-muted/30">
-                  <td className="px-4 py-2 font-mono">{row.entry}</td>
-                  <td className="px-4 py-2">
-                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                      {row.type === 'cidr' ? <Network className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
-                      {row.type}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-muted-foreground">{row.description || 'no description'}</td>
-                  <td className="px-4 py-2 text-right">
-                    {pendingDeleteId === row.id ? (
-                      <span className="inline-flex gap-1">
-                        <button type="button" onClick={() => deleteMutation.mutate(row.id)}
-                          className="px-2 py-1 text-xs rounded bg-destructive text-destructive-foreground hover:bg-destructive/90">Confirm</button>
-                        <button type="button" onClick={() => setPendingDeleteId(null)}
-                          className="px-2 py-1 text-xs rounded bg-secondary hover:bg-secondary/80">Cancel</button>
-                      </span>
-                    ) : (
-                      <button type="button" onClick={() => setPendingDeleteId(row.id)}
-                        className="p-1.5 rounded text-destructive hover:bg-destructive/10" title="Remove">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">{total} entries</span>
-          <div className="flex gap-2">
-            <button type="button" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}
-              className="px-3 py-1.5 rounded-md bg-secondary hover:bg-secondary/80 disabled:opacity-50">Previous</button>
-            <span className="px-2 py-1.5 text-muted-foreground">{page + 1} / {totalPages}</span>
-            <button type="button" disabled={page + 1 >= totalPages} onClick={() => setPage(p => p + 1)}
-              className="px-3 py-1.5 rounded-md bg-secondary hover:bg-secondary/80 disabled:opacity-50">Next</button>
-          </div>
+              <option value="domain">Domain</option>
+              <option value="ip">IP or network</option>
+            </select>
+          </Field>
+          <Field id={`${ids}-entry`} label="Destination" error={entryError} className="sm:flex-[1_1_260px]">
+            <input
+              id={`${ids}-entry`}
+              ref={entryRef}
+              value={value}
+              onChange={(e) => { setValue(e.target.value); if (entryError) setEntryError(null); }}
+              placeholder={kind === 'domain' ? 'acme-v02.api.letsencrypt.org' : '203.0.113.0/24'}
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={entryError ? true : undefined}
+              aria-describedby={entryError ? `${ids}-entry-error` : undefined}
+              className={cn(FIELD, 'font-mono text-[13px]')}
+            />
+          </Field>
+          <Field id={`${ids}-note`} label="Note (optional)" error={noteError} className="sm:flex-[1_1_260px]">
+            <input
+              id={`${ids}-note`}
+              value={note}
+              onChange={(e) => { setNote(e.target.value); if (noteError) setNoteError(null); }}
+              placeholder="What needs it"
+              maxLength={500}
+              aria-invalid={noteError ? true : undefined}
+              aria-describedby={noteError ? `${ids}-note-error` : undefined}
+              className={FIELD}
+            />
+          </Field>
+          <Button type="submit" variant="primary" disabled={busy} className="sm:mt-[26px]">{busy ? 'Adding...' : 'Add'}</Button>
         </div>
-      )}
+        <p className="text-[13px] text-ink-muted">
+          A domain allows that exact name only: example.com does not cover www.example.com. Start it with a dot, as in .example.com,
+          to allow the domain and every name under it. A network such as 203.0.113.0/24 allows every address in it, and any name
+          that resolves into it.
+        </p>
+      </form>
+    </Section>
+  );
+}
+
+export function EgressAllowlist() {
+  const qc = useQueryClient();
+  const { confirm, dialog } = useConfirm();
+  const [search, setSearch] = useState('');
+  const query = useDebounced(search.trim(), 300);
+  const [offset, setOffset] = useState(0);
+
+  const settings = useQuery(settingsQuery);
+  const egressTotal = useQuery(egressTotalQuery);
+  const entries = useQuery({
+    queryKey: ['egress-allowlist', 'entries', offset, query],
+    queryFn: () =>
+      api.get('egress-allowlist', { params: { limit: PAGE_SIZE, offset, search: query } })
+        .then((r) => ({ rows: (r.data?.data ?? []) as EgressEntry[], total: (r.data?.meta?.total ?? 0) as number })),
+    placeholderData: keepPreviousData,
+  });
+
+  const denyOn = settings.data ? parseSettings(settings.data).values.egress_default_deny === 'true' : undefined;
+  const total = egressTotal.isError ? null : egressTotal.data;
+  const refresh = () => { void qc.invalidateQueries({ queryKey: ['egress-allowlist'] }); };
+
+  const remove = async (e: EgressEntry) => {
+    const ok = await confirm({
+      title: `Remove ${e.entry}?`,
+      body: denyOn
+        ? `Default deny is on: clients can no longer reach ${e.entry} once the proxy has the new list.`
+        : 'Default deny is off, so nothing changes for clients until it is turned on.',
+      confirmLabel: 'Remove',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`egress-allowlist/${e.id}`);
+      toast.success(`Removed ${e.entry} from the egress allowlist`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, `Could not remove ${e.entry}`));
+    } finally {
+      refresh();
+    }
+  };
+
+  const columns: Column<EgressEntry>[] = [
+    {
+      id: 'entry',
+      header: 'Destination',
+      className: 'min-w-[11rem]',
+      cell: (e) => (
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <code className="font-mono text-[13px] text-ink [overflow-wrap:anywhere]">{e.entry}</code>
+          {e.description && <span className="text-xs text-ink-muted">{e.description}</span>}
+        </div>
+      ),
+    },
+    { id: 'kind', header: 'Allows', className: 'whitespace-nowrap text-ink-muted', cell: egressEntryKind },
+    { id: 'added', header: 'Added', className: 'whitespace-nowrap text-ink-muted', cell: (e) => formatDateTime(e.added_date) },
+    {
+      id: 'actions',
+      header: 'Actions',
+      headerHidden: true,
+      align: 'right',
+      cell: (e) => <IconButton size="sm" aria-label={`Remove ${e.entry}`} icon={<Trash2 />} onClick={() => { void remove(e); }} />,
+    },
+  ];
+
+  const empty = query
+    ? { title: `No destination matches "${query}"`, description: 'The search looks in the destinations and their notes. Clear it to see the whole list.' }
+    : {
+        title: 'No destination yet',
+        description: denyOn
+          ? `Default deny is on, so every client reaches only LAN destinations (${LAN}) and the addresses on Allowed IPs. Add what your clients need.`
+          : 'If you turn default deny on with an empty list, every client loses access to everything except the LAN. Add what your clients need first.',
+      };
+
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="Protection"
+        title="Egress allowlist"
+        description="With default deny on, clients may reach only the destinations listed here."
+      />
+
+      <StateNotice denyOn={denyOn} settingsFailed={settings.isError} total={total} />
+
+      <AddDestination onAdded={refresh} />
+
+      <Section title="Allowed destinations" flush>
+        <div className="px-5 pb-3">
+          <SearchInput
+            label="Search the egress allowlist"
+            placeholder="Search destinations and notes"
+            value={search}
+            onChange={(v) => { setSearch(v); setOffset(0); }}
+            className="w-full sm:max-w-[360px]"
+          />
+        </div>
+        <DataTable<EgressEntry>
+          caption="Allowed destinations"
+          columns={columns}
+          rows={entries.data?.rows ?? []}
+          rowKey={(e) => String(e.id)}
+          loading={entries.isPending}
+          error={entries.isError ? 'The egress allowlist did not answer.' : null}
+          onRetry={() => { void entries.refetch(); }}
+          empty={empty}
+          pagination={{ offset, limit: PAGE_SIZE, total: entries.data?.total ?? 0, onChange: setOffset }}
+        />
+      </Section>
+      {dialog}
     </div>
   );
 }

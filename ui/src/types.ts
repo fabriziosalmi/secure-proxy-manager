@@ -142,7 +142,11 @@ export interface AuditEntry {
   timestamp: string;
 }
 
-export type AuditPageData = ListResponse<AuditEntry>;
+/** GET /api/audit-log: meta also says how many days a row is kept. */
+export interface AuditPageData {
+  data: AuditEntry[];
+  meta: ListMeta & { retention_days?: number };
+}
 
 export interface ClientStat {
   ip_address: string;

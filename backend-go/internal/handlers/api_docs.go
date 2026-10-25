@@ -34,7 +34,7 @@ var routeDocs = map[string]docMeta{
 	"GET /api/analytics/shadow-it":              {auth: true, desc: "Client requests of the last 7 days to known services (file sharing, messaging, AI, social), by host"},
 	"GET /api/analytics/top-domains":            {auth: true, desc: "Top 50 accessed domains (for word cloud)"},
 	"GET /api/analytics/user-agents":            {auth: true, desc: "Client requests of the last 7 days by HTTP method and by kind of service (from the host)"},
-	"GET /api/audit-log":                        {auth: true, desc: "Admin action audit trail (who changed what, when)"},
+	"GET /api/audit-log":                        {auth: true, desc: "Admin action audit trail (who changed what, when), newest first; ?category=all|changes|signins filters on the server; meta.retention_days is how long a row is kept"},
 	"POST /api/auth/login":                      {auth: false, desc: "JWT login — returns access_token"},
 	"POST /api/blacklists/import":               {auth: true, desc: "Import blacklist from URL or text ({type: 'ip'|'domain', url?, content?, name?}); the entries are recorded under the URL, or a new pasted-list source"},
 	"GET /api/blacklists/enforcement":           {auth: true, desc: "What enforces each list: the domain limit, the blocked domains the allowed list removes, and the proxy's records of what Squid holds (null when not written)"},
