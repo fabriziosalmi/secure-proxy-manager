@@ -143,7 +143,9 @@ process holding one; free it, change the host side of the mapping, or set
   that records every list change and keeps rows for 365 days. A WebSocket feed
   streams new log rows to the UI.
 - **Alerts.** WAF blocks and failed sign-ins can be sent to a webhook, Gotify,
-  Telegram, ntfy or Microsoft Teams.
+  Telegram, ntfy or Microsoft Teams. Alerts of one type from one address are
+  grouped into a digest (10 minutes by default), and each channel sends at
+  most 20 per hour by default, then one notice with the count it held.
 - **Operations.** Prometheus metrics on the internal network (backend
   `:5000/metrics`, WAF `:8080/metrics`), health probes `/livez` and `/readyz`,
   configuration backup and restore in Settings > Admin and backup.

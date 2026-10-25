@@ -151,13 +151,13 @@ Details: [Settings and Maintenance API](./settings.md).
 | `GET`    | `/api/security/download-ca` | The SSL-bump CA certificate (`/config/ssl_cert.pem`) |
 | `GET`    | `/api/security/rate-limits` | Failed-login counts per address |
 | `DELETE` | `/api/security/rate-limits/{ip}` | Clear one address's count |
-| `POST`   | `/api/notifications/test` | Send one test alert to every channel that has all its settings (webhook, Gotify, Telegram, ntfy, Teams); `data.channels` reports each delivery |
+| `POST`   | `/api/notifications/test` | Send one test alert to every channel that has all its settings (webhook, Gotify, Telegram, ntfy, Teams), outside the [notification limits](./settings.md#notification-limits); `data.channels` reports each delivery |
 
 ## Internal
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/internal/alert` | WAF block notifications. With `INTERNAL_ALERT_TOKEN` set, only `Authorization: Bearer <that token>` is accepted; without it, normal admin authentication |
+| `POST` | `/api/internal/alert` | WAF block notifications. With `INTERNAL_ALERT_TOKEN` set, only `Authorization: Bearer <that token>` is accepted; without it, normal admin authentication. The alerts pass the [notification limits](./settings.md#notification-limits) |
 | `POST` | `/api/dns/detect` | Probe a subnet for Pi-hole or AdGuard instances (at most 2 scans at a time) |
 | `GET`  | `/debug/pprof/...` | Go runtime profiles (authenticated) |
 

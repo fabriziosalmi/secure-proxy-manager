@@ -110,6 +110,41 @@ The allowlist destinations themselves are not setting values. They are managed t
 
 ---
 
+## Notification limits
+
+WAF blocks and failed sign-ins reach the alert channels through one queue in the backend, which applies these settings to every event. They are read on each event, so a save applies to the next one. The test alert (`POST /api/notifications/test`) is outside them.
+
+| Setting | Default | Values | Effect |
+|---|---|---|---|
+| `notify_group_window_minutes` | `10` | whole number, 1 to 1440 | Alerts with the same `event_type` and `client_ip` are grouped. The first is sent at once; the others within this many minutes are counted, and one digest follows when the window ends. |
+| `notify_max_per_hour` | `20` | whole number, 1 to 1000 | Each channel sends at most this many deliveries in any rolling hour, digests included. Past it the channel holds everything and counts it; once one of its deliveries in the hour is an hour old it sends one notice with the count, which takes that slot, and then sends again. |
+| `notify_waf_block` | `"true"` | `"true"`, `"false"` | `"false"`: WAF blocks send nothing. |
+| `notify_login_failure` | `"true"` | `"true"`, `"false"` | `"false"`: failed sign-ins send nothing. |
+| `notify_min_level` | `info` | `info`, `warning`, `error` | Events below this level send nothing. WAF blocks are `error`, failed sign-ins `warning`; an event with no level counts as `info`. |
+
+A value outside these is refused with `400`. A stored value that is not usable (an older install, a row edited by hand) is read as the default.
+
+A digest is posted like any alert, with `event_type` set to the grouped type plus `_digest`:
+
+```json
+{
+  "event_type": "waf_block_digest",
+  "level": "error",
+  "message": "WAF blocked 412 more requests from 203.0.113.5 in the last 10 minutes: SQLI 380, XSS 32",
+  "client_ip": "203.0.113.5",
+  "count": 412,
+  "window_minutes": 10,
+  "category_counts": { "SQLI": 380, "XSS": 32 },
+  "timestamp": "2026-10-25T12:10:00Z"
+}
+```
+
+The message names the three most frequent categories and sums the rest as `other`. The held-back notice is `{"event_type": "alerts_held_back", "level": "warning", "count": N, "message": "N alerts held back in the last hour; see Analytics and the Audit log"}`. The backend closes due windows and sends due notices every 5 seconds. It keeps at most 10,000 groups; past that, a new address joins its event type's overflow group, whose digest reads "from other addresses".
+
+The counts are kept in memory. A graceful shutdown sends every pending digest and every held-back notice before the backend exits; a crash loses them. `spm_notifications_held_total{reason}` on `/metrics` counts what was held: `grouped` for each event counted into a digest, `cap` for each delivery a channel held.
+
+---
+
 ## Health
 
 `GET /api/health`, `GET /health` and the readiness probes are described in
