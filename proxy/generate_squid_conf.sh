@@ -120,7 +120,9 @@ load_settings() {
         done
         if [ -z "$re" ]; then
             echo "WARNING: $file: ignoring unknown key '$key'"
-        elif printf '%s' "$val" | grep -Eqx -- "$re"; then
+        # %s\n, not %s: grep reads no line at all from an empty value, so a
+        # pattern that allows empty (EXTRA_SSL_PORTS) refused the default.
+        elif printf '%s\n' "$val" | grep -Eqx -- "$re"; then
             printf -v "$key" '%s' "$val"
         else
             echo "WARNING: $file: ignoring $key, its value is not of the form $re"
@@ -177,10 +179,25 @@ else
     echo "Using existing SSL certificates."
 fi
 
-if [ ! -d /config/ssl_db/db ] || [ -z "$(ls -A /config/ssl_db)" ]; then
+# security_file_certgen -c creates the database (index.txt, size, certs/) and
+# refuses a directory that already exists, which /config/ssl_db always is by
+# here (created above). It was called on that directory, failed with "Cannot
+# create /config/ssl_db" and left it empty, while this script printed
+# "initialized"; with SSL-bump on, the certificate helper then crashed and
+# Squid stopped ("sslcrtd_program helpers are crashing too rapidly"). The test
+# also looked for a db/ subdirectory the tool never creates. The database is
+# built beside the directory and moved in.
+if [ ! -f /config/ssl_db/index.txt ]; then
     echo "Initializing SSL certificate database..."
-    /usr/lib/squid/security_file_certgen -c -s /config/ssl_db -M 4MB
-    echo "SSL certificate database initialized."
+    rm -rf /config/ssl_db.new
+    if /usr/lib/squid/security_file_certgen -c -s /config/ssl_db.new -M 4MB >/dev/null \
+        && rm -rf /config/ssl_db/* && mv /config/ssl_db.new/* /config/ssl_db/; then
+        chown -R proxy:proxy /config/ssl_db
+        echo "SSL certificate database initialized."
+    else
+        echo "WARNING: the SSL certificate database could not be created; SSL-bump will not work"
+    fi
+    rm -rf /config/ssl_db.new
 else
     echo "Using existing SSL certificate database."
 fi
