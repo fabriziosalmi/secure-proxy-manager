@@ -1175,7 +1175,9 @@ func (h *AnalyticsHandlers) FileExtensions(w http.ResponseWriter, r *http.Reques
 		Ext   string `json:"ext"`
 		Count int    `json:"count"`
 	}
-	var exts []extItem
+	// Empty lists, never null: a window with no file request is a list with
+	// nothing in it, and the Analytics page failed on null (reduce of null).
+	exts := []extItem{}
 	for e, c := range extCounts {
 		exts = append(exts, extItem{"." + e, c})
 	}
@@ -1220,7 +1222,7 @@ func (h *AnalyticsHandlers) FileExtensions(w http.ResponseWriter, r *http.Reques
 		Category string `json:"category"`
 		Count    int    `json:"count"`
 	}
-	var categories []catItem
+	categories := []catItem{}
 	for cat, count := range catCounts {
 		categories = append(categories, catItem{cat, count})
 	}

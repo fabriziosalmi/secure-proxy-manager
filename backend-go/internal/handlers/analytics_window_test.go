@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -177,6 +179,27 @@ func TestFileExtensionsReadTheURLPathOnly(t *testing.T) {
 	// Five rows are URLs (the CONNECT target is not), read under the limit.
 	if ft.Examined == nil || *ft.Examined != 5 || ft.Limit == nil || *ft.Limit != fileExtensionsLimit {
 		t.Errorf("examined %v of limit %v, want 5 of %d", ft.Examined, ft.Limit, fileExtensionsLimit)
+	}
+}
+
+// A window with no request for a file has empty lists, not null: the
+// Analytics page failed on null ("Cannot read properties of null").
+func TestFileExtensionsOfAnEmptyWindowAreEmptyLists(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	insertLogRow(t, db, time.Now(), lanClient, "CONNECT", "host.test:443", 0, "none")
+	w := httptest.NewRecorder()
+	NewAnalyticsHandlers(db, cfg).FileExtensions(w, httptest.NewRequest("GET", "/api/analytics/file-extensions", nil))
+	var resp struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"extensions", "categories"} {
+		if got := string(resp.Data[k]); got != "[]" {
+			t.Errorf("%s = %s, want []", k, got)
+		}
 	}
 }
 

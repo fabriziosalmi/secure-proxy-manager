@@ -146,7 +146,7 @@ export function ServiceKinds({ kinds }: { kinds: QueryState<ServiceTypeData> }) 
   let body: ReactNode;
   if (kinds.loading) body = <Loading what="traffic by kind of service" />;
   else if (kinds.error || !kinds.data) body = <Missing>Not reported: analytics/user-agents did not answer.</Missing>;
-  else if (kinds.data.service_types.length === 0) body = <p className="text-sm text-ink-muted">No client requests in the last 7 days.</p>;
+  else if ((kinds.data.service_types ?? []).length === 0) body = <p className="text-sm text-ink-muted">No client requests in the last 7 days.</p>;
   else body = <CountBars label="Client requests by kind of service" rows={kinds.data.service_types} />;
   return (
     <Section
@@ -169,23 +169,27 @@ export function FileTypes({ files }: { files: QueryState<FileExtData> }) {
   } else if (files.error || !d) {
     body = <Missing>Not reported: analytics/file-extensions did not answer.</Missing>;
   } else {
-    const total = d.categories.reduce((n, c) => n + c.count, 0);
+    // A backend before the empty-list fix sent null for a window with no file
+    // request; that is no file request, not a crash.
+    const categories = d.categories ?? [];
+    const extensions = d.extensions ?? [];
+    const total = categories.reduce((n, c) => n + c.count, 0);
     const capped = typeof d.examined === 'number' && typeof d.limit === 'number' && d.examined >= d.limit;
     const capNote = capped ? ` Counted in the newest ${formatCount(d.limit as number)} requests with a URL of the window.` : '';
     if (total === 0) {
       body = <p className="text-sm text-ink-muted">No request for a file in the last 7 days.{capNote}</p>;
     } else {
-      const onlyOther = d.categories.length === 1 && d.categories[0].category === 'Other';
+      const onlyOther = categories.length === 1 && categories[0].category === 'Other';
       body = (
         <div className="flex flex-col gap-3">
           <p className="text-sm text-ink">
             {formatCount(total)} {total === 1 ? 'download' : 'downloads'}
             {onlyOther ? ', all in the Other group: no recognised file type.' : '.'}
           </p>
-          {!onlyOther && <CountBars label="Downloads by file type" rows={d.categories.map((c) => ({ name: c.category, count: c.count }))} />}
+          {!onlyOther && <CountBars label="Downloads by file type" rows={categories.map((c) => ({ name: c.category, count: c.count }))} />}
           <p className="text-[13px] text-ink-muted [overflow-wrap:anywhere]">
-            Extensions: {d.extensions.slice(0, 8).map((e) => `${e.ext} ${formatCount(e.count)}`).join(', ')}
-            {d.extensions.length > 8 && `, and ${formatCount(d.extensions.length - 8)} more`}.{capNote}
+            Extensions: {extensions.slice(0, 8).map((e) => `${e.ext} ${formatCount(e.count)}`).join(', ')}
+            {extensions.length > 8 && `, and ${formatCount(extensions.length - 8)} more`}.{capNote}
           </p>
         </div>
       );

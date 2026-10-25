@@ -186,6 +186,20 @@ describe('Analytics', () => {
     }
   })
 
+  // The backend used to send null lists for a window with no file request,
+  // and the page fell into its error boundary (reduce of null).
+  it('says there was no request for a file when the lists are empty or null', async () => {
+    const saved = bodies['analytics/file-extensions']
+    bodies['analytics/file-extensions'] = { extensions: null, categories: null, examined: 0, limit: 10000 }
+    try {
+      renderWithProviders(<Analytics />)
+      await waitFor(() => { expect(within(region('Downloads by file type')).getByText('No request for a file in the last 7 days.')).toBeInTheDocument() })
+      expect(screen.getByRole('heading', { level: 2, name: 'Protection coverage' })).toBeInTheDocument()
+    } finally {
+      bodies['analytics/file-extensions'] = saved
+    }
+  })
+
   it('writes every count with en-US grouping in any browser locale', async () => {
     simulateItalianLocale()
     renderWithProviders(<Analytics />)
