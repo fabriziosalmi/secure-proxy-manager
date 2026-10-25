@@ -1,50 +1,72 @@
 # Blacklists and Whitelists
 
-Secure Proxy Manager keeps four lists, each with its own role in the request path:
+Secure Proxy Manager keeps four lists, each with its own role in the request path. The **Blacklists** page has a tab for each (Blocked IPs, Blocked domains, Allowed IPs, Allowed domains); the tab is in the address (`/blacklists?tab=blocked-domains`), so a link opens it.
 
-| List | Layer | Effect |
+| List | Enforced by | Effect |
 |---|---|---|
-| Domain blacklist | Squid + dnsmasq | Domain is rejected by Squid; dnsmasq sinkholes it to `0.0.0.0` |
-| IP blacklist | Squid | Squid rejects connections to the matching destination IP or CIDR range |
-| IP whitelist | Squid | Whitelisted destination IPs bypass the direct-IP block rule |
-| Domain whitelist | dnsmasq | Domains are excluded from the dnsmasq sinkhole, so they resolve normally even if blacklisted |
+| Domain blacklist | dnsmasq, and Squid while the list is small enough | dnsmasq answers `0.0.0.0` and `::` for every entry; Squid also refuses the name itself while the list has at most `SPM_SQUID_DOMAIN_ACL_MAX` names (default 250,000) |
+| IP blacklist | Squid | Squid refuses requests to a matching destination IP or CIDR range |
+| IP whitelist | Squid | Matching destinations get past the direct-IP rule and the final deny; the blacklists are checked first, so it does not override them |
+| Domain whitelist | the export | An exact name on it is left out of the domain blacklist before dnsmasq and Squid receive it |
+
+Each tab has an **Enforcement** section that says what enforces the list from recorded state: the proxy writes what it loaded (`/config/domain_acl_status.json` for the domains, `/config/ip_blacklist_acl_status.json` and `/config/ip_whitelist_acl_status.json` for the networks Squid loads after merging overlapping entries), and the page says "Not reported" when a record is missing.
 
 ## Domain blacklist
 
 Blocks HTTP and HTTPS requests to matching destinations.
 
-- Exact match: `malicious.example`
-- Wildcard subdomain: `*.ads.example.com`
+- A name blocks that exact host, not its subdomains: `malicious.example` blocks `malicious.example`, and `ads.malicious.example` stays reachable unless it is listed too.
+- An entry written `*.ads.example.com` is accepted and blocks `ads.example.com` itself, in dnsmasq and in Squid alike: the exporter and the proxy both drop the `*.`. It does not cover subdomains.
 
-Manage via **Web UI → Blacklists → Domains** or the [API](/api/blacklists#domain-blacklist).
+The list is limited to `SPM_DNS_BLOCKLIST_MAX_DOMAINS` entries; see [Size limit](#size-limit).
+
+Manage via **Web UI → Blacklists → Blocked domains** or the [API](/api/blacklists#domain-blacklist).
 
 ## IP blacklist
 
-Blocks requests targeting the matching destination IP.
+Blocks requests to the matching destination IP.
 
 - Single IP: `203.0.113.5`
 - CIDR range: `198.51.100.0/24`
 
-Manage via **Web UI → Blacklists → IPs** or the [API](/api/blacklists#ip-blacklist).
+Private, loopback, link-local, CGNAT and other non-routable ranges are refused: blocking them would cut off the proxy's own clients. Before Squid loads the list, the proxy merges overlapping and adjacent entries into the fewest networks that cover the same addresses.
+
+Manage via **Web UI → Blacklists → Blocked IPs** or the [API](/api/blacklists#ip-blacklist).
 
 ## IP whitelist
 
-Whitelisted destination IPs bypass the direct-IP block rule. Use this for trusted LAN devices reached by IP (NAS, printers, IoT devices).
+Whitelisted destination IPs get past the direct-IP block rule and the final deny. Use this for trusted LAN devices reached by IP (NAS, printers, IoT devices).
 
 - Single IP: `192.168.1.50`
 - CIDR range: `192.168.1.0/24`
 
 ::: tip
-The IP whitelist applies to **destination** IPs. It does not affect blocking of source IPs.
+The IP whitelist applies to **destination** IPs. Squid checks the IP and domain blacklists before it, so an address on both the IP blacklist and the IP whitelist stays blocked.
 :::
 
-Manage via **Web UI → Blacklists → Whitelist** or the [API](/api/blacklists#ip-whitelist).
+Manage via **Web UI → Blacklists → Allowed IPs** or the [API](/api/blacklists#ip-whitelist).
 
 ## Domain whitelist
 
-Whitelisted domains are removed from the dnsmasq blocklist, so they resolve normally even if they are also present in the domain blacklist. Use this for essential services (GitHub, Docker registries, package mirrors) before importing large blocklists that may include them.
+A name on the domain whitelist is left out of the domain blacklist the backend exports, so neither dnsmasq nor Squid receives it. Use this for essential services (GitHub, Docker registries, package mirrors) before importing large blocklists that may include them. The match is exact: `github.com` here takes out a blacklist entry `github.com`, not `api.github.com`. Wildcards are refused.
 
-Manage via **Web UI → Blacklists → Domain Whitelist** or the [API](/api/blacklists#domain-whitelist).
+Manage via **Web UI → Blacklists → Allowed domains** or the [API](/api/blacklists#domain-whitelist).
+
+## Where the entries came from
+
+Every entry records the source that added it:
+
+| Source | Recorded for |
+|---|---|
+| The URL, with the list's name for a Popular list | an import from a URL, a Popular list, the automatic refresh of that URL |
+| Manual | an entry added on its own |
+| Pasted list | each list pasted into the import form, one source per paste |
+| GeoIP: CC | a country's address blocks |
+| Restore | each configuration restore, one source per list |
+
+An entry belongs to the source that added it first: importing a list that repeats an entry already present does not move it. The **Where the entries came from** section of each tab lists the sources with the entries each added and when, and **Remove batch** removes exactly those entries, after a confirmation that names how many go; the lists are then exported again, so Squid and dnsmasq stop enforcing them. Entries added before this release show "Source not recorded" and can be removed together the same way.
+
+**Export** downloads the whole list, one entry per line.
 
 ## Destination allowlist (default-deny egress)
 
@@ -100,7 +122,7 @@ Whitelists and blacklists still apply when default-deny egress is on. A destinat
 
 ### Curated public lists (one click)
 
-In the web UI, open **Blacklists → Popular lists** to import any of the following:
+In the web UI, open **Blacklists → Popular lists** (on the Blocked IPs and Blocked domains tabs) to import any of the following. The entries are recorded under the list's URL and name, so the list can be removed as a whole later.
 
 **IP lists.**
 
@@ -135,7 +157,7 @@ The aggregated `fabriziosalmi/blacklists` list (5.5 million domains on
 default limits it got dnsmasq killed for lack of memory, and without DNS the
 proxy resolves nothing.
 
-The exact list, URLs, and descriptions are defined in `ui/src/pages/Blacklists.tsx` and may evolve between releases.
+The exact list, URLs, and descriptions are defined in `ui/src/components/blacklists/popularLists.ts` and may evolve between releases. The page shows the limit, and says when the list is full.
 
 ### Import from URL
 
@@ -153,7 +175,7 @@ curl -X POST https://localhost:8443/api/blacklists/import \
   -d '{"type": "ip", "url": "https://example.com/ips.txt"}'
 ```
 
-Per-type endpoints are also accepted: `POST /api/ip-blacklist/import` and `POST /api/domain-blacklist/import`.
+An optional `"name"` labels the source, as the Popular lists do. The retired per-type endpoints `POST /api/ip-blacklist/import` and `POST /api/domain-blacklist/import` answer `410 Gone` naming this one.
 
 ### Import inline content
 
@@ -166,9 +188,9 @@ curl -X POST https://localhost:8443/api/blacklists/import \
 ### Supported formats
 
 - Plain text: one entry per line.
-- JSON array: `["entry1", "entry2"]`.
-- JSON objects: `[{"domain": "example.com"}]`.
-- Lines beginning with `#` are ignored.
+- Hosts files: the last field of a line is the entry (`0.0.0.0 ads.example` imports `ads.example`).
+- A domain written as a URL is reduced to its host name.
+- Blank lines and lines beginning with `#` or `;` are ignored; an entry already listed, or not valid, is skipped and counted.
 
 ### Geo-based IP blocking
 
@@ -178,7 +200,7 @@ curl -X POST https://localhost:8443/api/blacklists/import-geo \
   -d '{"countries": ["RU", "CN"]}'
 ```
 
-Country IP ranges are pulled from `herrbischoff/country-ip-blocks` (IPv4) and merged into the IP blacklist.
+Each country's IPv4 blocks are fetched from ipdeny.com, or from `herrbischoff/country-ip-blocks` when ipdeny does not answer (or from `GEOIP_URL` when it is set), and added to the IP blacklist under one source per country.
 
 ## Automatic refresh
 

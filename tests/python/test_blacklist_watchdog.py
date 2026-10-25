@@ -620,6 +620,38 @@ def test_a_synced_ip_list_is_collapsed_and_others_are_copied_verbatim(w, state, 
     assert dom_dst.read_text() == ".example.com\n"
 
 
+def test_normalizing_an_ip_list_records_how_many_networks_squid_loads(w, tmp_path, monkeypatch):
+    # The Blacklists page shows the merged count from this record; the backend
+    # cannot derive it without repeating the merge.
+    acl, status = tmp_path / "local.txt", tmp_path / "ip_blacklist_acl_status.json"
+    monkeypatch.setattr(w, "IP_ACL_STATUS", {str(acl): str(status)})
+    acl.write_text("192.0.2.0/25\n192.0.2.128/25\n198.51.100.7\n# note\n\nnot-an-ip\n")
+    w.normalize_ip_file(str(acl))
+    record = json.loads(status.read_text())
+    want = {"version": 1, "entries": 4, "networks": 2, "dropped": 1}
+    assert {k: record[k] for k in want} == want
+    assert isinstance(record["written_at"], int)
+    assert acl.read_text() == "192.0.2.0/24\n198.51.100.7\n"
+
+
+def test_a_failed_normalization_leaves_no_stale_ip_record(w, tmp_path, monkeypatch):
+    acl, status = tmp_path / "local.txt", tmp_path / "ip_blacklist_acl_status.json"
+    monkeypatch.setattr(w, "IP_ACL_STATUS", {str(acl): str(status)})
+    status.write_text('{"version": 1, "entries": 9, "networks": 9, "dropped": 0, "written_at": 1}\n')
+    # The file is gone: the read fails, Squid holds whatever it had, and the
+    # record of an earlier merge no longer describes it.
+    w.normalize_ip_file(str(acl))
+    assert not status.exists()
+
+
+def test_lists_without_a_record_write_none(w, tmp_path, monkeypatch):
+    acl = tmp_path / "dst_local.txt"
+    monkeypatch.setattr(w, "IP_ACL_STATUS", {})
+    acl.write_text("192.0.2.1\n")
+    w.normalize_ip_file(str(acl))
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["dst_local.txt"]
+
+
 def test_normalize_cli_rewrites_ip_files_and_skips_missing_ones(w, tmp_path):
     f = tmp_path / "list.txt"
     f.write_text("192.0.2.1\n192.0.2.0/24\n")

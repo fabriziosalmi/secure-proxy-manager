@@ -529,7 +529,7 @@ jobs:
           # default, read from the source rather than listed here: four
           # hand-picked URLs passed while HaGeZi answered 404 and Talos 403,
           # and the UI kept offering them.
-          urls=$( { grep -oE "url: 'https://[^']+'" ui/src/pages/Blacklists.tsx | sed -E "s/^url: '//; s/'$//";
+          urls=$( { grep -oE "url: 'https://[^']+'" ui/src/components/blacklists/popularLists.ts | sed -E "s/^url: '//; s/'$//";
                     grep -oE '"https://[^"]+"' backend-go/internal/workers/blacklist_refresh.go | tr -d '"'; } | sort -u)
           [ -n "$urls" ] || { echo "no list URLs found in the sources"; exit 1; }
           for url in $urls; do check_url "$url" "$url"; done

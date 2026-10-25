@@ -12,8 +12,9 @@ import (
 // idempotent ADD COLUMN list in Init, which still runs on every start. Steps
 // numbered 2 and up run exactly once, in a transaction, and record themselves.
 // Version 3 is a data step: the reconstruction of sinkholed requests
-// (reconstruct.go).
-const schemaVersion = 3
+// (reconstruct.go). Version 4 records where list entries came from
+// (list_sources).
+const schemaVersion = 4
 
 // applyVersionedMigrations runs the steps a database has not seen yet.
 //
@@ -40,7 +41,94 @@ func applyVersionedMigrations(db *sql.DB) error {
 			return fmt.Errorf("schema version 3: %w", err)
 		}
 	}
+	if v < 4 {
+		if err := migrateListSources(db); err != nil {
+			return fmt.Errorf("schema version 4: %w", err)
+		}
+	}
 	return nil
+}
+
+// listSourceTables are the tables whose entries record where they came from
+// (sources.go). Version 4 runs after version 2, which rebuilds
+// domain_whitelist, so the column it adds is not lost to that rebuild.
+var listSourceTables = []string{"ip_blacklist", "domain_blacklist", "ip_whitelist", "domain_whitelist"}
+
+// migrateListSources creates list_sources and gives every list table a
+// source_id, in one transaction that also records version 4. Existing rows
+// keep source_id NULL: where they came from was never recorded, and the page
+// says so instead of guessing from their description. The index on
+// (source_id, added_date) serves the per-source counts and date ranges without
+// walking a 640,000-row list.
+func migrateListSources(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op once committed
+
+	steps := []string{
+		`CREATE TABLE IF NOT EXISTS list_sources (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			list TEXT NOT NULL CHECK (list IN ('ip_blacklist','domain_blacklist','ip_whitelist','domain_whitelist')),
+			kind TEXT NOT NULL CHECK (kind IN ('url','manual','geo','paste','restore')),
+			source TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
+			created TEXT DEFAULT (datetime('now'))
+		)`,
+		// One row per list and key for the keyed kinds, so a URL imported
+		// twice, or refreshed, adds to one source; a race between two imports
+		// of the same URL cannot create a second.
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_list_sources_key ON list_sources(list, kind, source) WHERE kind IN ('url','manual','geo')`,
+	}
+	for _, s := range steps {
+		if _, err := tx.Exec(s); err != nil {
+			return err
+		}
+	}
+	for _, t := range listSourceTables {
+		has, err := hasColumn(tx, t, "source_id")
+		if err != nil {
+			return err
+		}
+		if !has {
+			// #nosec G202 -- t is a constant of listSourceTables
+			if _, err := tx.Exec("ALTER TABLE " + t + " ADD COLUMN source_id INTEGER REFERENCES list_sources(id)"); err != nil {
+				return fmt.Errorf("add %s.source_id: %w", t, err)
+			}
+		}
+		// #nosec G202 -- t is a constant of listSourceTables
+		if _, err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_" + t + "_source ON " + t + "(source_id, added_date)"); err != nil {
+			return fmt.Errorf("index %s.source_id: %w", t, err)
+		}
+	}
+	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", 4)); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	log.Info().Int("version", 3).Msg("schema migrated: list entries record their source")
+	return nil
+}
+
+// hasColumn reports whether table has column, from PRAGMA table_info.
+func hasColumn(tx *sql.Tx, table, column string) (bool, error) {
+	rows, err := tx.Query("SELECT name FROM pragma_table_info(?)", table)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 // migrateTypeConstraints gives databases created before the CHECK constraints

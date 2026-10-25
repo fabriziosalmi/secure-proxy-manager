@@ -137,7 +137,7 @@ func refreshList(db *sql.DB, table, col string, urls []string) {
 		}
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 200*1024*1024))
 		resp.Body.Close()
-		added += insertBlacklistEntries(db, table, col, string(data), existing)
+		added += insertBlacklistEntries(db, table, col, u, string(data), existing)
 	}
 	if added > 0 {
 		log.Info().Str("table", table).Int("added", added).Msg("blacklist refresh complete")
@@ -149,13 +149,23 @@ func refreshList(db *sql.DB, table, col string, urls []string) {
 // validation as the import handler: valid CIDR/IP only, and never a
 // private/bogon range (the ip_blacklist is a source ACL — a LAN range would
 // lock out the proxy's own clients).
-func insertBlacklistEntries(db *sql.DB, table, col, data string, existing map[string]struct{}) int {
+//
+// The entries are recorded under the URL's source, the same one an import of
+// that URL uses, so a refreshed list is still one source that can be removed
+// as a whole.
+func insertBlacklistEntries(db *sql.DB, table, col, sourceURL, data string, existing map[string]struct{}) int {
 	tx, err := db.Begin()
 	if err != nil {
 		log.Error().Err(err).Msg("blacklist refresh: tx begin failed")
 		return 0
 	}
-	stmt, err := tx.Prepare(fmt.Sprintf("INSERT OR IGNORE INTO %s (%s, description) VALUES(?,?)", table, col))
+	sourceID, err := database.KeyedSource(tx, table, database.SourceURL, sourceURL, "")
+	if err != nil {
+		tx.Rollback() //nolint:errcheck
+		log.Error().Err(err).Msg("blacklist refresh: cannot record the source")
+		return 0
+	}
+	stmt, err := tx.Prepare(fmt.Sprintf("INSERT OR IGNORE INTO %s (%s, description, source_id) VALUES(?,'',?)", table, col))
 	if err != nil {
 		tx.Rollback() //nolint:errcheck
 		log.Error().Err(err).Msg("blacklist refresh: prepare failed")
@@ -183,7 +193,7 @@ func insertBlacklistEntries(db *sql.DB, table, col, data string, existing map[st
 				capped++
 				continue
 			}
-			stmt.Exec(entry, "Auto-refresh: "+time.Now().Format("2006-01-02")) //nolint:errcheck
+			stmt.Exec(entry, sourceID) //nolint:errcheck
 			existing[entry] = struct{}{}
 			added++
 		}

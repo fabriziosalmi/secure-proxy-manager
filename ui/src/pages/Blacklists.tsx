@@ -1,727 +1,410 @@
-import { Card, CardContent } from '../components/ui/card';
-import { api, getErrorMessage } from '../lib/api';
-import { isValidIP, isValidDomain, parseGeoCountries } from '../lib/validation';
-import type { IpEntry, DomainEntry, WhitelistEntry, DomainWhitelistEntry } from '../types';
-import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, CheckCircle, ShieldCheck, Loader2, RefreshCw, FileDown, XCircle } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+/**
+ * Blacklists (route /blacklists, Blacklists.dc.html): the four lists the
+ * proxy enforces, one tab each, with the tab in ?tab= so a link opens it and
+ * the back button returns to the one before.
+ *
+ * For the list on screen:
+ * - Enforcement: what really enforces it, from blacklists/enforcement (the
+ *   proxy's own records of what Squid holds, the domain limit, the blocked
+ *   names the allowed list removes) and the list's count (meta.total);
+ * - Where the entries came from: {list}/sources, one row per source with
+ *   the entries it added, and the removal of a whole source;
+ * - Entries: {list}, 50 a page, searched on the backend, each with its
+ *   source; removed one at a time after a confirmation;
+ * - for a blocked list, a danger zone that removes every entry.
+ *
+ * Add entries (single, pasted, URL, Popular lists, Geo-block) and Export
+ * (the whole list, from {list}/export) are the page's actions.
+ */
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router';
+import { keepPreviousData, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { formatCount, formatDate } from '../lib/format';
+import { Download, Plus, Trash2 } from 'lucide-react';
+import { api, getData, getErrorMessage } from '../lib/api';
+import { formatCount } from '../lib/format';
+import { cn } from '../lib/utils';
+import { useConfirm } from '../hooks/useConfirm';
+import type { Enforcement, ListEntry, ListSource } from '../types';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Section } from '../components/ui/Section';
+import { DataTable, type Column } from '../components/ui/DataTable';
+import { SearchInput } from '../components/ui/SearchInput';
+import { Button, IconButton } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
+import { Notice } from '../components/ui/Notice';
+import { AddEntries } from '../components/blacklists/AddEntries';
+import { EnforcementSection } from '../components/blacklists/EnforcementSection';
+import { SourcesSection } from '../components/blacklists/SourcesSection';
 import { BlockDoh, EssentialWhitelist } from '../components/blacklists/QuickLists';
+import {
+  LISTS, DEFAULT_LIST, listByKey, entryKind, methodsFor, shownDescription, shortDateTime, sourceName, sourceTitle,
+  type AddMethod, type ListDef, type ListKey,
+} from '../components/blacklists/lists';
+
+const PAGE_SIZE = 50;
+
+const entriesWord = (n: number) => `${formatCount(n)} ${n === 1 ? 'entry' : 'entries'}`;
+
+interface EntryPage {
+  rows: ListEntry[];
+  total: number;
+}
+
+function useDebounced(value: string, ms: number): string {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
+function ListTabs({ active, counts, onSelect }: {
+  active: ListKey;
+  counts: { data?: number | null; isError: boolean }[];
+  onSelect: (k: ListKey) => void;
+}) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const i = LISTS.findIndex((l) => l.key === active);
+    let next = -1;
+    if (e.key === 'ArrowRight') next = (i + 1) % LISTS.length;
+    else if (e.key === 'ArrowLeft') next = (i - 1 + LISTS.length) % LISTS.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = LISTS.length - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    onSelect(LISTS[next].key);
+    refs.current[next]?.focus();
+  };
+  return (
+    <div role="tablist" aria-label="Lists" onKeyDown={onKey} className="flex flex-wrap gap-1 border-b border-line">
+      {LISTS.map((l, i) => {
+        const sel = l.key === active;
+        const c = counts[i];
+        let count: ReactNode = null;
+        if (c?.isError) count = <Badge tone="neutral">Not reported</Badge>;
+        else if (typeof c?.data === 'number') count = <Badge tone={sel ? 'accent' : 'neutral'}>{formatCount(c.data)}</Badge>;
+        return (
+          <button
+            key={l.key}
+            ref={(el) => { refs.current[i] = el; }}
+            type="button"
+            role="tab"
+            id={`bl-tab-${l.key}`}
+            aria-selected={sel}
+            aria-controls={`bl-panel-${l.key}`}
+            tabIndex={sel ? 0 : -1}
+            onClick={() => onSelect(l.key)}
+            className={cn(
+              '-mb-px flex h-11 items-center gap-2 border-b-2 px-3 text-sm transition-colors sm:px-3.5',
+              'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
+              sel ? 'border-accent font-semibold text-accent' : 'border-transparent font-medium text-ink-muted hover:text-ink',
+            )}
+          >
+            {l.label}
+            {count}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export function Blacklists() {
-  const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'ip' | 'domain' | 'whitelist' | 'domain-whitelist'>('ip');
-  const [isAdding, setIsAdding] = useState(false);
-  const [isBulkAdding, setIsBulkAdding] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
-  const [isGeoBlocking, setIsGeoBlocking] = useState(false);
-  const [isPopularLists, setIsPopularLists] = useState(false);
-  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
-  const [importingList, setImportingList] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  const list = listByKey(params.get('tab'));
+  const qc = useQueryClient();
+  const { confirm, dialog } = useConfirm();
+  const [addOpen, setAddOpen] = useState(false);
+  const [method, setMethod] = useState<AddMethod>('single');
 
-  const [newItem, setNewItem] = useState('');
-  const [newDesc, setNewDesc] = useState('');
-  const [bulkText, setBulkText] = useState('');
-  const [importUrl, setImportUrl] = useState('');
-  const [geoCountry, setGeoCountry] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [page, setPage] = useState(0);
-  const PAGE_SIZE = 50;
-
-  // Reset page when tab or search changes
-  const resetPage = () => setPage(0);
-
-  // The count is read from meta (writeList); the top-level total beside it is
-  // deprecated and goes away in the next contract version.
-  type PaginatedResponse<T> = { data: T[]; total: number };
-
-  const { data: ipResult } = useQuery<PaginatedResponse<IpEntry>>({
-    queryKey: ['blacklist', 'ip', page, searchTerm],
-    queryFn: () => api.get(`ip-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.meta?.total ?? 0 })),
+  const counts = useQueries({
+    queries: LISTS.map((l) => ({
+      queryKey: ['lists', l.path, 'count'],
+      // The count is read from meta (writeList); the top-level total beside
+      // it is deprecated and goes away in the next contract version.
+      queryFn: () => api.get(`${l.path}?limit=1`).then((r) => (r.data?.meta?.total ?? null) as number | null),
+    })),
   });
-  const { data: domainResult } = useQuery<PaginatedResponse<DomainEntry>>({
-    queryKey: ['blacklist', 'domain', page, searchTerm],
-    queryFn: () => api.get(`domain-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.meta?.total ?? 0 })),
-  });
-  const { data: whitelistResult } = useQuery<PaginatedResponse<WhitelistEntry>>({
-    queryKey: ['whitelist', 'ip', page, searchTerm],
-    queryFn: () => api.get(`ip-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.meta?.total ?? 0 })),
+  const total = counts[LISTS.indexOf(list)]?.data ?? undefined;
+
+  const enforcement = useQuery<Enforcement | null>({
+    queryKey: ['lists', 'enforcement'],
+    queryFn: () => getData<Enforcement>('blacklists/enforcement'),
   });
 
-  const { data: domainWhitelistResult } = useQuery<PaginatedResponse<DomainWhitelistEntry>>({
-    queryKey: ['whitelist', 'domain', page, searchTerm],
-    queryFn: () => api.get(`domain-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.meta?.total ?? 0 })),
-  });
+  const refresh = () => { void qc.invalidateQueries({ queryKey: ['lists'] }); };
 
-  const ips = ipResult?.data ?? [];
-  const domains = domainResult?.data ?? [];
-  const whitelists = whitelistResult?.data ?? [];
-  const domainWhitelists = domainWhitelistResult?.data ?? [];
-  const activeTotal = activeTab === 'ip' ? (ipResult?.total ?? 0) : activeTab === 'domain' ? (domainResult?.total ?? 0) : activeTab === 'whitelist' ? (whitelistResult?.total ?? 0) : (domainWhitelistResult?.total ?? 0);
-  const totalPages = Math.ceil(activeTotal / PAGE_SIZE);
-
-  // Mount flag: mutation callbacks must not touch state or fire toasts
-  // after the user has navigated away. React-query mutations keep running
-  // post-unmount (intentionally: the API write should still complete),
-  // but their onSuccess/onError shouldn't poke a vanished UI.
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  const invalidateActive = () => {
-    if (activeTab === 'ip') queryClient.invalidateQueries({ queryKey: ['blacklist', 'ip'] });
-    else if (activeTab === 'domain') queryClient.invalidateQueries({ queryKey: ['blacklist', 'domain'] });
-    else if (activeTab === 'whitelist') queryClient.invalidateQueries({ queryKey: ['whitelist', 'ip'] });
-    else queryClient.invalidateQueries({ queryKey: ['whitelist', 'domain'] });
+  const selectTab = (k: ListKey) => {
+    if (k === list.key) return;
+    const next = listByKey(k);
+    if (!methodsFor(next).includes(method)) setMethod('single');
+    setParams(k === DEFAULT_LIST ? {} : { tab: k });
   };
 
-  const addMutation = useMutation({
-    mutationFn: (vars: { endpoint: string; payload: { ip?: string; domain?: string; description: string } }) =>
-      api.post(vars.endpoint, vars.payload),
-    onSuccess: () => {
-      if (!mountedRef.current) return;
-      toast.success('Rule added successfully');
-      setNewItem('');
-      setNewDesc('');
-      setIsAdding(false);
-      invalidateActive();
-    },
-    onError: (err) => {
-      if (!mountedRef.current) return;
-      toast.error(getErrorMessage(err, 'Failed to add rule'));
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (endpoint: string) => api.delete(endpoint),
-    onSuccess: () => {
-      if (!mountedRef.current) return;
-      toast.success('Rule deleted successfully');
-      setPendingDeleteId(null);
-      invalidateActive();
-    },
-    onError: (err) => {
-      if (!mountedRef.current) return;
-      toast.error(getErrorMessage(err, 'Failed to delete rule'));
-    },
-  });
-
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const val = newItem.trim();
-    if (!val) return;
-
-    // Frontend validation using shared validators
-    if (activeTab === 'ip' || activeTab === 'whitelist') {
-      if (!isValidIP(val)) {
-        toast.error('Invalid IP. Each octet must be 0-255, CIDR 0-32');
-        return;
-      }
-    } else {
-      if (!isValidDomain(val)) {
-        toast.error('Invalid domain format (RFC 1035)');
-        return;
-      }
-    }
-
-    let endpoint: string;
-    const payload: { ip?: string; domain?: string; description: string } = { description: newDesc };
-    if (activeTab === 'ip') { endpoint = 'ip-blacklist'; payload.ip = val; }
-    else if (activeTab === 'domain') { endpoint = 'domain-blacklist'; payload.domain = val; }
-    else if (activeTab === 'whitelist') { endpoint = 'ip-whitelist'; payload.ip = val; }
-    else { endpoint = 'domain-whitelist'; payload.domain = val; }
-    addMutation.mutate({ endpoint, payload });
+  const openAdd = (m: AddMethod) => {
+    setMethod(m);
+    setAddOpen(true);
   };
 
-  // One flag naming which form is in flight, not one boolean each: the three
-  // can be open at once, and a pending import must not disable the others.
-  // The single-add form already guarded itself with addMutation.isPending;
-  // these three did not, so a second click fired a second POST and imported
-  // twice (#219, M8).
-  const [submitting, setSubmitting] = useState<'bulk' | 'url' | 'geo' | null>(null);
-
-  // Bulk Add on a whitelist tab used to post to blacklists/import with type
-  // "ip" or "domain", which the backend maps to the BLACKLIST tables: the
-  // entries an admin meant to allow were blocked, and the toast said "Added".
-  // The import endpoint has no whitelist target, so whitelist entries go one
-  // by one through the same endpoint (and validation) as a single add, paced
-  // under the nginx limit of 20 requests per second.
-  const BULK_WHITELIST_MAX = 200;
-  const addWhitelistEntries = async (lines: string[]) => {
-    const endpoint = activeTab === 'whitelist' ? 'ip-whitelist' : 'domain-whitelist';
-    const key = activeTab === 'whitelist' ? 'ip' : 'domain';
-    let added = 0;
-    let refused = 0;
-    for (const [i, value] of lines.entries()) {
-      if (i > 0) await new Promise((r) => setTimeout(r, 55));
-      try {
-        await api.post(endpoint, { [key]: value, description: 'Bulk add' });
-        added++;
-      } catch {
-        refused++;
-      }
-    }
-    return { added, refused };
-  };
-
-  const handleBulkAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!bulkText.trim() || submitting) return;
-    if (activeTab === 'whitelist' || activeTab === 'domain-whitelist') {
-      const lines = bulkText.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
-      if (lines.length > BULK_WHITELIST_MAX) {
-        toast.error(`At most ${BULK_WHITELIST_MAX} whitelist entries at a time (got ${lines.length})`);
-        return;
-      }
-      setSubmitting('bulk');
-      const loadingToast = toast.loading(`Adding ${formatCount(lines.length)} whitelist entries...`);
-      try {
-        const { added, refused } = await addWhitelistEntries(lines);
-        if (refused > 0) {
-          toast.error(`Added ${added} to the whitelist, ${refused} refused (invalid or duplicate)`, { id: loadingToast });
-        } else {
-          toast.success(`Added ${added} entries to the whitelist`, { id: loadingToast });
-        }
-        setBulkText('');
-        setIsBulkAdding(false);
-        invalidateActive();
-      } finally {
-        setSubmitting(null);
-      }
-      return;
-    }
-    setSubmitting('bulk');
-    const loadingToast = toast.loading(`Importing ${activeTab} entries...`);
+  const exportList = async () => {
     try {
-      const response = await api.post('blacklists/import', {
-        type: activeTab,
-        content: bulkText
-      });
-      const added = response.data.data?.added || 0;
-      const skipped = response.data.data?.skipped || 0;
-      toast.success(`Added ${added} entries${skipped > 0 ? `, ${skipped} skipped` : ''}`, { id: loadingToast });
-      setBulkText('');
-      setIsBulkAdding(false);
-      invalidateActive();
+      const r = await api.get(`${list.path}/export`, { responseType: 'text', transformResponse: (d: unknown) => d });
+      const text = typeof r.data === 'string' ? r.data : '';
+      const n = text ? text.split('\n').filter(Boolean).length : 0;
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${list.path}-${new Date().toISOString().slice(0, 10)}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${entriesWord(n)} of ${list.label}`);
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Failed to import entries'), { id: loadingToast });
-    } finally {
-      setSubmitting(null);
+      toast.error(getErrorMessage(err, `Could not export ${list.label}`));
     }
   };
 
-  const handleDelete = (id: number) => {
-    let endpoint: string;
-    if (activeTab === 'ip') endpoint = `ip-blacklist/${id}`;
-    else if (activeTab === 'domain') endpoint = `domain-blacklist/${id}`;
-    else if (activeTab === 'whitelist') endpoint = `ip-whitelist/${id}`;
-    else endpoint = `domain-whitelist/${id}`;
-    deleteMutation.mutate(endpoint);
-  };
-
-  const handleImport = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!importUrl || submitting) return;
-    setSubmitting('url');
-    const loadingToast = toast.loading(`Importing ${activeTab}s from URL...`);
-    try {
-      const response = await api.post('blacklists/import', { type: activeTab, url: importUrl });
-      toast.success(`Imported ${response.data.data?.added || 0} rules successfully`, { id: loadingToast });
-      setImportUrl('');
-      setIsImporting(false);
-      invalidateActive();
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'Failed to import rules'), { id: loadingToast });
-    } finally {
-      setSubmitting(null);
-    }
-  };
-
-  const handleGeoBlock = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!geoCountry || submitting) return;
-    // The shared, already-tested parser. The copy that used to live here
-    // filtered on length alone, so "12" and "A1" were accepted as country
-    // codes and sent to the API (#219, M10b).
-    const countries = parseGeoCountries(geoCountry);
-    if (countries.length === 0) return;
-    setSubmitting('geo');
-    const loadingToast = toast.loading(`Importing IP blocks for ${countries.join(', ')}...`);
-    try {
-      const response = await api.post('blacklists/import-geo', { countries });
-      toast.success(`Imported ${response.data.data?.imported || 0} IPs successfully`, { id: loadingToast });
-      setGeoCountry('');
-      setIsGeoBlocking(false);
-      queryClient.invalidateQueries({ queryKey: ['blacklist', 'ip'] });
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'Failed to import GeoIP blocks'), { id: loadingToast });
-    } finally {
-      setSubmitting(null);
-    }
-  };
-
-  const handlePopularListImport = async (listUrl: string, listName: string) => {
-    setImportingList(listName);
-    const loadingToast = toast.loading(`Downloading ${listName}...`);
-    try {
-      const response = await api.post('blacklists/import', {
-        url: listUrl,
-        // Popular Lists is offered on the blacklist tabs only.
-        type: activeTab
-      });
-      const added = response.data.data?.added || 0;
-      const skipped = response.data.data?.skipped || 0;
-      toast.success(
-        `${listName}: added ${formatCount(added)} entries${skipped > 0 ? `, ${formatCount(skipped)} skipped` : ''}`,
-        { id: loadingToast, duration: 6000 }
-      );
-      invalidateActive();
-    } catch (err) {
-      toast.error(getErrorMessage(err, `Failed to import ${listName}`), { id: loadingToast, duration: 8000 });
-    } finally {
-      setImportingList(null);
-    }
-  };
-
-  const [clearConfirm, setClearConfirm] = useState(false);
-
-  const handleClearAll = async () => {
-    if (!clearConfirm) { setClearConfirm(true); return; }
-    setClearConfirm(false);
-    const endpoint = activeTab === 'ip' ? 'ip-blacklist/clear-all' : 'domain-blacklist/clear-all';
-    const t = toast.loading('Clearing all entries...');
-    try {
-      await api.delete(endpoint);
-      toast.success('All entries cleared', { id: t });
-      invalidateActive();
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'Failed to clear'), { id: t });
-    }
-  };
-
-  const handleExport = () => {
-    const items = activeTab === 'ip' ? ips : activeTab === 'domain' ? domains : activeTab === 'whitelist' ? whitelists : domainWhitelists;
-    const text = items.map((item) => 'ip' in item ? (item as IpEntry).ip : (item as DomainEntry).domain).join('\n');
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${activeTab}-list-${new Date().toISOString().slice(0, 10)}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success(`Exported ${formatCount(items.length)} entries`);
-  };
-
-  const handleReloadDNS = async () => {
-    const t = toast.loading('Regenerating DNS blocklist...');
-    try {
-      const resp = await api.post('maintenance/reload-dns');
-      toast.success(`DNS updated: ${resp.data.data?.domains ?? 0} domains`, { id: t });
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'Failed to reload DNS'), { id: t });
-    }
-  };
-
-  const popularIpLists = [
-    { name: 'Firehol Level 1', url: 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset', desc: 'General purpose blocklist against active threats (~600 IPs)' },
-    { name: 'Spamhaus DROP', url: 'https://www.spamhaus.org/drop/drop.txt', desc: 'Don\'t Route Or Peer: direct malware/botnet infrastructure' },
-    { name: 'Spamhaus EDROP', url: 'https://www.spamhaus.org/drop/edrop.txt', desc: 'Extended DROP: sub-allocated netblocks of hijacked space' },
-    { name: 'Emerging Threats', url: 'https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt', desc: 'Known compromised hosts and botnet C&C servers' },
-    { name: 'CINS Army', url: 'https://cinsarmy.com/list/ci-badguys.txt', desc: 'High-confidence malicious IP addresses' },
-    { name: 'Stamparm Ipsum (L3+)', url: 'https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt', desc: 'Daily threat intelligence feed: IPs seen on 3+ blacklists' },
-    { name: 'Blocklist.de All', url: 'https://lists.blocklist.de/lists/all.txt', desc: 'All attack IPs reported to blocklist.de in last 48h' },
-  ];
-
-  // Every list here is fetched by the backend and must fit the DNS sinkhole:
-  // the domain blacklist is capped (SPM_DNS_BLOCKLIST_MAX_DOMAINS, default 1M)
-  // because dnsmasq holds it in memory, about 200 MiB per million. The
-  // aggregated list (5.5M on 2026-10-24) got dnsmasq OOM-killed at the
-  // default limits and is not offered; NoTracking (archived 2023) and Talos
-  // (403 to non-browsers) are gone. CI checks that each URL here answers 200.
-  const popularDomainLists = [
-    { name: 'StevenBlack Unified', url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', desc: 'Adware + malware hosts from multiple curated sources' },
-    { name: 'URLhaus Malware', url: 'https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-hosts.txt', desc: 'Active malware distribution domains from abuse.ch URLhaus (malware-filter mirror)' },
-    { name: 'Phishing Army', url: 'https://phishing.army/download/phishing_army_blocklist_extended.txt', desc: 'Domains actively involved in phishing campaigns' },
-    { name: 'OISD Big', url: 'https://big.oisd.nl/domainswild', desc: 'Comprehensive ad/tracking/malware domain list' },
-    { name: 'HaGeZi Multi Pro', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro-onlydomains.txt', desc: 'Multi-source pro blocklist (ads, tracking, malware, phishing); the listed names are blocked, not their subdomains' },
-    { name: 'DanPollock Hosts', url: 'https://someonewhocares.org/hosts/zero/hosts', desc: 'Dan Pollock\'s hand-maintained hosts file (ads, trackers)' },
-  ];
-
-  const closeAllPanels = (except?: string) => {
-    if (except !== 'add') setIsAdding(false);
-    if (except !== 'bulk') setIsBulkAdding(false);
-    if (except !== 'import') setIsImporting(false);
-    if (except !== 'geo') setIsGeoBlocking(false);
-    if (except !== 'popular') setIsPopularLists(false);
-  };
+  const domainLimit = enforcement.data?.dns_blocklist_limit;
+  const domainsFull = list.key === 'blocked-domains' && typeof domainLimit === 'number' && typeof total === 'number' && total >= domainLimit;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap gap-3 justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight bg-linear-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Blacklists</h1>
-          <p className="text-muted-foreground">Manage IP and Domain blocking rules</p>
-        </div>
-        <div className="flex gap-2">
-          {/* Actions row 1: data management */}
-          <button type="button" onClick={handleExport} title="Export current list as TXT"
-            className="flex items-center px-3 py-2 rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors">
-            <FileDown className="w-4 h-4 mr-1.5" />Export
-          </button>
-          {(activeTab === 'domain') && (
-            <button type="button" onClick={handleReloadDNS} title="Regenerate DNS blocklist from database"
-              className="flex items-center px-3 py-2 rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors">
-              <RefreshCw className="w-4 h-4 mr-1.5" />Reload DNS
-            </button>
-          )}
-          {(activeTab === 'ip' || activeTab === 'domain') && (
-            clearConfirm ? (
-              <div className="flex gap-1">
-                <button type="button" onClick={handleClearAll}
-                  className="px-3 py-2 text-sm font-medium bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90">
-                  Confirm Clear All
-                </button>
-                <button type="button" onClick={() => setClearConfirm(false)}
-                  className="px-3 py-2 text-sm font-medium bg-secondary rounded-md hover:bg-secondary/80">
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button type="button" onClick={handleClearAll} title="Clear all entries"
-                className="flex items-center px-3 py-2 rounded-md text-sm font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors">
-                <XCircle className="w-4 h-4 mr-1.5" />Clear All
-              </button>
-            )
-          )}
-        </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="Protection"
+        title="Blacklists"
+        description="Destinations the proxy refuses, and the ones it lets through."
+        actions={
+          <>
+            {!list.allowed && <Button onClick={() => openAdd('popular')}>Popular lists</Button>}
+            <Button icon={<Download />} onClick={() => { void exportList(); }}>Export</Button>
+            <Button variant="primary" icon={<Plus />} aria-expanded={addOpen} onClick={() => (addOpen ? setAddOpen(false) : openAdd(method))}>
+              Add entries
+            </Button>
+          </>
+        }
+      />
+
+      <ListTabs active={list.key} counts={counts} onSelect={selectTab} />
+
+      <div role="tabpanel" id={`bl-panel-${list.key}`} aria-labelledby={`bl-tab-${list.key}`} className="flex flex-col gap-5">
+        {addOpen && (
+          <AddEntries list={list} method={method} onMethodChange={setMethod} onChanged={refresh} onClose={() => setAddOpen(false)} />
+        )}
+
+        {domainsFull && (
+          <Notice tone="warning" title="The domain blacklist is full">
+            It holds {formatCount(total)} entries, the limit set by SPM_DNS_BLOCKLIST_MAX_DOMAINS ({formatCount(domainLimit)}), so the backend refuses new
+            entries and any import that would pass it. Remove entries, or raise the limit together with the dns container&apos;s memory.
+          </Notice>
+        )}
+
+        <ListBody key={list.key} list={list} total={total} enforcement={enforcement} confirm={confirm} onChanged={refresh} />
       </div>
-
-      {/* Actions row 2: import tools */}
-      <div className="flex gap-2 flex-wrap">
-          {activeTab === 'ip' && (
-            <button onClick={() => { closeAllPanels('geo'); setIsGeoBlocking(!isGeoBlocking); }}
-              className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isGeoBlocking ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
-              <Map className="w-3.5 h-3.5 mr-1.5" />Geo-Block
-            </button>
-          )}
-          {(activeTab === 'ip' || activeTab === 'domain') && (
-            <button type="button" onClick={() => { closeAllPanels('popular'); setIsPopularLists(!isPopularLists); }}
-              className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isPopularLists ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
-              <Database className="w-3.5 h-3.5 mr-1.5" />Popular Lists
-            </button>
-          )}
-          {(activeTab === 'ip' || activeTab === 'domain') && (
-            <button type="button" onClick={() => { closeAllPanels('import'); setIsImporting(!isImporting); }}
-              className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isImporting ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
-              <Download className="w-3.5 h-3.5 mr-1.5" />Import URL
-            </button>
-          )}
-          <button type="button" onClick={() => { closeAllPanels('bulk'); setIsBulkAdding(!isBulkAdding); }}
-            className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isBulkAdding ? 'bg-primary/20 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
-            <Plus className="w-3.5 h-3.5 mr-1.5" />Bulk Add
-          </button>
-          <button onClick={() => { closeAllPanels('add'); setIsAdding(!isAdding); }}
-            className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ml-auto ${isAdding ? 'bg-destructive/90 text-destructive-foreground' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}>
-            <Plus className={`w-3.5 h-3.5 mr-1.5 transition-transform ${isAdding ? 'rotate-45' : ''}`} />
-            {isAdding ? 'Cancel' : 'Add Rule'}
-          </button>
-      </div>
-
-      {isAdding && (
-        <Card>
-          <CardContent className="pt-6">
-            <form onSubmit={handleAdd} className="flex gap-4 items-end">
-              <div className="flex-1 space-y-2">
-                <label htmlFor="bl-new-item" className="text-sm font-medium">{activeTab === 'ip' ? 'IP Address' : activeTab === 'domain' ? 'Domain' : 'IP / CIDR Network'}</label>
-                <input id="bl-new-item" type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)}
-                  placeholder={activeTab === 'ip' ? 'e.g. 192.168.1.100' : activeTab === 'domain' ? 'e.g. bad-domain.com' : activeTab === 'domain-whitelist' ? 'e.g. ads.google.com or .*\\.example\\.com' : 'e.g. 192.168.0.0/16'}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
-              </div>
-              <div className="flex-1 space-y-2">
-                <label htmlFor="bl-new-desc" className="text-sm font-medium">Description (Optional)</label>
-                <input id="bl-new-desc" type="text" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Why is this blocked?"
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" />
-              </div>
-              <button type="submit" disabled={addMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors h-10 disabled:opacity-50 disabled:cursor-not-allowed">{addMutation.isPending ? 'Saving...' : 'Save Rule'}</button>
-            </form>
-          </CardContent>
-        </Card>
-      )}
-
-      {isBulkAdding && (
-        <Card>
-          <CardContent className="pt-6">
-            <form onSubmit={handleBulkAdd} className="space-y-3">
-              <div className="space-y-2">
-                <label htmlFor="bl-bulk-text" className="text-sm font-medium">{activeTab === 'domain' ? 'Domains' : 'IP Addresses / CIDR Networks'} (one per line)</label>
-                <textarea id="bl-bulk-text" value={bulkText} onChange={(e) => setBulkText(e.target.value)}
-                  placeholder={activeTab === 'domain' ? 'bad-domain.com\nanother-domain.net' : '192.168.1.100\n10.0.0.0/8'}
-                  rows={6} className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm font-mono focus:outline-hidden focus:ring-1 focus:ring-primary resize-y" required />
-              </div>
-              <p className="text-xs text-muted-foreground">Lines starting with # are ignored. Invalid entries are skipped.</p>
-              <div className="flex gap-2">
-                <button type="submit" disabled={submitting === 'bulk'} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{submitting === 'bulk' ? 'Adding…' : 'Add All'}</button>
-                <button type="button" onClick={() => setIsBulkAdding(false)} className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors">Cancel</button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
-
-      {isImporting && (
-        <Card>
-          <CardContent className="pt-6">
-            <form onSubmit={handleImport} className="flex gap-4 items-end">
-              <div className="flex-1 space-y-2">
-                <label htmlFor="bl-import-url" className="text-sm font-medium">List URL (e.g. GitHub raw file)</label>
-                <input id="bl-import-url" type="url" value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="https://raw.githubusercontent.com/..."
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
-              </div>
-              <button type="submit" disabled={submitting === 'url'} className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10 disabled:opacity-50 disabled:cursor-not-allowed">{submitting === 'url' ? 'Importing…' : 'Import List'}</button>
-            </form>
-            <p className="text-xs text-muted-foreground mt-3">The URL must point to a plain text file with one {activeTab} per line. Comments starting with # are ignored.</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {isPopularLists && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {(activeTab === 'ip' ? popularIpLists : popularDomainLists).map((list, idx) => (
-            <Card key={idx} className="hover:border-primary/40 transition-colors">
-              <CardContent className="p-4 flex flex-col h-full justify-between">
-                <div>
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Shield className="w-4 h-4 text-primary" />
-                    <h4 className="font-semibold">{list.name}</h4>
-                  </div>
-                  <p className="text-xs text-muted-foreground mb-4">{list.desc}</p>
-                </div>
-                <button onClick={() => handlePopularListImport(list.url, list.name)} disabled={importingList !== null}
-                  className="w-full flex items-center justify-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors mt-auto disabled:opacity-60 disabled:cursor-not-allowed">
-                  {importingList === list.name ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importing...</>) : (<><Download className="w-4 h-4 mr-2" />Import List</>)}
-                </button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {isGeoBlocking && activeTab === 'ip' && (
-        <Card>
-          <CardContent className="pt-6">
-            <form onSubmit={handleGeoBlock} className="flex gap-4 items-end">
-              <div className="flex-1 space-y-2">
-                <label htmlFor="bl-geo-country" className="text-sm font-medium">Country Codes (comma or space separated)</label>
-                <input id="bl-geo-country" type="text" value={geoCountry} onChange={(e) => setGeoCountry(e.target.value.toUpperCase())} placeholder="e.g. CN, RU, KP"
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all" required />
-              </div>
-              <button type="submit" disabled={submitting === 'geo'} className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors h-10 disabled:opacity-50 disabled:cursor-not-allowed">{submitting === 'geo' ? 'Importing…' : 'Download & Block IPs'}</button>
-            </form>
-            <p className="text-xs text-muted-foreground mt-3">Fetches all known IPv4 blocks for each country and adds them to your IP Blacklist. Use 2-letter ISO codes: CN, RU, KP, IR...</p>
-          </CardContent>
-        </Card>
-      )}
-
-      <div role="tablist" aria-label="Blacklist categories" className="flex space-x-1 glass-surface p-1 rounded-lg w-fit">
-        <button role="tab" aria-selected={activeTab === 'ip'} aria-controls="bl-panel-ip" id="bl-tab-ip" tabIndex={activeTab === 'ip' ? 0 : -1} type="button"
-          onClick={() => setActiveTab('ip')}
-          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'ip' ? 'bg-secondary text-foreground shadow-xs border border-border/30' : 'text-muted-foreground hover:text-foreground'}`}>
-          <Server className="w-4 h-4 mr-2" aria-hidden="true" />IP Addresses
-          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{formatCount(ipResult?.total ?? 0)}</span>
-        </button>
-        <button role="tab" aria-selected={activeTab === 'domain'} aria-controls="bl-panel-domain" id="bl-tab-domain" tabIndex={activeTab === 'domain' ? 0 : -1} type="button"
-          onClick={() => setActiveTab('domain')}
-          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain' ? 'bg-secondary text-foreground shadow-xs border border-border/30' : 'text-muted-foreground hover:text-foreground'}`}>
-          <Globe className="w-4 h-4 mr-2" aria-hidden="true" />Domains
-          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{formatCount(domainResult?.total ?? 0)}</span>
-        </button>
-        <button role="tab" aria-selected={activeTab === 'whitelist'} aria-controls="bl-panel-whitelist" id="bl-tab-whitelist" tabIndex={activeTab === 'whitelist' ? 0 : -1} type="button"
-          onClick={() => { setActiveTab('whitelist'); closeAllPanels(); resetPage(); }}
-          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/10 dark:bg-green-500/20 text-green-600 dark:text-green-400 shadow-xs' : 'text-muted-foreground hover:text-green-600 dark:hover:text-green-400'}`}>
-          <CheckCircle className="w-4 h-4 mr-2" aria-hidden="true" />IP Whitelist
-          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{formatCount(whitelistResult?.total ?? 0)}</span>
-        </button>
-        <button role="tab" aria-selected={activeTab === 'domain-whitelist'} aria-controls="bl-panel-dwhitelist" id="bl-tab-dwhitelist" tabIndex={activeTab === 'domain-whitelist' ? 0 : -1} type="button"
-          onClick={() => { setActiveTab('domain-whitelist'); closeAllPanels(); resetPage(); }}
-          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain-whitelist' ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shadow-xs' : 'text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400'}`}>
-          <ShieldCheck className="w-4 h-4 mr-2" aria-hidden="true" />Domain Whitelist
-          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{formatCount(domainWhitelistResult?.total ?? 0)}</span>
-        </button>
-      </div>
-
-      {/* One-click additions for the list on screen */}
-      {activeTab === 'domain' && <BlockDoh />}
-      {activeTab === 'domain-whitelist' && <EssentialWhitelist />}
-
-      {/* Search bar */}
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <input
-            type="text"
-            aria-label="Search this list"
-            placeholder={`Search ${activeTab === 'domain' ? 'domains' : activeTab === 'domain-whitelist' ? 'whitelisted domains' : 'IPs'}...`}
-            value={searchTerm}
-            onChange={(e) => { setSearchTerm(e.target.value); resetPage(); }}
-            className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all pl-9"
-          />
-          <Ban className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        </div>
-        <span className="text-sm text-muted-foreground">
-          {formatCount(activeTotal)} total | Page {page + 1}/{Math.max(totalPages, 1)}
-        </span>
-      </div>
-
-      <Card
-        role="tabpanel"
-        id={`bl-panel-${activeTab === 'domain-whitelist' ? 'dwhitelist' : activeTab}`}
-        aria-labelledby={`bl-tab-${activeTab === 'domain-whitelist' ? 'dwhitelist' : activeTab}`}
-       
-      >
-        <CardContent className="p-0 overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-secondary/30 border-b border-border/50">
-              <tr>
-                <th scope="col" className="px-6 py-4 font-medium">Target</th>
-                <th scope="col" className="px-6 py-4 font-medium">Description</th>
-                <th scope="col" className="px-6 py-4 font-medium">Date Added</th>
-                <th scope="col" className="px-6 py-4 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {activeTab === 'ip' && ips.map((item) => (
-                <tr key={item.id} className="row-hover">
-                  <td className="px-6 py-4 font-medium text-foreground">{item.ip}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? formatDate(item.added_date) : '-'}</td>
-                  <td className="px-6 py-4 text-right">
-                    {pendingDeleteId === item.id ? (
-                      <div className="flex items-center justify-end gap-1">
-                        <button type="button" onClick={() => handleDelete(item.id)} className="px-2 py-1 text-xs bg-destructive text-destructive-foreground rounded hover:bg-destructive/90 transition-colors">Confirm</button>
-                        <button type="button" onClick={() => setPendingDeleteId(null)} className="px-2 py-1 text-xs bg-secondary text-foreground rounded hover:bg-secondary/80 transition-colors">Cancel</button>
-                      </div>
-                    ) : (
-                      <button type="button" aria-label="Delete rule" onClick={() => setPendingDeleteId(item.id)} className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {activeTab === 'domain' && domains.map((item) => (
-                <tr key={item.id} className="row-hover">
-                  <td className="px-6 py-4 font-medium text-foreground">{item.domain}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? formatDate(item.added_date) : '-'}</td>
-                  <td className="px-6 py-4 text-right">
-                    {pendingDeleteId === item.id ? (
-                      <div className="flex items-center justify-end gap-1">
-                        <button type="button" onClick={() => handleDelete(item.id)} className="px-2 py-1 text-xs bg-destructive text-destructive-foreground rounded hover:bg-destructive/90 transition-colors">Confirm</button>
-                        <button type="button" onClick={() => setPendingDeleteId(null)} className="px-2 py-1 text-xs bg-secondary text-foreground rounded hover:bg-secondary/80 transition-colors">Cancel</button>
-                      </div>
-                    ) : (
-                      <button type="button" aria-label="Delete rule" onClick={() => setPendingDeleteId(item.id)} className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {activeTab === 'whitelist' && whitelists.map((item) => (
-                <tr key={item.id} className="row-hover">
-                  <td className="px-6 py-4 font-medium text-green-600 dark:text-green-400">{item.ip}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? formatDate(item.added_date) : '-'}</td>
-                  <td className="px-6 py-4 text-right">
-                    {pendingDeleteId === item.id ? (
-                      <div className="flex items-center justify-end gap-1">
-                        <button type="button" onClick={() => handleDelete(item.id)} className="px-2 py-1 text-xs bg-destructive text-destructive-foreground rounded hover:bg-destructive/90 transition-colors">Confirm</button>
-                        <button type="button" onClick={() => setPendingDeleteId(null)} className="px-2 py-1 text-xs bg-secondary text-foreground rounded hover:bg-secondary/80 transition-colors">Cancel</button>
-                      </div>
-                    ) : (
-                      <button type="button" aria-label="Delete rule" onClick={() => setPendingDeleteId(item.id)} className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {activeTab === 'domain-whitelist' && domainWhitelists.map((item) => (
-                <tr key={item.id} className="row-hover">
-                  <td className="px-6 py-4 font-medium text-emerald-600 dark:text-emerald-400">
-                    {item.domain}
-                    <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded ${item.type === 'fqdn' ? 'bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400' : 'bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400'}`}>
-                      {item.type}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? formatDate(item.added_date) : '-'}</td>
-                  <td className="px-6 py-4 text-right">
-                    {pendingDeleteId === item.id ? (
-                      <div className="flex items-center justify-end gap-1">
-                        <button type="button" onClick={() => handleDelete(item.id)} className="px-2 py-1 text-xs bg-destructive text-destructive-foreground rounded hover:bg-destructive/90 transition-colors">Confirm</button>
-                        <button type="button" onClick={() => setPendingDeleteId(null)} className="px-2 py-1 text-xs bg-secondary text-foreground rounded hover:bg-secondary/80 transition-colors">Cancel</button>
-                      </div>
-                    ) : (
-                      <button type="button" aria-label="Delete rule" onClick={() => setPendingDeleteId(item.id)} className="text-destructive hover:text-red-400 transition-colors p-2 rounded-md hover:bg-destructive/10">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-
-              {((activeTab === 'ip' && ips.length === 0) || (activeTab === 'domain' && domains.length === 0) || (activeTab === 'whitelist' && whitelists.length === 0) || (activeTab === 'domain-whitelist' && domainWhitelists.length === 0)) && (
-                <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
-                    <Ban className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                    No {activeTab === 'ip' ? 'IP addresses' : activeTab === 'domain' ? 'domains' : activeTab === 'whitelist' ? 'whitelisted IPs' : 'whitelisted domains'} found
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <button
-            onClick={() => setPage(0)}
-            disabled={page === 0}
-            className="px-3 py-1.5 text-sm rounded-md bg-secondary hover:bg-secondary/80 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            First
-          </button>
-          <button
-            onClick={() => setPage(p => Math.max(0, p - 1))}
-            disabled={page === 0}
-            className="px-3 py-1.5 text-sm rounded-md bg-secondary hover:bg-secondary/80 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Prev
-          </button>
-          <span className="text-sm text-muted-foreground px-3">
-            Page {page + 1} of {totalPages}
-          </span>
-          <button
-            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-            disabled={page >= totalPages - 1}
-            className="px-3 py-1.5 text-sm rounded-md bg-secondary hover:bg-secondary/80 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Next
-          </button>
-          <button
-            onClick={() => setPage(totalPages - 1)}
-            disabled={page >= totalPages - 1}
-            className="px-3 py-1.5 text-sm rounded-md bg-secondary hover:bg-secondary/80 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Last
-          </button>
-        </div>
-      )}
+      {dialog}
     </div>
+  );
+}
+
+function ListBody({ list, total, enforcement, confirm, onChanged }: {
+  list: ListDef;
+  total?: number | null;
+  enforcement: { data?: Enforcement | null; isPending: boolean; isError: boolean };
+  confirm: ReturnType<typeof useConfirm>['confirm'];
+  onChanged: () => void;
+}) {
+  const [search, setSearch] = useState('');
+  const query = useDebounced(search.trim(), 300);
+  const [offset, setOffset] = useState(0);
+  const onSearch = (v: string) => {
+    setSearch(v);
+    setOffset(0);
+  };
+
+  const entries = useQuery<EntryPage>({
+    queryKey: ['lists', list.path, 'entries', offset, query],
+    queryFn: () =>
+      api.get(`${list.path}?limit=${PAGE_SIZE}&offset=${offset}&search=${encodeURIComponent(query)}`)
+        .then((r) => ({ rows: (r.data?.data ?? []) as ListEntry[], total: (r.data?.meta?.total ?? 0) as number })),
+    placeholderData: keepPreviousData,
+  });
+  const sources = useQuery<ListSource[] | null>({
+    queryKey: ['lists', list.path, 'sources'],
+    queryFn: () => getData<ListSource[]>(`${list.path}/sources`),
+  });
+
+  const removeEntry = async (e: ListEntry) => {
+    const value = e[list.field] ?? '';
+    const ok = await confirm({
+      title: `Remove ${value}?`,
+      body: `It leaves ${list.label}. ${list.consequence('it')}`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`${list.path}/${e.id}`);
+      toast.success(`Removed ${value} from ${list.label}`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, `Could not remove ${value}`));
+    } finally {
+      onChanged();
+    }
+  };
+
+  const removeSource = async (s: ListSource) => {
+    const name = sourceTitle(s);
+    const ok = await confirm({
+      title: `Remove ${entriesWord(s.entries)} from ${name}?`,
+      body: `Every entry this source added leaves ${list.label}. ${list.consequence('them')} Entries another source added stay.`,
+      confirmLabel: `Remove ${entriesWord(s.entries)}`,
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      const r = await api.delete(`${list.path}/sources/${s.id ?? 'unrecorded'}`);
+      toast.success(`Removed ${entriesWord(r.data?.data?.removed ?? 0)} from ${list.label}`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, `Could not remove ${name}`));
+    } finally {
+      onChanged();
+    }
+  };
+
+  const removeAll = async () => {
+    if (typeof total !== 'number') return;
+    const ok = await confirm({
+      title: `Remove all ${formatCount(total)} ${list.plural}?`,
+      body: `${list.consequence('them')} This cannot be undone; export the list first to keep a copy.`,
+      confirmLabel: `Remove all ${formatCount(total)}`,
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`${list.path}/clear-all`);
+      toast.success(`Removed every entry from ${list.label}`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, `Could not empty ${list.label}`));
+    } finally {
+      onChanged();
+    }
+  };
+
+  const reloadDns = async () => {
+    try {
+      const r = await api.post('maintenance/reload-dns');
+      toast.success(`DNS list rewritten: ${formatCount(r.data?.data?.domains ?? 0)} domains`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Could not rewrite the DNS list'));
+    }
+  };
+
+  const columns: Column<ListEntry>[] = [
+    {
+      id: 'entry',
+      header: 'Entry',
+      // Wide enough for an address or network on one line; a long domain
+      // still breaks rather than widening the table without end.
+      className: 'min-w-[11rem]',
+      cell: (e) => {
+        const desc = shownDescription(e);
+        return (
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <code className="font-mono text-[13px] text-ink [overflow-wrap:anywhere]">{e[list.field]}</code>
+            {desc && <span className="text-xs text-ink-muted">{desc}</span>}
+          </div>
+        );
+      },
+    },
+    { id: 'kind', header: 'Kind', className: 'whitespace-nowrap text-ink-muted', cell: (e) => entryKind(list, e[list.field] ?? '') },
+    {
+      id: 'source',
+      header: 'Source',
+      className: 'text-ink-muted',
+      cell: (e) => (
+        <span title={e.source_kind === 'url' ? e.source ?? undefined : undefined}>
+          {sourceName(e.source_kind, e.source, e.source_label)}
+        </span>
+      ),
+    },
+    { id: 'added', header: 'Added', className: 'whitespace-nowrap text-ink-muted', cell: (e) => shortDateTime(e.added_date) },
+    {
+      id: 'actions',
+      header: 'Actions',
+      headerHidden: true,
+      align: 'right',
+      cell: (e) => (
+        <IconButton size="sm" aria-label={`Remove ${e[list.field]}`} icon={<Trash2 />} onClick={() => { void removeEntry(e); }} />
+      ),
+    },
+  ];
+
+  const empty = query
+    ? { title: `No entry matches "${query}"`, description: 'The search looks in the entries and their descriptions. Clear it to see the whole list.' }
+    : { title: `No ${list.plural}`, description: 'Entries appear here once they are added or imported with Add entries.' };
+
+  return (
+    <>
+      <div className="flex flex-wrap items-start gap-4">
+        <EnforcementSection
+          list={list}
+          total={total ?? undefined}
+          data={enforcement.data}
+          loading={enforcement.isPending}
+          error={enforcement.isError}
+          onReloadDns={list.key === 'blocked-domains' ? () => { void reloadDns(); } : undefined}
+          className="flex-[1_1_320px]"
+        />
+        <SourcesSection
+          list={list}
+          sources={sources.data}
+          loading={sources.isPending}
+          error={sources.isError}
+          onRetry={() => { void sources.refetch(); }}
+          onRemove={(s) => { void removeSource(s); }}
+          className="flex-[2_1_520px]"
+        />
+      </div>
+
+      {/* One-click additions for the list on screen (moved here from Settings in #425). */}
+      {list.key === 'blocked-domains' && <BlockDoh />}
+      {list.key === 'allowed-domains' && <EssentialWhitelist />}
+
+      <Section title="Entries" flush>
+        <div className="px-5 pb-3">
+          <SearchInput
+            label={`Search ${list.label}`}
+            placeholder={list.searchPlaceholder}
+            value={search}
+            onChange={onSearch}
+            className="w-full sm:max-w-[360px]"
+          />
+        </div>
+        <DataTable<ListEntry>
+          caption={`${list.label} entries`}
+          columns={columns}
+          rows={entries.data?.rows ?? []}
+          rowKey={(e) => String(e.id)}
+          loading={entries.isPending}
+          error={entries.isError ? `${list.path} did not answer.` : null}
+          onRetry={() => { void entries.refetch(); }}
+          empty={empty}
+          pagination={{ offset, limit: PAGE_SIZE, total: entries.data?.total ?? 0, onChange: setOffset }}
+        />
+      </Section>
+
+      {!list.allowed && (
+        <Section
+          title="Remove every entry on this list"
+          tone="danger"
+          description={typeof total === 'number'
+            ? (total > 0 ? `${formatCount(total)} ${list.plural}. ${list.consequence('them')}` : 'This list is empty.')
+            : 'The count of this list is not reported.'}
+        >
+          <Button variant="danger-outline" disabled={!total} onClick={() => { void removeAll(); }}>Remove all</Button>
+        </Section>
+      )}
+    </>
   );
 }

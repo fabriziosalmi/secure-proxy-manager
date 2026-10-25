@@ -45,7 +45,12 @@ func (h *BlacklistHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	// IP whitelist
 	r.With(authMW).Get("/api/ip-whitelist", listHandler(h.db, "ip_whitelist", "ip"))
 	r.With(authMW).Post("/api/ip-whitelist", h.AddIPWhitelist)
-	r.With(authMW).Delete("/api/ip-whitelist/{id}", deleteByIDHandler(h.db, "ip_whitelist", nil))
+	// The allowed lists are exported too (ip_whitelist.txt for Squid, and the
+	// names the domain export leaves out), so a change requests an export like
+	// every other list change. They used to pass no config here and the add
+	// handlers requested nothing: an allowed entry took effect only at the
+	// next blacklist change.
+	r.With(authMW).Delete("/api/ip-whitelist/{id}", deleteByIDHandler(h.db, "ip_whitelist", h.cfg))
 
 	// Domain blacklist
 	r.With(authMW).Get("/api/domain-blacklist", listHandler(h.db, "domain_blacklist", "domain"))
@@ -57,7 +62,7 @@ func (h *BlacklistHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	// Domain whitelist
 	r.With(authMW).Get("/api/domain-whitelist", listHandler(h.db, "domain_whitelist", "domain"))
 	r.With(authMW).Post("/api/domain-whitelist", h.AddDomainWhitelist)
-	r.With(authMW).Delete("/api/domain-whitelist/{id}", deleteByIDHandler(h.db, "domain_whitelist", nil))
+	r.With(authMW).Delete("/api/domain-whitelist/{id}", deleteByIDHandler(h.db, "domain_whitelist", h.cfg))
 
 	// Egress destination allowlist (default-deny egress). Single table, entries
 	// classified as 'cidr' or 'domain'; pass h.cfg so deletes re-export.
@@ -72,6 +77,8 @@ func (h *BlacklistHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	r.With(authMW).Post("/api/blacklists/import-geo", h.ImportGeo)
 	r.With(authMW).Post("/api/ip-blacklist/import", h.ImportIPLegacy)
 	r.With(authMW).Post("/api/domain-blacklist/import", h.ImportDomainLegacy)
+
+	h.registerListSources(r, authMW)
 }
 
 // ── generic list handler ──────────────────────────────────────────────────────
@@ -86,18 +93,25 @@ func listHandler(db *sql.DB, table, col string) http.HandlerFunc {
 		var rows *sql.Rows
 		var err error
 
+		// A list whose entries record their source is listed with it:
+		// source_kind, source and source_label are null for an entry whose
+		// source was not recorded.
+		selectFrom := fmt.Sprintf("SELECT e.* FROM %s e", table)
+		if database.IsSourceList(table) {
+			selectFrom = fmt.Sprintf("SELECT e.*, s.kind AS source_kind, s.source AS source, s.label AS source_label FROM %s e LEFT JOIN list_sources s ON s.id = e.source_id", table)
+		}
 		if search != "" {
 			// Escape LIKE metacharacters
 			escaped := strings.NewReplacer("%", "\\%", "_", "\\_").Replace(search)
 			like := "%" + escaped + "%"
 			total, err = countRows(db, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'", table, col), like, like)
 			if err == nil {
-				rows, err = db.Query(fmt.Sprintf("SELECT * FROM %s WHERE %s LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT ? OFFSET ?", table, col), like, like, limit, offset)
+				rows, err = db.Query(fmt.Sprintf("%s WHERE e.%s LIKE ? ESCAPE '\\' OR e.description LIKE ? ESCAPE '\\' ORDER BY e.id DESC LIMIT ? OFFSET ?", selectFrom, col), like, like, limit, offset)
 			}
 		} else {
 			total, err = countRows(db, fmt.Sprintf("SELECT COUNT(*) FROM %s", table))
 			if err == nil {
-				rows, err = db.Query(fmt.Sprintf("SELECT * FROM %s ORDER BY id DESC LIMIT ? OFFSET ?", table), limit, offset)
+				rows, err = db.Query(fmt.Sprintf("%s ORDER BY e.id DESC LIMIT ? OFFSET ?", selectFrom), limit, offset)
 			}
 		}
 		if err != nil {
@@ -218,7 +232,12 @@ func (h *BlacklistHandlers) AddIP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "private/RFC1918/bogon ranges cannot be blacklisted — the IP blacklist is a source ACL, so this would block your own LAN clients")
 		return
 	}
-	_, err := h.db.Exec("INSERT INTO ip_blacklist(ip, description) VALUES(?,?)", ip, item.Description)
+	sourceID, err := manualSource(h.db, "ip_blacklist")
+	if err != nil {
+		writeInternalError(w, "add_ip_blacklist", err)
+		return
+	}
+	_, err = h.db.Exec("INSERT INTO ip_blacklist(ip, description, source_id) VALUES(?,?,?)", ip, item.Description, sourceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			writeError(w, http.StatusBadRequest, "IP address already in blacklist")
@@ -249,7 +268,12 @@ func (h *BlacklistHandlers) AddIPWhitelist(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid IP/Network format")
 		return
 	}
-	_, err := h.db.Exec("INSERT INTO ip_whitelist(ip, description) VALUES(?,?)", ip, item.Description)
+	sourceID, err := manualSource(h.db, "ip_whitelist")
+	if err != nil {
+		writeInternalError(w, "add_ip_whitelist", err)
+		return
+	}
+	_, err = h.db.Exec("INSERT INTO ip_whitelist(ip, description, source_id) VALUES(?,?,?)", ip, item.Description, sourceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			writeError(w, http.StatusBadRequest, "IP already in whitelist")
@@ -258,6 +282,7 @@ func (h *BlacklistHandlers) AddIPWhitelist(w http.ResponseWriter, r *http.Reques
 		writeInternalError(w, "add_ip_whitelist", err)
 		return
 	}
+	requestExport()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "IP added to whitelist"})
 }
 
@@ -295,7 +320,12 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusRequestEntityTooLarge, domainLimitMessage(limit))
 		return
 	}
-	_, err := h.db.Exec("INSERT INTO domain_blacklist(domain, description) VALUES(?,?)", domain, item.Description)
+	sourceID, err := manualSource(h.db, "domain_blacklist")
+	if err != nil {
+		writeInternalError(w, "add_domain_blacklist", err)
+		return
+	}
+	_, err = h.db.Exec("INSERT INTO domain_blacklist(domain, description, source_id) VALUES(?,?,?)", domain, item.Description, sourceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			writeError(w, http.StatusBadRequest, "domain already in blacklist")
@@ -395,7 +425,12 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 		return
 	}
 	entryType := "fqdn"
-	_, err := h.db.Exec("INSERT INTO domain_whitelist(domain, type, description) VALUES(?,?,?)", domain, entryType, item.Description)
+	sourceID, err := manualSource(h.db, "domain_whitelist")
+	if err != nil {
+		writeInternalError(w, "add_domain_whitelist", err)
+		return
+	}
+	_, err = h.db.Exec("INSERT INTO domain_whitelist(domain, type, description, source_id) VALUES(?,?,?,?)", domain, entryType, item.Description, sourceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			writeError(w, http.StatusBadRequest, "domain already in whitelist")
@@ -404,6 +439,7 @@ func (h *BlacklistHandlers) AddDomainWhitelist(w http.ResponseWriter, r *http.Re
 		writeInternalError(w, "add_domain_whitelist", err)
 		return
 	}
+	requestExport()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": fmt.Sprintf("Domain added to whitelist (type: %s)", entryType)})
 }
 
@@ -461,12 +497,22 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 			"import refused: the domain blacklist would hold %d entries; %s", stored+len(toInsert), domainLimitMessage(limit)))
 		return
 	}
-	insertFailed := h.insertImported(table, col, toInsert)
+	var sourceID int64
+	if len(toInsert) > 0 {
+		sourceID, err = importSource(h.db, table, &req)
+		if err != nil {
+			writeInternalError(w, "import_source", err)
+			return
+		}
+	}
+	insertFailed := h.insertImported(table, col, sourceID, toInsert)
 	stats.added -= insertFailed
 	stats.skipped += insertFailed
 
 	if stats.added > 0 {
 		requestExport()
+	} else if sourceID != 0 {
+		database.DropSourceIfEmpty(h.db, table, sourceID)
 	}
 	msg := fmt.Sprintf("Successfully imported %d entries (%d skipped/invalid)", stats.added, stats.skipped)
 	if stats.bogonSkipped > 0 {
@@ -477,6 +523,21 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 		"message": msg,
 		"data":    map[string]any{"added": stats.added, "skipped": stats.skipped, "bogon_skipped": stats.bogonSkipped},
 	})
+}
+
+// importSource is the source an import's entries are recorded under: the URL
+// (one source per URL, named after the Popular list when the request names
+// one), or a new pasted-list source for inline content.
+func importSource(db *sql.DB, table string, req *models.ImportBlacklistRequest) (int64, error) {
+	if req.URL != "" {
+		return database.KeyedSource(db, table, database.SourceURL, req.URL, strings.TrimSpace(req.Name))
+	}
+	return database.NewSource(db, table, database.SourcePaste, "")
+}
+
+// manualSource is the one source a list's hand-added entries share.
+func manualSource(db *sql.DB, table string) (int64, error) {
+	return database.KeyedSource(db, table, database.SourceManual, "", "")
 }
 
 // domainCount is the number of domains in the blacklist (0 if unreadable; the
@@ -511,22 +572,28 @@ func importTarget(blType string) (table, col string, ok bool) {
 // the download is bounded by maxImportSize.
 func resolveImportSource(req *models.ImportBlacklistRequest) (content string, status int, detail string) {
 	if req.URL != "" {
-		if ssrf, err := isSSRFTarget(req.URL); err != nil || ssrf {
-			if err != nil {
-				return "", http.StatusBadRequest, "URL validation failed: " + err.Error()
-			}
-			return "", http.StatusForbidden, "requests to private/reserved networks are blocked"
-		}
-		body, err := downloadWithRetry(req.URL, maxImportSize)
-		if err != nil {
-			return "", http.StatusBadRequest, "failed to fetch URL: " + err.Error()
-		}
-		return string(body), 0, ""
+		return fetchImportURL(req.URL)
 	}
 	if req.Content != "" {
 		return req.Content, 0, ""
 	}
 	return "", http.StatusBadRequest, "either 'url' or 'content' must be provided"
+}
+
+// fetchImportURL is the URL half of resolveImportSource. It is a variable so
+// a test can serve a list without a public address; nothing else replaces it.
+var fetchImportURL = func(rawURL string) (content string, status int, detail string) {
+	if ssrf, err := isSSRFTarget(rawURL); err != nil || ssrf {
+		if err != nil {
+			return "", http.StatusBadRequest, "URL validation failed: " + err.Error()
+		}
+		return "", http.StatusForbidden, "requests to private/reserved networks are blocked"
+	}
+	body, err := downloadWithRetry(rawURL, maxImportSize)
+	if err != nil {
+		return "", http.StatusBadRequest, "failed to fetch URL: " + err.Error()
+	}
+	return string(body), 0, ""
 }
 
 // existingEntries loads the entries already stored, for in-memory de-duplication
@@ -576,9 +643,12 @@ type importStats struct {
 // parseImport classifies every line of the feed and returns the rows to write.
 // It de-duplicates against existing, and against itself: existing is updated as
 // it goes, so a feed that repeats an entry contributes it once.
-func parseImport(content, blType string, existing map[string]struct{}) ([][2]string, importStats) {
-	importDesc := "Imported on " + time.Now().Format("2006-01-02")
-	var toInsert [][2]string
+//
+// An imported entry gets no description: where it came from is its source,
+// and the description used to say only "Imported on <date>", the date column
+// again.
+func parseImport(content, blType string, existing map[string]struct{}) ([]string, importStats) {
+	var toInsert []string
 	var stats importStats
 	for _, line := range strings.Split(content, "\n") {
 		entry, verdict := classifyImportEntry(line, blType)
@@ -599,7 +669,7 @@ func parseImport(content, blType string, existing map[string]struct{}) ([][2]str
 			continue
 		}
 		existing[entry] = struct{}{}
-		toInsert = append(toInsert, [2]string{entry, importDesc})
+		toInsert = append(toInsert, entry)
 		stats.added++
 	}
 	return toInsert, stats
@@ -659,7 +729,7 @@ const importBatchSize = 5000
 
 // insertImported writes the parsed rows and returns how many did not land, so
 // the response counters describe the database rather than the parse.
-func (h *BlacklistHandlers) insertImported(table, col string, toInsert [][2]string) int {
+func (h *BlacklistHandlers) insertImported(table, col string, sourceID int64, toInsert []string) int {
 	insertFailed := 0
 	for i := 0; i < len(toInsert); i += importBatchSize {
 		end := i + importBatchSize
@@ -672,17 +742,17 @@ func (h *BlacklistHandlers) insertImported(table, col string, toInsert [][2]stri
 			insertFailed += end - i
 			continue
 		}
-		stmt, err := tx.Prepare(fmt.Sprintf("INSERT OR IGNORE INTO %s (%s, description) VALUES(?,?)", table, col))
+		stmt, err := tx.Prepare(fmt.Sprintf("INSERT OR IGNORE INTO %s (%s, description, source_id) VALUES(?,'',?)", table, col))
 		if err != nil {
 			_ = tx.Rollback()
 			log.Error().Err(err).Msg("batch insert prepare failed")
 			insertFailed += end - i
 			continue
 		}
-		for _, pair := range toInsert[i:end] {
-			if _, err := stmt.Exec(pair[0], pair[1]); err != nil {
+		for _, entry := range toInsert[i:end] {
+			if _, err := stmt.Exec(entry, sourceID); err != nil {
 				insertFailed++
-				log.Debug().Err(err).Str("entry", pair[0]).Msg("import: row insert failed")
+				log.Debug().Err(err).Str("entry", entry).Msg("import: row insert failed")
 			}
 		}
 		stmt.Close() //nolint:errcheck
@@ -896,8 +966,8 @@ func (h *BlacklistHandlers) fetchGeoFeeds(countries []string) []geoFetched {
 // are not a private/bogon range (the ip_blacklist is a source ACL, the same
 // guards as the regular import) and not already present. It records what it
 // returns in existing.
-func parseGeoZone(content, cc string, existing map[string]struct{}) [][2]string {
-	var toInsert [][2]string
+func parseGeoZone(content string, existing map[string]struct{}) []string {
+	var toInsert []string
 	for _, line := range strings.Split(content, "\n") {
 		ip := strings.TrimSpace(line)
 		if ip == "" || strings.HasPrefix(ip, "#") {
@@ -907,7 +977,7 @@ func parseGeoZone(content, cc string, existing map[string]struct{}) [][2]string 
 			continue
 		}
 		if _, ex := existing[ip]; !ex {
-			toInsert = append(toInsert, [2]string{ip, "GeoIP: " + strings.ToUpper(cc)})
+			toInsert = append(toInsert, ip)
 			existing[ip] = struct{}{}
 		}
 	}
@@ -931,15 +1001,19 @@ func (h *BlacklistHandlers) importGeoCountry(res geoFetched, existing map[string
 	if res.content == "" {
 		return 0, false, strings.ToUpper(res.cc) + ": no data"
 	}
-	toInsert := parseGeoZone(res.content, res.cc, existing)
+	toInsert := parseGeoZone(res.content, existing)
 	if len(toInsert) == 0 {
 		return 0, false, ""
 	}
-	committed, err := insertGeoBatch(h.db, toInsert)
+	// One source per country: a second import of the same country adds to it.
+	sourceID, err := database.KeyedSource(h.db, "ip_blacklist", database.SourceGeo, strings.ToUpper(res.cc), "")
+	if err == nil {
+		committed, err = insertGeoBatch(h.db, sourceID, toInsert)
+	}
 	if err != nil {
 		// Roll the in-memory dedupe set back so a retry can re-attempt these.
-		for _, pair := range toInsert {
-			delete(existing, pair[0])
+		for _, ip := range toInsert {
+			delete(existing, ip)
 		}
 		return 0, false, strings.ToUpper(res.cc) + ": " + err.Error()
 	}
@@ -949,29 +1023,29 @@ func (h *BlacklistHandlers) importGeoCountry(res geoFetched, existing map[string
 // insertGeoBatch writes one country's blocks in a single transaction and
 // returns how many rows were actually committed. Every error is checked: the
 // caller reports a count, and a count that is not backed by a commit is a lie.
-func insertGeoBatch(db *sql.DB, rows [][2]string) (int, error) {
+func insertGeoBatch(db *sql.DB, sourceID int64, rows []string) (int, error) {
 	tx, err := db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("begin: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op once committed
 
-	stmt, err := tx.Prepare("INSERT INTO ip_blacklist(ip, description) VALUES(?,?)")
+	stmt, err := tx.Prepare("INSERT INTO ip_blacklist(ip, description, source_id) VALUES(?,'',?)")
 	if err != nil {
 		return 0, fmt.Errorf("prepare: %w", err)
 	}
 	defer stmt.Close()
 
 	inserted := 0
-	for _, pair := range rows {
-		res, err := stmt.Exec(pair[0], pair[1])
+	for _, ip := range rows {
+		res, err := stmt.Exec(ip, sourceID)
 		if err != nil {
 			// A UNIQUE collision is expected (the row is already blacklisted)
 			// and is not a batch failure; anything else is.
 			if strings.Contains(err.Error(), "UNIQUE") {
 				continue
 			}
-			return 0, fmt.Errorf("insert %s: %w", pair[0], err)
+			return 0, fmt.Errorf("insert %s: %w", ip, err)
 		}
 		if n, err := res.RowsAffected(); err == nil {
 			inserted += int(n)

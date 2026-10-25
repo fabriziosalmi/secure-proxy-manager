@@ -126,8 +126,8 @@ func TestReconstructSinkholedBlocks(t *testing.T) {
 		}
 	}
 	var v int
-	if err := db.QueryRow("PRAGMA user_version").Scan(&v); err != nil || v != 3 {
-		t.Errorf("user_version = %d (%v), want 3", v, err)
+	if err := db.QueryRow("PRAGMA user_version").Scan(&v); err != nil || v != schemaVersion {
+		t.Errorf("user_version = %d (%v), want %d", v, err, schemaVersion)
 	}
 }
 

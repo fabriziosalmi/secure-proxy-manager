@@ -527,6 +527,9 @@ func lineSafe(v string) bool {
 	return v != ""
 }
 
+// LineSafe is lineSafe for the other writers of list files (the list download).
+func LineSafe(v string) bool { return lineSafe(v) }
+
 func reportUnsafe(path string, n int) {
 	if n > 0 {
 		log.Warn().Str("file", filepath.Base(path)).Int("rows", n).

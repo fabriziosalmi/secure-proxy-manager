@@ -129,9 +129,45 @@ def write_lines_atomic(path, lines):
         raise
 
 
+# What normalize_ip_file made of each IP list Squid enforces, for the backend:
+# how many entries the list had, how many networks Squid loads after merging,
+# and how many lines were not an address or CIDR. The Blacklists page shows the
+# merged count from this record; the backend cannot derive it on its own
+# without repeating the merge. Only the two lists the page shows are recorded.
+IP_ACL_STATUS = {
+    "/etc/squid/blacklists/ip/local.txt": f"{CONFIG_DIR}/ip_blacklist_acl_status.json",
+    "/etc/squid/whitelists/ip/local.txt": f"{CONFIG_DIR}/ip_whitelist_acl_status.json",
+}
+
+
+def write_ip_acl_status(path, entries, networks, dropped):
+    status = IP_ACL_STATUS.get(path)
+    if status is None:
+        return
+    try:
+        write_lines_atomic(status, [json.dumps(
+            {"version": 1, "entries": entries, "networks": networks, "dropped": dropped,
+             "written_at": int(time.time())})])
+    except OSError as exc:
+        print(f"[watchdog] could not write {status}: {exc}", flush=True)
+
+
+def forget_ip_acl_status(path):
+    """No record rather than a stale one: after a failed normalization Squid
+    holds the list as copied, which the last record does not describe."""
+    status = IP_ACL_STATUS.get(path)
+    if status is None:
+        return
+    try:
+        os.unlink(status)
+    except OSError:
+        pass
+
+
 def normalize_ip_file(path):
     """Rewrite an IP ACL file in normalized form. On failure the file is left
-    as copied: Squid may refuse it, but it never silently loses entries."""
+    as copied: Squid may refuse it, but it never silently loses entries. The
+    result is recorded in IP_ACL_STATUS."""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             lines = f.read().splitlines()
@@ -139,8 +175,10 @@ def normalize_ip_file(path):
         write_lines_atomic(path, out)
     except OSError as exc:
         print(f"[watchdog] could not normalize {path}: {exc}", flush=True)
+        forget_ip_acl_status(path)
         return
     n = sum(1 for line in lines if line.split("#", 1)[0].strip())
+    write_ip_acl_status(path, n, len(out), bad)
     if n != len(out) or bad:
         print(f"[watchdog] {path}: {n} entries -> {len(out)} networks"
               + (f", {bad} not an address or CIDR, dropped" if bad else ""), flush=True)

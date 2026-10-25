@@ -46,6 +46,8 @@ type ImportBlacklistRequest struct {
 	Type    string `json:"type"    validate:"required,oneof=ip domain"`
 	URL     string `json:"url"     validate:"omitempty,max=2048"`
 	Content string `json:"content" validate:"omitempty,max=52428800"`
+	// Name is the list's name (a Popular list), recorded with the URL source.
+	Name string `json:"name" validate:"omitempty,max=100"`
 }
 
 type ImportGeoBlacklistRequest struct {

@@ -2,8 +2,8 @@
  * Secure Proxy Manager — Self-Hoster E2E Test Suite
  *
  * Simulates the full onboarding → daily-use workflow of a self-hoster:
- *   Login · Dashboard · IP blacklist (add / bulk / URL import / geo-block / delete)
- *   · Domain blacklist · IP whitelist · Logs page · Settings
+ *   Login · Dashboard · Blacklists (add / paste / URL import / geo-block / remove,
+ *   sources, enforcement, tabs in the URL) · Logs page · Settings
  *
  * Architecture notes:
  *   - API tests run via Playwright's `request` fixture (no browser overhead)
@@ -573,7 +573,7 @@ test.describe('UI — Navigation', () => {
 
   test('navigates to /blacklists', async ({ page }) => {
     await page.goto('/blacklists');
-    await expect(page.getByRole('tab', { name: /IP Addresses/i }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('tab', { name: /^Blocked IPs/ })).toBeVisible({ timeout: 15_000 });
   });
 
   test('navigates to /logs', async ({ page }) => {
@@ -594,171 +594,247 @@ test.describe('UI — Navigation', () => {
   });
 });
 
-// ─── UI — Blacklists: IP tab ──────────────────────────────────────────────────
+// ─── UI — Blacklists: Blocked IPs ─────────────────────────────────────────────
 
-test.describe('UI — Blacklists (IP tab)', () => {
+/** Open Add entries, on a method other than the first when named. */
+async function openAdd(page: Page, method?: string): Promise<void> {
+  await page.getByRole('button', { name: 'Add entries', exact: true }).click();
+  if (method) await page.getByRole('group', { name: 'How to add' }).getByRole('button', { name: method }).click();
+}
+
+/** The row of the entries table that shows value, after searching for it. */
+async function findEntry(page: Page, value: string) {
+  await page.getByRole('searchbox', { name: /^Search / }).fill(value);
+  const table = page.getByRole('table', { name: / entries$/ });
+  const row = table.getByRole('row').filter({ has: page.getByText(value, { exact: true }) });
+  await expect(row).toBeVisible({ timeout: 10_000 });
+  return row;
+}
+
+/** Confirm the open dialog with the named button and wait for the DELETE it sends. */
+async function confirmDelete(page: Page, button: string | RegExp, urlPart: string): Promise<number> {
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toBeVisible();
+  const [resp] = await Promise.all([
+    page.waitForResponse(r => r.url().includes(urlPart) && r.request().method() === 'DELETE', { timeout: 15_000 }),
+    dialog.getByRole('button', { name: button }).click(),
+  ]);
+  return resp.status();
+}
+
+test.describe('UI — Blacklists (Blocked IPs)', () => {
   test.beforeEach(async ({ page, request }) => {
     await injectAuth(page, request);
     await page.goto('/blacklists');
-    await page.waitForSelector('button:has-text("Add Rule")', { timeout: 15_000 });
+    await expect(page.getByRole('heading', { level: 1, name: 'Blacklists' })).toBeVisible({ timeout: 15_000 });
   });
 
-  test('IP tab is active by default and shows controls', async ({ page }) => {
-    await expect(page.getByRole('button', { name: /Add Rule/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Bulk Add/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Import URL/i })).toBeVisible();
+  test('Blocked IPs is the default tab and shows the actions and sections from the mockup', async ({ page }) => {
+    await expect(page.getByRole('tab', { name: /^Blocked IPs/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('button', { name: 'Add entries', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Export' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Popular lists' })).toBeVisible();
+    for (const h of ['Enforcement', 'Where the entries came from', 'Entries', 'Remove every entry on this list']) {
+      await expect(page.getByRole('heading', { level: 2, name: h, exact: true })).toBeVisible();
+    }
+    // This stack runs no proxy, so its record of the merged networks is missing,
+    // and the page says so instead of a number.
+    await expect(page.getByText('Not reported: the proxy has not written ip_blacklist_acl_status.json')).toBeVisible();
   });
 
-  test('Add single IP — add, verify in list, delete', async ({ page }) => {
+  test('Add a single IP: it is listed as Manual, and removed after a confirmation naming it', async ({ page }) => {
     const testIp = '192.0.2.55';
-    await page.getByRole('button', { name: /Add Rule/i }).click();
-    await page.getByPlaceholder('e.g. 192.168.1.100').fill(testIp);
+    await openAdd(page);
+    await page.getByLabel('IP address or network').fill(testIp);
     const [resp] = await Promise.all([
-      page.waitForResponse(r => r.url().includes('/api/ip-blacklist') && r.request().method() === 'POST', { timeout: 15_000 }),
-      page.getByRole('button', { name: /Save Rule/i }).click(),
+      page.waitForResponse(r => r.url().endsWith('/api/ip-blacklist') && r.request().method() === 'POST', { timeout: 15_000 }),
+      page.getByRole('button', { name: 'Add entry' }).click(),
     ]);
-    expect([200, 201, 400]).toContain(resp.status()); // 400 = duplicate on retry
-    // Filter to the new IP so the assertion is deterministic regardless of how
-    // many entries earlier tests left in the list (geo-import can add thousands).
-    await page.getByPlaceholder(/Search/i).fill(testIp);
-    await expect(page.getByText(testIp)).toBeVisible({ timeout: 10_000 });
+    expect([200, 400]).toContain(resp.status()); // 400 = duplicate on retry
+    const row = await findEntry(page, testIp);
+    await expect(row.getByText('Manual')).toBeVisible();
+    await expect(row.getByText('IP', { exact: true })).toBeVisible();
 
-    // Delete it
-    const row = page.locator('tr, li').filter({ hasText: testIp }).first();
-    const del = row.getByRole('button').first();
-    if (await del.isVisible({ timeout: 1_000 }).catch(() => false)) {
-      await del.click();
-      const confirm = page.getByRole('button', { name: /confirm|yes|delete/i }).last();
-      if (await confirm.isVisible({ timeout: 2_000 }).catch(() => false)) await confirm.click();
-      await page.waitForTimeout(1_500);
+    await row.getByRole('button', { name: `Remove ${testIp}` }).click();
+    await expect(page.getByRole('alertdialog').getByText(`Remove ${testIp}?`)).toBeVisible();
+    expect(await confirmDelete(page, 'Remove', '/api/ip-blacklist/')).toBe(200);
+    await expect(page.getByText(`No entry matches "${testIp}"`)).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('Paste a list: the paste is one source, removed as a whole with a confirmation naming the count', async ({ page }) => {
+    // Addresses no other test uses, new on every attempt, so a retry adds
+    // them again instead of skipping them as already listed.
+    const base = 100 + Math.floor(Math.random() * 30) * 3;
+    const ips = [0, 1, 2].map((i) => `198.51.100.${base + i}`);
+    await openAdd(page, 'Paste a list');
+    await page.getByLabel('Entries, one per line').fill([...ips, '# comment'].join('\n'));
+    await page.getByRole('button', { name: 'Add pasted entries' }).click();
+    await expect(page.getByText(/^Added 3 entries/)).toBeVisible({ timeout: 15_000 });
+
+    const row = await findEntry(page, ips[0]);
+    await expect(row.getByText('Pasted list')).toBeVisible();
+
+    // Sources are listed most recently added first: this paste is the top
+    // row, and its button names it with the time it was pasted.
+    const sources = page.getByRole('table', { name: 'Sources of Blocked IPs' });
+    const remove = sources.getByRole('button', { name: /^Remove batch: Pasted list, 3 entries, pasted \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/ }).first();
+    await expect(remove).toBeVisible({ timeout: 10_000 });
+    await remove.click();
+    await expect(page.getByRole('alertdialog').getByText('Remove 3 entries from Pasted list?')).toBeVisible();
+    expect(await confirmDelete(page, 'Remove 3 entries', '/api/ip-blacklist/sources/')).toBe(200);
+    for (const ip of ips) {
+      await page.getByRole('searchbox', { name: /^Search / }).fill(ip);
+      await expect(page.getByText(`No entry matches "${ip}"`)).toBeVisible({ timeout: 10_000 });
     }
   });
 
-  test('Bulk Add — adds multiple IPs via textarea', async ({ page }) => {
-    await page.getByRole('button', { name: /Bulk Add/i }).click();
-    const textarea = page.locator('textarea');
-    await expect(textarea).toBeVisible();
-    await textarea.fill(['192.0.2.101', '192.0.2.102', '# comment', '192.0.2.103'].join('\n'));
-    await page.getByRole('button', { name: /Add All/i }).click();
-    await expect(page.getByText(/Added \d+/i)).toBeVisible({ timeout: 15_000 });
-  });
-
-  test('Import URL — form opens and input is fillable', async ({ page }) => {
-    await page.getByRole('button', { name: /Import URL/i }).click();
-    const urlInput = page.locator('input[placeholder*="http"], input[type="url"]').first();
-    await expect(urlInput).toBeVisible();
+  test('Import from URL: a private address is refused, and the panel says why', async ({ page }) => {
+    await openAdd(page, 'Import from URL');
+    const urlInput = page.getByLabel('List URL');
     await urlInput.fill(`${MOCK_URL}/ip-list.txt`);
     await expect(urlInput).toHaveValue(`${MOCK_URL}/ip-list.txt`);
-    // Submit — backend will respond (403 SSRF or 200 success depending on env)
-    await page.getByRole('button', { name: /^Import/i }).last().click();
+    const [resp] = await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/blacklists/import') && r.request().method() === 'POST', { timeout: 30_000 }),
+      page.getByRole('button', { name: 'Import list' }).click(),
+    ]);
+    // mock-lists is on the Docker network: the SSRF guard refuses it.
+    expect(resp.status()).toBe(403);
+    await expect(page.getByRole('alert').filter({ hasText: 'requests to private/reserved networks are blocked' })).toBeVisible();
+  });
+
+  test('Geo-block form opens and accepts a country code', async ({ page }) => {
+    await openAdd(page, 'Geo-block');
+    const countryInput = page.getByLabel('Country codes');
+    await countryInput.fill('CN');
+    await expect(countryInput).toHaveValue('CN');
+    // The feed may or may not be reachable from CI; no crash is the assertion.
+    await page.getByRole('button', { name: 'Download and block IPs' }).click();
     await page.waitForTimeout(5_000);
     await expect(page.getByText('Something went wrong')).not.toBeVisible();
   });
 
-  test('Geo-block form — opens and accepts country code', async ({ page }) => {
-    const geoBtn = page.getByRole('button', { name: /Geo.?[Bb]lock|Country/i });
-    await expect(geoBtn).toBeVisible();
-    await geoBtn.click();
-    const countryInput = page.locator('input').first();
-    await countryInput.fill('CN');
-    await expect(countryInput).toHaveValue('CN');
-    // Submit — may succeed or fail depending on network; no crash is the assertion
-    await page.getByRole('button', { name: /Block|Import/i }).last().click();
-    await page.waitForTimeout(5_000);
-    await expect(page.getByText('Something went wrong')).not.toBeVisible();
+  test('fits a 390 px wide screen without horizontal scrolling', async ({ page, request }) => {
+    // With rows, both tables are wider than a phone and must scroll inside
+    // their own boxes; an empty table would fit and prove nothing.
+    const token = await apiToken(request);
+    await request.post(`${API_URL}/api/blacklists/import`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { type: 'ip', content: '203.0.113.201\n203.0.113.202' },
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.reload();
+    await expect(page.getByRole('heading', { level: 1, name: 'Blacklists' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('table', { name: 'Blocked IPs entries' }).getByText('203.0.113.201')).toBeVisible();
+    await expect(page.getByRole('table', { name: 'Sources of Blocked IPs' }).getByRole('button', { name: /^Remove batch:/ }).first()).toBeAttached();
+    await page.getByRole('button', { name: 'Add entries', exact: true }).click();
+    await page.getByRole('group', { name: 'How to add' }).getByRole('button', { name: 'Popular lists' }).click();
+    const overflow = await page.evaluate(() => {
+      const main = document.querySelector('main')!;
+      return { doc: document.documentElement.scrollWidth - window.innerWidth, main: main.scrollWidth - main.clientWidth };
+    });
+    expect(overflow).toEqual({ doc: 0, main: 0 });
   });
 });
 
-// ─── UI — Blacklists: Domain tab ──────────────────────────────────────────────
+// ─── UI — Blacklists: Blocked domains ─────────────────────────────────────────
 
-test.describe('UI — Blacklists (Domain tab)', () => {
+test.describe('UI — Blacklists (Blocked domains)', () => {
   test.beforeEach(async ({ page, request }) => {
     await injectAuth(page, request);
-    await page.goto('/blacklists');
-    await page.waitForSelector('button:has-text("Add Rule")', { timeout: 15_000 });
-    await page.getByRole('tab', { name: /Domains/i }).first().click();
-    await page.waitForTimeout(300);
+    await page.goto('/blacklists?tab=blocked-domains');
+    await expect(page.getByRole('tab', { name: /^Blocked domains/ })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
   });
 
-  test('domain tab shows correct controls', async ({ page }) => {
-    await expect(page.getByRole('button', { name: /Import URL/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Bulk Add/i })).toBeVisible();
+  test('says what enforces the list, and how "*." entries match', async ({ page }) => {
+    const enforcement = page.getByRole('region', { name: 'Enforcement' });
+    await expect(enforcement.getByText('DNS sinkhole', { exact: true })).toBeVisible();
+    await expect(enforcement.getByText(/\(SPM_DNS_BLOCKLIST_MAX_DOMAINS\)$/)).toBeVisible();
+    // This stack runs no proxy; a record left in ./config from another run
+    // would say whether Squid holds a copy instead.
+    await expect(enforcement.getByText(/^(Not reported: the proxy has not written domain_acl_status\.json|Its own copy of all|No copy:)/)).toBeVisible();
+    await expect(enforcement.getByText(/"\*\.example\.com" blocks example\.com itself/)).toBeVisible();
   });
 
-  test('add and delete a domain entry', async ({ page }) => {
+  test('add a domain, find it, remove it', async ({ page }) => {
     const testDomain = 'e2e-delete-me.test';
-    await page.getByRole('button', { name: /Add Rule/i }).click();
-    await page.getByPlaceholder('e.g. bad-domain.com').fill(testDomain);
+    await openAdd(page);
+    await page.getByLabel('Domain', { exact: true }).fill(testDomain);
     const [resp] = await Promise.all([
-      page.waitForResponse(r => r.url().includes('/api/domain-blacklist') && r.request().method() === 'POST', { timeout: 15_000 }),
-      page.getByRole('button', { name: /Save Rule/i }).click(),
+      page.waitForResponse(r => r.url().endsWith('/api/domain-blacklist') && r.request().method() === 'POST', { timeout: 15_000 }),
+      page.getByRole('button', { name: 'Add entry' }).click(),
     ]);
-    expect([200, 201, 400]).toContain(resp.status()); // 400 = duplicate on retry
-    await expect(page.getByText(testDomain)).toBeVisible({ timeout: 10_000 });
+    expect([200, 400]).toContain(resp.status()); // 400 = duplicate on retry
+    const row = await findEntry(page, testDomain);
+    await expect(row.getByText('Domain', { exact: true })).toBeVisible();
+    await row.getByRole('button', { name: `Remove ${testDomain}` }).click();
+    expect(await confirmDelete(page, 'Remove', '/api/domain-blacklist/')).toBe(200);
   });
 
-  test('domain bulk add works', async ({ page }) => {
-    await page.getByRole('button', { name: /Bulk Add/i }).click();
-    const textarea = page.locator('textarea');
-    await expect(textarea).toBeVisible();
-    await textarea.fill(['bulk-test-1.test', 'bulk-test-2.test', '# skip', 'bulk-test-3.test'].join('\n'));
-    await page.getByRole('button', { name: /Add All/i }).click();
+  test('a pasted list of domains is added', async ({ page }) => {
+    await openAdd(page, 'Paste a list');
+    await page.getByLabel('Entries, one per line').fill(['bulk-test-1.test', 'bulk-test-2.test', '# skip', 'bulk-test-3.test'].join('\n'));
+    await page.getByRole('button', { name: 'Add pasted entries' }).click();
     await expect(page.getByText(/Added \d+/i)).toBeVisible({ timeout: 15_000 });
   });
 
-  test('the Domains tab offers Block DNS-over-HTTPS, which used to sit in Settings', async ({ page }) => {
+  test('the Blocked domains tab offers Block DNS-over-HTTPS, which used to sit in Settings', async ({ page }) => {
+    await page.getByRole('tab', { name: /^Blocked domains/ }).click();
     await expect(page.getByRole('region', { name: 'Block DNS-over-HTTPS' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Block DoH resolvers' })).toBeVisible();
   });
 
-  test('popular lists panel opens and shows list names', async ({ page }) => {
-    const popularBtn = page.getByRole('button', { name: /Popular/i });
-    await expect(popularBtn).toBeVisible();
-    await popularBtn.click();
-    // Domain popular lists include: StevenBlack Ad/Malware, Abuse.ch URLhaus Domains, Phishing Army
-    const listName = page.getByText(/StevenBlack|URLhaus|Phishing Army/i).first();
-    await expect(listName).toBeVisible({ timeout: 10_000 });
+  test('Popular lists opens from the header and shows the list names', async ({ page }) => {
+    await page.getByRole('button', { name: 'Popular lists' }).click();
+    for (const name of ['StevenBlack Unified', 'URLhaus Malware', 'Phishing Army']) {
+      await expect(page.getByRole('button', { name: `Import ${name}` })).toBeVisible({ timeout: 10_000 });
+    }
   });
 });
 
-// ─── UI — Blacklists: Whitelist tab ───────────────────────────────────────────
+// ─── UI — Blacklists: Allowed lists ───────────────────────────────────────────
 
-test.describe('UI — Blacklists (Whitelist tab)', () => {
+test.describe('UI — Blacklists (Allowed lists)', () => {
   test.beforeEach(async ({ page, request }) => {
     await injectAuth(page, request);
     await page.goto('/blacklists');
-    await page.waitForSelector('button:has-text("Add Rule")', { timeout: 15_000 });
-    await page.getByRole('tab', { name: /Whitelist/i }).first().click();
-    await page.waitForTimeout(300);
+    await expect(page.getByRole('tab', { name: /^Blocked IPs/ })).toBeVisible({ timeout: 15_000 });
   });
 
-  test('whitelist tab has green styling', async ({ page }) => {
-    const tab = page.getByRole('tab', { name: /Whitelist/i }).first();
-    const cls = await tab.getAttribute('class');
-    expect(cls).toMatch(/green/);
+  test('a tab is in the URL, and Back returns to the one before', async ({ page }) => {
+    await page.getByRole('tab', { name: /^Allowed IPs/ }).click();
+    await expect(page).toHaveURL(/\/blacklists\?tab=allowed-ips$/);
+    await expect(page.getByRole('tab', { name: /^Allowed IPs/ })).toHaveAttribute('aria-selected', 'true');
+    await page.goBack();
+    await expect(page.getByRole('tab', { name: /^Blocked IPs/ })).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('add whitelist entry and verify it appears', async ({ page }) => {
-    const whitelistIp = '10.88.88.0/28';
-    await page.getByRole('button', { name: /Add Rule/i }).click();
-    await page.getByPlaceholder('e.g. 192.168.0.0/16').fill(whitelistIp);
+  test('add an allowed network and see it listed as Manual', async ({ page }) => {
+    const allowed = '10.88.88.0/28';
+    await page.getByRole('tab', { name: /^Allowed IPs/ }).click();
+    await openAdd(page);
+    await page.getByLabel('IP address or network').fill(allowed);
     const [resp] = await Promise.all([
-      page.waitForResponse(r => r.url().includes('/api/ip-whitelist') && r.request().method() === 'POST', { timeout: 15_000 }),
-      page.getByRole('button', { name: /Save Rule/i }).click(),
+      page.waitForResponse(r => r.url().endsWith('/api/ip-whitelist') && r.request().method() === 'POST', { timeout: 15_000 }),
+      page.getByRole('button', { name: 'Add entry' }).click(),
     ]);
-    expect([200, 201, 400]).toContain(resp.status()); // 400 = duplicate on retry
-    await expect(page.getByText(whitelistIp)).toBeVisible({ timeout: 10_000 });
+    expect([200, 400]).toContain(resp.status()); // 400 = duplicate on retry
+    const row = await findEntry(page, allowed);
+    await expect(row.getByText('Manual')).toBeVisible();
+    await expect(row.getByText('Network /28')).toBeVisible();
   });
 
-  test('the Domain Whitelist tab offers the common services that used to sit in Settings', async ({ page }) => {
-    await page.getByRole('tab', { name: /Domain Whitelist/i }).click();
+  test('the Allowed domains tab offers the common services that used to sit in Settings', async ({ page }) => {
+    await page.getByRole('tab', { name: /^Allowed domains/ }).click();
     await expect(page.getByRole('region', { name: 'Add common services' })).toBeVisible();
     await expect(page.getByRole('button', { name: '+ GitHub' })).toBeVisible();
   });
 
-  test('Import URL and Popular Lists buttons hidden on Whitelist tab', async ({ page }) => {
-    await expect(page.getByRole('button', { name: /Import URL/i })).not.toBeVisible();
-    await expect(page.getByRole('button', { name: /Popular/i })).not.toBeVisible();
+  test('an allowed list offers no URL import, Popular lists, Geo-block or Remove all', async ({ page }) => {
+    await page.getByRole('tab', { name: /^Allowed domains/ }).click();
+    await expect(page.getByRole('button', { name: 'Popular lists' })).not.toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Remove every entry on this list' })).not.toBeVisible();
+    await openAdd(page);
+    await expect(page.getByRole('group', { name: 'How to add' }).getByRole('button')).toHaveText(['Single entry', 'Paste a list']);
   });
 });
 
@@ -980,24 +1056,24 @@ test.describe('Full onboarding flow', () => {
     const proxyAddr = await page.locator('code').filter({ hasText: '3128' }).first().textContent();
     expect(proxyAddr).toMatch(/3128/);
 
-    // 3. Add an IP rule
+    // 3. Block an IP
     await page.goto('/blacklists');
-    await page.waitForSelector('button:has-text("Add Rule")');
-    await page.getByRole('button', { name: /Add Rule/i }).click();
-    await page.getByPlaceholder('e.g. 192.168.1.100').fill('192.0.2.200');
+    await expect(page.getByRole('heading', { level: 1, name: 'Blacklists' })).toBeVisible({ timeout: 15_000 });
+    await openAdd(page);
+    await page.getByLabel('IP address or network').fill('192.0.2.200');
     const [ipResp] = await Promise.all([
-      page.waitForResponse(r => r.url().includes('/api/ip-blacklist') && r.request().method() === 'POST', { timeout: 15_000 }),
-      page.getByRole('button', { name: /Save Rule/i }).click(),
+      page.waitForResponse(r => r.url().endsWith('/api/ip-blacklist') && r.request().method() === 'POST', { timeout: 15_000 }),
+      page.getByRole('button', { name: 'Add entry' }).click(),
     ]);
     expect([200, 201]).toContain(ipResp.status());
 
-    // 4. Bulk add 3 domains
-    await page.getByRole('tab', { name: /Domains/i }).first().click();
-    await page.waitForTimeout(300);
-    await page.getByRole('button', { name: /Bulk Add/i }).click();
-    await page.locator('textarea').fill(['onboarding-1.test', 'onboarding-2.test', 'onboarding-3.test'].join('\n'));
-    await page.getByRole('button', { name: /Add All/i }).click();
-    await expect(page.getByText(/Added \d+/i)).toBeVisible({ timeout: 15_000 });
+    // 4. Paste 3 domains
+    await page.getByRole('tab', { name: /^Blocked domains/ }).click();
+    await expect(page).toHaveURL(/tab=blocked-domains/);
+    await page.getByRole('group', { name: 'How to add' }).getByRole('button', { name: 'Paste a list' }).click();
+    await page.getByLabel('Entries, one per line').fill(['onboarding-1.test', 'onboarding-2.test', 'onboarding-3.test'].join('\n'));
+    await page.getByRole('button', { name: 'Add pasted entries' }).click();
+    await expect(page.getByText(/^Added \d+ (entry|entries)/)).toBeVisible({ timeout: 15_000 });
 
     // 5. Logs page — just confirm it loads
     await page.goto('/logs');

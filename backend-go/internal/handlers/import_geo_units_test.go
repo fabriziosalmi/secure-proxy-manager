@@ -17,8 +17,9 @@ func TestNormaliseCountryCodes(t *testing.T) {
 func TestParseGeoZoneKeepsOnlyNewPublicRanges(t *testing.T) {
 	existing := map[string]struct{}{"203.0.113.0/24": {}}
 	zone := "# comment\n203.0.113.0/24\n198.51.100.0/24\n\n10.0.0.0/8\nnot-a-range\n198.51.100.0/24\n192.0.2.7\n"
-	got := parseGeoZone(zone, "cn", existing)
-	want := [][2]string{{"198.51.100.0/24", "GeoIP: CN"}, {"192.0.2.7", "GeoIP: CN"}}
+	got := parseGeoZone(zone, existing)
+	// The country is the rows' source (importGeoCountry), not a description.
+	want := []string{"198.51.100.0/24", "192.0.2.7"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("parseGeoZone = %v, want %v", got, want)
 	}

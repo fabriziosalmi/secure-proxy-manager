@@ -43,7 +43,9 @@ func (h *DatabaseHandlers) Optimize(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Database optimized (VACUUM + REINDEX)"})
 }
 
-var allowedTables = []string{"users", "ip_whitelist", "ip_blacklist", "domain_blacklist", "domain_whitelist", "dst_allowlist", "proxy_logs", "settings", "audit_log"}
+// list_sources comes after the four lists that refer to it, so Reset empties
+// them first and the foreign key never refuses its rows.
+var allowedTables = []string{"users", "ip_whitelist", "ip_blacklist", "domain_blacklist", "domain_whitelist", "list_sources", "dst_allowlist", "proxy_logs", "settings", "audit_log"}
 
 func (h *DatabaseHandlers) Stats(w http.ResponseWriter, r *http.Request) {
 	counts := map[string]int64{}

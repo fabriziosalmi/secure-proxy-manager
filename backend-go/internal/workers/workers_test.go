@@ -60,7 +60,7 @@ func TestInsertBlacklistEntries(t *testing.T) {
 
 	// Routable IPs are inserted; the private 10.0.0.1 and the invalid line are
 	// dropped (the ip_blacklist is a source ACL).
-	added := insertBlacklistEntries(db, "ip_blacklist", "ip",
+	added := insertBlacklistEntries(db, "ip_blacklist", "ip", "https://feed.test/ips.txt",
 		"1.1.1.1\n2.2.2.2\n10.0.0.1\n# comment\nnotanip", map[string]struct{}{})
 	if added != 2 {
 		t.Errorf("expected 2 inserted (bogon/invalid dropped), got %d", added)
@@ -69,6 +69,38 @@ func TestInsertBlacklistEntries(t *testing.T) {
 	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist WHERE ip='10.0.0.1'").Scan(&priv)
 	if priv != 0 {
 		t.Error("private 10.0.0.1 must not enter the source IP blacklist")
+	}
+}
+
+// A refreshed feed is recorded under its URL, the source an import of the
+// same URL uses, so the list stays one source that can be removed as a whole.
+func TestRefreshRecordsTheFeedURLAsTheSource(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	const feed = "https://feed.test/hosts"
+	insertBlacklistEntries(db, "domain_blacklist", "domain", feed, "0.0.0.0 a.example\n", map[string]struct{}{})
+	insertBlacklistEntries(db, "domain_blacklist", "domain", feed, "0.0.0.0 b.example\n", map[string]struct{}{"a.example": {}})
+	rows, err := db.Query("SELECT s.kind, s.source, e.source_id FROM domain_blacklist e JOIN list_sources s ON s.id = e.source_id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	ids := map[int64]bool{}
+	n := 0
+	for rows.Next() {
+		var kind, source string
+		var id int64
+		if err := rows.Scan(&kind, &source, &id); err != nil {
+			t.Fatal(err)
+		}
+		if kind != "url" || source != feed {
+			t.Errorf("source = %s %s, want url %s", kind, source, feed)
+		}
+		ids[id] = true
+		n++
+	}
+	if n != 2 || len(ids) != 1 {
+		t.Errorf("%d entries with a source across %d sources, want 2 entries in one", n, len(ids))
 	}
 }
 
@@ -333,7 +365,7 @@ func TestInsertBlacklistEntries_Domain(t *testing.T) {
 
 	// Domain lists are not CIDR/bogon-filtered; hosts-format lines take the last
 	// field. 0.0.0.0 example.com -> example.com.
-	added := insertBlacklistEntries(db, "domain_blacklist", "domain",
+	added := insertBlacklistEntries(db, "domain_blacklist", "domain", "https://feed.test/hosts",
 		"0.0.0.0 evil.example\nbad.test\n# comment", map[string]struct{}{})
 	if added != 2 {
 		t.Errorf("expected 2 domains inserted, got %d", added)
@@ -519,7 +551,7 @@ func TestRefreshStopsAtTheDomainLimit(t *testing.T) {
 	t.Setenv("SPM_DNS_BLOCKLIST_MAX_DOMAINS", "2")
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
-	added := insertBlacklistEntries(db, "domain_blacklist", "domain",
+	added := insertBlacklistEntries(db, "domain_blacklist", "domain", "https://feed.test/hosts",
 		"0.0.0.0 a.example\n0.0.0.0 b.example\n0.0.0.0 c.example\n0.0.0.0 d.example\n", map[string]struct{}{})
 	var n int
 	_ = db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&n)
