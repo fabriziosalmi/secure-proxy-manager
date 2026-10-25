@@ -399,7 +399,7 @@ func validRestoredListValue(list, value string) bool {
 	case "domain_whitelist":
 		return isValidHostname(value)
 	case "dst_allowlist":
-		return egressEntryType(value) == "cidr" || (strings.Contains(value, ".") && isValidDomainEntry(value))
+		return egressEntryType(value) == "cidr" || (strings.Contains(value, ".") && isValidDomainEntry(value) && !strings.HasPrefix(value, "*."))
 	}
 	return false
 }

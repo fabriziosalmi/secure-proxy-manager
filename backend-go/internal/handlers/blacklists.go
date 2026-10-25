@@ -344,6 +344,14 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Domain added to blacklist"})
 }
 
+// wildcardEgressMessage refuses "*.example.com" on the egress allowlist. The
+// domain entries reach Squid verbatim as a dstdomain ACL, which reads "*." as
+// part of a literal host name that matches nothing (the watchdog strips it from
+// the blacklist for the same reason): the entry would be listed as allowed and
+// allow nothing. A leading dot is the dstdomain form for a domain and every
+// name under it.
+const wildcardEgressMessage = "write .example.com, with a leading dot, to allow example.com and every name under it: *.example.com would match nothing"
+
 // AddDstAllow adds an entry to the egress destination allowlist (default-deny
 // egress). The entry is auto-classified: an IP or CIDR is stored as 'cidr'
 // (Squid `dst`), anything else as a domain (Squid `dstdomain`).
@@ -377,6 +385,10 @@ func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) 
 	typ := egressEntryType(entry)
 	if typ != "cidr" && (!strings.Contains(entry, ".") || !isValidDomainEntry(entry)) {
 		writeError(w, http.StatusBadRequest, "entry must be an IP, CIDR, or domain")
+		return
+	}
+	if typ == "domain" && strings.HasPrefix(entry, "*.") {
+		writeError(w, http.StatusBadRequest, wildcardEgressMessage)
 		return
 	}
 	_, err := h.db.Exec("INSERT INTO dst_allowlist(entry, type, description) VALUES(?,?,?)", entry, typ, item.Description)
