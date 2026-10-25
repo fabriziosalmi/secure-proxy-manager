@@ -13,14 +13,16 @@ import (
 
 // SensitiveKeys lists setting names that should be encrypted at rest.
 var SensitiveKeys = map[string]struct{}{
-	"webhook_url":        {},
-	"gotify_url":         {},
-	"gotify_token":       {},
-	"teams_webhook_url":  {},
-	"telegram_bot_token": {},
-	"telegram_chat_id":   {},
-	"ntfy_url":           {},
-	"ntfy_topic":         {},
+	"webhook_url": {},
+	// Sent as "Authorization: Bearer <token>" with each webhook delivery.
+	"webhook_bearer_token": {},
+	"gotify_url":           {},
+	"gotify_token":         {},
+	"teams_webhook_url":    {},
+	"telegram_bot_token":   {},
+	"telegram_chat_id":     {},
+	"ntfy_url":             {},
+	"ntfy_topic":           {},
 }
 
 // IsSensitive returns true if the setting key should be encrypted.

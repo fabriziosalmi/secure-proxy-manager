@@ -231,12 +231,37 @@ func (h *SecurityHandlers) TestNotification(w http.ResponseWriter, r *http.Reque
 		"level":      "info",
 		"client_ip":  r.RemoteAddr,
 	}
-	// Send synchronously so we can report success/failure to the caller.
-	sendSecurityNotification(h.db, h.cfg.EncryptionKey, event)
-
+	// Every channel that has all of its settings stored, whether or not alerts
+	// are switched on, so a channel can be proven before alerts are turned on.
+	// One attempt each, concurrently, and each channel's own result: the
+	// response used to say "sent to all configured channels" after a send
+	// whose outcome nobody looked at, with no channel configured, or with
+	// alerts off.
+	encKey := ""
+	if h.cfg != nil {
+		encKey = h.cfg.EncryptionKey
+	}
+	settings, enabled := loadNotificationSettings(h.db, encKey)
+	results := deliverEach(buildDeliveries(settings, event), 1)
+	delivered := 0
+	for _, r := range results {
+		if r.Delivered {
+			delivered++
+		}
+	}
+	var msg string
+	switch {
+	case len(results) == 0:
+		msg = "No alert channel has all of its settings stored: nothing was sent"
+	case delivered == len(results):
+		msg = fmt.Sprintf("Delivered to all %d configured channels", len(results))
+	default:
+		msg = fmt.Sprintf("Delivered to %d of %d configured channels", delivered, len(results))
+	}
 	resp := map[string]any{
 		"status":  "success",
-		"message": "Test notification sent to all configured channels",
+		"message": msg,
+		"data":    map[string]any{"notifications_enabled": enabled, "channels": results},
 	}
 	// This is the moment an operator concludes that notifications work, and it
 	// is exactly where the gap is invisible: a test notification is generated
