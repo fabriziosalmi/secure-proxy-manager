@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
 )
 
 // This file is a characterization suite: it fingerprints what Import actually
@@ -89,8 +88,15 @@ func TestImportBehaviour(t *testing.T) {
 		if got.Added != 3 || got.Skipped != 1 || got.Bogon != 0 {
 			t.Errorf("added/skipped/bogon = %v/%v/%v, want 3/1/0", got.Added, got.Skipped, got.Bogon)
 		}
-		if want := "Imported on " + time.Now().Format("2006-01-02"); got.Rows["203.0.113.1"] != want {
-			t.Errorf("description = %q, want %q", got.Rows["203.0.113.1"], want)
+		// Changed on purpose with provenance (schema version 3): the
+		// description used to be "Imported on <date>", the date column again;
+		// where an entry came from is now its source.
+		if got.Rows["203.0.113.1"] != "" {
+			t.Errorf("description = %q, want none: the source records the import", got.Rows["203.0.113.1"])
+		}
+		var kind string
+		if err := db.QueryRow("SELECT s.kind FROM ip_blacklist e JOIN list_sources s ON s.id = e.source_id WHERE e.ip = '203.0.113.1'").Scan(&kind); err != nil || kind != "paste" {
+			t.Errorf("source kind = %q (%v), want paste", kind, err)
 		}
 	})
 

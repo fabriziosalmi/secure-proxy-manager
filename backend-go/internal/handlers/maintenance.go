@@ -286,6 +286,10 @@ func restoreLists(tx *sql.Tx, lists map[string][]map[string]string) (restored, s
 			_ = tx.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&n)
 			domainRoom = database.DomainBlacklistLimit() - n
 		}
+		// The entries this restore adds to a list share one "Restore" source,
+		// created with the first entry and dropped again if none was new.
+		var sourceID int64
+		var added int64
 		for _, e := range entries {
 			value := strings.TrimSpace(e["value"])
 			if value == "" {
@@ -320,10 +324,20 @@ func restoreLists(tx *sql.Tx, lists map[string][]map[string]string) (restored, s
 					value, egressEntryType(value), e["description"],
 				)
 			} else {
-				_, err = tx.Exec(
-					fmt.Sprintf("INSERT OR IGNORE INTO %s(%s, description) VALUES(?,?)", target[0], target[1]),
-					value, e["description"],
+				if sourceID == 0 {
+					if sourceID, err = database.NewSource(tx, target[0], database.SourceRestore, ""); err != nil {
+						return restored, skippedEntries, err
+					}
+				}
+				var res sql.Result
+				res, err = tx.Exec(
+					fmt.Sprintf("INSERT OR IGNORE INTO %s(%s, description, source_id) VALUES(?,?,?)", target[0], target[1]),
+					value, e["description"], sourceID,
 				)
+				if err == nil {
+					n, _ := res.RowsAffected()
+					added += n
+				}
 			}
 			if err != nil {
 				log.Error().Str("list", name).Err(err).Msg("RestoreConfig: list insert failed — rolling back")
@@ -332,6 +346,11 @@ func restoreLists(tx *sql.Tx, lists map[string][]map[string]string) (restored, s
 			restored++
 			if domainRoom > 0 {
 				domainRoom-- // counts a duplicate too: errs towards skipping, never past the limit
+			}
+		}
+		if sourceID != 0 && added == 0 {
+			if _, err := tx.Exec("DELETE FROM list_sources WHERE id = ?", sourceID); err != nil {
+				return restored, skippedEntries, err
 			}
 		}
 	}
