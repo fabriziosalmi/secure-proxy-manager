@@ -8,6 +8,7 @@
 import type { ReactNode } from 'react';
 import { Switch } from '../ui/Switch';
 import { ApplyBadge } from './ApplyBadge';
+import { SecretField } from './SecretField';
 import { cn } from '../../lib/utils';
 import type { SectionForm } from './sectionForm';
 
@@ -51,6 +52,31 @@ export function ToggleRow({ form, setting, label, help, children }: ToggleRowPro
       {error && <p id={`${setting}-error`} className="text-sm text-danger">{sentence(error)}</p>}
       {on && children && <div className="flex flex-col gap-4">{children}</div>}
     </div>
+  );
+}
+
+export interface SecretRowProps {
+  form: SectionForm;
+  setting: string;
+  label: string;
+  placeholder?: string;
+}
+
+/**
+ * A write-only setting (lib/secrets), bound to the section draft: its id is
+ * the key, so a refused value can be focused by name, and the refusal shows
+ * under it.
+ */
+export function SecretRow({ form, setting, label, placeholder }: SecretRowProps) {
+  const error = form.error(setting);
+  return (
+    <SecretField
+      id={setting}
+      label={label}
+      placeholder={placeholder}
+      error={error ? sentence(error) : undefined}
+      {...form.secretProps(setting)}
+    />
   );
 }
 

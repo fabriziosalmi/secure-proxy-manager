@@ -1,34 +1,30 @@
-import { useRef, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
-import { Database, Download, Trash2, RotateCcw, Wrench, Upload, FileJson } from 'lucide-react';
-import toast from 'react-hot-toast';
+/**
+ * Backup, restore and the maintenance actions of Admin and backup. Each
+ * action reports its own result under its button, from what the endpoint
+ * answered, and says what it cannot confirm. The destructive ones ask first.
+ *
+ * Backup is the restorable pair (GET maintenance/backup-config, POST
+ * maintenance/restore-config). The database export is every table, for
+ * analysis, and Restore refuses it.
+ *
+ * Clear the cache: Squid has no command that empties its cache. The proxy's
+ * watchdog runs "squid -k purge", which Squid 7.7 answers with its usage
+ * text and exit code 1 (measured), and then "squid -k shutdown"; supervisord
+ * starts Squid again (proxy/blacklist_watchdog.py, squid-supervisor.conf).
+ */
+import { useRef, useState, type ReactNode } from 'react';
+import { Upload } from 'lucide-react';
 import { api, getErrorMessage } from '../../lib/api';
 import { useConfirm } from '../../hooks/useConfirm';
 import { applyToProxy, describeApply, type ApplyOutcome } from '../../lib/reload';
 import { backupFileName, downloadJson, parseBackupFile, type BackupSummary, type RestoreResponse } from '../../lib/backup';
-import { formatCount, formatDateTime } from '../../lib/format';
+import { formatClock, formatCount, formatDateTime, formatKilobytes } from '../../lib/format';
 import { cn } from '../../lib/utils';
+import { Section } from '../ui/Section';
+import { Button } from '../ui/Button';
 
-function Btn({ icon: Icon, label, sub, onClick, destructive, disabled }: {
-  icon: typeof Download; label: string; sub: string; onClick: () => void; destructive?: boolean; disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`flex items-center gap-3 p-3 border border-border rounded-lg bg-background/50 transition-colors text-left w-full disabled:opacity-50 ${
-        destructive ? 'hover:bg-destructive/10 group' : 'hover:bg-secondary/50'
-      }`}
-    >
-      <Icon aria-hidden="true" className={`w-4 h-4 shrink-0 ${destructive ? 'text-destructive group-hover:text-red-400' : 'text-primary'}`} />
-      <div>
-        <span className={`text-xs font-medium ${destructive ? 'text-destructive group-hover:text-red-400' : ''}`}>{label}</span>
-        <p className="text-[10px] text-muted-foreground">{sub}</p>
-      </div>
-    </button>
-  );
-}
+type Tone = 'success' | 'warning' | 'danger';
+const TONE: Record<Tone, string> = { success: 'text-success', warning: 'text-warning-ink', danger: 'text-danger' };
 
 /** What the restore dialog says the file will change. */
 function RestoreSummaryText({ summary }: { summary: BackupSummary }) {
@@ -61,18 +57,12 @@ type RestoreOutcome =
   | { kind: 'failed'; message: string }
   | { kind: 'done'; response: RestoreResponse; apply: ApplyOutcome };
 
-const TONE = {
-  success: 'border-emerald-500/30 bg-emerald-500/5',
-  warning: 'border-amber-500/30 bg-amber-500/5',
-  danger: 'border-destructive/40 bg-destructive/5',
-};
-
 function RestoreResult({ outcome }: { outcome: RestoreOutcome }) {
   if (outcome.kind !== 'done') {
     return (
-      <div role="status" className={cn('mt-3 rounded-lg border p-3 text-xs', TONE.danger)}>
+      <div className={cn('flex flex-col gap-1 text-sm', TONE.danger)}>
         <p className="font-medium">{outcome.kind === 'invalid' ? 'The file was not restored' : 'The restore failed'}</p>
-        <p className="mt-1">{outcome.message}</p>
+        <p>{outcome.message}</p>
       </div>
     );
   }
@@ -80,13 +70,11 @@ function RestoreResult({ outcome }: { outcome: RestoreOutcome }) {
   const apply = describeApply(outcome.apply, 'Restored');
   const skipped = r.skipped_settings ?? [];
   const failed = r.failed_files ?? [];
-  const restoredSettings = r.restored_settings;
-  const restoredEntries = r.restored_entries;
   return (
-    <div role="status" className={cn('mt-3 space-y-1.5 rounded-lg border p-3 text-xs', TONE[failed.length ? 'warning' : apply.tone])}>
+    <div className={cn('flex flex-col gap-1.5 text-sm', TONE[failed.length ? 'warning' : apply.tone])}>
       <p className="font-medium">
-        {restoredSettings !== undefined && restoredEntries !== undefined
-          ? `Restored ${formatCount(restoredSettings)} settings and ${formatCount(restoredEntries)} list entries.`
+        {r.restored_settings !== undefined && r.restored_entries !== undefined
+          ? `Restored ${formatCount(r.restored_settings)} settings and ${formatCount(r.restored_entries)} list entries.`
           : `Restored ${formatCount(r.restored ?? 0)} items.`}
       </p>
       {skipped.length > 0 && (
@@ -105,38 +93,70 @@ function RestoreResult({ outcome }: { outcome: RestoreOutcome }) {
   );
 }
 
-export function Maintenance() {
+/** One line of result under an action: what the endpoint answered. */
+type Outcome = { tone: Tone; text: string } | null;
+
+function ActionRow({ title, help, button, outcome, busy, onRun, danger }: {
+  title: string; help: ReactNode; button: string; outcome: Outcome; busy: boolean; onRun: () => void; danger?: boolean;
+}) {
+  return (
+    <li className="flex flex-col gap-2 border-t border-line-subtle py-4 first:border-t-0 first:pt-0 last:pb-0">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-[1_1_280px] flex-col gap-0.5">
+          <h4 className="text-sm font-semibold text-ink">{title}</h4>
+          <p className="text-sm leading-5 text-ink-muted">{help}</p>
+        </div>
+        <Button variant={danger ? 'danger-outline' : 'secondary'} onClick={onRun} disabled={busy}>
+          {busy ? 'Working...' : button}
+        </Button>
+      </div>
+      <p role="status" className={cn('text-sm', outcome ? TONE[outcome.tone] : '')}>{outcome?.text}</p>
+    </li>
+  );
+}
+
+export function BackupRestore() {
   const { confirm, dialog } = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [restoring, setRestoring] = useState(false);
+  const [busy, setBusy] = useState<'backup' | 'restore' | 'export' | null>(null);
+  const [backup, setBackup] = useState<Outcome>(null);
+  const [exported, setExported] = useState<Outcome>(null);
   const [restoreOutcome, setRestoreOutcome] = useState<RestoreOutcome | null>(null);
 
-  const action = async (label: string, fn: () => Promise<unknown>) => {
-    const id = toast.loading(`${label}...`);
+  const handleBackup = async () => {
+    setBusy('backup');
     try {
-      await fn();
-      toast.success(`${label} complete`, { id });
-    } catch {
-      toast.error(`${label} failed`, { id });
+      const res = await api.get('maintenance/backup-config');
+      const envelope = res.data?.data;
+      if (!envelope?.settings) throw new Error('the backup has no settings');
+      const name = backupFileName();
+      downloadJson(envelope, name);
+      setBackup({ tone: 'success', text: `Downloaded ${name} at ${formatClock(new Date())}.` });
+    } catch (err) {
+      setBackup({ tone: 'danger', text: `No backup was made: ${err instanceof Error && !('response' in err) ? err.message : getErrorMessage(err, 'the backend did not answer')}.` });
+    } finally {
+      setBusy(null);
     }
   };
 
-  // The restorable backup: settings and the five lists, read back by Restore.
-  const handleBackup = () => action('Backup', async () => {
-    const res = await api.get('maintenance/backup-config');
-    const envelope = res.data?.data;
-    if (!envelope?.settings) throw new Error('the backup has no settings');
-    downloadJson(envelope, backupFileName());
-  });
-
-  // The full database dump, for analysis. Restore cannot read it.
-  const handleExport = () => action('Database export', async () => {
-    const res = await api.get('database/export', { responseType: 'blob' });
-    const url = window.URL.createObjectURL(new Blob([res.data]));
-    const a = document.createElement('a'); a.href = url;
-    a.download = `proxy-database-export-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click(); window.URL.revokeObjectURL(url);
-  });
+  const handleExport = async () => {
+    setBusy('export');
+    try {
+      const res = await api.get('database/export', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const name = `proxy-database-export-${new Date().toISOString().slice(0, 10)}.json`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      setExported({ tone: 'success', text: `Downloaded ${name}.` });
+    } catch (err) {
+      setExported({ tone: 'danger', text: `The export failed: ${getErrorMessage(err, 'the backend did not answer')}.` });
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const handleRestoreFile = async (file: File) => {
     let parsed: ReturnType<typeof parseBackupFile>;
@@ -153,7 +173,7 @@ export function Maintenance() {
       destructive: true,
     });
     if (!ok) return;
-    setRestoring(true);
+    setBusy('restore');
     setRestoreOutcome(null);
     try {
       const res = await api.post('maintenance/restore-config', parsed.envelope);
@@ -162,68 +182,161 @@ export function Maintenance() {
     } catch (err) {
       setRestoreOutcome({ kind: 'failed', message: getErrorMessage(err, 'The backend did not accept the file.') });
     } finally {
-      setRestoring(false);
+      setBusy(null);
     }
   };
 
-  const handleClearCache = async () => {
-    if (!(await confirm({
-      title: 'Clear proxy cache?',
-      body: 'Frees proxy memory now; cached objects are re-fetched on the next request.',
-      confirmLabel: 'Clear cache',
-      destructive: true,
-    }))) return;
-    action('Clear cache', () => api.post('maintenance/clear-cache'));
-  };
-  const handleOptimize = () => action('Optimize DB', () => api.post('database/optimize'));
-  const handleResetCounters = async () => {
-    if (!(await confirm({
-      title: 'Reset all counters?',
-      body: 'Permanently clears all proxy logs and WAF statistics. This cannot be undone.',
-      confirmLabel: 'Reset counters',
-      destructive: true,
-    }))) return;
-    action('Reset counters', () => api.post('counters/reset'));
-  };
-  const handleReloadConfig = () => action('Reload config', () => api.post('maintenance/reload-config'));
-  const handleReloadDns = () => action('Reload DNS', () => api.post('maintenance/reload-dns'));
-
   return (
-    <Card>
+    <Section level={3} title="Backup and restore">
       {dialog}
-      <CardHeader className="p-4 pb-2">
-        <div className="flex items-center gap-2">
-          <Database aria-hidden="true" className="w-4 h-4 text-muted-foreground" />
-          <CardTitle className="text-sm">Maintenance</CardTitle>
-        </div>
-        <CardDescription className="text-xs">System backup, cache, and database management</CardDescription>
-      </CardHeader>
-      <CardContent className="p-4 pt-0">
-        <div className="grid grid-cols-2 gap-2">
-          <Btn icon={Download} label="Backup Config" sub="Settings and lists, restorable" onClick={handleBackup} />
-          <Btn icon={Upload} label={restoring ? 'Restoring...' : 'Restore Config'} sub="From a backup file" onClick={() => fileRef.current?.click()} disabled={restoring} />
-          <Btn icon={Wrench} label="Optimize DB" sub="Vacuum + reindex" onClick={handleOptimize} />
-          <Btn icon={FileJson} label="Database export" sub="Every table, not restorable" onClick={handleExport} />
-          <Btn icon={RotateCcw} label="Reload Config" sub="Apply Squid changes" onClick={handleReloadConfig} />
-          <Btn icon={RotateCcw} label="Reload DNS" sub="Apply domain blocklist" onClick={handleReloadDns} />
-          <Btn icon={RotateCcw} label="Reset Counters" sub="Zero all stats" onClick={handleResetCounters} destructive />
-          <Btn icon={Trash2} label="Clear Cache" sub="Free proxy memory" onClick={handleClearCache} destructive />
-        </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/json,.json"
-          aria-label="Backup file to restore"
-          className="sr-only"
-          tabIndex={-1}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            e.target.value = '';
-            if (file) void handleRestoreFile(file);
-          }}
+      <ul className="flex flex-col">
+        <ActionRow
+          title="Backup"
+          help="The settings and the five lists (blocked and allowed IPs and domains, the egress allowlist), in a file Restore reads back. Alert channel secrets stay encrypted in it."
+          button="Download a backup"
+          outcome={backup}
+          busy={busy === 'backup'}
+          onRun={() => void handleBackup()}
         />
-        {restoreOutcome && <RestoreResult outcome={restoreOutcome} />}
-      </CardContent>
-    </Card>
+        <li className="flex flex-col gap-2 border-t border-line-subtle py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-[1_1_280px] flex-col gap-0.5">
+              <h4 className="text-sm font-semibold text-ink">Restore</h4>
+              <p className="text-sm leading-5 text-ink-muted">Adds what a backup file holds, after listing it. Nothing that is not in the file is removed. The proxy reloads afterwards.</p>
+            </div>
+            <Button icon={<Upload />} onClick={() => fileRef.current?.click()} disabled={busy === 'restore'}>
+              {busy === 'restore' ? 'Restoring...' : 'Restore from a file'}
+            </Button>
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            aria-label="Backup file to restore"
+            className="sr-only"
+            tabIndex={-1}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) void handleRestoreFile(file);
+            }}
+          />
+          <div role="status">{restoreOutcome && <RestoreResult outcome={restoreOutcome} />}</div>
+        </li>
+        <ActionRow
+          title="Database export"
+          help="Every table, the request log and the audit log included, for analysis. Restore cannot read it."
+          button="Export the database"
+          outcome={exported}
+          busy={busy === 'export'}
+          onRun={() => void handleExport()}
+        />
+      </ul>
+    </Section>
   );
 }
+
+type ActionId = 'reload' | 'dns' | 'cache' | 'reset' | 'optimize';
+
+const sizeOf = async (): Promise<number | null> => {
+  try {
+    const res = await api.get('database/size');
+    const n = res.data?.data?.size_bytes;
+    return typeof n === 'number' ? n : null;
+  } catch {
+    return null;
+  }
+};
+
+export function MaintenanceActions() {
+  const { confirm, dialog } = useConfirm();
+  const [busy, setBusy] = useState<ActionId | null>(null);
+  const [out, setOut] = useState<Partial<Record<ActionId, Outcome>>>({});
+
+  const run = async (id: ActionId, fn: () => Promise<Outcome>) => {
+    setBusy(id);
+    setOut((o) => ({ ...o, [id]: null }));
+    try {
+      const result = await fn();
+      setOut((o) => ({ ...o, [id]: result }));
+    } catch (err) {
+      setOut((o) => ({ ...o, [id]: { tone: 'danger', text: `It failed: ${getErrorMessage(err, 'the backend did not answer')}.` } }));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const reload = () => run('reload', async () => {
+    const a = describeApply(await applyToProxy(), 'Requested');
+    return { tone: a.tone, text: a.text };
+  });
+
+  const reloadDns = () => run('dns', async () => {
+    const res = await api.post('maintenance/reload-dns');
+    const n = res.data?.data?.domains;
+    const wrote = typeof n === 'number' ? `Wrote ${formatCount(n)} blocked ${n === 1 ? 'domain' : 'domains'} for DNS.` : 'The blocklist files were written.';
+    return { tone: 'success', text: `${wrote} The DNS service rereads them within about 2 seconds; this page cannot confirm it.` };
+  });
+
+  const clearCache = async () => {
+    if (!(await confirm({
+      title: 'Restart the proxy to clear its cache?',
+      body: 'Squid has no command that empties its cache, so the proxy stops Squid and its supervisor starts it again. Open connections drop, and new ones are refused until it is back, up to about 30 seconds. The memory cache is emptied; objects cached on disk stay.',
+      confirmLabel: 'Restart and clear',
+      destructive: true,
+    }))) return;
+    void run('cache', async () => {
+      await api.post('maintenance/clear-cache');
+      return { tone: 'success', text: `Requested at ${formatClock(new Date())}. The proxy's watchdog acts within about 2 seconds; this page cannot confirm the restart.` };
+    });
+  };
+
+  const resetStats = async () => {
+    if (!(await confirm({
+      title: 'Delete every logged request?',
+      body: 'Every request in the log is deleted, so the Logs, Clients and Overview figures start from zero, and the WAF resets its counters. The audit log is kept. This cannot be undone.',
+      confirmLabel: 'Delete and reset',
+      destructive: true,
+    }))) return;
+    void run('reset', async () => {
+      const res = await api.post('counters/reset');
+      const d = res.data?.data ?? {};
+      const logs = typeof d.logs_cleared === 'number' ? `Deleted ${formatCount(d.logs_cleared)} logged ${d.logs_cleared === 1 ? 'request' : 'requests'}.` : 'The log was cleared.';
+      const waf = d.waf_reset === true ? 'The WAF reset its counters.' : 'The WAF did not reset its counters: it did not answer, or refused the backend.';
+      return { tone: d.waf_reset === true ? 'success' : 'warning', text: `${logs} ${waf}` };
+    });
+  };
+
+  const optimize = () => run('optimize', async () => {
+    const before = await sizeOf();
+    await api.post('database/optimize');
+    const after = await sizeOf();
+    const size = before !== null && after !== null
+      ? ` Size ${formatKilobytes(before / 1024)} before, ${formatKilobytes(after / 1024)} after.`
+      : ' The size could not be read.';
+    return { tone: 'success', text: `Optimized (VACUUM and REINDEX).${size}` };
+  });
+
+  return (
+    <Section level={3} title="Maintenance">
+      {dialog}
+      <ul className="flex flex-col">
+        <ActionRow title="Reload the proxy" help="Regenerates the proxy configuration from the stored settings and lists, and reports whether the proxy took it. Saving a section already does this." button="Reload the proxy" outcome={out.reload ?? null} busy={busy === 'reload'} onRun={() => void reload()} />
+        <ActionRow title="Reload DNS" help="Writes the domain blocklist for the DNS service again." button="Reload DNS" outcome={out.dns ?? null} busy={busy === 'dns'} onRun={() => void reloadDns()} />
+        <ActionRow title="Clear the cache" help="Restarts Squid, which empties its memory cache. Clients lose their connections while it restarts." button="Clear Cache" outcome={out.cache ?? null} busy={busy === 'cache'} onRun={() => void clearCache()} danger />
+        <ActionRow title="Reset statistics" help="Deletes every logged request and resets the WAF's counters." button="Reset statistics" outcome={out.reset ?? null} busy={busy === 'reset'} onRun={() => void resetStats()} danger />
+        <ActionRow title="Optimize the database" help="Compacts the database file and rebuilds its indexes. The backend waits for it, which can take a while on a large log." button="Optimize" outcome={out.optimize ?? null} busy={busy === 'optimize'} onRun={() => void optimize()} />
+      </ul>
+    </Section>
+  );
+}
+
+export function Maintenance() {
+  return (
+    <>
+      <BackupRestore />
+      <MaintenanceActions />
+    </>
+  );
+}
+

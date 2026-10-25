@@ -24,17 +24,21 @@ import { SettingsNav } from '../components/settings/SettingsNav';
 import { SaveBar } from '../components/settings/SaveBar';
 import { SettingsDraftsProvider } from '../components/settings/SettingsDrafts';
 import { useSettingsDrafts, useSettingsDraftsOptional } from '../hooks/useSettingsDrafts';
-import { LegacyAdmin, LegacyAlerts, LegacyEngine, LegacyInspection, LegacyLogs } from '../components/settings/LegacySections';
 import { OverviewSection } from '../components/settings/sections/OverviewSection';
 import { AccessSection } from '../components/settings/sections/AccessSection';
 import { FilteringSection } from '../components/settings/sections/FilteringSection';
+import { InspectionSection } from '../components/settings/sections/InspectionSection';
+import { AlertsSection } from '../components/settings/sections/AlertsSection';
+import { LogsSection } from '../components/settings/sections/LogsSection';
+import { AdminSection } from '../components/settings/sections/AdminSection';
+import { EngineSection } from '../components/settings/sections/EngineSection';
 import { needsAttention, type AttentionItem } from '../lib/attention';
 import { egressTotalQuery, statusQuery } from '../lib/queries';
 import type { SectionForm } from '../components/settings/sectionForm';
 import { parseSettings, secretStateOf } from '../lib/secrets';
 import { applyToProxy } from '../lib/reload';
-import { rowsAfterSave, sectionRequest } from '../lib/settingsSave';
-import { parseFieldError, validateSection } from '../lib/settingsValidation';
+import { rowsAfterSave, sectionRequest, wafPushOf } from '../lib/settingsSave';
+import { parseFieldErrors, validateSecrets, validateSection } from '../lib/settingsValidation';
 import {
   DEFAULT_SECTION, SECTIONS, SECTION_KEYS, fieldLabel, sectionById, sectionOfKey, sectionPath,
   type SectionDef, type SectionId,
@@ -42,11 +46,6 @@ import {
 import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 
 const SETTINGS_KEY = ['settings'] as const;
-
-// Sections that show a refused value's message under the field itself. The
-// others (their controls are rebuilt in part B) list the messages after the
-// section, each one moving focus to its field.
-const INLINE_ERRORS: SectionId[] = ['access', 'filtering'];
 
 interface BodyProps {
   section: SectionDef;
@@ -62,11 +61,11 @@ function SectionBody({ section, form, rows, attention, attentionLoading, dirty }
     case 'overview': return <OverviewSection form={form} rows={rows} attention={attention} attentionLoading={attentionLoading} dirty={dirty} />;
     case 'access': return <AccessSection form={form} />;
     case 'filtering': return <FilteringSection form={form} />;
-    case 'inspection': return <LegacyInspection form={form} />;
-    case 'alerts': return <LegacyAlerts form={form} />;
-    case 'logs': return <LegacyLogs form={form} />;
-    case 'admin': return <LegacyAdmin />;
-    case 'engine': return <LegacyEngine form={form} />;
+    case 'inspection': return <InspectionSection form={form} />;
+    case 'alerts': return <AlertsSection form={form} unsaved={dirty.alerts} />;
+    case 'logs': return <LogsSection form={form} />;
+    case 'admin': return <AdminSection />;
+    case 'engine': return <EngineSection form={form} />;
   }
 }
 
@@ -152,7 +151,9 @@ function SettingsPage() {
   const save = async () => {
     if (savingRef.current) return;
     const req = sectionRequest(id, parsed.values, drafts.edits[id] ?? {}, drafts.secretEdits[id] ?? {});
-    const errors = validateSection(id, values, req.sent);
+    const typedSecrets = Object.fromEntries(Object.entries(drafts.secretEdits[id] ?? {})
+      .flatMap(([k, e]) => (e?.kind === 'replace' ? [[k, e.value]] : [])));
+    const errors = { ...validateSection(id, values, req.sent), ...validateSecrets(id, typedSecrets) };
     // An empty allowlist with default-deny on leaves only LAN destinations
     // and Allowed IPs reachable (lib/egress).
     if (id === 'filtering' && values.egress_default_deny === 'true' && egress.data === 0) {
@@ -171,20 +172,28 @@ function SettingsPage() {
         params: req.clear.length ? { clear: req.clear.join(',') } : undefined,
       });
       const failedFiles: string[] = res.data?.status === 'partial' ? (res.data?.data?.failed ?? []) : [];
+      const waf = wafPushOf(res.data?.data);
       const apply = req.modes.includes('reload') ? await applyToProxy() : undefined;
       queryClient.setQueryData<SettingRow[]>(SETTINGS_KEY, (old) => rowsAfterSave(old, req));
       drafts.discard(id);
-      drafts.setResult(id, { kind: 'saved', at: new Date(), modes: req.modes, apply, failedFiles });
+      drafts.setResult(id, { kind: 'saved', at: new Date(), modes: req.modes, apply, failedFiles, waf });
+      if (waf) void queryClient.invalidateQueries({ queryKey: ['waf', 'heuristics'] });
       void queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
     } catch (err) {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined;
-      const field = status === 400 && axios.isAxiosError(err) ? parseFieldError(err.response?.data?.detail) : null;
-      if (field && SECTION_KEYS[id].includes(field.key)) {
-        drafts.setErrors(id, { [field.key]: field.message });
-        drafts.setResult(id, { kind: 'invalid', fields: [field.key] });
-        focusField(field.key);
-      } else if (field) {
-        drafts.setResult(id, { kind: 'invalid', fields: [], outside: `${fieldLabel(field.key)}: ${field.message}` });
+      // Every field the backend refused, under its own field; one that is
+      // not in this section is named in the bar.
+      const fields = status === 400 && axios.isAxiosError(err) ? parseFieldErrors(err.response?.data) : null;
+      if (fields) {
+        const mine = Object.fromEntries(Object.entries(fields).filter(([k]) => SECTION_KEYS[id].includes(k)));
+        const other = Object.entries(fields).filter(([k]) => !SECTION_KEYS[id].includes(k));
+        drafts.setErrors(id, mine);
+        drafts.setResult(id, {
+          kind: 'invalid',
+          fields: Object.keys(mine),
+          outside: other.length ? other.map(([k, m]) => `${fieldLabel(k)}: ${m}`).join('; ') : undefined,
+        });
+        if (Object.keys(mine).length) focusField(Object.keys(mine)[0]);
       } else {
         drafts.setResult(id, { kind: 'error', message: getErrorMessage(err, 'the backend did not answer') });
       }
@@ -200,8 +209,6 @@ function SettingsPage() {
     const apply = await applyToProxy();
     drafts.setResult(id, { ...last, apply });
   };
-
-  const fieldErrors = drafts.errors[id] ?? {};
 
   return (
     <div className="flex flex-col gap-6">
@@ -226,17 +233,6 @@ function SettingsPage() {
             attentionLoading={settings.isPending}
             dirty={dirty}
           />
-          {!INLINE_ERRORS.includes(id) && Object.keys(fieldErrors).length > 0 && (
-            <ul aria-label="Fields that need attention" className="flex flex-col gap-1 rounded-panel border border-danger-line bg-danger-subtle px-4 py-3 text-sm text-danger">
-              {Object.entries(fieldErrors).map(([key, msg]) => (
-                <li key={key}>
-                  <button type="button" className="text-left underline-offset-2 hover:underline" onClick={() => focusField(key)}>
-                    {fieldLabel(key)}: {msg}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
           <SaveBar
             changes={changesIn(id)}
             saving={saving === id}

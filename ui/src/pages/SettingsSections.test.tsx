@@ -250,7 +250,7 @@ describe('Settings sections', () => {
       const box = preview.parentElement!
       expect(box).toHaveTextContent('Require proxy login: not set to on')
       expect(box).toHaveTextContent('Every device must sign in with the .env credential, or gets 407.')
-      expect(box).toHaveTextContent('HTTPS Inspection (SSL Bump): off to on')
+      expect(box).toHaveTextContent('HTTPS inspection: off to on')
       fireEvent.click(within(box).getByRole('button', { name: 'Apply Paranoid' }))
       expect(await screen.findByText('Paranoid saved.')).toBeInTheDocument()
       expect(screen.getByText(/^Applied to the proxy at/)).toBeInTheDocument()

@@ -64,7 +64,7 @@ describe('Maintenance', () => {
 
   it('backs up through the restorable endpoint, and restores the same file back', async () => {
     const { container } = renderWithProviders(<Maintenance />)
-    fireEvent.click(screen.getByRole('button', { name: /Backup Config/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Download a backup' }))
     await waitFor(() => expect(downloaded).toHaveLength(1))
     expect(api.get).toHaveBeenCalledWith('maintenance/backup-config')
     expect(api.get).not.toHaveBeenCalledWith('database/export', expect.anything())
@@ -112,8 +112,48 @@ describe('Maintenance', () => {
   it('refuses a database export, which restore cannot read, without asking', async () => {
     renderWithProviders(<Maintenance />)
     chooseFile(JSON.stringify({ status: 'success', data: { settings: [{ id: 1, setting_name: 'a' }], proxy_logs: [] } }), 'database_export.json')
-    expect(await screen.findByText('This is a database export, which cannot be restored. Use a file made by Backup Config.')).toBeInTheDocument()
+    expect(await screen.findByText('This is a database export, which cannot be restored. Use a file made by Download a backup.')).toBeInTheDocument()
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('reports each maintenance action under its own button, from what the backend answered', async () => {
+    let size = 2_000_000
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === 'database/size') { const n = size; size = 1_000_000; return Promise.resolve({ data: { status: 'success', data: { size_bytes: n } } }) }
+      return Promise.resolve({ data: { status: 'success', data: {} } })
+    })
+    vi.mocked(api.post).mockImplementation((url: string) => {
+      if (url === 'counters/reset') return Promise.resolve({ data: { status: 'success', data: { logs_cleared: 1234, waf_reset: false } } })
+      if (url === 'maintenance/reload-dns') return Promise.resolve({ data: { status: 'success', data: { domains: 42 } } })
+      return Promise.resolve({ data: { status: 'success' } })
+    })
+    const { container } = renderWithProviders(<Maintenance />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reload DNS' }))
+    expect(await screen.findByText('Wrote 42 blocked domains for DNS. The DNS service rereads them within about 2 seconds; this page cannot confirm it.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset statistics' }))
+    const ask = await screen.findByRole('alertdialog', { name: 'Delete every logged request?' })
+    fireEvent.click(within(ask).getByRole('button', { name: 'Delete and reset' }))
+    expect(await screen.findByText('Deleted 1,234 logged requests. The WAF did not reset its counters: it did not answer, or refused the backend.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Cache' }))
+    const restart = await screen.findByRole('alertdialog', { name: 'Restart the proxy to clear its cache?' })
+    expect(restart).toHaveTextContent('Squid has no command that empties its cache')
+    fireEvent.click(within(restart).getByRole('button', { name: 'Restart and clear' }))
+    expect(await screen.findByText(/^Requested at \d\d:\d\d\. The proxy's watchdog acts within about 2 seconds; this page cannot confirm the restart\.$/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Optimize' }))
+    expect(await screen.findByText(/^Optimized \(VACUUM and REINDEX\)\. Size 1\.9 MB before, 977 KB after\.$/)).toBeInTheDocument()
+    await expectNoAxeViolations(container)
+  })
+
+  it('does nothing destructive when the confirmation is cancelled', async () => {
+    renderWithProviders(<Maintenance />)
+    fireEvent.click(screen.getByRole('button', { name: 'Reset statistics' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(api.post).not.toHaveBeenCalledWith('counters/reset')
   })
 })

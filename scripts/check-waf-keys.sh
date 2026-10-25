@@ -21,7 +21,8 @@ REF_FILE="waf-go/internal/engine/heuristics.go"
 REF="$(keys_in "$REF_FILE")"
 [ -n "$REF" ] || { echo "FAIL: no heuristic keys found in $REF_FILE"; exit 1; }
 
-FILES="backend-go/internal/handlers/settings.go
+FILES="backend-go/internal/handlers/settings_checks.go
+backend-go/internal/database/db.go
 backend-go/internal/workers/waf_reconciler.go
 ui/src/lib/settingsMeta.ts
 docker-compose.yml

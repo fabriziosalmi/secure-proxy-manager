@@ -46,9 +46,9 @@ export function parseBackupFile(text: string): { envelope: BackupEnvelope; summa
   }
   // A file saved from the raw API answer still carries the { status, data } wrapper.
   if (isMap(raw) && isMap(raw.data) && !('settings' in raw) && !('config' in raw)) raw = raw.data;
-  if (!isMap(raw)) throw new Error('The file is not a backup made by Backup Config.');
+  if (!isMap(raw)) throw new Error('The file is not a backup made by Download a backup.');
   if (Array.isArray(raw.settings)) {
-    throw new Error('This is a database export, which cannot be restored. Use a file made by Backup Config.');
+    throw new Error('This is a database export, which cannot be restored. Use a file made by Download a backup.');
   }
   const settings = isMap(raw.settings) ? raw.settings : isMap(raw.config) ? raw.config : undefined;
   const lists = isMap(raw.lists) ? raw.lists : undefined;
