@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Fail if an em dash (U+2014) or an en dash (U+2013) appears in the UI source
-# (ui/src, *.ts and *.tsx, tests included), in docs/ or in any Markdown file.
+# (ui/src, *.ts and *.tsx, tests included), in docs/, in any Markdown file, or
+# in the other text a user reads: the Squid error pages (proxy/error-pages,
+# served to every client a rule blocks), and the UI's index.html and the
+# scripts and images in ui/public (the fonts there are third-party files and
+# are not checked).
 #
 # The UI used a bare em dash as the placeholder for a missing value, which
 # reads like a value and does not say what is missing, and as punctuation in
@@ -22,7 +26,8 @@ files=()
 while IFS= read -r -d '' f; do
     [ -f "$f" ] && files+=("$f")
 done < <(git ls-files -z --cached --others --exclude-standard -- \
-    'ui/src/*.ts' 'ui/src/*.tsx' 'docs/*' '*.md')
+    'ui/src/*.ts' 'ui/src/*.tsx' 'docs/*' '*.md' \
+    'proxy/error-pages/*' 'ui/index.html' 'ui/public/*.js' 'ui/public/*.svg')
 
 if [ "${#files[@]}" -eq 0 ]; then
     echo "FAIL: found no files to check; is this a checkout of the repository?" >&2
@@ -42,7 +47,7 @@ case $rc in
         exit 1
         ;;
     1)
-        echo "OK: no em or en dashes in ui/src, docs/ or Markdown (${#files[@]} files)"
+        echo "OK: no em or en dashes in ui/src, docs/, Markdown, proxy/error-pages or ui/public (${#files[@]} files)"
         ;;
     *)
         echo "FAIL: grep exited $rc while scanning for dashes" >&2
