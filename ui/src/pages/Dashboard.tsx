@@ -51,7 +51,7 @@ export function Dashboard() {
 
   const { data: s, isLoading } = useQuery<DashboardSummary>({ queryKey: ['dashboard'], queryFn: () => getData<DashboardSummary>('dashboard/summary'), refetchInterval: vis ? REFETCH : false });
   const { data: tl } = useQuery<TimelineEntry[]>({ queryKey: ['timeline'], queryFn: () => getData<TimelineEntry[]>('logs/timeline'), refetchInterval: vis ? REFETCH : false });
-  const { data: sec } = useQuery<SecurityScore>({ queryKey: ['score'], queryFn: () => getData<SecurityScore>('security/score'), refetchInterval: vis ? 30_000 : false });
+  const { data: sec, isLoading: secLoading } = useQuery<SecurityScore>({ queryKey: ['score'], queryFn: () => getData<SecurityScore>('security/score'), refetchInterval: vis ? 30_000 : false });
   const { data: cache } = useQuery<CacheStats>({ queryKey: ['cache'], queryFn: () => getData<CacheStats>('cache/statistics'), refetchInterval: vis ? 30_000 : false });
 
   const chart = React.useMemo(() => tl ?? [], [tl]);
@@ -149,13 +149,20 @@ export function Dashboard() {
         <Card className="stagger-child" style={{ '--stagger-index': 3 } as React.CSSProperties}>
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Score</p>
-            <p className="text-2xl font-bold">{animScore}<span className="text-sm text-muted-foreground">/100</span></p>
-            <div className="w-full bg-secondary h-1.5 mt-1 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full progress-glow ${(sec?.score || 0) > 80 ? 'bg-emerald-500 glow-emerald' : (sec?.score || 0) > 50 ? 'bg-yellow-500 glow-yellow' : 'bg-destructive glow-destructive'}`}
-                style={{ width: `${sec?.score || 0}%` }}
-              />
-            </div>
+            {typeof sec?.score === 'number' ? (
+              <>
+                <p className="text-2xl font-bold">{animScore}<span className="text-sm text-muted-foreground">/100</span></p>
+                <div className="w-full bg-secondary h-1.5 mt-1 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full progress-glow ${sec.score > 80 ? 'bg-emerald-500 glow-emerald' : sec.score > 50 ? 'bg-yellow-500 glow-yellow' : 'bg-destructive glow-destructive'}`}
+                    style={{ width: `${sec.score}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              // No score from the backend is not a score of 0.
+              <p className="text-sm font-semibold text-muted-foreground py-1.5">{secLoading ? '…' : 'Not reported'}</p>
+            )}
           </CardContent>
         </Card>
         <Card className="stagger-child" style={{ '--stagger-index': 4 } as React.CSSProperties}>
@@ -268,7 +275,16 @@ export function Dashboard() {
               // read it while the Settings service panel read hit_rate, so the
               // same deployment showed two different numbers under the same
               // label (SECURE-DOM-03).
-              const hitRate = cache.hit_rate != null ? (cache.hit_rate * 100).toFixed(1) : '0';
+              // A missing hit_rate is not a 0% hit rate.
+              if (typeof cache.hit_rate !== 'number') {
+                return (
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[10px] text-muted-foreground uppercase">Hit Rate</span>
+                    <span className="text-sm font-semibold text-muted-foreground">Not reported</span>
+                  </div>
+                );
+              }
+              const hitRate = (cache.hit_rate * 100).toFixed(1);
               return (
                 <div className="space-y-2">
                   <div className="flex items-baseline justify-between">

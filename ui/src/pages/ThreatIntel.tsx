@@ -17,6 +17,12 @@ const CAT_COLORS: Record<string, string> = {
   Social: '#3b82f6', Streaming: '#06b6d4', Tunneling: '#ef4444', 'Paste/Code': '#f59e0b',
 };
 
+// No WAF statistics (waf is null: the WAF refused the credential, could not be
+// reached or answered with an error) is not zero WAF blocks.
+function WafUnavailable() {
+  return <p className="text-sm font-semibold text-muted-foreground py-1.5" title="The backend has no WAF statistics">Not available</p>;
+}
+
 export function ThreatIntel() {
   const reducedMotion = useReducedMotion();
   const [vis, setVis] = useState(document.visibilityState !== 'hidden');
@@ -59,7 +65,7 @@ export function ThreatIntel() {
         </Card>
         <Card className="stagger-child" style={{ '--stagger-index': 2 } as React.CSSProperties}>
           <CardContent className="p-3 flex items-center justify-between">
-            <div><p className="text-[10px] text-muted-foreground uppercase">WAF Blocks</p><p className="text-2xl font-bold text-orange-500">{animWafBlocked.toLocaleString()}</p></div>
+            <div><p className="text-[10px] text-muted-foreground uppercase">WAF Blocks</p>{s?.waf ? <p className="text-2xl font-bold text-orange-500">{animWafBlocked.toLocaleString()}</p> : <WafUnavailable />}</div>
             <Activity className="w-6 h-6 text-orange-500/30" />
           </CardContent>
         </Card>
@@ -71,7 +77,7 @@ export function ThreatIntel() {
         </Card>
         <Card className="stagger-child" style={{ '--stagger-index': 4 } as React.CSSProperties}>
           <CardContent className="p-3 flex items-center justify-between">
-            <div><p className="text-[10px] text-muted-foreground uppercase">Entropy Alerts</p><p className="text-2xl font-bold text-yellow-500">{animEntropy.toLocaleString()}</p></div>
+            <div><p className="text-[10px] text-muted-foreground uppercase">Entropy Alerts</p>{s?.waf ? <p className="text-2xl font-bold text-yellow-500">{animEntropy.toLocaleString()}</p> : <WafUnavailable />}</div>
             <TrendingUp className="w-6 h-6 text-yellow-500/30" />
           </CardContent>
         </Card>

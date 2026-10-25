@@ -95,6 +95,22 @@ describe('Dashboard', () => {
     })
   })
 
+  // A missing score or hit rate was drawn as a measured 0.
+  it('says the security score is not reported when the backend has none', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('dashboard/summary')) return Promise.resolve({ data: { data: summaryData } })
+      if (url.includes('cache/statistics')) return Promise.resolve({ data: { data: { simulated: false, hits: 5, misses: 7 } } })
+      return Promise.resolve({ data: { data: null } })
+    })
+    renderWithProviders(<Dashboard />)
+    const score = await screen.findByText('Score')
+    await waitFor(() => { expect(score.parentElement).toHaveTextContent('Not reported') })
+    expect(score.parentElement).not.toHaveTextContent('/100')
+    const hit = await screen.findByText('Hit Rate')
+    expect(hit.parentElement).toHaveTextContent('Not reported')
+    expect(hit.parentElement).not.toHaveTextContent('%')
+  })
+
   it('displays security score', async () => {
     renderWithProviders(<Dashboard />)
     await waitFor(() => {

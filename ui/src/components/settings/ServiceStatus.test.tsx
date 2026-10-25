@@ -41,4 +41,23 @@ describe('ServiceStatus', () => {
     renderWithProviders(<ServiceStatus />)
     await waitFor(() => { expect(tileValue('Clients')).toBe('3') })
   })
+
+  // cache_stats.txt is never written (poll_once in proxy/blacklist_watchdog.py
+  // collects no cache statistics), so the backend answers simulated: true with
+  // zeros. The tile rendered those zeros as a measured "0.0%" hit rate.
+  it('says the cache hit rate is not collected when the backend reports simulated', async () => {
+    renderWithProviders(<ServiceStatus />)
+    await waitFor(() => { expect(tileValue('Cache hit')).toBe('Not collected') })
+  })
+
+  it('says a value is not reported instead of showing a bare placeholder', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) =>
+      Promise.resolve({ data: url === 'status' ? { status: 'success', data: { proxy_status: 'running' } } : { status: 'success', data: null } }))
+    renderWithProviders(<ServiceStatus />)
+    await waitFor(() => { expect(tileValue('Version')).toBe('Not reported') })
+    expect(tileValue('Clients')).toBe('Not reported')
+    expect(tileValue('Requests 24h')).toBe('Not reported')
+    expect(tileValue('Blocked 24h')).toBe('Not reported')
+    expect(tileValue('Cache hit')).toBe('Not reported')
+  })
 })
