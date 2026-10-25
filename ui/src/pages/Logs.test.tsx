@@ -144,6 +144,8 @@ describe('Logs', () => {
       : [instance.protocols ?? '']
     const hasSubprotocol = protocols.some((p) => p === 'spm-ws-token.ws-tok')
     expect(hasSubprotocol).toBe(true)
+    // The fixed protocol the server selects; without it a browser closes the socket.
+    expect(protocols[0]).toBe('spm.v1')
 
     // Token MUST NOT appear in the URL query string.
     expect(instance.url).not.toContain('token=')

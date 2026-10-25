@@ -14,6 +14,8 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/auth"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
+	ws "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/websocket"
+	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
 )
 
@@ -153,8 +155,8 @@ func TestWSLogsSubprotocolAuth(t *testing.T) {
 			http.Error(w, "invalid or expired token", http.StatusUnauthorized)
 			return
 		}
-		// Server selects no subprotocol — omitting Sec-WebSocket-Protocol from
-		// the 101 response is valid (RFC 6455 §4.2.2) and avoids echoing the token.
+		// This copy covers the token checks only. Subprotocol selection, which
+		// browsers require, is tested on the real handler below.
 		conn, err := upgrader.Upgrade(w, req, nil)
 		if err != nil {
 			return
@@ -211,4 +213,41 @@ func TestWSLogsSubprotocolAuth(t *testing.T) {
 			t.Errorf("expected 401, got %v", resp)
 		}
 	})
+}
+
+// TestWSLogsSelectsTheFixedSubprotocol dials the real mountWebSocket the way a
+// browser does: it offers "spm.v1" and the token. A browser fails the handshake
+// unless the server selects one of the offered subprotocols, and the server
+// used to select none, so the UI's live log feed never connected. The token
+// itself must never be echoed.
+func TestWSLogsSelectsTheFixedSubprotocol(t *testing.T) {
+	authSvc, _, db := newTestAuthService(t)
+	defer db.Close()
+	hub := ws.NewHub()
+	defer hub.Close()
+	r := chi.NewRouter()
+	mountWebSocket(r, &config.Config{}, authSvc, hub)
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/api/ws/logs"
+
+	tok := authSvc.IssueWSToken("admin")
+	dialer := websocket.Dialer{Subprotocols: []string{wsSubprotocol, "spm-ws-token." + tok}}
+	conn, resp, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("upgrade failed: %v (%v)", err, resp)
+	}
+	defer conn.Close()
+	if got := conn.Subprotocol(); got != wsSubprotocol {
+		t.Fatalf("selected subprotocol = %q, want %q: a browser closes the socket otherwise", got, wsSubprotocol)
+	}
+	if strings.Contains(resp.Header.Get("Sec-WebSocket-Protocol"), tok) {
+		t.Fatal("the token was echoed in the handshake response")
+	}
+
+	// A second use of the same token is refused before the upgrade.
+	_, resp2, err := dialer.Dial(wsURL, nil)
+	if err == nil || resp2 == nil || resp2.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("reused token: want 401, got err=%v resp=%v", err, resp2)
+	}
 }

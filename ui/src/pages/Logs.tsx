@@ -82,8 +82,10 @@ export function Logs() {
         // Pass the one-time token as a WebSocket subprotocol value instead of a
         // query-string parameter. Query-string tokens leak into server access
         // logs, browser history, and Referer headers; subprotocol values are
-        // transmitted only in the WebSocket upgrade headers.
-        ws = new WebSocket(socketUrl, [`spm-ws-token.${token}`]);
+        // transmitted only in the WebSocket upgrade headers. "spm.v1" is the
+        // one the server selects: a browser fails the handshake when it offers
+        // subprotocols and the server selects none.
+        ws = new WebSocket(socketUrl, ['spm.v1', `spm-ws-token.${token}`]);
         socketRef.current = ws;
         setWsStatus('connecting');
 

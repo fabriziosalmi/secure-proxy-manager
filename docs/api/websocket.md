@@ -5,7 +5,7 @@ The log stream is delivered over a WebSocket connection. Because browsers cannot
 ## Connection flow
 
 1. `GET /api/ws-token` (HTTP Basic or JWT): fetch a single-use token.
-2. Open a WebSocket to `/api/ws/logs?token=<token>` on the same origin as the UI.
+2. Open a WebSocket to `/api/ws/logs` on the same origin as the UI, offering the subprotocols `spm.v1` and `spm-ws-token.<token>`.
 3. Receive log entries as JSON messages.
 
 The connection is kept alive by the **server**, which sends WebSocket protocol-level ping control frames roughly every 80 s; browsers answer them automatically. No application-level heartbeat is required: clients do not need to send anything after connecting.
@@ -25,13 +25,13 @@ The token is valid for **two minutes** and is consumed on first use.
 
 ## Step 2: Connect
 
-The browser SPA opens the WebSocket on the same origin it was loaded from, so the URL takes the form:
+The browser SPA opens the WebSocket on the same origin it was loaded from, at `wss://<your-host>/api/ws/logs`. The token is not part of the URL: it is offered as a WebSocket subprotocol, next to the fixed protocol `spm.v1`, which is the one the server selects (a browser closes the connection when it offers subprotocols and the server selects none):
 
-```
-wss://<your-host>/api/ws/logs?token=xK9z2...
+```js
+new WebSocket('wss://<your-host>/api/ws/logs', ['spm.v1', 'spm-ws-token.xK9z2...'])
 ```
 
-The `web` service proxies the upgrade to the backend on the internal network. If you are connecting from a script running on the host (and only on the host), you can also reach the backend directly at `ws://127.0.0.1:5001/api/ws/logs?token=...`; the backend port is bound to `127.0.0.1` only.
+A token in the query string is refused with **HTTP 401**. The `web` service proxies the upgrade to the backend on the internal network. If you are connecting from a script running on the host (and only on the host), you can also reach the backend directly at `ws://127.0.0.1:5001/api/ws/logs` with the same two subprotocols; the backend port is bound to `127.0.0.1` only.
 
 The token is single-use, so a second connection attempt with the same token is rejected with **HTTP 401** during the handshake, before the WebSocket upgrade completes (see [Authentication failures](#authentication-failures) below).
 
@@ -73,8 +73,10 @@ async function connectLogs() {
   const { token } = await tokenResp.json();
 
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url   = `${proto}//${location.host}/api/ws/logs?token=${encodeURIComponent(token)}`;
-  const ws    = new WebSocket(url);
+  const url   = `${proto}//${location.host}/api/ws/logs`;
+  // The token travels as a subprotocol, never in the URL; spm.v1 is the one
+  // the server selects, which the browser requires.
+  const ws    = new WebSocket(url, ['spm.v1', `spm-ws-token.${token}`]);
 
   ws.onmessage = (event) => {
     const log = JSON.parse(event.data);

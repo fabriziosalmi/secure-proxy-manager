@@ -443,6 +443,24 @@ test.describe('UI — Dashboard', () => {
   });
 });
 
+// ─── UI: Access logs live feed ───────────────────────────────────────────────
+
+test.describe('UI: Access logs', () => {
+  test.beforeEach(async ({ page, request }) => { await injectAuth(page, request); });
+
+  // A real browser fails the WebSocket handshake when it offers subprotocols
+  // and the server selects none. The backend used to select none, so the live
+  // feed never connected in any browser while non-browser tests passed.
+  test('the live feed connects (the button reads Live)', async ({ page }) => {
+    const wsErrors: string[] = [];
+    page.on('console', (m) => { if (m.type() === 'error' && /WebSocket/.test(m.text())) wsErrors.push(m.text()); });
+    await page.goto('/logs');
+    await page.waitForSelector('h1:has-text("Access Logs")', { timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'Live', exact: true })).toBeVisible({ timeout: 15_000 });
+    expect(wsErrors).toEqual([]);
+  });
+});
+
 // ─── UI — Navigation ─────────────────────────────────────────────────────────
 
 test.describe('UI — Navigation', () => {
