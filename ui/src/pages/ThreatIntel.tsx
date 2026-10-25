@@ -48,7 +48,7 @@ export function ThreatIntel() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-extrabold tracking-tight bg-linear-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Threat Intelligence</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight bg-linear-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Analytics</h1>
 
       {/* Compact metrics */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">

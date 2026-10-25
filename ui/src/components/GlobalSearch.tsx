@@ -15,7 +15,7 @@ interface SearchResult {
 const PAGES: { path: string; label: string; icon: typeof LayoutDashboard; keywords: string[] }[] = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard, keywords: ['home', 'overview', 'stats', 'traffic'] },
   { path: '/blacklists', label: 'Blacklists', icon: Ban, keywords: ['ip', 'domain', 'block', 'whitelist', 'geo'] },
-  { path: '/threats', label: 'Threat Intelligence', icon: Shield, keywords: ['waf', 'threat', 'attack', 'security'] },
+  { path: '/analytics', label: 'Analytics', icon: Shield, keywords: ['waf', 'threat', 'attack', 'security', 'intel'] },
   { path: '/logs', label: 'Access Logs', icon: List, keywords: ['log', 'traffic', 'request', 'access'] },
   { path: '/settings', label: 'Settings', icon: Settings, keywords: ['config', 'proxy', 'port', 'cache', 'tailscale', 'dns'] },
 ];
