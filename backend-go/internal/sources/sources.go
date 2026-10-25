@@ -15,11 +15,12 @@
 // 172.16.0.0/12 too, and only the subnets this container is attached to are
 // internal.
 //
-// The interface subnets are used only when the proxy resolves to an address
-// inside one of them, the evidence that the backend sits on the proxy's
-// container network. Run on a host (PROXY_HOST=localhost) the backend's
-// interfaces are the LAN's, and treating them as internal would hide every
-// device; in that case only loopback is internal.
+// The interface subnets are used only when the proxy (PROXY_HOST, or the
+// host of PROXY_URL) resolves to an address inside one of them, the evidence
+// that the backend sits on the proxy's container network. Run on a host
+// (PROXY_HOST=localhost) the backend's interfaces are the LAN's, and treating
+// them as internal would hide every device; in that case only loopback and
+// the backend's own addresses are internal.
 package sources
 
 import (
@@ -58,7 +59,8 @@ const (
 type Snapshot struct {
 	// Subnets of the backend's interfaces, when it shares them with the proxy.
 	Subnets []netip.Prefix
-	// Self: the backend's own addresses on those subnets.
+	// Self: the backend's own interface addresses (not loopback or
+	// link-local), internal whether or not the proxy shares their subnets.
 	Self []netip.Addr
 	// Proxy: the proxy's addresses on those subnets.
 	Proxy []netip.Addr
@@ -108,8 +110,9 @@ func NewSnapshot(ifaceAddrs []net.Addr, proxy []netip.Addr, route []byte) Snapsh
 		}
 	}
 	if len(s.Proxy) == 0 {
-		// Not on the proxy's network: only loopback is internal.
-		return Snapshot{}
+		// Not on the proxy's network: only loopback and the backend's own
+		// addresses are internal.
+		return Snapshot{Self: self}
 	}
 	s.Subnets, s.Self = subnets, self
 	for _, g := range defaultGateways(route) {
@@ -195,11 +198,15 @@ func (s Snapshot) Classify(ip string) (internal bool, kind string) {
 type TextRange struct{ Lo, Hi string }
 
 // Ranges lists the text ranges that can hold an internal address: loopback
-// (127.x and ::1), IPv4-mapped addresses, and one per subnet.
+// (127.x and ::1), IPv4-mapped addresses, one per subnet and one per backend
+// address.
 func (s Snapshot) Ranges() []TextRange {
 	out := []TextRange{prefixRange("127."), prefixRange("::1"), prefixRange("::ffff:")}
 	for _, p := range s.Subnets {
 		out = append(out, subnetRanges(p)...)
+	}
+	for _, a := range s.Self {
+		out = append(out, subnetRanges(netip.PrefixFrom(a, a.BitLen()))...)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Lo < out[j].Lo })
 	// Drop a range inside the one before it.
@@ -254,7 +261,7 @@ func subnetRanges(p netip.Prefix) []TextRange {
 // proxy's address change only when a network is attached or the proxy is
 // recreated.
 type Classifier struct {
-	proxyHost string
+	proxyHosts []string
 	// Injected for tests; the system's by default.
 	ifaceAddrs func() ([]net.Addr, error)
 	lookup     func(ctx context.Context, host string) ([]netip.Addr, error)
@@ -264,11 +271,12 @@ type Classifier struct {
 	snap Snapshot
 }
 
-// NewClassifier returns a classifier for a backend whose proxy is proxyHost.
-// It knows only loopback until Refresh runs.
-func NewClassifier(proxyHost string) *Classifier {
+// NewClassifier returns a classifier for a backend whose proxy is reached at
+// proxyHosts (names or addresses; empty ones are skipped). It knows only
+// loopback until Refresh runs.
+func NewClassifier(proxyHosts ...string) *Classifier {
 	return &Classifier{
-		proxyHost:  proxyHost,
+		proxyHosts: proxyHosts,
 		ifaceAddrs: net.InterfaceAddrs,
 		lookup: func(ctx context.Context, host string) ([]netip.Addr, error) {
 			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
@@ -303,14 +311,18 @@ func (c *Classifier) Refresh(ctx context.Context) bool {
 		log.Warn().Err(err).Msg("client sources: could not list network interfaces; only loopback counts as internal")
 	}
 	var proxy []netip.Addr
-	if c.proxyHost != "" {
-		if a, err := netip.ParseAddr(c.proxyHost); err == nil {
-			proxy = []netip.Addr{a}
-		} else {
-			lctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			proxy, _ = c.lookup(lctx, c.proxyHost)
-			cancel()
+	for _, host := range c.proxyHosts {
+		if host == "" {
+			continue
 		}
+		if a, err := netip.ParseAddr(host); err == nil {
+			proxy = append(proxy, a)
+			continue
+		}
+		lctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		found, _ := c.lookup(lctx, host)
+		cancel()
+		proxy = append(proxy, found...)
 	}
 	route, _ := c.readRoute()
 	snap := NewSnapshot(addrs, proxy, route)

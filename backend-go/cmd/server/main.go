@@ -165,7 +165,7 @@ func run() error {
 	handlers.NewAuthHandlers(database.NewAuthStore(db), authSvc, cfg, notify, hub).Register(r)
 	// The stack's own addresses (loopback, the subnets the backend shares
 	// with the proxy): not clients, so no client count includes them.
-	classifier := sources.NewClassifier(cfg.ProxyHost)
+	classifier := sources.NewClassifier(cfg.ProxyHost, proxyURLHost(cfg.ProxyURL))
 	go classifier.Run(workerCtx)
 	internalSources := handlers.NewInternalSources(db, classifier)
 	handlers.NewLogHandlers(db).WithSources(internalSources).Register(r, authMW)
@@ -374,4 +374,14 @@ func shutdown(srv *http.Server, workerCancel context.CancelFunc, hub *ws.Hub) {
 	// disconnect the WebSocket clients, which the HTTP server's Shutdown does not
 	// touch (a hijacked connection is no longer its own).
 	hub.Close()
+}
+
+// proxyURLHost is the host of PROXY_URL, the address the backend reaches the
+// proxy at; empty when the URL does not parse.
+func proxyURLHost(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
 }

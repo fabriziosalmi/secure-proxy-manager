@@ -97,29 +97,38 @@ func TestSnapshotReadsTheSharedSubnetsAndTheHostGateway(t *testing.T) {
 
 // Run on a host, the backend's interfaces are the LAN's. They must not make
 // every LAN device internal: the proxy is not on them (it is localhost).
-func TestBackendOnTheHostMakesOnlyLoopbackInternal(t *testing.T) {
+// Only loopback and the host's own address are.
+func TestBackendOnTheHostMakesOnlyLoopbackAndItselfInternal(t *testing.T) {
 	addrs := []net.Addr{ipnet(t, "127.0.0.1/8"), ipnet(t, "192.168.1.10/24")}
 	route := "Iface\tDestination\tGateway \tFlags\n" + "en0\t00000000\t0101A8C0\t0003\n"
 	s := NewSnapshot(addrs, []netip.Addr{netip.MustParseAddr("127.0.0.1")}, []byte(route))
-	for _, ip := range []string{"192.168.1.50", "192.168.1.10", "192.168.1.1"} {
+	for _, ip := range []string{"192.168.1.50", "192.168.1.1"} {
 		if internal, _ := s.Classify(ip); internal {
 			t.Errorf("%s is internal with the backend on the host", ip)
 		}
 	}
-	if internal, _ := s.Classify("127.0.0.1"); !internal {
-		t.Error("loopback is not internal")
+	for _, ip := range []string{"127.0.0.1", "192.168.1.10"} {
+		if internal, _ := s.Classify(ip); !internal {
+			t.Errorf("%s is not internal", ip)
+		}
 	}
 }
 
 // Before the proxy resolves (it can start after the backend) no subnet is
 // internal yet.
-func TestUnresolvedProxyMakesOnlyLoopbackInternal(t *testing.T) {
+func TestUnresolvedProxyMakesOnlyLoopbackAndTheBackendInternal(t *testing.T) {
 	s := NewSnapshot(composeAddrs(t), nil, []byte(composeRoute))
-	if internal, _ := s.Classify("172.18.0.1"); internal {
-		t.Error("172.18.0.1 is internal before the proxy resolved")
+	for _, ip := range []string{"172.18.0.1", "172.18.0.4", "172.19.0.5"} {
+		if internal, _ := s.Classify(ip); internal {
+			t.Errorf("%s is internal before the proxy resolved", ip)
+		}
 	}
-	if len(s.Ranges()) != 3 {
-		t.Errorf("ranges %v, want only loopback and mapped", s.Ranges())
+	if internal, kind := s.Classify("172.18.0.2"); !internal || kind != KindBackend {
+		t.Errorf("the backend's own address: %v %q", internal, kind)
+	}
+	// Loopback, mapped, and the backend's two addresses.
+	if len(s.Ranges()) != 5 {
+		t.Errorf("ranges %v, want loopback, mapped and the backend's addresses", s.Ranges())
 	}
 }
 
@@ -148,9 +157,13 @@ func TestRangesCoverEveryInternalAddress(t *testing.T) {
 }
 
 func TestClassifierRefreshUsesTheSystem(t *testing.T) {
-	c := NewClassifier("proxy")
+	// PROXY_HOST does not resolve; PROXY_URL's host does.
+	c := NewClassifier("unresolvable", "", "proxy")
 	c.ifaceAddrs = func() ([]net.Addr, error) { return composeAddrs(t), nil }
-	c.lookup = func(context.Context, string) ([]netip.Addr, error) {
+	c.lookup = func(_ context.Context, host string) ([]netip.Addr, error) {
+		if host != "proxy" {
+			return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+		}
 		return []netip.Addr{netip.MustParseAddr("172.18.0.4")}, nil
 	}
 	c.readRoute = func() ([]byte, error) { return []byte(composeRoute), nil }
