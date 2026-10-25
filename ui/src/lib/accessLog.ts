@@ -115,7 +115,7 @@ export function requestHost(destination: string | undefined): string | null {
  * The rules a domain whitelist entry overrides: it takes the name off the
  * domain blacklist that Squid and the DNS sinkhole enforce. Nothing else.
  */
-const DOMAIN_RULES = new Set(['domain_blacklist', 'domain_blacklist_dns']);
+const DOMAIN_RULES = new Set(['domain_blacklist', 'domain_blacklist_dns', 'domain_blacklist_dns_reconstructed']);
 
 /** The host "Allow this domain" would whitelist for r, or null when the rule that blocked r is not a domain rule. */
 export function allowableDomain(r: LogEntry): string | null {
@@ -129,6 +129,9 @@ const WHY: Record<string, string> = {
   domain_blacklist: 'The name is on the domain blacklist; the proxy refused the request and served the block page.',
   domain_blacklist_dns:
     'The name is on the domain blacklist; the DNS sinkhole answered it with 0.0.0.0 and the proxy refused the request.',
+  domain_blacklist_dns_reconstructed:
+    'Logged before the proxy recorded why it blocked a request; reconstructed from the 503 Squid logged for a name ' +
+    'already on the domain blacklist, when it tried the address the DNS sinkhole answered.',
   ip_blacklist: 'The destination address is on the IP blacklist.',
   direct_ip: 'The request named an IP address instead of a host name, and direct IP access is blocked.',
   egress_policy: 'Default-deny egress is on and the destination is not on the egress allowlist.',

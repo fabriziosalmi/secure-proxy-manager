@@ -74,6 +74,8 @@ describe('row facts', () => {
   it('offers the whitelist only for the rules it overrides', () => {
     expect(allowableDomain(entry({ blocked: 1, reason: 'domain_blacklist', destination: 'ads.example.com:443' }))).toBe('ads.example.com')
     expect(allowableDomain(entry({ blocked: 1, reason: 'domain_blacklist_dns', destination: 'http://ads.example.com/' }))).toBe('ads.example.com')
+    // #424: a block from before reasons were recorded, reconstructed as a DNS sinkhole block.
+    expect(allowableDomain(entry({ blocked: 1, reason: 'domain_blacklist_dns_reconstructed', destination: 'ads.example.com:443' }))).toBe('ads.example.com')
     for (const reason of ['waf', 'ip_blacklist', 'direct_ip', 'egress_policy', 'unclassified', 'other']) {
       expect(allowableDomain(entry({ blocked: 1, reason, destination: 'ads.example.com:443' }))).toBeNull()
     }
@@ -82,10 +84,11 @@ describe('row facts', () => {
 
   it('says why in a sentence, for every rule and for one it does not know', () => {
     expect(whyText(entry())).toBe('Allowed: no rule blocked it.')
-    for (const reason of ['domain_blacklist', 'domain_blacklist_dns', 'ip_blacklist', 'direct_ip', 'egress_policy', 'waf', 'proxy_auth',
+    for (const reason of ['domain_blacklist', 'domain_blacklist_dns', 'domain_blacklist_dns_reconstructed', 'ip_blacklist', 'direct_ip', 'egress_policy', 'waf', 'proxy_auth',
       'time_restriction', 'content_filter', 'source_gate', 'port_policy', 'protocol_policy', 'other', 'unclassified']) {
       expect(whyText(entry({ blocked: 1, reason }))).toMatch(/\.$/)
     }
     expect(whyText(entry({ blocked: 1, reason: 'new_rule', reason_label: 'New rule' }))).toBe('Blocked by the rule "New rule".')
+    expect(whyText(entry({ blocked: 1, reason: 'domain_blacklist_dns_reconstructed' }))).toMatch(/^Logged before the proxy recorded why/)
   })
 })
