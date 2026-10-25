@@ -250,6 +250,14 @@ if [ -d /opt/squid-error-pages ]; then
 fi
 
 echo "Setting up Squid configuration..."
+# The delimiter is unquoted so that ${SQUID_PORT} and the other settings
+# expand, which means a backtick or a dollar-parenthesis anywhere below,
+# comments included, is a command the shell RUNS. Three comments quoted Squid
+# commands in backticks: every generation ran "squid -k rotate", "squid" and
+# "squid -k reconfigure". At boot, before the file existed, each printed
+# "FATAL: Unable to open configuration file"; on a running proxy every reload
+# rotated the logs, reconfigured Squid on the previous file and started a
+# second Squid (measured on 7.7). Quote commands with single quotes here.
 cat > /etc/squid/squid.conf.base << CONFEOF
 http_port ${SQUID_PORT}
 visible_hostname secure-proxy
@@ -452,12 +460,12 @@ icap_service service_resp respmod_precache bypass=1 icap://waf:1344/waf
 adaptation_access service_resp deny spm_self_mgr
 adaptation_access service_resp allow all
 
-# Logging — keep volume growth bounded: lower verbosity, disable the noisy
-# store log, and keep 5 rotations (a daily `squid -k rotate` is triggered by the
+# Logging: keep volume growth bounded: lower verbosity, disable the noisy
+# store log, and keep 5 rotations (a daily 'squid -k rotate' is triggered by the
 # blacklist watchdog sidecar).
 debug_options ALL,1
 logfile_rotate 5
-# Custom 'spm' logformat = the 10 stock `squid` fields IN EXACT ORDER (the
+# Custom 'spm' logformat = the 10 stock 'squid' fields IN EXACT ORDER (the
 # backend's parseSquidLine is positional and requires >=10 of them, so these must
 # not change) + an 11th field carrying the WAF correlation id. The WAF stamps
 # X-WAF-Event-Id on the 403 it returns via ICAP REQMOD; %{...}<h reads it from the
@@ -485,7 +493,7 @@ connect_timeout 30 seconds
 dns_timeout 5 seconds
 
 # Squid caches a DNS answer for its TTL, up to positive_dns_ttl (6 hours by
-# default), and `squid -k reconfigure` does not clear that cache. Domains are
+# default), and 'squid -k reconfigure' does not clear that cache. Domains are
 # blocked by the dnsmasq sinkhole, so a domain that had just been visited kept
 # being served from the cached address after it was blacklisted (measured:
 # example.org still 200 after dnsmasq answered 0.0.0.0, and after a

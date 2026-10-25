@@ -241,6 +241,31 @@ grep -q 'falling back to base' <<<"$bad_extras" && bad "no fallback to the unfil
 grep -q 'Configuration syntax is valid' <<<"$boot" \
   && ok "boot validates its own squid.conf" || bad "boot validates its own squid.conf"
 
+echo "── boot log: no Squid command runs before the config exists ──"
+# /etc/squid is a tmpfs in the compose stack: nothing is there at boot until
+# the generator writes it. Three comments in the generator's unquoted heredoc
+# quoted Squid commands in backticks, so the shell ran them: a clean boot
+# logged "FATAL: Unable to open configuration file" three times, and on a
+# running proxy every regeneration rotated the logs, reconfigured Squid and
+# started a second one. The boot runs as compose runs it (tmpfs /etc/squid).
+clean="$(docker run --rm --cap-add NET_ADMIN --tmpfs /etc/squid --entrypoint /bin/bash "$IMAGE" -c '
+  sed -i "s|^exec /usr/bin/supervisord.*|echo __REACHED_SUPERVISORD__|" /startup.sh
+  /startup.sh 2>&1' 2>/dev/null)"
+n_fatal=$(grep -c 'FATAL' <<<"$clean")
+grep -q '__REACHED_SUPERVISORD__' <<<"$clean" && [ "$n_fatal" = 0 ] \
+  && ok "a clean boot logs no FATAL line" \
+  || bad "a clean boot logs no FATAL line" "$n_fatal FATAL line(s): $(grep -m3 FATAL <<<"$clean")"
+# The generator itself never runs Squid: startup.sh and the watchdog parse and
+# reconfigure after it has written the file. A recorder stands in for squid.
+calls="$(docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+  mkdir -p /config
+  printf "#!/bin/sh\necho \"\$*\" >> /tmp/squid-calls\n" > /usr/sbin/squid
+  /usr/local/bin/generate_squid_conf.sh >/dev/null 2>&1
+  SQUID_CONF=/etc/squid/squid.conf.next /usr/local/bin/generate_squid_conf.sh >/dev/null 2>&1
+  if [ -f /tmp/squid-calls ]; then wc -l < /tmp/squid-calls; else echo 0; fi' 2>/dev/null)"
+[ "$calls" = 0 ] && ok "the generator runs no Squid command (boot and watchdog runs)" \
+  || bad "the generator runs no Squid command" "squid was run ${calls:-?} time(s)"
+
 # Executed as a subprocess (the watchdog's contract) it must still exit 0, and
 # sourced (startup.sh's contract) it must hand control back.
 docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
