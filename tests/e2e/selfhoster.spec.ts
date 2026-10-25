@@ -706,6 +706,11 @@ test.describe('UI — Blacklists (Domain tab)', () => {
     await expect(page.getByText(/Added \d+/i)).toBeVisible({ timeout: 15_000 });
   });
 
+  test('the Domains tab offers Block DNS-over-HTTPS, which used to sit in Settings', async ({ page }) => {
+    await expect(page.getByRole('region', { name: 'Block DNS-over-HTTPS' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Block DoH resolvers' })).toBeVisible();
+  });
+
   test('popular lists panel opens and shows list names', async ({ page }) => {
     const popularBtn = page.getByRole('button', { name: /Popular/i });
     await expect(popularBtn).toBeVisible();
@@ -743,6 +748,12 @@ test.describe('UI — Blacklists (Whitelist tab)', () => {
     ]);
     expect([200, 201, 400]).toContain(resp.status()); // 400 = duplicate on retry
     await expect(page.getByText(whitelistIp)).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('the Domain Whitelist tab offers the common services that used to sit in Settings', async ({ page }) => {
+    await page.getByRole('tab', { name: /Domain Whitelist/i }).click();
+    await expect(page.getByRole('region', { name: 'Add common services' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '+ GitHub' })).toBeVisible();
   });
 
   test('Import URL and Popular Lists buttons hidden on Whitelist tab', async ({ page }) => {
