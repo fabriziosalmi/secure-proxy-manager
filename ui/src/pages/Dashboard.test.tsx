@@ -115,6 +115,14 @@ describe('Dashboard (Overview)', () => {
     expect(card('Rules in force')).toHaveTextContent('50,772 IPs, 640,929 domains')
   })
 
+  // It read "1 IPs" on a deployment with one blocked network.
+  it('counts one rule in the singular', async () => {
+    serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, ip_blacklist_count: 1, domain_blacklist_count: 1 } })
+    renderWithProviders(<Dashboard />)
+    await waitFor(() => { expect(card('Rules in force')).toHaveTextContent('1 IP, 1 domain') })
+    expect(card('Rules in force')).not.toHaveTextContent('IPs')
+  })
+
   // The backend leaves the stack's own addresses out of every count and
   // says how many it left out; the Active clients card repeats it.
   it('says how many internal addresses the counts leave out', async () => {
