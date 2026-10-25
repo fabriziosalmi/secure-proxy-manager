@@ -18,7 +18,9 @@ const HEURISTICS_ALL = { waf_h_entropy: 'true', waf_h_beaconing: 'true', waf_h_p
 const OPEN_ACCESS = { enable_bandwidth_limits: 'false', enable_time_restrictions: 'false', enable_proxy_auth: 'false' };
 const NO_FILTERS = { enable_safesearch: 'false', enable_youtube_restricted: 'false', enable_content_filtering: 'false' };
 const RISKY = 'exe,bat,cmd,dll,msi,scr,ps1,vbs';
-const RISKY_ALL = 'exe,bat,cmd,dll,msi,scr,ps1,vbs,js,sh,py,rb,zip,7z,rar,tar,iso';
+// No js: the pattern matches any URL path that ends in .js, which is every
+// script a web page loads over plain HTTP or under HTTPS inspection.
+const RISKY_ALL = 'exe,bat,cmd,dll,msi,scr,ps1,vbs,sh,py,rb,zip,7z,rar,tar,iso';
 
 export const PROFILES: Profile[] = [
   {
@@ -46,10 +48,10 @@ export const PROFILES: Profile[] = [
   {
     id: 'standard',
     name: 'Standard',
-    summary: 'Risky downloads and scripts blocked, five WAF heuristics on, no limits on who or when.',
+    summary: 'Risky downloads blocked, five WAF heuristics on, no limits on who or when.',
     values: {
       ssl_bump_enabled: 'false', enable_safesearch: 'false', enable_youtube_restricted: 'false',
-      enable_content_filtering: 'true', blocked_file_types: `${RISKY},js`,
+      enable_content_filtering: 'true', blocked_file_types: RISKY,
       ...OPEN_ACCESS, ...HEURISTICS_ALL,
     },
   },

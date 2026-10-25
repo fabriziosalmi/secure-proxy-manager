@@ -41,7 +41,6 @@ function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): 
     waf_h_sharding: 'false',
     waf_h_ghosting: 'false',
     ssl_bump_enabled: 'false',
-    block_direct_ip: 'false',
     enable_safesearch: 'false',
     enable_youtube_restricted: 'false',
     enable_content_filtering: 'false',
@@ -49,8 +48,6 @@ function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): 
     enable_time_restrictions: 'false',
     enable_proxy_auth: 'false',
     aggressive_caching_enabled: 'false',
-    enable_offline_mode: 'false',
-    waf_block_threshold: '10',
   };
 
   // Environment overrides
@@ -59,11 +56,9 @@ function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): 
     base.enable_youtube_restricted = 'true';
     base.enable_content_filtering = 'true';
     base.blocked_file_types = 'exe,bat,cmd,dll,msi,scr,ps1,vbs';
-    base.block_direct_ip = 'true';
   } else if (env === 'smb') {
-    base.block_direct_ip = 'true';
     base.enable_content_filtering = 'true';
-    base.blocked_file_types = 'exe,bat,cmd,dll,msi,scr,ps1,vbs,js';
+    base.blocked_file_types = 'exe,bat,cmd,dll,msi,scr,ps1,vbs';
     base.waf_h_pii = 'true';
     base.waf_h_sharding = 'true';
     base.waf_h_ghosting = 'true';
@@ -71,7 +66,6 @@ function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): 
 
   // Device overrides
   if (devices.includes('smart_tv') || devices.includes('iot')) {
-    base.block_direct_ip = 'true';
     base.waf_h_beaconing = 'true';
     base.waf_h_sharding = 'true';
   }
@@ -81,23 +75,22 @@ function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): 
     base.bandwidth_limit_per_user_kbps = '2000';
   }
 
-  // Strictness overrides
-  if (strict === 'relaxed') {
-    base.waf_block_threshold = '15';
-  } else if (strict === 'balanced') {
-    base.waf_block_threshold = '8';
+  // Strictness overrides. The WAF's block threshold is WAF_BLOCK_THRESHOLD
+  // in .env, read once at WAF start: the wizard cannot set it, so strictness
+  // is the set of heuristics and filters it turns on. Direct-IP blocking is
+  // always on in the proxy, and offline mode serves stale pages, so neither
+  // is a strictness choice (both used to be written here and changed
+  // nothing, or the wrong thing).
+  if (strict === 'balanced') {
     base.waf_h_ghosting = 'true';
     base.aggressive_caching_enabled = 'true';
   } else if (strict === 'strict') {
-    base.waf_block_threshold = '5';
     base.waf_h_pii = 'true';
     base.waf_h_sharding = 'true';
     base.waf_h_ghosting = 'true';
     base.enable_content_filtering = 'true';
-    base.blocked_file_types = 'exe,bat,cmd,dll,msi,scr,ps1,vbs,js,sh,py,rb,zip,7z,rar,tar,iso';
-    base.block_direct_ip = 'true';
+    base.blocked_file_types = 'exe,bat,cmd,dll,msi,scr,ps1,vbs,sh,py,rb,zip,7z,rar,tar,iso';
     base.aggressive_caching_enabled = 'true';
-    base.enable_offline_mode = 'true';
   }
 
   return base;
