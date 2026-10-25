@@ -105,8 +105,12 @@ services:
       - TEST_PASSWORD=${TEST_PASSWORD:-TestP@ss123!}
       - MOCK_LISTS_URL=http://mock-lists:8080
       - CI=true
+      # The backend's log volume: the suite appends a Squid access-log line so
+      # the pattern tester in Settings, Inspection has a request to match.
+      - SQUID_LOG_PATH=/logs/access.log
     volumes:
       - test-results:/test-results
+      - test-logs:/logs
     networks:
       - test-net
     restart: "no"
