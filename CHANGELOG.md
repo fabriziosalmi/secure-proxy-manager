@@ -123,6 +123,17 @@ for at least one minor release before disappearing.
   rows as it reads them, and a read error part way through now fails the
   export instead of publishing a short list.
 
+### Fixed
+
+- `PUT /api/settings/{name}` applies the setting as `POST /api/settings`
+  does: it writes the marker file, list file or env file the proxy reads and
+  pushes WAF heuristics to the running WAF. It wrote the database row only, so
+  a toggle set this way (for example `egress_default_deny`) answered success
+  and was not applied. A refused value still answers 400, and a secret named
+  with an empty value is still cleared. The answer now carries `data`, and
+  `status: "partial"` with `data.failed` when a proxy file could not be
+  written.
+
 ## [3.14.3] - 2026-10-25
 
 Fixes three defects found on a test deployment right after 3.14.2, two of

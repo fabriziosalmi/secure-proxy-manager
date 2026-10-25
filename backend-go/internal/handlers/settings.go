@@ -271,6 +271,12 @@ func (h *SettingsHandlers) GetAll(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, settings)
 }
 
+// Update sets one setting. It goes through the same path as BulkUpdate:
+// validation, the write-only handling of secrets, and the artefacts that make
+// the setting take effect. It used to write the database row only, so a
+// toggle set this way (egress_default_deny, ssl_bump_enabled, ...) never
+// reached the marker file the proxy reads, and the API answered success for a
+// setting that was not applied.
 func (h *SettingsHandlers) Update(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	// isWritableSettingKey subsumes the length and character checks AND rejects
@@ -281,46 +287,50 @@ func (h *SettingsHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid or protected setting name")
 		return
 	}
-	var body struct {
+	var req struct {
 		Value string `json:"value"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if len(body.Value) > 10000 {
+	if len(req.Value) > 10000 {
 		writeError(w, http.StatusBadRequest, "value too long")
 		return
 	}
-	if err := validateSettingValue(name, body.Value); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	body := map[string]string{name: req.Value}
+	// One key named explicitly with an empty value is a request to clear it,
+	// as this route always did; BulkUpdate keeps an empty secret unless clear
+	// names it, because a form sends untouched secrets empty.
+	clearKeys := map[string]bool{}
+	if appcrypto.IsSensitive(name) && req.Value == "" {
+		clearKeys[name] = true
+	}
+	if errs := h.validateBody(body); len(errs) > 0 {
+		writeError(w, http.StatusBadRequest, errs[name])
 		return
 	}
-	val := body.Value
-	if appcrypto.IsSensitive(name) && val != "" {
-		enc, err := appcrypto.Encrypt(val, h.cfg.EncryptionKey)
-		if err != nil {
-			// Refuse rather than downgrade. Storing a value the project itself
-			// classifies as sensitive in cleartext, and reporting success, is
-			// worse than failing the write (SECURE-ERR-04).
-			log.Error().Str("key", name).Err(err).Msg("refusing to store sensitive setting: encryption failed")
-			writeError(w, http.StatusInternalServerError, "encryption unavailable — sensitive setting not saved")
-			return
-		}
-		val = enc
-	}
-	_, err := h.db.Exec(
-		"INSERT INTO settings(setting_name,setting_value) VALUES(?,?) ON CONFLICT(setting_name) DO UPDATE SET setting_value=excluded.setting_value",
-		name, val,
-	)
-	if err != nil {
-		writeInternalError(w, "update_setting", err)
+	if _, status, msg := h.persistSettings(body, clearKeys); status != 0 {
+		writeError(w, status, msg)
 		return
 	}
 	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
 		database.Audit(h.db, user, "update_setting", name, "")
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Setting updated"})
+	data := map[string]any{}
+	if waf := h.pushHeuristicsToWAF(r.Context(), body); waf != nil {
+		data["waf"] = waf
+	}
+	if failed := h.writeSquidArtefacts(body); len(failed) > 0 {
+		data["failed"] = failed
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":  "partial",
+			"message": "setting saved, but some proxy configuration files could not be written",
+			"data":    data,
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "success", "message": "Setting updated", "data": data})
 }
 
 // BulkUpdate saves a batch of settings and then fans the result out to the
