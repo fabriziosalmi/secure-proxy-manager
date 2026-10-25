@@ -10,7 +10,7 @@ function block(selector: string): Record<string, string> {
   if (start < 0) throw new Error(`no ${selector} token block in index.css`)
   const body = css.slice(start, css.indexOf('}', start))
   const out: Record<string, string> = {}
-  for (const m of body.matchAll(/--ds-([a-z-]+):\s*(#[0-9A-Fa-f]{6});/g)) out[m[1]] = m[2]
+  for (const m of body.matchAll(/--ds-([a-z0-9-]+):\s*(#[0-9A-Fa-f]{6});/g)) out[m[1]] = m[2]
   return out
 }
 
@@ -79,7 +79,43 @@ describe('design tokens', () => {
       const t = theme === 'light' ? block(':root') : dark
       expect(contrast(t['neutral-bar'], t[bg])).toBeGreaterThanOrEqual(3)
     })
+
+  // The series of one chart (the Analytics page's blocks per day by rule)
+  // stack in one bar, so a reader must tell them apart without hue: from
+  // neutral-bar, each step is darker (light theme) or lighter (dark theme)
+  // than the one before by at least 0.06 in OKLab lightness, the step the
+  // data-viz method takes as visible, and each is a mark at 3:1 on the page.
+  const SERIES = ['neutral-bar', 'series-1', 'series-2', 'series-3', 'series-4']
+  for (const [theme, tokens, direction, grounds] of [
+    ['light', light, -1, ['surface', 'ground']],
+    ['dark', dark, 1, ['surface', 'ground']],
+  ] as const) {
+    it(`${theme}: the chart series step in lightness, ${direction < 0 ? 'darker' : 'lighter'} by 0.06 or more`, () => {
+      const steps = SERIES.map((s) => {
+        expect(tokens[s], `--ds-${s}`).toBeDefined()
+        return oklabL(tokens[s])
+      })
+      for (let i = 1; i < steps.length; i++) {
+        expect((steps[i] - steps[i - 1]) * direction, `${SERIES[i - 1]} to ${SERIES[i]}`).toBeGreaterThanOrEqual(0.06)
+      }
+    })
+    it.each(SERIES.slice(1).flatMap((s) => grounds.map((g) => [s, g])))(`${theme}: %s reaches 3:1 on %s`, (s, g) => {
+      expect(contrast(tokens[s], tokens[g])).toBeGreaterThanOrEqual(3)
+    })
+  }
 })
+
+/** OKLab lightness (0 black, 1 white) of a #RRGGBB colour. */
+function oklabL(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  })
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+  return 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s
+}
 
 describe('vendored fonts', () => {
   // The CSP is font-src 'self': every face must point at a file in public/.
