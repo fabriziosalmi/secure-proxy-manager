@@ -3,13 +3,14 @@
  * nothing it does not. GET /api/status answers for the backend itself and
  * for the proxy (proxy_status is the backend's probe of Squid);
  * dashboard/summary says whether the WAF's management API answered
- * (waf_status); cache statistics are not collected (poll_once in
- * proxy/blacklist_watchdog.py), which cache/statistics says with
- * simulated: true. A service with no data is "unknown", never "running".
+ * (waf_status); cache/statistics gives the proxy's last collection of
+ * Squid's cache statistics and whether it is current (lib/cacheStats.ts).
+ * A service with no data is "unknown", never "running".
  */
 import type { CacheStats, DashboardSummary } from '../../types';
 import type { StatusData } from '../../lib/queries';
 import { formatCount } from '../../lib/format';
+import { cacheCollected, cacheSummary } from '../../lib/cacheStats';
 
 export type Health = 'ok' | 'down' | 'unknown';
 
@@ -72,11 +73,19 @@ function cacheRow(cache: Load<CacheStats>): ServiceRow {
   const name = 'Cache statistics';
   const c = cache.data;
   if (cache.isPending) return { name, health: 'unknown', state: 'checking', detail: 'Waiting for cache/statistics' };
-  if (c && !c.simulated && typeof c.hit_rate === 'number') {
-    return { name, health: 'ok', state: 'collected', detail: `Hit rate ${(c.hit_rate * 100).toFixed(1)}% (5 minutes)` };
+  switch (c?.state) {
+    case 'current':
+      return { name, health: 'ok', state: 'collected', detail: cacheSummary(c) };
+    case 'stale':
+      // The watchdog or Squid stopped answering: the numbers describe the past.
+      return { name, health: 'down', state: 'out of date', detail: cacheCollected(c) ?? 'No collection time reported' };
+    case 'not_collected':
+      return { name, health: 'unknown', state: 'not collected', detail: 'The proxy has not written cache statistics yet' };
+    case 'unreadable':
+      return { name, health: 'unknown', state: 'unreadable', detail: "The backend cannot read the proxy's cache statistics" };
+    default:
+      return { name, health: 'unknown', state: 'not reported', detail: 'cache/statistics did not answer' };
   }
-  if (c?.simulated) return { name, health: 'unknown', state: 'not collected', detail: 'Nothing collects them from Squid yet' };
-  return { name, health: 'unknown', state: 'not reported', detail: 'cache/statistics did not answer' };
 }
 
 export function serviceRows(status: Load<StatusData>, summary: Load<DashboardSummary>, cache: Load<CacheStats>): ServiceRow[] {

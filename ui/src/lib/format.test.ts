@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest'
-import { formatClock, formatCount, formatDate, formatDateTime, formatHourMinute, formatRange, formatShare, formatTime } from './format'
+import { formatAge, formatClock, formatCount, formatDate, formatDateTime, formatHourMinute, formatKilobytes, formatPercent, formatRange, formatShare, formatTime } from './format'
 import { simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 
 describe('formatRange', () => {
@@ -114,5 +114,64 @@ describe('formatShare', () => {
     vi.resetModules()
     const fresh = await import('./format')
     expect(fresh.formatShare(1, 3)).toBe('33.3%')
+  })
+})
+
+describe('formatPercent', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('writes a percentage the backend sent with one decimal', () => {
+    expect(formatPercent(64.7)).toBe('64.7%')
+    expect(formatPercent(0)).toBe('0.0%')
+  })
+
+  // Squid prints "-0.0%" for the byte hit ratio of an idle cache.
+  it('writes negative zero as 0.0%, and a real negative as negative', () => {
+    expect(formatPercent(-0)).toBe('0.0%')
+    expect(formatPercent(-3.5)).toBe('-3.5%')
+  })
+
+  it('does not follow the browser locale', async () => {
+    simulateItalianLocale()
+    vi.resetModules()
+    const fresh = await import('./format')
+    expect(fresh.formatPercent(1234.56)).toBe('1,234.6%')
+  })
+})
+
+describe('formatKilobytes', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  // Squid's KB is 1024 bytes: cache_dir 50 MB is "Maximum Swap Size: 51200 KB".
+  it('writes a size Squid reports in KB in the largest unit that keeps it at 1 or more', () => {
+    expect(formatKilobytes(252)).toBe('252 KB')
+    expect(formatKilobytes(51200)).toBe('50 MB')
+    expect(formatKilobytes(1258291)).toBe('1.2 GB')
+    expect(formatKilobytes(10485760)).toBe('10 GB')
+    expect(formatKilobytes(0)).toBe('0 KB')
+  })
+
+  it('keeps one decimal below 100 of a unit and none above', () => {
+    expect(formatKilobytes(1536)).toBe('1.5 MB')
+    expect(formatKilobytes(150 * 1024 + 300)).toBe('150 MB')
+    expect(formatKilobytes(2048 * 1024 * 1024)).toBe('2 TB')
+  })
+
+  it('does not follow the browser locale', async () => {
+    simulateItalianLocale()
+    vi.resetModules()
+    const fresh = await import('./format')
+    expect(fresh.formatKilobytes(5000 * 1024 * 1024 * 1024)).toBe('5,000 TB')
+    expect(fresh.formatKilobytes(1536)).toBe('1.5 MB')
+  })
+})
+
+describe('formatAge', () => {
+  it('writes an age in seconds in the unit a person reads', () => {
+    expect(formatAge(42)).toBe('42s')
+    expect(formatAge(1500)).toBe('25 min')
+    expect(formatAge(3 * 3600 + 59)).toBe('3 h')
+    expect(formatAge(3 * 86400)).toBe('3 d')
+    expect(formatAge(-5)).toBe('0s')
   })
 })

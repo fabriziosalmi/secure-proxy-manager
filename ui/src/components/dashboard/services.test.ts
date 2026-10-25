@@ -1,7 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { serviceRows } from './services'
 import type { CacheStats, DashboardSummary } from '../../types'
 import type { StatusData } from '../../lib/queries'
+import { currentCacheStats, notCollectedCacheStats, staleCacheStats } from '../../test/cacheStats'
+import { setRomeTimeZone } from '../../test/helpers'
 
 type Load<T> = { data?: T | null; isPending: boolean; isError: boolean }
 const ok = <T>(data: T): Load<T> => ({ data, isPending: false, isError: false })
@@ -19,13 +21,38 @@ describe('serviceRows', () => {
     const rows = byName(serviceRows(
       ok<StatusData>({ proxy_status: 'running', proxy_port: '3128', version: '3.14.3', squid_version: '7.7' }),
       summary({ waf_status: 'ok', waf: { total_requests: 30 } as DashboardSummary['waf'] }),
-      ok<CacheStats>({ simulated: true, hit_rate: 0, byte_hit_rate: 0, cache_size: 'N/A', objects_cached: 0 }),
+      ok<CacheStats>(notCollectedCacheStats),
     ))
     expect(rows.Backend).toMatchObject({ health: 'ok', state: 'running', detail: 'v3.14.3' })
     expect(rows.Proxy).toMatchObject({ health: 'ok', state: 'running', detail: 'Squid 7.7, port 3128' })
     expect(rows.WAF).toMatchObject({ health: 'ok', state: 'reporting', detail: '30 requests inspected' })
-    // simulated: nothing wrote cache_stats.txt, so the zeros are not a 0% hit rate.
-    expect(rows['Cache statistics']).toMatchObject({ health: 'unknown', state: 'not collected' })
+    // No cache_stats.json on the proxy: not a 0% hit rate.
+    expect(rows['Cache statistics']).toMatchObject({ health: 'unknown', state: 'not collected', detail: 'The proxy has not written cache statistics yet' })
+  })
+
+  describe('cache statistics', () => {
+    let restoreTz: () => void
+    beforeEach(() => { restoreTz = setRomeTimeZone() })
+    afterEach(() => { restoreTz() })
+    const cacheRow = (c: CacheStats) => byName(serviceRows(pending, pending, ok(c)))['Cache statistics']
+
+    it("shows the proxy's current record: hit ratio, disk use and when it was collected", () => {
+      expect(cacheRow({ ...currentCacheStats, uptime_s: 7200 })).toEqual({
+        name: 'Cache statistics', health: 'ok', state: 'collected',
+        detail: 'Hit ratio 64.7% (last hour) · 252 KB of 50 MB on disk · collected 13:15',
+      })
+    })
+
+    // Three missed collections: the numbers describe the past, so they are not shown as the cache's state.
+    it('says a stale record is out of date and when it was last collected', () => {
+      const row = cacheRow(staleCacheStats)
+      expect(row).toMatchObject({ health: 'down', state: 'out of date', detail: 'Last collected 2026-10-25 13:15:28 (25 min ago)' })
+      expect(row.detail).not.toContain('64.7%')
+    })
+
+    it('says a record the backend cannot read is unreadable, with no numbers', () => {
+      expect(cacheRow({ ...notCollectedCacheStats, state: 'unreadable' })).toMatchObject({ health: 'unknown', state: 'unreadable' })
+    })
   })
 
   // No data is not "running".
@@ -45,12 +72,12 @@ describe('serviceRows', () => {
     const rows = byName(serviceRows(
       ok<StatusData>({ proxy_status: 'error', proxy_port: '3128' }),
       summary({ waf_status: 'auth_failed', waf: null }),
-      ok<CacheStats>({ hit_rate: 0.423, byte_hit_rate: 0, cache_size: '1 KB', objects_cached: 1 }),
+      ok<CacheStats>(currentCacheStats),
     ))
     expect(rows.Proxy).toMatchObject({ health: 'down', state: 'not answering' })
     expect(rows.WAF).toMatchObject({ health: 'down', state: 'refusing the backend' })
     expect(rows.WAF.detail).toContain('INTERNAL_ALERT_TOKEN')
-    expect(rows['Cache statistics']).toMatchObject({ health: 'ok', detail: 'Hit rate 42.3% (5 minutes)' })
+    expect(rows['Cache statistics']).toMatchObject({ health: 'ok', state: 'collected' })
     expect(byName(serviceRows(failed, summary({ waf_status: 'unreachable' }), failed)).WAF.state).toBe('not reachable')
   })
 })

@@ -3,6 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { renderWithProviders, simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 import { expectNoAxeViolations } from '../test/axe'
 import { Dashboard } from './Dashboard'
+import { currentCacheStats, notCollectedCacheStats } from '../test/cacheStats'
 
 vi.mock('../lib/api', () => {
   const get = vi.fn()
@@ -75,7 +76,7 @@ const DEFAULT_ROUTES: Routes = {
   'dashboard/summary': summaryData,
   'logs/timeline': timeline,
   status: { proxy_status: 'running', proxy_port: '3128', version: '3.14.3' },
-  'cache/statistics': { simulated: true, hit_rate: 0 },
+  'cache/statistics': notCollectedCacheStats,
 }
 
 function card(label: string): HTMLElement {
@@ -254,6 +255,15 @@ describe('Dashboard (Overview)', () => {
     expect(services).toHaveTextContent('Backend · running')
     expect(services).toHaveTextContent('WAF · reporting30 requests inspected')
     expect(services).toHaveTextContent('Cache statistics · not collected')
+  })
+
+  it("shows the cache statistics the proxy collected, with when it collected them", async () => {
+    serve({ ...DEFAULT_ROUTES, 'cache/statistics': { ...currentCacheStats, uptime_s: 7200 } })
+    renderWithProviders(<Dashboard />)
+    const services = await screen.findByRole('region', { name: 'Services' })
+    await waitFor(() => {
+      expect(services).toHaveTextContent('Cache statistics · collectedHit ratio 64.7% (last hour) · 252 KB of 50 MB on disk · collected 13:15')
+    })
   })
 
   // toLocaleString followed the browser (50.772 in Italian).

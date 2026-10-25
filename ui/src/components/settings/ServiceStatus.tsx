@@ -5,6 +5,7 @@ import { Card, CardContent } from '../ui/card';
 import { api, getData } from '../../lib/api';
 import type { CacheStats, ClientsData } from '../../types';
 import { formatCount } from '../../lib/format';
+import { cacheCollected, cacheDisk, cacheHitPercent, cacheHitWindow } from '../../lib/cacheStats';
 import { proxyAddress } from '../../lib/utils';
 import { statusQuery } from '../../lib/queries';
 
@@ -15,8 +16,8 @@ function num(n: unknown, loading: boolean): string {
   return loading ? '…' : 'Not reported';
 }
 
-function Tile({ icon: Icon, label, value, tone = '', accent = false }: {
-  icon: typeof Activity; label: string; value: ReactNode; tone?: string; accent?: boolean;
+function Tile({ icon: Icon, label, value, detail, tone = '', accent = false }: {
+  icon: typeof Activity; label: string; value: ReactNode; detail?: string | null; tone?: string; accent?: boolean;
 }) {
   return (
     <div className={`rounded-lg border px-3 py-2.5 ${accent ? 'border-cyan-500/20 bg-cyan-500/4' : 'border-border/50 bg-secondary/30'}`}>
@@ -25,8 +26,30 @@ function Tile({ icon: Icon, label, value, tone = '', accent = false }: {
         {label}
       </div>
       <div className={`text-sm font-semibold tabular-nums truncate ${tone}`}>{value}</div>
+      {/* The tile is narrow: the line is cut to fit and its title holds all of it. */}
+      {detail && <div title={detail} className="mt-0.5 text-[11px] text-muted-foreground truncate">{detail}</div>}
     </div>
   );
+}
+
+/** The Cache hit tile: Squid's hit ratio when the proxy's record is current, and what there is otherwise. */
+function cacheTile(cache: { data?: CacheStats | null; isLoading: boolean }): { value: string; detail: string | null } {
+  const c = cache.data;
+  switch (c?.state) {
+    case 'current':
+      return {
+        value: cacheHitPercent(c) ?? 'Not measured yet',
+        detail: [cacheHitPercent(c) === null ? "Squid's first minute" : cacheHitWindow(c), cacheDisk(c), cacheCollected(c)].filter(Boolean).join(' · '),
+      };
+    case 'stale':
+      return { value: 'Out of date', detail: cacheCollected(c) };
+    case 'not_collected':
+      return { value: 'Not collected', detail: null };
+    case 'unreadable':
+      return { value: 'Not readable', detail: null };
+    default:
+      return { value: num(undefined, cache.isLoading), detail: null };
+  }
 }
 
 export function ServiceStatus() {
@@ -40,13 +63,7 @@ export function ServiceStatus() {
 
   const s = status.data;
   const running = s?.proxy_status === 'running';
-  const hit = cache.data?.hit_rate;
-  // simulated: the backend found no cache_stats.txt and sent zeros. Nothing
-  // collects cache statistics (poll_once in proxy/blacklist_watchdog.py), so
-  // those zeros are not a 0.0% hit rate.
-  const hitPct = cache.data?.simulated
-    ? 'Not collected'
-    : typeof hit === 'number' ? `${(hit <= 1 ? hit * 100 : hit).toFixed(1)}%` : num(undefined, cache.isLoading);
+  const hit = cacheTile(cache);
 
   return (
     <Card>
@@ -73,7 +90,7 @@ export function ServiceStatus() {
           <Tile icon={Users} label="Clients" value={num(clients.data?.meta?.total, clients.isLoading)} accent />
           <Tile icon={ArrowDownUp} label="Requests today" value={num(s?.requests_count, status.isLoading)} />
           <Tile icon={Ban} label="Blocked today" value={num(summary.data?.today_blocked, summary.isLoading)} tone={(summary.data?.today_blocked ?? 0) > 0 ? 'text-orange-600 dark:text-orange-300' : ''} />
-          <Tile icon={Database} label="Cache hit" value={hitPct} />
+          <Tile icon={Database} label="Cache hit" value={hit.value} detail={hit.detail} />
         </div>
       </CardContent>
     </Card>
