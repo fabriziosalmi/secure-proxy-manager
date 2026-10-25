@@ -85,7 +85,7 @@ start_proxy() {
   local seed="$1"; shift
   docker rm -f "$PFX-proxy" >/dev/null 2>&1
   docker create --name "$PFX-proxy" --network "$PFX-ext" --ip "$PROXY_EXT" \
-    --add-host "pub.test:$PUB_SVC" --add-host "10.relay.test:$PUB_SVC" \
+    --add-host "pub.test:$PUB_SVC" --add-host "www.pub.test:$PUB_SVC" --add-host "10.relay.test:$PUB_SVC" \
     -e WAF_FAIL_OPEN=1 -e PROXY_CACHE_SIZE_MB=50 "$@" \
     --entrypoint /bin/bash "$IMAGE" -c "
       set -e
@@ -271,6 +271,26 @@ echo "── egress default-deny still applies ──"
 start_proxy 'touch /config/egress_default_deny; echo pub.test > /config/dst_allow_domain.txt' || exit 1
 check  "LAN client → allowlisted domain"                 200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
 check  "LAN client → non-allowlisted name"               403 egress_policy code   "$PFX-lan" "$LAN_CLIENT" http://10.relay.test/
+check  "LAN client → a name under an exact entry"        403 egress_policy code   "$PFX-lan" "$LAN_CLIENT" http://www.pub.test/
+check  "LAN client → LAN service, not on the list"       200 none          code   "$PFX-lan" "$LAN_CLIENT" "http://$LAN_SVC/"
+
+echo "── egress: what a domain entry and a network entry match ──"
+# The allowlist is a dstdomain list: ".name" is the name and every name under
+# it, "*.name" is a literal name that matches nothing (schema version 5
+# rewrites stored ones). A network entry is a dst ACL, so it also admits a name
+# that resolves into it. Allowed IPs (ip_whitelist) is a dst ACL allowed before
+# the egress rule, so its addresses stay reachable with an empty allowlist.
+start_proxy 'touch /config/egress_default_deny; echo "*.pub.test" > /config/dst_allow_domain.txt' || exit 1
+check  "*.name entry → the name"                         403 egress_policy code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+check  "*.name entry → a name under it"                  403 egress_policy code   "$PFX-lan" "$LAN_CLIENT" http://www.pub.test/
+start_proxy 'touch /config/egress_default_deny; echo ".pub.test" > /config/dst_allow_domain.txt' || exit 1
+check  ".name entry → the name"                          200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+check  ".name entry → a name under it"                   200 none          code   "$PFX-lan" "$LAN_CLIENT" http://www.pub.test/
+check  ".name entry → an unrelated name"                 403 egress_policy code   "$PFX-lan" "$LAN_CLIENT" http://10.relay.test/
+start_proxy 'touch /config/egress_default_deny; echo "203.0.113.0/24" > /config/dst_allow_ip.txt' || exit 1
+check  "network entry → a name that resolves into it"    200 none          code   "$PFX-lan" "$LAN_CLIENT" http://10.relay.test/
+start_proxy "touch /config/egress_default_deny; echo $PUB_SVC > /config/ip_whitelist.txt" || exit 1
+check  "Allowed IPs, empty allowlist → that address"     200 none          code   "$PFX-lan" "$LAN_CLIENT" http://10.relay.test/
 
 echo "── a name the DNS sinkhole answers is denied, with the block page ──"
 # Above SPM_SQUID_DOMAIN_ACL_MAX only dnsmasq knows the list. It answers 0.0.0.0
