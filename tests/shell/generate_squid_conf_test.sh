@@ -92,7 +92,7 @@ echo "── every access rule records its reason ──"
 # previous rule's note or none, so every http_access line must carry one, with
 # every policy toggle on.
 conf="$(generate 'touch /config/egress_default_deny /config/proxy_auth_enabled /config/content_filtering_enabled /config/time_restrictions_enabled
-  printf "%s\n" "\\.exe\$" > /config/blocked_file_types.txt; printf "TIME_START=08:00\nTIME_END=18:00\n" > /config/time_restrictions.conf
+  printf "%s\n" "\\.exe(\\?.*)?\$" > /config/blocked_file_types.txt; printf "TIME_START=08:00\nTIME_END=18:00\n" > /config/time_restrictions.conf
   export BASIC_AUTH_USERNAME=u BASIC_AUTH_PASSWORD=p')"
 n_rules=$(grep -c '^http_access ' <<<"$conf")
 unlabelled="$(grep '^http_access ' <<<"$conf" | grep -v ' spm_r_[a-z_]*\( \|$\)')"
@@ -104,6 +104,12 @@ grep -q '^http_access deny !localhost spm_r_proxy_auth !authenticated$' <<<"$con
   || bad "the auth ACL stays last on its rule" "$(grep 'authenticated' <<<"$conf" | grep http_access)"
 grep -qF '%{spm_reason}note %{X-SPM-Reason}adapt::<last_h' <<<"$conf" \
   && ok "the spm logformat carries the reason fields" || bad "the spm logformat carries the reason fields"
+# The backend writes each extension as typed (\.exe$); a server answers
+# /x.EXE as readily, so the ACL must ignore case (squid_acl_matrix_test.sh
+# asserts the 403 for .EXE and .Exe).
+grep -qxF 'acl blocked_extensions urlpath_regex -i "/config/blocked_file_types.txt"' <<<"$conf" \
+  && ok "the blocked-extensions ACL ignores case" \
+  || bad "the blocked-extensions ACL ignores case" "$(grep 'acl blocked_extensions' <<<"$conf")"
 
 echo "── SSL bump ON ──"
 conf="$(generate 'touch /config/ssl_bump_enabled')"

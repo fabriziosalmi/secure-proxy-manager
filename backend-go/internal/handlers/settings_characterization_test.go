@@ -149,10 +149,10 @@ func TestBulkUpdateBehaviour(t *testing.T) {
 			t.Fatalf("file-type list not written: %v", err)
 		}
 		// Extensions become anchored regexes: the ACL is urlpath_regex, so
-		// "exe" and ".zip" both normalise to \.ext$ — which is why a bare
+		// "exe" and ".zip" both normalise to \.ext(\?.*)?$: a bare
 		// extension and a dotted one produce the same rule.
-		if string(ft) != "\\.exe$\n\\.zip$\n" {
-			t.Errorf("file-type list = %q, want %q", ft, "\\.exe$\n\\.zip$\n")
+		if string(ft) != "\\.exe(\\?.*)?$\n\\.zip(\\?.*)?$\n" {
+			t.Errorf("file-type list = %q, want %q", ft, "\\.exe(\\?.*)?$\n\\.zip(\\?.*)?$\n")
 		}
 	})
 

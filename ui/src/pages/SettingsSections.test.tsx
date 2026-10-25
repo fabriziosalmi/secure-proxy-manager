@@ -210,7 +210,7 @@ describe('Settings sections', () => {
       save()
       expect(list).toHaveAccessibleDescription(/List at least one extension: with an empty list the proxy blocks nothing/)
       fireEvent.change(list, { target: { value: 'EXE, .msi, *' } })
-      expect(screen.getByText('The proxy matches:')).toHaveTextContent('\\.exe$ \\.msi$ \\.*$')
+      expect(screen.getByText('The proxy matches:')).toHaveTextContent('\\.exe(\\?.*)?$ \\.msi(\\?.*)?$ \\.*(\\?.*)?$')
       save()
       expect(list).toHaveAccessibleDescription(/"\*" is not a file extension/)
       fireEvent.change(list, { target: { value: 'exe, msi' } })

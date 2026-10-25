@@ -499,23 +499,16 @@ func (h *SettingsHandlers) writeSquidArtefacts(body map[string]string) []string 
 	// Cache bypass domains — Squid matches a dstdomain ACL, which needs the
 	// leading dot to cover subdomains.
 	if v, ok := body["cache_bypass_domains"]; ok {
-		if err := h.writeListArtefact("cache_bypass_domains.txt", v, func(d string) string {
-			return "." + strings.TrimPrefix(d, ".")
-		}); err != nil {
+		if err := h.writeListArtefact("cache_bypass_domains.txt", v, cacheBypassEntry); err != nil {
 			log.Warn().Err(err).Msg("cache bypass list write failed")
 			failedArtifacts = append(failedArtifacts, "cache_bypass_domains.txt")
 		}
 	}
 
-	// Blocked file types — Squid matches a urlpath_regex ACL, so each extension
+	// Blocked file types: Squid matches a urlpath_regex ACL, so each extension
 	// becomes an anchored pattern.
 	if v, ok := body["blocked_file_types"]; ok {
-		if err := h.writeListArtefact("blocked_file_types.txt", v, func(ext string) string {
-			if !strings.HasPrefix(ext, ".") {
-				ext = "." + ext
-			}
-			return `\` + ext + `$`
-		}); err != nil {
+		if err := h.writeListArtefact("blocked_file_types.txt", v, blockedExtensionPattern); err != nil {
 			log.Warn().Err(err).Msg("blocked file types write failed")
 			failedArtifacts = append(failedArtifacts, "blocked_file_types.txt")
 		}
@@ -577,6 +570,25 @@ func (h *SettingsHandlers) writeToggleFiles(body map[string]string) {
 			log.Warn().Str("path", toggleFile).Err(err).Msg("toggle file remove failed")
 		}
 	}
+}
+
+// blockedExtensionPattern is the urlpath_regex line for one blocked file
+// extension. Squid matches urlpath_regex against the path WITH its query
+// string, so "\.exe$" let /setup.exe?dl=1 through (measured in
+// squid_acl_matrix_test.sh). The query is optional and starts at the first
+// "?", so /setup.exe.txt?y=1 still does not match. Case is ignored by the
+// ACL itself (-i in generate_squid_conf.sh).
+func blockedExtensionPattern(ext string) string {
+	if !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
+	return `\` + ext + `(\?.*)?$`
+}
+
+// cacheBypassEntry is the dstdomain line for one cache-bypass domain: the
+// leading dot covers its subdomains.
+func cacheBypassEntry(d string) string {
+	return "." + strings.TrimPrefix(d, ".")
 }
 
 // writeListArtefact writes a comma-separated setting as the newline-separated

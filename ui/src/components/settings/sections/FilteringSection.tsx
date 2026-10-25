@@ -51,7 +51,7 @@ export function FilteringSection({ form }: { form: SectionForm }) {
           form={form}
           setting="enable_content_filtering"
           label="Block risky downloads"
-          help="Refuses any URL whose path ends with one of these file extensions."
+          help="Refuses any URL whose path ends with one of these file extensions, in any letter case, with or without a query string after it."
         >
           <TextField
             form={form}
