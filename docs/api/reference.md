@@ -144,7 +144,7 @@ Details: [Settings and Maintenance API](./settings.md).
 | `GET`    | `/api/cache/statistics` | Squid cache statistics as the proxy last collected them |
 | `POST`   | `/api/maintenance/reload-config` | Export the lists, ask the proxy to regenerate and reload, and report what it did |
 | `POST`   | `/api/maintenance/reload-dns` | Export the lists and ask dnsmasq to reload |
-| `POST`   | `/api/maintenance/clear-cache` | Write the clear-cache trigger |
+| `POST`   | `/api/maintenance/clear-cache` | Clear the Squid cache (see [Settings and Maintenance](./settings.md#clear-proxy-cache)) |
 | `GET`    | `/api/maintenance/backup-config` | The settings and the five lists, as a backup |
 | `POST`   | `/api/maintenance/restore-config` | Add what a backup holds |
 | `GET`    | `/api/maintenance/check-cert-security` | Whether the CA file and the certificate database exist |
