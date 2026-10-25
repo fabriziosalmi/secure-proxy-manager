@@ -44,6 +44,11 @@ const rows: Row[] = [
   { setting_name: 'waf_h_ghosting', setting_value: 'true' },
   { setting_name: 'waf_h_sequence', setting_value: 'false' },
   { setting_name: 'enable_notifications', setting_value: 'false' },
+  { setting_name: 'notify_group_window_minutes', setting_value: '10' },
+  { setting_name: 'notify_max_per_hour', setting_value: '20' },
+  { setting_name: 'notify_waf_block', setting_value: 'true' },
+  { setting_name: 'notify_login_failure', setting_value: 'true' },
+  { setting_name: 'notify_min_level', setting_value: 'info' },
   { setting_name: 'webhook_url', setting_value: '', secret: true, is_set: true },
   { setting_name: 'gotify_url', setting_value: '', secret: true },
   { setting_name: 'gotify_token', setting_value: '', secret: true },
@@ -181,6 +186,53 @@ describe('Settings sections, part B', () => {
       expect(screen.getByText(/without one, anybody who learns the URL can post alerts/)).toBeInTheDocument()
       headingsInOrder()
       await expectNoAxeViolations(container)
+    })
+
+    it('shows the stored limits, the event switches and the minimum level, and says a crash loses the counts', async () => {
+      const { container } = renderAt('/settings/alerts')
+      const groupWindow = await screen.findByLabelText('Group window (minutes)')
+      await waitFor(() => expect(groupWindow).toHaveValue('10'))
+      expect(groupWindow).toHaveAccessibleDescription(/The first alert from an address is sent at once.*From 1 to 1440/)
+      expect(screen.getByLabelText('Alerts per channel per hour')).toHaveValue('20')
+      expect(screen.getByLabelText('Alerts per channel per hour')).toHaveAccessibleDescription(/summaries included.*From 1 to 1000/)
+      expect(screen.getByRole('switch', { name: 'WAF blocks' })).toHaveAttribute('aria-checked', 'true')
+      expect(screen.getByRole('switch', { name: 'Failed sign-ins' })).toHaveAttribute('aria-checked', 'true')
+      const level = screen.getByRole('group', { name: 'Minimum level' })
+      expect(within(level).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
+      expect(document.getElementById('notify_min_level-label')!.parentElement!.querySelector('[data-apply]')).toHaveTextContent(/^Live/)
+      expect(screen.getByTestId('limits-memory')).toHaveTextContent(
+        'The counts are kept in memory: a restart sends the pending summaries first, a crash loses them.',
+      )
+      expect(screen.getByText(/outside the limits\./)).toBeInTheDocument()
+      headingsInOrder()
+      await expectNoAxeViolations(container)
+    })
+
+    it('saves the limits with the section', async () => {
+      renderAt('/settings/alerts')
+      fireEvent.change(await screen.findByLabelText('Group window (minutes)'), { target: { value: '30' } })
+      fireEvent.click(within(screen.getByRole('group', { name: 'Minimum level' })).getByRole('button', { name: 'Errors only' }))
+      fireEvent.click(screen.getByRole('switch', { name: 'WAF blocks' }))
+      save()
+      await waitFor(() => expect(settingsPosts()).toHaveLength(1))
+      expect(settingsPosts()[0][1]).toMatchObject({
+        notify_group_window_minutes: '30', notify_max_per_hour: '20', notify_min_level: 'error',
+        notify_waf_block: 'false', notify_login_failure: 'true',
+      })
+    })
+
+    it('refuses limits out of range under their fields, before sending', async () => {
+      renderAt('/settings/alerts')
+      fireEvent.change(await screen.findByLabelText('Group window (minutes)'), { target: { value: '0' } })
+      fireEvent.change(screen.getByLabelText('Alerts per channel per hour'), { target: { value: '1001' } })
+      save()
+      expect(screen.getByLabelText('Group window (minutes)')).toHaveAccessibleDescription(/Must be a whole number of minutes, from 1 to 1440/)
+      expect(screen.getByLabelText('Alerts per channel per hour')).toHaveAccessibleDescription(/Must be a whole number of alerts, from 1 to 1000/)
+      expect(settingsPosts()).toHaveLength(0)
+      fireEvent.change(screen.getByLabelText('Group window (minutes)'), { target: { value: '1440' } })
+      fireEvent.change(screen.getByLabelText('Alerts per channel per hour'), { target: { value: '1' } })
+      save()
+      await waitFor(() => expect(settingsPosts()).toHaveLength(1))
     })
 
     it('refuses a URL the backend would refuse, under its field, before sending', async () => {

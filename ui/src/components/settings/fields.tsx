@@ -7,6 +7,7 @@
  */
 import type { ReactNode } from 'react';
 import { Switch } from '../ui/Switch';
+import { SegmentedControl } from '../ui/SegmentedControl';
 import { ApplyBadge } from './ApplyBadge';
 import { SecretField } from './SecretField';
 import { cn } from '../../lib/utils';
@@ -51,6 +52,45 @@ export function ToggleRow({ form, setting, label, help, children }: ToggleRowPro
       </div>
       {error && <p id={`${setting}-error`} className="text-sm text-danger">{sentence(error)}</p>}
       {on && children && <div className="flex flex-col gap-4">{children}</div>}
+    </div>
+  );
+}
+
+export interface ChoiceRowProps<V extends string> {
+  form: SectionForm;
+  setting: string;
+  label: string;
+  help: ReactNode;
+  options: readonly { value: V; label: string }[];
+}
+
+/**
+ * One of a few values, as a row like ToggleRow: the label, the apply badge
+ * and the help on the left, the choices on the right. The group is named by
+ * the label.
+ */
+export function ChoiceRow<V extends string>({ form, setting, label, help, options }: ChoiceRowProps<V>) {
+  const labelId = `${setting}-label`;
+  const error = form.error(setting);
+  const value = form.values[setting] ?? '';
+  return (
+    <div className="flex flex-col gap-3 border-t border-line-subtle py-4 first:border-t-0 first:pt-0 last:pb-0">
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="flex min-w-0 flex-1 basis-60 flex-col gap-0.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span id={labelId} className="text-sm font-semibold text-ink">{label}</span>
+            <ApplyBadge setting={setting} />
+          </div>
+          <p id={`${setting}-help`} className="text-sm leading-5 text-ink-muted">{help}</p>
+        </div>
+        <SegmentedControl
+          label={label}
+          options={options}
+          value={value as V}
+          onChange={(next) => form.set(setting, next)}
+        />
+      </div>
+      {error && <p id={`${setting}-error`} className="text-sm text-danger">{sentence(error)}</p>}
     </div>
   );
 }

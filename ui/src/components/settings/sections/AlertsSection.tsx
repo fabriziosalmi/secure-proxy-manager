@@ -7,7 +7,10 @@
  * each one answered; it uses the saved channels, so it waits for a save.
  * The events come from backend-go: a failed sign-in (alertLoginFailure) and
  * a WAF block, which the WAF posts to /api/internal/alert with
- * INTERNAL_ALERT_TOKEN.
+ * INTERNAL_ALERT_TOKEN. Both pass the notification limits
+ * (backend-go/internal/handlers/notify_limit.go): grouping per address, a
+ * cap per channel, the type switches and the minimum level. The test does
+ * not pass them.
  */
 import { useState, type ReactNode } from 'react';
 import { api, getErrorMessage } from '../../../lib/api';
@@ -15,7 +18,7 @@ import { Section } from '../../ui/Section';
 import { Notice } from '../../ui/Notice';
 import { Button } from '../../ui/Button';
 import { Badge } from '../../ui/Badge';
-import { SecretRow, ToggleRow } from '../fields';
+import { ChoiceRow, SecretRow, TextField, ToggleRow } from '../fields';
 import { configuredChannels } from '../../../lib/attention';
 import type { SectionForm } from '../sectionForm';
 
@@ -72,6 +75,13 @@ const CHANNELS: Channel[] = [
   },
 ];
 
+/** notify_min_level: the levels notify_limit.go orders. */
+const LEVELS = [
+  { value: 'info', label: 'All' },
+  { value: 'warning', label: 'Warnings and errors' },
+  { value: 'error', label: 'Errors only' },
+] as const;
+
 interface ChannelResult { channel: string; delivered: boolean; status?: number; error?: string }
 interface TestAnswer {
   message?: string;
@@ -105,7 +115,7 @@ function TestAlert({ unsaved, enabled }: { unsaved: number; enabled: boolean }) 
         <p className="text-sm text-ink-muted">
           {unsaved > 0
             ? 'Save or discard the changes first: the test uses the saved channels.'
-            : 'Sends once to every channel whose settings are all saved, whether alerts are on or not.'}
+            : 'Sends once to every channel whose settings are all saved, whether alerts are on or not, outside the limits.'}
         </p>
       </div>
       <div aria-live="polite" className="flex flex-col gap-2">
@@ -153,8 +163,53 @@ export function AlertsSection({ form, unsaved }: { form: SectionForm; unsaved: n
           form={form}
           setting="enable_notifications"
           label="Send alerts"
-          help={<>Sends a message to every channel below for each failed sign-in to this dashboard and each request the WAF blocks. Block alerts also need <Code>INTERNAL_ALERT_TOKEN</Code> set to the same value on the waf and backend services.</>}
+          help={<>Sends failed sign-ins to this dashboard and requests the WAF blocks to every channel below, within the limits under Limits. Block alerts also need <Code>INTERNAL_ALERT_TOKEN</Code> set to the same value on the waf and backend services.</>}
         />
+        <ToggleRow
+          form={form}
+          setting="notify_waf_block"
+          label="WAF blocks"
+          help="An alert when the WAF blocks a request. Its level is error."
+        />
+        <ToggleRow
+          form={form}
+          setting="notify_login_failure"
+          label="Failed sign-ins"
+          help="An alert when a sign-in to this dashboard fails. Its level is warning."
+        />
+        <ChoiceRow
+          form={form}
+          setting="notify_min_level"
+          label="Minimum level"
+          help="Alerts below this level are not sent."
+          options={LEVELS}
+        />
+      </Section>
+
+      <Section
+        level={3}
+        title="Limits"
+        description="So that a scanner the WAF blocks a thousand times sends a few messages, not a thousand."
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <TextField
+            form={form}
+            setting="notify_group_window_minutes"
+            label="Group window (minutes)"
+            inputMode="numeric"
+            hint="The first alert from an address is sent at once. Further alerts of the same kind from it are counted for this many minutes, and one summary follows when the time is up, with the count and, for WAF blocks, the categories. From 1 to 1440."
+          />
+          <TextField
+            form={form}
+            setting="notify_max_per_hour"
+            label="Alerts per channel per hour"
+            inputMode="numeric"
+            hint="Each channel sends at most this many in any hour, summaries included. Past it the channel holds the rest and, once the hour allows, sends one message saying how many it held. From 1 to 1000."
+          />
+        </div>
+        <p data-testid="limits-memory" className="mt-4 text-sm text-ink-muted">
+          The counts are kept in memory: a restart sends the pending summaries first, a crash loses them.
+        </p>
       </Section>
 
       <Section
