@@ -28,13 +28,27 @@ go_names="$(grep -oE 'configDir\+"/[a-z_]+\.txt"' backend-go/internal/database/d
 py_names="$(sed -n '/^PAIRS = \[/,/^\]/p' proxy/blacklist_watchdog.py \
             | grep -oE '(\{CONFIG_DIR\}|"/config)/[a-z_]+\.txt' | sed 's|.*/||' | sort -u)"
 
-# The sources the generator copies.
-sh_names="$(grep -oE '/config/[a-z_]+\.txt' proxy/generate_squid_conf.sh \
-            | sed 's|.*/||' | sort -u)"
+# The sources the generator copies. Since the boot copy goes through the
+# watchdog's verified sync (blacklist_watchdog.py --sync-lists, which copies
+# PAIRS against the backend's manifest), the generator consumes exactly the
+# watchdog's names; it must call that sync on a non-comment line, and must not
+# copy an exported list itself, which would bypass the manifest check.
+if grep -vE '^[[:space:]]*#' proxy/generate_squid_conf.sh | grep -q -- '--sync-lists'; then
+    sh_names="$py_names"
+    for n in $go_names; do
+        if grep -vE '^[[:space:]]*#' proxy/generate_squid_conf.sh | grep -qE "cp [^|;]*/config/${n}"; then
+            printf "${R}BYPASS${N}: generate_squid_conf.sh copies %s with cp instead of the verified sync\n" "$n"
+            fail=1
+        fi
+    done
+else
+    sh_names="$(grep -vE '^[[:space:]]*#' proxy/generate_squid_conf.sh \
+                | grep -oE '/config/[a-z_]+\.txt' | sed 's|.*/||' | sort -u)"
+fi
 
 [ -n "$go_names" ] || { printf "${R}FAIL${N}: found no exported filenames in db.go — has the export moved?\n"; exit 1; }
 [ -n "$py_names" ] || { printf "${R}FAIL${N}: found no PAIRS entries in blacklist_watchdog.py\n"; exit 1; }
-[ -n "$sh_names" ] || { printf "${R}FAIL${N}: found no /config/*.txt in generate_squid_conf.sh\n"; exit 1; }
+[ -n "$sh_names" ] || { printf "${R}FAIL${N}: generate_squid_conf.sh neither calls --sync-lists nor copies any /config/*.txt\n"; exit 1; }
 
 # Every file the backend writes must be consumed by both copiers. The reverse is
 # not required: the generator also references files the backend does not export

@@ -222,6 +222,23 @@ start_proxy "echo $PUB_SVC > /config/ip_blacklist.txt" || exit 1
 check  "LAN client → blacklisted destination"            403 ip_blacklist  code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
 check  "LAN client → other destination still allowed"    200 none          code   "$PFX-lan" "$LAN_CLIENT" "http://$LAN_SVC/"
 
+echo "── a blocklist the manifest does not vouch for fails closed ──"
+# The backend writes lists.manifest.json after the lists. A torn export at boot
+# (the bytes do not match) used to be loaded as is; with no previous copy to
+# keep, Squid now denies every client request until a verified copy is loaded.
+start_proxy "echo $PUB_SVC > /config/ip_blacklist.txt; "'printf "{\"version\": 1, \"generated_at\": 1, \"files\": {\"ip_blacklist.txt\": {\"sha256\": \"%064d\", \"bytes\": 0}}}\n" 0 > /config/lists.manifest.json' || exit 1
+check  "LAN client → public site, blacklist unverified"  403 other         code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+check  "LAN client → LAN service, blacklist unverified"  403 other         code   "$PFX-lan" "$LAN_CLIENT" "http://$LAN_SVC/"
+# The backend catches up: the same sync the generator and the watchdog run
+# copies the verified list and opens the gate.
+docker exec "$PFX-proxy" sh -c '
+  sum=$(sha256sum /config/ip_blacklist.txt | cut -d" " -f1)
+  printf "{\"version\": 1, \"generated_at\": 2, \"files\": {\"ip_blacklist.txt\": {\"sha256\": \"%s\", \"bytes\": 0}}}\n" "$sum" > /config/lists.manifest.json
+  python3 -I /usr/local/bin/blacklist_watchdog.py --sync-lists >/dev/null && squid -k reconfigure' >/dev/null 2>&1
+sleep 2
+check  "LAN client → blacklisted destination, verified"  403 ip_blacklist  code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+check  "LAN client → LAN service, verified"              200 none          code   "$PFX-lan" "$LAN_CLIENT" "http://$LAN_SVC/"
+
 echo "── an address on Blocked IPs and on Allowed IPs stays blocked ──"
 # The Blocked IPs deny runs before the Allowed IPs allow; the Enforcement
 # section of both tabs says so.

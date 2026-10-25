@@ -94,6 +94,18 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   `/config/.reload-squid` it regenerates the whole configuration and writes the
   outcome to `/config/.reload-squid.result`. Once a minute it reads Squid's
   cache manager on localhost and writes `/config/cache_stats.json`.
+- The generator copies the lists through the same check
+  (`blacklist_watchdog.py --sync-lists`), at boot and on every regeneration. A
+  list that does not match the manifest is not copied and Squid keeps the copy
+  it holds. At boot there is none: a refused allowlist starts empty, and a
+  refused blocklist closes a gate that denies every client request (logged
+  with the reason `other`) until the watchdog copies a verified one. Without a
+  manifest the lists are copied unverified, with a warning.
+- `squid -k parse` and `squid -k reconfigure` may take 40 seconds: both read
+  the whole configuration first, about 11 seconds with 640,000 names in
+  Squid's domain ACL at 0.5 CPU. A reconfigure that does not finish is not
+  taken as applied: the watchdog retries it, and a reload acknowledges it with
+  `reconfigure_rc` null.
 - ICAP: REQMOD with `bypass=0` (fail closed) unless `WAF_FAIL_OPEN=1`, and
   RESPMOD with `bypass=1`.
 - The SSL-bump CA is `/config/ssl_cert.pem` and `ssl_key.pem`, generated on

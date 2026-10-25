@@ -250,6 +250,14 @@ if [ -d /opt/squid-error-pages ]; then
 fi
 
 echo "Setting up Squid configuration..."
+# The delimiter is unquoted so that ${SQUID_PORT} and the other settings
+# expand, which means a backtick or a dollar-parenthesis anywhere below,
+# comments included, is a command the shell RUNS. Three comments quoted Squid
+# commands in backticks: every generation ran "squid -k rotate", "squid" and
+# "squid -k reconfigure". At boot, before the file existed, each printed
+# "FATAL: Unable to open configuration file"; on a running proxy every reload
+# rotated the logs, reconfigured Squid on the previous file and started a
+# second Squid (measured on 7.7). Quote commands with single quotes here.
 cat > /etc/squid/squid.conf.base << CONFEOF
 http_port ${SQUID_PORT}
 visible_hostname secure-proxy
@@ -361,6 +369,16 @@ http_access deny manager spm_r_other
 # gave up after 10 s, logged NONE_NONE_ABORTED/000).
 acl spm_self_mgr all-of localhost manager
 
+# Fail closed while a blocklist has no verified copy. The lists are copied only
+# when they match the manifest the backend writes after them; one refused at
+# boot has no previous copy to keep (/etc/squid is a tmpfs), and Squid without
+# its blocklist would let everything through. The gate file then holds every
+# address and every client request is denied here, until the watchdog copies a
+# verified list; it is empty otherwise. Written by blacklist_watchdog.py
+# (save_lists_state).
+acl spm_lists_gate src "/etc/squid/lists_gate.txt"
+http_access deny spm_lists_gate spm_r_other
+
 http_access deny ip_blacklist spm_r_ip_blacklist
 
 # Blacklisted domains are sinkholed by dnsmasq. They are also denied here
@@ -452,12 +470,12 @@ icap_service service_resp respmod_precache bypass=1 icap://waf:1344/waf
 adaptation_access service_resp deny spm_self_mgr
 adaptation_access service_resp allow all
 
-# Logging — keep volume growth bounded: lower verbosity, disable the noisy
-# store log, and keep 5 rotations (a daily `squid -k rotate` is triggered by the
+# Logging: keep volume growth bounded: lower verbosity, disable the noisy
+# store log, and keep 5 rotations (a daily 'squid -k rotate' is triggered by the
 # blacklist watchdog sidecar).
 debug_options ALL,1
 logfile_rotate 5
-# Custom 'spm' logformat = the 10 stock `squid` fields IN EXACT ORDER (the
+# Custom 'spm' logformat = the 10 stock 'squid' fields IN EXACT ORDER (the
 # backend's parseSquidLine is positional and requires >=10 of them, so these must
 # not change) + an 11th field carrying the WAF correlation id. The WAF stamps
 # X-WAF-Event-Id on the 403 it returns via ICAP REQMOD; %{...}<h reads it from the
@@ -485,7 +503,7 @@ connect_timeout 30 seconds
 dns_timeout 5 seconds
 
 # Squid caches a DNS answer for its TTL, up to positive_dns_ttl (6 hours by
-# default), and `squid -k reconfigure` does not clear that cache. Domains are
+# default), and 'squid -k reconfigure' does not clear that cache. Domains are
 # blocked by the dnsmasq sinkhole, so a domain that had just been visited kept
 # being served from the cached address after it was blacklisted (measured:
 # example.org still 200 after dnsmasq answered 0.0.0.0, and after a
@@ -869,14 +887,20 @@ if [ -f /etc/squid/error-pages/ERR_ACCESS_DENIED ] && ! grep -q "deny_info" "$SQ
     echo "Custom block page enabled for ACL denies"
 fi
 
-# ── Copy blacklists from config volume ───────────────────────────────────────
-# Initial copy at startup; the watchdog (below) keeps them in sync at runtime.
-
-[ -f /config/ip_blacklist.txt ]     && cp /config/ip_blacklist.txt /etc/squid/blacklists/ip/local.txt
-[ -f /config/ip_whitelist.txt ]     && cp /config/ip_whitelist.txt /etc/squid/whitelists/ip/local.txt
-[ -f /config/domain_blacklist.txt ] && cp /config/domain_blacklist.txt /etc/squid/blacklists/domain/local.txt
-[ -f /config/dst_allow_ip.txt ]     && cp /config/dst_allow_ip.txt /etc/squid/allowlists/dst_ip/local.txt
-[ -f /config/dst_allow_domain.txt ] && cp /config/dst_allow_domain.txt /etc/squid/allowlists/dst_domain/local.txt
+# ── Copy the lists from the config volume, verified ─────────────────────────
+# Through the watchdog's own sync (blacklist_watchdog.py --sync-lists), at boot
+# and on every regeneration: each list is copied only if its bytes match the
+# manifest the backend writes after the lists. These were plain cp calls, so a
+# torn or partial export became the live ACL at boot, and on any regeneration
+# replaced the verified copy the watchdog had loaded. A refused list keeps the
+# copy Squid holds; at boot there is none, an allowlist starts empty (allows
+# less) and a blocklist closes the gate above (denies every client) until the
+# watchdog copies a verified one. No manifest at all (a backend that predates
+# it) copies without verification, with a warning, as the watchdog does.
+if ! python3 -I "$SPM_LISTS" --sync-lists; then
+    echo "CRITICAL: the lists could not be synced; Squid denies every client request until the watchdog syncs them" >&2
+    echo all > /etc/squid/lists_gate.txt
+fi
 normalize_ip_lists /etc/squid/blacklists/ip/local.txt /etc/squid/whitelists/ip/local.txt /etc/squid/allowlists/dst_ip/local.txt
 refresh_domain_acl
 

@@ -406,12 +406,26 @@ def atomic_copy(src, dst, expected_sha256=None):
         raise
 
 
+# How long `squid -k parse` and `squid -k reconfigure` may take. Both read the
+# whole config, ACL files included, before they do anything else, so the time
+# grows with the domain ACL. Measured in the proxy image at the compose limits
+# (0.5 CPU, 512 MB), per call: 0.01 s with the default limit and 640k names
+# (Squid holds none), 3.8 s with 250k names held, 11.0 s with 640k, 17.2 s with
+# 1M; about 17 us a name. The previous 10 s (reconfigure) and 15 s (parse)
+# were below the 640k and 1M cases: a reconfigure was killed before it
+# signalled Squid, and every reload at 1M was refused as "does not parse".
+# 40 s is 2.3 times the 1M measurement. A reload at its slowest (30 s for the
+# generator, then a parse and a reconfigure) is 110 s without a heartbeat,
+# under the 120 s the container healthcheck allows.
+SQUID_K_TIMEOUT = 40
+
+
 def squid_config_ok(path=None):
     """Whether squid accepts a config (the live one by default). Used as a gate
     before reconfigure, so an unparsable ACL set is refused rather than loaded."""
-    argv = ["/usr/sbin/squid", "-k", "parse"] + (["-f", path] if path else [])
+    argv = [SQUID, "-k", "parse"] + (["-f", path] if path else [])
     try:
-        res = subprocess.run(argv, check=False, capture_output=True, timeout=15)
+        res = subprocess.run(argv, check=False, capture_output=True, timeout=SQUID_K_TIMEOUT)
         return res.returncode == 0
     except Exception as exc:  # noqa: BLE001
         print(f"[watchdog] squid -k parse failed to run: {exc}", flush=True)
@@ -423,7 +437,102 @@ def note_refusal(refused, src, mt, reason):
     key = (mt, mtime(MANIFEST))
     if refused.get(src) != key:
         refused[src] = key
-        print(f"[watchdog] REFUSED {src}: {reason}; Squid keeps the previous list", flush=True)
+        print(f"[watchdog] REFUSED {src}: {reason}; Squid keeps the copy it holds, if any", flush=True)
+
+
+# ── What Squid holds, across the generator and the poll loop ─────────────────
+#
+# generate_squid_conf.sh copies the lists through sync_lists too (--sync-lists),
+# at boot and on every regeneration, so a list is verified against the manifest
+# on every path into Squid. It used to cp them: a torn export at boot became
+# the live ACL, and so did one present when the watchdog regenerated the config.
+#
+# LISTS_RECORD holds, for each list copied since this boot, the mtime of the
+# source it was copied from. /etc/squid is a tmpfs, so it starts empty with the
+# container. The poll loop starts from it: a list refused by the generator has
+# no entry and is tried again on the first poll.
+#
+# A list refused at boot has no previous copy to keep. An allowlist then starts
+# empty, which allows less. A blocklist would block nothing, so the gate closes
+# instead: LISTS_GATE holds "all" (every source), and squid.conf denies every client
+# request (spm_r_other) until each blocklist has a verified copy.
+LISTS_RECORD = "/etc/squid/lists.synced.json"
+LISTS_GATE = "/etc/squid/lists_gate.txt"
+BLOCKLIST_SOURCES = (f"{CONFIG_DIR}/ip_blacklist.txt", f"{CONFIG_DIR}/domain_blacklist.txt")
+GATE_CLOSED = ["all"]
+
+
+def load_lists_record(path=None):
+    """{source: mtime} of the lists copied since boot, None when there is no
+    usable record (nothing is then known to be held)."""
+    try:
+        with open(path or LISTS_RECORD, encoding="utf-8") as f:
+            doc = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(doc, dict):
+        return None
+    return {k: v for k, v in doc.items() if isinstance(v, (int, float))}
+
+
+def write_if_changed(path, lines):
+    """write_lines_atomic, skipped when the file already holds these lines.
+    True when it wrote."""
+    want = "".join(line + "\n" for line in lines)
+    try:
+        with open(path, encoding="utf-8") as f:
+            if f.read() == want:
+                return False
+    except OSError:
+        pass
+    write_lines_atomic(path, lines)
+    return True
+
+
+def unheld_blocklists(state):
+    """The blocklists Squid holds no copy of: none was copied since boot."""
+    return [src for src, _ in PAIRS if src in BLOCKLIST_SOURCES and state.mtimes.get(src) is None]
+
+
+def save_lists_state(state):
+    """Write LISTS_RECORD and LISTS_GATE from state. True when the gate file
+    changed, which takes a reconfigure to apply."""
+    sources = {src for src, _ in PAIRS}
+    record = {src: mt for src, mt in state.mtimes.items() if src in sources and mt is not None}
+    try:
+        write_if_changed(LISTS_RECORD, [json.dumps(record, sort_keys=True)])
+    except OSError as exc:
+        print(f"[watchdog] could not write {LISTS_RECORD}: {exc}", flush=True)
+    unheld = unheld_blocklists(state)
+    try:
+        changed = write_if_changed(LISTS_GATE, GATE_CLOSED if unheld else [])
+    except OSError as exc:
+        print(f"[watchdog] could not write {LISTS_GATE}: {exc}", flush=True)
+        return False
+    if changed and unheld:
+        print(f"[watchdog] CRITICAL: no verified copy of {', '.join(unheld)}: Squid denies every client "
+              "request until the backend's manifest vouches for it (fail closed)", flush=True)
+    elif changed:
+        print("[watchdog] every blocklist has a verified copy: client requests are served again", flush=True)
+    return changed
+
+
+class ListsState:
+    """The part of WatchdogState that sync_lists uses."""
+
+    def __init__(self, record):
+        record = record or {}
+        self.mtimes = {src: record.get(src) for src, _ in PAIRS}
+        self.refused = {}
+
+
+def sync_lists_cli():
+    """generate_squid_conf.sh: copy every list that changed since the record,
+    verified as the poll loop does, then write the record and the gate."""
+    state = ListsState(load_lists_record())
+    sync_lists(state)
+    save_lists_state(state)
+    return 0
 
 
 RELOAD_TRIGGER = f"{CONFIG_DIR}/.reload-squid"
@@ -460,7 +569,11 @@ class WatchdogState:
     """What the poll loop remembers between two-second ticks."""
 
     def __init__(self):
-        self.mtimes = {src: mtime(src) for src, _ in PAIRS}
+        # From the record the generator wrote at boot, not from the files'
+        # current mtimes: a list it refused (or one that changed since) has no
+        # matching entry, so the first poll tries it again. Without a record
+        # nothing is known to be held, and every list is synced.
+        self.mtimes = ListsState(load_lists_record()).mtimes
         self.mtimes[RELOAD_TRIGGER] = mtime(RELOAD_TRIGGER)
         self.mtimes[CLEAR_CACHE_TRIGGER] = mtime(CLEAR_CACHE_TRIGGER)
         # (file mtime, manifest mtime) at which each list was last refused, so a
@@ -477,6 +590,10 @@ class WatchdogState:
         self.cache_stats_problem = None
         self.disk_capacity_kb = None
         self.disk_capacity_conf = None
+        # Lists were copied but Squid has not confirmed loading them: the
+        # reconfigure failed or did not finish. Their mtimes are already
+        # recorded, so nothing else would bring them in; poll_once retries.
+        self.reconfigure_pending = False
 
 
 def write_squid_version():
@@ -520,7 +637,10 @@ def heal_resolver_drift(state):
     try:
         _, applied = generate_checked()
         if applied:
-            subprocess.run([SQUID, "-k", "reconfigure"], check=False, capture_output=True, timeout=10)
+            if reconfigure_squid() is None:
+                # Not recorded: Squid may still use the dead addresses, so the
+                # next poll sees the drift again and retries.
+                return
         else:
             print("[watchdog] resolver drift: the regenerated config was refused — keeping the running one", flush=True)
         # Recorded either way, so a config that will not generate is not retried every 2 s.
@@ -556,8 +676,9 @@ def regenerate_and_reconfigure(stamp):
     """Regenerate squid.conf and reconfigure, acknowledging the trigger.
 
     Returns True when the attempt ran to completion (whatever its result, which
-    is what the acknowledgement carries) and False when it raised, so the caller
-    leaves the trigger unconsumed and the next poll retries.
+    is what the acknowledgement carries) and False when it raised or the
+    reconfigure did not finish, so the caller leaves the trigger unconsumed and
+    the next poll retries.
     """
     try:
         gen_res, applied = generate_checked()
@@ -573,9 +694,12 @@ def regenerate_and_reconfigure(stamp):
             print("[watchdog] generated config does not parse — refusing to reconfigure", flush=True)
             write_result("reload-squid", stamp, 0, 1)
         else:
-            rec_res = subprocess.run([SQUID, "-k", "reconfigure"], check=False, capture_output=True, timeout=10)
-            print(f"[watchdog] squid reconfigure rc={rec_res.returncode}", flush=True)
-            write_result("reload-squid", stamp, gen_res.returncode, rec_res.returncode)
+            rec_rc = reconfigure_squid()
+            # Reported either way: a reconfigure that did not finish is
+            # acknowledged as not applied (reconfigure_rc null), and the
+            # trigger stays unconsumed so the next poll runs the reload again.
+            write_result("reload-squid", stamp, gen_res.returncode, rec_rc)
+            return rec_rc is not None
         return True
     except (OSError, subprocess.SubprocessError) as exc:
         # Narrow, and it reports rather than absorbing: the backend is waiting
@@ -869,11 +993,25 @@ def sync_lists(state):
 
 
 def reconfigure_squid():
+    """Run `squid -k reconfigure`. Returns its exit code, or None when it did
+    not finish (it timed out or could not be run).
+
+    None is never success. The command parses the whole config before it
+    signals the running Squid, so one that is stopped at the timeout has most
+    likely signalled nothing: Squid stays on its previous configuration. The
+    callers retry it or report it (SQUID_K_TIMEOUT has the measurements)."""
     try:
-        result = subprocess.run([SQUID, "-k", "reconfigure"], check=False, capture_output=True, timeout=10)
-        print(f"[watchdog] squid reconfigure rc={result.returncode}", flush=True)
-    except Exception as exc:  # noqa: BLE001 - log and keep running
+        result = subprocess.run([SQUID, "-k", "reconfigure"], check=False, capture_output=True,
+                                timeout=SQUID_K_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        print(f"[watchdog] squid -k reconfigure did not finish within {SQUID_K_TIMEOUT} s: "
+              "Squid may still run the previous configuration; not treated as applied", flush=True)
+        return None
+    except (OSError, subprocess.SubprocessError) as exc:
         print(f"[watchdog] reconfigure error: {exc}", flush=True)
+        return None
+    print(f"[watchdog] squid reconfigure rc={result.returncode}", flush=True)
+    return result.returncode
 
 
 # ── Cache statistics ─────────────────────────────────────────────────────────
@@ -1071,7 +1209,11 @@ def poll_once(state):
     check_clear_cache_trigger(state)
     if sync_lists(state):
         refresh_domain_acl()
-        reconfigure_squid()
+        state.reconfigure_pending = True
+    if save_lists_state(state):
+        state.reconfigure_pending = True
+    if state.reconfigure_pending:
+        state.reconfigure_pending = reconfigure_squid() != 0
     collect_cache_stats(state)
 
 
@@ -1103,4 +1245,6 @@ def main():
 if __name__ == "__main__":
     if sys.argv[1:2] == ["--normalize"]:
         sys.exit(normalize_cli(sys.argv[2:]))
+    if sys.argv[1:] == ["--sync-lists"]:
+        sys.exit(sync_lists_cli())
     main()

@@ -241,6 +241,107 @@ grep -q 'falling back to base' <<<"$bad_extras" && bad "no fallback to the unfil
 grep -q 'Configuration syntax is valid' <<<"$boot" \
   && ok "boot validates its own squid.conf" || bad "boot validates its own squid.conf"
 
+echo "── boot log: no Squid command runs before the config exists ──"
+# /etc/squid is a tmpfs in the compose stack: nothing is there at boot until
+# the generator writes it. Three comments in the generator's unquoted heredoc
+# quoted Squid commands in backticks, so the shell ran them: a clean boot
+# logged "FATAL: Unable to open configuration file" three times, and on a
+# running proxy every regeneration rotated the logs, reconfigured Squid and
+# started a second one. The boot runs as compose runs it (tmpfs /etc/squid).
+clean="$(docker run --rm --cap-add NET_ADMIN --tmpfs /etc/squid --entrypoint /bin/bash "$IMAGE" -c '
+  sed -i "s|^exec /usr/bin/supervisord.*|echo __REACHED_SUPERVISORD__|" /startup.sh
+  /startup.sh 2>&1' 2>/dev/null)"
+n_fatal=$(grep -c 'FATAL' <<<"$clean")
+grep -q '__REACHED_SUPERVISORD__' <<<"$clean" && [ "$n_fatal" = 0 ] \
+  && ok "a clean boot logs no FATAL line" \
+  || bad "a clean boot logs no FATAL line" "$n_fatal FATAL line(s): $(grep -m3 FATAL <<<"$clean")"
+# The generator itself never runs Squid: startup.sh and the watchdog parse and
+# reconfigure after it has written the file. A recorder stands in for squid.
+calls="$(docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+  mkdir -p /config
+  printf "#!/bin/sh\necho \"\$*\" >> /tmp/squid-calls\n" > /usr/sbin/squid
+  /usr/local/bin/generate_squid_conf.sh >/dev/null 2>&1
+  SQUID_CONF=/etc/squid/squid.conf.next /usr/local/bin/generate_squid_conf.sh >/dev/null 2>&1
+  if [ -f /tmp/squid-calls ]; then wc -l < /tmp/squid-calls; else echo 0; fi' 2>/dev/null)"
+[ "$calls" = 0 ] && ok "the generator runs no Squid command (boot and watchdog runs)" \
+  || bad "the generator runs no Squid command" "squid was run ${calls:-?} time(s)"
+
+echo "── the lists are copied only when the backend's manifest vouches for them ──"
+# The generator copied /config/*.txt into Squid's ACL directories with cp, at
+# boot and on every watchdog regeneration, without the manifest check the
+# watchdog applies: a torn export became the live ACL. It now copies through
+# the watchdog's sync. lists_case SETUP prints, one per line: the IP blacklist
+# ACL, the IP whitelist ACL, the domain blacklist, the gate (lines), whether
+# squid parses, and the refusal / gate / legacy lines of the log.
+lists_case() {
+  docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+    mkdir -p /config /etc/squid
+    sha() { sha256sum "$1" | cut -d" " -f1; }
+    manifest() { # every list with its current checksum, then NAME=SHA overrides
+      local f s sep="" body=""
+      for f in ip_blacklist ip_whitelist domain_blacklist dst_allow_ip dst_allow_domain; do
+        s=$(sha /config/$f.txt)
+        for kv in "$@"; do [ "${kv%%=*}" = "$f.txt" ] && s="${kv#*=}"; done
+        body="$body$sep\"$f.txt\": {\"sha256\": \"$s\", \"bytes\": 0}"; sep=", "
+      done
+      printf "{\"version\": 1, \"generated_at\": 1, \"files\": {%s}}\n" "$body" > /config/lists.manifest.json
+    }
+    for f in ip_blacklist ip_whitelist domain_blacklist dst_allow_ip dst_allow_domain; do : > /config/$f.txt; done
+    printf "203.0.113.9\n198.51.100.7\n" > /config/ip_blacklist.txt
+    printf "192.0.2.10\n" > /config/ip_whitelist.txt
+    printf "evil.example\n" > /config/domain_blacklist.txt
+    torn=$(printf "%064d" 0)
+    '"$1"'
+    echo "ipbl=$(tr "\n" " " < /etc/squid/blacklists/ip/local.txt)"
+    echo "ipwl=$(tr "\n" " " < /etc/squid/whitelists/ip/local.txt)"
+    echo "dombl=$(tr "\n" " " < /etc/squid/blacklists/domain/local.txt)"
+    echo "gate=$(wc -l < /etc/squid/lists_gate.txt)"
+    /usr/sbin/squid -k parse >/dev/null 2>&1 && echo parse=ok || echo parse=fail
+    grep -h -o -E "REFUSED [^:]*|CRITICAL: no verified copy|no lists manifest" /tmp/gen*.log | sort -u
+  ' 2>/dev/null
+}
+gen='/usr/local/bin/generate_squid_conf.sh > /tmp/gen.log 2>&1'
+
+out="$(lists_case "manifest; $gen")"
+grep -qx 'ipbl=198.51.100.7 203.0.113.9 ' <<<"$out" && grep -qx 'gate=0' <<<"$out" && grep -qx 'parse=ok' <<<"$out" \
+  && ! grep -q REFUSED <<<"$out" \
+  && ok "match: every list is copied and the gate is open" || bad "match: every list is copied and the gate is open" "$out"
+
+out="$(lists_case "manifest ip_blacklist.txt=\$torn; printf '203.0.113.9\n198.51.' > /config/ip_blacklist.txt; $gen")"
+grep -qx 'ipbl=' <<<"$out" && grep -qx 'gate=1' <<<"$out" && grep -qx 'parse=ok' <<<"$out" \
+  && grep -q 'REFUSED /config/ip_blacklist.txt' <<<"$out" && grep -q 'CRITICAL: no verified copy' <<<"$out" \
+  && ok "boot, torn IP blacklist: not loaded, the gate closes (fail closed)" \
+  || bad "boot, torn IP blacklist: not loaded, the gate closes" "$out"
+grep -qx 'ipwl=192.0.2.10 ' <<<"$out" && grep -qx 'dombl=evil.example ' <<<"$out" \
+  && ok "boot, torn IP blacklist: the lists that match are still copied" \
+  || bad "boot, torn IP blacklist: the lists that match are still copied" "$out"
+
+out="$(lists_case "manifest domain_blacklist.txt=\$torn; $gen")"
+grep -qx 'dombl=' <<<"$out" && grep -qx 'gate=1' <<<"$out" \
+  && ok "boot, mismatched domain blacklist: not loaded, the gate closes" \
+  || bad "boot, mismatched domain blacklist: not loaded, the gate closes" "$out"
+
+out="$(lists_case "manifest ip_whitelist.txt=\$torn; $gen")"
+grep -qx 'ipwl=' <<<"$out" && grep -qx 'gate=0' <<<"$out" && grep -q 'REFUSED /config/ip_whitelist.txt' <<<"$out" \
+  && ok "boot, mismatched allowlist: starts empty (allows less), the gate stays open" \
+  || bad "boot, mismatched allowlist: starts empty, the gate stays open" "$out"
+
+out="$(lists_case "$gen")"
+grep -qx 'ipbl=198.51.100.7 203.0.113.9 ' <<<"$out" && grep -qx 'gate=0' <<<"$out" && grep -q 'no lists manifest' <<<"$out" \
+  && ok "no manifest (a backend that predates it): copied unverified, with a warning" \
+  || bad "no manifest: copied unverified, with a warning" "$out"
+
+out="$(lists_case "echo '{not json' > /config/lists.manifest.json; $gen")"
+grep -qx 'ipbl=' <<<"$out" && grep -qx 'gate=1' <<<"$out" \
+  && ok "unreadable manifest: nothing is trusted, the gate closes" \
+  || bad "unreadable manifest: nothing is trusted, the gate closes" "$out"
+
+out="$(lists_case "manifest; $gen; printf '10.9.9.9\n' > /config/ip_blacklist.txt; touch -d '+1 min' /config/ip_blacklist.txt
+  SQUID_CONF=/etc/squid/squid.conf.next /usr/local/bin/generate_squid_conf.sh > /tmp/gen2.log 2>&1")"
+grep -qx 'ipbl=198.51.100.7 203.0.113.9 ' <<<"$out" && grep -qx 'gate=0' <<<"$out" && grep -q 'REFUSED /config/ip_blacklist.txt' <<<"$out" \
+  && ok "regeneration, mismatched IP blacklist: the verified copy is kept, the gate stays open" \
+  || bad "regeneration, mismatched IP blacklist: the verified copy is kept" "$out"
+
 # Executed as a subprocess (the watchdog's contract) it must still exit 0, and
 # sourced (startup.sh's contract) it must hand control back.
 docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
