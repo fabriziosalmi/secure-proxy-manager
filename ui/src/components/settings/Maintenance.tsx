@@ -7,10 +7,11 @@
  * maintenance/restore-config). The database export is every table, for
  * analysis, and Restore refuses it.
  *
- * Clear the cache: Squid has no command that empties its cache. The proxy's
- * watchdog runs "squid -k purge", which Squid 7.7 answers with its usage
- * text and exit code 1 (measured), and then "squid -k shutdown"; supervisord
- * starts Squid again (proxy/blacklist_watchdog.py, squid-supervisor.conf).
+ * Clear the cache: the proxy's watchdog stops Squid, deletes everything in
+ * its cache_dir, recreates it with "squid -z" and starts Squid again, which
+ * also empties the memory cache (proxy/blacklist_watchdog.py). The endpoint
+ * waits up to 45 seconds for the watchdog's answer: success with the objects
+ * removed, pending when nothing answered, 500 with the step that stopped it.
  */
 import { useRef, useState, type ReactNode } from 'react';
 import { Upload } from 'lucide-react';
@@ -280,14 +281,19 @@ export function MaintenanceActions() {
 
   const clearCache = async () => {
     if (!(await confirm({
-      title: 'Restart the proxy to clear its cache?',
-      body: 'Squid has no command that empties its cache, so the proxy stops Squid and its supervisor starts it again. Open connections drop, and new ones are refused until it is back, up to about 30 seconds. The memory cache is emptied; objects cached on disk stay.',
-      confirmLabel: 'Restart and clear',
+      title: 'Empty the proxy cache?',
+      body: 'Stops the proxy, deletes every object in its disk cache and starts it again, which also empties its memory cache. Requests in progress are cut off, and new ones are refused until it is back, a few seconds. Each object is then fetched again from its origin.',
+      confirmLabel: 'Empty the cache',
       destructive: true,
     }))) return;
     void run('cache', async () => {
-      await api.post('maintenance/clear-cache');
-      return { tone: 'success', text: `Requested at ${formatClock(new Date())}. The proxy's watchdog acts within about 2 seconds; this page cannot confirm the restart.` };
+      const res = await api.post('maintenance/clear-cache');
+      if (res.data?.status === 'pending') {
+        return { tone: 'warning', text: 'The proxy did not confirm within 45 seconds: check that the proxy container is running.' };
+      }
+      const removed: unknown = res.data?.data?.objects_removed;
+      const what = typeof removed === 'number' ? `${formatCount(removed)} ${removed === 1 ? 'object' : 'objects'} removed from disk` : 'the disk cache was emptied';
+      return { tone: 'success', text: `Emptied at ${formatClock(new Date())}: ${what}, and the proxy is running again.` };
     });
   };
 
@@ -323,7 +329,7 @@ export function MaintenanceActions() {
       <ul className="flex flex-col">
         <ActionRow title="Reload the proxy" help="Regenerates the proxy configuration from the stored settings and lists, and reports whether the proxy took it. Saving a section already does this." button="Reload the proxy" outcome={out.reload ?? null} busy={busy === 'reload'} onRun={() => void reload()} />
         <ActionRow title="Reload DNS" help="Writes the domain blocklist for the DNS service again." button="Reload DNS" outcome={out.dns ?? null} busy={busy === 'dns'} onRun={() => void reloadDns()} />
-        <ActionRow title="Clear the cache" help="Restarts Squid, which empties its memory cache. Clients lose their connections while it restarts." button="Clear Cache" outcome={out.cache ?? null} busy={busy === 'cache'} onRun={() => void clearCache()} danger />
+        <ActionRow title="Empty the cache" help="Stops the proxy, deletes its disk cache and starts it again, which also empties the memory cache. Clients lose their connections for a few seconds." button="Empty disk and memory cache" outcome={out.cache ?? null} busy={busy === 'cache'} onRun={() => void clearCache()} danger />
         <ActionRow title="Reset statistics" help="Deletes every logged request and resets the WAF's counters." button="Reset statistics" outcome={out.reset ?? null} busy={busy === 'reset'} onRun={() => void resetStats()} danger />
         <ActionRow title="Optimize the database" help="Compacts the database file and rebuilds its indexes. The backend waits for it, which can take a while on a large log." button="Optimize" outcome={out.optimize ?? null} busy={busy === 'optimize'} onRun={() => void optimize()} />
       </ul>

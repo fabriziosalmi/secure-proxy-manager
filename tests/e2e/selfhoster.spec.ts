@@ -1339,9 +1339,9 @@ test.describe('UI — Settings page', () => {
     expect(download.suggestedFilename()).toMatch(/proxy-backup.*\.json/);
   });
 
-  test('Clear Cache button is visible', async ({ page }) => {
+  test('the button that empties the cache is visible', async ({ page }) => {
     await page.goto('/settings/admin');
-    await expect(page.getByRole('button', { name: /Clear Cache/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: 'Empty disk and memory cache' })).toBeVisible({ timeout: 10_000 });
   });
 });
 

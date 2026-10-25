@@ -245,7 +245,21 @@ Squid takes its first statistics sample one minute after it starts and prints 0.
 POST /api/maintenance/clear-cache
 ```
 
-Writes the clear-cache trigger. Squid has no command that empties its cache: the proxy's watchdog runs `squid -k purge`, which Squid 7.7 answers with its usage text and exit code 1, and then `squid -k shutdown`, after which supervisord starts Squid again. The memory cache is emptied, objects on disk stay, and clients lose their connections during the restart. The answer only says the trigger was written.
+Empties the Squid disk cache. The proxy's watchdog stops Squid, deletes
+everything inside the `cache_dir` named in the generated `squid.conf`, recreates
+its layout with `squid -z` and starts Squid again, which also empties the memory
+cache. Requests in progress are cut off and new ones are refused until Squid is
+back. The watchdog refuses a `cache_dir` that does not resolve to
+`/var/spool/squid` or a directory under it, and then stops and deletes nothing.
+
+**This call blocks** for up to **45 seconds** while the watchdog acknowledges
+what it did:
+
+| HTTP | `status` | Meaning |
+|---|---|---|
+| `200` | `success` | The disk cache was emptied and Squid is running again. `data.objects_removed` is the number of stored objects deleted |
+| `500` | `error` (`code: clear_cache_failed`) | `detail` says what stopped it; `data.step` names the step: `check` (the `cache_dir` was refused, nothing was touched), `stop`, `empty`, `create`, `start` or `error` |
+| `200` | `pending` | Nothing acknowledged within the timeout; check that the proxy container is running |
 
 ---
 

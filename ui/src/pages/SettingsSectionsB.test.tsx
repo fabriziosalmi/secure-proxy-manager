@@ -252,7 +252,7 @@ describe('Settings sections, part B', () => {
       const { container } = renderAt('/settings/admin')
       expect(await screen.findByRole('button', { name: 'Change Password' })).toBeDisabled()
       expect(screen.getByRole('button', { name: 'Download a backup' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Clear Cache' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Empty disk and memory cache' })).toBeInTheDocument()
       headingsInOrder()
       await expectNoAxeViolations(container)
     })

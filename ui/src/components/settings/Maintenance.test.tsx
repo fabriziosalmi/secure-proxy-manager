@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test/helpers'
 import { expectNoAxeViolations } from '../../test/axe'
+import { AxiosError, AxiosHeaders } from 'axios'
 import { api } from '../../lib/api'
 import { Maintenance } from './Maintenance'
 
@@ -109,6 +110,42 @@ describe('Maintenance', () => {
     expect(api.post).not.toHaveBeenCalledWith('maintenance/restore-config', expect.anything())
   })
 
+  it('says what emptying the cache does before it runs, and what the proxy did after', async () => {
+    vi.mocked(api.post).mockImplementation((url: string) => {
+      if (url === 'maintenance/clear-cache') return Promise.resolve({ data: { status: 'success', data: { objects_removed: 1234 } } })
+      return Promise.resolve({ data: {} })
+    })
+    renderWithProviders(<Maintenance />)
+    fireEvent.click(screen.getByRole('button', { name: 'Empty disk and memory cache' }))
+    const dialog = await screen.findByRole('alertdialog', { name: 'Empty the proxy cache?' })
+    expect(dialog).toHaveTextContent('Stops the proxy, deletes every object in its disk cache and starts it again, which also empties its memory cache.')
+    expect(dialog).toHaveTextContent('Requests in progress are cut off, and new ones are refused until it is back')
+    expect(dialog).not.toHaveTextContent('objects cached on disk stay')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Empty the cache' }))
+    expect(await screen.findByText(/^Emptied at \d\d:\d\d: 1,234 objects removed from disk, and the proxy is running again\.$/)).toBeInTheDocument()
+    expect(api.post).toHaveBeenCalledWith('maintenance/clear-cache')
+  })
+
+  it('does not call a clear the proxy did not confirm, or refused, a success', async () => {
+    const refused = new AxiosError('500', 'ERR_BAD_RESPONSE', undefined, undefined, {
+      status: 500, statusText: 'Internal Server Error', headers: {}, config: { headers: new AxiosHeaders() },
+      data: { status: 'error', code: 'clear_cache_failed', detail: 'refused, nothing was removed: cache_dir /etc resolves to /etc, outside /var/spool/squid' },
+    })
+    vi.mocked(api.post).mockImplementationOnce(() => Promise.resolve({ data: { status: 'pending' } }))
+      .mockImplementationOnce(() => Promise.reject(refused))
+    renderWithProviders(<Maintenance />)
+    const clear = async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Empty disk and memory cache' }))
+      const dialog = await screen.findByRole('alertdialog', { name: 'Empty the proxy cache?' })
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Empty the cache' }))
+    }
+    await clear()
+    expect(await screen.findByText('The proxy did not confirm within 45 seconds: check that the proxy container is running.')).toBeInTheDocument()
+    await clear()
+    expect(await screen.findByText(/^It failed: refused, nothing was removed: cache_dir \/etc resolves to \/etc, outside \/var\/spool\/squid\.?$/)).toBeInTheDocument()
+    expect(screen.queryByText(/^Emptied at/)).not.toBeInTheDocument()
+  })
+
   it('refuses a database export, which restore cannot read, without asking', async () => {
     renderWithProviders(<Maintenance />)
     chooseFile(JSON.stringify({ status: 'success', data: { settings: [{ id: 1, setting_name: 'a' }], proxy_logs: [] } }), 'database_export.json')
@@ -138,11 +175,10 @@ describe('Maintenance', () => {
     fireEvent.click(within(ask).getByRole('button', { name: 'Delete and reset' }))
     expect(await screen.findByText('Deleted 1,234 logged requests. The WAF did not reset its counters: it did not answer, or refused the backend.')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Clear Cache' }))
-    const restart = await screen.findByRole('alertdialog', { name: 'Restart the proxy to clear its cache?' })
-    expect(restart).toHaveTextContent('Squid has no command that empties its cache')
-    fireEvent.click(within(restart).getByRole('button', { name: 'Restart and clear' }))
-    expect(await screen.findByText(/^Requested at \d\d:\d\d\. The proxy's watchdog acts within about 2 seconds; this page cannot confirm the restart\.$/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Empty disk and memory cache' }))
+    const empty = await screen.findByRole('alertdialog', { name: 'Empty the proxy cache?' })
+    fireEvent.click(within(empty).getByRole('button', { name: 'Empty the cache' }))
+    expect(await screen.findByText(/^Emptied at \d\d:\d\d: the disk cache was emptied, and the proxy is running again\.$/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Optimize' }))
     expect(await screen.findByText(/^Optimized \(VACUUM and REINDEX\)\. Size 1\.9 MB before, 977 KB after\.$/)).toBeInTheDocument()

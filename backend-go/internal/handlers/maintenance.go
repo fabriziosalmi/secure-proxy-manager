@@ -29,10 +29,14 @@ type MaintenanceHandlers struct {
 	// reloadAckTimeout bounds the wait for the watchdog's acknowledgement.
 	// A field rather than a constant so tests do not have to sleep it out.
 	reloadAckTimeout time.Duration
+	// clearAckTimeout bounds the wait for a cache clear: the watchdog stops
+	// Squid, empties the cache_dir, recreates it and starts Squid, which took
+	// a few seconds when measured. Below the server's 60 s WriteTimeout.
+	clearAckTimeout time.Duration
 }
 
 func NewMaintenanceHandlers(db *sql.DB, cfg *config.Config) *MaintenanceHandlers {
-	return &MaintenanceHandlers{db: db, cfg: cfg, reloadAckTimeout: 8 * time.Second}
+	return &MaintenanceHandlers{db: db, cfg: cfg, reloadAckTimeout: 8 * time.Second, clearAckTimeout: 45 * time.Second}
 }
 
 func (h *MaintenanceHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {
@@ -513,18 +517,42 @@ type reloadResult struct {
 // stamp. An older result is ignored, so a stale file cannot be mistaken for an
 // answer to this request.
 func awaitReloadResult(path string, stamp int64, timeout time.Duration) (reloadResult, error) {
+	var res reloadResult
+	err := awaitAck(path, stamp, timeout, &res)
+	return res, err
+}
+
+// awaitAck polls path for the watchdog's acknowledgement of the trigger
+// written at stamp and decodes it into out. A result whose trigger_mtime is
+// older than stamp answers an earlier request and is ignored.
+func awaitAck(path string, stamp int64, timeout time.Duration, out any) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		data, err := os.ReadFile(path) // #nosec G304 — fixed internal config path
+		data, err := os.ReadFile(path) // #nosec G304 -- fixed internal config path
 		if err == nil {
-			var res reloadResult
-			if json.Unmarshal(data, &res) == nil && res.TriggerMtime >= stamp {
-				return res, nil
+			var head struct {
+				TriggerMtime int64 `json:"trigger_mtime"`
+			}
+			if json.Unmarshal(data, &head) == nil && head.TriggerMtime >= stamp && json.Unmarshal(data, out) == nil {
+				return nil
 			}
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	return reloadResult{}, fmt.Errorf("no acknowledgement within %s", timeout)
+	return fmt.Errorf("no acknowledgement within %s", timeout)
+}
+
+// clearCacheResult is the watchdog's acknowledgement of a cache clear
+// (write_clear_result in proxy/blacklist_watchdog.py). Step names where it
+// stopped: check (the cache_dir was refused, nothing touched), stop, empty,
+// create, start or error; it is null when every step worked.
+type clearCacheResult struct {
+	TriggerMtime   int64   `json:"trigger_mtime"`
+	Applied        bool    `json:"applied"`
+	Step           *string `json:"step"`
+	Detail         *string `json:"detail"`
+	ObjectsRemoved *int    `json:"objects_removed"`
+	At             int64   `json:"at"`
 }
 
 func (h *MaintenanceHandlers) ReloadDNS(w http.ResponseWriter, r *http.Request) {
@@ -550,9 +578,46 @@ func (h *MaintenanceHandlers) ClearCache(w http.ResponseWriter, r *http.Request)
 	database.Audit(h.db, username, "clear_cache", "proxy", "")
 
 	clearFile := filepath.Join(h.cfg.ConfigDir, ".clear-cache")
+	stamp := time.Now().Unix()
 	// #nosec G306 — clear-cache trigger, must be readable by the proxy container
-	if err := os.WriteFile(clearFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
+	if err := os.WriteFile(clearFile, []byte(strconv.FormatInt(stamp, 10)), 0644); err != nil {
 		log.Warn().Err(err).Msg("clear cache trigger file write failed")
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"status": "error", "code": "clear_cache_failed",
+			"detail": "the clear-cache request could not be written for the proxy",
+		})
+		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Proxy cache purge signal sent successfully"})
+
+	// Writing the trigger used to be reported as success. The watchdog's
+	// `squid -k purge` was not a command Squid knows, so the disk cache was
+	// never emptied while every request said it had been. The watchdog now
+	// acknowledges what it did, and this says that.
+	var res clearCacheResult
+	switch err := awaitAck(filepath.Join(h.cfg.ConfigDir, ".clear-cache.result"), stamp, h.clearAckTimeout, &res); {
+	case err != nil:
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":  "pending",
+			"message": "clear requested, but the proxy did not answer in time: check that the proxy container is running",
+		})
+	case !res.Applied:
+		detail := "the proxy could not empty its cache"
+		if res.Detail != nil && *res.Detail != "" {
+			detail = *res.Detail
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"status": "error", "code": "clear_cache_failed", "detail": detail,
+			"data": map[string]any{"step": res.Step, "objects_removed": res.ObjectsRemoved},
+		})
+	default:
+		removed := 0
+		if res.ObjectsRemoved != nil {
+			removed = *res.ObjectsRemoved
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":  "success",
+			"message": fmt.Sprintf("Disk cache emptied (%d objects removed) and Squid restarted", removed),
+			"data":    map[string]any{"objects_removed": removed},
+		})
+	}
 }
