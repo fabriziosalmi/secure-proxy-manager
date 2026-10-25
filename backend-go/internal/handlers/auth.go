@@ -221,7 +221,7 @@ func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 	if revokeErr != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
 			"status": "error",
-			"detail": "token could not be revoked durably — it may remain valid until it expires; change your password if this session may be compromised",
+			"detail": "token could not be revoked durably: it may remain valid until it expires; change your password if this session may be compromised",
 		})
 		return
 	}

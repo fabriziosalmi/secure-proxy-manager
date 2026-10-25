@@ -51,7 +51,7 @@ func StartExporter(ctx context.Context, db *sql.DB, configDir string) *Exporter 
 					// shows the new list (SECURE-ERR-05). The error says which
 					// half, when only one of Squid's lists and dnsmasq's failed.
 					metrics.ExportFailure()
-					log.Error().Err(err).Msg("blacklist export failed — at least one enforcement file is stale")
+					log.Error().Err(err).Msg("blacklist export failed; at least one enforcement file is stale")
 					continue
 				}
 				metrics.ExportSuccess()

@@ -50,7 +50,7 @@ func LoadCustomRules(path string) {
 		if os.IsNotExist(err) {
 			log.Printf("No custom rules file at %s, using default rules only.\n", path)
 		} else {
-			log.Printf("WARNING: custom rules file %s could not be read (%v) — "+
+			log.Printf("WARNING: custom rules file %s could not be read (%v); "+
 				"running with DEFAULT RULES ONLY; any custom detections are not loaded\n", path, err)
 		}
 		return

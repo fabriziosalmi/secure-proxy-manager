@@ -620,7 +620,7 @@ func block(w icap.ResponseWriter, in *inspection, ruleIDs, categories []string) 
 
 	alertData := map[string]interface{}{
 		"event_type": "waf_block",
-		"message":    fmt.Sprintf("WAF blocked %s — score %d, categories: %s", source, in.score, strings.Join(categories, ", ")),
+		"message":    fmt.Sprintf("WAF blocked %s: score %d, categories: %s", source, in.score, strings.Join(categories, ", ")),
 		"details": map[string]interface{}{
 			"event_id":   in.eventID,
 			"category":   primaryCategory,

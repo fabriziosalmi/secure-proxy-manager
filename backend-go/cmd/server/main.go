@@ -380,7 +380,7 @@ func shutdown(srv *http.Server, workerCancel context.CancelFunc, hub *ws.Hub) {
 	case <-drained:
 		log.Info().Msg("background workers drained")
 	case <-time.After(5 * time.Second):
-		log.Warn().Msg("background workers did not drain within 5s — exiting anyway")
+		log.Warn().Msg("background workers did not drain within 5s; exiting anyway")
 	}
 
 	// The tailers were the hub's producers; with them stopped, stop the hub and

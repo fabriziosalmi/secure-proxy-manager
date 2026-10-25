@@ -59,14 +59,14 @@ func runRetention(db *sql.DB) {
 		// by a typo with no signal: the heartbeat still fired, and the success
 		// log line lives inside `if deleted > 0`, so a disabled run and a
 		// healthy one looked identical (SECURE-SCAL-03).
-		log.Warn().Err(err).Msg("log retention: setting unreadable — NOT pruning; proxy_logs will grow without bound")
+		log.Warn().Err(err).Msg("log retention: setting unreadable, NOT pruning; proxy_logs will grow without bound")
 		metrics.RetentionDisabled()
 		return
 	}
 	days, err := strconv.Atoi(val)
 	if err != nil || days <= 0 {
 		log.Warn().Str("log_retention_days", val).
-			Msg("log retention: value is not a positive number — NOT pruning; proxy_logs will grow without bound")
+			Msg("log retention: value is not a positive number, NOT pruning; proxy_logs will grow without bound")
 		metrics.RetentionDisabled()
 		return
 	}

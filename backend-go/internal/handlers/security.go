@@ -226,7 +226,7 @@ func (h *SecurityHandlers) ReceiveAlert(w http.ResponseWriter, r *http.Request) 
 	case h.notify <- event:
 	default:
 		metrics.NotificationDropped()
-		log.Warn().Msg("notification queue full — alert dropped")
+		log.Warn().Msg("notification queue full; alert dropped")
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
 }
