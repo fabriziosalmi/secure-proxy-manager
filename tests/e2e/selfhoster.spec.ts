@@ -105,7 +105,7 @@ test.describe('Authentication', () => {
     await page.fill('#username', USERNAME);
     await page.fill('#password', PASSWORD);
     await page.click('button[type="submit"]');
-    await expect(page.locator('h1', { hasText: 'Dashboard' }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { level: 1, name: 'Overview' }).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test('submit button shows loading state', async ({ page }) => {
@@ -407,7 +407,7 @@ test.describe('UI — Dashboard', () => {
 
   test('shows proxy address banner with host and port 3128', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('h1:has-text("Dashboard")', { timeout: 15_000 });
+    await page.waitForSelector('h1:has-text("Overview")', { timeout: 15_000 });
     await expect(page.locator('code').filter({ hasText: '3128' }).first()).toBeVisible();
   });
 
@@ -421,25 +421,62 @@ test.describe('UI — Dashboard', () => {
       });
     });
     await page.goto('/');
-    await page.waitForSelector('h1:has-text("Dashboard")');
+    await page.waitForSelector('h1:has-text("Overview")');
     const copyBtn = page.getByRole('button', { name: /copy proxy address/i });
     await copyBtn.click();
     // Feedback is an icon swap (Copy → Check), not a "Copied!" label.
     await expect(copyBtn.locator('svg.lucide-check')).toBeVisible({ timeout: 5_000 });
   });
 
-  test('shows stats cards (Today, Total, Block Rate, Score)', async ({ page }) => {
+  // The cards of the last 24 hours, each with a value from dashboard/summary:
+  // a count, or "Not reported" when the backend did not send the field.
+  // The score and the "Today" / "Total" pair are gone from this page.
+  test('shows the last-24-hours cards (Client requests, Blocked, Active clients, Rules in force)', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('h1:has-text("Dashboard")');
-    for (const label of ['Today', 'Block Rate', 'Score', 'IP Rules']) {
-      await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+    await page.waitForSelector('h1:has-text("Overview")');
+    await expect(page.getByText(/^Last 24 hours · updated \d\d:\d\d$/)).toBeVisible();
+    const cards = page.getByRole('region', { name: 'Last 24 hours at a glance' });
+    for (const label of ['Client requests', 'Blocked', 'Active clients', 'Rules in force']) {
+      const card = cards.locator('div').filter({ has: page.getByText(label, { exact: true }) }).last();
+      await expect(card).toBeVisible();
+      await expect(card.locator('p').nth(1)).toHaveText(/^(\d{1,3}(,\d{3})*|Not reported)$/);
+    }
+    // The e2e stack runs the current backend, which sends every field.
+    await expect(cards.getByText('Not reported')).toHaveCount(0);
+    for (const gone of ['Score', 'Today', 'Block Rate', 'IP Rules']) {
+      await expect(page.getByText(gone, { exact: true })).toHaveCount(0);
     }
   });
 
-  test('activity chart is rendered', async ({ page }) => {
+  test('requests per hour chart is rendered, or says there were none', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('h1:has-text("Dashboard")');
-    await expect(page.locator('svg').first()).toBeVisible();
+    await page.waitForSelector('h1:has-text("Overview")');
+    const chart = page.getByRole('region', { name: 'Requests per hour' });
+    await expect(chart).toBeVisible();
+    await expect(
+      chart.getByRole('img', { name: /^Requests per hour, last 24 hours: / })
+        .or(chart.getByText('No client requests in the last 24 hours')),
+    ).toBeVisible();
+  });
+
+  test('reset counters is not on the overview', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('h1:has-text("Overview")');
+    await expect(page.getByRole('region', { name: 'Services' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /reset/i })).toHaveCount(0);
+  });
+
+  // Mobile.dc.html: the cards stack two by two and nothing scrolls sideways.
+  test('fits a 390 px wide screen without horizontal scrolling', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await page.waitForSelector('h1:has-text("Overview")');
+    await expect(page.getByRole('region', { name: 'Services' })).toBeVisible();
+    const overflow = await page.evaluate(() => {
+      const main = document.querySelector('main')!;
+      return { doc: document.documentElement.scrollWidth - window.innerWidth, main: main.scrollWidth - main.clientWidth };
+    });
+    expect(overflow).toEqual({ doc: 0, main: 0 });
   });
 });
 
@@ -737,7 +774,7 @@ test.describe('Full onboarding flow', () => {
     await page.fill('#username', USERNAME);
     await page.fill('#password', PASSWORD);
     await page.click('button[type="submit"]');
-    await expect(page.locator('h1', { hasText: 'Dashboard' }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { level: 1, name: 'Overview' }).first()).toBeVisible({ timeout: 15_000 });
 
     // 2. Note proxy address
     const proxyAddr = await page.locator('code').filter({ hasText: '3128' }).first().textContent();
