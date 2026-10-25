@@ -21,6 +21,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
@@ -475,30 +476,7 @@ const analyticsWindow = 7 * 24 * time.Hour
 // URL ("http://host/login") and the DNS sinkhole logs the same site as
 // "host", so grouping on the raw column split one destination into a row per
 // form and per path, each with part of the count.
-var destinationKey = hostKey("destination")
-
-// hostKey returns the SQL expression that reduces the destination in column
-// col to its host, in three steps:
-//
-//   - after the scheme: "http://host/login" -> "host/login" (no "://", as
-//     in "host:443", leaves it as it is);
-//   - before the path: "host/login" -> "host";
-//   - without a default port: a trailing :443 or :80 is dropped; any other
-//     port stays, because it is another service. LIKE ':443' needs the colon,
-//     so "host:8443" keeps its port.
-//
-// col is a column name written by the caller, never a value.
-func hostKey(col string) string {
-	scheme := "instr(" + col + ", '://')"
-	// substr from 1 when there is no scheme, from just after "://" otherwise.
-	rest := "substr(" + col + ", 1 + (" + scheme + " + 2) * (" + scheme + " > 0))"
-	// Appending "/" makes instr find one in a bare host too.
-	hostPort := "substr(" + rest + ", 1, instr(" + rest + " || '/', '/') - 1)"
-	return `CASE
-	WHEN ` + hostPort + ` LIKE '%:443' THEN substr(` + hostPort + `, 1, length(` + hostPort + `) - 4)
-	WHEN ` + hostPort + ` LIKE '%:80' THEN substr(` + hostPort + `, 1, length(` + hostPort + `) - 3)
-	ELSE ` + hostPort + ` END`
-}
+var destinationKey = database.HostKey("destination")
 
 // sinceUnix returns the Unix-epoch lower bound for a rolling window of length d.
 // Binding this and filtering `unix_timestamp >= ?` lets the query range-scan
@@ -630,7 +608,7 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 	).Scan(&total, &blocked, &firstSeen, &lastSeen)
 
 	topDomains := []map[string]any{}
-	// #nosec G202 -- destinationKey is built once from a constant column name by hostKey; values are bound.
+	// #nosec G202 -- destinationKey is built once from a constant column name by database.HostKey; values are bound.
 	if dr, err := h.db.Query(
 		`SELECT `+destinationKey+` AS dest, COUNT(*) AS c, `+blockedCase+` AS b
 		 FROM proxy_logs WHERE source_ip = ? AND destination IS NOT NULL AND destination != '' AND `+clientRows+`
