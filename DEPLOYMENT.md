@@ -201,7 +201,7 @@ There are two TLS surfaces.
 
 ### Rotating the SSL-bump CA
 
-The CA is valid for 825 days. Rotate it before it expires, and give clients the
+The CA is valid for **825 days**. Rotate it before it expires, and give clients the
 new CA before the old one stops working: a device that trusts only the old CA
 fails HTTPS inspection from the moment it is replaced.
 

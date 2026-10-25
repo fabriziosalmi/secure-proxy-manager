@@ -73,7 +73,7 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
 
 ### `proxy`: Squid
 
-- `proxy/generate_squid_conf.sh` writes `squid.conf`. `proxy/startup.sh`
+- `proxy/generate_squid_conf.sh` is the **sole producer** of `squid.conf`. `proxy/startup.sh`
   sources it at boot, checks the result with `squid -k parse`, initialises the
   cache and starts supervisord. If the configuration does not parse, it
   regenerates once without `/config/custom_squid_extra.conf`, and exits if
