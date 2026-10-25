@@ -561,6 +561,7 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 	).Scan(&total, &blocked, &firstSeen, &lastSeen)
 
 	topDomains := []map[string]any{}
+	// #nosec G202 -- destinationKey is built once from a constant column name by hostKey; values are bound.
 	if dr, err := h.db.Query(
 		`SELECT `+destinationKey+` AS dest, COUNT(*) AS c, `+blockedCase+` AS b
 		 FROM proxy_logs WHERE source_ip = ? AND destination IS NOT NULL AND destination != '' AND `+clientRows+`
