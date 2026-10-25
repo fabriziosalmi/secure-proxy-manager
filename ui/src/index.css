@@ -431,6 +431,12 @@
     }
   }
 
+  /* Ends on transform: none, not translateY(0). page-enter and stagger-child
+     keep the last frame (fill-mode both), and any transform other than none
+     makes the element the containing block of its position: fixed
+     descendants: the Clients detail drawer and every ConfirmDialog opened
+     from a page were laid out inside the page box instead of the viewport,
+     cut off at its edge and scrolled with it. */
   @keyframes fade-in-up {
     from {
       opacity: 0;
@@ -438,7 +444,7 @@
     }
     to {
       opacity: 1;
-      transform: translateY(0);
+      transform: none;
     }
   }
 
