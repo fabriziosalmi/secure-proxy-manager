@@ -114,6 +114,13 @@ type AnalyticsHandlers struct {
 	countsTotal   int
 	countsBlocked int
 	countsFetched time.Time
+	// The internal sources the cached counts leave out; every count of one
+	// response uses this same list, so today stays within all time.
+	countsInternal []string
+
+	// src finds the internal source addresses (the stack's own traffic),
+	// which no client count includes.
+	src *InternalSources
 
 	blMu      sync.Mutex
 	blSet     map[string]struct{}
@@ -122,7 +129,14 @@ type AnalyticsHandlers struct {
 }
 
 func NewAnalyticsHandlers(db *sql.DB, cfg *config.Config) *AnalyticsHandlers {
-	return &AnalyticsHandlers{db: db, cfg: cfg}
+	return &AnalyticsHandlers{db: db, cfg: cfg, src: NewInternalSources(db, nil)}
+}
+
+// WithSources attaches the internal-source finder the deployment uses; the
+// default knows loopback only.
+func (h *AnalyticsHandlers) WithSources(s *InternalSources) *AnalyticsHandlers {
+	h.src = s
+	return h
 }
 
 // WithSysInfo attaches the update/CVE provider. Kept separate from the
@@ -141,23 +155,31 @@ const lifetimeCountsTTL = 25 * time.Second
 // (SECURE-PERF-01). The three counts and maxID come from one statement, so
 // they describe the same rows: a row logged between two separate queries was
 // counted by one and not the other.
-func (h *AnalyticsHandlers) lifetimeBase() (maxID int64, total, blocked int) {
+func (h *AnalyticsHandlers) lifetimeBase() (maxID int64, total, blocked int, internal []string) {
 	h.countsMu.Lock()
 	defer h.countsMu.Unlock()
 	if time.Since(h.countsFetched) < lifetimeCountsTTL {
-		return h.countsMaxID, h.countsTotal, h.countsBlocked
+		return h.countsMaxID, h.countsTotal, h.countsBlocked, h.countsInternal
 	}
-	// Client requests only (clientRows). The total stays an index-only count:
-	// all rows minus the DNS rows, which idx_proxy_logs_dns counts by itself.
-	var all, dns int
+	internal = h.src.Present()
+	// Client requests only (clientRows), from sources that are not internal.
+	// The total stays index-only: all rows minus the DNS rows, which
+	// idx_proxy_logs_dns counts by itself, minus the internal sources' rows,
+	// which idx_proxy_logs_source_ip counts.
+	notInt, notArgs := notInternal(internal)
+	onlyInt, onlyArgs := onlyInternal(internal)
+	var all, dns, internalRows int
+	// #nosec G202 -- clientRows and the conditions are constants and placeholders; values are bound.
 	_ = h.db.QueryRow(`SELECT
 		IFNULL((SELECT MAX(id) FROM proxy_logs), 0),
 		(SELECT COUNT(*) FROM proxy_logs),
 		(SELECT COUNT(*) FROM proxy_logs WHERE method = 'DNS'),
-		(SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND `+clientRows+`)`).Scan(&maxID, &all, &dns, &blocked)
-	total = all - dns
-	h.countsMaxID, h.countsTotal, h.countsBlocked, h.countsFetched = maxID, total, blocked, time.Now()
-	return maxID, total, blocked
+		(SELECT COUNT(*) FROM proxy_logs WHERE `+onlyInt+` AND `+clientRows+`),
+		(SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND `+clientRows+` AND `+notInt+`)`,
+		append(onlyArgs, notArgs...)...).Scan(&maxID, &all, &dns, &internalRows, &blocked)
+	total = all - dns - internalRows
+	h.countsMaxID, h.countsTotal, h.countsBlocked, h.countsInternal, h.countsFetched = maxID, total, blocked, internal, time.Now()
+	return maxID, total, blocked, internal
 }
 
 // forgetLifetimeCounts drops the cached base, after the logs were cleared.
@@ -165,15 +187,21 @@ func (h *AnalyticsHandlers) forgetLifetimeCounts() {
 	h.countsMu.Lock()
 	h.countsFetched = time.Time{}
 	h.countsMu.Unlock()
+	h.src.forget()
 }
 
 // requestCounts are the dashboard's request counts, all of client rows
-// (clientRows).
+// (clientRows) from sources that are not internal.
 type requestCounts struct {
 	Total, Blocked           int // all time
 	Today, TodayBlocked      int // since 00:00 UTC
 	Day, DayBlocked, Clients int // the last 24 hours; Clients is distinct source IPs
 	LastRequest              string
+	// Internal: the internal sources every count leaves out. DayInternal and
+	// DayInternalRequests: how many of them sent requests in the last 24
+	// hours, and how many requests.
+	Internal                         []string
+	DayInternal, DayInternalRequests int
 }
 
 // requestCounts reads every count the dashboard shows. The all-time counts
@@ -188,23 +216,36 @@ type requestCounts struct {
 // A delete only makes the cached part too high until the next refresh, which
 // keeps today at or below all time.
 func (h *AnalyticsHandlers) requestCounts(now time.Time) requestCounts {
-	maxID, baseTotal, baseBlocked := h.lifetimeBase()
+	maxID, baseTotal, baseBlocked, internal := h.lifetimeBase()
 	todayStart := now.UTC().Truncate(24 * time.Hour).Unix()
 	dayStart := now.Add(-24 * time.Hour).Unix()
-	var c requestCounts
+	c := requestCounts{Internal: internal}
 	var newTotal, newBlocked int
-	// #nosec G202 -- clientRows is a constant; values are bound.
-	_ = h.db.QueryRow(`SELECT n.total, n.blocked, t.total, t.blocked, d.total, d.blocked, d.clients, d.last
+	ext, extArgs := notInternal(internal)
+	in, inArgs := onlyInternal(internal)
+	args := []any{maxID}
+	args = append(args, extArgs...)
+	args = append(args, todayStart)
+	args = append(args, extArgs...)
+	args = append(args, dayStart)
+	args = append(args, extArgs...)
+	args = append(args, dayStart)
+	args = append(args, inArgs...)
+	// #nosec G202 -- clientRows and the conditions are constants and placeholders; values are bound.
+	_ = h.db.QueryRow(`SELECT n.total, n.blocked, t.total, t.blocked, d.total, d.blocked, d.clients, d.last, i.sources, i.total
 		FROM (SELECT COUNT(*) AS total, IFNULL(SUM(blocked), 0) AS blocked
-		        FROM proxy_logs WHERE id > ? AND `+clientRows+`) AS n,
+		        FROM proxy_logs WHERE id > ? AND `+clientRows+` AND `+ext+`) AS n,
 		     (SELECT COUNT(*) AS total, IFNULL(SUM(blocked), 0) AS blocked
-		        FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+`) AS t,
+		        FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND `+ext+`) AS t,
 		     (SELECT COUNT(*) AS total, IFNULL(SUM(blocked), 0) AS blocked,
 		             COUNT(DISTINCT CASE WHEN source_ip != '' THEN source_ip END) AS clients,
 		             IFNULL(MAX(timestamp), '') AS last
-		        FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+`) AS d`,
-		maxID, todayStart, dayStart,
-	).Scan(&newTotal, &newBlocked, &c.Today, &c.TodayBlocked, &c.Day, &c.DayBlocked, &c.Clients, &c.LastRequest)
+		        FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND `+ext+`) AS d,
+		     (SELECT COUNT(DISTINCT source_ip) AS sources, COUNT(*) AS total
+		        FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND `+in+`) AS i`,
+		args...,
+	).Scan(&newTotal, &newBlocked, &c.Today, &c.TodayBlocked, &c.Day, &c.DayBlocked, &c.Clients, &c.LastRequest,
+		&c.DayInternal, &c.DayInternalRequests)
 	c.Total, c.Blocked = baseTotal+newTotal, baseBlocked+newBlocked
 	return c
 }
@@ -503,40 +544,68 @@ func blockedByReason(db *sql.DB, where string, args ...any) []map[string]any {
 	return out
 }
 
+// clientsLimit is how many clients, other than internal sources, the client
+// list returns: the ones with the most requests.
+const clientsLimit = 50
+
+// ClientStats lists the sources of the last 7 days: the clientsLimit clients
+// with the most requests, then every internal source (the stack's own
+// traffic), each marked internal with what it is (kind) where that is known.
+// meta.total counts the clients other than internal sources, meta.internal
+// the internal ones. blocked counts the client rows the backend recorded as
+// blocked, whatever the reason, "unclassified" rows from before reasons were
+// recorded included.
 func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) {
 	since := sinceUnix(analyticsWindow)
-	rows, err := h.db.Query(`
-		SELECT source_ip, COUNT(*) AS requests,
-		       SUM(blocked) AS blocked,
-		       MAX(timestamp) AS last_seen
-		FROM proxy_logs
-		WHERE source_ip IS NOT NULL AND source_ip != '' AND unix_timestamp >= ? AND `+clientRows+`
-		GROUP BY source_ip ORDER BY requests DESC LIMIT 50`, since)
-	if err != nil {
-		writeOK(w, map[string]any{"total_clients": 0, "clients": []any{}})
+	internal := h.src.Present()
+	ext, extArgs := notInternal(internal)
+	in, inArgs := onlyInternal(internal)
+	clients := []map[string]any{}
+	read := func(cond string, args []any, limit int) error {
+		// #nosec G202 -- clientRows and cond are constants and placeholders; values are bound.
+		rows, err := h.db.Query(`
+			SELECT source_ip, COUNT(*) AS requests,
+			       SUM(blocked) AS blocked,
+			       MAX(timestamp) AS last_seen
+			FROM proxy_logs
+			WHERE source_ip IS NOT NULL AND source_ip != '' AND unix_timestamp >= ? AND `+clientRows+` AND `+cond+`
+			GROUP BY source_ip ORDER BY requests DESC, source_ip LIMIT ?`, append(append([]any{since}, args...), limit)...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var ip string
+			var cnt, blocked int
+			var lastSeen sql.NullString
+			rows.Scan(&ip, &cnt, &blocked, &lastSeen) //nolint:errcheck
+			isInternal, kind := h.src.Classify(ip)
+			clients = append(clients, map[string]any{
+				"ip_address": ip, "requests": cnt, "blocked": blocked,
+				"last_seen": lastSeen.String, "status": "Active",
+				"internal": isInternal, "kind": kind,
+			})
+		}
+		return rows.Err()
+	}
+	if err := read(ext, extArgs, clientsLimit); err != nil {
+		writeInternalError(w, "client_stats", err)
 		return
 	}
-	defer rows.Close()
-	var clients []map[string]any
-	for rows.Next() {
-		var ip string
-		var cnt, blocked int
-		var lastSeen sql.NullString
-		rows.Scan(&ip, &cnt, &blocked, &lastSeen) //nolint:errcheck
-		clients = append(clients, map[string]any{
-			"ip_address": ip, "requests": cnt, "blocked": blocked,
-			"last_seen": lastSeen.String, "status": "Active",
-		})
+	if err := read(in, inArgs, len(internal)+1); err != nil {
+		writeInternalError(w, "client_stats", err)
+		return
 	}
-	if clients == nil {
-		clients = []map[string]any{}
-	}
-	var total int
-	h.db.QueryRow("SELECT COUNT(DISTINCT source_ip) FROM proxy_logs WHERE source_ip IS NOT NULL AND source_ip != '' AND unix_timestamp >= ? AND "+clientRows, since).Scan(&total) //nolint:errcheck
+	var total, internalTotal int
+	// #nosec G202 -- clientRows and the conditions are constants and placeholders; values are bound.
+	h.db.QueryRow(`SELECT
+		(SELECT COUNT(DISTINCT source_ip) FROM proxy_logs WHERE source_ip IS NOT NULL AND source_ip != '' AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+`),
+		(SELECT COUNT(DISTINCT source_ip) FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND `+in+`)`,
+		append(append(append([]any{since}, extArgs...), since), inArgs...)...).Scan(&total, &internalTotal) //nolint:errcheck
 	// The collection goes under data like every other list, with its count in
 	// meta — not nested under data.clients with the count beside it, which was
 	// the third of the three shapes (SECURE-API-02).
-	writeList(w, clients, ListMeta{Total: total, Limit: len(clients), Offset: 0})
+	writeList(w, clients, ListMeta{Total: total, Limit: clientsLimit, Offset: 0, Internal: &internalTotal})
 }
 
 // ClientDetails returns a per-client drill-down for a single source IP:
@@ -591,8 +660,11 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 		rr.Close()
 	}
 
+	isInternal, kind := h.src.Classify(ip)
 	writeOK(w, map[string]any{
 		"ip_address":     ip,
+		"internal":       isInternal,
+		"kind":           kind,
 		"total_requests": total,
 		"blocked":        blocked,
 		"first_seen":     firstSeen.String,
@@ -808,13 +880,20 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	result["last_24h_requests"] = c.Day
 	result["last_24h_blocked"] = c.DayBlocked
 	result["last_24h_clients"] = c.Clients
+	// Every count here leaves out the internal sources: the stack's own
+	// traffic (sources.Classifier). These say how many were left out of the
+	// last 24 hours, and how many requests they sent.
+	result["last_24h_internal_sources"] = c.DayInternal
+	result["last_24h_internal_requests"] = c.DayInternalRequests
+	ext, extArgs := notInternal(c.Internal)
+	day := sinceUnix(24 * time.Hour)
 	if c.LastRequest != "" {
 		result["last_request_at"] = c.LastRequest
 	} else {
 		result["last_request_at"] = nil
 	}
 
-	result["top_blocked"] = h.topBlocked(sinceUnix(24 * time.Hour))
+	result["top_blocked"] = h.topBlocked(day, c.Internal)
 
 	h.db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&ipBLCount)         //nolint:errcheck
 	h.db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&domainBLCount) //nolint:errcheck
@@ -831,7 +910,8 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 
 	// Top clients (last 24h)
 	var topClients []map[string]any
-	cRows, _ := h.db.Query(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' AND `+clientRows+` GROUP BY source_ip ORDER BY cnt DESC LIMIT 10`, sinceUnix(24*time.Hour))
+	// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
+	cRows, _ := h.db.Query(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' AND `+clientRows+` AND `+ext+` GROUP BY source_ip ORDER BY cnt DESC LIMIT 10`, append([]any{day}, extArgs...)...)
 	if cRows != nil {
 		for cRows.Next() {
 			var ip string
@@ -852,7 +932,7 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	// IP" (every denied CONNECT host:443). The reason is now recorded per row.
 	// threat_categories keeps its shape for the current UI, with the reason's
 	// label as the category.
-	byReason := h.blockedByReason(`unix_timestamp >= ?`, sinceUnix(analyticsWindow))
+	byReason := h.blockedByReason(`unix_timestamp >= ? AND `+ext, append([]any{sinceUnix(analyticsWindow)}, extArgs...)...)
 	threatCats := make([]map[string]any, 0, len(byReason))
 	for _, r := range byReason {
 		threatCats = append(threatCats, map[string]any{"category": r["label"], "count": r["count"]})
@@ -860,14 +940,14 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	result["blocked_by_reason"] = byReason
 	result["threat_categories"] = threatCats
 	// The same, over the last 24 hours.
-	result["blocked_by_reason_24h"] = h.blockedByReason(`unix_timestamp >= ?`, sinceUnix(24*time.Hour))
+	result["blocked_by_reason_24h"] = h.blockedByReason(`unix_timestamp >= ? AND `+ext, append([]any{day}, extArgs...)...)
 
 	// Recent blocks: the last 10 of the same 24 hours the counts above cover,
 	// so the page never lists a block its "blocked by rule" does not count.
 	var recentBlocks []map[string]any
 	// #nosec G202 -- destinationKey and clientRows are constant expressions.
 	rRows, _ := h.db.Query(`SELECT timestamp, source_ip, method, destination, `+destinationKey+`, status, block_reason
-		FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+` ORDER BY id DESC LIMIT 10`, sinceUnix(24*time.Hour))
+		FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+` ORDER BY id DESC LIMIT 10`, append([]any{day}, extArgs...)...)
 	if rRows != nil {
 		for rRows.Next() {
 			var ts, srcIP, method, dest, host, status, reason sql.NullString
@@ -919,18 +999,20 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 }
 
 // topBlocked lists the 10 hosts with the most blocked client requests since
-// the Unix time since, each with its count and the rules that blocked it
-// (largest first). A host can be blocked by more than one rule: the DNS
-// sinkhole and Squid's own domain ACL both block a blacklisted name.
-func (h *AnalyticsHandlers) topBlocked(since int64) []map[string]any {
+// the Unix time since, from sources other than internal, each with its count
+// and the rules that blocked it (largest first). A host can be blocked by
+// more than one rule: the DNS sinkhole and Squid's own domain ACL both block
+// a blacklisted name.
+func (h *AnalyticsHandlers) topBlocked(since int64, internal []string) []map[string]any {
 	out := []map[string]any{}
-	// #nosec G202 -- destinationKey and clientRows are constant expressions; values are bound.
+	ext, extArgs := notInternal(internal)
+	// #nosec G202 -- destinationKey, clientRows and ext are constants and placeholders; values are bound.
 	rows, err := h.db.Query(`WITH b AS (
 			SELECT `+destinationKey+` AS dest, block_reason AS reason FROM proxy_logs
-			WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+`),
+			WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+`),
 		top AS (SELECT dest, COUNT(*) AS cnt FROM b GROUP BY dest ORDER BY cnt DESC, dest LIMIT 10)
 		SELECT top.dest, top.cnt, b.reason, COUNT(*) AS n FROM top JOIN b ON b.dest = top.dest
-		GROUP BY top.dest, b.reason ORDER BY top.cnt DESC, top.dest, n DESC, b.reason`, since)
+		GROUP BY top.dest, b.reason ORDER BY top.cnt DESC, top.dest, n DESC, b.reason`, append([]any{since}, extArgs...)...)
 	if err != nil {
 		return out
 	}

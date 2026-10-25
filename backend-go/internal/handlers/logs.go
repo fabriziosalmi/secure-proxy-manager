@@ -16,9 +16,20 @@ type LogHandlers struct {
 	gdprMu   sync.RWMutex
 	gdprVal  bool
 	gdprTime time.Time
+	// src finds the internal sources the timeline leaves out, as the
+	// dashboard's counts do.
+	src *InternalSources
 }
 
-func NewLogHandlers(db *sql.DB) *LogHandlers { return &LogHandlers{db: db} }
+func NewLogHandlers(db *sql.DB) *LogHandlers {
+	return &LogHandlers{db: db, src: NewInternalSources(db, nil)}
+}
+
+// WithSources attaches the internal-source finder the deployment uses.
+func (h *LogHandlers) WithSources(s *InternalSources) *LogHandlers {
+	h.src = s
+	return h
+}
 
 func (h *LogHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {
 	r.With(authMW).Get("/api/logs", h.GetLogs)
@@ -137,14 +148,18 @@ func (h *LogHandlers) Timeline(w http.ResponseWriter, r *http.Request) {
 	if hours < 1 || hours > 720 {
 		hours = 24
 	}
+	// The Overview draws this next to its request counts, which leave out the
+	// internal sources: so does the timeline, or its hours add up to more.
+	ext, extArgs := notInternal(h.src.Present())
+	// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
 	rows, err := h.db.Query(`
 		SELECT strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
 		       COUNT(*) as total,
 		       SUM(blocked) as blocked
 		FROM proxy_logs
-		WHERE unix_timestamp >= ? AND `+clientRows+`
+		WHERE unix_timestamp >= ? AND `+clientRows+` AND `+ext+`
 		GROUP BY hour ORDER BY hour ASC`,
-		time.Now().Add(-time.Duration(hours)*time.Hour).Unix(),
+		append([]any{time.Now().Add(-time.Duration(hours) * time.Hour).Unix()}, extArgs...)...,
 	)
 	if err != nil {
 		writeOK(w, []any{})
@@ -166,7 +181,8 @@ func (h *LogHandlers) Timeline(w http.ResponseWriter, r *http.Request) {
 
 func (h *LogHandlers) Clear(w http.ResponseWriter, r *http.Request) {
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
-	h.db.Exec("DELETE FROM proxy_logs")                                                                                          //nolint:errcheck
+	h.db.Exec("DELETE FROM proxy_logs") //nolint:errcheck
+	h.src.forget()
 	h.db.Exec("INSERT INTO audit_log(username,action,target,details) VALUES(?,?,?,?)", username, "clear_logs", "proxy_logs", "") //nolint:errcheck
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "All logs cleared"})
 }

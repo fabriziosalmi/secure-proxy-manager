@@ -28,6 +28,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/handlers"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/sources"
 	ws "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/websocket"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
@@ -162,12 +163,17 @@ func run() error {
 
 	// Register handler groups.
 	handlers.NewAuthHandlers(database.NewAuthStore(db), authSvc, cfg, notify, hub).Register(r)
-	handlers.NewLogHandlers(db).Register(r, authMW)
+	// The stack's own addresses (loopback, the subnets the backend shares
+	// with the proxy): not clients, so no client count includes them.
+	classifier := sources.NewClassifier(cfg.ProxyHost)
+	go classifier.Run(workerCtx)
+	internalSources := handlers.NewInternalSources(db, classifier)
+	handlers.NewLogHandlers(db).WithSources(internalSources).Register(r, authMW)
 	handlers.NewSettingsHandlers(db, cfg).Register(r, authMW)
 	handlers.NewBlacklistHandlers(db, cfg).Register(r, authMW)
 	handlers.NewSecurityHandlers(db, authSvc, cfg, notify).Register(r, authMW)
 	handlers.NewMaintenanceHandlers(db, cfg).Register(r, authMW)
-	handlers.NewAnalyticsHandlers(db, cfg).WithSysInfo(handlers.WorkerSysInfo{}).Register(r, authMW)
+	handlers.NewAnalyticsHandlers(db, cfg).WithSysInfo(handlers.WorkerSysInfo{}).WithSources(internalSources).Register(r, authMW)
 	handlers.NewDatabaseHandlers(db).Register(r, authMW)
 	handlers.NewDNSDetectHandlers(db).Register(r, authMW)
 	handlers.RegisterAPIDocs(r, authMW)

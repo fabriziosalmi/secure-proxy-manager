@@ -38,7 +38,7 @@ var routeDocs = map[string]docMeta{
 	"POST /api/blacklists/import-geo":          {auth: true, desc: "Import geo-block by country codes ({countries: ['CN','RU']})"},
 	"GET /api/cache/statistics":                {auth: true, desc: "Squid cache hit/miss statistics"},
 	"POST /api/change-password":                {auth: true, desc: "Change admin password (requires current_password + new_password)"},
-	"GET /api/clients/statistics":              {auth: true, desc: "Top 50 client IPs by request count"},
+	"GET /api/clients/statistics":              {auth: true, desc: "Top 50 client IPs by request count, then the internal sources (marked internal)"},
 	"POST /api/counters/reset":                 {auth: true, desc: "Reset all counters (logs + WAF stats)"},
 	"GET /api/dashboard/summary":               {auth: true, desc: "Aggregated dashboard data (requests, blocks, top clients, threat categories, WAF stats)"},
 	"GET /api/database/export":                 {auth: true, desc: "Export all data as JSON"},
