@@ -883,6 +883,58 @@ test.describe('UI — Settings page', () => {
     await page.getByRole('button', { name: 'Discard' }).click();
   });
 
+  test('Overview lists what needs attention from the running stack and previews a profile before applying it', async ({ page }) => {
+    const attention = page.getByRole('region', { name: 'Needs attention' });
+    // The test stack runs no proxy container: GET /api/status reports it.
+    await expect(attention.getByText('The proxy is not running')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: /^Overview/ })).toContainText(/items? needs? attention/);
+    await page.getByRole('button', { name: /^Family/ }).click();
+    await expect(page.getByRole('heading', { level: 4, name: /^Family (changes \d+ settings?|already match)|Your settings already match Family/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Apply Family' })).toBeVisible();
+    // Nothing is saved until Apply.
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('button', { name: 'Apply Family' })).toHaveCount(0);
+  });
+
+  test('Clients and access checks the time window before anything is sent', async ({ page }) => {
+    await page.goto('/settings/access');
+    await expect(page.getByRole('region', { name: 'Who may connect' })).toContainText('GUI_IP_WHITELIST');
+    const hoursSwitch = page.getByRole('switch', { name: 'Limit to a time window' });
+    await expect(hoursSwitch).toBeVisible({ timeout: 10_000 });
+    if ((await hoursSwitch.getAttribute('aria-checked')) !== 'true') await hoursSwitch.click();
+    await page.getByLabel('From').fill('18:00');
+    await page.getByLabel('Until').fill('08:00');
+    let posted = false;
+    page.on('request', (r) => { if (r.method() === 'POST' && r.url().endsWith('/api/settings')) posted = true; });
+    await page.getByRole('button', { name: 'Save section' }).click();
+    await expect(page.getByLabel('Until')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByText('Must be later than the start time')).toBeVisible();
+    expect(posted).toBe(false);
+    await page.getByRole('button', { name: 'Discard' }).click();
+    await expect(page.getByRole('button', { name: 'Save section' })).toHaveCount(0);
+  });
+
+  test('Filtering shows the size of the egress allowlist it depends on', async ({ page }) => {
+    await page.goto('/settings/filtering');
+    await expect(page.getByText(/^The egress allowlist holds [\d,]+ (entry|entries)\.$/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('link', { name: 'Edit the allowlist' })).toHaveAttribute('href', '/egress');
+  });
+
+  for (const section of ['overview', 'access', 'filtering']) {
+    test(`/settings/${section} fits a 390 px wide screen without horizontal scrolling`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`/settings/${section}`);
+      const nav = page.getByRole('navigation', { name: 'Settings sections' });
+      await expect(nav.getByRole('button', { name: /^Section: / })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole('heading', { level: 2 }).first()).toBeVisible();
+      const overflow = await page.evaluate(() => {
+        const main = document.querySelector('main')!;
+        return { doc: document.documentElement.scrollWidth - window.innerWidth, main: main.scrollWidth - main.clientWidth };
+      });
+      expect(overflow).toEqual({ doc: 0, main: 0 });
+    });
+  }
+
   test('Backup Config triggers file download', async ({ page }) => {
     await page.goto('/settings/admin');
     const [download] = await Promise.all([

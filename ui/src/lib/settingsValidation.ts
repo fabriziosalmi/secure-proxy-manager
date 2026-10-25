@@ -104,3 +104,12 @@ export function parseFieldError(detail: unknown): { key: string; message: string
   const m = /^([a-z0-9_]+): (.+)$/.exec(detail);
   return m ? { key: m[1], message: m[2] } : null;
 }
+
+/** The patterns the backend writes for a list of extensions (writeSquidArtefacts). */
+export function extensionPatterns(list: string): string[] {
+  return list
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+    .map((ext) => `\\${ext.startsWith('.') ? ext : `.${ext}`}$`);
+}

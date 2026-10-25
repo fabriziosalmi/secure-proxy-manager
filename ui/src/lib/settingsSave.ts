@@ -44,7 +44,7 @@ export function sectionRequest(
 }
 
 /** The GET rows as they are after a save the backend accepted. */
-export function rowsAfterSave(rows: SettingRow[] | null | undefined, req: SectionRequest): SettingRow[] {
+export function rowsAfterSave(rows: SettingRow[] | null | undefined, req: Pick<SectionRequest, 'body' | 'clear'>): SettingRow[] {
   const next = (rows ?? []).map((r) => ({ ...r }));
   const byName = new Map(next.map((r) => [r.setting_name, r]));
   for (const [key, value] of Object.entries(req.body)) {

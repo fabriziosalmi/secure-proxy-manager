@@ -1,0 +1,76 @@
+import { describe, it, expect } from 'vitest'
+import { needsAttention, configuredChannels, type AttentionInput } from './attention'
+
+// The values seedDefaultSettings stores on a fresh install
+// (backend-go/internal/database/db.go), as GET /api/settings returns them.
+const fresh: Record<string, string> = {
+  proxy_port: '3128',
+  ssl_bump_enabled: 'false',
+  egress_default_deny: 'false',
+  enable_content_filtering: 'false',
+  enable_notifications: 'false',
+  default_password_changed: 'false',
+}
+
+const input = (over: Partial<AttentionInput> = {}): AttentionInput => ({
+  values: fresh,
+  secrets: {},
+  proxyStatus: 'running',
+  egressTotal: 0,
+  ...over,
+})
+
+const ids = (i: AttentionInput) => needsAttention(i).map((a) => `${a.tone}:${a.id}`)
+
+describe('needsAttention', () => {
+  it('on a fresh install: the password, and three choices worth knowing', () => {
+    expect(ids(input())).toEqual(['warning:password', 'info:https-off', 'info:alerts-off', 'info:no-login'])
+  })
+
+  it('says nothing about what it does not know yet', () => {
+    expect(ids(input({ values: {}, proxyStatus: undefined, egressTotal: undefined }))).toEqual(['info:no-login'])
+  })
+
+  it('reports a proxy that is not running, and a status it could not read', () => {
+    expect(needsAttention(input({ proxyStatus: 'error' }))[0]).toMatchObject({ id: 'proxy-down', body: 'The backend reports the proxy as "error". Clients cannot browse until the proxy container runs.' })
+    expect(ids(input({ proxyStatus: null }))[0]).toBe('warning:proxy-unknown')
+  })
+
+  it('warns when default-deny egress meets an empty allowlist, and only then', () => {
+    const on = { ...fresh, egress_default_deny: 'true' }
+    expect(ids(input({ values: on, egressTotal: 0 }))).toContain('warning:egress-empty')
+    expect(ids(input({ values: on, egressTotal: 3 }))).not.toContain('warning:egress-empty')
+    expect(ids(input({ values: on, egressTotal: null }))).toContain('warning:egress-unknown')
+    expect(ids(input({ values: fresh, egressTotal: 0 }))).not.toContain('warning:egress-empty')
+  })
+
+  it('warns when download blocking is on with no extension', () => {
+    expect(ids(input({ values: { ...fresh, enable_content_filtering: 'true', blocked_file_types: ' , ' } }))).toContain('warning:downloads-empty')
+    expect(ids(input({ values: { ...fresh, enable_content_filtering: 'true', blocked_file_types: 'exe' } }))).not.toContain('warning:downloads-empty')
+  })
+
+  it('warns about an unreadable secret, and alerts that go nowhere', () => {
+    const items = needsAttention(input({
+      values: { ...fresh, enable_notifications: 'true' },
+      secrets: { gotify_url: 'set', gotify_token: 'unreadable' },
+    }))
+    expect(items.map((a) => a.id)).toEqual(expect.arrayContaining(['secrets-unreadable', 'alerts-no-channel']))
+    expect(items.find((a) => a.id === 'secrets-unreadable')).toMatchObject({ title: 'An alert setting cannot be read', section: 'alerts' })
+  })
+
+  it('counts a channel only when every key it needs is stored', () => {
+    expect(configuredChannels({ telegram_bot_token: 'set' })).toEqual([])
+    expect(configuredChannels({ telegram_bot_token: 'set', telegram_chat_id: 'set', webhook_url: 'set' })).toEqual(['Telegram', 'Webhook'])
+  })
+
+  it('warns about a proxy port the compose file does not publish', () => {
+    expect(needsAttention(input({ values: { ...fresh, proxy_port: '8080' } })).find((a) => a.id === 'port')).toMatchObject({
+      title: 'The proxy is set to listen on 8080',
+      section: 'engine',
+    })
+  })
+
+  it('says HTTPS inspection needs the CA when it is on', () => {
+    expect(ids(input({ values: { ...fresh, ssl_bump_enabled: 'true' } }))).toContain('info:https-on')
+  })
+})

@@ -182,7 +182,7 @@ Country IP ranges are pulled from `herrbischoff/country-ip-blocks` (IPv4) and me
 
 ## Automatic refresh
 
-A background worker re-imports a fixed pair of public lists when auto-refresh is enabled in **Settings → Auto-refresh**:
+A background worker re-imports a fixed pair of public lists when auto-refresh is enabled in **Settings → Filtering → Refresh the built-in feeds**:
 
 - `auto_refresh_enabled`: `true` to enable.
 - `auto_refresh_hours`: re-fetch interval in hours (default `24`).

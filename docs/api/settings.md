@@ -80,7 +80,7 @@ POST /api/settings
 { "egress_default_deny": "true" }
 ```
 
-`egress_default_deny` is a boolean setting (default `"false"`) toggled like any other value through the bulk or single-setting endpoints. It is also exposed as the "Default-deny egress" toggle on the Settings page, next to SSL inspection.
+`egress_default_deny` is a boolean setting (default `"false"`) toggled like any other value through the bulk or single-setting endpoints. It is also the "Only allowlisted destinations" toggle under Settings > Filtering, which refuses to save it while the allowlist is empty.
 
 When `"false"` (the default) behaviour is unchanged: local clients may reach any destination that is not on a blacklist. When `"true"` the proxy denies all outbound egress from local clients except destinations on an explicit allowlist; everything else is refused with a Squid 403.
 

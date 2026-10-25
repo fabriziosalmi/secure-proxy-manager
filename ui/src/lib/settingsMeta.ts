@@ -47,7 +47,7 @@ export function sectionPath(id: SectionId): string {
 export const SECTION_KEYS: Record<SectionId, string[]> = {
   overview: [],
   access: [
-    'enable_proxy_auth', 'auth_method',
+    'enable_proxy_auth',
     'enable_time_restrictions', 'time_restriction_start', 'time_restriction_end',
     'enable_bandwidth_limits', 'bandwidth_limit_mbps', 'bandwidth_limit_per_user_kbps',
   ],
@@ -168,7 +168,6 @@ export const FIELD_LABELS: Record<string, string> = {
   enable_bandwidth_limits: 'Bandwidth limits',
   bandwidth_limit_mbps: 'Whole network (Mbps)',
   bandwidth_limit_per_user_kbps: 'Each client (kbps)',
-  auth_method: 'Auth Method',
   egress_default_deny: 'Only allowlisted destinations',
   enable_content_filtering: 'Block risky downloads',
   blocked_file_types: 'Blocked extensions',

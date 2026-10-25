@@ -19,13 +19,17 @@ import { Navigate, useParams } from 'react-router';
 import type { SettingRow } from '../types';
 import { api, getData, getErrorMessage } from '../lib/api';
 import { PageHeader } from '../components/ui/PageHeader';
+import { Notice } from '../components/ui/Notice';
 import { SettingsNav } from '../components/settings/SettingsNav';
 import { SaveBar } from '../components/settings/SaveBar';
 import { SettingsDraftsProvider } from '../components/settings/SettingsDrafts';
 import { useSettingsDrafts, useSettingsDraftsOptional } from '../hooks/useSettingsDrafts';
-import {
-  LegacyAccess, LegacyAdmin, LegacyAlerts, LegacyEngine, LegacyFiltering, LegacyInspection, LegacyLogs, LegacyOverview,
-} from '../components/settings/LegacySections';
+import { LegacyAdmin, LegacyAlerts, LegacyEngine, LegacyInspection, LegacyLogs } from '../components/settings/LegacySections';
+import { OverviewSection } from '../components/settings/sections/OverviewSection';
+import { AccessSection } from '../components/settings/sections/AccessSection';
+import { FilteringSection } from '../components/settings/sections/FilteringSection';
+import { needsAttention, type AttentionItem } from '../lib/attention';
+import { egressTotalQuery, statusQuery } from '../lib/queries';
 import type { SectionForm } from '../components/settings/sectionForm';
 import { parseSettings, secretStateOf } from '../lib/secrets';
 import { applyToProxy } from '../lib/reload';
@@ -42,13 +46,22 @@ const SETTINGS_KEY = ['settings'] as const;
 // Sections that show a refused value's message under the field itself. The
 // others (their controls are rebuilt in part B) list the messages after the
 // section, each one moving focus to its field.
-const INLINE_ERRORS: SectionId[] = [];
+const INLINE_ERRORS: SectionId[] = ['access', 'filtering'];
 
-function SectionBody({ section, form }: { section: SectionDef; form: SectionForm }) {
+interface BodyProps {
+  section: SectionDef;
+  form: SectionForm;
+  rows: SettingRow[] | undefined;
+  attention: AttentionItem[];
+  attentionLoading: boolean;
+  dirty: Record<SectionId, number>;
+}
+
+function SectionBody({ section, form, rows, attention, attentionLoading, dirty }: BodyProps) {
   switch (section.id) {
-    case 'overview': return <LegacyOverview form={form} />;
-    case 'access': return <LegacyAccess form={form} />;
-    case 'filtering': return <LegacyFiltering form={form} />;
+    case 'overview': return <OverviewSection form={form} rows={rows} attention={attention} attentionLoading={attentionLoading} dirty={dirty} />;
+    case 'access': return <AccessSection form={form} />;
+    case 'filtering': return <FilteringSection form={form} />;
     case 'inspection': return <LegacyInspection form={form} />;
     case 'alerts': return <LegacyAlerts form={form} />;
     case 'logs': return <LegacyLogs form={form} />;
@@ -63,10 +76,13 @@ function SettingsPage() {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const queryClient = useQueryClient();
   const drafts = useSettingsDrafts();
-  const { data: rows } = useQuery<SettingRow[]>({
+  const settings = useQuery<SettingRow[]>({
     queryKey: SETTINGS_KEY,
     queryFn: () => getData<SettingRow[]>('settings'),
   });
+  const rows = settings.data;
+  const status = useQuery({ ...statusQuery, staleTime: 10_000 });
+  const egress = useQuery(egressTotalQuery);
   const parsed = useMemo(() => parseSettings(rows), [rows]);
   const [saving, setSaving] = useState<SectionId | null>(null);
   // Synchronous latch against a double click posting twice.
@@ -79,6 +95,16 @@ function SettingsPage() {
     for (const e of Object.values(drafts.edits)) Object.assign(merged, e);
     return merged;
   }, [parsed.values, drafts.edits]);
+
+  // The Overview's list, and its count on the nav. The stored values, not
+  // the drafts: it describes what is running.
+  const attention = useMemo(() => needsAttention({
+    values: parsed.values,
+    secrets: parsed.secrets,
+    proxyStatus: status.isError ? null : status.data ? (status.data.proxy_status ?? 'unknown') : undefined,
+    egressTotal: egress.isError ? null : egress.data,
+  }), [parsed, status.isError, status.data, egress.isError, egress.data]);
+  const warnings = attention.filter((a) => a.tone === 'warning').length;
 
   const changesIn = (id: SectionId) =>
     Object.keys(drafts.edits[id] ?? {}).length + Object.keys(drafts.secretEdits[id] ?? {}).length;
@@ -127,6 +153,10 @@ function SettingsPage() {
     if (savingRef.current) return;
     const req = sectionRequest(id, parsed.values, drafts.edits[id] ?? {}, drafts.secretEdits[id] ?? {});
     const errors = validateSection(id, values, req.sent);
+    // An empty allowlist with default-deny on refuses every destination.
+    if (id === 'filtering' && values.egress_default_deny === 'true' && egress.data === 0) {
+      errors.egress_default_deny = 'the egress allowlist is empty, so every destination would be refused: add destinations first';
+    }
     if (Object.keys(errors).length) {
       drafts.setErrors(id, errors);
       drafts.setResult(id, { kind: 'invalid', fields: Object.keys(errors) });
@@ -176,13 +206,25 @@ function SettingsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader eyebrow="System" title="Settings" />
       <div className={isDesktop ? 'flex items-start gap-8' : 'flex flex-col gap-4'}>
-        <SettingsNav current={id} dirty={dirty} />
+        <SettingsNav current={id} dirty={dirty} attention={settings.isSuccess ? warnings : undefined} />
         <section aria-labelledby="settings-section-title" className="flex min-w-0 flex-1 flex-col gap-4">
           <header className="flex flex-col gap-1">
             <h2 id="settings-section-title" className="text-lg font-semibold text-ink">{section.label}</h2>
             <p className="text-sm text-ink-muted">{section.purpose}</p>
           </header>
-          <SectionBody section={section} form={form} />
+          {settings.isError && (
+            <Notice tone="danger" title="The settings could not be loaded">
+              GET /api/settings failed, so the values below are missing and nothing here can be saved safely.
+            </Notice>
+          )}
+          <SectionBody
+            section={section}
+            form={form}
+            rows={rows}
+            attention={attention}
+            attentionLoading={settings.isPending}
+            dirty={dirty}
+          />
           {!INLINE_ERRORS.includes(id) && Object.keys(fieldErrors).length > 0 && (
             <ul aria-label="Fields that need attention" className="flex flex-col gap-1 rounded-panel border border-danger-line bg-danger-subtle px-4 py-3 text-sm text-danger">
               {Object.entries(fieldErrors).map(([key, msg]) => (
