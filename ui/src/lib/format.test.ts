@@ -1,6 +1,32 @@
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest'
-import { formatCount, formatDate, formatDateTime, formatTime } from './format'
+import { formatCount, formatDate, formatDateTime, formatRange, formatTime } from './format'
 import { simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
+
+describe('formatRange', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('writes the first page of a long list with grouped counts', () => {
+    expect(formatRange(0, 50, 50772)).toBe('1 to 50 of 50,772')
+  })
+
+  it('writes a later page and a short last page', () => {
+    expect(formatRange(50, 50, 50772)).toBe('51 to 100 of 50,772')
+    expect(formatRange(50750, 22, 50772)).toBe('50,751 to 50,772 of 50,772')
+  })
+
+  it('never runs past the total', () => {
+    expect(formatRange(0, 50, 7)).toBe('1 to 7 of 7')
+  })
+
+  it('says there is nothing rather than "1 to 0 of 0"', () => {
+    expect(formatRange(0, 0, 0)).toBe('No entries')
+  })
+
+  it('does not follow the browser locale', () => {
+    simulateItalianLocale()
+    expect(formatRange(1000, 50, 50772)).toBe('1,001 to 1,050 of 50,772')
+  })
+})
 
 describe('formatCount', () => {
   afterEach(() => { vi.restoreAllMocks() })

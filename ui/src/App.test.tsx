@@ -64,6 +64,28 @@ describe('App', () => {
     })
   })
 
+  // Threat Intel became Analytics: an old link or bookmark to /threats must
+  // still land on the page, under its new address and name.
+  it('sends /threats to /analytics, the renamed Threat Intel page', async () => {
+    const payload = btoa(JSON.stringify({ sub: 'admin', exp: Math.floor(Date.now() / 1000) + 3600 }))
+    localStorage.setItem('auth_token', `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`)
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === 'settings') {
+        return Promise.resolve({ data: { data: [{ setting_name: 'wizard_completed', setting_value: 'true' }] } })
+      }
+      return Promise.resolve({ data: { data: [] } })
+    })
+    window.history.pushState({}, '', '/threats')
+    try {
+      render(<App />)
+      expect(await screen.findByRole('heading', { level: 1, name: 'Analytics' }, { timeout: 5000 })).toBeInTheDocument()
+      expect(window.location.pathname).toBe('/analytics')
+      expect(screen.getByRole('link', { name: 'Analytics' })).toHaveAttribute('aria-current', 'page')
+    } finally {
+      window.history.pushState({}, '', '/')
+    }
+  })
+
   it('clears expired token on mount', () => {
     const payload = btoa(JSON.stringify({ sub: 'admin', exp: Math.floor(Date.now() / 1000) - 120 }))
     const fakeToken = `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`

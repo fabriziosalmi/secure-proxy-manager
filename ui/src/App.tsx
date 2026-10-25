@@ -1,5 +1,5 @@
 import { Component, Suspense, lazy, useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/react-query';
 import toast, { Toaster } from 'react-hot-toast';
 import axios from 'axios';
@@ -168,7 +168,9 @@ function AppContent() {
                 <Route path="/" element={<Layout onLogout={handleLogout} />}>
                   <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
                   <Route path="blacklists" element={<ErrorBoundary><Blacklists /></ErrorBoundary>} />
-                  <Route path="threats" element={<ErrorBoundary><ThreatIntel /></ErrorBoundary>} />
+                  <Route path="analytics" element={<ErrorBoundary><ThreatIntel /></ErrorBoundary>} />
+                  {/* The Threat Intel page is now Analytics; old links and bookmarks still land on it. */}
+                  <Route path="threats" element={<Navigate to="/analytics" replace />} />
                   <Route path="clients" element={<ErrorBoundary><Clients /></ErrorBoundary>} />
                   <Route path="logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
                   <Route path="audit" element={<ErrorBoundary><Audit /></ErrorBoundary>} />

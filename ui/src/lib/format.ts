@@ -11,6 +11,18 @@ export function formatCount(n: number): string {
   return COUNT.format(n);
 }
 
+/**
+ * The position of a page in a list: "1 to 50 of 50,772" for the first 50
+ * rows of 50,772 (offset 0, 50 shown). "No entries" when there is nothing
+ * to page through.
+ */
+export function formatRange(offset: number, shown: number, total: number): string {
+  if (total <= 0 || shown <= 0) return 'No entries';
+  const first = offset + 1;
+  const last = Math.min(offset + shown, total);
+  return `${formatCount(first)} to ${formatCount(last)} of ${formatCount(total)}`;
+}
+
 // The one way the UI writes a backend timestamp. The backend stores UTC as
 // "2026-07-01 09:00:00", with no zone marker; new Date() reads that as local
 // time, so the Dashboard, Threat Intel, Logs and Blacklists showed every
