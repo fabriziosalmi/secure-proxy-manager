@@ -205,7 +205,7 @@ func TestSyncListArtefactsWritesWhatTheDatabaseHolds(t *testing.T) {
 	h := NewSettingsHandlers(db, cfg)
 	changed := h.SyncListArtefacts()
 	got, err := os.ReadFile(filepath.Join(cfg.ConfigDir, "blocked_file_types.txt"))
-	if err != nil || string(got) != "\\.exe$\n\\.msi$\n" {
+	if err != nil || string(got) != "\\.exe(\\?.*)?$\n\\.msi(\\?.*)?$\n" {
 		t.Fatalf("blocked_file_types.txt = %q (%v)", got, err)
 	}
 	if len(changed) == 0 {
@@ -215,6 +215,30 @@ func TestSyncListArtefactsWritesWhatTheDatabaseHolds(t *testing.T) {
 		t.Error("the proxy was not asked to reload after the file changed")
 	}
 	// A second start finds the file in line and changes nothing.
+	if again := h.SyncListArtefacts(); len(again) != 0 {
+		t.Errorf("second start rewrote %v", again)
+	}
+}
+
+// A file written by a release before the query-string fix holds "\.exe$",
+// which lets /setup.exe?dl=1 through. The first start rewrites it in the form
+// a save writes, and the start after that leaves it alone.
+func TestSyncListArtefactsUpgradesTheOldExtensionPattern(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	_, _ = db.Exec("INSERT OR REPLACE INTO settings(setting_name,setting_value) VALUES('blocked_file_types','exe')")
+	path := filepath.Join(cfg.ConfigDir, "blocked_file_types.txt")
+	if err := os.WriteFile(path, []byte("\\.exe$\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := NewSettingsHandlers(db, cfg)
+	if changed := h.SyncListArtefacts(); len(changed) == 0 {
+		t.Fatal("the old pattern was left in place")
+	}
+	got, _ := os.ReadFile(path)
+	if string(got) != blockedExtensionPattern("exe")+"\n" {
+		t.Errorf("blocked_file_types.txt = %q, want %q", got, blockedExtensionPattern("exe")+"\n")
+	}
 	if again := h.SyncListArtefacts(); len(again) != 0 {
 		t.Errorf("second start rewrote %v", again)
 	}

@@ -207,20 +207,16 @@ func (h *SettingsHandlers) WAFHeuristics(w http.ResponseWriter, r *http.Request)
 }
 
 // listArtefacts are the /config files that are a pure function of one
-// setting: the proxy reads the file, the database holds the setting.
+// setting: the proxy reads the file, the database holds the setting. The
+// transforms are the save path's own, so a start never rewrites a file in
+// another form than a save does (a copy here still wrote "\.exe$", and every
+// restart reopened the query-string bypass).
 var listArtefacts = []struct {
 	key, file string
 	transform func(string) string
 }{
-	{"blocked_file_types", "blocked_file_types.txt", func(ext string) string {
-		if !strings.HasPrefix(ext, ".") {
-			ext = "." + ext
-		}
-		return `\` + ext + `$`
-	}},
-	{"cache_bypass_domains", "cache_bypass_domains.txt", func(d string) string {
-		return "." + strings.TrimPrefix(d, ".")
-	}},
+	{"blocked_file_types", "blocked_file_types.txt", blockedExtensionPattern},
+	{"cache_bypass_domains", "cache_bypass_domains.txt", cacheBypassEntry},
 }
 
 // listArtefactContent is the file content writeListArtefact writes for value.

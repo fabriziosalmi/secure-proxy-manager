@@ -499,9 +499,7 @@ func (h *SettingsHandlers) writeSquidArtefacts(body map[string]string) []string 
 	// Cache bypass domains — Squid matches a dstdomain ACL, which needs the
 	// leading dot to cover subdomains.
 	if v, ok := body["cache_bypass_domains"]; ok {
-		if err := h.writeListArtefact("cache_bypass_domains.txt", v, func(d string) string {
-			return "." + strings.TrimPrefix(d, ".")
-		}); err != nil {
+		if err := h.writeListArtefact("cache_bypass_domains.txt", v, cacheBypassEntry); err != nil {
 			log.Warn().Err(err).Msg("cache bypass list write failed")
 			failedArtifacts = append(failedArtifacts, "cache_bypass_domains.txt")
 		}
@@ -585,6 +583,12 @@ func blockedExtensionPattern(ext string) string {
 		ext = "." + ext
 	}
 	return `\` + ext + `(\?.*)?$`
+}
+
+// cacheBypassEntry is the dstdomain line for one cache-bypass domain: the
+// leading dot covers its subdomains.
+func cacheBypassEntry(d string) string {
+	return "." + strings.TrimPrefix(d, ".")
 }
 
 // writeListArtefact writes a comma-separated setting as the newline-separated
