@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Shield, Activity, Globe, AlertTriangle, Clock, TrendingUp, Eye, FileType, Cloud } from 'lucide-react';
-import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, AreaChart, Area, PieChart, Pie } from 'recharts';
+import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, PieChart, Pie } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { getData } from '../lib/api';
 import { useEffect, useState } from 'react';
@@ -8,6 +8,7 @@ import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import type { TimelineEntry, DashboardSummary, ShadowItService, FileExtData, ServiceTypeData, TopDomain } from '../types';
 import { RegexPlayground } from '../components/RegexPlayground';
+import { HourlyTrafficChart, HourlyTrafficLegend } from '../components/dashboard/HourlyTrafficChart';
 import { TOOLTIP_STYLE } from '../lib/chart';
 
 const C = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899', '#14b8a6', '#6366f1'];
@@ -79,19 +80,10 @@ export function ThreatIntel() {
       {/* Timeline + WAF categories */}
       <div className="grid gap-3 lg:grid-cols-12">
         <Card className="lg:col-span-7">
-          <CardHeader className="p-3 pb-0"><CardTitle className="text-sm">Threat Timeline (72h)</CardTitle></CardHeader>
+          <CardHeader className="p-3 pb-0"><CardTitle className="text-sm flex items-center justify-between gap-2">Threat Timeline (72h)<HourlyTrafficLegend /></CardTitle></CardHeader>
           <CardContent className="p-2">
             <div className="h-[180px]" role="img" aria-label={`Threat timeline over the last 72 hours: ${tlTotal} total events, ${tlBlocked} blocked`}>
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                <AreaChart data={tl ?? []} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                  <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ef4444" stopOpacity={0.4}/><stop offset="95%" stopColor="#ef4444" stopOpacity={0}/></linearGradient></defs>
-                  <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} axisLine={false} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} />
-                  <Area type="monotone" dataKey="blocked" name="Blocked" stroke="#ef4444" strokeWidth={2} fill="url(#bg)" isAnimationActive={!reducedMotion} />
-                  <Area type="monotone" dataKey="total" name="Total" stroke="#3b82f6" strokeWidth={1} fill="none" opacity={0.4} isAnimationActive={!reducedMotion} />
-                </AreaChart>
-              </ResponsiveContainer>
+              <HourlyTrafficChart data={tl ?? []} />
             </div>
           </CardContent>
         </Card>
