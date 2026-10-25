@@ -111,7 +111,7 @@ func TestImportBehaviour(t *testing.T) {
 		if got.Added != 1 || got.Skipped != 3 || got.Bogon != 3 {
 			t.Errorf("added/skipped/bogon = %v/%v/%v, want 1/3/3", got.Added, got.Skipped, got.Bogon)
 		}
-		if !strings.Contains(got.Message, "private/bogon ranges were dropped") {
+		if !strings.Contains(got.Message, "private, LAN or reserved ranges were dropped") {
 			t.Errorf("message must explain the bogon drop, got %q", got.Message)
 		}
 	})

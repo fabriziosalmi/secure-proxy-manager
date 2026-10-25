@@ -237,7 +237,7 @@ func (h *BlacklistHandlers) AddIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if isLANBogonCIDR(ip) {
-		writeError(w, http.StatusBadRequest, "private/RFC1918/bogon ranges cannot be blacklisted — the IP blacklist is a source ACL, so this would block your own LAN clients")
+		writeError(w, http.StatusBadRequest, "private, LAN and reserved ranges cannot be blocked: the IP blacklist is matched against destinations and denied before LAN destinations are allowed, so every client would lose the services on your network")
 		return
 	}
 	sourceID, err := manualSource(h.db, "ip_blacklist")
@@ -516,7 +516,7 @@ func (h *BlacklistHandlers) Import(w http.ResponseWriter, r *http.Request) {
 	auditImport(h.db, r, table, &req, stats)
 	msg := fmt.Sprintf("Successfully imported %d entries (%d skipped/invalid)", stats.added, stats.skipped)
 	if stats.bogonSkipped > 0 {
-		msg += fmt.Sprintf(" — %d private/bogon ranges were dropped (a source IP blacklist must not include LAN ranges)", stats.bogonSkipped)
+		msg += fmt.Sprintf("; %d private, LAN or reserved ranges were dropped (blocking them would cut every client off from the services on your network)", stats.bogonSkipped)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
@@ -990,8 +990,8 @@ func (h *BlacklistHandlers) fetchGeoFeeds(countries []string) []geoFetched {
 }
 
 // parseGeoZone is the rows a country's zone file adds: valid CIDR/IP lines that
-// are not a private/bogon range (the ip_blacklist is a source ACL, the same
-// guards as the regular import) and not already present. It records what it
+// are not a private/bogon range (the ip_blacklist is a dst ACL denied before
+// local_dst is allowed; the same guards as the regular import) and not already present. It records what it
 // returns in existing.
 func parseGeoZone(content string, existing map[string]struct{}) []string {
 	var toInsert []string

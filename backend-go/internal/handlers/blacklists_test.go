@@ -157,7 +157,7 @@ func TestBlacklistHandlers_ImportContent(t *testing.T) {
 	defer cleanup()
 	h := NewBlacklistHandlers(db, cfg)
 
-	// 3 routable IPs + one private range that must be dropped (source ACL).
+	// 3 routable IPs + one private range that must be dropped (a dst ACL denied before LAN destinations).
 	req := models.ImportBlacklistRequest{
 		Type:    "ip",
 		Content: "203.0.113.1\n# Comment\n203.0.113.2\n1.1.1.1\n192.168.5.5",
