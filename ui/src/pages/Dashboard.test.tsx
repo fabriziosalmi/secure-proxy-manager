@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
-import { renderWithProviders } from '../test/helpers'
+import { renderWithProviders, simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 import { Dashboard } from './Dashboard'
 
 vi.mock('../lib/api', () => {
@@ -50,6 +50,7 @@ describe('Dashboard', () => {
       return Promise.resolve({ data: { data: null } })
     })
   })
+  afterEach(() => { vi.restoreAllMocks() })
 
   it('renders dashboard title', async () => {
     renderWithProviders(<Dashboard />)
@@ -93,6 +94,57 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText(/management API is not reachable/)).toBeInTheDocument()
     })
+  })
+
+  // A missing score or hit rate was drawn as a measured 0.
+  it('says the security score is not reported when the backend has none', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('dashboard/summary')) return Promise.resolve({ data: { data: summaryData } })
+      if (url.includes('cache/statistics')) return Promise.resolve({ data: { data: { simulated: false, hits: 5, misses: 7 } } })
+      return Promise.resolve({ data: { data: null } })
+    })
+    renderWithProviders(<Dashboard />)
+    const score = await screen.findByText('Score')
+    await waitFor(() => { expect(score.parentElement).toHaveTextContent('Not reported') })
+    expect(score.parentElement).not.toHaveTextContent('/100')
+    const hit = await screen.findByText('Hit Rate')
+    expect(hit.parentElement).toHaveTextContent('Not reported')
+    expect(hit.parentElement).not.toHaveTextContent('%')
+  })
+
+  // toLocaleString followed the browser (50.772 in Italian) and some counts
+  // were not grouped at all (1328), side by side on the same page.
+  it('writes every count with en-US grouping in any browser locale', async () => {
+    simulateItalianLocale()
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.includes('dashboard/summary')) return Promise.resolve({ data: { data: { ...summaryData, total_requests: 50772, today_blocked: 1328, top_blocked: [{ dest: 'malware.com', count: 1328 }] } } })
+      return Promise.resolve({ data: { data: null } })
+    })
+    renderWithProviders(<Dashboard />)
+    await waitFor(() => { expect(screen.getByText('50,772')).toBeInTheDocument() })
+    expect(screen.getByText('1,328 blocked')).toBeInTheDocument()
+    const topBlocked = await screen.findByTitle('malware.com')
+    expect(topBlocked.parentElement).toHaveTextContent('1,328')
+  })
+
+  // recent_blocks timestamps are UTC without a zone marker; new Date() read
+  // them as local time, so a viewer in Rome saw 09:00 for a block at 11:00.
+  it('shows a recent block at the viewer time, not at the UTC wall-clock time', async () => {
+    const restoreTz = setRomeTimeZone()
+    try {
+      vi.mocked(api.get).mockImplementation((url: string) => {
+        if (url.includes('dashboard/summary')) return Promise.resolve({ data: { data: { ...summaryData, recent_blocks: [{ timestamp: '2026-07-01 09:00:00', source_ip: '192.168.0.109', method: 'CONNECT', destination: 'evil.example:443', status: 'TCP_DENIED/403' }] } } })
+        return Promise.resolve({ data: { data: null } })
+      })
+      renderWithProviders(<Dashboard />)
+      expect(await screen.findByText('192.168.0.109 11:00:00')).toBeInTheDocument()
+    } finally { restoreTz() }
+  })
+
+  // The Settings Listen tile reads the same helper.
+  it('shows the reachable proxy address', async () => {
+    renderWithProviders(<Dashboard />)
+    expect(await screen.findByText(`${window.location.hostname}:3128`)).toBeInTheDocument()
   })
 
   it('displays security score', async () => {

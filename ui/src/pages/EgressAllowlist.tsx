@@ -152,7 +152,7 @@ export function EgressAllowlist() {
                       {row.type}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-muted-foreground">{row.description || '—'}</td>
+                  <td className="px-4 py-2 text-muted-foreground">{row.description || 'no description'}</td>
                   <td className="px-4 py-2 text-right">
                     {pendingDeleteId === row.id ? (
                       <span className="inline-flex gap-1">

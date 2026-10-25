@@ -50,7 +50,7 @@ let expiryWarningShown = false;
  * Persist a JWT and reset the expiry-tracking flags.
  *
  * Always use this helper instead of calling localStorage.setItem('auth_token', …)
- * directly — otherwise the "session expiring" warning won't re-arm after a fresh
+ * directly; otherwise the "session expiring" warning won't re-arm after a fresh
  * login, and the once-per-load reload guard may stay tripped.
  */
 export function setAuthToken(token: string): void {

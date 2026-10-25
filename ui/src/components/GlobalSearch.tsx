@@ -62,7 +62,7 @@ export function GlobalSearch() {
         setQuery('');
         setResults([]);
         setSelected(0);
-        // Initial focus is handled by useModal (focuses the first focusable —
+        // Initial focus is handled by useModal (focuses the first focusable:
         // the search input).
       }, 0);
     }
@@ -118,7 +118,7 @@ export function GlobalSearch() {
           logs.forEach((l: LogEntry) => {
             items.push({
               type: 'log', label: `${l.method || '-'} ${l.destination}`,
-              description: `${l.source_ip} — ${l.status}`,
+              description: `${l.source_ip}, ${l.status}`,
               action: () => { navigate('/logs'); setOpen(false); },
             });
           });

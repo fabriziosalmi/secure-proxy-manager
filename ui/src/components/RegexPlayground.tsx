@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { FlaskConical, Play, AlertTriangle, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import { formatCount } from '../lib/format';
 
 interface TestResult {
   regex: string;
@@ -102,11 +103,11 @@ export function RegexPlayground() {
                 : <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
               }
               <span>
-                Scanned <strong>{result.scanned.toLocaleString()}</strong> URLs,{' '}
+                Scanned <strong>{formatCount(result.scanned)}</strong> URLs,{' '}
                 <strong className={result.would_block ? 'text-destructive' : 'text-emerald-500'}>
                   {result.matched}
                 </strong> matched
-                {result.would_block ? ' — this rule WOULD block traffic!' : ' — safe to deploy.'}
+                {result.would_block ? ': this rule WOULD block traffic!' : ': safe to deploy.'}
               </span>
             </div>
 

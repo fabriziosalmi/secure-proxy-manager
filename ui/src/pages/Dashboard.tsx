@@ -6,7 +6,9 @@ import toast from 'react-hot-toast';
 import { api, getData } from '../lib/api';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import { useConfirm } from '../hooks/useConfirm';
+import { proxyAddress } from '../lib/utils';
 import type { TimelineEntry, SecurityScore, DashboardSummary, CacheStats } from '../types';
+import { formatCount, formatTime } from '../lib/format';
 
 // Lazy-load the recharts-based chart cards. Recharts is ~110 KB gzipped
 // and was previously in the initial bundle even though the dashboard's
@@ -35,7 +37,7 @@ export function Dashboard() {
   const queryClient = useQueryClient();
   const { confirm, dialog } = useConfirm();
   const [copied, setCopied] = useState(false);
-  const proxy = `${window.location.hostname}:3128`;
+  const proxy = proxyAddress();
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const copy = () => {
     navigator.clipboard.writeText(proxy).then(() => {
@@ -51,7 +53,7 @@ export function Dashboard() {
 
   const { data: s, isLoading } = useQuery<DashboardSummary>({ queryKey: ['dashboard'], queryFn: () => getData<DashboardSummary>('dashboard/summary'), refetchInterval: vis ? REFETCH : false });
   const { data: tl } = useQuery<TimelineEntry[]>({ queryKey: ['timeline'], queryFn: () => getData<TimelineEntry[]>('logs/timeline'), refetchInterval: vis ? REFETCH : false });
-  const { data: sec } = useQuery<SecurityScore>({ queryKey: ['score'], queryFn: () => getData<SecurityScore>('security/score'), refetchInterval: vis ? 30_000 : false });
+  const { data: sec, isLoading: secLoading } = useQuery<SecurityScore>({ queryKey: ['score'], queryFn: () => getData<SecurityScore>('security/score'), refetchInterval: vis ? 30_000 : false });
   const { data: cache } = useQuery<CacheStats>({ queryKey: ['cache'], queryFn: () => getData<CacheStats>('cache/statistics'), refetchInterval: vis ? 30_000 : false });
 
   const chart = React.useMemo(() => tl ?? [], [tl]);
@@ -108,7 +110,7 @@ export function Dashboard() {
               try {
                 await api.post('counters/reset');
                 toast.success('All counters reset', { id: t });
-                // Scope to data the reset actually touches — invalidating
+                // Scope to data the reset actually touches: invalidating
                 // every query (incl. settings/auth/blacklist) caused a
                 // refetch storm and put auth-derived state into a brief
                 // inconsistent window.
@@ -123,19 +125,19 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Compact stats row — staggered entrance */}
+      {/* Compact stats row, staggered entrance */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
         <Card className="stagger-child" style={{ '--stagger-index': 0 } as React.CSSProperties}>
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Today</p>
-            <p className="text-2xl font-bold">{animToday.toLocaleString()}</p>
-            <p className="text-[10px] text-muted-foreground">{s?.today_blocked ?? 0} blocked</p>
+            <p className="text-2xl font-bold">{formatCount(animToday)}</p>
+            <p className="text-[10px] text-muted-foreground">{formatCount(s?.today_blocked ?? 0)} blocked</p>
           </CardContent>
         </Card>
         <Card className="stagger-child" style={{ '--stagger-index': 1 } as React.CSSProperties}>
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total</p>
-            <p className="text-2xl font-bold">{animTotal.toLocaleString()}</p>
+            <p className="text-2xl font-bold">{formatCount(animTotal)}</p>
             <p className="text-[10px] text-muted-foreground">all time</p>
           </CardContent>
         </Card>
@@ -143,26 +145,33 @@ export function Dashboard() {
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Block Rate</p>
             <p className={`text-2xl font-bold ${parseFloat(rate) > 50 ? 'text-destructive' : parseFloat(rate) > 10 ? 'text-yellow-500' : 'text-emerald-500'}`}>{rate}%</p>
-            <p className="text-[10px] text-muted-foreground">{animBlocked.toLocaleString()} blocked</p>
+            <p className="text-[10px] text-muted-foreground">{formatCount(animBlocked)} blocked</p>
           </CardContent>
         </Card>
         <Card className="stagger-child" style={{ '--stagger-index': 3 } as React.CSSProperties}>
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Score</p>
-            <p className="text-2xl font-bold">{animScore}<span className="text-sm text-muted-foreground">/100</span></p>
-            <div className="w-full bg-secondary h-1.5 mt-1 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full progress-glow ${(sec?.score || 0) > 80 ? 'bg-emerald-500 glow-emerald' : (sec?.score || 0) > 50 ? 'bg-yellow-500 glow-yellow' : 'bg-destructive glow-destructive'}`}
-                style={{ width: `${sec?.score || 0}%` }}
-              />
-            </div>
+            {typeof sec?.score === 'number' ? (
+              <>
+                <p className="text-2xl font-bold">{animScore}<span className="text-sm text-muted-foreground">/100</span></p>
+                <div className="w-full bg-secondary h-1.5 mt-1 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full progress-glow ${sec.score > 80 ? 'bg-emerald-500 glow-emerald' : sec.score > 50 ? 'bg-yellow-500 glow-yellow' : 'bg-destructive glow-destructive'}`}
+                    style={{ width: `${sec.score}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              // No score from the backend is not a score of 0.
+              <p className="text-sm font-semibold text-muted-foreground py-1.5">{secLoading ? '…' : 'Not reported'}</p>
+            )}
           </CardContent>
         </Card>
         <Card className="stagger-child" style={{ '--stagger-index': 4 } as React.CSSProperties}>
           <CardContent className="p-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">IP Rules</p>
-            <p className="text-2xl font-bold">{animIpRules.toLocaleString()}</p>
-            <p className="text-[10px] text-muted-foreground">{(s?.domain_blacklist_count ?? 0).toLocaleString()} domains</p>
+            <p className="text-2xl font-bold">{formatCount(animIpRules)}</p>
+            <p className="text-[10px] text-muted-foreground">{formatCount(s?.domain_blacklist_count ?? 0)} domains</p>
           </CardContent>
         </Card>
         <Card className="stagger-child" style={{ '--stagger-index': 5 } as React.CSSProperties}>
@@ -170,8 +179,8 @@ export function Dashboard() {
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">WAF</p>
             {w ? (
               <>
-                <p className="text-2xl font-bold">{w.requests_last_minute}<span className="text-sm text-muted-foreground">/min</span></p>
-                <p className="text-[10px] text-muted-foreground">{w.total_blocked} blocked, entropy {w.avg_url_entropy}</p>
+                <p className="text-2xl font-bold">{formatCount(w.requests_last_minute)}<span className="text-sm text-muted-foreground">/min</span></p>
+                <p className="text-[10px] text-muted-foreground">{formatCount(w.total_blocked)} blocked, entropy {w.avg_url_entropy}</p>
               </>
             ) : (
               <>
@@ -183,7 +192,7 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Chart + Threat categories + Top blocked — 3 columns (lazy: recharts chunk) */}
+      {/* Chart + Threat categories + Top blocked: 3 columns (lazy: recharts chunk) */}
       <Suspense fallback={
         <div className="grid gap-3 lg:grid-cols-12">
           <Card className="lg:col-span-5"><CardContent className="p-2"><div className="h-[180px] animate-pulse bg-secondary/30 rounded" role="status" aria-label="Loading traffic chart" /></CardContent></Card>
@@ -194,7 +203,7 @@ export function Dashboard() {
         <DashboardCharts chart={chart} summary={s} />
       </Suspense>
 
-      {/* Recent blocks + WAF + Cache — 3 columns */}
+      {/* Recent blocks + WAF + Cache: 3 columns */}
       <div className="grid gap-3 lg:grid-cols-3">
         <Card>
           <CardHeader className="p-3 pb-0">
@@ -206,7 +215,7 @@ export function Dashboard() {
                 <div key={i} className="flex items-center justify-between py-1 text-xs row-hover rounded px-1">
                   <div className="overflow-hidden mr-2">
                     <p className="truncate max-w-[280px] font-mono">{b.destination}</p>
-                    <p className="text-[10px] text-muted-foreground">{b.source_ip} {new Date(b.timestamp).toLocaleTimeString()}</p>
+                    <p className="text-[10px] text-muted-foreground">{b.source_ip} {formatTime(b.timestamp)}</p>
                   </div>
                   <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${b.status?.includes('403') ? 'bg-destructive/10 text-destructive' : 'bg-orange-500/10 text-orange-500'}`}>
                     {b.status?.includes('403') ? 'WAF' : 'DENY'}
@@ -229,14 +238,14 @@ export function Dashboard() {
           ) : (
             <CardContent className="p-2">
               <div className="grid grid-cols-3 gap-2 mb-2">
-                <div><p className="text-[10px] text-muted-foreground uppercase">Inspected</p><p className="text-lg font-bold">{(w.total_requests ?? 0).toLocaleString()}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase">Blocked</p><p className="text-lg font-bold text-destructive">{w.total_blocked ?? 0}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase">Entropy</p><p className="text-lg font-bold">{w.avg_url_entropy ?? '—'}</p></div>
+                <div><p className="text-[10px] text-muted-foreground uppercase">Inspected</p><p className="text-lg font-bold">{formatCount(w.total_requests ?? 0)}</p></div>
+                <div><p className="text-[10px] text-muted-foreground uppercase">Blocked</p><p className="text-lg font-bold text-destructive">{formatCount(w.total_blocked ?? 0)}</p></div>
+                <div><p className="text-[10px] text-muted-foreground uppercase">Entropy</p><p className="text-lg font-bold">{w.avg_url_entropy ?? 'Not reported'}</p></div>
               </div>
               {w.top_blocked_categories?.length > 0 && (
                 <div className="flex flex-wrap gap-1 pt-2 border-t border-border/50">
                   {w.top_blocked_categories.slice(0, 6).map((c: { key: string; count: number }) => (
-                    <span key={c.key} className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">{c.key} ({c.count})</span>
+                    <span key={c.key} className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">{c.key} ({formatCount(c.count)})</span>
                   ))}
                 </div>
               )}
@@ -255,7 +264,7 @@ export function Dashboard() {
           <CardContent className="p-2">
             {cache?.simulated ? (
               // The backend could not read cache_stats.txt, so every figure
-              // below would be a zero presented as a measurement — an idle
+              // below would be a zero presented as a measurement: an idle
               // cache rather than an absent one (SECURE-CONF-02).
               <div className="flex h-full min-h-[92px] items-center justify-center px-2 text-center">
                 <span className="text-[11px] text-muted-foreground">
@@ -264,11 +273,20 @@ export function Dashboard() {
               </div>
             ) : cache ? (() => {
               // One definition of hit rate: hit_rate, Squid's own 5-minute
-              // window. hit_ratio was a second, lifetime-based figure — this card
+              // window. hit_ratio was a second, lifetime-based figure; this card
               // read it while the Settings service panel read hit_rate, so the
               // same deployment showed two different numbers under the same
               // label (SECURE-DOM-03).
-              const hitRate = cache.hit_rate != null ? (cache.hit_rate * 100).toFixed(1) : '0';
+              // A missing hit_rate is not a 0% hit rate.
+              if (typeof cache.hit_rate !== 'number') {
+                return (
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[10px] text-muted-foreground uppercase">Hit Rate</span>
+                    <span className="text-sm font-semibold text-muted-foreground">Not reported</span>
+                  </div>
+                );
+              }
+              const hitRate = (cache.hit_rate * 100).toFixed(1);
               return (
                 <div className="space-y-2">
                   <div className="flex items-baseline justify-between">
@@ -284,11 +302,11 @@ export function Dashboard() {
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <div>
                       <p className="text-[10px] text-muted-foreground">Hits</p>
-                      <p className="text-sm font-bold">{(cache.hits || 0).toLocaleString()}</p>
+                      <p className="text-sm font-bold">{formatCount(cache.hits || 0)}</p>
                     </div>
                     <div>
                       <p className="text-[10px] text-muted-foreground">Misses</p>
-                      <p className="text-sm font-bold">{(cache.misses || 0).toLocaleString()}</p>
+                      <p className="text-sm font-bold">{formatCount(cache.misses || 0)}</p>
                     </div>
                   </div>
                 </div>

@@ -72,7 +72,7 @@ describe('isValidDomain', () => {
     '',                   // empty
     'localhost',          // single label (no dot)
     '.example.com',      // starts with dot (empty label)
-    'example.com.',      // ends with dot (empty label) — trailing dots not handled
+    'example.com.',      // ends with dot (empty label); trailing dots not handled
     '-example.com',      // label starts with hyphen
     'example-.com',      // label ends with hyphen
     'exam ple.com',      // space in label

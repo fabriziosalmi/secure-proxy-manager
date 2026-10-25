@@ -7,9 +7,10 @@ import { Card, CardContent } from '../components/ui/card';
 import { IpBadge } from '../components/IpBadge';
 import { ClientSetup } from '../components/ClientSetup';
 import { useModal } from '../hooks/useModal';
-import { getData } from '../lib/api';
-import { parseUtc, relative } from '../lib/utils';
+import { api, getData } from '../lib/api';
+import { relative } from '../lib/utils';
 import type { ClientsData, ClientStat, ClientDetail } from '../types';
+import { formatCount, formatDateTime } from '../lib/format';
 
 function rate(blocked: number, total: number): number {
   return total > 0 ? Math.round((blocked / total) * 1000) / 10 : 0;
@@ -18,7 +19,7 @@ function rate(blocked: number, total: number): number {
 type SortKey = 'requests' | 'blocked' | 'rate';
 
 // Declared at module scope (not inside render) so React keeps their identity
-// stable — defining components during render resets their state every render
+// stable: defining components during render resets their state every render
 // and trips react-hooks/static-components.
 function SortTh({ k, label, sort, onSort }: { k: SortKey; label: string; sort: SortKey; onSort: (k: SortKey) => void }) {
   return (
@@ -52,7 +53,10 @@ export function Clients() {
 
   const { data, isLoading, isFetching, refetch } = useQuery<ClientsData>({
     queryKey: ['clients', 'statistics'],
-    queryFn: () => getData<ClientsData>('clients/statistics'),
+    // A list endpoint: the collection is under data and its count under meta,
+    // so the page needs the whole body. getData unwrapped it to the bare array,
+    // data.data was then undefined and the page always read as empty.
+    queryFn: () => api.get('clients/statistics').then((r) => r.data ?? null),
     refetchInterval: 30_000,
   });
 
@@ -78,7 +82,7 @@ export function Clients() {
             Clients
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Source IPs seen in the last 7 days{typeof data?.meta?.total === 'number' ? ` — ${data.meta.total}` : ''}. Select a row for details.
+            Source IPs seen in the last 7 days{typeof data?.meta?.total === 'number' ? ` (${formatCount(data.meta.total)})` : ''}. Select a row for details.
           </p>
         </div>
         <button
@@ -125,7 +129,7 @@ export function Clients() {
                     ) : (
                       <div className="space-y-4">
                         <p className="text-center text-sm text-muted-foreground">
-                          No client traffic in the last 7 days — connect a device to get started.
+                          No client traffic in the last 7 days. Connect a device to get started.
                         </p>
                         <ClientSetup />
                       </div>
@@ -141,20 +145,20 @@ export function Clients() {
                         className="row-hover cursor-pointer"
                       >
                         <td className="px-5 py-3"><IpBadge ip={c.ip_address} /></td>
-                        <td className="px-5 py-3 font-mono tabular-nums">{c.requests.toLocaleString()}</td>
+                        <td className="px-5 py-3 font-mono tabular-nums">{formatCount(c.requests)}</td>
                         <td className="px-5 py-3 font-mono tabular-nums">
-                          {c.blocked > 0 ? <span className="text-orange-600 dark:text-orange-300">{c.blocked.toLocaleString()}</span> : <span className="text-muted-foreground">0</span>}
+                          {c.blocked > 0 ? <span className="text-orange-600 dark:text-orange-300">{formatCount(c.blocked)}</span> : <span className="text-muted-foreground">0</span>}
                         </td>
                         <td className="px-5 py-3">
                           <span className={`font-mono tabular-nums text-xs ${br >= 20 ? 'text-red-600 dark:text-red-300' : br > 0 ? 'text-amber-600 dark:text-amber-300' : 'text-muted-foreground'}`}>
                             {br}%
                           </span>
                         </td>
-                        <td className="px-5 py-3 text-xs text-muted-foreground whitespace-nowrap" title={c.last_seen ? parseUtc(c.last_seen).toLocaleString() : ''}>
+                        <td className="px-5 py-3 text-xs text-muted-foreground whitespace-nowrap" title={c.last_seen ? formatDateTime(c.last_seen) : ''}>
                           {relative(c.last_seen)}
                         </td>
                         <td className="px-5 py-3 text-right">
-                          {/* Real focusable control for keyboard/AT — the whole row stays
+                          {/* Real focusable control for keyboard/AT; the whole row stays
                               click-to-open for pointer users (the <tr> has no ARIA role). */}
                           <button
                             type="button"
@@ -208,14 +212,14 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
         ) : (
           <div className="p-5 space-y-6">
             <div className="grid grid-cols-2 gap-3">
-              <Stat label="Requests" value={data.total_requests.toLocaleString()} />
-              <Stat label="Blocked" value={data.blocked.toLocaleString()} tone={data.blocked > 0 ? 'text-orange-600 dark:text-orange-300' : ''} />
+              <Stat label="Requests" value={formatCount(data.total_requests)} />
+              <Stat label="Blocked" value={formatCount(data.blocked)} tone={data.blocked > 0 ? 'text-orange-600 dark:text-orange-300' : ''} />
               <Stat label="Block rate" value={`${br}%`} tone={br >= 20 ? 'text-red-600 dark:text-red-300' : br > 0 ? 'text-amber-600 dark:text-amber-300' : ''} />
               <Stat label="Last seen" value={relative(data.last_seen)} />
             </div>
             <div className="text-xs text-muted-foreground flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5" />
-              First seen {data.first_seen ? parseUtc(data.first_seen).toLocaleString() : '—'}
+              First seen {data.first_seen ? formatDateTime(data.first_seen) : 'not recorded'}
             </div>
 
             <div>
@@ -231,11 +235,11 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
                       <span className="font-mono text-xs truncate" title={d.destination}>{d.destination}</span>
                       <span className="flex items-center gap-2 shrink-0 text-xs tabular-nums">
                         {d.blocked > 0 && (
-                          <span className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-300" title={`${d.blocked} blocked`}>
-                            <Ban className="w-3 h-3" />{d.blocked}
+                          <span className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-300" title={`${formatCount(d.blocked)} blocked`}>
+                            <Ban className="w-3 h-3" />{formatCount(d.blocked)}
                           </span>
                         )}
-                        <span className="text-muted-foreground">{d.requests.toLocaleString()}</span>
+                        <span className="text-muted-foreground">{formatCount(d.requests)}</span>
                       </span>
                     </div>
                   ))}
@@ -253,7 +257,7 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
                     const blocked = /DENIED|403|BLOCKED/i.test(e.status);
                     return (
                       <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/30 text-xs">
-                        <span className="text-muted-foreground w-14 shrink-0" title={parseUtc(e.timestamp).toLocaleString()}>{relative(e.timestamp)}</span>
+                        <span className="text-muted-foreground w-14 shrink-0" title={formatDateTime(e.timestamp)}>{relative(e.timestamp)}</span>
                         <span className="font-mono text-[10px] text-muted-foreground w-12 shrink-0">{e.method}</span>
                         <span className="font-mono truncate flex-1" title={e.destination}>{e.destination}</span>
                         <span className={`shrink-0 ${blocked ? 'text-orange-600 dark:text-orange-300' : 'text-muted-foreground'}`}>{blocked ? 'blocked' : 'ok'}</span>

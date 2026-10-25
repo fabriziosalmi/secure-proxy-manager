@@ -155,7 +155,7 @@
 }
 
 @utility glass-surface {
-  /* Glass surface — the core aerospace panel */
+  /* Glass surface: the core aerospace panel */
   background: var(--glass-bg);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -204,7 +204,7 @@
 }
 
 @utility stagger-child {
-  /* Stagger children — set --stagger-index via style */
+  /* Stagger children: set --stagger-index via style */
   animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   animation-delay: calc(var(--stagger-index, 0) * 60ms);
 }
@@ -253,7 +253,7 @@
 @utility row-hover {
   /* Table row hover slide */
   @apply transition-colors duration-150;
-  /* Highlight rows on hover with colour only — never move/scale data that is
+  /* Highlight rows on hover with colour only; never move/scale data that is
      being read (no transform). */
   &:hover {
     @apply bg-muted/40;

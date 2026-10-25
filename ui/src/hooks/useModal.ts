@@ -10,7 +10,7 @@ const FOCUSABLE =
  *
  * Attach the returned ref to the dialog's content element. Pass `onClose` to
  * enable Escape-to-close; omit it for a non-dismissible gate (e.g. first-run
- * wizard) — focus is still trapped, Escape just does nothing.
+ * wizard): focus is still trapped, Escape just does nothing.
  */
 export function useModal<T extends HTMLElement>(isOpen: boolean, onClose?: () => void) {
   const ref = useRef<T>(null);

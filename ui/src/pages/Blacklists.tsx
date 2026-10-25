@@ -6,6 +6,7 @@ import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, Chec
 import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { formatCount, formatDate } from '../lib/format';
 
 export function Blacklists() {
   const queryClient = useQueryClient();
@@ -30,24 +31,26 @@ export function Blacklists() {
   // Reset page when tab or search changes
   const resetPage = () => setPage(0);
 
+  // The count is read from meta (writeList); the top-level total beside it is
+  // deprecated and goes away in the next contract version.
   type PaginatedResponse<T> = { data: T[]; total: number };
 
   const { data: ipResult } = useQuery<PaginatedResponse<IpEntry>>({
     queryKey: ['blacklist', 'ip', page, searchTerm],
-    queryFn: () => api.get(`ip-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.total ?? 0 })),
+    queryFn: () => api.get(`ip-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.meta?.total ?? 0 })),
   });
   const { data: domainResult } = useQuery<PaginatedResponse<DomainEntry>>({
     queryKey: ['blacklist', 'domain', page, searchTerm],
-    queryFn: () => api.get(`domain-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.total ?? 0 })),
+    queryFn: () => api.get(`domain-blacklist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.meta?.total ?? 0 })),
   });
   const { data: whitelistResult } = useQuery<PaginatedResponse<WhitelistEntry>>({
     queryKey: ['whitelist', 'ip', page, searchTerm],
-    queryFn: () => api.get(`ip-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.total ?? 0 })),
+    queryFn: () => api.get(`ip-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.meta?.total ?? 0 })),
   });
 
   const { data: domainWhitelistResult } = useQuery<PaginatedResponse<DomainWhitelistEntry>>({
     queryKey: ['whitelist', 'domain', page, searchTerm],
-    queryFn: () => api.get(`domain-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.total ?? 0 })),
+    queryFn: () => api.get(`domain-whitelist?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&search=${encodeURIComponent(searchTerm)}`).then(r => ({ data: r.data?.data ?? [], total: r.data?.meta?.total ?? 0 })),
   });
 
   const ips = ipResult?.data ?? [];
@@ -57,9 +60,9 @@ export function Blacklists() {
   const activeTotal = activeTab === 'ip' ? (ipResult?.total ?? 0) : activeTab === 'domain' ? (domainResult?.total ?? 0) : activeTab === 'whitelist' ? (whitelistResult?.total ?? 0) : (domainWhitelistResult?.total ?? 0);
   const totalPages = Math.ceil(activeTotal / PAGE_SIZE);
 
-  // Mount flag — mutation callbacks must not touch state or fire toasts
+  // Mount flag: mutation callbacks must not touch state or fire toasts
   // after the user has navigated away. React-query mutations keep running
-  // post-unmount (intentionally — the API write should still complete),
+  // post-unmount (intentionally: the API write should still complete),
   // but their onSuccess/onError shouldn't poke a vanished UI.
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -173,7 +176,7 @@ export function Blacklists() {
         return;
       }
       setSubmitting('bulk');
-      const loadingToast = toast.loading(`Adding ${lines.length} whitelist entries...`);
+      const loadingToast = toast.loading(`Adding ${formatCount(lines.length)} whitelist entries...`);
       try {
         const { added, refused } = await addWhitelistEntries(lines);
         if (refused > 0) {
@@ -271,7 +274,7 @@ export function Blacklists() {
       const added = response.data.data?.added || 0;
       const skipped = response.data.data?.skipped || 0;
       toast.success(
-        `${listName}: added ${added.toLocaleString()} entries${skipped > 0 ? `, ${skipped.toLocaleString()} skipped` : ''}`,
+        `${listName}: added ${formatCount(added)} entries${skipped > 0 ? `, ${formatCount(skipped)} skipped` : ''}`,
         { id: loadingToast, duration: 6000 }
       );
       invalidateActive();
@@ -308,7 +311,7 @@ export function Blacklists() {
     a.download = `${activeTab}-list-${new Date().toISOString().slice(0, 10)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success(`Exported ${items.length} entries`);
+    toast.success(`Exported ${formatCount(items.length)} entries`);
   };
 
   const handleReloadDNS = async () => {
@@ -323,11 +326,11 @@ export function Blacklists() {
 
   const popularIpLists = [
     { name: 'Firehol Level 1', url: 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset', desc: 'General purpose blocklist against active threats (~600 IPs)' },
-    { name: 'Spamhaus DROP', url: 'https://www.spamhaus.org/drop/drop.txt', desc: 'Don\'t Route Or Peer — direct malware/botnet infrastructure' },
-    { name: 'Spamhaus EDROP', url: 'https://www.spamhaus.org/drop/edrop.txt', desc: 'Extended DROP — sub-allocated netblocks of hijacked space' },
+    { name: 'Spamhaus DROP', url: 'https://www.spamhaus.org/drop/drop.txt', desc: 'Don\'t Route Or Peer: direct malware/botnet infrastructure' },
+    { name: 'Spamhaus EDROP', url: 'https://www.spamhaus.org/drop/edrop.txt', desc: 'Extended DROP: sub-allocated netblocks of hijacked space' },
     { name: 'Emerging Threats', url: 'https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt', desc: 'Known compromised hosts and botnet C&C servers' },
     { name: 'CINS Army', url: 'https://cinsarmy.com/list/ci-badguys.txt', desc: 'High-confidence malicious IP addresses' },
-    { name: 'Stamparm Ipsum (L3+)', url: 'https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt', desc: 'Daily threat intelligence feed — IPs seen on 3+ blacklists' },
+    { name: 'Stamparm Ipsum (L3+)', url: 'https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt', desc: 'Daily threat intelligence feed: IPs seen on 3+ blacklists' },
     { name: 'Blocklist.de All', url: 'https://lists.blocklist.de/lists/all.txt', desc: 'All attack IPs reported to blocklist.de in last 48h' },
   ];
 
@@ -452,7 +455,7 @@ export function Blacklists() {
           <CardContent className="pt-6">
             <form onSubmit={handleBulkAdd} className="space-y-3">
               <div className="space-y-2">
-                <label htmlFor="bl-bulk-text" className="text-sm font-medium">{activeTab === 'domain' ? 'Domains' : 'IP Addresses / CIDR Networks'} — one per line</label>
+                <label htmlFor="bl-bulk-text" className="text-sm font-medium">{activeTab === 'domain' ? 'Domains' : 'IP Addresses / CIDR Networks'} (one per line)</label>
                 <textarea id="bl-bulk-text" value={bulkText} onChange={(e) => setBulkText(e.target.value)}
                   placeholder={activeTab === 'domain' ? 'bad-domain.com\nanother-domain.net' : '192.168.1.100\n10.0.0.0/8'}
                   rows={6} className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm font-mono focus:outline-hidden focus:ring-1 focus:ring-primary resize-y" required />
@@ -526,25 +529,25 @@ export function Blacklists() {
           onClick={() => setActiveTab('ip')}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'ip' ? 'bg-secondary text-foreground shadow-xs border border-border/30' : 'text-muted-foreground hover:text-foreground'}`}>
           <Server className="w-4 h-4 mr-2" aria-hidden="true" />IP Addresses
-          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{ipResult?.total ?? 0}</span>
+          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{formatCount(ipResult?.total ?? 0)}</span>
         </button>
         <button role="tab" aria-selected={activeTab === 'domain'} aria-controls="bl-panel-domain" id="bl-tab-domain" tabIndex={activeTab === 'domain' ? 0 : -1} type="button"
           onClick={() => setActiveTab('domain')}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain' ? 'bg-secondary text-foreground shadow-xs border border-border/30' : 'text-muted-foreground hover:text-foreground'}`}>
           <Globe className="w-4 h-4 mr-2" aria-hidden="true" />Domains
-          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{domainResult?.total ?? 0}</span>
+          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{formatCount(domainResult?.total ?? 0)}</span>
         </button>
         <button role="tab" aria-selected={activeTab === 'whitelist'} aria-controls="bl-panel-whitelist" id="bl-tab-whitelist" tabIndex={activeTab === 'whitelist' ? 0 : -1} type="button"
           onClick={() => { setActiveTab('whitelist'); closeAllPanels(); resetPage(); }}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'whitelist' ? 'bg-green-500/10 dark:bg-green-500/20 text-green-600 dark:text-green-400 shadow-xs' : 'text-muted-foreground hover:text-green-600 dark:hover:text-green-400'}`}>
           <CheckCircle className="w-4 h-4 mr-2" aria-hidden="true" />IP Whitelist
-          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{whitelistResult?.total ?? 0}</span>
+          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{formatCount(whitelistResult?.total ?? 0)}</span>
         </button>
         <button role="tab" aria-selected={activeTab === 'domain-whitelist'} aria-controls="bl-panel-dwhitelist" id="bl-tab-dwhitelist" tabIndex={activeTab === 'domain-whitelist' ? 0 : -1} type="button"
           onClick={() => { setActiveTab('domain-whitelist'); closeAllPanels(); resetPage(); }}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'domain-whitelist' ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shadow-xs' : 'text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400'}`}>
           <ShieldCheck className="w-4 h-4 mr-2" aria-hidden="true" />Domain Whitelist
-          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{domainWhitelistResult?.total ?? 0}</span>
+          <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{formatCount(domainWhitelistResult?.total ?? 0)}</span>
         </button>
       </div>
 
@@ -562,7 +565,7 @@ export function Blacklists() {
           <Ban className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         </div>
         <span className="text-sm text-muted-foreground">
-          {activeTotal.toLocaleString()} total | Page {page + 1}/{Math.max(totalPages, 1)}
+          {formatCount(activeTotal)} total | Page {page + 1}/{Math.max(totalPages, 1)}
         </span>
       </div>
 
@@ -587,7 +590,7 @@ export function Blacklists() {
                 <tr key={item.id} className="row-hover">
                   <td className="px-6 py-4 font-medium text-foreground">{item.ip}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? formatDate(item.added_date) : '-'}</td>
                   <td className="px-6 py-4 text-right">
                     {pendingDeleteId === item.id ? (
                       <div className="flex items-center justify-end gap-1">
@@ -606,7 +609,7 @@ export function Blacklists() {
                 <tr key={item.id} className="row-hover">
                   <td className="px-6 py-4 font-medium text-foreground">{item.domain}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? formatDate(item.added_date) : '-'}</td>
                   <td className="px-6 py-4 text-right">
                     {pendingDeleteId === item.id ? (
                       <div className="flex items-center justify-end gap-1">
@@ -625,7 +628,7 @@ export function Blacklists() {
                 <tr key={item.id} className="row-hover">
                   <td className="px-6 py-4 font-medium text-green-600 dark:text-green-400">{item.ip}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? formatDate(item.added_date) : '-'}</td>
                   <td className="px-6 py-4 text-right">
                     {pendingDeleteId === item.id ? (
                       <div className="flex items-center justify-end gap-1">
@@ -649,7 +652,7 @@ export function Blacklists() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? formatDate(item.added_date) : '-'}</td>
                   <td className="px-6 py-4 text-right">
                     {pendingDeleteId === item.id ? (
                       <div className="flex items-center justify-end gap-1">
