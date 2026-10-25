@@ -129,17 +129,58 @@ export interface SettingRow {
 }
 
 // Dashboard / Analytics types
+
+/** Blocked client requests for one rule: reason is the stored key, label its display name. */
+export interface ReasonCount {
+  reason: string;
+  label: string;
+  count: number;
+}
+
+/** What the proxy recorded about Squid's own copy of the domain blacklist. */
+export interface SquidDomainAcl {
+  /** Names in the list after dropping "*." and duplicates, the count the limit applies to. */
+  names: number;
+  /** SPM_SQUID_DOMAIN_ACL_MAX on the proxy. */
+  limit: number;
+  /** Whether Squid holds the list; when false only the DNS sinkhole blocks it. */
+  held: boolean;
+  written_at: number;
+}
+
 export interface DashboardSummary {
   total_requests: number;
   blocked_requests: number;
   today_requests: number;
   today_blocked: number;
-  top_blocked: { dest: string; count: number }[];
+  /** The last 24 hours, client requests. Absent from older backends. */
+  last_24h_requests?: number;
+  last_24h_blocked?: number;
+  /** Distinct client source IPs in the last 24 hours. */
+  last_24h_clients?: number;
+  /** Newest client request in the last 24 hours (UTC, no zone marker), null when none. */
+  last_request_at?: string | null;
+  /** Hosts with the most blocked requests in the last 24 hours, with the rules that blocked them. */
+  top_blocked: { dest: string; count: number; reasons?: ReasonCount[] }[];
   top_clients: { ip: string; count: number }[];
   threat_categories: { category: string; count: number }[];
-  recent_blocks: { timestamp: string; source_ip: string; method: string; destination: string; status: string }[];
+  blocked_by_reason?: ReasonCount[];
+  blocked_by_reason_24h?: ReasonCount[];
+  recent_blocks: {
+    timestamp: string;
+    source_ip: string;
+    method: string;
+    destination: string;
+    /** The destination reduced to its host. */
+    host?: string;
+    status: string;
+    reason?: string;
+    reason_label?: string;
+  }[];
   ip_blacklist_count: number;
   domain_blacklist_count: number;
+  /** Null when the proxy has not written its record. */
+  squid_domain_acl?: SquidDomainAcl | null;
   waf?: WafStats | null;
   // Why waf is null: the WAF refused the backend's credential, could not be
   // reached, or answered with an error. Absent from older backends.

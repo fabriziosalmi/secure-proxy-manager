@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { renderWithProviders, simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
+import { expectNoAxeViolations } from '../test/axe'
 import { Dashboard } from './Dashboard'
 
 vi.mock('../lib/api', () => {
@@ -19,138 +20,248 @@ vi.mock('../lib/api', () => {
   }
 })
 
-vi.mock('../hooks/useAnimatedNumber', () => ({
-  useAnimatedNumber: (v: number) => v,
-}))
-
 import { api } from '../lib/api'
 
+// The test deployment's summary, in the shape the backend sends.
 const summaryData = {
-  total_requests: 5000,
-  blocked_requests: 200,
-  today_requests: 350,
-  today_blocked: 15,
-  ip_blacklist_count: 1200,
-  domain_blacklist_count: 45000,
-  top_blocked: [{ dest: 'malware.com', count: 50 }],
-  top_clients: [{ ip: '192.168.1.10', count: 100 }],
-  threat_categories: [{ category: 'Malware', count: 30 }],
-  recent_blocks: [],
-  waf: null,
+  total_requests: 1234,
+  blocked_requests: 23,
+  today_requests: 1234,
+  today_blocked: 23,
+  last_24h_requests: 1180,
+  last_24h_blocked: 908,
+  last_24h_clients: 1,
+  last_request_at: '2026-07-01 07:21:05',
+  ip_blacklist_count: 50772,
+  domain_blacklist_count: 640929,
+  top_blocked: [
+    { dest: 'dpm.demdex.net', count: 74, reasons: [{ reason: 'domain_blacklist_dns', label: 'Domain blacklist (DNS)', count: 74 }] },
+    { dest: 'example.com', count: 11, reasons: [{ reason: 'unclassified', label: 'Unclassified (no reason recorded)', count: 11 }] },
+  ],
+  top_clients: [{ ip: '192.168.0.109', count: 1180 }],
+  threat_categories: [],
+  blocked_by_reason_24h: [
+    { reason: 'domain_blacklist_dns', label: 'Domain blacklist (DNS)', count: 900 },
+    { reason: 'domain_blacklist', label: 'Domain blacklist', count: 8 },
+  ],
+  recent_blocks: [
+    {
+      timestamp: '2026-07-01 07:04:12', source_ip: '192.168.0.109', method: 'CONNECT',
+      destination: 'static.chartbeat.com:443', host: 'static.chartbeat.com', status: 'TCP_DENIED/403',
+      reason: 'domain_blacklist_dns', reason_label: 'Domain blacklist (DNS)',
+    },
+  ],
+  squid_domain_acl: null,
+  waf: { total_requests: 30, total_blocked: 1, avg_url_entropy: 3.98, requests_last_minute: 0, top_blocked_categories: [] },
+  waf_status: 'ok',
 }
 
-describe('Dashboard', () => {
+const timeline = [{ time: '2026-07-01 06:00:00', total: 1146, blocked: 908 }]
+
+type Routes = Record<string, unknown>
+function serve(routes: Routes) {
+  vi.mocked(api.get).mockImplementation((url: string) => {
+    for (const [path, data] of Object.entries(routes)) {
+      if (url.startsWith(path)) {
+        if (data instanceof Error) return Promise.reject(data)
+        return Promise.resolve({ data: { data } })
+      }
+    }
+    return Promise.resolve({ data: { data: null } })
+  })
+}
+
+const DEFAULT_ROUTES: Routes = {
+  'dashboard/summary': summaryData,
+  'logs/timeline': timeline,
+  status: { proxy_status: 'running', proxy_port: '3128', version: '3.14.3' },
+  'cache/statistics': { simulated: true, hit_rate: 0 },
+}
+
+function card(label: string): HTMLElement {
+  const el = screen.getByText(label, { selector: 'p' }).parentElement
+  if (!el) throw new Error(`no card ${label}`)
+  return el
+}
+
+describe('Dashboard (Overview)', () => {
+  let restoreTz: () => void
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(api.get).mockImplementation((url: string) => {
-      if (url.includes('dashboard/summary')) return Promise.resolve({ data: { data: summaryData } })
-      if (url.includes('logs/timeline')) return Promise.resolve({ data: { data: [] } })
-      if (url.includes('security/score')) return Promise.resolve({ data: { data: { score: 75, max_score: 100, recommendations: [] } } })
-      if (url.includes('cache/statistics')) return Promise.resolve({ data: { data: { hit_rate: 0.85 } } })
-      return Promise.resolve({ data: { data: null } })
-    })
+    restoreTz = setRomeTimeZone()
+    serve(DEFAULT_ROUTES)
   })
-  afterEach(() => { vi.restoreAllMocks() })
+  afterEach(() => {
+    restoreTz()
+    vi.restoreAllMocks()
+  })
 
-  it('renders dashboard title', async () => {
+  it('is the Overview of the last 24 hours, with the time it was updated', async () => {
     renderWithProviders(<Dashboard />)
-    expect(screen.getByText(/dashboard/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument()
+    expect(await screen.findByText(/^Last 24 hours · updated \d\d:\d\d$/)).toBeInTheDocument()
   })
 
-  it('shows loading skeleton initially', () => {
-    vi.mocked(api.get).mockImplementation(() => new Promise(() => {}))
+  it('shows each card from its API field', async () => {
     renderWithProviders(<Dashboard />)
-    const skeletons = document.querySelectorAll('.skeleton-shimmer')
-    expect(skeletons.length).toBeGreaterThan(0)
+    await waitFor(() => { expect(card('Client requests')).toHaveTextContent('1,180') })
+    expect(card('Client requests')).toHaveTextContent('from 1 client')
+    expect(card('Blocked')).toHaveTextContent('908')
+    expect(card('Blocked')).toHaveTextContent('76.9% of requests')
+    // One client: its address, and the newest request at the viewer time (UTC+2 in July).
+    expect(card('Active clients')).toHaveTextContent('1192.168.0.109, last request 09:21')
+    expect(card('Rules in force')).toHaveTextContent('691,701')
+    expect(card('Rules in force')).toHaveTextContent('50,772 IPs, 640,929 domains')
   })
 
-  it('displays today requests count', async () => {
+  // The old header said TODAY 1,235 next to TOTAL 1,234; the cards now read
+  // one window, the last 24 hours, and an older backend's missing field is
+  // said, not drawn as 0.
+  it('says Not reported for a figure an older backend does not send', async () => {
+    const old: Record<string, unknown> = { ...summaryData }
+    delete old.last_24h_requests
+    delete old.last_24h_blocked
+    delete old.last_24h_clients
+    serve({ ...DEFAULT_ROUTES, 'dashboard/summary': old })
     renderWithProviders(<Dashboard />)
-    await waitFor(() => {
-      expect(screen.getByText('350')).toBeInTheDocument()
-    })
+    await waitFor(() => { expect(card('Rules in force')).toHaveTextContent('691,701') })
+    for (const label of ['Client requests', 'Blocked', 'Active clients']) {
+      expect(card(label).querySelector('[data-state="not-reported"]')).toHaveTextContent('Not reported')
+    }
   })
 
-  // The WAF cards used to be hidden whenever waf was null, so a WAF that
-  // refused every management call looked like a deployment without one.
-  it('keeps the WAF card and says why its statistics are missing', async () => {
-    vi.mocked(api.get).mockImplementation((url: string) => {
-      if (url.includes('dashboard/summary')) return Promise.resolve({ data: { data: { ...summaryData, waf: null, waf_status: 'auth_failed' } } })
-      return Promise.resolve({ data: { data: null } })
-    })
+  it('has no score, WAF rate, entropy or reset on the overview', async () => {
     renderWithProviders(<Dashboard />)
-    await waitFor(() => {
-      expect(screen.getByText('WAF Intelligence')).toBeInTheDocument()
-    })
-    expect(screen.getByText(/refused the backend credential.*INTERNAL_ALERT_TOKEN/)).toBeInTheDocument()
+    await waitFor(() => { expect(card('Client requests')).toHaveTextContent('1,180') })
+    expect(screen.queryByText('Score')).toBeNull()
+    expect(screen.queryByText(/\/100|\/min|entropy/i)).toBeNull()
+    expect(screen.queryByRole('button', { name: /reset/i })).toBeNull()
+    expect(vi.mocked(api.get).mock.calls.map((c) => c[0])).not.toContain('security/score')
   })
 
-  it('reports an unreachable WAF as such', async () => {
-    vi.mocked(api.get).mockImplementation((url: string) => {
-      if (url.includes('dashboard/summary')) return Promise.resolve({ data: { data: { ...summaryData, waf: null, waf_status: 'unreachable' } } })
-      return Promise.resolve({ data: { data: null } })
-    })
+  // On the test deployment the Recent Blocks list said WAF next to a domain
+  // blacklist block: the badge was hard-coded from the 403 status.
+  it('labels each latest block with the rule the backend recorded', async () => {
     renderWithProviders(<Dashboard />)
-    await waitFor(() => {
-      expect(screen.getByText(/management API is not reachable/)).toBeInTheDocument()
-    })
+    const latest = await screen.findByRole('region', { name: 'Latest blocks' })
+    await waitFor(() => { expect(within(latest).getByText('static.chartbeat.com')).toBeInTheDocument() })
+    const row = within(latest).getByText('static.chartbeat.com').closest('li')!
+    expect(row).toHaveTextContent('Domain blacklist (DNS)')
+    expect(row).toHaveTextContent('192.168.0.109')
+    expect(row).not.toHaveTextContent('WAF')
   })
 
-  // A missing score or hit rate was drawn as a measured 0.
-  it('says the security score is not reported when the backend has none', async () => {
-    vi.mocked(api.get).mockImplementation((url: string) => {
-      if (url.includes('dashboard/summary')) return Promise.resolve({ data: { data: summaryData } })
-      if (url.includes('cache/statistics')) return Promise.resolve({ data: { data: { simulated: false, hits: 5, misses: 7 } } })
-      return Promise.resolve({ data: { data: null } })
-    })
+  // recent_blocks timestamps are UTC without a zone marker.
+  it('shows a recent block at the viewer time, not at the UTC wall-clock time', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 6, 1, 12, 0, 0) })
+    try {
+      renderWithProviders(<Dashboard />)
+      const latest = await screen.findByRole('region', { name: 'Latest blocks' })
+      expect(await within(latest).findByText('09:04:12')).toBeInTheDocument()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('lists the most blocked destinations as hosts with their rule', async () => {
     renderWithProviders(<Dashboard />)
-    const score = await screen.findByText('Score')
-    await waitFor(() => { expect(score.parentElement).toHaveTextContent('Not reported') })
-    expect(score.parentElement).not.toHaveTextContent('/100')
-    const hit = await screen.findByText('Hit Rate')
-    expect(hit.parentElement).toHaveTextContent('Not reported')
-    expect(hit.parentElement).not.toHaveTextContent('%')
+    const table = await screen.findByRole('table', { name: 'Most blocked destinations in the last 24 hours' })
+    await waitFor(() => { expect(within(table).getByText('dpm.demdex.net')).toBeInTheDocument() })
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(rows.map((r) => r.textContent)).toEqual([
+      'dpm.demdex.netDomain blacklist (DNS)74',
+      'example.comUnclassified (no reason recorded)11',
+    ])
   })
 
-  // toLocaleString followed the browser (50.772 in Italian) and some counts
-  // were not grouped at all (1328), side by side on the same page.
+  it('shows the blocked-by-rule card from blocked_by_reason_24h', async () => {
+    renderWithProviders(<Dashboard />)
+    const region = await screen.findByRole('region', { name: 'Blocked by rule' })
+    await waitFor(() => { expect(within(region).getByText('Domain blacklist (DNS)')).toBeInTheDocument() })
+    expect(within(region).getByText('900')).toBeInTheDocument()
+    expect(within(region).getByText(/the IP blacklist, the WAF, the direct-IP rule or the egress policy\.$/)).toBeInTheDocument()
+  })
+
+  describe('notices', () => {
+    // Notice renders role="status" with data-tone; nothing else on the page does.
+    const shownNotices = () => [...document.querySelectorAll('[role="status"][data-tone]')]
+
+    it('shows none when the state calls for none', async () => {
+      renderWithProviders(<Dashboard />)
+      await waitFor(() => { expect(card('Client requests')).toHaveTextContent('1,180') })
+      expect(shownNotices()).toEqual([])
+    })
+
+    // Only from the proxy's record: no record, no notice.
+    it('says the blacklist is blocked at DNS only when the proxy recorded that Squid does not hold it', async () => {
+      serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, squid_domain_acl: { names: 473936, limit: 250000, held: false, written_at: 1 } } })
+      renderWithProviders(<Dashboard />)
+      const title = await screen.findByText('Blacklisted domains are blocked at DNS only')
+      const notice = title.closest('[role="status"]')!
+      expect(notice).toHaveTextContent('The list has 473,936 names, above the proxy\'s limit of 250,000 (SPM_SQUID_DOMAIN_ACL_MAX)')
+      expect(within(notice as HTMLElement).getByRole('link', { name: 'Open blacklists' })).toHaveAttribute('href', '/blacklists')
+    })
+
+    it('shows no DNS-only notice when Squid holds the list', async () => {
+      serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, squid_domain_acl: { names: 12, limit: 250000, held: true, written_at: 1 } } })
+      renderWithProviders(<Dashboard />)
+      await waitFor(() => { expect(card('Client requests')).toHaveTextContent('1,180') })
+      expect(shownNotices()).toEqual([])
+    })
+
+    it('says Squid could not load its copy when the proxy recorded a list under the limit as not held', async () => {
+      serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, squid_domain_acl: { names: 12, limit: 250000, held: false, written_at: 1 } } })
+      renderWithProviders(<Dashboard />)
+      expect(await screen.findByText('Squid could not load its copy of the domain blacklist')).toBeInTheDocument()
+      expect(screen.queryByText(/blocked at DNS only/)).toBeNull()
+      expect(shownNotices()).toHaveLength(1)
+    })
+
+    it('says the WAF refuses the backend credential', async () => {
+      serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, waf: null, waf_status: 'auth_failed' } })
+      renderWithProviders(<Dashboard />)
+      expect(await screen.findByText('The WAF refuses the backend')).toBeInTheDocument()
+      expect(screen.getAllByText(/INTERNAL_ALERT_TOKEN/).length).toBeGreaterThan(0)
+    })
+
+    it('says the overview could not be loaded when the summary fails', async () => {
+      serve({ ...DEFAULT_ROUTES, 'dashboard/summary': new Error('502') })
+      renderWithProviders(<Dashboard />)
+      expect(await screen.findByText('The overview could not be loaded')).toBeInTheDocument()
+      expect(card('Client requests')).toHaveTextContent('Not reported')
+    })
+  })
+
+  it('reports the services from the APIs, cache statistics as not collected', async () => {
+    renderWithProviders(<Dashboard />)
+    const services = await screen.findByRole('region', { name: 'Services' })
+    await waitFor(() => { expect(services).toHaveTextContent('Proxy · running') })
+    expect(services).toHaveTextContent('Backend · running')
+    expect(services).toHaveTextContent('WAF · reporting30 requests inspected')
+    expect(services).toHaveTextContent('Cache statistics · not collected')
+  })
+
+  // toLocaleString followed the browser (50.772 in Italian).
   it('writes every count with en-US grouping in any browser locale', async () => {
     simulateItalianLocale()
-    vi.mocked(api.get).mockImplementation((url: string) => {
-      if (url.includes('dashboard/summary')) return Promise.resolve({ data: { data: { ...summaryData, total_requests: 50772, today_blocked: 1328, top_blocked: [{ dest: 'malware.com', count: 1328 }] } } })
-      return Promise.resolve({ data: { data: null } })
-    })
     renderWithProviders(<Dashboard />)
-    await waitFor(() => { expect(screen.getByText('50,772')).toBeInTheDocument() })
-    expect(screen.getByText('1,328 blocked')).toBeInTheDocument()
-    const topBlocked = await screen.findByTitle('malware.com')
-    expect(topBlocked.parentElement).toHaveTextContent('1,328')
-  })
-
-  // recent_blocks timestamps are UTC without a zone marker; new Date() read
-  // them as local time, so a viewer in Rome saw 09:00 for a block at 11:00.
-  it('shows a recent block at the viewer time, not at the UTC wall-clock time', async () => {
-    const restoreTz = setRomeTimeZone()
-    try {
-      vi.mocked(api.get).mockImplementation((url: string) => {
-        if (url.includes('dashboard/summary')) return Promise.resolve({ data: { data: { ...summaryData, recent_blocks: [{ timestamp: '2026-07-01 09:00:00', source_ip: '192.168.0.109', method: 'CONNECT', destination: 'evil.example:443', status: 'TCP_DENIED/403' }] } } })
-        return Promise.resolve({ data: { data: null } })
-      })
-      renderWithProviders(<Dashboard />)
-      expect(await screen.findByText('192.168.0.109 11:00:00')).toBeInTheDocument()
-    } finally { restoreTz() }
+    await waitFor(() => { expect(card('Rules in force')).toHaveTextContent('50,772 IPs, 640,929 domains') })
+    expect(card('Client requests')).toHaveTextContent('1,180')
   })
 
   // The Settings Listen tile reads the same helper.
   it('shows the reachable proxy address', async () => {
     renderWithProviders(<Dashboard />)
     expect(await screen.findByText(`${window.location.hostname}:3128`)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy proxy address' })).toBeInTheDocument()
   })
 
-  it('displays security score', async () => {
-    renderWithProviders(<Dashboard />)
-    await waitFor(() => {
-      expect(screen.getByText('75')).toBeInTheDocument()
-    })
+  it('has its headings in order and passes axe', async () => {
+    const { container } = renderWithProviders(<Dashboard />)
+    await waitFor(() => { expect(card('Client requests')).toHaveTextContent('1,180') })
+    await screen.findByRole('img', { name: /Requests per hour/ })
+    const levels = [...container.querySelectorAll('h1, h2, h3, h4')].map((h) => Number(h.tagName[1]))
+    expect(levels[0]).toBe(1)
+    for (let i = 1; i < levels.length; i++) expect(levels[i] - levels[i - 1]).toBeLessThanOrEqual(1)
+    expect(levels.filter((l) => l === 1)).toHaveLength(1)
+    await expectNoAxeViolations(container)
   })
 })

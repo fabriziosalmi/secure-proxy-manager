@@ -1,322 +1,301 @@
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Zap, Copy, Check, Brain, RotateCcw } from 'lucide-react';
-import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+/**
+ * Overview (route "/"): the last 24 hours of client traffic, what blocked
+ * it, and the state of the services, from dashboard/summary, logs/timeline,
+ * status and cache/statistics. Every number on the page is a field of one of
+ * those responses; a field the backend did not send is shown as "Not
+ * reported", never as 0.
+ *
+ * Not here any more: the security score (GET /api/security/score is still
+ * served, no page shows it), the WAF requests-per-minute and URL entropy
+ * figures, and the Reset counters button, which is in Settings, Maintenance,
+ * behind the same confirmation.
+ *
+ * There is no time-range control: dashboard/summary has one window per
+ * figure (24 hours for these cards, the chart and the top list) and takes no
+ * range, so a 1h / 7d switch would change the chart and nothing else.
+ */
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link } from 'react-router';
+import { useQuery } from '@tanstack/react-query';
+import { Check, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { api, getData } from '../lib/api';
-import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
-import { useConfirm } from '../hooks/useConfirm';
-import { proxyAddress } from '../lib/utils';
-import type { TimelineEntry, SecurityScore, DashboardSummary, CacheStats } from '../types';
-import { formatCount, formatTime } from '../lib/format';
-
-// Lazy-load the recharts-based chart cards. Recharts is ~110 KB gzipped
-// and was previously in the initial bundle even though the dashboard's
-// stat tiles render before the charts ever paint.
-const DashboardCharts = lazy(() => import('../components/dashboard/DashboardCharts'));
+import { getData } from '../lib/api';
+import { statusQuery } from '../lib/queries';
+import { proxyAddress, parseUtc } from '../lib/utils';
+import { formatClock, formatCount, formatDate, formatHourMinute, formatShare, formatTime } from '../lib/format';
+import type { CacheStats, DashboardSummary, TimelineEntry } from '../types';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Section } from '../components/ui/Section';
+import { StatCard } from '../components/ui/StatCard';
+import { Badge } from '../components/ui/Badge';
+import { Notice } from '../components/ui/Notice';
+import { EmptyState } from '../components/ui/EmptyState';
+import { DataTable, type Column } from '../components/ui/DataTable';
+import { IconButton } from '../components/ui/Button';
+import { RequestsPerHour } from '../components/dashboard/RequestsPerHour';
+import { BlockedByRule } from '../components/dashboard/BlockedByRule';
+import { ServicesPanel } from '../components/dashboard/ServicesPanel';
+import { serviceRows } from '../components/dashboard/services';
 
 const REFETCH = 30_000;
 
-// What the dashboard says when it has no WAF statistics. It used to hide the
-// WAF cards instead, so a WAF that refused every management call looked like
-// a deployment without one.
-function wafUnavailableReason(status?: DashboardSummary['waf_status']): string {
-  switch (status) {
-    case 'auth_failed':
-      return 'The WAF refused the backend credential. Set INTERNAL_ALERT_TOKEN to the same value on the waf and backend services.';
-    case 'unreachable':
-      return 'The WAF management API is not reachable.';
-    case 'error':
-      return 'The WAF management API returned an error.';
-    default:
-      return 'WAF statistics are not available.';
-  }
+type TopBlocked = DashboardSummary['top_blocked'][number];
+type RecentBlock = DashboardSummary['recent_blocks'][number];
+
+function usePageVisible(): boolean {
+  const [visible, setVisible] = useState(document.visibilityState !== 'hidden');
+  useEffect(() => {
+    const h = () => setVisible(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', h);
+    return () => document.removeEventListener('visibilitychange', h);
+  }, []);
+  return visible;
 }
 
-export function Dashboard() {
-  const queryClient = useQueryClient();
-  const { confirm, dialog } = useConfirm();
-  const [copied, setCopied] = useState(false);
+function ProxyChip() {
   const proxy = proxyAddress();
-  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
   const copy = () => {
     navigator.clipboard.writeText(proxy).then(() => {
       setCopied(true);
-      if (copyTimer.current) clearTimeout(copyTimer.current);
-      copyTimer.current = setTimeout(() => setCopied(false), 2000);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied(false), 2000);
     }).catch(() => toast.error('Clipboard access denied'));
   };
-  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
+  return (
+    <div className="flex h-9 max-w-full items-center rounded-control border border-line bg-surface pl-3">
+      <span className="pr-2 text-xs text-ink-muted">Proxy</span>
+      <code className="min-w-0 truncate font-mono text-[13px] text-ink">{proxy}</code>
+      <IconButton aria-label="Copy proxy address" size="sm" icon={copied ? <Check /> : <Copy />} onClick={copy} className="ml-1" />
+      <span role="status" className="sr-only">{copied ? 'Proxy address copied' : ''}</span>
+    </div>
+  );
+}
 
-  const [vis, setVis] = useState(document.visibilityState !== 'hidden');
-  useEffect(() => { const h = () => setVis(document.visibilityState !== 'hidden'); document.addEventListener('visibilitychange', h); return () => document.removeEventListener('visibilitychange', h); }, []);
-
-  const { data: s, isLoading } = useQuery<DashboardSummary>({ queryKey: ['dashboard'], queryFn: () => getData<DashboardSummary>('dashboard/summary'), refetchInterval: vis ? REFETCH : false });
-  const { data: tl } = useQuery<TimelineEntry[]>({ queryKey: ['timeline'], queryFn: () => getData<TimelineEntry[]>('logs/timeline'), refetchInterval: vis ? REFETCH : false });
-  const { data: sec, isLoading: secLoading } = useQuery<SecurityScore>({ queryKey: ['score'], queryFn: () => getData<SecurityScore>('security/score'), refetchInterval: vis ? 30_000 : false });
-  const { data: cache } = useQuery<CacheStats>({ queryKey: ['cache'], queryFn: () => getData<CacheStats>('cache/statistics'), refetchInterval: vis ? 30_000 : false });
-
-  const chart = React.useMemo(() => tl ?? [], [tl]);
-  const rate = s?.total_requests ? ((s.blocked_requests / s.total_requests) * 100).toFixed(1) : '0';
-  const w = s?.waf;
-
-  // Animated numbers
-  const animToday = useAnimatedNumber(s?.today_requests ?? 0);
-  const animTotal = useAnimatedNumber(s?.total_requests ?? 0);
-  const animBlocked = useAnimatedNumber(s?.blocked_requests ?? 0);
-  const animScore = useAnimatedNumber(sec?.score ?? 0);
-  const animIpRules = useAnimatedNumber(s?.ip_blacklist_count ?? 0);
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-extrabold tracking-tight bg-linear-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Dashboard</h1>
-        </div>
-        <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i}><CardContent className="p-3"><div className="h-12 skeleton-shimmer rounded" /></CardContent></Card>
-          ))}
-        </div>
-        <div className="grid gap-3 lg:grid-cols-12">
-          <Card className="lg:col-span-7"><CardContent className="p-3"><div className="h-[180px] skeleton-shimmer rounded" /></CardContent></Card>
-          <Card className="lg:col-span-5"><CardContent className="p-3"><div className="h-[180px] skeleton-shimmer rounded" /></CardContent></Card>
-        </div>
-      </div>
+/** The notices the summary's own state calls for, and only those. */
+function notices(summary: { data?: DashboardSummary | null; isError: boolean }): ReactNode[] {
+  const out: ReactNode[] = [];
+  if (summary.isError) {
+    out.push(
+      <Notice key="summary" tone="danger" title="The overview could not be loaded">
+        dashboard/summary did not answer, so the counts, the rules and the latest blocks are missing until it does.
+      </Notice>,
     );
   }
+  const s = summary.data;
+  const acl = s?.squid_domain_acl;
+  if (acl && !acl.held) {
+    out.push(acl.names > acl.limit ? (
+      <Notice
+        key="acl"
+        tone="warning"
+        title="Blacklisted domains are blocked at DNS only"
+        action={<Link to="/blacklists" className="underline-offset-2 hover:underline">Open blacklists</Link>}
+      >
+        {/* One sentence on a phone (Mobile.dc.html), the consequence from sm up. */}
+        <span className="sm:hidden">{formatCount(acl.names)} names, above the proxy limit of {formatCount(acl.limit)}.</span>
+        <span className="hidden sm:inline">
+          The list has {formatCount(acl.names)} names, above the proxy&apos;s limit of {formatCount(acl.limit)} (SPM_SQUID_DOMAIN_ACL_MAX), so
+          Squid does not hold its own copy. The DNS sinkhole still blocks every name, but a domain a client reached shortly before it was listed
+          stays reachable for up to a minute.
+        </span>
+      </Notice>
+    ) : (
+      <Notice key="acl" tone="warning" title="Squid could not load its copy of the domain blacklist">
+        The proxy could not write it, so only the DNS sinkhole blocks blacklisted domains. The proxy log says why.
+      </Notice>
+    ));
+  }
+  if (s?.waf_status === 'auth_failed') {
+    out.push(
+      <Notice key="waf" tone="warning" title="The WAF refuses the backend">
+        The WAF refused the backend credential, so its statistics and category switches are unavailable. Set INTERNAL_ALERT_TOKEN to the same
+        value on the waf and backend services.
+      </Notice>,
+    );
+  }
+  return out;
+}
+
+/** A recent block's time: HH:MM:SS today, the date as well before today. */
+function blockTime(ts: string, now: number): string {
+  const d = parseUtc(ts);
+  if (Number.isNaN(d.getTime())) return ts;
+  const today = new Date(now);
+  const sameDay = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+  return sameDay ? formatTime(ts) : `${formatDate(ts)} ${formatHourMinute(ts)}`;
+}
+
+function ReasonBadge({ reason, label }: { reason?: string; label?: string }) {
+  if (!label) return <Badge tone="neutral">Rule not reported</Badge>;
+  return <Badge tone={reason === 'unclassified' ? 'neutral' : 'danger'}>{label}</Badge>;
+}
+
+const TOP_COLUMNS: Column<TopBlocked>[] = [
+  {
+    id: 'dest',
+    header: 'Destination',
+    // A host is not broken across lines: a long one is cut with an ellipsis,
+    // whole in the tooltip, so the Blocked column stays in view.
+    cell: (r) => <code title={r.dest} className="block max-w-[12rem] truncate font-mono text-[13px] 2xl:max-w-[18rem]">{r.dest}</code>,
+  },
+  {
+    id: 'rule',
+    header: 'Rule',
+    cell: (r) => r.reasons?.length ? (
+      <span className="flex flex-wrap gap-1">
+        {r.reasons.map((x) => <ReasonBadge key={x.reason} reason={x.reason} label={x.label} />)}
+      </span>
+    ) : <ReasonBadge />,
+  },
+  { id: 'count', header: 'Blocked', align: 'right', cell: (r) => <span className="font-medium">{formatCount(r.count)}</span> },
+];
+
+function LatestBlocks({ rows, loading, error, now }: { rows?: RecentBlock[]; loading: boolean; error: boolean; now: number }) {
+  let body: ReactNode;
+  if (loading) {
+    body = (
+      <div className="px-5 pb-5">
+        <span aria-hidden="true" className="block h-24 rounded-md bg-line-subtle animate-pulse" />
+        <span role="status" className="sr-only">Loading latest blocks</span>
+      </div>
+    );
+  } else if (error || !rows) {
+    body = <p className="px-5 pb-5 text-sm text-ink-muted">Not reported: the dashboard summary did not load.</p>;
+  } else if (rows.length === 0) {
+    body = <EmptyState title="No blocked requests yet" description="Blocks appear here when a rule stops a client request." />;
+  } else {
+    body = (
+      <ul>
+        {rows.map((b, i) => (
+          <li key={`${b.timestamp}-${i}`} className="flex flex-col gap-1 border-t border-line-subtle px-5 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+            <span className="shrink-0 font-mono text-xs tabular-nums text-ink-muted sm:w-[72px]" title={b.timestamp ? `${formatDate(b.timestamp)} ${formatTime(b.timestamp)}` : undefined}>
+              {blockTime(b.timestamp, now)}
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <code className="truncate font-mono text-[13px] text-ink" title={b.destination}>{b.host || b.destination}</code>
+              <span className="text-xs text-ink-muted">{b.source_ip || 'Client not recorded'}</span>
+            </div>
+            <span className="shrink-0"><ReasonBadge reason={b.reason} label={b.reason_label} /></span>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <Section title="Latest blocks" flush action={{ label: 'Open access logs', to: '/logs' }} className="flex-[1_1_420px]">
+      {body}
+    </Section>
+  );
+}
+
+export function Dashboard() {
+  const visible = usePageVisible();
+  const refetchInterval = visible ? REFETCH : false;
+  const summary = useQuery<DashboardSummary | null>({
+    queryKey: ['dashboard'],
+    queryFn: () => getData<DashboardSummary>('dashboard/summary'),
+    refetchInterval,
+  });
+  const timeline = useQuery<TimelineEntry[] | null>({
+    queryKey: ['timeline'],
+    queryFn: () => getData<TimelineEntry[]>('logs/timeline'),
+    refetchInterval,
+  });
+  const status = useQuery({ ...statusQuery, refetchInterval, staleTime: 10_000 });
+  const cache = useQuery<CacheStats | null>({
+    queryKey: ['cache'],
+    queryFn: () => getData<CacheStats>('cache/statistics'),
+    refetchInterval,
+  });
+
+  const s = summary.data ?? undefined;
+  const loading = summary.isPending;
+  const requests = s?.last_24h_requests;
+  const blocked = s?.last_24h_blocked;
+  const clients = s?.last_24h_clients;
+  const share = typeof blocked === 'number' && typeof requests === 'number' ? formatShare(blocked, requests) : null;
+  const ipRules = s?.ip_blacklist_count;
+  const domainRules = s?.domain_blacklist_count;
+  const rules = typeof ipRules === 'number' && typeof domainRules === 'number' ? ipRules + domainRules : undefined;
+  const lastRequest = s?.last_request_at ? formatHourMinute(s.last_request_at) : null;
+  const onlyClient = clients === 1 ? s?.top_clients?.[0]?.ip : undefined;
+
+  let clientsSub: ReactNode;
+  if (clients === 0) clientsSub = 'No client in the last 24 hours';
+  else if (onlyClient) clientsSub = <><code className="font-mono text-xs">{onlyClient}</code>{lastRequest && `, last request ${lastRequest}`}</>;
+  else if (lastRequest) clientsSub = `last request ${lastRequest}`;
+
+  let blockedSub: ReactNode;
+  if (share) {
+    blockedSub = (
+      <span className="flex items-center gap-2">
+        <span aria-hidden="true" className="hidden h-1.5 flex-1 overflow-hidden rounded-full bg-line-subtle sm:block">
+          <span className="block h-1.5 bg-danger-strong" style={{ width: share }} />
+        </span>
+        <span>{share} of requests</span>
+      </span>
+    );
+  } else if (requests === 0) {
+    blockedSub = 'No requests to block';
+  }
+
+  const updated = summary.dataUpdatedAt ? ` · updated ${formatClock(summary.dataUpdatedAt)}` : '';
+  const pageNotices = notices(summary);
 
   return (
-    <div className="space-y-4">
-      {dialog}
-      {/* Header + proxy address */}
-      <div className="flex flex-wrap gap-3 justify-between items-center">
-        <h1 className="text-2xl font-extrabold tracking-tight bg-linear-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Dashboard</h1>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 px-3 py-1.5 glass-surface rounded-lg text-sm">
-            <code className="font-mono font-semibold text-primary">{proxy}</code>
-            <button type="button" onClick={copy} title="Copy proxy address" className="text-primary hover:text-primary/80 btn-press">
-              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            </button>
-          </div>
-          <button type="button" onClick={async () => {
-              if (!(await confirm({
-                title: 'Reset all counters?',
-                body: 'This clears all proxy logs and WAF statistics. This cannot be undone.',
-                confirmLabel: 'Reset counters',
-                destructive: true,
-              }))) return;
-              const t = toast.loading('Resetting counters...');
-              try {
-                await api.post('counters/reset');
-                toast.success('All counters reset', { id: t });
-                // Scope to data the reset actually touches: invalidating
-                // every query (incl. settings/auth/blacklist) caused a
-                // refetch storm and put auth-derived state into a brief
-                // inconsistent window.
-                ['dashboard', 'timeline', 'score', 'cache', 'logs', 'stats', 'analytics'].forEach(
-                  (key) => queryClient.invalidateQueries({ queryKey: [key] })
-                );
-              } catch { toast.error('Reset failed', { id: t }); }
-            }}
-            className="flex items-center px-3 py-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg text-sm font-medium btn-press transition-colors">
-            <RotateCcw className="w-3.5 h-3.5 mr-1.5" />Reset
-          </button>
-        </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Overview" description={`Last 24 hours${updated}`} actions={<ProxyChip />} />
+
+      {pageNotices.length > 0 && <div className="flex flex-col gap-3">{pageNotices}</div>}
+
+      <section aria-label="Last 24 hours at a glance" className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4 [&_p]:[overflow-wrap:anywhere]">
+        <StatCard
+          label="Client requests"
+          loading={loading}
+          value={requests}
+          sub={typeof clients === 'number' && clients > 0 ? `from ${formatCount(clients)} ${clients === 1 ? 'client' : 'clients'}` : undefined}
+        />
+        <StatCard label="Blocked" tone={blocked ? 'danger' : 'default'} loading={loading} value={blocked} sub={blockedSub} />
+        <StatCard label="Active clients" loading={loading} value={clients} sub={clientsSub} />
+        <StatCard
+          label="Rules in force"
+          loading={loading}
+          value={rules}
+          sub={rules !== undefined ? `${formatCount(ipRules ?? 0)} IPs, ${formatCount(domainRules ?? 0)} domains` : undefined}
+        />
+      </section>
+
+      <div className="flex flex-wrap gap-4">
+        <RequestsPerHour
+          entries={timeline.data}
+          now={timeline.dataUpdatedAt}
+          loading={timeline.isPending}
+          error={timeline.isError}
+        />
+        <BlockedByRule reasons={s?.blocked_by_reason_24h} loading={loading} />
       </div>
 
-      {/* Compact stats row, staggered entrance */}
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
-        <Card className="stagger-child" style={{ '--stagger-index': 0 } as React.CSSProperties}>
-          <CardContent className="p-3">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Today</p>
-            <p className="text-2xl font-bold">{formatCount(animToday)}</p>
-            <p className="text-[10px] text-muted-foreground">{formatCount(s?.today_blocked ?? 0)} blocked</p>
-          </CardContent>
-        </Card>
-        <Card className="stagger-child" style={{ '--stagger-index': 1 } as React.CSSProperties}>
-          <CardContent className="p-3">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total</p>
-            <p className="text-2xl font-bold">{formatCount(animTotal)}</p>
-            <p className="text-[10px] text-muted-foreground">all time</p>
-          </CardContent>
-        </Card>
-        <Card className="stagger-child" style={{ '--stagger-index': 2 } as React.CSSProperties}>
-          <CardContent className="p-3">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Block Rate</p>
-            <p className={`text-2xl font-bold ${parseFloat(rate) > 50 ? 'text-destructive' : parseFloat(rate) > 10 ? 'text-yellow-500' : 'text-emerald-500'}`}>{rate}%</p>
-            <p className="text-[10px] text-muted-foreground">{formatCount(animBlocked)} blocked</p>
-          </CardContent>
-        </Card>
-        <Card className="stagger-child" style={{ '--stagger-index': 3 } as React.CSSProperties}>
-          <CardContent className="p-3">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Score</p>
-            {typeof sec?.score === 'number' ? (
-              <>
-                <p className="text-2xl font-bold">{animScore}<span className="text-sm text-muted-foreground">/100</span></p>
-                <div className="w-full bg-secondary h-1.5 mt-1 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full progress-glow ${sec.score > 80 ? 'bg-emerald-500 glow-emerald' : sec.score > 50 ? 'bg-yellow-500 glow-yellow' : 'bg-destructive glow-destructive'}`}
-                    style={{ width: `${sec.score}%` }}
-                  />
-                </div>
-              </>
-            ) : (
-              // No score from the backend is not a score of 0.
-              <p className="text-sm font-semibold text-muted-foreground py-1.5">{secLoading ? '…' : 'Not reported'}</p>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="stagger-child" style={{ '--stagger-index': 4 } as React.CSSProperties}>
-          <CardContent className="p-3">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">IP Rules</p>
-            <p className="text-2xl font-bold">{formatCount(animIpRules)}</p>
-            <p className="text-[10px] text-muted-foreground">{formatCount(s?.domain_blacklist_count ?? 0)} domains</p>
-          </CardContent>
-        </Card>
-        <Card className="stagger-child" style={{ '--stagger-index': 5 } as React.CSSProperties}>
-          <CardContent className="p-3">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">WAF</p>
-            {w ? (
-              <>
-                <p className="text-2xl font-bold">{formatCount(w.requests_last_minute)}<span className="text-sm text-muted-foreground">/min</span></p>
-                <p className="text-[10px] text-muted-foreground">{formatCount(w.total_blocked)} blocked, entropy {w.avg_url_entropy}</p>
-              </>
-            ) : (
-              <>
-                <p className="text-2xl font-bold text-yellow-500">n/a</p>
-                <p className="text-[10px] text-muted-foreground">stats unavailable</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+      <div className="flex flex-wrap gap-4">
+        {/* Not on a phone, as in Mobile.dc.html: Analytics has the same list. */}
+        <Section title="Most blocked destinations" flush action={{ label: 'Open analytics', to: '/analytics' }} className="hidden flex-[1_1_420px] sm:block">
+          <DataTable
+            caption="Most blocked destinations in the last 24 hours"
+            columns={TOP_COLUMNS}
+            rows={s?.top_blocked ?? []}
+            rowKey={(r) => r.dest}
+            loading={loading}
+            error={summary.isError ? 'dashboard/summary did not answer.' : null}
+            onRetry={() => { void summary.refetch(); }}
+            empty={{ title: 'No blocked requests in the last 24 hours', description: 'Destinations appear here when a rule blocks a client request.' }}
+          />
+        </Section>
+        <LatestBlocks rows={s?.recent_blocks} loading={loading} error={summary.isError} now={summary.dataUpdatedAt} />
       </div>
 
-      {/* Chart + Threat categories + Top blocked: 3 columns (lazy: recharts chunk) */}
-      <Suspense fallback={
-        <div className="grid gap-3 lg:grid-cols-12">
-          <Card className="lg:col-span-5"><CardContent className="p-2"><div className="h-[180px] animate-pulse bg-secondary/30 rounded" role="status" aria-label="Loading traffic chart" /></CardContent></Card>
-          <Card className="lg:col-span-3"><CardContent className="p-2"><div className="h-[180px] animate-pulse bg-secondary/30 rounded" role="status" aria-label="Loading threats chart" /></CardContent></Card>
-          <Card className="lg:col-span-4"><CardContent className="p-2"><div className="h-[180px] animate-pulse bg-secondary/30 rounded" role="status" aria-label="Loading top blocked" /></CardContent></Card>
-        </div>
-      }>
-        <DashboardCharts chart={chart} summary={s} />
-      </Suspense>
-
-      {/* Recent blocks + WAF + Cache: 3 columns */}
-      <div className="grid gap-3 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="p-3 pb-0">
-            <CardTitle className="text-sm flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-yellow-500" />Recent Blocks</CardTitle>
-          </CardHeader>
-          <CardContent className="p-2">
-            <div className="space-y-0.5 max-h-[160px] overflow-y-auto custom-scrollbar">
-              {s?.recent_blocks?.slice(0, 8).map((b: { timestamp: string; source_ip: string; destination: string; status: string }, i: number) => (
-                <div key={i} className="flex items-center justify-between py-1 text-xs row-hover rounded px-1">
-                  <div className="overflow-hidden mr-2">
-                    <p className="truncate max-w-[280px] font-mono">{b.destination}</p>
-                    <p className="text-[10px] text-muted-foreground">{b.source_ip} {formatTime(b.timestamp)}</p>
-                  </div>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${b.status?.includes('403') ? 'bg-destructive/10 text-destructive' : 'bg-orange-500/10 text-orange-500'}`}>
-                    {b.status?.includes('403') ? 'WAF' : 'DENY'}
-                  </span>
-                </div>
-              ))}
-              {(!s?.recent_blocks?.length) && <div className="text-center py-6 text-muted-foreground text-xs">No recent blocks</div>}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="p-3 pb-0">
-            <CardTitle className="text-sm flex items-center gap-1.5"><Brain className="w-3.5 h-3.5 text-primary" />WAF Intelligence</CardTitle>
-          </CardHeader>
-          {!w ? (
-            <CardContent className="p-2">
-              <p role="status" className="py-4 px-1 text-xs text-yellow-600 dark:text-yellow-500">{wafUnavailableReason(s?.waf_status)}</p>
-            </CardContent>
-          ) : (
-            <CardContent className="p-2">
-              <div className="grid grid-cols-3 gap-2 mb-2">
-                <div><p className="text-[10px] text-muted-foreground uppercase">Inspected</p><p className="text-lg font-bold">{formatCount(w.total_requests ?? 0)}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase">Blocked</p><p className="text-lg font-bold text-destructive">{formatCount(w.total_blocked ?? 0)}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase">Entropy</p><p className="text-lg font-bold">{w.avg_url_entropy ?? 'Not reported'}</p></div>
-              </div>
-              {w.top_blocked_categories?.length > 0 && (
-                <div className="flex flex-wrap gap-1 pt-2 border-t border-border/50">
-                  {w.top_blocked_categories.slice(0, 6).map((c: { key: string; count: number }) => (
-                    <span key={c.key} className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">{c.key} ({formatCount(c.count)})</span>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          )}
-        </Card>
-
-        {/* Cache Efficiency */}
-        <Card>
-          <CardHeader className="p-3 pb-0">
-            <CardTitle className="text-sm flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-              Cache
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-2">
-            {cache?.simulated ? (
-              // The backend could not read cache_stats.txt, so every figure
-              // below would be a zero presented as a measurement: an idle
-              // cache rather than an absent one (SECURE-CONF-02).
-              <div className="flex h-full min-h-[92px] items-center justify-center px-2 text-center">
-                <span className="text-[11px] text-muted-foreground">
-                  Cache statistics are not being collected
-                </span>
-              </div>
-            ) : cache ? (() => {
-              // One definition of hit rate: hit_rate, Squid's own 5-minute
-              // window. hit_ratio was a second, lifetime-based figure; this card
-              // read it while the Settings service panel read hit_rate, so the
-              // same deployment showed two different numbers under the same
-              // label (SECURE-DOM-03).
-              // A missing hit_rate is not a 0% hit rate.
-              if (typeof cache.hit_rate !== 'number') {
-                return (
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-[10px] text-muted-foreground uppercase">Hit Rate</span>
-                    <span className="text-sm font-semibold text-muted-foreground">Not reported</span>
-                  </div>
-                );
-              }
-              const hitRate = (cache.hit_rate * 100).toFixed(1);
-              return (
-                <div className="space-y-2">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-[10px] text-muted-foreground uppercase">Hit Rate</span>
-                    <span className={`text-lg font-bold ${parseFloat(hitRate) > 50 ? 'text-emerald-500' : parseFloat(hitRate) > 20 ? 'text-yellow-500' : 'text-muted-foreground'}`}>{hitRate}%</span>
-                  </div>
-                  <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full progress-glow ${parseFloat(hitRate) > 50 ? 'bg-emerald-500 glow-emerald' : parseFloat(hitRate) > 20 ? 'bg-yellow-500 glow-yellow' : 'bg-muted-foreground'}`}
-                      style={{ width: `${Math.min(parseFloat(hitRate), 100)}%` }}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">Hits</p>
-                      <p className="text-sm font-bold">{formatCount(cache.hits || 0)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">Misses</p>
-                      <p className="text-sm font-bold">{formatCount(cache.misses || 0)}</p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })() : (
-              <div className="py-6 text-center text-xs text-muted-foreground">Loading cache stats...</div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <ServicesPanel rows={serviceRows(status, summary, cache)} />
     </div>
   );
 }

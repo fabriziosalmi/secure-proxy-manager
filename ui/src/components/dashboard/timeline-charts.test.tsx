@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { renderWithProviders } from '../../test/helpers'
 import { api } from '../../lib/api'
@@ -8,8 +8,8 @@ import type { TimelineEntry } from '../../types'
 // Rendered, not grepped. jsdom has no layout, so recharts' ResponsiveContainer
 // measures 0x0 and draws nothing; the series primitives are replaced by
 // recorders that keep the props each page passes them, and the containers by
-// pass-throughs. What is asserted is therefore the real JSX of the Dashboard
-// and Threat Intel timelines, whatever component they go through.
+// pass-throughs. What is asserted is therefore the real JSX of the Threat
+// Intel timeline, whatever component it goes through.
 const series: { kind: string; props: Record<string, unknown> }[] = []
 
 vi.mock('recharts', () => {
@@ -28,7 +28,8 @@ vi.mock('recharts', () => {
 
 vi.mock('../../hooks/useAnimatedNumber', () => ({ useAnimatedNumber: (v: number) => v }))
 
-import DashboardCharts from './DashboardCharts'
+// The Overview's chart is not a recharts chart any more; it is tested in
+// RequestsPerHour.test.tsx with the same rules (bars per hour, one axis).
 import { ThreatIntel } from '../../pages/ThreatIntel'
 
 // Three hourly buckets, the case that used to be drawn as a smooth bell.
@@ -62,11 +63,6 @@ function expectHourlyCountsNotCurved() {
 describe('hourly timeline charts', () => {
   beforeEach(() => { series.length = 0 })
   afterEach(() => { vi.restoreAllMocks() })
-
-  it('Dashboard draws hourly counts as bars on one axis', () => {
-    render(<DashboardCharts chart={hours} />)
-    expectHourlyCountsNotCurved()
-  })
 
   it('Threat Intel draws hourly counts as bars on one axis', async () => {
     vi.spyOn(api, 'get').mockImplementation((url: string) =>
