@@ -237,7 +237,7 @@ describe('Settings sections', () => {
       expect(within(list).getByText('The admin password was never changed here')).toBeInTheDocument()
       expect(within(list).getByRole('link', { name: 'Admin and backup' })).toHaveAttribute('href', '/settings/admin')
       const nav = screen.getByRole('navigation', { name: 'Settings sections' })
-      expect(within(nav).getByRole('link', { name: /^Overview/ })).toHaveTextContent('2 items need attention')
+      expect(within(nav).getByRole('link', { name: 'Overview, 2 items need attention' })).toHaveTextContent('2')
       headingsInOrder()
       await expectNoAxeViolations(container)
     })

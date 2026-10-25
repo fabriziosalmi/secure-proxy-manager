@@ -887,7 +887,7 @@ test.describe('UI — Settings page', () => {
     const attention = page.getByRole('region', { name: 'Needs attention' });
     // The test stack runs no proxy container: GET /api/status reports it.
     await expect(attention.getByText('The proxy is not running')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: /^Overview/ })).toContainText(/items? needs? attention/);
+    await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: /^Overview, \d+ items? needs? attention$/ })).toBeVisible();
     await page.getByRole('button', { name: /^Family/ }).click();
     await expect(page.getByRole('heading', { level: 4, name: /^Family (changes \d+ settings?|already match)|Your settings already match Family/ })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Apply Family' })).toBeVisible();

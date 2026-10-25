@@ -34,12 +34,18 @@ function SectionList({ current, dirty = {}, attention, onPick, id }: SettingsNav
         const active = s.id === current;
         const changes = dirty[s.id] ?? 0;
         const badge = s.id === 'overview' && attention ? attention : 0;
+        // One name, built here: browsers join the parts of a flex link with
+        // different spacing, so the dot and badge only repeat it visually.
+        let name = s.label;
+        if (changes > 0) name += `, ${unsavedText(changes)}`;
+        if (badge > 0) name += `, ${badge} ${badge === 1 ? 'item needs' : 'items need'} attention`;
         return (
           <li key={s.id}>
             <Link
               to={sectionPath(s.id)}
               onClick={onPick}
               aria-current={active ? 'page' : undefined}
+              aria-label={name}
               className={cn(
                 'flex h-9 items-center gap-2 rounded-control px-3 text-sm transition-colors',
                 'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent',
@@ -48,16 +54,10 @@ function SectionList({ current, dirty = {}, attention, onPick, id }: SettingsNav
             >
               <span className="min-w-0 flex-1 truncate">{s.label}</span>
               {changes > 0 && (
-                <>
-                  <span aria-hidden="true" data-testid={`dirty-${s.id}`} className="h-2 w-2 flex-none rounded-full bg-accent-solid" />
-                  <span className="sr-only">, {unsavedText(changes)}</span>
-                </>
+                <span aria-hidden="true" data-testid={`dirty-${s.id}`} className="h-2 w-2 flex-none rounded-full bg-accent-solid" />
               )}
               {badge > 0 && (
-                <span className="flex-none rounded-full bg-warning-subtle px-2 text-xs font-semibold text-warning">
-                  {badge}
-                  <span className="sr-only"> {badge === 1 ? 'item needs' : 'items need'} attention</span>
-                </span>
+                <span aria-hidden="true" className="flex-none rounded-full bg-warning-subtle px-2 text-xs font-semibold text-warning">{badge}</span>
               )}
             </Link>
           </li>
