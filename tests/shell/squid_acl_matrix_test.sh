@@ -227,8 +227,8 @@ echo "── a blocklist the manifest does not vouch for fails closed ──"
 # (the bytes do not match) used to be loaded as is; with no previous copy to
 # keep, Squid now denies every client request until a verified copy is loaded.
 start_proxy "echo $PUB_SVC > /config/ip_blacklist.txt; "'printf "{\"version\": 1, \"generated_at\": 1, \"files\": {\"ip_blacklist.txt\": {\"sha256\": \"%064d\", \"bytes\": 0}}}\n" 0 > /config/lists.manifest.json' || exit 1
-check  "LAN client → public site, blacklist unverified"  403 other         code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
-check  "LAN client → LAN service, blacklist unverified"  403 other         code   "$PFX-lan" "$LAN_CLIENT" "http://$LAN_SVC/"
+check  "LAN client → public site, blacklist unverified"  403 lists_unverified code "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+check  "LAN client → LAN service, blacklist unverified"  403 lists_unverified code "$PFX-lan" "$LAN_CLIENT" "http://$LAN_SVC/"
 # The backend catches up: the same sync the generator and the watchdog run
 # copies the verified list and opens the gate.
 docker exec "$PFX-proxy" sh -c '

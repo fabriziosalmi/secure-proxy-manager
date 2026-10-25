@@ -76,7 +76,7 @@ describe('row facts', () => {
     expect(allowableDomain(entry({ blocked: 1, reason: 'domain_blacklist_dns', destination: 'http://ads.example.com/' }))).toBe('ads.example.com')
     // #424: a block from before reasons were recorded, reconstructed as a DNS sinkhole block.
     expect(allowableDomain(entry({ blocked: 1, reason: 'domain_blacklist_dns_reconstructed', destination: 'ads.example.com:443' }))).toBe('ads.example.com')
-    for (const reason of ['waf', 'ip_blacklist', 'direct_ip', 'egress_policy', 'unclassified', 'other']) {
+    for (const reason of ['waf', 'ip_blacklist', 'direct_ip', 'egress_policy', 'lists_unverified', 'unclassified', 'other']) {
       expect(allowableDomain(entry({ blocked: 1, reason, destination: 'ads.example.com:443' }))).toBeNull()
     }
     expect(allowableDomain(entry({ blocked: 0, reason: 'domain_blacklist' }))).toBeNull()
@@ -85,11 +85,14 @@ describe('row facts', () => {
   it('says why in a sentence, for every rule and for one it does not know', () => {
     expect(whyText(entry())).toBe('Allowed: no rule blocked it.')
     for (const reason of ['domain_blacklist', 'domain_blacklist_dns', 'domain_blacklist_dns_reconstructed', 'ip_blacklist', 'direct_ip', 'egress_policy', 'waf', 'proxy_auth',
-      'time_restriction', 'content_filter', 'source_gate', 'port_policy', 'protocol_policy', 'other', 'unclassified']) {
+      'time_restriction', 'content_filter', 'source_gate', 'port_policy', 'protocol_policy', 'lists_unverified', 'other', 'unclassified']) {
       expect(whyText(entry({ blocked: 1, reason }))).toMatch(/\.$/)
     }
     expect(whyText(entry({ blocked: 1, reason: 'new_rule', reason_label: 'New rule' }))).toBe('Blocked by the rule "New rule".')
     expect(whyText(entry({ blocked: 1, reason: 'domain_blacklist_dns_reconstructed' }))).toMatch(/^Logged before the proxy recorded why/)
+    // The fail-closed lists gate has its own sentence, not the generic "the proxy did not name".
+    expect(whyText(entry({ blocked: 1, reason: 'lists_unverified', reason_label: 'Lists not verified' })))
+      .toMatch(/^A blocklist did not match the manifest .* until a verified copy was loaded\.$/)
   })
 })
 
