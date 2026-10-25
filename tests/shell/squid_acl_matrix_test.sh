@@ -125,12 +125,25 @@ start_proxy "echo $PUB_SVC > /config/ip_blacklist.txt" || exit 1
 expect "LAN client → blacklisted destination"            "$(code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/)"      403
 expect "LAN client → other destination still allowed"    "$(code   "$PFX-lan" "$LAN_CLIENT" "http://$LAN_SVC/")"   200
 
+echo "── an IP list with 2,000 entries another entry covers ──"
+# Squid warns once per covered entry and aborts at startup past 1000 queued
+# messages (earlyMessages->size() < 1000): a real 50,772-entry import kept the
+# proxy in a restart loop. The list must reach Squid collapsed.
+start_proxy "{ echo 10.200.0.0/16; for i in \$(seq 0 7); do for j in \$(seq 1 250); do echo 10.200.\$i.\$j; done; done; echo $PUB_SVC; } > /config/ip_blacklist.txt" || exit 1
+expect "proxy starts, blacklisted destination denied"    "$(code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/)"      403
+expect "LAN client → other destination still allowed"    "$(code   "$PFX-lan" "$LAN_CLIENT" "http://$LAN_SVC/")"   200
+expect "Squid's copy holds the 2 covering networks"      "$(docker exec "$PFX-proxy" grep -c . /etc/squid/blacklists/ip/local.txt)" 2
+
 echo "── blacklisted domains are denied by Squid itself ──"
 # The DNS sinkhole cannot stop a domain Squid already resolved or cached. Squid
 # denies a listed domain before any cache lookup, up to SPM_SQUID_DOMAIN_ACL_MAX.
 start_proxy "echo pub.test > /config/domain_blacklist.txt" || exit 1
 expect "LAN client → blacklisted domain"                 "$(code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/)"      403
 expect "LAN client → other destination still allowed"    "$(code   "$PFX-lan" "$LAN_CLIENT" "http://$LAN_SVC/")"   200
+# The backend writes wildcard entries as "*.name"; to dstdomain that is a
+# literal host that never matches. dnsmasq blocks the exact name, so must Squid.
+start_proxy "echo '*.pub.test' > /config/domain_blacklist.txt" || exit 1
+expect "LAN client → domain listed as *.name"            "$(code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/)"      403
 start_proxy "echo pub.test > /config/domain_blacklist.txt" -e SPM_SQUID_DOMAIN_ACL_MAX=0 || exit 1
 expect "over the limit: Squid leaves it to the sinkhole" "$(code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/)"      200
 

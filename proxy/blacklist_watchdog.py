@@ -19,11 +19,13 @@ squid-supervisor.conf (rather than generated at runtime) so supervisord always
 picks it up on a fresh boot.
 """
 import hashlib
+import ipaddress
 import json
 import os
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -48,6 +50,96 @@ DOMAIN_LIST = "/etc/squid/blacklists/domain/local.txt"
 DOMAIN_ACL = "/etc/squid/blacklists/domain/squid.txt"
 
 
+# Squid warns once for every ACL entry another entry already covers, and Squid 7
+# aborts at startup when more than 1000 messages are queued before cache.log is
+# open (assertion "earlyMessages->size() < 1000" in debug.cc). A 50,772-entry
+# IP import with 5,368 covered entries kept the proxy in a restart loop, on
+# 3.14.1 as on 3.14.2. These lists are written in a form Squid has nothing to
+# warn about.
+IP_ACL_FILES = {
+    "/etc/squid/blacklists/ip/local.txt",
+    "/etc/squid/whitelists/ip/local.txt",
+    "/etc/squid/allowlists/dst_ip/local.txt",
+}
+
+
+def normalize_ip_lines(lines):
+    """The smallest set of networks covering the listed addresses and CIDRs,
+    with the number of lines that were neither. Adjacent and nested networks
+    are merged, which matches exactly the same destinations."""
+    nets = {4: [], 6: []}
+    bad = 0
+    for raw in lines:
+        s = raw.split("#", 1)[0].strip()
+        if not s:
+            continue
+        try:
+            net = ipaddress.ip_network(s, strict=False)
+        except ValueError:
+            bad += 1
+            continue
+        nets[net.version].append(net)
+    out = []
+    for version in (4, 6):
+        for net in ipaddress.collapse_addresses(nets[version]):
+            out.append(str(net.network_address) if net.num_addresses == 1 else str(net))
+    return out, bad
+
+
+def normalize_domain_lines(lines):
+    """Exact names, lower case, each once. The backend writes wildcard entries
+    as "*.example.com"; dstdomain reads that as a literal host name that never
+    matches, so the prefix is dropped. That is the same name the DNS sinkhole
+    blocks: dnsmasq gets it as an exact hosts entry. No entry starts with a
+    dot, so none can cover another."""
+    seen = set()
+    out = []
+    for raw in lines:
+        s = raw.split("#", 1)[0].strip().lower()
+        if s.startswith("*."):
+            s = s[2:]
+        s = s.lstrip(".")
+        if s and s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
+def write_lines_atomic(path, lines):
+    d = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=os.path.basename(path) + ".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write("".join(line + "\n" for line in lines))
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def normalize_ip_file(path):
+    """Rewrite an IP ACL file in normalized form. On failure the file is left
+    as copied: Squid may refuse it, but it never silently loses entries."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+        out, bad = normalize_ip_lines(lines)
+        write_lines_atomic(path, out)
+    except OSError as exc:
+        print(f"[watchdog] could not normalize {path}: {exc}", flush=True)
+        return
+    n = sum(1 for line in lines if line.split("#", 1)[0].strip())
+    if n != len(out) or bad:
+        print(f"[watchdog] {path}: {n} entries -> {len(out)} networks"
+              + (f", {bad} not an address or CIDR, dropped" if bad else ""), flush=True)
+
+
 def domain_acl_max():
     try:
         return int(os.environ.get("SPM_SQUID_DOMAIN_ACL_MAX", "250000"))
@@ -60,21 +152,17 @@ def refresh_domain_acl():
     large for Squid. Called after every list sync, so a list that grows past
     the limit can never be loaded into Squid by a reconfigure."""
     try:
-        with open(DOMAIN_LIST, "rb") as f:
-            data = f.read()
+        with open(DOMAIN_LIST, encoding="utf-8", errors="replace") as f:
+            names = normalize_domain_lines(f.read().splitlines())
     except OSError:
-        data = b""
-    n = sum(1 for line in data.splitlines() if line.strip())
+        names = []
     limit = domain_acl_max()
-    if n > limit:
-        print(f"[watchdog] domain blacklist has {n} entries, over SPM_SQUID_DOMAIN_ACL_MAX={limit}: "
+    if len(names) > limit:
+        print(f"[watchdog] domain blacklist has {len(names)} entries, over SPM_SQUID_DOMAIN_ACL_MAX={limit}: "
               "Squid denies none of them itself, only the DNS sinkhole does", flush=True)
-        data = b""
-    tmp = DOMAIN_ACL + ".tmp"
+        names = []
     try:
-        with open(tmp, "wb") as f:
-            f.write(data)
-        os.replace(tmp, DOMAIN_ACL)
+        write_lines_atomic(DOMAIN_ACL, names)
     except OSError as exc:
         print(f"[watchdog] could not write {DOMAIN_ACL}: {exc}", flush=True)
 
@@ -519,6 +607,8 @@ def sync_list(state, src, dst, manifest_state):
     except OSError as exc:
         print(f"[watchdog] copy failed, will retry: {exc}", flush=True)
         return False
+    if dst in IP_ACL_FILES:
+        normalize_ip_file(dst)
     # Record the mtime only AFTER a successful copy. Setting it first meant a
     # transient failure was never retried: the next poll saw no change and Squid
     # kept enforcing a truncated or stale ACL indefinitely (SECURE-DATA-03).
@@ -572,6 +662,21 @@ def poll_once(state):
         reconfigure_squid()
 
 
+def normalize_cli(args):
+    """generate_squid_conf.sh writes the same files at boot through this:
+    `--normalize ip FILE...` and `--normalize domain-acl`."""
+    if args[:1] == ["ip"] and len(args) > 1:
+        for path in args[1:]:
+            if os.path.exists(path):
+                normalize_ip_file(path)
+        return 0
+    if args == ["domain-acl"]:
+        refresh_domain_acl()
+        return 0
+    print("usage: blacklist_watchdog.py --normalize ip FILE... | --normalize domain-acl", file=sys.stderr)
+    return 2
+
+
 def main():
     print("[watchdog] started", flush=True)
     write_squid_version()
@@ -582,4 +687,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--normalize"]:
+        sys.exit(normalize_cli(sys.argv[2:]))
     main()

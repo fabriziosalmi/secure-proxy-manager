@@ -62,21 +62,25 @@ insert_policy() {
     rm -f "$tmp"
 }
 
-# refresh_domain_acl: derive Squid's domain ACL file from the synced list. The
-# list when it has at most SPM_SQUID_DOMAIN_ACL_MAX entries, an empty file
-# above that (the dnsmasq sinkhole still applies). The watchdog does the same
-# after every list sync (blacklist_watchdog.py refresh_domain_acl).
+# Squid's ACL lists are written by blacklist_watchdog.py, the same code the
+# watchdog runs after every sync, so boot and reload cannot disagree:
+# - normalize_ip_lists collapses the IP lists to the smallest set of networks.
+#   Squid warns once per entry another entry covers, and aborts at startup
+#   past 1000 such messages (a 50,772-entry import kept it in a restart loop).
+# - refresh_domain_acl derives the domain ACL from the synced list: exact names
+#   (a "*." prefix is a literal to dstdomain and never matched), each once,
+#   empty above SPM_SQUID_DOMAIN_ACL_MAX entries (the dnsmasq sinkhole still
+#   applies).
+SPM_LISTS="${SPM_LISTS:-/usr/local/bin/blacklist_watchdog.py}"
+normalize_ip_lists() {
+    python3 -I "$SPM_LISTS" --normalize ip "$@" \
+        || echo "WARNING: could not normalize the IP lists; Squid may refuse to start on a list with overlapping entries"
+}
 refresh_domain_acl() {
-    local src=/etc/squid/blacklists/domain/local.txt dst=/etc/squid/blacklists/domain/squid.txt
-    local max="${SPM_SQUID_DOMAIN_ACL_MAX:-250000}" n=0
-    [ -f "$src" ] && n=$(grep -c . "$src" || true)
-    if [ "$n" -le "$max" ]; then
-        cp "$src" "$dst.tmp" 2>/dev/null || : > "$dst.tmp"
-    else
-        : > "$dst.tmp"
-        echo "WARNING: domain blacklist has $n entries, over SPM_SQUID_DOMAIN_ACL_MAX=$max: Squid does not deny them itself, only the DNS sinkhole does, so a domain visited before it was blacklisted stays reachable until Squid's caches expire"
+    if ! python3 -I "$SPM_LISTS" --normalize domain-acl; then
+        echo "WARNING: could not write Squid's domain ACL: Squid denies no domain itself, only the DNS sinkhole does"
+        : > /etc/squid/blacklists/domain/squid.txt
     fi
-    mv -f "$dst.tmp" "$dst"
 }
 
 verify_config_feature() {
@@ -318,7 +322,7 @@ http_access deny ip_blacklist
 # does not stop a domain that was visited before it was blacklisted: Squid
 # serves it from its DNS cache and, for anything it already has, from its HTTP
 # cache (TCP_MEM_HIT), with no lookup at all. This rule runs before the cache.
-# The file is derived from the list by refresh_domain_acl: the list itself up
+# The file is derived from the list by refresh_domain_acl: its exact names up
 # to SPM_SQUID_DOMAIN_ACL_MAX entries, empty above that (measured at 0.5 CPU:
 # 100k entries cost about 36 MB and a 1.5 s reconfigure, 250k about 80 MB and
 # 3.5 s (about 1.4 s of refused requests while it reloads), 1M about 200 MB and
@@ -793,9 +797,10 @@ fi
 [ -f /config/ip_blacklist.txt ]     && cp /config/ip_blacklist.txt /etc/squid/blacklists/ip/local.txt
 [ -f /config/ip_whitelist.txt ]     && cp /config/ip_whitelist.txt /etc/squid/whitelists/ip/local.txt
 [ -f /config/domain_blacklist.txt ] && cp /config/domain_blacklist.txt /etc/squid/blacklists/domain/local.txt
-refresh_domain_acl
 [ -f /config/dst_allow_ip.txt ]     && cp /config/dst_allow_ip.txt /etc/squid/allowlists/dst_ip/local.txt
 [ -f /config/dst_allow_domain.txt ] && cp /config/dst_allow_domain.txt /etc/squid/allowlists/dst_domain/local.txt
+normalize_ip_lists /etc/squid/blacklists/ip/local.txt /etc/squid/whitelists/ip/local.txt /etc/squid/allowlists/dst_ip/local.txt
+refresh_domain_acl
 
 # Exit status must reflect whether the CONFIG was generated, not whether the
 # last optional file happened to exist. Without this the script exited 1
