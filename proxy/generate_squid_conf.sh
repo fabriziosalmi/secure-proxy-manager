@@ -53,7 +53,7 @@ EOL
 insert_policy() {
     local conf="$SQUID_CONF" tmp
     if ! grep -qF '# @@SPM_POLICY@@' "$conf"; then
-        echo "CRITICAL: policy marker missing from $conf — refusing to append access rules where Squid would ignore them" >&2
+        echo "CRITICAL: policy marker missing from $conf; refusing to append access rules where Squid would ignore them" >&2
         return 1
     fi
     tmp="$(mktemp)"
@@ -151,7 +151,7 @@ KNOWN_BAD_KEY_MODULUS_SHA256="b3443bfd0d20cec31e7a87eb77d7ebd6864253037091c69bf1
 if [ -f /config/ssl_key.pem ]; then
     current_modulus_sha256="$(openssl rsa -in /config/ssl_key.pem -noout -modulus 2>/dev/null | openssl sha256 2>/dev/null | awk '{print $NF}')"
     if [ "$current_modulus_sha256" = "$KNOWN_BAD_KEY_MODULUS_SHA256" ]; then
-        echo "SECURITY: detected the known-compromised committed CA key — deleting and regenerating a unique CA." >&2
+        echo "SECURITY: detected the known-compromised committed CA key: deleting and regenerating a unique CA." >&2
         rm -f /config/ssl_key.pem /config/ssl_cert.pem
         rm -rf /config/ssl_db/* 2>/dev/null || true
     fi
@@ -223,7 +223,7 @@ touch /etc/squid/blacklists/domain/squid.txt
 # Default stays 0: fail closed.
 case "$(printf '%s' "${WAF_FAIL_OPEN:-0}" | tr '[:upper:]' '[:lower:]')" in
     1|true|yes) ICAP_REQMOD_BYPASS=1
-                echo "WAF_FAIL_OPEN=1 — an unreachable WAF will ALLOW traffic (availability over security)" ;;
+                echo "WAF_FAIL_OPEN=1: an unreachable WAF will ALLOW traffic (availability over security)" ;;
     *)          ICAP_REQMOD_BYPASS=0 ;;
 esac
 
@@ -563,9 +563,9 @@ fi
 # access_log and ICAP service, plus a second rule set after "deny all".
 if [ -f /config/custom_squid_extra.conf ] && \
    grep -qE '^[[:space:]]*(http_port|https_port|icap_service|cache_dir|access_log)([[:space:]]|$)' /config/custom_squid_extra.conf; then
-    echo "WARNING: /config/custom_squid_extra.conf looks like a full squid.conf (it defines http_port, icap_service, cache_dir or access_log) — NOT appending it. Keep only extra directives in it."
+    echo "WARNING: /config/custom_squid_extra.conf looks like a full squid.conf (it defines http_port, icap_service, cache_dir or access_log), so it is NOT appended. Keep only extra directives in it."
 elif [ -f /config/custom_squid_extra.conf ] && [ "${SPM_SKIP_EXTRAS:-0}" = 1 ]; then
-    echo "WARNING: SPM_SKIP_EXTRAS=1 — /config/custom_squid_extra.conf is NOT applied"
+    echo "WARNING: SPM_SKIP_EXTRAS=1, so /config/custom_squid_extra.conf is NOT applied"
 elif [ -f /config/custom_squid_extra.conf ]; then
     echo "Appending custom directives from /config/custom_squid_extra.conf"
     echo "" >> "$SQUID_CONF"
@@ -625,7 +625,7 @@ mkdir -p /etc/squid/allowlists/dst_ip /etc/squid/allowlists/dst_domain
 touch /etc/squid/allowlists/dst_ip/local.txt /etc/squid/allowlists/dst_domain/local.txt
 
 if [ -f /config/egress_default_deny ]; then
-    echo "Egress default-deny ENABLED — localnet reaches only allowlisted destinations"
+    echo "Egress default-deny ENABLED: localnet reaches only allowlisted destinations"
     # ACLs: destination IP/CIDR allowlist + destination domain allowlist. Inject
     # once, at the first "acl CONNECT" (Squid evaluates the first matching
     # http_access rule, so the first rule block is authoritative).
@@ -643,7 +643,7 @@ if [ -f /config/egress_default_deny ]; then
     # leaking open.
     DENY_RULE='http_access deny localnet !egress_dst_allow_ip !egress_dst_allow_dom spm_r_egress_policy'
     if ! grep -qF "$DENY_RULE" "$SQUID_CONF"; then
-        echo "WARNING: egress deny rule not injected via primary anchor — applying tolerant fallback"
+        echo "WARNING: egress deny rule not injected via primary anchor; applying tolerant fallback"
         grep -qF 'acl egress_dst_allow_ip dst' "$SQUID_CONF" || \
             sed -i 's|^[[:space:]]*acl CONNECT method CONNECT.*|&\nacl egress_dst_allow_ip dst "/etc/squid/allowlists/dst_ip/local.txt"\nacl egress_dst_allow_dom dstdomain "/etc/squid/allowlists/dst_domain/local.txt"|' "$SQUID_CONF"
         # Insert the deny immediately before any localnet allow (leading/internal
@@ -652,7 +652,7 @@ if [ -f /config/egress_default_deny ]; then
         sed -i "s|^[[:space:]]*http_access[[:space:]]\\+allow[[:space:]]\\+localnet.*|${DENY_RULE}\\n&|" "$SQUID_CONF"
     fi
     if ! grep -qF "$DENY_RULE" "$SQUID_CONF"; then
-        echo "CRITICAL: could not enforce egress default-deny — denying ALL localnet egress (fail-closed)"
+        echo "CRITICAL: could not enforce egress default-deny; denying ALL localnet egress (fail-closed)"
         sed -i 's|^[[:space:]]*http_access[[:space:]]\+allow[[:space:]]\+localnet.*|# egress default-deny: enforcement injection failed, fail-closed\nhttp_access deny localnet spm_r_egress_policy|' "$SQUID_CONF"
     else
         echo "Egress default-deny enforcement rule verified present"
@@ -662,7 +662,7 @@ fi
 # ── SSL Bump (HTTPS Inspection) — conditional on toggle file ─────────────
 
 if [ -f /config/ssl_bump_enabled ]; then
-    echo "SSL Bump ENABLED — injecting HTTPS interception config"
+    echo "SSL Bump ENABLED: injecting HTTPS interception config"
 
     # Replace http_port with https_port + ssl-bump
     sed -i 's/^http_port 3128$/http_port 3128 ssl-bump \\\n  cert=\/config\/ssl_cert.pem \\\n  key=\/config\/ssl_key.pem \\\n  generate-host-certificates=on \\\n  dynamic_cert_mem_cache_size=4MB/' "$SQUID_CONF"
@@ -698,7 +698,7 @@ fi
 # ── Aggressive Caching (toggle via settings) ────────────────────────────────
 
 if [ -f /config/aggressive_caching_enabled ]; then
-    echo "Aggressive caching ENABLED — adding override-expire refresh patterns"
+    echo "Aggressive caching ENABLED: adding override-expire refresh patterns"
     cat >> "$SQUID_CONF" << 'CACHEEOF'
 
 # ── Aggressive caching (override-expire for static assets) ──
@@ -713,7 +713,7 @@ fi
 # ── Cache Bypass Domains (from settings) ────────────────────────────────────
 
 if [ -f /config/cache_bypass_domains.txt ] && [ -s /config/cache_bypass_domains.txt ]; then
-    echo "Cache bypass domains found — adding no_cache rules"
+    echo "Cache bypass domains found: adding no_cache rules"
     echo "" >> "$SQUID_CONF"
     echo "# ── Cache bypass domains ──" >> "$SQUID_CONF"
     echo "acl cache_bypass_domains dstdomain \"/config/cache_bypass_domains.txt\"" >> "$SQUID_CONF"
@@ -724,7 +724,7 @@ fi
 # ── Proxy Authentication (Basic Auth for proxy users) ──────────────────────
 
 if [ -f /config/proxy_auth_enabled ]; then
-    echo "Proxy authentication ENABLED — requiring Basic Auth for proxy access"
+    echo "Proxy authentication ENABLED: requiring Basic Auth for proxy access"
     # Create password file if it doesn't exist (admin user same as dashboard)
     if [ ! -f /config/proxy_users.htpasswd ]; then
         if [ -n "$BASIC_AUTH_USERNAME" ] && [ -n "$BASIC_AUTH_PASSWORD" ]; then
@@ -779,7 +779,7 @@ fi
 # ── Content Filtering (block downloads by file extension) ──────────────────
 
 if [ -f /config/content_filtering_enabled ] && [ -f /config/blocked_file_types.txt ] && [ -s /config/blocked_file_types.txt ]; then
-    echo "Content filtering ENABLED — blocking file types"
+    echo "Content filtering ENABLED: blocking file types"
     # -i: the backend writes each extension as typed (\.exe$), and a server
     # serves /setup.EXE or /setup.Exe as readily as /setup.exe. Without it the
     # match was case-sensitive and only the lower-case spelling was refused.
@@ -800,7 +800,7 @@ if [ -f /config/time_restrictions_enabled ] && [ -f /config/time_restrictions.co
         'TIME_START=([01][0-9]|2[0-3]):[0-5][0-9]' \
         'TIME_END=([01][0-9]|2[0-3]):[0-5][0-9]'
     if [ -z "${TIME_START:-}" ] || [ -z "${TIME_END:-}" ]; then
-        echo "WARNING: time restrictions are enabled but /config/time_restrictions.conf has no valid TIME_START/TIME_END — the restriction is NOT applied"
+        echo "WARNING: time restrictions are enabled but /config/time_restrictions.conf has no valid TIME_START/TIME_END, so the restriction is NOT applied"
     else
     # Parse HH:MM into HH and MM
     START_H=$(echo "$TIME_START" | cut -d: -f1)
@@ -847,7 +847,7 @@ fi
 # ── Offline Mode / Serve Stale Cache ────────────────────────────────────────
 
 if [ -f /config/offline_mode_enabled ]; then
-    echo "Offline mode ENABLED — serving stale cached content"
+    echo "Offline mode ENABLED: serving stale cached content"
     cat >> "$SQUID_CONF" << 'OFFEOF'
 
 # ── Offline mode: serve stale cache when origin is unreachable ──

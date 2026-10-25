@@ -96,7 +96,7 @@ echo "Validating Squid configuration..."
 if /usr/sbin/squid -k parse; then
     echo "Configuration syntax is valid."
 elif [ -f /config/custom_squid_extra.conf ]; then
-    echo "CRITICAL: the generated configuration does not parse — regenerating WITHOUT /config/custom_squid_extra.conf" >&2
+    echo "CRITICAL: the generated configuration does not parse; regenerating WITHOUT /config/custom_squid_extra.conf" >&2
     SPM_SKIP_EXTRAS=1 . /usr/local/bin/generate_squid_conf.sh
     /usr/sbin/squid -k parse || refuse_to_start
     echo "WARNING: Squid is running WITHOUT /config/custom_squid_extra.conf, which does not parse. Fix it and reload." >&2
