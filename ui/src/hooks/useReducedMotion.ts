@@ -4,8 +4,8 @@ const QUERY = '(prefers-reduced-motion: reduce)';
 
 /**
  * Returns true when the user has asked the OS to reduce motion. Components use it
- * to skip JS-driven animation (e.g. the rAF number counter, recharts mount
- * animations). Purely CSS animations are neutralized globally in index.css; this
+ * to skip JS-driven animation (e.g. the rAF number counter). Purely CSS
+ * animations are neutralized globally in index.css; this
  * hook covers the cases CSS can't reach.
  */
 export function useReducedMotion(): boolean {

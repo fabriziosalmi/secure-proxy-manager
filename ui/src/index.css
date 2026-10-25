@@ -354,19 +354,6 @@
   );
 }
 
-@utility chart-tooltip {
-  /* Chart tooltip glass */
-  /* Theme-aware: was a hardcoded dark rgba that rendered a dark tooltip on the
-       light theme. Use the same tokens as the recharts TOOLTIP_STYLE. */
-  background: var(--tooltip-bg) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
-  backdrop-filter: blur(12px) !important;
-  border: 1px solid var(--tooltip-border) !important;
-  border-radius: 8px !important;
-  box-shadow: var(--tooltip-shadow) !important;
-  font-variant-numeric: tabular-nums !important;
-}
-
 @utility custom-scrollbar {
   /* Scrollbar styling */
   &::-webkit-scrollbar {
@@ -415,9 +402,6 @@
     --glass-hover-shadow: 0 0 0 1px rgba(0, 0, 0, 0.02) inset, 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 30px rgba(59, 130, 246, 0.03);
 
     /* Light chart tooltip variables */
-    --tooltip-bg: rgba(255, 255, 255, 0.92);
-    --tooltip-border: rgba(0, 0, 0, 0.08);
-    --tooltip-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
 
     /* Design tokens, light. Text pairs measured at 4.5:1 or more on surface
        and ground (WCAG 1.4.3); bars and dots at 3:1 where they carry meaning. */
@@ -489,9 +473,6 @@
     --glass-hover-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05) inset, 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 30px rgba(59, 130, 246, 0.06);
 
     /* Dark chart tooltip variables */
-    --tooltip-bg: rgba(15, 23, 42, 0.92);
-    --tooltip-border: rgba(255, 255, 255, 0.08);
-    --tooltip-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 
     /* Design tokens, dark. Same roles; every text pair re-measured at 4.5:1
        or more on the dark surface and ground. */
@@ -626,8 +607,7 @@
    Honor the OS "reduce motion" setting: neutralize every CSS keyframe
    animation, transition, and smooth-scroll in one sweep. Outside @layer so it
    wins specificity over component utilities. JS-driven motion (the rAF number
-   counter, recharts mount animations) is handled separately via the
-   useReducedMotion hook. */
+   counter) is handled separately via the useReducedMotion hook. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
