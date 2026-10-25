@@ -369,6 +369,17 @@ func parseDuration(s string) time.Duration {
 // panels from drifting apart.
 const analyticsWindow = 7 * 24 * time.Hour
 
+// destinationKey is the SQL expression a top list groups destinations by.
+// Squid logs a CONNECT as "host:443" while the DNS sinkhole logs the same
+// site as "host", so grouping on the raw column split one destination into
+// two rows, each with part of the count. A trailing :443 or :80 (the default
+// ports) is dropped; any other port stays, because it is another service.
+// LIKE ':443' needs the colon, so "host:8443" keeps its port.
+const destinationKey = `CASE
+	WHEN destination LIKE '%:443' THEN substr(destination, 1, length(destination) - 4)
+	WHEN destination LIKE '%:80' THEN substr(destination, 1, length(destination) - 3)
+	ELSE destination END`
+
 // sinceUnix returns the Unix-epoch lower bound for a rolling window of length d.
 // Binding this and filtering `unix_timestamp >= ?` lets the query range-scan
 // idx_proxy_logs_unix_ts instead of doing per-row TEXT-date arithmetic with
@@ -434,9 +445,9 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 
 	topDomains := []map[string]any{}
 	if dr, err := h.db.Query(
-		`SELECT destination, COUNT(*) AS c, `+blockedCase+` AS b
+		`SELECT `+destinationKey+` AS dest, COUNT(*) AS c, `+blockedCase+` AS b
 		 FROM proxy_logs WHERE source_ip = ? AND destination IS NOT NULL AND destination != ''
-		 GROUP BY destination ORDER BY c DESC LIMIT 10`, ip); err == nil {
+		 GROUP BY dest ORDER BY c DESC LIMIT 10`, ip); err == nil {
 		for dr.Next() {
 			var d string
 			var c, b int
@@ -677,7 +688,7 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	result["today_blocked"] = todayBlocked
 
 	var topBlocked []map[string]any
-	rows, _ := h.db.Query(`SELECT destination, COUNT(*) AS cnt FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? GROUP BY destination ORDER BY cnt DESC LIMIT 10`, sinceUnix(24*time.Hour))
+	rows, _ := h.db.Query(`SELECT `+destinationKey+` AS dest, COUNT(*) AS cnt FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? GROUP BY dest ORDER BY cnt DESC LIMIT 10`, sinceUnix(24*time.Hour))
 	if rows != nil {
 		for rows.Next() {
 			var dest string
