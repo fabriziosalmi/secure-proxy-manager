@@ -22,6 +22,19 @@ export function safeExternalUrl(url?: string | null): string {
 }
 
 /**
+ * The proxy address a client configures: the host this UI was reached on, at
+ * the port docker-compose publishes for Squid ("3128:3128"). The backend's
+ * proxy_host is the container name ("proxy"), which resolves only inside the
+ * compose network, so the Settings panel showed "proxy:3128" while the
+ * Dashboard showed the address that works. Every surface reads this instead.
+ */
+export const PROXY_PORT = 3128
+
+export function proxyAddress(): string {
+  return `${window.location.hostname}:${PROXY_PORT}`
+}
+
+/**
  * Parse a backend timestamp. SQLite `datetime('now')` yields
  * "2026-06-04 14:30:00": UTC, with no zone marker, which `new Date` would read
  * as local time. An ISO string that already carries a `T` is left as it is.

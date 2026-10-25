@@ -5,6 +5,7 @@ import { Card, CardContent } from '../ui/card';
 import { api, getData } from '../../lib/api';
 import type { CacheStats, ClientsData } from '../../types';
 import { formatCount } from '../../lib/format';
+import { proxyAddress } from '../../lib/utils';
 
 interface StatusData {
   proxy_status?: string;
@@ -73,7 +74,8 @@ export function ServiceStatus() {
             </div>
           </div>
 
-          <Tile icon={Server} label="Listen" value={<span className="font-mono text-xs">{s?.proxy_host ?? 'proxy'}:{s?.proxy_port ?? '3128'}</span>} />
+          {/* Not proxy_host: that is the compose service name, which no client can reach. */}
+          <Tile icon={Server} label="Listen" value={<span className="font-mono text-xs">{proxyAddress()}</span>} />
           <Tile icon={Tag} label="Version" value={s?.version ? `v${s.version}` : num(undefined, status.isLoading)} />
           <Tile icon={Users} label="Clients" value={num(clients.data?.meta?.total, clients.isLoading)} accent />
           <Tile icon={ArrowDownUp} label="Requests today" value={num(s?.requests_count, status.isLoading)} />

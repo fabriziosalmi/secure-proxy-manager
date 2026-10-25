@@ -141,6 +141,12 @@ describe('Dashboard', () => {
     } finally { restoreTz() }
   })
 
+  // The Settings Listen tile reads the same helper.
+  it('shows the reachable proxy address', async () => {
+    renderWithProviders(<Dashboard />)
+    expect(await screen.findByText(`${window.location.hostname}:3128`)).toBeInTheDocument()
+  })
+
   it('displays security score', async () => {
     renderWithProviders(<Dashboard />)
     await waitFor(() => {

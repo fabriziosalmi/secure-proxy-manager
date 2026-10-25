@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Monitor, Smartphone, Apple, Terminal, Copy, Check, Download, QrCode } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { PROXY_PORT, proxyAddress } from '../lib/utils';
 
 function CopyBtn({ text, label, copied, onCopy }: { text: string; label: string; copied: string; onCopy: (text: string, label: string) => void }) {
   return (
@@ -16,8 +17,8 @@ function CopyBtn({ text, label, copied, onCopy }: { text: string; label: string;
 export function ClientSetup() {
   const [copied, setCopied] = useState('');
   const host = window.location.hostname;
-  const proxyPort = '3128';
-  const proxyAddr = `${host}:${proxyPort}`;
+  const proxyPort = String(PROXY_PORT);
+  const proxyAddr = proxyAddress();
 
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const copy = (text: string, label: string) => {

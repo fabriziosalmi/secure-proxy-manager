@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { api, getData } from '../lib/api';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import { useConfirm } from '../hooks/useConfirm';
+import { proxyAddress } from '../lib/utils';
 import type { TimelineEntry, SecurityScore, DashboardSummary, CacheStats } from '../types';
 import { formatCount, formatTime } from '../lib/format';
 
@@ -36,7 +37,7 @@ export function Dashboard() {
   const queryClient = useQueryClient();
   const { confirm, dialog } = useConfirm();
   const [copied, setCopied] = useState(false);
-  const proxy = `${window.location.hostname}:3128`;
+  const proxy = proxyAddress();
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const copy = () => {
     navigator.clipboard.writeText(proxy).then(() => {

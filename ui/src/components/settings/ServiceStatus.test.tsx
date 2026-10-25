@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { renderWithProviders, simulateItalianLocale } from '../../test/helpers'
 import { api } from '../../lib/api'
+import { proxyAddress } from '../../lib/utils'
 import { ServiceStatus } from './ServiceStatus'
 
 // Bodies as the backend sends them. Only api.get is stubbed, so the panel's
@@ -50,6 +51,16 @@ describe('ServiceStatus', () => {
     await waitFor(() => { expect(tileValue('Requests today')).toBe('50,772') })
     expect(tileValue('Blocked today')).toBe('1,328')
     expect(screen.queryByText(/24h/)).not.toBeInTheDocument()
+  })
+
+  // proxy_host is the compose service name, reachable only inside the compose
+  // network. The tile showed "proxy:3128"; the Dashboard showed the address a
+  // client can use. Both read proxyAddress() now.
+  it('shows the reachable proxy address, the same one the Dashboard shows', async () => {
+    renderWithProviders(<ServiceStatus />)
+    await waitFor(() => { expect(tileValue('Listen')).toBe(`${window.location.hostname}:3128`) })
+    expect(tileValue('Listen')).toBe(proxyAddress())
+    expect(tileValue('Listen')).not.toContain('proxy:')
   })
 
   // cache_stats.txt is never written (poll_once in proxy/blacklist_watchdog.py
