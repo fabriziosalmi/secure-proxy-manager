@@ -181,7 +181,8 @@ func applyColumnMigrations(db *sql.DB) error {
 		"ALTER TABLE proxy_logs ADD COLUMN event_id TEXT", // WAF correlation id (#107)
 		// The rule that blocked the request, or 'none' (workers/block_reason.go).
 		// Rows that predate it read 'unclassified': their blocked flag came from
-		// the status heuristic and no reason was recorded, so none is invented.
+		// the status heuristic and no reason was recorded, so none is invented,
+		// except the one declared case schema version 3 reassigns (reconstruct.go).
 		// ADD COLUMN with a constant default rewrites no row.
 		"ALTER TABLE proxy_logs ADD COLUMN block_reason TEXT NOT NULL DEFAULT 'unclassified'",
 		"ALTER TABLE domain_whitelist ADD COLUMN type TEXT DEFAULT 'fqdn'",

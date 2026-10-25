@@ -1,6 +1,10 @@
 package workers
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
+)
 
 // Block reasons: the values of proxy_logs.block_reason. Each names the rule
 // that decided the request, as recorded by Squid itself (the spm_reason note
@@ -18,36 +22,46 @@ const (
 	ReasonIPBlacklist        = "ip_blacklist"
 	ReasonDomainBlacklist    = "domain_blacklist"
 	ReasonDomainBlacklistDNS = "domain_blacklist_dns"
-	ReasonDirectIP           = "direct_ip"
-	ReasonEgressPolicy       = "egress_policy"
-	ReasonWAF                = "waf"
-	ReasonProxyAuth          = "proxy_auth"
-	ReasonTimeRestriction    = "time_restriction"
-	ReasonContentFilter      = "content_filter"
-	ReasonSourceGate         = "source_gate"
-	ReasonPortPolicy         = "port_policy"
-	ReasonProtocolPolicy     = "protocol_policy"
-	ReasonOther              = "other"
+	// ReasonDomainBlacklistDNSReconstructed: a row logged before reasons were
+	// recorded that the one-off start-up step in database/reconstruct.go
+	// reassigned: a /503 to a name on the domain blacklist, logged after the
+	// name was added, which is what Squid logged when it connected to the
+	// sinkhole's 0.0.0.0. Nothing writes it at ingestion; it is kept apart
+	// from domain_blacklist_dns so a reconstructed block never reads as a
+	// recorded one.
+	ReasonDomainBlacklistDNSReconstructed = database.ReasonDNSReconstructed
+
+	ReasonDirectIP        = "direct_ip"
+	ReasonEgressPolicy    = "egress_policy"
+	ReasonWAF             = "waf"
+	ReasonProxyAuth       = "proxy_auth"
+	ReasonTimeRestriction = "time_restriction"
+	ReasonContentFilter   = "content_filter"
+	ReasonSourceGate      = "source_gate"
+	ReasonPortPolicy      = "port_policy"
+	ReasonProtocolPolicy  = "protocol_policy"
+	ReasonOther           = "other"
 )
 
 // reasonLabels are the display names, in the order the vocabulary is listed.
 // A reason that is not here is not one this backend writes.
 var reasonLabels = map[string]string{
-	ReasonIPBlacklist:        "IP blacklist",
-	ReasonDomainBlacklist:    "Domain blacklist",
-	ReasonDomainBlacklistDNS: "Domain blacklist (DNS)",
-	ReasonDirectIP:           "Direct IP",
-	ReasonEgressPolicy:       "Egress policy",
-	ReasonWAF:                "WAF",
-	ReasonProxyAuth:          "Proxy authentication",
-	ReasonTimeRestriction:    "Time restriction",
-	ReasonContentFilter:      "Content filter",
-	ReasonSourceGate:         "Source not allowed",
-	ReasonPortPolicy:         "Port policy",
-	ReasonProtocolPolicy:     "Method or protocol policy",
-	ReasonOther:              "Other",
-	ReasonUnclassified:       "Unclassified (no reason recorded)",
-	ReasonNone:               "Not blocked",
+	ReasonIPBlacklist:                     "IP blacklist",
+	ReasonDomainBlacklist:                 "Domain blacklist",
+	ReasonDomainBlacklistDNS:              "Domain blacklist (DNS)",
+	ReasonDomainBlacklistDNSReconstructed: "Domain blacklist (DNS), reconstructed",
+	ReasonDirectIP:                        "Direct IP",
+	ReasonEgressPolicy:                    "Egress policy",
+	ReasonWAF:                             "WAF",
+	ReasonProxyAuth:                       "Proxy authentication",
+	ReasonTimeRestriction:                 "Time restriction",
+	ReasonContentFilter:                   "Content filter",
+	ReasonSourceGate:                      "Source not allowed",
+	ReasonPortPolicy:                      "Port policy",
+	ReasonProtocolPolicy:                  "Method or protocol policy",
+	ReasonOther:                           "Other",
+	ReasonUnclassified:                    "Unclassified (no reason recorded)",
+	ReasonNone:                            "Not blocked",
 }
 
 // ReasonLabel is the display name of a block reason. An unknown value is shown

@@ -495,8 +495,9 @@ const clientRows = "IFNULL(method, '') != 'DNS'"
 
 // blockedByReason counts the blocked client requests matching where (a
 // condition on proxy_logs, with its arguments) by block_reason, largest
-// first. Rows logged before reasons were recorded count as "unclassified";
-// no reason is assigned to them after the fact.
+// first. Rows logged before reasons were recorded count as "unclassified",
+// except the sinkholed /503s that schema version 3 reassigned once, by a
+// declared rule, to "domain_blacklist_dns_reconstructed" (database/reconstruct.go).
 func (h *AnalyticsHandlers) blockedByReason(where string, args ...any) []map[string]any {
 	return blockedByReason(h.db, where, args...)
 }
