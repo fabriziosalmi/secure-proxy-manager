@@ -8,7 +8,7 @@ All configuration lives in the `.env` file in the project root, which is read by
 |---|---|
 | `BASIC_AUTH_USERNAME` | HTTP Basic auth username for the web UI and API |
 | `BASIC_AUTH_PASSWORD` | HTTP Basic auth password (use a strong password) |
-| `SECRET_KEY` | HMAC key used to sign JWT access and refresh tokens. Auto-generated when empty, but tokens then invalidate on every restart — set a stable value in production |
+| `SECRET_KEY` | HMAC key used to sign JWT access and refresh tokens. Auto-generated when empty, but tokens then invalidate on every restart; set a stable value in production |
 
 ## TLS for the web UI
 
@@ -35,7 +35,7 @@ All configuration lives in the `.env` file in the project root, which is read by
 
 | Variable | Default | Description |
 |---|---|---|
-| `INTERNAL_ALERT_TOKEN` | (empty) | Service credential between the backend and the WAF: the WAF presents it on `POST /api/internal/alert`, and the backend presents it to the WAF management API (stats, category and heuristic toggles, reset). Without it the dashboard reports the WAF statistics as unavailable and toggles do not apply. Generate with `openssl rand -hex 32` and set it on **both** the `waf` and `backend` services. It replaces `BASIC_AUTH_*` on that path so the WAF — the component that parses attacker-controlled request bodies — no longer holds the admin credential. Left empty, the backend still accepts admin auth there, but the shipped compose no longer passes the admin credential to the WAF, so alerts are dropped with a log line in both containers |
+| `INTERNAL_ALERT_TOKEN` | (empty) | Service credential between the backend and the WAF: the WAF presents it on `POST /api/internal/alert`, and the backend presents it to the WAF management API (stats, category and heuristic toggles, reset). Without it the dashboard reports the WAF statistics as unavailable and toggles do not apply. Generate with `openssl rand -hex 32` and set it on **both** the `waf` and `backend` services. It replaces `BASIC_AUTH_*` on that path so the WAF, the component that parses attacker-controlled request bodies, no longer holds the admin credential. Left empty, the backend still accepts admin auth there, but the shipped compose no longer passes the admin credential to the WAF, so alerts are dropped with a log line in both containers |
 | `WAF_BLOCK_THRESHOLD` | `10` | Anomaly score at or above which a request is blocked |
 | `WAF_DISABLED_CATEGORIES` | _empty_ | Comma-separated rule category names to disable globally (for example `DEBUG_LEAK,RESPONSE_ANOMALY`) |
 | `WAF_H_ENTROPY` | `1` | Toggle the Shannon entropy heuristic |
@@ -101,7 +101,7 @@ This mode is off by default and is configured entirely from the web UI and API, 
 - Enable it with the **Default-deny egress** toggle on the **Settings** page (next to SSL inspection). It maps to the `egress_default_deny` setting, which defaults to `false`.
 - Manage allowed destinations on the **Egress Allowlist** page (add, delete, search, paginate). Each entry is either an IP/CIDR or a domain; the type is auto-classified when you add it. A client is allowed only if the destination matches the IP allowlist or the domain allowlist.
 
-When the toggle is off, behaviour is unchanged and no destinations are blocked by this feature. Use default-deny egress when you need a strict "allow only these destinations" outbound policy — for example, letting an application reach only an approved ACME server, package mirror, or internal API.
+When the toggle is off, behaviour is unchanged and no destinations are blocked by this feature. Use default-deny egress when you need a strict "allow only these destinations" outbound policy: for example, letting an application reach only an approved ACME server, package mirror, or internal API.
 
 ## WAF custom rules
 

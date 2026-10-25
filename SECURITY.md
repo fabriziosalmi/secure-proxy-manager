@@ -20,7 +20,7 @@ No container mounts the Docker socket.
 ### Authentication
 
 - JWT Bearer tokens (8h expiry) with **persistent token blacklist** (survives restarts via SQLite)
-- bcrypt password hashing (default cost 10) — plaintext fallback removed in v3.1
+- bcrypt password hashing (default cost 10); plaintext fallback removed in v3.1
 - Per-IP login rate limiting: 5 attempts / 5 min
 - **Global rate limiting**: Token bucket per-IP (20 req/s, 60 burst) on all endpoints
 - WebSocket origin validation against CORS allowlist
@@ -91,8 +91,8 @@ one fails.
 
 ## Security Advisories
 
-Component-specific advisories and how SPM mitigates them — e.g. the Squid
-"Squidbleed" FTP-gateway leak (CVE-2026-47729) — are tracked in
+Component-specific advisories and how SPM mitigates them, e.g. the Squid
+"Squidbleed" FTP-gateway leak (CVE-2026-47729), are tracked in
 [docs/guide/security-advisories.md](docs/guide/security-advisories.md).
 
 ## Reporting Vulnerabilities

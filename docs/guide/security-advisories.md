@@ -1,7 +1,7 @@
 # Security Advisories
 
 How Secure Proxy Manager (SPM) responds to upstream vulnerabilities in the
-components it bundles — most importantly Squid, which it ships from the Ubuntu
+components it bundles, most importantly Squid, which it ships from the Ubuntu
 security pocket.
 
 ## How SPM keeps Squid patched
@@ -13,7 +13,7 @@ published image is patched:
 
 1. **Version floor (fail-closed).** `proxy/Dockerfile` declares
    `ARG SQUID_MIN_VERSION` and asserts, after install, that the installed
-   `squid-openssl` is `>=` that floor. If it is older, **the build fails** — an
+   `squid-openssl` is `>=` that floor. If it is older, **the build fails**, so an
    unpatched proxy image can never be produced. Bump `SQUID_MIN_VERSION`
    whenever the Ubuntu release in `FROM` ships a new Squid CVE fix.
    The floor only means something for the release it was written for, because
@@ -30,13 +30,13 @@ running Squid version line against a curated advisory list and logs a warning on
 startup.
 
 > After pulling a Squid security update you must **rebuild and redeploy** the
-> proxy image — a running container keeps whatever package it was built with.
+> proxy image: a running container keeps whatever package it was built with.
 
-## CVE-2026-47729 — "Squidbleed"
+## CVE-2026-47729: "Squidbleed"
 
-An out-of-bounds read in Squid's **FTP gateway** that can leak heap memory —
-including other clients' HTTP `Authorization` headers, cookies and session
-tokens — to anyone who can make the proxy fetch a directory listing from an FTP
+An out-of-bounds read in Squid's **FTP gateway** that can leak heap memory
+(including other clients' HTTP `Authorization` headers, cookies and session
+tokens) to anyone who can make the proxy fetch a directory listing from an FTP
 server they control. The bug dates back to 1997 and affects **Squid &lt; 7.6**.
 
 - **Severity:** Medium (CVSS 6.5), but high impact in shared-proxy environments
@@ -67,6 +67,6 @@ to them in its default configuration:
 
 ## References
 
-- [Ubuntu security tracker — CVE-2026-47729](https://ubuntu.com/security/CVE-2026-47729)
+- [Ubuntu security tracker: CVE-2026-47729](https://ubuntu.com/security/CVE-2026-47729)
 - [Squid security advisories](https://github.com/squid-cache/squid/security/advisories)
-- [The Hacker News — Squidbleed](https://thehackernews.com/2026/06/29-year-old-squid-proxy-squidbleed.html)
+- [The Hacker News: Squidbleed](https://thehackernews.com/2026/06/29-year-old-squid-proxy-squidbleed.html)

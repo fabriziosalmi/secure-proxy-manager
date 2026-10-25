@@ -1,4 +1,4 @@
-# Secure Proxy Manager — Deployment Guide
+# Secure Proxy Manager: Deployment Guide
 
 Practical instructions for deploying **Secure Proxy Manager** with Docker
 Compose. The stack is a set of Go and container services orchestrated by
@@ -28,9 +28,9 @@ Compose. The stack is a set of Go and container services orchestrated by
 
 ## Prerequisites
 
-- **Docker**: 20.10.0 or higher — https://docs.docker.com/get-docker/
-- **Docker Compose v2**: the `docker compose` plugin (not the legacy
-  `docker-compose` binary) — https://docs.docker.com/compose/install/
+- **Docker**: 20.10.0 or higher (https://docs.docker.com/get-docker/)
+- **Docker Compose v2**: the `docker compose` plugin, not the legacy
+  `docker-compose` binary (https://docs.docker.com/compose/install/)
 - **System**: ~512 MB RAM and ~2 GB disk to start; more headroom is recommended
   if you enable the Squid disk cache and verbose logging. Runs on x86_64 and
   ARM64.
@@ -50,7 +50,7 @@ docker ps          # confirms the daemon is running
 `deploy/install.sh` checks for Docker, clones the repo to
 `/opt/secure-proxy-manager`, generates a `.env` with random admin credentials
 and a strong `SECRET_KEY` (`openssl rand -hex 32`), builds the images, and
-starts the stack. It prints the credentials at the end — **save them, they are
+starts the stack. It prints the credentials at the end: **save them, they are
 not shown again.**
 
 ```bash
@@ -118,8 +118,8 @@ Host port mappings come straight from `docker-compose.yml`:
 | `80` → `8011`, `8011` → `8011` | `web` | Web UI (HTTP) | Redirects to HTTPS; also serves ACME challenges for Let's Encrypt |
 | `127.0.0.1:5001` → `5000` | `backend` | Backend API | Bound to localhost only; the UI proxies it (incl. WebSocket) internally |
 | `${PROXY_BIND_IP:-0.0.0.0}:3128` → `3128` | `proxy` | Forward proxy | Point clients here |
-| — (internal) | `waf` | WAF | `1344` (ICAP, Squid → WAF) and `8080` (health / `:8080/metrics`) — **not** published on the host |
-| — (internal) | `dns` | dnsmasq | Port `53` inside the `proxy-internal` network; not published on the host |
+| none (internal) | `waf` | WAF | `1344` (ICAP, Squid → WAF) and `8080` (health / `:8080/metrics`); **not** published on the host |
+| none (internal) | `dns` | dnsmasq | Port `53` inside the `proxy-internal` network; not published on the host |
 
 Networks: `frontend` (bridge, has egress) and `proxy-internal`
 (`internal: true`, no gateway). `proxy` and `dns` attach to **both** so they can
@@ -202,8 +202,8 @@ Bind mounts (created in the repo root; `make setup`/the installer create them):
 ```
 secure-proxy-manager/
 ├── config/                  # Config + TLS material (mounted into proxy/waf/dns)
-│   ├── ssl_cert.pem         # SSL-bump CA cert — generated at first boot (gitignored)
-│   ├── ssl_key.pem          # SSL-bump CA key  — generated at first boot (gitignored)
+│   ├── ssl_cert.pem         # SSL-bump CA cert, generated at first boot (gitignored)
+│   ├── ssl_key.pem          # SSL-bump CA key, generated at first boot (gitignored)
 │   ├── ssl_db/              # Squid generated-cert DB (gitignored)
 │   ├── ip_blacklist.txt     # Optional seed lists copied into Squid at startup
 │   └── domain_blacklist.txt
@@ -247,7 +247,7 @@ There are two distinct TLS surfaces:
    `config/ssl_key.pem` on first boot if they are absent (2048-bit RSA, **825
    days**) and initializes `config/ssl_db/`. The key is created under
    `umask 077` so it is never world-readable, even briefly. These files are **gitignored** (`config/*.pem`,
-   `config/ssl_db/`) and are **never committed** — each deployment has its own
+   `config/ssl_db/`) and are **never committed**; each deployment has its own
    unique CA. The startup script additionally detects and deletes a
    known-compromised CA key that was historically committed, regenerating a
    fresh one.
@@ -264,14 +264,14 @@ deployment, so if it leaks there is no way back. The shorter lifetime only helps
 if the replacement is actually rehearsed, so here it is.
 
 Rotate **before** the certificate expires, and update clients before the old one
-stops working — not after. Every device told to trust the old CA loses HTTPS
+stops working, not after. Every device told to trust the old CA loses HTTPS
 inspection the moment it is replaced, until it trusts the new one.
 
 ```bash
 # 1. Check what you have. This is also how you find out how long you have left.
 docker compose exec proxy openssl x509 -in /config/ssl_cert.pem -noout -subject -enddate
 
-# 2. Stop the stack and keep the old CA — you need it if a client is slow to update.
+# 2. Stop the stack and keep the old CA: you need it if a client is slow to update.
 docker compose down
 mv config/ssl_cert.pem config/ssl_cert.pem.old
 mv config/ssl_key.pem  config/ssl_key.pem.old
@@ -297,12 +297,12 @@ session is invalidated and users log in again; nothing else is lost.
 
 `.enc_key` **cannot be rotated without loss.** Nothing re-encrypts the values it
 protects, so replacing it leaves every stored notification credential
-undecryptable — the settings page will render them as unreadable rather than
+undecryptable; the settings page will render them as unreadable rather than
 silently corrupting them, but they are gone. If you must replace it: note your
 SMTP and webhook credentials first, delete `data/.enc_key`, restart, and enter
 them again.
 
-If SSL-bump is not enabled, none of this applies — without it HTTPS is tunnelled
+If SSL-bump is not enabled, none of this applies: without it HTTPS is tunnelled
 via `CONNECT` and the CA is unused.
 
 ## Backups
@@ -335,7 +335,7 @@ Schedule the cold copy with cron if desired:
 
 **Read the CHANGELOG entry for the version you are moving to first.** Some
 releases need a configuration change before they will work correctly, and it is
-listed there under **Action required** — the commands below do not and cannot
+listed there under **Action required**; the commands below do not and cannot
 apply it. Upgrading to 3.12.0, for example, requires `INTERNAL_ALERT_TOKEN` in
 `.env` (without it the WAF silently stops sending block notifications) and
 `GRAFANA_ADMIN_PASSWORD` if you use the observability profile (without it
@@ -348,7 +348,7 @@ sequence below does not.
 ```bash
 # 1. Stop the stack, THEN back up. Copying data/ while the backend is running
 #    walks proxy_manager.db, -wal and -shm at three different instants and
-#    cannot produce a restorable snapshot of a WAL-mode database — and this is
+#    cannot produce a restorable snapshot of a WAL-mode database, and this is
 #    the artefact you fall back on precisely when the upgrade went wrong.
 docker compose down
 cp -a data data.backup && cp -a config config.backup
@@ -380,8 +380,8 @@ git checkout v<previous>      # `git tag --list 'v*' | tail -5` to find it
 docker compose up -d --build
 ```
 
-**State compatibility.** Schema changes are additive only — `ALTER TABLE ADD
-COLUMN` replayed on every start, with no `schema_version` gate — so an older
+**State compatibility.** Schema changes are additive only (`ALTER TABLE ADD
+COLUMN` replayed on every start, with no `schema_version` gate), so an older
 binary reads a database a newer one has migrated: it simply does not select the
 columns it does not know about. Restoring `data.backup` is therefore optional,
 and only needed if the newer version wrote values the older one misreads. Any
@@ -397,7 +397,7 @@ docker compose logs web
 ```
 
 `web` depends on `backend` being healthy. The backend will exit on boot if
-`BASIC_AUTH_PASSWORD`/`SECRET_KEY` are invalid — check `docker compose logs
+`BASIC_AUTH_PASSWORD`/`SECRET_KEY` are invalid. Check `docker compose logs
 backend` for a fatal message about a weak password or secret.
 
 ### Backend won't start
@@ -433,13 +433,13 @@ curl -sk  https://localhost:8443/api/health      # backend via the UI proxy
 ```
 
 The backend's own healthcheck runs `/server -healthcheck` inside the container,
-which now probes **readiness** (`/readyz` — pings the database) rather than bare
+which now probes **readiness** (`/readyz`: pings the database) rather than bare
 liveness, so a wedged SQLite surfaces as an unhealthy container. Probe endpoints:
 
 | Endpoint | Meaning |
 |----------|---------|
-| `/livez`, `/health` | Liveness — process is up (no DB touch). |
-| `/readyz`, `/api/ready` | Readiness — DB reachable (`PingContext` + `SELECT 1`); `503` if not. |
+| `/livez`, `/health` | Liveness: process is up (no DB touch). |
+| `/readyz`, `/api/ready` | Readiness: DB reachable (`PingContext` + `SELECT 1`); `503` if not. |
 
 ### Metrics & observability
 
@@ -488,6 +488,6 @@ docker compose up -d --build
 ---
 
 **See also:**
-- [README.md](README.md) — overview and feature list
-- [CHANGELOG.md](CHANGELOG.md) — release history
-- [CONTRIBUTING.md](CONTRIBUTING.md) — contribution guidelines
+- [README.md](README.md): overview and feature list
+- [CHANGELOG.md](CHANGELOG.md): release history
+- [CONTRIBUTING.md](CONTRIBUTING.md): contribution guidelines

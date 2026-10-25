@@ -5,7 +5,7 @@ Base URLs:
 - Through the `web` reverse proxy (recommended): `https://localhost:8443/api`
 - Directly to the backend (localhost only): `http://127.0.0.1:5001/api`
 
-Every endpoint accepts either HTTP Basic or JWT bearer authentication unless noted otherwise. Most successful responses follow the envelope `{"status": "success", "data": ...}`; the authentication endpoints (`/api/auth/login`, `/api/auth/refresh`, `/api/ws-token`, `/api/logout`, `/api/change-password`) return a flat object with `status` and the payload fields at the top level. Errors are always `{"status": "error", "detail": "..."}`, and a 500 additionally carries `"code": "internal_error"` — `detail` is a stable string this project controls and never a message from a dependency, so match on `code`, not on prose.
+Every endpoint accepts either HTTP Basic or JWT bearer authentication unless noted otherwise. Most successful responses follow the envelope `{"status": "success", "data": ...}`; the authentication endpoints (`/api/auth/login`, `/api/auth/refresh`, `/api/ws-token`, `/api/logout`, `/api/change-password`) return a flat object with `status` and the payload fields at the top level. Errors are always `{"status": "error", "detail": "..."}`, and a 500 additionally carries `"code": "internal_error"`. `detail` is a stable string this project controls and never a message from a dependency, so match on `code`, not on prose.
 
 ### Collections
 
@@ -19,11 +19,11 @@ Every endpoint that returns a collection uses one shape: the collection under `d
 }
 ```
 
-`total`, `limit` and `offset` are also still emitted at the top level. They are **deprecated** and will be removed in the next contract version — read `meta`. Before v3.11.7 collections came back in three incompatible shapes (pagination as top-level siblings, no pagination at all, or the collection nested under `data.clients`), so a client had to special-case each endpoint.
+`total`, `limit` and `offset` are also still emitted at the top level. They are **deprecated** and will be removed in the next contract version; read `meta` instead. Before v3.11.7 collections came back in three incompatible shapes (pagination as top-level siblings, no pagination at all, or the collection nested under `data.clients`), so a client had to special-case each endpoint.
 
 ### Contract version
 
-Every response carries an `X-API-Version` header. It is the version of the request and response **shapes**, not the product build version, so it changes only when something a client depends on changes — unlike the `version` field in `/api/health`, which advances on every release. It is `1` at this commit.
+Every response carries an `X-API-Version` header. It is the version of the request and response **shapes**, not the product build version, so it changes only when something a client depends on changes, unlike the `version` field in `/api/health`, which advances on every release. It is `1` at this commit.
 
 ## Authentication
 

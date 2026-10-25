@@ -8,7 +8,7 @@ const OG_DESCRIPTION =
 
 export default defineConfig({
   title: 'Secure Proxy Manager',
-  description: 'Documentation for Secure Proxy Manager — a containerised Squid forward proxy with a Go backend, React UI, and Go ICAP WAF.',
+  description: 'Documentation for Secure Proxy Manager, a containerised Squid forward proxy with a Go backend, React UI, and Go ICAP WAF.',
   base: '/secure-proxy-manager/',
   cleanUrls: true,
   lastUpdated: true,
@@ -32,18 +32,18 @@ export default defineConfig({
 
   head: [
     // Social / Open Graph defaults (site-level; per-page og:url is injected in
-    // transformPageData). No og:image yet — a 1200×630 raster (M9) will upgrade
+    // transformPageData). No og:image yet: a 1200×630 raster (M9) will upgrade
     // twitter:card to summary_large_image.
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:site_name', content: 'Secure Proxy Manager' }],
-    ['meta', { property: 'og:title', content: 'Secure Proxy Manager — Self-hosted Secure Web Gateway' }],
+    ['meta', { property: 'og:title', content: 'Secure Proxy Manager: Self-hosted Secure Web Gateway' }],
     ['meta', { property: 'og:description', content: OG_DESCRIPTION }],
     ['meta', { name: 'twitter:card', content: 'summary' }],
-    ['meta', { name: 'twitter:title', content: 'Secure Proxy Manager — Self-hosted Secure Web Gateway' }],
+    ['meta', { name: 'twitter:title', content: 'Secure Proxy Manager: Self-hosted Secure Web Gateway' }],
     ['meta', { name: 'twitter:description', content: OG_DESCRIPTION }],
     // Let Google Discover use large image previews. This belongs in a <meta>,
     // not in robots.txt: a *.github.io project page is a sub-path, and crawlers
-    // read robots.txt only from the domain root — which this repository does
+    // read robots.txt only from the domain root, which this repository does
     // not own, so a directive placed there would never be read.
     ['meta', { name: 'robots', content: 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' }],
     // Structured data for search engines and AI crawlers (Schema.org). WebSite

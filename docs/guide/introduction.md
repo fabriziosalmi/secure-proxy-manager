@@ -8,7 +8,7 @@ It is intended for homelab operators and small networks that need a manageable, 
 
 - **Forward proxy.** HTTP and HTTPS (with optional SSL bump) traffic filtering through Squid.
 - **Blacklists.** Domain blocking with exact match or wildcard subdomain (`*.example.com`); IP blocking with single addresses or CIDR ranges.
-- **Egress allowlist.** Optional default-deny outbound egress that turns the proxy into a strict egress gateway. When enabled, local clients may reach only the destinations on an explicit allowlist of IP/CIDR and domain entries; everything else is refused. Off by default — when off, behaviour is unchanged and clients may reach any destination not on a blacklist.
+- **Egress allowlist.** Optional default-deny outbound egress that turns the proxy into a strict egress gateway. When enabled, local clients may reach only the destinations on an explicit allowlist of IP/CIDR and domain entries; everything else is refused. Off by default; when off, behaviour is unchanged and clients may reach any destination not on a blacklist.
 - **IP whitelist.** Trusted destination IPs that bypass the direct-IP block rule.
 - **Domain whitelist.** Domains excluded from the dnsmasq DNS sinkhole.
 - **WAF.** A Go ICAP server that inspects request payloads with 172 regex rules across 21 categories and 6 behavioural heuristics (entropy, beaconing, PII, sharding, ghosting, sequence). Limited response inspection (reflected XSS, secret leak, PII) is also performed.
@@ -43,6 +43,6 @@ The `web` service exposes both HTTP and HTTPS on the host. The backend API is bo
 | `8011` | Web UI (HTTP, alt) | Backwards compatibility |
 | `8443` | Web UI (HTTPS, alt) | Backwards compatibility |
 | `3128` | Squid proxy | Configure clients to use this |
-| `127.0.0.1:5001` | Backend API | Localhost only — not reachable from the network |
+| `127.0.0.1:5001` | Backend API | Localhost only, not reachable from the network |
 
 The WAF (ICAP, port `1344`) and DNS (dnsmasq, port `53`) services run on an internal Docker network and are not exposed on the host.

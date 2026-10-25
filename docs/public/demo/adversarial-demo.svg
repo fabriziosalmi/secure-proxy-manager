@@ -34,19 +34,19 @@
   <circle cx="20" cy="17" r="6" fill="#ff5f57"/>
   <circle cx="40" cy="17" r="6" fill="#febc2e"/>
   <circle cx="60" cy="17" r="6" fill="#28c840"/>
-  <text class="title" x="430" y="22" text-anchor="middle">make adversarial — attacker ▶ proxy + WAF/ICAP</text>
+  <text class="title" x="430" y="22" text-anchor="middle">make adversarial: attacker ▶ proxy + WAF/ICAP</text>
 
   <g class="line a1"><text class="cmd" x="20" y="72">$ curl -x proxy:3128 "http://site/?id=1 UNION SELECT pwd FROM users"</text></g>
-  <g class="line a2"><text class="block" x="40" y="96">↳ 403 Forbidden — blocked by WAF · SQL_INJECTION</text></g>
+  <g class="line a2"><text class="block" x="40" y="96">↳ 403 Forbidden: blocked by WAF · SQL_INJECTION</text></g>
 
   <g class="line a3"><text class="cmd" x="20" y="132">$ curl -x proxy:3128 "http://site/?q=&lt;script&gt;alert(1)&lt;/script&gt;"</text></g>
-  <g class="line a4"><text class="block" x="40" y="156">↳ 403 Forbidden — blocked by WAF · XSS_ATTACKS</text></g>
+  <g class="line a4"><text class="block" x="40" y="156">↳ 403 Forbidden: blocked by WAF · XSS_ATTACKS</text></g>
 
   <g class="line a5"><text class="cmd" x="20" y="192">$ curl -x proxy:3128 "http://site/latest/meta-data/  (169.254.169.254)"</text></g>
-  <g class="line a6"><text class="block" x="40" y="216">↳ 403 Forbidden — blocked by WAF · SSRF</text></g>
+  <g class="line a6"><text class="block" x="40" y="216">↳ 403 Forbidden: blocked by WAF · SSRF</text></g>
 
   <g class="line a7"><text class="cmd" x="20" y="252">$ curl -x proxy:3128 "http://site/blog/how-to-cook-pasta"</text></g>
-  <g class="line a8"><text class="ok" x="40" y="276">↳ 200 OK — allowed (benign traffic passes)</text></g>
+  <g class="line a8"><text class="ok" x="40" y="276">↳ 200 OK: allowed (benign traffic passes)</text></g>
 
   <g class="line a9">
     <text class="dim" x="20" y="314">─────────────────────────────────────────────────────────────</text>

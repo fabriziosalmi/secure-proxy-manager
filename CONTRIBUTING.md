@@ -1,6 +1,6 @@
 # Contributing to Secure Proxy Manager
 
-Thank you for your interest! We welcome contributions — bug fixes, features, documentation, and testing.
+Thank you for your interest! We welcome contributions: bug fixes, features, documentation, and testing.
 
 ## Quick Setup
 
@@ -30,7 +30,7 @@ docker compose up -d --build  # start all services
 ```bash
 cd backend-go
 go build ./...              # compile
-go test -race ./...         # unit tests — CI gates on these AND on 60% coverage
+go test -race ./...         # unit tests (CI gates on these AND on 60% coverage)
 go vet ./...                # static analysis
 ```
 
@@ -47,8 +47,8 @@ go test -v -race ./...      # unit + fuzz tests
 ```bash
 cd ui
 npm ci                      # install deps
-npm test                    # Vitest suites — CI gates on these
-npm run lint                # ESLint — CI gates on this
+npm test                    # Vitest suites (CI gates on these)
+npm run lint                # ESLint (CI gates on this)
 npm run build               # build (includes tsc check)
 npx tsc --noEmit            # type check only
 ```
@@ -56,7 +56,7 @@ npx tsc --noEmit            # type check only
 ### Lint (both Go modules)
 
 ```bash
-golangci-lint run           # from backend-go/ or waf-go/ — CI gates on this
+golangci-lint run           # from backend-go/ or waf-go/ (CI gates on this)
 shellcheck --severity=warning proxy/*.sh deploy/*.sh scripts/*.sh tests/*.sh
 ```
 
@@ -74,15 +74,15 @@ docker compose logs -f backend  # watch Go backend logs
 - `gofmt` formatting (enforced by editor)
 - Error handling: always check and handle errors, no `_ = err`
 - Naming: `camelCase` for unexported, `PascalCase` for exported
-- No global mutable state — use dependency injection
+- No global mutable state; use dependency injection
 - SQL: parameterized queries only, never interpolate user input
 
 ### TypeScript/React
 - Strict mode (`"strict": true` in tsconfig)
-- Typed interfaces in `ui/src/types.ts` — no `any` in business logic
+- Typed interfaces in `ui/src/types.ts`, no `any` in business logic
 - Functional components with hooks
 - `@tanstack/react-query` for all API calls
-- Tailwind CSS for styling — no inline styles
+- Tailwind CSS for styling, no inline styles
 
 ### Commit Messages
 ```
@@ -117,11 +117,11 @@ round trip:
 The remaining required checks run only in CI because they need to build and
 start the whole stack: the image build, the compose-up smoke test, the Playwright
 E2E suite, and Trivy. Their absence from this table is deliberate, not an
-omission — everything above is cheap enough to run before every push.
+omission: everything above is cheap enough to run before every push.
 
 ## E2E Testing
 
-**Prerequisite:** the stack must already be running and reachable — this drives
+**Prerequisite:** the stack must already be running and reachable. This drives
 a live deployment, it does not start one. `docker compose up -d` first.
 
 ```bash
@@ -150,7 +150,7 @@ The test suite covers:
 ### What blocks a merge
 
 `main` requires a pull request and 17 green checks. The list is not a
-convention — it is `.github/branch-protection.json`, applied to GitHub and
+convention; it is `.github/branch-protection.json`, applied to GitHub and
 checkable against it:
 
 ```bash
@@ -163,7 +163,7 @@ check means the PR broke something. Two checks run but deliberately do **not**
 gate: *Verify popular list URLs* reaches third-party hosts, where an upstream
 outage would block every unrelated merge, and the CodeQL *Analyze* jobs are
 GitHub-managed, where a change to the analysed language set would leave a
-required check pending forever. Their findings still surface — in the job log
+required check pending forever. Their findings still surface: in the job log
 and in the Security tab.
 
 `apply` restores everything except one field: GitHub's branch-protection API
@@ -188,4 +188,4 @@ required-check list is not.
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT (see [LICENSE](LICENSE))

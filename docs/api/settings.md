@@ -159,7 +159,7 @@ reload was applied:
 |---|---|---|
 | `200` | `success` | The generator ran, squid accepted the config, and it is live |
 | `500` | `error` (`code: reload_failed`) | The proxy refused the new config and **kept the previous one**. `data.generator_rc` and `data.reconfigure_rc` say which step failed |
-| `200` | `pending` | Nothing acknowledged within the timeout — check that the proxy container is running |
+| `200` | `pending` | Nothing acknowledged within the timeout; check that the proxy container is running |
 
 A caller that treats any `200` as success will read `pending` as applied.
 

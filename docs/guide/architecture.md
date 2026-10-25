@@ -48,14 +48,14 @@ The `frontend` network connects `web` to `backend`. The `proxy-internal` network
 
 ## Service details
 
-### `web` — Nginx reverse proxy
+### `web`: Nginx reverse proxy
 
 - Serves the compiled React SPA.
 - Reverse-proxies `/api/*` and `/api/ws/*` to the backend at `backend:5000`.
 - Applies HTTP security headers (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy).
 - Generates its Nginx configuration at startup and serves a mounted certificate from `/etc/nginx/ssl/` if one is there, otherwise a self-signed one. The shipped image has no certbot, so it does not obtain Let's Encrypt certificates itself.
 
-### `backend` — Go API server
+### `backend`: Go API server
 
 - Built from `backend-go/` using the chi router.
 - Container listens on port `5000`; the host bind is `127.0.0.1:5001:5000`, so the API is not reachable from the LAN.
@@ -65,24 +65,24 @@ The `frontend` network connects `web` to `backend`. The `proxy-internal` network
 - Applies blacklist and whitelist changes by writing files under `/config/` and signalling the proxy or DNS service to reload.
 - When default-deny egress is enabled, exports the `dst_allowlist` table to `/config/dst_allow_ip.txt` (CIDR entries) and `/config/dst_allow_domain.txt` (domain entries), both written atomically, and writes the flag file `/config/egress_default_deny` to reflect the toggle.
 - WebSocket endpoint at `/api/ws/logs` broadcasts new log entries to connected UI clients.
-- Liveness at `/livez` (and `/health`); readiness at `/readyz` (pings the database) — the container healthcheck uses readiness, so a wedged database is reported as unhealthy.
-- Prometheus metrics at `/metrics` (RED metrics per route, DB connection-pool gauges, per-worker heartbeats, Go runtime), plus a structured access-log line per request. The endpoint is internal-only — nginx does not proxy it.
+- Liveness at `/livez` (and `/health`); readiness at `/readyz` (pings the database). The container healthcheck uses readiness, so a wedged database is reported as unhealthy.
+- Prometheus metrics at `/metrics` (RED metrics per route, DB connection-pool gauges, per-worker heartbeats, Go runtime), plus a structured access-log line per request. The endpoint is internal-only: nginx does not proxy it.
 
-### `proxy` — Squid
+### `proxy`: Squid
 
 - Forward proxy on port `3128`.
 - `proxy/generate_squid_conf.sh` is the **sole producer** of `squid.conf`: it builds the configuration from a base template plus optional extras from `/config/custom_squid_extra.conf`. It is sourced by `startup.sh` at boot and executed by the watchdog on every reload, so both paths produce the same file from the same code.
-- `proxy/startup.sh` is boot-only (108 lines): it stops any previous squid, installs the transparent-proxy iptables rules, sources the generator, prepares directories and permissions, validates with `squid -k parse`, initialises the cache with `squid -z`, and hands off to supervisord. It builds no configuration of its own — 407 of its former 490 lines were a byte-identical copy of the generator, which is why the two used to drift.
-- `blacklist_watchdog.py` polls the `/config` list files by mtime (roughly every two seconds) — including `dst_allow_ip.txt` and `dst_allow_domain.txt` — and runs `squid -k reconfigure` when one changes, so backend writes to the allowlist take effect without a restart.
+- `proxy/startup.sh` is boot-only (108 lines): it stops any previous squid, installs the transparent-proxy iptables rules, sources the generator, prepares directories and permissions, validates with `squid -k parse`, initialises the cache with `squid -z`, and hands off to supervisord. It builds no configuration of its own; 407 of its former 490 lines were a byte-identical copy of the generator, which is why the two used to drift.
+- `blacklist_watchdog.py` polls the `/config` list files by mtime (roughly every two seconds), including `dst_allow_ip.txt` and `dst_allow_domain.txt`, and runs `squid -k reconfigure` when one changes, so backend writes to the allowlist take effect without a restart.
 - ICAP integration forwards REQMOD and RESPMOD adaptations to the WAF.
 - Direct-IP access is blocked by ACL rules; whitelisted destination IPs in `ip_whitelist.txt` bypass that block.
-- When `/config/egress_default_deny` is present, `generate_squid_conf.sh` injects two ACLs — `acl egress_dst_allow_ip dst "<path>/dst_allow_ip.txt"` and `acl egress_dst_allow_dom dstdomain "<path>/dst_allow_domain.txt"` — and, immediately before the first `http_access allow localnet`, the rule `http_access deny localnet !egress_dst_allow_ip !egress_dst_allow_dom`. Local clients are then allowed only when the destination matches the IP allowlist or the domain allowlist; every other destination is refused. The toggle is off by default, so this mode is opt-in and the proxy otherwise reaches any destination not on a blacklist.
+- When `/config/egress_default_deny` is present, `generate_squid_conf.sh` injects two ACLs (`acl egress_dst_allow_ip dst "<path>/dst_allow_ip.txt"` and `acl egress_dst_allow_dom dstdomain "<path>/dst_allow_domain.txt"`) and, immediately before the first `http_access allow localnet`, the rule `http_access deny localnet !egress_dst_allow_ip !egress_dst_allow_dom`. Local clients are then allowed only when the destination matches the IP allowlist or the domain allowlist; every other destination is refused. The toggle is off by default, so this mode is opt-in and the proxy otherwise reaches any destination not on a blacklist.
 - SSL bump uses the CA certificate at `/config/ssl_cert.pem` (auto-generated on first start if absent).
 - The container `iptables` rules redirect transparent intercepted traffic on ports 80 and 443 to 3128 inside the container.
 
-### `waf` — Go ICAP server
+### `waf`: Go ICAP server
 
-- Two packages, and the split is the security boundary. `waf-go/internal/engine` is the detection core — the rule set, the pre-filter, the heuristics, DGA and typosquat analysis — and it owns everything the block decision depends on: the threshold, the enabled categories, the safe-URL and DGA caches, the per-client heuristic history. All of it hangs off an `engine.Engine` value that the caller constructs. Package `main` is the ICAP transport and the composition root: it builds one engine from the environment at startup and reaches the verdict only through that engine's methods. Nothing outside `internal/engine` can assign to the state behind a block.
+- Two packages, and the split is the security boundary. `waf-go/internal/engine` is the detection core (the rule set, the pre-filter, the heuristics, DGA and typosquat analysis), and it owns everything the block decision depends on: the threshold, the enabled categories, the safe-URL and DGA caches, the per-client heuristic history. All of it hangs off an `engine.Engine` value that the caller constructs. Package `main` is the ICAP transport and the composition root: it builds one engine from the environment at startup and reaches the verdict only through that engine's methods. Nothing outside `internal/engine` can assign to the state behind a block.
 - Listens for ICAP `REQMOD` (and limited `RESPMOD`) on port `1344`.
 - Applies 172 request rules across 21 categories and 5 response rules across 2 (SQL injection, XSS, directory traversal, command injection, Unicode homograph obfuscation, response XSS, response secret leak, and more).
 - Six behavioural heuristics: entropy thresholding, C2 beaconing detection, PII leak counting, destination sharding, protocol ghosting, sequence validation. Each heuristic is individually toggleable via the `WAF_H_*` environment variables.
@@ -94,14 +94,14 @@ The `frontend` network connects `web` to `backend`. The `proxy-internal` network
 - Emits an `ISTag` (RFC 3507) on ICAP responses, derived from the ruleset and bumped on category toggles, so Squid invalidates cached verdicts when rules change.
 - Prometheus metrics at `:8080/metrics`: aggregate counters, a REQMOD latency histogram, and coverage-gap counters (traffic-log enabled/dropped, oversize bodies, uninspectable compressed responses).
 
-### `dns` — dnsmasq sinkhole
+### `dns`: dnsmasq sinkhole
 
 - Provides DNS resolution to the proxy via the internal network.
 - Sinkhole-resolves blacklisted domains to `0.0.0.0`. Domain whitelist entries are excluded from the sinkhole list, so they resolve normally even if they also appear in the blacklist.
 - Upstream resolvers default to `1.1.1.3`, `9.9.9.9`, `8.8.8.8` (override with `DNS_UPSTREAM_1/2/3`).
 - When `PROXY_IP` is set, dnsmasq publishes a WPAD record so browsers on the LAN can auto-discover the proxy.
 
-### `tailscale` — optional sidecar
+### `tailscale`: optional sidecar
 
 - Joins the stack to a Tailscale tailnet for secure remote access.
 - Activated with `docker compose --profile tailscale up -d`.
