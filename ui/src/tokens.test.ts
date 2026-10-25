@@ -62,7 +62,7 @@ describe('design tokens', () => {
       accent: '#1D4ED8', 'accent-subtle': '#EFF4FF',
       danger: '#B42318', 'danger-strong': '#D92D20', 'danger-bg': '#FEF3F2', 'danger-border': '#FECDCA',
       warning: '#B54708', 'warning-bg': '#FFFAEB', 'warning-border': '#FEDF89',
-      success: '#067647', 'success-bg': '#ECFDF3', 'neutral-bar': '#98A2B3',
+      success: '#067647', 'success-bg': '#ECFDF3', 'neutral-bar': '#858F9F',
     })
   })
 
@@ -74,9 +74,11 @@ describe('design tokens', () => {
     })
   }
 
-  it('dark neutral bars stay visible on the dark surface', () => {
-    expect(contrast(dark['neutral-bar'], dark.surface)).toBeGreaterThanOrEqual(3)
-  })
+  it.each([['light', 'surface'], ['light', 'ground'], ['dark', 'surface']] as const)(
+    '%s neutral bars reach 3:1 on %s (WCAG 1.4.11, a bar carries meaning)', (theme, bg) => {
+      const t = theme === 'light' ? block(':root') : dark
+      expect(contrast(t['neutral-bar'], t[bg])).toBeGreaterThanOrEqual(3)
+    })
 })
 
 describe('vendored fonts', () => {

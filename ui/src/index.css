@@ -445,7 +445,7 @@
     --ds-success: #067647;
     --ds-success-strong: #12B76A;
     --ds-success-bg: #ECFDF3;
-    --ds-neutral-bar: #98A2B3;
+    --ds-neutral-bar: #858F9F; /* 3.27:1 on surface, 3.07:1 on ground; the approved #98A2B3 was 2.58:1, under WCAG 1.4.11 */
   }
 
   .dark {
