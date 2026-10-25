@@ -28,7 +28,8 @@ describe('controls have an accessible name', () => {
 
   it('Clients filter', () => {
     renderWithProviders(<Clients />)
-    expect(screen.getByRole('textbox', { name: /filter clients by ip/i })).toBeInTheDocument()
+    // SearchInput is a type="search" field: role searchbox.
+    expect(screen.getByRole('searchbox', { name: /filter clients by ip/i })).toBeInTheDocument()
   })
 
   it('Audit filter', () => {

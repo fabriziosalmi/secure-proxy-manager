@@ -1,279 +1,426 @@
+/**
+ * Clients: the sources that sent requests through the proxy in the last 7
+ * days (Clients.dc.html). Every number comes from /api/clients/statistics
+ * and /api/clients/{ip}/details.
+ *
+ * The backend marks the stack's own addresses as internal (loopback, the
+ * Docker host, the backend, the proxy): they are hidden unless the viewer
+ * turns them on, and the Overview never counts them. On a wide screen the
+ * selected client's detail sits next to the table; below lg it opens in a
+ * drawer. On a phone the table keeps its columns and scrolls sideways inside
+ * its own region, so the page itself never does.
+ */
 import { createPortal } from 'react-dom';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Users, RefreshCw, Search, X, Ban, Globe, Activity, Clock, ArrowUpDown, ChevronRight,
-} from 'lucide-react';
-import { Card, CardContent } from '../components/ui/card';
-import { IpBadge } from '../components/IpBadge';
+import { X } from 'lucide-react';
 import { ClientSetup } from '../components/ClientSetup';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Section } from '../components/ui/Section';
+import { DataTable, type Column, type SortState } from '../components/ui/DataTable';
+import { SearchInput } from '../components/ui/SearchInput';
+import { Switch } from '../components/ui/Switch';
+import { Button, IconButton } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
 import { useModal } from '../hooks/useModal';
+import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData } from '../lib/api';
-import { relative } from '../lib/utils';
-import type { ClientsData, ClientStat, ClientDetail } from '../types';
-import { formatCount, formatDateTime } from '../lib/format';
+import { formatCount, formatDate, formatDateTime, formatHourMinute, formatShare } from '../lib/format';
+import { cn } from '../lib/utils';
+import type { ClientsData, ClientStat, ClientDetail, ClientDomain, ClientRecent } from '../types';
 
-function rate(blocked: number, total: number): number {
-  return total > 0 ? Math.round((blocked / total) * 1000) / 10 : 0;
+/** Where the "Show internal addresses" choice is kept, per viewer. */
+export const SHOW_INTERNAL_KEY = 'spm.clients.showInternal';
+
+function readShowInternal(): boolean {
+  try {
+    return window.localStorage.getItem(SHOW_INTERNAL_KEY) === 'true';
+  } catch {
+    return false;
+  }
 }
 
-type SortKey = 'requests' | 'blocked' | 'rate';
+function writeShowInternal(on: boolean) {
+  try {
+    window.localStorage.setItem(SHOW_INTERNAL_KEY, on ? 'true' : 'false');
+  } catch {
+    // Storage blocked (private window, previews): the choice lasts for this visit.
+  }
+}
 
-// Declared at module scope (not inside render) so React keeps their identity
-// stable: defining components during render resets their state every render
-// and trips react-hooks/static-components.
-function SortTh({ k, label, sort, onSort }: { k: SortKey; label: string; sort: SortKey; onSort: (k: SortKey) => void }) {
+const plural = (n: number, one: string, many: string) => `${formatCount(n)} ${n === 1 ? one : many}`;
+
+/** "09:21" for a time today in the viewer's zone, "2026-10-21 09:21" otherwise. */
+function shortTime(ts: string): string {
+  if (!ts) return 'Not recorded';
+  const day = formatDate(ts);
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return day === today ? formatHourMinute(ts) : `${day} ${formatHourMinute(ts)}`;
+}
+
+function sortRows(rows: ClientStat[], sort: SortState): ClientStat[] {
+  const key = sort.columnId === 'blocked' ? 'blocked' : 'requests';
+  const dir = sort.direction === 'ascending' ? 1 : -1;
+  return [...rows].sort((a, b) => (a[key] - b[key]) * dir || a.ip_address.localeCompare(b.ip_address));
+}
+
+function ShareBar({ blocked, total }: { blocked: number; total: number }) {
+  const share = formatShare(blocked, total);
+  if (!share) return <span className="text-[13px] text-ink-muted">No requests</span>;
   return (
-    <th className="px-5 py-3 font-medium">
-      <button
-        onClick={() => onSort(k)}
-        className={`inline-flex items-center gap-1 hover:text-foreground transition-colors ${sort === k ? 'text-foreground' : ''}`}
-      >
-        {label}
-        <ArrowUpDown className="w-3 h-3 opacity-60" />
-      </button>
-    </th>
+    <span className="flex items-center gap-2">
+      <span aria-hidden="true" className="hidden h-1.5 min-w-16 flex-1 overflow-hidden rounded-full bg-line-subtle sm:block">
+        <span className="block h-1.5 bg-danger-strong" style={{ width: share }} />
+      </span>
+      <span className="w-12 shrink-0 text-right text-[13px] tabular-nums text-ink-muted">{share}</span>
+    </span>
   );
 }
-
-function Stat({ label, value, tone = '' }: { label: string; value: string | number; tone?: string }) {
-  return (
-    <div className="rounded-lg bg-secondary/40 border border-border/50 px-3 py-2.5">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
-      <div className={`text-lg font-semibold tabular-nums ${tone}`}>{value}</div>
-    </div>
-  );
-}
-
-const EMPTY_CLIENTS: ClientStat[] = [];
 
 export function Clients() {
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortKey>('requests');
+  const [sort, setSort] = useState<SortState>({ columnId: 'requests', direction: 'descending' });
+  const [showInternal, setShowInternal] = useState(readShowInternal);
   const [selectedIp, setSelectedIp] = useState<string | null>(null);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const switchLabelId = useId();
+  const setupId = useId();
 
-  const { data, isLoading, isFetching, refetch } = useQuery<ClientsData>({
+  const clients = useQuery<ClientsData | null>({
     queryKey: ['clients', 'statistics'],
-    // A list endpoint: the collection is under data and its count under meta,
-    // so the page needs the whole body. getData unwrapped it to the bare array,
-    // data.data was then undefined and the page always read as empty.
+    // A list endpoint: the collection is under data and its counts under
+    // meta, so the page needs the whole body (getData would unwrap it to the
+    // bare array).
     queryFn: () => api.get('clients/statistics').then((r) => r.data ?? null),
     refetchInterval: 30_000,
   });
 
-  const clients: ClientStat[] = data?.data ?? EMPTY_CLIENTS;
+  const all = useMemo(() => clients.data?.data ?? [], [clients.data]);
+  const internalTotal = clients.data?.meta?.internal ?? all.filter((c) => c.internal).length;
+  const clientTotal = clients.data?.meta?.total;
 
   const rows = useMemo(() => {
     const t = search.trim().toLowerCase();
-    const filtered = t ? clients.filter((c) => c.ip_address.toLowerCase().includes(t)) : clients;
-    const sorted = [...filtered].sort((a, b) => {
-      if (sort === 'blocked') return b.blocked - a.blocked;
-      if (sort === 'rate') return rate(b.blocked, b.requests) - rate(a.blocked, a.requests);
-      return b.requests - a.requests;
-    });
-    return sorted;
-  }, [clients, search, sort]);
+    const visible = all.filter((c) => (showInternal || !c.internal) && (!t || c.ip_address.toLowerCase().includes(t)));
+    return sortRows(visible, sort);
+  }, [all, search, showInternal, sort]);
+
+  // On a wide screen the panel always shows a client: the one picked, or the
+  // first row while none is (or the picked one is filtered out).
+  const panelIp = isDesktop
+    ? (selectedIp && rows.some((r) => r.ip_address === selectedIp) ? selectedIp : rows[0]?.ip_address ?? null)
+    : null;
+  const activeIp = isDesktop ? panelIp : selectedIp;
+  const activeRow = all.find((c) => c.ip_address === activeIp);
+
+  const toggleInternal = (on: boolean) => {
+    setShowInternal(on);
+    writeShowInternal(on);
+  };
+
+  const columns: Column<ClientStat>[] = [
+    {
+      id: 'client',
+      header: 'Client',
+      cell: (c) => (
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <button
+            type="button"
+            onClick={() => setSelectedIp(c.ip_address)}
+            aria-pressed={isDesktop ? c.ip_address === activeIp : undefined}
+            aria-haspopup={isDesktop ? undefined : 'dialog'}
+            className="self-start rounded-sm text-left font-mono text-[13px] font-medium text-ink hover:text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {c.ip_address}
+          </button>
+          {c.kind && <span className="text-xs text-ink-muted">{c.kind}</span>}
+        </div>
+      ),
+    },
+    { id: 'requests', header: 'Requests', align: 'right', sortable: true, firstSort: 'descending', cell: (c) => <span className="font-medium">{formatCount(c.requests)}</span> },
+    {
+      id: 'blocked',
+      header: 'Blocked',
+      align: 'right',
+      sortable: true,
+      firstSort: 'descending',
+      cell: (c) => <span className={cn('font-medium', c.blocked > 0 ? 'text-danger' : 'text-ink-muted')}>{formatCount(c.blocked)}</span>,
+    },
+    { id: 'share', header: 'Share blocked', className: 'w-40', cell: (c) => <ShareBar blocked={c.blocked} total={c.requests} /> },
+    {
+      id: 'last',
+      header: 'Last request',
+      className: 'whitespace-nowrap text-ink-muted',
+      cell: (c) => <span title={c.last_seen ? formatDateTime(c.last_seen) : undefined}>{shortTime(c.last_seen)}</span>,
+    },
+  ];
+
+  const connect = (
+    <Button aria-expanded={setupOpen} aria-controls={setupId} onClick={() => setSetupOpen((o) => !o)}>
+      Connect a device
+    </Button>
+  );
+
+  let empty: { title: string; description: ReactNode; action?: ReactNode };
+  if (search.trim()) {
+    empty = { title: `No client matches "${search.trim()}"`, description: 'Clear the filter to see every client.' };
+  } else if (all.length > 0 && !showInternal) {
+    empty = {
+      title: 'No devices in the last 7 days',
+      description: `Only internal addresses sent requests (${formatCount(internalTotal)}). Turn on "Show internal addresses" to see them.`,
+    };
+  } else {
+    empty = {
+      title: 'No client traffic in the last 7 days',
+      description: 'Devices appear here once they send requests through the proxy.',
+      action: !setupOpen ? <Button size="sm" onClick={() => setSetupOpen(true)} aria-controls={setupId}>Connect a device</Button> : undefined,
+    };
+  }
+
+  const footer = clients.data ? footerText({ rows, all, showInternal, internalTotal, clientTotal, filtered: search.trim() !== '' }) : null;
 
   return (
-    <div className="page-enter space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Users className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
-            Clients
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Source IPs seen in the last 7 days{typeof data?.meta?.total === 'number' ? ` (${formatCount(data.meta.total)})` : ''}. Select a row for details.
-          </p>
-        </div>
-        <button
-          onClick={() => refetch()}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-secondary/50 hover:bg-secondary/80 transition-colors btn-press"
-        >
-          <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="Traffic"
+        title="Clients"
+        description="Devices that sent traffic through the proxy in the last 7 days."
+        actions={connect}
+      />
+
+      <div id={setupId} hidden={!setupOpen}>
+        {setupOpen && (
+          <Section title="Connect a device" description="Point the device at the proxy; it appears in this list after its first request.">
+            <ClientSetup />
+          </Section>
+        )}
       </div>
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-        <input
+      <div className="flex flex-wrap items-center gap-3">
+        <SearchInput
+          label="Filter clients by IP address"
+          placeholder="Filter by IP address"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label="Filter clients by IP"
-          placeholder="Filter by IP…"
-          className="w-full pl-9 pr-3 py-2 rounded-lg bg-secondary/40 border border-border/70 text-sm focus:outline-hidden focus:border-cyan-500/40 focus:bg-secondary/60 transition-colors"
+          onChange={setSearch}
+          className="w-full sm:w-auto sm:flex-[1_1_280px] sm:max-w-[360px]"
         />
+        <div className="flex h-9 items-center gap-2.5 rounded-control border border-line-strong bg-surface px-3 text-sm text-ink-secondary">
+          <Switch labelledBy={switchLabelId} checked={showInternal} onChange={toggleInternal} />
+          <span id={switchLabelId}>Show internal addresses ({formatCount(internalTotal)})</span>
+        </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-[10px] text-muted-foreground uppercase tracking-wider bg-secondary/30 border-b border-border/50">
-                <tr>
-                  <th className="px-5 py-3 font-medium">Client IP</th>
-                  <SortTh k="requests" label="Requests" sort={sort} onSort={setSort} />
-                  <SortTh k="blocked" label="Blocked" sort={sort} onSort={setSort} />
-                  <SortTh k="rate" label="Block rate" sort={sort} onSort={setSort} />
-                  <th className="px-5 py-3 font-medium">Last seen</th>
-                  <th className="px-5 py-3 font-medium"><span className="sr-only">Details</span></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/30">
-                {isLoading ? (
-                  <tr><td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">Loading…</td></tr>
-                ) : rows.length === 0 ? (
-                  <tr><td colSpan={6} className="px-5 py-8">
-                    {search ? (
-                      <p className="text-center text-muted-foreground">No clients match the filter.</p>
-                    ) : (
-                      <div className="space-y-4">
-                        <p className="text-center text-sm text-muted-foreground">
-                          No client traffic in the last 7 days. Connect a device to get started.
-                        </p>
-                        <ClientSetup />
-                      </div>
-                    )}
-                  </td></tr>
-                ) : (
-                  rows.map((c) => {
-                    const br = rate(c.blocked, c.requests);
-                    return (
-                      <tr
-                        key={c.ip_address}
-                        onClick={() => setSelectedIp(c.ip_address)}
-                        className="row-hover cursor-pointer"
-                      >
-                        <td className="px-5 py-3"><IpBadge ip={c.ip_address} /></td>
-                        <td className="px-5 py-3 font-mono tabular-nums">{formatCount(c.requests)}</td>
-                        <td className="px-5 py-3 font-mono tabular-nums">
-                          {c.blocked > 0 ? <span className="text-orange-600 dark:text-orange-300">{formatCount(c.blocked)}</span> : <span className="text-muted-foreground">0</span>}
-                        </td>
-                        <td className="px-5 py-3">
-                          <span className={`font-mono tabular-nums text-xs ${br >= 20 ? 'text-red-600 dark:text-red-300' : br > 0 ? 'text-amber-600 dark:text-amber-300' : 'text-muted-foreground'}`}>
-                            {br}%
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-xs text-muted-foreground whitespace-nowrap" title={c.last_seen ? formatDateTime(c.last_seen) : ''}>
-                          {relative(c.last_seen)}
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          {/* Real focusable control for keyboard/AT; the whole row stays
-                              click-to-open for pointer users (the <tr> has no ARIA role). */}
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setSelectedIp(c.ip_address); }}
-                            aria-label={`View details for ${c.ip_address}`}
-                            className="p-1 rounded text-muted-foreground hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
-                          >
-                            <ChevronRight className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap items-start gap-4">
+        <Section title="Last 7 days" flush className="min-w-0 flex-[3_1_560px]">
+          <DataTable<ClientStat>
+            caption="Clients in the last 7 days"
+            columns={columns}
+            rows={rows}
+            rowKey={(c) => c.ip_address}
+            sort={sort}
+            onSortChange={setSort}
+            loading={clients.isPending}
+            error={clients.isError ? 'clients/statistics did not answer.' : null}
+            onRetry={() => { void clients.refetch(); }}
+            empty={empty}
+            isRowSelected={isDesktop ? (c) => c.ip_address === activeIp : undefined}
+          />
+          {footer && <p className="border-t border-line-subtle px-5 py-3 text-[13px] text-ink-muted">{footer}</p>}
+        </Section>
 
-      {selectedIp && <ClientDrawer ip={selectedIp} onClose={() => setSelectedIp(null)} />}
+        {isDesktop && panelIp && (
+          <Section title={panelIp} className="min-w-0 flex-[2_1_360px] [&_h2]:font-mono" flush>
+            <ClientDetailBody ip={panelIp} row={activeRow} />
+          </Section>
+        )}
+      </div>
+
+      {!isDesktop && selectedIp && (
+        <ClientDrawer ip={selectedIp} row={activeRow} onClose={() => setSelectedIp(null)} />
+      )}
     </div>
   );
 }
 
-function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
-  const { data, isLoading } = useQuery<ClientDetail>({
+function footerText({ rows, all, showInternal, internalTotal, clientTotal, filtered }: {
+  rows: ClientStat[];
+  all: ClientStat[];
+  showInternal: boolean;
+  internalTotal: number;
+  clientTotal?: number;
+  filtered: boolean;
+}): string {
+  const parts: string[] = [];
+  const listedClients = all.filter((c) => !c.internal).length;
+  const shown = filtered ? 'match the filter' : 'shown';
+  if (showInternal) {
+    const internalShown = rows.filter((c) => c.internal).length;
+    parts.push(`${plural(rows.length, 'address', 'addresses')} ${filtered && rows.length === 1 ? 'matches the filter' : shown}, ${formatCount(internalShown)} of them internal.`);
+    parts.push('Internal traffic is not counted on the Overview.');
+  } else {
+    parts.push(`${plural(rows.length, 'client', 'clients')} ${filtered && rows.length === 1 ? 'matches the filter' : shown}.`);
+    if (internalTotal > 0) {
+      parts.push(`${plural(internalTotal, 'internal address is', 'internal addresses are')} hidden and not counted on the Overview.`);
+    }
+  }
+  if (typeof clientTotal === 'number' && clientTotal > listedClients) {
+    parts.push(`The list holds the ${formatCount(listedClients)} with the most requests of ${plural(clientTotal, 'client', 'clients')}.`);
+  }
+  return parts.join(' ');
+}
+
+const DEST_COLUMNS: Column<ClientDomain>[] = [
+  {
+    id: 'host',
+    header: 'Destination',
+    cell: (d) => <code title={d.destination} className="block max-w-[11rem] truncate font-mono text-xs sm:max-w-[14rem]">{d.destination}</code>,
+  },
+  { id: 'requests', header: 'Requests', align: 'right', cell: (d) => formatCount(d.requests) },
+  {
+    id: 'blocked',
+    header: 'Blocked',
+    align: 'right',
+    cell: (d) => <span className={d.blocked > 0 ? 'text-danger' : 'text-ink-muted'}>{formatCount(d.blocked)}</span>,
+  },
+];
+
+/** One line on the blocked requests logged before reasons were recorded. */
+function unclassifiedNote(unclassified: number, blocked: number): string {
+  const tail = 'logged before the proxy recorded why it blocked a request, so the rule is not known.';
+  if (unclassified >= blocked) {
+    return blocked === 1 ? `The blocked request was ${tail}` : `All ${formatCount(blocked)} blocked requests were ${tail}`;
+  }
+  return `${formatCount(unclassified)} of the ${formatCount(blocked)} blocked requests ${unclassified === 1 ? 'was' : 'were'} ${tail}`;
+}
+
+function RecentReason({ r }: { r: ClientRecent }) {
+  if (r.blocked === undefined) return null;
+  if (!r.blocked) return <span className="text-xs text-ink-muted">Not blocked</span>;
+  if (!r.reason_label) return <Badge tone="danger">Blocked</Badge>;
+  return <Badge tone={r.reason === 'unclassified' ? 'neutral' : 'danger'}>{r.reason_label}</Badge>;
+}
+
+/**
+ * The detail of one client: its first and last request, counts, top
+ * destinations and recent requests. The counts cover every request logged
+ * for the address, not only the table's 7 days; when they differ from the
+ * row, a line says so.
+ */
+function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
+  const detail = useQuery<ClientDetail | null>({
     queryKey: ['client-details', ip],
     queryFn: () => getData<ClientDetail>(`clients/${encodeURIComponent(ip)}/details`),
   });
+  const info = detail.data;
 
-  const br = data ? rate(data.blocked, data.total_requests) : 0;
+  if (detail.isPending) {
+    return (
+      <div className="px-5 pb-5">
+        <span aria-hidden="true" className="block h-24 rounded-md bg-line-subtle animate-pulse" />
+        <span role="status" className="sr-only">Loading the detail of {ip}</span>
+      </div>
+    );
+  }
+  if (detail.isError || !info) {
+    return (
+      <div className="flex flex-col items-start gap-2 px-5 pb-5" role="alert">
+        <p className="text-sm text-ink-muted">Not reported: clients/{ip}/details did not answer.</p>
+        <Button size="sm" onClick={() => { void detail.refetch(); }}>Retry</Button>
+      </div>
+    );
+  }
+
+  const share = formatShare(info.blocked, info.total_requests);
+  const unclassified = info.blocked_by_reason?.find((r) => r.reason === 'unclassified')?.count ?? 0;
+  const widerThanRow = row !== undefined && row.requests !== info.total_requests;
+
+  return (
+    <div className="flex flex-col gap-5 pb-5">
+      <div className="flex flex-col gap-1 px-5 text-[13px] text-ink-muted">
+        {info.kind && <p>{info.kind}</p>}
+        <p>
+          {info.first_seen
+            ? <>First request {formatDateTime(info.first_seen)}, last request {info.last_seen ? formatDateTime(info.last_seen) : 'not recorded'}</>
+            : 'No request recorded'}
+        </p>
+      </div>
+
+      <dl className="grid grid-cols-3 gap-3 px-5">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <dt className="text-xs text-ink-muted">Requests</dt>
+          <dd className="text-xl font-semibold tabular-nums text-ink">{formatCount(info.total_requests)}</dd>
+        </div>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <dt className="text-xs text-ink-muted">Blocked</dt>
+          <dd className={cn('text-xl font-semibold tabular-nums', info.blocked > 0 ? 'text-danger' : 'text-ink')}>{formatCount(info.blocked)}</dd>
+        </div>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <dt className="text-xs text-ink-muted">Share blocked</dt>
+          <dd className="text-xl font-semibold tabular-nums text-ink">{share ?? 'No requests'}</dd>
+        </div>
+      </dl>
+
+      {(widerThanRow || unclassified > 0) && (
+        <div className="flex flex-col gap-1 px-5 text-[13px] text-ink-muted">
+          {widerThanRow && <p>These counts cover every request logged for this address; the table counts the last 7 days.</p>}
+          {unclassified > 0 && <p>{unclassifiedNote(unclassified, info.blocked)}</p>}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        <h3 className="px-5 text-sm font-semibold text-ink">Top destinations</h3>
+        <DataTable<ClientDomain>
+          caption={`Top destinations of ${ip}`}
+          columns={DEST_COLUMNS}
+          rows={info.top_domains}
+          rowKey={(r) => r.destination}
+          empty={{ title: 'No destinations recorded', description: 'Destinations appear here once this client sends a request.' }}
+        />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <h3 className="px-5 text-sm font-semibold text-ink">Recent requests</h3>
+        {info.recent.length === 0 ? (
+          <p className="px-5 text-sm text-ink-muted">No request recorded.</p>
+        ) : (
+          <ul>
+            {info.recent.map((r, i) => (
+              <li key={`${r.timestamp}-${i}`} className="flex flex-col gap-1 border-t border-line-subtle px-5 py-2 text-xs">
+                <code className="truncate font-mono text-ink" title={r.destination}>{r.destination}</code>
+                <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-ink-muted">
+                  <span className="font-mono tabular-nums" title={formatDateTime(r.timestamp)}>{shortTime(r.timestamp)}</span>
+                  <span className="font-mono">{r.method}</span>
+                  <RecentReason r={r} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ClientDrawer({ ip, row, onClose }: { ip: string; row?: ClientStat; onClose: () => void }) {
   const modalRef = useModal<HTMLDivElement>(true, onClose);
-
+  const headingId = useId();
   // Rendered into document.body: a position: fixed overlay is laid out
   // against the viewport only when no ancestor has a transform, filter or
-  // backdrop-filter, and the page wrapper and cards here have had all three.
-  // Inside the page the drawer covered the page box, not the window.
+  // backdrop-filter. Inside the page the drawer covered the page box, not
+  // the window.
   return createPortal(
-    <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-xs" onClick={onClose} />
-      <div ref={modalRef} className="relative w-full max-w-md h-full overflow-y-auto bg-card border-l border-border/70 shadow-2xl animate-in">
-        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-border/50 bg-card">
-          <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-            <IpBadge ip={ip} />
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-secondary/70 transition-colors" aria-label="Close">
-            <X className="w-4 h-4" />
-          </button>
+    <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true" aria-labelledby={headingId}>
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div ref={modalRef} className="relative h-full w-full max-w-md overflow-y-auto border-l border-line bg-surface text-ink shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line-subtle bg-surface px-5 py-3">
+          <h2 id={headingId} className="truncate font-mono text-base font-semibold">{ip}</h2>
+          <IconButton aria-label="Close" icon={<X />} onClick={onClose} />
         </div>
-
-        {isLoading || !data ? (
-          <div className="p-8 text-center text-muted-foreground">Loading…</div>
-        ) : (
-          <div className="p-5 space-y-6">
-            <div className="grid grid-cols-2 gap-3">
-              <Stat label="Requests" value={formatCount(data.total_requests)} />
-              <Stat label="Blocked" value={formatCount(data.blocked)} tone={data.blocked > 0 ? 'text-orange-600 dark:text-orange-300' : ''} />
-              <Stat label="Block rate" value={`${br}%`} tone={br >= 20 ? 'text-red-600 dark:text-red-300' : br > 0 ? 'text-amber-600 dark:text-amber-300' : ''} />
-              <Stat label="Last seen" value={relative(data.last_seen)} />
-            </div>
-            <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5" />
-              First seen {data.first_seen ? formatDateTime(data.first_seen) : 'not recorded'}
-            </div>
-
-            <div>
-              <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-                <Globe className="w-3.5 h-3.5" /> Top destinations
-              </h3>
-              {data.top_domains.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No destinations recorded.</p>
-              ) : (
-                <div className="space-y-1">
-                  {data.top_domains.map((d) => (
-                    <div key={d.destination} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors">
-                      <span className="font-mono text-xs truncate" title={d.destination}>{d.destination}</span>
-                      <span className="flex items-center gap-2 shrink-0 text-xs tabular-nums">
-                        {d.blocked > 0 && (
-                          <span className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-300" title={`${formatCount(d.blocked)} blocked`}>
-                            <Ban className="w-3 h-3" />{formatCount(d.blocked)}
-                          </span>
-                        )}
-                        <span className="text-muted-foreground">{formatCount(d.requests)}</span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Recent requests</h3>
-              {data.recent.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No recent requests.</p>
-              ) : (
-                <div className="space-y-1">
-                  {data.recent.map((e, i) => {
-                    const blocked = /DENIED|403|BLOCKED/i.test(e.status);
-                    return (
-                      <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/30 text-xs">
-                        <span className="text-muted-foreground w-14 shrink-0" title={formatDateTime(e.timestamp)}>{relative(e.timestamp)}</span>
-                        <span className="font-mono text-[10px] text-muted-foreground w-12 shrink-0">{e.method}</span>
-                        <span className="font-mono truncate flex-1" title={e.destination}>{e.destination}</span>
-                        <span className={`shrink-0 ${blocked ? 'text-orange-600 dark:text-orange-300' : 'text-muted-foreground'}`}>{blocked ? 'blocked' : 'ok'}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <div className="pt-4">
+          <ClientDetailBody ip={ip} row={row} />
+        </div>
       </div>
     </div>,
     document.body,

@@ -80,12 +80,21 @@ export type AuditPageData = ListResponse<AuditEntry>;
 export interface ClientStat {
   ip_address: string;
   requests: number;
+  /** Client rows recorded as blocked, any reason, "unclassified" included. */
   blocked: number;
   last_seen: string;
   status: string;
+  /** The stack's own traffic (loopback, the Docker host, the backend), not a device. Absent from older backends. */
+  internal?: boolean;
+  /** What the address is, where the backend can say ("Internal: this host", "Private network address"); may be empty. */
+  kind?: string;
 }
 
-export type ClientsData = ListResponse<ClientStat>;
+/** GET /api/clients/statistics: the clients with the most requests, then the internal sources. */
+export interface ClientsData extends ListResponse<ClientStat> {
+  /** total counts the clients other than internal sources; internal counts those. */
+  meta: ListMeta & { internal?: number };
+}
 
 export interface ClientDomain {
   destination: string;
@@ -99,16 +108,25 @@ export interface ClientRecent {
   destination: string;
   status: string;
   bytes: number;
+  /** The row's recorded blocked flag. Absent from older backends. */
+  blocked?: boolean;
+  reason?: string;
+  reason_label?: string;
 }
 
+/** GET /api/clients/{ip}/details: every logged client request of the address, not only the last 7 days. */
 export interface ClientDetail {
   ip_address: string;
+  internal?: boolean;
+  kind?: string;
   total_requests: number;
   blocked: number;
   first_seen: string;
   last_seen: string;
   top_domains: ClientDomain[];
   recent: ClientRecent[];
+  /** The blocked requests by the rule that blocked them; "unclassified" for rows from before reasons were recorded. */
+  blocked_by_reason?: ReasonCount[];
 }
 
 export interface TimelineEntry {
@@ -158,6 +176,9 @@ export interface DashboardSummary {
   last_24h_blocked?: number;
   /** Distinct client source IPs in the last 24 hours. */
   last_24h_clients?: number;
+  /** Internal sources (the stack's own traffic) left out of every count, and their requests, in the last 24 hours. */
+  last_24h_internal_sources?: number;
+  last_24h_internal_requests?: number;
   /** Newest client request in the last 24 hours (UTC, no zone marker), null when none. */
   last_request_at?: string | null;
   /** Hosts with the most blocked requests in the last 24 hours, with the rules that blocked them. */
