@@ -196,8 +196,8 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-xs" onClick={onClose} />
-      <div ref={modalRef} className="relative w-full max-w-md h-full overflow-y-auto bg-(--card) border-l border-border/70 shadow-2xl animate-in">
-        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-border/50 bg-(--card)">
+      <div ref={modalRef} className="relative w-full max-w-md h-full overflow-y-auto bg-card border-l border-border/70 shadow-2xl animate-in">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-border/50 bg-card">
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
             <IpBadge ip={ip} />
