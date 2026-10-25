@@ -1,4 +1,5 @@
 import { api, getData } from './api';
+import type { SettingRow } from '../types';
 
 // Queries that more than one component reads. One definition per key, so two
 // components never cache different shapes under the same key.
@@ -33,6 +34,15 @@ export const egressTotalQuery = {
       const total = r.data?.meta?.total ?? r.data?.total;
       return typeof total === 'number' ? total : null;
     }),
+};
+
+/**
+ * GET /api/settings: every setting row. The key and the shape are the ones
+ * the Settings page caches, so a save there refreshes every reader.
+ */
+export const settingsQuery = {
+  queryKey: ['settings'] as const,
+  queryFn: () => getData<SettingRow[]>('settings'),
 };
 
 /** GET /api/health (public): the backend's version and runtime. */
