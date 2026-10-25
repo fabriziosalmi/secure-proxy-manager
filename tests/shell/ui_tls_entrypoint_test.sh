@@ -32,6 +32,18 @@ start() { # mode, extra docker args...
   return 1
 }
 
+# logs_contain TEXT: true once the container's log holds TEXT. docker logs can
+# lag the process by a moment, so a single read right after start returned an
+# empty log once in CI (PR #424, passed on rerun); retry for up to 10 s.
+logs_contain() {
+  local _
+  for _ in $(seq 1 20); do
+    docker logs "$NAME" 2>&1 | grep -qF -- "$1" && return 0
+    sleep 0.5
+  done
+  return 1
+}
+
 echo "── self-signed (no TLS settings) ──"
 start && ok "serves HTTPS with a generated certificate" || bad "serves HTTPS with a generated certificate" "$(docker logs "$NAME" 2>&1 | tail -3)"
 
@@ -41,8 +53,8 @@ if start -e LETSENCRYPT_DOMAIN=spm.example.org -e LETSENCRYPT_EMAIL=ops@example.
 else
   bad "still starts and serves HTTPS" "$(docker logs "$NAME" 2>&1 | tail -3)"
 fi
-docker logs "$NAME" 2>&1 | grep -q 'certbot is not in this image' \
-  && ok "says why Let's Encrypt is not active" || bad "says why Let's Encrypt is not active"
+logs_contain 'certbot is not in this image' \
+  && ok "says why Let's Encrypt is not active" || bad "says why Let's Encrypt is not active" "$(docker logs "$NAME" 2>&1 | tail -5)"
 
 printf "\n  %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
