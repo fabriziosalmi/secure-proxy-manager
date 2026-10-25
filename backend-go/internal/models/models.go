@@ -50,6 +50,12 @@ type ImportBlacklistRequest struct {
 	Name string `json:"name" validate:"omitempty,max=100"`
 }
 
+// ImportAllowedRequest is a pasted list for Allowed IPs or Allowed domains, one
+// entry per line (POST /api/ip-whitelist/import, /api/domain-whitelist/import).
+type ImportAllowedRequest struct {
+	Content string `json:"content" validate:"required,max=1048576"`
+}
+
 type ImportGeoBlacklistRequest struct {
 	Countries []string `json:"countries" validate:"required,min=1,max=50"`
 }

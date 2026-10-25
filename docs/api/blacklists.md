@@ -55,6 +55,8 @@ POST /api/ip-blacklist
 
 `ip` accepts a single address or a CIDR range. Wildcards are not supported for IPs.
 
+A refusal is a `400` whose `detail` names the value and the list as the page does: `"300.1.1.1" is not an IP address or network`, `"203.0.113.9" is already on Blocked IPs`. The domain lists and the allowed lists answer the same way (`is not a domain name: labels of letters, digits and hyphens separated by dots`, `is already on Allowed domains`).
+
 ### Delete entry
 
 ```
@@ -360,6 +362,33 @@ POST /api/ip-whitelist
 }
 ```
 
+### Import a pasted list {#allowed-import}
+
+```
+POST /api/ip-whitelist/import
+POST /api/domain-whitelist/import
+```
+
+```json
+{ "content": "192.168.1.50\n# a comment\n10.0.0.0/24" }
+```
+
+One entry per line, at most 1 MiB; blank lines and lines starting with `#` are ignored. Each line is checked as the single add checks it, and the new entries are recorded under one source of kind `paste`, so the paste can be removed as a whole ([Remove a source](#sources)). An entry already on the list keeps the source that added it first.
+
+```json
+{
+  "status": "success",
+  "data": {
+    "added": 2,
+    "skipped": 0,
+    "refused": 1,
+    "refusals": [{ "entry": ".x.example", "reason": "\".x.example\" is not an exact name: write x.example. An allowed name takes that same name off Blocked domains, however it is written there, and covers no name under it" }]
+  }
+}
+```
+
+`skipped` counts the lines already listed or repeated in the paste; `refusals` lists the first 20 refused lines with their reasons, `refused` counts them all.
+
 ### Delete entry
 
 ```
@@ -407,6 +436,8 @@ POST /api/domain-whitelist
   "description": "Essential: code hosting"
 }
 ```
+
+`domain` is stored in lower case. `.github.com` and `*.github.com` are refused with the name to write (`".github.com" is not an exact name: write github.com. ...`), since an allowed name covers no name under it. A pasted list goes to [`POST /api/domain-whitelist/import`](#allowed-import).
 
 ### Delete entry
 

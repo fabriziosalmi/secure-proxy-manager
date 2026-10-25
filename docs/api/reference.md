@@ -57,9 +57,11 @@ Every response carries an `X-API-Version` header. It is the version of the reque
 | `POST`   | `/api/blacklists/import-geo` | Import country-IP ranges by country code |
 | `GET`    | `/api/ip-whitelist` | List IP whitelist entries |
 | `POST`   | `/api/ip-whitelist` | Add an IP whitelist entry |
+| `POST`   | `/api/ip-whitelist/import` | Add a pasted list to the IP whitelist as one pasted-list source |
 | `DELETE` | `/api/ip-whitelist/{id}` | Delete an IP whitelist entry |
 | `GET`    | `/api/domain-whitelist` | List domain whitelist entries (DNS-bypass) |
 | `POST`   | `/api/domain-whitelist` | Add a domain whitelist entry |
+| `POST`   | `/api/domain-whitelist/import` | Add a pasted list to the domain whitelist as one pasted-list source |
 | `DELETE` | `/api/domain-whitelist/{id}` | Delete a domain whitelist entry |
 
 ## Egress allowlist

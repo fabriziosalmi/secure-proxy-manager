@@ -44,6 +44,8 @@ var routeDocs = map[string]docMeta{
 	"GET /api/domain-blacklist/sources":         {auth: true, desc: "Where the domain blacklist entries came from: one row per source with its entry count and date range; id null for entries whose source was not recorded"},
 	"DELETE /api/domain-blacklist/sources/{id}": {auth: true, desc: "Remove the domain blacklist entries one source added ({id} or 'unrecorded'), then re-export the lists"},
 	"GET /api/domain-blacklist/export":          {auth: true, desc: "Download every domain blacklist entry, one per line"},
+	"POST /api/ip-whitelist/import":             {auth: true, desc: "Add a pasted list ({content}, one entry per line) to the IP whitelist as one pasted-list source; returns added, skipped (already listed), refused and the first refusals with their reasons"},
+	"POST /api/domain-whitelist/import":         {auth: true, desc: "Add a pasted list ({content}, one entry per line) to the domain whitelist as one pasted-list source; returns added, skipped (already listed), refused and the first refusals with their reasons"},
 	"GET /api/ip-whitelist/sources":             {auth: true, desc: "Where the IP whitelist entries came from: one row per source with its entry count and date range; id null for entries whose source was not recorded"},
 	"DELETE /api/ip-whitelist/sources/{id}":     {auth: true, desc: "Remove the IP whitelist entries one source added ({id} or 'unrecorded'), then re-export the lists"},
 	"GET /api/ip-whitelist/export":              {auth: true, desc: "Download every IP whitelist entry, one per line"},

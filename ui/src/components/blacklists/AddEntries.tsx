@@ -2,12 +2,12 @@
  * AddEntries: every way an entry reaches a list, behind the page's one
  * primary button. A blocked list takes a single entry, a pasted list, a URL,
  * one of the Popular lists and (IPs only) a country's address blocks; an
- * allowed list takes a single entry or a pasted list, because the import
- * endpoint feeds the blocked lists only.
+ * allowed list takes a single entry or a pasted list, sent to its own import
+ * ({list}/import), because blacklists/import feeds the blocked lists only.
  *
  * Every write records its source on the backend: Manual for a single entry,
- * Pasted list for pasted text, the URL (and the Popular list's name) for an
- * import, the country for a geo-block.
+ * Pasted list for pasted text on any list, the URL (and the Popular list's
+ * name) for an import, the country for a geo-block.
  *
  * Refusals are shown in the panel as the backend words them, the domain
  * limit (SPM_DNS_BLOCKLIST_MAX_DOMAINS) included: an import that would pass
@@ -23,7 +23,7 @@ import { cn } from '../../lib/utils';
 import { Button } from '../ui/Button';
 import { Section } from '../ui/Section';
 import { SegmentedControl } from '../ui/SegmentedControl';
-import { ALLOWED_PASTE_MAX, methodsFor, type AddMethod, type ListDef } from './lists';
+import { methodsFor, type AddMethod, type ListDef } from './lists';
 import { popularDomainLists, popularIpLists } from './popularLists';
 
 const METHOD_LABELS: Record<AddMethod, string> = {
@@ -56,6 +56,30 @@ function importMessage(data: { added?: number; skipped?: number; bogon_skipped?:
   if (skipped > 0) msg += `, ${formatCount(skipped)} skipped (already listed or not valid)`;
   if (bogon > 0) msg += `; ${formatCount(bogon)} of them private or LAN ranges, which cannot be blocked`;
   return msg;
+}
+
+/** The refusals named in the panel; the count covers the rest. */
+const REFUSALS_SHOWN = 5;
+
+interface AllowedImport {
+  added?: number;
+  skipped?: number;
+  refused?: number;
+  refusals?: { entry: string; reason: string }[];
+}
+
+/** What a paste on an allowed list did, with the reason for each refused line it names. */
+function allowedPasteMessage(data: AllowedImport | undefined, label: string): { text: string; refused: boolean } {
+  const added = data?.added ?? 0;
+  const skipped = data?.skipped ?? 0;
+  const refused = data?.refused ?? 0;
+  let text = `Added ${formatCount(added)} ${added === 1 ? 'entry' : 'entries'} to ${label}`;
+  if (skipped > 0) text += `, ${formatCount(skipped)} already listed`;
+  if (refused === 0) return { text, refused: false };
+  const named = (data?.refusals ?? []).slice(0, REFUSALS_SHOWN).map((x) => x.reason);
+  text += `; ${formatCount(refused)} refused: ${named.join('; ')}`;
+  if (refused > named.length) text += `; and ${formatCount(refused - named.length)} more`;
+  return { text: `${text}.`, refused: true };
 }
 
 export interface AddEntriesProps {
@@ -102,6 +126,14 @@ export function AddEntries({ list, method, onMethodChange, onChanged, onClose }:
     e.preventDefault();
     const v = value.trim();
     if (!v) return;
+    // The backend's refusal on Allowed domains (allowedDomainValue), said
+    // before the request: a leading dot or "*." would read as "and its
+    // subdomains", and an allowed name covers none.
+    const exact = v.replace(/^(\*\.)?\.*/, '');
+    if (list.allowed && list.field === 'domain' && exact !== v && isValidDomain(exact)) {
+      setError(`"${v}" is not an exact name: write ${exact}. An allowed name takes that same name off Blocked domains, however it is written there, and covers no name under it.`);
+      return;
+    }
     if (list.field === 'ip' ? !isValidIP(v) : !isValidDomain(v)) {
       setError(list.field === 'ip'
         ? `"${v}" is not an IPv4 address or network: four numbers from 0 to 255, optionally /0 to /32.`
@@ -120,30 +152,18 @@ export function AddEntries({ list, method, onMethodChange, onChanged, onClose }:
     e.preventDefault();
     if (!text.trim()) return;
     if (list.allowed) {
-      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
-      if (lines.length > ALLOWED_PASTE_MAX) {
-        setError(`At most ${ALLOWED_PASTE_MAX} entries at a time on an allowed list; this paste has ${formatCount(lines.length)}.`);
-        return;
-      }
+      // The allowed list's own import, never blacklists/import (which feeds
+      // the blocked lists): one pasted-list source, each line checked as a
+      // single entry is, and each refusal named with its reason.
       void run('paste', async () => {
-        let added = 0;
-        let refused = 0;
-        for (const [i, line] of lines.entries()) {
-          // Paced under the nginx limit of 20 requests per second.
-          if (i > 0) await new Promise((r) => setTimeout(r, 55));
-          try {
-            await api.post(list.path, { [list.field]: line, description: '' });
-            added++;
-          } catch {
-            refused++;
-          }
-        }
+        const r = await api.post(`${list.path}/import`, { content: text });
         setText('');
-        if (refused > 0) {
-          setError(`Added ${formatCount(added)}, refused ${formatCount(refused)} (not valid, or already listed).`);
+        const msg = allowedPasteMessage(r.data?.data, list.label);
+        if (msg.refused) {
+          setError(msg.text);
           return null;
         }
-        return `Added ${formatCount(added)} ${added === 1 ? 'entry' : 'entries'} to ${list.label}`;
+        return msg.text;
       });
       return;
     }
@@ -219,7 +239,7 @@ export function AddEntries({ list, method, onMethodChange, onChanged, onClose }:
           id={`${ids}-text`}
           label="Entries, one per line"
           hint={list.allowed
-            ? `Lines starting with # are ignored. Each entry is added on its own, at most ${ALLOWED_PASTE_MAX} at a time.`
+            ? 'One entry per line; lines starting with # are ignored. Entries already listed are skipped, and an entry that is not valid is refused with the reason.'
             : 'Lines starting with # or ; are ignored, and hosts-file lines work: the last field of a line is the entry. Entries already listed or not valid are skipped.'}
         >
           <textarea id={`${ids}-text`} aria-describedby={`${ids}-text-hint`} value={text} onChange={(e) => setText(e.target.value)} rows={6} required

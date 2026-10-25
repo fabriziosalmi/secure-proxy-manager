@@ -166,9 +166,6 @@ export function methodsFor(list: ListDef): AddMethod[] {
   return list.field === 'ip' ? ['single', 'paste', 'url', 'popular', 'geo'] : ['single', 'paste', 'url', 'popular'];
 }
 
-/** An allowed list has no import endpoint: a pasted list is added one entry at a time, at most this many. */
-export const ALLOWED_PASTE_MAX = 200;
-
 /** The name a source goes by in its row and in the removal confirmation. */
 export function sourceTitle(s: Pick<ListSource, 'kind' | 'source' | 'label'>): string {
   return sourceName(s.kind, s.source, s.label);
