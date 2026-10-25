@@ -58,6 +58,7 @@ PLAN.md
 config/dnsmasq.d/
 config/squid_settings.env
 config/custom_squid_extra.conf
+config/domain_acl_status.json
 
 # TLS material — NEVER commit. The SSL-bump CA is generated per-deployment at
 # first boot (proxy/startup.sh). Committing it shares one private key with every

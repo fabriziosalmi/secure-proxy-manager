@@ -20,11 +20,11 @@ test.describe('Secure Proxy Manager E2E', () => {
     await passwordField.fill(PASSWORD);
     await page.getByRole('button', { name: /sign in/i }).click();
 
-    // Auth succeeds: login fields disappear and the Dashboard renders at "/".
+    // Auth succeeds: login fields disappear and the Overview renders at "/".
     await expect(passwordField).toBeHidden();
     await expect(page).toHaveURL(/:\/\/[^/]+\/?$/);
     await expect(
-      page.getByRole('heading', { level: 1, name: 'Dashboard' }).first(),
+      page.getByRole('heading', { level: 1, name: 'Overview' }).first(),
     ).toBeVisible();
 
     // Sidebar navigation -> Clients ("/clients").
@@ -37,11 +37,11 @@ test.describe('Secure Proxy Manager E2E', () => {
     await expect(page).toHaveURL(/\/settings\/?$/);
     await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible();
 
-    // Back to the Dashboard via the sidebar.
+    // Back to the Overview via the sidebar link, which is named Dashboard.
     await page.getByRole('link', { name: 'Dashboard' }).click();
     await expect(page).toHaveURL(/:\/\/[^/]+\/?$/);
     await expect(
-      page.getByRole('heading', { level: 1, name: 'Dashboard' }).first(),
+      page.getByRole('heading', { level: 1, name: 'Overview' }).first(),
     ).toBeVisible();
   });
 });

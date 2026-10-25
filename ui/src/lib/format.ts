@@ -52,3 +52,23 @@ export function formatTime(ts: string): string {
 export function formatDateTime(ts: string): string {
   return parsed(ts) ? `${formatDate(ts)} ${formatTime(ts)}` : ts;
 }
+
+/** "11:00" in the viewer's time zone, for a backend timestamp; the input when unparseable. */
+export function formatHourMinute(ts: string): string {
+  const d = parsed(ts);
+  return d ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : ts;
+}
+
+/** "11:00" in the viewer's time zone, for a moment in the browser (a Date or epoch milliseconds). */
+export function formatClock(at: Date | number): string {
+  const d = typeof at === 'number' ? new Date(at) : at;
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const SHARE = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+/** part as a share of total with one decimal: (908, 1180) -> "77.0%". Null when total is not positive. */
+export function formatShare(part: number, total: number): string | null {
+  if (!(total > 0)) return null;
+  return `${SHARE.format((part / total) * 100)}%`;
+}

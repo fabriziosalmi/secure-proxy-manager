@@ -110,6 +110,7 @@ type AnalyticsHandlers struct {
 	// are immutable once published, so callers may read them without the lock.
 	// Lifetime request counts, cached: see lifetimeCounts (SECURE-PERF-01).
 	countsMu      sync.Mutex
+	countsMaxID   int64
 	countsTotal   int
 	countsBlocked int
 	countsFetched time.Time
@@ -135,23 +136,77 @@ func (h *AnalyticsHandlers) WithSysInfo(s SysInfo) *AnalyticsHandlers {
 // enough that N open tabs cost one pair of scans rather than N.
 const lifetimeCountsTTL = 25 * time.Second
 
-// lifetimeCounts returns the total and blocked request counts, recomputing at
-// most once per lifetimeCountsTTL. See the call site for why (SECURE-PERF-01).
-func (h *AnalyticsHandlers) lifetimeCounts() (total, blocked int) {
+// lifetimeBase returns the total and blocked request counts up to row maxID,
+// recomputing at most once per lifetimeCountsTTL. See the call site for why
+// (SECURE-PERF-01). The three counts and maxID come from one statement, so
+// they describe the same rows: a row logged between two separate queries was
+// counted by one and not the other.
+func (h *AnalyticsHandlers) lifetimeBase() (maxID int64, total, blocked int) {
 	h.countsMu.Lock()
 	defer h.countsMu.Unlock()
 	if time.Since(h.countsFetched) < lifetimeCountsTTL {
-		return h.countsTotal, h.countsBlocked
+		return h.countsMaxID, h.countsTotal, h.countsBlocked
 	}
 	// Client requests only (clientRows). The total stays an index-only count:
 	// all rows minus the DNS rows, which idx_proxy_logs_dns counts by itself.
 	var all, dns int
-	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs`).Scan(&all)
-	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE method = 'DNS'`).Scan(&dns)
-	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND ` + clientRows).Scan(&blocked)
+	_ = h.db.QueryRow(`SELECT
+		IFNULL((SELECT MAX(id) FROM proxy_logs), 0),
+		(SELECT COUNT(*) FROM proxy_logs),
+		(SELECT COUNT(*) FROM proxy_logs WHERE method = 'DNS'),
+		(SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND `+clientRows+`)`).Scan(&maxID, &all, &dns, &blocked)
 	total = all - dns
-	h.countsTotal, h.countsBlocked, h.countsFetched = total, blocked, time.Now()
-	return total, blocked
+	h.countsMaxID, h.countsTotal, h.countsBlocked, h.countsFetched = maxID, total, blocked, time.Now()
+	return maxID, total, blocked
+}
+
+// forgetLifetimeCounts drops the cached base, after the logs were cleared.
+func (h *AnalyticsHandlers) forgetLifetimeCounts() {
+	h.countsMu.Lock()
+	h.countsFetched = time.Time{}
+	h.countsMu.Unlock()
+}
+
+// requestCounts are the dashboard's request counts, all of client rows
+// (clientRows).
+type requestCounts struct {
+	Total, Blocked           int // all time
+	Today, TodayBlocked      int // since 00:00 UTC
+	Day, DayBlocked, Clients int // the last 24 hours; Clients is distinct source IPs
+	LastRequest              string
+}
+
+// requestCounts reads every count the dashboard shows. The all-time counts
+// are the cached base plus the rows logged after it (id > maxID, a range on
+// the primary key), so they are current without a full scan per poll. The
+// cached total used to be compared with a today count read fresh, and the
+// dashboard showed today 1,235 next to all time 1,234 for up to 25 seconds.
+//
+// The rows after the base and the windowed counts are read in one statement,
+// one snapshot of the table: no row can be in today and not in all time. Ids
+// are AUTOINCREMENT, never reused, so a row is either in the base or after it.
+// A delete only makes the cached part too high until the next refresh, which
+// keeps today at or below all time.
+func (h *AnalyticsHandlers) requestCounts(now time.Time) requestCounts {
+	maxID, baseTotal, baseBlocked := h.lifetimeBase()
+	todayStart := now.UTC().Truncate(24 * time.Hour).Unix()
+	dayStart := now.Add(-24 * time.Hour).Unix()
+	var c requestCounts
+	var newTotal, newBlocked int
+	// #nosec G202 -- clientRows is a constant; values are bound.
+	_ = h.db.QueryRow(`SELECT n.total, n.blocked, t.total, t.blocked, d.total, d.blocked, d.clients, d.last
+		FROM (SELECT COUNT(*) AS total, IFNULL(SUM(blocked), 0) AS blocked
+		        FROM proxy_logs WHERE id > ? AND `+clientRows+`) AS n,
+		     (SELECT COUNT(*) AS total, IFNULL(SUM(blocked), 0) AS blocked
+		        FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+`) AS t,
+		     (SELECT COUNT(*) AS total, IFNULL(SUM(blocked), 0) AS blocked,
+		             COUNT(DISTINCT CASE WHEN source_ip != '' THEN source_ip END) AS clients,
+		             IFNULL(MAX(timestamp), '') AS last
+		        FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+`) AS d`,
+		maxID, todayStart, dayStart,
+	).Scan(&newTotal, &newBlocked, &c.Today, &c.TodayBlocked, &c.Day, &c.DayBlocked, &c.Clients, &c.LastRequest)
+	c.Total, c.Blocked = baseTotal+newTotal, baseBlocked+newBlocked
+	return c
 }
 
 const domainBlacklistTTL = 30 * time.Second
@@ -374,16 +429,35 @@ func parseDuration(s string) time.Duration {
 // panels from drifting apart.
 const analyticsWindow = 7 * 24 * time.Hour
 
-// destinationKey is the SQL expression a top list groups destinations by.
-// Squid logs a CONNECT as "host:443" while the DNS sinkhole logs the same
-// site as "host", so grouping on the raw column split one destination into
-// two rows, each with part of the count. A trailing :443 or :80 (the default
-// ports) is dropped; any other port stays, because it is another service.
-// LIKE ':443' needs the colon, so "host:8443" keeps its port.
-const destinationKey = `CASE
-	WHEN destination LIKE '%:443' THEN substr(destination, 1, length(destination) - 4)
-	WHEN destination LIKE '%:80' THEN substr(destination, 1, length(destination) - 3)
-	ELSE destination END`
+// destinationKey is the SQL expression a top list groups destinations by: the
+// host. Squid logs a CONNECT as "host:443", a plain HTTP request as its full
+// URL ("http://host/login") and the DNS sinkhole logs the same site as
+// "host", so grouping on the raw column split one destination into a row per
+// form and per path, each with part of the count.
+var destinationKey = hostKey("destination")
+
+// hostKey returns the SQL expression that reduces the destination in column
+// col to its host, in three steps:
+//
+//   - after the scheme: "http://host/login" -> "host/login" (no "://", as
+//     in "host:443", leaves it as it is);
+//   - before the path: "host/login" -> "host";
+//   - without a default port: a trailing :443 or :80 is dropped; any other
+//     port stays, because it is another service. LIKE ':443' needs the colon,
+//     so "host:8443" keeps its port.
+//
+// col is a column name written by the caller, never a value.
+func hostKey(col string) string {
+	scheme := "instr(" + col + ", '://')"
+	// substr from 1 when there is no scheme, from just after "://" otherwise.
+	rest := "substr(" + col + ", 1 + (" + scheme + " + 2) * (" + scheme + " > 0))"
+	// Appending "/" makes instr find one in a bare host too.
+	hostPort := "substr(" + rest + ", 1, instr(" + rest + " || '/', '/') - 1)"
+	return `CASE
+	WHEN ` + hostPort + ` LIKE '%:443' THEN substr(` + hostPort + `, 1, length(` + hostPort + `) - 4)
+	WHEN ` + hostPort + ` LIKE '%:80' THEN substr(` + hostPort + `, 1, length(` + hostPort + `) - 3)
+	ELSE ` + hostPort + ` END`
+}
 
 // sinceUnix returns the Unix-epoch lower bound for a rolling window of length d.
 // Binding this and filtering `unix_timestamp >= ?` lets the query range-scan
@@ -487,6 +561,7 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 	).Scan(&total, &blocked, &firstSeen, &lastSeen)
 
 	topDomains := []map[string]any{}
+	// #nosec G202 -- destinationKey is built once from a constant column name by hostKey; values are bound.
 	if dr, err := h.db.Query(
 		`SELECT `+destinationKey+` AS dest, COUNT(*) AS c, `+blockedCase+` AS b
 		 FROM proxy_logs WHERE source_ip = ? AND destination IS NOT NULL AND destination != '' AND `+clientRows+`
@@ -696,6 +771,7 @@ func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request
 	if err == nil && res != nil {
 		deleted, _ = res.RowsAffected()
 	}
+	h.forgetLifetimeCounts()
 
 	// The log delete above is unconditional; the WAF reset is best-effort and
 	// behind the breaker, so a down/circuit-open WAF can't gate the DB clear.
@@ -718,42 +794,40 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	// on a container limited to 0.25 CPU. The ETag on this route does not help:
 	// it hashes the response body, so every query has already run by the time
 	// the 304 is decided (SECURE-PERF-01).
-	totalReqs, blockedReqs := h.lifetimeCounts()
-
-	var todayReqs, todayBlocked int
-
-	todayStart := time.Now().UTC().Truncate(24 * time.Hour).Unix()
-	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows, todayStart).Scan(&todayReqs)                    //nolint:errcheck
-	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows, todayStart).Scan(&todayBlocked) //nolint:errcheck
+	c := h.requestCounts(time.Now())
 
 	var ipBLCount, domainBLCount int
 
-	result["total_requests"] = totalReqs
-	result["blocked_requests"] = blockedReqs
-	result["today_requests"] = todayReqs
-	result["today_blocked"] = todayBlocked
+	result["total_requests"] = c.Total
+	result["blocked_requests"] = c.Blocked
+	result["today_requests"] = c.Today
+	result["today_blocked"] = c.TodayBlocked
+	// The last 24 hours, the window of top_blocked, top_clients and
+	// blocked_by_reason_24h. last_24h_clients counts the distinct source IPs,
+	// which top_clients (at most 10) cannot.
+	result["last_24h_requests"] = c.Day
+	result["last_24h_blocked"] = c.DayBlocked
+	result["last_24h_clients"] = c.Clients
+	if c.LastRequest != "" {
+		result["last_request_at"] = c.LastRequest
+	} else {
+		result["last_request_at"] = nil
+	}
 
-	var topBlocked []map[string]any
-	rows, _ := h.db.Query(`SELECT `+destinationKey+` AS dest, COUNT(*) AS cnt FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+` GROUP BY dest ORDER BY cnt DESC LIMIT 10`, sinceUnix(24*time.Hour))
-	if rows != nil {
-		for rows.Next() {
-			var dest string
-			var cnt int
-			rows.Scan(&dest, &cnt) //nolint:errcheck
-			topBlocked = append(topBlocked, map[string]any{"dest": dest, "count": cnt})
-		}
-		rows.Close()
-	}
-	if topBlocked == nil {
-		topBlocked = []map[string]any{}
-	}
-	result["top_blocked"] = topBlocked
+	result["top_blocked"] = h.topBlocked(sinceUnix(24 * time.Hour))
 
 	h.db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&ipBLCount)         //nolint:errcheck
 	h.db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&domainBLCount) //nolint:errcheck
 	// Note: these two are on different tables so cannot be combined into the proxy_logs query above.
 	result["ip_blacklist_count"] = ipBLCount
 	result["domain_blacklist_count"] = domainBLCount
+	// Whether Squid holds the domain blacklist itself, as the proxy recorded
+	// it; null when the proxy has not written its record.
+	if s := readDomainACLStatus(h.cfg.ConfigDir); s != nil {
+		result["squid_domain_acl"] = s
+	} else {
+		result["squid_domain_acl"] = nil
+	}
 
 	// Top clients (last 24h)
 	var topClients []map[string]any
@@ -785,17 +859,23 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	}
 	result["blocked_by_reason"] = byReason
 	result["threat_categories"] = threatCats
+	// The same, over the last 24 hours.
+	result["blocked_by_reason_24h"] = h.blockedByReason(`unix_timestamp >= ?`, sinceUnix(24*time.Hour))
 
-	// Recent blocks (last 10)
+	// Recent blocks: the last 10 of the same 24 hours the counts above cover,
+	// so the page never lists a block its "blocked by rule" does not count.
 	var recentBlocks []map[string]any
-	rRows, _ := h.db.Query(`SELECT timestamp, source_ip, method, destination, status, block_reason FROM proxy_logs WHERE blocked = 1 AND ` + clientRows + ` ORDER BY id DESC LIMIT 10`)
+	// #nosec G202 -- destinationKey and clientRows are constant expressions.
+	rRows, _ := h.db.Query(`SELECT timestamp, source_ip, method, destination, `+destinationKey+`, status, block_reason
+		FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+` ORDER BY id DESC LIMIT 10`, sinceUnix(24*time.Hour))
 	if rRows != nil {
 		for rRows.Next() {
-			var ts, srcIP, method, dest, status, reason sql.NullString
-			rRows.Scan(&ts, &srcIP, &method, &dest, &status, &reason) //nolint:errcheck
+			var ts, srcIP, method, dest, host, status, reason sql.NullString
+			rRows.Scan(&ts, &srcIP, &method, &dest, &host, &status, &reason) //nolint:errcheck
 			recentBlocks = append(recentBlocks, map[string]any{
 				"timestamp": ts.String, "source_ip": srcIP.String, "method": method.String,
-				"destination": dest.String, "status": status.String, "reason": reason.String,
+				"destination": dest.String, "host": host.String, "status": status.String,
+				"reason": reason.String, "reason_label": workers.ReasonLabel(reason.String),
 			})
 		}
 		rRows.Close()
@@ -836,6 +916,40 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 		resp.Body.Close()
 	}
 	writeOK(w, result)
+}
+
+// topBlocked lists the 10 hosts with the most blocked client requests since
+// the Unix time since, each with its count and the rules that blocked it
+// (largest first). A host can be blocked by more than one rule: the DNS
+// sinkhole and Squid's own domain ACL both block a blacklisted name.
+func (h *AnalyticsHandlers) topBlocked(since int64) []map[string]any {
+	out := []map[string]any{}
+	// #nosec G202 -- destinationKey and clientRows are constant expressions; values are bound.
+	rows, err := h.db.Query(`WITH b AS (
+			SELECT `+destinationKey+` AS dest, block_reason AS reason FROM proxy_logs
+			WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+`),
+		top AS (SELECT dest, COUNT(*) AS cnt FROM b GROUP BY dest ORDER BY cnt DESC, dest LIMIT 10)
+		SELECT top.dest, top.cnt, b.reason, COUNT(*) AS n FROM top JOIN b ON b.dest = top.dest
+		GROUP BY top.dest, b.reason ORDER BY top.cnt DESC, top.dest, n DESC, b.reason`, since)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	var cur map[string]any
+	for rows.Next() {
+		var dest, reason string
+		var cnt, n int
+		if rows.Scan(&dest, &cnt, &reason, &n) != nil {
+			continue
+		}
+		if cur == nil || cur["dest"] != dest {
+			cur = map[string]any{"dest": dest, "count": cnt, "reasons": []map[string]any{}}
+			out = append(out, cur)
+		}
+		cur["reasons"] = append(cur["reasons"].([]map[string]any),
+			map[string]any{"reason": reason, "label": workers.ReasonLabel(reason), "count": n})
+	}
+	return out
 }
 
 // warnWAFStatus logs a WAF management failure at most once per ten minutes:

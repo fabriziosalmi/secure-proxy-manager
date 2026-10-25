@@ -499,6 +499,48 @@ def test_resolver_drift_does_not_reconfigure_onto_a_refused_config(w, state, mon
 
 # ── refresh_domain_acl: Squid's own copy of the domain blacklist ─────────────
 
+@pytest.fixture(autouse=True)
+def acl_status(w, tmp_path, monkeypatch):
+    """Every test writes the ACL status into its own directory, never /config."""
+    path = tmp_path / "domain_acl_status.json"
+    monkeypatch.setattr(w, "DOMAIN_ACL_STATUS", str(path))
+    return path
+
+
+def test_domain_acl_status_says_whether_squid_holds_the_list(w, tmp_path, monkeypatch, acl_status):
+    # The backend cannot see SPM_SQUID_DOMAIN_ACL_MAX; the dashboard's "blocked
+    # at DNS only" notice reads this file. Names are counted after normalizing,
+    # the count the limit is applied to.
+    src, dst = tmp_path / "local.txt", tmp_path / "squid.txt"
+    monkeypatch.setattr(w, "DOMAIN_LIST", str(src))
+    monkeypatch.setattr(w, "DOMAIN_ACL", str(dst))
+    src.write_text("a.example\n*.a.example\nb.example\n")
+
+    monkeypatch.setenv("SPM_SQUID_DOMAIN_ACL_MAX", "2")
+    w.refresh_domain_acl()
+    status = json.loads(acl_status.read_text())
+    want = {"version": 1, "names": 2, "limit": 2, "held": True}
+    assert {k: status[k] for k in want} == want
+    assert isinstance(status["written_at"], int)
+
+    monkeypatch.setenv("SPM_SQUID_DOMAIN_ACL_MAX", "1")
+    w.refresh_domain_acl()
+    status = json.loads(acl_status.read_text())
+    assert (status["names"], status["limit"], status["held"]) == (2, 1, False)
+    assert dst.read_text() == ""
+
+
+def test_domain_acl_status_is_not_held_when_squids_file_cannot_be_written(w, tmp_path, monkeypatch, acl_status):
+    src = tmp_path / "local.txt"
+    monkeypatch.setattr(w, "DOMAIN_LIST", str(src))
+    monkeypatch.setattr(w, "DOMAIN_ACL", str(tmp_path / "missing-dir" / "squid.txt"))
+    monkeypatch.setenv("SPM_SQUID_DOMAIN_ACL_MAX", "10")
+    src.write_text("a.example\n")
+    w.refresh_domain_acl()
+    status = json.loads(acl_status.read_text())
+    assert (status["names"], status["limit"], status["held"]) == (1, 10, False)
+
+
 def test_domain_acl_holds_the_list_up_to_the_limit_and_nothing_above(w, tmp_path, monkeypatch):
     src, dst = tmp_path / "local.txt", tmp_path / "squid.txt"
     monkeypatch.setattr(w, "DOMAIN_LIST", str(src))

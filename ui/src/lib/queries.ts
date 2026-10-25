@@ -10,6 +10,8 @@ export interface StatusData {
   proxy_port?: string;
   version?: string;
   requests_count?: number;
+  /** Squid's version as the proxy reported it; absent until it has. */
+  squid_version?: string;
   update_available?: string;
   update_url?: string;
 }
