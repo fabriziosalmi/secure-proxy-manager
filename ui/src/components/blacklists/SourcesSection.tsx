@@ -23,6 +23,19 @@ export interface SourcesSectionProps {
   className?: string;
 }
 
+/**
+ * The name of a row's Remove batch button. Two pasted lists of the same size
+ * would read alike, so a paste or a restore is told apart by its time.
+ */
+function batchLabel(s: ListSource): string {
+  let label = `Remove batch: ${sourceTitle(s)}, ${formatCount(s.entries)} ${s.entries === 1 ? 'entry' : 'entries'}`;
+  if (s.kind === 'paste' || s.kind === 'restore') {
+    const when = sourceDetail(s);
+    if (when) label += `, ${when.charAt(0).toLowerCase()}${when.slice(1)}`;
+  }
+  return label;
+}
+
 export function SourcesSection({ list, sources, loading, error, onRetry, onRemove, className }: SourcesSectionProps) {
   const columns: Column<ListSource>[] = [
     {
@@ -48,7 +61,7 @@ export function SourcesSection({ list, sources, loading, error, onRetry, onRemov
       headerHidden: true,
       align: 'right',
       cell: (s) => (
-        <Button size="sm" aria-label={`Remove batch: ${sourceTitle(s)}, ${formatCount(s.entries)} ${s.entries === 1 ? 'entry' : 'entries'}`} onClick={() => onRemove(s)}>
+        <Button size="sm" aria-label={batchLabel(s)} onClick={() => onRemove(s)}>
           Remove batch
         </Button>
       ),

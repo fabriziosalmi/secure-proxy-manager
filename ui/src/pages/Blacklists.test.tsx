@@ -248,6 +248,20 @@ describe('Blacklists', () => {
       } finally { restoreTz() }
     })
 
+    it('tells two pasted lists of the same size apart by when they were pasted', async () => {
+      const restoreTz = setRomeTimeZone()
+      try {
+        sources['ip-blacklist'] = [
+          { id: 12, kind: 'paste', source: '', label: '', entries: 3, first_added: '2026-10-25 12:53:40', last_added: '2026-10-25 12:53:40' },
+          { id: 11, kind: 'paste', source: '', label: '', entries: 3, first_added: '2026-10-25 12:53:10', last_added: '2026-10-25 12:53:10' },
+        ]
+        renderWithProviders(<Blacklists />)
+        expect(await screen.findByText('Pasted 2026-10-25 13:53:40')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Remove batch: Pasted list, 3 entries, pasted 2026-10-25 13:53:40' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Remove batch: Pasted list, 3 entries, pasted 2026-10-25 13:53:10' })).toBeInTheDocument()
+      } finally { restoreTz() }
+    })
+
     it('removes a whole source after a confirmation that names how many entries go', async () => {
       renderWithProviders(<Blacklists />)
       const btn = await screen.findByRole('button', { name: 'Remove batch: Firehol Level 1, 4,521 entries' })

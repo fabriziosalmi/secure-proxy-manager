@@ -293,6 +293,9 @@ export function AddEntries({ list, method, onMethodChange, onChanged, onClose }:
               value={method}
               onChange={(m) => { setError(null); onMethodChange(m); }}
               size="sm"
+              // One line per option: on a phone the control scrolls sideways
+              // in its own box instead of breaking "Single entry" in two.
+              className="whitespace-nowrap"
             />
           </div>
           <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>

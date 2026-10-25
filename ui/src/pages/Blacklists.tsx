@@ -304,6 +304,9 @@ function ListBody({ list, total, enforcement, confirm, onChanged }: {
     {
       id: 'entry',
       header: 'Entry',
+      // Wide enough for an address or network on one line; a long domain
+      // still breaks rather than widening the table without end.
+      className: 'min-w-[11rem]',
       cell: (e) => {
         const desc = shownDescription(e);
         return (

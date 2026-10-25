@@ -171,7 +171,10 @@ export function DataTable<T>({
         role="region"
         aria-labelledby={captionId}
         tabIndex={0}
-        className={cn('overflow-x-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent', stickyHeader && 'overflow-y-auto')}
+        // relative: a visually hidden header (headerHidden) is absolutely
+        // positioned, and without a positioned scroll box it escaped it and
+        // widened the page on a phone by the table's overflow.
+        className={cn('relative overflow-x-auto focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent', stickyHeader && 'overflow-y-auto')}
         style={stickyHeader && maxHeight ? { maxHeight } : undefined}
       >
         <table aria-busy={loading || undefined} className="w-full border-collapse text-sm text-ink">
