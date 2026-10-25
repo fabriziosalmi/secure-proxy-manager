@@ -6,14 +6,7 @@ import { api, getData } from '../../lib/api';
 import type { CacheStats, ClientsData } from '../../types';
 import { formatCount } from '../../lib/format';
 import { proxyAddress } from '../../lib/utils';
-
-interface StatusData {
-  proxy_status?: string;
-  proxy_host?: string;
-  proxy_port?: string;
-  version?: string;
-  requests_count?: number;
-}
+import { statusQuery } from '../../lib/queries';
 
 // What a tile shows when it has no number: an ellipsis while the request is in
 // flight, then "Not reported", never a bare placeholder that reads as a value.
@@ -38,7 +31,7 @@ function Tile({ icon: Icon, label, value, tone = '', accent = false }: {
 
 export function ServiceStatus() {
   const opts = { refetchInterval: 15_000, staleTime: 10_000 };
-  const status = useQuery<StatusData>({ queryKey: ['status'], queryFn: () => getData('status'), ...opts });
+  const status = useQuery({ ...statusQuery, ...opts });
   const summary = useQuery<{ today_blocked?: number }>({ queryKey: ['dash-summary-mini'], queryFn: () => getData('dashboard/summary'), ...opts });
   const cache = useQuery<CacheStats | null>({ queryKey: ['cache-mini'], queryFn: () => getData('cache/statistics'), ...opts });
   // A list endpoint: its count is in meta, beside data, so this one reads the

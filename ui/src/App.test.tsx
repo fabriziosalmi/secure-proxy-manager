@@ -80,6 +80,7 @@ describe('App', () => {
       render(<App />)
       expect(await screen.findByRole('heading', { level: 1, name: 'Analytics' }, { timeout: 5000 })).toBeInTheDocument()
       expect(window.location.pathname).toBe('/analytics')
+      expect(screen.getByRole('link', { name: 'Analytics' })).toHaveAttribute('aria-current', 'page')
     } finally {
       window.history.pushState({}, '', '/')
     }
