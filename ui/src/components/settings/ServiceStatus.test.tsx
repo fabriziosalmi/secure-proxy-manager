@@ -42,6 +42,15 @@ describe('ServiceStatus', () => {
     await waitFor(() => { expect(tileValue('Clients')).toBe('3') })
   })
 
+  // requests_count counts rows since the start of the day and today_blocked
+  // since UTC midnight: neither is a rolling 24 hours.
+  it('labels the request counts as today, which is the window the backend counts', async () => {
+    renderWithProviders(<ServiceStatus />)
+    await waitFor(() => { expect(tileValue('Requests today')).toBe('50,772') })
+    expect(tileValue('Blocked today')).toBe('1,328')
+    expect(screen.queryByText(/24h/)).not.toBeInTheDocument()
+  })
+
   // cache_stats.txt is never written (poll_once in proxy/blacklist_watchdog.py
   // collects no cache statistics), so the backend answers simulated: true with
   // zeros. The tile rendered those zeros as a measured "0.0%" hit rate.
@@ -56,8 +65,8 @@ describe('ServiceStatus', () => {
     renderWithProviders(<ServiceStatus />)
     await waitFor(() => { expect(tileValue('Version')).toBe('Not reported') })
     expect(tileValue('Clients')).toBe('Not reported')
-    expect(tileValue('Requests 24h')).toBe('Not reported')
-    expect(tileValue('Blocked 24h')).toBe('Not reported')
+    expect(tileValue('Requests today')).toBe('Not reported')
+    expect(tileValue('Blocked today')).toBe('Not reported')
     expect(tileValue('Cache hit')).toBe('Not reported')
   })
 })

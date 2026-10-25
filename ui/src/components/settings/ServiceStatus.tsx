@@ -75,8 +75,8 @@ export function ServiceStatus() {
           <Tile icon={Server} label="Listen" value={<span className="font-mono text-xs">{s?.proxy_host ?? 'proxy'}:{s?.proxy_port ?? '3128'}</span>} />
           <Tile icon={Tag} label="Version" value={s?.version ? `v${s.version}` : num(undefined, status.isLoading)} />
           <Tile icon={Users} label="Clients" value={num(clients.data?.meta?.total, clients.isLoading)} accent />
-          <Tile icon={ArrowDownUp} label="Requests 24h" value={num(s?.requests_count, status.isLoading)} />
-          <Tile icon={Ban} label="Blocked 24h" value={num(summary.data?.today_blocked, summary.isLoading)} tone={(summary.data?.today_blocked ?? 0) > 0 ? 'text-orange-600 dark:text-orange-300' : ''} />
+          <Tile icon={ArrowDownUp} label="Requests today" value={num(s?.requests_count, status.isLoading)} />
+          <Tile icon={Ban} label="Blocked today" value={num(summary.data?.today_blocked, summary.isLoading)} tone={(summary.data?.today_blocked ?? 0) > 0 ? 'text-orange-600 dark:text-orange-300' : ''} />
           <Tile icon={Database} label="Cache hit" value={hitPct} />
         </div>
       </CardContent>
