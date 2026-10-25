@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 )
 
@@ -15,7 +16,7 @@ import (
 func StartLogRetention(ctx context.Context, db *sql.DB) {
 	Track(func() {
 		// Run once at startup.
-		runRetention(db)
+		_ = database.StartupStep("log_retention", func() error { runRetention(db); return nil })
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
 		for {

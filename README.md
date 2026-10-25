@@ -146,7 +146,10 @@ process holding one; free it, change the host side of the mapping, or set
   Telegram, ntfy or Microsoft Teams.
 - **Operations.** Prometheus metrics on the internal network (backend
   `:5000/metrics`, WAF `:8080/metrics`), health probes `/livez` and `/readyz`,
-  configuration backup and restore in Settings > Admin and backup.
+  configuration backup and restore in Settings > Admin and backup. The backend
+  refuses to start on a database with a damaged page (`PRAGMA quick_check`);
+  the full `PRAGMA integrity_check` runs 30 seconds after start, and if it
+  fails `/readyz` answers 503 and `spm_db_integrity_ok` goes to 0.
 
 Configuration is in `.env` (see [Configuration](docs/guide/configuration.md));
 everything else is a setting stored in the database and edited in the UI.

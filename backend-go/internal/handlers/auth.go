@@ -15,6 +15,7 @@ import (
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/auth"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/validate"
@@ -318,6 +319,16 @@ func (h *AuthHandlers) Ready(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"status": "unready",
 			"reason": err.Error(),
+		})
+		return
+	}
+	// A damaged database fails readiness: the full integrity check runs after
+	// start-up (workers.StartIntegrityCheck), where it can no longer refuse to
+	// start, so the healthcheck is how its failure reaches the operator.
+	if msg := database.IntegrityFailure(); msg != "" {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"status": "unready",
+			"reason": "database integrity check failed: " + msg,
 		})
 		return
 	}

@@ -213,6 +213,30 @@ func RetentionRan(days int) {
 	retentionDays.Set(float64(days))
 }
 
+// Database integrity. The full PRAGMA integrity_check runs after start-up
+// (workers.StartIntegrityCheck), so its outcome is reported here and by
+// readiness instead of by refusing to start.
+var (
+	dbIntegrityOK = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "spm_db_integrity_ok",
+		Help: "1 when the last full PRAGMA integrity_check passed, 0 when it found a problem.",
+	})
+	dbIntegrityLastCheck = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "spm_db_integrity_last_check_timestamp_seconds",
+		Help: "Unix timestamp of the last full PRAGMA integrity_check that completed.",
+	})
+)
+
+// IntegrityChecked records the outcome of a completed full integrity check.
+func IntegrityChecked(ok bool) {
+	dbIntegrityLastCheck.SetToCurrentTime()
+	if ok {
+		dbIntegrityOK.Set(1)
+	} else {
+		dbIntegrityOK.Set(0)
+	}
+}
+
 // RetentionDisabled records that retention is configured in a way that prunes
 // nothing, so proxy_logs is growing without bound.
 func RetentionDisabled() {

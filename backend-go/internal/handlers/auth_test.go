@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 )
@@ -28,6 +31,28 @@ func TestReadyHandler(t *testing.T) {
 	_ = json.NewDecoder(w.Body).Decode(&resp)
 	if resp["status"] != "ready" {
 		t.Errorf("Expected status=ready, got %v", resp)
+	}
+
+	// A failed full integrity check → 503 unready, with the check's words,
+	// and ready again once a check passes.
+	database.RecordIntegrity(errors.New("integrity_check returned 1 line(s): row 7 missing from index idx_x"))
+	r = httptest.NewRequest("GET", "/readyz", nil)
+	w = httptest.NewRecorder()
+	h.Ready(w, r)
+	database.RecordIntegrity(nil)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("Expected 503 after a failed integrity check, got %d", w.Code)
+	}
+	resp = map[string]string{}
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if !strings.Contains(resp["reason"], "database integrity check failed") || !strings.Contains(resp["reason"], "idx_x") {
+		t.Errorf("readiness does not say why: %v", resp)
+	}
+	r = httptest.NewRequest("GET", "/readyz", nil)
+	w = httptest.NewRecorder()
+	h.Ready(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 once a check passed, got %d", w.Code)
 	}
 
 	// Closed DB → 503 unready (proves the probe actually exercises the DB).
