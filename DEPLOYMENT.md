@@ -95,8 +95,10 @@ credentials from your `.env` (or the ones the installer printed).
 ### Point a client at the proxy
 
 - **Host**: `localhost` (or the server's IP) **Port**: `3128` **Protocol**: HTTP
-- Only RFC1918/localhost sources are allowed by default; widen this with
-  `GUI_IP_WHITELIST` or in the UI.
+- Only RFC1918/localhost sources may use the proxy; every other source gets a
+  403 before any other rule is evaluated. To admit an extra source, list it in
+  `GUI_IP_WHITELIST` (IPs or CIDRs, comma- or space-separated). The IP
+  whitelist in the UI is a list of destinations, not of clients.
 - Settings → Client Setup generates per-OS instructions and a PAC file.
 
 Test it:

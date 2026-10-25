@@ -1,7 +1,7 @@
 package engine
 
 import (
-	"hash/fnv"
+	"hash/maphash"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,10 +11,14 @@ import (
 // scanned and found clean. URLs in this cache skip the expensive regex
 // scan on subsequent requests. The cache auto-expires entries after TTL.
 //
-// This is NOT a true Bloom filter (no false positives by design) — it's
-// a bounded hash set with TTL eviction. Simpler, deterministic, and
-// sufficient for our use case.
+// This is NOT a Bloom filter: it is a bounded hash set with TTL eviction. Two
+// keys with the same 64-bit hash share an entry, so the hash must not be
+// computable from outside. It used to be unseeded FNV-1a, which is not
+// collision resistant: anyone who knows the algorithm can search offline for a
+// URL that collides with one the cache already holds as clean. It is now
+// maphash with a random per-process seed.
 type SafeURLCache struct {
+	seed      maphash.Seed
 	mu        sync.RWMutex
 	entries   map[uint64]time.Time // hash → last seen
 	maxSize   int
@@ -26,6 +30,7 @@ type SafeURLCache struct {
 
 func NewSafeURLCache(maxSize int, ttl time.Duration) *SafeURLCache {
 	c := &SafeURLCache{
+		seed:    maphash.MakeSeed(),
 		entries: make(map[uint64]time.Time, maxSize),
 		maxSize: maxSize,
 		ttl:     ttl,
@@ -34,16 +39,15 @@ func NewSafeURLCache(maxSize int, ttl time.Duration) *SafeURLCache {
 	return c
 }
 
-// hashURL returns a fast 64-bit hash of the URL.
-func hashURL(url string) uint64 {
-	h := fnv.New64a()
-	h.Write([]byte(url)) //nolint:errcheck
-	return h.Sum64()
+// hashURL returns a keyed 64-bit hash of the URL, unpredictable without the
+// process's seed.
+func (c *SafeURLCache) hashURL(url string) uint64 {
+	return maphash.String(c.seed, url)
 }
 
 // IsSafe returns true if the URL has been previously scanned and found clean.
 func (c *SafeURLCache) IsSafe(url string) bool {
-	h := hashURL(url)
+	h := c.hashURL(url)
 	c.mu.RLock()
 	ts, ok := c.entries[h]
 	c.mu.RUnlock()
@@ -57,7 +61,7 @@ func (c *SafeURLCache) IsSafe(url string) bool {
 
 // MarkSafe adds a URL to the safe cache after it passed WAF scanning.
 func (c *SafeURLCache) MarkSafe(url string) {
-	h := hashURL(url)
+	h := c.hashURL(url)
 	c.mu.Lock()
 	if len(c.entries) >= c.maxSize {
 		// Evict oldest 10% (at least 1)

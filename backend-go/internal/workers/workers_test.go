@@ -527,3 +527,25 @@ func TestRefreshStopsAtTheDomainLimit(t *testing.T) {
 		t.Errorf("refresh with a limit of 2 added %d, table holds %d", added, n)
 	}
 }
+
+// audit_log had no retention at all, and unauthenticated failed logins write
+// to it. It is pruned at a year, whatever log_retention_days says, including
+// when that setting is unusable and proxy_logs pruning is skipped.
+func TestRetentionPrunesTheAuditLogAtAYear(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	_, _ = db.Exec("INSERT INTO audit_log(username,action,timestamp) VALUES('a','old',datetime('now','-400 days')),('a','recent',datetime('now','-10 days'))")
+	_, _ = db.Exec("INSERT OR REPLACE INTO settings(setting_name,setting_value) VALUES('log_retention_days','not-a-number')")
+
+	runRetention(db)
+
+	var old, recent int
+	_ = db.QueryRow("SELECT COUNT(*) FROM audit_log WHERE action='old'").Scan(&old)
+	_ = db.QueryRow("SELECT COUNT(*) FROM audit_log WHERE action='recent'").Scan(&recent)
+	if old != 0 {
+		t.Error("an audit row over a year old was kept")
+	}
+	if recent != 1 {
+		t.Error("a recent audit row was deleted")
+	}
+}

@@ -41,6 +41,44 @@ PAIRS = [
     (f"{CONFIG_DIR}/dst_allow_domain.txt", "/etc/squid/allowlists/dst_domain/local.txt"),
 ]
 
+# Squid's own copy of the domain blacklist, used by the domain_blacklist ACL
+# (see generate_squid_conf.sh): the list while it is small enough for Squid to
+# hold, empty above SPM_SQUID_DOMAIN_ACL_MAX (the DNS sinkhole still applies).
+DOMAIN_LIST = "/etc/squid/blacklists/domain/local.txt"
+DOMAIN_ACL = "/etc/squid/blacklists/domain/squid.txt"
+
+
+def domain_acl_max():
+    try:
+        return int(os.environ.get("SPM_SQUID_DOMAIN_ACL_MAX", "250000"))
+    except ValueError:
+        return 250000
+
+
+def refresh_domain_acl():
+    """Rewrite DOMAIN_ACL from DOMAIN_LIST, or empty it when the list is too
+    large for Squid. Called after every list sync, so a list that grows past
+    the limit can never be loaded into Squid by a reconfigure."""
+    try:
+        with open(DOMAIN_LIST, "rb") as f:
+            data = f.read()
+    except OSError:
+        data = b""
+    n = sum(1 for line in data.splitlines() if line.strip())
+    limit = domain_acl_max()
+    if n > limit:
+        print(f"[watchdog] domain blacklist has {n} entries, over SPM_SQUID_DOMAIN_ACL_MAX={limit}: "
+              "Squid denies none of them itself, only the DNS sinkhole does", flush=True)
+        data = b""
+    tmp = DOMAIN_ACL + ".tmp"
+    try:
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, DOMAIN_ACL)
+    except OSError as exc:
+        print(f"[watchdog] could not write {DOMAIN_ACL}: {exc}", flush=True)
+
+
 # The backend writes this AFTER the lists above, with a sha256 for each. A list
 # is copied into Squid's ACL directory only if the bytes being copied match it.
 MANIFEST = f"{CONFIG_DIR}/lists.manifest.json"
@@ -216,12 +254,12 @@ def atomic_copy(src, dst, expected_sha256=None):
         raise
 
 
-def squid_config_ok():
-    """Whether squid accepts the current config. Used as a gate before
-    reconfigure, so an unparsable ACL set is refused rather than loaded."""
+def squid_config_ok(path=None):
+    """Whether squid accepts a config (the live one by default). Used as a gate
+    before reconfigure, so an unparsable ACL set is refused rather than loaded."""
+    argv = ["/usr/sbin/squid", "-k", "parse"] + (["-f", path] if path else [])
     try:
-        res = subprocess.run(["/usr/sbin/squid", "-k", "parse"],
-                             check=False, capture_output=True, timeout=15)
+        res = subprocess.run(argv, check=False, capture_output=True, timeout=15)
         return res.returncode == 0
     except Exception as exc:  # noqa: BLE001
         print(f"[watchdog] squid -k parse failed to run: {exc}", flush=True)
@@ -240,6 +278,30 @@ RELOAD_TRIGGER = f"{CONFIG_DIR}/.reload-squid"
 CLEAR_CACHE_TRIGGER = f"{CONFIG_DIR}/.clear-cache"
 SQUID = "/usr/sbin/squid"
 GENERATOR = "/usr/local/bin/generate_squid_conf.sh"
+SQUID_CONF = "/etc/squid/squid.conf"
+SQUID_CONF_NEXT = SQUID_CONF + ".next"
+
+
+def promote_config():
+    """Move the checked config over the live one (same filesystem: atomic)."""
+    os.replace(SQUID_CONF_NEXT, SQUID_CONF)
+
+
+def generate_checked():
+    """Generate into SQUID_CONF_NEXT, check that Squid parses it, and only then
+    move it over the live file. Returns (generator result, applied).
+
+    The generator used to write the live file in place, and the parse check ran
+    afterwards: a refused config was already on disk, so the next reconfigure
+    from any other path (list sync, resolver drift) or a supervisord restart
+    loaded it. The resolver-drift path did not check at all.
+    """
+    env = dict(os.environ, SQUID_CONF=SQUID_CONF_NEXT)
+    gen = subprocess.run([GENERATOR], check=False, capture_output=True, timeout=30, env=env)
+    if gen.returncode != 0 or not squid_config_ok(SQUID_CONF_NEXT):
+        return gen, False
+    promote_config()
+    return gen, True
 
 
 class WatchdogState:
@@ -297,8 +359,12 @@ def heal_resolver_drift(state):
         return
     print(f"[watchdog] resolver drift {state.resolv_fp} -> {fp}, regenerating config...", flush=True)
     try:
-        subprocess.run([GENERATOR], check=False, capture_output=True, timeout=30)
-        subprocess.run([SQUID, "-k", "reconfigure"], check=False, capture_output=True, timeout=10)
+        _, applied = generate_checked()
+        if applied:
+            subprocess.run([SQUID, "-k", "reconfigure"], check=False, capture_output=True, timeout=10)
+        else:
+            print("[watchdog] resolver drift: the regenerated config was refused — keeping the running one", flush=True)
+        # Recorded either way, so a config that will not generate is not retried every 2 s.
         state.resolv_fp = fp
     except Exception as exc:  # noqa: BLE001
         print(f"[watchdog] resolver-drift reload error: {exc}", flush=True)
@@ -335,17 +401,16 @@ def regenerate_and_reconfigure(stamp):
     leaves the trigger unconsumed and the next poll retries.
     """
     try:
-        gen_res = subprocess.run([GENERATOR], check=False, capture_output=True, timeout=30)
+        gen_res, applied = generate_checked()
         print(f"[watchdog] generate_squid_conf.sh rc={gen_res.returncode}", flush=True)
-        # A failed generation leaves squid.conf part-mutated — the base was
-        # already copied over it, so the egress default-deny may be missing.
-        # Applying that is a fail-OPEN. Keep the running config instead
-        # (SECURE-ERR-07).
+        # A failed generation or a config that does not parse is never moved
+        # over the live file, so the running config stays both in memory and
+        # on disk (SECURE-ERR-07).
         if gen_res.returncode != 0:
             print("[watchdog] generation FAILED — keeping the running config, not reconfiguring", flush=True)
             print(gen_res.stderr.decode("utf-8", "replace")[:2000], flush=True)
             write_result("reload-squid", stamp, gen_res.returncode, None)
-        elif not squid_config_ok():
+        elif not applied:
             print("[watchdog] generated config does not parse — refusing to reconfigure", flush=True)
             write_result("reload-squid", stamp, 0, 1)
         else:
@@ -503,6 +568,7 @@ def poll_once(state):
     check_reload_trigger(state)
     check_clear_cache_trigger(state)
     if sync_lists(state):
+        refresh_domain_acl()
         reconfigure_squid()
 
 

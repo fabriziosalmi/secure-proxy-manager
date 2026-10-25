@@ -235,6 +235,11 @@ services:
       # so one switch covers both an erroring WAF and an unreachable one
       # (SECURE-REL-02).
       - WAF_FAIL_OPEN=${WAF_FAIL_OPEN:-0}
+      # Squid also denies blacklisted domains itself while the list has at most this
+      # many entries (blocks a domain visited before it was blacklisted, cache hits
+      # included); above it only the DNS sinkhole applies. At 250k: ~80 MB and about
+      # 1.4 s of refused requests per list reload (measured), one large list such as OISD.
+      - SPM_SQUID_DOMAIN_ACL_MAX=${SPM_SQUID_DOMAIN_ACL_MAX:-250000}
     ports:
       - "${PROXY_BIND_IP:-0.0.0.0}:3128:3128"
     volumes:

@@ -186,6 +186,15 @@ func (h *MaintenanceHandlers) restoreSettings(tx *sql.Tx, config map[string]stri
 			skipped++
 			continue
 		}
+		// The same value rules as the settings API. Restore checked key names
+		// only, so a crafted backup stored proxy_port="abc", a negative
+		// log_retention_days (which turns off pruning) or a newline-injected
+		// bandwidth value that reached the proxy's root shell.
+		if err := validateSettingValue(k, v); err != nil {
+			log.Warn().Str("key", k).Err(err).Msg("RestoreConfig: skipping a value the settings API would refuse")
+			skipped++
+			continue
+		}
 		val := v
 		// Encrypt sensitive values, but NOT if they are already encrypted — a
 		// backup exports the raw (already-enc::) column, so re-encrypting here

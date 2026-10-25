@@ -5,9 +5,9 @@
 The web UI and API accept two authentication schemes interchangeably on every protected endpoint:
 
 - **HTTP Basic.** `Authorization: Basic base64(user:pass)`. Credentials are validated against the bcrypt hash stored in the database (with a fallback to the `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` environment values during initial bootstrap).
-- **JWT bearer.** `Authorization: Bearer <token>`. Tokens are signed with HS256 using `SECRET_KEY` and carry the claims `sub`, `iat`, `exp`, and `type` (`access` or `refresh`). Refresh tokens are rejected on protected endpoints.
+- **JWT bearer.** `Authorization: Bearer <token>`. Tokens are signed with HS256 using `SECRET_KEY` and carry the claims `sub`, `iat`, `exp`, `jti` (unique per token), `pv` (a fingerprint of the current password hash) and `type` (`access` or `refresh`); refresh tokens also carry `auth_time`, the time of the login they descend from. Refresh tokens are rejected on protected endpoints. Changing the password changes `pv`, so every token issued before the change stops validating.
 
-`POST /api/auth/login` accepts a JSON body `{username, password}` and returns both an access token and a refresh token. `POST /api/auth/refresh` exchanges a refresh token for a fresh pair. `POST /api/logout` blacklists the presented JWT (the blacklist is persisted in the `jwt_blacklist` table so it survives restarts).
+`POST /api/auth/login` accepts a JSON body `{username, password}` and returns both an access token and a refresh token. `POST /api/auth/refresh` exchanges a refresh token for a fresh pair; a refresh token is single-use, and a chain of refreshes ends seven days after the login. `POST /api/logout` blacklists the presented JWT and, when the body carries `{"refresh_token": ...}`, that refresh token too (the blacklist is persisted in the `jwt_blacklist` table so it survives restarts). `POST /api/change-password` ends every earlier session and returns a fresh pair for the caller.
 
 Passwords are stored using bcrypt.
 

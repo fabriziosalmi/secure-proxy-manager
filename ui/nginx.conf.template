@@ -36,7 +36,9 @@ server {
 
 # Rate-limiting zones
 limit_req_zone $binary_remote_addr zone=api:10m rate=20r/s;
-limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
+# Failed logins are limited by the backend (MAX_LOGIN_ATTEMPTS per window per
+# address, reserved before bcrypt runs). A "login" zone used to be defined
+# here and applied to no location.
 
 # HTTPS server
 server {
@@ -89,6 +91,10 @@ server {
 
     # WebSocket upgrade — must come before the generic /api/ block
     location /api/ws/ {
+        # The only /api path without a request limit: an unauthenticated
+        # client could send it anything at line rate.
+        limit_req zone=api burst=20 nodelay;
+
         proxy_pass            http://${BACKEND_HOST}:${BACKEND_PORT}/api/ws/;
         proxy_http_version    1.1;
         proxy_set_header      Upgrade           $http_upgrade;

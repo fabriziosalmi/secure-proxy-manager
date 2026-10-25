@@ -1,4 +1,9 @@
 #!/bin/bash
+# The file this run writes. The watchdog points it at a scratch path, checks
+# that Squid parses the result, and only then moves it into place; boot
+# writes the live file directly.
+SQUID_CONF="${SQUID_CONF:-/etc/squid/squid.conf}"
+
 # ── Helper functions ─────────────────────────────────────────────────────────
 
 ensure_ip_blocking_rules() {
@@ -38,37 +43,85 @@ EOL
     fi
 }
 
+# insert_policy BLOCK: place access-policy lines at the @@SPM_POLICY@@ marker,
+# ahead of every allow rule. Squid stops at the first http_access line that
+# matches, so a restriction appended to the end of the file (after "deny all",
+# behind "allow localnet") is never evaluated: proxy auth, time restrictions and
+# content filtering were all written that way and none of them took effect.
+# The block travels through the environment, not awk -v, so backslashes in it
+# are not reinterpreted. Fails if the marker is gone rather than appending.
+insert_policy() {
+    local conf="$SQUID_CONF" tmp
+    if ! grep -qF '# @@SPM_POLICY@@' "$conf"; then
+        echo "CRITICAL: policy marker missing from $conf — refusing to append access rules where Squid would ignore them" >&2
+        return 1
+    fi
+    tmp="$(mktemp)"
+    SPM_BLOCK="$1" awk 'index($0, "# @@SPM_POLICY@@") == 1 { print ENVIRON["SPM_BLOCK"] } { print }' "$conf" > "$tmp" \
+        && cat "$tmp" > "$conf"
+    rm -f "$tmp"
+}
+
+# refresh_domain_acl: derive Squid's domain ACL file from the synced list. The
+# list when it has at most SPM_SQUID_DOMAIN_ACL_MAX entries, an empty file
+# above that (the dnsmasq sinkhole still applies). The watchdog does the same
+# after every list sync (blacklist_watchdog.py refresh_domain_acl).
+refresh_domain_acl() {
+    local src=/etc/squid/blacklists/domain/local.txt dst=/etc/squid/blacklists/domain/squid.txt
+    local max="${SPM_SQUID_DOMAIN_ACL_MAX:-250000}" n=0
+    [ -f "$src" ] && n=$(grep -c . "$src" || true)
+    if [ "$n" -le "$max" ]; then
+        cp "$src" "$dst.tmp" 2>/dev/null || : > "$dst.tmp"
+    else
+        : > "$dst.tmp"
+        echo "WARNING: domain blacklist has $n entries, over SPM_SQUID_DOMAIN_ACL_MAX=$max: Squid does not deny them itself, only the DNS sinkhole does, so a domain visited before it was blacklisted stays reachable until Squid's caches expire"
+    fi
+    mv -f "$dst.tmp" "$dst"
+}
+
 verify_config_feature() {
     local label="$1"
     local pattern="$2"
-    if grep -q "$pattern" /etc/squid/squid.conf; then
+    if grep -q "$pattern" "$SQUID_CONF"; then
         echo "  [ok] $label"
     else
         echo "  [--] $label (may be disabled)"
     fi
 }
 
-# Safe-source: validate a config file contains only KEY=VALUE assignments and
-# comments before sourcing it. Rejects files with shell-execution characters
-# (semicolons, backticks, $(), pipes, redirects, etc.) to prevent code injection
-# from a shared/writable /config volume.
-safe_source() {
-    local file="$1"
-    if [ ! -f "$file" ]; then
-        return 0
-    fi
-    # Reject any line that is not blank, a comment, or a simple KEY=VALUE assignment
-    if grep -Pv '^\s*(#.*)?$|^\s*[A-Za-z_][A-Za-z0-9_]*=[^;`|&<>$()\n]*\s*$' "$file" > /dev/null 2>&1; then
-        echo "WARNING: Refusing to source $file — contains unsafe content (non-assignment lines detected)"
-        return 1
-    fi
-    # Reject the presence of any dangerous shell characters anywhere in the file
-    if grep -Pq '[;`|&<>]|\$\(|\$\{' "$file" 2>/dev/null; then
-        echo "WARNING: Refusing to source $file — contains dangerous shell characters"
-        return 1
-    fi
-    # shellcheck source=/dev/null
-    . "$file"
+# load_settings FILE KEY=REGEX...: assign the listed keys from FILE's
+# KEY=VALUE lines, each only when its whole value matches its regex, with
+# printf -v. Nothing in the file is executed and no other variable can be set.
+#
+# This replaced safe_source, which SOURCED the file as root after two checks
+# that allowed spaces: "EXTRA_SSL_PORTS=8443 pkill squid" passed both and ran
+# pkill, and "BW_PER_USER_KBPS=0" followed by "PATH=/config" passed and
+# replaced PATH for the rest of the generator. Values reach these files from
+# the settings API and from a restored backup.
+load_settings() {
+    local file="$1"; shift
+    [ -f "$file" ] || return 0
+    local line key val spec re
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in ''|\#*) continue ;; esac
+        key="${line%%=*}"
+        val="${line#*=}"
+        if [ "$key" = "$line" ]; then
+            echo "WARNING: $file: ignoring a line that is not KEY=VALUE"
+            continue
+        fi
+        re=""
+        for spec in "$@"; do
+            if [ "${spec%%=*}" = "$key" ]; then re="${spec#*=}"; break; fi
+        done
+        if [ -z "$re" ]; then
+            echo "WARNING: $file: ignoring unknown key '$key'"
+        elif printf '%s' "$val" | grep -Eqx -- "$re"; then
+            printf -v "$key" '%s' "$val"
+        else
+            echo "WARNING: $file: ignoring $key, its value is not of the form $re"
+        fi
+    done < "$file"
 }
 
 # ── Directory setup ──────────────────────────────────────────────────────────
@@ -133,6 +186,11 @@ fi
 touch /etc/squid/blacklists/ip/local.txt
 touch /etc/squid/blacklists/domain/local.txt
 touch /etc/squid/whitelists/ip/local.txt
+# Rewritten from GUI_IP_WHITELIST below on every generation, so unsetting the
+# variable removes the sources it added.
+: > /etc/squid/extra_clients.txt
+# Squid's copy of the domain blacklist; filled by refresh_domain_acl below.
+touch /etc/squid/blacklists/domain/squid.txt
 
 # ── Read dynamic settings from backend DB (via config files written on save) ─
 
@@ -153,9 +211,11 @@ SQUID_CACHE_MB="${PROXY_CACHE_SIZE_MB:-2000}"
 SQUID_MEM_MB="${PROXY_MEMORY_CACHE_MB:-256}"
 
 # Allow override via /config/squid_settings.env (written by backend on settings save)
-if [ -f /config/squid_settings.env ]; then
-    safe_source /config/squid_settings.env
-fi
+load_settings /config/squid_settings.env \
+    'SQUID_PORT=[0-9]{1,5}' \
+    'SQUID_CACHE_MB=[0-9]{1,7}' \
+    'SQUID_MEM_MB=[0-9]{1,6}' \
+    'EXTRA_SSL_PORTS=([0-9]{1,5}([ ,]+[0-9]{1,5})*)?'
 
 echo "Squid settings: port=${SQUID_PORT} cache=${SQUID_CACHE_MB}MB mem=${SQUID_MEM_MB}MB extra_ssl=${EXTRA_SSL_PORTS:-none}"
 
@@ -180,6 +240,9 @@ acl localnet src 172.16.0.0/12
 acl localnet src 192.168.0.0/16
 acl localnet src fc00::/7
 acl localnet src fe80::/10
+# Extra client sources from GUI_IP_WHITELIST (one per line, may be empty).
+# They join localnet, so every rule that governs a LAN client governs them too.
+acl localnet src "/etc/squid/extra_clients.txt"
 
 # SSL/HTTPS related ACLs
 acl SSL_ports port 443
@@ -198,8 +261,10 @@ acl Safe_ports port 777
 
 # Blacklists and whitelists
 # Domain blocking is handled at L3 by dnsmasq (DNS blackhole → 0.0.0.0)
-# Only IP blocking remains at L7 in Squid
-acl ip_blacklist src "/etc/squid/blacklists/ip/local.txt"
+# Only IP blocking remains at L7 in Squid. Both lists are DESTINATION lists:
+# the blacklist used to be a src ACL that also exempted LAN clients, so it could
+# not block a destination for anyone.
+acl ip_blacklist dst "/etc/squid/blacklists/ip/local.txt"
 acl ip_whitelist dst "/etc/squid/whitelists/ip/local.txt"
 
 # Direct IP access detection
@@ -218,8 +283,11 @@ acl ftp_proto proto FTP
 
 # Local network destinations (proxy UI, backend — should not be blocked as "direct IP")
 # NOTE: 172.16.0.0/12 intentionally excluded — Docker internal networks use that range
+# There is no URL-regex twin of this ACL any more: "^https?://10\." matched any
+# HOSTNAME starting with "10.", so 10.anything.example was allowed to any
+# public address, past the direct-IP rules and the egress default-deny. A
+# literal LAN IP is already matched by dst.
 acl local_dst dst 10.0.0.0/8 192.168.0.0/16
-acl local_dst_url url_regex -i ^https?://192\.168\. ^https?://10\.
 
 # HTTP method policy: positive allowlist (Safe_methods) + explicit dangerous-method
 # denylist for clearer audit logs. Anything not in Safe_methods is denied below
@@ -232,13 +300,41 @@ http_access deny !Safe_methods
 # Access rules
 http_access deny ftp_proto
 http_access deny !Safe_ports
+
+# Who may use the proxy at all. Every allow rule below is scoped by destination
+# only, so without this gate a client from ANY address could tunnel into the
+# LAN (CONNECT local_dst) or relay through it. Nothing below may come before it.
+http_access deny !localnet !localhost
+
+# The cache manager lists every in-flight request with its client and URL.
+# Local stats only.
+http_access allow localhost manager
+http_access deny manager
+
+http_access deny ip_blacklist
+
+# Blacklisted domains are sinkholed by dnsmasq. They are also denied here
+# while the list is small enough for Squid to hold, because the sinkhole alone
+# does not stop a domain that was visited before it was blacklisted: Squid
+# serves it from its DNS cache and, for anything it already has, from its HTTP
+# cache (TCP_MEM_HIT), with no lookup at all. This rule runs before the cache.
+# The file is derived from the list by refresh_domain_acl: the list itself up
+# to SPM_SQUID_DOMAIN_ACL_MAX entries, empty above that (measured at 0.5 CPU:
+# 100k entries cost about 36 MB and a 1.5 s reconfigure, 250k about 80 MB and
+# 3.5 s (about 1.4 s of refused requests while it reloads), 1M about 200 MB and
+# 13 s, 5.5M exhausted the 512 MB limit).
+acl domain_blacklist dstdomain "/etc/squid/blacklists/domain/squid.txt"
+http_access deny domain_blacklist
+
+# @@SPM_POLICY@@ (proxy auth, time restrictions and content filtering are
+# inserted here, ahead of every allow rule; see insert_policy)
+
 http_access allow CONNECT local_dst
 http_access deny CONNECT !SSL_ports
 
 # Allow whitelisted + local network destinations before blocking direct IPs
 http_access allow ip_whitelist
 http_access allow local_dst
-http_access allow local_dst_url
 
 http_access deny direct_ip_url
 http_access deny direct_ip_host
@@ -246,10 +342,6 @@ http_access deny direct_ipv6_url
 http_access deny direct_ipv6_host
 http_access deny CONNECT direct_ip_host
 http_access deny CONNECT direct_ipv6_host
-# ip_blacklist is a SOURCE ACL. Scope the deny so it can NEVER apply to LAN
-# clients: if a bogon/RFC1918-containing feed (Firehol etc.) is ever loaded, an
-# unscoped "deny ip_blacklist" would lock out every localnet/localhost client.
-http_access deny ip_blacklist !localnet !localhost
 # domain_blacklist removed — handled by dnsmasq DNS blackhole at L3
 http_access allow localnet
 http_access allow localhost
@@ -279,7 +371,7 @@ refresh_pattern ^gopher:        1440    0%      1440
 refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
 refresh_pattern .               0       20%     4320
 
-# Allow cache manager for stats (squidclient mgr:info)
+# Cache manager: reachable from localhost only (http_access above).
 cachemgr_passwd none info menu
 
 # Custom branded error pages
@@ -334,8 +426,10 @@ via off
 forwarded_for delete
 request_header_access X-Forwarded-For deny all
 
-# Inject HSTS on all proxied responses (force HTTPS on clients)
-reply_header_add Strict-Transport-Security "max-age=31536000; includeSubDomains" all
+# No HSTS injection. It was added to every proxied response: over plain HTTP
+# browsers ignore it (RFC 6797 8.1), and with SSL bump on it told every client
+# that every third-party site and all its subdomains are HTTPS-only for a
+# year, which outlives the proxy and breaks HTTP-only subdomains.
 
 
 # Strip Expect: 100-continue (anti-smuggling)
@@ -363,7 +457,7 @@ CONFEOF
 
 # ── Apply generated config, then append custom extras ────────────────────────
 
-cp /etc/squid/squid.conf.base /etc/squid/squid.conf
+cp /etc/squid/squid.conf.base "$SQUID_CONF"
 
 # Append custom directives (extras only — do NOT override the entire config).
 # Migration: if old custom_squid.conf exists, rename to custom_squid_extra.conf.
@@ -371,25 +465,34 @@ if [ -f /config/custom_squid.conf ] && [ ! -f /config/custom_squid_extra.conf ];
     echo "Migrating custom_squid.conf → custom_squid_extra.conf (append-only mode)"
     mv /config/custom_squid.conf /config/custom_squid_extra.conf
 fi
-if [ -f /config/custom_squid_extra.conf ]; then
+# A complete squid.conf is not an "extra". The legacy config/custom_squid.conf
+# that shipped in the repository was one, and through the migration above it
+# was appended to every generated config: a second http_port, cache_dir,
+# access_log and ICAP service, plus a second rule set after "deny all".
+if [ -f /config/custom_squid_extra.conf ] && \
+   grep -qE '^[[:space:]]*(http_port|https_port|icap_service|cache_dir|access_log)([[:space:]]|$)' /config/custom_squid_extra.conf; then
+    echo "WARNING: /config/custom_squid_extra.conf looks like a full squid.conf (it defines http_port, icap_service, cache_dir or access_log) — NOT appending it. Keep only extra directives in it."
+elif [ -f /config/custom_squid_extra.conf ] && [ "${SPM_SKIP_EXTRAS:-0}" = 1 ]; then
+    echo "WARNING: SPM_SKIP_EXTRAS=1 — /config/custom_squid_extra.conf is NOT applied"
+elif [ -f /config/custom_squid_extra.conf ]; then
     echo "Appending custom directives from /config/custom_squid_extra.conf"
-    echo "" >> /etc/squid/squid.conf
-    echo "# ── Custom extras (from custom_squid_extra.conf) ──" >> /etc/squid/squid.conf
-    cat /config/custom_squid_extra.conf >> /etc/squid/squid.conf
+    echo "" >> "$SQUID_CONF"
+    echo "# ── Custom extras (from custom_squid_extra.conf) ──" >> "$SQUID_CONF"
+    cat /config/custom_squid_extra.conf >> "$SQUID_CONF"
 fi
 
 # ── Ensure critical security rules are present ──────────────────────────────
 
-ensure_ip_blocking_rules /etc/squid/squid.conf
+ensure_ip_blocking_rules "$SQUID_CONF"
 
 # ── Extra SSL Ports (from Settings > extra_ssl_ports) ──────────────────────
 if [ -n "$EXTRA_SSL_PORTS" ]; then
     echo "Adding extra SSL ports: $EXTRA_SSL_PORTS"
-    for p in $EXTRA_SSL_PORTS; do
+    for p in ${EXTRA_SSL_PORTS//,/ }; do
         # Validate: must be a number 1-65535
         if echo "$p" | grep -qE '^[0-9]+$' && [ "$p" -ge 1 ] && [ "$p" -le 65535 ]; then
-            if ! grep -q "acl SSL_ports port $p" /etc/squid/squid.conf; then
-                sed -i "/^acl SSL_ports port 8443/a acl SSL_ports port $p" /etc/squid/squid.conf
+            if ! grep -q "acl SSL_ports port $p" "$SQUID_CONF"; then
+                sed -i "/^acl SSL_ports port 8443/a acl SSL_ports port $p" "$SQUID_CONF"
                 echo "  Added SSL_port $p"
             fi
         else
@@ -398,18 +501,21 @@ if [ -n "$EXTRA_SSL_PORTS" ]; then
     done
 fi
 
-# ── GUI IP Whitelist Override ──────────────────────────────────────────────
+# ── GUI_IP_WHITELIST: extra client SOURCES allowed to use the proxy ─────────
+# This used to emit "acl gui_override dst ..." plus allow rules ahead of the
+# port checks, which is the opposite of what DEPLOYMENT.md documents: it made
+# the listed address a destination ANY source could CONNECT to on any port,
+# and gave the listed client nothing. Each entry is now validated and written
+# to the file the localnet ACL reads. Commas and spaces both separate entries.
 if [ -n "$GUI_IP_WHITELIST" ]; then
-    # Sanitize: keep only characters valid in IP addresses, CIDR notation, and
-    # list separators (digits, dots, slashes, commas, spaces). This prevents
-    # injection of shell metacharacters into the sed command.
-    GUI_IP_WHITELIST_SAFE=$(printf '%s' "$GUI_IP_WHITELIST" | tr -cd '0-9./,: ')
-    if [ -z "$GUI_IP_WHITELIST_SAFE" ]; then
-        echo "WARNING: GUI_IP_WHITELIST contained no valid IP characters after sanitization — skipping"
-    else
-        echo "Adding GUI IP whitelist for $GUI_IP_WHITELIST_SAFE"
-        sed -i "/^# Access rules/i acl gui_override dst $GUI_IP_WHITELIST_SAFE\nhttp_access allow gui_override\nhttp_access allow CONNECT gui_override\n" /etc/squid/squid.conf 2>/dev/null || true
-    fi
+    for entry in $(printf '%s' "$GUI_IP_WHITELIST" | tr ',' ' '); do
+        if printf '%s' "$entry" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}(/([0-9]|[12][0-9]|3[0-2]))?$|^[0-9a-fA-F:]*:[0-9a-fA-F:]*(/[0-9]{1,3})?$'; then
+            echo "$entry" >> /etc/squid/extra_clients.txt
+            echo "  Extra proxy client source: $entry"
+        else
+            echo "  Skipping invalid GUI_IP_WHITELIST entry: $entry"
+        fi
+    done
 fi
 
 # ── Egress destination allowlist (default-deny) — conditional on toggle ──────
@@ -430,10 +536,10 @@ if [ -f /config/egress_default_deny ]; then
     # ACLs: destination IP/CIDR allowlist + destination domain allowlist. Inject
     # once, at the first "acl CONNECT" (Squid evaluates the first matching
     # http_access rule, so the first rule block is authoritative).
-    sed -i '0,/^acl CONNECT method CONNECT$/s|^acl CONNECT method CONNECT$|acl CONNECT method CONNECT\nacl egress_dst_allow_ip dst "/etc/squid/allowlists/dst_ip/local.txt"\nacl egress_dst_allow_dom dstdomain "/etc/squid/allowlists/dst_domain/local.txt"|' /etc/squid/squid.conf
+    sed -i '0,/^acl CONNECT method CONNECT$/s|^acl CONNECT method CONNECT$|acl CONNECT method CONNECT\nacl egress_dst_allow_ip dst "/etc/squid/allowlists/dst_ip/local.txt"\nacl egress_dst_allow_dom dstdomain "/etc/squid/allowlists/dst_domain/local.txt"|' "$SQUID_CONF"
     # Deny any localnet client whose destination is in neither allowlist,
     # immediately before the first catch-all "http_access allow localnet".
-    sed -i '0,/^http_access allow localnet$/s|^http_access allow localnet$|http_access deny localnet !egress_dst_allow_ip !egress_dst_allow_dom\nhttp_access allow localnet|' /etc/squid/squid.conf
+    sed -i '0,/^http_access allow localnet$/s|^http_access allow localnet$|http_access deny localnet !egress_dst_allow_ip !egress_dst_allow_dom\nhttp_access allow localnet|' "$SQUID_CONF"
 
     # FAIL-CLOSED VERIFICATION. The toggle promises default-deny egress; a silent
     # default-allow (e.g. if the anchors above drifted and the sed no-op'd) would
@@ -443,18 +549,18 @@ if [ -f /config/egress_default_deny ]; then
     # through to the final "http_access deny all" (hard fail-closed) rather than
     # leaking open.
     DENY_RULE='http_access deny localnet !egress_dst_allow_ip !egress_dst_allow_dom'
-    if ! grep -qF "$DENY_RULE" /etc/squid/squid.conf; then
+    if ! grep -qF "$DENY_RULE" "$SQUID_CONF"; then
         echo "WARNING: egress deny rule not injected via primary anchor — applying tolerant fallback"
-        grep -qF 'acl egress_dst_allow_ip dst' /etc/squid/squid.conf || \
-            sed -i 's|^[[:space:]]*acl CONNECT method CONNECT.*|&\nacl egress_dst_allow_ip dst "/etc/squid/allowlists/dst_ip/local.txt"\nacl egress_dst_allow_dom dstdomain "/etc/squid/allowlists/dst_domain/local.txt"|' /etc/squid/squid.conf
+        grep -qF 'acl egress_dst_allow_ip dst' "$SQUID_CONF" || \
+            sed -i 's|^[[:space:]]*acl CONNECT method CONNECT.*|&\nacl egress_dst_allow_ip dst "/etc/squid/allowlists/dst_ip/local.txt"\nacl egress_dst_allow_dom dstdomain "/etc/squid/allowlists/dst_domain/local.txt"|' "$SQUID_CONF"
         # Insert the deny immediately before any localnet allow (leading/internal
         # whitespace and trailing tokens tolerated). "&" re-emits the matched
         # allow line after.
-        sed -i "s|^[[:space:]]*http_access[[:space:]]\\+allow[[:space:]]\\+localnet.*|${DENY_RULE}\\n&|" /etc/squid/squid.conf
+        sed -i "s|^[[:space:]]*http_access[[:space:]]\\+allow[[:space:]]\\+localnet.*|${DENY_RULE}\\n&|" "$SQUID_CONF"
     fi
-    if ! grep -qF "$DENY_RULE" /etc/squid/squid.conf; then
+    if ! grep -qF "$DENY_RULE" "$SQUID_CONF"; then
         echo "CRITICAL: could not enforce egress default-deny — denying ALL localnet egress (fail-closed)"
-        sed -i 's|^[[:space:]]*http_access[[:space:]]\+allow[[:space:]]\+localnet.*|http_access deny localnet  # egress default-deny: enforcement injection failed — fail-closed|' /etc/squid/squid.conf
+        sed -i 's|^[[:space:]]*http_access[[:space:]]\+allow[[:space:]]\+localnet.*|http_access deny localnet  # egress default-deny: enforcement injection failed — fail-closed|' "$SQUID_CONF"
     else
         echo "Egress default-deny enforcement rule verified present"
     fi
@@ -466,7 +572,7 @@ if [ -f /config/ssl_bump_enabled ]; then
     echo "SSL Bump ENABLED — injecting HTTPS interception config"
 
     # Replace http_port with https_port + ssl-bump
-    sed -i 's/^http_port 3128$/http_port 3128 ssl-bump \\\n  cert=\/config\/ssl_cert.pem \\\n  key=\/config\/ssl_key.pem \\\n  generate-host-certificates=on \\\n  dynamic_cert_mem_cache_size=4MB/' /etc/squid/squid.conf
+    sed -i 's/^http_port 3128$/http_port 3128 ssl-bump \\\n  cert=\/config\/ssl_cert.pem \\\n  key=\/config\/ssl_key.pem \\\n  generate-host-certificates=on \\\n  dynamic_cert_mem_cache_size=4MB/' "$SQUID_CONF"
 
     # Add ssl_bump directives before the first http_access line
     SSL_BUMP_BLOCK=$(cat <<'SSLEOF'
@@ -488,8 +594,8 @@ ssl_bump bump all
 SSLEOF
 )
     # Insert before the first "http_access" line
-    sed -i "/^http_access/i\\${SSL_BUMP_BLOCK}" /etc/squid/squid.conf 2>/dev/null || \
-        echo "$SSL_BUMP_BLOCK" >> /etc/squid/squid.conf
+    sed -i "/^http_access/i\\${SSL_BUMP_BLOCK}" "$SQUID_CONF" 2>/dev/null || \
+        echo "$SSL_BUMP_BLOCK" >> "$SQUID_CONF"
 
     echo "SSL Bump config injected. WAF can now inspect HTTPS content."
 else
@@ -500,7 +606,7 @@ fi
 
 if [ -f /config/aggressive_caching_enabled ]; then
     echo "Aggressive caching ENABLED — adding override-expire refresh patterns"
-    cat >> /etc/squid/squid.conf << 'CACHEEOF'
+    cat >> "$SQUID_CONF" << 'CACHEEOF'
 
 # ── Aggressive caching (override-expire for static assets) ──
 refresh_pattern -i \.(jpg|jpeg|png|gif|ico|svg|webp|woff|woff2|ttf|eot|css|js)$ 10080 90% 518400 override-expire override-lastmod reload-into-ims
@@ -515,10 +621,10 @@ fi
 
 if [ -f /config/cache_bypass_domains.txt ] && [ -s /config/cache_bypass_domains.txt ]; then
     echo "Cache bypass domains found — adding no_cache rules"
-    echo "" >> /etc/squid/squid.conf
-    echo "# ── Cache bypass domains ──" >> /etc/squid/squid.conf
-    echo "acl cache_bypass_domains dstdomain \"/config/cache_bypass_domains.txt\"" >> /etc/squid/squid.conf
-    echo "cache deny cache_bypass_domains" >> /etc/squid/squid.conf
+    echo "" >> "$SQUID_CONF"
+    echo "# ── Cache bypass domains ──" >> "$SQUID_CONF"
+    echo "acl cache_bypass_domains dstdomain \"/config/cache_bypass_domains.txt\"" >> "$SQUID_CONF"
+    echo "cache deny cache_bypass_domains" >> "$SQUID_CONF"
     echo "Cache bypass configured for $(wc -l < /config/cache_bypass_domains.txt) domains"
 fi
 
@@ -551,16 +657,23 @@ if [ -f /config/proxy_auth_enabled ]; then
         fi
     fi
     if [ -f /config/proxy_users.htpasswd ]; then
-        cat >> /etc/squid/squid.conf << 'AUTHEOF'
-
-# ── Proxy Authentication (Basic Auth) ──
+        # basic_ncsa_auth runs as the proxy user, and the umask above leaves the
+        # file root:root 0600, so the helper could not open it and refused every
+        # credential. Group-readable for proxy, on every generation, so a file
+        # created by an earlier version is repaired too.
+        chown root:proxy /config/proxy_users.htpasswd
+        chmod 0640 /config/proxy_users.htpasswd
+        # localhost is exempt (the container's own probes). authenticated stays
+        # the LAST acl on the line: Squid answers 407 only when the rule that
+        # denies is decided by an auth acl, otherwise the client gets a 403 and
+        # is never asked for credentials.
+        insert_policy '# ── Proxy Authentication (Basic Auth) ──
 auth_param basic program /usr/lib/squid/basic_ncsa_auth /config/proxy_users.htpasswd
 auth_param basic realm Secure Proxy Manager
 auth_param basic credentialsttl 8 hours
 auth_param basic casesensitive on
 acl authenticated proxy_auth REQUIRED
-http_access deny !authenticated
-AUTHEOF
+http_access deny !localhost !authenticated' || { return 1 2>/dev/null || exit 1; }
         echo "Proxy auth configured with $(wc -l < /config/proxy_users.htpasswd) users"
     fi
 else
@@ -571,10 +684,9 @@ fi
 
 if [ -f /config/content_filtering_enabled ] && [ -f /config/blocked_file_types.txt ] && [ -s /config/blocked_file_types.txt ]; then
     echo "Content filtering ENABLED — blocking file types"
-    echo "" >> /etc/squid/squid.conf
-    echo "# ── Content filtering (blocked file extensions) ──" >> /etc/squid/squid.conf
-    echo "acl blocked_extensions urlpath_regex \"/config/blocked_file_types.txt\"" >> /etc/squid/squid.conf
-    echo "http_access deny blocked_extensions" >> /etc/squid/squid.conf
+    insert_policy '# ── Content filtering (blocked file extensions) ──
+acl blocked_extensions urlpath_regex "/config/blocked_file_types.txt"
+http_access deny blocked_extensions' || { return 1 2>/dev/null || exit 1; }
     echo "Content filtering configured for $(wc -l < /config/blocked_file_types.txt) extensions"
 else
     echo "Content filtering disabled"
@@ -584,19 +696,22 @@ fi
 
 if [ -f /config/time_restrictions_enabled ] && [ -f /config/time_restrictions.conf ]; then
     echo "Time-based access restrictions ENABLED"
-    safe_source /config/time_restrictions.conf
+    load_settings /config/time_restrictions.conf \
+        'TIME_START=([01][0-9]|2[0-3]):[0-5][0-9]' \
+        'TIME_END=([01][0-9]|2[0-3]):[0-5][0-9]'
+    if [ -z "${TIME_START:-}" ] || [ -z "${TIME_END:-}" ]; then
+        echo "WARNING: time restrictions are enabled but /config/time_restrictions.conf has no valid TIME_START/TIME_END — the restriction is NOT applied"
+    else
     # Parse HH:MM into HH and MM
     START_H=$(echo "$TIME_START" | cut -d: -f1)
     START_M=$(echo "$TIME_START" | cut -d: -f2)
     END_H=$(echo "$TIME_END" | cut -d: -f1)
     END_M=$(echo "$TIME_END" | cut -d: -f2)
-    cat >> /etc/squid/squid.conf << TIMEEOF
-
-# ── Time-based access restrictions ──
+    insert_policy "# ── Time-based access restrictions ──
 acl allowed_hours time MTWHFAS ${START_H}:${START_M}-${END_H}:${END_M}
-http_access deny !allowed_hours localnet
-TIMEEOF
+http_access deny !allowed_hours localnet" || { return 1 2>/dev/null || exit 1; }
     echo "Access allowed only ${TIME_START}-${TIME_END}"
+    fi
 else
     echo "Time-based access restrictions disabled"
 fi
@@ -605,7 +720,9 @@ fi
 
 if [ -f /config/bandwidth_limits_enabled ] && [ -f /config/bandwidth_limits.conf ]; then
     echo "Bandwidth throttling ENABLED"
-    safe_source /config/bandwidth_limits.conf
+    load_settings /config/bandwidth_limits.conf \
+        'BW_LIMIT_MBPS=[0-9]{1,6}' \
+        'BW_PER_USER_KBPS=[0-9]{1,9}'
     # Convert Mbps to bytes/sec for aggregate, Kbps to bytes/sec for per-user
     AGG_BYTES=$(( ${BW_LIMIT_MBPS:-100} * 125000 ))
     USER_BYTES=${BW_PER_USER_KBPS:-0}
@@ -614,7 +731,7 @@ if [ -f /config/bandwidth_limits_enabled ] && [ -f /config/bandwidth_limits.conf
     else
         USER_BYTES=-1
     fi
-    cat >> /etc/squid/squid.conf << BWEOF
+    cat >> "$SQUID_CONF" << BWEOF
 
 # ── Bandwidth throttling ──
 delay_pools 1
@@ -631,7 +748,7 @@ fi
 
 if [ -f /config/offline_mode_enabled ]; then
     echo "Offline mode ENABLED — serving stale cached content"
-    cat >> /etc/squid/squid.conf << 'OFFEOF'
+    cat >> "$SQUID_CONF" << 'OFFEOF'
 
 # ── Offline mode: serve stale cache when origin is unreachable ──
 offline_mode on
@@ -647,24 +764,24 @@ DNS_IP=$(getent hosts dns 2>/dev/null | awk '{print $1}')
 WAF_IP=$(getent hosts waf 2>/dev/null | awk '{print $1}')
 
 if [ -n "$DNS_IP" ]; then
-    if ! grep -q "dns_nameservers" /etc/squid/squid.conf; then
+    if ! grep -q "dns_nameservers" "$SQUID_CONF"; then
         # Ensure newline before appending (fixes concatenation with last line)
-        echo "" >> /etc/squid/squid.conf
-        echo "dns_nameservers $DNS_IP" >> /etc/squid/squid.conf
+        echo "" >> "$SQUID_CONF"
+        echo "dns_nameservers $DNS_IP" >> "$SQUID_CONF"
     fi
     echo "DNS resolver: dnsmasq at $DNS_IP"
 fi
 
 # Replace 'waf' hostname with resolved IP in ICAP config (avoid DNS loop)
 if [ -n "$WAF_IP" ]; then
-    sed -i "s|icap://waf:|icap://$WAF_IP:|g" /etc/squid/squid.conf
+    sed -i "s|icap://waf:|icap://$WAF_IP:|g" "$SQUID_CONF"
     echo "ICAP WAF: resolved waf → $WAF_IP"
 fi
 
 # ── Custom error pages (only for ACL denies, not replacing all errors) ────────
 
-if [ -f /etc/squid/error-pages/ERR_ACCESS_DENIED ] && ! grep -q "deny_info" /etc/squid/squid.conf; then
-    echo "deny_info ERR_ACCESS_DENIED all" >> /etc/squid/squid.conf
+if [ -f /etc/squid/error-pages/ERR_ACCESS_DENIED ] && ! grep -q "deny_info" "$SQUID_CONF"; then
+    echo "deny_info ERR_ACCESS_DENIED all" >> "$SQUID_CONF"
     # Copy our custom page as the default Squid error page location
     cp /etc/squid/error-pages/ERR_ACCESS_DENIED /usr/share/squid/errors/en/ERR_ACCESS_DENIED 2>/dev/null || true
     echo "Custom block page enabled for ACL denies"
@@ -676,6 +793,7 @@ fi
 [ -f /config/ip_blacklist.txt ]     && cp /config/ip_blacklist.txt /etc/squid/blacklists/ip/local.txt
 [ -f /config/ip_whitelist.txt ]     && cp /config/ip_whitelist.txt /etc/squid/whitelists/ip/local.txt
 [ -f /config/domain_blacklist.txt ] && cp /config/domain_blacklist.txt /etc/squid/blacklists/domain/local.txt
+refresh_domain_acl
 [ -f /config/dst_allow_ip.txt ]     && cp /config/dst_allow_ip.txt /etc/squid/allowlists/dst_ip/local.txt
 [ -f /config/dst_allow_domain.txt ] && cp /config/dst_allow_domain.txt /etc/squid/allowlists/dst_domain/local.txt
 

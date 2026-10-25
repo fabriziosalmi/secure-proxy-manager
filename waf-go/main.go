@@ -318,6 +318,11 @@ type inspection struct {
 	// Safe-URL cache addressing, computed once up front and reused at the end.
 	cacheable bool
 	cacheKey  string
+	// urlCached means this method+URL scored zero recently, so the URL scan
+	// and the domain reputation check (which depend on nothing else) are
+	// skipped. Headers, body and heuristics still run: the cache vouches for
+	// a URL, never for a request.
+	urlCached bool
 }
 
 // blocked reports the verdict. Every stage adds to score; nothing else decides.
@@ -353,21 +358,20 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 		return
 	}
 
-	// ── Safe URL Cache: skip regex scan for known-clean URLs ────────────
-	// Only short-circuit idempotent, body-less methods, and scope the cache key
-	// by method. A clean GET must never vouch for a POST to the same URL — that
-	// request carries an attacker-controlled body and headers we have not seen
-	// (the previous rawURL-only key let a benign GET poison the cache so a later
-	// malicious POST skipped ALL inspection).
+	// ── Safe URL Cache: skip the URL scan for known-clean URLs ──────────
+	// Scoped by method, so a clean GET never vouches for a POST. A hit skips
+	// only the URL-dependent work. It used to return 204 here, before anything
+	// else ran, so after one clean GET the same URL with a payload in a
+	// header or a GET body was not inspected at all, and the request never
+	// reached the heuristics or the traffic log.
 	in.cacheable = req.Request.Method == http.MethodGet || req.Request.Method == http.MethodHead
 	in.cacheKey = req.Request.Method + "\x00" + in.rawURL
-	if in.cacheable && eng.SafeCache().IsSafe(in.cacheKey) {
-		w.WriteHeader(204, nil, false)
-		return
-	}
+	in.urlCached = in.cacheable && eng.SafeCache().IsSafe(in.cacheKey)
 
 	scanSignatures(in, req.Request)
-	scanDomainReputation(in, req.Request.Host)
+	if !in.urlCached {
+		scanDomainReputation(in, req.Request.Host)
+	}
 
 	feature := in.feature(req.Request)
 	applyHeuristics(in, req.Request, &feature)
@@ -395,10 +399,10 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 		return
 	}
 
-	// URL passed all checks — mark as safe for future requests. Only cache a
-	// clean verdict for body-less idempotent methods where no body was inspected,
-	// so a pass can never authorize a later request that carries a body.
-	if in.cacheable && in.bodySize == 0 {
+	// Cache the URL only when the whole request scored zero. A URL below the
+	// threshold is unproven, not clean: its partial score has to be there to
+	// corroborate whatever a later request adds.
+	if in.cacheable && !in.urlCached && in.score == 0 && in.bodySize == 0 {
 		eng.SafeCache().MarkSafe(in.cacheKey)
 	}
 	w.WriteHeader(204, nil, false)
@@ -424,7 +428,11 @@ var headersToInspect = []string{"User-Agent", "Referer", "X-Forwarded-For", "X-F
 // scanSignatures runs the regex rule set over the URL, the inspected headers
 // and — if nothing has crossed the threshold yet — the request body.
 func scanSignatures(in *inspection, r *http.Request) {
-	normalizedURL := engine.NormalizeInput(in.rawURL)
+	// On a safe-cache hit the URL already scored zero; scan the rest.
+	normalizedURL := ""
+	if !in.urlCached {
+		normalizedURL = engine.NormalizeInput(in.rawURL)
+	}
 
 	var headerStr string
 	for _, hdr := range headersToInspect {
@@ -442,7 +450,7 @@ func scanSignatures(in *inspection, r *http.Request) {
 
 	// Also check raw (pre-decoded) URL for encoded evasion patterns like %c0%af
 	// that get decoded by engine.NormalizeInput and lose their detectable pattern
-	if !in.blocked() && in.rawURL != normalizedURL {
+	if !in.urlCached && !in.blocked() && in.rawURL != normalizedURL {
 		rawMatches, rawScore := eng.MatchRulesScored(in.rawURL)
 		if rawScore > 0 {
 			in.matches = append(in.matches, rawMatches...)

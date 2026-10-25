@@ -71,3 +71,28 @@ func grepLines(s, sub string) string {
 	}
 	return b.String()
 }
+
+// The method label was the raw request method, so every invented method
+// (AUDITPROBEA, AUDITPROBEB, ...) created a counter series and a 12-bucket
+// histogram series that were never freed. Metrics runs before the rate limiter
+// and needs no authentication, so a remote client could grow backend memory
+// without bound; nginx forwards any all-letters method.
+func TestMetricsMethodLabelIsBounded(t *testing.T) {
+	r := chi.NewRouter()
+	r.Use(Metrics)
+	r.Get("/api/health-probe", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+
+	for i := 0; i < 500; i++ {
+		m := "CARDPROBE" + string(rune('A'+i%26)) + string(rune('A'+(i/26)%26))
+		r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(m, "/api/health-probe", nil))
+	}
+	mw := httptest.NewRecorder()
+	metrics.Handler().ServeHTTP(mw, httptest.NewRequest("GET", "/metrics", nil))
+	body, _ := io.ReadAll(mw.Result().Body)
+	if strings.Contains(string(body), `method="CARDPROBE`) {
+		t.Errorf("client-chosen methods became label values:\n%s", grepLines(string(body), "CARDPROBE")[:300])
+	}
+	if !strings.Contains(string(body), `method="OTHER"`) {
+		t.Error("unknown methods are not folded into OTHER")
+	}
+}

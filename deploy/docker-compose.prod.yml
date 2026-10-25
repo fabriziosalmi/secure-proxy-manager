@@ -1,6 +1,6 @@
 services:
   web:
-    image: ghcr.io/fabriziosalmi/secure-proxy-manager-web:${SPM_IMAGE_TAG:-v3.14.1}
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-web:${SPM_IMAGE_TAG:-v3.14.2}
     ports:
       - "80:8011"     # HTTP (redirect + ACME challenges)
       - "443:8443"    # HTTPS (main UI)
@@ -54,7 +54,7 @@ services:
     restart: unless-stopped
 
   waf:
-    image: ghcr.io/fabriziosalmi/secure-proxy-manager-waf:${SPM_IMAGE_TAG:-v3.14.1}
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-waf:${SPM_IMAGE_TAG:-v3.14.2}
     volumes:
       - ./config:/config:ro
       # NOTE: ./data is deliberately NOT mounted here — see the comment in the
@@ -112,7 +112,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: ghcr.io/fabriziosalmi/secure-proxy-manager-backend:${SPM_IMAGE_TAG:-v3.14.1}
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-backend:${SPM_IMAGE_TAG:-v3.14.2}
     ports:
       - "127.0.0.1:5001:5000"
     volumes:
@@ -165,7 +165,7 @@ services:
     restart: unless-stopped
 
   dns:
-    image: ghcr.io/fabriziosalmi/secure-proxy-manager-dns:${SPM_IMAGE_TAG:-v3.14.1}
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-dns:${SPM_IMAGE_TAG:-v3.14.2}
     volumes:
       - ./config:/config:ro
       - ./logs:/var/log
@@ -211,7 +211,7 @@ services:
     restart: unless-stopped
 
   proxy:
-    image: ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:${SPM_IMAGE_TAG:-v3.14.1}
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:${SPM_IMAGE_TAG:-v3.14.2}
     container_name: secure-proxy-manager-proxy
     environment:
       - GUI_IP_WHITELIST=${GUI_IP_WHITELIST:-}
@@ -219,6 +219,11 @@ services:
       # so one switch covers both an erroring WAF and an unreachable one
       # (SECURE-REL-02).
       - WAF_FAIL_OPEN=${WAF_FAIL_OPEN:-0}
+      # Squid also denies blacklisted domains itself while the list has at most this
+      # many entries (blocks a domain visited before it was blacklisted, cache hits
+      # included); above it only the DNS sinkhole applies. At 250k: ~80 MB and about
+      # 1.4 s of refused requests per list reload (measured), one large list such as OISD.
+      - SPM_SQUID_DOMAIN_ACL_MAX=${SPM_SQUID_DOMAIN_ACL_MAX:-250000}
     ports:
       - "${PROXY_BIND_IP:-0.0.0.0}:3128:3128"
     volumes:

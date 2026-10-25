@@ -278,6 +278,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Generate squid.conf against fixture /config states
         run: bash tests/shell/generate_squid_conf_test.sh
+      # The text assertions above cannot see rule ORDER, and the access policy
+      # was wrong by order three times over: destination-only allows ahead of
+      # any source check (an open relay into the LAN for any address), and
+      # proxy auth, time restrictions and content filtering written after
+      # "deny all". This runs real Squid against clients on an external, a LAN
+      # and a public network and asserts the status of each request.
+      - name: Access policy behaviour (real Squid, three networks)
+        run: bash tests/shell/squid_acl_matrix_test.sh
 
   # ── 6. Security scanning (gosec) ─────────────────────────────────────
   security-scan:

@@ -28,20 +28,41 @@ import (
 // by any direct API call. proxy_port='abc' was persisted and then written into
 // the file Squid's config generator sources (SECURE-DOM-06).
 var settingValidators = map[string]func(string) error{
-	"proxy_port":             validPort,
-	"cache_size":             validNonNegativeInt,
-	"memory_cache":           validNonNegativeInt,
-	"log_retention_days":     validPositiveInt,
-	"bandwidth_limit_mbps":   validPositiveInt,
-	"time_restriction_start": validTimeOfDay,
-	"time_restriction_end":   validTimeOfDay,
-	"admin_email":            validEmailOrEmpty,
+	"proxy_port":           validPort,
+	"cache_size":           validNonNegativeInt,
+	"memory_cache":         validNonNegativeInt,
+	"log_retention_days":   validPositiveInt,
+	"bandwidth_limit_mbps": validPositiveInt,
+	// Both reach a file the proxy reads as root and had no rule at all:
+	// a newline in the first and letters in the second were stored and
+	// written out.
+	"bandwidth_limit_per_user_kbps": validNonNegativeInt,
+	"extra_ssl_ports":               validPortList,
+	"time_restriction_start":        validTimeOfDay,
+	"time_restriction_end":          validTimeOfDay,
+	"admin_email":                   validEmailOrEmpty,
 }
 
 func validPort(v string) error {
 	n, err := strconv.Atoi(v)
 	if err != nil || n < 1 || n > 65535 {
 		return fmt.Errorf("must be a port between 1 and 65535")
+	}
+	return nil
+}
+
+// portListRE is what the proxy's generator accepts for EXTRA_SSL_PORTS.
+var portListRE = regexp.MustCompile(`^\s*([0-9]{1,5}([ ,]+[0-9]{1,5})*)?\s*$`)
+
+// validPortList accepts an empty value or ports separated by commas or spaces.
+func validPortList(v string) error {
+	if !portListRE.MatchString(v) {
+		return fmt.Errorf("must be port numbers separated by commas or spaces")
+	}
+	for _, f := range strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }) {
+		if err := validPort(f); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -473,18 +494,13 @@ func (h *SettingsHandlers) writeSquidSettingsEnv(body map[string]string) error {
 	if v, ok := body["extra_ssl_ports"]; ok {
 		extraSSL = v
 	}
-	// Sanitize all values to prevent shell injection when startup.sh sources this file.
-	// Only allow alphanumeric, dots, commas, and spaces (for port lists).
-	sanitize := func(s string) string {
-		var b strings.Builder
-		for _, c := range s {
-			if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '.' || c == ',' || c == ' ' {
-				b.WriteRune(c)
-			}
-		}
-		return b.String()
+	// Validated, not filtered. The filter kept letters and spaces, so
+	// "8443 pkill squid" was written as-is, and the generator used to source
+	// this file as root. Each value must have the shape the generator accepts.
+	if validPort(port) != nil || validNonNegativeInt(cache) != nil || validNonNegativeInt(mem) != nil || validPortList(extraSSL) != nil {
+		return fmt.Errorf("invalid proxy settings in the database — squid_settings.env not written")
 	}
-	envContent := "SQUID_PORT=" + sanitize(port) + "\nSQUID_CACHE_MB=" + sanitize(cache) + "\nSQUID_MEM_MB=" + sanitize(mem) + "\nEXTRA_SSL_PORTS=" + sanitize(extraSSL) + "\n"
+	envContent := "SQUID_PORT=" + port + "\nSQUID_CACHE_MB=" + cache + "\nSQUID_MEM_MB=" + mem + "\nEXTRA_SSL_PORTS=" + strings.TrimSpace(extraSSL) + "\n"
 	return os.WriteFile(filepath.Join(h.cfg.ConfigDir, "squid_settings.env"), []byte(envContent), 0o600)
 }
 
@@ -520,6 +536,12 @@ func (h *SettingsHandlers) writeBandwidthSettings(body map[string]string) {
 	perUserKbps := h.dbSetting("bandwidth_limit_per_user_kbps", "0")
 	if v, ok := body["bandwidth_limit_per_user_kbps"]; ok && v != "" {
 		perUserKbps = v
+	}
+	// Checked again here, not only on the way in: a value already in the
+	// database (an older version, a restore) must not reach this file.
+	if validPositiveInt(limitMbps) != nil || validNonNegativeInt(perUserKbps) != nil {
+		log.Warn().Msg("invalid bandwidth limit values in the database — bandwidth_limits.conf not written")
+		return
 	}
 	content := "BW_LIMIT_MBPS=" + limitMbps + "\nBW_PER_USER_KBPS=" + perUserKbps + "\n"
 	os.WriteFile(filepath.Join(h.cfg.ConfigDir, "bandwidth_limits.conf"), []byte(content), 0o600) //nolint:errcheck

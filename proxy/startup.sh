@@ -80,14 +80,28 @@ sleep 2
 
 # ── Validate configuration ──────────────────────────────────────────────────
 
+# A configuration that does not parse is never replaced by a weaker one. The
+# old fallback copied squid.conf.base over it: no dns_nameservers (so Squid
+# resolved through Docker's 127.0.0.11 and the dnsmasq blocklists stopped
+# applying), no egress default-deny, no SSL bump, no proxy auth, while the
+# container reported healthy. The likeliest cause is the operator's extras
+# file, so the config is regenerated once without it; if that does not parse
+# either, the container exits and the failure is visible instead of silent.
+refuse_to_start() {
+    echo "CRITICAL: the generated Squid configuration does not parse (see the squid -k parse output above)." >&2
+    echo "CRITICAL: refusing to start Squid on a configuration that would have lost its filtering." >&2
+    exit 1
+}
 echo "Validating Squid configuration..."
 if /usr/sbin/squid -k parse; then
     echo "Configuration syntax is valid."
+elif [ -f /config/custom_squid_extra.conf ]; then
+    echo "CRITICAL: the generated configuration does not parse — regenerating WITHOUT /config/custom_squid_extra.conf" >&2
+    SPM_SKIP_EXTRAS=1 . /usr/local/bin/generate_squid_conf.sh
+    /usr/sbin/squid -k parse || refuse_to_start
+    echo "WARNING: Squid is running WITHOUT /config/custom_squid_extra.conf, which does not parse. Fix it and reload." >&2
 else
-    echo "Configuration has errors, falling back to base..."
-    [ ! -f /etc/squid/squid.conf.backup ] && cp /etc/squid/squid.conf /etc/squid/squid.conf.backup
-    cp /etc/squid/squid.conf.base /etc/squid/squid.conf
-    ensure_ip_blocking_rules /etc/squid/squid.conf
+    refuse_to_start
 fi
 
 # ── Final verification ──────────────────────────────────────────────────────

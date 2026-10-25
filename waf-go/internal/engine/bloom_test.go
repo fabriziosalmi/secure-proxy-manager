@@ -48,14 +48,25 @@ func TestSafeURLCache_Logic(t *testing.T) {
 }
 
 func TestHashURL(t *testing.T) {
-	h1 := hashURL("http://a.com")
-	h2 := hashURL("http://a.com")
-	h3 := hashURL("http://b.com")
+	c := NewSafeURLCache(10, time.Minute)
+	h1 := c.hashURL("http://a.com")
+	h2 := c.hashURL("http://a.com")
+	h3 := c.hashURL("http://b.com")
 
 	if h1 != h2 {
 		t.Error("Same URL should have same hash")
 	}
 	if h1 == h3 {
 		t.Error("Different URLs should likely have different hashes")
+	}
+}
+
+// The key must not be computable from outside the process, or a collision with
+// a cached clean URL can be searched for offline. Two caches stand in for two
+// processes: with an unseeded hash they agree on every key.
+func TestHashURLIsSeededPerCache(t *testing.T) {
+	a, b := NewSafeURLCache(10, time.Minute), NewSafeURLCache(10, time.Minute)
+	if a.hashURL("GET\x00http://a.com/") == b.hashURL("GET\x00http://a.com/") {
+		t.Error("two caches hash the same key identically: the hash is not seeded")
 	}
 }

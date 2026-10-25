@@ -26,7 +26,7 @@ import { Layout } from './components/layout/Layout';
 import { GlobalSearch } from './components/GlobalSearch';
 import { Login } from './pages/Login';
 import { SetupWizard } from './components/SetupWizard';
-import { api, isTokenExpired } from './lib/api';
+import { api, isTokenExpired, signOut } from './lib/api';
 import { ThemeProvider } from './components/ThemeProvider';
 
 // Lazy-loaded page components for code splitting
@@ -88,8 +88,8 @@ function NotFound() {
 }
 
 function AppContent() {
-  const handleLogout = () => {
-    localStorage.removeItem('auth_token');
+  const handleLogout = async () => {
+    await signOut();
     setIsAuthenticated(false);
     queryClient.clear();
   };

@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -37,10 +39,41 @@ type AuthHandlers struct {
 	cfg    *config.Config
 	notify NotifyQueue
 	hub    *ws.Hub
+
+	// lockoutAlerted records when a rate-limited address was last reported,
+	// so a lockout is audited and alerted once per window, not per request.
+	lockoutMu      sync.Mutex
+	lockoutAlerted map[string]time.Time
 }
 
 func NewAuthHandlers(store AuthStore, svc *auth.Service, cfg *config.Config, notify NotifyQueue, hub *ws.Hub) *AuthHandlers {
-	return &AuthHandlers{store: store, svc: svc, cfg: cfg, notify: notify, hub: hub}
+	return &AuthHandlers{store: store, svc: svc, cfg: cfg, notify: notify, hub: hub, lockoutAlerted: map[string]time.Time{}}
+}
+
+// firstLockoutReport reports whether this rate-limited request is the first
+// from its address in the current window. Every one used to write an audit row
+// and queue a notification: one unauthenticated client at nginx's 20 r/s
+// produced about 1.7M audit rows a day and a message per request.
+func (h *AuthHandlers) firstLockoutReport(ip string) bool {
+	window := h.cfg.RateLimitWindow
+	if window <= 0 {
+		window = 5 * time.Minute
+	}
+	now := time.Now()
+	h.lockoutMu.Lock()
+	defer h.lockoutMu.Unlock()
+	if last, ok := h.lockoutAlerted[ip]; ok && now.Sub(last) < window {
+		return false
+	}
+	if len(h.lockoutAlerted) > 10000 {
+		for k, t := range h.lockoutAlerted {
+			if now.Sub(t) >= window {
+				delete(h.lockoutAlerted, k)
+			}
+		}
+	}
+	h.lockoutAlerted[ip] = now
+	return true
 }
 
 func (h *AuthHandlers) Register(r chi.Router) {
@@ -84,7 +117,9 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		clientAddr := auth.ClientIP(r)
 
 		if err.Error() == "too many failed attempts, try again later" {
-			h.alertLoginFailure(req.Username, clientAddr, "rate_limited")
+			if h.firstLockoutReport(clientAddr) {
+				h.alertLoginFailure(req.Username, clientAddr, "rate_limited")
+			}
 			writeError(w, http.StatusTooManyRequests, err.Error())
 			return
 		}
@@ -120,7 +155,7 @@ func (h *AuthHandlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "refresh_token required")
 		return
 	}
-	username, err := h.svc.ValidateRefreshToken(req.RefreshToken)
+	username, authTime, err := h.svc.ValidateRefreshSession(req.RefreshToken)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid or expired refresh token")
 		return
@@ -138,7 +173,9 @@ func (h *AuthHandlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to issue token")
 		return
 	}
-	newRefresh, err := h.svc.IssueRefreshToken(username)
+	// The rotated token keeps the login time it descends from, so a chain of
+	// refreshes ends maxSessionLifetime after the login.
+	newRefresh, err := h.svc.IssueRefreshTokenAt(username, authTime)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to issue refresh token")
 		return
@@ -158,6 +195,20 @@ func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 		revokeErr = h.svc.RevokeJWT(authHeader[7:])
 	}
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
+	// A client that holds a refresh token (API clients; the UI does not) can
+	// end that session too. Revoking only the access token used to leave the
+	// refresh token minting new pairs for up to a week. The body is optional;
+	// a token for another user is ignored.
+	var body struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&body) == nil && body.RefreshToken != "" {
+		if owner, err := h.svc.ValidateRefreshToken(body.RefreshToken); err == nil && owner == username {
+			if err := h.svc.RevokeJWT(body.RefreshToken); err != nil && revokeErr == nil {
+				revokeErr = err
+			}
+		}
+	}
 	h.store.Audit(username, "logout", "", "")
 
 	// The token is revoked in this process either way, but if the revocation
@@ -218,7 +269,25 @@ func (h *AuthHandlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.store.Audit(username, "change_password", "", "")
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Password changed successfully"})
+	// Every token issued before this point is bound to the old password hash
+	// and no longer validates, including the one that made this request. The
+	// caller gets a fresh pair so its own session continues.
+	access, aerr := h.svc.IssueJWT(username)
+	refresh, rerr := h.svc.IssueRefreshToken(username)
+	if aerr != nil || rerr != nil {
+		writeJSON(w, http.StatusOK, map[string]string{
+			"status":  "success",
+			"message": "Password changed successfully. Existing sessions were ended; sign in again.",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":        "success",
+		"message":       "Password changed successfully. Other sessions were ended.",
+		"access_token":  access,
+		"refresh_token": refresh,
+		"token_type":    "Bearer",
+	})
 }
 
 func (h *AuthHandlers) WSToken(w http.ResponseWriter, r *http.Request) {
@@ -276,6 +345,10 @@ func basicHeader(u, p string) string {
 // and broadcasts it to connected WebSocket clients (admin dashboard).
 func (h *AuthHandlers) alertLoginFailure(username, clientIP, reason string) {
 	now := time.Now().Format(time.RFC3339)
+	// The username is whatever the client sent (up to 128 characters).
+	if r := []rune(username); len(r) > 64 {
+		username = string(r[:63]) + "…"
+	}
 
 	// Audit log entry for every failed attempt.
 	h.store.Audit(username, "login_failed", clientIP, reason)

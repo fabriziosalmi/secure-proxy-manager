@@ -6,9 +6,10 @@ import { ChangePassword } from './ChangePassword'
 
 vi.mock('../../lib/api', () => ({
   api: { post: vi.fn(() => Promise.resolve({ data: {} })) },
+  setAuthToken: vi.fn(),
   getErrorMessage: (_e: unknown, f: string) => f,
 }))
-import { api } from '../../lib/api'
+import { api, setAuthToken } from '../../lib/api'
 
 async function fill(current: string, next: string, confirm: string) {
   await userEvent.type(screen.getByLabelText('Current Password'), current)
@@ -39,5 +40,15 @@ describe('ChangePassword uses the shared password rule', () => {
     await fill('old-pass', 'abcdef1!', 'abcdef1!')
     await userEvent.click(screen.getByRole('button', { name: /change password|update|save/i }))
     expect(api.post).toHaveBeenCalledWith('change-password', { current_password: 'old-pass', new_password: 'abcdef1!' })
+  })
+
+  // The change ends every earlier session, including this one; the backend
+  // returns a fresh token and the page must keep it or it is signed out.
+  it('keeps the session going with the token the change returns', async () => {
+    vi.mocked(api.post).mockResolvedValueOnce({ data: { status: 'success', access_token: 'fresh-token' } })
+    renderWithProviders(<ChangePassword />)
+    await fill('old-pass', 'abcdef1!', 'abcdef1!')
+    await userEvent.click(screen.getByRole('button', { name: /change password|update|save/i }))
+    await vi.waitFor(() => expect(setAuthToken).toHaveBeenCalledWith('fresh-token'))
   })
 })

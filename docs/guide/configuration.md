@@ -29,7 +29,7 @@ All configuration lives in the `.env` file in the project root, which is read by
 | `PROXY_BIND_IP` | `0.0.0.0` | Host interface that the Squid port is bound to. Set to `127.0.0.1` to restrict access to the local machine |
 | `PROXY_CONTAINER_NAME` | `secure-proxy-manager-proxy` | Docker container name used when issuing reconfigure signals |
 | `PROXY_IP` | _empty_ | LAN IP of the host. When set, dnsmasq publishes a WPAD record for browser auto-discovery |
-| `GUI_IP_WHITELIST` | _empty_ | Comma-separated client IPs allowed to connect to the proxy on the management ports even when blocked by other rules |
+| `GUI_IP_WHITELIST` | _empty_ | Extra client source IPs or CIDRs (comma- or space-separated) allowed to use the proxy, beyond RFC1918 and localhost. Listed sources are governed by the same rules as LAN clients |
 
 ## WAF
 
@@ -67,16 +67,16 @@ The sidecar only runs under `docker compose --profile tailscale`.
 
 ## Squid configuration
 
-The `proxy/startup.sh` script generates `squid.conf` at container start. You cannot replace the base configuration entirely — the startup script enforces certain protections (direct-IP block ACLs, ICAP integration, log paths) regardless. You can append custom directives by placing them at:
+`proxy/generate_squid_conf.sh` generates `squid.conf` at container start and on every reload. You cannot replace the base configuration: the access policy, the direct-IP block ACLs, the ICAP wiring and the log paths are always generated. You can append extra directives by placing them at:
 
 ```
 /config/custom_squid_extra.conf
 ```
 
-The file is concatenated to the generated `squid.conf` at startup. If a legacy `/config/custom_squid.conf` exists, it is renamed to `custom_squid_extra.conf` automatically.
+The file is appended to the generated `squid.conf`. If a legacy `/config/custom_squid.conf` exists, it is renamed to `custom_squid_extra.conf` automatically. A file that defines `http_port`, `https_port`, `icap_service`, `cache_dir` or `access_log` is treated as a full configuration and is not appended; the proxy logs a warning instead.
 
 ::: warning
-Custom directives are appended after the base configuration; later directives override earlier ones in Squid only for a subset of options. Test your additions with `docker compose exec proxy squid -k parse` before relying on them.
+Extras are appended after the generated access policy, which ends in `http_access deny all`. Squid stops at the first `http_access` rule that matches, so an `http_access` line in this file is never evaluated. Use the extras file for tuning directives, and test it with `docker compose exec proxy squid -k parse`.
 :::
 
 ### Default Squid settings

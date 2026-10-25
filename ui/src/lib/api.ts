@@ -59,6 +59,21 @@ export function setAuthToken(token: string): void {
   localStorage.setItem('auth_token', token);
 }
 
+/**
+ * Sign out: revoke the token on the server, then forget it. Clearing it only
+ * in the browser left it valid for up to 8 hours for anyone who had copied it.
+ * A failed revocation must not keep the user signed in, so its error is
+ * swallowed and the local token is removed regardless.
+ */
+export async function signOut(): Promise<void> {
+  try {
+    if (localStorage.getItem('auth_token')) await api.post('logout');
+  } catch {
+    /* the local sign-out below still happens */
+  }
+  localStorage.removeItem('auth_token');
+}
+
 /** Check if token expires within N minutes. */
 function tokenExpiresSoon(token: string, minutes: number): boolean {
   const payload = decodeJwtPayload(token);

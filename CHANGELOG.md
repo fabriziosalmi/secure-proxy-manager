@@ -13,6 +13,142 @@ a `### Removed` or `### Changed` heading with the phrase **BREAKING** and the
 changes affecting it. Retired routes answer `410 Gone` naming their replacement
 for at least one minor release before disappearing.
 
+## [3.14.2] - 2026-10-25
+
+Security release. It fixes five advisories, two of them critical, found in a
+full review of 3.14.1; upgrading is the remedy. `X-API-Version` stays 1. Read
+**Action worth knowing about on upgrade** first: three fixes change what a
+working deployment does.
+
+### Security
+
+- **Only LAN and listed sources may use the proxy, and every access restriction
+  is evaluated before any allow** (GHSA-rwc6-g88c-xcxh, critical). The
+  generated `http_access` rules allowed requests by destination before any rule
+  looked at the client, so a client from any address could tunnel into the LAN
+  on any safe port, and a hostname starting with `10.` or `192.168.` was
+  forwarded to any public address. Proxy authentication, content filtering and
+  time restrictions were written after `http_access deny all` and never
+  evaluated; the IP blacklist blocked no destination; the cache manager was open
+  to every client. A source gate now comes first, the restrictions are placed
+  ahead of the allows, the IP blacklist is a destination rule, and the cache
+  manager answers only localhost. The proxy authentication helper can now read
+  its password file: it refused every credential, which nobody could see while
+  the rule was never reached.
+- **Nothing in a settings file runs as root, and a configuration that does not
+  parse is never replaced by an unfiltered one** (GHSA-29vv-f64w-8x2c,
+  critical, needs administrator access). The configuration generator sourced
+  three settings files as root, and its check let `KEY=value command` through.
+  The files are now parsed (known keys, one pattern per key, never executed),
+  and the values are validated by the API, when the files are written, and on
+  restore. At boot, a configuration that does not parse is regenerated once
+  without the extras file, and the container exits if that does not parse
+  either; it used to fall back to a base file with no DNS resolver, no egress
+  default-deny, no SSL bump and no authentication, and stayed healthy. The
+  watchdog replaces the live configuration only with one Squid has parsed.
+- **A password change or logout ends the sessions it should**
+  (GHSA-xxcf-crp3-prrj, high). Tokens are bound to the current password, so a
+  password change ends every earlier session and returns a fresh pair to the
+  caller. Refresh chains end seven days after the login they descend from.
+  Logout revokes the access token on the server, and a refresh token passed in
+  the body; the UI used to clear its token only in the browser. Two tokens issued in the same second are distinct. A failed login
+  reserves its attempt before the password is checked: 40 concurrent guesses
+  against a limit of 5 were all evaluated.
+- **Unauthenticated clients can no longer grow backend memory or the audit
+  log** (GHSA-2p9h-3hxh-292r, high). The HTTP metrics label was the raw request
+  method, recorded before authentication: each invented method created a series
+  that was never freed. It is folded to a fixed set. A locked-out address is
+  audited and alerted once per lockout window, not once per request, and the
+  audit log is pruned after a year. `/api/ws/` gets the request limit every
+  other `/api/` path has.
+- **A safe-cache hit in the WAF skips only the URL scan** (GHSA-xw5v-w568-j234,
+  medium). After one clean GET, the same URL with a payload in an inspected
+  header or in a GET body was returned clean with no inspection, no heuristics
+  and no traffic-log entry. Headers, bodies and heuristics are now inspected on
+  every request, only URLs whose whole request scored zero are cached, and the
+  cache key hash has a per-process random seed.
+- **The images are built with Go 1.27.3.** The 3.14.1 binaries were built with
+  go1.27.1 and carried known standard-library vulnerabilities.
+- **The web image carries the fixed libexpat, brotli-libs and libx11**, on nginx
+  1.31.8. The proxy image no longer ships the unused `/usr/bin/pebble` binary
+  from its base image.
+- **Static assets carry the security headers.** JS, CSS and SVG were served
+  without HSTS, nosniff, CSP or X-Frame-Options. `connect-src` is `'self'`
+  instead of any WebSocket host, and the theme bootstrap is a file instead of an
+  inline script the CSP blocked.
+- **The audit CSV export writes cells starting with `=`, `+`, `-` or `@` as
+  text.** A failed login stores any username, unauthenticated, and it became a
+  live spreadsheet formula.
+- **The MCP server (`spm-mcp` 0.2.0) is read-only unless
+  `SPM_MCP_READONLY=false`**, and the traffic data it returns is marked as
+  attacker-influenced. It is published to PyPI as `spm-mcp` by Trusted
+  Publishing.
+
+### Action worth knowing about on upgrade
+
+- **Every user signs in once.** Tokens issued before 3.14.2 do not carry the
+  password binding and are refused.
+- **Proxy clients outside the private ranges must be listed.** The proxy accepts
+  clients from 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, fc00::/7 and
+  fe80::/10. Any other client network, for example a Tailscale range
+  (100.64.0.0/10), goes in `GUI_IP_WHITELIST`; until then it is refused.
+- **Proxy authentication, time restrictions and content filtering now apply.**
+  On 3.14.1 they were configurable but had no effect. If one of them is enabled,
+  it starts restricting clients after the upgrade.
+- A settings value that does not match its rule is ignored by the configuration
+  generator with a warning in the proxy log, refused by the API, and skipped
+  (with a warning) when a configuration backup is restored.
+
+### Fixed
+
+- **A domain added to the blacklist is refused at once, also for clients that
+  visited it before.** Squid answered from its own DNS cache (up to six hours)
+  and its HTTP cache, which the DNS sinkhole cannot reach. Squid's DNS cache is
+  capped at one minute, and Squid denies blacklisted domains itself while the
+  list has at most `SPM_SQUID_DOMAIN_ACL_MAX` entries (default 250,000; larger
+  lists rely on the sinkhole alone, with a warning in the log).
+- **The domain blacklist is capped at what dnsmasq can hold.** dnsmasq keeps
+  every name in memory (about 195 MiB per million domains, measured), and the
+  aggregated list Popular Lists offered got it killed for lack of memory, which
+  left the proxy unable to resolve anything. `SPM_DNS_BLOCKLIST_MAX_DOMAINS`
+  (default 1,000,000) bounds every path: an import that would exceed it is
+  refused whole with 413, a single add at the limit is refused, the
+  auto-refresh stops adding and logs it, a restore skips what does not fit.
+- **Popular Lists offers only lists that load and answer.** The aggregated list
+  is no longer offered; NoTracking (archived) and Talos (refuses non-browser
+  clients) are removed; HaGeZi Multi Pro moves to its current URL; the URLhaus
+  entry and the auto-refresh default use the malware-filter mirror, since
+  abuse.ch answers 410 Gone to unauthenticated downloads.
+- **The backend reaches the WAF management API.** The WAF answered 403 to the
+  backend on every deployment of the shipped compose, so WAF statistics,
+  category and heuristic toggles and the reconciler all failed silently. The
+  backend now uses the shared service token, and the dashboard always shows its
+  WAF cards and states why statistics are missing (`waf_status` in
+  `/api/dashboard/summary`).
+- **Bulk Add on a whitelist tab adds to the whitelist.** It wrote to the
+  blacklist.
+- **The web container starts when `LETSENCRYPT_DOMAIN` is set.** certbot is not
+  in the image and the self-signed fallback never ran, so the container exited
+  on every start. It now always starts with a certificate; the documentation
+  describes the TLS options that exist.
+- The live Logs feed no longer shows login events as blank rows, and the
+  Dashboard no longer offers a PDF report that has no backend route.
+- `scripts/restore.sh` says why it refuses a backup SQLite cannot open, instead
+  of exiting silently.
+
+### Changed
+
+- **Releases are scanned before they are tagged.** Each image is pushed by
+  digest, scanned for both architectures, and only then tagged and signed; a
+  manual run is a dry run. `deploy/docker-compose.prod.yml` pins
+  `${SPM_IMAGE_TAG:-v3.14.2}` instead of `:latest`, and `deploy/install.sh`
+  verifies every image signature with cosign 3 when it is installed.
+- Squid no longer adds an HSTS header to every proxied response.
+- The documentation states what the code and the shipped compose do: container
+  users and capabilities, ciphers, WAF rule counts (172 request rules, 5
+  response rules, 6 heuristics), body inspection limits, and the reverse-proxy
+  example (port 8443).
+
 ## [3.14.1] - 2026-09-30
 
 UI-only. Nothing is required on upgrade and `X-API-Version` stays 1.

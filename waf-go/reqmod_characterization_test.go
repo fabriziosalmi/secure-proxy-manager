@@ -251,9 +251,12 @@ func TestHandleReqmodSafeCacheScoping(t *testing.T) {
 	if !first.FeatureFound {
 		t.Fatal("the first GET should have been inspected and logged")
 	}
+	// A hit skips the URL scan only; headers, heuristics and the traffic log
+	// still run (safe_cache_scope_test.go), so the hit counter is the proof.
+	before := cacheHits()
 	second := runReqmod(t, httptest.NewRequest("GET", u, nil), "198.51.100.30")
-	if second.FeatureFound {
-		t.Error("the second identical GET was inspected again — the safe cache did not short-circuit it")
+	if cacheHits() != before+1 {
+		t.Error("the second identical GET did not hit the safe cache")
 	}
 	if second.ICAPCode != 204 {
 		t.Errorf("a cached-safe GET returned %d, want 204", second.ICAPCode)

@@ -77,9 +77,24 @@ func Metrics(next http.Handler) http.Handler {
 
 		route := routePattern(r)
 		status := strconv.Itoa(rec.status)
-		metrics.HTTPRequests.WithLabelValues(r.Method, route, status).Inc()
-		metrics.HTTPDuration.WithLabelValues(r.Method, route, status).Observe(time.Since(start).Seconds())
+		method := metricMethod(r.Method)
+		metrics.HTTPRequests.WithLabelValues(method, route, status).Inc()
+		metrics.HTTPDuration.WithLabelValues(method, route, status).Observe(time.Since(start).Seconds())
 	})
+}
+
+// metricMethod folds the request method into a fixed set. The raw method is
+// client-chosen: each invented one created a counter and a histogram series
+// that were never freed, and this middleware runs before the rate limiter and
+// before authentication, so a remote client could grow memory without bound.
+func metricMethod(m string) string {
+	switch m {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut,
+		http.MethodPatch, http.MethodDelete, http.MethodOptions:
+		return m
+	default:
+		return "OTHER"
+	}
 }
 
 // noLogPaths are health/scrape endpoints excluded from the access log to keep it

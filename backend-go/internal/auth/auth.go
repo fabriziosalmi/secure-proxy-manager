@@ -139,25 +139,91 @@ func HashPassword(plaintext string) (string, error) {
 	return string(hash), err
 }
 
+// maxSessionLifetime bounds a chain of refreshes: a refresh token never
+// outlives the login it descends from by more than this. Each refresh used to
+// issue a fresh 7-day token, so a chain never ended.
+const maxSessionLifetime = 7 * 24 * time.Hour
+
+// passwordBinding is the "pv" claim: a fingerprint of the user's current
+// password hash. Changing the password changes the hash, so every token issued
+// before the change stops validating, with no revocation list to keep in step.
+// It is a truncated SHA-256 of the bcrypt hash, so the claim carries nothing
+// that helps an offline guess.
+func (s *Service) passwordBinding(username string) (string, error) {
+	hash, err := s.currentPasswordHash(username)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte("spm-pv\x00" + hash))
+	return hex.EncodeToString(sum[:12]), nil
+}
+
+// checkPasswordBinding refuses a token whose pv claim does not match the
+// current password, including tokens minted before the claim existed.
+func (s *Service) checkPasswordBinding(claims jwt.MapClaims, username string) error {
+	pv, _ := claims["pv"].(string)
+	if pv == "" {
+		return errors.New("token predates session binding — re-authenticate")
+	}
+	current, err := s.passwordBinding(username)
+	if err != nil {
+		return errors.New("password store unavailable — re-authenticate")
+	}
+	if subtle.ConstantTimeCompare([]byte(pv), []byte(current)) != 1 {
+		return errors.New("password changed since this token was issued")
+	}
+	return nil
+}
+
+// tokenID is the jti claim. Without it two tokens issued in the same second
+// for the same user were the same string, so revoking one revoked the other.
+func tokenID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
 // IssueJWT signs and returns a JWT for the given username.
 func (s *Service) IssueJWT(username string) (string, error) {
+	pv, err := s.passwordBinding(username)
+	if err != nil {
+		return "", err
+	}
+	now := time.Now()
 	claims := jwt.MapClaims{
 		"sub":  username,
-		"exp":  time.Now().Add(s.cfg.JWTExpireDuration).Unix(),
-		"iat":  time.Now().Unix(),
+		"exp":  now.Add(s.cfg.JWTExpireDuration).Unix(),
+		"iat":  now.Unix(),
+		"jti":  tokenID(),
+		"pv":   pv,
 		"type": "access",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(s.cfg.SecretKey))
 }
 
-// IssueRefreshToken signs and returns a long-lived refresh token (7 days).
+// IssueRefreshToken signs a refresh token for a session that starts now (a
+// login). Rotation uses IssueRefreshTokenAt to keep the original login time.
 func (s *Service) IssueRefreshToken(username string) (string, error) {
+	return s.IssueRefreshTokenAt(username, time.Now())
+}
+
+// IssueRefreshTokenAt signs a refresh token for a session that began at
+// authTime. It expires maxSessionLifetime after authTime, never later.
+func (s *Service) IssueRefreshTokenAt(username string, authTime time.Time) (string, error) {
+	pv, err := s.passwordBinding(username)
+	if err != nil {
+		return "", err
+	}
+	now := time.Now()
 	claims := jwt.MapClaims{
-		"sub":  username,
-		"exp":  time.Now().Add(7 * 24 * time.Hour).Unix(),
-		"iat":  time.Now().Unix(),
-		"type": "refresh",
+		"sub":       username,
+		"exp":       authTime.Add(maxSessionLifetime).Unix(),
+		"iat":       now.Unix(),
+		"auth_time": authTime.Unix(),
+		"jti":       tokenID(),
+		"pv":        pv,
+		"type":      "refresh",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(s.cfg.SecretKey))
@@ -165,11 +231,18 @@ func (s *Service) IssueRefreshToken(username string) (string, error) {
 
 // ValidateRefreshToken parses a refresh token and returns the username.
 func (s *Service) ValidateRefreshToken(tokenStr string) (string, error) {
+	username, _, err := s.ValidateRefreshSession(tokenStr)
+	return username, err
+}
+
+// ValidateRefreshSession validates a refresh token and returns the username
+// and the time of the login the session descends from.
+func (s *Service) ValidateRefreshSession(tokenStr string) (string, time.Time, error) {
 	h := tokenHash(tokenStr)
 	s.jwtBlacklistMu.RLock()
 	if expiry, revoked := s.jwtBlacklist[h]; revoked && time.Now().Before(expiry) {
 		s.jwtBlacklistMu.RUnlock()
-		return "", errors.New("token has been revoked")
+		return "", time.Time{}, errors.New("token has been revoked")
 	}
 	s.jwtBlacklistMu.RUnlock()
 
@@ -180,26 +253,34 @@ func (s *Service) ValidateRefreshToken(tokenStr string) (string, error) {
 		return []byte(s.cfg.SecretKey), nil
 	}, jwt.WithStrictDecoding())
 	if err != nil || !token.Valid {
-		return "", errors.New("invalid or expired refresh token")
+		return "", time.Time{}, errors.New("invalid or expired refresh token")
 	}
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return "", errors.New("invalid claims")
+		return "", time.Time{}, errors.New("invalid claims")
 	}
 	tokenType, _ := claims["type"].(string)
 	if tokenType != "refresh" {
-		return "", errors.New("not a refresh token")
+		return "", time.Time{}, errors.New("not a refresh token")
 	}
 	if s.blacklistUnavailable.Load() {
 		if iat, err := claims.GetIssuedAt(); err != nil || iat == nil || iat.Before(startedAt) {
-			return "", errors.New("revocation store unavailable — re-authenticate")
+			return "", time.Time{}, errors.New("revocation store unavailable — re-authenticate")
 		}
 	}
 	username, _ := claims["sub"].(string)
 	if username == "" {
-		return "", errors.New("missing subject")
+		return "", time.Time{}, errors.New("missing subject")
 	}
-	return username, nil
+	if err := s.checkPasswordBinding(claims, username); err != nil {
+		return "", time.Time{}, err
+	}
+	at, _ := claims["auth_time"].(float64)
+	authTime := time.Unix(int64(at), 0)
+	if at == 0 || time.Since(authTime) > maxSessionLifetime {
+		return "", time.Time{}, errors.New("session expired — re-authenticate")
+	}
+	return username, authTime, nil
 }
 
 // ValidateJWT parses and validates a signed JWT string.
@@ -248,6 +329,9 @@ func (s *Service) ValidateJWT(tokenStr string) (string, error) {
 	username, _ := claims["sub"].(string)
 	if username == "" {
 		return "", errors.New("missing subject")
+	}
+	if err := s.checkPasswordBinding(claims, username); err != nil {
+		return "", err
 	}
 	return username, nil
 }
@@ -346,20 +430,31 @@ func (s *Service) Authenticate(r *http.Request) (string, bool, error) {
 		if !ok {
 			return "", false, errors.New("malformed Basic auth header")
 		}
-		if err := s.checkRateLimit(r); err != nil {
+		// The attempt is reserved before bcrypt runs and refunded on success.
+		// Checking first and recording the failure afterwards let every
+		// request already in flight past the limit: 40 concurrent guesses
+		// against a limit of 5 were all evaluated.
+		refund, err := s.reserveAttempt(r)
+		if err != nil {
 			return "", false, err
 		}
 		if err := s.verifyPassword(username, password); err != nil {
-			s.recordFailure(r)
 			return "", false, errors.New("invalid credentials")
 		}
+		refund()
 		return username, true, nil
 	}
 	return "", false, errors.New("unsupported authentication scheme")
 }
 
+// dummyHash is compared against when the username is wrong (see verifyPassword).
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("spm-timing-equaliser"), bcrypt.DefaultCost)
+
 func (s *Service) verifyPassword(username, password string) error {
 	if subtle.ConstantTimeCompare([]byte(username), []byte(s.cfg.AdminUsername)) != 1 {
+		// Spend the same bcrypt work as a real check, so the response time
+		// does not tell a wrong username from a wrong password.
+		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return errors.New("unknown user")
 	}
 
@@ -423,22 +518,31 @@ func (s *Service) currentPasswordHash(username string) (string, error) {
 	}
 }
 
-func (s *Service) checkRateLimit(r *http.Request) error {
+// reserveAttempt counts an attempt for the client before the password is
+// checked, under the same lock as the limit check, so concurrent requests
+// cannot all pass the check before any of them is counted. The returned func
+// removes the reservation; call it only when the password was right.
+func (s *Service) reserveAttempt(r *http.Request) (func(), error) {
 	ip := clientIP(r)
 	s.attemptsMu.Lock()
 	defer s.attemptsMu.Unlock()
 	s.pruneAttempts(ip)
 	if len(s.attempts[ip]) >= s.cfg.MaxAttempts {
-		return errors.New("too many failed attempts, try again later")
+		return nil, errors.New("too many failed attempts, try again later")
 	}
-	return nil
-}
-
-func (s *Service) recordFailure(r *http.Request) {
-	ip := clientIP(r)
-	s.attemptsMu.Lock()
-	s.attempts[ip] = append(s.attempts[ip], time.Now())
-	s.attemptsMu.Unlock()
+	stamp := time.Now()
+	s.attempts[ip] = append(s.attempts[ip], stamp)
+	return func() {
+		s.attemptsMu.Lock()
+		defer s.attemptsMu.Unlock()
+		list := s.attempts[ip]
+		for i := len(list) - 1; i >= 0; i-- {
+			if list[i].Equal(stamp) {
+				s.attempts[ip] = append(list[:i], list[i+1:]...)
+				return
+			}
+		}
+	}, nil
 }
 
 func (s *Service) pruneAttempts(ip string) {

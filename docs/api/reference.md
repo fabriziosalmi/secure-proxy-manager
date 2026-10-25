@@ -31,7 +31,7 @@ Every response carries an `X-API-Version` header. It is the version of the reque
 |---|---|---|
 | `POST` | `/api/auth/login` | Validate credentials, return access and refresh JWTs |
 | `POST` | `/api/auth/refresh` | Exchange a refresh token for a new pair |
-| `POST` | `/api/logout` | Revoke the JWT used to authenticate the request |
+| `POST` | `/api/logout` | Revoke the JWT used to authenticate the request, and the refresh token in an optional `{"refresh_token": ...}` body |
 | `POST` | `/api/change-password` | Change the admin password |
 | `GET`  | `/api/ws-token` | Issue a single-use WebSocket token |
 | `GET`  | `/health` | Liveness check (no auth) |

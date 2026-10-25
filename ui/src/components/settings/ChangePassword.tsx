@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Key, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { api } from '../../lib/api';
+import { api, setAuthToken } from '../../lib/api';
 import { validatePassword } from '../../lib/validation';
 
 export function ChangePassword() {
@@ -23,11 +23,15 @@ export function ChangePassword() {
 
     setSaving(true);
     try {
-      await api.post('change-password', {
+      const res = await api.post('change-password', {
         current_password: currentPwd,
         new_password: newPwd,
       });
-      toast.success('Password changed successfully');
+      // The change ends every session issued before it, this one included;
+      // the response carries a fresh token so this session continues.
+      const fresh = (res.data as { access_token?: string } | undefined)?.access_token;
+      if (fresh) setAuthToken(fresh);
+      toast.success('Password changed. Other sessions were signed out.');
       setCurrentPwd('');
       setNewPwd('');
       setConfirmPwd('');

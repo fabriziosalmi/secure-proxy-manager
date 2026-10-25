@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 // Import after setup.ts has polyfilled localStorage
-import { isTokenExpired, getErrorMessage } from './api'
+import { isTokenExpired, getErrorMessage, signOut, api } from './api'
 
 describe('isTokenExpired', () => {
   function makeToken(exp: number): string {
@@ -43,5 +43,28 @@ describe('getErrorMessage', () => {
 
   it('returns fallback for undefined errors', () => {
     expect(getErrorMessage(undefined, 'oops')).toBe('oops')
+  })
+})
+
+describe('signOut', () => {
+  it('revokes the token on the server before forgetting it', async () => {
+    localStorage.setItem('auth_token', 'tok')
+    const post = vi.spyOn(api, 'post').mockImplementation(async () => {
+      // The token is still there while the revocation is in flight.
+      expect(localStorage.getItem('auth_token')).toBe('tok')
+      return { data: {} }
+    })
+    await signOut()
+    expect(post).toHaveBeenCalledWith('logout')
+    expect(localStorage.getItem('auth_token')).toBeNull()
+    post.mockRestore()
+  })
+
+  it('still signs out locally when the server call fails', async () => {
+    localStorage.setItem('auth_token', 'tok')
+    const post = vi.spyOn(api, 'post').mockRejectedValue(new Error('network'))
+    await signOut()
+    expect(localStorage.getItem('auth_token')).toBeNull()
+    post.mockRestore()
   })
 })

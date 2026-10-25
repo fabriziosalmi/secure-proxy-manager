@@ -263,6 +263,7 @@ def state(w, tmp_path, monkeypatch):
     monkeypatch.setattr(w, "CLEAR_CACHE_TRIGGER", str(tmp_path / ".clear-cache"))
     monkeypatch.setattr(w, "PAIRS", [])
     monkeypatch.setattr(w, "resolved_ips", lambda: "1.1.1.1,2.2.2.2")
+    monkeypatch.setattr(w, "promote_config", lambda: None)
     return w.WatchdogState(), trigger
 
 
@@ -291,7 +292,7 @@ def test_reload_refuses_a_config_that_does_not_parse(w, state, monkeypatch):
     run = _Run()
     results = []
     monkeypatch.setattr(w.subprocess, "run", run)
-    monkeypatch.setattr(w, "squid_config_ok", lambda: False)
+    monkeypatch.setattr(w, "squid_config_ok", lambda *_a: False)
     monkeypatch.setattr(w, "write_result", lambda *a: results.append(a))
 
     w.check_reload_trigger(st)
@@ -306,7 +307,7 @@ def test_reload_success_reconfigures_and_acknowledges(w, state, monkeypatch):
     run = _Run()
     results = []
     monkeypatch.setattr(w.subprocess, "run", run)
-    monkeypatch.setattr(w, "squid_config_ok", lambda: True)
+    monkeypatch.setattr(w, "squid_config_ok", lambda *_a: True)
     monkeypatch.setattr(w, "write_result", lambda *a: results.append(a))
 
     w.check_reload_trigger(st)
@@ -432,3 +433,98 @@ def test_poll_once_runs_every_job_in_order(w, monkeypatch):
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+# ── generate_checked: the live file is replaced only by a config that parses ──
+#
+# The generator used to write the live squid.conf in place and the parse check
+# ran afterwards, so a refused config was already on disk for the next
+# reconfigure or restart to load. The resolver-drift path did not check at all.
+
+def _generating_run(next_path, content="new\n", gen_rc=0):
+    run = _Run(returncodes={"/usr/local/bin/generate_squid_conf.sh": gen_rc})
+    inner = run.__call__
+
+    def call(argv, **kw):
+        if list(argv) == ["/usr/local/bin/generate_squid_conf.sh"]:
+            assert kw.get("env", {}).get("SQUID_CONF") == str(next_path), "the generator was pointed at the live file"
+            next_path.write_text(content)
+        return inner(argv, **kw)
+    call.calls = run.calls
+    return call
+
+
+def test_generate_checked_keeps_the_live_file_when_the_new_one_does_not_parse(w, tmp_path, monkeypatch):
+    live, nxt = tmp_path / "squid.conf", tmp_path / "squid.conf.next"
+    live.write_text("old\n")
+    monkeypatch.setattr(w, "SQUID_CONF", str(live))
+    monkeypatch.setattr(w, "SQUID_CONF_NEXT", str(nxt))
+    monkeypatch.setattr(w.subprocess, "run", _generating_run(nxt))
+    monkeypatch.setattr(w, "squid_config_ok", lambda path=None: False)
+
+    _, applied = w.generate_checked()
+
+    assert applied is False
+    assert live.read_text() == "old\n", "a config that does not parse replaced the live one"
+
+
+def test_generate_checked_promotes_a_config_that_parses(w, tmp_path, monkeypatch):
+    live, nxt = tmp_path / "squid.conf", tmp_path / "squid.conf.next"
+    live.write_text("old\n")
+    monkeypatch.setattr(w, "SQUID_CONF", str(live))
+    monkeypatch.setattr(w, "SQUID_CONF_NEXT", str(nxt))
+    monkeypatch.setattr(w.subprocess, "run", _generating_run(nxt))
+    checked = []
+    monkeypatch.setattr(w, "squid_config_ok", lambda path=None: checked.append(path) or True)
+
+    _, applied = w.generate_checked()
+
+    assert applied is True
+    assert checked == [str(nxt)], "the parse check did not run on the new file"
+    assert live.read_text() == "new\n" and not nxt.exists()
+
+
+def test_resolver_drift_does_not_reconfigure_onto_a_refused_config(w, state, monkeypatch):
+    st, _ = state
+    run = _Run()
+    monkeypatch.setattr(w.subprocess, "run", run)
+    monkeypatch.setattr(w, "squid_config_ok", lambda *_a: False)
+    monkeypatch.setattr(w, "resolved_ips", lambda: "1.1.1.1,9.9.9.9")
+
+    w.heal_resolver_drift(st)
+
+    assert ["/usr/local/bin/generate_squid_conf.sh"] in run.calls
+    assert ["/usr/sbin/squid", "-k", "reconfigure"] not in run.calls
+
+
+# ── refresh_domain_acl: Squid's own copy of the domain blacklist ─────────────
+
+def test_domain_acl_holds_the_list_up_to_the_limit_and_nothing_above(w, tmp_path, monkeypatch):
+    src, dst = tmp_path / "local.txt", tmp_path / "squid.txt"
+    monkeypatch.setattr(w, "DOMAIN_LIST", str(src))
+    monkeypatch.setattr(w, "DOMAIN_ACL", str(dst))
+    src.write_text("a.example\nb.example\n")
+
+    monkeypatch.setenv("SPM_SQUID_DOMAIN_ACL_MAX", "2")
+    w.refresh_domain_acl()
+    assert dst.read_text() == "a.example\nb.example\n"
+
+    # Over the limit, Squid must not load it: a reconfigure with millions of
+    # dstdomain entries exhausted the proxy's memory limit.
+    monkeypatch.setenv("SPM_SQUID_DOMAIN_ACL_MAX", "1")
+    w.refresh_domain_acl()
+    assert dst.read_text() == ""
+    assert not (tmp_path / "squid.txt.tmp").exists()
+
+
+def test_a_list_sync_refreshes_the_domain_acl_before_reconfiguring(w, state, monkeypatch):
+    st, _ = state
+    calls = []
+    monkeypatch.setattr(w, "sync_lists", lambda s: True)
+    monkeypatch.setattr(w, "refresh_domain_acl", lambda: calls.append("acl"))
+    monkeypatch.setattr(w, "reconfigure_squid", lambda: calls.append("reconfigure"))
+    for job in ("touch_heartbeat", "heal_resolver_drift", "keep_logs_readable", "rotate_logs_daily",
+                "check_reload_trigger", "check_clear_cache_trigger"):
+        monkeypatch.setattr(w, job, lambda *a: None)
+    w.poll_once(st)
+    assert calls == ["acl", "reconfigure"]

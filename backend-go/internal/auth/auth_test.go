@@ -261,6 +261,11 @@ func TestRevokeJWTReportsPersistFailure(t *testing.T) {
 		t.Fatalf("open db: %v", err)
 	}
 	defer db.Close()
+	// Tokens are bound to the stored password hash, so the schema a real
+	// deployment always has (database.Init at startup) must be there.
+	if err := database.Init(db, "admin", "$2a$10$abcdefghijklmnopqrstuuJ0cRUYHZ0hzUTdQ5d1yKqVHR8YpJ6e"); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
 	svc := NewService(&config.Config{
 		SecretKey:         "super-secret-key-for-testing-1234567",
 		JWTExpireDuration: 1 * time.Hour,

@@ -56,6 +56,9 @@ grep -q 'http_access deny all' <<<"$conf" && ok "terminating deny present"  || b
 grep -q 'icap_service service_req' <<<"$conf" && ok "ICAP REQMOD wired"     || bad "ICAP REQMOD wired"
 grep -q 'bypass=0' <<<"$conf"         && ok "REQMOD fails closed (bypass=0)" || bad "REQMOD fails closed (bypass=0)"
 parses 'true' && ok "squid -k parse accepts it" || bad "squid -k parse accepts it"
+grep -q 'Strict-Transport-Security' <<<"$conf" \
+  && bad "no HSTS is injected into third-party responses" "reply_header_add Strict-Transport-Security is back" \
+  || ok "no HSTS is injected into third-party responses"
 
 echo "── egress default-deny ON ──"
 conf="$(generate 'touch /config/egress_default_deny; : > /config/dst_allow_ip.txt; : > /config/dst_allow_domain.txt')"
@@ -73,19 +76,53 @@ n=$(grep -c '^ssl_bump bump all' <<<"$conf")
 [ "$n" -le 1 ] && ok "ssl_bump block not duplicated" || bad "ssl_bump block not duplicated" "found $n"
 
 echo "── GUI whitelist set ──"
-conf="$(generate 'export GUI_IP_WHITELIST=192.168.1.5')"
-n=$(grep -c 'acl gui_override dst' <<<"$conf")
-[ "$n" -le 1 ] && ok "gui_override ACL defined at most once" \
-                || bad "gui_override ACL defined at most once" "found $n — duplicate ACL definition"
+# GUI_IP_WHITELIST names extra client SOURCES. It must not create a destination
+# ACL or an allow rule of its own (the old gui_override did both, ahead of the
+# port checks); its entries join localnet. Behaviour: squid_acl_matrix_test.sh.
+conf="$(generate 'export GUI_IP_WHITELIST="192.168.1.5,100.64.0.0/10 not-an-ip"')"
+grep -q 'gui_override' <<<"$conf" \
+  && bad "GUI whitelist creates no destination ACL" "gui_override is back" \
+  || ok "GUI whitelist creates no destination ACL"
+grep -qF 'acl localnet src "/etc/squid/extra_clients.txt"' <<<"$conf" \
+  && ok "extra client sources join localnet" || bad "extra client sources join localnet"
+extra="$(docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+  mkdir -p /config /etc/squid; export GUI_IP_WHITELIST="192.168.1.5,100.64.0.0/10 not-an-ip"
+  /usr/local/bin/generate_squid_conf.sh >/dev/null 2>&1; cat /etc/squid/extra_clients.txt' 2>/dev/null)"
+[ "$extra" = "$(printf '192.168.1.5\n100.64.0.0/10')" ] \
+  && ok "comma/space entries parsed, invalid entry dropped" \
+  || bad "comma/space entries parsed, invalid entry dropped" "got: $(tr '\n' ' ' <<<"$extra")"
 
 echo "── offline mode ON ──"
 conf="$(generate 'touch /config/offline_mode_enabled')"
 n=$(grep -c '^offline_mode on' <<<"$conf")
 [ "$n" -le 1 ] && ok "offline_mode not appended twice" || bad "offline_mode not appended twice" "found $n"
 
-echo "── injection: a hostile /config must not become squid config ──"
-conf="$(generate 'printf "SQUID_PORT=3128\nEVIL=\$(touch /tmp/pwned)\n" > /config/squid_settings.env')"
-grep -q 'pwned' <<<"$conf" && bad "safe_source rejects command substitution" || ok "safe_source rejects command substitution"
+echo "── injection: nothing in a /config settings file is executed ──"
+# The previous check grepped squid.conf for "pwned", which says nothing about
+# whether a command RAN, and safe_source did run "KEY=value command": a space
+# in EXTRA_SSL_PORTS executed the rest of the value as root. This asserts on
+# the side effect, inside the container, for every file the generator reads.
+ran="$(docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+  mkdir -p /config /etc/squid
+  printf "SQUID_PORT=3128\nEXTRA_SSL_PORTS=8443 touch /tmp/ran-ssl\nEVIL=\$(touch /tmp/ran-subst)\nSQUID_MEM_MB=64;touch /tmp/ran-semi\nPATH=/nowhere\n" > /config/squid_settings.env
+  touch /config/bandwidth_limits_enabled
+  printf "BW_LIMIT_MBPS=10\nBW_PER_USER_KBPS=0\nPATH=/config\nIFS=x\n" > /config/bandwidth_limits.conf
+  touch /config/time_restrictions_enabled
+  printf "TIME_START=08:00 touch /tmp/ran-time\nTIME_END=18:00\n" > /config/time_restrictions.conf
+  /usr/local/bin/generate_squid_conf.sh >/tmp/gen.log 2>&1; echo "rc=$?"
+  ls /tmp/ran-* 2>/dev/null
+  grep -c "^acl SSL_ports port 8443" /etc/squid/squid.conf
+  grep -c "^http_port 3128" /etc/squid/squid.conf
+  grep -c "^delay_pools 1" /etc/squid/squid.conf
+  grep -c "allowed_hours" /etc/squid/squid.conf
+  /usr/sbin/squid -k parse >/dev/null 2>&1 && echo parse=ok || echo parse=fail
+' 2>/dev/null)"
+case "$ran" in *"/tmp/ran-"*) bad "no settings value is executed" "ran: $(grep /tmp/ran- <<<"$ran" | tr '\n' ' ')";; *) ok "no settings value is executed";; esac
+grep -q '^rc=0' <<<"$ran" && ok "the generator still completes" || bad "the generator still completes" "$ran"
+grep -q 'parse=ok' <<<"$ran" && ok "the result still parses (PATH and IFS were not replaced)" || bad "the result still parses" "$ran"
+[ "$(sed -n 3p <<<"$ran")" = "1" ] && ok "a valid http_port survives next to hostile keys" || bad "a valid http_port survives next to hostile keys" "$ran"
+[ "$(sed -n 4p <<<"$ran")" = "1" ] && ok "bandwidth limits still apply with PATH/IFS lines in the file" || bad "bandwidth limits still apply" "$ran"
+[ "$(sed -n 5p <<<"$ran")" = "0" ] && ok "a time value with a trailing command is refused, not half-applied" || bad "a time value with a trailing command is refused" "$ran"
 
 echo "── boot path: startup.sh sources the generator and must survive it ──"
 # SECURE-ARCH-01. startup.sh used to carry a byte-identical copy of the
@@ -106,6 +143,29 @@ grep -q '__REACHED_SUPERVISORD__' <<<"$boot" \
   && ok "startup.sh runs to the supervisord hand-off" \
   || bad "startup.sh runs to the supervisord hand-off" "the entrypoint stopped early — sourcing the generator must return, not exit"
 grep -q '__STARTUP_RC__=0' <<<"$boot" && ok "startup.sh exits 0" || bad "startup.sh exits 0"
+
+echo "── boot path: a config that does not parse is never replaced by a weaker one ──"
+# The old fallback copied squid.conf.base over a config that failed to parse:
+# no dns_nameservers, no egress default-deny, no SSL bump, no proxy auth, and a
+# healthy container. An extras file that does not parse is now dropped (the
+# rest of the generated config, filtering included, stays), and nothing else
+# is ever substituted.
+bad_extras="$(docker run --rm --cap-add NET_ADMIN --entrypoint /bin/bash "$IMAGE" -c '
+  mkdir -p /config; touch /config/egress_default_deny
+  echo "this_is_not_a_directive 1" > /config/custom_squid_extra.conf
+  sed -i "s|^exec /usr/bin/supervisord.*|echo __REACHED_SUPERVISORD__|" /startup.sh
+  /startup.sh 2>&1
+  echo "__STARTUP_RC__=$?"
+  grep -c "this_is_not_a_directive" /etc/squid/squid.conf
+  grep -c "egress_dst_allow" /etc/squid/squid.conf
+' 2>/dev/null)"
+grep -q 'regenerating WITHOUT /config/custom_squid_extra.conf' <<<"$bad_extras" \
+  && ok "an extras file that does not parse is dropped, loudly" \
+  || bad "an extras file that does not parse is dropped, loudly" "$(tail -5 <<<"$bad_extras")"
+grep -q '__REACHED_SUPERVISORD__' <<<"$bad_extras" && ok "Squid still starts without the broken extras" || bad "Squid still starts without the broken extras"
+[ "$(tail -2 <<<"$bad_extras" | head -1)" = "0" ] && ok "the broken directive is not in the running config" || bad "the broken directive is not in the running config"
+[ "$(tail -1 <<<"$bad_extras")" != "0" ] && ok "the egress default-deny survives the retry" || bad "the egress default-deny survives the retry" "the fallback lost filtering"
+grep -q 'falling back to base' <<<"$bad_extras" && bad "no fallback to the unfiltered base config" || ok "no fallback to the unfiltered base config"
 grep -q 'Configuration syntax is valid' <<<"$boot" \
   && ok "boot validates its own squid.conf" || bad "boot validates its own squid.conf"
 
