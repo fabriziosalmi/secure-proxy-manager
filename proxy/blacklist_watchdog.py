@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Squid sidecar maintained by supervisord.
 
-Two jobs, both on a 2-second tick:
+Three jobs on a 2-second tick:
 
 1. Live blacklist reload. Watches the /config blacklist files the backend
    rewrites and, when one changes, copies it into the Squid ACL directory and
@@ -14,20 +14,26 @@ Two jobs, both on a 2-second tick:
    zero log lines and the dashboard / Logs page would stay empty. Re-assert
    0644 every tick.
 
+3. Cache statistics, once a minute: Squid's cache manager info page, read
+   from localhost, written to /config/cache_stats.json for the backend.
+
 This is shipped as a real file and registered statically in
 squid-supervisor.conf (rather than generated at runtime) so supervisord always
 picks it up on a fresh boot.
 """
 import hashlib
+import http.client
 import ipaddress
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 
 CONFIG_DIR = "/config"
 
@@ -426,6 +432,13 @@ class WatchdogState:
         # Baseline = the IPs squid was configured with at startup (startup.sh
         # ran generate_squid_conf.sh against the same resolution).
         self.resolv_fp = resolved_ips()
+        # Cache statistics: when the next collection is due (time.monotonic),
+        # the problem last logged (None when the last collection worked), and
+        # the disk capacity with the squid.conf mtime it was read for.
+        self.cache_stats_due = 0.0
+        self.cache_stats_problem = None
+        self.disk_capacity_kb = None
+        self.disk_capacity_conf = None
 
 
 def write_squid_version():
@@ -659,18 +672,193 @@ def reconfigure_squid():
         print(f"[watchdog] reconfigure error: {exc}", flush=True)
 
 
-def poll_once(state):
-    """One two-second tick: every job the watchdog does, in order.
+# ── Cache statistics ─────────────────────────────────────────────────────────
+#
+# This used to invoke /usr/sbin/squidclient, which is absent from the image and
+# is not packaged for Ubuntu 26.04, so every attempt raised FileNotFoundError
+# into a blind handler and /config/cache_stats.txt was never written: the
+# dashboard showed zeros since the feature was added (SECURE-CONF-02). The
+# cache manager answers on Squid's own port at /squid-internal-mgr/, and
+# squid.conf admits it from localhost only, which is where this runs. Read with
+# urllib: no extra binary.
+#
+# What is parsed is what Squid 7.7 printed (tests/python/fixtures/
+# squid_7.7_info.txt, captured from the proxy image). The format differs from
+# the one the backend used to parse ("Request Hit Ratios:", "StoreEntries :"),
+# which no Squid in this image prints.
+CACHE_STATS = f"{CONFIG_DIR}/cache_stats.json"
+CACHE_STATS_VERSION = 1
+# Every collection is one request Squid counts, as a miss, in the hit ratio it
+# reports: at 60 s that is 5 requests in each 5-minute window. A shorter
+# interval would weigh more on a quiet proxy's ratio.
+CACHE_STATS_INTERVAL = 60
+CACHE_MGR_TIMEOUT = 5
+# The info page is about 2.6 KB; anything this large is not it.
+CACHE_MGR_MAX_BYTES = 1 << 20
+# Squid takes its first statistics sample one minute after it starts. Before
+# that it prints "5min: 0.0%, 60min: 0.0%" whatever it served (measured on 7.7:
+# 0.0% at 7.9 to 59.4 s of uptime with hits served, 61.1% at 69.6 s). That 0.0
+# is not a measurement, so the ratios are recorded as absent until then.
+SQUID_FIRST_SAMPLE_S = 60
 
-    Cache statistics are NOT collected here. This used to invoke
-    /usr/sbin/squidclient, which is absent from the image and is not packaged
-    for Ubuntu 26.04, so every attempt raised FileNotFoundError into a blind
-    handler and /config/cache_stats.txt was never written — the dashboard
-    showed zeros since the feature was added (SECURE-CONF-02). Squid's own
-    cache manager is reachable only at /squid-internal-mgr/, which this
-    configuration denies. The backend reports "simulated": true when the file is
-    missing and the UI renders that as "not collected".
+_NUM = r"(-?\d+(?:\.\d+)?)"
+_RATIO_LINES = {
+    "Hits as % of all requests": "request_hit_ratio",
+    "Hits as % of bytes sent": "byte_hit_ratio",
+}
+# (pattern on a stripped line, field, type)
+_INFO_FIELDS = [
+    (re.compile(r"Storage Swap size:\s*(\d+) KB"), "disk_used_kb", int),
+    (re.compile(r"Storage Swap capacity:\s*" + _NUM + r"% used, " + _NUM + r"% free"), "disk_used_pct", float),
+    (re.compile(r"Storage Mem size:\s*(\d+) KB"), "memory_used_kb", int),
+    (re.compile(r"Storage Mem capacity:\s*" + _NUM + r"% used, " + _NUM + r"% free"), "memory_used_pct", float),
+    (re.compile(r"UP Time:\s*(\d+(?:\.\d+)?) seconds"), "uptime_s", float),
+    (re.compile(r"(\d+) StoreEntries"), "store_entries", int),
+    (re.compile(r"(\d+) Hot Object Cache Items"), "memory_objects", int),
+    (re.compile(r"(\d+) on-disk objects"), "disk_objects", int),
+]
+_RATIO = re.compile(r"(" + "|".join(re.escape(k) for k in _RATIO_LINES) + r"):\s*5min:\s*"
+                    + _NUM + r"%, 60min:\s*" + _NUM + r"%")
+_STOREDIR_MAX = re.compile(r"Maximum Swap Size\s*:\s*(\d+) KB")
+
+CACHE_STATS_FIELDS = (
+    "request_hit_ratio_5min_pct", "request_hit_ratio_60min_pct",
+    "byte_hit_ratio_5min_pct", "byte_hit_ratio_60min_pct",
+    *(field for _, field, _ in _INFO_FIELDS),
+)
+
+
+def parse_squid_info(text):
+    """The fields of the cache manager info page, as Squid printed them.
+
+    Every field this does not find is None, never 0. Percentages stay
+    percentages (12.3 for "12.3%"); Squid's byte hit ratio can be negative
+    (it prints "-0.0%" on an idle cache) and is kept as printed.
     """
+    out = dict.fromkeys(CACHE_STATS_FIELDS)
+    for raw in text.splitlines():
+        line = raw.strip()
+        m = _RATIO.fullmatch(line)
+        if m:
+            name = _RATIO_LINES[m.group(1)]
+            out[f"{name}_5min_pct"] = float(m.group(2))
+            out[f"{name}_60min_pct"] = float(m.group(3))
+            continue
+        for pattern, field, kind in _INFO_FIELDS:
+            m = pattern.fullmatch(line)
+            if m:
+                out[field] = kind(m.group(1))
+                break
+    uptime = out["uptime_s"]
+    if uptime is None or uptime < SQUID_FIRST_SAMPLE_S:
+        for name in _RATIO_LINES.values():
+            out[f"{name}_5min_pct"] = out[f"{name}_60min_pct"] = None
+    return out
+
+
+def parse_squid_storedir(text):
+    """The disk cache capacity in KB from the storedir page, None when it does
+    not say. One cache_dir prints the line once; anything else is ambiguous."""
+    found = [int(m.group(1)) for m in (_STOREDIR_MAX.fullmatch(raw.strip()) for raw in text.splitlines()) if m]
+    return found[0] if len(found) == 1 else None
+
+
+def squid_http_port(conf=None):
+    """The port of the first http_port in the live squid.conf; 3128 without one.
+    PROXY_PORT and squid_settings.env can move it, so it is not a constant."""
+    try:
+        with open(conf or SQUID_CONF, encoding="utf-8", errors="replace") as f:
+            for raw in f:
+                m = re.match(r"http_port\s+(?:\S*:)?(\d+)(?:\s|$)", raw)
+                if m:
+                    return int(m.group(1))
+    except OSError:
+        pass
+    return 3128
+
+
+# The cache manager is fetched directly: an http_proxy in the environment
+# would otherwise send this request through itself.
+_MGR_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def fetch_cache_manager(page, port):
+    """One cache manager page from Squid on localhost, as text. Raises OSError
+    (urllib's errors and timeouts are OSErrors) or http.client.HTTPException."""
+    url = f"http://127.0.0.1:{port}/squid-internal-mgr/{page}"
+    with _MGR_OPENER.open(url, timeout=CACHE_MGR_TIMEOUT) as resp:
+        return resp.read(CACHE_MGR_MAX_BYTES).decode("utf-8", "replace")
+
+
+def note_cache_stats(state, problem):
+    """Log a collection problem once per kind of problem, and the recovery."""
+    if problem == state.cache_stats_problem:
+        return
+    if problem is None:
+        print("[watchdog] cache statistics: collected", flush=True)
+    else:
+        print(f"[watchdog] cache statistics not collected: {problem}", flush=True)
+    state.cache_stats_problem = problem
+
+
+def _problem(page, exc):
+    # The same failure prints the same text every minute ("<urlopen error
+    # [Errno 111] Connection refused>", "timed out"), so it is logged once.
+    return f"{page}: {type(exc).__name__}: {exc}"
+
+
+def disk_capacity(state, port):
+    """The disk cache capacity, from storedir. It changes only when squid.conf
+    does, so it is fetched again only then: each fetch is one more request in
+    Squid's hit ratio. A squid.conf younger than one interval may not be loaded
+    yet (reconfigure is asynchronous), so it is asked again next time."""
+    conf_mt = mtime(SQUID_CONF)
+    if state.disk_capacity_kb is not None and state.disk_capacity_conf == conf_mt:
+        return state.disk_capacity_kb, None
+    try:
+        cap = parse_squid_storedir(fetch_cache_manager("storedir", port))
+    except (OSError, http.client.HTTPException) as exc:
+        state.disk_capacity_kb = None
+        return None, _problem("storedir", exc)
+    state.disk_capacity_kb = cap
+    if cap is not None and time.time() - conf_mt >= CACHE_STATS_INTERVAL:
+        state.disk_capacity_conf = conf_mt
+    return cap, None if cap is not None else "storedir: no Maximum Swap Size line"
+
+
+def collect_cache_stats(state):
+    """Every CACHE_STATS_INTERVAL seconds, write what the info page reports to
+    CACHE_STATS, atomically, with the time it was collected. A failed fetch
+    writes nothing: the file keeps its collected_at and the backend reports
+    it as out of date. Nothing here may stop the poll loop. True when written."""
+    now = time.monotonic()
+    if now < state.cache_stats_due:
+        return False
+    state.cache_stats_due = now + CACHE_STATS_INTERVAL
+    port = squid_http_port()
+    try:
+        stats = parse_squid_info(fetch_cache_manager("info", port))
+    except (OSError, http.client.HTTPException) as exc:
+        note_cache_stats(state, _problem("info", exc))
+        return False
+    if all(v is None for v in stats.values()):
+        note_cache_stats(state, "info: none of the expected fields")
+        return False
+    cap, problem = disk_capacity(state, port)
+    doc = {"version": CACHE_STATS_VERSION, "collected_at": int(time.time()),
+           "interval_s": CACHE_STATS_INTERVAL, **stats, "disk_capacity_kb": cap}
+    try:
+        write_lines_atomic(CACHE_STATS, [json.dumps(doc, sort_keys=True)])
+    except OSError as exc:
+        note_cache_stats(state, _problem("write", exc))
+        return False
+    note_cache_stats(state, problem)
+    return True
+
+
+def poll_once(state):
+    """One two-second tick: every job the watchdog does, in order. Cache
+    statistics come last and run once a minute (collect_cache_stats)."""
     touch_heartbeat()
     heal_resolver_drift(state)
     keep_logs_readable()
@@ -680,6 +868,7 @@ def poll_once(state):
     if sync_lists(state):
         refresh_domain_acl()
         reconfigure_squid()
+    collect_cache_stats(state)
 
 
 def normalize_cli(args):

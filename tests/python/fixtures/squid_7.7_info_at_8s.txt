@@ -1,0 +1,61 @@
+Squid Object Cache: Version 7.7
+Build Info: Ubuntu 26.04.1 LTS
+Service Name: squid
+Start Time:	Sun, 25 Oct 2026 12:11:58 GMT
+Current Time:	Sun, 25 Oct 2026 12:12:06 GMT
+Connection information for squid:
+	Number of clients accessing cache:	2
+	Number of HTTP requests received:	17
+	Number of ICP messages received:	0
+	Number of ICP messages sent:	0
+	Number of queued ICP replies:	0
+	Number of HTCP messages received:	0
+	Number of HTCP messages sent:	0
+	Request failure ratio:	 0.00
+	Average HTTP requests per minute since start:	121.9
+	Average ICP messages per minute since start:	0.0
+	Select loop called: 431 times, 19.409 ms avg
+Cache information for squid:
+	Hits as % of all requests:	5min: 0.0%, 60min: 0.0%
+	Hits as % of bytes sent:	5min: -0.0%, 60min: -0.0%
+	Memory hits as % of hit requests:	5min: 0.0%, 60min: 0.0%
+	Disk hits as % of hit requests:	5min: 0.0%, 60min: 0.0%
+	Storage Swap size:	220 KB
+	Storage Swap capacity:	 0.4% used, 99.6% free
+	Storage Mem size:	436 KB
+	Storage Mem capacity:	 0.2% used, 99.8% free
+	Mean Object Size:	73.33 KB
+	Requests given to unlinkd:	0
+Median Service Times (seconds)  5 min    60 min:
+	HTTP Requests (All):   0.00000  0.00000
+	Cache Misses:          0.00000  0.00000
+	Cache Hits:            0.00000  0.00000
+	Near Hits:             0.00000  0.00000
+	Not-Modified Replies:  0.00000  0.00000
+	DNS Lookups:           0.00000  0.00000
+	ICP Queries:           0.00000  0.00000
+Resource usage for squid:
+	UP Time:	8.365 seconds
+	CPU Time:	0.071 seconds
+	CPU Usage:	0.85%
+	CPU Usage, 5 minute avg:	0.00%
+	CPU Usage, 60 minute avg:	0.00%
+	Maximum Resident Size: 143584 KB
+	Page faults with physical i/o: 1
+Memory accounted for:
+	Total accounted:            0 KB
+	memPoolAlloc calls:         0
+	memPoolFree calls:          0
+File descriptor usage for squid:
+	Maximum number of file descriptors:   65535
+	Largest file desc currently in use:     19
+	Number of file desc currently in use:   13
+	Files queued for open:                   0
+	Available number of file descriptors: 65522
+	Reserved number of file descriptors:   100
+	Store Disk files open:                   0
+Internal Data Structures:
+	    56 StoreEntries
+	    56 StoreEntries with MemObjects
+	     3 Hot Object Cache Items
+	     3 on-disk objects

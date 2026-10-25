@@ -424,11 +424,13 @@ def test_poll_once_runs_every_job_in_order(w, monkeypatch):
         monkeypatch.setattr(w, name, lambda *a, _n=name: order.append(_n))
     monkeypatch.setattr(w, "sync_lists", lambda s: order.append("sync_lists") or True)
     monkeypatch.setattr(w, "reconfigure_squid", lambda: order.append("reconfigure_squid"))
+    monkeypatch.setattr(w, "collect_cache_stats", lambda s: order.append("collect_cache_stats"))
 
     w.poll_once(st)
 
     assert order == ["touch_heartbeat", "heal_resolver_drift", "keep_logs_readable", "rotate_logs_daily",
-                     "check_reload_trigger", "check_clear_cache_trigger", "sync_lists", "reconfigure_squid"]
+                     "check_reload_trigger", "check_clear_cache_trigger", "sync_lists", "reconfigure_squid",
+                     "collect_cache_stats"]
 
 
 if __name__ == "__main__":
@@ -633,7 +635,7 @@ def test_a_list_sync_refreshes_the_domain_acl_before_reconfiguring(w, state, mon
     monkeypatch.setattr(w, "refresh_domain_acl", lambda: calls.append("acl"))
     monkeypatch.setattr(w, "reconfigure_squid", lambda: calls.append("reconfigure"))
     for job in ("touch_heartbeat", "heal_resolver_drift", "keep_logs_readable", "rotate_logs_daily",
-                "check_reload_trigger", "check_clear_cache_trigger"):
+                "check_reload_trigger", "check_clear_cache_trigger", "collect_cache_stats"):
         monkeypatch.setattr(w, job, lambda *a: None)
     w.poll_once(st)
     assert calls == ["acl", "reconfigure"]

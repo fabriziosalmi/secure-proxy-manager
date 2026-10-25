@@ -56,6 +56,18 @@ grep -q 'http_access deny all' <<<"$conf" && ok "terminating deny present"  || b
 grep -q 'icap_service service_req' <<<"$conf" && ok "ICAP REQMOD wired"     || bad "ICAP REQMOD wired"
 grep -q 'bypass=0' <<<"$conf"         && ok "REQMOD fails closed (bypass=0)" || bad "REQMOD fails closed (bypass=0)"
 parses 'true' && ok "squid -k parse accepts it" || bad "squid -k parse accepts it"
+# The watchdog's localhost fetch of the cache manager (cache statistics) is
+# neither logged as client traffic nor sent to the WAF. A LAN client's attempt
+# at the manager is still both: the ACL needs localhost AND manager.
+grep -q '^acl spm_self_mgr all-of localhost manager$' <<<"$conf" \
+  && ok "spm_self_mgr is localhost AND manager" || bad "spm_self_mgr is localhost AND manager" "$(grep spm_self_mgr <<<"$conf")"
+grep -q '^access_log daemon:/var/log/squid/access.log spm !spm_self_mgr$' <<<"$conf" \
+  && ok "the access log leaves out the watchdog's manager fetch" || bad "the access log leaves out the watchdog's manager fetch" "$(grep '^access_log' <<<"$conf")"
+for svc in service_req service_resp; do
+  first="$(grep -m1 "^adaptation_access $svc " <<<"$conf")"
+  [ "$first" = "adaptation_access $svc deny spm_self_mgr" ] \
+    && ok "$svc: the manager fetch is exempt before allow all" || bad "$svc: the manager fetch is exempt before allow all" "first rule: $first"
+done
 grep -q 'Strict-Transport-Security' <<<"$conf" \
   && bad "no HSTS is injected into third-party responses" "reply_header_add Strict-Transport-Security is back" \
   || ok "no HSTS is injected into third-party responses"

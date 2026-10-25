@@ -128,6 +128,15 @@ tunnel() {
 expect() { # name got want
   if [ "$2" = "$3" ]; then ok "$1 → $2"; else bad "$1" "got $2, want $3"; fi
 }
+# watchdog_py CODE: run CODE in the proxy container with the image's watchdog
+# imported as w (its poll loop runs only as __main__).
+watchdog_py() {
+  docker exec "$PFX-proxy" python3 -I -c "
+import importlib.util, json, types
+spec = importlib.util.spec_from_file_location('w', '/usr/local/bin/blacklist_watchdog.py')
+w = importlib.util.module_from_spec(spec); spec.loader.exec_module(w)
+$1" 2>&1 | tail -3
+}
 
 # Access-log lines so far. Squid writes the log through its log daemon, so a
 # line can land a moment after the response; logged waits for it.
@@ -174,6 +183,29 @@ before="$(nlines)"
 expect "LAN client → cache manager"                      "$(docker run --rm --network "$PFX-lan" --ip "$LAN_CLIENT" --entrypoint curl "$IMAGE" -s -o /dev/null -w '%{http_code}' --max-time 10 "http://$PROXY_LAN:3128/squid-internal-mgr/active_requests")" 403
 expect "LAN client → cache manager: reason logged"       "$(logged "$before" 12)" other
 expect "localhost → cache manager (stats stay possible)" "$(docker exec "$PFX-proxy" curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:3128/squid-internal-mgr/menu)" 200
+check_cache_stats() { # section label
+  local before
+  before="$(nlines)"
+  # The watchdog's own fetch and parser, run in the proxy container against
+  # this Squid: every field it reads is there, and the capacity is the
+  # PROXY_CACHE_SIZE_MB=50 cache_dir (51200 KB).
+  expect "$1: the watchdog reads the info page" "$(watchdog_py '
+port = w.squid_http_port()
+info = w.parse_squid_info(w.fetch_cache_manager("info", port))
+cap = w.parse_squid_storedir(w.fetch_cache_manager("storedir", port))
+gone = sorted(k for k, v in info.items() if v is None and "hit_ratio" not in k)
+print("port=%d capacity=%s missing=%s" % (port, cap, ",".join(gone) or "none"))')" "port=3128 capacity=51200 missing=none"
+  # collect_cache_stats end to end: the file it writes, with its fields.
+  expect "$1: a collection writes cache_stats.json" "$(watchdog_py '
+w.CACHE_STATS = "/tmp/cache_stats.json"
+st = types.SimpleNamespace(cache_stats_due=0.0, cache_stats_problem=None, disk_capacity_kb=None, disk_capacity_conf=None)
+ok = w.collect_cache_stats(st)
+doc = json.load(open(w.CACHE_STATS))
+print(ok, doc["version"], doc["disk_capacity_kb"], doc["uptime_s"] is not None, doc["store_entries"] is not None)')" "True 1 51200 True True"
+  sleep 1
+  expect "$1: the watchdog's fetches are not in the access log" "$(nlines)" "$before"
+}
+check_cache_stats "cache statistics"
 
 echo "── direct IP, port and method rules ──"
 check  "LAN client → public IP literal (GET)"            403 direct_ip       code   "$PFX-lan" "$LAN_CLIENT" "http://$PUB_SVC/"
@@ -276,6 +308,17 @@ expect "LAN client → blacklisted domain, same proxy"     "$(code "$PFX-lan" "$
 expect "Squid deny: reason logged"                       "$(logged "$before" 12)" domain_blacklist
 expect "Squid deny: no WAF header"                       "$(logged "$before" 13)" -
 check  "LAN client → clean request through the WAF"      200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+
+echo "── cache statistics do not go through the WAF ──"
+# REQMOD fail-closed and the WAF stopped: client traffic is refused, the
+# watchdog's localhost fetch of the cache manager still answers.
+start_proxy 'true' --add-host "waf:$WAF_SVC" -e WAF_FAIL_OPEN=0 || exit 1
+expect "REQMOD is fail-closed"                           "$(docker exec "$PFX-proxy" grep -c 'reqmod_precache bypass=0 ' /etc/squid/squid.conf)" 1
+docker stop "$PFX-waf" >/dev/null
+got="$(code "$PFX-lan" "$LAN_CLIENT" http://pub.test/)"
+if [ "$got" != 200 ]; then ok "WAF down: LAN client → public site not served → $got"; else bad "WAF down: LAN client → public site" "got 200, want a refusal"; fi
+settle  # the refused request's own log line, before counting lines again
+check_cache_stats "WAF down"
 
 printf "\n  %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
