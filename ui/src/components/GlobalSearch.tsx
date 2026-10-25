@@ -113,8 +113,10 @@ export function GlobalSearch() {
       setLoading(true);
       try {
         const [ipRes, domRes, logRes] = await Promise.allSettled([
-          api.get(`ip-blacklist?search=${encodeURIComponent(q)}&page=1&page_size=5`),
-          api.get(`domain-blacklist?search=${encodeURIComponent(q)}&page=1&page_size=5`),
+          // The lists page with limit and offset; page and page_size were
+          // ignored, so up to 100 entries of each list came back.
+          api.get(`ip-blacklist?search=${encodeURIComponent(q)}&limit=5`),
+          api.get(`domain-blacklist?search=${encodeURIComponent(q)}&limit=5`),
           // q is the access log's destination search. "search" was never a
           // parameter of /api/logs: it was ignored and the five newest rows
           // came back as matches for whatever was typed.

@@ -106,4 +106,19 @@ describe('GlobalSearch', () => {
     expect(buttons.map((b) => b.textContent)).toEqual(labels.map((l, i) => `${l}${i + 1}`))
     expect(labels).toEqual(expect.arrayContaining(['Clients', 'Egress allowlist', 'Audit log']))
   })
+
+  it('asks each list for five entries with the parameter the backend reads', async () => {
+    const { api } = await import('../lib/api')
+    const user = userEvent.setup()
+    renderWithProviders(<GlobalSearch />)
+    await user.keyboard('{Meta>}k{/Meta}')
+    await user.type(await screen.findByPlaceholderText(/search/i), 'goo')
+    await waitFor(() => expect(vi.mocked(api.get).mock.calls.some(([u]) => String(u).startsWith('domain-blacklist?'))).toBe(true))
+    for (const list of ['ip-blacklist', 'domain-blacklist']) {
+      const call = String(vi.mocked(api.get).mock.calls.map(([u]) => u).filter((u) => String(u).startsWith(`${list}?`)).at(-1))
+      const p = new URLSearchParams(call.split('?')[1])
+      expect(p.get('limit'), list).toBe('5')
+      expect(p.has('page_size'), list).toBe(false)
+    }
+  })
 })
