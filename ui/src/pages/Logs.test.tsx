@@ -204,6 +204,12 @@ describe('Logs', () => {
     )).toBeInTheDocument()
   })
 
+  it('says so when there is no internal traffic to hide', async () => {
+    logsBody = () => page([allowed], { internal: 0 })
+    renderWithProviders(<Logs />)
+    expect(await screen.findByText('1 of 1 request shown, newest first. No internal traffic was logged.')).toBeInTheDocument()
+  })
+
   it('reads its filters from the URL, so a link opens the same view', async () => {
     window.history.replaceState({}, '', '/logs?client=192.168.1.20&outcome=blocked&rule=waf&q=shop')
     renderWithProviders(<Logs />)

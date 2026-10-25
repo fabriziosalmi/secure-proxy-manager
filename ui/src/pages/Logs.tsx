@@ -92,7 +92,7 @@ function Result({ r }: { r: LogEntry }) {
 }
 
 const SELECT_CLASS =
-  'h-9 min-w-0 max-w-full rounded-control border border-line-strong bg-surface px-2.5 text-sm text-ink ' +
+  'h-9 min-w-0 max-w-[14rem] rounded-control border border-line-strong bg-surface px-2.5 text-sm text-ink ' +
   'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent';
 
 type WsStatus = 'connecting' | 'connected' | 'disconnected';
@@ -369,7 +369,7 @@ export function Logs() {
       id: 'client',
       header: 'Client',
       cell: ({ entry }) => (
-        <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-col gap-0.5 whitespace-nowrap">
           <code className="font-mono text-xs text-ink">{entry.source_ip || 'Not recorded'}</code>
           {entry.kind && <span className="text-xs text-ink-muted">{entry.kind}</span>}
         </div>
@@ -378,9 +378,12 @@ export function Logs() {
     {
       id: 'request',
       header: 'Request',
-      className: 'w-[40%] max-w-0',
+      className: 'w-[40%]',
       cell: (row) => (
-        <div className="flex min-w-0 items-baseline gap-2">
+        // The destination is cut to the column with its full value on hover.
+        // The cap keeps a long URL from widening the table past its box; the
+        // floor keeps it readable when the table scrolls on a phone.
+        <div className="flex w-[14rem] min-w-0 items-baseline gap-2 sm:w-auto sm:max-w-[16rem] xl:max-w-[21rem] 2xl:max-w-[26rem]">
           <span className="shrink-0 text-[11px] font-semibold text-ink-muted">{row.entry.method || '-'}</span>
           <button
             type="button"
@@ -478,7 +481,7 @@ export function Logs() {
           placeholder="Search host or URL"
           value={search}
           onChange={(v) => { typed.current = true; setSearch(v); }}
-          className="w-full sm:w-auto sm:flex-[1_1_280px] sm:max-w-[360px]"
+          className="w-full sm:w-auto sm:flex-[1_1_220px] sm:max-w-[320px]"
         />
         <SegmentedControl<Outcome>
           label="Outcome"
@@ -554,9 +557,11 @@ export function Logs() {
 function footerText(shown: number, total: number, filtered: boolean, showInternal: boolean, namedClient: boolean, hidden: number): string {
   const parts = [`${formatCount(shown)} of ${plural(total, filtered ? 'matching request' : 'request', filtered ? 'matching requests' : 'requests')} shown, newest first.`];
   if (!showInternal && !namedClient) {
-    parts.push(hidden > 0
-      ? `${plural(hidden, 'request', 'requests')} from internal sources (the stack's own traffic) ${hidden === 1 ? 'is' : 'are'} hidden.`
-      : 'Internal traffic is hidden; there is none to hide.');
+    if (hidden > 0) {
+      parts.push(`${plural(hidden, 'request', 'requests')} from internal sources (the stack's own traffic) ${hidden === 1 ? 'is' : 'are'} hidden.`);
+    } else {
+      parts.push(filtered ? 'No internal traffic matches these filters.' : 'No internal traffic was logged.');
+    }
   }
   return parts.join(' ');
 }
