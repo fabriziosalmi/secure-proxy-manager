@@ -72,4 +72,23 @@ describe('GlobalSearch', () => {
     await user.click(hit)
     expect(window.location.pathname).toBe('/settings/alerts')
   })
+
+  // It sent ?search=, which /api/logs never read: the five newest rows came
+  // back as "matches" for anything typed. The access log searches
+  // destinations with q, and a log result opens the log on that search.
+  it('searches the access log by destination and opens it filtered', async () => {
+    const { api } = await import('../lib/api')
+    vi.mocked(api.get).mockImplementation((url: string) => Promise.resolve({
+      data: { data: url.startsWith('logs?') ? [{ method: 'GET', destination: 'http://ads.example.com/', source_ip: '192.168.1.10', status: 'TCP_DENIED/403' }] : [] },
+    }))
+    const user = userEvent.setup()
+    renderWithProviders(<GlobalSearch />)
+    await user.keyboard('{Meta>}k{/Meta}')
+    await user.type(await screen.findByPlaceholderText(/search/i), 'ads')
+    const hit = await screen.findByText('GET http://ads.example.com/')
+    const call = vi.mocked(api.get).mock.calls.map(([u]) => String(u)).find((u) => u.startsWith('logs?'))!
+    expect(new URLSearchParams(call.split('?')[1]).get('q')).toBe('ads')
+    await user.click(hit)
+    expect(window.location.pathname + window.location.search).toBe('/logs?q=ads')
+  })
 })

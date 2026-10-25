@@ -96,7 +96,10 @@ export function GlobalSearch() {
         const [ipRes, domRes, logRes] = await Promise.allSettled([
           api.get(`ip-blacklist?search=${encodeURIComponent(q)}&page=1&page_size=5`),
           api.get(`domain-blacklist?search=${encodeURIComponent(q)}&page=1&page_size=5`),
-          api.get(`logs?search=${encodeURIComponent(q)}&limit=5`),
+          // q is the access log's destination search. "search" was never a
+          // parameter of /api/logs: it was ignored and the five newest rows
+          // came back as matches for whatever was typed.
+          api.get(`logs?q=${encodeURIComponent(q)}&limit=5&sort=id&order=desc`),
         ]);
 
         if (ipRes.status === 'fulfilled') {
@@ -127,7 +130,7 @@ export function GlobalSearch() {
             items.push({
               type: 'log', label: `${l.method || '-'} ${l.destination}`,
               description: `${l.source_ip}, ${l.status}`,
-              action: () => { navigate('/logs'); setOpen(false); },
+              action: () => { navigate(`/logs?q=${encodeURIComponent(q)}`); setOpen(false); },
             });
           });
         }
