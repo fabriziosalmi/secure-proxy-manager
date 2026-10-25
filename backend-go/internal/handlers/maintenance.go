@@ -273,7 +273,7 @@ func (h *MaintenanceHandlers) restoreSettings(tx *sql.Tx, config map[string]stri
 			"INSERT INTO settings(setting_name,setting_value) VALUES(?,?) ON CONFLICT(setting_name) DO UPDATE SET setting_value=excluded.setting_value",
 			k, val,
 		); err != nil {
-			log.Error().Str("key", k).Err(err).Msg("RestoreConfig: failed to save setting — rolling back")
+			log.Error().Str("key", k).Err(err).Msg("RestoreConfig: failed to save setting, rolling back")
 			return restored, skipped, err
 		}
 		restored++
@@ -374,7 +374,7 @@ func restoreLists(tx *sql.Tx, lists map[string][]map[string]string, per map[stri
 				}
 			}
 			if err != nil {
-				log.Error().Str("list", name).Err(err).Msg("RestoreConfig: list insert failed — rolling back")
+				log.Error().Str("list", name).Err(err).Msg("RestoreConfig: list insert failed, rolling back")
 				return restored, skippedEntries, err
 			}
 			restored++
@@ -476,7 +476,7 @@ func (h *MaintenanceHandlers) ReloadConfig(w http.ResponseWriter, r *http.Reques
 	// #nosec G306 — reload trigger, must be readable by the proxy/dns container
 	if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(stamp, 10)), 0644); err != nil {
 		log.Warn().Err(err).Msg("proxy reload file trigger failed")
-		writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Config exported — reload trigger write failed, apply manually"})
+		writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Config exported, but the reload trigger could not be written; apply manually"})
 		return
 	}
 
@@ -490,7 +490,7 @@ func (h *MaintenanceHandlers) ReloadConfig(w http.ResponseWriter, r *http.Reques
 	case err != nil:
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":  "pending",
-			"message": "reload requested, but the proxy did not acknowledge it in time — check that the proxy container is running",
+			"message": "reload requested, but the proxy did not acknowledge it in time; check that the proxy container is running",
 		})
 	case !res.Applied:
 		writeJSON(w, http.StatusInternalServerError, map[string]any{

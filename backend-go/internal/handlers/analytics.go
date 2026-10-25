@@ -743,7 +743,7 @@ func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {
 	resp, err := wafGetBreaker(r.Context(), h.cfg, "/stats")
 	if err != nil {
 		if errors.Is(err, appMW.ErrCircuitOpen) {
-			writeError(w, http.StatusServiceUnavailable, "WAF service circuit open — retrying soon")
+			writeError(w, http.StatusServiceUnavailable, "WAF service circuit open; retrying soon")
 		} else {
 			writeError(w, http.StatusBadGateway, "WAF service unreachable")
 		}

@@ -66,7 +66,7 @@ func (h *DNSDetectHandlers) Detect(w http.ResponseWriter, r *http.Request) {
 		subnet = detectLocalSubnet()
 	}
 	if subnet == "" {
-		writeError(w, http.StatusBadRequest, "could not detect local subnet — provide 'subnet' field (e.g. '192.168.1')")
+		writeError(w, http.StatusBadRequest, "could not detect local subnet; provide the 'subnet' field (e.g. '192.168.1')")
 		return
 	}
 

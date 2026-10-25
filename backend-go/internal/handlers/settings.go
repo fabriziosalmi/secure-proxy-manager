@@ -518,7 +518,7 @@ func (h *SettingsHandlers) persistSettings(body map[string]string, clearKeys map
 			"INSERT INTO settings(setting_name,setting_value) VALUES(?,?) ON CONFLICT(setting_name) DO UPDATE SET setting_value=excluded.setting_value",
 			k, val,
 		); err != nil {
-			log.Error().Str("key", k).Err(err).Msg("BulkUpdate: failed to save setting — rolling back")
+			log.Error().Str("key", k).Err(err).Msg("BulkUpdate: failed to save setting, rolling back")
 			return kept, http.StatusInternalServerError, "failed to save settings (rolled back)"
 		}
 	}
@@ -567,7 +567,7 @@ func (h *SettingsHandlers) writeSquidArtefacts(body map[string]string) []string 
 
 	// Write squid_settings.env so startup.sh can pick up port/cache changes on restart.
 	if err := h.writeSquidSettingsEnv(body); err != nil {
-		log.Warn().Err(err).Msg("squid_settings.env write failed — proxy restart will use previous values")
+		log.Warn().Err(err).Msg("squid_settings.env write failed; proxy restart will use previous values")
 		failedArtifacts = append(failedArtifacts, "squid_settings.env")
 	}
 	return failedArtifacts
@@ -675,7 +675,7 @@ func (h *SettingsHandlers) writeSquidSettingsEnv(body map[string]string) error {
 	// "8443 pkill squid" was written as-is, and the generator used to source
 	// this file as root. Each value must have the shape the generator accepts.
 	if validPort(port) != nil || validNonNegativeInt(cache) != nil || validNonNegativeInt(mem) != nil || validPortList(extraSSL) != nil {
-		return fmt.Errorf("invalid proxy settings in the database — squid_settings.env not written")
+		return fmt.Errorf("invalid proxy settings in the database; squid_settings.env not written")
 	}
 	envContent := "SQUID_PORT=" + port + "\nSQUID_CACHE_MB=" + cache + "\nSQUID_MEM_MB=" + mem + "\nEXTRA_SSL_PORTS=" + strings.TrimSpace(extraSSL) + "\n"
 	return os.WriteFile(filepath.Join(h.cfg.ConfigDir, "squid_settings.env"), []byte(envContent), 0o600)
@@ -697,7 +697,7 @@ func (h *SettingsHandlers) writeTimeRestrictions(body map[string]string) {
 	// unsanitised newline injects an arbitrary variable assignment (PATH, IFS)
 	// into that shell. A time is HH:MM and nothing else (audit: domain-newline-into-hosts-file).
 	if !timeOfDayRE.MatchString(start) || !timeOfDayRE.MatchString(end) {
-		log.Warn().Str("start", start).Str("end", end).Msg("invalid time restriction values — not written")
+		log.Warn().Str("start", start).Str("end", end).Msg("invalid time restriction values, not written")
 		return
 	}
 	content := "TIME_START=" + start + "\nTIME_END=" + end + "\n"
@@ -717,7 +717,7 @@ func (h *SettingsHandlers) writeBandwidthSettings(body map[string]string) {
 	// Checked again here, not only on the way in: a value already in the
 	// database (an older version, a restore) must not reach this file.
 	if validPositiveInt(limitMbps) != nil || validNonNegativeInt(perUserKbps) != nil {
-		log.Warn().Msg("invalid bandwidth limit values in the database — bandwidth_limits.conf not written")
+		log.Warn().Msg("invalid bandwidth limit values in the database; bandwidth_limits.conf not written")
 		return
 	}
 	content := "BW_LIMIT_MBPS=" + limitMbps + "\nBW_PER_USER_KBPS=" + perUserKbps + "\n"

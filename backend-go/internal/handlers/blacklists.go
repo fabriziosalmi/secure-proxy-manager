@@ -638,7 +638,7 @@ func (h *BlacklistHandlers) existingEntries(table, col string) (map[string]struc
 		existing[v] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
-		log.Warn().Err(err).Str("table", table).Msg("import: dedup cursor terminated with error — duplicate count may be off")
+		log.Warn().Err(err).Str("table", table).Msg("import: dedup cursor terminated with error; duplicate count may be off")
 	}
 	return existing, nil
 }

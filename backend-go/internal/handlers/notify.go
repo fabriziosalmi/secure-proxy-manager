@@ -141,7 +141,7 @@ func (f *notifyFanout) submit(d delivery) {
 	default:
 		metrics.NotificationFailed(d.channel)
 		metrics.NotificationDropped()
-		log.Warn().Str("channel", d.channel).Msg("notification channel queue full — delivery dropped")
+		log.Warn().Str("channel", d.channel).Msg("notification channel queue full; delivery dropped")
 	}
 }
 

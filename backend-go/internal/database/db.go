@@ -467,7 +467,7 @@ func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
 	}
 	if strayWhitelist > 0 {
 		return fmt.Errorf("domain_whitelist holds %d row(s) whose type is not 'fqdn'; "+
-			"nothing reads them — fix them before the lists can be exported", strayWhitelist)
+			"nothing reads them; fix them before the lists can be exported", strayWhitelist)
 	}
 	// 3. domain_blacklist.txt (with whitelist exclusions)
 	exclusions := loadWhitelistSet(db)
@@ -488,7 +488,7 @@ func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
 	}
 	if strayTypes > 0 {
 		return fmt.Errorf("dst_allowlist holds %d row(s) whose type is neither 'cidr' nor 'domain'; "+
-			"they would reach neither enforcement file — fix them before the allowlist can be exported", strayTypes)
+			"they would reach neither enforcement file; fix them before the allowlist can be exported", strayTypes)
 	}
 	if err := exportLines(db, configDir+"/dst_allow_ip.txt",
 		"SELECT entry FROM dst_allowlist WHERE type='cidr' ORDER BY entry"); err != nil {

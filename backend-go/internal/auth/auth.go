@@ -73,10 +73,10 @@ func NewService(cfg *config.Config, db *sql.DB) *Service {
 		wsTokens:     make(map[string]wsEntry),
 	}
 	if err := svc.initBlacklistTable(); err != nil {
-		log.Error().Err(err).Msg("jwt_blacklist table unavailable — bearer tokens issued before this start will be refused")
+		log.Error().Err(err).Msg("jwt_blacklist table unavailable; bearer tokens issued before this start will be refused")
 		svc.blacklistUnavailable.Store(true)
 	} else if err := svc.loadBlacklistFromDB(); err != nil {
-		log.Error().Err(err).Msg("JWT blacklist could not be loaded — bearer tokens issued before this start will be refused")
+		log.Error().Err(err).Msg("JWT blacklist could not be loaded; bearer tokens issued before this start will be refused")
 		svc.blacklistUnavailable.Store(true)
 	}
 	go svc.cleanupLoop()
@@ -163,11 +163,11 @@ func (s *Service) passwordBinding(username string) (string, error) {
 func (s *Service) checkPasswordBinding(claims jwt.MapClaims, username string) error {
 	pv, _ := claims["pv"].(string)
 	if pv == "" {
-		return errors.New("token predates session binding — re-authenticate")
+		return errors.New("token predates session binding; re-authenticate")
 	}
 	current, err := s.passwordBinding(username)
 	if err != nil {
-		return errors.New("password store unavailable — re-authenticate")
+		return errors.New("password store unavailable; re-authenticate")
 	}
 	if subtle.ConstantTimeCompare([]byte(pv), []byte(current)) != 1 {
 		return errors.New("password changed since this token was issued")
@@ -265,7 +265,7 @@ func (s *Service) ValidateRefreshSession(tokenStr string) (string, time.Time, er
 	}
 	if s.blacklistUnavailable.Load() {
 		if iat, err := claims.GetIssuedAt(); err != nil || iat == nil || iat.Before(startedAt) {
-			return "", time.Time{}, errors.New("revocation store unavailable — re-authenticate")
+			return "", time.Time{}, errors.New("revocation store unavailable; re-authenticate")
 		}
 	}
 	username, _ := claims["sub"].(string)
@@ -278,7 +278,7 @@ func (s *Service) ValidateRefreshSession(tokenStr string) (string, time.Time, er
 	at, _ := claims["auth_time"].(float64)
 	authTime := time.Unix(int64(at), 0)
 	if at == 0 || time.Since(authTime) > maxSessionLifetime {
-		return "", time.Time{}, errors.New("session expired — re-authenticate")
+		return "", time.Time{}, errors.New("session expired; re-authenticate")
 	}
 	return username, authTime, nil
 }
@@ -312,7 +312,7 @@ func (s *Service) ValidateJWT(tokenStr string) (string, error) {
 	// tokens issued since startup are known to this process (SECURE-ERR-02).
 	if s.blacklistUnavailable.Load() {
 		if iat, err := claims.GetIssuedAt(); err != nil || iat == nil || iat.Before(startedAt) {
-			return "", errors.New("revocation store unavailable — re-authenticate")
+			return "", errors.New("revocation store unavailable; re-authenticate")
 		}
 	}
 
@@ -373,7 +373,7 @@ func (s *Service) persistRevocation(h string, exp time.Time) error {
 		"INSERT OR REPLACE INTO jwt_blacklist(token_hash, expires_at) VALUES(?,?)",
 		h, exp.Format(time.RFC3339),
 	); err != nil {
-		log.Warn().Err(err).Msg("failed to persist revoked JWT to blacklist DB — revocation will not survive restart")
+		log.Warn().Err(err).Msg("failed to persist revoked JWT to blacklist DB; revocation will not survive a restart")
 		return fmt.Errorf("persist revocation: %w", err)
 	}
 	return nil
