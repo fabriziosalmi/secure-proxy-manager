@@ -19,7 +19,7 @@ function rate(blocked: number, total: number): number {
 type SortKey = 'requests' | 'blocked' | 'rate';
 
 // Declared at module scope (not inside render) so React keeps their identity
-// stable — defining components during render resets their state every render
+// stable: defining components during render resets their state every render
 // and trips react-hooks/static-components.
 function SortTh({ k, label, sort, onSort }: { k: SortKey; label: string; sort: SortKey; onSort: (k: SortKey) => void }) {
   return (
@@ -82,7 +82,7 @@ export function Clients() {
             Clients
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Source IPs seen in the last 7 days{typeof data?.meta?.total === 'number' ? ` — ${formatCount(data.meta.total)}` : ''}. Select a row for details.
+            Source IPs seen in the last 7 days{typeof data?.meta?.total === 'number' ? ` (${formatCount(data.meta.total)})` : ''}. Select a row for details.
           </p>
         </div>
         <button
@@ -129,7 +129,7 @@ export function Clients() {
                     ) : (
                       <div className="space-y-4">
                         <p className="text-center text-sm text-muted-foreground">
-                          No client traffic in the last 7 days — connect a device to get started.
+                          No client traffic in the last 7 days. Connect a device to get started.
                         </p>
                         <ClientSetup />
                       </div>
@@ -158,7 +158,7 @@ export function Clients() {
                           {relative(c.last_seen)}
                         </td>
                         <td className="px-5 py-3 text-right">
-                          {/* Real focusable control for keyboard/AT — the whole row stays
+                          {/* Real focusable control for keyboard/AT; the whole row stays
                               click-to-open for pointer users (the <tr> has no ARIA role). */}
                           <button
                             type="button"
@@ -219,7 +219,7 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
             </div>
             <div className="text-xs text-muted-foreground flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5" />
-              First seen {data.first_seen ? formatDateTime(data.first_seen) : '—'}
+              First seen {data.first_seen ? formatDateTime(data.first_seen) : 'not recorded'}
             </div>
 
             <div>

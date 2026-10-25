@@ -60,9 +60,9 @@ export function Blacklists() {
   const activeTotal = activeTab === 'ip' ? (ipResult?.total ?? 0) : activeTab === 'domain' ? (domainResult?.total ?? 0) : activeTab === 'whitelist' ? (whitelistResult?.total ?? 0) : (domainWhitelistResult?.total ?? 0);
   const totalPages = Math.ceil(activeTotal / PAGE_SIZE);
 
-  // Mount flag — mutation callbacks must not touch state or fire toasts
+  // Mount flag: mutation callbacks must not touch state or fire toasts
   // after the user has navigated away. React-query mutations keep running
-  // post-unmount (intentionally — the API write should still complete),
+  // post-unmount (intentionally: the API write should still complete),
   // but their onSuccess/onError shouldn't poke a vanished UI.
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -326,11 +326,11 @@ export function Blacklists() {
 
   const popularIpLists = [
     { name: 'Firehol Level 1', url: 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset', desc: 'General purpose blocklist against active threats (~600 IPs)' },
-    { name: 'Spamhaus DROP', url: 'https://www.spamhaus.org/drop/drop.txt', desc: 'Don\'t Route Or Peer — direct malware/botnet infrastructure' },
-    { name: 'Spamhaus EDROP', url: 'https://www.spamhaus.org/drop/edrop.txt', desc: 'Extended DROP — sub-allocated netblocks of hijacked space' },
+    { name: 'Spamhaus DROP', url: 'https://www.spamhaus.org/drop/drop.txt', desc: 'Don\'t Route Or Peer: direct malware/botnet infrastructure' },
+    { name: 'Spamhaus EDROP', url: 'https://www.spamhaus.org/drop/edrop.txt', desc: 'Extended DROP: sub-allocated netblocks of hijacked space' },
     { name: 'Emerging Threats', url: 'https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt', desc: 'Known compromised hosts and botnet C&C servers' },
     { name: 'CINS Army', url: 'https://cinsarmy.com/list/ci-badguys.txt', desc: 'High-confidence malicious IP addresses' },
-    { name: 'Stamparm Ipsum (L3+)', url: 'https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt', desc: 'Daily threat intelligence feed — IPs seen on 3+ blacklists' },
+    { name: 'Stamparm Ipsum (L3+)', url: 'https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt', desc: 'Daily threat intelligence feed: IPs seen on 3+ blacklists' },
     { name: 'Blocklist.de All', url: 'https://lists.blocklist.de/lists/all.txt', desc: 'All attack IPs reported to blocklist.de in last 48h' },
   ];
 
@@ -455,7 +455,7 @@ export function Blacklists() {
           <CardContent className="pt-6">
             <form onSubmit={handleBulkAdd} className="space-y-3">
               <div className="space-y-2">
-                <label htmlFor="bl-bulk-text" className="text-sm font-medium">{activeTab === 'domain' ? 'Domains' : 'IP Addresses / CIDR Networks'} — one per line</label>
+                <label htmlFor="bl-bulk-text" className="text-sm font-medium">{activeTab === 'domain' ? 'Domains' : 'IP Addresses / CIDR Networks'} (one per line)</label>
                 <textarea id="bl-bulk-text" value={bulkText} onChange={(e) => setBulkText(e.target.value)}
                   placeholder={activeTab === 'domain' ? 'bad-domain.com\nanother-domain.net' : '192.168.1.100\n10.0.0.0/8'}
                   rows={6} className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm font-mono focus:outline-hidden focus:ring-1 focus:ring-primary resize-y" required />

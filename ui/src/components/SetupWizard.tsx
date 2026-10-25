@@ -135,7 +135,7 @@ export function SetupWizard({ onComplete }: Props) {
       await api.post('settings', settings);
       // Saving only writes the toggle files; they take effect when startup.sh
       // regenerates squid.conf, which happens on a proxy reload. Without this the
-      // wizard's "Setup complete" was misleading — nothing was actually applied.
+      // wizard's "Setup complete" was misleading: nothing was actually applied.
       // Fire-and-forget (mirrors Settings.tsx) so we don't block the wizard on
       // the proxy restart; the toast reports progress in the background.
       toast.promise(
@@ -144,8 +144,8 @@ export function SetupWizard({ onComplete }: Props) {
         }),
         {
           loading: 'Applying your configuration to the proxy…',
-          success: 'Setup complete — your proxy is live with these settings! 🚀',
-          error: 'Saved, but auto-apply failed — use Settings → Maintenance → Reload config.',
+          success: 'Setup complete: your proxy is live with these settings! 🚀',
+          error: 'Saved, but auto-apply failed. Use Settings → Maintenance → Reload config.',
         }
       );
       // Advance to the final "connect your devices" step instead of closing, so a
@@ -222,7 +222,7 @@ export function SetupWizard({ onComplete }: Props) {
           {step === 1 && (
             <div>
               <h2 className="text-lg font-semibold mb-1">What devices use this proxy?</h2>
-              <p className="text-xs text-muted-foreground mb-4">Select all that apply — helps us tune blocking rules</p>
+              <p className="text-xs text-muted-foreground mb-4">Select all that apply. This helps tune the blocking rules.</p>
               <div className="grid grid-cols-3 gap-2">
                 {DEVICE_OPTIONS.map(opt => {
                   const Icon = opt.icon;
@@ -242,7 +242,7 @@ export function SetupWizard({ onComplete }: Props) {
                   );
                 })}
               </div>
-              <p className="text-[10px] text-muted-foreground mt-3 text-center">Skip if unsure — you can always change this later in Settings</p>
+              <p className="text-[10px] text-muted-foreground mt-3 text-center">Skip if unsure. You can always change this later in Settings.</p>
             </div>
           )}
 
@@ -276,7 +276,7 @@ export function SetupWizard({ onComplete }: Props) {
 
           {step === 3 && (
             <div>
-              <h2 className="text-lg font-semibold mb-1">You're set — connect your devices</h2>
+              <h2 className="text-lg font-semibold mb-1">You're set: connect your devices</h2>
               <p className="text-xs text-muted-foreground mb-4">Point a device at the proxy to start filtering its traffic.</p>
               <div className="max-h-[50vh] overflow-y-auto -mx-1 px-1">
                 <ClientSetup />

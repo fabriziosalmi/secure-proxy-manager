@@ -14,7 +14,7 @@ export function useAnimatedNumber(target: number, duration = 600): number {
   useEffect(() => {
     // Reduced motion: no rAF interpolation. Keep prev in sync (so animation
     // resumes correctly if the user re-enables motion) and let render return the
-    // target directly below — no synchronous setState in the effect.
+    // target directly below, with no synchronous setState in the effect.
     if (reducedMotion) {
       prev.current = target;
       return;

@@ -199,7 +199,7 @@ describe('Blacklists', () => {
 
     // The test above passes on the disabled attribute alone, so it would still
     // pass with the handler's own guard removed. This one submits the form
-    // directly, which is the path a disabled button cannot cover — and the one
+    // directly, which is the path a disabled button cannot cover, and the one
     // that matters if the attribute is ever dropped from the markup.
     it('the handler itself refuses a second submit while one is in flight', async () => {
       const user = userEvent.setup()

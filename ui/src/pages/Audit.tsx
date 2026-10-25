@@ -13,7 +13,7 @@ import type { AuditEntry, AuditPageData } from '../types';
 
 const PAGE_SIZE = 50;
 
-// Visual treatment per action. Colour only — never used to move the row.
+// Visual treatment per action. Colour only, never used to move the row.
 function actionStyle(action: string): { label: string; cls: string; Icon: typeof LogIn } {
   const a = action.toLowerCase();
   if (a === 'login') return { label: 'Login', cls: 'text-emerald-600 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/20 dark:border-emerald-500/20', Icon: LogIn };
@@ -89,7 +89,7 @@ export function Audit() {
             Audit Log
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Administrative actions — logins, blacklist and settings changes, maintenance.
+            Administrative actions: logins, blacklist and settings changes, maintenance.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -156,7 +156,7 @@ export function Audit() {
                           </span>
                         </td>
                         <td className="px-5 py-3 whitespace-nowrap font-mono text-xs text-foreground">
-                          {e.username || <span className="text-muted-foreground">—</span>}
+                          {e.username || <span className="text-muted-foreground">no user</span>}
                         </td>
                         <td className="px-5 py-3 whitespace-nowrap">
                           <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-xs font-medium ${cls}`}>
@@ -165,10 +165,10 @@ export function Audit() {
                           </span>
                         </td>
                         <td className="px-5 py-3 font-mono text-xs text-muted-foreground max-w-88 truncate" title={e.target ?? ''}>
-                          {e.target ? (targetIsIp ? <IpBadge ip={e.target} /> : e.target) : <span className="text-muted-foreground/50">—</span>}
+                          {e.target ? (targetIsIp ? <IpBadge ip={e.target} /> : e.target) : <span className="text-muted-foreground/50">no target</span>}
                         </td>
                         <td className="px-5 py-3 text-xs text-muted-foreground max-w-[24rem] truncate" title={e.details ?? ''}>
-                          {e.details || <span className="text-muted-foreground/50">—</span>}
+                          {e.details || <span className="text-muted-foreground/50">no details</span>}
                         </td>
                       </tr>
                     );
@@ -183,7 +183,7 @@ export function Audit() {
       {/* Pagination */}
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">
-          {total === 0 ? 'No entries' : `Showing ${from}–${to} of ${total}`}
+          {total === 0 ? 'No entries' : `Showing ${from} to ${to} of ${total}`}
           {search && entries.length !== filtered.length ? ` · ${filtered.length} match filter` : ''}
         </span>
         <div className="flex items-center gap-2">

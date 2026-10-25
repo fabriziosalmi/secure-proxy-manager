@@ -25,7 +25,7 @@ export function Logs() {
     // Seed the realtime buffer from the initial fetch; the WebSocket then
     // prepends live entries onto it. This deliberately mirrors async query data
     // into local state (the buffer is a merge of fetch + WS and is reset on
-    // clear), which is exactly what set-state-in-effect flags — vetted exception.
+    // clear), which is exactly what set-state-in-effect flags: vetted exception.
     const initial = data?.data;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (initial) setRealtimeLogs(initial.slice(0, 200));
@@ -365,7 +365,7 @@ export function Logs() {
                       <FileText className="w-8 h-8 mx-auto mb-3 opacity-20" />
                       {searchTerm
                         ? 'No logs match your search'
-                        : 'Waiting for traffic — point a device at the proxy to start seeing logs'}
+                        : 'Waiting for traffic. Point a device at the proxy to start seeing logs'}
                     </td>
                   </tr>
                 )}

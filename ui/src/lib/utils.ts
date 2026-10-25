@@ -43,9 +43,9 @@ export function parseUtc(ts: string): Date {
   return new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z')
 }
 
-/** "12s ago" / "5m ago" / "3h ago" / "2d ago"; '—' when empty, the input when unparseable. */
+/** "12s ago" / "5m ago" / "3h ago" / "2d ago"; "not recorded" when empty, the input when unparseable. */
 export function relative(ts: string): string {
-  if (!ts) return '—'
+  if (!ts) return 'not recorded'
   const d = parseUtc(ts).getTime()
   if (Number.isNaN(d)) return ts
   const s = Math.max(0, Math.round((Date.now() - d) / 1000))

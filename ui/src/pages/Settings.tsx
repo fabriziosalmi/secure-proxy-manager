@@ -51,7 +51,7 @@ export function Settings() {
   });
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
-  // Synchronous latch — React batches the isSaving state update so the
+  // Synchronous latch: React batches the isSaving state update so the
   // disabled prop on the button doesn't reflect until the next render. A
   // double-click within the same tick would fire handleSave twice and
   // POST settings twice. The ref blocks the second call immediately.
@@ -61,7 +61,7 @@ export function Settings() {
   // the matching chip can be highlighted (scrollspy).
   const [activeSection, setActiveSection] = useState<string>(SECTIONS[0].id);
   useEffect(() => {
-    // Guard: not present in test (jsdom) or very old browsers — the nav still
+    // Guard: not present in test (jsdom) or very old browsers; the nav still
     // works for jumping, it just won't auto-highlight the active section.
     if (typeof IntersectionObserver === 'undefined') return;
     const observer = new IntersectionObserver(
@@ -89,11 +89,11 @@ export function Settings() {
 
   useEffect(() => {
     if (!loading && !error && Array.isArray(settingsData)) {
-      // API returns [{setting_name, setting_value}, ...] — convert to {key: value} map
+      // API returns [{setting_name, setting_value}, ...]: convert to {key: value} map
       const map: Record<string, string> = {};
       settingsData.forEach((s) => { map[s.setting_name] = s.setting_value; });
       // Seeding an editable form's local state from the fetched settings is a
-      // deliberate mirror of async query data into state — exactly what
+      // deliberate mirror of async query data into state, exactly what
       // set-state-in-effect flags. Vetted exception (a full key-reset refactor
       // isn't warranted here). See issue #192.
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -305,7 +305,7 @@ export function Settings() {
               />
               <p className="text-xs text-muted-foreground">Space-separated ports for HTTPS CONNECT (e.g. Proxmox 8006, Grafana 3000). Requires proxy restart.</p>
             </div>
-            {/* Network overlay toggles — compact grid */}
+            {/* Network overlay toggles: compact grid */}
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Network & Overlay</label>
             <div className="grid grid-cols-2 gap-2">
               <div className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
@@ -375,7 +375,7 @@ export function Settings() {
               </div>
             )}
 
-            {/* Proxy behavior toggles — compact grid */}
+            {/* Proxy behavior toggles: compact grid */}
             <label className="text-xs font-medium text-muted-foreground mb-1 block mt-4">Proxy Behavior</label>
             <div className="grid grid-cols-2 gap-2">
               {[
@@ -409,7 +409,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        {/* Client Setup — how to connect devices */}
+        {/* Client Setup: how to connect devices */}
         <ClientSetup />
 
         <Card id="sec-notifications" className="scroll-mt-24">
@@ -569,7 +569,7 @@ export function Settings() {
                       toast.error('No Pi-hole or AdGuard found on LAN', { id: t });
                     }
                   } catch {
-                    toast.error('Scan failed — check network access', { id: t });
+                    toast.error('Scan failed. Check network access', { id: t });
                   }
                 }}
                 className="px-3 py-1.5 text-xs font-medium rounded-md bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors shrink-0"
@@ -614,7 +614,7 @@ export function Settings() {
                         ![400, 409].includes((r.reason as { response?: { status?: number } })?.response?.status ?? 0)
                       ).length;
                       if (failed > 0) {
-                        toast.error(`${group.label}: ${added} added, ${failed} failed — check API/auth`, { id: t });
+                        toast.error(`${group.label}: ${added} added, ${failed} failed. Check API/auth`, { id: t });
                       } else {
                         toast.success(`${group.label}: ${added} domains whitelisted`, { id: t });
                       }
@@ -628,7 +628,7 @@ export function Settings() {
               <p className="text-[10px] text-muted-foreground mt-2">After adding, go to Blacklists → Domain Whitelist tab to manage, or click "Reload DNS" to apply.</p>
             </div>
 
-            {/* GDPR + DoH — compact row */}
+            {/* GDPR + DoH: compact row */}
             <div className="grid grid-cols-2 gap-2">
               <div className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
                 <div>
@@ -676,7 +676,7 @@ export function Settings() {
                     ).length;
                     try { await api.post('maintenance/reload-dns'); } catch { /* ignore */ }
                     if (failed > 0) {
-                      toast.error(`DoH: ${added} blocked, ${failed} failed — check API/auth`, { id: t });
+                      toast.error(`DoH: ${added} blocked, ${failed} failed. Check API/auth`, { id: t });
                     } else {
                       toast.success(`Blocked ${added} DoH providers + DNS reloaded`, { id: t });
                     }
@@ -747,7 +747,7 @@ export function Settings() {
             {/* WAF Heuristics toggles */}
             <div className="p-4 border border-border/50 rounded-lg bg-secondary/40">
               <label className="text-sm font-medium mb-2 block">WAF Behavioral Heuristics</label>
-              <p className="text-xs text-muted-foreground mb-3">Advanced stateful anomaly detection. Applied to the running WAF immediately on save — no container restart needed.</p>
+              <p className="text-xs text-muted-foreground mb-3">Advanced stateful anomaly detection. Applied to the running WAF immediately on save. No container restart needed.</p>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { key: 'waf_h_entropy', label: 'Entropy Detection', desc: 'Block high-entropy payloads (encrypted/compressed = exfiltration)' },
@@ -921,7 +921,7 @@ export function Settings() {
             {formData.egress_default_deny === 'true' && (
               <div className="text-xs text-muted-foreground p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
                 <p className="font-semibold text-amber-600 dark:text-yellow-400 mb-1">Important:</p>
-                <p>With an empty Egress Allowlist, all client traffic is blocked — add the destinations you allow first. Saving restarts the proxy.</p>
+                <p>With an empty Egress Allowlist, all client traffic is blocked. Add the destinations you allow first. Saving restarts the proxy.</p>
               </div>
             )}
             <div className="p-4 border border-border/50 rounded-lg bg-secondary/40">
@@ -1001,7 +1001,7 @@ export function Settings() {
                 )}
               </div>
             </div>
-            {/* Security toggles — compact grid */}
+            {/* Security toggles: compact grid */}
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Security & Filtering</label>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
               {[
@@ -1036,7 +1036,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
-        {/* Account & Maintenance — side by side */}
+        {/* Account & Maintenance: side by side */}
         <div id="sec-account" className="grid gap-4 lg:grid-cols-2 scroll-mt-24 mb-6">
           <ChangePassword />
           <Maintenance />

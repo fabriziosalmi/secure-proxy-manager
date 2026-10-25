@@ -155,7 +155,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] text-muted-foreground font-mono leading-none">
-                {backendInfo.version || '—'}
+                {backendInfo.version || 'version unknown'}
               </span>
               {backendInfo.runtime && (
                 <span className={`text-[9px] font-mono font-semibold px-1 py-px rounded leading-none ${
@@ -167,7 +167,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
             </div>
             {backendInfo.update_available ? (
               safeExternalUrl(backendInfo.update_url) === '#' ? (
-                // Unsafe/malformed update_url — show the badge but don't link
+                // Unsafe/malformed update_url: show the badge but don't link
                 // anywhere (no href/target, so no new tab to a '#' fragment).
                 <span
                   title="Update available"

@@ -28,7 +28,7 @@ describe('relative', () => {
     expect(at('2026-06-04T15:00:00Z', '2026-06-04 15:00:05')).toBe('0s ago')
   })
   it('shows a dash for empty and echoes what it cannot parse', () => {
-    expect(relative('')).toBe('—')
+    expect(relative('')).toBe('not recorded')
     expect(relative('not a date')).toBe('not a date')
   })
 })

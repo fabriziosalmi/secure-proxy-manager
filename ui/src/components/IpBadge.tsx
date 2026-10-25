@@ -10,7 +10,7 @@ interface IpBadgeProps {
 function IpBadgeImpl({ ip, className = '' }: IpBadgeProps) {
   const [editing, setEditing] = useState(false);
   const [tagName, setTagName] = useState('');
-  // Read the tag map from the shared store — parsed once, not per render.
+  // Read the tag map from the shared store, parsed once, not per render.
   // Writes (add/remove) notify subscribers, so no manual forceUpdate is needed.
   const tags = useSyncExternalStore(subscribeAssetTags, getAssetTagsSnapshot);
   const tag = tags.find(t => t.ip === ip);
@@ -50,7 +50,7 @@ function IpBadgeImpl({ ip, className = '' }: IpBadgeProps) {
           className="text-[10px] px-1.5 py-0.5 rounded-full font-medium cursor-pointer hover:opacity-80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
           style={{ backgroundColor: (tag.color || '#3b82f6') + '20', color: tag.color || '#3b82f6', border: `1px solid ${(tag.color || '#3b82f6')}30` }}
           onClick={(e) => { e.stopPropagation(); setTagName(tag.name); setEditing(true); }}
-          title={`Click to edit — ${ip}`}
+          title={`Click to edit the tag for ${ip}`}
           aria-label={`Edit tag for ${ip}`}
         >
           {tag.name}

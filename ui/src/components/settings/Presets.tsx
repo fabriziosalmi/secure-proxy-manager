@@ -207,7 +207,7 @@ export function Presets({ formData, onApply }: Props) {
 
   const handleApply = (preset: PresetConfig) => {
     onApply(preset.values);
-    toast.success(`"${preset.name}" preset applied — click Save Changes to persist`, {
+    toast.success(`"${preset.name}" preset applied. Click Save Changes to persist`, {
       duration: 4000,
       icon: '⚡',
     });
@@ -249,7 +249,7 @@ export function Presets({ formData, onApply }: Props) {
       )}
       {!active && Object.keys(formData).length > 0 && (
         <p className="text-[10px] text-muted-foreground mt-1.5">
-          Custom configuration — doesn't match any preset.
+          Custom configuration: doesn't match any preset.
         </p>
       )}
     </div>

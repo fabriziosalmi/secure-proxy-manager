@@ -107,7 +107,7 @@ export function RegexPlayground() {
                 <strong className={result.would_block ? 'text-destructive' : 'text-emerald-500'}>
                   {result.matched}
                 </strong> matched
-                {result.would_block ? ' — this rule WOULD block traffic!' : ' — safe to deploy.'}
+                {result.would_block ? ': this rule WOULD block traffic!' : ': safe to deploy.'}
               </span>
             </div>
 

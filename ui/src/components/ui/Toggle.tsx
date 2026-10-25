@@ -3,7 +3,7 @@ interface ToggleProps {
   checked: boolean;
   /** Called with the next boolean state when toggled. */
   onChange: (next: boolean) => void;
-  /** Accessible name — the switch's visible label usually sits beside it as a
+  /** Accessible name: the switch's visible label usually sits beside it as a
    *  sibling, so it isn't programmatically associated without this. */
   label: string;
   /** Optional form-field name, preserved for parity with the old checkbox markup. */

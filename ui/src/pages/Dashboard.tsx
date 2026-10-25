@@ -110,7 +110,7 @@ export function Dashboard() {
               try {
                 await api.post('counters/reset');
                 toast.success('All counters reset', { id: t });
-                // Scope to data the reset actually touches — invalidating
+                // Scope to data the reset actually touches: invalidating
                 // every query (incl. settings/auth/blacklist) caused a
                 // refetch storm and put auth-derived state into a brief
                 // inconsistent window.
@@ -125,7 +125,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Compact stats row — staggered entrance */}
+      {/* Compact stats row, staggered entrance */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
         <Card className="stagger-child" style={{ '--stagger-index': 0 } as React.CSSProperties}>
           <CardContent className="p-3">
@@ -192,7 +192,7 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Chart + Threat categories + Top blocked — 3 columns (lazy: recharts chunk) */}
+      {/* Chart + Threat categories + Top blocked: 3 columns (lazy: recharts chunk) */}
       <Suspense fallback={
         <div className="grid gap-3 lg:grid-cols-12">
           <Card className="lg:col-span-5"><CardContent className="p-2"><div className="h-[180px] animate-pulse bg-secondary/30 rounded" role="status" aria-label="Loading traffic chart" /></CardContent></Card>
@@ -203,7 +203,7 @@ export function Dashboard() {
         <DashboardCharts chart={chart} summary={s} />
       </Suspense>
 
-      {/* Recent blocks + WAF + Cache — 3 columns */}
+      {/* Recent blocks + WAF + Cache: 3 columns */}
       <div className="grid gap-3 lg:grid-cols-3">
         <Card>
           <CardHeader className="p-3 pb-0">
@@ -240,7 +240,7 @@ export function Dashboard() {
               <div className="grid grid-cols-3 gap-2 mb-2">
                 <div><p className="text-[10px] text-muted-foreground uppercase">Inspected</p><p className="text-lg font-bold">{formatCount(w.total_requests ?? 0)}</p></div>
                 <div><p className="text-[10px] text-muted-foreground uppercase">Blocked</p><p className="text-lg font-bold text-destructive">{formatCount(w.total_blocked ?? 0)}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase">Entropy</p><p className="text-lg font-bold">{w.avg_url_entropy ?? '—'}</p></div>
+                <div><p className="text-[10px] text-muted-foreground uppercase">Entropy</p><p className="text-lg font-bold">{w.avg_url_entropy ?? 'Not reported'}</p></div>
               </div>
               {w.top_blocked_categories?.length > 0 && (
                 <div className="flex flex-wrap gap-1 pt-2 border-t border-border/50">
@@ -264,7 +264,7 @@ export function Dashboard() {
           <CardContent className="p-2">
             {cache?.simulated ? (
               // The backend could not read cache_stats.txt, so every figure
-              // below would be a zero presented as a measurement — an idle
+              // below would be a zero presented as a measurement: an idle
               // cache rather than an absent one (SECURE-CONF-02).
               <div className="flex h-full min-h-[92px] items-center justify-center px-2 text-center">
                 <span className="text-[11px] text-muted-foreground">
@@ -273,7 +273,7 @@ export function Dashboard() {
               </div>
             ) : cache ? (() => {
               // One definition of hit rate: hit_rate, Squid's own 5-minute
-              // window. hit_ratio was a second, lifetime-based figure — this card
+              // window. hit_ratio was a second, lifetime-based figure; this card
               // read it while the Settings service panel read hit_rate, so the
               // same deployment showed two different numbers under the same
               // label (SECURE-DOM-03).

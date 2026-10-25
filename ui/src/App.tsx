@@ -7,7 +7,7 @@ import axios from 'axios';
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error) => {
-      // Show toast for query errors (API down, 500, etc.) — but not for 401 (handled by interceptor)
+      // Show toast for query errors (API down, 500, etc.), but not for 401 (handled by interceptor)
       const status = (error as { response?: { status?: number } })?.response?.status;
       if (status !== 401) {
         toast.error('Failed to load data. Check API connection.', { id: 'query-error', duration: 3000 });
@@ -111,7 +111,7 @@ function AppContent() {
   // Listen for session expiry warning from API interceptor
   useEffect(() => {
     const handler = () => {
-      toast('Session expiring soon — save your work', { icon: '⏳', duration: 10000, id: 'session-warn' });
+      toast('Session expiring soon: save your work', { icon: '⏳', duration: 10000, id: 'session-warn' });
     };
     window.addEventListener('session-expiring', handler);
     return () => window.removeEventListener('session-expiring', handler);
@@ -131,7 +131,7 @@ function AppContent() {
         : null;
       setWizardDone(wizardSetting?.setting_value === 'true');
     }).catch((err) => {
-      // Aborts are expected on cleanup — don't treat them as failures.
+      // Aborts are expected on cleanup; don't treat them as failures.
       if (axios.isCancel?.(err) || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
       setWizardDone(true); // If API fails, skip wizard
     });
@@ -142,7 +142,7 @@ function AppContent() {
     return <Login onLogin={() => setIsAuthenticated(true)} />;
   }
 
-  // Loading — checking wizard status
+  // Loading: checking wizard status
   if (wizardDone === null) {
     return (
       <div className="flex items-center justify-center h-screen bg-background" role="status" aria-live="polite">
