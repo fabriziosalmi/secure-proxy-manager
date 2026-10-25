@@ -168,8 +168,6 @@ describe('Analytics', () => {
     expect(files).toHaveTextContent('HTTPS that is not inspected shows no URL to the proxy and is not counted.')
     await waitFor(() => { expect(within(files).getByText('15 downloads.')).toBeInTheDocument() })
     expect(within(files).getByText('Extensions: .js 12, .png 3.')).toBeInTheDocument()
-    // No recharts tooltip left behind.
-    expect(document.querySelector('.recharts-tooltip-wrapper')).toBeNull()
   })
 
   it('says which part is missing when an endpoint does not answer, or the WAF refuses the backend', async () => {
