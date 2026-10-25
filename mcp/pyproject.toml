@@ -1,6 +1,6 @@
 [project]
 name = "spm-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "Model Context Protocol server for Secure Proxy Manager — manage the proxy + WAF + DNS stack from an AI assistant/agent."
 readme = "README.md"
 requires-python = ">=3.11"
