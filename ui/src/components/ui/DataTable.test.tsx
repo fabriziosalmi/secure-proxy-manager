@@ -117,6 +117,16 @@ describe('DataTable', () => {
     for (const th of screen.getAllByRole('columnheader')) expect(th.className).toMatch(/sticky top-0/)
   })
 
+  it('draws the selected row in the accent tint, and only that row', () => {
+    table({ isRowSelected: (c) => c.ip === '172.18.0.4' })
+    const selected = screen.getByText('172.18.0.4').closest('tr') as HTMLElement
+    const other = screen.getByText('192.168.0.109').closest('tr') as HTMLElement
+    expect(selected).toHaveAttribute('data-selected', 'true')
+    expect(selected.className).toMatch(/bg-accent-subtle/)
+    expect(other).not.toHaveAttribute('data-selected')
+    expect(other.className).not.toMatch(/bg-accent-subtle/)
+  })
+
   it('aligns number columns right in tabular figures', () => {
     table()
     const cell = screen.getByText('1,180').closest('td')
