@@ -69,6 +69,26 @@ n=$(grep -c 'http_access deny localnet !egress_dst_allow' <<<"$conf")
 parses 'touch /config/egress_default_deny; : > /config/dst_allow_ip.txt; : > /config/dst_allow_domain.txt' \
   && ok "parses with egress deny on" || bad "parses with egress deny on"
 
+echo "── every access rule records its reason ──"
+# The block statistics are built from the spm_reason note each rule sets
+# (squid_acl_matrix_test.sh asserts the logged value per rule). A rule added
+# without its spm_r_* ACL would decide requests that are then logged with the
+# previous rule's note or none, so every http_access line must carry one, with
+# every policy toggle on.
+conf="$(generate 'touch /config/egress_default_deny /config/proxy_auth_enabled /config/content_filtering_enabled /config/time_restrictions_enabled
+  printf "%s\n" "\\.exe\$" > /config/blocked_file_types.txt; printf "TIME_START=08:00\nTIME_END=18:00\n" > /config/time_restrictions.conf
+  export BASIC_AUTH_USERNAME=u BASIC_AUTH_PASSWORD=p')"
+n_rules=$(grep -c '^http_access ' <<<"$conf")
+unlabelled="$(grep '^http_access ' <<<"$conf" | grep -v ' spm_r_[a-z_]*\( \|$\)')"
+[ "$n_rules" -gt 20 ] && [ -z "$unlabelled" ] \
+  && ok "all $n_rules http_access rules name a reason" \
+  || bad "every http_access rule names a reason" "rules without one: ${unlabelled:-none} (of $n_rules)"
+grep -q '^http_access deny !localhost spm_r_proxy_auth !authenticated$' <<<"$conf" \
+  && ok "the auth ACL stays last on its rule (407), the reason before it" \
+  || bad "the auth ACL stays last on its rule" "$(grep 'authenticated' <<<"$conf" | grep http_access)"
+grep -qF '%{spm_reason}note %{X-SPM-Reason}adapt::<last_h' <<<"$conf" \
+  && ok "the spm logformat carries the reason fields" || bad "the spm logformat carries the reason fields"
+
 echo "── SSL bump ON ──"
 conf="$(generate 'touch /config/ssl_bump_enabled')"
 grep -q 'ssl_bump' <<<"$conf" && ok "ssl_bump directives injected" || bad "ssl_bump directives injected"
