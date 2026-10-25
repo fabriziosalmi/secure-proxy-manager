@@ -6,7 +6,7 @@ import { Ban, Globe, Server, Plus, Trash2, Download, Map, Database, Shield, Chec
 import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { formatCount } from '../lib/format';
+import { formatCount, formatDate } from '../lib/format';
 
 export function Blacklists() {
   const queryClient = useQueryClient();
@@ -590,7 +590,7 @@ export function Blacklists() {
                 <tr key={item.id} className="row-hover">
                   <td className="px-6 py-4 font-medium text-foreground">{item.ip}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? formatDate(item.added_date) : '-'}</td>
                   <td className="px-6 py-4 text-right">
                     {pendingDeleteId === item.id ? (
                       <div className="flex items-center justify-end gap-1">
@@ -609,7 +609,7 @@ export function Blacklists() {
                 <tr key={item.id} className="row-hover">
                   <td className="px-6 py-4 font-medium text-foreground">{item.domain}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? formatDate(item.added_date) : '-'}</td>
                   <td className="px-6 py-4 text-right">
                     {pendingDeleteId === item.id ? (
                       <div className="flex items-center justify-end gap-1">
@@ -628,7 +628,7 @@ export function Blacklists() {
                 <tr key={item.id} className="row-hover">
                   <td className="px-6 py-4 font-medium text-green-600 dark:text-green-400">{item.ip}</td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? formatDate(item.added_date) : '-'}</td>
                   <td className="px-6 py-4 text-right">
                     {pendingDeleteId === item.id ? (
                       <div className="flex items-center justify-end gap-1">
@@ -652,7 +652,7 @@ export function Blacklists() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-muted-foreground">{item.description || '-'}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? new Date(item.added_date).toLocaleDateString() : '-'}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{item.added_date ? formatDate(item.added_date) : '-'}</td>
                   <td className="px-6 py-4 text-right">
                     {pendingDeleteId === item.id ? (
                       <div className="flex items-center justify-end gap-1">

@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
-import { formatCount } from './format'
-import { simulateItalianLocale } from '../test/helpers'
+import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest'
+import { formatCount, formatDate, formatDateTime, formatTime } from './format'
+import { simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 
 describe('formatCount', () => {
   afterEach(() => { vi.restoreAllMocks() })
@@ -26,5 +26,31 @@ describe('formatCount', () => {
     vi.resetModules()
     const fresh = await import('./format')
     expect(fresh.formatCount(50772)).toBe('50,772')
+  })
+})
+
+// The backend writes UTC as "2026-07-01 09:00:00" with no zone marker.
+describe('formatDate / formatTime / formatDateTime', () => {
+  let restoreTz: () => void
+  beforeAll(() => { restoreTz = setRomeTimeZone() })
+  afterAll(() => { restoreTz() })
+
+  it('reads a backend timestamp as UTC and writes it in the viewer time zone', () => {
+    expect(formatTime('2026-07-01 09:00:00')).toBe('11:00:00')
+    expect(formatDateTime('2026-07-01 09:00:00')).toBe('2026-07-01 11:00:00')
+    expect(formatDateTime('2026-01-15 09:05:07')).toBe('2026-01-15 10:05:07')
+  })
+
+  it('moves the date when the zone offset crosses midnight', () => {
+    expect(formatDate('2026-01-01 23:30:00')).toBe('2026-01-02')
+  })
+
+  it('accepts an ISO timestamp that already carries its zone', () => {
+    expect(formatDateTime('2026-07-01T09:00:00Z')).toBe('2026-07-01 11:00:00')
+  })
+
+  it('returns what it was given when it cannot parse it', () => {
+    expect(formatDateTime('not a date')).toBe('not a date')
+    expect(formatTime('')).toBe('')
   })
 })

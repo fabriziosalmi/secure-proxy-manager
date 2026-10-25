@@ -7,7 +7,7 @@ import { api, getData } from '../lib/api';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import { useConfirm } from '../hooks/useConfirm';
 import type { TimelineEntry, SecurityScore, DashboardSummary, CacheStats } from '../types';
-import { formatCount } from '../lib/format';
+import { formatCount, formatTime } from '../lib/format';
 
 // Lazy-load the recharts-based chart cards. Recharts is ~110 KB gzipped
 // and was previously in the initial bundle even though the dashboard's
@@ -214,7 +214,7 @@ export function Dashboard() {
                 <div key={i} className="flex items-center justify-between py-1 text-xs row-hover rounded px-1">
                   <div className="overflow-hidden mr-2">
                     <p className="truncate max-w-[280px] font-mono">{b.destination}</p>
-                    <p className="text-[10px] text-muted-foreground">{b.source_ip} {new Date(b.timestamp).toLocaleTimeString()}</p>
+                    <p className="text-[10px] text-muted-foreground">{b.source_ip} {formatTime(b.timestamp)}</p>
                   </div>
                   <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${b.status?.includes('403') ? 'bg-destructive/10 text-destructive' : 'bg-orange-500/10 text-orange-500'}`}>
                     {b.status?.includes('403') ? 'WAF' : 'DENY'}

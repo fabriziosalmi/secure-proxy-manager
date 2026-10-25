@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { renderWithProviders, simulateItalianLocale } from '../test/helpers'
+import { renderWithProviders, simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 import { Blacklists } from './Blacklists'
 
 vi.mock('../lib/api', () => ({
@@ -71,6 +71,21 @@ describe('Blacklists', () => {
     const tab = await screen.findByRole('tab', { name: /IP Addresses/i })
     await waitFor(() => { expect(tab).toHaveTextContent('50,772') })
     expect(screen.getByText(/50,772 total/)).toBeInTheDocument()
+  })
+
+  // added_date is SQLite datetime('now'): UTC, no zone marker. Read as local
+  // time, an entry added at 23:30 UTC on 1 January showed 1 January in Rome,
+  // where it was already 2 January.
+  it('dates an entry in the viewer time zone', async () => {
+    const restoreTz = setRomeTimeZone()
+    try {
+      vi.mocked(api.get).mockImplementation((url: string) => {
+        if (url.includes('ip-blacklist')) return Promise.resolve({ data: { data: [{ id: 1, ip: '10.0.0.1', description: 'Test IP', added_date: '2026-01-01 23:30:00' }], meta: { total: 1, limit: 50, offset: 0 } } })
+        return Promise.resolve(emptyList)
+      })
+      renderWithProviders(<Blacklists />)
+      expect(await screen.findByText('2026-01-02')).toBeInTheDocument()
+    } finally { restoreTz() }
   })
 
   it('displays IP entries from the API', async () => {

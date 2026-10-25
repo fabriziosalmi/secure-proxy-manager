@@ -7,7 +7,8 @@ import {
 import { Card, CardContent } from '../components/ui/card';
 import { IpBadge } from '../components/IpBadge';
 import { api } from '../lib/api';
-import { parseUtc, relative } from '../lib/utils';
+import { relative } from '../lib/utils';
+import { formatDateTime } from '../lib/format';
 import type { AuditEntry, AuditPageData } from '../types';
 
 const PAGE_SIZE = 50;
@@ -150,7 +151,7 @@ export function Audit() {
                     return (
                       <tr key={e.id} className="row-hover align-top">
                         <td className="px-5 py-3 whitespace-nowrap">
-                          <span className="text-foreground" title={parseUtc(e.timestamp).toLocaleString()}>
+                          <span className="text-foreground" title={formatDateTime(e.timestamp)}>
                             {relative(e.timestamp)}
                           </span>
                         </td>

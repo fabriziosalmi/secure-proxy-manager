@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, screen, waitFor } from '@testing-library/react'
-import { renderWithProviders } from '../test/helpers'
+import { renderWithProviders, setRomeTimeZone } from '../test/helpers'
 import { Logs } from './Logs'
 
 vi.mock('../lib/api', () => ({
@@ -87,6 +87,15 @@ describe('Logs', () => {
       expect(screen.getByText('example.com:443')).toBeInTheDocument()
       expect(screen.getByText('malware.com')).toBeInTheDocument()
     })
+  })
+
+  // The table read the zone-less UTC timestamp as local time.
+  it('shows each entry at the viewer time, not at the UTC wall-clock time', async () => {
+    const restoreTz = setRomeTimeZone()
+    try {
+      renderWithProviders(<Logs />)
+      expect(await screen.findByText('2026-04-04 14:00:00')).toBeInTheDocument()
+    } finally { restoreTz() }
   })
 
   it('shows client IP in log entries', async () => {

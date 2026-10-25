@@ -8,9 +8,9 @@ import { IpBadge } from '../components/IpBadge';
 import { ClientSetup } from '../components/ClientSetup';
 import { useModal } from '../hooks/useModal';
 import { api, getData } from '../lib/api';
-import { parseUtc, relative } from '../lib/utils';
+import { relative } from '../lib/utils';
 import type { ClientsData, ClientStat, ClientDetail } from '../types';
-import { formatCount } from '../lib/format';
+import { formatCount, formatDateTime } from '../lib/format';
 
 function rate(blocked: number, total: number): number {
   return total > 0 ? Math.round((blocked / total) * 1000) / 10 : 0;
@@ -154,7 +154,7 @@ export function Clients() {
                             {br}%
                           </span>
                         </td>
-                        <td className="px-5 py-3 text-xs text-muted-foreground whitespace-nowrap" title={c.last_seen ? parseUtc(c.last_seen).toLocaleString() : ''}>
+                        <td className="px-5 py-3 text-xs text-muted-foreground whitespace-nowrap" title={c.last_seen ? formatDateTime(c.last_seen) : ''}>
                           {relative(c.last_seen)}
                         </td>
                         <td className="px-5 py-3 text-right">
@@ -219,7 +219,7 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
             </div>
             <div className="text-xs text-muted-foreground flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5" />
-              First seen {data.first_seen ? parseUtc(data.first_seen).toLocaleString() : '—'}
+              First seen {data.first_seen ? formatDateTime(data.first_seen) : '—'}
             </div>
 
             <div>
@@ -257,7 +257,7 @@ function ClientDrawer({ ip, onClose }: { ip: string; onClose: () => void }) {
                     const blocked = /DENIED|403|BLOCKED/i.test(e.status);
                     return (
                       <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/30 text-xs">
-                        <span className="text-muted-foreground w-14 shrink-0" title={parseUtc(e.timestamp).toLocaleString()}>{relative(e.timestamp)}</span>
+                        <span className="text-muted-foreground w-14 shrink-0" title={formatDateTime(e.timestamp)}>{relative(e.timestamp)}</span>
                         <span className="font-mono text-[10px] text-muted-foreground w-12 shrink-0">{e.method}</span>
                         <span className="font-mono truncate flex-1" title={e.destination}>{e.destination}</span>
                         <span className={`shrink-0 ${blocked ? 'text-orange-600 dark:text-orange-300' : 'text-muted-foreground'}`}>{blocked ? 'blocked' : 'ok'}</span>

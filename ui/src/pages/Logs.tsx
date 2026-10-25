@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import { useQuery } from '@tanstack/react-query';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { LogEntry, LogsPageData } from '../types';
-import { formatCount } from '../lib/format';
+import { formatCount, formatDateTime } from '../lib/format';
 
 export function Logs() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -337,7 +337,7 @@ export function Logs() {
                 {filteredLogs.map((log) => (
                   <tr key={log.id ?? log.timestamp} className="row-hover font-mono text-xs">
                     <td className="px-6 py-3 text-muted-foreground whitespace-nowrap">
-                      {new Date(log.timestamp).toLocaleString()}
+                      {formatDateTime(log.timestamp)}
                     </td>
                     <td className="px-6 py-3 text-foreground"><IpBadge ip={log.source_ip} /></td>
                     <td className="px-6 py-3 text-primary">{log.method}</td>

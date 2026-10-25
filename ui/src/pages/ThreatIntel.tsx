@@ -10,7 +10,7 @@ import type { TimelineEntry, DashboardSummary, ShadowItService, FileExtData, Ser
 import { RegexPlayground } from '../components/RegexPlayground';
 import { HourlyTrafficChart, HourlyTrafficLegend } from '../components/dashboard/HourlyTrafficChart';
 import { TOOLTIP_STYLE } from '../lib/chart';
-import { formatCount } from '../lib/format';
+import { formatCount, formatTime } from '../lib/format';
 
 const C = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899', '#14b8a6', '#6366f1'];
 const CAT_COLORS: Record<string, string> = {
@@ -244,7 +244,7 @@ export function ThreatIntel() {
                     <div className="w-1.5 h-1.5 rounded-full bg-destructive" />
                     <div className="absolute inset-0 w-1.5 h-1.5 rounded-full bg-destructive animate-status-ping" />
                   </div>
-                  <span className="text-muted-foreground w-14 shrink-0 font-mono text-[10px]">{new Date(b.timestamp).toLocaleTimeString()}</span>
+                  <span className="text-muted-foreground w-14 shrink-0 font-mono text-[10px]">{formatTime(b.timestamp)}</span>
                   <span className="truncate flex-1 font-mono" title={b.destination}>{b.destination}</span>
                   <span className={`text-[9px] px-1 py-0.5 rounded-full font-medium shrink-0 ml-1 ${b.status?.includes('403') ? 'bg-destructive/10 text-destructive' : 'bg-orange-500/10 text-orange-500'}`}>
                     {b.status?.includes('403') ? 'WAF' : 'DENY'}

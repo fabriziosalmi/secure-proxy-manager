@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
-import { renderWithProviders, simulateItalianLocale } from '../test/helpers'
+import { renderWithProviders, simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 import { Dashboard } from './Dashboard'
 
 vi.mock('../lib/api', () => {
@@ -125,6 +125,20 @@ describe('Dashboard', () => {
     expect(screen.getByText('1,328 blocked')).toBeInTheDocument()
     const topBlocked = await screen.findByTitle('malware.com')
     expect(topBlocked.parentElement).toHaveTextContent('1,328')
+  })
+
+  // recent_blocks timestamps are UTC without a zone marker; new Date() read
+  // them as local time, so a viewer in Rome saw 09:00 for a block at 11:00.
+  it('shows a recent block at the viewer time, not at the UTC wall-clock time', async () => {
+    const restoreTz = setRomeTimeZone()
+    try {
+      vi.mocked(api.get).mockImplementation((url: string) => {
+        if (url.includes('dashboard/summary')) return Promise.resolve({ data: { data: { ...summaryData, recent_blocks: [{ timestamp: '2026-07-01 09:00:00', source_ip: '192.168.0.109', method: 'CONNECT', destination: 'evil.example:443', status: 'TCP_DENIED/403' }] } } })
+        return Promise.resolve({ data: { data: null } })
+      })
+      renderWithProviders(<Dashboard />)
+      expect(await screen.findByText('192.168.0.109 11:00:00')).toBeInTheDocument()
+    } finally { restoreTz() }
   })
 
   it('displays security score', async () => {
