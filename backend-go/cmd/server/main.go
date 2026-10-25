@@ -97,14 +97,19 @@ func run() error {
 	// Fatal rather than a warning: if /config is unwritable the proxy would be
 	// enforcing rules that no longer match the database, and refusing to start is
 	// the only outcome that cannot be mistaken for working.
-	if err := database.ExportBlacklistsToFiles(db, cfg.ConfigDir); err != nil {
+	if err := database.StartupStep("export_blacklists", func() error {
+		return database.ExportBlacklistsToFiles(db, cfg.ConfigDir)
+	}); err != nil {
 		return fmt.Errorf("startup blacklist export to %s: %w", cfg.ConfigDir, err)
 	}
 	log.Info().Str("config_dir", cfg.ConfigDir).Msg("blacklists exported at startup (db → /config reconciled)")
 	// The same reconciliation for the two list settings the proxy reads from
 	// files (blocked file types, cache bypass domains): a value the database
 	// gained without a save (a seeded default) reaches the proxy too.
-	handlers.NewSettingsHandlers(db, cfg).SyncListArtefacts()
+	_ = database.StartupStep("sync_list_artefacts", func() error {
+		handlers.NewSettingsHandlers(db, cfg).SyncListArtefacts()
+		return nil
+	})
 
 	// Load bcrypt hash from DB so auth uses it instead of plaintext env-var.
 	var dbHash string
@@ -127,6 +132,8 @@ func run() error {
 	workers.StartLogTailer(workerCtx, db, cfg.LogPath, filepath.Dir(cfg.DatabasePath), hub)
 	workers.StartDNSTailer(workerCtx, db, cfg.DNSLogPath, filepath.Dir(cfg.DatabasePath), hub)
 	workers.StartLogRetention(workerCtx, db)
+	// The full integrity check; Init ran only quick_check (integrity.go).
+	workers.StartIntegrityCheck(workerCtx, cfg.DatabasePath)
 	workers.StartBlacklistRefresh(workerCtx, db, cfg.ConfigDir)
 	// Owns the blacklist export: coalesces concurrent requests, is bound to the
 	// worker context so shutdown can stop it, and reports failure as a metric

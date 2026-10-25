@@ -27,9 +27,11 @@ const ReasonDNSReconstructed = "domain_blacklist_dns_reconstructed"
 const sinkholeCandidate = `block_reason = 'unclassified' AND status LIKE '%/503' AND IFNULL(method, '') != 'DNS'`
 
 // The bound on memory: the backend runs in 128 MiB, temp_store is MEMORY (a
-// temporary table lives in RAM) and the start-up integrity check of a 400 MB
-// database already takes the process to about 118 MiB. So nothing here is
-// held in memory in proportion to the blacklist or to proxy_logs:
+// temporary table lives in RAM) and, when this step was written, the
+// start-up integrity check of a 400 MB database took the process to about
+// 118 MiB, by filling a 50 MB page cache (now PageCacheKiB, db.go). So
+// nothing here is held in memory in proportion to the blacklist or to
+// proxy_logs:
 //   - a lower-case entry is found through the UNIQUE index on
 //     domain_blacklist.domain, two probes per candidate row, with no copy;
 //   - the entries that hold an upper-case letter, which that index cannot
@@ -45,7 +47,7 @@ const sinkholeCandidate = `block_reason = 'unclassified' AND status LIKE '%/503'
 // step and 118 MiB without it. A temporary table of 640,000 upper-case
 // entries took the step to 170 MiB, and an all-in-RAM first version to 400.
 // The step also adds no page cache of its own: it runs on the pool's most
-// recently used connection, the one the integrity check just filled.
+// recently used connection, the one the start-up check just filled.
 var (
 	loggedAt = `COALESCE(unix_timestamp, CAST(strftime('%s', timestamp) AS INTEGER))`
 	rowHost  = `lower(` + HostKey("destination") + `)`

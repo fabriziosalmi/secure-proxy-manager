@@ -102,6 +102,26 @@ for at least one minor release before disappearing.
   version 5 rewrites stored `*.name` egress entries to `.name` (one that is
   already listed as `.name` is removed) and writes one audit row by `system`
   naming them. (#431)
+- The backend checks the database with `PRAGMA quick_check` before serving
+  (every page and constraint; a damaged page still stops the start) and runs
+  the full `PRAGMA integrity_check`, which also compares every index with its
+  table, 30 seconds after start on a connection of its own. A failure of the
+  full check is logged as an error, sets the new gauge `spm_db_integrity_ok`
+  to 0 and makes `/readyz` answer 503, so the container reports unhealthy. On
+  1,000,000 log rows the start to the HTTP server went from 75 to 100 s to
+  13 to 19 s at the compose limit of 0.25 CPU.
+- Each SQLite connection's page cache is 8 MB instead of 50 MB.
+
+### Fixed
+
+- On a database of 1,000,000 log rows and 640,000 blacklisted domains the
+  backend was killed by the out-of-memory killer during start-up when the host
+  had no swap (and so restarted and was killed again): one 50 MB page cache
+  costs about 110 MiB in this SQLite build, and the blacklist export held the
+  640,000 names in memory on top of it. Start-up now peaks at 31 MiB of
+  anonymous memory, the full integrity check included. The export writes the
+  rows as it reads them, and a read error part way through now fails the
+  export instead of publishing a short list.
 
 ## [3.14.3] - 2026-10-25
 

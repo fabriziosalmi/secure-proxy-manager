@@ -3,6 +3,7 @@ package database
 
 import (
 	"bufio"
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -14,6 +15,21 @@ import (
 	"github.com/rs/zerolog/log"
 	_ "modernc.org/sqlite" // register pure-Go SQLite driver
 )
+
+// PageCacheKiB is the page cache each pooled connection may fill, in KiB
+// (PRAGMA cache_size, negative). It is per connection, the pool holds four,
+// and every one of them lives in the backend's 128 MiB.
+//
+// It was 50,000 (50 MB). The cache is allocated outside the Go heap, and a
+// 4 KiB page with its header takes an 8 KiB allocation, so a full cache cost
+// about 110 MiB of anonymous memory: measured on 1,000,000 proxy_logs rows,
+// one start-up integrity check or one 7-day destination report filled it.
+// Two connections doing so needed twice the container. The same report took
+// the same time with an 8 MB cache (3.3 to 5.0 s warm at 0.25 CPU against 4.4
+// to 4.8 s): the working set of such a scan is larger than either cache, and
+// the kernel's file cache, which the limit can reclaim, serves the rest. At
+// 8 MB a full cache measured 19 to 21 MiB, four of them about 80 MiB.
+const PageCacheKiB = 8000
 
 // Open opens (or creates) a SQLite database at path with WAL mode.
 func Open(path string) (*sql.DB, error) {
@@ -31,7 +47,7 @@ func Open(path string) (*sql.DB, error) {
 	// PRAGMA page_size was dropped: it cannot take effect after the database
 	// has been created without a VACUUM (SECURE-PERF-02).
 	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)" +
-		"&_pragma=synchronous(NORMAL)&_pragma=cache_size(-50000)&_pragma=mmap_size(268435456)" +
+		fmt.Sprintf("&_pragma=synchronous(NORMAL)&_pragma=cache_size(-%d)&_pragma=mmap_size(268435456)", PageCacheKiB) +
 		"&_pragma=temp_store(MEMORY)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -359,31 +375,52 @@ func seedAdmin(db *sql.DB, adminUsername, adminPasswordHash string) error {
 	return nil
 }
 
+// StartupStep runs fn and logs its name and duration, so a slow start says
+// which step it spent its time in. A failing step is logged too, with its
+// error, before the error is returned.
+func StartupStep(name string, fn func() error) error {
+	start := time.Now()
+	err := fn()
+	ev := log.Info()
+	if err != nil {
+		ev = log.Error().Err(err)
+	}
+	ev.Str("step", name).Dur("took", time.Since(start)).Msg("startup step")
+	return err
+}
+
 // Init runs an integrity check, creates tables, applies migrations, and seeds the admin user.
 func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
-	// Integrity check.
-	var integrityResult string
-	if err := db.QueryRow("PRAGMA integrity_check").Scan(&integrityResult); err != nil || integrityResult != "ok" {
-		return fmt.Errorf("integrity check failed: %v (result=%s)", err, integrityResult)
+	noErr := func(fn func(*sql.DB)) func() error { return func() error { fn(db); return nil } }
+	steps := []struct {
+		name string
+		fn   func() error
+	}{
+		// The full integrity_check runs after start-up (integrity.go).
+		{"quick_check", func() error {
+			if err := QuickCheck(context.Background(), db); err != nil {
+				return fmt.Errorf("integrity check failed: %w", err)
+			}
+			return nil
+		}},
+		{"create_schema", func() error { return createSchema(db) }},
+		{"migrations", func() error { return applyColumnMigrations(db) }},
+		{"post_migration_indexes", func() error { return createPostMigrationIndexes(db) }},
+		{"backfill_proxy_logs", noErr(backfillProxyLogs)},
+		{"seed_settings", noErr(seedDefaultSettings)},
+		{"seed_admin", func() error { return seedAdmin(db, adminUsername, adminPasswordHash) }},
+		// Update query planner statistics for optimal index usage.
+		{"analyze", func() error {
+			if _, err := db.Exec("ANALYZE"); err != nil {
+				log.Warn().Err(err).Msg("ANALYZE failed (non-fatal)")
+			}
+			return nil
+		}},
 	}
-	if err := createSchema(db); err != nil {
-		return err
-	}
-	if err := applyColumnMigrations(db); err != nil {
-		return err
-	}
-	if err := createPostMigrationIndexes(db); err != nil {
-		return err
-	}
-	backfillProxyLogs(db)
-	seedDefaultSettings(db)
-	if err := seedAdmin(db, adminUsername, adminPasswordHash); err != nil {
-		return err
-	}
-
-	// Update query planner statistics for optimal index usage.
-	if _, err := db.Exec("ANALYZE"); err != nil {
-		log.Warn().Err(err).Msg("ANALYZE failed (non-fatal)")
+	for _, s := range steps {
+		if err := StartupStep(s.name, s.fn); err != nil {
+			return err
+		}
 	}
 
 	log.Info().Msg("database initialised")
@@ -523,34 +560,51 @@ func atomicWrite(path string, writeFn func(f *os.File) error) error {
 }
 
 func exportLines(db *sql.DB, path, query string) error {
+	return streamList(db, path, query, func(w *bufio.Writer, v string) error {
+		_, err := fmt.Fprintln(w, v)
+		return err
+	})
+}
+
+// streamList writes the rows of query to path through atomicWrite, one call
+// of emit per value, as they are read. The lists used to be collected in a
+// slice first, twice over for the domain blacklist (its file and the dnsmasq
+// file), so the export held every entry in memory: 640,000 names on the
+// test deployment, inside the backend's 128 MiB.
+//
+// Values that are empty, NULL or not lineSafe are skipped, as before. A row
+// that cannot be read fails the write, so the previous file stays in place:
+// collecting the rows ignored that error and published a short list.
+func streamList(db *sql.DB, path, query string, emit func(w *bufio.Writer, v string) error) error {
 	rows, err := db.Query(query)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	var lines []string
 	unsafe := 0
-	for rows.Next() {
-		var line string
-		if rows.Scan(&line) == nil && line != "" {
-			if !lineSafe(line) {
+	err = atomicWrite(path, func(f *os.File) error {
+		w := bufio.NewWriter(f)
+		for rows.Next() {
+			var v string
+			if rows.Scan(&v) != nil || v == "" {
+				continue
+			}
+			if !lineSafe(v) {
 				unsafe++
 				continue
 			}
-			lines = append(lines, line)
-		}
-	}
-	reportUnsafe(path, unsafe)
-	return atomicWrite(path, func(f *os.File) error {
-		w := bufio.NewWriter(f)
-		for _, l := range lines {
-			if _, err := fmt.Fprintln(w, l); err != nil {
+			if err := emit(w, v); err != nil {
 				return fmt.Errorf("write %s: %w", path, err)
 			}
 		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("read the rows of %s: %w", path, err)
+		}
 		return w.Flush()
 	})
+	reportUnsafe(path, unsafe)
+	return err
 }
 
 // lineSafe reports whether v can be written as one line of a list file without
@@ -640,83 +694,41 @@ func loadWhitelistSet(db *sql.DB) map[string]struct{} {
 }
 
 func exportDomainBlacklist(db *sql.DB, path string, exclusions map[string]struct{}) error {
-	rows, err := db.Query("SELECT domain FROM domain_blacklist ORDER BY domain")
-	if err != nil {
+	return streamList(db, path, "SELECT domain FROM domain_blacklist ORDER BY domain", func(w *bufio.Writer, domain string) error {
+		if _, excluded := exclusions[EnforcedDomain(domain)]; excluded {
+			return nil
+		}
+		_, err := fmt.Fprintln(w, domain)
 		return err
-	}
-	defer rows.Close()
-
-	var domains []string
-	unsafe := 0
-	for rows.Next() {
-		var domain string
-		if rows.Scan(&domain) == nil && domain != "" {
-			if !lineSafe(domain) {
-				unsafe++
-				continue
-			}
-			if _, excluded := exclusions[EnforcedDomain(domain)]; !excluded {
-				domains = append(domains, domain)
-			}
-		}
-	}
-	reportUnsafe(path, unsafe)
-	return atomicWrite(path, func(f *os.File) error {
-		w := bufio.NewWriter(f)
-		for _, d := range domains {
-			if _, err := fmt.Fprintln(w, d); err != nil {
-				return fmt.Errorf("write %s: %w", path, err)
-			}
-		}
-		return w.Flush()
 	})
 }
 
+// writeDnsmasqBlocklist writes the hosts file dnsmasq answers from.
+//
+// A hosts file is parsed by line: a value carrying a newline or a tab would be
+// a second record, and dnsmasq would answer it. streamList skips it whatever
+// the write path let in (audit: domain-newline-into-hosts-file).
+//
+// Emit a hosts-format file (consumed via dnsmasq addn-hosts) rather than
+// `address=` directives in a conf-dir file: dnsmasq RE-READS addn-hosts on
+// SIGHUP, so a blacklist change applies on reload instead of needing a full
+// DNS restart. No timestamp header: an unchanged blocklist produces a byte-
+// identical file, avoiding a pointless full re-parse on every export.
+// (Trade-off: hosts entries are exact-match, not the `/domain/` subdomain
+// wildcard; the imported lists are explicit domains, so this matches them.)
 func writeDnsmasqBlocklist(db *sql.DB, path string, exclusions map[string]struct{}) error {
-	rows, err := db.Query("SELECT domain FROM domain_blacklist ORDER BY domain")
-	if err != nil {
+	return streamList(db, path, "SELECT domain FROM domain_blacklist ORDER BY domain", func(w *bufio.Writer, domain string) error {
+		// The hosts file gets the name dnsmasq is to answer, the same one
+		// Squid enforces (EnforcedDomain).
+		d := EnforcedDomain(domain)
+		if d == "" {
+			return nil
+		}
+		if _, excluded := exclusions[d]; excluded {
+			return nil
+		}
+		_, err := fmt.Fprintf(w, "0.0.0.0 %s\n:: %s\n", d, d)
 		return err
-	}
-	defer rows.Close()
-
-	type entry struct{ domain string }
-	var entries []entry
-	unsafe := 0
-	for rows.Next() {
-		var domain string
-		if rows.Scan(&domain) == nil && domain != "" {
-			// A hosts file is parsed by line: a value carrying a newline or a
-			// tab would be a second record, and dnsmasq would answer it. Skip
-			// it here whatever the write path let in (audit: domain-newline-into-hosts-file).
-			if !lineSafe(domain) {
-				unsafe++
-				continue
-			}
-			// The hosts file gets the name dnsmasq is to answer, the same
-			// one Squid enforces (EnforcedDomain).
-			if d := EnforcedDomain(domain); d != "" {
-				if _, excluded := exclusions[d]; !excluded {
-					entries = append(entries, entry{d})
-				}
-			}
-		}
-	}
-	reportUnsafe(path, unsafe)
-	// Emit a hosts-format file (consumed via dnsmasq addn-hosts) rather than
-	// `address=` directives in a conf-dir file: dnsmasq RE-READS addn-hosts on
-	// SIGHUP, so a blacklist change applies on reload instead of needing a full
-	// DNS restart. No timestamp header — an unchanged blocklist produces a byte-
-	// identical file, avoiding a pointless full re-parse on every export.
-	// (Trade-off: hosts entries are exact-match, not the `/domain/` subdomain
-	// wildcard; the imported lists are explicit domains, so this matches them.)
-	return atomicWrite(path, func(f *os.File) error {
-		w := bufio.NewWriter(f)
-		for _, e := range entries {
-			if _, err := fmt.Fprintf(w, "0.0.0.0 %s\n:: %s\n", e.domain, e.domain); err != nil {
-				return fmt.Errorf("write %s: %w", path, err)
-			}
-		}
-		return w.Flush()
 	})
 }
 

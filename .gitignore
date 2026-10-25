@@ -71,3 +71,6 @@ config/ssl_db/
 
 # Written by deploy/install.sh (production compose, selected via COMPOSE_FILE)
 compose.prod.yml
+
+# scripts/measure-backend-startup.sh outputs
+.measure-startup/
