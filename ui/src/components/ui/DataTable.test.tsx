@@ -74,6 +74,16 @@ describe('DataTable', () => {
     await expectNoAxeViolations(container)
   })
 
+  it('names the page buttons as the list asks, newest first reading Newer and Older', () => {
+    const onChange = vi.fn()
+    table({ pagination: { offset: 50, limit: 50, total: 120, onChange, previousLabel: 'Newer', nextLabel: 'Older' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Older' }))
+    expect(onChange).toHaveBeenLastCalledWith(100)
+    fireEvent.click(screen.getByRole('button', { name: 'Newer' }))
+    expect(onChange).toHaveBeenLastCalledWith(0)
+    expect(screen.queryByRole('button', { name: 'Previous' })).toBeNull()
+  })
+
   it('disables Next on the last page', () => {
     table({ pagination: { offset: 50, limit: 50, total: 52, onChange: () => {} } })
     expect(screen.getByText('51 to 52 of 52')).toBeInTheDocument()
