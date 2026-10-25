@@ -58,4 +58,18 @@ describe('GlobalSearch', () => {
       expect(screen.getByText('Dashboard')).toBeInTheDocument()
     })
   })
+
+  it('finds a Settings section by what it holds and opens its URL', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', '/')
+    renderWithProviders(<GlobalSearch />)
+
+    await user.keyboard('{Meta>}k{/Meta}')
+    await waitFor(() => expect(screen.getByPlaceholderText(/search/i)).toBeInTheDocument())
+    await user.type(screen.getByPlaceholderText(/search/i), 'telegram')
+
+    const hit = await screen.findByText('Settings: Alerts')
+    await user.click(hit)
+    expect(window.location.pathname).toBe('/settings/alerts')
+  })
 })

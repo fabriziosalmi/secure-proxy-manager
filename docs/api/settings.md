@@ -20,7 +20,11 @@ GET /api/settings
 }
 ```
 
-Setting values that are stored encrypted at rest (those whose key contains `password`, `secret`, `token`, or `webhook`) are decrypted before being returned.
+The alert channel settings are secrets: `webhook_url`, `gotify_url`, `gotify_token`, `teams_webhook_url`, `telegram_bot_token`, `telegram_chat_id`, `ntfy_url` and `ntfy_topic` (`crypto.SensitiveKeys` in the backend). They are stored encrypted and are write-only: their row carries `"secret": true`, an empty `setting_value`, `"is_set": true` when a value is stored, and `"decrypt_failed": true` when the stored value cannot be decrypted with the current key (`ENCRYPTION_KEY`, or the key the backend generated in its state directory when that is unset).
+
+```json
+{ "setting_name": "gotify_token", "setting_value": "", "secret": true, "is_set": true }
+```
 
 ---
 
@@ -54,7 +58,15 @@ The body is a flat object mapping setting names to their new values:
 }
 ```
 
-All updates are applied in a single transaction. The same name and value validation applies as for the single-setting endpoint.
+All updates are applied in a single transaction. The same name and value validation applies as for the single-setting endpoint. A value that fails validation answers `400` with `detail` starting with the key name, for example `"bandwidth_limit_mbps: must be a positive number"`.
+
+A secret sent with an empty value keeps its stored value, and the response lists it in `data.kept`. To remove a secret, name it in the `clear` query parameter (comma separated): `POST /api/settings?clear=gotify_token,gotify_url`. Only secrets can be cleared this way, and a key cannot be cleared and given a value in the same request (`400`).
+
+```json
+{ "status": "success", "message": "Settings updated", "data": { "kept": ["gotify_token"] } }
+```
+
+When some proxy configuration files could not be written the answer is still `200`, with `"status": "partial"` and the file names in `data.failed`.
 
 ---
 
@@ -68,7 +80,7 @@ POST /api/settings
 { "egress_default_deny": "true" }
 ```
 
-`egress_default_deny` is a boolean setting (default `"false"`) toggled like any other value through the bulk or single-setting endpoints. It is also exposed as the "Default-deny egress" toggle on the Settings page, next to SSL inspection.
+`egress_default_deny` is a boolean setting (default `"false"`) toggled like any other value through the bulk or single-setting endpoints. It is also the "Only allowlisted destinations" toggle under Settings > Filtering, which refuses to save it while the allowlist is empty.
 
 When `"false"` (the default) behaviour is unchanged: local clients may reach any destination that is not on a blacklist. When `"true"` the proxy denies all outbound egress from local clients except destinations on an explicit allowlist; everything else is refused with a Squid 403.
 
@@ -226,7 +238,7 @@ Clears the Squid disk cache.
 GET /api/maintenance/backup-config
 ```
 
-Downloads a backup containing the current settings, blacklists, and whitelists in JSON form.
+Returns, in `data`, the backup envelope: `backup_version`, `app_version`, `exported_at`, every setting as stored (secrets stay encrypted with this install's key) and the five lists (`ip_blacklist`, `ip_whitelist`, `domain_blacklist`, `domain_whitelist`, `dst_allowlist`). The audit log and the users table are not included. The Settings page saves `data` as the backup file.
 
 ---
 
@@ -238,7 +250,24 @@ POST /api/maintenance/restore-config
 
 Restores from a backup created by `/api/maintenance/backup-config`.
 
-List entries are checked with the same rules as the endpoints that add them. An entry that fails is skipped, not fatal, and the response reports how many in `skipped_entries` (alongside `restored` and `skipped`, which count settings).
+The body is the backup envelope (or, for an older backup, `{"config": {...}}`). Each setting in the file replaces the stored one; settings that are not in the file are left as they are. List entries are added; entries already present stay, and none are removed. After the transaction the proxy configuration files the settings drive are written, as a Save writes them; ask `POST /api/maintenance/reload-config` to apply them.
+
+List entries are checked with the same rules as the endpoints that add them. An entry that fails is skipped, not fatal, and counted in `skipped_entries`. Settings are checked with the settings API's rules; each one that is not restored is listed in `skipped_settings` with its reason (`default_password_changed`, which every backup contains, is always skipped).
+
+```json
+{
+  "status": "success",
+  "restored_settings": 41,
+  "restored_entries": 120,
+  "skipped_settings": [{ "key": "default_password_changed", "reason": "managed by the application, not restored from a file" }],
+  "skipped_entries": 0,
+  "failed_files": [],
+  "restored": 161,
+  "skipped": 1
+}
+```
+
+`failed_files` names proxy configuration files that could not be written. `restored` and `skipped` are the older totals.
 
 ---
 

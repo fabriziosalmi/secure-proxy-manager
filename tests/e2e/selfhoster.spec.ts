@@ -706,6 +706,11 @@ test.describe('UI — Blacklists (Domain tab)', () => {
     await expect(page.getByText(/Added \d+/i)).toBeVisible({ timeout: 15_000 });
   });
 
+  test('the Domains tab offers Block DNS-over-HTTPS, which used to sit in Settings', async ({ page }) => {
+    await expect(page.getByRole('region', { name: 'Block DNS-over-HTTPS' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Block DoH resolvers' })).toBeVisible();
+  });
+
   test('popular lists panel opens and shows list names', async ({ page }) => {
     const popularBtn = page.getByRole('button', { name: /Popular/i });
     await expect(popularBtn).toBeVisible();
@@ -743,6 +748,12 @@ test.describe('UI — Blacklists (Whitelist tab)', () => {
     ]);
     expect([200, 201, 400]).toContain(resp.status()); // 400 = duplicate on retry
     await expect(page.getByText(whitelistIp)).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('the Domain Whitelist tab offers the common services that used to sit in Settings', async ({ page }) => {
+    await page.getByRole('tab', { name: /Domain Whitelist/i }).click();
+    await expect(page.getByRole('region', { name: 'Add common services' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '+ GitHub' })).toBeVisible();
   });
 
   test('Import URL and Popular Lists buttons hidden on Whitelist tab', async ({ page }) => {
@@ -787,25 +798,145 @@ test.describe('UI — Settings page', () => {
     await page.waitForTimeout(1_500);
   });
 
-  test('page renders all sections without crash', async ({ page }) => {
-    await expect(page.getByText('Something went wrong')).not.toBeVisible();
-    await expect(page.locator('body')).toBeVisible();
+  test('/settings opens Overview and every section has its own URL', async ({ page }) => {
+    await expect(page).toHaveURL(/\/settings\/overview$/);
+    const nav = page.getByRole('navigation', { name: 'Settings sections' });
+    await expect(nav.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
+    for (const [label, path] of [
+      ['Clients and access', 'access'], ['Filtering', 'filtering'], ['Inspection', 'inspection'], ['Alerts', 'alerts'],
+      ['Logs and privacy', 'logs'], ['Admin and backup', 'admin'], ['Proxy engine', 'engine'],
+    ]) {
+      await nav.getByRole('link', { name: label }).click();
+      await expect(page).toHaveURL(new RegExp(`/settings/${path}$`));
+      await expect(page.getByRole('heading', { level: 2, name: label })).toBeVisible();
+      await expect(page.getByText('Something went wrong')).not.toBeVisible();
+    }
+    // The sidebar keeps Settings active on every section.
+    await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
   });
 
-  test('Save button is present and enabled', async ({ page }) => {
-    const saveBtn = page.getByRole('button', { name: /^Save/i }).first();
-    await expect(saveBtn).toBeVisible({ timeout: 10_000 });
-    await expect(saveBtn).toBeEnabled();
+  test('a deep link opens its section', async ({ page }) => {
+    await page.goto('/settings/engine');
+    await expect(page.getByRole('heading', { level: 2, name: 'Proxy engine' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByLabel('Proxy Port')).toHaveValue('3128');
   });
 
-  test('saving settings shows success feedback', async ({ page }) => {
-    const saveBtn = page.getByRole('button', { name: /^Save/i }).first();
-    await expect(saveBtn).toBeVisible({ timeout: 10_000 });
-    await saveBtn.click();
-    await expect(page.getByText(/saved|success|updated/i).first()).toBeVisible({ timeout: 10_000 });
+  test('a section offers Save only once something changed, and Discard puts the stored value back', async ({ page }) => {
+    await page.goto('/settings/logs');
+    const retention = page.getByLabel('Log Retention (days)');
+    await expect(retention).toHaveValue(/^\d+$/, { timeout: 10_000 });
+    const stored = await retention.inputValue();
+    await expect(page.getByRole('button', { name: 'Save section' })).toHaveCount(0);
+    await retention.fill(String(Number(stored) + 1));
+    await expect(page.getByTestId('save-bar').getByRole('status')).toHaveText('1 unsaved change');
+    await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: /Logs and privacy, 1 unsaved change/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Discard' }).click();
+    await expect(retention).toHaveValue(stored);
+    await expect(page.getByRole('button', { name: 'Save section' })).toHaveCount(0);
   });
+
+  test('saving a section says where the change takes effect', async ({ page }) => {
+    await page.goto('/settings/logs');
+    const retention = page.getByLabel('Log Retention (days)');
+    await expect(retention).toHaveValue(/^\d+$/, { timeout: 10_000 });
+    const stored = await retention.inputValue();
+    const changed = String(Number(stored) + 1);
+    await retention.fill(changed);
+    await page.getByRole('button', { name: 'Save section' }).click();
+    const result = page.getByTestId('save-result');
+    await expect(result).toContainText(/Saved at \d\d:\d\d\./);
+    await expect(result).toContainText('Applied by the daily log cleanup.');
+    // The backend has it: a reload of the page reads it back.
+    await page.reload();
+    await expect(page.getByLabel('Log Retention (days)')).toHaveValue(changed, { timeout: 10_000 });
+    // Put it back for the tests that follow.
+    await page.getByLabel('Log Retention (days)').fill(stored);
+    await page.getByRole('button', { name: 'Save section' }).click();
+    await expect(page.getByTestId('save-result')).toContainText(/Saved at/);
+  });
+
+  test('a save that needs the proxy reports what the proxy did', async ({ page }) => {
+    // The test stack runs no proxy container, so nothing acknowledges the
+    // reload: the page must say so instead of claiming it was applied.
+    await page.goto('/settings/engine');
+    const bypass = page.getByLabel(/Cache Bypass Domains/);
+    await expect(page.getByLabel('Proxy Port')).toHaveValue('3128', { timeout: 10_000 });
+    const stored = await bypass.inputValue();
+    await bypass.fill(stored ? `${stored}, e2e-bypass.test` : 'e2e-bypass.test');
+    await page.getByRole('button', { name: 'Save section' }).click();
+    const result = page.getByTestId('save-result');
+    await expect(result).toContainText('Saved. The proxy did not confirm within 8 seconds: check that the proxy container is running.', { timeout: 20_000 });
+    await expect(result).not.toContainText('Applied to the proxy');
+    await expect(result.getByRole('button', { name: 'Apply again' })).toBeVisible();
+    await bypass.fill(stored);
+    await page.getByRole('button', { name: 'Save section' }).click();
+    await expect(page.getByTestId('save-result')).toContainText('did not confirm', { timeout: 20_000 });
+  });
+
+  test('a value the proxy cannot use is named with its field, and nothing is saved', async ({ page }) => {
+    await page.goto('/settings/engine');
+    await expect(page.getByLabel('Proxy Port')).toHaveValue('3128', { timeout: 10_000 });
+    await page.getByLabel('Memory Cache (MB)').fill('1234567');
+    await page.getByRole('button', { name: 'Save section' }).click();
+    await expect(page.getByTestId('save-bar').getByRole('status')).toHaveText('Not saved: Memory Cache (MB) needs attention');
+    await expect(page.getByRole('button', { name: /^Memory Cache \(MB\): must be a whole number/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Discard' }).click();
+  });
+
+  test('Overview lists what needs attention from the running stack and previews a profile before applying it', async ({ page }) => {
+    const attention = page.getByRole('region', { name: 'Needs attention' });
+    // The test stack runs no proxy container: GET /api/status reports it.
+    await expect(attention.getByText('The proxy is not running')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: /^Overview, \d+ items? needs? attention$/ })).toBeVisible();
+    await page.getByRole('button', { name: /^Family/ }).click();
+    await expect(page.getByRole('heading', { level: 4, name: /^Family (changes \d+ settings?|already match)|Your settings already match Family/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Apply Family' })).toBeVisible();
+    // Nothing is saved until Apply.
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('button', { name: 'Apply Family' })).toHaveCount(0);
+  });
+
+  test('Clients and access checks the time window before anything is sent', async ({ page }) => {
+    await page.goto('/settings/access');
+    await expect(page.getByRole('region', { name: 'Who may connect' })).toContainText('GUI_IP_WHITELIST');
+    const hoursSwitch = page.getByRole('switch', { name: 'Limit to a time window' });
+    await expect(hoursSwitch).toBeVisible({ timeout: 10_000 });
+    if ((await hoursSwitch.getAttribute('aria-checked')) !== 'true') await hoursSwitch.click();
+    await page.getByLabel('From').fill('18:00');
+    await page.getByLabel('Until').fill('08:00');
+    let posted = false;
+    page.on('request', (r) => { if (r.method() === 'POST' && r.url().endsWith('/api/settings')) posted = true; });
+    await page.getByRole('button', { name: 'Save section' }).click();
+    await expect(page.getByLabel('Until')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByText('Must be later than the start time')).toBeVisible();
+    expect(posted).toBe(false);
+    await page.getByRole('button', { name: 'Discard' }).click();
+    await expect(page.getByRole('button', { name: 'Save section' })).toHaveCount(0);
+  });
+
+  test('Filtering shows the size of the egress allowlist it depends on', async ({ page }) => {
+    await page.goto('/settings/filtering');
+    await expect(page.getByText(/^The egress allowlist holds [\d,]+ (entry|entries)\.$/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('link', { name: 'Edit the allowlist' })).toHaveAttribute('href', '/egress');
+  });
+
+  for (const section of ['overview', 'access', 'filtering']) {
+    test(`/settings/${section} fits a 390 px wide screen without horizontal scrolling`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`/settings/${section}`);
+      const nav = page.getByRole('navigation', { name: 'Settings sections' });
+      await expect(nav.getByRole('button', { name: /^Section: / })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole('heading', { level: 2 }).first()).toBeVisible();
+      const overflow = await page.evaluate(() => {
+        const main = document.querySelector('main')!;
+        return { doc: document.documentElement.scrollWidth - window.innerWidth, main: main.scrollWidth - main.clientWidth };
+      });
+      expect(overflow).toEqual({ doc: 0, main: 0 });
+    });
+  }
 
   test('Backup Config triggers file download', async ({ page }) => {
+    await page.goto('/settings/admin');
     const [download] = await Promise.all([
       page.waitForEvent('download', { timeout: 15_000 }),
       page.getByRole('button', { name: /Backup Config/i }).click(),
@@ -814,6 +945,7 @@ test.describe('UI — Settings page', () => {
   });
 
   test('Clear Cache button is visible', async ({ page }) => {
+    await page.goto('/settings/admin');
     await expect(page.getByRole('button', { name: /Clear Cache/i })).toBeVisible({ timeout: 10_000 });
   });
 });
@@ -873,7 +1005,7 @@ test.describe('Full onboarding flow', () => {
     await expect(page.getByText('Something went wrong')).not.toBeVisible();
 
     // 6. Backup from settings
-    await page.goto('/settings');
+    await page.goto('/settings/admin');
     await page.waitForTimeout(1_000);
     const [dl] = await Promise.all([
       page.waitForEvent('download', { timeout: 15_000 }),

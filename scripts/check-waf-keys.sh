@@ -23,7 +23,7 @@ REF="$(keys_in "$REF_FILE")"
 
 FILES="backend-go/internal/handlers/settings.go
 backend-go/internal/workers/waf_reconciler.go
-ui/src/pages/Settings.tsx
+ui/src/lib/settingsMeta.ts
 docker-compose.yml
 deploy/docker-compose.prod.yml
 .env.example"
@@ -31,7 +31,14 @@ deploy/docker-compose.prod.yml
 rc=0
 count=1
 for f in $FILES; do
-    got="$(keys_in "$f")"
+    # A file that moved used to end the script silently: under set -e the
+    # failing grep inside the command substitution exited with no message.
+    if [ ! -f "$f" ]; then
+        echo "FAIL: $f does not exist; update FILES in $0 to where the keys live now"
+        rc=1
+        continue
+    fi
+    got="$(keys_in "$f" || true)"
     if [ "$got" != "$REF" ]; then
         echo "FAIL: $f disagrees with $REF_FILE"
         diff <(echo "$REF") <(echo "$got") | sed 's/^/    /' || true

@@ -144,6 +144,12 @@ export interface SecurityScore {
 export interface SettingRow {
   setting_name: string;
   setting_value: string;
+  /** A write-only setting: the value is never returned. */
+  secret?: boolean;
+  /** A secret has a stored value, readable or not. */
+  is_set?: boolean;
+  /** A stored secret the backend cannot decrypt with its current key. */
+  decrypt_failed?: boolean;
 }
 
 // Dashboard / Analytics types

@@ -145,7 +145,7 @@ export function SetupWizard({ onComplete }: Props) {
         {
           loading: 'Applying your configuration to the proxy…',
           success: 'Setup complete: your proxy is live with these settings! 🚀',
-          error: 'Saved, but auto-apply failed. Use Settings → Maintenance → Reload config.',
+          error: 'Saved, but auto-apply failed. Use Settings → Admin and backup → Reload Config.',
         }
       );
       // Advance to the final "connect your devices" step instead of closing, so a

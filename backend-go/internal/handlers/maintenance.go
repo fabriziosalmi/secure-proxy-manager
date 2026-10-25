@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -141,7 +142,8 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op once committed
 
-	restored, skipped, err := h.restoreSettings(tx, body.Config)
+	restored, skippedSettings, err := h.restoreSettings(tx, body.Config)
+	skipped := len(skippedSettings)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to restore configuration (rolled back)")
 		return
@@ -153,6 +155,7 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, "failed to restore lists (rolled back)")
 		return
 	}
+	settingsRestored := restored
 	restored += listsRestored
 
 	if err := tx.Commit(); err != nil {
@@ -162,28 +165,70 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 	// The lists just changed, so the exported files must be republished.
 	workers.RequestExport()
 
+	// The restored settings take effect through the same files a Save writes:
+	// the toggle markers, the lists and squid_settings.env. Restore used to
+	// write the database only, so a restored toggle showed as on while the
+	// proxy kept running without it until some later Save.
+	failedFiles := []string{}
+	if len(body.Config) > 0 {
+		applied := map[string]string{}
+		for k, v := range body.Config {
+			if isWritableSettingKey(k) && validateSettingValue(k, v) == nil && !appcrypto.IsSensitive(k) {
+				applied[k] = v
+			}
+		}
+		sh := &SettingsHandlers{db: h.db, cfg: h.cfg}
+		if failed := sh.writeSquidArtefacts(applied); len(failed) > 0 {
+			failedFiles = failed
+		}
+	}
+
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
-	database.Audit(h.db, username, "restore_config", "", fmt.Sprintf("%d settings restored, %d skipped", restored, skipped))
+	database.Audit(h.db, username, "restore_config", "", fmt.Sprintf("%d settings restored, %d skipped", settingsRestored, skipped))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":   "success",
 		"message":  "Configuration restored successfully",
 		"restored": restored,
 		"skipped":  skipped,
+		// The two halves of restored, so a caller can say what it applied.
+		"restored_settings": settingsRestored,
+		"restored_entries":  listsRestored,
+		// Each setting that was not restored, and why.
+		"skipped_settings": skippedSettings,
 		// Entries in the lists that failed validation and were not restored.
 		"skipped_entries": skippedEntries,
+		// Proxy configuration files that could not be written.
+		"failed_files": failedFiles,
 	})
+}
+
+// skippedSetting is a setting in a backup that restore did not apply.
+type skippedSetting struct {
+	Key    string `json:"key"`
+	Reason string `json:"reason"`
 }
 
 // restoreSettings writes the restorable keys of a backup inside tx. A failed
 // write aborts (the caller rolls back); an invalid key is skipped and counted.
-func (h *MaintenanceHandlers) restoreSettings(tx *sql.Tx, config map[string]string) (restored, skipped int, err error) {
-	for k, v := range config {
+func (h *MaintenanceHandlers) restoreSettings(tx *sql.Tx, config map[string]string) (restored int, skipped []skippedSetting, err error) {
+	skipped = []skippedSetting{}
+	keys := make([]string, 0, len(config))
+	for k := range config {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := config[k]
 		// Same guard as BulkUpdate: only known-safe, writable keys; reject
 		// internally-managed state and non-conforming key names. (Previously this
 		// path upserted ANY key/value with no validation — a mass-assignment hole.)
+		if internallyManagedSettings[k] {
+			skipped = append(skipped, skippedSetting{k, "managed by the application, not restored from a file"})
+			continue
+		}
 		if !isWritableSettingKey(k) || len(v) > 10000 {
 			log.Warn().Str("key", k).Msg("RestoreConfig: skipping invalid or protected key")
-			skipped++
+			skipped = append(skipped, skippedSetting{k, "not a valid setting name, or a value longer than 10000 characters"})
 			continue
 		}
 		// The same value rules as the settings API. Restore checked key names
@@ -192,7 +237,7 @@ func (h *MaintenanceHandlers) restoreSettings(tx *sql.Tx, config map[string]stri
 		// bandwidth value that reached the proxy's root shell.
 		if err := validateSettingValue(k, v); err != nil {
 			log.Warn().Str("key", k).Err(err).Msg("RestoreConfig: skipping a value the settings API would refuse")
-			skipped++
+			skipped = append(skipped, skippedSetting{k, strings.TrimPrefix(err.Error(), k+": ")})
 			continue
 		}
 		val := v

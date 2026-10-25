@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { Card, CardContent } from '../components/ui/card';
 import { api, getErrorMessage } from '../lib/api';
 import { isValidIP, isValidDomain } from '../lib/validation';
@@ -81,11 +82,11 @@ export function EgressAllowlist() {
         <CardContent className="p-4 flex items-start gap-3">
           <ShieldCheck className="w-5 h-5 text-primary mt-0.5 shrink-0" />
           <p className="text-sm text-muted-foreground">
-            When <span className="font-medium text-foreground">Default-deny egress</span> is enabled in
-            {' '}<span className="font-medium text-foreground">Settings</span>, a client behind the proxy may reach
+            When <span className="font-medium text-foreground">Only allowlisted destinations</span> is on in
+            {' '}<Link to="/settings/filtering" className="font-medium text-foreground underline">Settings, Filtering</Link>, a client behind the proxy may reach
             {' '}<span className="font-medium text-foreground">only</span> the destinations listed here (CIDR/IP or
-            domain); everything else is denied. Toggling the mode restarts the proxy. With the mode off, this list has
-            no effect.
+            domain); everything else is denied. Turning it on or off reloads the proxy configuration. With it off, this
+            list has no effect.
           </p>
         </CardContent>
       </Card>

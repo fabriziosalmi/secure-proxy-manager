@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatCount, formatDate } from '../lib/format';
+import { BlockDoh, EssentialWhitelist } from '../components/blacklists/QuickLists';
 
 export function Blacklists() {
   const queryClient = useQueryClient();
@@ -550,6 +551,10 @@ export function Blacklists() {
           <span className="ml-2 bg-secondary/50 text-xs px-2 py-0.5 rounded-full">{formatCount(domainWhitelistResult?.total ?? 0)}</span>
         </button>
       </div>
+
+      {/* One-click additions for the list on screen */}
+      {activeTab === 'domain' && <BlockDoh />}
+      {activeTab === 'domain-whitelist' && <EssentialWhitelist />}
 
       {/* Search bar */}
       <div className="flex items-center gap-4">

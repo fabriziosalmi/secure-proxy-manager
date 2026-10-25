@@ -33,6 +33,17 @@ describe('Switch', () => {
     await expectNoAxeViolations(container)
   })
 
+  it('reads the text that explains it after its name', () => {
+    render(
+      <div>
+        <span id="t-hours">Allowed hours</span>
+        <p id="t-hours-help">Outside these hours every request is refused.</p>
+        <Switch checked={false} onChange={() => {}} labelledBy="t-hours" describedBy="t-hours-help" />
+      </div>,
+    )
+    expect(screen.getByRole('switch', { name: 'Allowed hours' })).toHaveAccessibleDescription('Outside these hours every request is refused.')
+  })
+
   it('does not flip when disabled', () => {
     const onChange = vi.fn()
     render(<Switch checked={false} onChange={onChange} label="WAF" disabled />)

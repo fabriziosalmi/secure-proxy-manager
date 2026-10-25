@@ -96,7 +96,7 @@ with the credentials from your `.env` (or the ones the installer printed). On
 first login a short wizard helps you pick a starting configuration.
 
 To send traffic through the proxy, point a client at `http://<host>:3128`
-(Settings > Client Setup generates per-OS instructions and a PAC file).
+(Settings > Overview > Connect a device has per-OS instructions and a PAC file).
 
 ## Ports
 
@@ -169,7 +169,8 @@ imposes and what happens at each:
 - Direct-IP-access blocking and a method whitelist in Squid.
 - Optional default-deny egress (off by default): instead of the deny-list
   blacklists, allow outbound traffic only to an explicit CIDR/domain allowlist
-  and refuse everything else. Toggled in Settings; destinations managed on the
+  and refuse everything else. Toggled in Settings > Filtering (Only allowlisted
+  destinations); destinations managed on the
   Egress Allowlist page.
 
 **WAF**
@@ -185,9 +186,9 @@ imposes and what happens at each:
 **HTTPS inspection (optional)**
 - HTTPS is tunnelled via `CONNECT` by default - the WAF sees connection metadata
   (host, port), not request contents.
-- Enabling SSL-bump in Settings makes Squid intercept TLS with a locally
+- Enabling SSL-bump in Settings > Inspection makes Squid intercept TLS with a locally
   generated CA so the WAF can inspect decrypted requests. This requires
-  installing the generated CA (Settings > download CA) on every client that
+  installing the generated CA (Settings > Inspection > download CA) on every client that
   should trust it. The CA is generated per deployment at first boot.
 
 **Operations**
@@ -210,18 +211,19 @@ imposes and what happens at each:
 ## Using it
 
 **Point a client at the proxy.** Set the HTTP/HTTPS proxy to `http://<host>:3128`
-on the device, or use the PAC file / WPAD auto-discovery from Settings > Client
-Setup. Only RFC1918 and localhost sources are permitted by default.
+on the device, or use the PAC file / WPAD auto-discovery from Settings > Overview >
+Connect a device. Only RFC1918 and localhost sources are permitted by default.
 
 **Block a domain.** Blacklists > Domains > add `example.com`. The change is
 exported to Squid and dnsmasq within a couple of seconds. Whitelists take
 precedence.
 
-**Inspect HTTPS.** Settings > enable SSL inspection, download the generated CA,
+**Inspect HTTPS.** Settings > Inspection > enable SSL inspection, download the generated CA,
 and install it as trusted on your clients. Without this, HTTPS requests are only
 filtered by host/IP and DNS, not by WAF body rules.
 
-**Lock egress to an allowlist.** Settings > enable default-deny egress, then add
+**Lock egress to an allowlist.** Settings > Filtering > turn on Only allowlisted
+destinations, then add
 the approved IPs/CIDRs and domains on the Egress Allowlist page. Local clients
 can then reach only those destinations; everything else is refused.
 
@@ -252,8 +254,9 @@ tar czf config.bak.tgz config/ .env
 docker compose up -d
 ```
 
-The UI also offers a config export/import under Settings, and the database can be
-exported via the API.
+Settings > Admin and backup has Backup Config, which downloads the settings and the
+five lists, and Restore Config, which reads that file back and says what it applied
+and skipped. The whole database can be exported via the API.
 
 ## Health and testing
 

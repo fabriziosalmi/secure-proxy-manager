@@ -1,9 +1,11 @@
+import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useModal } from '../../hooks/useModal';
 
 export interface ConfirmOptions {
   title: string;
-  body?: string;
+  /** A sentence, or a block (a list of what the action changes). */
+  body?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
@@ -37,7 +39,9 @@ export function ConfirmDialog({
         className="relative w-full max-w-sm glass-surface rounded-xl p-5 shadow-2xl"
       >
         <h2 id="confirm-title" className="text-sm font-semibold">{title}</h2>
-        {body && <p id="confirm-body" className="mt-2 text-xs text-muted-foreground">{body}</p>}
+        {body && (typeof body === 'string'
+          ? <p id="confirm-body" className="mt-2 text-xs text-muted-foreground">{body}</p>
+          : <div id="confirm-body" className="mt-2 text-xs text-muted-foreground">{body}</div>)}
         <div className="mt-4 flex justify-end gap-2">
           <button
             type="button"

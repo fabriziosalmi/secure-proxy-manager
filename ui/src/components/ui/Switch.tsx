@@ -18,12 +18,14 @@ export type SwitchProps = SwitchName & {
   onChange: (next: boolean) => void;
   /** Optional form-field name, kept on the element as data-name. */
   name?: string;
+  /** id of the text that explains the setting, read after its name. */
+  describedBy?: string;
   size?: 'sm' | 'md';
   disabled?: boolean;
   className?: string;
 };
 
-export function Switch({ checked, onChange, label, labelledBy, name, size = 'sm', disabled, className }: SwitchProps) {
+export function Switch({ checked, onChange, label, labelledBy, describedBy, name, size = 'sm', disabled, className }: SwitchProps) {
   const track = size === 'md' ? 'h-[22px] w-10' : 'h-[18px] w-8';
   const knob = size === 'md' ? 'h-[18px] w-[18px]' : 'h-3.5 w-3.5';
   const travel = size === 'md' ? 'translate-x-[18px]' : 'translate-x-3.5';
@@ -34,6 +36,7 @@ export function Switch({ checked, onChange, label, labelledBy, name, size = 'sm'
       aria-checked={checked}
       aria-label={label}
       aria-labelledby={labelledBy}
+      aria-describedby={describedBy}
       data-name={name}
       disabled={disabled}
       onClick={() => onChange(!checked)}

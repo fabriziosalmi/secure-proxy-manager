@@ -141,11 +141,11 @@ Transparent (intercepting) proxying is not supported. Squid listens on 3128
 as an explicit forward proxy only: there is no `intercept` port, so traffic
 redirected to it with iptables is not served, and there is no setting for it in
 the UI. Configure clients explicitly, with the PAC file, or with WPAD (see
-Settings → Client Setup).
+Settings → Overview → Connect a device).
 
 ## Changing the admin password
 
-From the UI: **Settings → Security → Change Password**. From the API:
+From the UI: **Settings → Admin and backup → Change Password**. From the API:
 
 ```bash
 curl -X POST https://localhost:8443/api/change-password \

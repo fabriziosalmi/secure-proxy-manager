@@ -21,6 +21,20 @@ export const statusQuery = {
   queryFn: () => getData<StatusData>('status'),
 };
 
+/**
+ * How many entries the egress allowlist holds: GET /api/egress-allowlist
+ * with limit=1 answers meta.total (writeList in backend-go). Under the
+ * ['egress-allowlist'] key, so the Egress page's changes refresh it.
+ */
+export const egressTotalQuery = {
+  queryKey: ['egress-allowlist', 'total'] as const,
+  queryFn: () =>
+    api.get('egress-allowlist', { params: { limit: 1 } }).then((r) => {
+      const total = r.data?.meta?.total ?? r.data?.total;
+      return typeof total === 'number' ? total : null;
+    }),
+};
+
 /** GET /api/health (public): the backend's version and runtime. */
 export interface HealthData {
   status?: string;

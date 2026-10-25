@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -145,7 +146,13 @@ func (h *SettingsHandlers) GetAll(w http.ResponseWriter, r *http.Request) {
 	type settingRow struct {
 		Name  string `json:"setting_name"`
 		Value string `json:"setting_value"`
-		// DecryptFailed marks a sensitive value that could not be decrypted
+		// Secret marks a write-only setting (crypto.SensitiveKeys). Its value
+		// is never returned: the page shows whether one is stored and the
+		// operator can replace or clear it, not read it back.
+		Secret bool `json:"secret,omitempty"`
+		// IsSet says a secret has a stored value, readable or not.
+		IsSet bool `json:"is_set,omitempty"`
+		// DecryptFailed marks a stored secret that could not be decrypted
 		// (wrong or rotated key). The UI must render it as unreadable and must
 		// not submit it back, or the Save would overwrite the secret.
 		DecryptFailed bool `json:"decrypt_failed,omitempty"`
@@ -154,22 +161,24 @@ func (h *SettingsHandlers) GetAll(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var k, v string
 		rows.Scan(&k, &v) //nolint:errcheck
-		// Decrypt sensitive settings transparently.
-		decryptFailed := false
-		if appcrypto.IsSensitive(k) {
-			if dec, err := appcrypto.Decrypt(v, h.cfg.EncryptionKey); err == nil {
-				v = dec
-			} else {
-				// Returning the raw enc:: blob would put ciphertext in the form
-				// field; the next Save would re-encrypt it as if it were the
-				// plaintext, destroying the secret irrecoverably. Return an
-				// empty value and flag it instead (SECURE-ERR-06).
-				log.Error().Str("key", k).Err(err).Msg("failed to decrypt setting — returning empty and flagging")
-				v = ""
-				decryptFailed = true
+		if !appcrypto.IsSensitive(k) {
+			settings = append(settings, settingRow{Name: k, Value: v})
+			continue
+		}
+		// Secrets are write-only. Returning the plaintext put every channel
+		// token in the browser and in any proxy that logs responses, and
+		// returning the raw enc:: blob of an unreadable one would put
+		// ciphertext in the form, which the next Save re-encrypted as if it
+		// were the plaintext (SECURE-ERR-06). The decrypt is still attempted
+		// so an unreadable value is flagged.
+		row := settingRow{Name: k, Secret: true, IsSet: v != ""}
+		if v != "" {
+			if _, err := appcrypto.Decrypt(v, h.cfg.EncryptionKey); err != nil {
+				log.Error().Str("key", k).Err(err).Msg("failed to decrypt setting: flagged as unreadable")
+				row.DecryptFailed = true
 			}
 		}
-		settings = append(settings, settingRow{Name: k, Value: v, DecryptFailed: decryptFailed})
+		settings = append(settings, row)
 	}
 	if settings == nil {
 		settings = []settingRow{} // never return null
@@ -240,9 +249,21 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	clearKeys, msg := parseClearList(r.URL.Query().Get("clear"), body)
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	if body == nil {
+		body = map[string]string{}
+	}
+	for k := range clearKeys {
+		body[k] = ""
+	}
 	h.auditBulkUpdate(r, body)
 
-	if status, msg := h.persistSettings(body); status != 0 {
+	kept, status, msg := h.persistSettings(body, clearKeys)
+	if status != 0 {
 		writeError(w, status, msg)
 		return
 	}
@@ -260,11 +281,37 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":  "partial",
 			"message": "settings saved, but some proxy configuration files could not be written",
-			"data":    map[string]any{"failed": failedArtifacts},
+			"data":    map[string]any{"failed": failedArtifacts, "kept": kept},
 		})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Settings updated"})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":  "success",
+		"message": "Settings updated",
+		"data":    map[string]any{"kept": kept},
+	})
+}
+
+// parseClearList reads the clear query parameter: the secrets the caller
+// asks to remove. Only a secret can be cleared this way, and a secret cannot
+// be cleared and given a value in the same request. It returns the set, or
+// the message for a 400.
+func parseClearList(raw string, body map[string]string) (map[string]bool, string) {
+	clearKeys := map[string]bool{}
+	for _, k := range strings.Split(raw, ",") {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		if !appcrypto.IsSensitive(k) {
+			return nil, "clear: " + k + " is not a secret setting"
+		}
+		if body[k] != "" {
+			return nil, k + ": cannot be cleared and set in the same request"
+		}
+		clearKeys[k] = true
+	}
+	return clearKeys, ""
 }
 
 // auditBulkUpdate records the attempt with the key names — never the values,
@@ -283,12 +330,14 @@ func (h *SettingsHandlers) auditBulkUpdate(r *http.Request, body map[string]stri
 
 // persistSettings writes every writable key in body inside a single transaction,
 // so a mid-loop failure cannot leave the database half-updated relative to the
-// artefacts written afterwards. It returns (0, "") on success, or the HTTP
-// status and message the caller must send.
-func (h *SettingsHandlers) persistSettings(body map[string]string) (int, string) {
+// artefacts written afterwards. A secret sent empty keeps its stored value
+// unless clear names it, and is returned in kept. It returns status 0 on
+// success, or the HTTP status and message the caller must send.
+func (h *SettingsHandlers) persistSettings(body map[string]string, clearKeys map[string]bool) (kept []string, status int, msg string) {
+	kept = []string{}
 	tx, err := h.db.Begin()
 	if err != nil {
-		return http.StatusInternalServerError, "failed to start transaction"
+		return kept, http.StatusInternalServerError, "failed to start transaction"
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op once committed
 	for k, v := range body {
@@ -298,8 +347,19 @@ func (h *SettingsHandlers) persistSettings(body map[string]string) (int, string)
 			log.Warn().Str("key", k).Msg("BulkUpdate: skipping invalid or protected key")
 			continue
 		}
+		// A secret is write-only, so a form that did not touch it sends it
+		// empty, and an unreadable one comes back empty from GET. Storing that
+		// empty value wiped the secret on the next Save of any other setting.
+		// Only an explicit clear removes it.
+		if appcrypto.IsSensitive(k) && v == "" && !clearKeys[k] {
+			var stored string
+			if err := tx.QueryRow("SELECT setting_value FROM settings WHERE setting_name=?", k).Scan(&stored); err == nil && stored != "" {
+				kept = append(kept, k)
+			}
+			continue
+		}
 		if err := validateSettingValue(k, v); err != nil {
-			return http.StatusBadRequest, err.Error()
+			return kept, http.StatusBadRequest, err.Error()
 		}
 		val := v
 		if appcrypto.IsSensitive(k) && val != "" && !appcrypto.IsEncrypted(val) {
@@ -312,13 +372,14 @@ func (h *SettingsHandlers) persistSettings(body map[string]string) (int, string)
 			k, val,
 		); err != nil {
 			log.Error().Str("key", k).Err(err).Msg("BulkUpdate: failed to save setting — rolling back")
-			return http.StatusInternalServerError, "failed to save settings (rolled back)"
+			return kept, http.StatusInternalServerError, "failed to save settings (rolled back)"
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return http.StatusInternalServerError, "failed to commit settings"
+		return kept, http.StatusInternalServerError, "failed to commit settings"
 	}
-	return 0, ""
+	sort.Strings(kept)
+	return kept, 0, ""
 }
 
 // writeSquidArtefacts writes the /config files the proxy reads, and names the

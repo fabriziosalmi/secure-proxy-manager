@@ -44,7 +44,8 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-const firstSegment = (path: string) => path.split('/').filter(Boolean)[0] ?? '';
+/** "settings" for /settings/alerts, "" for /. */
+export const firstSegment = (path: string) => path.split('/').filter(Boolean)[0] ?? '';
 
 /**
  * A nav item is active when the first path segment matches, so

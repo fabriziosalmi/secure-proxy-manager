@@ -1,1087 +1,260 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
-import { useQuery } from '@tanstack/react-query';
+/**
+ * Settings: one section at a time, at /settings/<section> (lib/settingsMeta
+ * lists the sections in task order). /settings and an unknown section go to
+ * Overview. The section nav sits beside the section on wide screens and
+ * collapses into a switcher below lg.
+ *
+ * Save model: each section has its own draft (SettingsDrafts), a dot in the
+ * nav while it holds changes, and a sticky bar with Discard and Save
+ * section. A Save sends every key of the section that has a value and
+ * nothing else, then reports what happened: whether the proxy applied it,
+ * did not confirm in time or refused it, which files could not be written,
+ * and where else the change takes effect. A 400 that names a field is shown
+ * under that field.
+ */
+import axios from 'axios';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useRef, useState } from 'react';
+import { Navigate, useParams } from 'react-router';
 import type { SettingRow } from '../types';
-import { Save, Download, Shield, Network, Key, Bell, Lock, User, Sun, Moon, SunMoon } from 'lucide-react';
-import { useTheme } from '../components/ThemeProvider';
-import { useState, useEffect, useRef } from 'react';
-import toast from 'react-hot-toast';
-import { api, getData } from '../lib/api';
-import { z } from 'zod';
-import { ChangePassword } from '../components/settings/ChangePassword';
-import { Maintenance } from '../components/settings/Maintenance';
-import { Presets } from '../components/settings/Presets';
-import { ServiceStatus } from '../components/settings/ServiceStatus';
-import { ClientSetup } from '../components/ClientSetup';
-import { Toggle } from '../components/ui/Toggle';
+import { api, getData, getErrorMessage } from '../lib/api';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Notice } from '../components/ui/Notice';
+import { SettingsNav } from '../components/settings/SettingsNav';
+import { SaveBar } from '../components/settings/SaveBar';
+import { SettingsDraftsProvider } from '../components/settings/SettingsDrafts';
+import { useSettingsDrafts, useSettingsDraftsOptional } from '../hooks/useSettingsDrafts';
+import { LegacyAdmin, LegacyAlerts, LegacyEngine, LegacyInspection, LegacyLogs } from '../components/settings/LegacySections';
+import { OverviewSection } from '../components/settings/sections/OverviewSection';
+import { AccessSection } from '../components/settings/sections/AccessSection';
+import { FilteringSection } from '../components/settings/sections/FilteringSection';
+import { needsAttention, type AttentionItem } from '../lib/attention';
+import { egressTotalQuery, statusQuery } from '../lib/queries';
+import type { SectionForm } from '../components/settings/sectionForm';
+import { parseSettings, secretStateOf } from '../lib/secrets';
+import { applyToProxy } from '../lib/reload';
+import { rowsAfterSave, sectionRequest } from '../lib/settingsSave';
+import { parseFieldError, validateSection } from '../lib/settingsValidation';
+import {
+  DEFAULT_SECTION, SECTIONS, SECTION_KEYS, fieldLabel, sectionById, sectionOfKey, sectionPath,
+  type SectionDef, type SectionId,
+} from '../lib/settingsMeta';
+import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 
-// Validation schema for settings form data
-const settingsSchema = z.object({
-  proxy_port: z.string().regex(/^\d+$/, "Port must be a number").refine(val => {
-    const port = parseInt(val, 10);
-    return port > 0 && port <= 65535;
-  }, "Port must be between 1 and 65535").optional().or(z.literal('')),
-  admin_email: z.string().email("Invalid email address").optional().or(z.literal('')),
-  enable_siem_forwarding: z.enum(['true', 'false']).optional(),
-  siem_host: z.string().optional(),
-  siem_port: z.string().regex(/^\d+$/, "Port must be a number").refine(val => {
-    const port = parseInt(val, 10);
-    return port > 0 && port <= 65535;
-  }, "Port must be between 1 and 65535").optional().or(z.literal('')),
-  cache_size: z.string().regex(/^\d+$/, "Size must be a number").optional().or(z.literal('')),
-}).catchall(z.string());
+const SETTINGS_KEY = ['settings'] as const;
 
-// Sections for the sticky quick-nav. `id` must match the matching section's
-// anchor id below; the icon/colour mirror each section's card header.
-const SECTIONS = [
-  { id: 'sec-proxy', label: 'Proxy', Icon: Network, color: 'text-primary' },
-  { id: 'sec-notifications', label: 'Notifications', Icon: Bell, color: 'text-orange-500' },
-  { id: 'sec-dns-waf', label: 'DNS & WAF', Icon: Shield, color: 'text-cyan-500' },
-  { id: 'sec-access', label: 'Access', Icon: Lock, color: 'text-indigo-500' },
-  { id: 'sec-certificates', label: 'Certificates', Icon: Key, color: 'text-yellow-500' },
-  { id: 'sec-security', label: 'Security', Icon: Shield, color: 'text-emerald-500' },
-  { id: 'sec-account', label: 'Account', Icon: User, color: 'text-sky-500' },
-  { id: 'sec-appearance', label: 'Appearance', Icon: SunMoon, color: 'text-violet-500' },
-] as const;
+// Sections that show a refused value's message under the field itself. The
+// others (their controls are rebuilt in part B) list the messages after the
+// section, each one moving focus to its field.
+const INLINE_ERRORS: SectionId[] = ['access', 'filtering'];
 
-export function Settings() {
-  const { theme, setTheme } = useTheme();
-  const { data: settingsData, isLoading: loading, error } = useQuery<SettingRow[]>({
-    queryKey: ['settings'],
+interface BodyProps {
+  section: SectionDef;
+  form: SectionForm;
+  rows: SettingRow[] | undefined;
+  attention: AttentionItem[];
+  attentionLoading: boolean;
+  dirty: Record<SectionId, number>;
+}
+
+function SectionBody({ section, form, rows, attention, attentionLoading, dirty }: BodyProps) {
+  switch (section.id) {
+    case 'overview': return <OverviewSection form={form} rows={rows} attention={attention} attentionLoading={attentionLoading} dirty={dirty} />;
+    case 'access': return <AccessSection form={form} />;
+    case 'filtering': return <FilteringSection form={form} />;
+    case 'inspection': return <LegacyInspection form={form} />;
+    case 'alerts': return <LegacyAlerts form={form} />;
+    case 'logs': return <LegacyLogs form={form} />;
+    case 'admin': return <LegacyAdmin />;
+    case 'engine': return <LegacyEngine form={form} />;
+  }
+}
+
+function SettingsPage() {
+  const { section: sectionParam } = useParams<{ section: string }>();
+  const section = sectionById(sectionParam);
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
+  const queryClient = useQueryClient();
+  const drafts = useSettingsDrafts();
+  const settings = useQuery<SettingRow[]>({
+    queryKey: SETTINGS_KEY,
     queryFn: () => getData<SettingRow[]>('settings'),
   });
-  const [formData, setFormData] = useState<Record<string, string>>({});
-  const [isSaving, setIsSaving] = useState(false);
-  // Synchronous latch: React batches the isSaving state update so the
-  // disabled prop on the button doesn't reflect until the next render. A
-  // double-click within the same tick would fire handleSave twice and
-  // POST settings twice. The ref blocks the second call immediately.
+  const rows = settings.data;
+  const status = useQuery({ ...statusQuery, staleTime: 10_000 });
+  const egress = useQuery(egressTotalQuery);
+  const parsed = useMemo(() => parseSettings(rows), [rows]);
+  const [saving, setSaving] = useState<SectionId | null>(null);
+  // Synchronous latch against a double click posting twice.
   const savingRef = useRef(false);
 
-  // Quick-nav: track which section is currently near the top of the viewport so
-  // the matching chip can be highlighted (scrollspy).
-  const [activeSection, setActiveSection] = useState<string>(SECTIONS[0].id);
-  useEffect(() => {
-    // Guard: not present in test (jsdom) or very old browsers; the nav still
-    // works for jumping, it just won't auto-highlight the active section.
-    if (typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // Among the sections crossing the trigger band, pick the topmost.
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        if (visible[0]) setActiveSection(visible[0].target.id);
-      },
-      // Trigger band = just below the sticky nav, top ~30% of the viewport.
-      { rootMargin: '-96px 0px -68% 0px', threshold: 0 }
-    );
-    SECTIONS.forEach((s) => {
-      const el = document.getElementById(s.id);
-      if (el) observer.observe(el);
-    });
-    return () => observer.disconnect();
-  }, []);
+  // The draft of every section on top of the stored values. Each key belongs
+  // to one section, so the drafts never overlap.
+  const values = useMemo(() => {
+    const merged = { ...parsed.values };
+    for (const e of Object.values(drafts.edits)) Object.assign(merged, e);
+    return merged;
+  }, [parsed.values, drafts.edits]);
 
-  const scrollToSection = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    setActiveSection(id);
+  // The Overview's list, and its count on the nav. The stored values, not
+  // the drafts: it describes what is running.
+  const attention = useMemo(() => needsAttention({
+    values: parsed.values,
+    secrets: parsed.secrets,
+    proxyStatus: status.isError ? null : status.data ? (status.data.proxy_status ?? 'unknown') : undefined,
+    egressTotal: egress.isError ? null : egress.data,
+  }), [parsed, status.isError, status.data, egress.isError, egress.data]);
+  const warnings = attention.filter((a) => a.tone === 'warning').length;
+
+  const changesIn = (id: SectionId) =>
+    Object.keys(drafts.edits[id] ?? {}).length + Object.keys(drafts.secretEdits[id] ?? {}).length;
+  const dirty = Object.fromEntries(SECTIONS.map((s) => [s.id, changesIn(s.id)])) as Record<SectionId, number>;
+
+  if (!section) return <Navigate to={sectionPath(DEFAULT_SECTION)} replace />;
+  const id = section.id;
+
+  // A change is filed under the section that owns the key, wherever it was
+  // made (a profile on Overview changes several sections). A value equal to
+  // the stored one is no change.
+  const setValue = (key: string, value: string) => {
+    const owner = sectionOfKey(key);
+    if (!owner) return;
+    drafts.setEdit(owner, key, value === (parsed.values[key] ?? '') ? undefined : value);
   };
 
-  useEffect(() => {
-    if (!loading && !error && Array.isArray(settingsData)) {
-      // API returns [{setting_name, setting_value}, ...]: convert to {key: value} map
-      const map: Record<string, string> = {};
-      settingsData.forEach((s) => { map[s.setting_name] = s.setting_value; });
-      // Seeding an editable form's local state from the fetched settings is a
-      // deliberate mirror of async query data into state, exactly what
-      // set-state-in-effect flags. Vetted exception (a full key-reset refactor
-      // isn't warranted here). See issue #192.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFormData(map);
-    }
-  }, [settingsData, loading, error]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-  };
-
-  const handleSave = async () => {
-    if (savingRef.current) return;
-    savingRef.current = true;
-    setIsSaving(true);
-
-    try {
-      // Validate form data before submitting
-      settingsSchema.parse(formData);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        // Show validation errors to the user
-        error.issues.forEach((err: z.ZodIssue) => {
-          toast.error(`${err.path.join('.')}: ${err.message}`);
-        });
-      } else {
-        toast.error('Validation failed');
+  const form: SectionForm = {
+    values,
+    stored: parsed.values,
+    formData: values,
+    set: setValue,
+    setFormData: (update) => {
+      const next = update(values);
+      for (const k of new Set([...Object.keys(next), ...Object.keys(values)])) {
+        if (next[k] !== values[k]) setValue(k, next[k] ?? '');
       }
-      savingRef.current = false;
-      setIsSaving(false);
+    },
+    handleChange: (e) => setValue(e.target.name, e.target.value),
+    secretProps: (key) => {
+      const owner = sectionOfKey(key) ?? id;
+      return {
+        state: secretStateOf(parsed.secrets, key),
+        edit: drafts.secretEdits[owner]?.[key],
+        onEdit: (edit) => drafts.setSecretEdit(owner, key, edit),
+      };
+    },
+    error: (key) => drafts.errors[id]?.[key],
+  };
+
+  const focusField = (key: string) => {
+    requestAnimationFrame(() => document.getElementById(key)?.focus());
+  };
+
+  const save = async () => {
+    if (savingRef.current) return;
+    const req = sectionRequest(id, parsed.values, drafts.edits[id] ?? {}, drafts.secretEdits[id] ?? {});
+    const errors = validateSection(id, values, req.sent);
+    // An empty allowlist with default-deny on refuses every destination.
+    if (id === 'filtering' && values.egress_default_deny === 'true' && egress.data === 0) {
+      errors.egress_default_deny = 'the egress allowlist is empty, so every destination would be refused: add destinations first';
+    }
+    if (Object.keys(errors).length) {
+      drafts.setErrors(id, errors);
+      drafts.setResult(id, { kind: 'invalid', fields: Object.keys(errors) });
+      focusField(Object.keys(errors)[0]);
       return;
     }
-
-    const loadingToast = toast.loading('Saving settings...');
-    // Generate a unique idempotency key for this save operation
-    const idempotencyKey = typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    
+    savingRef.current = true;
+    setSaving(id);
     try {
-      await api.post('settings', formData, {
-        headers: {
-          'Idempotency-Key': idempotencyKey
-        }
+      const res = await api.post('settings', req.body, {
+        params: req.clear.length ? { clear: req.clear.join(',') } : undefined,
       });
-      toast.success('Settings saved successfully!', { id: loadingToast });
-      
-      // Auto reload config after saving
-      toast.promise(
-        api.post('maintenance/reload-config', {}, {
-          headers: {
-            'Idempotency-Key': `reload-${idempotencyKey}`
-          }
-        }),
-        {
-          loading: 'Applying new configuration to Proxy...',
-          success: 'Proxy reloaded with new configuration.',
-          error: 'Failed to apply configuration.',
-        }
-      );
-    } catch {
-      toast.error('Failed to save settings', { id: loadingToast });
+      const failedFiles: string[] = res.data?.status === 'partial' ? (res.data?.data?.failed ?? []) : [];
+      const apply = req.modes.includes('reload') ? await applyToProxy() : undefined;
+      queryClient.setQueryData<SettingRow[]>(SETTINGS_KEY, (old) => rowsAfterSave(old, req));
+      drafts.discard(id);
+      drafts.setResult(id, { kind: 'saved', at: new Date(), modes: req.modes, apply, failedFiles });
+      void queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      const field = status === 400 && axios.isAxiosError(err) ? parseFieldError(err.response?.data?.detail) : null;
+      if (field && SECTION_KEYS[id].includes(field.key)) {
+        drafts.setErrors(id, { [field.key]: field.message });
+        drafts.setResult(id, { kind: 'invalid', fields: [field.key] });
+        focusField(field.key);
+      } else if (field) {
+        drafts.setResult(id, { kind: 'invalid', fields: [], outside: `${fieldLabel(field.key)}: ${field.message}` });
+      } else {
+        drafts.setResult(id, { kind: 'error', message: getErrorMessage(err, 'the backend did not answer') });
+      }
     } finally {
       savingRef.current = false;
-      setIsSaving(false);
+      setSaving(null);
     }
   };
 
-
-  const handleDownloadCa = async () => {
-    try {
-      const response = await api.get('security/download-ca', { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'secure-proxy-ca.pem');
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode?.removeChild(link);
-      toast.success("CA Certificate downloaded!");
-    } catch {
-      toast.error("Failed to download CA certificate. Ensure HTTPS filtering is enabled.");
-    }
+  const retryApply = async () => {
+    const last = drafts.results[id];
+    if (last?.kind !== 'saved') return;
+    const apply = await applyToProxy();
+    drafts.setResult(id, { ...last, apply });
   };
+
+  const fieldErrors = drafts.errors[id] ?? {};
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap gap-3 justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight bg-linear-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">Settings</h1>
-          <p className="text-sm text-muted-foreground">Configure proxy behavior and security</p>
-        </div>
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className={`flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium transition-colors ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-primary/90'}`}
-        >
-          <Save className="w-4 h-4 mr-2" />
-          {isSaving ? 'Saving...' : 'Save Changes'}
-        </button>
-      </div>
-
-      {/* Quick-nav: full-width sticky bar that jumps to each settings section */}
-      <div className="sticky top-0 z-20 -mt-2 py-2 bg-background/80 backdrop-blur-md">
-        <nav
-          aria-label="Settings sections"
-          className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar rounded-xl border border-border/50 bg-secondary/30 p-1.5"
-        >
-          {SECTIONS.map(({ id, label, Icon, color }) => {
-            const active = activeSection === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => scrollToSection(id)}
-                aria-current={active ? 'true' : undefined}
-                className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                  active
-                    ? 'bg-primary/15 text-primary ring-1 ring-primary/30'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
-                }`}
-              >
-                <Icon className={`w-3.5 h-3.5 ${active ? 'text-primary' : color}`} />
-                {label}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* Live service status */}
-      <ServiceStatus />
-
-      {/* Quick Setup Presets */}
-      <Presets
-        formData={formData}
-        onApply={(values) => setFormData(prev => ({ ...prev, ...values }))}
-      />
-
-      {/* Setting cards flow into two columns on wide screens to cut scrolling;
-          break-inside-avoid keeps each card whole. */}
-      <div className="columns-1 xl:columns-2 xl:gap-6 *:mb-6 *:break-inside-avoid">
-        <Card id="sec-proxy" className="scroll-mt-24">
-          <CardHeader>
-            <div className="flex items-center space-x-2">
-              <Network className="w-5 h-5 text-primary" />
-              <CardTitle>Proxy Configuration</CardTitle>
-            </div>
-            <CardDescription>Basic networking and port settings for Squid</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label htmlFor="proxy_port" className="text-sm font-medium">Proxy Port</label>
-                <input
-                  type="number"
-                  id="proxy_port"
-                  name="proxy_port"
-                  value={formData.proxy_port || 3128}
-                  onChange={handleChange}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                />
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="cache_size" className="text-sm font-medium">Cache Size (MB)</label>
-                <input
-                  type="number"
-                  id="cache_size"
-                  name="cache_size"
-                  value={formData.cache_size || 1000}
-                  onChange={handleChange}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                />
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="memory_cache" className="text-sm font-medium">Memory Cache (MB)</label>
-                <input
-                  type="number"
-                  id="memory_cache"
-                  name="memory_cache"
-                  value={formData.memory_cache || 256}
-                  onChange={handleChange}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="allowed_networks" className="text-sm font-medium">Allowed Networks</label>
-              <input
-                type="text"
-                id="allowed_networks"
-                name="allowed_networks"
-                value={formData.allowed_networks || '10.0.0.0/8 172.16.0.0/12 192.168.0.0/16'}
-                onChange={handleChange}
-                className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-              />
-              <p className="text-xs text-muted-foreground">Space-separated list of CIDR subnets allowed to use the proxy.</p>
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="extra_ssl_ports" className="text-sm font-medium">Extra SSL/HTTPS Ports</label>
-              <input
-                type="text"
-                id="extra_ssl_ports"
-                name="extra_ssl_ports"
-                value={formData.extra_ssl_ports || ''}
-                onChange={handleChange}
-                placeholder="8006 9090 8443"
-                className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-              />
-              <p className="text-xs text-muted-foreground">Space-separated ports for HTTPS CONNECT (e.g. Proxmox 8006, Grafana 3000). Requires proxy restart.</p>
-            </div>
-            {/* Network overlay toggles: compact grid */}
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Network & Overlay</label>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
-                <div>
-                  <p className="text-xs font-medium text-blue-600 dark:text-blue-400">Tailscale</p>
-                  <p className="text-[10px] text-muted-foreground">Overlay network access</p>
-                </div>
-                <Toggle
-                  name="tailscale_enabled"
-                  label="Tailscale"
-                  checked={formData.tailscale_enabled === 'true'}
-                  onChange={(v) => setFormData(prev => ({ ...prev, tailscale_enabled: v ? 'true' : 'false' }))}
-                  size="sm"
-                  className="ml-2"
-                />
-              </div>
-              <div className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
-                <div>
-                  <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Dynamic DNS</p>
-                  <p className="text-[10px] text-muted-foreground">Auto-update public IP</p>
-                </div>
-                <Toggle
-                  name="ddns_enabled"
-                  label="Dynamic DNS"
-                  checked={formData.ddns_enabled === 'true'}
-                  onChange={(v) => setFormData(prev => ({ ...prev, ddns_enabled: v ? 'true' : 'false' }))}
-                  size="sm"
-                  className="ml-2"
-                />
-              </div>
-            </div>
-            {/* Tailscale expanded */}
-            {formData.tailscale_enabled === 'true' && (
-              <div className="flex gap-3 mt-2 p-3 border border-border/30 rounded-lg bg-secondary/20">
-                <div className="flex-1 space-y-1">
-                  <label htmlFor="tailscale_auth_key" className="text-[10px] text-muted-foreground">Auth Key</label>
-                  <input type="password" id="tailscale_auth_key" name="tailscale_auth_key" value={formData.tailscale_auth_key || ''} onChange={handleChange} placeholder="tskey-auth-..."
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
-                </div>
-                <div className="flex-1 space-y-1">
-                  <label htmlFor="tailscale_hostname" className="text-[10px] text-muted-foreground">Hostname</label>
-                  <input type="text" id="tailscale_hostname" name="tailscale_hostname" value={formData.tailscale_hostname || 'secure-proxy'} onChange={handleChange}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
-                </div>
-              </div>
-            )}
-            {/* DDNS expanded */}
-            {formData.ddns_enabled === 'true' && (
-              <div className="flex gap-3 mt-2 p-3 border border-border/30 rounded-lg bg-secondary/20">
-                <div className="flex-1 space-y-1">
-                  <label htmlFor="ddns_provider" className="text-[10px] text-muted-foreground">Provider</label>
-                  <select id="ddns_provider" name="ddns_provider" value={formData.ddns_provider || 'cloudflare'} onChange={handleChange}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all">
-                    <option value="cloudflare">Cloudflare</option><option value="duckdns">DuckDNS</option><option value="noip">No-IP</option><option value="custom">Custom</option>
-                  </select>
-                </div>
-                <div className="flex-1 space-y-1">
-                  <label htmlFor="ddns_domain" className="text-[10px] text-muted-foreground">Domain</label>
-                  <input type="text" id="ddns_domain" name="ddns_domain" value={formData.ddns_domain || ''} onChange={handleChange} placeholder="proxy.example.com"
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
-                </div>
-                <div className="flex-1 space-y-1">
-                  <label htmlFor="ddns_token" className="text-[10px] text-muted-foreground">Token</label>
-                  <input type="password" id="ddns_token" name="ddns_token" value={formData.ddns_token || ''} onChange={handleChange}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
-                </div>
-              </div>
-            )}
-
-            {/* Proxy behavior toggles: compact grid */}
-            <label className="text-xs font-medium text-muted-foreground mb-1 block mt-4">Proxy Behavior</label>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { name: 'aggressive_caching_enabled', label: 'Aggressive Cache', desc: 'Force static caching' },
-                { name: 'enable_offline_mode', label: 'Offline Mode', desc: 'Serve stale cache' },
-              ].map(t => (
-                <div key={t.name} className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
-                  <div>
-                    <p className="text-xs font-medium">{t.label}</p>
-                    <p className="text-[10px] text-muted-foreground">{t.desc}</p>
-                  </div>
-                  <Toggle
-                    name={t.name}
-                    label={t.label}
-                    checked={formData[t.name] === 'true'}
-                    onChange={(v) => setFormData(prev => ({ ...prev, [t.name]: v ? 'true' : 'false' }))}
-                    size="sm"
-                    className="ml-2"
-                  />
-                </div>
-              ))}
-            </div>
-
-            {/* Cache bypass */}
-            <div className="mt-3 p-3 border border-border/30 rounded-lg bg-secondary/20">
-              <label htmlFor="cache_bypass_domains" className="text-[10px] text-muted-foreground">Cache Bypass Domains (comma-separated)</label>
-              <input type="text" id="cache_bypass_domains" name="cache_bypass_domains" value={formData.cache_bypass_domains || ''} onChange={handleChange}
-                placeholder="banking.com, api.internal.local"
-                className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-hidden focus:ring-1 focus:ring-primary" />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Client Setup: how to connect devices */}
-        <ClientSetup />
-
-        <Card id="sec-notifications" className="scroll-mt-24">
-          <CardHeader>
-            <div className="flex items-center space-x-2">
-              <Bell className="w-5 h-5 text-orange-500" />
-              <CardTitle>Notifications & Alerts</CardTitle>
-            </div>
-            <CardDescription>Configure alerts for critical security events and WAF blocks</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 border border-border/50 rounded-lg bg-secondary/40">
-              <div className="space-y-0.5 w-full">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <label className="text-sm font-medium">Enable Notifications</label>
-                    <p className="text-xs text-muted-foreground">Receive real-time alerts via your preferred providers.</p>
-                  </div>
-                  <Toggle
-                    name="enable_notifications"
-                    label="Enable Notifications"
-                    checked={formData.enable_notifications === 'true'}
-                    onChange={(v) => setFormData(prev => ({ ...prev, enable_notifications: v ? 'true' : 'false' }))}
-                    size="md"
-                  />
-                </div>
-                
-                {formData.enable_notifications === 'true' && (
-                  <div className="mt-4 pt-4 border-t border-border/50 space-y-4">
-                    {/* Telegram */}
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium text-blue-600 dark:text-blue-400">Telegram Bot</h4>
-                      <div className="grid gap-2">
-                        <input 
-                          type="text" 
-                          name="telegram_bot_token"
-                          value={formData.telegram_bot_token || ''}
-                          onChange={handleChange}
-                          placeholder="Bot Token (e.g. 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                        />
-                        <input 
-                          type="text" 
-                          name="telegram_chat_id"
-                          value={formData.telegram_chat_id || ''}
-                          onChange={handleChange}
-                          placeholder="Chat ID (e.g. -1001234567890)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Gotify */}
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium text-green-600 dark:text-green-400">Gotify Server</h4>
-                      <div className="grid gap-2">
-                        <input 
-                          type="text" 
-                          name="gotify_url"
-                          value={formData.gotify_url || ''}
-                          onChange={handleChange}
-                          placeholder="Gotify URL (e.g. https://gotify.yourdomain.com)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                        />
-                        <input 
-                          type="text" 
-                          name="gotify_token"
-                          value={formData.gotify_token || ''}
-                          onChange={handleChange}
-                          placeholder="App Token"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                        />
-                      </div>
-                    </div>
-
-                    {/* ntfy.sh */}
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium text-cyan-600 dark:text-cyan-400">ntfy.sh (Self-hosted Push)</h4>
-                      <div className="grid gap-2">
-                        <input
-                          type="text"
-                          name="ntfy_url"
-                          value={formData.ntfy_url || ''}
-                          onChange={handleChange}
-                          placeholder="Server URL (e.g. https://ntfy.sh or https://ntfy.yourdomain.com)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                        />
-                        <input
-                          type="text"
-                          name="ntfy_topic"
-                          value={formData.ntfy_topic || ''}
-                          onChange={handleChange}
-                          placeholder="Topic (e.g. proxy-alerts)"
-                          className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                        />
-                      </div>
-                    </div>
-
-                    {/* MS Teams */}
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium text-purple-600 dark:text-purple-400">Microsoft Teams</h4>
-                      <input 
-                        type="text" 
-                        name="teams_webhook_url"
-                        value={formData.teams_webhook_url || ''}
-                        onChange={handleChange}
-                        placeholder="Teams Webhook URL"
-                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                      />
-                    </div>
-
-                    {/* Custom Webhook */}
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium text-orange-600 dark:text-orange-400">Custom Webhook (JSON)</h4>
-                      <input 
-                        type="text" 
-                        name="webhook_url"
-                        value={formData.webhook_url || ''}
-                        onChange={handleChange}
-                        placeholder="https://your-webhook-endpoint.com/receive"
-                        className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card id="sec-dns-waf" className="scroll-mt-24">
-          <CardHeader>
-            <div className="flex items-center space-x-2">
-              <Shield className="w-5 h-5 text-cyan-500" />
-              <CardTitle>DNS & WAF Intelligence</CardTitle>
-            </div>
-            <CardDescription>DNS blackhole, WAF heuristics, and essential domain whitelist</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Pi-hole / AdGuard Detection */}
-            <div className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
-              <div>
-                <p className="text-xs font-medium text-cyan-600 dark:text-cyan-400">DNS Provider Auto-Detect</p>
-                <p className="text-[10px] text-muted-foreground">Scan LAN for Pi-hole or AdGuard Home to use as upstream DNS</p>
-              </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  const t = toast.loading('Scanning LAN for DNS providers...');
-                  try {
-                    const res = await api.post('dns/detect', {});
-                    const found = res.data?.data?.found || [];
-                    if (found.length > 0) {
-                      const names = found.map((d: { name: string }) => d.name).join(', ');
-                      toast.success(`Found: ${names}. Configure in .env DNS_UPSTREAM_1=${found[0].ip}`, { id: t, duration: 8000 });
-                    } else {
-                      toast.error('No Pi-hole or AdGuard found on LAN', { id: t });
-                    }
-                  } catch {
-                    toast.error('Scan failed. Check network access', { id: t });
-                  }
-                }}
-                className="px-3 py-1.5 text-xs font-medium rounded-md bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors shrink-0"
-              >
-                Scan LAN
-              </button>
-            </div>
-
-            {/* Essential whitelist */}
-            <div className="p-4 border border-border/50 rounded-lg bg-secondary/40">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <label className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Essential Domain Whitelist</label>
-                  <p className="text-xs text-muted-foreground">Domains that should never be blocked by the DNS blackhole. Click to add common services.</p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { label: 'GitHub', domains: ['github.com', 'raw.githubusercontent.com', 'api.github.com', 'gist.github.com', 'objects.githubusercontent.com'] },
-                  { label: 'Google', domains: ['google.com', 'www.google.com', 'accounts.google.com', 'apis.google.com', 'fonts.googleapis.com', 'fonts.gstatic.com'] },
-                  { label: 'Microsoft', domains: ['microsoft.com', 'login.microsoftonline.com', 'graph.microsoft.com', 'outlook.office.com'] },
-                  { label: 'AI Services', domains: ['openai.com', 'api.openai.com', 'claude.ai', 'api.anthropic.com', 'gemini.google.com', 'bard.google.com'] },
-                  { label: 'Docker', domains: ['docker.com', 'hub.docker.com', 'registry.docker.io', 'auth.docker.io', 'production.cloudflare.docker.com'] },
-                  { label: 'CDN/JS', domains: ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'unpkg.com', 'npmjs.org', 'registry.npmjs.org'] },
-                  { label: 'Cloudflare', domains: ['cloudflare.com', '1.1.1.1', 'one.one.one.one', 'dash.cloudflare.com'] },
-                ].map((group) => (
-                  <button
-                    key={group.label}
-                    type="button"
-                    onClick={async () => {
-                      const t = toast.loading(`Adding ${group.label} domains...`);
-                      const results = await Promise.allSettled(
-                        group.domains.map((domain) =>
-                          api.post('domain-whitelist', { domain, description: `Essential: ${group.label}` })
-                        )
-                      );
-                      const added = results.filter((r) => r.status === 'fulfilled').length;
-                      // 400 = already-whitelisted (these domains are known-good), expected on
-                      // a repeat click. Anything else (auth, 5xx, network) is a real failure.
-                      const failed = results.filter((r) =>
-                        r.status === 'rejected' &&
-                        ![400, 409].includes((r.reason as { response?: { status?: number } })?.response?.status ?? 0)
-                      ).length;
-                      if (failed > 0) {
-                        toast.error(`${group.label}: ${added} added, ${failed} failed. Check API/auth`, { id: t });
-                      } else {
-                        toast.success(`${group.label}: ${added} domains whitelisted`, { id: t });
-                      }
-                    }}
-                    className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
-                  >
-                    + {group.label}
+    <div className="flex flex-col gap-6">
+      <PageHeader eyebrow="System" title="Settings" />
+      <div className={isDesktop ? 'flex items-start gap-8' : 'flex flex-col gap-4'}>
+        <SettingsNav current={id} dirty={dirty} attention={settings.isSuccess ? warnings : undefined} />
+        <section aria-labelledby="settings-section-title" className="flex min-w-0 flex-1 flex-col gap-4">
+          <header className="flex flex-col gap-1">
+            <h2 id="settings-section-title" className="text-lg font-semibold text-ink">{section.label}</h2>
+            <p className="text-sm text-ink-muted">{section.purpose}</p>
+          </header>
+          {settings.isError && (
+            <Notice tone="danger" title="The settings could not be loaded">
+              GET /api/settings failed, so the values below are missing and nothing here can be saved safely.
+            </Notice>
+          )}
+          <SectionBody
+            section={section}
+            form={form}
+            rows={rows}
+            attention={attention}
+            attentionLoading={settings.isPending}
+            dirty={dirty}
+          />
+          {!INLINE_ERRORS.includes(id) && Object.keys(fieldErrors).length > 0 && (
+            <ul aria-label="Fields that need attention" className="flex flex-col gap-1 rounded-panel border border-danger-line bg-danger-subtle px-4 py-3 text-sm text-danger">
+              {Object.entries(fieldErrors).map(([key, msg]) => (
+                <li key={key}>
+                  <button type="button" className="text-left underline-offset-2 hover:underline" onClick={() => focusField(key)}>
+                    {fieldLabel(key)}: {msg}
                   </button>
-                ))}
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-2">After adding, go to Blacklists → Domain Whitelist tab to manage, or click "Reload DNS" to apply.</p>
-            </div>
-
-            {/* GDPR + DoH: compact row */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
-                <div>
-                  <p className="text-xs font-medium text-blue-600 dark:text-blue-400">GDPR Mode</p>
-                  <p className="text-[10px] text-muted-foreground">Anonymize IPs in logs (last octet → x)</p>
-                </div>
-                <Toggle
-                  name="gdpr_mode"
-                  label="GDPR Mode"
-                  checked={formData.gdpr_mode === 'true'}
-                  onChange={(v) => setFormData(prev => ({ ...prev, gdpr_mode: v ? 'true' : 'false' }))}
-                  size="sm"
-                  className="ml-2"
-                />
-              </div>
-
-            {/* DoH Blocker */}
-            <div className="p-3 border border-border/50 rounded-lg bg-secondary/30">
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="text-xs font-medium text-red-600 dark:text-red-400">Block DNS-over-HTTPS (DoH)</label>
-                  <p className="text-[10px] text-muted-foreground">Prevent devices from bypassing DNS blackhole via encrypted DNS. Blocks Google DNS, Cloudflare DNS, Quad9, etc.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const dohDomains = [
-                      'dns.google', 'dns.google.com', 'dns64.dns.google',
-                      'cloudflare-dns.com', 'mozilla.cloudflare-dns.com', 'one.one.one.one',
-                      'doh.opendns.com', 'dns.quad9.net', 'doh.cleanbrowsing.org',
-                      'dns.adguard.com', 'doh.appliedprivacy.net', 'doh.li',
-                      'dns.nextdns.io', 'dns.controld.com',
-                    ];
-                    const t = toast.loading('Blocking DoH providers...');
-                    const results = await Promise.allSettled(
-                      dohDomains.map((domain) =>
-                        api.post('domain-blacklist', { domain, description: 'DoH provider (anti-bypass)' })
-                      )
-                    );
-                    const added = results.filter((r) => r.status === 'fulfilled').length;
-                    // 400 = already-blacklisted (known-good list), expected on a repeat click.
-                    const failed = results.filter((r) =>
-                      r.status === 'rejected' &&
-                      ![400, 409].includes((r.reason as { response?: { status?: number } })?.response?.status ?? 0)
-                    ).length;
-                    try { await api.post('maintenance/reload-dns'); } catch { /* ignore */ }
-                    if (failed > 0) {
-                      toast.error(`DoH: ${added} blocked, ${failed} failed. Check API/auth`, { id: t });
-                    } else {
-                      toast.success(`Blocked ${added} DoH providers + DNS reloaded`, { id: t });
-                    }
-                  }}
-                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors shrink-0"
-                >
-                  Block DoH
-                </button>
-              </div>
-            </div>
-            </div>
-
-            {/* Log retention */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 border border-border/50 rounded-lg bg-secondary/40 space-y-2">
-                <label htmlFor="log_retention_days" className="text-sm font-medium">Log Retention (days)</label>
-                <input
-                  type="number"
-                  id="log_retention_days"
-                  name="log_retention_days"
-                  value={formData.log_retention_days || '30'}
-                  onChange={handleChange}
-                  min={1} max={365}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                />
-                <p className="text-[10px] text-muted-foreground">Logs older than this are automatically deleted.</p>
-              </div>
-              <div className="p-4 border border-border/50 rounded-lg bg-secondary/40 space-y-2">
-                <label htmlFor="waf_block_threshold" className="text-sm font-medium">WAF Block Threshold</label>
-                <input
-                  type="number"
-                  id="waf_block_threshold"
-                  name="waf_block_threshold"
-                  value={formData.waf_block_threshold || '10'}
-                  onChange={handleChange}
-                  min={1} max={100}
-                  className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
-                />
-                <p className="text-[10px] text-muted-foreground">Anomaly score needed to block. Lower = stricter (default: 10).</p>
-              </div>
-            </div>
-
-            {/* Auto-refresh blocklists */}
-            <div className="p-4 border border-border/50 rounded-lg bg-secondary/40">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <label className="text-sm font-medium">Auto-Refresh Blocklists</label>
-                  <p className="text-xs text-muted-foreground">Automatically re-download popular IP and domain blocklists. Deduplicates on import.</p>
-                </div>
-                <Toggle
-                  name="auto_refresh_enabled"
-                  label="Auto-Refresh Blocklists"
-                  checked={formData.auto_refresh_enabled === 'true'}
-                  onChange={(v) => setFormData(prev => ({ ...prev, auto_refresh_enabled: v ? 'true' : 'false' }))}
-                  size="sm"
-                />
-              </div>
-              {formData.auto_refresh_enabled === 'true' && (
-                <div className="mt-2 pt-2 border-t border-border/50">
-                  <label htmlFor="auto_refresh_hours" className="text-xs text-muted-foreground">Refresh Interval (hours)</label>
-                  <input type="number" id="auto_refresh_hours" name="auto_refresh_hours" value={formData.auto_refresh_hours || '24'} onChange={handleChange}
-                    min={1} max={168} className="w-full mt-1 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-hidden focus:ring-1 focus:ring-primary" />
-                  <p className="text-[10px] text-muted-foreground mt-1">Default: 24h. Lists: Firehol L1, Spamhaus DROP, fabriziosalmi/blacklists.</p>
-                </div>
-              )}
-            </div>
-
-            {/* WAF Heuristics toggles */}
-            <div className="p-4 border border-border/50 rounded-lg bg-secondary/40">
-              <label className="text-sm font-medium mb-2 block">WAF Behavioral Heuristics</label>
-              <p className="text-xs text-muted-foreground mb-3">Advanced stateful anomaly detection. Applied to the running WAF immediately on save. No container restart needed.</p>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { key: 'waf_h_entropy', label: 'Entropy Detection', desc: 'Block high-entropy payloads (encrypted/compressed = exfiltration)' },
-                  { key: 'waf_h_beaconing', label: 'C2 Beaconing', desc: 'Detect regular-interval request patterns' },
-                  { key: 'waf_h_pii', label: 'PII Leak Counter', desc: 'Count emails/CC/SSN in responses' },
-                  { key: 'waf_h_sharding', label: 'Dest Sharding', desc: 'Block rapid multi-destination access' },
-                  { key: 'waf_h_ghosting', label: 'Protocol Ghosting', desc: 'Detect SSH/ELF/PE in HTTP body' },
-                  { key: 'waf_h_sequence', label: 'Sequence Validation', desc: 'Detect impossible request sequences (off by default)' },
-                ].map((h) => (
-                  <div key={h.key} className="flex items-center justify-between p-2 bg-secondary/20 rounded">
-                    <div>
-                      <p className="text-xs font-medium">{h.label}</p>
-                      <p className="text-[10px] text-muted-foreground">{h.desc}</p>
-                    </div>
-                    <Toggle
-                      name={h.key}
-                      label={h.label}
-                      checked={formData[h.key] !== 'false' && formData[h.key] !== '0'}
-                      onChange={(v) => setFormData(prev => ({ ...prev, [h.key]: v ? 'true' : 'false' }))}
-                      size="sm"
-                      className="ml-2"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card id="sec-access" className="scroll-mt-24">
-          <CardHeader className="p-4 pb-2">
-            <div className="flex items-center space-x-2">
-              <Shield className="w-4 h-4 text-indigo-500" />
-              <CardTitle className="text-sm">Access Control</CardTitle>
-            </div>
-            <CardDescription className="text-xs">Manage who and when can use the proxy</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
-              {/* Bandwidth */}
-              <div className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
-                <div>
-                  <p className="text-xs font-medium">Bandwidth Throttling</p>
-                  <p className="text-[10px] text-muted-foreground">Delay pools for congestion</p>
-                </div>
-                <Toggle
-                  name="enable_bandwidth_limits"
-                  label="Bandwidth Throttling"
-                  checked={formData.enable_bandwidth_limits === 'true'}
-                  onChange={(v) => setFormData(prev => ({ ...prev, enable_bandwidth_limits: v ? 'true' : 'false' }))}
-                  size="sm"
-                  className="ml-2"
-                />
-              </div>
-              {/* Time restrictions */}
-              <div className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
-                <div>
-                  <p className="text-xs font-medium">Time-based Restrictions</p>
-                  <p className="text-[10px] text-muted-foreground">Limit access to specific hours</p>
-                </div>
-                <Toggle
-                  name="enable_time_restrictions"
-                  label="Time-based Restrictions"
-                  checked={formData.enable_time_restrictions === 'true'}
-                  onChange={(v) => setFormData(prev => ({ ...prev, enable_time_restrictions: v ? 'true' : 'false' }))}
-                  size="sm"
-                  className="ml-2"
-                />
-              </div>
-              {/* Proxy auth */}
-              <div className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
-                <div>
-                  <p className="text-xs font-medium">Proxy Authentication</p>
-                  <p className="text-[10px] text-muted-foreground">Require login to use proxy</p>
-                </div>
-                <Toggle
-                  name="enable_proxy_auth"
-                  label="Proxy Authentication"
-                  checked={formData.enable_proxy_auth === 'true'}
-                  onChange={(v) => setFormData(prev => ({ ...prev, enable_proxy_auth: v ? 'true' : 'false' }))}
-                  size="sm"
-                  className="ml-2"
-                />
-              </div>
-            </div>
-            {/* Expanded settings for enabled toggles */}
-            {formData.enable_bandwidth_limits === 'true' && (
-              <div className="flex gap-3 mt-3 p-3 border border-border/30 rounded-lg bg-secondary/20">
-                <div className="flex-1 space-y-1">
-                  <label htmlFor="bandwidth_limit_mbps" className="text-[10px] text-muted-foreground">Total (Mbps)</label>
-                  <input type="number" id="bandwidth_limit_mbps" name="bandwidth_limit_mbps" value={formData.bandwidth_limit_mbps || '10'} onChange={handleChange}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
-                </div>
-                <div className="flex-1 space-y-1">
-                  <label htmlFor="bandwidth_limit_per_user_kbps" className="text-[10px] text-muted-foreground">Per-User (Kbps)</label>
-                  <input type="number" id="bandwidth_limit_per_user_kbps" name="bandwidth_limit_per_user_kbps" value={formData.bandwidth_limit_per_user_kbps || '500'} onChange={handleChange}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
-                </div>
-              </div>
-            )}
-            {formData.enable_time_restrictions === 'true' && (
-              <div className="flex gap-3 mt-3 p-3 border border-border/30 rounded-lg bg-secondary/20">
-                <div className="flex-1 space-y-1">
-                  <label htmlFor="time_restriction_start" className="text-[10px] text-muted-foreground">Start</label>
-                  <input type="time" id="time_restriction_start" name="time_restriction_start" value={formData.time_restriction_start || '09:00'} onChange={handleChange}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
-                </div>
-                <div className="flex-1 space-y-1">
-                  <label htmlFor="time_restriction_end" className="text-[10px] text-muted-foreground">End</label>
-                  <input type="time" id="time_restriction_end" name="time_restriction_end" value={formData.time_restriction_end || '17:00'} onChange={handleChange}
-                    className="w-full bg-secondary/30 border border-border/50 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all" />
-                </div>
-              </div>
-            )}
-            {formData.enable_proxy_auth === 'true' && (
-              <div className="mt-3 p-3 border border-border/30 rounded-lg bg-secondary/20">
-                <label htmlFor="auth_method" className="text-[10px] text-muted-foreground">Auth Method</label>
-                <select id="auth_method" name="auth_method" value={formData.auth_method || 'basic'} onChange={handleChange}
-                  className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-hidden focus:ring-1 focus:ring-primary">
-                  <option value="basic">Basic</option>
-                  <option value="digest">Digest</option>
-                </select>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card id="sec-certificates" className="scroll-mt-24">
-          <CardHeader>
-            <div className="flex items-center space-x-2">
-              <Key className="w-5 h-5 text-yellow-500" />
-              <CardTitle>Certificates & HTTPS</CardTitle>
-            </div>
-            <CardDescription>Manage SSL/TLS certificates for HTTPS Inspection</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 border border-border/50 rounded-lg bg-secondary/40">
-              <div className="space-y-0.5">
-                <label className="text-sm font-medium">HTTPS Inspection (SSL Bump)</label>
-                <p className="text-xs text-muted-foreground">Intercept HTTPS traffic for WAF, content filtering, and security scanning.</p>
-              </div>
-              <Toggle
-                name="ssl_bump_enabled"
-                label="HTTPS Inspection (SSL Bump)"
-                checked={formData.ssl_bump_enabled === 'true'}
-                onChange={(v) => setFormData(prev => ({ ...prev, ssl_bump_enabled: v ? 'true' : 'false' }))}
-                size="md"
-                className="ml-4"
-              />
-            </div>
-            {formData.ssl_bump_enabled === 'true' && (
-              <div className="text-xs text-muted-foreground p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
-                <p className="font-semibold text-amber-600 dark:text-yellow-400 mb-1">Important:</p>
-                <p>You must install the Root CA Certificate below on all client devices to avoid security warnings.</p>
-              </div>
-            )}
-            <div className="flex items-center justify-between p-4 border border-border/50 rounded-lg bg-secondary/40">
-              <div className="space-y-0.5">
-                <label className="text-sm font-medium">Default-deny egress</label>
-                <p className="text-xs text-muted-foreground">Clients may reach only destinations in the Egress Allowlist; everything else is denied.</p>
-              </div>
-              <Toggle
-                name="egress_default_deny"
-                label="Default-deny egress"
-                checked={formData.egress_default_deny === 'true'}
-                onChange={(v) => setFormData(prev => ({ ...prev, egress_default_deny: v ? 'true' : 'false' }))}
-                size="md"
-                className="ml-4"
-              />
-            </div>
-            {formData.egress_default_deny === 'true' && (
-              <div className="text-xs text-muted-foreground p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
-                <p className="font-semibold text-amber-600 dark:text-yellow-400 mb-1">Important:</p>
-                <p>With an empty Egress Allowlist, all client traffic is blocked. Add the destinations you allow first. Saving restarts the proxy.</p>
-              </div>
-            )}
-            <div className="p-4 border border-border/50 rounded-lg bg-secondary/40">
-              <h3 className="text-sm font-medium mb-2">Root CA Certificate</h3>
-              <p className="text-xs text-muted-foreground mb-4">
-                To prevent security warnings when HTTPS inspection is enabled, you must install this Root CA Certificate on all client devices (Windows, macOS, Linux, iOS, Android) and mark it as trusted.
-              </p>
-              <button 
-                onClick={handleDownloadCa}
-                className="flex items-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Download CA Certificate (.pem)
-              </button>
-            </div>
-            <div className="text-xs text-muted-foreground p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
-              <p className="font-semibold text-blue-600 dark:text-blue-400 mb-1">Installation Instructions:</p>
-              <ul className="list-disc pl-4 space-y-1">
-                <li><strong>Windows:</strong> Double-click the file and install to "Trusted Root Certification Authorities".</li>
-                <li><strong>macOS:</strong> Open in Keychain Access, select the cert, Get Info, and set "Always Trust".</li>
-                <li><strong>Linux (Ubuntu):</strong> Copy to <code>/usr/local/share/ca-certificates/</code> and run <code>update-ca-certificates</code>.</li>
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card id="sec-security" className="scroll-mt-24">
-          <CardHeader>
-            <div className="flex items-center space-x-2">
-              <Shield className="w-5 h-5 text-emerald-500" />
-              <CardTitle>Security</CardTitle>
-            </div>
-            <CardDescription>Advanced protection mechanisms</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 border border-border/50 rounded-lg bg-secondary/40">
-              <div className="space-y-0.5">
-                <label className="text-sm font-medium">Block Known Malicious IPs</label>
-                <p className="text-xs text-muted-foreground">Automatically download and apply community blacklists.</p>
-              </div>
-              <Toggle
-                name="enable_ip_blacklist"
-                label="Block Known Malicious IPs"
-                checked={formData.enable_ip_blacklist !== 'false'}
-                onChange={(v) => setFormData(prev => ({ ...prev, enable_ip_blacklist: v ? 'true' : 'false' }))}
-                size="md"
-              />
-            </div>
-            <div className="flex items-center justify-between p-4 border border-border/50 rounded-lg bg-secondary/40">
-              <div className="space-y-0.5 w-full">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <label className="text-sm font-medium">Outbound WAF (Content Inspection)</label>
-                    <p className="text-xs text-muted-foreground">Inspect request bodies to block sensitive data leaks and injection attacks.</p>
-                  </div>
-                  <Toggle
-                    name="enable_waf"
-                    label="Outbound WAF (Content Inspection)"
-                    checked={formData.enable_waf === 'true'}
-                    onChange={(v) => setFormData(prev => ({ ...prev, enable_waf: v ? 'true' : 'false' }))}
-                    size="md"
-                  />
-                </div>
-                {formData.enable_waf === 'true' && (
-                  <div className="mt-2 pt-2 border-t border-border/50">
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Custom WAF Rules (Regex format). One rule per line. Lines starting with # are ignored.
-                    </p>
-                    <textarea 
-                      name="waf_custom_rules"
-                      value={formData.waf_custom_rules || '# Example: block specific keyword\n# \\b(secret_project_x)\\b\n'}
-                      onChange={handleChange}
-                      rows={4}
-                      className="w-full bg-secondary/30 border border-border/50 rounded-lg px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all font-mono text-xs"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-            {/* Security toggles: compact grid */}
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Security & Filtering</label>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
-              {[
-                { name: 'block_direct_ip', label: 'Block Direct IP', desc: 'Prevent DNS bypass' },
-                { name: 'enable_safesearch', label: 'SafeSearch', desc: 'Google/Bing/DDG' },
-                { name: 'enable_youtube_restricted', label: 'YouTube Restricted', desc: 'Hide mature content' },
-                { name: 'enable_content_filtering', label: 'Content Filtering', desc: 'Block dangerous files' },
-              ].map(t => (
-                <div key={t.name} className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30">
-                  <div>
-                    <p className="text-xs font-medium">{t.label}</p>
-                    <p className="text-[10px] text-muted-foreground">{t.desc}</p>
-                  </div>
-                  <Toggle
-                    name={t.name}
-                    label={t.label}
-                    checked={formData[t.name] === 'true'}
-                    onChange={(v) => setFormData(prev => ({ ...prev, [t.name]: v ? 'true' : 'false' }))}
-                    size="sm"
-                    className="ml-2"
-                  />
-                </div>
+                </li>
               ))}
-            </div>
-            {formData.enable_content_filtering === 'true' && (
-              <div className="mt-3 p-3 border border-border/30 rounded-lg bg-secondary/20">
-                <label htmlFor="blocked_file_types" className="text-[10px] text-muted-foreground">Blocked Extensions</label>
-                <input type="text" id="blocked_file_types" name="blocked_file_types" value={formData.blocked_file_types || 'exe,bat,cmd,dll,js'} onChange={handleChange}
-                  placeholder="exe,bat,mp4,zip" className="w-full mt-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-hidden focus:ring-1 focus:ring-primary" />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Account & Maintenance: side by side */}
-        <div id="sec-account" className="grid gap-4 lg:grid-cols-2 scroll-mt-24 mb-6">
-          <ChangePassword />
-          <Maintenance />
-        </div>
-
-        {/* Appearance Card */}
-        <Card id="sec-appearance" className="scroll-mt-24">
-          <CardHeader>
-            <div className="flex items-center space-x-2">
-              <SunMoon className="w-5 h-5 text-violet-500" />
-              <CardTitle>Appearance Settings</CardTitle>
-            </div>
-            <CardDescription>Customize the application theme and styling</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Application Theme</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['light', 'dark', 'auto'] as const).map((t) => {
-                  const active = theme === t;
-                  const Icon = t === 'light' ? Sun : t === 'dark' ? Moon : SunMoon;
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setTheme(t)}
-                      className={`flex flex-col items-center justify-center p-3 rounded-lg border text-xs font-medium capitalize transition-all ${
-                        active
-                          ? 'bg-primary/10 border-primary text-primary'
-                          : 'border-border bg-card/50 text-muted-foreground hover:text-foreground hover:bg-secondary/40'
-                      }`}
-                    >
-                      <Icon className="w-4 h-4 mb-1" />
-                      {t}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                In Auto mode, the application will automatically align its theme with your browser or operating system preferences.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+            </ul>
+          )}
+          <SaveBar
+            changes={changesIn(id)}
+            saving={saving === id}
+            result={drafts.results[id]}
+            labelOf={fieldLabel}
+            onSave={() => void save()}
+            onDiscard={() => drafts.discard(id)}
+            onRetryApply={() => void retryApply()}
+          />
+        </section>
       </div>
     </div>
   );
+}
+
+export function Settings() {
+  // The drafts live above the routes in the app; a page rendered on its own
+  // (a test, a story) brings its own.
+  const drafts = useSettingsDraftsOptional();
+  if (!drafts) return <SettingsDraftsProvider><SettingsPage /></SettingsDraftsProvider>;
+  return <SettingsPage />;
 }
