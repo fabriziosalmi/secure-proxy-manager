@@ -143,8 +143,13 @@ func (h *AnalyticsHandlers) lifetimeCounts() (total, blocked int) {
 	if time.Since(h.countsFetched) < lifetimeCountsTTL {
 		return h.countsTotal, h.countsBlocked
 	}
-	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs`).Scan(&total)
-	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1`).Scan(&blocked)
+	// Client requests only (clientRows). The total stays an index-only count:
+	// all rows minus the DNS rows, which idx_proxy_logs_dns counts by itself.
+	var all, dns int
+	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs`).Scan(&all)
+	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE method = 'DNS'`).Scan(&dns)
+	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND ` + clientRows).Scan(&blocked)
+	total = all - dns
 	h.countsTotal, h.countsBlocked, h.countsFetched = total, blocked, time.Now()
 	return total, blocked
 }
@@ -212,7 +217,7 @@ func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 
 	var todayCount int
 	todayStr := time.Now().Format("2006-01-02")
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE timestamp >= ? AND timestamp < date(?, '+1 day')", todayStr, todayStr).Scan(&todayCount) //nolint:errcheck
+	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE timestamp >= ? AND timestamp < date(?, '+1 day') AND "+clientRows, todayStr, todayStr).Scan(&todayCount) //nolint:errcheck
 
 	// Read the configured proxy port rather than hard-coding 3128.
 	proxyPort := "3128"
@@ -281,7 +286,7 @@ func (h *AnalyticsHandlers) TrafficStats(w http.ResponseWriter, r *http.Request)
 	rows, err := h.db.Query(`
 		SELECT `+interval+` AS bucket, COUNT(*) AS total,
 		       SUM(blocked) AS blocked
-		FROM proxy_logs WHERE unix_timestamp >= ? GROUP BY bucket`,
+		FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` GROUP BY bucket`,
 		sinceUnix(parseDuration(startDuration)),
 	)
 	bucketMap := map[string]map[string]int{}
@@ -386,6 +391,44 @@ const destinationKey = `CASE
 // datetime('now', ...), which never used the index.
 func sinceUnix(d time.Duration) int64 { return time.Now().Add(-d).Unix() }
 
+// clientRows restricts a proxy_logs query to client requests, and every
+// statistic uses it. The rows it leaves out are the dnsmasq sinkhole answers
+// (method DNS): lookups the proxy container made on behalf of a client whose
+// request Squid logs itself (workers.parseDNSLine). Counted, they made the
+// proxy a client with only blocked requests and counted a client's one
+// request up to three times (Squid's line, the A answer and the AAAA answer).
+// IFNULL keeps rows with no method, which only tests and very old rows have.
+const clientRows = "IFNULL(method, '') != 'DNS'"
+
+// blockedByReason counts the blocked client requests matching where (a
+// condition on proxy_logs, with its arguments) by block_reason, largest
+// first. Rows logged before reasons were recorded count as "unclassified";
+// no reason is assigned to them after the fact.
+func (h *AnalyticsHandlers) blockedByReason(where string, args ...any) []map[string]any {
+	return blockedByReason(h.db, where, args...)
+}
+
+func blockedByReason(db *sql.DB, where string, args ...any) []map[string]any {
+	out := []map[string]any{}
+	// #nosec G202 -- where is a constant at every call site; values are bound.
+	rows, err := db.Query(`SELECT block_reason, COUNT(*) AS cnt FROM proxy_logs
+		WHERE blocked = 1 AND `+clientRows+` AND `+where+`
+		GROUP BY block_reason ORDER BY cnt DESC, block_reason`, args...)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var reason string
+		var cnt int
+		if rows.Scan(&reason, &cnt) != nil {
+			continue
+		}
+		out = append(out, map[string]any{"reason": reason, "label": workers.ReasonLabel(reason), "count": cnt})
+	}
+	return out
+}
+
 func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) {
 	since := sinceUnix(analyticsWindow)
 	rows, err := h.db.Query(`
@@ -393,7 +436,7 @@ func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) 
 		       SUM(blocked) AS blocked,
 		       MAX(timestamp) AS last_seen
 		FROM proxy_logs
-		WHERE source_ip IS NOT NULL AND source_ip != '' AND unix_timestamp >= ?
+		WHERE source_ip IS NOT NULL AND source_ip != '' AND unix_timestamp >= ? AND `+clientRows+`
 		GROUP BY source_ip ORDER BY requests DESC LIMIT 50`, since)
 	if err != nil {
 		writeOK(w, map[string]any{"total_clients": 0, "clients": []any{}})
@@ -415,7 +458,7 @@ func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) 
 		clients = []map[string]any{}
 	}
 	var total int
-	h.db.QueryRow("SELECT COUNT(DISTINCT source_ip) FROM proxy_logs WHERE source_ip IS NOT NULL AND source_ip != '' AND unix_timestamp >= ?", since).Scan(&total) //nolint:errcheck
+	h.db.QueryRow("SELECT COUNT(DISTINCT source_ip) FROM proxy_logs WHERE source_ip IS NOT NULL AND source_ip != '' AND unix_timestamp >= ? AND "+clientRows, since).Scan(&total) //nolint:errcheck
 	// The collection goes under data like every other list, with its count in
 	// meta — not nested under data.clients with the count beside it, which was
 	// the third of the three shapes (SECURE-API-02).
@@ -439,14 +482,14 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 	// A no-rows or scan error leaves the zero values, which is the correct
 	// answer for a client with no logged requests.
 	_ = h.db.QueryRow(
-		`SELECT COUNT(*), `+blockedCase+`, MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE source_ip = ?`,
+		`SELECT COUNT(*), IFNULL(`+blockedCase+`, 0), MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE source_ip = ? AND `+clientRows,
 		ip,
 	).Scan(&total, &blocked, &firstSeen, &lastSeen)
 
 	topDomains := []map[string]any{}
 	if dr, err := h.db.Query(
 		`SELECT `+destinationKey+` AS dest, COUNT(*) AS c, `+blockedCase+` AS b
-		 FROM proxy_logs WHERE source_ip = ? AND destination IS NOT NULL AND destination != ''
+		 FROM proxy_logs WHERE source_ip = ? AND destination IS NOT NULL AND destination != '' AND `+clientRows+`
 		 GROUP BY dest ORDER BY c DESC LIMIT 10`, ip); err == nil {
 		for dr.Next() {
 			var d string
@@ -459,14 +502,15 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 
 	recent := []map[string]any{}
 	if rr, err := h.db.Query(
-		`SELECT timestamp, method, destination, status, bytes
-		 FROM proxy_logs WHERE source_ip = ? ORDER BY id DESC LIMIT 20`, ip); err == nil {
+		`SELECT timestamp, method, destination, status, bytes, block_reason
+		 FROM proxy_logs WHERE source_ip = ? AND `+clientRows+` ORDER BY id DESC LIMIT 20`, ip); err == nil {
 		for rr.Next() {
-			var ts, method, dest, status string
+			var ts, method, dest, status, reason string
 			var nbytes int64
-			rr.Scan(&ts, &method, &dest, &status, &nbytes) //nolint:errcheck
+			rr.Scan(&ts, &method, &dest, &status, &nbytes, &reason) //nolint:errcheck
 			recent = append(recent, map[string]any{
 				"timestamp": ts, "method": method, "destination": dest, "status": status, "bytes": nbytes,
+				"reason": reason,
 			})
 		}
 		rr.Close()
@@ -480,6 +524,8 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 		"last_seen":      lastSeen.String,
 		"top_domains":    topDomains,
 		"recent":         recent,
+		// The client's blocked requests by the rule that blocked them.
+		"blocked_by_reason": h.blockedByReason(`source_ip = ?`, ip),
 	})
 }
 
@@ -487,7 +533,7 @@ func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) 
 	rows, err := h.db.Query(`
 		SELECT destination, COUNT(*) AS requests,
 		       SUM(blocked) AS blocked_requests
-		FROM proxy_logs WHERE destination IS NOT NULL AND destination != '' AND unix_timestamp >= ?
+		FROM proxy_logs WHERE destination IS NOT NULL AND destination != '' AND unix_timestamp >= ? AND `+clientRows+`
 		GROUP BY destination ORDER BY requests DESC LIMIT 50`, sinceUnix(analyticsWindow))
 	if err != nil {
 		writeOK(w, []any{})
@@ -677,8 +723,8 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	var todayReqs, todayBlocked int
 
 	todayStart := time.Now().UTC().Truncate(24 * time.Hour).Unix()
-	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE unix_timestamp >= ?`, todayStart).Scan(&todayReqs)                    //nolint:errcheck
-	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ?`, todayStart).Scan(&todayBlocked) //nolint:errcheck
+	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows, todayStart).Scan(&todayReqs)                    //nolint:errcheck
+	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows, todayStart).Scan(&todayBlocked) //nolint:errcheck
 
 	var ipBLCount, domainBLCount int
 
@@ -688,7 +734,7 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	result["today_blocked"] = todayBlocked
 
 	var topBlocked []map[string]any
-	rows, _ := h.db.Query(`SELECT `+destinationKey+` AS dest, COUNT(*) AS cnt FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? GROUP BY dest ORDER BY cnt DESC LIMIT 10`, sinceUnix(24*time.Hour))
+	rows, _ := h.db.Query(`SELECT `+destinationKey+` AS dest, COUNT(*) AS cnt FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+` GROUP BY dest ORDER BY cnt DESC LIMIT 10`, sinceUnix(24*time.Hour))
 	if rows != nil {
 		for rows.Next() {
 			var dest string
@@ -711,7 +757,7 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 
 	// Top clients (last 24h)
 	var topClients []map[string]any
-	cRows, _ := h.db.Query(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' GROUP BY source_ip ORDER BY cnt DESC LIMIT 10`, sinceUnix(24*time.Hour))
+	cRows, _ := h.db.Query(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' AND `+clientRows+` GROUP BY source_ip ORDER BY cnt DESC LIMIT 10`, sinceUnix(24*time.Hour))
 	if cRows != nil {
 		for cRows.Next() {
 			var ip string
@@ -726,33 +772,30 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	}
 	result["top_clients"] = topClients
 
-	// Threat categories (last 7 days)
-	var threatCats []map[string]any
-	tRows, _ := h.db.Query(`SELECT CASE WHEN destination LIKE '%.exe%' OR destination LIKE '%.dll%' THEN 'Malware' WHEN status LIKE '%DENIED%' AND destination LIKE '%:%' THEN 'Direct IP' WHEN status LIKE '%403%' THEN 'WAF Block' ELSE 'Policy' END as category, COUNT(*) as cnt FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? GROUP BY category ORDER BY cnt DESC`, sinceUnix(analyticsWindow))
-	if tRows != nil {
-		for tRows.Next() {
-			var cat string
-			var cnt int
-			tRows.Scan(&cat, &cnt) //nolint:errcheck
-			threatCats = append(threatCats, map[string]any{"category": cat, "count": cnt})
-		}
-		tRows.Close()
+	// Blocked requests by the rule that blocked them (last 7 days). This used
+	// to be guessed from strings: any status with 403 was "WAF Block" (Squid's
+	// own denials log 403 too) and any denied destination with ':' was "Direct
+	// IP" (every denied CONNECT host:443). The reason is now recorded per row.
+	// threat_categories keeps its shape for the current UI, with the reason's
+	// label as the category.
+	byReason := h.blockedByReason(`unix_timestamp >= ?`, sinceUnix(analyticsWindow))
+	threatCats := make([]map[string]any, 0, len(byReason))
+	for _, r := range byReason {
+		threatCats = append(threatCats, map[string]any{"category": r["label"], "count": r["count"]})
 	}
-	if threatCats == nil {
-		threatCats = []map[string]any{}
-	}
+	result["blocked_by_reason"] = byReason
 	result["threat_categories"] = threatCats
 
 	// Recent blocks (last 10)
 	var recentBlocks []map[string]any
-	rRows, _ := h.db.Query(`SELECT timestamp, source_ip, method, destination, status FROM proxy_logs WHERE blocked = 1 ORDER BY id DESC LIMIT 10`)
+	rRows, _ := h.db.Query(`SELECT timestamp, source_ip, method, destination, status, block_reason FROM proxy_logs WHERE blocked = 1 AND ` + clientRows + ` ORDER BY id DESC LIMIT 10`)
 	if rRows != nil {
 		for rRows.Next() {
-			var ts, srcIP, method, dest, status string
-			rRows.Scan(&ts, &srcIP, &method, &dest, &status) //nolint:errcheck
+			var ts, srcIP, method, dest, status, reason sql.NullString
+			rRows.Scan(&ts, &srcIP, &method, &dest, &status, &reason) //nolint:errcheck
 			recentBlocks = append(recentBlocks, map[string]any{
-				"timestamp": ts, "source_ip": srcIP, "method": method,
-				"destination": dest, "status": status,
+				"timestamp": ts.String, "source_ip": srcIP.String, "method": method.String,
+				"destination": dest.String, "status": status.String, "reason": reason.String,
 			})
 		}
 		rRows.Close()
@@ -845,7 +888,7 @@ func (h *AnalyticsHandlers) ShadowIT(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(`
 		SELECT destination, COUNT(*) AS cnt FROM proxy_logs
 		WHERE destination IS NOT NULL AND destination != ''
-		AND unix_timestamp >= ?
+		AND unix_timestamp >= ? AND `+clientRows+`
 		GROUP BY destination ORDER BY cnt DESC LIMIT 500`, sinceUnix(analyticsWindow))
 	if err != nil {
 		writeOK(w, []any{})
@@ -904,7 +947,7 @@ func (h *AnalyticsHandlers) UserAgents(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(`
 		SELECT method, COUNT(*) AS cnt FROM proxy_logs
 		WHERE method IS NOT NULL AND method != '' AND method != '-'
-		AND unix_timestamp >= ?
+		AND unix_timestamp >= ? AND `+clientRows+`
 		GROUP BY method ORDER BY cnt DESC LIMIT 50`, since)
 	var methods []map[string]any
 	if err == nil {
@@ -935,7 +978,7 @@ func (h *AnalyticsHandlers) UserAgents(w http.ResponseWriter, r *http.Request) {
 			END as service_type,
 			COUNT(*) as cnt
 		FROM proxy_logs
-		WHERE unix_timestamp >= ? AND destination IS NOT NULL
+		WHERE unix_timestamp >= ? AND destination IS NOT NULL AND `+clientRows+`
 		GROUP BY service_type ORDER BY cnt DESC`, since)
 	var serviceTypes []map[string]any
 	if err == nil {
@@ -960,7 +1003,7 @@ func (h *AnalyticsHandlers) UserAgents(w http.ResponseWriter, r *http.Request) {
 var extRe = regexp.MustCompile(`\.([a-zA-Z0-9]{1,10})(?:\?|$|#)`)
 
 func (h *AnalyticsHandlers) FileExtensions(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.db.Query(`SELECT destination FROM proxy_logs WHERE destination IS NOT NULL AND destination != '' AND unix_timestamp >= ? LIMIT 10000`, sinceUnix(analyticsWindow))
+	rows, err := h.db.Query(`SELECT destination FROM proxy_logs WHERE destination IS NOT NULL AND destination != '' AND unix_timestamp >= ? AND `+clientRows+` LIMIT 10000`, sinceUnix(analyticsWindow))
 	skipTLDs := map[string]struct{}{"com": {}, "net": {}, "org": {}, "io": {}, "dev": {}, "app": {}, "me": {}, "co": {}}
 	extCounts := map[string]int{}
 	if err == nil {
@@ -1046,7 +1089,7 @@ func (h *AnalyticsHandlers) TopDomains(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(`
 		SELECT destination, COUNT(*) AS cnt FROM proxy_logs
 		WHERE destination IS NOT NULL AND destination != ''
-		AND unix_timestamp >= ?
+		AND unix_timestamp >= ? AND `+clientRows+`
 		GROUP BY destination ORDER BY cnt DESC LIMIT 200`, sinceUnix(analyticsWindow))
 	domainCounts := map[string]int{}
 	if err == nil {
@@ -1176,7 +1219,7 @@ func (h *AnalyticsHandlers) TestRule(w http.ResponseWriter, r *http.Request) {
 
 	// Query recent destinations from logs
 	rows, err := h.db.Query(
-		"SELECT destination FROM proxy_logs WHERE unix_timestamp >= ? AND destination IS NOT NULL AND destination != '' LIMIT 10000",
+		"SELECT destination FROM proxy_logs WHERE unix_timestamp >= ? AND destination IS NOT NULL AND destination != '' AND "+clientRows+" LIMIT 10000",
 		sinceUnix(time.Duration(req.Hours)*time.Hour),
 	)
 	if err != nil {

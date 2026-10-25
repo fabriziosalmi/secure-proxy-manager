@@ -30,20 +30,33 @@ Returns proxy access log entries with pagination metadata.
     {
       "id": 1234,
       "timestamp": "2026-03-25 14:32:10",
-      "client_ip": "192.168.1.10",
+      "source_ip": "192.168.1.10",
       "method": "CONNECT",
-      "destination": "example.com:443",
-      "status": "200 Connection established",
-      "bytes": 4096
+      "destination": "sink.example:443",
+      "status": "TCP_DENIED/403",
+      "bytes": 4862,
+      "blocked": true,
+      "reason": "domain_blacklist_dns"
     }
   ],
+  "meta": { "total": 15420, "limit": 100, "offset": 0 },
   "total": 15420,
   "limit": 100,
   "offset": 0
 }
 ```
 
-When GDPR mode is enabled in settings, `client_ip` is masked.
+When GDPR mode is enabled in settings, `source_ip` is masked. The top-level
+`total`, `limit` and `offset` are deprecated copies of `meta`.
+
+`reason` is the rule that blocked the request, recorded by Squid or the WAF
+when the request was logged (see `docs/design/block-reasons.md`):
+`ip_blacklist`, `domain_blacklist`, `domain_blacklist_dns`, `direct_ip`,
+`egress_policy`, `waf`, `proxy_auth`, `time_restriction`, `content_filter`,
+`source_gate`, `port_policy`, `protocol_policy`, `other`; `none` when it was
+not blocked; `unclassified` for a row logged before reasons were recorded.
+The list holds every row, including the DNS sinkhole's own rows (method
+`DNS`, source the proxy container), which no statistic counts.
 
 ---
 
@@ -62,12 +75,22 @@ GET /api/logs/stats
     "total_count": 15420,
     "blocked_count": 342,
     "ip_blocks_count": 18,
+    "blocked_by_reason": [
+      { "reason": "domain_blacklist_dns", "label": "Domain blacklist (DNS)", "count": 300 },
+      { "reason": "domain_blacklist", "label": "Domain blacklist", "count": 24 },
+      { "reason": "direct_ip", "label": "Direct IP", "count": 18 }
+    ],
     "last_import": "2026-03-25 14:32:10"
   }
 }
 ```
 
-`blocked_count` is the number of entries whose `status` indicates a 403 or other DENIED/BLOCKED outcome. `ip_blocks_count` is the subset of those that targeted a raw IP destination.
+Counts are client requests: the DNS sinkhole's own rows are left out.
+`blocked_count` is the number of requests with a block reason (rows logged
+before reasons were recorded keep the flag they were given then, from the
+status). `ip_blocks_count` is the subset with reason `direct_ip`, plus older
+rows whose URL targeted a raw IPv4 address. `blocked_by_reason` breaks
+`blocked_count` down by reason.
 
 ---
 
