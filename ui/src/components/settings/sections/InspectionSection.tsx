@@ -188,7 +188,11 @@ interface WafCategory { name: string; rules: number; enabled: boolean }
 function CustomPatterns() {
   const cats = useQuery({
     queryKey: ['waf', 'categories'],
-    queryFn: () => api.get('waf/categories').then((r) => (Array.isArray(r.data?.data) ? (r.data.data as WafCategory[]) : null)),
+    // A WAF that is down answers 502 here; the line below says so, so the
+    // failure is an answer, not an app-wide "failed to load" toast.
+    queryFn: () => api.get('waf/categories')
+      .then((r) => (Array.isArray(r.data?.data) ? (r.data.data as WafCategory[]) : null))
+      .catch(() => null),
     retry: false,
   });
   let loaded: string;
