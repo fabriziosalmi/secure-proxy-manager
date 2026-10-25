@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import types
 
 import pytest
@@ -335,6 +336,121 @@ def test_reload_exception_is_reported_and_retried_not_consumed(w, state, monkeyp
     assert st.mtimes[w.RELOAD_TRIGGER] == before, "the failed attempt consumed the trigger"
 
 
+# ── a reconfigure that does not finish (finding 12) ──────────────────────────
+#
+# `squid -k reconfigure` parses the whole config before it signals Squid; with
+# 640k names held that is 11 s at 0.5 CPU, and the 10 s timeout killed it. The
+# exception was logged and dropped: the synced lists were never loaded and
+# nothing retried. These run a fake squid executable, not a mocked
+# subprocess.run, so the real timeout path is exercised.
+
+def _fake_squid(tmp_path, script):
+    """An executable standing in for squid. It appends its arguments to
+    tmp_path/squid-calls, then runs script (sh)."""
+    calls = tmp_path / "squid-calls"
+    exe = tmp_path / "squid"
+    exe.write_text(f'#!/bin/sh\necho "$*" >> "{calls}"\n{script}\n')
+    exe.chmod(0o755)
+    return str(exe), calls
+
+
+def _ncalls(calls):
+    return len(calls.read_text().splitlines()) if calls.exists() else 0
+
+
+def test_a_reconfigure_past_the_timeout_is_not_success(w, tmp_path, monkeypatch, capsys):
+    exe, calls = _fake_squid(tmp_path, "exec sleep 5")
+    monkeypatch.setattr(w, "SQUID", exe)
+    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 0.5)
+    start = time.monotonic()
+    assert w.reconfigure_squid() is None
+    assert time.monotonic() - start < 4, "the timeout did not stop the command"
+    assert _ncalls(calls) == 1
+    assert "did not finish within 0.5 s" in capsys.readouterr().out
+
+
+def test_the_timeouts_are_the_measured_ones(w):
+    # 17.2 s per call with 1M names held (0.5 CPU); the old 10 s and 15 s were
+    # below the 640k and 1M measurements.
+    assert w.SQUID_K_TIMEOUT >= 2 * 17.2
+    # A slowest reload (generator, parse, reconfigure) must leave the heartbeat
+    # younger than the 120 s the healthcheck allows.
+    assert 30 + 2 * w.SQUID_K_TIMEOUT < 120
+
+
+def test_a_parse_past_the_timeout_is_refused(w, tmp_path, monkeypatch):
+    exe, calls = _fake_squid(tmp_path, '[ "$(wc -l < "%s")" -gt 1 ] || exec sleep 5' % (tmp_path / "squid-calls"))
+    monkeypatch.setattr(w, "SQUID", exe)
+    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 0.5)
+    assert w.squid_config_ok() is False
+    assert w.squid_config_ok() is True, "a parse that finishes with 0 was refused"
+    assert _ncalls(calls) == 2, "the parse did not run the configured squid"
+
+
+def _quiet_poll(w, monkeypatch, synced):
+    for job in ("touch_heartbeat", "heal_resolver_drift", "keep_logs_readable", "rotate_logs_daily",
+                "check_reload_trigger", "check_clear_cache_trigger", "collect_cache_stats", "refresh_domain_acl"):
+        monkeypatch.setattr(w, job, lambda *a: None)
+    monkeypatch.setattr(w, "sync_lists", lambda s: synced.pop(0) if synced else False)
+
+
+def test_a_list_sync_whose_reconfigure_times_out_is_retried_until_squid_confirms(w, tmp_path, monkeypatch):
+    # The first reconfigure hangs past the timeout, the second exits 0.
+    exe, calls = _fake_squid(tmp_path, f'[ "$(wc -l < "{tmp_path}/squid-calls")" -gt 1 ] || exec sleep 5')
+    monkeypatch.setattr(w, "SQUID", exe)
+    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 0.5)
+    _quiet_poll(w, monkeypatch, [True])
+    st = types.SimpleNamespace(reconfigure_pending=False)
+
+    w.poll_once(st)
+    assert _ncalls(calls) == 1 and st.reconfigure_pending is True, "a timed-out reconfigure was taken as applied"
+    w.poll_once(st)
+    assert _ncalls(calls) == 2 and st.reconfigure_pending is False
+    w.poll_once(st)
+    assert _ncalls(calls) == 2, "a confirmed reconfigure was repeated"
+
+
+def test_a_list_sync_whose_reconfigure_fails_is_retried(w, tmp_path, monkeypatch):
+    exe, calls = _fake_squid(tmp_path, f'[ "$(wc -l < "{tmp_path}/squid-calls")" -gt 1 ] || exit 1')
+    monkeypatch.setattr(w, "SQUID", exe)
+    _quiet_poll(w, monkeypatch, [True])
+    st = types.SimpleNamespace(reconfigure_pending=False)
+    w.poll_once(st)
+    w.poll_once(st)
+    assert _ncalls(calls) == 2 and st.reconfigure_pending is False
+
+
+def test_a_reload_whose_reconfigure_times_out_is_reported_and_retried(w, state, tmp_path, monkeypatch):
+    st, trigger = state
+    _touch_trigger(trigger)
+    exe, calls = _fake_squid(tmp_path, "exec sleep 5")
+    monkeypatch.setattr(w, "SQUID", exe)
+    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 0.5)
+    monkeypatch.setattr(w, "generate_checked", lambda: (types.SimpleNamespace(returncode=0, stderr=b""), True))
+    results = []
+    monkeypatch.setattr(w, "write_result", lambda *a: results.append(a))
+    before = st.mtimes[w.RELOAD_TRIGGER]
+
+    w.check_reload_trigger(st)
+
+    # Acknowledged as not applied (reconfigure_rc null), and left unconsumed.
+    assert results == [("reload-squid", 1788937285, 0, None)]
+    assert st.mtimes[w.RELOAD_TRIGGER] == before, "the timed-out reload consumed the trigger"
+    w.check_reload_trigger(st)
+    assert _ncalls(calls) == 2, "the reload was not retried"
+
+
+def test_resolver_drift_whose_reconfigure_times_out_is_retried(w, state, tmp_path, monkeypatch):
+    st, _ = state
+    exe, _ = _fake_squid(tmp_path, "exec sleep 5")
+    monkeypatch.setattr(w, "SQUID", exe)
+    monkeypatch.setattr(w, "SQUID_K_TIMEOUT", 0.5)
+    monkeypatch.setattr(w, "generate_checked", lambda: (types.SimpleNamespace(returncode=0), True))
+    monkeypatch.setattr(w, "resolved_ips", lambda: "1.1.1.1,9.9.9.9")
+    w.heal_resolver_drift(st)
+    assert st.resolv_fp == "1.1.1.1,2.2.2.2", "the drift was recorded as healed"
+
+
 # ── Clear cache ──────────────────────────────────────────────────────────────
 #
 # The watchdog used to run `squid -k purge`, which Squid 7.7 does not know
@@ -593,7 +709,7 @@ def test_a_list_missing_from_the_manifest_is_refused(w, tmp_path, monkeypatch):
 
 def test_poll_once_runs_every_job_in_order(w, monkeypatch):
     order = []
-    st = object()
+    st = types.SimpleNamespace(reconfigure_pending=False)
     for name in ("touch_heartbeat", "heal_resolver_drift", "keep_logs_readable", "rotate_logs_daily",
                  "check_reload_trigger", "check_clear_cache_trigger"):
         monkeypatch.setattr(w, name, lambda *a, _n=name: order.append(_n))

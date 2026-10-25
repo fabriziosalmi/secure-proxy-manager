@@ -406,12 +406,26 @@ def atomic_copy(src, dst, expected_sha256=None):
         raise
 
 
+# How long `squid -k parse` and `squid -k reconfigure` may take. Both read the
+# whole config, ACL files included, before they do anything else, so the time
+# grows with the domain ACL. Measured in the proxy image at the compose limits
+# (0.5 CPU, 512 MB), per call: 0.01 s with the default limit and 640k names
+# (Squid holds none), 3.8 s with 250k names held, 11.0 s with 640k, 17.2 s with
+# 1M; about 17 us a name. The previous 10 s (reconfigure) and 15 s (parse)
+# were below the 640k and 1M cases: a reconfigure was killed before it
+# signalled Squid, and every reload at 1M was refused as "does not parse".
+# 40 s is 2.3 times the 1M measurement. A reload at its slowest (30 s for the
+# generator, then a parse and a reconfigure) is 110 s without a heartbeat,
+# under the 120 s the container healthcheck allows.
+SQUID_K_TIMEOUT = 40
+
+
 def squid_config_ok(path=None):
     """Whether squid accepts a config (the live one by default). Used as a gate
     before reconfigure, so an unparsable ACL set is refused rather than loaded."""
-    argv = ["/usr/sbin/squid", "-k", "parse"] + (["-f", path] if path else [])
+    argv = [SQUID, "-k", "parse"] + (["-f", path] if path else [])
     try:
-        res = subprocess.run(argv, check=False, capture_output=True, timeout=15)
+        res = subprocess.run(argv, check=False, capture_output=True, timeout=SQUID_K_TIMEOUT)
         return res.returncode == 0
     except Exception as exc:  # noqa: BLE001
         print(f"[watchdog] squid -k parse failed to run: {exc}", flush=True)
@@ -477,6 +491,10 @@ class WatchdogState:
         self.cache_stats_problem = None
         self.disk_capacity_kb = None
         self.disk_capacity_conf = None
+        # Lists were copied but Squid has not confirmed loading them: the
+        # reconfigure failed or did not finish. Their mtimes are already
+        # recorded, so nothing else would bring them in; poll_once retries.
+        self.reconfigure_pending = False
 
 
 def write_squid_version():
@@ -520,7 +538,10 @@ def heal_resolver_drift(state):
     try:
         _, applied = generate_checked()
         if applied:
-            subprocess.run([SQUID, "-k", "reconfigure"], check=False, capture_output=True, timeout=10)
+            if reconfigure_squid() is None:
+                # Not recorded: Squid may still use the dead addresses, so the
+                # next poll sees the drift again and retries.
+                return
         else:
             print("[watchdog] resolver drift: the regenerated config was refused — keeping the running one", flush=True)
         # Recorded either way, so a config that will not generate is not retried every 2 s.
@@ -556,8 +577,9 @@ def regenerate_and_reconfigure(stamp):
     """Regenerate squid.conf and reconfigure, acknowledging the trigger.
 
     Returns True when the attempt ran to completion (whatever its result, which
-    is what the acknowledgement carries) and False when it raised, so the caller
-    leaves the trigger unconsumed and the next poll retries.
+    is what the acknowledgement carries) and False when it raised or the
+    reconfigure did not finish, so the caller leaves the trigger unconsumed and
+    the next poll retries.
     """
     try:
         gen_res, applied = generate_checked()
@@ -573,9 +595,12 @@ def regenerate_and_reconfigure(stamp):
             print("[watchdog] generated config does not parse — refusing to reconfigure", flush=True)
             write_result("reload-squid", stamp, 0, 1)
         else:
-            rec_res = subprocess.run([SQUID, "-k", "reconfigure"], check=False, capture_output=True, timeout=10)
-            print(f"[watchdog] squid reconfigure rc={rec_res.returncode}", flush=True)
-            write_result("reload-squid", stamp, gen_res.returncode, rec_res.returncode)
+            rec_rc = reconfigure_squid()
+            # Reported either way: a reconfigure that did not finish is
+            # acknowledged as not applied (reconfigure_rc null), and the
+            # trigger stays unconsumed so the next poll runs the reload again.
+            write_result("reload-squid", stamp, gen_res.returncode, rec_rc)
+            return rec_rc is not None
         return True
     except (OSError, subprocess.SubprocessError) as exc:
         # Narrow, and it reports rather than absorbing: the backend is waiting
@@ -869,11 +894,25 @@ def sync_lists(state):
 
 
 def reconfigure_squid():
+    """Run `squid -k reconfigure`. Returns its exit code, or None when it did
+    not finish (it timed out or could not be run).
+
+    None is never success. The command parses the whole config before it
+    signals the running Squid, so one that is stopped at the timeout has most
+    likely signalled nothing: Squid stays on its previous configuration. The
+    callers retry it or report it (SQUID_K_TIMEOUT has the measurements)."""
     try:
-        result = subprocess.run([SQUID, "-k", "reconfigure"], check=False, capture_output=True, timeout=10)
-        print(f"[watchdog] squid reconfigure rc={result.returncode}", flush=True)
-    except Exception as exc:  # noqa: BLE001 - log and keep running
+        result = subprocess.run([SQUID, "-k", "reconfigure"], check=False, capture_output=True,
+                                timeout=SQUID_K_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        print(f"[watchdog] squid -k reconfigure did not finish within {SQUID_K_TIMEOUT} s: "
+              "Squid may still run the previous configuration; not treated as applied", flush=True)
+        return None
+    except (OSError, subprocess.SubprocessError) as exc:
         print(f"[watchdog] reconfigure error: {exc}", flush=True)
+        return None
+    print(f"[watchdog] squid reconfigure rc={result.returncode}", flush=True)
+    return result.returncode
 
 
 # ── Cache statistics ─────────────────────────────────────────────────────────
@@ -1071,7 +1110,9 @@ def poll_once(state):
     check_clear_cache_trigger(state)
     if sync_lists(state):
         refresh_domain_acl()
-        reconfigure_squid()
+        state.reconfigure_pending = True
+    if state.reconfigure_pending:
+        state.reconfigure_pending = reconfigure_squid() != 0
     collect_cache_stats(state)
 
 
