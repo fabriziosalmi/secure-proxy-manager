@@ -145,9 +145,9 @@ curl -k -X POST $SPM/api/settings \
 curl -k -X POST $SPM/api/maintenance/reload-config -H "$AUTH"
 ```
 
-Setting values are strings. `PUT /api/settings/egress_default_deny` stores the
-value but does not write the file the proxy reads (`/config/egress_default_deny`);
-use `POST /api/settings`.
+Setting values are strings. `POST /api/settings` and
+`PUT /api/settings/egress_default_deny` both write the file the proxy reads
+(`/config/egress_default_deny`); reload the proxy to apply it.
 
 ### Manage allowed destinations
 

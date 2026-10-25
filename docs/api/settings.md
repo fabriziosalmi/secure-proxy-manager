@@ -43,7 +43,7 @@ PUT /api/settings/{setting_name}
 
 The key in the path must consist of letters, digits and underscores, at most 100 characters, and must not be an internally managed or retired setting (`400` otherwise). The value is capped at 10,000 characters and checked with the same rules as the bulk endpoint; a secret is encrypted before it is stored.
 
-This endpoint only stores the value. It writes none of the files the proxy and the DNS service read (toggle markers, `squid_settings.env`, list files), so a proxy setting changed here takes effect only after a later `POST /api/settings` that carries it. Use `POST /api/settings` for anything the proxy enforces.
+It applies the value as `POST /api/settings` does: the marker, list or env file the proxy reads is written, and WAF heuristics are pushed to the running WAF. A secret sent with an empty value is cleared. The answer is `{"status": "success", "message": "Setting updated", "data": {...}}`, with `data.waf` when the value is a WAF heuristic, or `status: "partial"` and `data.failed` naming the proxy files that could not be written. As with the bulk endpoint, a proxy setting takes effect when the proxy reloads (`POST /api/maintenance/reload-config`).
 
 ---
 
@@ -102,7 +102,7 @@ POST /api/settings
 { "egress_default_deny": "true" }
 ```
 
-`egress_default_deny` is a boolean setting, sent as the string `"true"` or `"false"` (default `"false"`). `POST /api/settings` writes or removes the marker file `/config/egress_default_deny`; `POST /api/maintenance/reload-config` then makes the proxy apply it. `PUT /api/settings/egress_default_deny` stores the value without writing the marker. The setting is also the "Only allowlisted destinations" toggle under Settings > Filtering, which refuses to save it while the allowlist is empty; the API does not refuse.
+`egress_default_deny` is a boolean setting, sent as the string `"true"` or `"false"` (default `"false"`). `POST /api/settings` and `PUT /api/settings/egress_default_deny` write or remove the marker file `/config/egress_default_deny`; `POST /api/maintenance/reload-config` then makes the proxy apply it. The setting is also the "Only allowlisted destinations" toggle under Settings > Filtering, which refuses to save it while the allowlist is empty; the API does not refuse.
 
 When `"false"` (the default) local clients may reach any destination that is not blocked. When `"true"` they may reach only the destinations on the egress allowlist, LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and Allowed IPs; everything else is refused with a Squid 403.
 
