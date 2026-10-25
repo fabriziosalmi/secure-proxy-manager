@@ -167,6 +167,8 @@ func run() error {
 	// with the proxy): not clients, so no client count includes them.
 	classifier := sources.NewClassifier(cfg.ProxyHost, proxyURLHost(cfg.ProxyURL))
 	go classifier.Run(workerCtx)
+	// The live feed marks each row's source the way GET /api/logs does.
+	workers.SetLiveSourceClassifier(func(ip string) (bool, string) { return classifier.Snapshot().Classify(ip) })
 	internalSources := handlers.NewInternalSources(db, classifier)
 	handlers.NewLogHandlers(db).WithSources(internalSources).Register(r, authMW)
 	handlers.NewSettingsHandlers(db, cfg).Register(r, authMW)

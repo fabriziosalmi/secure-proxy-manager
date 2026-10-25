@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -168,7 +169,12 @@ func broadcastBatch(hub *websocket.Hub, batch []map[string]any) {
 	if hub == nil {
 		return
 	}
-	for _, entry := range batch {
+	for _, row := range batch {
+		entry := make(map[string]any, len(row)+3)
+		for k, v := range row {
+			entry[k] = v
+		}
+		describeLive(entry)
 		msg, err := json.Marshal(entry)
 		if err != nil {
 			continue
@@ -352,14 +358,42 @@ func insertLogBatch(db *sql.DB, entries []map[string]any) error {
 		if reason == "" {
 			reason = ReasonUnclassified
 		}
-		if _, err := stmt.Exec(
+		res, err := stmt.Exec(
 			e["timestamp"], e["unix_timestamp"], e["source_ip"], e["method"],
 			e["destination"], e["status"], e["bytes"], e["elapsed_ms"], blocked,
 			e["event_id"], reason,
-		); err != nil {
+		)
+		if err != nil {
 			_ = tx.Rollback()
 			return err
 		}
+		// The row's id goes out with the live feed, as GET /api/logs returns
+		// it: the page keys its rows by id and pages older ones by it.
+		if id, err := res.LastInsertId(); err == nil {
+			e["id"] = id
+		}
 	}
 	return tx.Commit()
+}
+
+// liveSources, when set, classifies a live row's source as GET /api/logs
+// does (internal and kind), so the page can hold a live row to the filter it
+// shows. The tailers start before the classifier exists, hence the setter.
+var liveSources atomic.Pointer[func(ip string) (internal bool, kind string)]
+
+// SetLiveSourceClassifier sets the classifier the live feed marks rows with.
+func SetLiveSourceClassifier(classify func(ip string) (internal bool, kind string)) {
+	liveSources.Store(&classify)
+}
+
+// describeLive adds to a committed row what GET /api/logs carries and the
+// parser does not know: the reason's label and what the source is.
+func describeLive(e map[string]any) {
+	if reason, ok := e["reason"].(string); ok {
+		e["reason_label"] = ReasonLabel(reason)
+	}
+	if c := liveSources.Load(); c != nil {
+		ip, _ := e["source_ip"].(string)
+		e["internal"], e["kind"] = (*c)(ip)
+	}
 }
