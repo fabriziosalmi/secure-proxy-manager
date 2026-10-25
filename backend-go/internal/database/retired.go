@@ -23,7 +23,7 @@ import (
 //     always denies the IP and domain blacklists and direct-IP URLs, and the
 //     WAF is always on the ICAP path, whatever these said.
 //
-// Version 5 deletes their rows. The API refuses to write them again (they are
+// Version 6 deletes their rows. The API refuses to write them again (they are
 // not writable keys) and restore skips them with a reason, so an old backup
 // cannot bring the clear-text tokens back.
 var RetiredSettings = []string{

@@ -13,33 +13,109 @@ a `### Removed` or `### Changed` heading with the phrase **BREAKING** and the
 changes affecting it. Retired routes answer `410 Gone` naming their replacement
 for at least one minor release before disappearing.
 
-## [Unreleased]
+## [3.15.0] - 2026-10-25
+
+The interface is rebuilt page by page on what the backend measures, every
+request records the rule that blocked it, and the proxy no longer loads a
+list the backend has not vouched for. `X-API-Version` stays 1; the changes to
+the HTTP surface are marked **BREAKING** under Removed and Changed. Read
+**Action worth knowing about on upgrade** first: four schema steps run once on
+the first start and cannot be undone, and a blocklist that fails verification
+at boot stops all traffic until a verified copy arrives.
+
+### Security
+
+<!-- security entry added at release -->
+
+### Action worth knowing about on upgrade
+
+- **Take a backup first; the migrations are not reversible.** On the first
+  start the backend runs schema versions 3 to 6, each once, in one transaction
+  that also records the version (`PRAGMA user_version` 6 afterwards, logged as
+  `schema migrated` with the version). Rolling back to 3.14.x means restoring
+  the backup taken before the upgrade. The steps:
+  - **3** counts as blocked the requests the DNS sinkhole stopped before block
+    reasons were recorded (#424): a row whose reason is `unclassified`, whose
+    status ends in `/503`, that is a client request and not a DNS resolver
+    row, whose host is a domain blacklist entry (`name` or `*.name`, in lower
+    case) not excluded by the domain whitelist, and that was logged at or
+    after the entry was added, becomes `blocked = 1` with the reason
+    `domain_blacklist_dns_reconstructed` ("Domain blacklist (DNS),
+    reconstructed"). Nothing else is reinterpreted. On 1,000,000 log rows and
+    640,000 blacklisted domains the step took 27 to 31 s at the compose limits
+    (measured for #424), so the first start takes that much longer.
+  - **4** creates `list_sources` and gives the four IP and domain lists a
+    `source_id` (#426). Entries from before the upgrade show "Source not
+    recorded".
+  - **5** rewrites egress allowlist entries stored as `*.name` to `.name`,
+    which is what Squid can match; an entry whose `.name` form is already
+    listed, and a bare `*.`, are removed instead. One audit row by `system`
+    (`rewrite_egress_wildcards`) names them (#431).
+  - **6** deletes the rows of the retired settings listed under Removed
+    (#432).
+
+  The log table also gains a `block_reason` column (existing rows read
+  `unclassified` and keep their blocked flag) and the partial index
+  `idx_proxy_logs_blocked_reason` (#419, #429).
+- **A blocklist that fails manifest verification at boot denies every
+  client** (#445). The proxy now copies the exported lists at boot through
+  the watchdog's verified copy. If the IP or domain blacklist does not match
+  `/config/lists.manifest.json`, or the manifest cannot be read, Squid has no
+  copy to fall back to and every client request is denied (logged as
+  `lists_unverified`, #446) until the watchdog copies a verified list; an
+  allowlist without a verified copy starts empty. A backend that writes no
+  manifest at all is still accepted, with a warning. Upgrade the backend and
+  the proxy together.
+- **Installs that set `WAF_H_*` in `.env` and never saved the heuristics in
+  Settings** now have the compose defaults stored (all heuristics on except
+  sequence validation), and the WAF reconciler pushes them to the WAF (#432).
+  Set the heuristics under Settings, Inspection to keep values of your own.
+- **`GET /api/logs`, its CSV export and the MCP tool `spm_recent_logs` leave
+  the stack's own traffic out by default** (#429). Pass
+  `include_internal=true` for the previous result. A `source_ip` that names an
+  internal address is still answered.
+- API callers that read notification secrets back from `GET /api/settings`
+  now get no value (#425), and callers that write a retired setting with
+  `PUT /api/settings/{name}` get 400 (#432). Tailscale is configured with
+  `TS_AUTHKEY` in `.env`, as before.
 
 ### Removed
 
 - **BREAKING** (`X-API-Version: 1`): `GET /api/security/score` answers
-  `410 Gone`. The score counted four settings that nothing enforced:
+  `410 Gone` (#432). The score counted four settings that nothing enforced:
   `enable_ip_blacklist`, `enable_domain_blacklist`, `block_direct_ip` and
   `enable_waf`. Squid always denies the IP and domain blacklists and direct-IP
   URLs, and the WAF is always on the ICAP path, so a working install scored
-  low and flipping a switch raised the score without changing anything. No
-  page showed it. The MCP tool `spm_security_score` is removed with it.
-- **Deprecated/Removed: the settings `enable_ip_blacklist`,
+  low and flipping a switch raised the score without changing anything. The
+  MCP tool `spm_security_score` is removed with it.
+- **BREAKING** (`X-API-Version: 1`): **the settings `enable_ip_blacklist`,
   `enable_domain_blacklist`, `enable_waf` and `block_direct_ip`, which nothing
-  enforced**, and the settings `tailscale_enabled`, `tailscale_auth_key`,
+  enforced, and `tailscale_enabled`, `tailscale_auth_key`,
   `tailscale_hostname`, `ddns_enabled`, `ddns_provider`, `ddns_domain`,
-  `ddns_token` and `auth_method`, which nothing read (Tailscale is configured
-  with `TS_AUTHKEY` in `.env`; the proxy only uses basic authentication). The
-  Tailscale and DDNS tokens were stored in clear. Schema version 6 deletes
-  their rows. `POST /api/settings` skips them as it skips the other keys it
-  does not write (the rest of the request is saved), `PUT /api/settings/{name}`
-  answers 400 for them, and a restore lists them as not restored.
+  `ddns_token` and `auth_method`, which nothing read** (#432). The Tailscale
+  and DDNS tokens were stored in clear. Schema version 6 deletes their rows.
+  `POST /api/settings` skips them as it skips the other keys it does not write
+  (the rest of the request is saved), `PUT /api/settings/{name}` answers 400
+  for them, and a restore lists them as not restored.
+- The UI no longer depends on recharts (#430), and the README's four unused
+  screenshots and `examples/test_import.sh`, which called retired endpoints,
+  are gone (#437, #438).
 
 ### Added
 
-- **Notification limits.** Every WAF block and every failed sign-in used to
-  become one alert to every channel, braked only by queue overflow, which
-  drops at random: a scanner blocked 1,000 times sent 1,000 Telegram
+- **Every request records the rule that decided it** (#419). Each Squid deny
+  rule sets a reason that the access log carries, and a WAF block is marked
+  by the WAF's own ICAP reply, which an upstream server cannot forge. Log
+  rows carry `block_reason`; `blocked` is derived from it, so an origin
+  server's own 403 is no longer counted as a block. The log statistics, the
+  dashboard summary and the client detail report `blocked_by_reason`, and the
+  Analytics breakdown groups by reason instead of guessing from the status
+  code. The vocabulary is in `docs/design/block-reasons.md`. A request the
+  fail-closed lists gate denies has its own reason, `lists_unverified`
+  ("Lists not verified"), instead of `other` (#446).
+- **Notification limits** (#439). Every WAF block and every failed sign-in
+  used to become one alert to every channel, braked only by queue overflow,
+  which drops at random: a scanner blocked 1,000 times sent 1,000 Telegram
   messages. The backend's notification queue now groups alerts by event type
   and client address: the first is sent at once, the rest within
   `notify_group_window_minutes` (default 10, 1 to 1440) are counted (WAF
@@ -51,108 +127,292 @@ for at least one minor release before disappearing.
   one `alerts_held_back` notice with the count once a slot of the hour frees.
   `notify_waf_block`, `notify_login_failure` and `notify_min_level`
   (`info`, `warning`, `error`) switch event types and low levels off. All
-  five are seeded, validated by the backend and set under Settings > Alerts.
-  The test alert is outside the limits. The counts are in memory: a graceful
-  shutdown sends the pending digests and notices, a crash loses them.
+  five are seeded, validated by the backend and set under Settings, Alerts.
+  The test alert is outside the limits. At most 10,000 addresses are grouped
+  at a time. The counts are in memory: a graceful shutdown sends the pending
+  digests and notices, a crash loses them.
   `spm_notifications_held_total{reason, channel}` counts what was held:
   `reason="cap"` on the channel that held it, `reason="grouped"` with
   `channel="all"`. The WAF is unchanged.
+- **Where list entries came from** (#426). Every import, URL refresh,
+  Popular list, manual add, geo-block, paste and restore records its source.
+  `GET /api/{ip,domain}-{blacklist,whitelist}/sources` lists them,
+  `DELETE .../sources/{id}` removes one source's entries and re-exports the
+  lists, and `GET .../export` downloads a whole list.
+  `GET /api/blacklists/enforcement` reports what enforces each list: the
+  domain limit, what the allowed list removes, and the proxy's records of
+  what Squid loaded (`domain_acl_status.json`, and the new
+  `ip_blacklist_acl_status.json`).
+- `POST /api/ip-whitelist/import` and `POST /api/domain-whitelist/import`
+  check each pasted line as the single add does, in one transaction under one
+  "Pasted list" source, and report added, skipped and refused with reasons
+  (#436).
+- `GET /api/logs` filters on the server (`source_ip`, `outcome`, `reason`,
+  `q`, `include_internal`, `before_id`, `sort=id`); a malformed value answers
+  400, `meta.total` counts the filtered rows and `meta.internal` the internal
+  rows left out. Rows, live ones included, carry `reason_label`, `internal`
+  and `kind`. `GET /api/logs/export` streams the same filters as CSV, with
+  cells starting `=`, `+`, `-` or `@` written as text (#429).
+- `GET /api/audit-logs?category=changes|signins` filters on the server and
+  reports `meta.retention_days` (#431).
+- `GET /api/analytics/blocked-by-day?tz=<IANA zone>` (calendar days in the
+  viewer's zone, stacked by reason) and `GET /api/analytics/coverage` (what
+  protection is in force, from the WAF and the proxy's own records) (#428).
+- **The stack's own addresses are told apart from clients** (#422). An
+  address is internal when it is loopback, one of the backend's own, or in a
+  subnet of the backend's interfaces into which the proxy resolves; no range
+  is hard-coded, so a LAN device in 172.16.0.0/12 stays a client.
+  `/api/clients/statistics` rows carry `internal` and `kind` and
+  `meta.internal` counts them; the summary gains `last_24h_internal_sources`
+  and `last_24h_internal_requests`.
+- The dashboard summary reports the last 24 hours (`last_24h_requests`,
+  `last_24h_blocked`, `last_24h_clients`, `blocked_by_reason_24h`) and
+  whether Squid holds its own copy of the domain blacklist
+  (`squid_domain_acl`) (#421).
+- `GET /api/waf/heuristics`: which heuristics the running WAF applies, or why
+  the WAF could not be asked (#432).
 - `POST /api/notifications/test` reports each channel's delivery
-  (`data.channels`: channel, delivered, HTTP status, reason) and whether alerts
-  are switched on (`data.notifications_enabled`). It tests every channel that
-  has all of its settings stored, also while alerts are off. Additive.
+  (`data.channels`: channel, delivered, HTTP status, reason) and whether
+  alerts are switched on (`data.notifications_enabled`). It tests every
+  channel that has all of its settings stored, also while alerts are off
+  (#432).
 - `webhook_bearer_token`: an optional secret sent as
   `Authorization: Bearer <token>` with every webhook delivery, stored
-  encrypted and never returned, like the other channel secrets.
-- `GET /api/waf/heuristics`: which heuristics the running WAF applies, or why
-  the WAF could not be asked.
-- `GET /api/logs` filters on the server (`source_ip`, `outcome`, `reason`,
-  `q`, `include_internal`, `before_id`, `sort=id`), and each row carries
-  `reason_label`, `internal` and `kind`; `GET /api/logs/export` streams the
-  same filters as CSV. Additive. (#429)
-- `GET /api/audit-logs?category=changes|signins` filters on the server and
-  reports `meta.retention_days`. Additive. (#431)
+  encrypted and never returned, like the other channel secrets (#432).
 - `POST /api/settings` answers a refused request with every refused value in
   `errors` (`{key: message}`); `detail` still names the first. A save that
-  carries WAF heuristics reports what the WAF did with each in `data.waf`.
+  carries WAF heuristics reports what the WAF did with each in `data.waf`
+  (#432).
+- The gauge `spm_db_integrity_ok`, a `startup step` log line with the duration
+  of each start-up step, and `scripts/measure-backend-startup.sh`, which
+  repeats the start-up measurement under the compose limits (#441).
 
 ### Changed
 
+- **BREAKING** (`X-API-Version: 1`): **notification secrets are write-only**
+  (#425). `GET /api/settings` returns no value for the nine channel secrets
+  (`webhook_url`, `webhook_bearer_token`, `gotify_url`, `gotify_token`,
+  `teams_webhook_url`, `telegram_bot_token`, `telegram_chat_id`, `ntfy_url`,
+  `ntfy_topic`); each row carries `secret`, `is_set` and, when the stored
+  value cannot be decrypted, `decrypt_failed`. `POST /api/settings` keeps a
+  stored secret that arrives empty; `?clear=<key>` removes one. Before, a
+  secret the backend could not decrypt came back empty and the next Save
+  wiped it. `PUT /api/settings/{name}` with an empty value still clears it.
+- **BREAKING** (`X-API-Version: 1`): **`GET /api/cache/statistics` reports
+  what Squid measured** (#423). The statistics were never collected: the
+  watchdog called `squidclient`, which is not in the image. The watchdog now
+  reads Squid's cache manager on localhost once a minute (kept out of the
+  access log and the WAF) and writes `/config/cache_stats.json`. The answer
+  carries `state` (`current`, `stale` after three missed collections,
+  `not_collected`, `unreadable`), `collected_at`, `age_s`, `interval_s`,
+  `stale_after_s` and Squid's values, each `null` when Squid did not print it
+  (the hit ratios for Squid's first minute). The previous fields stay for
+  this release as deprecated aliases, but carry `null` where they carried 0:
+  `hit_rate` and `byte_hit_rate` are the 5-minute ratios, `cache_size` and
+  `max_cache_size` the disk figures as text, `objects_cached` the store
+  entries, `simulated` is true whenever the values are not current, and
+  `hits`, `misses` and `requests`, which were never measured, are always
+  `null`. Each collection is one request Squid counts, as a miss.
+- **BREAKING** (`X-API-Version: 1`), changed default: `GET /api/logs`, its
+  CSV export and `spm_recent_logs` leave internal sources out unless
+  `include_internal=true` (#429). See the upgrade notes.
+- **BREAKING** (`X-API-Version: 1`): **Clear cache empties the disk cache and
+  says what happened** (#435). `squid -k purge` is not a Squid command: it
+  exited 1, the watchdog restarted Squid and every object on disk survived,
+  while the API answered success as soon as it wrote the trigger. The
+  watchdog now stops Squid, empties the `cache_dir` (only a disk cache under
+  `/var/spool/squid`; anything else is refused before Squid is stopped),
+  recreates it and always starts Squid again. `POST
+  /api/maintenance/clear-cache` waits up to 45 s for the watchdog and answers
+  200 `success` with `data.objects_removed`, 500 `clear_cache_failed` with
+  `detail` and `data.step`, or 200 `pending` when the proxy did not answer in
+  time; a trigger that cannot be written is a 500.
+- **The interface is rebuilt on what the backend measures** (#415 to #422,
+  #425, #428, #429, #431, #432, #437). Pages show "Not collected", "Not
+  reported" or "Not available" instead of a zero nothing measured, counts use
+  one format whatever the browser locale, and timestamps stored in UTC are
+  shown in the viewer's zone.
+  - New design tokens with contrast checked in both themes, shared
+    components tested with axe-core, and a grouped sidebar (Overview,
+    Traffic, Protection, System) that collapses to icons and becomes a drawer
+    on narrow screens. Threat Intel becomes Analytics at `/analytics`;
+    `/threats` redirects there.
+  - Overview: the last 24 hours from the API, requests per hour, blocks by
+    rule, the most blocked destinations and the latest blocks with their real
+    reason, and only the notices the state calls for.
+  - Clients: devices only, with the selected client detailed beside the
+    table and a link to its requests.
+  - Access logs: server-side filters, the stack's own traffic hidden unless
+    asked for, CSV export, and "Allow this domain" on a reconstructed DNS
+    block.
+  - Analytics: blocks per day by rule, protection coverage in place of the
+    score, and statistics that say what they count.
+  - Blacklists: the source of every entry, what enforces each list, and
+    Block DoH and the essential whitelist as tabs.
+  - Egress allowlist and Audit log: what the list does right now, and every
+    audit event written as a sentence.
+  - Settings: one URL per section (`/settings/:section`, nine sections, the
+    last one Appearance for the theme), one draft per section, a save that
+    reports whether the proxy applied it, write-only secret fields, HTTPS
+    inspection install steps per platform, and each action's result under
+    its button. The sidebar shows the product's logo and a health line that
+    names what is not running.
+  - The README shows the current Overview and links a 30-second tour on the
+    documentation site, regenerated by `scripts/demo/media.sh` from synthetic
+    traffic.
+- **Statistics count client requests.** Rows the DNS resolver logs for the
+  proxy stay in the log but leave every count, a name looked up for A and
+  AAAA is stored once (#419), and the stack's own addresses leave the
+  Overview's counts, top lists and timeline (#422). `recent_blocks` covers
+  the same 24 hours as the counts, and the all-time and today counts come
+  from one snapshot, so today can no longer exceed all time (#421). The top
+  destinations count `host:443` and `host` as one (#415). Shadow IT, service
+  types and file types count clients only and read every host; service type
+  matches the host, not the path, and file type reads the URL path instead
+  of taking the top-level domain for an extension (#428).
+- **A client asking for a sinkholed name gets the block page** (#419). Squid
+  denies a destination that resolved to `0.0.0.0` or `::`, where the client
+  used to see a connection error and the row counted as not blocked.
+- The Squid access log line gains two fields at the end: the block reason
+  and the WAF's `X-SPM-Reason` (#419). Anything parsing `access.log` must
+  allow for them.
+- The backend's proxy health probe opens and closes a connection instead of
+  sending `GET` to Squid, and Squid logs only transactions that carry a
+  request: the access log no longer gains a `NONE_NONE/400` row every 30
+  seconds per open tab. `proxy_status` now means the port accepts
+  connections (#429).
+- **Every change to the blocked, allowed and egress lists writes an audit
+  row** with its counts: single add and remove, bulk remove, clear-all, URL
+  and Popular list import, pasted text, geo-block, source removal, restore,
+  and one row per auto-refresh run by `system` (#431). Before, clearing
+  640,929 domains left no row. A list URL is recorded without its user,
+  password and credential-named query values. Removing an entry writes
+  `remove_<list>` with the entry as target; rows written before as
+  `delete_ip` or `delete_domain` with `id=N` are still read by the Audit page.
+- A successful sign-in and a sign-out record the client address as the audit
+  row's target, as a failed sign-in already did; the Audit page shows "From
+  <address>", and "Address not recorded" for older rows (#433).
+- `POST /api/egress-allowlist` and restore refuse `*.name`, which Squid
+  matches against nothing, and name the `.name` form (#431).
 - Notifications are no longer delivered to loopback, link-local, multicast
   or unspecified addresses, or into the networks the backend is attached to
   (the WAF, the proxy and the other containers of the stack). LAN, Tailscale
-  and public addresses are delivered to as before. Redirects are not followed.
+  and public addresses are delivered to as before. Redirects are not followed
+  (#432).
 - New validation in `POST /api/settings`: `cache_size` (1 to 9999999 MB) and
   `memory_cache` (1 to 999999 MB), the limits the proxy's generator reads;
   `auto_refresh_hours` (1 to 168); `blocked_file_types` (letters and digits);
   `cache_bypass_domains` (domain names); notification URLs (http or https, no
   credentials, not this host); the allowed-hours window must end after it
-  starts; content filtering needs at least one extension.
-- Where no value is stored, the backend now stores the defaults the services
-  apply: the WAF heuristics as the shipped compose starts the WAF (sequence
-  validation off), the bandwidth and time values the backend writes when
-  nothing is stored, and a blocked extension list
-  (`exe,bat,cmd,dll,msi,scr,ps1,vbs`) so content filtering that is on blocks
-  something. At startup the backend writes the blocked extensions and cache
-  bypass files from the stored settings when they differ, and asks the proxy
-  to reload. **Upgrade note:** an install that changed `WAF_H_*` in `.env` and
-  never saved the heuristics in Settings now has the compose defaults stored,
-  and the WAF reconciler applies them; set them in Settings, Inspection.
-- **Changed default:** `GET /api/logs`, its CSV export and the MCP tool
-  `spm_recent_logs` leave internal sources (the stack's own traffic) out
-  unless `include_internal=true`; a `source_ip` that names an internal
-  address is still shown, and `meta.internal` counts what was left out.
-  `X-API-Version` stays 1. (#429)
-- A successful sign-in and a sign-out record the client address as the
-  audit row's target, as a failed sign-in already did; the Audit page shows
-  "From <address>", and "Address not recorded" for older rows.
+  starts; content filtering needs at least one extension (#432).
+- Where no value is stored, the backend stores the defaults the services
+  apply: the WAF heuristics as the shipped compose starts the WAF, the
+  bandwidth and time values it writes when nothing is stored, and a blocked
+  extension list (`exe,bat,cmd,dll,msi,scr,ps1,vbs`) so content filtering that
+  is on blocks something. At startup the backend rewrites the blocked
+  extensions and cache bypass files from the stored settings when they
+  differ, and asks the proxy to reload. The setup wizard writes only settings
+  something enforces, and no profile blocks `.js` (#432).
+- **The backend checks the database in two stages** (#441). Before serving it
+  runs `PRAGMA quick_check` (every page and constraint; a damaged page still
+  stops the start), and 30 seconds after start it runs the full `PRAGMA
+  integrity_check`, which also compares every index with its table, on a
+  read-only connection of its own. A failure of the full check is logged as
+  an error, sets `spm_db_integrity_ok` to 0 and makes `/readyz` answer 503,
+  so the container reports unhealthy. Each SQLite connection's page cache is
+  8 MB instead of 50 MB. On 1,000,000 log rows the start to the HTTP server
+  went from 75 to 100 s to 13 to 19 s at the compose limit of 0.25 CPU.
+- **Slow reconfigures are retried, not taken as applied** (#445). `squid -k
+  parse` and `squid -k reconfigure` may take 40 s (they had 15 s and 10 s;
+  Squid needs about 17 s to load 1,000,000 names at the compose limits). A
+  reconfigure that times out stays pending and is retried on the next poll,
+  and the reload trigger is not consumed.
+- Squid is stopped with SIGINT: with SIGTERM it waited 30 s, past
+  supervisord's 10 s, and every stop ended in SIGKILL. `docker stop` now
+  closes requests in progress at once (#435).
 - With GDPR mode on, the live log feed (`/api/ws/logs`) masks client
-  addresses as `GET /api/logs` does; it carried the full address.
-- The backend's proxy health probe opens and closes a connection instead of
-  sending `GET` to Squid, and Squid does not log a connection that sends no
-  request: the access log no longer gains a `NONE_NONE/400` row every 30
-  seconds per open tab. `proxy_status` now means the port accepts
-  connections. (#429)
-- Removing a list entry writes `remove_<list>` with the entry as target;
-  rows written before as `delete_ip` or `delete_domain` with `id=N` are still
-  read by the Audit page. Every list change now writes an audit row with its
-  counts. (#431)
-- `POST /api/egress-allowlist` and restore refuse `*.name`, which Squid
-  matches against nothing, and name the `.name` form. **Upgrade note:** schema
-  version 5 rewrites stored `*.name` egress entries to `.name` (one that is
-  already listed as `.name` is removed) and writes one audit row by `system`
-  naming them. (#431)
-- The backend checks the database with `PRAGMA quick_check` before serving
-  (every page and constraint; a damaged page still stops the start) and runs
-  the full `PRAGMA integrity_check`, which also compares every index with its
-  table, 30 seconds after start on a connection of its own. A failure of the
-  full check is logged as an error, sets the new gauge `spm_db_integrity_ok`
-  to 0 and makes `/readyz` answer 503, so the container reports unhealthy. On
-  1,000,000 log rows the start to the HTTP server went from 75 to 100 s to
-  13 to 19 s at the compose limit of 0.25 CPU.
-- Each SQLite connection's page cache is 8 MB instead of 50 MB.
+  addresses as `GET /api/logs` does; it carried the full address (#432).
+- API messages, the WAF block alert, the proxy's log lines and the Squid
+  error page title no longer contain em dashes (#445, #447).
+- The documentation was checked claim by claim against the code and
+  rewritten where it differed, with re-measured benchmarks (#438).
 
 ### Fixed
 
-- On a database of 1,000,000 log rows and 640,000 blacklisted domains the
-  backend was killed by the out-of-memory killer during start-up when the host
-  had no swap (and so restarted and was killed again): one 50 MB page cache
-  costs about 110 MiB in this SQLite build, and the blacklist export held the
-  640,000 names in memory on top of it. Start-up now peaks at 31 MiB of
-  anonymous memory, the full integrity check included. The export writes the
-  rows as it reads them, and a read error part way through now fails the
-  export instead of publishing a short list.
+- **The content filter blocks `.EXE`, `.Exe` and a blocked extension
+  followed by a query string** (#434). The ACL had no `-i`, and Squid matches
+  the path with its query, so `/X.EXE` and `/x.exe?dl=1` passed. The pattern
+  is now `\.exe(\?.*)?$`, matched without case; `/x.exe.txt?y=1` and
+  `/get?f=a.exe&b=2` still pass. A file written by an older release is
+  upgraded on the first start.
+- **An allowed domain takes a blocked entry out however it is written**
+  (#436). The exclusion compared stored strings, so an allowed `dot.example`
+  did not remove a blocked `.dot.example`, `*.dot.example` or `Dot.Example`,
+  which Squid and dnsmasq enforce as that name. One rule (lower case, no
+  `*.` or leading dot) now drives the exclusion, the DNS hosts file and the
+  counts.
+- **A blocked domain written as `.name` is sinkholed**: dnsmasq did not
+  answer for a hosts line `0.0.0.0 .name`; the hosts file now carries the
+  name. `*.example.com` and `.example.com` each block `example.com` itself
+  (#436).
+- **Adding or removing an allowed IP or domain takes effect at once**: it did
+  not export the lists, so it waited for the next blacklist change. Export
+  downloads the whole list, not the 50 rows on screen (#426).
+- **`PUT /api/settings/{name}` applies the setting as `POST /api/settings`
+  does** (#442): it writes the marker file, list file or env file the proxy
+  reads and pushes WAF heuristics to the running WAF. It wrote the database
+  row only, so a toggle set this way (for example `egress_default_deny`)
+  answered success and was not applied. A refused value still answers 400,
+  and a secret named with an empty value is still cleared. The answer now
+  carries `data`, and `status: "partial"` with `data.failed` when a proxy
+  file could not be written.
+- **The backend starts on a large database without being killed** (#441). On
+  1,000,000 log rows and 640,000 blacklisted domains it was killed by the
+  out-of-memory killer during start-up when the host had no swap, and
+  restarted into the same loop: one 50 MB page cache costs about 110 MiB in
+  this SQLite build, and the blacklist export held the 640,000 names in
+  memory on top of it. Start-up now peaks at 31 MiB of anonymous memory. The
+  export writes rows as it reads them, and a read error part way through
+  fails the export instead of publishing a short list.
+- **The proxy's configuration generator runs no Squid command** (#445).
+  Three comments in its heredoc held commands in backticks, which the shell
+  ran on every generation: three "FATAL: Unable to open configuration file"
+  lines at boot, and on a running proxy a log rotation, a reconfigure on the
+  old file and a second Squid on every regeneration. With 640,000 names the
+  generator took 74 to 154 s; it now takes under a second.
+- **The boot copy of the lists is verified against the backend's manifest**
+  (#445). It was a plain `cp`, so a truncated export became the live list at
+  boot, and every regeneration replaced the verified copy the watchdog had
+  loaded. See the upgrade notes for the fail-closed gate.
+- **The live log feed connects in a browser** (#418): the server selects the
+  `spm.v1` subprotocol the UI offers, without which every browser failed the
+  handshake.
+- Restore writes the proxy's files as a Save does and reports the settings it
+  applied and skipped, with reasons; it wrote the database only. Backup
+  Config downloads the envelope Restore reads, not the database export
+  (#425).
+- `POST /api/settings` refuses a secret it cannot encrypt; it stored it in
+  clear (#432).
+- The Clients page and the Settings clients tile were always empty, the
+  Blacklists tab counts read a deprecated field and showed 0, and charts
+  drew three hourly points as a smooth curve (#415).
+- The client detail drawer and the confirmation dialogs cover the whole
+  window with an opaque panel, whatever page opens them (#416, #417).
+- Global search sends `q` and `limit`, which the backend reads; it sent
+  `search` and `page_size`, which were ignored (#429).
+- An empty week in the analytics returns `[]` instead of `null` (#428).
+- The documentation site builds again: the tour page wrote its asset paths
+  with the site base already in them (#440).
 
-### Fixed
+### Internal
 
-- `PUT /api/settings/{name}` applies the setting as `POST /api/settings`
-  does: it writes the marker file, list file or env file the proxy reads and
-  pushes WAF heuristics to the running WAF. It wrote the database row only, so
-  a toggle set this way (for example `egress_default_deny`) answered success
-  and was not applied. A refused value still answers 400, and a secret named
-  with an empty value is still cleared. The answer now carries `data`, and
-  `status: "partial"` with `data.failed` when a proxy file could not be
-  written.
+- `scripts/check-no-dashes.sh` gates `ui/src`, `docs/`, every Markdown file,
+  the Squid error pages, `ui/index.html`, `ui/public` and `.env.example`
+  (#415, #445, #447). A Go test in each module scans every non-test Go file
+  token by token and fails on an em or en dash in a string literal (#448).
+- The documentation workflow builds the site on pull requests that touch it
+  (#440), and the web TLS check waits for the container's log line instead of
+  reading the log once (#427).
 
 ## [3.14.3] - 2026-10-25
 
