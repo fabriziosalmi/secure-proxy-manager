@@ -254,12 +254,19 @@ check  "LAN client with wrong credentials"               407 proxy_auth    code 
 check  "LAN client with credentials"                     200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -U acluser:acl-test-pass
 
 echo "── content filtering is enforced ──"
-start_proxy "touch /config/content_filtering_enabled; printf '%s\n' '\\.exe\$' > /config/blocked_file_types.txt" || exit 1
+# The line the backend writes for "exe" (blockedExtensionPattern in
+# backend-go/internal/handlers/settings.go; its unit test pins the same text).
+start_proxy "touch /config/content_filtering_enabled; printf '%s\n' '\\.exe(\\?.*)?\$' > /config/blocked_file_types.txt" || exit 1
 check  "LAN client → blocked extension"                  403 content_filter code  "$PFX-lan" "$LAN_CLIENT" http://pub.test/x.exe
 # The list holds \.exe$ as the backend writes it; the match ignores case.
 check  "LAN client → blocked extension in capitals"      403 content_filter code  "$PFX-lan" "$LAN_CLIENT" http://pub.test/X.EXE
 check  "LAN client → blocked extension in mixed case"    403 content_filter code  "$PFX-lan" "$LAN_CLIENT" http://pub.test/x.Exe
 check  "LAN client → .exe inside the name, not its end"  200 none           code  "$PFX-lan" "$LAN_CLIENT" http://pub.test/x.exe.txt
+# urlpath_regex sees the path with its query string, and a download link
+# often carries one.
+check  "LAN client → blocked extension with a query"     403 content_filter code  "$PFX-lan" "$LAN_CLIENT" "http://pub.test/x.exe?dl=1"
+check  "LAN client → capitals with a query"              403 content_filter code  "$PFX-lan" "$LAN_CLIENT" "http://pub.test/X.EXE?dl=1"
+check  "LAN client → .exe inside the name, with a query" 200 none           code  "$PFX-lan" "$LAN_CLIENT" "http://pub.test/x.exe.txt?y=1"
 check  "LAN client → allowed file"                       200 none           code  "$PFX-lan" "$LAN_CLIENT" http://pub.test/index.html
 
 echo "── time restrictions are enforced ──"

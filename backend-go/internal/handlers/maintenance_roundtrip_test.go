@@ -119,7 +119,7 @@ func TestBackupThenRestoreGivesTheSameSettings(t *testing.T) {
 		t.Errorf("the restored SafeSearch toggle did not reach its marker file: %v", err)
 	}
 	types, _ := os.ReadFile(filepath.Join(cfg.ConfigDir, "blocked_file_types.txt"))
-	if string(types) != "\\.exe$\n\\.msi$\n" {
+	if string(types) != "\\.exe(\\?.*)?$\n\\.msi(\\?.*)?$\n" {
 		t.Errorf("blocked_file_types.txt holds %q, want the restored list", types)
 	}
 

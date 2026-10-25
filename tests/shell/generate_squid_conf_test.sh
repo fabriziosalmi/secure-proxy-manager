@@ -92,7 +92,7 @@ echo "── every access rule records its reason ──"
 # previous rule's note or none, so every http_access line must carry one, with
 # every policy toggle on.
 conf="$(generate 'touch /config/egress_default_deny /config/proxy_auth_enabled /config/content_filtering_enabled /config/time_restrictions_enabled
-  printf "%s\n" "\\.exe\$" > /config/blocked_file_types.txt; printf "TIME_START=08:00\nTIME_END=18:00\n" > /config/time_restrictions.conf
+  printf "%s\n" "\\.exe(\\?.*)?\$" > /config/blocked_file_types.txt; printf "TIME_START=08:00\nTIME_END=18:00\n" > /config/time_restrictions.conf
   export BASIC_AUTH_USERNAME=u BASIC_AUTH_PASSWORD=p')"
 n_rules=$(grep -c '^http_access ' <<<"$conf")
 unlabelled="$(grep '^http_access ' <<<"$conf" | grep -v ' spm_r_[a-z_]*\( \|$\)')"

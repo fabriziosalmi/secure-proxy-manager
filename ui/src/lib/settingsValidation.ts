@@ -163,11 +163,15 @@ export function parseFieldError(detail: unknown): { key: string; message: string
   return m ? { key: m[1], message: m[2] } : null;
 }
 
-/** The patterns the backend writes for a list of extensions (writeSquidArtefacts). */
+/**
+ * The patterns the backend writes for a list of extensions
+ * (blockedExtensionPattern in backend-go/internal/handlers/settings.go): the
+ * extension at the end of the path, with or without a query string after it.
+ */
 export function extensionPatterns(list: string): string[] {
   return list
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean)
-    .map((ext) => `\\${ext.startsWith('.') ? ext : `.${ext}`}$`);
+    .map((ext) => `\\${ext.startsWith('.') ? ext : `.${ext}`}(\\?.*)?$`);
 }
