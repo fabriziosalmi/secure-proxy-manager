@@ -153,9 +153,10 @@ function SettingsPage() {
     if (savingRef.current) return;
     const req = sectionRequest(id, parsed.values, drafts.edits[id] ?? {}, drafts.secretEdits[id] ?? {});
     const errors = validateSection(id, values, req.sent);
-    // An empty allowlist with default-deny on refuses every destination.
+    // An empty allowlist with default-deny on leaves only LAN destinations
+    // and Allowed IPs reachable (lib/egress).
     if (id === 'filtering' && values.egress_default_deny === 'true' && egress.data === 0) {
-      errors.egress_default_deny = 'the egress allowlist is empty, so every destination would be refused: add destinations first';
+      errors.egress_default_deny = 'the egress allowlist is empty, so clients would reach only LAN destinations and the addresses on Allowed IPs: add destinations first';
     }
     if (Object.keys(errors).length) {
       drafts.setErrors(id, errors);
