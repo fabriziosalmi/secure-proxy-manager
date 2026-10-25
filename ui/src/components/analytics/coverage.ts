@@ -5,6 +5,7 @@
  */
 import type { Coverage } from '../../types';
 import { formatCount } from '../../lib/format';
+import { sectionPath, type SectionId } from '../../lib/settingsMeta';
 
 /** on: switched on and enforced. off: switched off. attention: on but not fully working, or off where that leaves a gap. unknown: not reported. */
 export type CoverageState = 'on' | 'off' | 'attention' | 'unknown';
@@ -16,19 +17,9 @@ export interface CoverageLine {
   link: { label: string; to: string };
 }
 
-type SettingsSection = 'inspection' | 'access' | 'alerts';
-
-// Where each Settings section opens. Settings has one URL for the whole page
-// today; when it has one per section, this is the one place to change.
-const SETTINGS_PATHS: Record<SettingsSection, string> = {
-  inspection: '/settings',
-  access: '/settings',
-  alerts: '/settings',
-};
-
-/** Where a Settings section opens. */
-export function settingsPath(section: SettingsSection): string {
-  return SETTINGS_PATHS[section];
+/** Where a Settings section opens: one URL per section. */
+export function settingsPath(section: Extract<SectionId, 'inspection' | 'access' | 'alerts'>): string {
+  return sectionPath(section);
 }
 
 const BLACKLISTS = { label: 'Blacklists', to: '/blacklists' };

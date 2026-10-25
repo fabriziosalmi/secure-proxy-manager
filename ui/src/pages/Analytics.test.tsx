@@ -146,7 +146,7 @@ describe('Analytics', () => {
     expect(within(cov).getByText('WAF: 31 request rules in 4 categories, inspecting plain HTTP only')).toBeInTheDocument()
     expect(within(cov).getByText('Alerts: off, blocks are not reported anywhere')).toBeInTheDocument()
     expect(within(cov).getAllByRole('link', { name: 'Blacklists' })[0]).toHaveAttribute('href', '/blacklists')
-    expect(within(cov).getByRole('link', { name: 'Alerts' })).toHaveAttribute('href', '/settings')
+    expect(within(cov).getByRole('link', { name: 'Alerts' })).toHaveAttribute('href', '/settings/alerts')
   })
 
   it('shows the WAF counters with their window, and the three 7-day sections with what they count', async () => {

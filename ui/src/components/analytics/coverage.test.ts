@@ -29,7 +29,8 @@ describe('coverageLines', () => {
     expect(l.login).toMatchObject({ state: 'off', text: 'Proxy login: off, any device on an allowed network can use the proxy' })
     expect(l.alerts).toMatchObject({ state: 'attention', text: 'Alerts: off, blocks are not reported anywhere' })
     expect(l.domain.link).toEqual({ label: 'Blacklists', to: '/blacklists' })
-    expect(l.waf.link.label).toBe('Inspection')
+    expect(l.waf.link).toEqual({ label: 'Inspection', to: '/settings/inspection' })
+    expect(l.login.link).toEqual({ label: 'Access', to: '/settings/access' })
   })
 
   it('says when the proxy holds its own copy, and when rules are partly off', () => {
