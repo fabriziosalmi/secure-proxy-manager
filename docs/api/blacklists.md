@@ -2,14 +2,20 @@
 
 Base URLs:
 
-- Through the `web` reverse proxy (recommended): `https://localhost:8443/api`
-- Directly to the backend (localhost only): `http://127.0.0.1:5001/api`
+- Through the `web` service (recommended): `https://localhost:8443/api`
+- Directly to the backend, from the host only: `http://127.0.0.1:5001/api`
 
-All endpoints require authentication (Basic or JWT). All response bodies follow the envelope `{"status": "success" | "error", "data": ..., "detail": ...}`.
+All endpoints require authentication (Basic or JWT). Successful responses are
+`{"status": "success", ...}`; errors are `{"status": "error", "detail": "..."}`.
+
+The UI calls the four lists Blocked IPs (`ip-blacklist`), Blocked domains
+(`domain-blacklist`), Allowed IPs (`ip-whitelist`) and Allowed domains
+(`domain-whitelist`). Every change to a list requests an export of the files
+Squid and dnsmasq read, and writes an audit log row.
 
 ---
 
-## IP blacklist {#ip-blacklist}
+## Common operations
 
 ### List entries
 
@@ -17,7 +23,9 @@ All endpoints require authentication (Basic or JWT). All response bodies follow 
 GET /api/ip-blacklist?limit=50&offset=0&search=203.0
 ```
 
-`limit` is 1 to 1000 (default 100); `search` matches the entry and its description. Newest first.
+`limit` is 1 to 1000 (default 100); `search` matches the entry and its
+description. Newest first. The same parameters work on every list, including
+the egress allowlist.
 
 ```json
 {
@@ -38,9 +46,44 @@ GET /api/ip-blacklist?limit=50&offset=0&search=203.0
 }
 ```
 
-`added_date` is UTC. `source_kind` is `url`, `manual`, `geo`, `paste` or `restore` (see [Sources](#sources)); it, `source` and `source_label` are `null` for an entry added before sources were recorded. The same fields are on every list endpoint below. Read the count from `meta.total`: the top-level `total`, `limit` and `offset` beside it are deprecated.
+`added_date` is UTC. `source_kind` is `url`, `manual`, `geo`, `paste` or
+`restore` (see [Sources](#sources)); it, `source` and `source_label` are
+`null` for an entry added before sources were recorded. The four lists carry
+these fields; the egress allowlist does not. Read the count from
+`meta.total`: the top-level `total`, `limit` and `offset` beside it are
+deprecated.
 
-### Add entry
+### Delete one entry
+
+```
+DELETE /api/ip-blacklist/{id}
+```
+
+`404` when no entry has that ID. The same route exists on every list.
+
+### Bulk delete and clear (blocked lists and egress allowlist)
+
+```
+POST /api/ip-blacklist/bulk-delete
+```
+
+```json
+{ "ids": [1, 2, 3] }
+```
+
+At least one ID. The answer is `{"status": "success", "data": {"deleted": 3}}`.
+
+```
+DELETE /api/ip-blacklist/clear-all
+```
+
+Deletes every entry and answers `Cleared N entries`. Both routes exist on
+`ip-blacklist`, `domain-blacklist` and `egress-allowlist`; the two allowed
+lists have neither.
+
+---
+
+## IP blacklist {#ip-blacklist}
 
 ```
 POST /api/ip-blacklist
@@ -53,31 +96,16 @@ POST /api/ip-blacklist
 }
 ```
 
-`ip` accepts a single address or a CIDR range. Wildcards are not supported for IPs.
+`ip` is a single address or a CIDR range (at most 50 characters); wildcards are
+not supported. Private, loopback, link-local, CGNAT, multicast and unspecified
+ranges are refused with `400`, and so is an entry already on the list.
+`description` is at most 500 characters on every list.
 
-A refusal is a `400` whose `detail` names the value and the list as the page does: `"300.1.1.1" is not an IP address or network`, `"203.0.113.9" is already on Blocked IPs`. The domain lists and the allowed lists answer the same way (`is not a domain name: labels of letters, digits and hyphens separated by dots`, `is already on Allowed domains`).
-
-### Delete entry
-
-```
-DELETE /api/ip-blacklist/{id}
-```
-
-### Bulk delete
-
-```
-POST /api/ip-blacklist/bulk-delete
-```
-
-```json
-{ "ids": [1, 2, 3] }
-```
-
-### Clear all
-
-```
-DELETE /api/ip-blacklist/clear-all
-```
+A refusal's `detail` names the value and the list in the page's words:
+`"300.1.1.1" is not an IP address or network`, `"203.0.113.9" is already on
+Blocked IPs`. The domain lists answer the same way (`"..." is not a domain
+name: labels of letters, digits and hyphens separated by dots`,
+`"..." is already on Blocked domains`).
 
 ### Import (per-type, retired)
 
@@ -91,51 +119,28 @@ Answers `410 Gone`: use `POST /api/blacklists/import` with `type: "ip"`.
 
 ## Domain blacklist {#domain-blacklist}
 
-### List entries
-
-```
-GET /api/domain-blacklist
-```
-
-Same shape as the IP list, with `domain` in place of `ip`.
-
-### Add entry
-
 ```
 POST /api/domain-blacklist
 ```
 
 ```json
 {
-  "domain": "*.ads.example.com",
+  "domain": "ads.example.com",
   "description": "optional description"
 }
 ```
 
-`domain` accepts an exact name. A `*.` or `.` prefix is accepted too, but an entry blocks one exact name either way: `*.example.com` and `.example.com` block `example.com` itself (the exporter and the proxy drop the `*.` and the leading dot), not its subdomains. While the list holds `SPM_DNS_BLOCKLIST_MAX_DOMAINS` entries (default 1,000,000) a new one is refused with `413`.
-A URL is reduced to its hostname (a port is dropped). Anything else is refused with `400`: only letters, digits, hyphens, underscores and dots are allowed, with labels of 1-63 characters and no more than 253 in all. In particular, whitespace, tabs, newlines and colons are refused, because entries are written one per line into the proxy and DNS files.
-
-### Delete entry
-
-```
-DELETE /api/domain-blacklist/{id}
-```
-
-### Bulk delete
-
-```
-POST /api/domain-blacklist/bulk-delete
-```
-
-```json
-{ "ids": [1, 2, 3] }
-```
-
-### Clear all
-
-```
-DELETE /api/domain-blacklist/clear-all
-```
+`domain` is an exact name, lower-cased on add. A leading `*.` or `.` is
+accepted, but an entry blocks one exact name either way: Squid's copy of the
+list and the dnsmasq export both drop the prefix and compare in lower case, so
+`*.example.com` and `.example.com` block `example.com` itself, not its
+subdomains. A URL is
+reduced to its host name (a port is dropped). Anything else is refused with
+`400`: only letters, digits, hyphens, underscores and dots, labels of 1 to 63
+characters, at most 253 in all. Whitespace, tabs, newlines and colons are
+refused because entries are written one per line into the proxy and DNS files.
+While the list holds `SPM_DNS_BLOCKLIST_MAX_DOMAINS` entries (default
+1,000,000) a new one is refused with `413`.
 
 ### Import (per-type, retired)
 
@@ -149,13 +154,11 @@ Answers `410 Gone`: use `POST /api/blacklists/import` with `type: "domain"`.
 
 ## Unified import {#import}
 
-Import multiple entries from a URL or inline content.
-
 ```
 POST /api/blacklists/import
 ```
 
-**From URL:**
+**From a URL:**
 
 ```json
 {
@@ -165,9 +168,11 @@ POST /api/blacklists/import
 }
 ```
 
-The entries are recorded under the URL as their source; importing the same URL again adds to that source. The optional `name` (at most 100 characters) labels it, as the Popular lists in the UI do.
+The entries are recorded under the URL as their source; importing the same URL
+again adds to that source. The optional `name` (at most 100 characters) labels
+it, as the Popular lists in the UI do.
 
-**Inline content:**
+**Pasted content:**
 
 ```json
 {
@@ -176,7 +181,10 @@ The entries are recorded under the URL as their source; importing the same URL a
 }
 ```
 
-`type` must be `"domain"` or `"ip"`. Inline content is recorded as a new pasted-list source each time. An import that would take the domain blacklist past `SPM_DNS_BLOCKLIST_MAX_DOMAINS` is refused whole with `413`.
+`type` must be `"domain"` or `"ip"`, and one of `url` and `content` is
+required. Pasted content is recorded as a new pasted-list source each time. An
+import that would take the domain blacklist past
+`SPM_DNS_BLOCKLIST_MAX_DOMAINS` is refused whole with `413`.
 
 **Response:**
 
@@ -192,17 +200,24 @@ The entries are recorded under the URL as their source; importing the same URL a
 }
 ```
 
-`skipped` counts entries already listed or not valid; `bogon_skipped` counts the private and LAN ranges among them, which the IP blacklist refuses.
+`skipped` counts entries already listed or not valid; `bogon_skipped` counts
+the private and other non-routable ranges among them, which the IP blacklist
+refuses.
 
-**Supported file formats:**
+**Formats:**
 
-- Plain text, one entry per line.
+- One entry per line.
 - Hosts files: the last field of a line is the entry.
 - A domain written as a URL is reduced to its host name.
-- Blank lines and lines beginning with `#` or `;` are ignored.
+- Blank lines and lines starting with `#` or `;` are ignored.
 
 ::: warning SSRF protection
-Import URLs are validated. Hosts that resolve to loopback, private, link-local, multicast, or other special-purpose ranges are rejected with `403`, and the resolved IP is pinned to prevent DNS rebinding mid-download. The download is capped at 32 MB.
+Before a URL is fetched its host is resolved; when any address is private,
+loopback, link-local, multicast, unspecified, in `0.0.0.0/8` or in CGNAT, the
+import is refused with `403`. A URL that is not `http` or `https`, or a host
+that does not resolve, is refused with `400`. The client checks the addresses
+again when it connects and on each of at most five redirects. The download is
+limited to 32 MB; three attempts are made before it fails with `400`.
 :::
 
 ---
@@ -217,20 +232,38 @@ POST /api/blacklists/import-geo
 { "countries": ["RU", "CN", "KP"] }
 ```
 
-Each country's IPv4 blocks are fetched from ipdeny.com, or from `herrbischoff/country-ip-blocks` when ipdeny does not answer (from `GEOIP_URL` when it is set), and added to the IP blacklist under one source per country (`source_kind: "geo"`, `source: "RU"`). At most 50 countries per request.
+One to 50 two-letter country codes. Each country's IPv4 blocks are fetched
+from `https://www.ipdeny.com/ipblocks/data/countries/<cc>.zone`, or from
+`herrbischoff/country-ip-blocks` on GitHub when ipdeny does not answer, and
+added to the IP blacklist under one source per country (`source_kind: "geo"`,
+`source: "RU"`). Private and other non-routable ranges in a feed are skipped.
+When the backend has `GEOIP_URL` set, `<GEOIP_URL>?cc=<cc>` is fetched
+instead of both.
+
+```json
+{
+  "status": "success",
+  "message": "Imported 9184 IP blocks for 2 of 2 countries",
+  "data": { "imported": 9184, "countries_imported": 2, "countries_requested": 2 }
+}
+```
+
+When some countries fail, `status` is `"partial"` and `data.errors` names them;
+when every country fails and nothing was imported, the answer is `502`.
 
 ---
 
 ## Sources {#sources}
 
-Every list entry records the source that added it, and an entry keeps the source that added it first.
+Every entry of the four lists records the source that added it, and keeps the
+source that added it first.
 
 | `kind` | `source` | Recorded for |
 |---|---|---|
-| `url` | the URL (`label`: the list's name, when given) | an import from a URL, a Popular list, the auto-refresh of that URL |
+| `url` | the URL (`label`: the list's name, when given) | an import from a URL, a Popular list, the automatic refresh of that URL |
 | `manual` | empty | entries added one at a time |
 | `geo` | the country code | a geo import |
-| `paste` | empty | each inline import, one source per request |
+| `paste` | empty | each pasted import, one source per request |
 | `restore` | empty | each configuration restore, one source per list |
 
 ### List the sources of a list
@@ -269,7 +302,9 @@ GET /api/domain-whitelist/sources
 }
 ```
 
-The counts and dates are those of the entries. Most recently added first; the entries whose source was not recorded (`id: null`) last. A source with no entries left is not listed.
+The counts and dates are those of the entries. Most recently added first; the
+entries whose source was not recorded (`id: null`) last. A source with no
+entries left is not listed.
 
 ### Remove a source
 
@@ -278,7 +313,10 @@ DELETE /api/ip-blacklist/sources/{id}
 DELETE /api/ip-blacklist/sources/unrecorded
 ```
 
-Removes, in one transaction, the entries the source added (or every entry whose source was not recorded), then exports the lists so Squid and dnsmasq stop enforcing them. The same route exists under each of the four lists; an id that belongs to another list answers `404`.
+Removes, in one transaction, the entries the source added (or every entry
+whose source was not recorded), then requests an export so Squid and dnsmasq
+stop enforcing them. The same route exists under each of the four lists; an
+ID that belongs to another list answers `404`.
 
 ```json
 { "status": "success", "message": "Removed 4521 entries", "data": { "removed": 4521 } }
@@ -290,7 +328,9 @@ Removes, in one transaction, the entries the source added (or every entry whose 
 GET /api/ip-blacklist/export
 ```
 
-Every entry of the list, one per line, as `text/plain`, in the order added. The same route exists under each of the four lists.
+Every entry of the list, one per line, as `text/plain`, in the order added,
+served as the attachment `<list>-<date>.txt`. The same route exists under each
+of the four lists.
 
 ---
 
@@ -315,41 +355,26 @@ GET /api/blacklists/enforcement
 ```
 
 - `dns_blocklist_limit`: `SPM_DNS_BLOCKLIST_MAX_DOMAINS`.
-- `domain_blacklist_on_allowed`: blacklisted domains whose enforced name (lower case, `*.` and a leading dot dropped) is on the domain whitelist, left out of what dnsmasq and Squid receive.
-- `squid_domain_acl`: the proxy's record of Squid's own copy of the domain blacklist: the names after dropping `*.` and duplicates, `SPM_SQUID_DOMAIN_ACL_MAX`, and whether Squid holds them.
-- `squid_ip_blacklist`, `squid_ip_whitelist`: the proxy's record of each IP list after merging overlapping and adjacent entries: the lines it had, the networks Squid loads, and the lines that were not an address or CIDR.
+- `domain_blacklist_on_allowed`: blocked domains whose enforced name (lower
+  case, `*.` and a leading dot dropped) is on the domain whitelist, left out
+  of what dnsmasq and Squid receive.
+- `squid_domain_acl`: the proxy's record of Squid's own copy of the domain
+  blacklist: the names after dropping prefixes and duplicates,
+  `SPM_SQUID_DOMAIN_ACL_MAX`, and whether Squid holds them.
+- `squid_ip_blacklist`, `squid_ip_whitelist`: the proxy's record of each IP
+  list after merging overlapping and adjacent entries: the lines it had, the
+  networks Squid loads, and the lines that were not an address or CIDR.
 
-A record the proxy has not written (an older proxy, or one that has not started) is `null`.
+A record the proxy has not written (an older proxy, or one that has not
+started) is `null`.
 
 ---
 
 ## IP whitelist {#ip-whitelist}
 
-Whitelisted destination IPs get past the direct-IP block rule and the final deny in Squid. Squid checks the IP and domain blacklists first, so a whitelisted address that is also blacklisted stays blocked. A change is exported at once.
-
-### List entries
-
-```
-GET /api/ip-whitelist
-```
-
-```json
-{
-  "status": "success",
-  "data": [
-    {
-      "id": 1,
-      "ip": "192.168.1.50",
-      "description": "Home NAS",
-      "added_date": "2026-03-01 12:00:00",
-      "source_kind": "manual"
-    }
-  ],
-  "meta": { "total": 1, "limit": 100, "offset": 0 }
-}
-```
-
-### Add entry
+Allowed destination addresses get past the direct-IP block rule and the final
+deny in Squid. Squid checks the blocked lists first, so an allowed address
+that is also blocked stays blocked.
 
 ```
 POST /api/ip-whitelist
@@ -362,6 +387,8 @@ POST /api/ip-whitelist
 }
 ```
 
+Any valid address or CIDR range is accepted, private ones included.
+
 ### Import a pasted list {#allowed-import}
 
 ```
@@ -373,58 +400,37 @@ POST /api/domain-whitelist/import
 { "content": "192.168.1.50\n# a comment\n10.0.0.0/24" }
 ```
 
-One entry per line, at most 1 MiB; blank lines and lines starting with `#` are ignored. Each line is checked as the single add checks it, and the new entries are recorded under one source of kind `paste`, so the paste can be removed as a whole ([Remove a source](#sources)). An entry already on the list keeps the source that added it first.
+`content` is required, at most 1 MiB, one entry per line; blank lines and
+lines starting with `#` are ignored. Each line is checked as the single add
+checks it, and the new entries are recorded under one source of kind `paste`,
+so the paste can be removed as a whole ([Remove a source](#sources)). An entry
+already on the list keeps the source that added it first.
 
 ```json
 {
   "status": "success",
+  "message": "Added 2 entries to Allowed IPs (0 already listed, 1 refused)",
   "data": {
     "added": 2,
     "skipped": 0,
     "refused": 1,
-    "refusals": [{ "entry": ".x.example", "reason": "\".x.example\" is not an exact name: write x.example. An allowed name takes that same name off Blocked domains, however it is written there, and covers no name under it" }]
+    "refusals": [{ "entry": "300.1.1.1", "reason": "\"300.1.1.1\" is not an IP address or network" }]
   }
 }
 ```
 
-`skipped` counts the lines already listed or repeated in the paste; `refusals` lists the first 20 refused lines with their reasons, `refused` counts them all.
-
-### Delete entry
-
-```
-DELETE /api/ip-whitelist/{id}
-```
+`skipped` counts the lines already listed or repeated in the paste; `refused`
+counts the refused lines and `refusals` lists the first 20 with their reasons.
+`POST /api/blacklists/import` feeds only the two blocked lists.
 
 ---
 
 ## Domain whitelist {#domain-whitelist}
 
-A blacklisted domain whose enforced name is on the whitelist is left out of what the backend exports, so dnsmasq resolves it normally and Squid does not refuse it: `example.com` here takes out `example.com`, `*.example.com` and `.example.com`, in any case. It covers no subdomain, so a leading dot and wildcards are refused. A change is exported at once.
-
-### List entries
-
-```
-GET /api/domain-whitelist
-```
-
-```json
-{
-  "status": "success",
-  "data": [
-    {
-      "id": 1,
-      "domain": "github.com",
-      "type": "fqdn",
-      "description": "Essential: code hosting",
-      "added_date": "2026-03-01 12:00:00",
-      "source_kind": "manual"
-    }
-  ],
-  "meta": { "total": 1, "limit": 100, "offset": 0 }
-}
-```
-
-### Add entry
+A blocked domain whose enforced name is on the whitelist is left out of what
+the backend exports, so dnsmasq resolves it normally and Squid does not refuse
+it: `example.com` here takes out a blocked `example.com`, `*.example.com` and
+`.example.com`, in any case. It covers no name under it.
 
 ```
 POST /api/domain-whitelist
@@ -437,23 +443,28 @@ POST /api/domain-whitelist
 }
 ```
 
-`domain` is stored in lower case. `.github.com` and `*.github.com` are refused with the name to write (`".github.com" is not an exact name: write github.com. ...`), since an allowed name covers no name under it. A pasted list goes to [`POST /api/domain-whitelist/import`](#allowed-import).
-
-### Delete entry
-
-```
-DELETE /api/domain-whitelist/{id}
-```
+The name is stored in lower case. A leading `.` or `*.` is refused with `400`
+and the name to write (`".github.com" is not an exact name: write github.com.
+...`), because an allowed name covers no name under it. Other wildcards and
+patterns (`*`, `?`, `[`, `(`, `|`, `\`) and any name that is not a valid host
+name are refused with `400` too. A pasted list goes to
+[`POST /api/domain-whitelist/import`](#allowed-import).
 
 ---
 
 ## Egress allowlist {#egress-allowlist}
 
-The egress allowlist is the deny-by-default complement to the blacklists. It is consulted only when default-deny egress is enabled (the `egress_default_deny` setting, default `false`). While that setting is off (the default), behaviour is unchanged: clients may reach any destination not on a blacklist, and this allowlist has no effect. When it is on, the proxy denies all outbound egress from local clients except destinations on this allowlist; everything else is refused with a Squid 403.
+The egress allowlist is consulted only while default-deny egress is on (the
+`egress_default_deny` setting, default `"false"`, changed through
+`POST /api/settings` and applied with `POST /api/maintenance/reload-config`;
+see [Settings](./settings.md#default-deny-egress)). While it is on, local
+clients reach only these destinations, LAN destinations (`10.0.0.0/8`,
+`192.168.0.0/16`) and Allowed IPs; everything else is refused with a Squid
+403.
 
-The `egress_default_deny` toggle is set via the bulk settings endpoint (`POST /api/settings`, flat `{name: value}` body), not through this group.
-
-Each entry is either an IP/CIDR (matched by Squid `dst`) or a domain (matched by Squid `dstdomain`). The type is auto-classified on add: a value parseable as an IP or CIDR is stored as type `cidr`, otherwise it is treated as a `domain`.
+Each entry is an address or CIDR (matched by a Squid `dst` ACL) or a domain
+(matched by a Squid `dstdomain` ACL). The type is set on add: a value that
+parses as an address or CIDR is stored as `cidr`, anything else as `domain`.
 
 ### List entries
 
@@ -490,7 +501,9 @@ POST /api/egress-allowlist
 }
 ```
 
-`entry` accepts an IP, a CIDR range, or a domain; the type is auto-classified to `cidr` or `domain`.
+`entry` (at most 253 characters) is lower-cased. A domain must contain a dot.
+A domain entry matches that exact name; `.example.com` covers the domain and
+every name under it.
 
 **Success:**
 
@@ -501,26 +514,11 @@ POST /api/egress-allowlist
 }
 ```
 
-A 400 is returned with `"entry must be an IP, CIDR, or domain"` when `entry` is empty, whitespace, or otherwise invalid, and with `"entry already in allowlist"` on a duplicate.
+**Refusals (`400`):**
 
-### Delete entry
-
-```
-DELETE /api/egress-allowlist/{id}
-```
-
-### Bulk delete
-
-```
-POST /api/egress-allowlist/bulk-delete
-```
-
-```json
-{ "ids": [1, 2, 3] }
-```
-
-### Clear all
-
-```
-DELETE /api/egress-allowlist/clear-all
-```
+| `detail` | Cause |
+|---|---|
+| `invalid entry` | Empty, or contains a space |
+| `entry must be an IP, CIDR, or domain` | Not an address or CIDR, and not a valid domain with a dot |
+| `write .example.com, with a leading dot, ...` | A domain written `*.example.com` |
+| `entry already in allowlist` | A duplicate |

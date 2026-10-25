@@ -2,14 +2,29 @@
 
 Base URLs:
 
-- Through the `web` reverse proxy (recommended): `https://localhost:8443/api`
-- Directly to the backend (localhost only): `http://127.0.0.1:5001/api`
+- Through the `web` service (recommended): `https://<host>/api` or
+  `https://localhost:8443/api`
+- Directly to the backend, from the host only: `http://127.0.0.1:5001/api`
 
-Every endpoint accepts either HTTP Basic or JWT bearer authentication unless noted otherwise. Most successful responses follow the envelope `{"status": "success", "data": ...}`; the authentication endpoints (`/api/auth/login`, `/api/auth/refresh`, `/api/ws-token`, `/api/logout`, `/api/change-password`) return a flat object with `status` and the payload fields at the top level. Errors are always `{"status": "error", "detail": "..."}`, and a 500 additionally carries `"code": "internal_error"`. `detail` is a stable string this project controls and never a message from a dependency, so match on `code`, not on prose.
+Every route needs HTTP Basic or JWT bearer authentication except
+`POST /api/auth/login`, `POST /api/auth/refresh`, `GET /api/health`,
+`GET /api/ready`, `GET /health`, `GET /livez`, `GET /readyz` and `GET /metrics`.
+The WebSocket authenticates with a single-use token (see
+[WebSocket](./websocket.md)). A running backend lists every registered route at
+`GET /api/docs` (authenticated).
+
+Most successful responses are `{"status": "success", "data": ...}`. The
+authentication endpoints (`/api/auth/login`, `/api/auth/refresh`,
+`/api/ws-token`, `/api/logout`, `/api/change-password`) return a flat object
+with `status` and the payload fields at the top level. Errors are
+`{"status": "error", "detail": "..."}`; a 500 also carries
+`"code": "internal_error"` and a generic `detail`, with the cause in the
+backend log.
 
 ### Collections
 
-Every endpoint that returns a collection uses one shape: the collection under `data`, the pagination under `meta`.
+Endpoints that return a collection put it under `data` and the pagination
+under `meta`:
 
 ```json
 {
@@ -19,125 +34,135 @@ Every endpoint that returns a collection uses one shape: the collection under `d
 }
 ```
 
-`total`, `limit` and `offset` are also still emitted at the top level. They are **deprecated** and will be removed in the next contract version; read `meta` instead. Before v3.11.7 collections came back in three incompatible shapes (pagination as top-level siblings, no pagination at all, or the collection nested under `data.clients`), so a client had to special-case each endpoint.
+`total`, `limit` and `offset` are also emitted at the top level. They are
+deprecated; read `meta`.
 
 ### Contract version
 
-Every response carries an `X-API-Version` header. It is the version of the request and response **shapes**, not the product build version, so it changes only when something a client depends on changes, unlike the `version` field in `/api/health`, which advances on every release. It is `1` at this commit.
+Every response carries an `X-API-Version` header: the version of the request
+and response shapes, `1` at this commit. It changes only when a shape a client
+depends on changes, unlike `version` in `/api/health`, which is the release.
 
-## Authentication
+## Authentication and health
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/auth/login` | Validate credentials, return access and refresh JWTs |
-| `POST` | `/api/auth/refresh` | Exchange a refresh token for a new pair |
-| `POST` | `/api/logout` | Revoke the JWT used to authenticate the request, and the refresh token in an optional `{"refresh_token": ...}` body |
+| `POST` | `/api/auth/login` | Check credentials, return an access and a refresh JWT (no auth) |
+| `POST` | `/api/auth/refresh` | Exchange a refresh token for a new pair (no auth) |
+| `POST` | `/api/logout` | Revoke the bearer token of the request, and the refresh token in an optional `{"refresh_token": ...}` body |
 | `POST` | `/api/change-password` | Change the admin password |
 | `GET`  | `/api/ws-token` | Issue a single-use WebSocket token |
-| `GET`  | `/health` | Liveness check (no auth) |
-| `GET`  | `/api/health` | Liveness check via API prefix (no auth) |
+| `GET`  | `/api/health` | Status, version, commit (no auth) |
+| `GET`  | `/api/ready`, `/readyz` | `200` when the database answers, `503` otherwise (no auth) |
+| `GET`  | `/health`, `/livez` | `200` while the process runs (no auth) |
+| `GET`  | `/metrics` | Prometheus metrics (no auth; nginx does not proxy it) |
+| `GET`  | `/api/docs` | The list of registered routes |
 
-## Blacklist and whitelist
+## Lists
+
+`{list}` is one of `ip-blacklist`, `domain-blacklist`, `ip-whitelist`,
+`domain-whitelist`. Details: [Blacklist and Whitelist API](./blacklists.md).
 
 | Method | Path | Description |
 |---|---|---|
-| `GET`    | `/api/ip-blacklist` | List IP blacklist entries |
-| `POST`   | `/api/ip-blacklist` | Add an IP blacklist entry |
-| `DELETE` | `/api/ip-blacklist/{id}` | Delete an IP blacklist entry |
-| `POST`   | `/api/ip-blacklist/bulk-delete` | Delete multiple IP blacklist entries |
-| `DELETE` | `/api/ip-blacklist/clear-all` | Remove all IP blacklist entries |
-| `POST`   | `/api/ip-blacklist/import` | Import IPs from URL or inline content |
-| `GET`    | `/api/domain-blacklist` | List domain blacklist entries |
-| `POST`   | `/api/domain-blacklist` | Add a domain blacklist entry |
-| `DELETE` | `/api/domain-blacklist/{id}` | Delete a domain blacklist entry |
-| `POST`   | `/api/domain-blacklist/bulk-delete` | Delete multiple domain blacklist entries |
-| `DELETE` | `/api/domain-blacklist/clear-all` | Remove all domain blacklist entries |
-| `POST`   | `/api/domain-blacklist/import` | Import domains from URL or inline content |
-| `POST`   | `/api/blacklists/import` | Unified import (`type` = `"ip"` or `"domain"`) |
-| `POST`   | `/api/blacklists/import-geo` | Import country-IP ranges by country code |
-| `GET`    | `/api/ip-whitelist` | List IP whitelist entries |
-| `POST`   | `/api/ip-whitelist` | Add an IP whitelist entry |
-| `POST`   | `/api/ip-whitelist/import` | Add a pasted list to the IP whitelist as one pasted-list source |
-| `DELETE` | `/api/ip-whitelist/{id}` | Delete an IP whitelist entry |
-| `GET`    | `/api/domain-whitelist` | List domain whitelist entries (DNS-bypass) |
-| `POST`   | `/api/domain-whitelist` | Add a domain whitelist entry |
-| `POST`   | `/api/domain-whitelist/import` | Add a pasted list to the domain whitelist as one pasted-list source |
-| `DELETE` | `/api/domain-whitelist/{id}` | Delete a domain whitelist entry |
+| `GET`    | `/api/{list}` | List entries (`limit` 1 to 1000, default 100; `offset`; `search`) |
+| `POST`   | `/api/{list}` | Add an entry |
+| `DELETE` | `/api/{list}/{id}` | Delete an entry |
+| `POST`   | `/api/ip-blacklist/bulk-delete`, `/api/domain-blacklist/bulk-delete` | Delete entries by ID |
+| `DELETE` | `/api/ip-blacklist/clear-all`, `/api/domain-blacklist/clear-all` | Delete every entry |
+| `GET`    | `/api/{list}/sources` | Where the entries came from, one row per source |
+| `DELETE` | `/api/{list}/sources/{id}` | Delete the entries one source added (`{id}` or `unrecorded`) |
+| `GET`    | `/api/{list}/export` | Every entry, one per line, as text |
+| `POST`   | `/api/blacklists/import` | Import into the IP or domain blacklist from a URL or pasted content |
+| `POST`   | `/api/blacklists/import-geo` | Import countries' IPv4 blocks into the IP blacklist |
+| `POST`   | `/api/ip-whitelist/import`, `/api/domain-whitelist/import` | Add a pasted list to an allowed list as one pasted-list source |
+| `GET`    | `/api/blacklists/enforcement` | What enforces each list, from the proxy's records |
+| `POST`   | `/api/ip-blacklist/import`, `/api/domain-blacklist/import` | Retired: `410 Gone`, use `/api/blacklists/import` |
 
 ## Egress allowlist
 
-Optional default-deny outbound egress. Off by default (the `egress_default_deny` setting is `false`); when off, behaviour is unchanged and clients may reach any destination not on a blacklist. When the setting is on, local clients may only reach destinations on this allowlist. The toggle itself is set through the bulk settings endpoint (`POST /api/settings`), not through this group. Each entry is auto-classified as a CIDR or a domain on add. See [Blacklists and Whitelists](../guide/blacklists.md) for full details.
+Used only while the `egress_default_deny` setting is `true` (default
+`false`); the setting is changed through `POST /api/settings`. See
+[Egress allowlist](./blacklists.md#egress-allowlist).
 
 | Method | Path | Description |
 |---|---|---|
-| `GET`    | `/api/egress-allowlist` | List egress allowlist entries |
-| `POST`   | `/api/egress-allowlist` | Add an entry (`{"entry": "<ip\|cidr\|domain>", "description": "<optional>"}`) |
-| `DELETE` | `/api/egress-allowlist/{id}` | Delete an egress allowlist entry |
-| `POST`   | `/api/egress-allowlist/bulk-delete` | Delete multiple egress allowlist entries |
-| `DELETE` | `/api/egress-allowlist/clear-all` | Remove all egress allowlist entries |
+| `GET`    | `/api/egress-allowlist` | List entries |
+| `POST`   | `/api/egress-allowlist` | Add an entry (`{"entry": "<ip, cidr or domain>", "description": "<optional>"}`) |
+| `DELETE` | `/api/egress-allowlist/{id}` | Delete an entry |
+| `POST`   | `/api/egress-allowlist/bulk-delete` | Delete entries by ID |
+| `DELETE` | `/api/egress-allowlist/clear-all` | Delete every entry |
 
 ## Logs and analytics
 
+Details: [Logs and Analytics API](./logs.md).
+
 | Method | Path | Description |
 |---|---|---|
-| `GET`  | `/api/logs` | Paginated proxy access logs, with filters (client, outcome, rule, destination, internal traffic) |
+| `GET`  | `/api/logs` | Access log rows, with filters (source, outcome, rule, destination, internal traffic) and a cursor |
 | `GET`  | `/api/logs/export` | The same rows as streamed CSV |
-| `GET`  | `/api/logs/stats` | Aggregate counts (total, blocked, IP blocks) |
-| `GET`  | `/api/logs/timeline` | Per-hour traffic series |
-| `POST` | `/api/logs/clear` | Clear all logs |
-| `POST` | `/api/logs/clear-old` | Delete logs older than the retention period |
-| `GET`  | `/api/status` | Proxy service status |
-| `GET`  | `/api/traffic/statistics` | Traffic statistics |
-| `GET`  | `/api/clients/statistics` | Client statistics |
-| `GET`  | `/api/domains/statistics` | Top accessed domains |
-| `GET`  | `/api/security/score` | Retired: answers 410 Gone (it scored settings nothing enforced) |
-| `GET`  | `/api/security/cve` | CVE check for the bundled Squid version |
-| `GET`  | `/api/analytics/shadow-it` | Shadow-IT detection |
-| `GET`  | `/api/analytics/user-agents` | Service-type breakdown by user agent |
-| `GET`  | `/api/analytics/file-extensions` | File extension distribution |
-| `GET`  | `/api/analytics/top-domains` | Top domains for the cloud visualisation |
-| `GET`  | `/api/dashboard/summary` | Aggregated dashboard data in a single call |
-| `GET`  | `/api/audit-log` | Audit log of administrative actions, newest first. `?category=changes` or `?category=signins` filters on the server; `meta.retention_days` is how long a row is kept (365) |
-| `GET`  | `/api/waf/stats` | WAF statistics |
-| `GET`  | `/api/waf/categories` | WAF rule categories with toggle state |
-| `POST` | `/api/waf/categories/toggle` | Enable or disable a category at runtime |
+| `GET`  | `/api/logs/stats` | Total, blocked and direct-IP counts, blocks by rule |
+| `GET`  | `/api/logs/timeline` | Requests and blocks per hour (`hours`, default 24) |
+| `POST` | `/api/logs/clear` | Delete every log row |
+| `POST` | `/api/logs/clear-old` | Delete rows older than `days` (query parameter, default 30) |
+| `POST` | `/api/counters/reset` | Delete every log row and reset the WAF's counters |
+| `GET`  | `/api/status` | Proxy reachability, version, today's request count, Squid version and CVE count, update availability |
+| `GET`  | `/api/dashboard/summary` | The dashboard's data in one call |
+| `GET`  | `/api/traffic/statistics` | Requests and blocks per bucket (`period` = `hour`, `day`, `week`, `month`) |
+| `GET`  | `/api/clients/statistics` | Top 50 clients, then the internal sources |
+| `GET`  | `/api/clients/{ip}/details` | One client's totals, top domains and recent requests |
+| `GET`  | `/api/domains/statistics` | Top 50 domains |
+| `GET`  | `/api/analytics/shadow-it` | Requests of the last 7 days to known services (file sharing, messaging, AI, social) |
+| `GET`  | `/api/analytics/user-agents` | Requests of the last 7 days by method and kind of service |
+| `GET`  | `/api/analytics/file-extensions` | Requests of the last 7 days by file extension |
+| `GET`  | `/api/analytics/top-domains` | Top 50 domains |
+| `GET`  | `/api/analytics/blocked-by-day` | Blocked requests per day by rule, today and the 6 days before (`tz`, default UTC) |
+| `GET`  | `/api/analytics/coverage` | Which protections are switched on now: list sizes, WAF rules, HTTPS inspection, alerts and the other access settings |
+| `GET`  | `/api/audit-log` | Audit log, newest first, 50 a page (`limit` up to 200). `category` = `all`, `changes` or `signins` filters on the server; `meta.retention_days` is 365 |
+| `GET`  | `/api/security/score` | Retired: `410 Gone` |
+| `GET`  | `/api/security/cve` | The Squid version and the advisories matched to it |
+| `GET`  | `/api/waf/stats` | WAF statistics (from the WAF) |
+| `GET`  | `/api/waf/categories` | WAF rule categories and whether each is on |
+| `POST` | `/api/waf/categories/toggle` | Turn a category on or off in the running WAF |
 | `GET`  | `/api/waf/heuristics` | The heuristics the running WAF applies, or `available: false` with the reason |
-| `POST` | `/api/waf/test-rule` | Match a Go regular expression against the URLs of recent requests (at most 10,000 read, 50 matches returned) |
-| `POST` | `/api/counters/reset` | Reset all counters |
+| `POST` | `/api/waf/test-rule` | Match a Go regular expression against the destinations of recent requests (at most 10,000 read) |
 
 ## Settings and maintenance
 
+Details: [Settings and Maintenance API](./settings.md).
+
 | Method | Path | Description |
 |---|---|---|
-| `GET`    | `/api/settings` | List all settings |
-| `PUT`    | `/api/settings/{name}` | Update a single setting |
-| `POST`   | `/api/settings` | Bulk update settings (flat name → value object) |
-| `GET`    | `/api/database/size` | Database file size |
-| `GET`    | `/api/database/export` | Export database as JSON (sensitive columns redacted) |
-| `GET`    | `/api/database/stats` | Row counts and database size |
-| `POST`   | `/api/database/optimize` | Run `VACUUM` + `REINDEX` |
-| `POST`   | `/api/database/reset` | Truncate every exported table except `users` |
-| `GET`    | `/api/cache/statistics` | Squid cache metrics |
-| `POST`   | `/api/maintenance/reload-config` | Signal Squid to reload configuration |
-| `POST`   | `/api/maintenance/reload-dns` | Reload dnsmasq |
-| `POST`   | `/api/maintenance/clear-cache` | Clear the Squid disk cache |
-| `GET`    | `/api/maintenance/backup-config` | Download a configuration backup |
-| `POST`   | `/api/maintenance/restore-config` | Restore configuration from a backup |
-| `GET`    | `/api/maintenance/check-cert-security` | Inspect SSL bump certificate strength |
-| `GET`    | `/api/security/download-ca` | Download the proxy CA certificate |
-| `GET`    | `/api/security/rate-limits` | List IPs that are currently rate-limited |
-| `DELETE` | `/api/security/rate-limits/{ip}` | Clear the rate-limit lockout for an IP |
-| `POST`   | `/api/notifications/test` | Send one test alert to every configured channel (webhook, Telegram, Gotify, ntfy, Teams); `data.channels` reports each delivery |
+| `GET`    | `/api/settings` | Every setting; secrets are write-only |
+| `PUT`    | `/api/settings/{name}` | Store one value (writes no proxy file) |
+| `POST`   | `/api/settings` | Store several values and write the proxy files they drive |
+| `GET`    | `/api/database/size` | Database size (`size_bytes`, `size_mb`) |
+| `GET`    | `/api/database/stats` | Row count per table |
+| `GET`    | `/api/database/export` | Every table as JSON, `password`, `secret` and `token` columns redacted |
+| `POST`   | `/api/database/optimize` | `VACUUM` and `REINDEX` |
+| `POST`   | `/api/database/reset` | Delete every row of every table except `users` |
+| `GET`    | `/api/cache/statistics` | Squid cache statistics as the proxy last collected them |
+| `POST`   | `/api/maintenance/reload-config` | Export the lists, ask the proxy to regenerate and reload, and report what it did |
+| `POST`   | `/api/maintenance/reload-dns` | Export the lists and ask dnsmasq to reload |
+| `POST`   | `/api/maintenance/clear-cache` | Clear the Squid cache (see [Settings and Maintenance](./settings.md#clear-proxy-cache)) |
+| `GET`    | `/api/maintenance/backup-config` | The settings and the five lists, as a backup |
+| `POST`   | `/api/maintenance/restore-config` | Add what a backup holds |
+| `GET`    | `/api/maintenance/check-cert-security` | Whether the CA file and the certificate database exist |
+| `GET`    | `/api/security/download-ca` | The SSL-bump CA certificate (`/config/ssl_cert.pem`) |
+| `GET`    | `/api/security/rate-limits` | Failed-login counts per address |
+| `DELETE` | `/api/security/rate-limits/{ip}` | Clear one address's count |
+| `POST`   | `/api/notifications/test` | Send one test alert to every channel that has all its settings (webhook, Gotify, Telegram, ntfy, Teams); `data.channels` reports each delivery |
 
 ## Internal
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/internal/alert` | Receives WAF block notifications. The WAF authenticates with `Authorization: Bearer $INTERNAL_ALERT_TOKEN`, a credential scoped to this route only. When `INTERNAL_ALERT_TOKEN` is unset the route falls back to normal admin authentication, for upgrade compatibility |
-| `POST` | `/api/dns/detect` | Probe a target subnet for Pi-hole or AdGuard instances |
+| `POST` | `/api/internal/alert` | WAF block notifications. With `INTERNAL_ALERT_TOKEN` set, only `Authorization: Bearer <that token>` is accepted; without it, normal admin authentication |
+| `POST` | `/api/dns/detect` | Probe a subnet for Pi-hole or AdGuard instances (at most 2 scans at a time) |
+| `GET`  | `/debug/pprof/...` | Go runtime profiles (authenticated) |
 
 ## WebSocket
 
-| Path | Protocol | Description |
-|---|---|---|
-| `/api/ws/logs` | `ws://` or `wss://` | Real-time log stream; offer the subprotocols `spm.v1` and `spm-ws-token.<token>` (single-use token from `/api/ws-token`) |
+| Path | Description |
+|---|---|
+| `/api/ws/logs` | Live log feed; offer the subprotocols `spm.v1` and `spm-ws-token.<token>` with a token from `/api/ws-token`. See [WebSocket](./websocket.md) |

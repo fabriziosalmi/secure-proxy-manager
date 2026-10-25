@@ -2,114 +2,145 @@
 
 ## Authentication
 
-The web UI and API accept two authentication schemes interchangeably on every protected endpoint:
+Every protected endpoint accepts either scheme:
 
-- **HTTP Basic.** `Authorization: Basic base64(user:pass)`. Credentials are validated against the bcrypt hash stored in the database (with a fallback to the `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` environment values during initial bootstrap).
-- **JWT bearer.** `Authorization: Bearer <token>`. Tokens are signed with HS256 using `SECRET_KEY` and carry the claims `sub`, `iat`, `exp`, `jti` (unique per token), `pv` (a fingerprint of the current password hash) and `type` (`access` or `refresh`); refresh tokens also carry `auth_time`, the time of the login they descend from. Refresh tokens are rejected on protected endpoints. Changing the password changes `pv`, so every token issued before the change stops validating.
+- **HTTP Basic.** `Authorization: Basic base64(user:pass)`, checked against the
+  bcrypt hash stored in the database. Only when no hash is stored yet (first
+  start, before the user row exists) is the password compared with
+  `BASIC_AUTH_PASSWORD`.
+- **JWT bearer.** `Authorization: Bearer <token>`. Tokens are HS256, signed
+  with `SECRET_KEY`, and carry `sub`, `iat`, `exp`, `jti`, `pv` (a fingerprint
+  of the current password hash) and `type` (`access` or `refresh`); refresh
+  tokens also carry `auth_time`, the time of the login they descend from.
+  Refresh tokens are refused on protected endpoints. Changing the password
+  changes `pv`, so every token issued before the change stops validating.
 
-`POST /api/auth/login` accepts a JSON body `{username, password}` and returns both an access token and a refresh token. `POST /api/auth/refresh` exchanges a refresh token for a fresh pair; a refresh token is single-use, and a chain of refreshes ends seven days after the login. `POST /api/logout` blacklists the presented JWT and, when the body carries `{"refresh_token": ...}`, that refresh token too (the blacklist is persisted in the `jwt_blacklist` table so it survives restarts). `POST /api/change-password` ends every earlier session and returns a fresh pair for the caller.
-
-Passwords are stored using bcrypt.
+`POST /api/auth/login` takes `{username, password}` and returns an access token
+and a refresh token. `POST /api/auth/refresh` exchanges a refresh token for a
+new pair; a refresh token works once, and a chain of refreshes ends seven days
+after the login. `POST /api/logout` revokes the bearer token of the request
+and, when the body carries `{"refresh_token": ...}` for the same user, that
+refresh token too; revocations are stored in the `jwt_blacklist` table and
+survive a restart. `POST /api/change-password` ends every earlier session and
+returns a new pair for the caller.
 
 ## Rate limiting
 
-Two layers of rate limiting are applied:
+- **Failed logins per client address.** Every Basic authentication attempt
+  (including `POST /api/auth/login`) is counted before the password is checked
+  and refunded when it succeeds. With `MAX_LOGIN_ATTEMPTS` (default 5) counted
+  attempts in the last `RATE_LIMIT_WINDOW_SECONDS` (default 300), further
+  attempts get HTTP 429 until older ones leave the window. The current counts
+  are at `GET /api/security/rate-limits`; `DELETE /api/security/rate-limits/{ip}`
+  clears one address.
+- **All requests per client address.** A token bucket of 20 requests per
+  second with a burst of 60; over it, HTTP 429 with `Retry-After: 1`. nginx
+  also limits `/api/` to 20 requests per second with a burst of 40.
 
-- **Failed login per client IP.** When `MAX_LOGIN_ATTEMPTS` failures (default `5`) occur within `RATE_LIMIT_WINDOW_SECONDS` (default `300`), further attempts return HTTP 429 with `Retry-After: 1` until the window expires. The lockout list can be inspected at `GET /api/security/rate-limits` and cleared per-IP at `DELETE /api/security/rate-limits/{ip}`.
-- **Global per-IP token bucket.** All requests are rate-limited at 20 requests per second sustained, with a 60-request burst. Requests over the limit receive HTTP 429.
-
-When the request originates from a private or loopback address, the client IP is extracted from `X-Forwarded-For`; otherwise the direct `RemoteAddr` is used.
+The client address is the first `X-Forwarded-For` entry when the request comes
+from a private or loopback address (nginx sets it to the real client),
+otherwise the connection's address.
 
 ## WebSocket authentication
 
-Browsers cannot send custom headers during a WebSocket handshake, so the log streaming endpoint uses a single-use token:
+Browsers cannot send an `Authorization` header with a WebSocket handshake, so
+the log feed uses a single-use token:
 
 1. The client calls `GET /api/ws-token` with Basic or JWT authentication.
-2. The backend issues a random token (32 bytes from `crypto/rand`, hex), valid for two minutes, single-use.
-3. The client connects to `wss://<host>/api/ws/logs` and offers the token as the subprotocol `spm-ws-token.<token>`, next to `spm.v1`, which the server selects. The token never appears in a URL, so it stays out of access logs, history and Referer headers; a token in the query string is refused.
-4. The token is consumed on the first connection. A second handshake with the same token is rejected.
+2. The backend returns a random token (32 bytes from `crypto/rand`, hex),
+   valid for two minutes.
+3. The client connects to `wss://<host>/api/ws/logs` offering two
+   subprotocols, `spm.v1` and `spm-ws-token.<token>`; the server selects
+   `spm.v1`. The token is never in the URL.
+4. The token is consumed by the first handshake that presents it.
+
+The handshake is also refused when its `Origin` is neither in
+`CORS_ALLOWED_ORIGINS` nor the host the page was served from.
 
 ## SSRF protection
 
-Endpoints that fetch a remote URL (`POST /api/blacklists/import`, `POST /api/ip-blacklist/import`, `POST /api/domain-blacklist/import`) perform DNS resolution before opening the connection and reject any host that resolves to:
-
-- Loopback (`127.0.0.0/8`, `::1`)
-- Private RFC1918 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`)
-- Link-local (`169.254.0.0/16`, `fe80::/10`)
-- Unspecified, multicast, or reserved ranges
-- The unspecified address `0.0.0.0/8`
-
-The HTTP client used for the download pins to the IP that was resolved during the safety check, so a hostname cannot rebind to a private address between resolution and connection. Imports are capped at 32 MB.
+`POST /api/blacklists/import` with a `url`, the automatic refresh and the
+default country feeds fetch remote content. The host is resolved first and the
+request is refused if any address is private (RFC 1918, IPv6 unique-local),
+loopback, link-local, multicast, unspecified, in `0.0.0.0/8` or in the CGNAT
+range `100.64.0.0/10`. The HTTP client checks the addresses again when it
+dials, so a name that changes its answer between the check and the connection
+is still refused, and repeats the check on each of at most five redirects.
+Downloads are limited to 32 MB.
 
 ## CORS
 
-The backend only accepts cross-origin requests from origins listed in `CORS_ALLOWED_ORIGINS`. The default is `https://localhost:8443`. Add additional origins as needed:
+The backend names an origin in `Access-Control-Allow-Origin` only when it is in
+`CORS_ALLOWED_ORIGINS` (default `https://localhost:8443`) or is the request's
+own host. `*` is dropped when the variable is read.
 
 ```bash
 # .env
 CORS_ALLOWED_ORIGINS=https://localhost:8443,https://proxy.example.com
 ```
 
-A wildcard (`*`) is stripped at load time and is not accepted.
-
 ## Direct-IP blocking
 
-Squid is configured to reject requests to raw IP addresses by default, preventing clients from bypassing the domain blacklist by addressing destinations directly. Add trusted destinations to the **IP whitelist** (`/config/ip_whitelist.txt`, also editable via the UI) to allow specific exceptions; whitelisted IPs are evaluated before the deny rule.
+Squid always refuses URLs and `CONNECT` targets that are a literal IPv4 or IPv6
+address, so a client cannot skip the domain lists by using an address. Allowed
+IPs and LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) are allowed before
+that rule.
 
 ## Default-deny egress
 
-The domain and IP blacklists and direct-IP blocking are deny-lists: a client may reach any destination that is not explicitly forbidden. Default-deny egress inverts this for environments that require a strict, allow-only outbound policy. When enabled, the proxy refuses all outbound egress from local clients except destinations on an explicit allowlist; every other destination is denied with an HTTP 403. Restricting outbound traffic to an approved set of endpoints reduces the exfiltration and lateral-movement surface and supports sovereign or strictly scoped egress policies: for example, allowing an application behind the proxy to reach only a CA/ACME server, a package mirror, and an internal API, and nothing else.
+The blocked lists and direct-IP blocking are deny-lists: a client reaches any
+destination that is not forbidden. Default-deny egress inverts this: local
+clients reach only the destinations on the egress allowlist, LAN destinations
+and Allowed IPs, and everything else gets HTTP 403 from Squid.
 
-This mode is **off by default**. With the `egress_default_deny` setting set to `false` (the default), behaviour is unchanged and clients may reach any destination not on a blacklist. Enabling it only restricts egress; it does not affect any other rule.
+It is **off by default** (`egress_default_deny` is `false`). Turn it on in
+Settings > Filtering > Only allowlisted destinations, and manage the
+destinations on the Egress allowlist page. The API is described in
+[Lists](./blacklists.md#destination-allowlist-default-deny-egress) and
+[the egress allowlist API](/api/blacklists#egress-allowlist).
 
-To enable it:
+If the proxy cannot insert its egress rule where it belongs, it replaces the
+rule that allows local clients with a deny, so the failure blocks traffic
+rather than letting it through.
 
-1. Turn on the **Default-deny egress** toggle on the **Settings** page (shown next to SSL inspection). This flips the `egress_default_deny` setting, which can also be set through the bulk settings API (`POST /api/settings`).
-2. Populate the **Egress Allowlist** page with the destinations clients are permitted to reach. Each entry is either an IP/CIDR or a domain; the type is auto-classified on add (a value that parses as an IP or CIDR is stored as `cidr`, otherwise as `domain`). Entries can be added, deleted, searched, and paginated from the UI or managed through the API.
+## Secrets at rest and in exports
 
-A local client is allowed if the destination matches the IP allowlist **or** the domain allowlist; anything else is refused, except LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and the addresses on Allowed IPs, which are allowed before the egress rule. A domain entry matches that exact name; write `.example.com` to allow a domain and every name under it.
+The alert channel settings (`webhook_url`, `webhook_bearer_token`,
+`gotify_url`, `gotify_token`, `teams_webhook_url`, `telegram_bot_token`,
+`telegram_chat_id`, `ntfy_url`, `ntfy_topic`) are encrypted with AES-256-GCM
+under `ENCRYPTION_KEY`, or under the key the backend generates in
+`data/.enc_key` when that is unset. `GET /api/settings` never returns their
+values.
 
-### Egress allowlist API
-
-The allowlist endpoints use the same authentication as the rest of the API (HTTP Basic or JWT bearer):
-
-| Method   | Path                              | Description |
-| -------- | --------------------------------- | ----------- |
-| `GET`    | `/api/egress-allowlist`           | List entries (paginated). |
-| `POST`   | `/api/egress-allowlist`           | Add one entry. Body `{"entry": "<ip\|cidr\|domain>", "description": "<optional>"}`. The type is auto-classified. Returns 400 (`entry must be an IP, CIDR, or domain`) for empty or invalid input, 400 (`entry already in allowlist`) for a duplicate, and 200 (`{"status":"success","message":"Entry added to egress allowlist"}`) on success. |
-| `DELETE` | `/api/egress-allowlist/{id}`      | Remove one entry by ID. |
-| `POST`   | `/api/egress-allowlist/bulk-delete` | Remove entries by a list of IDs. |
-| `DELETE` | `/api/egress-allowlist/clear-all` | Remove all entries. |
-
-The `egress_default_deny` toggle itself is set through the bulk settings endpoint, not through this group.
-
-## Database export redaction
-
-`GET /api/database/export` returns a full JSON dump of the database. Any column literally named `password`, `secret`, or `token` (across every exported table) is replaced with the string `***REDACTED***` before serialisation. Sensitive settings stored under those column names are therefore never present in the export.
-
-Setting values that are encrypted at rest (those persisted in `settings` whose key contains `password`, `secret`, `token`, or `webhook`) are encrypted on write using AES with `ENCRYPTION_KEY`; their plaintext values are never returned through the export.
+`GET /api/database/export` writes every column named `password`, `secret` or
+`token` as `***REDACTED***` (the admin password hash is one). The alert channel
+secrets are in the `setting_value` column, so the export carries them in their
+encrypted form (`enc::...`), not in clear. The configuration backup
+(`GET /api/maintenance/backup-config`) does the same.
 
 ## Backend API binding
 
-The backend container exposes port `5000` internally; the host binding is:
+The backend listens on port 5000 inside its container and is published as:
 
 ```yaml
 ports:
   - "127.0.0.1:5001:5000"
 ```
 
-The API is therefore only reachable from the host machine. All external access goes through the `web` reverse proxy on ports `80`, `443`, `8011`, or `8443`.
+It is reachable from the host only. From the network, the API is reached
+through the `web` service on ports 443 and 8443.
 
 ## HTTPS for the web UI
 
-The shipped `web` service can either:
+The `web` service serves a certificate you mount at
+`/etc/nginx/ssl/server.crt` and `/etc/nginx/ssl/server.key`, or generates a
+self-signed one at start. The image has no certbot, so it does not obtain Let's
+Encrypt certificates itself.
 
-- Generate a self-signed certificate and serve HTTPS on `:443` and `:8443` directly, or
-- Serve a certificate you mount at `/etc/nginx/ssl/server.crt` and `/etc/nginx/ssl/server.key`.
-
-The shipped image does not include certbot, so it does not obtain Let's Encrypt certificates itself.
-
-If you prefer to terminate TLS on an external reverse proxy (Caddy, Traefik, an upstream Nginx), point it at the HTTPS port `8443` (the upstream certificate is the self-signed one unless you mount your own). Port `8011` answers every path except `/health`, `/wpad.dat` and ACME challenges with a redirect to `https://<host>:8443`, so a reverse proxy pointed at it gets redirects, not the UI:
+To terminate TLS on your own reverse proxy (Caddy, Traefik, nginx), point it at
+port 8443. Port 8011 redirects everything except `/health`, `/wpad.dat` and
+ACME challenge paths to `https://<host>:8443`, so a reverse proxy pointed at it
+gets redirects, not the UI. Forward the WebSocket upgrade for `/api/ws/`:
 
 ```nginx
 server {
@@ -122,8 +153,7 @@ server {
     location / {
         proxy_pass https://127.0.0.1:8443;
         # The upstream certificate is SPM's self-signed one unless you mounted
-        # your own; trust it explicitly with proxy_ssl_trusted_certificate
-        # instead if you can.
+        # your own; trust it with proxy_ssl_trusted_certificate if you can.
         proxy_ssl_verify off;
         proxy_set_header Host              $host;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
@@ -137,21 +167,22 @@ server {
 
 ## Transparent proxy {#transparent-proxy}
 
-Transparent (intercepting) proxying is not supported. Squid listens on 3128
-as an explicit forward proxy only: there is no `intercept` port, so traffic
+Transparent (intercepting) proxying is not supported. Squid listens on 3128 as
+an explicit forward proxy only: there is no `intercept` port, so traffic
 redirected to it with iptables is not served, and there is no setting for it in
-the UI. Configure clients explicitly, with the PAC file, or with WPAD (see
-Settings → Overview → Connect a device).
+the UI. Configure clients explicitly or with the PAC file (Settings > Overview >
+Connect a device).
 
 ## Changing the admin password
 
-From the UI: **Settings → Admin and backup → Change Password**. From the API:
+In the UI: **Settings > Admin and backup > Admin password**. Through the API:
 
 ```bash
-curl -X POST https://localhost:8443/api/change-password \
+curl -k -X POST https://localhost:8443/api/change-password \
   -H "Content-Type: application/json" \
-  -u USER:CURRENT_PASSWORD \
-  -d '{"current_password": "current", "new_password": "new_strong_password"}'
+  -u admin:CURRENT_PASSWORD \
+  -d '{"current_password": "CURRENT_PASSWORD", "new_password": "new-strong-passw0rd"}'
 ```
 
-The new password is hashed with bcrypt on the server and replaces the existing hash atomically.
+The new password must have at least 8 characters, a digit and a character that
+is neither a letter nor a digit. It is stored as a bcrypt hash.

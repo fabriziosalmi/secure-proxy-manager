@@ -1,73 +1,35 @@
-# React + TypeScript + Vite
+# Secure Proxy Manager UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The web UI: React 19, TypeScript, Vite, Tailwind CSS and
+`@tanstack/react-query`. In the stack it is built by `ui/Dockerfile` and
+served by nginx in the `web` container, which also proxies `/api/` to the
+backend (`ui/nginx.conf.template`, `ui/docker-entrypoint.sh`).
 
-Currently, two official plugins are available:
+## Commands
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm ci
+npm run dev        # Vite dev server; /api is proxied to http://localhost:5001
+npm run build      # tsc -b, then vite build into dist/
+npm run lint       # ESLint
+npm test           # Vitest (jsdom), src/**/*.test.ts(x)
+npm run test:e2e   # Playwright, tests-e2e/, against BASE_URL (default http://localhost:5173)
+npm run preview    # serve the production build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+`npm run dev` needs a backend on `http://localhost:5001`, for example the
+stack started with `docker compose up -d` from the repository root.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Layout
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+| Path | Contents |
+|---|---|
+| `src/pages/` | One file per page: Dashboard, Analytics, Logs (Access logs), Clients, Blacklists, EgressAllowlist, Settings, Audit, Login |
+| `src/components/layout/nav.ts` | The sidebar: its groups, items and order |
+| `src/components/settings/` | The Settings sections and their shared parts |
+| `src/lib/settingsMeta.ts` | The Settings sections, the keys each saves and how each takes effect |
+| `src/lib/` | API client, queries, formatting and validation helpers |
+| `src/types.ts` | Shared types |
+
+Text in `src/` must not contain an em dash or an en dash;
+`scripts/check-no-dashes.sh` enforces it in CI.

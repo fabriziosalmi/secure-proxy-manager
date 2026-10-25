@@ -1,6 +1,7 @@
 # Logs and Analytics API
 
-All endpoints require authentication (Basic or JWT). Response bodies follow the envelope `{"status": "success", "data": ...}` unless noted.
+All endpoints require authentication (Basic or JWT). Responses use the
+envelope `{"status": "success", "data": ...}` unless noted.
 
 ---
 
@@ -10,22 +11,21 @@ All endpoints require authentication (Basic or JWT). Response bodies follow the 
 GET /api/logs
 ```
 
-Returns proxy access log entries matching the filters, with pagination
-metadata.
+Returns access log rows matching the filters, with pagination metadata.
 
 **Query parameters:**
 
 | Parameter | Default | Description |
 |---|---|---|
-| `limit` | `25` | Maximum number of entries to return, 1 to 500 |
+| `limit` | `25` | Rows to return, 1 to 500 |
 | `offset` | `0` | Pagination offset |
-| `sort` | `timestamp` | Sort column: `timestamp`, `source_ip`, `destination`, `status`, `bytes`, `method`, `id` |
+| `sort` | `timestamp` | `timestamp`, `source_ip`, `destination`, `status`, `bytes`, `method` or `id`; anything else is `timestamp` |
 | `order` | `desc` | `asc` or `desc` |
 | `source_ip` | | One source address, exact. A named source is listed even when it is internal |
-| `outcome` | | `allowed` or `blocked`, from the `blocked` flag |
+| `outcome` | | `allowed` or `blocked` (`all` or empty: both), from the `blocked` flag |
 | `reason` | | The rule that blocked the request (a `reason` value below); selects blocked rows only |
-| `q` | | A substring of `destination`, ASCII case-insensitive; `%` and `_` match themselves |
-| `include_internal` | `false` | Include the stack's own traffic (see below) |
+| `q` | | A substring of `destination`, case-insensitive for ASCII; `%` and `_` match themselves. At most 256 bytes |
+| `include_internal` | `false` | `true` includes the stack's own traffic (see below) |
 | `before_id` | | Cursor: only rows with a lower `id`. Sets the order to `id` descending and ignores `offset` |
 
 A malformed filter value is refused with `400`.
@@ -33,9 +33,9 @@ A malformed filter value is refused with `400`.
 **Internal sources.** The backend classifies each source address: loopback,
 the backend itself, the proxy, the Docker host and any other address on the
 networks the backend shares with the proxy are the stack's own traffic, not a
-device (the same classification as the client list). They are left out
-unless `include_internal=true` or `source_ip` names one of them; `meta.internal`
-then counts the matching rows that were left out.
+device (the same classification as the client list). They are left out unless
+`include_internal=true` or `source_ip` names one of them; `meta.internal` then
+counts the matching rows that were left out.
 
 **Response:**
 
@@ -58,59 +58,59 @@ then counts the matching rows that were left out.
       "kind": "Private network address"
     }
   ],
-  "meta": { "total": 15420, "limit": 100, "offset": 0, "internal": 2880 },
+  "meta": { "total": 15420, "limit": 25, "offset": 0, "internal": 2880 },
   "total": 15420,
-  "limit": 100,
+  "limit": 25,
   "offset": 0
 }
 ```
 
-`meta.total` counts the rows the filters match. `kind` says what the source
-is where the backend can tell ("Internal: the backend", "Internal: this
-host", "Private network address", "Public address"), and is empty
-otherwise.
+`meta.total` counts the rows the filters match. `kind` says what the source is
+where the backend can tell (for example "Internal: the backend", "Internal:
+this host", "Internal: the proxy", "Private network address", "Public
+address"), and is empty otherwise.
 
 To page back through the log, pass the `id` of the last row received as
 `before_id`; a page shorter than `limit` is the last one.
 
-When GDPR mode is enabled in settings, `source_ip` is masked (the source is
-classified before it is masked). The top-level `total`, `limit` and `offset`
+With GDPR mode on (Settings > Logs and privacy), `source_ip` is masked (the
+last IPv4 octet, or the last IPv6 group, becomes `x`); the source is
+classified before it is masked. The top-level `total`, `limit` and `offset`
 are deprecated copies of `meta`.
 
 `reason` is the rule that blocked the request, recorded by Squid or the WAF
-when the request was logged (see `docs/design/block-reasons.md`):
-`ip_blacklist`, `domain_blacklist`, `domain_blacklist_dns`, `direct_ip`,
-`egress_policy`, `waf`, `proxy_auth`, `time_restriction`, `content_filter`,
-`source_gate`, `port_policy`, `protocol_policy`, `other`; `none` when it was
-not blocked; `unclassified` for a row logged before reasons were recorded;
-`domain_blacklist_dns_reconstructed` for such a row that the start-up step
-of schema version 3 reassigned: a `/503` to a name on the domain blacklist,
-logged after the name was added (see `docs/design/block-reasons.md`).
-With `include_internal=true` the list holds every row, including the DNS
-sinkhole's own rows (method `DNS`, source the proxy container), which no
+when the request was logged (see
+[Block reasons](../design/block-reasons.md)): `ip_blacklist`,
+`domain_blacklist`, `domain_blacklist_dns`, `direct_ip`, `egress_policy`,
+`waf`, `proxy_auth`, `time_restriction`, `content_filter`, `source_gate`,
+`port_policy`, `protocol_policy`, `other`; `none` when it was not blocked;
+`unclassified` for a row logged before reasons were recorded;
+`domain_blacklist_dns_reconstructed` for such a row that schema version 3
+reassigned at start-up: a `/503` to a name on the domain blacklist, logged
+after the name was added. With `include_internal=true` the list also holds the
+DNS sinkhole's own rows (method `DNS`, source the proxy container), which no
 statistic counts.
 
-**Cost, measured on 1M rows** (20 devices, two internal sources holding 10% of
-the rows, 10% blocked over five rules; `limit=100`, best of three, Apple M4
-Pro, `TestLogFilters1M` in `backend-go/internal/handlers/logs_plan_test.go`):
+**Cost, measured on 1,000,000 rows.** `TestLogFilters1M` in
+`backend-go/internal/handlers/logs_plan_test.go` (`SPM_LOGS_1M=1`): 20
+devices, two internal sources holding 10% of the rows, 10% blocked over five
+rules, `limit=100`, best of three. Run on 2026-10-25 on an Apple M4 with
+go1.27.2:
 
-| Filter | Plan | Time |
+| Filter | Plan (page; count) | Time |
 |---|---|---|
-| none (internal sources left out) | page in id order; counts: every row, then the internal rows by `idx_proxy_logs_source_ip` | 17 ms |
-| `include_internal=true` | page in id order; count by a covering index | 12 ms |
-| `source_ip` | `idx_proxy_logs_source_ip` | 3 ms |
-| `reason=waf` (1% of rows) | `idx_proxy_logs_blocked_reason` | 10 ms |
-| `reason=ip_blacklist` (0.1%) | `idx_proxy_logs_blocked_reason` | 1 ms |
-| `outcome=blocked` | `idx_proxy_logs_blocked` | 69 ms |
-| `outcome=allowed` | every row less the blocked ones | 87 ms |
-| `before_id` (deep) | rowid range | 18 ms |
-| `q` | no index can serve `LIKE '%x%'`: the table is read | 200 to 290 ms |
+| none (internal sources left out) | scan; covering index count minus `idx_proxy_logs_source_ip` | 17.4 ms |
+| `include_internal=true` | scan; covering index count | 12.4 ms |
+| `source_ip` | `idx_proxy_logs_source_ip` | 2.7 ms |
+| `reason=waf` (1% of rows) | `idx_proxy_logs_blocked_reason` | 10.2 ms |
+| `reason=ip_blacklist` (0.1%) | `idx_proxy_logs_blocked_reason` | 1.2 ms |
+| `outcome=blocked` | `idx_proxy_logs_blocked` | 70.6 ms |
+| `outcome=allowed` | scan; every row less the blocked ones | 88.0 ms |
+| `before_id` (deep) | rowid range | 17.2 ms |
+| `q` | no index serves `LIKE '%x%'`: the table is read | 208 to 287 ms |
 
-Init creates `idx_proxy_logs_blocked_reason` on the first start after an
-upgrade; on the same 1M rows that took 138 ms. Without it a rule filter read
-every blocked row
-(133 to 139 ms); counting "not internal" and "allowed" directly read the
-whole table (123 and 226 ms).
+Creating `idx_proxy_logs_blocked_reason`, which start-up does once after an
+upgrade, took 126 ms on the same rows.
 
 ---
 
@@ -122,12 +122,14 @@ GET /api/logs/export
 
 Streams, as CSV, every row `GET /api/logs` selects for the same filters
 (`source_ip`, `outcome`, `reason`, `q`, `include_internal`, `before_id`),
-newest first. `limit`, `offset` and `sort` do not apply. Columns: `id`,
+newest first, read 2,000 rows at a time. `limit`, `offset` and `sort` do not
+apply. The file is named `access-log-<date>.csv`. Columns: `id`,
 `timestamp_utc`, `source_ip`, `internal`, `kind`, `method`, `destination`,
 `status`, `bytes`, `blocked`, `reason`, `reason_label`. A cell that starts
-with `=`, `+`, `-` or `@` is written with a leading apostrophe, so a
-spreadsheet shows it as text rather than running it as a formula (a method
-logged as `-` is exported as `'-`).
+with `=`, `+`, `-`, `@`, a tab or a carriage return is written with a leading
+apostrophe, so a spreadsheet shows it as text rather than running it as a
+formula (a method logged as `-` is exported as `'-`). With GDPR mode on,
+`source_ip` is masked here too.
 
 ---
 
@@ -157,11 +159,11 @@ GET /api/logs/stats
 ```
 
 Counts are client requests: the DNS sinkhole's own rows are left out.
-`blocked_count` is the number of requests with a block reason (rows logged
-before reasons were recorded keep the flag they were given then, from the
-status). `ip_blocks_count` is the subset with reason `direct_ip`, plus older
-rows whose URL targeted a raw IPv4 address. `blocked_by_reason` breaks
-`blocked_count` down by reason.
+`blocked_count` is the number of blocked requests (rows logged before reasons
+were recorded keep the flag they were given then, from the status).
+`ip_blocks_count` is the subset with reason `direct_ip`, plus older rows whose
+URL targeted a raw IPv4 address. `blocked_by_reason` breaks `blocked_count`
+down by reason. `last_import` is the newest row's timestamp.
 
 ---
 
@@ -171,15 +173,11 @@ rows whose URL targeted a raw IPv4 address. `blocked_by_reason` breaks
 GET /api/logs/timeline
 ```
 
-Hourly request and block counts.
-
-**Query parameters:**
+Requests and blocks per hour, client requests only, internal sources left out.
 
 | Parameter | Default | Range |
 |---|---|---|
-| `hours` | `24` | `1` to `720` |
-
-**Response:**
+| `hours` | `24` | `1` to `720`; a value outside the range is `24` |
 
 ```json
 {
@@ -199,25 +197,27 @@ Hourly request and block counts.
 POST /api/logs/clear
 ```
 
-Deletes every row in `proxy_logs`. The action is recorded in the audit log.
-
-**Response:**
+Deletes every row in `proxy_logs` and records the action in the audit log.
 
 ```json
 { "status": "success", "message": "All logs cleared" }
 ```
+
+`POST /api/counters/reset` also deletes every row, and resets the WAF's
+counters; its `data` says how many rows went (`logs_cleared`) and whether the
+WAF reset (`waf_reset`).
 
 ---
 
 ## Clear old logs
 
 ```
-POST /api/logs/clear-old
+POST /api/logs/clear-old?days=30
 ```
 
-Deletes log entries older than the configured retention period (`log_retention_days` setting, default `30`).
-
-**Response:**
+Deletes rows older than `days` days (default `30`; a value below 1 is `30`).
+It does not read the `log_retention_days` setting, which drives the daily
+automatic pruning.
 
 ```json
 { "status": "success", "message": "Cleared old logs", "deleted": 1234 }
@@ -239,22 +239,50 @@ worked out from the running configuration.
 
 ---
 
+## Audit log
+
+```
+GET /api/audit-log?category=changes&limit=50&offset=0
+```
+
+Newest first, 50 rows a page by default (`limit` up to 200). `category` is
+`all` (default), `changes` or `signins` (the actions `login`, `login_failed`,
+`logout`), filtered on the server, so `meta.total` and the pages are those of
+the filtered log. `meta.retention_days` is how long a row is kept (365). Every
+change to a list (add, remove, bulk remove, clear, import, removal of a
+source, restore) writes a row. Sign-in, failed sign-in and sign-out rows carry
+the client address in `target`.
+
+```json
+{
+  "status": "success",
+  "data": [
+    { "id": 812, "username": "admin", "action": "add_domain_blacklist", "target": "ads.example", "details": "", "timestamp": "2026-10-25 08:00:00" }
+  ],
+  "meta": { "total": 812, "limit": 50, "offset": 0, "retention_days": 365 }
+}
+```
+
+---
+
 ## Other analytics endpoints
 
-The following return JSON in the standard envelope; payload shape mirrors what the dashboard renders:
+These return JSON in the standard envelope, in the shape the UI renders:
 
 | Path | Purpose |
 |---|---|
-| `GET /api/dashboard/summary` | Aggregated dashboard data in a single call |
-| `GET /api/traffic/statistics` | Traffic statistics |
-| `GET /api/clients/statistics` | Top clients |
-| `GET /api/domains/statistics` | Top accessed domains |
-| `GET /api/analytics/shadow-it` | Shadow-IT detection |
-| `GET /api/analytics/user-agents` | Service-type breakdown by user agent |
-| `GET /api/analytics/file-extensions` | File-extension distribution |
-| `GET /api/analytics/top-domains` | Top domains for the cloud visualisation |
-| `GET /api/waf/stats` | WAF statistics (rules, blocks, entropy) |
-| `GET /api/waf/categories` | WAF rule categories with toggle state |
-| `GET /api/audit-log` | Audit log entries (admin actions) |
+| `GET /api/dashboard/summary` | The dashboard's data in one call |
+| `GET /api/traffic/statistics?period=day` | Requests and blocks per bucket (`hour`, `day`, `week`, `month`) |
+| `GET /api/clients/statistics` | Top 50 clients, then the internal sources |
+| `GET /api/clients/{ip}/details` | One client's totals, top domains and recent requests |
+| `GET /api/domains/statistics` | Top 50 domains |
+| `GET /api/analytics/shadow-it` | Requests of the last 7 days to known services, by host |
+| `GET /api/analytics/user-agents` | Requests of the last 7 days by method and kind of service |
+| `GET /api/analytics/file-extensions` | Requests of the last 7 days by file extension |
+| `GET /api/analytics/top-domains` | Top 50 domains |
+| `GET /api/analytics/blocked-by-day` | Blocked requests per day by rule for 7 days (`tz`, default UTC) |
+| `GET /api/analytics/coverage` | What protection is on now |
+| `GET /api/waf/stats` | WAF statistics, from the WAF |
+| `GET /api/waf/categories` | WAF rule categories and whether each is on |
 
-See the [API reference](/api/reference) for the consolidated list.
+See the [API reference](/api/reference) for the full list.

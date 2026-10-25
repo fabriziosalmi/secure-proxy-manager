@@ -1,17 +1,18 @@
 # Secure Proxy Manager: Deployment Guide
 
-Practical instructions for deploying **Secure Proxy Manager** with Docker
-Compose. The stack is a set of Go and container services orchestrated by
-`docker-compose.yml`:
+How to deploy, update, back up and restore Secure Proxy Manager with Docker
+Compose. The services are defined in `docker-compose.yml` (built from this
+repository) and `deploy/docker-compose.prod.yml` (release images, used by the
+installer):
 
 | Service | Image / tech | Role |
 |---------|--------------|------|
-| `backend` | Go (chi) + modernc/sqlite (WAL) | REST/WebSocket API, auth, database |
-| `web` | nginx | Serves the UI and reverse-proxies the backend |
-| `proxy` | Squid (`squid-openssl`, Ubuntu) | The forward proxy on `3128`, ICAP-wired to the WAF |
-| `waf` | Go | ICAP WAF that Squid calls to inspect requests |
-| `dns` | dnsmasq | DNS resolver / sinkhole for blacklisted domains |
-| `tailscale` | Tailscale (optional) | Remote-access sidecar, enabled via a compose profile |
+| `backend` | Go (chi) + SQLite (WAL) | REST and WebSocket API, authentication, database |
+| `web` | nginx | Serves the UI and proxies the backend |
+| `proxy` | Squid (`squid-openssl`, Ubuntu 26.04) | The forward proxy on `3128`, calling the WAF over ICAP |
+| `waf` | Go | ICAP WAF |
+| `dns` | dnsmasq | Squid's resolver and the sinkhole for blocked domains |
+| `tailscale` | Tailscale | Optional, under the `tailscale` profile |
 
 ## Table of Contents
 
@@ -24,337 +25,276 @@ Compose. The stack is a set of Go and container services orchestrated by
   - [Rotating the SSL-bump CA](#rotating-the-ssl-bump-ca)
 - [Backups](#backups)
 - [Updating](#updating)
+- [Rolling back](#rolling-back)
 - [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
-- **Docker**: 20.10.0 or higher (https://docs.docker.com/get-docker/)
-- **Docker Compose v2**: the `docker compose` plugin, not the legacy
-  `docker-compose` binary (https://docs.docker.com/compose/install/)
-- **System**: ~512 MB RAM and ~2 GB disk to start; more headroom is recommended
-  if you enable the Squid disk cache and verbose logging. Runs on x86_64 and
-  ARM64.
-
-Verify your environment:
+- **Docker** with the **Compose v2** plugin (`docker compose`, not the legacy
+  `docker-compose` binary): <https://docs.docker.com/get-docker/>,
+  <https://docs.docker.com/compose/install/>
+- The release images are built for `linux/amd64` and `linux/arm64`.
+- Memory: the compose files limit the containers to 1,280 MiB together
+  (`proxy` 512, `waf` 256, `dns` 256, `backend` 128, `web` 128).
 
 ```bash
 docker --version
 docker compose version
-docker ps          # confirms the daemon is running
+docker ps          # the daemon is running
 ```
 
 ## Quick Start
 
-### One command (fresh VPS or server)
-
-`deploy/install.sh` checks for Docker, clones the repo to
-`/opt/secure-proxy-manager`, generates a `.env` with random admin credentials
-and a strong `SECRET_KEY` (`openssl rand -hex 32`), builds the images, and
-starts the stack. It prints the credentials at the end: **save them, they are
-not shown again.**
+### Installer (Linux server)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/deploy/install.sh | sudo bash
 ```
 
-### Manual
+`deploy/install.sh`, run as root:
+
+1. installs Docker (`get.docker.com`), the Compose plugin and `git` when they
+   are missing;
+2. clones the repository to `/opt/secure-proxy-manager`, or on a re-run pulls
+   it with `git pull --ff-only`;
+3. copies `deploy/docker-compose.prod.yml` to `compose.prod.yml` and selects it
+   with `COMPOSE_FILE=compose.prod.yml` in `.env`;
+4. on a first run writes `.env` with `BASIC_AUTH_USERNAME=admin`, a random
+   20-character password, `SECRET_KEY` and `INTERNAL_ALERT_TOKEN`; on a re-run
+   adds `INTERNAL_ALERT_TOKEN` and `COMPOSE_FILE` if `.env` lacks them;
+5. pulls the release images (`SPM_IMAGE_TAG`, default the current release) and,
+   when cosign 3 or later is installed, verifies their signatures and stops if
+   one fails;
+6. stops the backend and copies `data/` to `data.bak.<timestamp>` (keeping the
+   three newest), checks that the host ports are free, and starts the stack.
+
+The credentials are printed at the end and stay in
+`/opt/secure-proxy-manager/.env`.
+
+### From a clone
 
 ```bash
-# 1. Clone
 git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
 cd secure-proxy-manager
-
-# 2. Create your .env
 cp .env.example .env
-
-# 3. Set credentials in .env (see notes below), then:
+# Set BASIC_AUTH_PASSWORD and INTERNAL_ALERT_TOKEN in .env, then:
 docker compose up -d --build
-
-# 4. Watch it come up
 docker compose logs -f
 ```
 
-A `Makefile` wraps the common commands: `make setup` creates `.env` and the
-`data/`, `logs/`, `config/` directories; `make start` runs
-`docker compose up -d --build`; `make stop`, `make restart`, `make logs`, and
-`make clean` (`down -v`, your `./data` is preserved) round it out.
+The `Makefile` wraps the common commands: `make setup` creates `.env` from
+the template (if missing) and the `data/`, `logs/`, `config/` and
+`config/dnsmasq.d/` directories; `make start` runs `setup` and
+`docker compose up -d --build`; `make stop`, `make restart`, `make logs`,
+`make build`; `make clean` runs `docker compose down -v --remove-orphans`,
+which removes the named volumes and leaves `./data` in place;
+`make adversarial` runs the adversarial test harness.
 
-> **Required before first start:** set `BASIC_AUTH_USERNAME` and
-> `BASIC_AUTH_PASSWORD` in `.env`. The backend **refuses to start** if the
-> password is empty, a common default (`changeme`, `admin`, `password`,
-> `secret`, …), or shorter than 8 characters. There is **no** `admin/admin`
-> fallback. Leave `SECRET_KEY` empty to have a strong one auto-generated and
-> persisted under `./data` (see [Configuration](#configuration)).
+> **Required before the first start:** set `BASIC_AUTH_PASSWORD` in `.env`.
+> The backend exits if it is empty, shorter than 8 characters, or one of
+> `changeme`, `password`, `admin`, `secret`, `test`, `12345678`, `qwerty`.
+> Leave `SECRET_KEY` empty to have one generated and kept in
+> `data/.jwt_secret`.
 
 ### Access the UI
 
-Open <https://localhost:8443> and accept the self-signed certificate. Plain
-`http://localhost:8011` (and host port `80`) redirect to HTTPS. Log in with the
-credentials from your `.env` (or the ones the installer printed).
+Open <https://localhost:8443> (or `https://<host>`) and accept the
+self-signed certificate. `http://<host>` and port 8011 redirect to HTTPS.
 
 ### Point a client at the proxy
 
-- **Host**: `localhost` (or the server's IP) **Port**: `3128` **Protocol**: HTTP
-- Only RFC1918/localhost sources may use the proxy; every other source gets a
-  403 before any other rule is evaluated. To admit an extra source, list it in
-  `GUI_IP_WHITELIST` (IPs or CIDRs, comma- or space-separated). The IP
-  whitelist in the UI is a list of destinations, not of clients.
-- Settings → Client Setup generates per-OS instructions and a PAC file.
-
-Test it:
+- **Host**: the server's address. **Port**: `3128`. **Protocol**: HTTP.
+- The proxy accepts clients from private IPv4 ranges, IPv6 unique-local and
+  link-local addresses and localhost; any other source gets a 403 before any
+  other rule is evaluated. To admit another source, list it in
+  `GUI_IP_WHITELIST` (addresses or CIDRs, comma or space separated). Allowed
+  IPs in the UI are destinations, not clients.
+- Settings > Overview > Connect a device shows per-platform steps and a PAC
+  file.
 
 ```bash
-curl -x http://localhost:3128 http://example.com
+curl -x http://localhost:3128 -I http://example.com
 docker compose logs proxy | tail -n 20
 ```
 
 ## Services and Ports
 
-Host port mappings come straight from `docker-compose.yml`:
+From `docker-compose.yml`:
 
-| Host binding | Container | Service | Notes |
-|--------------|-----------|---------|-------|
-| `443` → `8443`, `8443` → `8443` | `web` | Web UI (HTTPS) | Main interface; `8443` is the same UI on an alternate port |
-| `80` → `8011`, `8011` → `8011` | `web` | Web UI (HTTP) | Redirects to HTTPS; also serves ACME challenges for Let's Encrypt |
-| `127.0.0.1:5001` → `5000` | `backend` | Backend API | Bound to localhost only; the UI proxies it (incl. WebSocket) internally |
-| `${PROXY_BIND_IP:-0.0.0.0}:3128` → `3128` | `proxy` | Forward proxy | Point clients here |
-| none (internal) | `waf` | WAF | `1344` (ICAP, Squid → WAF) and `8080` (health / `:8080/metrics`); **not** published on the host |
-| none (internal) | `dns` | dnsmasq | Port `53` inside the `proxy-internal` network; not published on the host |
+| Host binding | Container port | Service | Notes |
+|--------------|----------------|---------|-------|
+| `443`, `8443` | `8443` | `web` | HTTPS: the UI and `/api/` |
+| `80`, `8011` | `8011` | `web` | Redirects to HTTPS except `/health`, `/wpad.dat`, `/.well-known/acme-challenge/` |
+| `127.0.0.1:5001` | `5000` | `backend` | Host only; nginx proxies it, WebSocket included |
+| `${PROXY_BIND_IP:-0.0.0.0}:3128` | `3128` | `proxy` | Point clients here |
+| none | `1344`, `8080` | `waf` | ICAP, and health, metrics and management |
+| none | `53` | `dns` | Squid's resolver |
 
-Networks: `frontend` (bridge, has egress) and `proxy-internal`
-(`internal: true`, no gateway). `proxy` and `dns` attach to **both** so they can
-reach the internet/upstream resolvers.
+Networks: `frontend` (bridge, with outbound access) and `proxy-internal`
+(`internal: true`, no route out). `backend`, `proxy` and `dns` are on both,
+`waf` only on `proxy-internal`, `web` only on `frontend`.
 
-To change a published port, edit the `ports:` entry in `docker-compose.yml`,
-e.g. `- "9443:8443"`.
+To change a published port, edit the `ports:` entry, for example
+`- "9443:8443"`. Port 3128 is also checked by the proxy's health check, so
+change only its host side.
 
 ## Configuration
 
-All runtime configuration is environment-driven via `.env` (copy from
-`.env.example`). Backend defaults are defined in
-`backend-go/internal/config/config.go`.
-
-### Authentication
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BASIC_AUTH_USERNAME` | **required** | Admin login username |
-| `BASIC_AUTH_PASSWORD` | **required** | Admin login password. Rejected at startup if empty, a common default, or < 8 chars |
-| `SECRET_KEY` | auto-generated | JWT signing secret. Leave empty to generate and persist one under `./data/.jwt_secret`. If you set it, it must be unique, random, and 32+ chars (`openssl rand -hex 32`); known/example values are rejected at startup |
-
-Generate strong values:
-
-```bash
-openssl rand -hex 32   # password and/or SECRET_KEY
-```
-
-### Network / proxy
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BACKEND_URL` | `http://backend:5000` | Internal backend URL used by `web` (Docker network) |
-| `CORS_ALLOWED_ORIGINS` | `https://localhost:8443` | Allowed UI origin(s); add your domain when using Let's Encrypt |
-| `PROXY_HOST` | `proxy` | Proxy service hostname (internal) |
-| `PROXY_PORT` | `3128` | Proxy service port |
-| `PROXY_CONTAINER_NAME` | `secure-proxy-manager-proxy` | Container name used for reload signals |
-| `PROXY_BIND_IP` | `0.0.0.0` | Host interface the proxy port binds to |
-| `GUI_IP_WHITELIST` | empty | Extra source IP(s) allowed to use the proxy |
-| `PROXY_IP` | empty | Your LAN IP, to enable WPAD (`wpad.dat`) auto-discovery for browsers |
-
-### DNS
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DNS_UPSTREAM_1` | `1.1.1.3` | Upstream resolver (malware-blocking by default) |
-| `DNS_UPSTREAM_2` | `9.9.9.9` | Upstream resolver |
-| `DNS_UPSTREAM_3` | `8.8.8.8` | Upstream resolver |
-
-### WAF
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `WAF_BLOCK_THRESHOLD` | `10` | Anomaly score at which a request is blocked (lower is stricter) |
-| `WAF_DISABLED_CATEGORIES` | empty | Comma-separated rule categories to disable |
-| `WAF_H_ENTROPY`, `WAF_H_BEACONING`, `WAF_H_PII`, `WAF_H_SHARDING`, `WAF_H_GHOSTING`, `WAF_H_SEQUENCE` | per compose | Heuristic engine toggles (`1`/`0`) |
-
-Most runtime behaviour (WAF categories, blocklists, filtering toggles,
-notifications) is managed from the UI and stored in the database, not in `.env`.
-
-### HTTPS / Let's Encrypt
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LETSENCRYPT_DOMAIN` | empty | Used only by an image that includes certbot; the shipped image does not include certbot, so the `web` container cannot obtain a Let's Encrypt certificate itself: with these set it serves a self-signed certificate and logs why. To use a CA certificate, mount it at `/etc/nginx/ssl/server.crt` and `/etc/nginx/ssl/server.key`, or terminate TLS on a reverse proxy in front |
-| `LETSENCRYPT_EMAIL` | empty | Contact email for ACME |
-
-### Optional
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TS_AUTHKEY` | empty | Tailscale auth key; the `tailscale` service runs only under its compose profile (`docker compose --profile tailscale up -d`) |
-| `REQUEST_TIMEOUT` | `120` | UI → backend request timeout (seconds) |
-| `SPM_DNS_BLOCKLIST_MAX_DOMAINS` | `1000000` | Most domains the blacklist may hold (backend). dnsmasq keeps them in memory, about 200 MiB per million against the dns service's 256 MiB limit; raise both together |
+`.env` sets the variables the compose file passes to the containers; the full
+list, with what each service does with it, is in
+[docs/guide/configuration.md](docs/guide/configuration.md). Settings stored in
+the database (lists, filtering, inspection, alerts, retention) are edited in
+the UI.
 
 ## Volumes and Persistence
 
-Bind mounts (created in the repo root; `make setup`/the installer create them):
+Bind mounts in the project directory (`make setup` and the installer create
+them):
 
 ```
 secure-proxy-manager/
-├── config/                  # Config + TLS material (mounted into proxy/waf/dns)
-│   ├── ssl_cert.pem         # SSL-bump CA cert, generated at first boot (gitignored)
-│   ├── ssl_key.pem          # SSL-bump CA key, generated at first boot (gitignored)
-│   ├── ssl_db/              # Squid generated-cert DB (gitignored)
-│   ├── ip_blacklist.txt     # Optional seed lists copied into Squid at startup
-│   └── domain_blacklist.txt
-├── data/                    # Persistent state
-│   ├── proxy_manager.db     # SQLite database (created automatically)
-│   ├── .jwt_secret          # Auto-generated JWT secret (if SECRET_KEY unset)
-│   └── .enc_key             # Auto-generated key for encrypted settings
-├── logs/                    # Access log + Squid logs (mounted into backend/proxy)
-├── .env                     # Your environment (you create this)
-├── docker-compose.yml
-└── Makefile
+├── config/        # shared with proxy, waf, dns: exported lists, marker and trigger
+│   │              # files, status records, ssl_cert.pem and ssl_key.pem (SSL-bump CA),
+│   │              # ssl_db/ (generated certificates)
+│   └── dnsmasq.d/ # blocklist.hosts for dnsmasq
+├── data/          # backend only: proxy_manager.db, .jwt_secret, .enc_key
+├── logs/          # Squid access.log and cache.log, dnsmasq.log
+└── .env
 ```
 
-Named Docker volumes (managed by Compose):
+`config/*.pem` and `config/ssl_db/` are gitignored.
+
+Named volumes:
 
 | Volume | Used by | Purpose |
 |--------|---------|---------|
 | `squid-cache` | `proxy` | Squid disk cache (`/var/spool/squid`) |
-| `letsencrypt` | `web` | Persisted Let's Encrypt certificates |
+| `waf-traffic` | `waf` | WAF traffic feature log |
+| `letsencrypt` | `web` | Mounted at `/etc/letsencrypt`; unused by the shipped image |
 | `tailscale-data` | `tailscale` | Tailscale node state |
 
-The database is `data/proxy_manager.db` (config default `DATABASE_PATH`
-`/data/proxy_manager.db`). Back up `./data` and `./config` to preserve all state
-and the SSL-bump CA. `docker compose down -v` removes the named volumes (cache,
-letsencrypt) but **not** the bind mounts; `make clean` does the same and reminds
-you `./data` is preserved.
+`docker compose down -v` (and `make clean`) removes the named volumes but not
+the bind mounts.
 
 ## HTTPS and the SSL-Bump CA
 
-There are two distinct TLS surfaces:
+There are two TLS surfaces.
 
-1. **Web UI TLS.** `web` serves HTTPS on `8443`/`443` with a self-signed cert by
-   default. For a CA certificate, mount it at `/etc/nginx/ssl/server.crt` and
-   `/etc/nginx/ssl/server.key` (a mounted pair is used in place of the
-   self-signed one), or put a reverse proxy in front. The shipped image does
-   not include certbot, so `LETSENCRYPT_DOMAIN` alone does not produce one.
+1. **The UI.** `web` serves HTTPS on 8443 (and 443) with a certificate mounted
+   at `/etc/nginx/ssl/server.crt` and `/etc/nginx/ssl/server.key`, or with a
+   self-signed one it generates at start, valid for 365 days. The image has no
+   certbot, so `LETSENCRYPT_DOMAIN` alone does not produce a certificate.
+   Alternatively terminate TLS on a reverse proxy in front (see
+   [Security](docs/guide/security.md#https-for-the-web-ui)).
 
-2. **Proxy SSL-bump CA.** When SSL-bump is enabled (Settings), Squid intercepts
-   TLS using a locally generated CA so the WAF can inspect decrypted requests.
-   `proxy/generate_squid_conf.sh` generates `config/ssl_cert.pem` and
-   `config/ssl_key.pem` on first boot if they are absent (2048-bit RSA, **825
-   days**) and initializes `config/ssl_db/`. The key is created under
-   `umask 077` so it is never world-readable, even briefly. These files are **gitignored** (`config/*.pem`,
-   `config/ssl_db/`) and are **never committed**; each deployment has its own
-   unique CA. The startup script additionally detects and deletes a
-   known-compromised CA key that was historically committed, regenerating a
-   fresh one.
+2. **The SSL-bump CA.** With Settings > Inspection > Inspect HTTPS traffic on,
+   Squid decrypts HTTPS with a local CA so the WAF can inspect requests.
+   `proxy/generate_squid_conf.sh` creates `config/ssl_cert.pem` and
+   `config/ssl_key.pem` at start when either is missing (RSA 2048, valid 825
+   days, the key created under `umask 077`) and initialises `config/ssl_db/`.
+   Each deployment has its own CA. The generator also detects the CA key that
+   was once committed to this repository, deletes it and generates a new one.
 
-   To inspect HTTPS on clients, install the generated CA (Settings → download CA)
-   on every device that should trust the bump. Without SSL-bump, HTTPS is
-   tunnelled via `CONNECT` and the WAF only sees connection metadata.
+   Install the CA on every client that should be inspected: Settings >
+   Inspection > Download the CA certificate (.pem). Without SSL bump, HTTPS is a
+   `CONNECT` tunnel and the WAF sees only the destination.
 
 ### Rotating the SSL-bump CA
 
-The CA is valid for **825 days**, not the ten years it used to be. That was a
-deliberate trade: a decade-long CA with no rehearsed replacement outlives the
-deployment, so if it leaks there is no way back. The shorter lifetime only helps
-if the replacement is actually rehearsed, so here it is.
-
-Rotate **before** the certificate expires, and update clients before the old one
-stops working, not after. Every device told to trust the old CA loses HTTPS
-inspection the moment it is replaced, until it trusts the new one.
+The CA is valid for **825 days**. Rotate it before it expires, and give clients the
+new CA before the old one stops working: a device that trusts only the old CA
+fails HTTPS inspection from the moment it is replaced.
 
 ```bash
-# 1. Check what you have. This is also how you find out how long you have left.
+# 1. See the subject and the expiry date.
 docker compose exec proxy openssl x509 -in /config/ssl_cert.pem -noout -subject -enddate
 
-# 2. Stop the stack and keep the old CA: you need it if a client is slow to update.
+# 2. Stop the stack and keep the old CA until every client is updated.
 docker compose down
 mv config/ssl_cert.pem config/ssl_cert.pem.old
 mv config/ssl_key.pem  config/ssl_key.pem.old
 
-# 3. Clear the generated-certificate database, which is keyed to the old CA.
+# 3. Clear the generated-certificate database, which belongs to the old CA.
 rm -rf config/ssl_db
 
-# 4. Start. generate_squid_conf.sh regenerates both, under umask 077, on boot.
+# 4. Start. The proxy generates a new CA.
 docker compose up -d
 docker compose exec proxy openssl x509 -in /config/ssl_cert.pem -noout -enddate
 
-# 5. Distribute the new CA to every client: Settings -> download CA.
-#    Until a client installs it, HTTPS inspection fails for that client.
+# 5. Install the new CA on every client (Settings > Inspection > Download the CA certificate (.pem)).
 
 # 6. Once every client is updated:
 rm config/ssl_cert.pem.old config/ssl_key.pem.old
 ```
 
+To use a CA of your own instead, put its certificate and key at
+`config/ssl_cert.pem` and `config/ssl_key.pem` in step 4.
+
 ### Rotating the other two keys
 
-`.jwt_secret` rotates cleanly: delete it (or set `SECRET_KEY`) and restart. Every
-session is invalidated and users log in again; nothing else is lost.
+`data/.jwt_secret` rotates cleanly: delete it (or set `SECRET_KEY`) and
+restart. Every session ends and users sign in again.
 
-`.enc_key` **cannot be rotated without loss.** Nothing re-encrypts the values it
-protects, so replacing it leaves every stored notification credential
-undecryptable; the settings page will render them as unreadable rather than
-silently corrupting them, but they are gone. If you must replace it: note your
-SMTP and webhook credentials first, delete `data/.enc_key`, restart, and enter
-them again.
-
-If SSL-bump is not enabled, none of this applies: without it HTTPS is tunnelled
-via `CONNECT` and the CA is unused.
+`data/.enc_key` **cannot be rotated without loss.** Nothing re-encrypts the
+values it protects, so replacing it leaves every stored alert channel secret
+undecryptable; the Settings page marks them as unreadable, and they must be
+entered again. If you must replace it: note the alert channel settings first,
+delete `data/.enc_key`, restart, and enter them again.
 
 ## Backups
 
-The database holds all configuration, blocklists, logs, and audit history.
+The database holds the settings, the lists, the access log and the audit log.
 
-- **From the UI:** Settings → Maintenance → Backup, which calls the
-  `GET /api/database/export` endpoint and downloads a JSON export of the
-  database tables. `GET /api/maintenance/backup-config` exports the
-  configuration separately. Both require authentication.
-- **From the host (cold copy):** stop the stack and archive the bind mounts:
+- **From the UI**, Settings > Admin and backup:
+  - *Download a backup* saves the settings and the five lists
+    (`GET /api/maintenance/backup-config`); *Restore from a file* reads such a
+    file back and adds what it holds.
+  - *Export the database* downloads every table as JSON
+    (`GET /api/database/export`), for analysis; Restore cannot read it.
+- **Cold copy from the host.** The database is in WAL mode, so copy it only
+  with the backend stopped:
 
   ```bash
-  docker compose down
+  docker compose stop backend
   tar -czf spm-backup-$(date +%Y%m%d).tar.gz data/ config/
-  docker compose up -d
+  docker compose start backend
   ```
 
-  Restore by extracting the archive back over `data/` and `config/` before
-  `docker compose up -d`.
+  To restore, stop the stack, extract the archive over `data/` and `config/`,
+  and run `docker compose up -d`.
 
-Schedule the cold copy with cron if desired:
+A daily cold copy from cron, stopping the backend for the copy:
 
 ```bash
-# Daily at 02:00
-0 2 * * * cd /opt/secure-proxy-manager && tar -czf /backups/spm-$(date +\%Y\%m\%d).tar.gz data config
+0 2 * * * cd /opt/secure-proxy-manager && docker compose stop backend && tar -czf /backups/spm-$(date +\%Y\%m\%d).tar.gz data config; docker compose start backend
 ```
+
+The installer's `data.bak.<timestamp>` copies are restored with
+`scripts/restore.sh <backup-dir>`: it checks the copy with
+`PRAGMA integrity_check` (`sqlite3` is needed, or `--skip-check`), asks you to
+type `restore`, stops the stack, moves the current `data/` aside to
+`data.before-restore.<timestamp>`, copies the backup in and starts the stack.
+Run without arguments it lists the available copies.
 
 ## Updating
 
 **Read the CHANGELOG entry for the version you are moving to first.** Some
-releases need a configuration change before they will work correctly, and it is
-listed there under **Action required**; the commands below do not and cannot
-apply it. Upgrading to 3.12.0, for example, requires `INTERNAL_ALERT_TOKEN` in
-`.env` (without it the WAF silently stops sending block notifications) and
-`GRAFANA_ADMIN_PASSWORD` if you use the observability profile (without it
-Grafana refuses to start rather than coming up on admin/admin).
+releases need a change before they work correctly, listed under **Action
+required**; the commands below do not apply it. Upgrading from 3.11.x, for
+example, needs `INTERNAL_ALERT_TOKEN` in `.env`.
 
-Re-running `deploy/install.sh` is the safer route for exactly this reason: it
-does the fast-forward pull AND adds variables your `.env` predates. The manual
-sequence below does not.
+On an installer host, run `deploy/install.sh` again: it pulls the code and
+the images, adds variables an older `.env` lacks, and copies `data/` first.
+In a clone:
 
 ```bash
-# 1. Stop the stack, THEN back up. Copying data/ while the backend is running
-#    walks proxy_manager.db, -wal and -shm at three different instants and
-#    cannot produce a restorable snapshot of a WAL-mode database, and this is
-#    the artefact you fall back on precisely when the upgrade went wrong.
+# 1. Stop the stack, then back up. A copy of data/ taken while the backend runs
+#    is not a consistent snapshot of a WAL-mode database.
 docker compose down
 cp -a data data.backup && cp -a config config.backup
 
 # 2. Pull the latest code
-git pull origin main          # or: deploy/install.sh re-run does a ff-only pull
+git pull origin main
 
 # 3. Rebuild and restart
 docker compose up -d --build
@@ -364,107 +304,104 @@ docker compose ps
 docker compose logs -f
 ```
 
-The database, generated CA, and named volumes are preserved across updates.
+The database, the generated CA and the named volumes are kept across updates.
 
 ## Rolling back
 
 ```bash
-# 1. Stop, and keep the current state in case you need to come back to it
+# 1. Stop, and keep the current state
 docker compose down
 cp -a data data.failed-upgrade
 
 # 2. Return to the previous release
-git checkout v<previous>      # `git tag --list 'v*' | tail -5` to find it
+git checkout v<previous>      # `git tag --list 'v*' | tail -5` lists them
 
-# 3. Rebuild and start
+# 3. Restore the data taken before the upgrade
+rm -rf data && cp -a data.backup data
+
+# 4. Rebuild and start
 docker compose up -d --build
 ```
 
-**State compatibility.** Schema changes are additive only (`ALTER TABLE ADD
-COLUMN` replayed on every start, with no `schema_version` gate), so an older
-binary reads a database a newer one has migrated: it simply does not select the
-columns it does not know about. Restoring `data.backup` is therefore optional,
-and only needed if the newer version wrote values the older one misreads. Any
-release that breaks this will say so in CHANGELOG.md under `### Removed`.
+**Restore the pre-upgrade data when you roll back.** Besides columns added on
+every start, the schema has one-way steps recorded in `PRAGMA user_version`
+(at version 6 in this release): table rebuilds, the `list_sources` table, the
+rewrite of `*.name` egress entries to `.name`, and the deletion of retired
+settings. An older backend does not undo them.
 
 ## Troubleshooting
 
 ### Cannot reach the web UI
 
 ```bash
-docker compose ps                 # is `web` (and `backend`) healthy?
+docker compose ps                 # is web (and backend) healthy?
 docker compose logs web
 ```
 
-`web` depends on `backend` being healthy. The backend will exit on boot if
-`BASIC_AUTH_PASSWORD`/`SECRET_KEY` are invalid. Check `docker compose logs
-backend` for a fatal message about a weak password or secret.
+`web` waits for `backend` to be healthy, and the backend exits at start on an
+invalid `BASIC_AUTH_PASSWORD` or `SECRET_KEY`. A taken host port (80, 443,
+8011, 8443) stops `web` from starting.
 
-### Backend won't start
-
-Most often a credential policy failure:
+### Backend does not start
 
 ```bash
 docker compose logs backend | tail -n 30
 grep BASIC_AUTH .env
 ```
 
-Fix `.env` (password ≥ 8 chars and not a common default; `SECRET_KEY` empty or
-32+ random chars) and `docker compose up -d`.
+Fix `.env` (password of 8 or more characters and not a common default;
+`SECRET_KEY` empty or 32 or more random characters) and run
+`docker compose up -d`.
 
-### Proxy not filtering / 502s on upstream fetches
+### Proxy not filtering, or 502 on every request
 
 ```bash
 docker compose logs proxy
-docker compose logs waf          # WAF must be healthy; Squid ICAP-calls it
-curl -x http://localhost:3128 http://example.com
+docker compose logs waf           # Squid calls the WAF on every request
+curl -x http://localhost:3128 -I http://example.com
 ```
 
-`proxy` depends on both `waf` and `dns` being healthy. It is attached to the
-egress-capable `frontend` network as well as `proxy-internal`; if you customise
-networking, keep that egress path or every upstream fetch fails.
+`proxy` starts only when `waf` and `dns` are healthy. It needs the `frontend`
+network for outbound access, and `dns` needs it to reach the upstream
+resolvers; keep both attachments if you change the networks.
 
 ### Health checks
 
 ```bash
-curl -sf  http://localhost:8011/health          # web (nginx)
-curl -skI https://localhost:8443/                # web over HTTPS
-curl -sk  https://localhost:8443/api/health      # backend via the UI proxy
+curl -sf  http://localhost:8011/health          # nginx in web
+curl -skI https://localhost:8443/               # web over HTTPS
+curl -sk  https://localhost:8443/api/health     # backend through nginx
 ```
 
-The backend's own healthcheck runs `/server -healthcheck` inside the container,
-which now probes **readiness** (`/readyz`: pings the database) rather than bare
-liveness, so a wedged SQLite surfaces as an unhealthy container. Probe endpoints:
+The backend container's health check runs `/server -healthcheck`, which calls
+`/readyz`:
 
 | Endpoint | Meaning |
 |----------|---------|
-| `/livez`, `/health` | Liveness: process is up (no DB touch). |
-| `/readyz`, `/api/ready` | Readiness: DB reachable (`PingContext` + `SELECT 1`); `503` if not. |
+| `/livez`, `/health` | The process is up (no database access) |
+| `/readyz`, `/api/ready` | The database answers within 2 seconds; `503` otherwise |
 
-### Metrics & observability
+### Metrics
 
-The backend and WAF both expose Prometheus metrics on their **internal** ports
-(not proxied by nginx, so not reachable from outside the Docker network):
-
-```bash
-docker compose exec backend wget -qO- http://localhost:5000/metrics | head   # spm_http_*, spm_db_*, spm_worker_*
-docker compose exec waf     wget -qO- http://localhost:8080/metrics | head   # waf_*, waf_reqmod_duration_seconds, waf_trafficlog_*
-```
-
-Backend metrics: RED per route (`spm_http_requests_total`,
-`spm_http_request_duration_seconds`, `spm_http_requests_in_flight`), DB pool
-gauges (`spm_db_connections_*`), worker heartbeats
-(`spm_worker_last_success_timestamp_seconds`), plus `go_*`/`process_*`. WAF
-metrics add a REQMOD latency histogram and the silent-drop counters
-(`waf_trafficlog_enabled`, `waf_trafficlog_dropped_total`,
-`waf_notify_dropped_total`).
-
-An opt-in Prometheus + Grafana stack scrapes both:
+The backend and the WAF expose Prometheus metrics on their internal ports; nginx
+does not proxy them:
 
 ```bash
-docker compose --profile observability up -d
-# Prometheus → http://127.0.0.1:9090   Grafana → http://127.0.0.1:3000 (admin / $GRAFANA_ADMIN_PASSWORD)
+docker compose exec backend wget -qO- http://localhost:5000/metrics | head   # spm_*, go_*, process_*
+docker compose exec waf     wget -qO- http://localhost:8080/metrics | head   # waf_*
 ```
+
+Backend metrics include `spm_http_requests_total`,
+`spm_http_request_duration_seconds`, `spm_http_requests_in_flight`, the
+`spm_db_connections_*` pool gauges, `spm_worker_last_success_timestamp_seconds`
+and `spm_log_retention_enabled`. WAF metrics include
+`waf_reqmod_duration_seconds`, `waf_trafficlog_enabled`,
+`waf_trafficlog_dropped_total` and `waf_notify_dropped_total`.
+
+The `observability` profile (Prometheus and Grafana) mounts configuration from
+`./infra/`, which is not in the repository: started as shipped, Prometheus
+fails to start because Docker creates `infra/prometheus/prometheus.yml` as an
+empty directory.
 
 ### Logs and shell access
 
@@ -473,7 +410,7 @@ docker compose logs -f                 # all services
 docker compose logs -f backend         # one service (backend|web|proxy|waf|dns)
 docker compose logs --tail=100 proxy
 
-docker compose exec backend /bin/sh    # backend/waf are minimal images (sh)
+docker compose exec backend /bin/sh    # backend and waf images have sh
 docker compose exec proxy  /bin/bash
 ```
 
@@ -488,6 +425,6 @@ docker compose up -d --build
 ---
 
 **See also:**
-- [README.md](README.md): overview and feature list
+- [README.md](README.md): overview
 - [CHANGELOG.md](CHANGELOG.md): release history
 - [CONTRIBUTING.md](CONTRIBUTING.md): contribution guidelines

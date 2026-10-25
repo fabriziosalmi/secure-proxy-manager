@@ -2,11 +2,27 @@
 
 ## Prerequisites
 
-- Docker 20.10.0+
-- Docker Compose v2 (the `docker compose` plugin)
-- `git`
+- Docker with the Compose v2 plugin (the `docker compose` command)
+- `git`, to install from a clone
 
-## Quick start
+## Option 1: the installer (Linux server)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/secure-proxy-manager/main/deploy/install.sh | sudo bash
+```
+
+`deploy/install.sh` must run as root. It installs Docker (through
+`get.docker.com`) and the Compose plugin and `git` (through `apt-get` or
+`yum`) when they are missing, clones the repository to
+`/opt/secure-proxy-manager` whatever directory you run it from, and writes a
+`.env` with the user `admin`, a random password, `SECRET_KEY` and
+`INTERNAL_ALERT_TOKEN`. It uses the production compose file
+(`deploy/docker-compose.prod.yml`, copied to `compose.prod.yml`), checks that
+the host ports are free, pulls the release images and starts the stack. The
+credentials are printed at the end and stay in `/opt/secure-proxy-manager/.env`.
+Read the script before you run it.
+
+## Option 2: from a clone
 
 ### 1. Clone the repository
 
@@ -17,108 +33,115 @@ cd secure-proxy-manager
 
 ### 2. Create the `.env` file
 
-Copy the template and edit at minimum the credentials:
-
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and set:
+Open `.env` and set at least:
 
 ```bash
-BASIC_AUTH_USERNAME=your_username
+BASIC_AUTH_USERNAME=admin
 BASIC_AUTH_PASSWORD=your_strong_password
+INTERNAL_ALERT_TOKEN=output_of_openssl_rand_hex_32
 ```
 
 ::: warning
-The containers refuse to start with the bundled placeholder credentials. Replace both values before bringing the stack up.
+The backend refuses to start when `BASIC_AUTH_PASSWORD` is empty, shorter than
+8 characters, or one of `changeme`, `password`, `admin`, `secret`, `test`,
+`12345678`, `qwerty`. The template leaves it empty.
 :::
 
-`SECRET_KEY` is auto-generated on first start when left empty, but tokens are then invalidated on every restart. Set a stable value in production:
+Without `INTERNAL_ALERT_TOKEN` the WAF cannot report blocks to the backend and
+refuses the backend's calls for statistics and toggles. Generate it with
+`openssl rand -hex 32`.
 
-```bash
-SECRET_KEY=$(openssl rand -hex 32)
-```
+Leave `SECRET_KEY` empty to have the backend generate one and keep it in
+`data/.jwt_secret`, so sessions survive a restart. If you set it, it must be at
+least 32 characters and not a known example value.
 
 ### 3. Start the services
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
-The first build downloads images and compiles the backend, WAF, and UI. Subsequent starts are fast.
+The first run builds the backend, WAF, UI, proxy and dns images.
 
 ### 4. Open the web UI
 
-Open `https://localhost:8443` and accept the self-signed certificate, or `http://localhost:8011` if you do not need TLS to the UI itself. Log in with the credentials from `.env`.
+Open `https://localhost:8443` (or `https://<host>`) and accept the
+self-signed certificate. Plain HTTP on ports 80 and 8011 redirects to HTTPS.
+Sign in with the credentials from `.env`; the first sign-in opens a setup
+wizard.
 
 ### 5. Configure clients
 
-Set the proxy on your devices to:
+Set the proxy on each device to:
 
-- **Host:** the LAN IP of the machine running Secure Proxy Manager
+- **Host:** the LAN address of the machine running Secure Proxy Manager
 - **Port:** `3128`
 
-For transparent proxying without per-client configuration, see [Transparent Proxy Setup](/guide/security#transparent-proxy).
-
-## Automated installer (Linux)
-
-The repository ships an installer script that clones the project to `/opt/secure-proxy-manager`, installs Docker if missing, generates random credentials, and starts the stack:
-
-```bash
-sudo bash deploy/install.sh
-```
-
-The script is intended for fresh Linux servers (Debian, Ubuntu, RHEL family). Read the source before running.
-
-## Updating
-
-```bash
-git pull
-docker compose down
-docker compose build --no-cache
-docker compose up -d
-```
+Settings > Overview > Connect a device shows the steps per platform and a PAC
+file. The proxy accepts clients from private IPv4 ranges, IPv6 unique-local
+and link-local addresses and localhost; `GUI_IP_WHITELIST` admits other
+sources. Transparent interception is not supported (see
+[Transparent proxy](/guide/security#transparent-proxy)).
 
 ## Verifying the installation
 
 ```bash
-# All services running and healthy
+# Every service running and healthy
 docker compose ps
 
-# Backend liveness (localhost only)
-curl -k https://localhost:8443/health
+# Backend health through the UI's reverse proxy
+curl -sk https://localhost:8443/api/health
 
-# Backend readiness: checks the database is reachable (503 if not)
+# Backend readiness: 200 when the database answers, 503 otherwise
 docker compose exec backend wget -qO- http://localhost:5000/readyz
 
-# Test proxy connectivity
-curl -x http://localhost:3128 http://example.com
+# A request through the proxy
+curl -x http://localhost:3128 -I http://example.com
 ```
 
-## Metrics and Grafana
+`https://localhost:8443/health` is answered by nginx in the `web` container,
+not by the backend.
 
-The backend and WAF expose Prometheus metrics on their internal ports (not
-proxied by nginx, so not reachable from outside the Docker network):
+## Updating
+
+Read the CHANGELOG entry for the target version first. Then, in a clone:
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+On a host installed with `install.sh`, run the installer again: it pulls the
+new release and adds variables an older `.env` lacks. See
+[DEPLOYMENT.md](https://github.com/fabriziosalmi/secure-proxy-manager/blob/main/DEPLOYMENT.md#updating).
+
+## Metrics
+
+The backend and the WAF expose Prometheus metrics on their internal ports;
+nginx does not proxy them:
 
 ```bash
 docker compose exec backend wget -qO- http://localhost:5000/metrics | head
 docker compose exec waf     wget -qO- http://localhost:8080/metrics | head
 ```
 
-To get a ready-made Prometheus + Grafana stack scraping both, start the opt-in
-`observability` profile (Grafana on `127.0.0.1:3000`, Prometheus on `:9090`):
-
-```bash
-docker compose --profile observability up -d
-```
+The compose files also define an `observability` profile (Prometheus and
+Grafana), but the configuration it mounts from `./infra/` is not in the
+repository. Started as shipped, Docker creates
+`infra/prometheus/prometheus.yml` as an empty directory and the Prometheus
+container fails with "Are you trying to mount a directory onto a file".
 
 ## Troubleshooting
 
 | Problem | Cause | Fix |
 |---|---|---|
-| Web UI not reachable | Port 80/443/8011/8443 already in use | `docker compose logs web` and free the port |
-| Authentication failing | `.env` not present or placeholder credentials in use | Set `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD`, then `docker compose up -d` |
-| Proxy not filtering | Client not configured to use port 3128 | Verify the client points to `<host>:3128` |
-| TLS warning when filtering HTTPS | SSL bump CA not installed on the client | Download the CA via the UI (Security → Download CA) and trust it |
-| Permission errors on `./config`, `./data`, `./logs` | Directories owned by another user | `sudo chown -R $USER:$USER config data logs` |
+| The UI is not reachable | A host port (80, 443, 8011, 8443) is taken | `docker compose logs web`; free the port or change the host side of the mapping |
+| The backend exits at start | Empty or weak `BASIC_AUTH_PASSWORD`, or a weak `SECRET_KEY` | `docker compose logs backend`, fix `.env`, `docker compose up -d` |
+| Requests are not filtered | The client does not use the proxy | Point the client at `<host>:3128` |
+| Clients are refused with 403 by every site | The client address is not a private or localhost source | Add it to `GUI_IP_WHITELIST` |
+| TLS warnings with HTTPS inspection on | The client does not trust the proxy CA | Settings > Inspection > Download the CA certificate (.pem), then install it on the client |
+| The dashboard shows no WAF statistics | `INTERNAL_ALERT_TOKEN` is not set on both `waf` and `backend` | Set it in `.env` and run `docker compose up -d` |
