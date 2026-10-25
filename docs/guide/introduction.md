@@ -12,15 +12,16 @@ egress point without a commercial appliance.
 
 - **Forward proxy.** Clients send HTTP and HTTPS through Squid on port 3128.
   HTTPS is a `CONNECT` tunnel unless SSL bump is turned on.
-- **Blocked domains.** Exact names. An entry written `*.example.com` blocks
-  `example.com` itself, not its subdomains. dnsmasq sinkholes every entry, and
+- **Blocked domains.** Exact names. An entry written `*.example.com` or
+  `.example.com` blocks `example.com` itself, not its subdomains. dnsmasq sinkholes every entry, and
   Squid also denies the names while the list is small enough.
 - **Blocked IPs.** Single addresses or CIDR ranges of destinations. Private,
   loopback and other non-routable ranges are refused.
 - **Allowed IPs.** Destination addresses exempt from the direct-IP rule. The
   blocked lists are checked first, so this list does not override them.
-- **Allowed domains.** Exact names taken out of the blocked domains before they
-  reach dnsmasq and Squid.
+- **Allowed domains.** Exact names. Each takes the same name off the blocked
+  domains, however it is written there (`name`, `*.name`, `.name`, any case),
+  before they reach dnsmasq and Squid.
 - **Egress allowlist.** Off by default. When Settings > Filtering > Only
   allowlisted destinations is on, clients reach only the entries on this list,
   LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and Allowed IPs.

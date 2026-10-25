@@ -117,7 +117,7 @@ Details: [Logs and Analytics API](./logs.md).
 | `GET`  | `/api/analytics/file-extensions` | Requests of the last 7 days by file extension |
 | `GET`  | `/api/analytics/top-domains` | Top 50 domains |
 | `GET`  | `/api/analytics/blocked-by-day` | Blocked requests per day by rule, today and the 6 days before (`tz`, default UTC) |
-| `GET`  | `/api/analytics/coverage` | What protection is on now: list sizes, WAF rules, HTTPS inspection, proxy login, alerts |
+| `GET`  | `/api/analytics/coverage` | Which protections are switched on now: list sizes, WAF rules, HTTPS inspection, alerts and the other access settings |
 | `GET`  | `/api/audit-log` | Audit log, newest first, 50 a page (`limit` up to 200). `category` = `all`, `changes` or `signins` filters on the server; `meta.retention_days` is 365 |
 | `GET`  | `/api/security/score` | Retired: `410 Gone` |
 | `GET`  | `/api/security/cve` | The Squid version and the advisories matched to it |

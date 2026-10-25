@@ -111,11 +111,13 @@ process holding one; free it, change the host side of the mapping, or set
 
 ## What it does
 
-- **Lists.** Blocked IPs, Blocked domains, Allowed IPs and Allowed domains, each
-  managed on the Blacklists page or through the API, importable from a URL,
-  pasted text, a curated list or a country's address blocks. Every entry
-  records the source that added it, so an import can be removed as a whole.
-  [Lists guide](docs/guide/blacklists.md).
+- **Lists.** Blocked IPs, Blocked domains, Allowed IPs and Allowed domains,
+  managed on the Blacklists page or through the API. All four take pasted
+  lists; the blocked lists also import from a URL, a curated list or (IPs) a
+  country's address blocks. Every entry records the source that added it, so
+  an import or a paste can be removed as a whole. An allowed domain takes the
+  same name off Blocked domains however it is written there (`name`,
+  `*.name`, `.name`, any case). [Lists guide](docs/guide/blacklists.md).
 - **DNS sinkhole.** dnsmasq answers `0.0.0.0` and `::` for every blocked
   domain, and Squid also denies those names itself while the list has at most
   `SPM_SQUID_DOMAIN_ACL_MAX` (250,000) entries.
