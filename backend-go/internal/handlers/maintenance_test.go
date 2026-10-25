@@ -220,19 +220,62 @@ func TestMaintenanceHandlers_ReloadDNS(t *testing.T) {
 	}
 }
 
+// Clear cache reports what the watchdog did. It used to answer success as
+// soon as the trigger was written, while the watchdog's `squid -k purge` was a
+// command Squid does not know and the disk cache was never emptied.
 func TestMaintenanceHandlers_ClearCache(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
 	h := NewMaintenanceHandlers(db, cfg)
+	h.clearAckTimeout = 200 * time.Millisecond // no watchdog here to answer
 
-	r := httptest.NewRequest("POST", "/api/maintenance/clear-cache", nil)
-	w := httptest.NewRecorder()
-	h.ClearCache(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected 200, got %d", w.Code)
+	post := func() (int, map[string]any) {
+		w := httptest.NewRecorder()
+		h.ClearCache(w, httptest.NewRequest("POST", "/api/maintenance/clear-cache", nil))
+		var body map[string]any
+		_ = json.NewDecoder(w.Body).Decode(&body)
+		return w.Code, body
 	}
+
+	code, body := post()
 	assertTrigger(t, cfg.ConfigDir, ".clear-cache")
+	if code != http.StatusOK || body["status"] != "pending" {
+		t.Errorf("no acknowledgement: want 200 pending, got %d %v", code, body)
+	}
+
+	// Payloads in the shape write_clear_result in blacklist_watchdog.py
+	// writes (json.dumps of its dict), for a trigger newer than this request.
+	ack := func(payload string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(cfg.ConfigDir, ".clear-cache.result"), []byte(payload), 0o644); err != nil {
+			t.Fatalf("write ack: %v", err)
+		}
+	}
+	future := strconv.FormatInt(time.Now().Unix()+60, 10)
+
+	ack(`{"trigger_mtime": ` + future + `, "applied": true, "step": null, "detail": null, "objects_removed": 3, "create_rc": 0, "at": ` + future + `}`)
+	code, body = post()
+	if code != http.StatusOK || body["status"] != "success" {
+		t.Fatalf("applied clear: want 200 success, got %d %v", code, body)
+	}
+	if data, _ := body["data"].(map[string]any); data["objects_removed"] != float64(3) {
+		t.Errorf("applied clear: objects_removed = %v, want 3", body["data"])
+	}
+
+	ack(`{"trigger_mtime": ` + future + `, "applied": false, "step": "check", "detail": "refused, nothing was removed: cache_dir /etc resolves to /etc, outside /var/spool/squid", "objects_removed": null, "create_rc": null, "at": ` + future + `}`)
+	code, body = post()
+	if code != http.StatusInternalServerError || body["code"] != "clear_cache_failed" {
+		t.Fatalf("refused clear: want 500 clear_cache_failed, got %d %v", code, body)
+	}
+	if !strings.Contains(fmt.Sprint(body["detail"]), "outside /var/spool/squid") {
+		t.Errorf("refused clear: the watchdog's reason is not passed on: %v", body["detail"])
+	}
+
+	// A result for an earlier trigger is not an answer to this one.
+	ack(`{"trigger_mtime": 1, "applied": true, "step": null, "detail": null, "objects_removed": 0, "create_rc": 0, "at": 1}`)
+	if code, body = post(); body["status"] != "pending" {
+		t.Errorf("stale acknowledgement: want pending, got %d %v", code, body)
+	}
 }
 
 // SECURE-DATA-04: the export must carry the state an operator cannot
