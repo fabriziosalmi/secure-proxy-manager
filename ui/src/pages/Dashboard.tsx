@@ -7,7 +7,7 @@
  *
  * Not here any more: the security score (GET /api/security/score is still
  * served, no page shows it), the WAF requests-per-minute and URL entropy
- * figures, and the Reset counters button, which is in Settings, Maintenance,
+ * figures, and the Reset counters button, which is in Settings, Admin and backup,
  * behind the same confirmation.
  *
  * There is no time-range control: dashboard/summary has one window per
