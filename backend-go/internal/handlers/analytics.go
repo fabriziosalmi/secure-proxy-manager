@@ -861,11 +861,12 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	// The same, over the last 24 hours.
 	result["blocked_by_reason_24h"] = h.blockedByReason(`unix_timestamp >= ?`, sinceUnix(24*time.Hour))
 
-	// Recent blocks (last 10)
+	// Recent blocks: the last 10 of the same 24 hours the counts above cover,
+	// so the page never lists a block its "blocked by rule" does not count.
 	var recentBlocks []map[string]any
 	// #nosec G202 -- destinationKey and clientRows are constant expressions.
-	rRows, _ := h.db.Query(`SELECT timestamp, source_ip, method, destination, ` + destinationKey + `, status, block_reason
-		FROM proxy_logs WHERE blocked = 1 AND ` + clientRows + ` ORDER BY id DESC LIMIT 10`)
+	rRows, _ := h.db.Query(`SELECT timestamp, source_ip, method, destination, `+destinationKey+`, status, block_reason
+		FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+` ORDER BY id DESC LIMIT 10`, sinceUnix(24*time.Hour))
 	if rRows != nil {
 		for rRows.Next() {
 			var ts, srcIP, method, dest, host, status, reason sql.NullString

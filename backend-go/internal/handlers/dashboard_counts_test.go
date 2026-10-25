@@ -172,6 +172,14 @@ func TestDashboardReportsTheLast24Hours(t *testing.T) {
 	if len(d.Recent) == 0 {
 		t.Fatal("recent_blocks is empty")
 	}
+	// Latest blocks belong to the same 24 hours as the counts next to them:
+	// the 30-hour-old block (inserted last, so the highest id) must not show,
+	// or the page lists a WAF or IP block its "blocked by rule" never counts.
+	for _, rb := range d.Recent {
+		if rb.Host == "ip.test" {
+			t.Errorf("recent_blocks lists a block from 30 hours ago: %+v", rb)
+		}
+	}
 	r := d.Recent[0]
 	if r.Destination != "sink.test:443" || r.Host != "sink.test" || r.Reason != "domain_blacklist" || r.Label != "Domain blacklist" {
 		t.Errorf("recent_blocks[0] = %+v", r)
