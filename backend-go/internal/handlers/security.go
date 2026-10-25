@@ -79,6 +79,13 @@ func startNotifyQueue(ctx context.Context, db *sql.DB, encKey string,
 			}
 		}
 		dispatch := func(event map[string]any) {
+			// Read on every event, so a save applies to the next one (the
+			// page marks these settings Live). Follow-up: this is one query
+			// per event, the dispatcher's cost during a flood, and while it
+			// runs the 256-slot queue can still fill and drop at random
+			// before grouping sees the event; caching the settings for about
+			// a second would remove that, at the price of a save taking up
+			// to a second to apply.
 			settings, ok := loadNotificationSettings(db, encKey)
 			if !ok {
 				return

@@ -54,8 +54,9 @@ for at least one minor release before disappearing.
   five are seeded, validated by the backend and set under Settings > Alerts.
   The test alert is outside the limits. The counts are in memory: a graceful
   shutdown sends the pending digests and notices, a crash loses them.
-  `spm_notifications_held_total{reason="grouped"|"cap"}` counts what was
-  held. The WAF is unchanged.
+  `spm_notifications_held_total{reason, channel}` counts what was held:
+  `reason="cap"` on the channel that held it, `reason="grouped"` with
+  `channel="all"`. The WAF is unchanged.
 - `POST /api/notifications/test` reports each channel's delivery
   (`data.channels`: channel, delivered, HTTP status, reason) and whether alerts
   are switched on (`data.notifications_enabled`). It tests every channel that

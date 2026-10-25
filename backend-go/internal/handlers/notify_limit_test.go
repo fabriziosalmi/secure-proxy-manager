@@ -65,7 +65,7 @@ func floodFrom(ip string) []map[string]any {
 func TestAFloodFromOneAddressIsOneAlertAndOneDigest(t *testing.T) {
 	clock := newFakeClock()
 	lim := newNotifyLimiter(clock.Now)
-	heldBefore := metrics.NotificationsHeldCount("grouped")
+	heldBefore := metrics.NotificationsHeldCount("grouped", metrics.HeldAllChannels)
 
 	immediate := 0
 	for _, ev := range floodFrom("203.0.113.5") {
@@ -75,8 +75,8 @@ func TestAFloodFromOneAddressIsOneAlertAndOneDigest(t *testing.T) {
 	if immediate != 1 {
 		t.Fatalf("%d alerts delivered at once, want 1", immediate)
 	}
-	if got := metrics.NotificationsHeldCount("grouped") - heldBefore; got != 999 {
-		t.Errorf("held back (grouped) went up by %v, want 999", got)
+	if got := metrics.NotificationsHeldCount("grouped", metrics.HeldAllChannels) - heldBefore; got != 999 {
+		t.Errorf("held back (grouped, all) went up by %v, want 999", got)
 	}
 	// One second before the window closes: nothing yet.
 	clock.Advance(10*time.Minute - 60*time.Second - time.Second)
@@ -156,7 +156,9 @@ func TestFailedSignInsAreGroupedByAddress(t *testing.T) {
 func TestTheCapHoldsPerChannelWithOneNotice(t *testing.T) {
 	clock := newFakeClock()
 	lim := newNotifyLimiter(clock.Now)
-	heldBefore := metrics.NotificationsHeldCount("cap")
+	heldWebhook := metrics.NotificationsHeldCount("cap", "webhook")
+	heldTelegram := metrics.NotificationsHeldCount("cap", "telegram")
+	heldAll := metrics.NotificationsHeldCount("cap", metrics.HeldAllChannels)
 	sent := map[string]int{}
 	for i := 0; i < 50; i++ {
 		for _, ev := range lim.admit(wafBlock(fmt.Sprintf("192.0.2.%d", i), "SQLI"), defaultLimits) {
@@ -172,8 +174,15 @@ func TestTheCapHoldsPerChannelWithOneNotice(t *testing.T) {
 	if sent["webhook"] != 20 || sent["telegram"] != 20 {
 		t.Fatalf("sent %v, want 20 per channel", sent)
 	}
-	if got := metrics.NotificationsHeldCount("cap") - heldBefore; got != 60 {
-		t.Errorf("held back (cap) went up by %v, want 30 per channel", got)
+	// Counted on the channel that held it, never on channel="all".
+	if got := metrics.NotificationsHeldCount("cap", "webhook") - heldWebhook; got != 30 {
+		t.Errorf("held back (cap, webhook) went up by %v, want 30", got)
+	}
+	if got := metrics.NotificationsHeldCount("cap", "telegram") - heldTelegram; got != 30 {
+		t.Errorf("held back (cap, telegram) went up by %v, want 30", got)
+	}
+	if got := metrics.NotificationsHeldCount("cap", metrics.HeldAllChannels) - heldAll; got != 0 {
+		t.Errorf("held back (cap, all) went up by %v, want 0", got)
 	}
 	clock.Advance(30 * time.Minute)
 	if n := lim.notices(defaultLimits, false); len(n) != 0 {

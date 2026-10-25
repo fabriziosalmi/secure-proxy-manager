@@ -209,7 +209,7 @@ func (n *notifyLimiter) admit(event map[string]any, l notifyLimits) []map[string
 		return append(out, event)
 	}
 	g.count(event)
-	metrics.NotificationHeld("grouped")
+	metrics.NotificationHeld("grouped", metrics.HeldAllChannels)
 	return out
 }
 
@@ -292,7 +292,7 @@ func (n *notifyLimiter) allow(channel string, l notifyLimits) bool {
 		return true
 	}
 	b.held++
-	metrics.NotificationHeld("cap")
+	metrics.NotificationHeld("cap", channel)
 	return false
 }
 

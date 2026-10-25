@@ -191,21 +191,31 @@ func NotificationDropped() {
 // opposed to dropped: grouped is an event counted into its group's digest
 // instead of being sent on its own, cap is one channel's delivery held because
 // the channel reached its hourly limit (the held-back notice reports them).
+//
+// Every series carries both labels, so the label set never changes: cap is
+// counted per channel, and grouped, which happens before an event is split
+// into channels, carries channel="all" (HeldAllChannels).
 var notificationsHeld = promauto.NewCounterVec(prometheus.CounterOpts{
 	Name: "spm_notifications_held_total",
-	Help: "Alerts held back by the notification limits, by reason (grouped into a digest, or over a channel's hourly cap).",
-}, []string{"reason"})
+	Help: "Alerts held back by the notification limits, by reason (grouped into a digest, " +
+		"or over a channel's hourly cap) and channel (all for grouped).",
+}, []string{"reason", "channel"})
 
-// NotificationHeld records one alert held back for reason ("grouped" or "cap").
-func NotificationHeld(reason string) {
-	notificationsHeld.WithLabelValues(reason).Inc()
+// HeldAllChannels is the channel label of a grouped alert, which is held
+// before it is split into channels.
+const HeldAllChannels = "all"
+
+// NotificationHeld records one alert held back for reason ("grouped" with
+// HeldAllChannels, or "cap" with the channel that held it).
+func NotificationHeld(reason, channel string) {
+	notificationsHeld.WithLabelValues(reason, channel).Inc()
 }
 
 // NotificationsHeldCount is the current value of the held-back counter for
-// reason, for tests.
-func NotificationsHeldCount(reason string) float64 {
+// reason and channel, for tests.
+func NotificationsHeldCount(reason, channel string) float64 {
 	var m dto.Metric
-	c, err := notificationsHeld.GetMetricWithLabelValues(reason)
+	c, err := notificationsHeld.GetMetricWithLabelValues(reason, channel)
 	if err != nil {
 		return 0
 	}

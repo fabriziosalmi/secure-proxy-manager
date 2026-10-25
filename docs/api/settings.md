@@ -141,7 +141,7 @@ A digest is posted like any alert, with `event_type` set to the grouped type plu
 
 The message names the three most frequent categories and sums the rest as `other`. The held-back notice is `{"event_type": "alerts_held_back", "level": "warning", "count": N, "message": "N alerts held back in the last hour; see Analytics and the Audit log"}`. The backend closes due windows and sends due notices every 5 seconds. It keeps at most 10,000 groups; past that, a new address joins its event type's overflow group, whose digest reads "from other addresses".
 
-The counts are kept in memory. A graceful shutdown sends every pending digest and every held-back notice before the backend exits; a crash loses them. `spm_notifications_held_total{reason}` on `/metrics` counts what was held: `grouped` for each event counted into a digest, `cap` for each delivery a channel held.
+The counts are kept in memory. A graceful shutdown sends every pending digest and every held-back notice before the backend exits; a crash loses them. `spm_notifications_held_total{reason, channel}` on `/metrics` counts what was held: `reason="grouped"` with `channel="all"` for each event counted into a digest (grouping happens before an event is split into channels), `reason="cap"` with the channel's name for each delivery that channel held. Both labels are always present, so the series do not change shape.
 
 ---
 

@@ -398,9 +398,10 @@ and `spm_log_retention_enabled`. Notification metrics include
 `spm_notifications_total{channel, outcome}` (`success` and `failure` per
 channel, `channel="queue", outcome="dropped"` when the queue is full),
 `spm_notification_last_success_timestamp_seconds{channel}` and
-`spm_notifications_held_total{reason}`, the alerts the notification limits
-held back on purpose (`grouped` into a digest, or `cap` when a channel reached
-its hourly limit). WAF metrics include
+`spm_notifications_held_total{reason, channel}`, the alerts the notification
+limits held back on purpose: `reason="grouped"` with `channel="all"` for an
+alert counted into a digest, `reason="cap"` with the channel that held a
+delivery because it reached its hourly limit. WAF metrics include
 `waf_reqmod_duration_seconds`, `waf_trafficlog_enabled`,
 `waf_trafficlog_dropped_total` and `waf_notify_dropped_total`.
 
