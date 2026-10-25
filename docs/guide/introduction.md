@@ -7,10 +7,10 @@ It is intended for homelab operators and small networks that need a manageable, 
 ## Core capabilities
 
 - **Forward proxy.** HTTP and HTTPS (with optional SSL bump) traffic filtering through Squid.
-- **Blacklists.** Domain blocking with exact match or wildcard subdomain (`*.example.com`); IP blocking with single addresses or CIDR ranges.
+- **Blacklists.** Domain blocking by exact name (an entry written `*.example.com` blocks `example.com` itself, not its subdomains); IP blocking with single addresses or CIDR ranges. Every entry records the source that added it, so an imported list can be removed as a whole.
 - **Egress allowlist.** Optional default-deny outbound egress that turns the proxy into a strict egress gateway. When enabled, local clients may reach only the destinations on an explicit allowlist of IP/CIDR and domain entries; everything else is refused. Off by default; when off, behaviour is unchanged and clients may reach any destination not on a blacklist.
-- **IP whitelist.** Trusted destination IPs that bypass the direct-IP block rule.
-- **Domain whitelist.** Domains excluded from the dnsmasq DNS sinkhole.
+- **IP whitelist.** Trusted destination IPs that bypass the direct-IP block rule. The IP and domain blacklists are checked first, so it does not override them.
+- **Domain whitelist.** Exact names taken out of the domain blacklist before it reaches the dnsmasq DNS sinkhole and Squid.
 - **WAF.** A Go ICAP server that inspects request payloads with 172 regex rules across 21 categories and 6 behavioural heuristics (entropy, beaconing, PII, sharding, ghosting, sequence). Limited response inspection (reflected XSS, secret leak, PII) is also performed.
 - **Real-time logs.** WebSocket-based live log stream with search, filters, and statistics.
 - **Dashboard.** Traffic timeline, security score, blocked counts, top domains and clients.
