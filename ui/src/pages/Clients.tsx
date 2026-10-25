@@ -13,6 +13,7 @@
 import { createPortal } from 'react-dom';
 import { useId, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router';
 import { X } from 'lucide-react';
 import { ClientSetup } from '../components/ClientSetup';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -345,6 +346,12 @@ function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
             ? <>First request {formatDateTime(info.first_seen)}, last request {info.last_seen ? formatDateTime(info.last_seen) : 'not recorded'}</>
             : 'No request recorded'}
         </p>
+        <Link
+          to={`/logs?client=${encodeURIComponent(ip)}`}
+          className="self-start rounded-sm font-semibold text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          Show this client's requests in the access log
+        </Link>
       </div>
 
       <dl className="grid grid-cols-3 gap-3 px-5">
