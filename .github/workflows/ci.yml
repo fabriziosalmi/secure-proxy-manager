@@ -73,6 +73,10 @@ jobs:
       # HIGH/CRITICAL findings in the image an operator deploys against 5 in the
       # one a developer builds.
       - run: bash scripts/check-image-pins.sh
+      # No em or en dashes in the UI source, docs/ or any Markdown file. The UI
+      # used a bare em dash as the placeholder for a missing value, which reads
+      # like a value and does not say what is missing.
+      - run: bash scripts/check-no-dashes.sh
 
   # ── 2. Go backend build ────────────────────────────────────────────────
   build-backend:
