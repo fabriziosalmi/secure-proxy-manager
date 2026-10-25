@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest'
-import { formatCount, formatDate, formatDateTime, formatRange, formatTime } from './format'
+import { formatClock, formatCount, formatDate, formatDateTime, formatHourMinute, formatRange, formatShare, formatTime } from './format'
 import { simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 
 describe('formatRange', () => {
@@ -78,5 +78,41 @@ describe('formatDate / formatTime / formatDateTime', () => {
   it('returns what it was given when it cannot parse it', () => {
     expect(formatDateTime('not a date')).toBe('not a date')
     expect(formatTime('')).toBe('')
+  })
+
+  it('writes hours and minutes of a backend timestamp in the viewer time zone', () => {
+    expect(formatHourMinute('2026-07-01 09:00:00')).toBe('11:00')
+    expect(formatHourMinute('2026-01-15 23:59:59')).toBe('00:59')
+    expect(formatHourMinute('nope')).toBe('nope')
+  })
+
+  // "updated HH:MM" is a moment in the browser, not a backend string.
+  it('writes a browser moment as hours and minutes in the viewer time zone', () => {
+    const at = Date.UTC(2026, 6, 1, 9, 21, 40)
+    expect(formatClock(at)).toBe('11:21')
+    expect(formatClock(new Date(at))).toBe('11:21')
+  })
+})
+
+describe('formatShare', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('writes a share with one decimal', () => {
+    expect(formatShare(908, 1180)).toBe('76.9%')
+    expect(formatShare(23, 1235)).toBe('1.9%')
+    expect(formatShare(0, 10)).toBe('0.0%')
+    expect(formatShare(10, 10)).toBe('100.0%')
+  })
+
+  // No requests is not a 0% block rate.
+  it('has no share of nothing', () => {
+    expect(formatShare(0, 0)).toBeNull()
+  })
+
+  it('does not follow the browser locale', async () => {
+    simulateItalianLocale()
+    vi.resetModules()
+    const fresh = await import('./format')
+    expect(fresh.formatShare(1, 3)).toBe('33.3%')
   })
 })
