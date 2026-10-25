@@ -16,11 +16,12 @@ func withChiParam(r *http.Request, key, val string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 }
 
-// Squid logs a CONNECT as "host:443" and the DNS sinkhole logs the same site
-// as "host", so the top lists showed evil.example:443 and evil.example as two
-// destinations, each with part of the count. A :443 or :80 suffix is dropped
-// for the grouping; any other port stays visible, because it is a different
-// service.
+// Squid logs a CONNECT as "host:443", a plain HTTP request as its URL and the
+// DNS sinkhole logs the same site as "host", so the top lists showed
+// evil.example:443, http://evil.example/login and evil.example as three
+// destinations, each with part of the count. The grouping is by host: the
+// scheme and the path are dropped, and so is a :443 or :80 suffix; any other
+// port stays visible, because it is a different service.
 func seedSplitDestinations(t *testing.T, insert func(dest string, n int)) {
 	t.Helper()
 	insert("evil.example:443", 3)   // Squid CONNECT
@@ -29,9 +30,13 @@ func seedSplitDestinations(t *testing.T, insert func(dest string, n int)) {
 	insert("plain.example", 1)      // DNS sinkhole
 	insert("other.example:8443", 4) // a different service: keeps its port
 	insert("other.example", 1)
+	insert("http://evil.example/login", 2)     // Squid, plain HTTP: the URL
+	insert("https://evil.example/", 1)         // Squid with SSL-bump
+	insert("http://plain.example:80/x?y=1", 1) // a URL with the default port
+	insert("http://other.example:8443/api", 1) // a URL on another port keeps it
 }
 
-func TestDashboardSummaryTopBlockedGroupsDefaultPorts(t *testing.T) {
+func TestDashboardSummaryTopBlockedGroupsByHost(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
 	seedSplitDestinations(t, func(dest string, n int) {
@@ -60,7 +65,7 @@ func TestDashboardSummaryTopBlockedGroupsDefaultPorts(t *testing.T) {
 	for _, e := range resp.Data.TopBlocked {
 		got[e.Dest] = e.Count
 	}
-	want := map[string]int{"evil.example": 5, "plain.example": 2, "other.example:8443": 4, "other.example": 1}
+	want := map[string]int{"evil.example": 8, "plain.example": 3, "other.example:8443": 5, "other.example": 1}
 	if len(got) != len(want) {
 		t.Fatalf("top_blocked = %v, want %v", got, want)
 	}
@@ -75,7 +80,7 @@ func TestDashboardSummaryTopBlockedGroupsDefaultPorts(t *testing.T) {
 	}
 }
 
-func TestClientDetailsTopDomainsGroupsDefaultPorts(t *testing.T) {
+func TestClientDetailsTopDomainsGroupsByHost(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
 	seedSplitDestinations(t, func(dest string, n int) {
@@ -107,7 +112,7 @@ func TestClientDetailsTopDomainsGroupsDefaultPorts(t *testing.T) {
 		got[e.Destination] = [2]int{e.Requests, e.Blocked}
 	}
 	// blocked alternates 0,1 per inserted row: 3 rows -> 1 blocked, 2 -> 1, 1 -> 0, 4 -> 2.
-	want := map[string][2]int{"evil.example": {5, 2}, "plain.example": {2, 0}, "other.example:8443": {4, 2}, "other.example": {1, 0}}
+	want := map[string][2]int{"evil.example": {8, 3}, "plain.example": {3, 0}, "other.example:8443": {5, 2}, "other.example": {1, 0}}
 	if len(got) != len(want) {
 		t.Fatalf("top_domains = %v, want %v", got, want)
 	}
