@@ -238,7 +238,7 @@ Clears the Squid disk cache.
 GET /api/maintenance/backup-config
 ```
 
-Downloads a backup containing the current settings, blacklists, and whitelists in JSON form.
+Returns, in `data`, the backup envelope: `backup_version`, `app_version`, `exported_at`, every setting as stored (secrets stay encrypted with this install's key) and the five lists (`ip_blacklist`, `ip_whitelist`, `domain_blacklist`, `domain_whitelist`, `dst_allowlist`). The audit log and the users table are not included. The Settings page saves `data` as the backup file.
 
 ---
 
@@ -250,7 +250,24 @@ POST /api/maintenance/restore-config
 
 Restores from a backup created by `/api/maintenance/backup-config`.
 
-List entries are checked with the same rules as the endpoints that add them. An entry that fails is skipped, not fatal, and the response reports how many in `skipped_entries` (alongside `restored` and `skipped`, which count settings).
+The body is the backup envelope (or, for an older backup, `{"config": {...}}`). Each setting in the file replaces the stored one; settings that are not in the file are left as they are. List entries are added; entries already present stay, and none are removed. After the transaction the proxy configuration files the settings drive are written, as a Save writes them; ask `POST /api/maintenance/reload-config` to apply them.
+
+List entries are checked with the same rules as the endpoints that add them. An entry that fails is skipped, not fatal, and counted in `skipped_entries`. Settings are checked with the settings API's rules; each one that is not restored is listed in `skipped_settings` with its reason (`default_password_changed`, which every backup contains, is always skipped).
+
+```json
+{
+  "status": "success",
+  "restored_settings": 41,
+  "restored_entries": 120,
+  "skipped_settings": [{ "key": "default_password_changed", "reason": "managed by the application, not restored from a file" }],
+  "skipped_entries": 0,
+  "failed_files": [],
+  "restored": 161,
+  "skipped": 1
+}
+```
+
+`failed_files` names proxy configuration files that could not be written. `restored` and `skipped` are the older totals.
 
 ---
 
