@@ -30,7 +30,7 @@ for at least one minor release before disappearing.
   `tailscale_hostname`, `ddns_enabled`, `ddns_provider`, `ddns_domain`,
   `ddns_token` and `auth_method`, which nothing read (Tailscale is configured
   with `TS_AUTHKEY` in `.env`; the proxy only uses basic authentication). The
-  Tailscale and DDNS tokens were stored in clear. Schema version 5 deletes
+  Tailscale and DDNS tokens were stored in clear. Schema version 6 deletes
   their rows. `POST /api/settings` skips them as it skips the other keys it
   does not write (the rest of the request is saved), `PUT /api/settings/{name}`
   answers 400 for them, and a restore lists them as not restored.
@@ -46,6 +46,12 @@ for at least one minor release before disappearing.
   encrypted and never returned, like the other channel secrets.
 - `GET /api/waf/heuristics`: which heuristics the running WAF applies, or why
   the WAF could not be asked.
+- `GET /api/logs` filters on the server (`source_ip`, `outcome`, `reason`,
+  `q`, `include_internal`, `before_id`, `sort=id`), and each row carries
+  `reason_label`, `internal` and `kind`; `GET /api/logs/export` streams the
+  same filters as CSV. Additive. (#429)
+- `GET /api/audit-logs?category=changes|signins` filters on the server and
+  reports `meta.retention_days`. Additive. (#431)
 - `POST /api/settings` answers a refused request with every refused value in
   `errors` (`{key: message}`); `detail` still names the first. A save that
   carries WAF heuristics reports what the WAF did with each in `data.waf`.
@@ -72,6 +78,27 @@ for at least one minor release before disappearing.
   to reload. **Upgrade note:** an install that changed `WAF_H_*` in `.env` and
   never saved the heuristics in Settings now has the compose defaults stored,
   and the WAF reconciler applies them; set them in Settings, Inspection.
+- **Changed default:** `GET /api/logs`, its CSV export and the MCP tool
+  `spm_recent_logs` leave internal sources (the stack's own traffic) out
+  unless `include_internal=true`; a `source_ip` that names an internal
+  address is still shown, and `meta.internal` counts what was left out.
+  `X-API-Version` stays 1. (#429)
+- With GDPR mode on, the live log feed (`/api/ws/logs`) masks client
+  addresses as `GET /api/logs` does; it carried the full address.
+- The backend's proxy health probe opens and closes a connection instead of
+  sending `GET` to Squid, and Squid does not log a connection that sends no
+  request: the access log no longer gains a `NONE_NONE/400` row every 30
+  seconds per open tab. `proxy_status` now means the port accepts
+  connections. (#429)
+- Removing a list entry writes `remove_<list>` with the entry as target;
+  rows written before as `delete_ip` or `delete_domain` with `id=N` are still
+  read by the Audit page. Every list change now writes an audit row with its
+  counts. (#431)
+- `POST /api/egress-allowlist` and restore refuse `*.name`, which Squid
+  matches against nothing, and name the `.name` form. **Upgrade note:** schema
+  version 5 rewrites stored `*.name` egress entries to `.name` (one that is
+  already listed as `.name` is removed) and writes one audit row by `system`
+  naming them. (#431)
 
 ## [3.14.3] - 2026-10-25
 
