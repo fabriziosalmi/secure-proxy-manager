@@ -187,6 +187,34 @@ func NotificationDropped() {
 	notificationsTotal.WithLabelValues("queue", "dropped").Inc()
 }
 
+// Alerts the notification limits held back on purpose (Settings > Alerts), as
+// opposed to dropped: grouped is an event counted into its group's digest
+// instead of being sent on its own, cap is one channel's delivery held because
+// the channel reached its hourly limit (the held-back notice reports them).
+var notificationsHeld = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "spm_notifications_held_total",
+	Help: "Alerts held back by the notification limits, by reason (grouped into a digest, or over a channel's hourly cap).",
+}, []string{"reason"})
+
+// NotificationHeld records one alert held back for reason ("grouped" or "cap").
+func NotificationHeld(reason string) {
+	notificationsHeld.WithLabelValues(reason).Inc()
+}
+
+// NotificationsHeldCount is the current value of the held-back counter for
+// reason, for tests.
+func NotificationsHeldCount(reason string) float64 {
+	var m dto.Metric
+	c, err := notificationsHeld.GetMetricWithLabelValues(reason)
+	if err != nil {
+		return 0
+	}
+	if err := c.Write(&m); err != nil {
+		return 0
+	}
+	return m.GetCounter().GetValue()
+}
+
 // Log retention. It is the only bound on the growth of proxy_logs, and it could
 // be switched off by an unparseable setting value with no signal at all — the
 // worker still emitted its heartbeat and the success line only fired when rows

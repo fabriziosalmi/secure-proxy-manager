@@ -332,6 +332,15 @@ func seedDefaultSettings(db *sql.DB) {
 		{"teams_webhook_url", ""},
 		{"telegram_bot_token", ""},
 		{"telegram_chat_id", ""},
+		// Notification limits (handlers/notify_limit.go, which reads a missing
+		// or unusable value as these same defaults): group alerts from one
+		// address for 10 minutes, at most 20 deliveries per channel per hour,
+		// both event types on, every level.
+		{"notify_group_window_minutes", "10"},
+		{"notify_max_per_hour", "20"},
+		{"notify_waf_block", "true"},
+		{"notify_login_failure", "true"},
+		{"notify_min_level", "info"},
 		// Auto-refresh
 		{"auto_refresh_enabled", "false"},
 		{"auto_refresh_hours", "24"},

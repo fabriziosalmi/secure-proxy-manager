@@ -25,9 +25,10 @@ import (
 type NotifyQueue chan map[string]any
 
 // NewNotifyQueue creates the queue and starts its dispatcher under ctx. The
-// dispatcher turns each event into one delivery per configured channel and
-// hands each to that channel's own worker (see notify.go), so a channel that is
-// down delays only itself.
+// dispatcher applies the notification limits (notify_limit.go: grouping per
+// address and a cap per channel), turns what passes into one delivery per
+// configured channel and hands each to that channel's own worker (see
+// notify.go), so a channel that is down delays only itself.
 //
 // The worker used to be spawned with no owner: nothing tracked it, nothing
 // cancelled it, and the channel was never closed, so shutdown discarded
@@ -41,40 +42,118 @@ type NotifyQueue chan map[string]any
 // what a quiet week looks like — so it could stop with no observable difference
 // (SECURE-OBS-01).
 func NewNotifyQueue(ctx context.Context, db *sql.DB, encKey string) NotifyQueue {
-	q := make(NotifyQueue, 256)
+	ticker := time.NewTicker(notifyFlushInterval)
+	return startNotifyQueue(ctx, db, encKey, time.Now, ticker.C, ticker.Stop)
+}
+
+// notifyFlushInterval is how often the dispatcher closes the groups whose
+// window has ended and sends the held-back notices that are due, so a digest
+// arrives within this long of its window's end. It is also the heartbeat.
+const notifyFlushInterval = 5 * time.Second
+
+// notifyQueueSize bounds what the dispatcher may have waiting.
+const notifyQueueSize = 256
+
+// startNotifyQueue is NewNotifyQueue with the clock and the flush tick given,
+// so tests drive time instead of sleeping. stop, if set, runs when the
+// dispatcher returns.
+func startNotifyQueue(ctx context.Context, db *sql.DB, encKey string,
+	now func() time.Time, tick <-chan time.Time, stop func()) NotifyQueue {
+	q := make(NotifyQueue, notifyQueueSize)
 	fan := newNotifyFanout()
+	lim := newNotifyLimiter(now)
 	workers.Track(func() {
+		if stop != nil {
+			defer stop()
+		}
 		// Heartbeat before the receive as well as after a delivery, so the
 		// signal reports that the loop is alive rather than that something was
-		// recently sent — a queue with nothing to do must still look alive.
+		// recently sent: a queue with nothing to do must still look alive.
 		metrics.WorkerHeartbeat("notify_queue")
+		// deliver sends ev to every configured channel that is under its cap.
+		deliver := func(settings map[string]string, limits notifyLimits, ev map[string]any) {
+			for _, d := range buildDeliveries(settings, ev) {
+				if lim.allow(d.channel, limits) {
+					fan.submit(d)
+				}
+			}
+		}
 		dispatch := func(event map[string]any) {
-			for _, d := range planNotifications(db, encKey, event) {
-				fan.submit(d)
+			settings, ok := loadNotificationSettings(db, encKey)
+			if !ok {
+				return
+			}
+			limits := limitsFrom(settings)
+			if !limits.wants(event) {
+				return
+			}
+			for _, ev := range lim.admit(event, limits) {
+				deliver(settings, limits, ev)
+			}
+		}
+		// flush sends the digests of the groups whose window has closed (every
+		// open group when final) and the held-back notices that are due. The
+		// settings are read only when there is something to send.
+		flush := func(final bool) {
+			var digests []map[string]any
+			if final {
+				digests = lim.flushAll()
+			} else {
+				digests = lim.expire()
+			}
+			if len(digests) == 0 && !lim.holding() {
+				return
+			}
+			settings, ok := loadNotificationSettings(db, encKey)
+			if !ok {
+				lim.forgetHeld()
+				return
+			}
+			limits := limitsFrom(settings)
+			for _, ev := range digests {
+				deliver(settings, limits, ev)
+			}
+			for channel, count := range lim.notices(limits, final) {
+				for _, d := range buildDeliveries(settings, heldNotice(count, now())) {
+					if d.channel == channel {
+						fan.submit(d)
+					}
+				}
+			}
+		}
+		// drain dispatches what is queued, at most limit events (no limit
+		// when negative), and returns when the queue is empty.
+		drain := func(limit int) {
+			for i := 0; limit < 0 || i < limit; i++ {
+				select {
+				case event := <-q:
+					dispatch(event)
+				default:
+					return
+				}
 			}
 		}
 		for {
 			select {
 			case <-ctx.Done():
-				// Hand what is already queued to the channel workers, then close
-				// their queues: each drains what it holds and returns, so a
-				// restart during an attack does not discard queued alerts.
-				// Shutdown bounds the wait, so a wedged webhook cannot hold the
-				// process.
-				for {
-					select {
-					case event := <-q:
-						dispatch(event)
-					default:
-						fan.close()
-						log.Info().Msg("notification queue drained")
-						return
-					}
-				}
+				// Hand what is already queued to the channel workers, then the
+				// open digests and the held-back notices, then close their
+				// queues: each drains what it holds and returns, so a restart
+				// during an attack does not discard what was counted. Shutdown
+				// bounds the wait, so a wedged webhook cannot hold the process.
+				drain(-1)
+				flush(true)
+				fan.close()
+				log.Info().Msg("notification queue drained")
+				return
 			case event := <-q:
 				dispatch(event)
 				metrics.WorkerHeartbeat("notify_queue")
-			case <-time.After(30 * time.Second):
+			case <-tick:
+				// What was queued before the tick is counted before the flush,
+				// at most one queue's worth so a flood cannot hold it off.
+				drain(notifyQueueSize)
+				flush(false)
 				metrics.WorkerHeartbeat("notify_queue")
 			}
 		}

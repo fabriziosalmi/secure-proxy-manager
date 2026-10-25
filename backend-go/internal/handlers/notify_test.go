@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -298,8 +299,9 @@ func TestQueuedAlertsAreDeliveredOnShutdown(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	q := NewNotifyQueue(ctx, db, "0000000000000000000000000000000000000000000000000000000000000000")
+	// Five addresses, so grouping (notify_limit.go) delivers each at once.
 	for i := 0; i < 5; i++ {
-		q <- map[string]any{"event_type": "e", "message": "m", "level": "info"}
+		q <- map[string]any{"event_type": "e", "message": "m", "level": "info", "client_ip": fmt.Sprintf("192.0.2.%d", i+1)}
 	}
 	cancel()
 

@@ -57,6 +57,37 @@ var settingValidators = map[string]func(string) error{
 	"gotify_url":        validNotifyURL,
 	"teams_webhook_url": validNotifyURL,
 	"ntfy_url":          validNotifyURL,
+	// The notification limits (notify_limit.go). A value out of range is read
+	// as the default, so it is refused here rather than saved and ignored.
+	settingGroupWindow:        validBoundedInt(1, maxGroupWindowMinutes, "minutes"),
+	settingMaxPerHour:         validBoundedInt(1, maxMaxPerHour, "alerts"),
+	settingNotifyWAFBlock:     validBool,
+	settingNotifyLoginFailure: validBool,
+	settingMinLevel:           validAlertLevel,
+}
+
+// validBoundedInt accepts a whole number from lo to hi.
+func validBoundedInt(lo, hi int, unit string) func(string) error {
+	return func(v string) error {
+		if _, ok := parseBoundedInt(v, lo, hi); !ok {
+			return fmt.Errorf("must be a whole number of %s, from %d to %d", unit, lo, hi)
+		}
+		return nil
+	}
+}
+
+func validBool(v string) error {
+	if v != "true" && v != "false" {
+		return fmt.Errorf("must be true or false")
+	}
+	return nil
+}
+
+func validAlertLevel(v string) error {
+	if _, ok := alertLevels[v]; !ok {
+		return fmt.Errorf("must be info, warning or error")
+	}
+	return nil
 }
 
 func validMegabytes(digits int) func(string) error {
