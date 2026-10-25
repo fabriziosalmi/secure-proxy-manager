@@ -110,6 +110,7 @@ type AnalyticsHandlers struct {
 	// are immutable once published, so callers may read them without the lock.
 	// Lifetime request counts, cached: see lifetimeCounts (SECURE-PERF-01).
 	countsMu      sync.Mutex
+	countsMaxID   int64
 	countsTotal   int
 	countsBlocked int
 	countsFetched time.Time
@@ -135,23 +136,77 @@ func (h *AnalyticsHandlers) WithSysInfo(s SysInfo) *AnalyticsHandlers {
 // enough that N open tabs cost one pair of scans rather than N.
 const lifetimeCountsTTL = 25 * time.Second
 
-// lifetimeCounts returns the total and blocked request counts, recomputing at
-// most once per lifetimeCountsTTL. See the call site for why (SECURE-PERF-01).
-func (h *AnalyticsHandlers) lifetimeCounts() (total, blocked int) {
+// lifetimeBase returns the total and blocked request counts up to row maxID,
+// recomputing at most once per lifetimeCountsTTL. See the call site for why
+// (SECURE-PERF-01). The three counts and maxID come from one statement, so
+// they describe the same rows: a row logged between two separate queries was
+// counted by one and not the other.
+func (h *AnalyticsHandlers) lifetimeBase() (maxID int64, total, blocked int) {
 	h.countsMu.Lock()
 	defer h.countsMu.Unlock()
 	if time.Since(h.countsFetched) < lifetimeCountsTTL {
-		return h.countsTotal, h.countsBlocked
+		return h.countsMaxID, h.countsTotal, h.countsBlocked
 	}
 	// Client requests only (clientRows). The total stays an index-only count:
 	// all rows minus the DNS rows, which idx_proxy_logs_dns counts by itself.
 	var all, dns int
-	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs`).Scan(&all)
-	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE method = 'DNS'`).Scan(&dns)
-	_ = h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND ` + clientRows).Scan(&blocked)
+	_ = h.db.QueryRow(`SELECT
+		IFNULL((SELECT MAX(id) FROM proxy_logs), 0),
+		(SELECT COUNT(*) FROM proxy_logs),
+		(SELECT COUNT(*) FROM proxy_logs WHERE method = 'DNS'),
+		(SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND `+clientRows+`)`).Scan(&maxID, &all, &dns, &blocked)
 	total = all - dns
-	h.countsTotal, h.countsBlocked, h.countsFetched = total, blocked, time.Now()
-	return total, blocked
+	h.countsMaxID, h.countsTotal, h.countsBlocked, h.countsFetched = maxID, total, blocked, time.Now()
+	return maxID, total, blocked
+}
+
+// forgetLifetimeCounts drops the cached base, after the logs were cleared.
+func (h *AnalyticsHandlers) forgetLifetimeCounts() {
+	h.countsMu.Lock()
+	h.countsFetched = time.Time{}
+	h.countsMu.Unlock()
+}
+
+// requestCounts are the dashboard's request counts, all of client rows
+// (clientRows).
+type requestCounts struct {
+	Total, Blocked           int // all time
+	Today, TodayBlocked      int // since 00:00 UTC
+	Day, DayBlocked, Clients int // the last 24 hours; Clients is distinct source IPs
+	LastRequest              string
+}
+
+// requestCounts reads every count the dashboard shows. The all-time counts
+// are the cached base plus the rows logged after it (id > maxID, a range on
+// the primary key), so they are current without a full scan per poll. The
+// cached total used to be compared with a today count read fresh, and the
+// dashboard showed today 1,235 next to all time 1,234 for up to 25 seconds.
+//
+// The rows after the base and the windowed counts are read in one statement,
+// one snapshot of the table: no row can be in today and not in all time. Ids
+// are AUTOINCREMENT, never reused, so a row is either in the base or after it.
+// A delete only makes the cached part too high until the next refresh, which
+// keeps today at or below all time.
+func (h *AnalyticsHandlers) requestCounts(now time.Time) requestCounts {
+	maxID, baseTotal, baseBlocked := h.lifetimeBase()
+	todayStart := now.UTC().Truncate(24 * time.Hour).Unix()
+	dayStart := now.Add(-24 * time.Hour).Unix()
+	var c requestCounts
+	var newTotal, newBlocked int
+	// #nosec G202 -- clientRows is a constant; values are bound.
+	_ = h.db.QueryRow(`SELECT n.total, n.blocked, t.total, t.blocked, d.total, d.blocked, d.clients, d.last
+		FROM (SELECT COUNT(*) AS total, IFNULL(SUM(blocked), 0) AS blocked
+		        FROM proxy_logs WHERE id > ? AND `+clientRows+`) AS n,
+		     (SELECT COUNT(*) AS total, IFNULL(SUM(blocked), 0) AS blocked
+		        FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+`) AS t,
+		     (SELECT COUNT(*) AS total, IFNULL(SUM(blocked), 0) AS blocked,
+		             COUNT(DISTINCT CASE WHEN source_ip != '' THEN source_ip END) AS clients,
+		             IFNULL(MAX(timestamp), '') AS last
+		        FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+`) AS d`,
+		maxID, todayStart, dayStart,
+	).Scan(&newTotal, &newBlocked, &c.Today, &c.TodayBlocked, &c.Day, &c.DayBlocked, &c.Clients, &c.LastRequest)
+	c.Total, c.Blocked = baseTotal+newTotal, baseBlocked+newBlocked
+	return c
 }
 
 const domainBlacklistTTL = 30 * time.Second
@@ -696,6 +751,7 @@ func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request
 	if err == nil && res != nil {
 		deleted, _ = res.RowsAffected()
 	}
+	h.forgetLifetimeCounts()
 
 	// The log delete above is unconditional; the WAF reset is best-effort and
 	// behind the breaker, so a down/circuit-open WAF can't gate the DB clear.
@@ -718,20 +774,14 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	// on a container limited to 0.25 CPU. The ETag on this route does not help:
 	// it hashes the response body, so every query has already run by the time
 	// the 304 is decided (SECURE-PERF-01).
-	totalReqs, blockedReqs := h.lifetimeCounts()
-
-	var todayReqs, todayBlocked int
-
-	todayStart := time.Now().UTC().Truncate(24 * time.Hour).Unix()
-	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows, todayStart).Scan(&todayReqs)                    //nolint:errcheck
-	h.db.QueryRow(`SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows, todayStart).Scan(&todayBlocked) //nolint:errcheck
+	c := h.requestCounts(time.Now())
 
 	var ipBLCount, domainBLCount int
 
-	result["total_requests"] = totalReqs
-	result["blocked_requests"] = blockedReqs
-	result["today_requests"] = todayReqs
-	result["today_blocked"] = todayBlocked
+	result["total_requests"] = c.Total
+	result["blocked_requests"] = c.Blocked
+	result["today_requests"] = c.Today
+	result["today_blocked"] = c.TodayBlocked
 
 	var topBlocked []map[string]any
 	rows, _ := h.db.Query(`SELECT `+destinationKey+` AS dest, COUNT(*) AS cnt FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+` GROUP BY dest ORDER BY cnt DESC LIMIT 10`, sinceUnix(24*time.Hour))
