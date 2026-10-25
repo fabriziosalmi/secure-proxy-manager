@@ -43,6 +43,11 @@ const (
 	lineBumpSinkConnect   = "1792921999.536      3 192.168.88.50 TCP_DENIED/200 0 CONNECT sink.test:443 - HIER_NONE/- - - domain_blacklist_dns -"
 	lineBumpConnect       = "1792922046.430      3 192.168.88.50 NONE_NONE/200 0 CONNECT tls.test:443 - HIER_DIRECT/192.168.88.23 - - none -"
 	lineBumpWAF           = "1792922046.431      0 192.168.88.50 NONE_NONE/403 205 GET https://tls.test/? - HIER_NONE/- text/html dmdttlexjzfi-i none waf"
+	// The fail-closed lists gate: a torn IP blacklist at boot (its bytes do not
+	// match the manifest), so Squid denies every client request until the
+	// watchdog copies a verified list.
+	lineListsGateGET     = "1792964659.844      0 192.168.79.50 TCP_DENIED/403 4858 GET http://pub.test/ - HIER_NONE/- text/html - lists_unverified -"
+	lineListsGateCONNECT = "1792964660.137      0 192.168.79.50 TCP_DENIED/403 4860 CONNECT pub.test:443 - HIER_NONE/- text/html - lists_unverified -"
 )
 
 // Lines the origin/main config wrote for the same requests (11 fields, no
@@ -82,6 +87,8 @@ func TestParseSquidLineRecordsTheRuleThatMatched(t *testing.T) {
 		{"proxy auth passed: the note was reset", lineAuthOK, ReasonNone, 0},
 		{"proxy auth passed, then the WAF", lineAuthWAF, ReasonWAF, 1},
 		{"time restriction", lineTime, ReasonTimeRestriction, 1},
+		{"lists gate, GET", lineListsGateGET, ReasonListsUnverified, 1},
+		{"lists gate, CONNECT", lineListsGateCONNECT, ReasonListsUnverified, 1},
 		{"WAF unreachable (fail closed) is an error, not a block", lineICAPDown, ReasonNone, 0},
 		{"SSL-bump: the denied CONNECT carries the reason", lineBumpDeniedConnect, ReasonDomainBlacklist, 1},
 		{"SSL-bump: the error page inside the tunnel is not a second block", lineBumpErrorPage, ReasonNone, 0},
@@ -126,6 +133,15 @@ func TestParseSquidLineUnknownNoteIsOther(t *testing.T) {
 	line := strings.Replace(lineDomainBL, "domain_blacklist", "my_custom_rule", 1)
 	if got := parseSquidLine(line); got["reason"] != ReasonOther || got["blocked"] != 1 {
 		t.Errorf("unknown note: %v / %v, want other / 1", got["reason"], got["blocked"])
+	}
+}
+
+// The lists gate has its own label, not Other's: a deployment whose every
+// request is refused because a blocklist is unverified must not read as a
+// rule nobody named.
+func TestReasonLabelOfTheListsGate(t *testing.T) {
+	if got := ReasonLabel(ReasonListsUnverified); got != "Lists not verified" {
+		t.Errorf("ReasonLabel(%q) = %q, want %q", ReasonListsUnverified, got, "Lists not verified")
 	}
 }
 

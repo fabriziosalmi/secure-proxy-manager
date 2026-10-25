@@ -102,6 +102,12 @@ unlabelled="$(grep '^http_access ' <<<"$conf" | grep -v ' spm_r_[a-z_]*\( \|$\)'
 grep -q '^http_access deny !localhost spm_r_proxy_auth !authenticated$' <<<"$conf" \
   && ok "the auth ACL stays last on its rule (407), the reason before it" \
   || bad "the auth ACL stays last on its rule" "$(grep 'authenticated' <<<"$conf" | grep http_access)"
+# The fail-closed lists gate denies every client: its denials are logged as
+# lists_unverified, not folded into other with the cache manager and deny all.
+grep -qx 'http_access deny spm_lists_gate spm_r_lists_unverified' <<<"$conf" \
+  && grep -qx 'acl spm_r_lists_unverified annotate_transaction spm_reason=lists_unverified' <<<"$conf" \
+  && ok "the lists gate records the reason lists_unverified" \
+  || bad "the lists gate records the reason lists_unverified" "$(grep 'spm_lists_gate\|lists_unverified' <<<"$conf")"
 grep -qF '%{spm_reason}note %{X-SPM-Reason}adapt::<last_h' <<<"$conf" \
   && ok "the spm logformat carries the reason fields" || bad "the spm logformat carries the reason fields"
 # The backend writes each extension as typed (\.exe$); a server answers

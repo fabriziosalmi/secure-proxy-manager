@@ -100,6 +100,7 @@ as written by Squid (timestamp and client trimmed):
 | outside allowed hours | 403 | `... time_restriction -` |
 | egress default-deny, not allowlisted | 403 | `... egress_policy -` (matrix test) |
 | external client | 403 | `... source_gate -` (matrix test) |
+| blocklist not vouched for by the manifest at boot (lists gate closed), GET / CONNECT | 403 / 403 | `TCP_DENIED/403 ... - lists_unverified -` (matrix test) |
 | WAF REQMOD block | 403 | `NONE_NONE/403 205 ... dmdts8y4qdl2-3 none waf` |
 | WAF RESPMOD block (`application/x-msdownload`) | 403 | `TCP_MISS/403 189 ... - none waf` |
 | origin server's own 403 | 403 | `TCP_MISS/403 ... - none -` |
@@ -183,6 +184,7 @@ start-up without the step.
 | `source_gate` | `deny !localnet !localhost` (`:351`) |
 | `port_policy` | `deny !Safe_ports` (`:346`), `deny CONNECT !SSL_ports` (`:388`) |
 | `protocol_policy` | `deny Dangerous_methods`, `deny !Safe_methods`, `deny ftp_proto` (`:341-345`). Not in the original list: methods and the FTP scheme are neither ports nor "other" |
+| `lists_unverified` | `deny spm_lists_gate`, the fail-closed lists gate: a blocklist the backend's manifest did not vouch for at boot has no copy in Squid, so `/etc/squid/lists_gate.txt` holds `all` and every client request is denied until the watchdog copies a verified list. Added after this branch; search the generator for `spm_r_lists_unverified` |
 | `other` | `deny manager` (`:356`), `deny all` (`:402`), a `TCP_DENIED` line without a note, an unknown note |
 | `domain_blacklist_dns_reconstructed` | not written at ingestion: a pre-reason `/503` to a listed name, reassigned once at start-up (schema version 3, section 7) |
 | `none` | not blocked |

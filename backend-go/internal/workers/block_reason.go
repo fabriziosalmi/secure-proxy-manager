@@ -40,6 +40,10 @@ const (
 	ReasonSourceGate      = "source_gate"
 	ReasonPortPolicy      = "port_policy"
 	ReasonProtocolPolicy  = "protocol_policy"
+	// ReasonListsUnverified: the fail-closed lists gate. A blocklist the
+	// backend's manifest did not vouch for at boot has no copy in Squid, so
+	// every client request is denied until the watchdog copies a verified one.
+	ReasonListsUnverified = "lists_unverified"
 	ReasonOther           = "other"
 )
 
@@ -59,6 +63,7 @@ var reasonLabels = map[string]string{
 	ReasonSourceGate:                      "Source not allowed",
 	ReasonPortPolicy:                      "Port policy",
 	ReasonProtocolPolicy:                  "Method or protocol policy",
+	ReasonListsUnverified:                 "Lists not verified",
 	ReasonOther:                           "Other",
 	ReasonUnclassified:                    "Unclassified (no reason recorded)",
 	ReasonNone:                            "Not blocked",
@@ -78,7 +83,8 @@ var squidDenyReasons = map[string]bool{
 	ReasonIPBlacklist: true, ReasonDomainBlacklist: true, ReasonDomainBlacklistDNS: true,
 	ReasonDirectIP: true, ReasonEgressPolicy: true, ReasonProxyAuth: true,
 	ReasonTimeRestriction: true, ReasonContentFilter: true, ReasonSourceGate: true,
-	ReasonPortPolicy: true, ReasonProtocolPolicy: true, ReasonOther: true,
+	ReasonPortPolicy: true, ReasonProtocolPolicy: true, ReasonListsUnverified: true,
+	ReasonOther: true,
 }
 
 // squidReasonFields is the field count of a line in the spm logformat that

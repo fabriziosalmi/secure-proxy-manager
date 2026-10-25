@@ -155,6 +155,9 @@ const WHY: Record<string, string> = {
   source_gate: 'The client address is not in a network allowed to use the proxy.',
   port_policy: 'The port is not one the proxy allows for this kind of request.',
   protocol_policy: 'The method or protocol is not allowed (FTP, or a method such as PUT or DELETE).',
+  lists_unverified:
+    'A blocklist did not match the manifest the backend wrote with it, so the proxy refused every request ' +
+    'until a verified copy was loaded.',
   other: 'A proxy rule blocked it that the proxy did not name.',
   unclassified: 'Logged before the proxy recorded why it blocked a request, so the rule is not known.',
 };

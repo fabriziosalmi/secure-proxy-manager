@@ -99,8 +99,8 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   list that does not match the manifest is not copied and Squid keeps the copy
   it holds. At boot there is none: a refused allowlist starts empty, and a
   refused blocklist closes a gate that denies every client request (logged
-  with the reason `other`) until the watchdog copies a verified one. Without a
-  manifest the lists are copied unverified, with a warning.
+  with the reason `lists_unverified`) until the watchdog copies a verified
+  one. Without a manifest the lists are copied unverified, with a warning.
 - `squid -k parse` and `squid -k reconfigure` may take 40 seconds: both read
   the whole configuration first, about 11 seconds with 640,000 names in
   Squid's domain ACL at 0.5 CPU. A reconfigure that does not finish is not

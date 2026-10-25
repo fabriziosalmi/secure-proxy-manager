@@ -29,6 +29,17 @@ describe('seriesFor', () => {
     ])
   })
 
+  it('keeps the lists gate a rule of its own, before other, with the API label', () => {
+    // Alphabetical order would put "lists_unverified" first, ahead of the
+    // configured rules; it is ranked just before other.
+    const s = seriesFor([r('other', 'Other', 5), r('lists_unverified', 'Lists not verified', 9), WAF])
+    expect(s.map((x) => [x.key, x.label, x.color])).toEqual([
+      ['waf', 'WAF', 'series-1'],
+      ['lists_unverified', 'Lists not verified', 'series-2'],
+      ['other', 'Other', 'series-3'],
+    ])
+  })
+
   it('leaves out a reason with no blocks and keeps the API label', () => {
     const s = seriesFor([r('ip_blacklist', 'IP blacklist', 0), WAF])
     expect(s).toHaveLength(1)

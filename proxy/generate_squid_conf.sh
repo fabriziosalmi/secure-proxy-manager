@@ -326,6 +326,7 @@ acl spm_r_time_restriction annotate_transaction spm_reason=time_restriction
 acl spm_r_content_filter annotate_transaction spm_reason=content_filter
 acl spm_r_direct_ip annotate_transaction spm_reason=direct_ip
 acl spm_r_egress_policy annotate_transaction spm_reason=egress_policy
+acl spm_r_lists_unverified annotate_transaction spm_reason=lists_unverified
 acl spm_r_other annotate_transaction spm_reason=other
 
 # Protocol guard: Squid's built-in FTP gateway is the Squidbleed
@@ -375,9 +376,9 @@ acl spm_self_mgr all-of localhost manager
 # its blocklist would let everything through. The gate file then holds every
 # address and every client request is denied here, until the watchdog copies a
 # verified list; it is empty otherwise. Written by blacklist_watchdog.py
-# (save_lists_state).
+# (save_lists_state). Logged with the reason lists_unverified.
 acl spm_lists_gate src "/etc/squid/lists_gate.txt"
-http_access deny spm_lists_gate spm_r_other
+http_access deny spm_lists_gate spm_r_lists_unverified
 
 http_access deny ip_blacklist spm_r_ip_blacklist
 
