@@ -7,8 +7,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -729,93 +727,6 @@ func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) 
 		domains = []map[string]any{}
 	}
 	writeOK(w, domains)
-}
-
-func (h *AnalyticsHandlers) CacheStats(w http.ResponseWriter, r *http.Request) {
-	statsFile := filepath.Join(h.cfg.ConfigDir, "cache_stats.txt")
-	content, err := os.ReadFile(statsFile) // #nosec G304 — statsFile is a fixed internal config path
-	if err != nil {
-		log.Debug().Err(err).Msg("failed to read shared cache_stats.txt file, returning zeros")
-		writeOK(w, map[string]any{
-			"hit_rate": 0, "byte_hit_rate": 0, "cache_size": "N/A",
-			"max_cache_size": "N/A", "objects_cached": 0, "hits": 0,
-			"misses": 0, "requests": 0, "simulated": true,
-		})
-		return
-	}
-	writeOK(w, parseSquidInfo(string(content)))
-}
-
-// parseSquidInfo extracts cache metrics from squidclient mgr:info output.
-func parseSquidInfo(raw string) map[string]any {
-	result := map[string]any{
-		"hit_rate": 0.0, "byte_hit_rate": 0.0, "cache_size": "N/A",
-		"max_cache_size": "N/A", "objects_cached": 0, "hits": 0,
-		"misses": 0, "requests": 0, "simulated": false,
-	}
-	for _, line := range strings.Split(raw, "\n") {
-		parseSquidInfoLine(result, strings.TrimSpace(line))
-	}
-	// Compute misses from requests - hits. hit_ratio is deliberately NOT
-	// emitted: it was a SECOND cache hit rate, computed over the lifetime
-	// counters while hit_rate comes from Squid's 5-minute window. They measure
-	// different things and diverge, and the two UI surfaces read different ones
-	// — the Dashboard preferred hit_ratio, the Settings service panel used
-	// hit_rate — so the same deployment showed two different numbers under the
-	// same label. hit_rate is the single definition (SECURE-DOM-03).
-	if reqs, ok := result["requests"].(int); ok {
-		if hits, ok := result["hits"].(int); ok {
-			result["misses"] = reqs - hits
-		}
-	}
-	return result
-}
-
-// parseSquidInfoLine folds one (trimmed) line of the cache manager's info
-// report into result.
-func parseSquidInfoLine(result map[string]any, line string) {
-	switch {
-	case strings.HasPrefix(line, "Request Hit Ratios:"):
-		setFiveMinuteRatio(result, "hit_rate", line)
-	case strings.HasPrefix(line, "Byte Hit Ratios:"):
-		setFiveMinuteRatio(result, "byte_hit_rate", line)
-	case strings.HasPrefix(line, "Storage Swap size:"):
-		// "Storage Swap size:	1234 KB"
-		result["cache_size"] = strings.TrimSpace(strings.TrimPrefix(line, "Storage Swap size:"))
-	case strings.HasPrefix(line, "Maximum Swap Size:"):
-		result["max_cache_size"] = strings.TrimSpace(strings.TrimPrefix(line, "Maximum Swap Size:"))
-	case strings.HasPrefix(line, "StoreEntries"):
-		// "StoreEntries                : 1234"
-		setIntAfter(result, "objects_cached", line, ":")
-	case strings.Contains(line, "client_http.requests"):
-		setIntAfter(result, "requests", line, "=")
-	case strings.Contains(line, "client_http.hits"):
-		setIntAfter(result, "hits", line, "=")
-	}
-}
-
-// setFiveMinuteRatio stores the 5-minute window of a "Hit Ratios" line as a
-// fraction: "Request Hit Ratios:     5min: 42.3%, 60min: 38.1%" -> 0.423.
-func setFiveMinuteRatio(result map[string]any, key, line string) {
-	parts := strings.SplitN(line, "5min:", 2)
-	if len(parts) != 2 {
-		return
-	}
-	val := strings.TrimSpace(strings.SplitN(parts[1], "%", 2)[0])
-	if f, err := strconv.ParseFloat(val, 64); err == nil {
-		result[key] = f / 100
-	}
-}
-
-// setIntAfter stores the integer after the first sep in line, if there is one.
-func setIntAfter(result map[string]any, key, line, sep string) {
-	parts := strings.SplitN(line, sep, 2)
-	if len(parts) != 2 {
-		return
-	}
-	if n, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
-		result[key] = n
-	}
 }
 
 func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {

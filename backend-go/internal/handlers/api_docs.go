@@ -36,7 +36,7 @@ var routeDocs = map[string]docMeta{
 	"POST /api/auth/login":                     {auth: false, desc: "JWT login — returns access_token"},
 	"POST /api/blacklists/import":              {auth: true, desc: "Import blacklist from URL or text ({type: 'ip'|'domain', url?, content?})"},
 	"POST /api/blacklists/import-geo":          {auth: true, desc: "Import geo-block by country codes ({countries: ['CN','RU']})"},
-	"GET /api/cache/statistics":                {auth: true, desc: "Squid cache hit/miss statistics"},
+	"GET /api/cache/statistics":                {auth: true, desc: "Squid cache statistics as the proxy last collected them, with their state"},
 	"POST /api/change-password":                {auth: true, desc: "Change admin password (requires current_password + new_password)"},
 	"GET /api/clients/statistics":              {auth: true, desc: "Top 50 client IPs by request count, then the internal sources (marked internal)"},
 	"POST /api/counters/reset":                 {auth: true, desc: "Reset all counters (logs + WAF stats)"},

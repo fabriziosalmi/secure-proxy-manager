@@ -13,6 +13,7 @@ The fixtures are pages captured from Squid 7.7 in the proxy image:
 import http.server
 import json
 import os
+import re
 import socket
 import threading
 import types
@@ -104,6 +105,15 @@ def test_the_manager_port_follows_squid_conf(w, tmp_path):
     conf.write_text("http_port 0.0.0.0:8080\n")
     assert w.squid_http_port(str(conf)) == 8080
     assert w.squid_http_port(str(tmp_path / "absent.conf")) == 3128
+
+
+def test_the_backend_reads_every_field_the_watchdog_writes(w):
+    """backend-go/internal/handlers/cache_stats.go decodes the file by name: a
+    field renamed on one side only would arrive as null."""
+    go = open(os.path.join(HERE, "..", "..", "backend-go", "internal", "handlers", "cache_stats.go")).read()
+    tags = set(re.findall(r'json:"([a-z0-9_]+)"', go))
+    written = {"version", "collected_at", "interval_s", "disk_capacity_kb", *w.CACHE_STATS_FIELDS}
+    assert written <= tags, sorted(written - tags)
 
 
 # ── fetch: a real HTTP request to 127.0.0.1 ──────────────────────────────────
