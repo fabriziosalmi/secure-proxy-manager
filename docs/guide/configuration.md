@@ -99,7 +99,7 @@ By default the proxy is a deny-list gateway: clients may reach any destination t
 This mode is off by default and is configured entirely from the web UI and API, not via `.env`:
 
 - Enable it with the **Default-deny egress** toggle on the **Settings** page (next to SSL inspection). It maps to the `egress_default_deny` setting, which defaults to `false`.
-- Manage allowed destinations on the **Egress Allowlist** page (add, delete, search, paginate). Each entry is either an IP/CIDR or a domain; the type is auto-classified when you add it. A client is allowed only if the destination matches the IP allowlist or the domain allowlist.
+- Manage allowed destinations on the **Egress Allowlist** page (add, delete, search, paginate). Each entry is either an IP/CIDR or a domain; the type is auto-classified when you add it. A client is allowed if the destination matches the IP allowlist or the domain allowlist; LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and the addresses on Allowed IPs stay reachable. A domain entry matches that exact name; `.example.com` covers the domain and every name under it.
 
 When the toggle is off, behaviour is unchanged and no destinations are blocked by this feature. Use default-deny egress when you need a strict "allow only these destinations" outbound policy: for example, letting an application reach only an approved ACME server, package mirror, or internal API.
 

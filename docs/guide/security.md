@@ -67,7 +67,7 @@ To enable it:
 1. Turn on the **Default-deny egress** toggle on the **Settings** page (shown next to SSL inspection). This flips the `egress_default_deny` setting, which can also be set through the bulk settings API (`POST /api/settings`).
 2. Populate the **Egress Allowlist** page with the destinations clients are permitted to reach. Each entry is either an IP/CIDR or a domain; the type is auto-classified on add (a value that parses as an IP or CIDR is stored as `cidr`, otherwise as `domain`). Entries can be added, deleted, searched, and paginated from the UI or managed through the API.
 
-A local client is allowed only if the destination matches the IP allowlist **or** the domain allowlist; anything else is refused.
+A local client is allowed if the destination matches the IP allowlist **or** the domain allowlist; anything else is refused, except LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and the addresses on Allowed IPs, which are allowed before the egress rule. A domain entry matches that exact name; write `.example.com` to allow a domain and every name under it.
 
 ### Egress allowlist API
 

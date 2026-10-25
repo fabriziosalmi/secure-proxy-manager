@@ -94,10 +94,10 @@ The setting is `egress_default_deny` and defaults to `false`.
 
 Add destinations on the **Egress Allowlist** page (add, delete, search, paginate), or via the API. Each entry is one of:
 
-- IP or CIDR: `203.0.113.10`, `198.51.100.0/24`, matched on the destination IP.
-- Domain: `acme-v02.api.letsencrypt.org`, matched on the destination domain.
+- IP or CIDR: `203.0.113.10`, `198.51.100.0/24`, matched on the destination IP (a Squid `dst` ACL, so a name that resolves into the network matches too).
+- Domain: `acme-v02.api.letsencrypt.org`, matched on the destination domain (a Squid `dstdomain` ACL). An exact name allows that host only: `example.com` does not cover `www.example.com`. A leading dot, `.example.com`, allows the domain and every name under it. `*.example.com` is refused, because `dstdomain` would read it as a literal name that matches nothing.
 
-The type is classified automatically on add: a value that parses as an IP or CIDR is stored as `cidr`, otherwise it is treated as a `domain`. A local client is allowed only if the destination matches the IP allowlist **or** the domain allowlist.
+The type is classified automatically on add: a value that parses as an IP or CIDR is stored as `cidr`, otherwise it is treated as a `domain`. A local client is allowed if the destination matches the IP allowlist **or** the domain allowlist. The deny comes after the rules that allow LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and the addresses on Allowed IPs, so those stay reachable: with default deny on and an empty allowlist, clients reach only those.
 
 ```bash
 # Add a destination (auto-classified as cidr or domain)
