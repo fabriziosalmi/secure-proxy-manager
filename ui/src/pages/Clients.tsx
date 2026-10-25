@@ -7,7 +7,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { IpBadge } from '../components/IpBadge';
 import { ClientSetup } from '../components/ClientSetup';
 import { useModal } from '../hooks/useModal';
-import { getData } from '../lib/api';
+import { api, getData } from '../lib/api';
 import { parseUtc, relative } from '../lib/utils';
 import type { ClientsData, ClientStat, ClientDetail } from '../types';
 
@@ -52,7 +52,10 @@ export function Clients() {
 
   const { data, isLoading, isFetching, refetch } = useQuery<ClientsData>({
     queryKey: ['clients', 'statistics'],
-    queryFn: () => getData<ClientsData>('clients/statistics'),
+    // A list endpoint: the collection is under data and its count under meta,
+    // so the page needs the whole body. getData unwrapped it to the bare array,
+    // data.data was then undefined and the page always read as empty.
+    queryFn: () => api.get('clients/statistics').then((r) => r.data ?? null),
     refetchInterval: 30_000,
   });
 

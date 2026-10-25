@@ -2,14 +2,8 @@ import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Activity, Server, Tag, Users, ArrowDownUp, Ban, Database } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
-import { api } from '../../lib/api';
-
-// Unwrap the { status, data } envelope. Coalesce to null (never undefined) so a
-// data-less response (error envelope, empty/304 body) doesn't trip React Query's
-// "Query data cannot be undefined" invariant — callers already optional-chain.
-function api_get<T = unknown>(path: string): Promise<T> {
-  return api.get(path).then((r) => (r.data?.data ?? null) as T);
-}
+import { api, getData } from '../../lib/api';
+import type { ClientsData } from '../../types';
 
 interface StatusData {
   proxy_status?: string;
@@ -39,10 +33,12 @@ function Tile({ icon: Icon, label, value, tone = '', accent = false }: {
 
 export function ServiceStatus() {
   const opts = { refetchInterval: 15_000, staleTime: 10_000 };
-  const status = useQuery<StatusData>({ queryKey: ['status'], queryFn: () => api_get('status'), ...opts });
-  const summary = useQuery<{ today_blocked?: number }>({ queryKey: ['dash-summary-mini'], queryFn: () => api_get('dashboard/summary'), ...opts });
-  const cache = useQuery<{ hit_rate?: number }>({ queryKey: ['cache-mini'], queryFn: () => api_get('cache/statistics'), ...opts });
-  const clients = useQuery<{ meta?: { total?: number } }>({ queryKey: ['clients-mini'], queryFn: () => api_get('clients/statistics'), ...opts });
+  const status = useQuery<StatusData>({ queryKey: ['status'], queryFn: () => getData('status'), ...opts });
+  const summary = useQuery<{ today_blocked?: number }>({ queryKey: ['dash-summary-mini'], queryFn: () => getData('dashboard/summary'), ...opts });
+  const cache = useQuery<{ hit_rate?: number }>({ queryKey: ['cache-mini'], queryFn: () => getData('cache/statistics'), ...opts });
+  // A list endpoint: its count is in meta, beside data, so this one reads the
+  // whole body. Unwrapping it left an array with no meta and the tile empty.
+  const clients = useQuery<ClientsData | null>({ queryKey: ['clients-mini'], queryFn: () => api.get('clients/statistics').then((r) => r.data ?? null), ...opts });
 
   const s = status.data;
   const running = s?.proxy_status === 'running';
