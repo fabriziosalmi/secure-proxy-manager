@@ -13,6 +13,52 @@ a `### Removed` or `### Changed` heading with the phrase **BREAKING** and the
 changes affecting it. Retired routes answer `410 Gone` naming their replacement
 for at least one minor release before disappearing.
 
+## [3.14.3] - 2026-10-25
+
+Fixes three defects found on a test deployment right after 3.14.2, two of
+which stop the proxy. Nothing is required on upgrade and `X-API-Version` stays
+1.
+
+### Fixed
+
+- **The proxy starts with any IP blacklist.** Squid warns once for every list
+  entry another entry already covers (a single address inside a listed /24, for
+  example) and aborts at startup once more than 1000 messages are queued before
+  its log is open. A 50,772-entry import with 5,368 covered entries kept the
+  proxy in a restart loop while the backend reported healthy; 3.14.1 fails the
+  same way on the same data. The IP blacklist, the IP whitelist and the egress
+  IP allowlist now reach Squid collapsed to the smallest set of networks that
+  covers the same addresses, at boot and after every change. Lines that are not
+  an address or a CIDR are dropped and counted in the proxy log.
+- **Squid's own domain deny matches entries listed as `*.name`.** The backend
+  stores wildcard entries in that form, which Squid read as a literal host name
+  that never matches, so the deny added in 3.14.2 did nothing for them. Squid
+  now holds the exact name, which is the name the DNS sinkhole blocks, and
+  applies `SPM_SQUID_DOMAIN_ACL_MAX` to the names after removing duplicates.
+- **HTTPS filtering (SSL-bump) no longer stops the proxy.** The certificate
+  database was never created: the setup ran `security_file_certgen -c` on a
+  directory it had just made, which the tool refuses ("Cannot create
+  /config/ssl_db"), while the log said "initialized". With SSL-bump enabled,
+  Squid then stopped ("sslcrtd_program helpers are crashing too rapidly"). The
+  defect dates back to at least 3.10.3. The database is now created on the next
+  start, and an existing one is kept.
+- A default install no longer logs "ignoring EXTRA_SSL_PORTS" on every start:
+  the empty default value was refused by the settings parser added in 3.14.2.
+- The restore drill (`tests/shell/restore_test.sh`) no longer runs the host's
+  real `docker compose`: it uses a stub and checks the whole swap.
+
+### Changed
+
+- The documentation site's toolchain pins vite 6.4.4, which closes five
+  advisories in a development dependency that is not part of any image.
+- The documentation and the GitHub Pages site were proofread for punctuation,
+  and three README links that pointed at removed sections now point at real
+  ones.
+- The canary that keeps the project's test deployment on `main` waits for a
+  healthy proxy before it probes, reports a probe host that is on the
+  deployment's blacklist instead of blaming the WAF, and no longer replaces the
+  exported blacklists with the repository's sample files when it updates.
+
 ## [3.14.2] - 2026-10-25
 
 Security release. It fixes five advisories, two of them critical, found in a
