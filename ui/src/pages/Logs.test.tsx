@@ -394,6 +394,17 @@ describe('Logs', () => {
     expect(new URLSearchParams(window.location.search).get('client')).toBe('192.168.1.20')
   })
 
+  // GDPR mode masks the last part of the address; the filter matches whole
+  // addresses, so a masked one would list nothing.
+  it('does not offer to filter by a masked address', async () => {
+    logsBody = () => page([row({ id: 9, source_ip: '192.168.1.x' })])
+    renderWithProviders(<Logs />)
+    fireEvent.click(await screen.findByRole('button', { name: 'example.com:443' }))
+    const details = screen.getByRole('region', { name: 'Request details' })
+    expect(within(details).getByText('192.168.1.x')).toBeInTheDocument()
+    expect(within(details).queryByRole('button', { name: "Show this client's requests" })).not.toBeInTheDocument()
+  })
+
   it('opens the detail in a drawer on a phone', async () => {
     setViewport(false)
     renderWithProviders(<Logs />)

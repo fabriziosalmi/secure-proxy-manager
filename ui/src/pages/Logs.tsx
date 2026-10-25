@@ -607,7 +607,8 @@ function RequestDetail({ r, filters, onAllow, onShowClient }: {
       </dl>
       <div className="flex flex-wrap gap-2">
         {host && <Button size="sm" onClick={() => onAllow(host, r)}>Allow this domain</Button>}
-        {r.source_ip && filters.client !== r.source_ip && (
+        {/* GDPR mode masks the address (192.168.1.x): it names no single client to filter by. */}
+        {r.source_ip && !/[.:]x$/.test(r.source_ip) && filters.client !== r.source_ip && (
           <Button size="sm" onClick={() => onShowClient(r.source_ip)}>Show this client's requests</Button>
         )}
       </div>
