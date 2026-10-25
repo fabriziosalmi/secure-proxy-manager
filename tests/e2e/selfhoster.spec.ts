@@ -810,17 +810,66 @@ test.describe('UI — Settings page', () => {
     await expect(page.getByLabel('Proxy Port')).toHaveValue('3128');
   });
 
-  test('Save button is present and enabled', async ({ page }) => {
-    const saveBtn = page.getByRole('button', { name: /^Save/i }).first();
-    await expect(saveBtn).toBeVisible({ timeout: 10_000 });
-    await expect(saveBtn).toBeEnabled();
+  test('a section offers Save only once something changed, and Discard puts the stored value back', async ({ page }) => {
+    await page.goto('/settings/logs');
+    const retention = page.getByLabel('Log Retention (days)');
+    await expect(retention).toHaveValue(/^\d+$/, { timeout: 10_000 });
+    const stored = await retention.inputValue();
+    await expect(page.getByRole('button', { name: 'Save section' })).toHaveCount(0);
+    await retention.fill(String(Number(stored) + 1));
+    await expect(page.getByTestId('save-bar').getByRole('status')).toHaveText('1 unsaved change');
+    await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: /Logs and privacy, 1 unsaved change/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Discard' }).click();
+    await expect(retention).toHaveValue(stored);
+    await expect(page.getByRole('button', { name: 'Save section' })).toHaveCount(0);
   });
 
-  test('saving settings shows success feedback', async ({ page }) => {
-    const saveBtn = page.getByRole('button', { name: /^Save/i }).first();
-    await expect(saveBtn).toBeVisible({ timeout: 10_000 });
-    await saveBtn.click();
-    await expect(page.getByText(/saved|success|updated/i).first()).toBeVisible({ timeout: 10_000 });
+  test('saving a section says where the change takes effect', async ({ page }) => {
+    await page.goto('/settings/logs');
+    const retention = page.getByLabel('Log Retention (days)');
+    await expect(retention).toHaveValue(/^\d+$/, { timeout: 10_000 });
+    const stored = await retention.inputValue();
+    const changed = String(Number(stored) + 1);
+    await retention.fill(changed);
+    await page.getByRole('button', { name: 'Save section' }).click();
+    const result = page.getByTestId('save-result');
+    await expect(result).toContainText(/Saved at \d\d:\d\d\./);
+    await expect(result).toContainText('Applied by the daily log cleanup.');
+    // The backend has it: a reload of the page reads it back.
+    await page.reload();
+    await expect(page.getByLabel('Log Retention (days)')).toHaveValue(changed, { timeout: 10_000 });
+    // Put it back for the tests that follow.
+    await page.getByLabel('Log Retention (days)').fill(stored);
+    await page.getByRole('button', { name: 'Save section' }).click();
+    await expect(page.getByTestId('save-result')).toContainText(/Saved at/);
+  });
+
+  test('a save that needs the proxy reports what the proxy did', async ({ page }) => {
+    // The test stack runs no proxy container, so nothing acknowledges the
+    // reload: the page must say so instead of claiming it was applied.
+    await page.goto('/settings/engine');
+    const bypass = page.getByLabel(/Cache Bypass Domains/);
+    await expect(page.getByLabel('Proxy Port')).toHaveValue('3128', { timeout: 10_000 });
+    const stored = await bypass.inputValue();
+    await bypass.fill(stored ? `${stored}, e2e-bypass.test` : 'e2e-bypass.test');
+    await page.getByRole('button', { name: 'Save section' }).click();
+    const result = page.getByTestId('save-result');
+    await expect(result).toContainText('Saved. The proxy did not confirm within 8 seconds: check that the proxy container is running.', { timeout: 20_000 });
+    await expect(result).not.toContainText('Applied to the proxy');
+    await expect(result.getByRole('button', { name: 'Apply again' })).toBeVisible();
+    await bypass.fill(stored);
+    await page.getByRole('button', { name: 'Save section' }).click();
+    await expect(page.getByTestId('save-result')).toContainText('did not confirm', { timeout: 20_000 });
+  });
+
+  test('a value the proxy cannot use is named with its field, and nothing is saved', async ({ page }) => {
+    await page.goto('/settings/engine');
+    await expect(page.getByLabel('Proxy Port')).toHaveValue('3128', { timeout: 10_000 });
+    await page.getByLabel('Memory Cache (MB)').fill('1234567');
+    await page.getByRole('button', { name: 'Save section' }).click();
+    await expect(page.getByTestId('save-bar').getByRole('status')).toHaveText('Not saved: Memory Cache (MB) needs attention');
+    await expect(page.getByRole('button', { name: /^Memory Cache \(MB\): must be a whole number/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Discard' }).click();
   });
 
   test('Backup Config triggers file download', async ({ page }) => {

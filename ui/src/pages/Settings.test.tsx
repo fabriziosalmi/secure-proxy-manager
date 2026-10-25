@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, fireEvent, within } from '@testing-library/react'
-import { Routes, Route, useLocation } from 'react-router'
+import { Routes, Route, Link, useLocation } from 'react-router'
+import { AxiosError } from 'axios'
 import { renderWithProviders } from '../test/helpers'
 import { expectNoAxeViolations } from '../test/axe'
 import { DESKTOP_QUERY } from '../hooks/useMediaQuery'
 import { Settings } from './Settings'
+import { SettingsDraftsProvider } from '../components/settings/SettingsDrafts'
 
 vi.mock('../lib/api', () => {
   const api = {
@@ -36,6 +38,8 @@ const rows = [
   { setting_name: 'default_password_changed', setting_value: 'true' },
   { setting_name: 'wizard_completed', setting_value: 'true' },
 ]
+
+let current = rows
 
 function setViewport(desktop: boolean) {
   Object.defineProperty(window, 'matchMedia', {
@@ -72,9 +76,10 @@ const sectionNav = () => screen.getByRole('navigation', { name: 'Settings sectio
 describe('Settings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    current = rows
     setViewport(true)
     vi.mocked(api.get).mockImplementation((url: string) => {
-      if (url === 'settings') return Promise.resolve({ data: { status: 'success', data: rows } })
+      if (url === 'settings') return Promise.resolve({ data: { status: 'success', data: current } })
       return Promise.resolve({ data: { status: 'success', data: null } })
     })
     vi.mocked(api.post).mockResolvedValue({ data: { status: 'success' } })
@@ -122,7 +127,7 @@ describe('Settings', () => {
       fireEvent.click(within(sectionNav()).getByRole('link', { name: 'Logs and privacy' }))
       expect(screen.getByTestId('where')).toHaveTextContent('/settings/logs')
       expect(screen.getByLabelText('Log Retention (days)')).toHaveValue(30)
-      fireEvent.click(within(sectionNav()).getByRole('link', { name: 'Proxy engine' }))
+      fireEvent.click(within(sectionNav()).getByRole('link', { name: /^Proxy engine/ }))
       expect(screen.getByLabelText('Cache Size (MB)')).toHaveValue(4000)
     })
 
@@ -154,29 +159,176 @@ describe('Settings', () => {
     })
   })
 
-  it('never sends back a secret the operator did not retype, and names one removed in clear', async () => {
-    renderAt('/settings/alerts')
-    expect(await screen.findByText('Cannot be read, re-enter it')).toBeInTheDocument()
-    const save = () => fireEvent.click(screen.getByRole('button', { name: /Save Changes/ }))
-    const lastSettingsPost = () => vi.mocked(api.post).mock.calls.filter(([url]) => url === 'settings').at(-1)!
+  describe('save model', () => {
+    const settingsPosts = () => vi.mocked(api.post).mock.calls.filter(([url]) => url === 'settings')
+    const reloads = () => vi.mocked(api.post).mock.calls.filter(([url]) => url === 'maintenance/reload-config')
+    const bar = () => screen.getByTestId('save-bar')
 
-    save()
-    await waitFor(() => expect(vi.mocked(api.post).mock.calls.some(([url]) => url === 'settings')).toBe(true))
-    let [, body, config] = lastSettingsPost()
-    expect(body).toMatchObject({ log_retention_days: '30' })
-    expect(body).not.toHaveProperty('gotify_token')
-    expect(body).not.toHaveProperty('telegram_bot_token')
-    expect(body).not.toHaveProperty('webhook_url')
-    expect(config?.params).toBeUndefined()
+    // A backend that stores what it accepts, so the refetch after a save
+    // reads the saved values back.
+    function answerPosts(reload: () => Promise<unknown>, save: () => Promise<unknown> = () => Promise.resolve({ data: { status: 'success', message: 'Settings updated', data: { kept: [] } } })) {
+      vi.mocked(api.post).mockImplementation((url: string, body?: unknown) => {
+        if (url === 'settings') {
+          return save().then((res) => {
+            current = current.map((r) => {
+              const v = (body as Record<string, string>)[r.setting_name]
+              return v === undefined || 'secret' in r ? r : { ...r, setting_value: v }
+            })
+            return res
+          })
+        }
+        if (url === 'maintenance/reload-config') return reload()
+        return Promise.resolve({ data: { status: 'success' } })
+      })
+    }
 
-    fireEvent.change(screen.getByLabelText('App token'), { target: { value: 'retyped' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Bot token' }))
-    vi.mocked(api.post).mockClear()
-    save()
-    await waitFor(() => expect(vi.mocked(api.post).mock.calls.some(([url]) => url === 'settings')).toBe(true));
-    [, body, config] = lastSettingsPost()
-    expect(body).toMatchObject({ gotify_token: 'retyped' })
-    expect(body).not.toHaveProperty('telegram_bot_token')
-    expect(config?.params).toEqual({ clear: 'telegram_bot_token' })
+    async function editCache(value: string) {
+      renderAt('/settings/engine')
+      const cache = await screen.findByLabelText('Cache Size (MB)')
+      await waitFor(() => expect(cache).toHaveValue(1000))
+      fireEvent.change(cache, { target: { value } })
+      return cache
+    }
+
+    it('shows nothing to save until a field changes, then a dot in the nav and the count', async () => {
+      await editCache('2000')
+      expect(within(bar()).getByRole('status')).toHaveTextContent('1 unsaved change')
+      expect(screen.getByTestId('dirty-engine')).toBeInTheDocument()
+      expect(within(sectionNav()).getByRole('link', { name: /Proxy engine, 1 unsaved change/ })).toBeInTheDocument()
+      fireEvent.change(screen.getByLabelText('Memory Cache (MB)'), { target: { value: '512' } })
+      expect(within(bar()).getByRole('status')).toHaveTextContent('2 unsaved changes')
+      // Typing the stored value back is no change.
+      fireEvent.change(screen.getByLabelText('Memory Cache (MB)'), { target: { value: '256' } })
+      expect(within(bar()).getByRole('status')).toHaveTextContent('1 unsaved change')
+    })
+
+    it('Discard puts the stored values back and removes the bar', async () => {
+      const cache = await editCache('2000')
+      fireEvent.click(within(bar()).getByRole('button', { name: 'Discard' }))
+      expect(cache).toHaveValue(1000)
+      expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('dirty-engine')).not.toBeInTheDocument()
+    })
+
+    it('sends every key of the section that has a value and nothing else, then says the proxy applied it', async () => {
+      answerPosts(() => Promise.resolve({ data: { status: 'success', message: 'Proxy reloaded' } }))
+      await editCache('2000')
+      fireEvent.click(within(bar()).getByRole('button', { name: 'Save section' }))
+      expect(await screen.findByText(/^Applied to the proxy at \d\d:\d\d\.$/)).toBeInTheDocument()
+      expect(settingsPosts()).toHaveLength(1)
+      const [, body, config] = settingsPosts()[0]
+      expect(body).toEqual({ proxy_port: '3128', cache_size: '2000', memory_cache: '256' })
+      expect(config?.params).toBeUndefined()
+      expect(reloads()).toHaveLength(1)
+      expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Cache Size (MB)')).toHaveValue(2000)
+    })
+
+    it('says so when the proxy did not confirm, and Apply again asks it again', async () => {
+      answerPosts(() => Promise.resolve({ data: { status: 'pending', message: 'reload requested, but the proxy did not acknowledge it in time' } }))
+      await editCache('2000')
+      fireEvent.click(within(bar()).getByRole('button', { name: 'Save section' }))
+      expect(await screen.findByText('Saved. The proxy did not confirm within 8 seconds: check that the proxy container is running.')).toBeInTheDocument()
+      expect(screen.queryByText(/Applied to the proxy/)).not.toBeInTheDocument()
+      answerPosts(() => Promise.resolve({ data: { status: 'success' } }))
+      fireEvent.click(screen.getByRole('button', { name: 'Apply again' }))
+      expect(await screen.findByText(/^Applied to the proxy at \d\d:\d\d\.$/)).toBeInTheDocument()
+      expect(reloads()).toHaveLength(2)
+    })
+
+    it('says so when the proxy refused the new configuration and kept the previous one', async () => {
+      answerPosts(() => Promise.reject(new AxiosError('refused', 'ERR_BAD_RESPONSE', undefined, undefined, {
+        status: 500,
+        data: { status: 'error', code: 'reload_failed', detail: 'the proxy refused the new configuration and kept the previous one', data: { generator_rc: 1, reconfigure_rc: null } },
+      } as never)))
+      await editCache('2000')
+      fireEvent.click(within(bar()).getByRole('button', { name: 'Save section' }))
+      expect(await screen.findByText('Saved, but the proxy refused the new configuration and kept the previous one (generator exit code 1).')).toBeInTheDocument()
+    })
+
+    it('names the files the backend could not write', async () => {
+      answerPosts(
+        () => Promise.resolve({ data: { status: 'success' } }),
+        () => Promise.resolve({ data: { status: 'partial', message: 'settings saved, but some proxy configuration files could not be written', data: { failed: ['squid_settings.env'], kept: [] } } }),
+      )
+      await editCache('2000')
+      fireEvent.click(within(bar()).getByRole('button', { name: 'Save section' }))
+      expect(await screen.findByText('These proxy configuration files could not be written, so the proxy still uses the previous ones: squid_settings.env.')).toBeInTheDocument()
+    })
+
+    it('puts the field the backend refused in front of the operator and keeps the draft', async () => {
+      answerPosts(
+        () => Promise.resolve({ data: { status: 'success' } }),
+        () => Promise.reject(new AxiosError('bad', 'ERR_BAD_REQUEST', undefined, undefined, {
+          status: 400,
+          data: { status: 'error', detail: 'cache_size: must be a non-negative number' },
+        } as never)),
+      )
+      await editCache('2000')
+      fireEvent.click(within(bar()).getByRole('button', { name: 'Save section' }))
+      expect(await within(bar()).findByText('Not saved: Cache Size (MB) needs attention')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Cache Size (MB): must be a non-negative number' })).toBeInTheDocument()
+      expect(screen.getByLabelText('Cache Size (MB)')).toHaveValue(2000)
+      expect(reloads()).toHaveLength(0)
+    })
+
+    it('checks the generator limits before sending', async () => {
+      await editCache('12345678')
+      fireEvent.click(within(bar()).getByRole('button', { name: 'Save section' }))
+      expect(await screen.findByRole('button', { name: 'Cache Size (MB): must be a whole number of megabytes, at most 7 digits' })).toBeInTheDocument()
+      expect(settingsPosts()).toHaveLength(0)
+    })
+
+    it('never sends back a secret the operator did not retype, and names one removed in clear', async () => {
+      renderAt('/settings/alerts')
+      expect(await screen.findByText('Cannot be read, re-enter it')).toBeInTheDocument()
+      expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument()
+      fireEvent.change(screen.getByLabelText('App token'), { target: { value: 'retyped' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Bot token' }))
+      expect(within(bar()).getByRole('status')).toHaveTextContent('2 unsaved changes')
+      fireEvent.click(within(bar()).getByRole('button', { name: 'Save section' }))
+      expect(await screen.findByText(/^Saved at \d\d:\d\d\.$/)).toBeInTheDocument()
+      expect(screen.getByText('Read on every use: in effect as soon as it is saved.')).toBeInTheDocument()
+      const [, body, config] = settingsPosts()[0]
+      // The section's keys only: no internal key, nothing from another section,
+      // no secret nobody retyped.
+      expect(body).toEqual({ enable_notifications: 'true', gotify_token: 'retyped' })
+      expect(config?.params).toEqual({ clear: 'telegram_bot_token' })
+      // Nothing here needs the proxy.
+      expect(reloads()).toHaveLength(0)
+    })
+
+    it('keeps a draft while the operator visits another page', async () => {
+      window.history.pushState({}, '', '/settings/engine')
+      renderWithProviders(
+        <SettingsDraftsProvider>
+          <Routes>
+            <Route path="/settings/:section" element={<Settings />} />
+            <Route path="/logs" element={<Link to="/settings/engine">Back to settings</Link>} />
+          </Routes>
+          <Link to="/logs">Go to logs</Link>
+        </SettingsDraftsProvider>,
+      )
+      const cache = await screen.findByLabelText('Cache Size (MB)')
+      await waitFor(() => expect(cache).toHaveValue(1000))
+      fireEvent.change(cache, { target: { value: '2000' } })
+      fireEvent.click(screen.getByRole('link', { name: 'Go to logs' }))
+      expect(screen.queryByLabelText('Cache Size (MB)')).not.toBeInTheDocument()
+      // Closing the tab now asks first.
+      const leave = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(leave)
+      expect(leave.defaultPrevented).toBe(true)
+      fireEvent.click(screen.getByRole('link', { name: 'Back to settings' }))
+      expect(await screen.findByLabelText('Cache Size (MB)')).toHaveValue(2000)
+      expect(within(bar()).getByRole('status')).toHaveTextContent('1 unsaved change')
+    })
+
+    it('lets the tab close without asking when nothing is unsaved', async () => {
+      renderAt('/settings/engine')
+      await screen.findByLabelText('Cache Size (MB)')
+      const leave = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(leave)
+      expect(leave.defaultPrevented).toBe(false)
+    })
   })
 })

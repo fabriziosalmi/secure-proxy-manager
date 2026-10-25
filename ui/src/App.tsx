@@ -28,6 +28,7 @@ import { Login } from './pages/Login';
 import { SetupWizard } from './components/SetupWizard';
 import { api, isTokenExpired, signOut } from './lib/api';
 import { ThemeProvider } from './components/ThemeProvider';
+import { SettingsDraftsProvider } from './components/settings/SettingsDrafts';
 
 // Lazy-loaded page components for code splitting
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -161,6 +162,8 @@ function AppContent() {
     <>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
+          {/* Unsaved Settings drafts outlive a visit to another page, not the session. */}
+          <SettingsDraftsProvider>
           <GlobalSearch />
           <ErrorBoundary>
             <Suspense fallback={<PageLoader />}>
@@ -183,6 +186,7 @@ function AppContent() {
               </Routes>
             </Suspense>
           </ErrorBoundary>
+          </SettingsDraftsProvider>
         </BrowserRouter>
       </QueryClientProvider>
       <Toaster
