@@ -394,7 +394,14 @@ docker compose exec waf     wget -qO- http://localhost:8080/metrics | head   # w
 Backend metrics include `spm_http_requests_total`,
 `spm_http_request_duration_seconds`, `spm_http_requests_in_flight`, the
 `spm_db_connections_*` pool gauges, `spm_worker_last_success_timestamp_seconds`
-and `spm_log_retention_enabled`. WAF metrics include
+and `spm_log_retention_enabled`. Notification metrics include
+`spm_notifications_total{channel, outcome}` (`success` and `failure` per
+channel, `channel="queue", outcome="dropped"` when the queue is full),
+`spm_notification_last_success_timestamp_seconds{channel}` and
+`spm_notifications_held_total{reason, channel}`, the alerts the notification
+limits held back on purpose: `reason="grouped"` with `channel="all"` for an
+alert counted into a digest, `reason="cap"` with the channel that held a
+delivery because it reached its hourly limit. WAF metrics include
 `waf_reqmod_duration_seconds`, `waf_trafficlog_enabled`,
 `waf_trafficlog_dropped_total` and `waf_notify_dropped_total`.
 

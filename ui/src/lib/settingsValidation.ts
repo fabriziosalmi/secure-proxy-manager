@@ -12,6 +12,7 @@ type Check = (value: string, values: Record<string, string>) => string | undefin
 
 const on = (values: Record<string, string>, key: string) => values[key] === 'true';
 const digits = (v: string, max: number) => new RegExp(`^[0-9]{1,${max}}$`).test(v);
+const wholeIn = (v: string, lo: number, hi: number) => /^[0-9]+$/.test(v) && Number(v) >= lo && Number(v) <= hi;
 
 const port: Check = (v) => {
   const n = Number(v);
@@ -65,6 +66,11 @@ const CHECKS: Record<string, Check> = {
     const bad = items.find((s) => !/^\.?[a-z0-9]{1,10}$/i.test(s));
     return bad ? `"${bad}" is not a file extension: use letters and digits only, such as exe` : undefined;
   },
+  // The notification limits (notify_limit.go); the backend reads a value out
+  // of range as its default, so it is refused before it is saved and ignored.
+  notify_group_window_minutes: (v) => (wholeIn(v, 1, 1440) ? undefined : 'must be a whole number of minutes, from 1 to 1440'),
+  notify_max_per_hour: (v) => (wholeIn(v, 1, 1000) ? undefined : 'must be a whole number of alerts, from 1 to 1000'),
+  notify_min_level: (v) => (['info', 'warning', 'error'].includes(v) ? undefined : 'must be info, warning or error'),
   cache_bypass_domains: (v) => {
     const bad = v.split(',').map((s) => s.trim()).filter(Boolean).find((d) => !DOMAIN.test(d.replace(/^\*?\./, '')));
     return bad ? `"${bad}" is not a domain name, such as bank.example.com` : undefined;

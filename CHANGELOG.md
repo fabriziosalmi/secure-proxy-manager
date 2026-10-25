@@ -37,6 +37,26 @@ for at least one minor release before disappearing.
 
 ### Added
 
+- **Notification limits.** Every WAF block and every failed sign-in used to
+  become one alert to every channel, braked only by queue overflow, which
+  drops at random: a scanner blocked 1,000 times sent 1,000 Telegram
+  messages. The backend's notification queue now groups alerts by event type
+  and client address: the first is sent at once, the rest within
+  `notify_group_window_minutes` (default 10, 1 to 1440) are counted (WAF
+  blocks by category) and one digest follows when the window ends
+  (`event_type` `waf_block_digest` or `login_failure_digest`, with `count`,
+  `window_minutes` and, for blocks, `category_counts`). Each channel sends at
+  most `notify_max_per_hour` deliveries in any rolling hour (default 20,
+  1 to 1000), digests included; past it the channel holds the rest and sends
+  one `alerts_held_back` notice with the count once a slot of the hour frees.
+  `notify_waf_block`, `notify_login_failure` and `notify_min_level`
+  (`info`, `warning`, `error`) switch event types and low levels off. All
+  five are seeded, validated by the backend and set under Settings > Alerts.
+  The test alert is outside the limits. The counts are in memory: a graceful
+  shutdown sends the pending digests and notices, a crash loses them.
+  `spm_notifications_held_total{reason, channel}` counts what was held:
+  `reason="cap"` on the channel that held it, `reason="grouped"` with
+  `channel="all"`. The WAF is unchanged.
 - `POST /api/notifications/test` reports each channel's delivery
   (`data.channels`: channel, delivered, HTTP status, reason) and whether alerts
   are switched on (`data.notifications_enabled`). It tests every channel that

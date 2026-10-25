@@ -216,11 +216,13 @@ func (d delivery) sendTries(client *http.Client, tries int) deliveryResult {
 // loadNotificationSettings reads and decrypts the notification settings. ok is
 // false when notifications are disabled or the settings cannot be read.
 func loadNotificationSettings(db *sql.DB, encKey string) (map[string]string, bool) {
+	// The channel settings, then the limits (notify_limit.go).
 	rows, err := db.Query(
-		"SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?,?,?,?,?,?,?,?,?,?)",
+		"SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
 		"enable_notifications", "webhook_url", "webhook_bearer_token", "gotify_url", "gotify_token",
 		"teams_webhook_url", "telegram_bot_token", "telegram_chat_id",
 		"ntfy_url", "ntfy_topic",
+		settingGroupWindow, settingMaxPerHour, settingNotifyWAFBlock, settingNotifyLoginFailure, settingMinLevel,
 	)
 	if err != nil {
 		return nil, false
@@ -313,9 +315,14 @@ func formatAlert(event map[string]any) alertText {
 	var msgLines []string
 	msgLines = append(msgLines, fmt.Sprintf("**Message:** %v", event["message"]))
 	msgLines = append(msgLines, fmt.Sprintf("**Time:** %v", event["timestamp"]))
-	msgLines = append(msgLines, fmt.Sprintf("**Client IP:** %v", event["client_ip"]))
+	// A held-back notice and an overflow digest have no single address.
+	if ip, ok := event["client_ip"]; ok {
+		msgLines = append(msgLines, fmt.Sprintf("**Client IP:** %v", ip))
+	}
 	for k, v := range event {
-		if k != "timestamp" && k != "client_ip" && k != "event_type" && k != "message" && k != "level" {
+		// A digest's category_counts is for receivers that parse the JSON;
+		// its message already names them.
+		if k != "timestamp" && k != "client_ip" && k != "event_type" && k != "message" && k != "level" && k != "category_counts" {
 			msgLines = append(msgLines, fmt.Sprintf("**%s:** %v", titleCase(k), v))
 		}
 	}

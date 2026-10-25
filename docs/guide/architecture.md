@@ -69,6 +69,15 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
 - Probes: `/livez` and `/health` (process up), `/readyz` and `/api/ready`
   (database answers within 2 seconds, otherwise `503`). The container
   healthcheck runs `/server -healthcheck`, which calls `/readyz`.
+- Alerts: WAF blocks (the WAF posts them to `/api/internal/alert`) and failed
+  sign-ins go through one queue to the configured channels (webhook, Telegram,
+  Gotify, ntfy, Teams). The queue groups alerts of one type from one address
+  for `notify_group_window_minutes` (the first is sent, the rest are counted
+  into one digest) and lets each channel send at most `notify_max_per_hour`
+  in any hour, then one notice with the count it held
+  ([Settings API: notification limits](../api/settings.md#notification-limits)).
+  The counts are in memory: a graceful shutdown sends what is pending, a
+  crash loses it.
 - Prometheus metrics at `/metrics` on port 5000, not proxied by nginx.
 
 ### `proxy`: Squid
@@ -185,6 +194,7 @@ generates its own configuration. These are the bounds in the code:
 | WAF per-client heuristic state | 10,000 client addresses | An entry is evicted |
 | Live log feed | 256 queued messages, 64 per viewer | Messages to a slow viewer are dropped |
 | WAF block alerts | 64 queued, 8 delivery workers | Alerts are dropped and counted in `waf_notify_dropped_total`; the block itself still happens |
+| Backend alert queue | 256 queued, 64 per channel, 10,000 addresses with an open group | A full queue drops the alert (`spm_notifications_total{channel="queue", outcome="dropped"}`); past 10,000 addresses a new one joins its event type's overflow group, whose digest says "from other addresses" |
 | Backend request rate | 20 per second per address, burst 60 | `429` with `Retry-After: 1` |
 | Concurrent DNS detection scans | 2 | `429` |
 | Request body | 10 MB through nginx; 55 MB at the backend; 32 MB per list download | `413`, or the import fails |
