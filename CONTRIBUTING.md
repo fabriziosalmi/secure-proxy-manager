@@ -1,27 +1,28 @@
 # Contributing to Secure Proxy Manager
 
-Thank you for your interest! We welcome contributions: bug fixes, features, documentation, and testing.
+Contributions are welcome: bug fixes, features, documentation and tests.
 
 ## Quick Setup
 
 ```bash
 git clone https://github.com/fabriziosalmi/secure-proxy-manager.git
 cd secure-proxy-manager
-cp .env.example .env          # edit credentials
-docker compose up -d --build  # start all services
-./tests/e2e.sh localhost admin your-password  # run tests
+cp .env.example .env          # set BASIC_AUTH_PASSWORD and INTERNAL_ALERT_TOKEN
+docker compose up -d --build  # build and start every service
+./tests/e2e.sh localhost admin your-password   # end-to-end checks against it
 ```
 
 ## Tech Stack
 
 | Component | Technology | Directory |
 |-----------|-----------|-----------|
-| Backend | Go 1.24 (chi, zerolog, modernc/sqlite) | `backend-go/` |
-| WAF Engine | Go (ICAP server, regex + heuristics) | `waf-go/` |
+| Backend | Go (module `go 1.26`; CI and images build with 1.27), chi, zerolog, modernc.org/sqlite | `backend-go/` |
+| WAF | Go ICAP server, regex rules and heuristics | `waf-go/` |
 | Frontend | React 19, Vite, TypeScript, Tailwind CSS | `ui/` |
-| Proxy | Squid 5.x | `proxy/` |
-| DNS | dnsmasq | `dns/` |
-| Infra | Docker Compose, Nginx | `docker-compose.yml`, `ui/` |
+| Proxy | Squid 7 (`squid-openssl` from Ubuntu 26.04) | `proxy/` |
+| DNS | dnsmasq on Alpine | `dns/` |
+| MCP server | Python, `mcp` and `httpx` | `mcp/` |
+| Infra | Docker Compose, nginx | `docker-compose.yml`, `deploy/`, `ui/` |
 
 ## Development Workflow
 
@@ -29,162 +30,162 @@ docker compose up -d --build  # start all services
 
 ```bash
 cd backend-go
-go build ./...              # compile
-go test -race ./...         # unit tests (CI gates on these AND on 60% coverage)
-go vet ./...                # static analysis
+go build ./...
+go test -race ./...         # CI also requires 60% total coverage
+go vet ./...
 ```
 
-### WAF Engine (Go)
+### WAF (Go)
 
 ```bash
 cd waf-go
 go build ./...
-go test -v -race ./...      # unit + fuzz tests
+go test -race ./...         # CI also requires 70% total coverage
+go test -run '^$' -bench . -benchmem ./...   # benchmarks, see BENCHMARKS.md
 ```
 
 ### Frontend (React/TypeScript)
 
 ```bash
 cd ui
-npm ci                      # install deps
-npm test                    # Vitest suites (CI gates on these)
-npm run lint                # ESLint (CI gates on this)
-npm run build               # build (includes tsc check)
+npm ci
+npm test                    # Vitest
+npm run lint                # ESLint
+npm run build               # tsc -b and vite build
 npx tsc --noEmit            # type check only
 ```
 
-### Lint (both Go modules)
+### Full stack (Docker)
 
 ```bash
-golangci-lint run           # from backend-go/ or waf-go/ (CI gates on this)
-shellcheck --severity=warning proxy/*.sh deploy/*.sh scripts/*.sh tests/*.sh
-```
-
-### Full Stack (Docker)
-
-```bash
-docker compose build --no-cache web backend waf
+docker compose build web backend waf proxy dns
 docker compose up -d
-docker compose logs -f backend  # watch Go backend logs
+docker compose logs -f backend
 ```
 
 ## Coding Standards
 
 ### Go
-- `gofmt` formatting (enforced by editor)
-- Error handling: always check and handle errors, no `_ = err`
-- Naming: `camelCase` for unexported, `PascalCase` for exported
-- No global mutable state; use dependency injection
+- `gofmt` formatting; `golangci-lint` (configuration in `.golangci.yml`) gates CI
+- Handle every error; do not discard it
 - SQL: parameterized queries only, never interpolate user input
+- Prefer passing dependencies over package-level mutable state
 
 ### TypeScript/React
-- Strict mode (`"strict": true` in tsconfig)
-- Typed interfaces in `ui/src/types.ts`, no `any` in business logic
+- Strict mode (`"strict": true` in `ui/tsconfig.app.json`)
+- Shared types in `ui/src/types.ts`; no `any` in business logic
 - Functional components with hooks
-- `@tanstack/react-query` for all API calls
-- Tailwind CSS for styling, no inline styles
+- `@tanstack/react-query` for API data
+- Tailwind CSS for styling
+
+### Text
+- No em dash or en dash in `ui/src`, `docs/` or any Markdown file:
+  `scripts/check-no-dashes.sh` fails the build on one.
 
 ### Commit Messages
+
+Conventional Commits with a scope, and a subject that states the resulting
+behaviour:
+
 ```
-feat: short description (#issue)
-fix: short description
-docs: short description
-chore: short description
+feat(blacklists): an import past the domain limit is refused whole
+fix(proxy): the egress rule is inserted before the first localnet allow
+docs(api): the WebSocket page documents the spm.v1 subprotocol
+chore(release): v3.14.3
 ```
 
 ## Reproducing the CI gates locally
 
-Everything below blocks a merge. Running them before opening a PR avoids a
-round trip:
+Each of these runs in a required check. Running them before opening a pull
+request saves a round trip:
 
 | Command | Gate |
 |---|---|
 | `cd ui && npm run lint && npm test && npm run build` | UI lint, tests, build |
 | `cd backend-go && go build ./... && go vet ./... && golangci-lint run` | Go build, vet, lint |
-| `cd backend-go && go test -race ./...` | Backend tests + 60% coverage floor |
-| `cd waf-go && go test -race ./...` | WAF tests + 70% coverage floor |
-| `shellcheck --severity=warning proxy/*.sh deploy/*.sh scripts/*.sh tests/*.sh` | Shell lint |
+| `cd backend-go && go test -race ./...` | Backend tests and the 60% coverage floor |
+| `cd waf-go && go test -race ./...` | WAF tests and the 70% coverage floor |
+| `shellcheck --severity=warning proxy/*.sh deploy/*.sh scripts/*.sh tests/*.sh tests/shell/*.sh` | Shell lint |
 | `ruff check proxy/ mcp/` | Python lint |
-| `pytest tests/python -q` | Python tests (watchdog) |
+| `pytest tests/python -q` | Python tests (watchdog, cache statistics, MCP server) |
 | `bash tests/shell/restore_test.sh` | Restore drill |
 | `docker compose -f docker-compose.yml config -q` | Compose validation |
-| `cd backend-go && gosec -severity medium -confidence medium ./...` | Security scanning (gosec half) |
-| `bash tests/shell/generate_squid_conf_test.sh` | Squid config generation |
-| `make adversarial` | Adversarial block-matrix (the suite README leads with) |
-| `bash scripts/check-version-sync.sh` | Version consistency |
-| `bash scripts/check-config-contract.sh` | /config filename contract (Go/Python/shell) |
+| `cd backend-go && gosec -severity medium -confidence medium ./...` | Security scanning (backend half) |
+| `bash tests/shell/generate_squid_conf_test.sh` and `bash tests/shell/squid_acl_matrix_test.sh` | Squid config generation and access policy |
+| `make adversarial` | Adversarial harness (all five planes) |
+| `bash scripts/check-version-sync.sh`, `scripts/check-waf-keys.sh`, `scripts/check-image-pins.sh`, `scripts/check-no-dashes.sh` | Version sync job |
+| `bash scripts/check-config-contract.sh` | `/config` file names agree across Go, Python and shell |
 
-The remaining required checks run only in CI because they need to build and
-start the whole stack: the image build, the compose-up smoke test, the Playwright
-E2E suite, and Trivy. Their absence from this table is deliberate, not an
-omission: everything above is cheap enough to run before every push.
+The other required checks need to build and start whole stacks or download
+scanners: the image build, the compose-up smoke test (`tests/ci-e2e.sh`), the
+Playwright suite (`docker-compose.test.yml`), Trivy and the licence inventory.
 
-## E2E Testing
+`scripts/pre-commit-validate.sh` runs the TypeScript check, ESLint, `go vet`,
+the Go tests and the UI build in one go.
 
-**Prerequisite:** the stack must already be running and reachable. This drives
-a live deployment, it does not start one. `docker compose up -d` first.
+## End-to-end tests
+
+`tests/e2e.sh` drives a running deployment; it does not start one. Run
+`docker compose up -d` first.
 
 ```bash
-# Run full suite (104 checks) against a running stack
 ./tests/e2e.sh <host> <user> <password>   # host defaults to localhost
-
-# Example
 ./tests/e2e.sh localhost admin mypassword
-./tests/e2e.sh 10.0.0.5 admin mypassword   # a remote deployment
+./tests/e2e.sh 10.0.0.5 admin mypassword  # a remote deployment
 ```
 
-The test suite covers:
-- **Part A**: Client-side (proxy connectivity, 17 WAF attack vectors, 7 false positives, protocol hardening, latency)
-- **Part B**: Admin-side (auth, 9 analytics endpoints, CRUD, settings, toggles, database)
-- **Part C**: Advanced (settings persistence, body validation, WAF evasion, concurrent stress, error handling)
+It uses `https://<host>:8443` and the proxy at `<host>:3128`, in three parts:
+client-side (proxy connectivity, WAF attack and false-positive cases, protocol
+hardening, latency), admin-side (authentication, analytics endpoints, list
+changes, settings, database) and advanced (persistence, body validation, WAF
+evasion, concurrency, error handling). It changes lists and settings, so point
+it at a test instance.
+
+`tests/ci-e2e.sh` is different: it writes its own `.env`, starts the stack,
+and on exit deletes `.env` and runs `docker compose down -v`. Run it only in a
+throwaway checkout. See [tests/README.md](tests/README.md) for every suite.
 
 ## Pull Request Process
 
-1. Fork the repo and create a feature branch
-2. Make your changes with clear commit messages
-3. Ensure `go build ./...` passes for Go changes
-4. Ensure `npm run build` passes for frontend changes
-5. Run E2E tests if possible
-6. Open a PR with description of what and why
+1. Fork the repository and create a branch.
+2. Make the change, with commit messages as above.
+3. Run the gates that apply to what you changed (table above).
+4. Open a pull request saying what changed and why.
 
 ### What blocks a merge
 
-`main` requires a pull request and 17 green checks. The list is not a
-convention; it is `.github/branch-protection.json`, applied to GitHub and
-checkable against it:
+`main` requires a pull request and every check listed in
+`.github/branch-protection.json`. The file is applied to GitHub and can be
+compared with it:
 
 ```bash
 scripts/branch-protection.sh verify   # diff the live protection against the file
-scripts/branch-protection.sh apply    # push the file's state to GitHub (needs admin:repo)
+scripts/branch-protection.sh apply    # push the file's state to GitHub (needs admin rights)
 ```
 
-Everything in that list is deterministic and derived from the code, so a red
-check means the PR broke something. Two checks run but deliberately do **not**
-gate: *Verify popular list URLs* reaches third-party hosts, where an upstream
-outage would block every unrelated merge, and the CodeQL *Analyze* jobs are
-GitHub-managed, where a change to the analysed language set would leave a
-required check pending forever. Their findings still surface: in the job log
-and in the Security tab.
+Two checks run but do **not** gate: *Verify popular list URLs* reaches
+third-party hosts, where an upstream outage would block every unrelated
+merge, and the CodeQL *Analyze* jobs are managed by GitHub. Their findings
+still show in the job log and in the Security tab.
 
-`apply` restores everything except one field: GitHub's branch-protection API
-accepts `allow_force_pushes: false` and silently leaves it enabled. `verify`
-compares it, so the gap shows up as drift; fix that one under
-**Settings → Branches → main**.
+`apply` cannot set one field: GitHub's branch-protection API accepts
+`allow_force_pushes: false` and leaves it as it was. `verify` compares it, so
+the gap shows as drift; fix that one under **Settings > Branches > main**.
 
-`strict` is on, so a PR must be up to date with `main` before it merges. If
-Dependabot churn makes that painful, that is the one setting to relax; the
-required-check list is not.
+`strict` is on, so a pull request must be up to date with `main` before it
+merges.
 
 ## Reporting Issues
 
 - Use [GitHub Issues](https://github.com/fabriziosalmi/secure-proxy-manager/issues)
-- Include: steps to reproduce, expected vs actual behavior, logs
-- For security issues: use [Security Advisories](https://github.com/fabriziosalmi/secure-proxy-manager/security/advisories/new) (private)
+- Include steps to reproduce, expected and actual behaviour, and logs
+- For security issues use [Security Advisories](https://github.com/fabriziosalmi/secure-proxy-manager/security/advisories/new) (private)
 
 ## Community
 
 - [GitHub Discussions](https://github.com/fabriziosalmi/secure-proxy-manager/discussions) for questions and ideas
-- [API Documentation](https://your-host:8443/api/docs) for integration reference
+- A running backend lists its routes at `GET /api/docs` (authenticated); the
+  [API reference](docs/api/reference.md) describes them
 
 ## License
 
