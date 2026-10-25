@@ -974,12 +974,20 @@ var saaS_categories = map[string][]string{
 	"Streaming":    {"Netflix", "Spotify"},
 }
 
+// ShadowIT counts the client requests of the last 7 days (analyticsWindow) to
+// each service in knownSaaS, from sources other than internal, recognised by
+// the destination's host. Every host of the window is read: the list used to
+// be the 500 most requested destinations, full URLs included, so a service
+// reached through many distinct URLs, each requested less often than the
+// 500th, was counted short or not at all.
 func (h *AnalyticsHandlers) ShadowIT(w http.ResponseWriter, r *http.Request) {
+	ext, extArgs := notInternal(h.src.Present())
+	// #nosec G202 -- destinationKey, clientRows and ext are constants and placeholders; values are bound.
 	rows, err := h.db.Query(`
-		SELECT destination, COUNT(*) AS cnt FROM proxy_logs
+		SELECT `+destinationKey+` AS host, COUNT(*) AS cnt FROM proxy_logs
 		WHERE destination IS NOT NULL AND destination != ''
-		AND unix_timestamp >= ? AND `+clientRows+`
-		GROUP BY destination ORDER BY cnt DESC LIMIT 500`, sinceUnix(analyticsWindow))
+		AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+`
+		GROUP BY host ORDER BY cnt DESC`, append([]any{sinceUnix(analyticsWindow)}, extArgs...)...)
 	if err != nil {
 		writeOK(w, []any{})
 		return
@@ -1032,13 +1040,21 @@ func (h *AnalyticsHandlers) ShadowIT(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, result)
 }
 
+// UserAgents counts the client requests of the last 7 days (analyticsWindow),
+// from sources other than internal, by method and by kind of service. The
+// kind is read from the destination's host only: matched against the whole
+// URL, a path such as /update or /cdn/ put a request to any site in Updates
+// or CDN.
 func (h *AnalyticsHandlers) UserAgents(w http.ResponseWriter, r *http.Request) {
 	since := sinceUnix(analyticsWindow)
+	ext, extArgs := notInternal(h.src.Present())
+	args := append([]any{since}, extArgs...)
+	// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
 	rows, err := h.db.Query(`
 		SELECT method, COUNT(*) AS cnt FROM proxy_logs
 		WHERE method IS NOT NULL AND method != '' AND method != '-'
-		AND unix_timestamp >= ? AND `+clientRows+`
-		GROUP BY method ORDER BY cnt DESC LIMIT 50`, since)
+		AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+`
+		GROUP BY method ORDER BY cnt DESC LIMIT 50`, args...)
 	var methods []map[string]any
 	if err == nil {
 		defer rows.Close()
@@ -1053,23 +1069,25 @@ func (h *AnalyticsHandlers) UserAgents(w http.ResponseWriter, r *http.Request) {
 		methods = []map[string]any{}
 	}
 
+	// #nosec G202 -- destinationKey, clientRows and ext are constants and placeholders; values are bound.
 	stRows, err := h.db.Query(`
+		WITH r AS (SELECT `+destinationKey+` AS host FROM proxy_logs
+			WHERE unix_timestamp >= ? AND destination IS NOT NULL AND `+clientRows+` AND `+ext+`)
 		SELECT
 			CASE
-				WHEN destination LIKE '%googleapis.com%' OR destination LIKE '%google.com%' THEN 'Google Services'
-				WHEN destination LIKE '%microsoft.com%' OR destination LIKE '%office.com%' OR destination LIKE '%live.com%' THEN 'Microsoft'
-				WHEN destination LIKE '%apple.com%' OR destination LIKE '%icloud.com%' THEN 'Apple'
-				WHEN destination LIKE '%github.com%' OR destination LIKE '%gitlab%' THEN 'Dev Tools'
-				WHEN destination LIKE '%docker%' OR destination LIKE '%registry%' THEN 'Containers'
-				WHEN destination LIKE '%npm%' OR destination LIKE '%pypi%' OR destination LIKE '%maven%' THEN 'Package Managers'
-				WHEN destination LIKE '%cdn%' OR destination LIKE '%cloudflare%' OR destination LIKE '%akamai%' THEN 'CDN'
-				WHEN destination LIKE '%update%' OR destination LIKE '%patch%' THEN 'Updates'
+				WHEN host LIKE '%googleapis.com%' OR host LIKE '%google.com%' THEN 'Google Services'
+				WHEN host LIKE '%microsoft.com%' OR host LIKE '%office.com%' OR host LIKE '%live.com%' THEN 'Microsoft'
+				WHEN host LIKE '%apple.com%' OR host LIKE '%icloud.com%' THEN 'Apple'
+				WHEN host LIKE '%github.com%' OR host LIKE '%gitlab%' THEN 'Dev Tools'
+				WHEN host LIKE '%docker%' OR host LIKE '%registry%' THEN 'Containers'
+				WHEN host LIKE '%npm%' OR host LIKE '%pypi%' OR host LIKE '%maven%' THEN 'Package Managers'
+				WHEN host LIKE '%cdn%' OR host LIKE '%cloudflare%' OR host LIKE '%akamai%' THEN 'CDN'
+				WHEN host LIKE '%update%' OR host LIKE '%patch%' THEN 'Updates'
 				ELSE 'Other'
 			END as service_type,
 			COUNT(*) as cnt
-		FROM proxy_logs
-		WHERE unix_timestamp >= ? AND destination IS NOT NULL AND `+clientRows+`
-		GROUP BY service_type ORDER BY cnt DESC`, since)
+		FROM r
+		GROUP BY service_type ORDER BY cnt DESC`, args...)
 	var serviceTypes []map[string]any
 	if err == nil {
 		defer stRows.Close()
@@ -1090,24 +1108,63 @@ func (h *AnalyticsHandlers) UserAgents(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-var extRe = regexp.MustCompile(`\.([a-zA-Z0-9]{1,10})(?:\?|$|#)`)
+var extRe = regexp.MustCompile(`\.([a-zA-Z0-9]{1,10})$`)
 
+// fileExtensionsLimit bounds the rows FileExtensions reads: the newest ones.
+const fileExtensionsLimit = 10000
+
+// urlPath returns the path of a logged destination that has one, without its
+// query or fragment: "http://host/a/b.zip?x=1" gives "/a/b.zip". A CONNECT
+// target ("host:443") or a bare host has none: HTTPS that is not inspected
+// shows no path to the proxy.
+func urlPath(dest string) (string, bool) {
+	i := strings.Index(dest, "://")
+	if i < 0 {
+		return "", false
+	}
+	rest := dest[i+3:]
+	j := strings.IndexByte(rest, '/')
+	if j < 0 {
+		return "", false
+	}
+	p := rest[j:]
+	if k := strings.IndexAny(p, "?#"); k >= 0 {
+		p = p[:k]
+	}
+	return p, true
+}
+
+// FileExtensions counts the client requests of the last 7 days
+// (analyticsWindow), from sources other than internal, whose URL path ends in
+// a file extension, by extension and by group. Only a URL has a path: the
+// extension used to be read from the whole destination, so the top-level
+// domain of a host ("example.it", "host.de:443" had none, "http://example.it"
+// did) was counted as a file type in the Other group.
+//
+// It reads the newest fileExtensionsLimit URL rows of the window; examined
+// says how many it read, so a caller can tell when the limit cut the window.
 func (h *AnalyticsHandlers) FileExtensions(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.db.Query(`SELECT destination FROM proxy_logs WHERE destination IS NOT NULL AND destination != '' AND unix_timestamp >= ? AND `+clientRows+` LIMIT 10000`, sinceUnix(analyticsWindow))
-	skipTLDs := map[string]struct{}{"com": {}, "net": {}, "org": {}, "io": {}, "dev": {}, "app": {}, "me": {}, "co": {}}
+	ext, extArgs := notInternal(h.src.Present())
+	// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
+	rows, err := h.db.Query(`SELECT destination FROM proxy_logs
+		WHERE destination IS NOT NULL AND instr(destination, '://') > 0 AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+`
+		ORDER BY id DESC LIMIT ?`, append(append([]any{sinceUnix(analyticsWindow)}, extArgs...), fileExtensionsLimit)...)
 	extCounts := map[string]int{}
+	examined := 0
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var dest string
-			rows.Scan(&dest) //nolint:errcheck
-			path := strings.SplitN(dest, "?", 2)[0]
-			path = strings.SplitN(path, "#", 2)[0]
+			if rows.Scan(&dest) != nil {
+				continue
+			}
+			examined++
+			path, ok := urlPath(dest)
+			if !ok {
+				continue
+			}
 			if m := extRe.FindStringSubmatch(path); len(m) > 1 {
-				ext := strings.ToLower(m[1])
-				if _, skip := skipTLDs[ext]; !skip {
-					extCounts[ext]++
-				}
+				extCounts[strings.ToLower(m[1])]++
 			}
 		}
 	}
@@ -1172,6 +1229,8 @@ func (h *AnalyticsHandlers) FileExtensions(w http.ResponseWriter, r *http.Reques
 	writeOK(w, map[string]any{
 		"extensions": exts,
 		"categories": categories,
+		"examined":   examined,
+		"limit":      fileExtensionsLimit,
 	})
 }
 
