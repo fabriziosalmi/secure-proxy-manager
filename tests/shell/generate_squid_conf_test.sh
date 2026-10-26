@@ -465,5 +465,40 @@ if grep -q 'See DEPLOYMENT.md "Rotating the SSL-bump CA"' "$repo_root/proxy/gene
     || bad "the rotation procedure the code cites exists" "generate_squid_conf.sh points at a section that is not in DEPLOYMENT.md"
 fi
 
+echo "── error pages: stock templates and copy failure warning ──"
+ep_check="$(docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c '
+  mkdir -p /config /etc/squid
+  /usr/local/bin/generate_squid_conf.sh >/tmp/gen.log 2>&1
+  [ -f /etc/squid/error-pages/error-details.txt ] && echo details=ok || echo details=missing
+  [ -f /etc/squid/error-pages/ERR_DIR_LISTING ] && echo dir=ok || echo dir=missing
+  grep -q "Security Inspection Unavailable" /etc/squid/error-pages/ERR_ICAP_FAILURE 2>/dev/null && echo icap=spm || echo icap=not-spm
+  rm -rf /etc/squid/error-pages && mkdir -p /etc/squid/error-pages/ERR_ACCESS_DENIED
+  /usr/local/bin/generate_squid_conf.sh >/tmp/gen_warn.log 2>&1; echo "warn_rc=$?"
+  grep -c "^WARNING:.*error" /tmp/gen_warn.log || true
+' 2>/dev/null)"
+grep -q 'details=ok' <<<"$ep_check" && grep -q 'dir=ok' <<<"$ep_check" \
+  && ok "error-pages receives stock non-error files (error-details.txt, ERR_DIR_LISTING)" \
+  || bad "error-pages receives stock non-error files" "$ep_check"
+grep -q 'icap=spm' <<<"$ep_check" \
+  && ok "error-pages receives SPM ERR_ICAP_FAILURE" \
+  || bad "error-pages receives SPM ERR_ICAP_FAILURE" "$ep_check"
+grep -q 'warn_rc=0' <<<"$ep_check" && [ "$(tail -1 <<<"$ep_check")" -ge 1 ] 2>/dev/null \
+  && ok "failed error-page copy logs WARNING: and continues" \
+  || bad "failed error-page copy logs WARNING: and continues" "$ep_check"
+cov_out="$(docker run --rm --memory 128m --entrypoint /bin/ls "$IMAGE" -1 /usr/share/squid/errors/en | python3 -c '
+import importlib.util, pathlib, sys
+spec = importlib.util.spec_from_file_location("g", sys.argv[1])
+mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+squid_files = {line.strip() for line in sys.stdin if line.strip()}
+spm_codes = {c for c, *_ in mod.PAGES}
+disk_files = {p.name for p in pathlib.Path(sys.argv[2]).iterdir() if p.is_file()}
+stock = set(mod.STOCK_FILES)
+uncovered = sorted(squid_files - (spm_codes & disk_files) - stock)
+print("count=%d uncovered=%s" % (len(squid_files), ",".join(uncovered) if uncovered else "none"))
+' "$repo_root/scripts/generate-error-pages.py" "$repo_root/proxy/error-pages")"
+[ "$cov_out" = "count=43 uncovered=none" ] \
+  && ok "every template in /usr/share/squid/errors/en has an SPM page or is listed as stock" \
+  || bad "every template in /usr/share/squid/errors/en has an SPM page or is listed as stock" "$cov_out"
+
 printf "\n  %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

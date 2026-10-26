@@ -27,7 +27,8 @@ while IFS= read -r -d '' f; do
     [ -f "$f" ] && files+=("$f")
 done < <(git ls-files -z --cached --others --exclude-standard -- \
     'ui/src/*.ts' 'ui/src/*.tsx' 'docs/*' '*.md' \
-    'proxy/error-pages/*' 'ui/index.html' 'ui/public/*.js' 'ui/public/*.svg' \
+    'proxy/error-pages/*' 'scripts/generate-error-pages.py' \
+    'ui/index.html' 'ui/public/*.js' 'ui/public/*.svg' \
     '.env.example')
 
 if [ "${#files[@]}" -eq 0 ]; then

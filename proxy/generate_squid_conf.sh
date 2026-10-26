@@ -242,11 +242,23 @@ echo "Squid settings: port=${SQUID_PORT} cache=${SQUID_CACHE_MB}MB mem=${SQUID_M
 
 # ── Generate base Squid configuration ────────────────────────────────────────
 
-# /etc/squid is a tmpfs at runtime, so install the staged branded error pages
-# into it on every boot (the image copy lives at /opt/squid-error-pages).
-mkdir -p /etc/squid/error-pages
+# /etc/squid is a tmpfs at runtime: copy the stock templates from
+# /usr/share/squid/errors/en first (for non-error templates such as
+# ERR_DIR_LISTING and error-details.txt), then overwrite the error templates
+# with the SPM pages staged in /opt/squid-error-pages.
+mkdir -p /etc/squid/error-pages \
+    || echo "WARNING: failed to create /etc/squid/error-pages"
+if [ -d /usr/share/squid/errors/en ]; then
+    cp -a /usr/share/squid/errors/en/. /etc/squid/error-pages/ 2>/dev/null \
+        || echo "WARNING: failed to copy stock error templates from /usr/share/squid/errors/en"
+else
+    echo "WARNING: stock error directory /usr/share/squid/errors/en is missing"
+fi
 if [ -d /opt/squid-error-pages ]; then
-    cp -a /opt/squid-error-pages/. /etc/squid/error-pages/ 2>/dev/null || true
+    cp -a /opt/squid-error-pages/. /etc/squid/error-pages/ 2>/dev/null \
+        || echo "WARNING: failed to copy SPM error pages from /opt/squid-error-pages"
+else
+    echo "WARNING: SPM error directory /opt/squid-error-pages is missing"
 fi
 
 echo "Setting up Squid configuration..."

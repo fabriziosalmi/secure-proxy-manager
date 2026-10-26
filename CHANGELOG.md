@@ -40,6 +40,14 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- Squid serves distinct branded error pages for DNS lookup failures
+  (`ERR_DNS_FAIL`), refused or unreachable destinations (`ERR_CONNECT_FAIL`),
+  interrupted reads (`ERR_READ_ERROR`), socket creation failures
+  (`ERR_SOCKET_FAILURE`), unreachable ICAP security inspection when
+  `WAF_FAIL_OPEN=0` (`ERR_ICAP_FAILURE`), and every other Squid 7 error
+  template, instead of showing "Access Denied" for network errors or stock
+  Squid pages with `ERROR: loading file` lines in `cache.log`; the Access
+  Denied page shows the client IP address instead of `"-"` (#443).
 - `POST /api/database/reset` clears the tables in one transaction and answers
   500 naming the table that failed, instead of reporting success after errors;
   its own audit row is written after the wipe, so it is the first row of the

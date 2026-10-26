@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proxy Authentication Required: Secure Proxy Manager</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: #0a0a0a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .container {
+    text-align: center;
+    width: 100%;
+    max-width: 520px;
+    min-width: 0;
+    padding: 2rem;
+  }
+  .shield {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 1.5rem;
+    opacity: 0.9;
+  }
+  .shield svg { width: 100%; height: 100%; }
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin-bottom: 0.5rem;
+  }
+  .status {
+    display: inline-block;
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    margin-bottom: 1.5rem;
+  }
+  .status-amber {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+  .message {
+    color: #94a3b8;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin-bottom: 1.5rem;
+  }
+  .detail-box {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    text-align: left;
+  }
+  .detail-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.35rem 0;
+    font-size: 0.8rem;
+  }
+  .detail-label { color: #64748b; flex-shrink: 0; }
+  .detail-value { color: #cbd5e1; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.75rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .divider {
+    border-top: 1px solid #1e293b;
+    margin: 1.5rem 0 1rem;
+  }
+  .footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: #475569;
+    font-size: 0.7rem;
+  }
+  .footer a {
+    color: #3b82f6;
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .footer a:hover { text-decoration: underline; }
+  .credits {
+    color: #334155;
+    font-size: 0.65rem;
+    margin-top: 0.75rem;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="shield">
+    <svg viewBox="0 0 64 64" fill="none">
+      <path d="M29 4 L35 4 L36.5 10.2 C38.8 10.9 40.9 11.9 42.8 13.2 L48.4 9.8 L52.2 13.6 L48.8 19.2 C50.1 21.1 51.1 23.2 51.8 25.5 L58 27 L58 33 L51.8 34.5 C51.1 36.8 50.1 38.9 48.8 40.8 L52.2 46.4 L48.4 50.2 L42.8 46.8 C40.9 48.1 38.8 49.1 36.5 49.8 L35 56 L29 56 L27.5 49.8 C25.2 49.1 23.1 48.1 21.2 46.8 L15.6 50.2 L11.8 46.4 L15.2 40.8 C13.9 38.9 12.9 36.8 12.2 34.5 L6 33 L6 27 L12.2 25.5 C12.9 23.2 13.9 21.1 15.2 19.2 L11.8 13.6 L15.6 9.8 L21.2 13.2 C23.1 11.9 25.2 10.9 27.5 10.2 Z" fill="#1e293b" stroke="#3b82f6" stroke-width="1.2"/>
+      <circle cx="32" cy="30" r="12" fill="#0f172a" stroke="#3b82f6" stroke-width="1.2"/>
+      <circle cx="32" cy="30" r="8" fill="#1e3a5f"/>
+      <circle cx="32" cy="30" r="6" fill="none" stroke="#3b82f6" stroke-width="1" opacity="0.5"/>
+      <circle cx="32" cy="30" r="4.5" fill="#3b82f6"/>
+      <circle cx="32" cy="30" r="2" fill="#0f172a"/>
+      <circle cx="34" cy="28" r="1.8" fill="#93c5fd" opacity="0.9"/>
+      <circle cx="30.5" cy="32" r="0.8" fill="#93c5fd" opacity="0.5"/>
+    </svg>
+  </div>
+
+  <h1>Proxy Authentication Required</h1>
+  <div class="status">BLOCKED BY PROXY</div>
+
+  <p class="message">
+    You must sign in to the proxy before this request can be processed.
+    Enter your proxy username and password when prompted, or contact your administrator.
+  </p>
+
+  <div class="detail-box">
+    <div class="detail-row">
+      <span class="detail-label">Destination</span>
+      <span class="detail-value">%U</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Time</span>
+      <span class="detail-value">%T</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Error Code</span>
+      <span class="detail-value">%c</span>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="footer">
+    <span>Protected by</span>
+    <a href="https://github.com/fabriziosalmi/secure-proxy-manager" target="_blank">Secure Proxy Manager</a>
+  </div>
+  <div class="credits">
+    Built with care by Fabrizio Salmi, Claude &amp; Gemini
+  </div>
+</div>
+<script>
+// XSS protection: sanitize any Squid-injected variables
+document.querySelectorAll('.detail-value').forEach(function(el){
+  el.textContent = el.textContent;
+});
+</script>
+</body>
+</html>
