@@ -97,7 +97,7 @@ export const PROFILES: Profile[] = [
  */
 const DANGEROUS_WHEN_ON: Record<string, string> = {
   ssl_bump_enabled: 'Every HTTPS site shows a certificate error on a device without the proxy CA.',
-  enable_proxy_auth: 'Every device must sign in with the .env credential, or gets 407.',
+  enable_proxy_auth: 'Every device must sign in with the proxy username and password set under Clients and access, or gets 407. Without them every client is refused.',
   enable_time_restrictions: 'Every client is refused outside the window.',
 };
 

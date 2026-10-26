@@ -349,6 +349,17 @@ export interface BlockedByDay {
   internal_sources: number;
 }
 
+/**
+ * The proxy's own record of proxy login (proxy_auth_status.json, written by
+ * generate_squid_conf.sh): off, enforced, or no_credentials (login is on and
+ * there is no user to check against, so every client is refused).
+ */
+export interface ProxyAuthStatus {
+  state: 'off' | 'enforced' | 'no_credentials';
+  users: number;
+  written_at: number;
+}
+
 /** GET /api/analytics/coverage: what protection is switched on now. Null where the backend could not read it. */
 export interface Coverage {
   domain_blacklist: { entries: number | null; squid_acl: SquidDomainAcl | null };
@@ -364,6 +375,8 @@ export interface Coverage {
   };
   https_inspection: boolean | null;
   proxy_login: boolean | null;
+  /** What the proxy did about proxy login, as it recorded it; null when it has not. */
+  proxy_login_status?: ProxyAuthStatus | null;
   alerts: {
     enabled: boolean | null;
     /** The channels an alert would be sent to now. */

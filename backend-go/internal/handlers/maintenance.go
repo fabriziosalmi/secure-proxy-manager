@@ -186,6 +186,14 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		if failed := sh.writeSquidArtefacts(applied); len(failed) > 0 {
 			failedFiles = failed
 		}
+		// The proxy password file follows the stored settings, the password
+		// included, which applied leaves out as a secret: a backup that
+		// carries only the password still reaches the file.
+		if _, ok := body.Config[settingProxyPassword]; ok && !carriesProxyLogin(applied, nil) {
+			if failed := sh.syncProxyUsersAndReload(); failed != "" {
+				failedFiles = append(failedFiles, failed)
+			}
+		}
 	}
 
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)

@@ -82,11 +82,12 @@ are deprecated copies of `meta`.
 when the request was logged (see
 [Block reasons](../design/block-reasons.md)): `ip_blacklist`,
 `domain_blacklist`, `domain_blacklist_dns`, `direct_ip`, `egress_policy`,
-`waf`, `proxy_auth`, `time_restriction`, `content_filter`, `source_gate`,
-`port_policy`, `protocol_policy`, `lists_unverified` (the fail-closed lists
-gate: a blocklist the backend's manifest did not vouch for at boot, so the
-proxy denied every client request until a verified copy was loaded), `other`;
-`none` when it was not blocked;
+`waf`, `proxy_auth`, `proxy_auth_unset` (proxy login is on and no proxy
+credentials are set, so every client is refused), `time_restriction`,
+`content_filter`, `source_gate`, `port_policy`, `protocol_policy`,
+`lists_unverified` (the fail-closed lists gate: a blocklist the backend's
+manifest did not vouch for at boot, so the proxy denied every client request
+until a verified copy was loaded), `other`; `none` when it was not blocked;
 `unclassified` for a row logged before reasons were recorded;
 `domain_blacklist_dns_reconstructed` for such a row that schema version 3
 reassigned at start-up: a `/503` to a name on the domain blacklist, logged

@@ -73,8 +73,41 @@ for n in $py_names; do
     fi
 done
 
+list_fail=$fail
 if [ "$fail" -eq 0 ]; then
     count=$(wc -w <<<"$go_names" | tr -d ' ')
     printf "${G}OK${N}: the %s /config filenames agree across db.go, blacklist_watchdog.py and generate_squid_conf.sh\n" "$count"
+fi
+
+# Proxy login: the backend writes the password file and reads the status the
+# generator writes (backend-go/internal/handlers/proxy_login.go). A rename on
+# one side leaves login on with no file the proxy finds: every client refused.
+go_const() { grep -oE "$1 += \"[a-z_.]+\"" backend-go/internal/handlers/proxy_login.go | sed 's/.*"\(.*\)"/\1/'; }
+go_users="$(go_const proxyUsersFileName)"
+go_status="$(go_const proxyAuthStatusFileName)"
+sh_users="$(sed -n 's|^PROXY_USERS_FILE=/config/\([a-z_.]*\)$|\1|p' proxy/generate_squid_conf.sh)"
+sh_status="$(sed -n 's|^PROXY_AUTH_STATUS="${PROXY_AUTH_STATUS:-/config/\([a-z_.]*\)}"$|\1|p' proxy/generate_squid_conf.sh)"
+if [ -z "$go_users" ] || [ "$go_users" != "$sh_users" ]; then
+    printf "${R}MISMATCH${N}: the backend writes the proxy password file as '%s', the generator reads '%s'\n" "$go_users" "$sh_users"
+    fail=1
+fi
+if [ -z "$go_status" ] || [ "$go_status" != "$sh_status" ]; then
+    printf "${R}MISMATCH${N}: the generator writes the proxy login status as '%s', the backend reads '%s'\n" "$sh_status" "$go_status"
+    fail=1
+fi
+
+# The admin credential stays with the backend: no shipped compose file passes
+# BASIC_AUTH_* to the proxy (the proxy login has its own credentials), as none
+# passes them to the WAF.
+for f in docker-compose.yml deploy/docker-compose.prod.yml docker-compose.test.yml; do
+    leaked="$(awk '/^  [a-z][a-z0-9_-]*:/{svc=$1} /^[[:space:]]*- *BASIC_AUTH_/{print svc}' "$f" | grep -vx 'backend:' | sort -u | tr '\n' ' ')"
+    if [ -n "$leaked" ]; then
+        printf "${R}LEAK${N}: %s passes BASIC_AUTH_* to %s\n" "$f" "$leaked"
+        fail=1
+    fi
+done
+
+if [ "$fail" -eq "$list_fail" ]; then
+    printf "${G}OK${N}: the proxy login files agree, and BASIC_AUTH_* reaches only the backend\n"
 fi
 exit "$fail"

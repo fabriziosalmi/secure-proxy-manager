@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -25,8 +24,9 @@ import (
 // the half the request does not carry: the window must end after it starts,
 // and content filtering needs at least one extension. A check that involves
 // none of the request's keys is not run, so a stored problem in one section
-// does not block saving another.
-func (h *SettingsHandlers) validateBody(body map[string]string) map[string]string {
+// does not block saving another. clearKeys are the secrets the request
+// removes (?clear=); an empty secret that is not among them keeps its value.
+func (h *SettingsHandlers) validateBody(body map[string]string, clearKeys map[string]bool) map[string]string {
 	errs := map[string]string{}
 	for k, v := range body {
 		if !isWritableSettingKey(k) || len(v) > 10000 {
@@ -70,7 +70,31 @@ func (h *SettingsHandlers) validateBody(body map[string]string) map[string]strin
 		len(listItems(effective("blocked_file_types"))) == 0 {
 		errs["blocked_file_types"] = "list at least one extension: with an empty list the proxy blocks nothing"
 	}
+	// With login on and no credentials the proxy refuses every client
+	// (generate_squid_conf.sh fails closed), so login cannot be turned on, or
+	// its credentials removed, without the other half.
+	if carriesProxyLogin(body, clearKeys) && effective(settingProxyAuth) == "true" {
+		const why = ": with proxy login on and no credentials the proxy refuses every client"
+		if errs[settingProxyUsername] == "" && effective(settingProxyUsername) == "" {
+			errs[settingProxyUsername] = "set the username devices sign in with" + why
+		}
+		if errs[settingProxyPassword] == "" && !h.proxyPasswordAfterSave(body, clearKeys) {
+			errs[settingProxyPassword] = "set the password devices sign in with" + why
+		}
+	}
 	return errs
+}
+
+// proxyPasswordAfterSave reports whether a proxy password will be stored
+// once the request is saved: a typed one, or the stored one kept.
+func (h *SettingsHandlers) proxyPasswordAfterSave(body map[string]string, clearKeys map[string]bool) bool {
+	if clearKeys[settingProxyPassword] {
+		return false
+	}
+	if body[settingProxyPassword] != "" {
+		return true
+	}
+	return h.dbSetting(settingProxyPassword, "") != ""
 }
 
 // writeFieldErrors answers 400 with every refused field in errors and, for a
@@ -263,8 +287,7 @@ func (h *SettingsHandlers) SyncListArtefacts() (changed []string) {
 		changed = append(changed, a.file)
 	}
 	if len(changed) > 0 {
-		// #nosec G306 -- reload trigger, must be readable by the proxy container
-		if err := os.WriteFile(filepath.Join(h.cfg.ConfigDir, ".reload-squid"), []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
+		if err := requestProxyReload(h.cfg.ConfigDir); err != nil {
 			log.Warn().Err(err).Msg("startup: proxy reload trigger not written")
 		}
 		log.Info().Strs("files", changed).Msg("startup: list files brought in line with the stored settings")

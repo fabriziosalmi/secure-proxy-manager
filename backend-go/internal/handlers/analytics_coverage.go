@@ -125,6 +125,8 @@ func (h *AnalyticsHandlers) Coverage(w http.ResponseWriter, r *http.Request) {
 		"waf":              h.wafRuleCoverage(r),
 		"https_inspection": flag("ssl_bump_enabled"),
 		"proxy_login":      flag("enable_proxy_auth"),
-		"alerts":           alerts,
+		// What the proxy did with it, as it recorded it; null when it has not.
+		"proxy_login_status": nullable(readProxyAuthStatus(h.cfg.ConfigDir)),
+		"alerts":             alerts,
 	})
 }

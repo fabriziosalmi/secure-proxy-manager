@@ -322,6 +322,7 @@ acl spm_r_ip_blacklist annotate_transaction spm_reason=ip_blacklist
 acl spm_r_domain_blacklist annotate_transaction spm_reason=domain_blacklist
 acl spm_r_domain_blacklist_dns annotate_transaction spm_reason=domain_blacklist_dns
 acl spm_r_proxy_auth annotate_transaction spm_reason=proxy_auth
+acl spm_r_proxy_auth_unset annotate_transaction spm_reason=proxy_auth_unset
 acl spm_r_time_restriction annotate_transaction spm_reason=time_restriction
 acl spm_r_content_filter annotate_transaction spm_reason=content_filter
 acl spm_r_direct_ip annotate_transaction spm_reason=direct_ip
@@ -723,10 +724,38 @@ if [ -f /config/cache_bypass_domains.txt ] && [ -s /config/cache_bypass_domains.
 fi
 
 # ── Proxy Authentication (Basic Auth for proxy users) ──────────────────────
+# The password file is written by the backend when proxy credentials are saved
+# in Settings, Clients and access, Login (a bcrypt line per user). The
+# BASIC_AUTH_* block below is kept for an operator who passes those variables
+# to this container by hand; no shipped compose file does.
+#
+# The outcome is written to PROXY_AUTH_STATUS for the backend, which shows it
+# on the dashboard: off, enforced, or no_credentials (login is on and there is
+# no usable password file, so every client is refused).
+
+PROXY_AUTH_STATUS="${PROXY_AUTH_STATUS:-/config/proxy_auth_status.json}"
+PROXY_USERS_FILE=/config/proxy_users.htpasswd
+
+write_proxy_auth_status() { # state users
+    local tmp
+    tmp="$(mktemp "${PROXY_AUTH_STATUS}.XXXXXX" 2>/dev/null)" || return 0
+    printf '{"version":1,"state":"%s","users":%d,"written_at":%d}\n' "$1" "$2" "$(date +%s)" > "$tmp" \
+        && chmod 0644 "$tmp" && mv -f "$tmp" "$PROXY_AUTH_STATUS"
+    rm -f "$tmp" 2>/dev/null
+    return 0
+}
+
+# proxy_users_count: the user lines basic_ncsa_auth would read ("name:hash",
+# no comment, no blank). Zero means the helper would accept nobody.
+proxy_users_count() {
+    [ -f "$PROXY_USERS_FILE" ] || { echo 0; return; }
+    grep -cE '^[^#[:space:]:][^:]*:[^[:space:]]+' "$PROXY_USERS_FILE" 2>/dev/null || true
+}
 
 if [ -f /config/proxy_auth_enabled ]; then
     echo "Proxy authentication ENABLED: requiring Basic Auth for proxy access"
-    # Create password file if it doesn't exist (admin user same as dashboard)
+    # An operator who passes BASIC_AUTH_USERNAME/PASSWORD to this container by
+    # hand gets the file created from them, once, when it does not exist.
     if [ ! -f /config/proxy_users.htpasswd ]; then
         if [ -n "$BASIC_AUTH_USERNAME" ] && [ -n "$BASIC_AUTH_PASSWORD" ]; then
             # SECURE-SEC-02: the password goes in on STDIN, never as an argv
@@ -747,10 +776,11 @@ if [ -f /config/proxy_auth_enabled ]; then
             printf '%s:%s\n' "$BASIC_AUTH_USERNAME" \
                 "$(printf '%s' "$BASIC_AUTH_PASSWORD" | openssl passwd -6 -stdin)" \
                 > /config/proxy_users.htpasswd
-            echo "Created proxy auth file with admin user"
+            echo "Created proxy auth file from BASIC_AUTH_USERNAME"
         fi
     fi
-    if [ -f /config/proxy_users.htpasswd ]; then
+    proxy_users="$(proxy_users_count)"
+    if [ "${proxy_users:-0}" -gt 0 ]; then
         # basic_ncsa_auth runs as the proxy user, and the umask above leaves the
         # file root:root 0600, so the helper could not open it and refused every
         # credential. Group-readable for proxy, on every generation, so a file
@@ -771,10 +801,23 @@ auth_param basic credentialsttl 8 hours
 auth_param basic casesensitive on
 acl authenticated proxy_auth REQUIRED
 http_access deny !localhost spm_r_proxy_auth !authenticated' || { return 1 2>/dev/null || exit 1; }
-        echo "Proxy auth configured with $(wc -l < /config/proxy_users.htpasswd) users"
+        echo "Proxy auth configured with $proxy_users users"
+        write_proxy_auth_status enforced "$proxy_users"
+    else
+        # Fail closed. Login is on and there is no user the helper could
+        # accept, so leaving the auth rule out would let every client browse
+        # without signing in while this script reported login as enabled.
+        # Every client is refused instead (403, reason proxy_auth_unset) until
+        # credentials are set; localhost stays exempt for the container's own
+        # probes, as it is from the login itself.
+        echo "WARNING: proxy login is on but no proxy credentials are set ($PROXY_USERS_FILE has no user): every client is refused until you set them in Settings, Clients and access, Login" >&2
+        insert_policy '# ── Proxy login is on and no proxy credentials are set: refuse every client ──
+http_access deny !localhost spm_r_proxy_auth_unset' || { return 1 2>/dev/null || exit 1; }
+        write_proxy_auth_status no_credentials 0
     fi
 else
     echo "Proxy authentication disabled (open for localnet)"
+    write_proxy_auth_status off 0
 fi
 
 # ── Content Filtering (block downloads by file extension) ──────────────────

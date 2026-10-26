@@ -46,6 +46,12 @@ describe('coverageLines', () => {
     expect(l.waf.text).toBe('WAF: 160 of 172 request rules on, in 11 of 12 categories, inspecting plain HTTP and inspected HTTPS')
     expect(l.https.state).toBe('on')
     expect(l.login.text).toBe('Proxy login: on, a device signs in to use the proxy')
+    // The proxy's own record: login on with no user refuses every client.
+    expect(lines({ ...coverageBody, proxy_login: true, proxy_login_status: { state: 'no_credentials', users: 0, written_at: 1 } }).login).toMatchObject({
+      state: 'attention',
+      text: 'Proxy login: on, but no proxy credentials are set: every client is refused until you set them',
+    })
+    expect(lines({ ...coverageBody, proxy_login: true, proxy_login_status: { state: 'enforced', users: 1, written_at: 1 } }).login.state).toBe('on')
     expect(l.alerts).toMatchObject({ state: 'on', text: 'Alerts: on, sent to 2 channels' })
   })
 

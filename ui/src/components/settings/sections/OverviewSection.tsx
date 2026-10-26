@@ -18,7 +18,8 @@ import { applyToProxy } from '../../../lib/reload';
 import { describeSave, rowsAfterSave, type SaveResult } from '../../../lib/settingsSave';
 import { APPLY_MODE, SECTIONS, sectionPath, type ApplyMode, type SectionId } from '../../../lib/settingsMeta';
 import { PROFILES, matchingProfile, profileChanges, showValue, type Profile } from '../../../lib/profiles';
-import type { AttentionItem } from '../../../lib/attention';
+import { proxyLoginWithoutCredentials, type AttentionItem } from '../../../lib/attention';
+import { parseSettings } from '../../../lib/secrets';
 import type { SectionForm } from '../sectionForm';
 
 const DOT = { warning: 'bg-warning-strong', info: 'bg-chart-neutral' };
@@ -86,6 +87,11 @@ function ApplyProfile({ stored, rows, dirty }: { stored: Record<string, string>;
   const changes = picked ? profileChanges(picked, stored) : [];
   const touched = [...new Set(changes.map((c) => c.section))];
   const blocking = touched.filter((s) => (dirty[s] ?? 0) > 0);
+  // A profile that turns proxy login on needs the proxy credentials stored
+  // first: with login on and none set the proxy refuses every client, and
+  // the backend refuses the save.
+  const needsCredentials = picked?.values.enable_proxy_auth === 'true' &&
+    proxyLoginWithoutCredentials({ ...stored, enable_proxy_auth: 'true' }, parseSettings(rows).secrets);
   const previewId = useId();
 
   const apply = async () => {
@@ -158,9 +164,16 @@ function ApplyProfile({ stored, rows, dirty }: { stored: Record<string, string>;
                 Save or discard the unsaved changes in {blocking.map(sectionLabel).join(', ')} first.
               </Notice>
             )}
+            {needsCredentials && (
+              <Notice tone="warning" title="Set the proxy username and password first">
+                {picked.name} turns proxy login on, and no proxy credentials are stored. With login on and none set the proxy
+                refuses every client. Set them under{' '}
+                <Link to={sectionPath('access')} className="font-medium text-accent underline underline-offset-2">Clients and access</Link>, then apply the profile.
+              </Notice>
+            )}
             {changes.length > 0 && (
               <div className="flex flex-wrap gap-2">
-                <Button variant="primary" disabled={busy || blocking.length > 0} onClick={() => void apply()}>
+                <Button variant="primary" disabled={busy || blocking.length > 0 || needsCredentials} onClick={() => void apply()}>
                   {busy ? 'Applying...' : `Apply ${picked.name}`}
                 </Button>
                 <Button onClick={() => setPicked(null)} disabled={busy}>Cancel</Button>

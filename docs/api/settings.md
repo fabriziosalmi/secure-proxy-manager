@@ -23,7 +23,7 @@ GET /api/settings
 Values are strings. The defaults a new database gets are in
 `seedDefaultSettings` in `backend-go/internal/database/db.go`.
 
-The alert channel settings are secrets: `webhook_url`, `webhook_bearer_token` (sent as `Authorization: Bearer <token>` with each webhook delivery), `gotify_url`, `gotify_token`, `teams_webhook_url`, `telegram_bot_token`, `telegram_chat_id`, `ntfy_url` and `ntfy_topic` (`crypto.SensitiveKeys` in the backend). They are stored encrypted and are write-only: their row carries `"secret": true`, an empty `setting_value`, `"is_set": true` when a value is stored, and `"decrypt_failed": true` when the stored value cannot be decrypted with the current key (`ENCRYPTION_KEY`, or the key the backend generated in its state directory when that is unset).
+The alert channel settings are secrets: `webhook_url`, `webhook_bearer_token` (sent as `Authorization: Bearer <token>` with each webhook delivery), `gotify_url`, `gotify_token`, `teams_webhook_url`, `telegram_bot_token`, `telegram_chat_id`, `ntfy_url` and `ntfy_topic` (`crypto.SensitiveKeys` in the backend), and so is `proxy_auth_password` (see [Proxy login](#proxy-login)). They are stored encrypted and are write-only: their row carries `"secret": true`, an empty `setting_value`, `"is_set": true` when a value is stored, and `"decrypt_failed": true` when the stored value cannot be decrypted with the current key (`ENCRYPTION_KEY`, or the key the backend generated in its state directory when that is unset).
 
 ```json
 { "setting_name": "gotify_token", "setting_value": "", "secret": true, "is_set": true }
@@ -76,7 +76,7 @@ All updates are applied in a single transaction, and then the proxy's files are 
 }
 ```
 
-Values that depend on each other are checked together, with the stored value for the half the request does not carry: with `enable_time_restrictions` on, `time_restriction_end` must be later than `time_restriction_start`; with `enable_content_filtering` on, `blocked_file_types` must list at least one extension. Notification URLs must be http or https, without credentials, and not point at this host; at delivery the backend also refuses any address of the networks it is attached to.
+Values that depend on each other are checked together, with the stored value for the half the request does not carry: with `enable_time_restrictions` on, `time_restriction_end` must be later than `time_restriction_start`; with `enable_content_filtering` on, `blocked_file_types` must list at least one extension; with `enable_proxy_auth` on, `proxy_auth_username` and `proxy_auth_password` must both be set once the request is saved. The same check applies to `PUT`, which then names the missing keys in `errors`. Notification URLs must be http or https, without credentials, and not point at this host; at delivery the backend also refuses any address of the networks it is attached to.
 
 The settings nothing reads (`tailscale_*`, `ddns_*`, `auth_method`, `enable_ip_blacklist`, `enable_domain_blacklist`, `enable_waf`, `block_direct_ip`) are skipped, like internally managed keys: the rest of the request is saved, `PUT` answers `400` for them, and a restore lists them as not restored.
 
@@ -89,6 +89,39 @@ A secret sent with an empty value keeps its stored value, and the response lists
 ```
 
 When some proxy configuration files could not be written the answer is still `200`, with `"status": "partial"` and the file names in `data.failed`.
+
+---
+
+## Proxy login
+
+```
+POST /api/settings
+```
+
+```json
+{
+  "enable_proxy_auth": "true",
+  "proxy_auth_username": "office",
+  "proxy_auth_password": "a-long-proxy-password"
+}
+```
+
+With `enable_proxy_auth` on, every client signs in to the proxy with HTTP Basic (`407 Proxy Authentication Required` without valid credentials), using `proxy_auth_username` and `proxy_auth_password`. They are the proxy's own credentials, not the dashboard login.
+
+| Setting | Value |
+|---------|-------|
+| `proxy_auth_username` | 1 to 64 characters: letters, digits and `. _ @ + -` (no space, colon or newline). Returned by `GET`. |
+| `proxy_auth_password` | 12 characters or more, at most 72 bytes, on one line. A secret: stored encrypted, never returned by `GET` (only `is_set`), removed with `?clear=proxy_auth_password` or a `PUT` with an empty value. |
+
+After a save or a restore that carries any of the three keys, and at backend start, the backend writes `proxy_users.htpasswd` in the config directory: one line with the username and a bcrypt hash of the password, replaced atomically (temporary file and rename), mode `0640`. The proxy's generator sets `root:proxy` on it before Squid reads it, and the backend asks the proxy to reload when the file changes. With login off, or without both credentials, the backend removes the file it wrote. A file it did not write (created by the proxy from `BASIC_AUTH_USERNAME`/`BASIC_AUTH_PASSWORD` passed to the proxy container) is replaced only by stored credentials and never removed. A stored password that cannot be decrypted with the current key leaves the file as it is.
+
+Login cannot be turned on without both credentials, and they cannot be removed while it is on: the request answers `400` with the missing keys in `errors`. If the proxy still finds login on with no user in the password file (a database with login on and no credentials, for example after an upgrade), it refuses every client except localhost with `403` and the block reason `proxy_auth_unset` until credentials are set or login is turned off. It records what it did in `proxy_auth_status.json`, which `GET /api/status` returns as `proxy_auth` and `GET /api/analytics/coverage` as `proxy_login_status`:
+
+```json
+{ "proxy_auth": { "state": "no_credentials", "users": 0, "written_at": 1792953504 } }
+```
+
+`state` is `off`, `enforced` (`users` lines in the password file) or `no_credentials`. The field is absent (`null` in coverage) until the proxy has recorded it.
 
 ---
 

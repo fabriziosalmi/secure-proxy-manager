@@ -150,6 +150,7 @@ const WHY: Record<string, string> = {
   egress_policy: 'Default-deny egress is on and the destination is not on the egress allowlist.',
   waf: 'The WAF matched one of its rules in the request or the response and blocked it.',
   proxy_auth: 'The proxy requires a username and password, and the request had none or a wrong one.',
+  proxy_auth_unset: 'Proxy login is on but no proxy credentials are set, so the proxy refuses every client until they are set.',
   time_restriction: 'Access is limited to set hours, and the request came outside them.',
   content_filter: 'The URL ends in a file type the content filter blocks.',
   source_gate: 'The client address is not in a network allowed to use the proxy.',

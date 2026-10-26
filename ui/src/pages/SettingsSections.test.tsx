@@ -44,6 +44,11 @@ const base: Row[] = [
 let rows: Row[] = base
 let egressTotal = 0
 let proxyStatus = 'running'
+let proxyAuth: { state: string; users: number; written_at: number } | undefined
+const withCredentials: Row[] = [
+  { setting_name: 'proxy_auth_username', setting_value: 'office' },
+  { setting_name: 'proxy_auth_password', setting_value: '', secret: true, is_set: true },
+]
 
 function setViewport(desktop: boolean) {
   Object.defineProperty(window, 'matchMedia', {
@@ -87,10 +92,11 @@ describe('Settings sections', () => {
     rows = base
     egressTotal = 0
     proxyStatus = 'running'
+    proxyAuth = undefined
     setViewport(true)
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url === 'settings') return Promise.resolve({ data: { status: 'success', data: rows } })
-      if (url === 'status') return Promise.resolve({ data: { status: 'success', data: { proxy_status: proxyStatus } } })
+      if (url === 'status') return Promise.resolve({ data: { status: 'success', data: { proxy_status: proxyStatus, proxy_auth: proxyAuth } } })
       if (url === 'egress-allowlist') return Promise.resolve({ data: { status: 'success', data: [], meta: { total: egressTotal, limit: 1, offset: 0 }, total: egressTotal } })
       return Promise.resolve({ data: { status: 'success', data: null } })
     })
@@ -115,13 +121,92 @@ describe('Settings sections', () => {
       await expectNoAxeViolations(container)
     })
 
-    it('says the login is the .env credential, and warns before every device must sign in', async () => {
-      renderAt('/settings/access')
+    it('asks for the proxy credentials when login is turned on, and refuses the save without them', async () => {
+      const { container } = renderAt('/settings/access')
       const auth = await screen.findByRole('switch', { name: 'Require proxy login' })
-      expect(auth).toHaveAccessibleDescription(/BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD from \.env .* not your dashboard password/)
+      expect(auth).toHaveAccessibleDescription('Every client signs in with the proxy username and password below before it can browse.')
       expect(document.getElementById('enable_proxy_auth-label')!.parentElement!.querySelector('[data-apply]')).toHaveTextContent(/^Proxy reload/)
+      expect(screen.queryByLabelText('Proxy username')).not.toBeInTheDocument()
+
       fireEvent.click(auth)
+      expect(screen.getByText(/They are not your dashboard login: they only let a device use the\s+proxy/)).toBeInTheDocument()
+      expect(screen.getByLabelText('Proxy username')).toHaveValue('')
+      expect(screen.getByLabelText('Proxy password')).toHaveAttribute('type', 'password')
+      expect(screen.getByText('Set the proxy username and password before you save')).toBeInTheDocument()
+      headingsInOrder()
+      await expectNoAxeViolations(container)
+
+      save()
+      expect(settingsPosts()).toHaveLength(0)
+      expect(screen.getByLabelText('Proxy username')).toHaveAccessibleDescription(/Set the username devices sign in with: with proxy login on and no credentials the proxy refuses every client/)
+      expect(screen.getByLabelText('Proxy password')).toHaveAccessibleDescription(/Set the password devices sign in with/)
+      expect(within(bar()).getByRole('status')).toHaveTextContent('Not saved: 2 fields need attention')
+
+      fireEvent.change(screen.getByLabelText('Proxy username'), { target: { value: 'office' } })
+      fireEvent.change(screen.getByLabelText('Proxy password'), { target: { value: 'too-short' } })
+      save()
+      expect(settingsPosts()).toHaveLength(0)
+      expect(screen.getByLabelText('Proxy password')).toHaveAccessibleDescription(/Must be at least 12 characters/)
+
+      fireEvent.change(screen.getByLabelText('Proxy password'), { target: { value: 'correct-horse-battery' } })
       expect(screen.getByText('Every device must sign in after you save')).toBeInTheDocument()
+      save()
+      expect(await screen.findByText(/^Applied to the proxy at \d\d:\d\d\.$/)).toBeInTheDocument()
+      expect(settingsPosts()[0][1]).toEqual({
+        enable_proxy_auth: 'true',
+        proxy_auth_username: 'office',
+        proxy_auth_password: 'correct-horse-battery',
+        enable_bandwidth_limits: 'false',
+        bandwidth_limit_mbps: '100',
+      })
+      expect(reloads()).toHaveLength(1)
+    })
+
+    it('says every client is refused while login is on with no credentials stored, as after an upgrade', async () => {
+      rows = [...base, { setting_name: 'enable_proxy_auth', setting_value: 'true' }, { setting_name: 'proxy_auth_password', setting_value: '', secret: true }]
+      const { container } = renderAt('/settings/access')
+      const notice = await screen.findByText('Proxy login is on but no proxy credentials are set: every client is refused until you set them')
+      expect(notice.parentElement).toHaveTextContent('Devices get 403 on every request. Set a username and a password and save, or turn proxy login off.')
+      expect(screen.getByLabelText('Proxy username')).toBeInTheDocument()
+      await expectNoAxeViolations(container)
+      // Turning login off is a valid way out.
+      fireEvent.click(screen.getByRole('switch', { name: 'Require proxy login' }))
+      save()
+      await waitFor(() => expect(settingsPosts()).toHaveLength(1))
+      expect(settingsPosts()[0][1]).toMatchObject({ enable_proxy_auth: 'false' })
+    })
+
+    it('believes the proxy when it reports no credentials, and keeps a stored password write-only', async () => {
+      rows = [...base,
+        { setting_name: 'enable_proxy_auth', setting_value: 'true' },
+        { setting_name: 'proxy_auth_username', setting_value: 'office' },
+        { setting_name: 'proxy_auth_password', setting_value: '', secret: true, is_set: true },
+      ]
+      proxyAuth = { state: 'no_credentials', users: 0, written_at: 1 }
+      renderAt('/settings/access')
+      expect(await screen.findByText('Proxy login is on but no proxy credentials are set: every client is refused until you set them')).toBeInTheDocument()
+      const pw = screen.getByLabelText('Proxy password')
+      expect(pw).toHaveValue('')
+      expect(pw).toHaveAccessibleDescription('A value is stored. It is never shown; type a new one to replace it.')
+      expect(screen.getByLabelText('Proxy username')).toHaveValue('office')
+    })
+
+    it('says nothing alarming once the credentials are stored and the proxy enforces them', async () => {
+      rows = [...base,
+        { setting_name: 'enable_proxy_auth', setting_value: 'true' },
+        { setting_name: 'proxy_auth_username', setting_value: 'office' },
+        { setting_name: 'proxy_auth_password', setting_value: '', secret: true, is_set: true },
+      ]
+      proxyAuth = { state: 'enforced', users: 1, written_at: 1 }
+      renderAt('/settings/access')
+      await screen.findByLabelText('Proxy username')
+      expect(screen.queryByText(/every client is refused/)).not.toBeInTheDocument()
+      expect(screen.queryByText('Set the proxy username and password before you save')).not.toBeInTheDocument()
+      // Removing the password with login on would refuse every client: refused before sending.
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Proxy password' }))
+      expect(screen.getByText('Set the proxy username and password before you save')).toBeInTheDocument()
+      save()
+      expect(settingsPosts()).toHaveLength(0)
     })
 
     it('shows the stored values, says which are missing, and checks the window before sending', async () => {
@@ -243,13 +328,32 @@ describe('Settings sections', () => {
       await expectNoAxeViolations(container)
     })
 
+    it('puts login on with no credentials first in the list, and links it to Clients and access', async () => {
+      rows = [...base, { setting_name: 'enable_proxy_auth', setting_value: 'true' }]
+      const { container } = renderAt('/settings/overview')
+      const list = await screen.findByRole('region', { name: 'Needs attention' })
+      const first = (await within(list).findAllByRole('listitem'))[0]
+      expect(first).toHaveTextContent('Proxy login is on but no proxy credentials are set: every client is refused until you set them')
+      expect(within(first).getByRole('link', { name: 'Clients and access' })).toHaveAttribute('href', '/settings/access')
+      await expectNoAxeViolations(container)
+    })
+
+    it('will not apply a profile that turns login on before the proxy credentials are stored', async () => {
+      renderAt('/settings/overview')
+      fireEvent.click(await screen.findByRole('button', { name: /^Paranoid/ }))
+      expect(await screen.findByText('Set the proxy username and password first')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Apply Paranoid' })).toBeDisabled()
+      expect(settingsPosts()).toHaveLength(0)
+    })
+
     it('previews a profile, names the risky changes, applies it and reports what the proxy did', async () => {
+      rows = [...base, ...withCredentials]
       renderAt('/settings/overview')
       fireEvent.click(await screen.findByRole('button', { name: /^Paranoid/ }))
       const preview = await screen.findByRole('heading', { level: 4, name: /^Paranoid changes \d+ settings$/ })
       const box = preview.parentElement!
       expect(box).toHaveTextContent('Require proxy login: not set to on')
-      expect(box).toHaveTextContent('Every device must sign in with the .env credential, or gets 407.')
+      expect(box).toHaveTextContent('Every device must sign in with the proxy username and password set under Clients and access, or gets 407.')
       expect(box).toHaveTextContent('HTTPS inspection: off to on')
       fireEvent.click(within(box).getByRole('button', { name: 'Apply Paranoid' }))
       expect(await screen.findByText('Paranoid saved.')).toBeInTheDocument()

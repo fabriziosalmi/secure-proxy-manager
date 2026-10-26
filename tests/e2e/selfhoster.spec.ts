@@ -634,8 +634,11 @@ test.describe('UI: Analytics', () => {
     const cov = await request.get(`${API_URL}/api/analytics/coverage`, { headers });
     expect(cov.ok()).toBeTruthy();
     const c = ((await cov.json()) as { data: Record<string, unknown> }).data;
-    expect(Object.keys(c).sort()).toEqual(['alerts', 'domain_blacklist', 'https_inspection', 'ip_blacklist', 'proxy_login', 'waf']);
+    expect(Object.keys(c).sort()).toEqual(['alerts', 'domain_blacklist', 'https_inspection', 'ip_blacklist', 'proxy_login', 'proxy_login_status', 'waf']);
     expect(['ok', 'auth_failed', 'unreachable', 'error']).toContain((c.waf as { status: string }).status);
+    // The proxy's own record of proxy login: null until it has written one.
+    const pls = c.proxy_login_status as { state: string } | null;
+    if (pls !== null) expect(['off', 'enforced', 'no_credentials']).toContain(pls.state);
   });
 
   test('shows the sections of the mockup, and the old Threat Intel address leads here', async ({ page }) => {

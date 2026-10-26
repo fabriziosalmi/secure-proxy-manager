@@ -357,6 +357,30 @@ func TestOtherStatisticsLeaveOutTheDNSRows(t *testing.T) {
 	}
 }
 
+// Today's count follows the UTC day the tailers store, whatever the host's
+// zone. With the local day it read 0 from local midnight until UTC midnight.
+// The two zones cover every hour: UTC+14 is on the next date from 10:00 UTC,
+// UTC-12 on the previous one until 12:00 UTC.
+func TestStatusCountsTodayInTheZoneTheLogsAreStoredIn(t *testing.T) {
+	saved := time.Local
+	defer func() { time.Local = saved }()
+	for _, zone := range []*time.Location{time.FixedZone("UTC+14", 14*3600), time.FixedZone("UTC-12", -12*3600)} {
+		time.Local = zone
+		db, _, cfg, cleanup := setupTestDB(t)
+		seedBlockReasonFixture(t, db)
+		var st struct {
+			Data struct {
+				Count int `json:"requests_count"`
+			} `json:"data"`
+		}
+		getJSON(t, NewAnalyticsHandlers(db, cfg).Status, "/api/status", &st)
+		cleanup()
+		if st.Data.Count != 18 {
+			t.Errorf("host zone %s: requests_count = %d, want 18", zone, st.Data.Count)
+		}
+	}
+}
+
 // The log list is the log: every row, DNS rows included, each with its reason.
 func TestLogListCarriesTheReason(t *testing.T) {
 	db, _, _, cleanup := setupTestDB(t)

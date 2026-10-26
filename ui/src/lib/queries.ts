@@ -1,5 +1,5 @@
 import { api, getData } from './api';
-import type { SettingRow } from '../types';
+import type { ProxyAuthStatus, SettingRow } from '../types';
 
 // Queries that more than one component reads. One definition per key, so two
 // components never cache different shapes under the same key.
@@ -15,7 +15,11 @@ export interface StatusData {
   squid_version?: string;
   update_available?: string;
   update_url?: string;
+  /** What the proxy last did about proxy login; absent until it has recorded it. */
+  proxy_auth?: ProxyAuthStatus;
 }
+
+export type { ProxyAuthStatus };
 
 export const statusQuery = {
   queryKey: ['status'] as const,

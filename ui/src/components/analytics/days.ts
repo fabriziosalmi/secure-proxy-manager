@@ -33,7 +33,7 @@ export interface Series {
 // first. A reason the UI does not know comes after, by name.
 const ORDER = [
   'domain_blacklist_dns', 'domain_blacklist_dns_reconstructed', 'domain_blacklist', 'ip_blacklist', 'waf', 'direct_ip', 'egress_policy', 'proxy_auth',
-  'time_restriction', 'content_filter', 'source_gate', 'port_policy', 'protocol_policy', 'lists_unverified', 'other',
+  'proxy_auth_unset', 'time_restriction', 'content_filter', 'source_gate', 'port_policy', 'protocol_policy', 'lists_unverified', 'other',
 ];
 const COLORS = ['series-1', 'series-2', 'series-3', 'series-4'] as const;
 

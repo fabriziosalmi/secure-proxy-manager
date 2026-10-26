@@ -97,6 +97,7 @@ as written by Squid (timestamp and client trimmed):
 | PUT | 403 | `... protocol_policy -` |
 | proxy auth, no or wrong credentials | 407 | `TCP_DENIED/407 ... proxy_auth -` |
 | proxy auth, good credentials | 200 | `TCP_MISS/200 ... u1 ... none -` |
+| proxy login on, no proxy credentials set | 403 | `TCP_DENIED/403 ... proxy_auth_unset -` (Squid 7.7, matrix test) |
 | outside allowed hours | 403 | `... time_restriction -` |
 | egress default-deny, not allowlisted | 403 | `... egress_policy -` (matrix test) |
 | external client | 403 | `... source_gate -` (matrix test) |
@@ -179,6 +180,7 @@ start-up without the step.
 | `egress_policy` | egress deny (`:601`, `:610`) and its fail-closed form (`:622`) |
 | `waf` | WAF block, ICAP `X-SPM-Reason: waf` (`waf-go/main.go:774`) |
 | `proxy_auth` | `deny !localhost spm_r_proxy_auth !authenticated` (`:738`) |
+| `proxy_auth_unset` | `deny !localhost spm_r_proxy_auth_unset`: login on and no user in the password file, so every client is refused |
 | `time_restriction` | `deny !allowed_hours localnet` (`:774`) |
 | `content_filter` | `deny blocked_extensions` (`:751`) |
 | `source_gate` | `deny !localnet !localhost` (`:351`) |

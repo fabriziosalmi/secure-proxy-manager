@@ -110,6 +110,13 @@ func run() error {
 		handlers.NewSettingsHandlers(db, cfg).SyncListArtefacts()
 		return nil
 	})
+	// And for the proxy password file, which follows the stored proxy login
+	// settings: a restored database, a changed credential or an upgrade from
+	// a version that did not write the file reaches the proxy here.
+	_ = database.StartupStep("sync_proxy_users", func() error {
+		handlers.NewSettingsHandlers(db, cfg).SyncProxyUsersAtStartup()
+		return nil
+	})
 
 	// Load bcrypt hash from DB so auth uses it instead of plaintext env-var.
 	var dbHash string

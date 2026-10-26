@@ -77,8 +77,13 @@ function httpsLine(on: boolean | null): CoverageLine {
     : { ...base, state: 'off', text: 'HTTPS inspection: off, so the WAF does not see inside HTTPS' };
 }
 
-function loginLine(on: boolean | null): CoverageLine {
+function loginLine(on: boolean | null, status: Coverage['proxy_login_status']): CoverageLine {
   const base = { id: 'login' as const, link: { label: 'Access', to: settingsPath('access') } };
+  // The proxy's own record decides: login on with no user to check against
+  // refuses every client, which "on" would hide.
+  if (status?.state === 'no_credentials') {
+    return { ...base, state: 'attention', text: 'Proxy login: on, but no proxy credentials are set: every client is refused until you set them' };
+  }
   if (on === null) return { ...base, state: 'unknown', text: 'Proxy login: not reported' };
   return on
     ? { ...base, state: 'on', text: 'Proxy login: on, a device signs in to use the proxy' }
@@ -104,7 +109,7 @@ export function coverageLines(c: Coverage): CoverageLine[] {
     ipLine(c.ip_blacklist),
     wafLine(c),
     httpsLine(c.https_inspection),
-    loginLine(c.proxy_login),
+    loginLine(c.proxy_login, c.proxy_login_status),
     alertsLine(c.alerts),
   ];
 }

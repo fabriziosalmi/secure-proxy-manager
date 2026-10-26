@@ -5,6 +5,7 @@
  * item, and one that could not be read says so; nothing here is a guess.
  */
 import type { SecretState } from './secrets';
+import type { ProxyAuthStatus } from './queries';
 import type { SectionId } from './settingsMeta';
 import { EGRESS_EMPTY_REACH } from './egress';
 
@@ -25,6 +26,26 @@ export interface AttentionInput {
   proxyStatus: string | undefined | null;
   /** The egress allowlist size; undefined while loading, null when it failed. */
   egressTotal: number | undefined | null;
+  /** GET /api/status proxy_auth: what the proxy did about proxy login; undefined when not reported. */
+  proxyAuth?: ProxyAuthStatus;
+}
+
+/** The sentence the dashboard uses for login on with nothing to check it against. */
+export const PROXY_LOGIN_NO_CREDENTIALS = 'Proxy login is on but no proxy credentials are set: every client is refused until you set them';
+
+/**
+ * Whether proxy login is on with no credentials to check: the stored
+ * settings lack the username or the password, or the proxy itself reports
+ * that it has no user (its password file could not be written, for one).
+ */
+export function proxyLoginWithoutCredentials(
+  values: Record<string, string>,
+  secrets: Record<string, SecretState>,
+  proxyAuth?: ProxyAuthStatus,
+): boolean {
+  if (proxyAuth?.state === 'no_credentials') return true;
+  if (values.enable_proxy_auth !== 'true') return false;
+  return !values.proxy_auth_username || (secrets.proxy_auth_password ?? 'unset') === 'unset';
 }
 
 /** The alert channels notify.go sends to, and the keys each one needs. */
@@ -40,9 +61,21 @@ export function configuredChannels(secrets: Record<string, SecretState>): string
   return Object.entries(CHANNELS).filter(([, keys]) => keys.every((k) => secrets[k] === 'set')).map(([name]) => name);
 }
 
-export function needsAttention({ values, secrets, proxyStatus, egressTotal }: AttentionInput): AttentionItem[] {
+export function needsAttention({ values, secrets, proxyStatus, egressTotal, proxyAuth }: AttentionInput): AttentionItem[] {
   const on = (k: string) => values[k] === 'true';
   const items: AttentionItem[] = [];
+
+  // First: it stops every client, so it is the one to read before any other.
+  if (proxyLoginWithoutCredentials(values, secrets, proxyAuth)) {
+    items.push({
+      id: 'proxy-login-no-credentials',
+      tone: 'warning',
+      title: PROXY_LOGIN_NO_CREDENTIALS,
+      body: 'Devices get 403 on every request. Set the proxy username and password under Clients and access, Login, or turn proxy login off.',
+      section: 'access',
+      action: 'Clients and access',
+    });
+  }
 
   if (proxyStatus === null) {
     items.push({ id: 'proxy-unknown', tone: 'warning', title: 'The proxy status could not be read', body: 'GET /api/status did not answer, so this page cannot tell whether clients can browse.' });
@@ -62,7 +95,18 @@ export function needsAttention({ values, secrets, proxyStatus, egressTotal }: At
     items.push({ id: 'downloads-empty', tone: 'warning', title: 'Risky downloads are not blocked', body: 'Block risky downloads is on but lists no extension, so the proxy blocks nothing.', section: 'filtering', action: 'Filtering' });
   }
 
-  const unreadable = Object.entries(secrets).filter(([, s]) => s === 'unreadable').map(([k]) => k);
+  if (secrets.proxy_auth_password === 'unreadable') {
+    items.push({
+      id: 'proxy-password-unreadable',
+      tone: 'warning',
+      title: 'The proxy password cannot be read',
+      body: 'It was stored with another encryption key. The proxy keeps the password file it has; enter the password again to replace it.',
+      section: 'access',
+      action: 'Clients and access',
+    });
+  }
+
+  const unreadable = Object.entries(secrets).filter(([k, s]) => s === 'unreadable' && k !== 'proxy_auth_password').map(([k]) => k);
   if (unreadable.length) {
     items.push({
       id: 'secrets-unreadable',

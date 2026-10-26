@@ -29,13 +29,15 @@
 # ICAP header (13th field).
 #
 # Usage: tests/shell/squid_acl_matrix_test.sh [image]
-#   WAF_IMAGE / DNS_IMAGE name the WAF and dnsmasq images (built from waf-go/
-#   and dns/ when absent).
+#   WAF_IMAGE / DNS_IMAGE / BACKEND_IMAGE name the WAF, dnsmasq and backend
+#   images (built from waf-go/, dns/ and backend-go/ when absent). The backend
+#   writes the proxy password file in the proxy login section.
 set -uo pipefail
 
 IMAGE="${1:-spm-proxy-test}"
 WAF_IMAGE="${WAF_IMAGE:-spm-waf-test}"
 DNS_IMAGE="${DNS_IMAGE:-spm-dns-test}"
+BACKEND_IMAGE="${BACKEND_IMAGE:-spm-backend-test}"
 PFX="spmacl$$"
 PASS=0; FAIL=0
 G="\033[0;32m"; R="\033[0;31m"; N="\033[0m"
@@ -48,8 +50,9 @@ LAN_SVC=192.168.77.20; PUB_SVC=203.0.113.10
 DNS_SVC=192.168.77.53; WAF_SVC=192.168.77.44
 
 cleanup() {
-  docker rm -f "$PFX-proxy" "$PFX-pub" "$PFX-lan" "$PFX-dns" "$PFX-waf" >/dev/null 2>&1
+  docker rm -f "$PFX-proxy" "$PFX-pub" "$PFX-lan" "$PFX-dns" "$PFX-waf" "$PFX-backend" >/dev/null 2>&1
   docker network rm "$PFX-ext" "$PFX-lan" "$PFX-pub" >/dev/null 2>&1
+  docker volume rm "$PFX-config" >/dev/null 2>&1
 }
 trap cleanup EXIT
 
@@ -71,7 +74,7 @@ docker network create --subnet 203.0.113.0/24  "$PFX-pub" >/dev/null || exit 1
 # it). Each exists, so a request the proxy lets through is a 200, not a 404.
 upstream() {
   local name="$1" net="$2" ip="$3"
-  docker run -d --name "$name" --network "$net" --ip "$ip" --entrypoint /bin/bash "$IMAGE" -c '
+  docker run -d --name "$name" --network "$net" --ip "$ip" --memory 64m --entrypoint /bin/bash "$IMAGE" -c '
     mkdir -p /srv && cd /srv && echo ok > index.html
     for f in x.exe X.EXE x.Exe x.exe.txt; do echo MZ > "$f"; done
     python3 -m http.server 8443 >/dev/null 2>&1 &
@@ -87,7 +90,7 @@ upstream "$PFX-lan" "$PFX-lan" "$LAN_SVC"
 start_proxy() {
   local seed="$1"; shift
   docker rm -f "$PFX-proxy" >/dev/null 2>&1
-  docker create --name "$PFX-proxy" --network "$PFX-ext" --ip "$PROXY_EXT" \
+  docker create --name "$PFX-proxy" --network "$PFX-ext" --ip "$PROXY_EXT" --memory 384m \
     --add-host "pub.test:$PUB_SVC" --add-host "www.pub.test:$PUB_SVC" --add-host "10.relay.test:$PUB_SVC" \
     -e WAF_FAIL_OPEN=1 -e PROXY_CACHE_SIZE_MB=50 "$@" \
     --entrypoint /bin/bash "$IMAGE" -c "
@@ -115,18 +118,18 @@ start_proxy() {
 # code NET IP URL [curl args]: HTTP status of a GET through the proxy.
 code() {
   local net="$1" ip="$2" url="$3"; shift 3
-  docker run --rm --network "$net" --ip "$ip" --entrypoint curl "$IMAGE" \
+  docker run --rm --network "$net" --ip "$ip" --memory 64m --entrypoint curl "$IMAGE" \
     -s -o /dev/null -w '%{http_code}' --max-time 10 \
     -x "http://$( [ "$net" = "$PFX-ext" ] && echo "$PROXY_EXT" || echo "$PROXY_LAN" ):3128" \
     "$@" "$url" 2>/dev/null
 }
-# tunnel NET IP HOST:PORT: status of the CONNECT response itself.
+# tunnel NET IP HOST:PORT [curl args]: status of the CONNECT response itself.
 tunnel() {
-  local net="$1" ip="$2" target="$3"
-  docker run --rm --network "$net" --ip "$ip" --entrypoint curl "$IMAGE" \
+  local net="$1" ip="$2" target="$3"; shift 3
+  docker run --rm --network "$net" --ip "$ip" --memory 64m --entrypoint curl "$IMAGE" \
     -s -o /dev/null -w '%{http_connect}' --max-time 10 -p \
     -x "http://$( [ "$net" = "$PFX-ext" ] && echo "$PROXY_EXT" || echo "$PROXY_LAN" ):3128" \
-    "http://$target/" 2>/dev/null
+    "$@" "http://$target/" 2>/dev/null
 }
 expect() { # name got want
   if [ "$2" = "$3" ]; then ok "$1 → $2"; else bad "$1" "got $2, want $3"; fi
@@ -183,7 +186,7 @@ check  "external client → LAN service (GET)"             403 source_gate   cod
 check  "external client → LAN service (CONNECT :8443)"   403 source_gate   tunnel "$PFX-ext" "$EXT_CLIENT" "$LAN_SVC:8443"
 check  "external client → public host named 10.*"        403 source_gate   code   "$PFX-ext" "$EXT_CLIENT" http://10.relay.test/
 before="$(nlines)"
-expect "LAN client → cache manager"                      "$(docker run --rm --network "$PFX-lan" --ip "$LAN_CLIENT" --entrypoint curl "$IMAGE" -s -o /dev/null -w '%{http_code}' --max-time 10 "http://$PROXY_LAN:3128/squid-internal-mgr/active_requests")" 403
+expect "LAN client → cache manager"                      "$(docker run --rm --network "$PFX-lan" --ip "$LAN_CLIENT" --memory 64m --entrypoint curl "$IMAGE" -s -o /dev/null -w '%{http_code}' --max-time 10 "http://$PROXY_LAN:3128/squid-internal-mgr/active_requests")" 403
 expect "LAN client → cache manager: reason logged"       "$(logged "$before" 12)" other
 expect "localhost → cache manager (stats stay possible)" "$(docker exec "$PFX-proxy" curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:3128/squid-internal-mgr/menu)" 200
 check_cache_stats() { # section label
@@ -274,13 +277,97 @@ check  "LAN client → a name under a .name entry"         200 none             
 start_proxy "echo pub.test > /config/domain_blacklist.txt" -e SPM_SQUID_DOMAIN_ACL_MAX=0 || exit 1
 check  "over the limit: Squid leaves it to the sinkhole" 200 none             code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
 
-echo "── proxy authentication is enforced ──"
-start_proxy 'touch /config/proxy_auth_enabled' -e BASIC_AUTH_USERNAME=acluser -e BASIC_AUTH_PASSWORD=acl-test-pass || exit 1
+# auth_state: the state the generator recorded for the backend.
+auth_state() {
+  docker exec "$PFX-proxy" sed -n 's/.*"state":"\([a-z_]*\)".*/\1/p' /config/proxy_auth_status.json 2>/dev/null
+}
+
+echo "── proxy login on, no proxy credentials: every client is refused ──"
+# Login is on and there is no password file: nothing the proxy could check a
+# login against. Every client is refused (403, not 407: no credential can
+# work) until credentials are set, and the proxy records why for the
+# dashboard. localhost stays exempt for the container's own probes.
+start_proxy 'touch /config/proxy_auth_enabled' || exit 1
+check  "LAN client, no credentials set"                  403 proxy_auth_unset code "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+check  "LAN client sending credentials, none set"        403 proxy_auth_unset code "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -U acluser:acl-test-pass-1
+check  "LAN client → LAN service, none set"              403 proxy_auth_unset code "$PFX-lan" "$LAN_CLIENT" "http://$LAN_SVC/"
+check  "LAN client → CONNECT, none set"                  403 proxy_auth_unset tunnel "$PFX-lan" "$LAN_CLIENT" pub.test:8443
+check  "external client still meets the source gate"     403 source_gate   code   "$PFX-ext" "$EXT_CLIENT" http://pub.test/
+expect "the proxy records no_credentials"                "$(auth_state)" no_credentials
+expect "the generator says why, loudly"                  "$(docker exec "$PFX-proxy" grep -c 'proxy login is on but no proxy credentials are set' /tmp/gen.log)" 1
+expect "localhost stays exempt"                          "$(docker exec "$PFX-proxy" curl -s -o /dev/null -w '%{http_code}' --max-time 10 -x http://127.0.0.1:3128 http://pub.test/)" 200
+# A file with no user line (only a comment) is no credentials either.
+start_proxy "touch /config/proxy_auth_enabled; echo '# no users' > /config/proxy_users.htpasswd" || exit 1
+check  "LAN client, password file without a user"        403 proxy_auth_unset code "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+
+echo "── proxy login on, password file written by the backend ──"
+# The backend writes the file when the credentials are saved. A real backend,
+# run as the compose files run it (no capabilities, read-only root), saves
+# them through POST /api/settings into a volume the proxy then mounts as
+# /config.
+build_if_missing "$BACKEND_IMAGE" backend-go/
+ADMIN_PW="matrix-admin-$$-pass"
+docker volume create "$PFX-config" >/dev/null || exit 1
+docker run -d --name "$PFX-backend" --network none --memory 128m --cap-drop ALL --read-only \
+  --tmpfs /tmp --tmpfs /data --tmpfs /logs -v "$PFX-config:/config" \
+  -e BASIC_AUTH_USERNAME=admin -e BASIC_AUTH_PASSWORD="$ADMIN_PW" \
+  -e SECRET_KEY="matrix-secret-key-$$-0123456789abcdef" "$BACKEND_IMAGE" >/dev/null || exit 1
+for _ in $(seq 1 40); do docker exec "$PFX-backend" /server -healthcheck >/dev/null 2>&1 && break; sleep 0.5; done
+saved="$(docker exec "$PFX-backend" wget -q -O- --header 'Content-Type: application/json' \
+  --header "Authorization: Basic $(printf 'admin:%s' "$ADMIN_PW" | base64)" \
+  --post-data '{"enable_proxy_auth":"true","proxy_auth_username":"acluser","proxy_auth_password":"acl-test-pass-1"}' \
+  http://127.0.0.1:5000/api/settings 2>&1)"
+case "$saved" in *'"status":"success"'*) ok "the backend saves the proxy credentials";; *) bad "the backend saves the proxy credentials" "$saved";; esac
+expect "the backend wrote a bcrypt line for the user"    "$(docker exec "$PFX-backend" grep -c '^acluser:\$2a\$10\$' /config/proxy_users.htpasswd)" 1
+expect "the file is 0640 as the backend leaves it"       "$(docker exec "$PFX-backend" stat -c '%a' /config/proxy_users.htpasswd)" 640
+docker rm -f "$PFX-backend" >/dev/null
+start_proxy 'true' -v "$PFX-config:/config" || exit 1
+expect "the generator gives it to the proxy group"       "$(docker exec "$PFX-proxy" stat -c '%U:%G %a' /config/proxy_users.htpasswd)" "root:proxy 640"
+expect "the proxy records enforced"                      "$(auth_state)" enforced
 check  "LAN client without credentials"                  407 proxy_auth    code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
-check  "LAN client with wrong credentials"               407 proxy_auth    code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -U acluser:wrong
+check  "LAN client with wrong credentials"               407 proxy_auth    code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -U acluser:wrong-password-1
 # The auth rule sets its reason before the auth ACL decides (that ACL must
 # stay last for the 407); the allow rule that admits the request resets it.
-check  "LAN client with credentials"                     200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -U acluser:acl-test-pass
+check  "LAN client with credentials"                     200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -U acluser:acl-test-pass-1
+check  "LAN client with credentials, CONNECT"            200 none          tunnel "$PFX-lan" "$LAN_CLIENT" pub.test:8443 -U acluser:acl-test-pass-1
+
+echo "── proxy login off ──"
+# A password file left behind changes nothing once the toggle is gone.
+start_proxy "printf 'x:%s\n' '\$2a\$10\$0/zCMOoBoSRv/VuMO1g5zODMGanOhND6qkcI5nC/TugytJ4K7zLAm' > /config/proxy_users.htpasswd" || exit 1
+check  "LAN client, login off"                           200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+expect "the proxy records off"                           "$(auth_state)" off
+
+echo "── proxy login with BASIC_AUTH_* passed to the proxy by hand ──"
+# An operator who passes the two variables to the proxy container: with no
+# password file, the generator creates it from them, as it always has.
+start_proxy 'touch /config/proxy_auth_enabled' -e BASIC_AUTH_USERNAME=opsuser -e BASIC_AUTH_PASSWORD=ops-test-pass-1 || exit 1
+check  "LAN client without credentials"                  407 proxy_auth    code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+check  "LAN client with those credentials"               200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -U opsuser:ops-test-pass-1
+
+echo "── the two fail-closed gates together: unverified lists, login without credentials ──"
+# Each gate refuses every client on its own, and neither opens the other: a
+# client gets through only when the lists are verified AND login has a user.
+# The lists gate comes first in the rule order, so with both closed the
+# reason logged is lists_unverified. The blacklisted address is not pub.test,
+# so a verified list does not deny the request for its own reason.
+BL_IP=198.51.100.7
+BOTH_HASH='$2a$10$0/zCMOoBoSRv/VuMO1g5zODMGanOhND6qkcI5nC/TugytJ4K7zLAm'   # Corr3ct-Horse-Battery
+lists_bad="echo $BL_IP > /config/ip_blacklist.txt; printf '{\"version\": 1, \"generated_at\": 1, \"files\": {\"ip_blacklist.txt\": {\"sha256\": \"%064d\", \"bytes\": 0}}}\n' 0 > /config/lists.manifest.json"
+lists_ok="echo $BL_IP > /config/ip_blacklist.txt; sum=\$(sha256sum /config/ip_blacklist.txt | cut -d' ' -f1); printf '{\"version\": 1, \"generated_at\": 1, \"files\": {\"ip_blacklist.txt\": {\"sha256\": \"%s\", \"bytes\": 0}}}\n' \"\$sum\" > /config/lists.manifest.json"
+login_none='touch /config/proxy_auth_enabled'
+login_user="touch /config/proxy_auth_enabled; printf 'both:%s\n' '$BOTH_HASH' > /config/proxy_users.htpasswd"
+start_proxy "$lists_bad; $login_none" || exit 1
+check  "both closed: LAN client"                         403 lists_unverified code "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+check  "both closed: LAN client sending credentials"     403 lists_unverified code "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -U both:Corr3ct-Horse-Battery
+start_proxy "$lists_bad; $login_user" || exit 1
+check  "lists closed, login has a user: right credentials" 403 lists_unverified code "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -U both:Corr3ct-Horse-Battery
+start_proxy "$lists_ok; $login_none" || exit 1
+check  "lists verified, login without credentials"       403 proxy_auth_unset code "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+check  "lists verified, login without credentials, CONNECT" 403 proxy_auth_unset tunnel "$PFX-lan" "$LAN_CLIENT" pub.test:8443
+start_proxy "$lists_ok; $login_user" || exit 1
+check  "both open: LAN client without credentials"       407 proxy_auth    code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+check  "both open: LAN client with credentials"          200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -U both:Corr3ct-Horse-Battery
+check  "both open: the blacklist still applies"          403 ip_blacklist  code   "$PFX-lan" "$LAN_CLIENT" "http://$BL_IP/" -U both:Corr3ct-Horse-Battery
 
 echo "── content filtering is enforced ──"
 # The line the backend writes for "exe" (blockedExtensionPattern in
@@ -341,7 +428,7 @@ echo "── a name the DNS sinkhole answers is denied, with the block page ─�
 # TCP_TUNNEL/503 or TCP_MISS/503 (a connection error for the client, nothing
 # in the statistics). The dns_sinkhole rule denies the answer itself.
 build_if_missing "$DNS_IMAGE" dns/
-docker run -d --name "$PFX-dns" --network "$PFX-lan" --ip "$DNS_SVC" --entrypoint /bin/sh "$DNS_IMAGE" -c '
+docker run -d --name "$PFX-dns" --network "$PFX-lan" --ip "$DNS_SVC" --memory 64m --entrypoint /bin/sh "$DNS_IMAGE" -c '
   mkdir -p /config/dnsmasq.d
   printf "0.0.0.0 sink.test\n:: sink.test\n" > /config/dnsmasq.d/blocklist.hosts
   exec dnsmasq --conf-file=/dev/null --no-daemon --user=root --listen-address=0.0.0.0 --bind-interfaces --no-resolv --addn-hosts=/config/dnsmasq.d/blocklist.hosts' >/dev/null

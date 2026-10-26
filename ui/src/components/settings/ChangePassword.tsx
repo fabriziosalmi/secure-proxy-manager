@@ -83,7 +83,7 @@ export function ChangePassword() {
   const rules: [boolean, string][] = [[hasLength, 'at least 8 characters'], [hasNumber, 'a number'], [hasSpecial, 'a special character']];
 
   return (
-    <Section level={3} title="Admin password" description="The password of the dashboard account. The proxy login, if it is on, uses the .env credential instead.">
+    <Section level={3} title="Admin password" description="The password of the dashboard account. The proxy login, if it is on, uses its own username and password, set under Clients and access.">
       <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-4">
         <div className="grid gap-4 md:grid-cols-3">
           <PasswordInput id={`${id}-current`} label="Current Password" value={currentPwd} onChange={setCurrentPwd} autoComplete="current-password" reveal />

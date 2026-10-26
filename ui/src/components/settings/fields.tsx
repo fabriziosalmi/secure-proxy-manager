@@ -129,9 +129,11 @@ export interface TextFieldProps {
   inputMode?: 'numeric' | 'text';
   placeholder?: string;
   className?: string;
+  /** Off for a field a browser must not fill with a saved login. */
+  autoComplete?: 'off';
 }
 
-export function TextField({ form, setting, label, hint, type = 'text', inputMode, placeholder, className }: TextFieldProps) {
+export function TextField({ form, setting, label, hint, type = 'text', inputMode, placeholder, className, autoComplete }: TextFieldProps) {
   const error = form.error(setting);
   const hintId = `${setting}-hint`;
   const errorId = `${setting}-error`;
@@ -147,6 +149,8 @@ export function TextField({ form, setting, label, hint, type = 'text', inputMode
         type={type}
         inputMode={inputMode}
         placeholder={placeholder}
+        autoComplete={autoComplete}
+        spellCheck={autoComplete === 'off' ? false : undefined}
         value={value}
         onChange={(e) => form.set(setting, e.target.value)}
         aria-invalid={error ? true : undefined}

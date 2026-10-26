@@ -136,6 +136,12 @@ process holding one; free it, change the host side of the mapping, or set
   destination only. Settings > Inspection > Inspect HTTPS traffic turns on
   SSL bump with a CA the proxy generates on first start; every client must
   trust that CA.
+- **Proxy login (off by default).** Settings > Clients and access > Login
+  > Require proxy login, with a proxy username and password of its own (not
+  the dashboard login). The backend writes only a bcrypt hash of the password
+  to the file the proxy checks; a device without them gets `407`. With login
+  on and no credentials the proxy refuses every client (`403`) and the
+  dashboard says so. [Security: proxy login](docs/guide/security.md#proxy-login).
 - **Access policy settings.** Allowed hours, bandwidth limits, SafeSearch,
   YouTube restricted mode and blocked download extensions, in Settings.
 - **Visibility.** Dashboard, Analytics, Access logs (server-side filters, CSV

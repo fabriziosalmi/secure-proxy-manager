@@ -93,6 +93,7 @@ describe('row facts', () => {
     // The fail-closed lists gate has its own sentence, not the generic "the proxy did not name".
     expect(whyText(entry({ blocked: 1, reason: 'lists_unverified', reason_label: 'Lists not verified' })))
       .toMatch(/^A blocklist did not match the manifest .* until a verified copy was loaded\.$/)
+    expect(whyText(entry({ blocked: 1, reason: 'proxy_auth_unset' }))).toBe('Proxy login is on but no proxy credentials are set, so the proxy refuses every client until they are set.')
   })
 })
 

@@ -86,6 +86,40 @@ address, so a client cannot skip the domain lists by using an address. Allowed
 IPs and LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) are allowed before
 that rule.
 
+## Proxy login
+
+With Require proxy login on (Settings > Clients and access > Login,
+`enable_proxy_auth`), a client signs in to the proxy with HTTP Basic before it
+can browse; without valid credentials Squid answers `407 Proxy Authentication
+Required`. localhost is exempt, for the proxy container's own probes.
+
+The credentials are the proxy's own, `proxy_auth_username` and
+`proxy_auth_password`, set on the same page. Devices enter them in their proxy
+settings. They are not the dashboard login: the admin password never reaches
+the proxy container, and changing it does not change them.
+
+- The password is a write-only secret (see
+  [Secrets at rest](#secrets-at-rest-and-in-exports)).
+- The backend writes `config/proxy_users.htpasswd`: one line with the username
+  and a bcrypt hash of the password, replaced atomically, mode `0640`. The
+  proxy's generator sets `root:proxy` on it, so Squid's `basic_ncsa_auth`
+  helper, which runs as the proxy user, can read it. Turning login off, or
+  removing a credential, removes the file.
+- When the file changes the backend asks the proxy to reload. Until the proxy
+  has set the group (about 2 seconds, measured), a credential Squid has not
+  cached yet gets `407`; Squid keeps running.
+- Login cannot be saved on without both credentials (`400`). If the proxy
+  still finds login on with no user in the password file, as an install
+  upgraded with login on and no stored credentials does, it refuses every
+  client except localhost with `403` (block reason `proxy_auth_unset`), logs a
+  warning, and the dashboard shows "Proxy login is on but no proxy credentials
+  are set: every client is refused until you set them" until credentials are
+  set or login is turned off.
+- An operator who passes `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` to the
+  proxy container by hand (no shipped compose file does) still gets the
+  password file created from them when none exists. Credentials set in
+  Settings replace that file.
+
 ## Default-deny egress
 
 The blocked lists and direct-IP blocking are deny-lists: a client reaches any
@@ -107,7 +141,8 @@ rather than letting it through.
 
 The alert channel settings (`webhook_url`, `webhook_bearer_token`,
 `gotify_url`, `gotify_token`, `teams_webhook_url`, `telegram_bot_token`,
-`telegram_chat_id`, `ntfy_url`, `ntfy_topic`) are encrypted with AES-256-GCM
+`telegram_chat_id`, `ntfy_url`, `ntfy_topic`) and the proxy login password
+(`proxy_auth_password`) are encrypted with AES-256-GCM
 under `ENCRYPTION_KEY`, or under the key the backend generates in
 `data/.enc_key` when that is unset. `GET /api/settings` never returns their
 values.

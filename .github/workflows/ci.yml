@@ -290,6 +290,12 @@ jobs:
       # and a public network and asserts the status of each request.
       - name: Access policy behaviour (real Squid, three networks)
         run: bash tests/shell/squid_acl_matrix_test.sh
+      # The backend and the proxy entrypoint together, sharing /config: an
+      # install with proxy login on and no credentials refuses every client
+      # and says so, credentials saved through the API reach the proxy, and
+      # turning login off removes them. Reuses the images the matrix built.
+      - name: Proxy login end to end (backend and proxy, upgrade state)
+        run: bash tests/shell/proxy_login_upgrade_test.sh
 
   # ── 6. Security scanning (gosec) ─────────────────────────────────────
   security-scan:

@@ -76,6 +76,34 @@ describe('needsAttention', () => {
     })
   })
 
+  it('puts proxy login with no credentials first, from the settings or from the proxy itself', () => {
+    const on = { ...fresh, enable_proxy_auth: 'true' }
+    const title = 'Proxy login is on but no proxy credentials are set: every client is refused until you set them'
+    // As an upgraded install has it: login on, nothing stored.
+    const first = needsAttention(input({ values: on }))[0]
+    expect(first).toMatchObject({ id: 'proxy-login-no-credentials', tone: 'warning', title, section: 'access', action: 'Clients and access' })
+    // Half the credentials is none.
+    expect(ids(input({ values: { ...on, proxy_auth_username: 'office' } }))[0]).toBe('warning:proxy-login-no-credentials')
+    expect(ids(input({ values: on, secrets: { proxy_auth_password: 'set' } }))[0]).toBe('warning:proxy-login-no-credentials')
+    // Both stored: nothing to say.
+    const both = input({ values: { ...on, proxy_auth_username: 'office' }, secrets: { proxy_auth_password: 'set' } })
+    expect(ids(both)).not.toContain('warning:proxy-login-no-credentials')
+    // The proxy's own record wins: it has no user, whatever the settings say.
+    expect(ids({ ...both, proxyAuth: { state: 'no_credentials', users: 0, written_at: 1 } })[0]).toBe('warning:proxy-login-no-credentials')
+    expect(ids({ ...both, proxyAuth: { state: 'enforced', users: 1, written_at: 1 } })).not.toContain('warning:proxy-login-no-credentials')
+    // Login off: no warning, the information item instead.
+    expect(ids(input())).not.toContain('warning:proxy-login-no-credentials')
+  })
+
+  it('tells an unreadable proxy password apart from an alert setting', () => {
+    const items = needsAttention(input({ values: { ...fresh, enable_proxy_auth: 'true', proxy_auth_username: 'office' }, secrets: { proxy_auth_password: 'unreadable' } }))
+    expect(items.map((a) => a.id)).toContain('proxy-password-unreadable')
+    expect(items.map((a) => a.id)).not.toContain('secrets-unreadable')
+    // Stored, if unreadable: the proxy keeps the file it has, so login is not without credentials.
+    expect(items.map((a) => a.id)).not.toContain('proxy-login-no-credentials')
+    expect(items.find((a) => a.id === 'proxy-password-unreadable')).toMatchObject({ section: 'access' })
+  })
+
   it('says HTTPS inspection needs the CA when it is on', () => {
     expect(ids(input({ values: { ...fresh, ssl_bump_enabled: 'true' } }))).toContain('info:https-on')
   })

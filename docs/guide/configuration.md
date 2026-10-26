@@ -16,6 +16,11 @@ and edited in the UI under Settings.
 | `SECRET_KEY` | backend | HMAC key for the JWTs. Empty: generated once and kept in `data/.jwt_secret`. Set: at least 32 characters, at least 8 distinct characters, not a known example value, or the backend exits |
 | `INTERNAL_ALERT_TOKEN` | backend, waf | Service credential between the two. The WAF sends it on `POST /api/internal/alert`; the backend sends it to the WAF management API (statistics, category and heuristic toggles, reset). Generate with `openssl rand -hex 32`. Empty: the WAF has no credential, so block alerts are dropped and the WAF refuses the backend's management calls |
 
+`BASIC_AUTH_*` is the dashboard and API login and reaches only the backend.
+The proxy login devices use, when Require proxy login is on, has its own
+username and password, set in Settings > Clients and access (see
+[Security: proxy login](./security.md#proxy-login)).
+
 ## Web UI and TLS
 
 | Variable | Default | Description |

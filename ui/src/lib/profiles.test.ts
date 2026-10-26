@@ -38,7 +38,7 @@ describe('profiles', () => {
       ['filtering', 'enable_safesearch', 'false', 'true'],
       ['inspection', 'ssl_bump_enabled', 'false', 'true'],
     ])
-    expect(changes[0].warning).toBe('Every device must sign in with the .env credential, or gets 407.')
+    expect(changes[0].warning).toBe('Every device must sign in with the proxy username and password set under Clients and access, or gets 407. Without them every client is refused.')
     expect(changes[1].warning).toBeUndefined()
   })
 

@@ -64,6 +64,10 @@ var settingValidators = map[string]func(string) error{
 	settingNotifyWAFBlock:     validBool,
 	settingNotifyLoginFailure: validBool,
 	settingMinLevel:           validAlertLevel,
+	// The proxy login (proxy_login.go). Both end up in proxy_users.htpasswd,
+	// one line of "username:hash" that Squid's helper reads.
+	settingProxyUsername: validProxyUsername,
+	settingProxyPassword: validProxyPassword,
 }
 
 // validBoundedInt accepts a whole number from lo to hi.
@@ -337,8 +341,15 @@ func (h *SettingsHandlers) Update(w http.ResponseWriter, r *http.Request) {
 	if appcrypto.IsSensitive(name) && req.Value == "" {
 		clearKeys[name] = true
 	}
-	if errs := h.validateBody(body); len(errs) > 0 {
-		writeError(w, http.StatusBadRequest, errs[name])
+	if errs := h.validateBody(body, clearKeys); len(errs) > 0 {
+		// A refusal of the value itself keeps its plain detail. The proxy
+		// login check can refuse a key the request did not carry (login on
+		// with no password stored): those are named in errors.
+		if msg, ok := errs[name]; ok && len(errs) == 1 {
+			writeError(w, http.StatusBadRequest, msg)
+		} else {
+			writeFieldErrors(w, errs)
+		}
 		return
 	}
 	if _, status, msg := h.persistSettings(body, clearKeys); status != 0 {
@@ -391,7 +402,7 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 	// Every refused value at once, before anything is written: the first one
 	// found used to be the only one reported, in map order, so a section with
 	// two bad fields took two round trips to learn about the second.
-	if errs := h.validateBody(body); len(errs) > 0 {
+	if errs := h.validateBody(body, clearKeys); len(errs) > 0 {
 		writeFieldErrors(w, errs)
 		return
 	}
@@ -569,6 +580,15 @@ func (h *SettingsHandlers) writeSquidArtefacts(body map[string]string) []string 
 	if err := h.writeSquidSettingsEnv(body); err != nil {
 		log.Warn().Err(err).Msg("squid_settings.env write failed; proxy restart will use previous values")
 		failedArtifacts = append(failedArtifacts, "squid_settings.env")
+	}
+
+	// The proxy password file, last: it follows the stored settings, which
+	// the toggle marker above is part of, and a change to it asks the proxy
+	// to reload. A cleared secret is in body with an empty value.
+	if carriesProxyLogin(body, nil) {
+		if failed := h.syncProxyUsersAndReload(); failed != "" {
+			failedArtifacts = append(failedArtifacts, failed)
+		}
 	}
 	return failedArtifacts
 }

@@ -30,10 +30,13 @@ const (
 	lineAuthWrongCreds  = "1792921962.151     16 192.168.88.50 TCP_DENIED/407 3381 GET http://pub.test/ u1 HIER_NONE/- text/html - proxy_auth -"
 	lineAuthOK          = "1792921962.411      6 192.168.88.50 TCP_MISS/200 255 GET http://pub.test/ u1 HIER_DIRECT/192.168.88.20 text/html - none -"
 	lineAuthWAF         = "1792921962.918      0 192.168.88.50 NONE_NONE/403 205 GET http://pub.test/? u1 HIER_NONE/- text/html dmdtsj1rx5ow-7 none waf"
-	lineTime            = "1792921966.851      0 192.168.88.50 TCP_DENIED/403 4861 GET http://pub.test/ - HIER_NONE/- text/html - time_restriction -"
-	lineRespmodWAF      = "1792921995.846      2 192.168.88.50 TCP_MISS/403 189 GET http://dl.test/a - HIER_DIRECT/192.168.88.22 text/html - none waf"
-	lineOrigin403       = "1792922424.877     10 192.168.88.50 TCP_MISS/403 233 GET http://o403.test/ - HIER_DIRECT/192.168.88.24 text/plain - none -"
-	lineICAPDown        = "1792922067.397   3058 192.168.88.50 NONE_NONE/500 3377 GET http://pub.test/ - HIER_NONE/- text/html - none -"
+	// Login on and no proxy credentials set: every client refused (measured
+	// on Squid 7.7, the request carried credentials).
+	lineAuthUnset  = "1792953504.353      0 192.168.215.2 TCP_DENIED/403 4861 GET http://pub.test/ - HIER_NONE/- text/html - proxy_auth_unset -"
+	lineTime       = "1792921966.851      0 192.168.88.50 TCP_DENIED/403 4861 GET http://pub.test/ - HIER_NONE/- text/html - time_restriction -"
+	lineRespmodWAF = "1792921995.846      2 192.168.88.50 TCP_MISS/403 189 GET http://dl.test/a - HIER_DIRECT/192.168.88.22 text/html - none waf"
+	lineOrigin403  = "1792922424.877     10 192.168.88.50 TCP_MISS/403 233 GET http://o403.test/ - HIER_DIRECT/192.168.88.24 text/plain - none -"
+	lineICAPDown   = "1792922067.397   3058 192.168.88.50 NONE_NONE/500 3377 GET http://pub.test/ - HIER_NONE/- text/html - none -"
 	// SSL-bump on: a denied CONNECT is logged twice, the CONNECT (TCP_DENIED/200,
 	// with the reason) and the error page served inside the bumped tunnel
 	// (NONE_NONE/403, no note). This pair is what made a Squid deny and a WAF
@@ -84,6 +87,7 @@ func TestParseSquidLineRecordsTheRuleThatMatched(t *testing.T) {
 		{"method policy", lineMethod, ReasonProtocolPolicy, 1},
 		{"proxy auth, no credentials", lineAuthNoCreds, ReasonProxyAuth, 1},
 		{"proxy auth, wrong credentials", lineAuthWrongCreds, ReasonProxyAuth, 1},
+		{"proxy login on, no credentials set", lineAuthUnset, ReasonProxyAuthUnset, 1},
 		{"proxy auth passed: the note was reset", lineAuthOK, ReasonNone, 0},
 		{"proxy auth passed, then the WAF", lineAuthWAF, ReasonWAF, 1},
 		{"time restriction", lineTime, ReasonTimeRestriction, 1},

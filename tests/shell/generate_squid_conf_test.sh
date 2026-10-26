@@ -26,7 +26,7 @@ fi
 # resulting squid.conf. Extra shell can be supplied to seed the fixture.
 generate() {
   local seed="$1"
-  docker run --rm --entrypoint /bin/bash "$IMAGE" -c "
+  docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c "
     set -e
     mkdir -p /config /etc/squid
     $seed
@@ -38,7 +38,7 @@ generate() {
 # Does squid itself accept the config the generator produced?
 parses() {
   local seed="$1"
-  docker run --rm --entrypoint /bin/bash "$IMAGE" -c "
+  docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c "
     set -e
     mkdir -p /config /etc/squid
     $seed
@@ -117,6 +117,33 @@ grep -qxF 'acl blocked_extensions urlpath_regex -i "/config/blocked_file_types.t
   && ok "the blocked-extensions ACL ignores case" \
   || bad "the blocked-extensions ACL ignores case" "$(grep 'acl blocked_extensions' <<<"$conf")"
 
+echo "── proxy login ──"
+# Login on with no user to check against fails closed: one deny for every
+# client but localhost, no auth helper, and a record the backend reads.
+# Behaviour (status and logged reason per client): squid_acl_matrix_test.sh.
+login_state() { # seed -> "<deny rules> <auth rules> <helper lines> <status>"
+  docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c "
+    mkdir -p /config /etc/squid; $1
+    /usr/local/bin/generate_squid_conf.sh >/tmp/gen.log 2>&1
+    printf '%s %s %s %s\n' \
+      \"\$(grep -c '^http_access deny !localhost spm_r_proxy_auth_unset\$' /etc/squid/squid.conf)\" \
+      \"\$(grep -c '^http_access deny !localhost spm_r_proxy_auth !authenticated\$' /etc/squid/squid.conf)\" \
+      \"\$(grep -c '^auth_param basic program' /etc/squid/squid.conf)\" \
+      \"\$(sed -n 's/.*\"state\":\"\\([a-z_]*\\)\".*/\\1/p' /config/proxy_auth_status.json)\"" 2>/dev/null
+}
+bcrypt_line='u:$2a$10$0/zCMOoBoSRv/VuMO1g5zODMGanOhND6qkcI5nC/TugytJ4K7zLAm'
+got="$(login_state 'touch /config/proxy_auth_enabled')"
+[ "$got" = "1 0 0 no_credentials" ] && ok "login on, no password file: every client refused, recorded" || bad "login on, no password file: fail closed" "got: $got"
+got="$(login_state "touch /config/proxy_auth_enabled; echo '# comment only' > /config/proxy_users.htpasswd")"
+[ "$got" = "1 0 0 no_credentials" ] && ok "login on, password file with no user: fail closed" || bad "login on, password file with no user: fail closed" "got: $got"
+got="$(login_state "touch /config/proxy_auth_enabled; printf '# marker\n%s\n' '$bcrypt_line' > /config/proxy_users.htpasswd")"
+[ "$got" = "0 1 1 enforced" ] && ok "login on, a user in the file: login required, recorded" || bad "login on, a user in the file: login required" "got: $got"
+got="$(login_state "printf '%s\n' '$bcrypt_line' > /config/proxy_users.htpasswd")"
+[ "$got" = "0 0 0 off" ] && ok "login off: no login rule, even with a file left behind" || bad "login off: no login rule" "got: $got"
+got="$(login_state 'touch /config/proxy_auth_enabled; export BASIC_AUTH_USERNAME=u BASIC_AUTH_PASSWORD=workaround-pass-1')"
+[ "$got" = "0 1 1 enforced" ] && ok "login on, BASIC_AUTH_* passed by hand: file created from them" || bad "login on, BASIC_AUTH_* passed by hand" "got: $got"
+parses 'touch /config/proxy_auth_enabled' && ok "parses with login on and no credentials" || bad "parses with login on and no credentials"
+
 echo "── SSL bump ON ──"
 conf="$(generate 'touch /config/ssl_bump_enabled')"
 grep -q 'ssl_bump' <<<"$conf" && ok "ssl_bump directives injected" || bad "ssl_bump directives injected"
@@ -124,7 +151,7 @@ n=$(grep -c '^ssl_bump bump all' <<<"$conf")
 [ "$n" -le 1 ] && ok "ssl_bump block not duplicated" || bad "ssl_bump block not duplicated" "found $n"
 # The certificate database used to stay empty ("Cannot create /config/ssl_db"),
 # so Squid stopped as soon as SSL-bump was on: run it, do not just parse it.
-bump="$(docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+bump="$(docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c '
   mkdir -p /config /etc/squid /var/spool/squid /var/log/squid /run/squid
   touch /config/ssl_bump_enabled
   /usr/local/bin/generate_squid_conf.sh >/tmp/gen1.log 2>&1
@@ -153,7 +180,7 @@ grep -q 'gui_override' <<<"$conf" \
   || ok "GUI whitelist creates no destination ACL"
 grep -qF 'acl localnet src "/etc/squid/extra_clients.txt"' <<<"$conf" \
   && ok "extra client sources join localnet" || bad "extra client sources join localnet"
-extra="$(docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+extra="$(docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c '
   mkdir -p /config /etc/squid; export GUI_IP_WHITELIST="192.168.1.5,100.64.0.0/10 not-an-ip"
   /usr/local/bin/generate_squid_conf.sh >/dev/null 2>&1; cat /etc/squid/extra_clients.txt' 2>/dev/null)"
 [ "$extra" = "$(printf '192.168.1.5\n100.64.0.0/10')" ] \
@@ -168,7 +195,7 @@ n=$(grep -c '^offline_mode on' <<<"$conf")
 echo "── an empty value its pattern allows is accepted ──"
 # The backend writes EXTRA_SSL_PORTS= by default; it was refused with a warning
 # on every boot of every default install.
-empty="$(docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+empty="$(docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c '
   mkdir -p /config /etc/squid
   printf "SQUID_PORT=3128\nSQUID_CACHE_MB=1000\nSQUID_MEM_MB=256\nEXTRA_SSL_PORTS=\n" > /config/squid_settings.env
   /usr/local/bin/generate_squid_conf.sh 2>&1 | grep -c "WARNING: /config/squid_settings.env"
@@ -180,7 +207,7 @@ echo "── injection: nothing in a /config settings file is executed ──"
 # whether a command RAN, and safe_source did run "KEY=value command": a space
 # in EXTRA_SSL_PORTS executed the rest of the value as root. This asserts on
 # the side effect, inside the container, for every file the generator reads.
-ran="$(docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+ran="$(docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c '
   mkdir -p /config /etc/squid
   printf "SQUID_PORT=3128\nEXTRA_SSL_PORTS=8443 touch /tmp/ran-ssl\nEVIL=\$(touch /tmp/ran-subst)\nSQUID_MEM_MB=64;touch /tmp/ran-semi\nPATH=/nowhere\n" > /config/squid_settings.env
   touch /config/bandwidth_limits_enabled
@@ -212,7 +239,7 @@ echo "── boot path: startup.sh sources the generator and must survive it ─
 # up with no squid and no watchdog while every earlier assertion here still
 # passed, because they all invoke the generator as a subprocess. These run the
 # real entrypoint instead.
-boot="$(docker run --rm --cap-add NET_ADMIN --entrypoint /bin/bash "$IMAGE" -c '
+boot="$(docker run --rm --memory 256m --cap-add NET_ADMIN --entrypoint /bin/bash "$IMAGE" -c '
   sed -i "s|^exec /usr/bin/supervisord.*|echo __REACHED_SUPERVISORD__|" /startup.sh
   /startup.sh 2>&1
   echo "__STARTUP_RC__=$?"
@@ -228,7 +255,7 @@ echo "── boot path: a config that does not parse is never replaced by a weak
 # healthy container. An extras file that does not parse is now dropped (the
 # rest of the generated config, filtering included, stays), and nothing else
 # is ever substituted.
-bad_extras="$(docker run --rm --cap-add NET_ADMIN --entrypoint /bin/bash "$IMAGE" -c '
+bad_extras="$(docker run --rm --memory 256m --cap-add NET_ADMIN --entrypoint /bin/bash "$IMAGE" -c '
   mkdir -p /config; touch /config/egress_default_deny
   echo "this_is_not_a_directive 1" > /config/custom_squid_extra.conf
   sed -i "s|^exec /usr/bin/supervisord.*|echo __REACHED_SUPERVISORD__|" /startup.sh
@@ -350,11 +377,11 @@ grep -qx 'ipbl=198.51.100.7 203.0.113.9 ' <<<"$out" && grep -qx 'gate=0' <<<"$ou
 
 # Executed as a subprocess (the watchdog's contract) it must still exit 0, and
 # sourced (startup.sh's contract) it must hand control back.
-docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c '
   mkdir -p /config /etc/squid
   /usr/local/bin/generate_squid_conf.sh >/dev/null 2>&1' >/dev/null 2>&1 \
   && ok "generator exits 0 when executed" || bad "generator exits 0 when executed"
-srcd="$(docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+srcd="$(docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c '
   mkdir -p /config /etc/squid
   . /usr/local/bin/generate_squid_conf.sh >/dev/null 2>&1
   echo "__AFTER_SOURCE__=$?"' 2>/dev/null)"
@@ -364,7 +391,7 @@ grep -q '__AFTER_SOURCE__=0' <<<"$srcd" \
 
 echo "── startup.sh stays deduplicated ──"
 # The duplication is what ARCH-01 removed; catch it coming back.
-dup="$(docker run --rm --entrypoint /bin/bash "$IMAGE" -c '
+dup="$(docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c '
   echo "lines=$(wc -l < /startup.sh)"
   echo "mutations=$(grep -cE ">>? /etc/squid/squid\\.conf( |$)" /startup.sh)"' 2>/dev/null)"
 n=$(sed -n 's/^lines=//p' <<<"$dup")
@@ -383,7 +410,7 @@ echo "── cross-language: the watchdog's acknowledgement must decode as Go in
 # "pending". The Go test could not catch it because it built its fixture with
 # json.Marshal from an int64 — the one shape that cannot disagree with itself.
 # This asserts the REAL producer's output, in the real image.
-ack="$(docker run --rm -v "$PWD/proxy/blacklist_watchdog.py:/w.py:ro" --entrypoint sh "$IMAGE" -c '
+ack="$(docker run --rm --memory 256m -v "$PWD/proxy/blacklist_watchdog.py:/w.py:ro" --entrypoint sh "$IMAGE" -c '
   mkdir -p /config
   python3 - <<PYEOF
 import time

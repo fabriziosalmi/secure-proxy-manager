@@ -342,7 +342,10 @@ func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var todayCount int
-	todayStr := time.Now().Format("2006-01-02")
+	// The UTC day: the tailers store timestamps in UTC. The local day put the
+	// boundary at local midnight, so on a host east of UTC the count read 0
+	// from local midnight until UTC midnight.
+	todayStr := time.Now().UTC().Format("2006-01-02")
 	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE timestamp >= ? AND timestamp < date(?, '+1 day') AND "+clientRows, todayStr, todayStr).Scan(&todayCount) //nolint:errcheck
 
 	// Read the configured proxy port rather than hard-coding 3128.
@@ -363,6 +366,12 @@ func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 		"cpu_usage":      "N/A",
 		"uptime":         "N/A",
 		"commit":         config.GitCommit,
+	}
+	// What the proxy last did about proxy login (off, enforced, or
+	// no_credentials: login is on and every client is refused), as the
+	// proxy recorded it; absent when it has not.
+	if pa := readProxyAuthStatus(h.cfg.ConfigDir); pa != nil {
+		out["proxy_auth"] = pa
 	}
 	if h.sys != nil {
 		if upd := h.sys.UpdateInfo(); upd.Available {

@@ -34,12 +34,12 @@ import { AdminSection } from '../components/settings/sections/AdminSection';
 import { EngineSection } from '../components/settings/sections/EngineSection';
 import { AppearanceSection } from '../components/settings/sections/AppearanceSection';
 import { needsAttention, type AttentionItem } from '../lib/attention';
-import { egressTotalQuery, statusQuery } from '../lib/queries';
+import { egressTotalQuery, statusQuery, type ProxyAuthStatus } from '../lib/queries';
 import type { SectionForm } from '../components/settings/sectionForm';
 import { parseSettings, secretStateOf } from '../lib/secrets';
 import { applyToProxy } from '../lib/reload';
 import { rowsAfterSave, sectionRequest, wafPushOf } from '../lib/settingsSave';
-import { parseFieldErrors, validateSecrets, validateSection } from '../lib/settingsValidation';
+import { parseFieldErrors, validateProxyLogin, validateSecrets, validateSection } from '../lib/settingsValidation';
 import {
   DEFAULT_SECTION, SECTIONS, SECTION_KEYS, fieldLabel, sectionById, sectionOfKey, sectionPath,
   type SectionDef, type SectionId,
@@ -55,12 +55,13 @@ interface BodyProps {
   attention: AttentionItem[];
   attentionLoading: boolean;
   dirty: Record<SectionId, number>;
+  proxyAuth?: ProxyAuthStatus;
 }
 
-function SectionBody({ section, form, rows, attention, attentionLoading, dirty }: BodyProps) {
+function SectionBody({ section, form, rows, attention, attentionLoading, dirty, proxyAuth }: BodyProps) {
   switch (section.id) {
     case 'overview': return <OverviewSection form={form} rows={rows} attention={attention} attentionLoading={attentionLoading} dirty={dirty} />;
-    case 'access': return <AccessSection form={form} />;
+    case 'access': return <AccessSection form={form} proxyAuth={proxyAuth} />;
     case 'filtering': return <FilteringSection form={form} />;
     case 'inspection': return <InspectionSection form={form} />;
     case 'alerts': return <AlertsSection form={form} unsaved={dirty.alerts} />;
@@ -104,6 +105,7 @@ function SettingsPage() {
     secrets: parsed.secrets,
     proxyStatus: status.isError ? null : status.data ? (status.data.proxy_status ?? 'unknown') : undefined,
     egressTotal: egress.isError ? null : egress.data,
+    proxyAuth: status.data?.proxy_auth,
   }), [parsed, status.isError, status.data, egress.isError, egress.data]);
   const warnings = attention.filter((a) => a.tone === 'warning').length;
 
@@ -156,6 +158,14 @@ function SettingsPage() {
     const typedSecrets = Object.fromEntries(Object.entries(drafts.secretEdits[id] ?? {})
       .flatMap(([k, e]) => (e?.kind === 'replace' ? [[k, e.value]] : [])));
     const errors = { ...validateSection(id, values, req.sent), ...validateSecrets(id, typedSecrets) };
+    // Login on needs both credentials; the backend refuses the save too.
+    if (id === 'access') {
+      const pwEdit = drafts.secretEdits.access?.proxy_auth_password;
+      const passwordAfterSave = pwEdit
+        ? pwEdit.kind === 'replace'
+        : secretStateOf(parsed.secrets, 'proxy_auth_password') !== 'unset';
+      for (const [k, m] of Object.entries(validateProxyLogin(values, passwordAfterSave))) errors[k] ??= m;
+    }
     // An empty allowlist with default-deny on leaves only LAN destinations
     // and Allowed IPs reachable (lib/egress).
     if (id === 'filtering' && values.egress_default_deny === 'true' && egress.data === 0) {
@@ -234,6 +244,7 @@ function SettingsPage() {
             attention={attention}
             attentionLoading={settings.isPending}
             dirty={dirty}
+            proxyAuth={status.data?.proxy_auth}
           />
           <SaveBar
             changes={changesIn(id)}

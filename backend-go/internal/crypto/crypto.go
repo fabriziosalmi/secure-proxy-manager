@@ -23,6 +23,9 @@ var SensitiveKeys = map[string]struct{}{
 	"telegram_chat_id":     {},
 	"ntfy_url":             {},
 	"ntfy_topic":           {},
+	// The password devices sign in to the proxy with. The proxy never sees
+	// it: the backend writes only its bcrypt hash to proxy_users.htpasswd.
+	"proxy_auth_password": {},
 }
 
 // IsSensitive returns true if the setting key should be encrypted.

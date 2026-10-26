@@ -75,7 +75,44 @@ const CHECKS: Record<string, Check> = {
     const bad = v.split(',').map((s) => s.trim()).filter(Boolean).find((d) => !DOMAIN.test(d.replace(/^\*?\./, '')));
     return bad ? `"${bad}" is not a domain name, such as bank.example.com` : undefined;
   },
+  proxy_auth_username: (v) => checkProxyUsername(v),
 };
+
+/**
+ * The proxy login (backend-go/internal/handlers/proxy_login.go). A colon
+ * ends the user name in Basic auth and in the password file, and a space
+ * ends it in the line Squid sends its helper.
+ */
+export function checkProxyUsername(v: string): string | undefined {
+  return v === '' || /^[A-Za-z0-9._@+-]{1,64}$/.test(v)
+    ? undefined
+    : 'must be 1 to 64 letters, digits or the characters . _ @ + -, with no spaces or colons';
+}
+
+/** Bcrypt, the proxy's password hash, reads at most 72 bytes. */
+export function checkProxyPassword(v: string): string | undefined {
+  if (v === '') return undefined;
+  if (/[\r\n\0]/.test(v)) return 'must be on one line';
+  if ([...v].length < 12) return 'must be at least 12 characters';
+  if (new TextEncoder().encode(v).length > 72) return "must be at most 72 bytes: the proxy's password hash reads no further";
+  return undefined;
+}
+
+const NO_CREDENTIALS = ': with proxy login on and no credentials the proxy refuses every client';
+
+/**
+ * Login on needs both credentials, as the backend checks: with login on and
+ * none set the proxy refuses every client. passwordAfterSave says whether a
+ * password will be stored once the section is saved (typed, or stored and
+ * not removed).
+ */
+export function validateProxyLogin(values: Record<string, string>, passwordAfterSave: boolean): Record<string, string> {
+  if (!on(values, 'enable_proxy_auth')) return {};
+  const errors: Record<string, string> = {};
+  if ((values.proxy_auth_username ?? '') === '') errors.proxy_auth_username = `set the username devices sign in with${NO_CREDENTIALS}`;
+  if (!passwordAfterSave) errors.proxy_auth_password = `set the password devices sign in with${NO_CREDENTIALS}`;
+  return errors;
+}
 
 // A DNS name as netguard.IsValidHostname accepts it.
 const DOMAIN = /^(?=.{1,253}$)([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?)(\.[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?)*$/i;
@@ -105,12 +142,18 @@ export function checkNotifyUrl(raw: string): string | undefined {
   return undefined;
 }
 
-/** The problems in the secrets a section is about to send (a typed URL only). */
+/** Secrets with a value domain of their own, beyond the notification URLs. */
+const SECRET_CHECKS: Record<string, (value: string) => string | undefined> = {
+  proxy_auth_password: checkProxyPassword,
+};
+
+/** The problems in the secrets a section is about to send (the typed ones only). */
 export function validateSecrets(id: SectionId, typed: Record<string, string>): Record<string, string> {
   const errors: Record<string, string> = {};
   for (const [key, value] of Object.entries(typed)) {
-    if (!SECTION_KEYS[id].includes(key) || !NOTIFY_URL_KEYS.has(key)) continue;
-    const msg = checkNotifyUrl(value);
+    if (!SECTION_KEYS[id].includes(key)) continue;
+    const check = NOTIFY_URL_KEYS.has(key) ? checkNotifyUrl : SECRET_CHECKS[key];
+    const msg = check?.(value);
     if (msg) errors[key] = msg;
   }
   return errors;

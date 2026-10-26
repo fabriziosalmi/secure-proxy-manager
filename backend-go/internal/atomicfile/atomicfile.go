@@ -26,31 +26,51 @@ import (
 // fsynced before the rename, and the directory is fsynced after it, so the
 // rename itself is durable and not merely ordered.
 func Write(path string, data []byte, perm os.FileMode) error {
+	_, err := write(path, data, perm, -1)
+	return err
+}
+
+// WriteGroup is Write, and also gives the new file the group gid before it
+// replaces path, so a reader that relies on that group can read it from the
+// moment it appears. Setting a group needs CAP_CHOWN or membership of the
+// group; a process that has neither keeps its own group and groupSet is
+// false. That is not an error: the caller decides whether the reader has
+// another way to the file.
+func WriteGroup(path string, data []byte, perm os.FileMode, gid int) (groupSet bool, err error) {
+	return write(path, data, perm, gid)
+}
+
+func write(path string, data []byte, perm os.FileMode, gid int) (groupSet bool, err error) {
 	dir := filepath.Dir(path)
 	f, err := os.CreateTemp(dir, filepath.Base(path)+".tmp*")
 	if err != nil {
-		return fmt.Errorf("create temp for %s: %w", path, err)
+		return false, fmt.Errorf("create temp for %s: %w", path, err)
 	}
 	tmp := f.Name()
 	defer func() { _ = os.Remove(tmp) }() // no-op once the rename succeeds
 
 	if _, err := f.Write(data); err != nil {
 		f.Close() //nolint:errcheck // the write error is the one worth reporting
-		return fmt.Errorf("write %s: %w", tmp, err)
+		return false, fmt.Errorf("write %s: %w", tmp, err)
+	}
+	// The group is set while the file still has CreateTemp's 0600, so no
+	// other reader can open it before perm applies.
+	if gid >= 0 {
+		groupSet = f.Chown(-1, gid) == nil
 	}
 	if err := f.Chmod(perm); err != nil {
 		f.Close() //nolint:errcheck
-		return fmt.Errorf("chmod %s: %w", tmp, err)
+		return false, fmt.Errorf("chmod %s: %w", tmp, err)
 	}
 	if err := f.Sync(); err != nil {
 		f.Close() //nolint:errcheck
-		return fmt.Errorf("sync %s: %w", tmp, err)
+		return false, fmt.Errorf("sync %s: %w", tmp, err)
 	}
 	if err := f.Close(); err != nil {
-		return fmt.Errorf("close %s: %w", tmp, err)
+		return false, fmt.Errorf("close %s: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		return fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
+		return false, fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
 	}
 	// Sync the directory so the rename survives, not just the file contents.
 	// #nosec G304 — dir is filepath.Dir of a caller-supplied path, opened
@@ -59,5 +79,5 @@ func Write(path string, data []byte, perm os.FileMode) error {
 		_ = d.Sync()
 		d.Close() //nolint:errcheck
 	}
-	return nil
+	return groupSet, nil
 }

@@ -49,7 +49,7 @@ export function sectionPath(id: SectionId): string {
 export const SECTION_KEYS: Record<SectionId, string[]> = {
   overview: [],
   access: [
-    'enable_proxy_auth',
+    'enable_proxy_auth', 'proxy_auth_username', 'proxy_auth_password',
     'enable_time_restrictions', 'time_restriction_start', 'time_restriction_end',
     'enable_bandwidth_limits', 'bandwidth_limit_mbps', 'bandwidth_limit_per_user_kbps',
   ],
@@ -125,6 +125,8 @@ export const APPLY_HELP: Record<ApplyMode, string> = {
 
 export const APPLY_MODE: Record<string, ApplyMode> = {
   enable_proxy_auth: 'reload',
+  proxy_auth_username: 'reload',
+  proxy_auth_password: 'reload',
   enable_time_restrictions: 'reload',
   time_restriction_start: 'reload',
   time_restriction_end: 'reload',
@@ -173,6 +175,8 @@ export const APPLY_MODE: Record<string, ApplyMode> = {
 /** What each key is called on the page, for messages that name a field. */
 export const FIELD_LABELS: Record<string, string> = {
   enable_proxy_auth: 'Require proxy login',
+  proxy_auth_username: 'Proxy username',
+  proxy_auth_password: 'Proxy password',
   enable_time_restrictions: 'Allowed hours',
   time_restriction_start: 'From',
   time_restriction_end: 'Until',

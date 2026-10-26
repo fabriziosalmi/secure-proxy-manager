@@ -31,10 +31,13 @@ const (
 	// recorded one.
 	ReasonDomainBlacklistDNSReconstructed = database.ReasonDNSReconstructed
 
-	ReasonDirectIP        = "direct_ip"
-	ReasonEgressPolicy    = "egress_policy"
-	ReasonWAF             = "waf"
-	ReasonProxyAuth       = "proxy_auth"
+	ReasonDirectIP     = "direct_ip"
+	ReasonEgressPolicy = "egress_policy"
+	ReasonWAF          = "waf"
+	ReasonProxyAuth    = "proxy_auth"
+	// ReasonProxyAuthUnset: proxy login is on and the proxy has no
+	// credentials to check, so it refuses every client until they are set.
+	ReasonProxyAuthUnset  = "proxy_auth_unset"
 	ReasonTimeRestriction = "time_restriction"
 	ReasonContentFilter   = "content_filter"
 	ReasonSourceGate      = "source_gate"
@@ -58,6 +61,7 @@ var reasonLabels = map[string]string{
 	ReasonEgressPolicy:                    "Egress policy",
 	ReasonWAF:                             "WAF",
 	ReasonProxyAuth:                       "Proxy authentication",
+	ReasonProxyAuthUnset:                  "Proxy login without credentials",
 	ReasonTimeRestriction:                 "Time restriction",
 	ReasonContentFilter:                   "Content filter",
 	ReasonSourceGate:                      "Source not allowed",
@@ -81,7 +85,7 @@ func ReasonLabel(reason string) string {
 // squidDenyReasons are the spm_reason values a Squid deny rule can set.
 var squidDenyReasons = map[string]bool{
 	ReasonIPBlacklist: true, ReasonDomainBlacklist: true, ReasonDomainBlacklistDNS: true,
-	ReasonDirectIP: true, ReasonEgressPolicy: true, ReasonProxyAuth: true,
+	ReasonDirectIP: true, ReasonEgressPolicy: true, ReasonProxyAuth: true, ReasonProxyAuthUnset: true,
 	ReasonTimeRestriction: true, ReasonContentFilter: true, ReasonSourceGate: true,
 	ReasonPortPolicy: true, ReasonProtocolPolicy: true, ReasonListsUnverified: true,
 	ReasonOther: true,
