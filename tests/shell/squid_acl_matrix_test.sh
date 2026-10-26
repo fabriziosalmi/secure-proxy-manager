@@ -470,5 +470,57 @@ if [ "$got" != 200 ]; then ok "WAF down: LAN client → public site not served �
 settle  # the refused request's own log line, before counting lines again
 check_cache_stats "WAF down"
 
+echo "── error pages ──"
+# err_page GET|CONNECT URL_OR_HOSTPORT: prints "<status>|<x-squid-error>|<title>|<has_squid_sig>"
+err_page() {
+  local mode="$1" target="$2"
+  docker run --rm --network "$PFX-lan" --ip "$LAN_CLIENT" --memory 64m --entrypoint /bin/bash "$IMAGE" -c '
+    if [ "$1" = "CONNECT" ]; then
+      raw=$(curl -s -D - --max-time 10 -X CONNECT --request-target "$2" -H "Host: $2" "http://'"$PROXY_LAN"':3128")
+    else
+      raw=$(curl -s -D - --max-time 10 -x "http://'"$PROXY_LAN"':3128" "$2")
+    fi
+    st=$(printf "%s\n" "$raw" | awk "NR==1 {print \$2}" | tr -d "\r")
+    xerr=$(printf "%s\n" "$raw" | awk -F": " "tolower(\$1)==\"x-squid-error\" {print \$2; exit}" | tr -d "\r")
+    body=$(printf "%s\n" "$raw" | sed "1,/^\r*$/d")
+    title=$(printf "%s\n" "$body" | sed -n "s|.*<title>\(.*\)</title>.*|\1|p" | head -1 | tr -d "\r")
+    sig=$(printf "%s\n" "$body" | grep -ci "squid/" || true)
+    printf "%s|%s|%s|%s\n" "$st" "$xerr" "$title" "$sig"
+  ' _ "$mode" "$target" 2>/dev/null
+}
+# With WAF_FAIL_OPEN=0 and ICAP unreachable (closed port on 127.0.0.1:1344),
+# a request that passes ACLs receives the SPM ERR_ICAP_FAILURE page (no "squid/" in body).
+start_proxy 'true' --add-host "waf:127.0.0.1" -e WAF_FAIL_OPEN=0 || exit 1
+expect "error page: ICAP unreachable (WAF_FAIL_OPEN=0)" \
+  "$(err_page GET http://pub.test/)" \
+  "500|ERR_ICAP_FAILURE 0|Security Inspection Unavailable: Secure Proxy Manager|0"
+
+start_proxy 'true' || exit 1
+expect "error page: GET non-resolving host" \
+  "$(err_page GET http://no-such-host.invalid/)" \
+  "503|ERR_DNS_FAIL 0|DNS Lookup Failed: Secure Proxy Manager|0"
+expect "error page: CONNECT non-resolving host" \
+  "$(err_page CONNECT no-such-host.invalid:443)" \
+  "503|ERR_DNS_FAIL 0|DNS Lookup Failed: Secure Proxy Manager|0"
+expect "error page: GET closed port on pub.test" \
+  "$(err_page GET http://pub.test:8080/)" \
+  "503|ERR_CONNECT_FAIL 111|Connection Failed: Secure Proxy Manager|0"
+expect "error page: CONNECT closed port on pub.test" \
+  "$(err_page CONNECT pub.test:443)" \
+  "503|ERR_CONNECT_FAIL 111|Connection Failed: Secure Proxy Manager|0"
+expect "error page: ACL deny" \
+  "$(err_page GET "http://$PUB_SVC/")" \
+  "403|ERR_ACCESS_DENIED 0|Access Denied: Secure Proxy Manager|0"
+expect "error page: zero ERROR: loading file lines in cache.log" \
+  "$(docker exec "$PFX-proxy" sh -c 'grep -c "ERROR: loading file" /var/log/squid/cache.log || true')" \
+  "0"
+xss_check="$(docker run --rm --network "$PFX-lan" --ip "$LAN_CLIENT" --memory 64m --entrypoint /bin/bash "$IMAGE" -c '
+  body=$(curl -s --max-time 10 -x "http://'"$PROXY_LAN"':3128" "http://no-such-host.invalid/<script>alert(1)</script>")
+  quoted=$(printf "%s\n" "$body" | grep -c "&lt;script&gt;alert(1)&lt;/script&gt;" || true)
+  raw=$(printf "%s\n" "$body" | grep -c "<script>alert(1)</script>" || true)
+  printf "quoted=%s raw=%s\n" "$quoted" "$raw"
+' 2>/dev/null)"
+expect "error page: <script> in path is HTML-quoted" "$xss_check" "quoted=1 raw=0"
+
 printf "\n  %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
