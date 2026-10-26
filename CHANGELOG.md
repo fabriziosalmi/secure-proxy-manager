@@ -28,6 +28,10 @@ for at least one minor release before disappearing.
 
 ### Changed
 
+- The sign-in page, the setup wizard and the device setup panel use the design
+  system the other pages use (tokens, shared buttons and notices, both
+  themes); a test fails if a legacy colour or shadcn class returns under
+  `ui/src`. The unused `IpBadge` and `Card` components are removed.
 - `WAF_FAIL_OPEN` reaches the WAF as well as the proxy in both compose files,
   as their comment said; the config contract check fails if a shared variable
   is missing from either service.
