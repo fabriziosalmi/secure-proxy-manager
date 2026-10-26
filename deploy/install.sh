@@ -80,7 +80,7 @@ PORTS
     if [ "$conflicts" -gt 0 ]; then
         echo ""
         warn "Free the ports above, or change the host side of the mapping in"
-        warn "  ${INSTALL_DIR}/docker-compose.yml, then run this installer again."
+        warn "  ${INSTALL_DIR}/${compose_file} and start with 'docker compose up -d'."
         warn "A web server on the host is the usual cause: systemctl stop nginx"
         warn "Set SKIP_PORT_CHECK=1 to install anyway."
         if [ "${SKIP_PORT_CHECK:-0}" = "1" ]; then
@@ -267,7 +267,7 @@ if [ -d data ]; then
 fi
 
 info "Checking host ports..."
-check_ports docker-compose.yml
+check_ports compose.prod.yml
 
 info "Starting services..."
 docker compose up -d

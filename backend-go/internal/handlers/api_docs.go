@@ -63,7 +63,7 @@ var routeDocs = map[string]docMeta{
 	"POST /api/database/reset":                  {auth: true, desc: "Reset database to defaults (destructive!)"},
 	"GET /api/database/size":                    {auth: true, desc: "SQLite database file size"},
 	"GET /api/database/stats":                   {auth: true, desc: "Database table row counts"},
-	"GET /api/docs":                             {auth: false, desc: "This endpoint: API documentation"},
+	"GET /api/docs":                             {auth: true, desc: "This endpoint: API documentation"},
 	"GET /api/domain-blacklist":                 {auth: true, desc: "List domain blacklist (?page=1&page_size=50&search=...)"},
 	"POST /api/domain-blacklist":                {auth: true, desc: "Add domain to blacklist ({domain, description})"},
 	"POST /api/domain-blacklist/bulk-delete":    {auth: true, desc: "Bulk delete domains by ID array"},
@@ -119,7 +119,6 @@ var routeDocs = map[string]docMeta{
 var publicRoutes = map[string]bool{
 	"POST /api/auth/login":   true,
 	"POST /api/auth/refresh": true,
-	"GET /api/docs":          true,
 	"GET /api/health":        true,
 	"GET /api/ready":         true,
 	"GET /health":            true,

@@ -129,11 +129,20 @@ docker compose exec backend wget -qO- http://localhost:5000/metrics | head
 docker compose exec waf     wget -qO- http://localhost:8080/metrics | head
 ```
 
-The compose files also define an `observability` profile (Prometheus and
-Grafana), but the configuration it mounts from `./infra/` is not in the
-repository. Started as shipped, Docker creates
-`infra/prometheus/prometheus.yml` as an empty directory and the Prometheus
-container fails with "Are you trying to mount a directory onto a file".
+The compose files also define an `observability` profile (Prometheus on
+`127.0.0.1:9090` and Grafana on `127.0.0.1:3000`), configured from `./infra/`.
+Set `GRAFANA_ADMIN_PASSWORD` in `.env` and start it with:
+
+```bash
+docker compose --profile observability up -d
+```
+
+Prometheus scrapes `backend:5000/metrics` and `waf:8080/metrics`, evaluates the
+alert rules in `infra/prometheus/rules/spm.rules.yml` (`SPMTargetDown`,
+`SPMBlacklistExportFailed`, `SPMWafReconcileFailed`,
+`SPMNotificationDeliveryFailed`, `SPMDatabaseIntegrityFailed`,
+`SPMLogRetentionDisabled`), and Grafana provisions Prometheus as its default
+datasource.
 
 ## Troubleshooting
 

@@ -107,7 +107,36 @@ for f in docker-compose.yml deploy/docker-compose.prod.yml docker-compose.test.y
     fi
 done
 
+# Variables read by both the WAF and the proxy (such as WAF_FAIL_OPEN, which
+# governs both Squid's ICAP bypass and the WAF's own panic handler) must be
+# passed to both services with the same value in both full-stack compose files.
+waf_vars="$(grep -oE 'os\.Getenv\("WAF_[A-Z0-9_]+"\)' waf-go/main.go | sed 's/.*"\(.*\)".*/\1/' | sort -u)"
+proxy_waf_vars="$(grep -vE '^[[:space:]]*#' proxy/generate_squid_conf.sh | grep -oE 'WAF_[A-Z0-9_]+' | sort -u)"
+shared_waf_vars="$(comm -12 <(printf '%s\n' "$waf_vars") <(printf '%s\n' "$proxy_waf_vars"))"
+if [ -z "$shared_waf_vars" ]; then
+    printf "${R}FAIL${N}: found no shared WAF_* variables between waf-go/main.go and proxy/generate_squid_conf.sh\n"
+    fail=1
+fi
+for v in $shared_waf_vars; do
+    for f in docker-compose.yml deploy/docker-compose.prod.yml; do
+        waf_val="$(awk -v var="$v" '/^  [a-z][a-z0-9_-]*:/{svc=$1} svc=="waf:" && $0 ~ "^[[:space:]]*- *" var "=" {sub("^[[:space:]]*- *", ""); print}' "$f")"
+        proxy_val="$(awk -v var="$v" '/^  [a-z][a-z0-9_-]*:/{svc=$1} svc=="proxy:" && $0 ~ "^[[:space:]]*- *" var "=" {sub("^[[:space:]]*- *", ""); print}' "$f")"
+        if [ -z "$waf_val" ]; then
+            printf "${R}MISSING${N}: %s does not pass shared variable %s to service waf\n" "$f" "$v"
+            fail=1
+        fi
+        if [ -z "$proxy_val" ]; then
+            printf "${R}MISSING${N}: %s does not pass shared variable %s to service proxy\n" "$f" "$v"
+            fail=1
+        fi
+        if [ -n "$waf_val" ] && [ -n "$proxy_val" ] && [ "$waf_val" != "$proxy_val" ]; then
+            printf "${R}MISMATCH${N}: %s passes '%s' to waf and '%s' to proxy\n" "$f" "$waf_val" "$proxy_val"
+            fail=1
+        fi
+    done
+done
+
 if [ "$fail" -eq "$list_fail" ]; then
-    printf "${G}OK${N}: the proxy login files agree, and BASIC_AUTH_* reaches only the backend\n"
+    printf "${G}OK${N}: the proxy login files agree, BASIC_AUTH_* reaches only the backend, and shared WAF variables reach both waf and proxy\n"
 fi
 exit "$fail"

@@ -38,7 +38,7 @@ username and password, set in Settings > Clients and access (see
 | `GUI_IP_WHITELIST` | empty | Extra client source addresses or CIDRs (comma or space separated) allowed to use the proxy, beyond private IPv4 ranges, IPv6 unique-local and link-local addresses and localhost. Listed sources follow the same rules as LAN clients. Invalid entries are skipped |
 | `PROXY_HOST` | `proxy` | Host name of the proxy container; the backend counts its address as the stack's own traffic, not a client |
 | `PROXY_IP` | empty | When set, dnsmasq answers `wpad`, `wpad.local` and `wpad.lan` with this address. dnsmasq is used only by Squid, so LAN clients see these records only if your own DNS serves them too. The PAC file itself is at `http://<host>/wpad.dat` whatever this is set to |
-| `WAF_FAIL_OPEN` | `0` | Passed to the proxy only. `1` sets Squid's REQMOD `bypass=1`, so requests pass uninspected while the WAF is unreachable. `0` fails closed |
+| `WAF_FAIL_OPEN` | `0` | Passed to the proxy and the WAF. `1` sets Squid's REQMOD `bypass=1`, so requests pass uninspected while the WAF is unreachable, and lets the WAF allow traffic on an internal REQMOD panic. `0` fails closed |
 | `SPM_SQUID_DOMAIN_ACL_MAX` | `250000` | Proxy. Squid denies the blocked domains itself while the list has at most this many names; above it only the DNS sinkhole applies |
 | `SPM_DNS_BLOCKLIST_MAX_DOMAINS` | `1000000` | Backend. Most entries the domain blacklist may hold (see [Size limit](./blacklists.md#size-limit)) |
 
@@ -76,7 +76,7 @@ win over the `WAF_H_*` values after start.
 |---|---|---|
 | `TS_AUTHKEY` | empty | Auth key for the `tailscale` service, started only with `docker compose --profile tailscale up -d` |
 | `TAILSCALE_HOSTNAME` | `secure-proxy` | Host name of the `tailscale` container |
-| `GRAFANA_ADMIN_PASSWORD` | empty | Grafana in the `observability` profile refuses to start without it. The profile's `./infra/` configuration is not in the repository (see [Getting Started](./getting-started.md#metrics)) |
+| `GRAFANA_ADMIN_PASSWORD` | empty | Grafana in the `observability` profile refuses to start without it (see [Getting Started](./getting-started.md#metrics)) |
 | `SPM_IMAGE_TAG` | the release | Production compose only: the image tag to pull |
 | `COMPOSE_FILE` | | Set to `compose.prod.yml` by the installer |
 
@@ -130,7 +130,7 @@ tuning directives, and check it with `docker compose exec proxy squid -k parse`.
 | Squid directive | Value |
 |---|---|
 | `cache_mem` | Settings > Proxy engine > Memory cache (MB), stored default 256 |
-| `cache_dir ufs /var/spool/squid` | Settings > Proxy engine > Disk cache (MB), stored default 1000. Until a settings save writes `/config/squid_settings.env`, the generator uses 2000 |
+| `cache_dir ufs /var/spool/squid` | Settings > Proxy engine > Disk cache (MB), stored default 2000 |
 | `maximum_object_size` | 100 MB |
 | `request_body_max_size` | 10 MB |
 | `connect_timeout`, `dns_timeout` | 30 seconds, 5 seconds |

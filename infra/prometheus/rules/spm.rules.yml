@@ -1,0 +1,50 @@
+groups:
+  - name: spm
+    rules:
+      - alert: SPMTargetDown
+        expr: up{job=~"backend|waf"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Target {{ $labels.instance }} ({{ $labels.job }}) is down"
+
+      - alert: SPMDatabaseIntegrityFailed
+        expr: spm_db_integrity_ok == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SQLite PRAGMA integrity_check failed on the backend database"
+
+      - alert: SPMBlacklistExportFailed
+        expr: increase(spm_blacklist_export_total{outcome="failure"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Blacklist export to /config failed"
+
+      - alert: SPMNotificationDeliveryFailed
+        expr: increase(spm_notifications_total{outcome="failure"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Notification delivery failed on channel {{ $labels.channel }}"
+
+      - alert: SPMLogRetentionDisabled
+        expr: spm_log_retention_enabled == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Proxy log retention is not pruning old rows"
+
+      - alert: SPMWAFReconcilePushFailed
+        expr: increase(spm_waf_reconcile_total{outcome="push_failed"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backend failed to push stored heuristic configuration to the WAF"

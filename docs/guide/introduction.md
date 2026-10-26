@@ -48,9 +48,8 @@ egress point without a commercial appliance.
 
 The shipped `docker-compose.yml` sets these memory limits: `proxy` 512 MiB,
 `waf` 256 MiB, `dns` 256 MiB, `backend` 128 MiB, `web` 128 MiB. Squid's disk
-cache is 2000 MB until a settings save writes `/config/squid_settings.env`;
-from the next proxy reload on it is the Disk cache setting (stored default
-1000 MB). You need Docker with the Compose v2 plugin (`docker compose`).
+cache defaults to 2000 MB (Settings > Proxy engine > Disk cache). You need
+Docker with the Compose v2 plugin (`docker compose`).
 
 ## Network ports
 

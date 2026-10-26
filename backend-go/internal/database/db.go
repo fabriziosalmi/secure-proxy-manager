@@ -290,13 +290,17 @@ func backfillProxyLogs(db *sql.DB) {
 // any URL path, and paths such as /whois/example.com end in .com.
 const DefaultBlockedFileTypes = "exe,bat,cmd,dll,msi,scr,ps1,vbs"
 
+// DefaultCacheSizeMB is the disk cache size (in MB) a new install stores,
+// matching PROXY_CACHE_SIZE_MB in proxy/generate_squid_conf.sh.
+const DefaultCacheSizeMB = "2000"
+
 // seedDefaultSettings inserts any default setting that is not already present.
 func seedDefaultSettings(db *sql.DB) {
 	// Default settings.
 	defaultSettings := [][]string{
 		// Proxy configuration
 		{"proxy_port", "3128"},
-		{"cache_size", "1000"},
+		{"cache_size", DefaultCacheSizeMB},
 		{"memory_cache", "256"},
 		// Feature toggles
 		{"ssl_bump_enabled", "false"},

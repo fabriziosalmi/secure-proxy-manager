@@ -572,7 +572,7 @@ func (h *BlacklistHandlers) domainCount() int {
 
 func domainLimitMessage(limit int) string {
 	return fmt.Sprintf("the domain blacklist is limited to %d entries (SPM_DNS_BLOCKLIST_MAX_DOMAINS): "+
-		"dnsmasq holds every entry in memory, about 200 MiB per million; raise the limit together with the dns container's memory", limit)
+		"dnsmasq holds every entry in memory, about 230 MiB per million; raise the limit together with the dns container's memory", limit)
 }
 
 // importTarget maps the request's list type to the table and column it feeds.

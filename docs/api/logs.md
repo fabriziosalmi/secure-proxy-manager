@@ -275,6 +275,8 @@ These return JSON in the standard envelope, in the shape the UI renders:
 
 | Path | Purpose |
 |---|---|
+| `GET /api/status` | Proxy reachability (`proxy_status`, `proxy_host`, `proxy_port`), version, commit, today's client request count (`requests_count`), `proxy_auth` state when recorded, update availability (`update_available`, `update_url`), and Squid CVE state (`squid_version`, `squid_cves`, `cves_checked`: `false` when the major version has no table in `cve_checker.go`, such as Squid 7.x) |
+| `GET /api/security/cve` | The Squid version (`version`), whether its major version has an advisory table (`cves_checked`), and the matched advisories (`cves`) |
 | `GET /api/dashboard/summary` | The dashboard's data in one call |
 | `GET /api/traffic/statistics?period=day` | Requests and blocks per bucket (`hour`, `day`, `week`, `month`) |
 | `GET /api/clients/statistics` | Top 50 clients, then the internal sources |

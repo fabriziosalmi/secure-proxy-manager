@@ -15,7 +15,7 @@ GET /api/settings
   "status": "success",
   "data": [
     { "setting_name": "ssl_bump_enabled", "setting_value": "false" },
-    { "setting_name": "cache_size",       "setting_value": "1000"  }
+    { "setting_name": "cache_size",       "setting_value": "2000"  }
   ]
 }
 ```
@@ -237,9 +237,12 @@ Returns `size_bytes` (SQLite page count times page size) and `size_mb`.
 POST /api/database/reset
 ```
 
-Deletes every row of the tables above except `users`, settings included; the
-default settings are inserted again at the next backend start. The audit row
-for the reset is written first and deleted with the rest. Use with care.
+Deletes every row of the tables above except `users` inside one transaction,
+settings included; if a table cannot be cleared, the transaction rolls back and
+the endpoint answers `500` naming the table. After clearing the tables, it
+writes the `database_reset` row to `audit_log` in the same transaction so the
+reset is the first row of the new audit log. The default settings are inserted
+again at the next backend start. Use with care.
 
 ---
 

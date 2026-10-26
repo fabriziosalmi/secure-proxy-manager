@@ -17,11 +17,15 @@ import (
 // catalogue can be compared against the real surface.
 func buildFullRouter(t *testing.T) chi.Router {
 	t.Helper()
+	return buildFullRouterWithAuth(t, func(next http.Handler) http.Handler { return next })
+}
+
+func buildFullRouterWithAuth(t *testing.T, authMW func(http.Handler) http.Handler) chi.Router {
+	t.Helper()
 	db, svc, cfg, cleanup := setupTestDB(t)
 	t.Cleanup(cleanup)
 
 	r := chi.NewRouter()
-	authMW := func(next http.Handler) http.Handler { return next }
 	NewAuthHandlers(authStore(db), svc, cfg, nil, nil).Register(r)
 	NewLogHandlers(db).Register(r, authMW)
 	NewSettingsHandlers(db, cfg).Register(r, authMW)
@@ -243,5 +247,38 @@ func TestAPIDocsIsGated(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest("GET", "/api/docs", nil))
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("GET /api/docs bypassed the middleware it was given: got %d, want 401", w.Code)
+	}
+}
+
+// Every route in publicRoutes must answer without credentials (never 401),
+// every other route must answer 401 without credentials, and routeDocs must
+// agree with publicRoutes on every catalogued route.
+func TestPublicRoutesMatchRouterAuth(t *testing.T) {
+	denyAuthMW := func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+		})
+	}
+	r := buildFullRouterWithAuth(t, denyAuthMW)
+	replacer := strings.NewReplacer("{id}", "1", "{name}", "proxy_port", "{ip}", "192.0.2.1")
+
+	for _, d := range CatalogueRoutes(r) {
+		key := d.Method + " " + d.Path
+		if meta, ok := routeDocs[key]; ok && meta.auth != d.Auth {
+			t.Errorf("routeDocs[%q].auth = %v, but CatalogueRoutes reports auth = %v", key, meta.auth, d.Auth)
+		}
+		reqPath := replacer.Replace(d.Path)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(d.Method, reqPath, nil))
+
+		if publicRoutes[key] {
+			if w.Code == http.StatusUnauthorized {
+				t.Errorf("%s is in publicRoutes (auth=%v) but returned 401 Unauthorized without credentials", key, d.Auth)
+			}
+		} else {
+			if w.Code != http.StatusUnauthorized {
+				t.Errorf("%s is not in publicRoutes (auth=%v) but returned %d instead of 401 without credentials", key, d.Auth, w.Code)
+			}
+		}
 	}
 }

@@ -642,7 +642,7 @@ def heal_resolver_drift(state):
                 # next poll sees the drift again and retries.
                 return
         else:
-            print("[watchdog] resolver drift: the regenerated config was refused — keeping the running one", flush=True)
+            print("[watchdog] resolver drift: the regenerated config was refused, keeping the running one", flush=True)
         # Recorded either way, so a config that will not generate is not retried every 2 s.
         state.resolv_fp = fp
     except Exception as exc:  # noqa: BLE001
@@ -687,11 +687,11 @@ def regenerate_and_reconfigure(stamp):
         # over the live file, so the running config stays both in memory and
         # on disk (SECURE-ERR-07).
         if gen_res.returncode != 0:
-            print("[watchdog] generation FAILED — keeping the running config, not reconfiguring", flush=True)
+            print("[watchdog] generation FAILED: keeping the running config, not reconfiguring", flush=True)
             print(gen_res.stderr.decode("utf-8", "replace")[:2000], flush=True)
             write_result("reload-squid", stamp, gen_res.returncode, None)
         elif not applied:
-            print("[watchdog] generated config does not parse — refusing to reconfigure", flush=True)
+            print("[watchdog] generated config does not parse: refusing to reconfigure", flush=True)
             write_result("reload-squid", stamp, 0, 1)
         else:
             rec_rc = reconfigure_squid()

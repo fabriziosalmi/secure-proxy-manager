@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 )
 
@@ -95,15 +94,37 @@ func (h *DatabaseHandlers) Export(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DatabaseHandlers) Reset(w http.ResponseWriter, r *http.Request) {
-	// Audit BEFORE wiping (audit_log table will be cleared too)
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
-	database.Audit(h.db, username, "database_reset", "all", "full database reset requested")
+	tx, err := h.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to begin reset transaction")
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+
 	for _, tbl := range allowedTables {
 		if tbl == "users" {
 			continue // Never wipe users.
 		}
 		// #nosec G202
-		h.db.Exec("DELETE FROM " + tbl) //nolint:errcheck
+		if _, err := tx.ExecContext(r.Context(), "DELETE FROM "+tbl); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to clear table "+tbl)
+			return
+		}
+	}
+	// Write the audit row after emptying audit_log, in the same transaction,
+	// so database_reset is the first entry of the new audit log.
+	if _, err := tx.ExecContext(
+		r.Context(),
+		"INSERT INTO audit_log(username,action,target,details) VALUES(?,?,?,?)",
+		username, "database_reset", "all", "full database reset requested",
+	); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to record audit log for reset")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit database reset")
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Database reset (users preserved)"})
 }

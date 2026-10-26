@@ -679,7 +679,7 @@ func (h *SettingsHandlers) writeSquidSettingsEnv(body map[string]string) error {
 	if v, ok := body["proxy_port"]; ok && v != "" {
 		port = v
 	}
-	cache := h.dbSetting("cache_size", "2000")
+	cache := h.dbSetting("cache_size", database.DefaultCacheSizeMB)
 	if v, ok := body["cache_size"]; ok && v != "" {
 		cache = v
 	}

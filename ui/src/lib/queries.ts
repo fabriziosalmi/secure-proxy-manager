@@ -13,6 +13,8 @@ export interface StatusData {
   requests_count?: number;
   /** Squid's version as the proxy reported it; absent until it has. */
   squid_version?: string;
+  squid_cves?: number;
+  cves_checked?: boolean;
   update_available?: string;
   update_url?: string;
   /** What the proxy last did about proxy login; absent until it has recorded it. */

@@ -3,6 +3,7 @@ package workers
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -337,25 +338,39 @@ func TestParseSquidVersion_More(t *testing.T) {
 }
 
 func TestRunCheck(t *testing.T) {
-	// Test version 5.x
-	runCheck("5.7")
+	// Version 5.9 is in knownCVEs["5."]: cves_checked must be true and return the table entries.
+	runCheck("5.9")
 	info := GetCVEInfo()
-	if info.Version != "5.7" || len(info.CVEs) == 0 {
-		t.Errorf("Expected CVEs for 5.7, got %d", len(info.CVEs))
+	raw59, err := json.Marshal(info)
+	if err != nil {
+		t.Fatalf("marshal CVEInfo: %v", err)
+	}
+	var m59 map[string]any
+	_ = json.Unmarshal(raw59, &m59)
+	if info.Version != "5.9" || len(info.CVEs) != len(knownCVEs["5."]) || m59["cves_checked"] != true {
+		t.Errorf("5.9: got version=%q len(cves)=%d cves_checked=%v, want 5.9, %d, true",
+			info.Version, len(info.CVEs), m59["cves_checked"], len(knownCVEs["5."]))
 	}
 
-	// Test version 3.x
+	// Version 3.5 is in knownCVEs["3."].
 	runCheck("3.5")
 	info = GetCVEInfo()
 	if len(info.CVEs) != 3 { // knownCVEs["3."] has 3 items (incl. Squidbleed CVE-2026-47729)
 		t.Errorf("Expected 3 CVEs for 3.5, got %d", len(info.CVEs))
 	}
 
-	// Test unknown version
-	runCheck("9.9")
+	// Version 7.7 has no table in knownCVEs: cves_checked must be false.
+	runCheck("7.7")
 	info = GetCVEInfo()
-	if len(info.CVEs) != 0 {
-		t.Errorf("Expected 0 CVEs for 9.9, got %d", len(info.CVEs))
+	raw77, err := json.Marshal(info)
+	if err != nil {
+		t.Fatalf("marshal CVEInfo: %v", err)
+	}
+	var m77 map[string]any
+	_ = json.Unmarshal(raw77, &m77)
+	if info.Version != "7.7" || len(info.CVEs) != 0 || m77["cves_checked"] != false {
+		t.Errorf("7.7: got version=%q len(cves)=%d cves_checked=%v, want 7.7, 0, false",
+			info.Version, len(info.CVEs), m77["cves_checked"])
 	}
 }
 

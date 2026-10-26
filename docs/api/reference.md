@@ -106,7 +106,7 @@ Details: [Logs and Analytics API](./logs.md).
 | `POST` | `/api/logs/clear` | Delete every log row |
 | `POST` | `/api/logs/clear-old` | Delete rows older than `days` (query parameter, default 30) |
 | `POST` | `/api/counters/reset` | Delete every log row and reset the WAF's counters |
-| `GET`  | `/api/status` | Proxy reachability, version, today's request count, Squid version and CVE count, update availability |
+| `GET`  | `/api/status` | Proxy reachability, version, today's request count, Squid version, CVE count (`squid_cves`) and whether that major version has an advisory table (`cves_checked`), update availability |
 | `GET`  | `/api/dashboard/summary` | The dashboard's data in one call |
 | `GET`  | `/api/traffic/statistics` | Requests and blocks per bucket (`period` = `hour`, `day`, `week`, `month`) |
 | `GET`  | `/api/clients/statistics` | Top 50 clients, then the internal sources |
@@ -120,7 +120,7 @@ Details: [Logs and Analytics API](./logs.md).
 | `GET`  | `/api/analytics/coverage` | Which protections are switched on now: list sizes, WAF rules, HTTPS inspection, alerts and the other access settings |
 | `GET`  | `/api/audit-log` | Audit log, newest first, 50 a page (`limit` up to 200). `category` = `all`, `changes` or `signins` filters on the server; `meta.retention_days` is 365 |
 | `GET`  | `/api/security/score` | Retired: `410 Gone` |
-| `GET`  | `/api/security/cve` | The Squid version and the advisories matched to it |
+| `GET`  | `/api/security/cve` | The Squid version (`version`), whether its major version has an advisory table (`cves_checked`) and the advisories matched to it (`cves`) |
 | `GET`  | `/api/waf/stats` | WAF statistics (from the WAF) |
 | `GET`  | `/api/waf/categories` | WAF rule categories and whether each is on |
 | `POST` | `/api/waf/categories/toggle` | Turn a category on or off in the running WAF |

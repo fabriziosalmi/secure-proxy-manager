@@ -30,6 +30,22 @@ describe('serviceRows', () => {
     expect(rows['Cache statistics']).toMatchObject({ health: 'unknown', state: 'not collected', detail: 'The proxy has not written cache statistics yet' })
   })
 
+  it('shows Not checked for Squid 7.x when cves_checked is false, and the CVE count when checked', () => {
+    const unchecked = byName(serviceRows(
+      ok<StatusData>({ proxy_status: 'running', proxy_port: '3128', squid_version: '7.7', squid_cves: 0, cves_checked: false }),
+      pending,
+      pending,
+    ))
+    expect(unchecked.Proxy.detail).toBe('Squid 7.7, port 3128 · Not checked for Squid 7.x')
+
+    const checked = byName(serviceRows(
+      ok<StatusData>({ proxy_status: 'running', proxy_port: '3128', squid_version: '5.9', squid_cves: 10, cves_checked: true }),
+      pending,
+      pending,
+    ))
+    expect(checked.Proxy.detail).toBe('Squid 5.9, port 3128 · 10 known CVEs')
+  })
+
   describe('cache statistics', () => {
     let restoreTz: () => void
     beforeEach(() => { restoreTz = setRomeTimeZone() })

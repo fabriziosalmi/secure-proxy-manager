@@ -12,7 +12,7 @@ on:
   # will fail as the required status check will not be reported."
   #
   # So this lands FIRST, on its own. Turning the queue on before it would leave
-  # every pull request waiting forever for seventeen checks that never run.
+  # every pull request waiting forever for the required checks (.github/branch-protection.json) that never run.
   merge_group:
   # Daily, because two of the gates here answer a question whose answer changes
   # WITHOUT a commit: npm audit, govulncheck and Trivy read advisory databases
@@ -296,6 +296,18 @@ jobs:
       # turning login off removes them. Reuses the images the matrix built.
       - name: Proxy login end to end (backend and proxy, upgrade state)
         run: bash tests/shell/proxy_login_upgrade_test.sh
+
+  # ── 5e. Observability profile (Prometheus + Grafana) ──────────────────
+  # Starts the optional observability profile against infra/ and verifies that
+  # Prometheus loads its configuration and alert rules and that Grafana
+  # provisions the Prometheus datasource.
+  observability:
+    name: Observability profile (Prometheus + Grafana)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Start observability profile and verify Prometheus and Grafana
+        run: bash tests/shell/observability_profile_test.sh
 
   # ── 6. Security scanning (gosec) ─────────────────────────────────────
   security-scan:
@@ -641,7 +653,7 @@ jobs:
     name: Report a failed nightly
     if: ${{ failure() && github.event_name == 'schedule' }}
     needs: [build-ui, version-sync, build-backend, build-waf, test-backend, test-waf, lint-go, lint-shell,
-            lint-python, test-python, test-restore, test-squid-config, security-scan, licences, trivy-scan,
+            lint-python, test-python, test-restore, test-squid-config, observability, security-scan, licences, trivy-scan,
             docker-build, check-urls, validate-compose, e2e, e2e-ui, adversarial, govulncheck-image-toolchain]
     runs-on: ubuntu-latest
     permissions:
