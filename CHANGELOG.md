@@ -45,6 +45,9 @@ at boot stops all traffic until a verified copy arrives.
   without cached credentials gets 407 in that window. The password file holds
   bcrypt hashes only and is readable, inside the stack, by the services that
   mount `config/`.
+- The `web` image ships curl and libcurl 8.23.0-r0, fixing CVE-2026-92392
+  (HTTP/2 upload use-after-free, HIGH), on a base image that still carries
+  8.22.0-r0 (#452).
 
 ### Action worth knowing about on upgrade
 
