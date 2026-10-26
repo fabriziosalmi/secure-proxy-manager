@@ -47,4 +47,32 @@ func TestARetiredSettingIsNotWrittenAgain(t *testing.T) {
 	if count("ddns_token") != 0 || !strings.Contains(rw.Body.String(), "no longer used by this version") {
 		t.Errorf("restore: %s", rw.Body.String())
 	}
+
+	// Schema version 8 retired settings: allowed_networks, waf_custom_rules, waf_block_threshold.
+	for _, k := range []string{"allowed_networks", "waf_custom_rules", "waf_block_threshold"} {
+		pw8 := httptest.NewRecorder()
+		r.ServeHTTP(pw8, httptest.NewRequest("PUT", "/api/settings/"+k, strings.NewReader(`{"value":"x"}`)))
+		if pw8.Code != http.StatusBadRequest {
+			t.Errorf("PUT /api/settings/%s = %d, want 400", k, pw8.Code)
+		}
+	}
+
+	body8, _ := json.Marshal(map[string]any{
+		"config": map[string]string{
+			"allowed_networks":    "10.0.0.0/8",
+			"waf_custom_rules":    "rule1",
+			"waf_block_threshold": "80",
+			"proxy_port":          "3128",
+		},
+	})
+	rw8 := httptest.NewRecorder()
+	NewMaintenanceHandlers(db, cfg).RestoreConfig(rw8, httptest.NewRequest("POST", "/api/maintenance/restore-config", strings.NewReader(string(body8))))
+	for _, k := range []string{"allowed_networks", "waf_custom_rules", "waf_block_threshold"} {
+		if count(k) != 0 {
+			t.Errorf("restore wrote retired key %s", k)
+		}
+		if !strings.Contains(rw8.Body.String(), k) {
+			t.Errorf("restore response did not list %s in skipped_settings: %s", k, rw8.Body.String())
+		}
+	}
 }

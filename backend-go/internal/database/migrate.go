@@ -16,8 +16,9 @@ import (
 // (list_sources). Version 5 rewrites "*.name" egress entries to ".name"
 // (egress_wildcards.go). Version 6 deletes the settings nothing reads
 // (RetiredSettings, retired.go). Version 7 creates egress_providers and
-// egress_provider_entries.
-const schemaVersion = 7
+// egress_provider_entries. Version 8 archives and deletes allowed_networks,
+// waf_custom_rules, and waf_block_threshold (retired.go).
+const schemaVersion = 8
 
 // applyVersionedMigrations runs the steps a database has not seen yet.
 //
@@ -62,6 +63,11 @@ func applyVersionedMigrations(db *sql.DB) error {
 	if v < 7 {
 		if err := migrateEgressProviders(db); err != nil {
 			return fmt.Errorf("schema version 7: %w", err)
+		}
+	}
+	if v < 8 {
+		if err := retireThreeSettings(db); err != nil {
+			return fmt.Errorf("schema version 8: %w", err)
 		}
 	}
 	return nil

@@ -15,6 +15,27 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- **Schema version 8 archives and deletes `allowed_networks`, `waf_custom_rules`
+  and `waf_block_threshold` from `settings`** (#444). If any of the three keys
+  had a row in `settings`, the migration copies its previous value into the
+  Audit log (`action = retire_setting_value`, `username = system`, `target` set
+  to the key name, `details` holding `{"value": "..."}`, truncated at 64 KiB
+  with `"truncated": true` when longer) before deleting the row, so values can
+  be recovered from the Audit log or from a database export. `waf_custom_rules`
+  in the database was never read by the WAF: active custom rules live in
+  `/config/waf_custom_rules.txt`.
+
+### Removed
+
+- **BREAKING** (`X-API-Version: 1`): **the settings `allowed_networks`,
+  `waf_custom_rules` and `waf_block_threshold`, which nothing in the backend,
+  proxy or WAF read** (#444). Schema version 8 archives their values into
+  `audit_log` (`retire_setting_value`) and deletes their rows; `POST
+  /api/settings` skips them, `PUT /api/settings/{name}` answers 400, and
+  `POST /api/maintenance/restore-config` lists them in `skipped_settings`.
+
 ### Added
 
 - Managed egress destination provider lists (`GET /api/egress-providers`,
