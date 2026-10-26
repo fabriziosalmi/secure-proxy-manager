@@ -26,6 +26,8 @@ export interface AttentionInput {
   proxyStatus: string | undefined | null;
   /** The egress allowlist size; undefined while loading, null when it failed. */
   egressTotal: number | undefined | null;
+  /** Entries from enabled egress provider lists; null when reading providers failed. */
+  egressProviderEntries?: number | null;
   /** GET /api/status proxy_auth: what the proxy did about proxy login; undefined when not reported. */
   proxyAuth?: ProxyAuthStatus;
 }
@@ -61,7 +63,7 @@ export function configuredChannels(secrets: Record<string, SecretState>): string
   return Object.entries(CHANNELS).filter(([, keys]) => keys.every((k) => secrets[k] === 'set')).map(([name]) => name);
 }
 
-export function needsAttention({ values, secrets, proxyStatus, egressTotal, proxyAuth }: AttentionInput): AttentionItem[] {
+export function needsAttention({ values, secrets, proxyStatus, egressTotal, egressProviderEntries, proxyAuth }: AttentionInput): AttentionItem[] {
   const on = (k: string) => values[k] === 'true';
   const items: AttentionItem[] = [];
 
@@ -83,10 +85,17 @@ export function needsAttention({ values, secrets, proxyStatus, egressTotal, prox
     items.push({ id: 'proxy-down', tone: 'warning', title: 'The proxy is not running', body: `The backend reports the proxy as "${proxyStatus}". Clients cannot browse until the proxy container runs.` });
   }
 
+  const effectiveEgressTotal =
+    egressTotal === null || egressProviderEntries === null
+      ? null
+      : egressTotal === undefined
+        ? undefined
+        : egressTotal + (egressProviderEntries ?? 0);
+
   if (on('egress_default_deny')) {
-    if (egressTotal === 0) {
+    if (effectiveEgressTotal === 0) {
       items.push({ id: 'egress-empty', tone: 'warning', title: 'Clients reach only LAN destinations and Allowed IPs', body: `Only allowlisted destinations is on and the egress allowlist is empty. ${EGRESS_EMPTY_REACH}`, section: 'filtering', action: 'Filtering' });
-    } else if (egressTotal === null) {
+    } else if (effectiveEgressTotal === null) {
       items.push({ id: 'egress-unknown', tone: 'warning', title: 'The egress allowlist could not be read', body: 'Only allowlisted destinations is on, and this page cannot tell how many destinations are allowed.', section: 'filtering', action: 'Filtering' });
     }
   }

@@ -139,7 +139,9 @@ POST /api/settings
 
 When `"false"` (the default) local clients may reach any destination that is not blocked. When `"true"` they may reach only the destinations on the egress allowlist, LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and Allowed IPs; everything else is refused with a Squid 403.
 
-The allowlist destinations themselves are not setting values. They are managed through the egress-allowlist endpoints (`/api/egress-allowlist`), where each entry is either an IP/CIDR or a domain. See the egress allowlist API for details.
+The allowlist destinations themselves are not setting values. Manual entries are managed through `/api/egress-allowlist` (IP/CIDR or domain), and managed CIDR feeds through `/api/egress-providers` (see [Blacklist and Whitelist API](./blacklists.md#egress-providers)).
+
+`egress_provider_refresh_hours` (whole number from `6` to `168`, default `"24"`) sets how often the background worker refreshes enabled egress provider lists. A value outside `6` to `168` is refused with `400` (`must be a whole number from 6 to 168 (hours)`).
 
 ---
 
@@ -193,7 +195,8 @@ GET /api/database/export
 
 Returns `{"status": "success", "data": {<table>: [rows]}}` for `users`,
 `ip_whitelist`, `ip_blacklist`, `domain_blacklist`, `domain_whitelist`,
-`list_sources`, `dst_allowlist`, `proxy_logs`, `settings` and `audit_log`,
+`list_sources`, `dst_allowlist`, `egress_providers`, `egress_provider_entries`,
+`proxy_logs`, `settings` and `audit_log`,
 served as the attachment `database_export.json`. Columns named `password`,
 `secret` or `token` are replaced with `***REDACTED***`. The alert channel
 secrets are rows of `settings`, so they appear in their encrypted form

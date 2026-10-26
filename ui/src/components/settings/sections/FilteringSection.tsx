@@ -4,11 +4,10 @@
  * that decide how they are used.
  */
 import { Link } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
 import { Section } from '../../ui/Section';
 import { Notice } from '../../ui/Notice';
 import { TextField, ToggleRow } from '../fields';
-import { egressTotalQuery } from '../../../lib/queries';
+import { formatEgressBreakdown, useEgressSummary } from '../../../lib/queries';
 import { formatCount } from '../../../lib/format';
 import { extensionPatterns } from '../../../lib/settingsValidation';
 import { EGRESS_DENY_HELP, EGRESS_EMPTY_REACH } from '../../../lib/egress';
@@ -20,14 +19,15 @@ function Code({ children }: { children: string }) {
 
 export function FilteringSection({ form }: { form: SectionForm }) {
   const v = form.values;
-  const egress = useQuery(egressTotalQuery);
+  const egress = useEgressSummary();
   const denyOn = v.egress_default_deny === 'true';
   const patterns = extensionPatterns(v.blocked_file_types ?? '');
 
   let allowlist: string;
   if (egress.isPending) allowlist = 'Reading the egress allowlist...';
-  else if (egress.isError || egress.data === null) allowlist = 'The size of the egress allowlist could not be read.';
-  else allowlist = egress.data === 1 ? 'The egress allowlist holds 1 entry.' : `The egress allowlist holds ${formatCount(egress.data ?? 0)} entries.`;
+  else if (egress.isError || egress.total === null) allowlist = 'The size of the egress allowlist could not be read.';
+  else if ((egress.providerCount ?? 0) > 0) allowlist = `The egress allowlist holds ${formatEgressBreakdown(egress.manual ?? 0, egress.providerEntries ?? 0, egress.providerCount ?? 0)}.`;
+  else allowlist = egress.total === 1 ? 'The egress allowlist holds 1 entry.' : `The egress allowlist holds ${formatCount(egress.total ?? 0)} entries.`;
 
   return (
     <div className="flex flex-col gap-4">
@@ -39,11 +39,21 @@ export function FilteringSection({ form }: { form: SectionForm }) {
           help={EGRESS_DENY_HELP}
         />
         <p className="mt-3 text-sm text-ink-secondary">{allowlist}</p>
-        {denyOn && egress.data === 0 && !form.error('egress_default_deny') && (
+        {denyOn && egress.total === 0 && !form.error('egress_default_deny') && (
           <Notice tone="danger" title="The allowlist is empty" className="mt-3">
             {EGRESS_EMPTY_REACH} <Link to="/egress" className="font-semibold underline">Add destinations</Link> first.
           </Notice>
         )}
+        <div className="mt-4">
+          <TextField
+            form={form}
+            setting="egress_provider_refresh_hours"
+            label="Refresh provider lists every (hours)"
+            inputMode="numeric"
+            className="sm:max-w-[240px]"
+            hint="From 6 to 168. How often enabled provider lists are fetched and checked against their safety rules."
+          />
+        </div>
       </Section>
 
       <Section level={3} title="Downloads">

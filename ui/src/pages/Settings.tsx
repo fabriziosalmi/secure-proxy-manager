@@ -34,7 +34,7 @@ import { AdminSection } from '../components/settings/sections/AdminSection';
 import { EngineSection } from '../components/settings/sections/EngineSection';
 import { AppearanceSection } from '../components/settings/sections/AppearanceSection';
 import { needsAttention, type AttentionItem } from '../lib/attention';
-import { egressTotalQuery, statusQuery, type ProxyAuthStatus } from '../lib/queries';
+import { statusQuery, useEgressSummary, type ProxyAuthStatus } from '../lib/queries';
 import type { SectionForm } from '../components/settings/sectionForm';
 import { parseSettings, secretStateOf } from '../lib/secrets';
 import { applyToProxy } from '../lib/reload';
@@ -84,7 +84,7 @@ function SettingsPage() {
   });
   const rows = settings.data;
   const status = useQuery({ ...statusQuery, staleTime: 10_000 });
-  const egress = useQuery(egressTotalQuery);
+  const egress = useEgressSummary();
   const parsed = useMemo(() => parseSettings(rows), [rows]);
   const [saving, setSaving] = useState<SectionId | null>(null);
   // Synchronous latch against a double click posting twice.
@@ -104,9 +104,10 @@ function SettingsPage() {
     values: parsed.values,
     secrets: parsed.secrets,
     proxyStatus: status.isError ? null : status.data ? (status.data.proxy_status ?? 'unknown') : undefined,
-    egressTotal: egress.isError ? null : egress.data,
+    egressTotal: egress.manual,
+    egressProviderEntries: egress.providerEntries,
     proxyAuth: status.data?.proxy_auth,
-  }), [parsed, status.isError, status.data, egress.isError, egress.data]);
+  }), [parsed, status.isError, status.data, egress.manual, egress.providerEntries]);
   const warnings = attention.filter((a) => a.tone === 'warning').length;
 
   const changesIn = (id: SectionId) =>
@@ -168,7 +169,7 @@ function SettingsPage() {
     }
     // An empty allowlist with default-deny on leaves only LAN destinations
     // and Allowed IPs reachable (lib/egress).
-    if (id === 'filtering' && values.egress_default_deny === 'true' && egress.data === 0) {
+    if (id === 'filtering' && values.egress_default_deny === 'true' && egress.total === 0) {
       errors.egress_default_deny = 'the egress allowlist is empty, so clients would reach only LAN destinations and the addresses on Allowed IPs: add destinations first';
     }
     if (Object.keys(errors).length) {

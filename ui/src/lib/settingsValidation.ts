@@ -58,6 +58,7 @@ const CHECKS: Record<string, Check> = {
     // The worker reads anything else as 0 and never refreshes.
     return /^[0-9]+$/.test(v) && Number(v) >= 1 && Number(v) <= 168 ? undefined : 'must be a whole number of hours, from 1 to 168';
   },
+  egress_provider_refresh_hours: (v) => (wholeIn(v, 6, 168) ? undefined : 'must be a whole number from 6 to 168 (hours)'),
   blocked_file_types: (v, values) => {
     const items = v.split(',').map((s) => s.trim()).filter(Boolean);
     if (on(values, 'enable_content_filtering') && items.length === 0) {
@@ -174,7 +175,7 @@ const REQUIRED_WHEN: Record<string, string> = {
  * keys in the request; a key that is not sent (the backend has no value for
  * it and nobody typed one) is checked only when its toggle is on and needs it.
  */
-export function validateSection(id: SectionId, values: Record<string, string>, sent: string[]): Record<string, string> {
+export function validateSection(id: SectionId, values: Record<string, string>, sent: string[] = Object.keys(values)): Record<string, string> {
   const errors: Record<string, string> = {};
   for (const key of SECTION_KEYS[id]) {
     const check = CHECKS[key];

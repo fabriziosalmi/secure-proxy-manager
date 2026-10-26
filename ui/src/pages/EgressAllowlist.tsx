@@ -24,7 +24,7 @@ import { isAxiosError } from 'axios';
 import { Trash2 } from 'lucide-react';
 import { api, getErrorMessage } from '../lib/api';
 import { formatCount, formatDateTime } from '../lib/format';
-import { egressTotalQuery, settingsQuery } from '../lib/queries';
+import { formatEgressBreakdown, settingsQuery, useEgressSummary, type EgressSummary } from '../lib/queries';
 import { parseSettings } from '../lib/secrets';
 import { checkDestination, egressEntryKind, type EgressKind, LAN_DESTINATIONS } from '../lib/egress';
 import { cn } from '../lib/utils';
@@ -37,6 +37,7 @@ import { Section } from '../components/ui/Section';
 import { DataTable, type Column } from '../components/ui/DataTable';
 import { SearchInput } from '../components/ui/SearchInput';
 import { Button, IconButton } from '../components/ui/Button';
+import { ProviderListsSection } from '../components/egress/ProviderListsSection';
 
 const PAGE_SIZE = 50;
 
@@ -61,7 +62,7 @@ function Field({ id, label, error, hint, className, children }: {
   );
 }
 
-function StateNotice({ denyOn, settingsFailed, total }: { denyOn: boolean | undefined; settingsFailed: boolean; total: number | null | undefined }) {
+function StateNotice({ denyOn, settingsFailed, summary }: { denyOn: boolean | undefined; settingsFailed: boolean; summary: EgressSummary }) {
   const open = <Link to="/settings/filtering" className="text-accent hover:underline">Open Filtering</Link>;
   if (settingsFailed) {
     return (
@@ -71,10 +72,15 @@ function StateNotice({ denyOn, settingsFailed, total }: { denyOn: boolean | unde
     );
   }
   if (denyOn === undefined) return null;
+  const total = summary.total;
+  const hasProviders = !summary.isError && (summary.providerCount ?? 0) > 0;
+  const breakdown = hasProviders
+    ? `The allowlist holds ${formatEgressBreakdown(summary.manual ?? 0, summary.providerEntries ?? 0, summary.providerCount ?? 0)}. `
+    : '';
   if (!denyOn) {
     return (
       <Notice title="Default deny is off, so this list has no effect" action={open}>
-        Clients can reach any destination that no blacklist names. Turn it on in Settings, Filtering, after adding the destinations your clients need.
+        {breakdown}Clients can reach any destination that no blacklist names. Turn it on in Settings, Filtering, after adding the destinations your clients need.
       </Notice>
     );
   }
@@ -94,7 +100,7 @@ function StateNotice({ denyOn, settingsFailed, total }: { denyOn: boolean | unde
   }
   return (
     <Notice title={`Default deny is on: clients reach only these ${formatCount(total)} ${total === 1 ? 'destination' : 'destinations'}`} action={open}>
-      LAN destinations ({LAN}) and the addresses on Allowed IPs stay reachable too. Everything else is refused.
+      {breakdown}LAN destinations ({LAN}) and the addresses on Allowed IPs stay reachable too. Everything else is refused.
     </Notice>
   );
 }
@@ -212,7 +218,7 @@ export function EgressAllowlist() {
   const [offset, setOffset] = useState(0);
 
   const settings = useQuery(settingsQuery);
-  const egressTotal = useQuery(egressTotalQuery);
+  const summary = useEgressSummary();
   const entries = useQuery({
     queryKey: ['egress-allowlist', 'entries', offset, query],
     queryFn: () =>
@@ -221,8 +227,9 @@ export function EgressAllowlist() {
     placeholderData: keepPreviousData,
   });
 
-  const denyOn = settings.data ? parseSettings(settings.data).values.egress_default_deny === 'true' : undefined;
-  const total = egressTotal.isError ? null : egressTotal.data;
+  const parsedSettings = settings.data ? parseSettings(settings.data).values : undefined;
+  const denyOn = parsedSettings ? parsedSettings.egress_default_deny === 'true' : undefined;
+  const refreshHours = parsedSettings?.egress_provider_refresh_hours;
   const refresh = () => { void qc.invalidateQueries({ queryKey: ['egress-allowlist'] }); };
 
   const remove = async (e: EgressEntry) => {
@@ -273,7 +280,9 @@ export function EgressAllowlist() {
     : {
         title: 'No destination yet',
         description: denyOn
-          ? `Default deny is on, so every client reaches only LAN destinations (${LAN}) and the addresses on Allowed IPs. Add what your clients need.`
+          ? (summary.providerEntries ?? 0) > 0
+            ? `No manual destinations yet. Clients reach the ${formatCount(summary.providerEntries ?? 0)} entries from ${formatCount(summary.providerCount ?? 0)} ${(summary.providerCount ?? 0) === 1 ? 'provider list' : 'provider lists'}, LAN destinations (${LAN}) and the addresses on Allowed IPs.`
+            : `Default deny is on, so every client reaches only LAN destinations (${LAN}) and the addresses on Allowed IPs. Add what your clients need.`
           : 'If you turn default deny on with an empty list, every client loses access to everything except the LAN. Add what your clients need first.',
       };
 
@@ -285,9 +294,11 @@ export function EgressAllowlist() {
         description="With default deny on, clients may reach only the destinations listed here."
       />
 
-      <StateNotice denyOn={denyOn} settingsFailed={settings.isError} total={total} />
+      <StateNotice denyOn={denyOn} settingsFailed={settings.isError} summary={summary} />
 
       <AddDestination onAdded={refresh} />
+
+      <ProviderListsSection refreshHours={refreshHours} onChanged={refresh} />
 
       <Section title="Allowed destinations" flush>
         <div className="px-5 pb-3">

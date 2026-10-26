@@ -189,6 +189,97 @@ The blocked lists still apply when default-deny egress is on: they are
 checked first, so a destination must be on the allowlist **and** not blocked.
 :::
 
+### Provider lists
+
+Rather than maintaining thousands of provider CIDRs by hand, the **Provider
+lists** section on the **Egress allowlist** page (and the
+[`/api/egress-providers` API](/api/blacklists#egress-providers)) lets you
+enable managed IPv4 and IPv6 prefix lists for common services, or add your own
+CIDR feed URLs.
+
+Enabled provider prefixes are stored in `egress_provider_entries` (separate
+from the manual `dst_allowlist` table) and merged as a deduplicated union with
+manual CIDR entries when writing `/config/dst_allow_ip.txt` for Squid. Turning
+a provider off or deleting a custom URL list removes its prefixes from
+`dst_allow_ip.txt` immediately while leaving manual entries untouched.
+
+#### Built-in catalog
+
+Catalog lists are fetched from
+[`lord-alfred/ipranges`](https://github.com/lord-alfred/ipranges) pinned to the
+latest commit SHA on `main` (`ipv4_merged.txt` and `ipv6_merged.txt` under each
+directory):
+
+| Provider | Directory | Upstream source | Shared network |
+|---|---|---|---|
+| `amazon` | `amazon` | `ip-ranges.amazonaws.com` | Yes |
+| `cloudflare` | `cloudflare` | `cloudflare.com/ips` | Yes |
+| `digitalocean` | `digitalocean` | `geo csv` | Yes |
+| `facebook` | `facebook` | `ASN` | No |
+| `github` | `github` | `api.github.com/meta` (includes GitHub Actions runners) | Yes |
+| `google` | `google` | `goog.json and cloud.json` | Yes |
+| `linode` | `linode` | `geoip.linode.com` | Yes |
+| `microsoft` | `microsoft` | `Azure service tags and M365` | Yes |
+| `oracle` | `oracle` | `public_ip_ranges.json` | Yes |
+| `telegram` | `telegram` | `core.telegram.org/resources/cidr.txt` | No |
+| `twitter` | `twitter` | `ASN` | No |
+| `vultr` | `vultr` | `geofeed` | Yes |
+| `all` | `all` | `all upstream directories` | Yes |
+
+Three directories present in `lord-alfred/ipranges` are intentionally excluded:
+`tor`, `bing`, and `googlebot`. Those lists identify inbound crawlers or Tor
+exit nodes rather than outbound service destinations.
+
+#### What "Shared network" means
+
+Providers marked **Shared network** (`shared_network: true`) are cloud, CDN, or
+hosting networks where third-party websites and customer workloads run on the
+same IP address pools (`github` also includes GitHub Actions runner addresses,
+where any public workflow can run). Allowing a shared network allows clients
+behind the proxy to reach every site or workload hosted on that provider's IP
+ranges, not only the provider's own services. Enabling `all` allows every
+catalog provider at once (around 8% to 10% of the public IPv4 address space).
+
+Because of that scope, enabling a `shared_network` provider requires explicit
+confirmation in the UI (and `"confirm_shared": true` in
+`PUT /api/egress-providers/{name}`).
+
+#### Validation and growth-hold protections
+
+Every fetch (initial enable, manual refresh, or background refresh every
+`egress_provider_refresh_hours` hours, default 24, from 6 to 168 under
+**Settings > Filtering**) validates the entire candidate list before touching
+the active entries:
+
+- **Prefix width limits:** any IPv4 prefix wider than `/8` or IPv6 prefix wider
+  than `/16` rejects the whole update.
+- **Public unicast only:** any malformed line, IPv4-mapped IPv6 prefix
+  (`::ffff:0:0/96`), or prefix overlapping RFC 1918 private networks, loopback,
+  link-local, multicast, reserved blocks, documentation ranges, CGNAT
+  (`100.64.0.0/10`), ULA (`fc00::/7`), or IPv6 outside global unicast
+  (`2000::/3`) rejects the whole update and keeps the previous good list.
+- **Entry and size caps:** feeds over `20 MiB` or `50,000` total prefixes
+  (IPv4 + IPv6) are rejected whole.
+- **25% growth hold and new-family hold:** when a refresh increases the number
+  of covered IPv4 addresses or IPv6 `/64` blocks by more than `25%` compared to
+  the active list, or when an address family that was `0` on the active list
+  becomes non-zero while the other family already had entries, the backend keeps
+  the active list in force and stores the candidate in `held`. The row displays
+  a warning notice with the before/after counts and growth percentage so an
+  operator can inspect and approve it with **Apply update**
+  (`POST /api/egress-providers/{name}/apply-held`).
+
+#### Audit trail
+
+Every state change and refresh outcome is recorded in the **Audit** log
+(`GET /api/audit-log`):
+
+- `egress_provider_enabled` and `egress_provider_disabled`
+- `egress_provider_refreshed` (with commit SHA or SHA-256, `v4_count`,
+  `v6_count`, `ipv4_covered`, `ipv6_64_covered`)
+- `egress_provider_refresh_failed` (with the rejection or network error)
+- `egress_provider_update_held` and `egress_provider_held_applied`
+
 ## Importing lists
 
 ### Popular lists
