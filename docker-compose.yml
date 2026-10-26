@@ -136,7 +136,7 @@ services:
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
       # Most domains the blacklist may hold: dnsmasq keeps them in memory (about
-      # 200 MiB per million, dns limit 256 MiB). Raise with the dns memory limit.
+      # 230 MiB per million, dns limit 256 MiB). Raise with the dns memory limit.
       - SPM_DNS_BLOCKLIST_MAX_DOMAINS=${SPM_DNS_BLOCKLIST_MAX_DOMAINS:-1000000}
       - INTERNAL_ALERT_TOKEN=${INTERNAL_ALERT_TOKEN:-}
       - SECRET_KEY=${SECRET_KEY}

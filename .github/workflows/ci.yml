@@ -12,7 +12,7 @@ on:
   # will fail as the required status check will not be reported."
   #
   # So this lands FIRST, on its own. Turning the queue on before it would leave
-  # every pull request waiting forever for seventeen checks that never run.
+  # every pull request waiting forever for the required checks (.github/branch-protection.json) that never run.
   merge_group:
   # Daily, because two of the gates here answer a question whose answer changes
   # WITHOUT a commit: npm audit, govulncheck and Trivy read advisory databases

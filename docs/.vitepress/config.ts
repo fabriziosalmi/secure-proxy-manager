@@ -4,7 +4,7 @@ import { defineConfig } from 'vitepress'
 // per-page canonical/og:url links and the sitemap.
 const SITE_URL = 'https://fabriziosalmi.github.io/secure-proxy-manager'
 const OG_DESCRIPTION =
-  'Self-hosted Secure Web Gateway: Squid forward proxy + a real WAF (ICAP) + DNS sinkhole + a modern UI, in one Docker Compose stack.'
+  'Self-hosted forward proxy for a home, lab or small-office network: a Squid forward proxy, a Go WAF over ICAP, a dnsmasq resolver that sinkholes blocked domains, a Go backend with a REST API, and a React web UI in one Docker Compose stack.'
 
 export default defineConfig({
   title: 'Secure Proxy Manager',
