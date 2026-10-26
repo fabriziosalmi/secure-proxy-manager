@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/helpers'
+import { expectNoAxeViolations } from '../test/axe'
 import { Login } from './Login'
 
 vi.mock('../lib/api', () => ({
@@ -158,5 +159,23 @@ describe('Login', () => {
     renderWithProviders(<Login onLogin={onLogin} />)
     expect(screen.getByLabelText(/username/i)).toHaveAttribute('autocomplete', 'username')
     expect(screen.getByLabelText(/password/i)).toHaveAttribute('autocomplete', 'current-password')
+  })
+
+  it.each(['light', 'dark'] as const)('passes axe accessibility checks in %s theme (including error state)', async (theme) => {
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    try {
+      const user = userEvent.setup()
+      vi.mocked(api.post).mockRejectedValueOnce(new Error('401'))
+      const { container } = renderWithProviders(<Login onLogin={onLogin} />)
+      await expectNoAxeViolations(container)
+
+      await user.type(screen.getByLabelText(/username/i), 'admin')
+      await user.type(screen.getByLabelText(/password/i), 'wrong')
+      await user.click(screen.getByRole('button', { name: /sign in/i }))
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+      await expectNoAxeViolations(container)
+    } finally {
+      document.documentElement.classList.remove('dark')
+    }
   })
 })

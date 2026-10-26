@@ -26,6 +26,7 @@ import { Layout } from './components/layout/Layout';
 import { GlobalSearch } from './components/GlobalSearch';
 import { Login } from './pages/Login';
 import { SetupWizard } from './components/SetupWizard';
+import { Button } from './components/ui/Button';
 import { api, isTokenExpired, signOut } from './lib/api';
 import { ThemeProvider } from './components/ThemeProvider';
 import { SettingsDraftsProvider } from './components/settings/SettingsDrafts';
@@ -51,17 +52,16 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Er
   render() {
     if (this.state.error) {
       return (
-        <div className="flex items-center justify-center h-screen bg-background text-foreground">
+        <div className="flex items-center justify-center h-screen bg-ground text-ink">
           <div className="text-center space-y-3 max-w-md px-4">
-            <p className="text-lg font-semibold text-destructive">Something went wrong</p>
-            <p className="text-sm text-muted-foreground font-mono">{this.state.error.message}</p>
-            <button
-              type="button"
+            <p className="text-lg font-semibold text-danger">Something went wrong</p>
+            <p className="text-sm text-ink-muted font-mono">{this.state.error.message}</p>
+            <Button
               onClick={() => this.setState({ error: null })}
-              className="mt-4 px-4 py-2 bg-secondary rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors"
+              className="mt-4"
             >
               Try again
-            </button>
+            </Button>
           </div>
         </div>
       );
@@ -73,7 +73,7 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Er
 function PageLoader() {
   return (
     <div className="flex items-center justify-center h-64" role="status" aria-live="polite">
-      <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" aria-hidden="true" />
+      <div className="animate-spin w-6 h-6 border-2 border-accent border-t-transparent rounded-full" aria-hidden="true" />
       <span className="sr-only">Loading…</span>
     </div>
   );
@@ -82,8 +82,8 @@ function PageLoader() {
 function NotFound() {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center gap-2 py-24">
-      <span className="text-5xl font-bold text-muted-foreground/30">404</span>
-      <p className="text-sm text-muted-foreground">Page not found</p>
+      <span className="text-5xl font-bold text-ink-subtle">404</span>
+      <p className="text-sm text-ink-muted">Page not found</p>
     </div>
   );
 }
@@ -146,8 +146,8 @@ function AppContent() {
   // Loading: checking wizard status
   if (wizardDone === null) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background" role="status" aria-live="polite">
-        <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" aria-hidden="true" />
+      <div className="flex items-center justify-center h-screen bg-ground" role="status" aria-live="polite">
+        <div className="animate-spin w-6 h-6 border-2 border-accent border-t-transparent rounded-full" aria-hidden="true" />
         <span className="sr-only">Loading…</span>
       </div>
     );
@@ -193,14 +193,14 @@ function AppContent() {
         position="bottom-right"
         toastOptions={{
           style: {
-            background: 'hsl(var(--card))',
-            color: 'hsl(var(--foreground))',
-            border: '1px solid hsl(var(--border))',
+            background: 'var(--ds-surface)',
+            color: 'var(--ds-text)',
+            border: '1px solid var(--ds-border)',
           },
           success: {
             iconTheme: {
-              primary: '#10b981',
-              secondary: 'hsl(var(--card))',
+              primary: 'var(--ds-success-strong)',
+              secondary: 'var(--ds-surface)',
             },
           },
         }}

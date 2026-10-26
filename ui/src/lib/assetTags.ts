@@ -2,10 +2,10 @@
 // Stored in localStorage for simplicity (no backend needed).
 //
 // The value is parsed from localStorage ONCE and held in an in-memory cache so
-// that hot render paths (IpBadge renders once per row in the streaming Logs
-// table) don't re-`JSON.parse` on every render. Writes update the cache and
-// notify subscribers; cross-tab writes invalidate the cache via the `storage`
-// event. Consume it with `useSyncExternalStore(subscribeAssetTags, getAssetTagsSnapshot)`.
+// that hot render paths (each row in the streaming Logs table) don't
+// re-`JSON.parse` on every render. Writes update the cache and notify
+// subscribers; cross-tab writes invalidate the cache via the `storage` event.
+// Consume it with `useSyncExternalStore(subscribeAssetTags, getAssetTagsSnapshot)`.
 
 const STORAGE_KEY = 'asset_tags';
 

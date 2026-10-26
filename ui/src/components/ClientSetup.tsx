@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Monitor, Smartphone, Apple, Terminal, Copy, Check, Download, QrCode } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { PROXY_PORT, proxyAddress } from '../lib/utils';
+import { PROXY_PORT, proxyAddress, cn } from '../lib/utils';
+import { Button } from './ui/Button';
 
 function CopyBtn({ text, label, copied, onCopy }: { text: string; label: string; copied: string; onCopy: (text: string, label: string) => void }) {
   return (
-    <button type="button" onClick={() => onCopy(text, label)}
+    <button
+      type="button"
+      onClick={() => onCopy(text, label)}
       aria-label={`Copy ${label}`}
-      className="p-1 rounded hover:bg-secondary/50 transition-colors shrink-0">
-      {copied === label ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+      className="p-1 rounded-control text-ink-muted hover:bg-surface-muted hover:text-ink transition-colors shrink-0 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      {copied === label ? <Check aria-hidden="true" className="w-3.5 h-3.5 text-success" /> : <Copy aria-hidden="true" className="w-3.5 h-3.5" />}
     </button>
   );
 }
@@ -106,41 +109,45 @@ export function ClientSetup() {
   const active = tabs.find(t => t.id === activeTab)!;
 
   return (
-    <Card>
-      <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-sm flex items-center gap-2">
-          <QrCode className="w-4 h-4 text-primary" />
+    <div className="rounded-panel border border-line bg-surface p-4 text-ink">
+      <div className="pb-2">
+        <h3 className="text-sm font-semibold leading-none tracking-tight text-ink flex items-center gap-2">
+          <QrCode aria-hidden="true" className="w-4 h-4 text-accent" />
           Connect Your Devices
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-4 pt-2">
+        </h3>
+      </div>
+      <div className="pt-2">
         {/* Proxy address */}
-        <div className="flex items-center gap-2 mb-3 p-2 bg-primary/5 border border-primary/20 rounded-lg">
-          <span className="text-xs text-muted-foreground">Proxy:</span>
-          <code className="text-sm font-bold font-mono text-primary">{proxyAddr}</code>
+        <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-accent-subtle border border-accent-line rounded-control">
+          <span className="text-xs text-ink-muted">Proxy:</span>
+          <code className="text-sm font-bold font-mono text-accent">{proxyAddr}</code>
           <CopyBtn text={proxyAddr} label="proxy" copied={copied} onCopy={copy} />
         </div>
 
         {/* PAC file download */}
-        <div className="flex gap-2 mb-4">
-          <button type="button" onClick={downloadPAC}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-secondary rounded-md hover:bg-secondary/80 transition-colors">
-            <Download className="w-3.5 h-3.5" /> Download PAC File
-          </button>
-          <button type="button" onClick={() => copy(pacContent, 'pac')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-secondary rounded-md hover:bg-secondary/80 transition-colors">
-            <Copy className="w-3.5 h-3.5" /> Copy PAC
-          </button>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <Button size="sm" icon={<Download />} onClick={downloadPAC}>
+            Download PAC File
+          </Button>
+          <Button size="sm" icon={<Copy />} onClick={() => copy(pacContent, 'pac')}>
+            Copy PAC
+          </Button>
         </div>
 
         {/* OS tabs */}
-        <div role="tablist" aria-label="Operating system" className="flex gap-1 mb-3 border-b border-border pb-2">
+        <div role="tablist" aria-label="Operating system" className="flex flex-wrap gap-1 mb-3 border-b border-line pb-2">
           {tabs.map((t, i) => {
             const Icon = t.icon;
             const selected = activeTab === t.id;
             return (
-              <button key={t.id} type="button" role="tab" id={`os-tab-${t.id}`}
-                aria-selected={selected} aria-controls="os-panel" tabIndex={selected ? 0 : -1}
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                id={`os-tab-${t.id}`}
+                aria-selected={selected}
+                aria-controls="os-panel"
+                tabIndex={selected ? 0 : -1}
                 onClick={() => setActiveTab(t.id)}
                 onKeyDown={(e) => {
                   if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
@@ -150,41 +157,48 @@ export function ClientSetup() {
                   setActiveTab(next.id);
                   document.getElementById(`os-tab-${next.id}`)?.focus();
                 }}
-                className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded-md transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60 ${
-                  selected ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground'
-                }`}>
-                <Icon className="w-3 h-3" /> {t.label}
+                className={cn(
+                  'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-control border transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent',
+                  selected
+                    ? 'border-accent-line bg-accent-subtle text-accent font-semibold'
+                    : 'border-transparent text-ink-muted hover:bg-surface-muted hover:text-ink',
+                )}
+              >
+                <Icon aria-hidden="true" className="w-3.5 h-3.5" /> {t.label}
               </button>
             );
           })}
         </div>
 
         <div role="tabpanel" id="os-panel" aria-labelledby={`os-tab-${active.id}`}>
-        {/* Steps */}
-        <ol className="space-y-1 mb-3">
-          {active.steps.map((step, i) => (
-            <li key={i} className="flex gap-2 text-xs">
-              <span className="text-muted-foreground font-bold shrink-0">{i + 1}.</span>
-              <span>{step}</span>
-            </li>
-          ))}
-        </ol>
+          {/* Steps */}
+          <ol className="space-y-1.5 mb-3">
+            {active.steps.map((step, i) => (
+              <li key={i} className="flex gap-2 text-xs text-ink-secondary">
+                <span className="text-ink-muted font-semibold shrink-0">{i + 1}.</span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
 
-        {/* Command */}
-        {active.cmd && (
-          <div className="relative">
-            <pre className="bg-secondary/60 dark:bg-[#0a0a0a] border border-border rounded-lg p-3 text-[11px] font-mono text-emerald-600 dark:text-emerald-400 overflow-x-auto whitespace-pre-wrap">
-              {active.cmd}
-            </pre>
-            <button type="button" onClick={() => copy(active.cmd!, 'cmd')}
-              aria-label="Copy command"
-              className="absolute top-2 right-2 p-1 rounded bg-secondary/80 hover:bg-secondary">
-              {copied === 'cmd' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-muted-foreground" />}
-            </button>
-          </div>
-        )}
+          {/* Command */}
+          {active.cmd && (
+            <div className="relative">
+              <pre className="bg-surface-muted border border-line rounded-control p-3 pr-9 text-xs font-mono text-ink overflow-x-auto whitespace-pre-wrap break-all">
+                {active.cmd}
+              </pre>
+              <button
+                type="button"
+                onClick={() => copy(active.cmd!, 'cmd')}
+                aria-label="Copy command"
+                className="absolute top-2 right-2 p-1 rounded-control border border-line bg-surface text-ink-muted hover:bg-surface-muted hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                {copied === 'cmd' ? <Check aria-hidden="true" className="w-3.5 h-3.5 text-success" /> : <Copy aria-hidden="true" className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

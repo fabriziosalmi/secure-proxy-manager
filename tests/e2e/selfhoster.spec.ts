@@ -97,7 +97,7 @@ test.describe('Authentication', () => {
     await page.fill('#password', 'wrong');
     await page.click('button[type="submit"]');
     // The 401 interceptor must NOT reload the page during login
-    await expect(page.locator('p.text-destructive, [class*="destructive"]').first())
+    await expect(page.getByRole('alert'))
       .toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Invalid username or password')).toBeVisible();
   });

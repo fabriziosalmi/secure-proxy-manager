@@ -60,4 +60,17 @@ describe('styles', () => {
       }
     }
   })
+
+  it('uses only design-system tokens in source files (no legacy shadcn or raw Tailwind colour classes)', () => {
+    const legacy =
+      /\b(?:text-muted-foreground|bg-secondary|border-border|text-primary|bg-primary|glass-surface|text-foreground|bg-background|text-destructive|bg-card|(?:text|bg|border)-(?:emerald|red|blue|orange|amber|green|yellow|purple|cyan)-\d{3})\b/g
+    const offenders: string[] = []
+    for (const [file, text] of Object.entries(sources)) {
+      const matches = [...text.matchAll(legacy)].map((m) => m[0])
+      if (matches.length > 0) {
+        offenders.push(`${file} (${matches.length}): ${[...new Set(matches)].join(', ')}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
 })
