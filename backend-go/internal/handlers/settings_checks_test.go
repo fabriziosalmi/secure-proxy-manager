@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -241,5 +242,46 @@ func TestSyncListArtefactsUpgradesTheOldExtensionPattern(t *testing.T) {
 	}
 	if again := h.SyncListArtefacts(); len(again) != 0 {
 		t.Errorf("second start rewrote %v", again)
+	}
+}
+
+// The database seed for cache_size and the fallback in writeSquidSettingsEnv
+// must match the generator's PROXY_CACHE_SIZE_MB default so that a fresh
+// install shows in the UI the same cache size Squid actually runs with.
+func TestCacheSizeDefaultAgreesWithGenerator(t *testing.T) {
+	script, err := os.ReadFile(filepath.Join("..", "..", "..", "proxy", "generate_squid_conf.sh"))
+	if err != nil {
+		t.Fatalf("read generate_squid_conf.sh: %v", err)
+	}
+	m := regexp.MustCompile(`SQUID_CACHE_MB="\$\{PROXY_CACHE_SIZE_MB:-([0-9]+)\}"`).FindSubmatch(script)
+	if len(m) < 2 {
+		t.Fatal("could not find SQUID_CACHE_MB default in generate_squid_conf.sh")
+	}
+	genDefault := string(m[1])
+
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	var seeded string
+	if err := db.QueryRow("SELECT setting_value FROM settings WHERE setting_name = 'cache_size'").Scan(&seeded); err != nil {
+		t.Fatalf("query seeded cache_size: %v", err)
+	}
+	if seeded != genDefault {
+		t.Errorf("seeded cache_size = %q, generator default = %q", seeded, genDefault)
+	}
+
+	if _, err := db.Exec("DELETE FROM settings WHERE setting_name = 'cache_size'"); err != nil {
+		t.Fatalf("delete cache_size: %v", err)
+	}
+	h := NewSettingsHandlers(db, cfg)
+	if err := h.writeSquidSettingsEnv(nil); err != nil {
+		t.Fatalf("writeSquidSettingsEnv: %v", err)
+	}
+	envBytes, err := os.ReadFile(filepath.Join(cfg.ConfigDir, "squid_settings.env"))
+	if err != nil {
+		t.Fatalf("read squid_settings.env: %v", err)
+	}
+	if !strings.Contains(string(envBytes), "SQUID_CACHE_MB="+genDefault+"\n") {
+		t.Errorf("writeSquidSettingsEnv fallback wrote %q, want SQUID_CACHE_MB=%s", string(envBytes), genDefault)
 	}
 }
