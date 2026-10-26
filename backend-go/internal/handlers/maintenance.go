@@ -106,13 +106,41 @@ func (h *MaintenanceHandlers) BackupConfig(w http.ResponseWriter, r *http.Reques
 		lists[spec.name] = entries
 	}
 
+	egressProviders := []map[string]any{}
+	prows, err := h.db.Query(`SELECT kind, name, url, enabled FROM egress_providers WHERE enabled = 1 OR kind = 'url' ORDER BY kind, name`)
+	if err != nil {
+		writeInternalError(w, "backup_config", err)
+		return
+	}
+	for prows.Next() {
+		var kind, name, rawURL string
+		var en int
+		if err := prows.Scan(&kind, &name, &rawURL, &en); err == nil {
+			egressProviders = append(egressProviders, map[string]any{
+				"kind":    kind,
+				"name":    name,
+				"url":     rawURL,
+				"enabled": en == 1,
+			})
+		}
+	}
+	prows.Close()
+
 	writeOK(w, map[string]any{
-		"backup_version": backupVersion,
-		"app_version":    config.AppVersion,
-		"exported_at":    time.Now().UTC().Format(time.RFC3339),
-		"settings":       settings,
-		"lists":          lists,
+		"backup_version":   backupVersion,
+		"app_version":      config.AppVersion,
+		"exported_at":      time.Now().UTC().Format(time.RFC3339),
+		"settings":         settings,
+		"lists":            lists,
+		"egress_providers": egressProviders,
 	})
+}
+
+type backupEgressProvider struct {
+	Kind    string `json:"kind"`
+	Name    string `json:"name"`
+	URL     string `json:"url"`
+	Enabled bool   `json:"enabled"`
 }
 
 func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Request) {
@@ -121,9 +149,10 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		// before backup_version 2 can be restored.
 		Config map[string]string `json:"config"`
 		// v2 shape: settings plus the lists that carry the product's content.
-		BackupVersion int                            `json:"backup_version"`
-		Settings      map[string]string              `json:"settings"`
-		Lists         map[string][]map[string]string `json:"lists"`
+		BackupVersion   int                            `json:"backup_version"`
+		Settings        map[string]string              `json:"settings"`
+		Lists           map[string][]map[string]string `json:"lists"`
+		EgressProviders []backupEgressProvider         `json:"egress_providers"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "no configuration data provided")
@@ -132,7 +161,7 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 	if len(body.Settings) > 0 {
 		body.Config = body.Settings
 	}
-	if len(body.Config) == 0 && len(body.Lists) == 0 {
+	if len(body.Config) == 0 && len(body.Lists) == 0 && len(body.EgressProviders) == 0 {
 		writeError(w, http.StatusBadRequest, "no configuration data provided")
 		return
 	}
@@ -160,12 +189,27 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, "failed to restore lists (rolled back)")
 		return
 	}
+	provRestored, provSkipped, err := restoreEgressProviders(tx, body.EgressProviders)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to restore egress providers (rolled back)")
+		return
+	}
 	settingsRestored := restored
+	listsRestored += provRestored
+	skippedEntries += provSkipped
 	restored += listsRestored
 
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to commit configuration")
 		return
+	}
+	if len(body.EgressProviders) > 0 {
+		cfgDir := ""
+		if h.cfg != nil {
+			cfgDir = h.cfg.ConfigDir
+		}
+		username, _ := r.Context().Value(middleware.CtxUsername).(string)
+		workers.RefreshEnabledEgressProviders(h.db, cfgDir, username)
 	}
 	// The lists just changed, so the exported files must be republished.
 	workers.RequestExport()
@@ -400,6 +444,47 @@ func restoreLists(tx *sql.Tx, lists map[string][]map[string]string, per map[stri
 		}
 	}
 	return restored, skippedEntries, nil
+}
+
+func restoreEgressProviders(tx *sql.Tx, providers []backupEgressProvider) (restored, skipped int, err error) {
+	for _, p := range providers {
+		kind := strings.TrimSpace(p.Kind)
+		name := strings.TrimSpace(p.Name)
+		rawURL := strings.TrimSpace(p.URL)
+		switch kind {
+		case "catalog":
+			if _, ok := workers.LookupCatalogProvider(name); !ok {
+				skipped++
+				continue
+			}
+			rawURL = ""
+		case "url":
+			if name == "" || len(name) > 100 {
+				skipped++
+				continue
+			}
+			if _, inCat := workers.LookupCatalogProvider(name); inCat {
+				skipped++
+				continue
+			}
+			if ssrf, err := workers.EgressCheckURL(rawURL); err != nil || ssrf {
+				skipped++
+				continue
+			}
+		default:
+			skipped++
+			continue
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO egress_providers(kind, name, url, enabled) VALUES(?, ?, ?, ?)
+			 ON CONFLICT(kind, name) DO UPDATE SET url = excluded.url, enabled = excluded.enabled`,
+			kind, name, rawURL, boolToInt(p.Enabled),
+		); err != nil {
+			return restored, skipped, err
+		}
+		restored++
+	}
+	return restored, skipped, nil
 }
 
 // validRestoredListValue applies to a restored list entry the same rule its add

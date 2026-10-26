@@ -364,6 +364,7 @@ func seedDefaultSettings(db *sql.DB) {
 		// Auto-refresh
 		{"auto_refresh_enabled", "false"},
 		{"auto_refresh_hours", "24"},
+		{"egress_provider_refresh_hours", "24"},
 		// State
 		{"default_password_changed", "false"},
 	}
@@ -495,7 +496,13 @@ func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
 			"they would reach neither enforcement file; fix them before the allowlist can be exported", strayTypes)
 	}
 	if err := exportLines(db, configDir+"/dst_allow_ip.txt",
-		"SELECT entry FROM dst_allowlist WHERE type='cidr' ORDER BY entry"); err != nil {
+		`SELECT entry FROM dst_allowlist WHERE type='cidr'
+		 UNION
+		 SELECT e.cidr AS entry
+		 FROM egress_provider_entries e
+		 JOIN egress_providers p ON p.id = e.provider_id
+		 WHERE p.enabled = 1
+		 ORDER BY 1`); err != nil {
 		return err
 	}
 	if err := exportLines(db, configDir+"/dst_allow_domain.txt",

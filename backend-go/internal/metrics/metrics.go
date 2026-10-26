@@ -321,3 +321,31 @@ func WAFReconcileCount(outcome string) float64 {
 	}
 	return m.GetCounter().GetValue()
 }
+
+var (
+	egressProviderRefreshTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "spm_egress_provider_refresh_total",
+		Help: "Egress provider refresh attempts, by outcome: success, held, failure.",
+	}, []string{"outcome"})
+	egressProviderEntries = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "spm_egress_provider_entries",
+		Help: "Stored CIDR entries for an egress provider, by provider name and IP family (4 or 6).",
+	}, []string{"provider", "family"})
+)
+
+// EgressProviderRefresh records the outcome of one egress provider refresh ("success", "held", or "failure").
+func EgressProviderRefresh(outcome string) {
+	egressProviderRefreshTotal.WithLabelValues(outcome).Inc()
+}
+
+// SetEgressProviderEntries updates the per-family entry count gauges for a provider.
+func SetEgressProviderEntries(provider string, v4Count, v6Count int) {
+	egressProviderEntries.WithLabelValues(provider, "4").Set(float64(v4Count))
+	egressProviderEntries.WithLabelValues(provider, "6").Set(float64(v6Count))
+}
+
+// DeleteEgressProviderEntries removes the entry count gauges for a deleted provider.
+func DeleteEgressProviderEntries(provider string) {
+	egressProviderEntries.DeleteLabelValues(provider, "4")
+	egressProviderEntries.DeleteLabelValues(provider, "6")
+}
