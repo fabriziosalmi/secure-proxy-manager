@@ -35,6 +35,7 @@ func buildFullRouterWithAuth(t *testing.T, authMW func(http.Handler) http.Handle
 	NewAnalyticsHandlers(db, cfg).Register(r, authMW)
 	NewDatabaseHandlers(db).Register(r, authMW)
 	NewDNSDetectHandlers(db).Register(r, authMW)
+	NewEgressProviderHandlers(db, cfg).Register(r, authMW)
 	RegisterAPIDocs(r, authMW)
 	return r
 }

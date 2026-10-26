@@ -50,9 +50,9 @@ LAN_SVC=192.168.77.20; PUB_SVC=203.0.113.10
 DNS_SVC=192.168.77.53; WAF_SVC=192.168.77.44
 
 cleanup() {
-  docker rm -f "$PFX-proxy" "$PFX-pub" "$PFX-lan" "$PFX-dns" "$PFX-waf" "$PFX-backend" >/dev/null 2>&1
-  docker network rm "$PFX-ext" "$PFX-lan" "$PFX-pub" >/dev/null 2>&1
-  docker volume rm "$PFX-config" >/dev/null 2>&1
+  docker rm -f "$PFX-proxy" "$PFX-pub" "$PFX-lan" "$PFX-dns" "$PFX-waf" "$PFX-backend" "$PFX-prov-srv" >/dev/null 2>&1
+  docker network rm "$PFX-ext" "$PFX-lan" "$PFX-pub" "$PFX-prov" >/dev/null 2>&1
+  docker volume rm "$PFX-config" "$PFX-egress-config" >/dev/null 2>&1
 }
 trap cleanup EXIT
 
@@ -421,6 +421,48 @@ start_proxy 'touch /config/egress_default_deny; echo "203.0.113.0/24" > /config/
 check  "network entry → a name that resolves into it"    200 none          code   "$PFX-lan" "$LAN_CLIENT" http://10.relay.test/
 start_proxy "touch /config/egress_default_deny; echo $PUB_SVC > /config/ip_whitelist.txt" || exit 1
 check  "Allowed IPs, empty allowlist → that address"     200 none          code   "$PFX-lan" "$LAN_CLIENT" http://10.relay.test/
+
+echo "── egress default-deny with dst_allow_ip.txt exported by the backend (manual + provider union) ──"
+PROV_SVC=93.184.216.10
+PROXY_PROV=93.184.216.2
+BACKEND_PROV=93.184.216.3
+PROV_SHA="d03d319a255c0000000000000000000000000000"
+docker network create --subnet 93.184.216.0/24 "$PFX-prov" >/dev/null || exit 1
+docker run -d --name "$PFX-prov-srv" --network "$PFX-prov" --ip "$PROV_SVC" --memory 64m --entrypoint /bin/bash "$IMAGE" -c "
+  mkdir -p /srv/commits /srv/$PROV_SHA/telegram && cd /srv
+  echo ok > index.html
+  printf '{\"sha\":\"%s\"}\n' '$PROV_SHA' > commits/main
+  printf '93.184.216.0/24\n' > $PROV_SHA/telegram/ipv4_merged.txt
+  : > $PROV_SHA/telegram/ipv6_merged.txt
+  exec python3 -m http.server 80 >/dev/null 2>&1" >/dev/null || exit 1
+docker volume create "$PFX-egress-config" >/dev/null || exit 1
+docker run -d --name "$PFX-backend" --network "$PFX-prov" --ip "$BACKEND_PROV" --memory 128m --cap-drop ALL --read-only \
+  --tmpfs /tmp --tmpfs /data --tmpfs /logs -v "$PFX-egress-config:/config" \
+  -e BASIC_AUTH_USERNAME=admin -e BASIC_AUTH_PASSWORD="$ADMIN_PW" \
+  -e SECRET_KEY="matrix-secret-key-$$-0123456789abcdef" \
+  -e SPM_EGRESS_COMMITS_URL="http://$PROV_SVC/commits/main" \
+  -e SPM_EGRESS_RAW_BASE_URL="http://$PROV_SVC" \
+  "$BACKEND_IMAGE" >/dev/null || exit 1
+for _ in $(seq 1 40); do docker exec "$PFX-backend" /server -healthcheck >/dev/null 2>&1 && break; sleep 0.5; done
+egress_auth="admin:$ADMIN_PW"
+docker exec "$PFX-prov-srv" curl -s -u "$egress_auth" -H 'Content-Type: application/json' \
+  -d '{"egress_default_deny":"true"}' "http://$BACKEND_PROV:5000/api/settings" >/dev/null
+docker exec "$PFX-prov-srv" curl -s -u "$egress_auth" -H 'Content-Type: application/json' \
+  -d '{"entry":"93.184.215.0/24","description":"manual range"}' "http://$BACKEND_PROV:5000/api/egress-allowlist" >/dev/null
+prov_enable="$(docker exec "$PFX-prov-srv" curl -s -u "$egress_auth" -X PUT -H 'Content-Type: application/json' \
+  -d '{"enabled":true}' "http://$BACKEND_PROV:5000/api/egress-providers/telegram" 2>&1)"
+case "$prov_enable" in *'"status":"success"'*) ok "the backend enables and fetches the egress provider";; *) bad "the backend enables and fetches the egress provider" "$prov_enable";; esac
+sleep 1
+expect "the backend exported the manual + provider union to dst_allow_ip.txt" \
+  "$(docker exec "$PFX-backend" sh -c 'tr "\n" "," < /config/dst_allow_ip.txt 2>/dev/null')" \
+  "93.184.215.0/24,93.184.216.0/24,"
+docker rm -f "$PFX-backend" >/dev/null
+start_proxy 'true' -v "$PFX-egress-config:/config" --add-host "provider.test:$PROV_SVC" || exit 1
+docker network connect --ip "$PROXY_PROV" "$PFX-prov" "$PFX-proxy"
+check  "LAN client → provider destination"               200 none          code   "$PFX-lan" "$LAN_CLIENT" http://provider.test/
+check  "LAN client → non-provider destination"           403 egress_policy code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/
+docker rm -f "$PFX-prov-srv" >/dev/null 2>&1
+docker network rm "$PFX-prov" >/dev/null 2>&1
 
 echo "── a name the DNS sinkhole answers is denied, with the block page ──"
 # Above SPM_SQUID_DOMAIN_ACL_MAX only dnsmasq knows the list. It answers 0.0.0.0

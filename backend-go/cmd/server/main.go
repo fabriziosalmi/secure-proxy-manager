@@ -142,6 +142,7 @@ func run() error {
 	// The full integrity check; Init ran only quick_check (integrity.go).
 	workers.StartIntegrityCheck(workerCtx, cfg.DatabasePath)
 	workers.StartBlacklistRefresh(workerCtx, db, cfg.ConfigDir)
+	workers.StartEgressProviderRefresh(workerCtx, db, cfg.ConfigDir)
 	// Owns the blacklist export: coalesces concurrent requests, is bound to the
 	// worker context so shutdown can stop it, and reports failure as a metric
 	// (SECURE-CONC-03, SECURE-ERR-05).
@@ -196,6 +197,7 @@ func run() error {
 	handlers.NewAnalyticsHandlers(db, cfg).WithSysInfo(handlers.WorkerSysInfo{}).WithSources(internalSources).Register(r, authMW)
 	handlers.NewDatabaseHandlers(db).Register(r, authMW)
 	handlers.NewDNSDetectHandlers(db).Register(r, authMW)
+	handlers.NewEgressProviderHandlers(db, cfg).Register(r, authMW)
 	handlers.RegisterAPIDocs(r, authMW)
 
 	// ── Prometheus metrics (internal network only; not proxied by nginx) ──────

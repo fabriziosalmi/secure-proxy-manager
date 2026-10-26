@@ -17,6 +17,23 @@ for at least one minor release before disappearing.
 
 ### Added
 
+- Managed egress destination provider lists (`GET /api/egress-providers`,
+  `PUT /api/egress-providers/{name}`, `POST /api/egress-providers/url`,
+  `DELETE /api/egress-providers/url/{id}`,
+  `POST /api/egress-providers/{name}/refresh`,
+  `POST /api/egress-providers/{name}/apply-held`): operators can enable IPv4
+  and IPv6 CIDR ranges from a fixed 12-provider catalog (`amazon`,
+  `cloudflare`, `digitalocean`, `facebook`, `github`, `google`, `linode`,
+  `microsoft`, `oracle`, `telegram`, `twitter`, `vultr`, plus `all`) fetched at
+  a pinned commit of `lord-alfred/ipranges`, or add custom CIDR list URLs.
+  Shared-network providers require explicit confirmation (`confirm_shared:
+  true`). Updates are validated as a whole before replacing the previous list
+  (rejecting malformed lines, prefixes wider than `/8` in IPv4 or `/16` in
+  IPv6, any non-public range, or lists over 50,000 entries), held for manual
+  approval when covered addresses grow by more than 25%, refreshed every
+  `egress_provider_refresh_hours` hours (default 24, minimum 6), recorded in
+  the Audit log with commit SHA and counts, and exported into `dst_allow_ip.txt`
+  as a deduplicated union without touching the manual egress allowlist.
 - The `observability` profile starts: `infra/` holds the Prometheus
   configuration (scraping `backend:5000/metrics` and `waf:8080/metrics`), six
   alert rules in `infra/prometheus/rules/spm.rules.yml` and the Grafana

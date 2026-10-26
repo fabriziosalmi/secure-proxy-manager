@@ -46,7 +46,8 @@ var settingValidators = map[string]func(string) error{
 	"admin_email":                   validEmailOrEmpty,
 	// The refresh worker reads anything that is not a number as 0 and then
 	// never refreshes.
-	"auto_refresh_hours": validRefreshHours,
+	"auto_refresh_hours":            validRefreshHours,
+	"egress_provider_refresh_hours": validBoundedInt(6, 168, "hours"),
 	// Each entry becomes the urlpath_regex \.<entry>$; "*" became \.*$, which
 	// matches every path, and nothing checked it.
 	"blocked_file_types": validExtensionList,

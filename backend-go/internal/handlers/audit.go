@@ -30,6 +30,12 @@ import (
 //	restore_<list>        details {"added","skipped"}
 //	refresh_blacklists    user "system", details per list {"added","fetched","failed","not_added"?}
 //	rewrite_egress_wildcards  user "system", schema version 5, details {"rewritten","dropped","entries"}
+//	egress_provider_enabled        target provider name, details {"kind","shared_network"?,"url"?}
+//	egress_provider_disabled       target provider name, details {"kind","url"?,"deleted"?}
+//	egress_provider_refreshed      target provider name, details {"commit","v4_before","v4_after","v6_before","v6_after","ipv4_covered_before","ipv4_covered_after"}
+//	egress_provider_refresh_failed target provider name, details {"kind","reason"}
+//	egress_provider_held           target provider name, details {"commit","growth_pct","v4_before","v4_after","v6_before","v6_after","ipv4_covered_before","ipv4_covered_after"}
+//	egress_provider_held_applied   target provider name, details {"commit","growth_pct","v4_before","v4_after","v6_before","v6_after","ipv4_covered_before","ipv4_covered_after"}
 //
 // Before these were recorded, clearing 640,929 domains and importing 71,140
 // left no row at all: the log held only sign-ins and settings saves.

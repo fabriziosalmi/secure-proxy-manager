@@ -15,8 +15,9 @@ import (
 // (reconstruct.go). Version 4 records where list entries came from
 // (list_sources). Version 5 rewrites "*.name" egress entries to ".name"
 // (egress_wildcards.go). Version 6 deletes the settings nothing reads
-// (RetiredSettings, retired.go).
-const schemaVersion = 6
+// (RetiredSettings, retired.go). Version 7 creates egress_providers and
+// egress_provider_entries.
+const schemaVersion = 7
 
 // applyVersionedMigrations runs the steps a database has not seen yet.
 //
@@ -58,6 +59,58 @@ func applyVersionedMigrations(db *sql.DB) error {
 			return fmt.Errorf("schema version 6: %w", err)
 		}
 	}
+	if v < 7 {
+		if err := migrateEgressProviders(db); err != nil {
+			return fmt.Errorf("schema version 7: %w", err)
+		}
+	}
+	return nil
+}
+
+// migrateEgressProviders creates egress_providers and egress_provider_entries
+// in one transaction and records schema version 7.
+func migrateEgressProviders(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op once committed
+
+	steps := []string{
+		`CREATE TABLE IF NOT EXISTS egress_providers (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			kind TEXT NOT NULL CHECK (kind IN ('catalog','url')),
+			name TEXT NOT NULL,
+			url TEXT NOT NULL DEFAULT '',
+			enabled INTEGER NOT NULL DEFAULT 0,
+			last_refresh TEXT NOT NULL DEFAULT '',
+			last_commit TEXT NOT NULL DEFAULT '',
+			last_error TEXT NOT NULL DEFAULT '',
+			held_json TEXT NOT NULL DEFAULT '',
+			created TEXT NOT NULL DEFAULT (datetime('now')),
+			UNIQUE (kind, name)
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_egress_providers_url ON egress_providers(url) WHERE kind = 'url'`,
+		`CREATE TABLE IF NOT EXISTS egress_provider_entries (
+			provider_id INTEGER NOT NULL REFERENCES egress_providers(id) ON DELETE CASCADE,
+			cidr TEXT NOT NULL,
+			family INTEGER NOT NULL CHECK (family IN (4, 6)),
+			UNIQUE (provider_id, cidr)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_egress_provider_entries_provider ON egress_provider_entries(provider_id, family)`,
+	}
+	for _, s := range steps {
+		if _, err := tx.Exec(s); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", 7)); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	log.Info().Int("version", 7).Msg("schema migrated: egress provider tables created")
 	return nil
 }
 
