@@ -17,7 +17,9 @@
   }
   .container {
     text-align: center;
+    width: 100%;
     max-width: 520px;
+    min-width: 0;
     padding: 2rem;
   }
   .shield {
@@ -45,6 +47,11 @@
     letter-spacing: 0.05em;
     margin-bottom: 1.5rem;
   }
+  .status-amber {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border-color: rgba(245, 158, 11, 0.3);
+  }
   .message {
     color: #94a3b8;
     font-size: 0.9rem;
@@ -62,11 +69,12 @@
   .detail-row {
     display: flex;
     justify-content: space-between;
+    gap: 1rem;
     padding: 0.35rem 0;
     font-size: 0.8rem;
   }
-  .detail-label { color: #64748b; }
-  .detail-value { color: #cbd5e1; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.75rem; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .detail-label { color: #64748b; flex-shrink: 0; }
+  .detail-value { color: #cbd5e1; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.75rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .divider {
     border-top: 1px solid #1e293b;
     margin: 1.5rem 0 1rem;
@@ -108,7 +116,7 @@
   </div>
 
   <h1>Unsupported Request Method</h1>
-  <div class="status">REQUEST ERROR</div>
+  <div class="status status-amber">REQUEST ERROR</div>
 
   <p class="message">
     The proxy does not support the requested HTTP method for this protocol.

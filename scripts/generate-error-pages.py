@@ -321,7 +321,9 @@ LAYOUT = """<!DOCTYPE html>
   }}
   .container {{
     text-align: center;
+    width: 100%;
     max-width: 520px;
+    min-width: 0;
     padding: 2rem;
   }}
   .shield {{
@@ -349,6 +351,11 @@ LAYOUT = """<!DOCTYPE html>
     letter-spacing: 0.05em;
     margin-bottom: 1.5rem;
   }}
+  .status-amber {{
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border-color: rgba(245, 158, 11, 0.3);
+  }}
   .message {{
     color: #94a3b8;
     font-size: 0.9rem;
@@ -366,11 +373,12 @@ LAYOUT = """<!DOCTYPE html>
   .detail-row {{
     display: flex;
     justify-content: space-between;
+    gap: 1rem;
     padding: 0.35rem 0;
     font-size: 0.8rem;
   }}
-  .detail-label {{ color: #64748b; }}
-  .detail-value {{ color: #cbd5e1; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.75rem; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+  .detail-label {{ color: #64748b; flex-shrink: 0; }}
+  .detail-value {{ color: #cbd5e1; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.75rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
   .divider {{
     border-top: 1px solid #1e293b;
     margin: 1.5rem 0 1rem;
@@ -412,7 +420,7 @@ LAYOUT = """<!DOCTYPE html>
   </div>
 
   <h1>{title}</h1>
-  <div class="status">{badge}</div>
+  <div class="{status_class}">{badge}</div>
 
   <p class="message">
     {summary}
@@ -424,14 +432,7 @@ LAYOUT = """<!DOCTYPE html>
       <span class="detail-label">Destination</span>
       <span class="detail-value">%U</span>
     </div>
-    <div class="detail-row">
-      <span class="detail-label">Time</span>
-      <span class="detail-value">%T</span>
-    </div>
-    <div class="detail-row">
-      <span class="detail-label">Error Code</span>
-      <span class="detail-value">%c</span>
-    </div>
+{detail_rows}
   </div>
 
   <div class="divider"></div>
@@ -454,17 +455,39 @@ document.querySelectorAll('.detail-value').forEach(function(el){{
 </html>
 """  # noqa: E501
 
+ACCESS_DENIED_ROWS = """    <div class="detail-row">
+      <span class="detail-label">Client IP</span>
+      <span class="detail-value">%a</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Time</span>
+      <span class="detail-value">%T</span>
+    </div>"""
+
+DEFAULT_DETAIL_ROWS = """    <div class="detail-row">
+      <span class="detail-label">Time</span>
+      <span class="detail-value">%T</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Error Code</span>
+      <span class="detail-value">%c</span>
+    </div>"""
+
 
 def render_all() -> dict[str, str]:
     rendered: dict[str, str] = {}
     for code, kind, title, summary, action in PAGES:
         if kind not in BADGES:
             raise ValueError(f"{code}: unknown kind {kind!r}")
+        status_class = "status" if kind == "policy" else "status status-amber"
+        detail_rows = ACCESS_DENIED_ROWS if code == "ERR_ACCESS_DENIED" else DEFAULT_DETAIL_ROWS
         rendered[code] = LAYOUT.format(
             title=title,
+            status_class=status_class,
             badge=BADGES[kind],
             summary=summary,
             action=action,
+            detail_rows=detail_rows,
         )
     return rendered
 
