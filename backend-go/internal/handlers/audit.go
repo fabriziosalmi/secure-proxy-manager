@@ -30,6 +30,7 @@ import (
 //	restore_<list>        details {"added","skipped"}
 //	refresh_blacklists    user "system", details per list {"added","fetched","failed","not_added"?}
 //	rewrite_egress_wildcards  user "system", schema version 5, details {"rewritten","dropped","entries"}
+//	retire_setting_value      user "system", schema version 8, target setting key, details {"value","truncated"?}
 //	egress_provider_enabled        target provider name, details {"kind","shared_network"?,"url"?}
 //	egress_provider_disabled       target provider name, details {"kind","url"?,"deleted"?}
 //	egress_provider_refreshed      target provider name, details {"commit","v4_before","v4_after","v6_before","v6_after","ipv4_covered_before","ipv4_covered_after"}

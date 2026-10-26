@@ -35,8 +35,8 @@ func TestMigration7CreatesEgressProviderTablesIdempotently(t *testing.T) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&v); err != nil {
 		t.Fatal(err)
 	}
-	if v != 7 {
-		t.Fatalf("user_version = %d, want 7", v)
+	if v != schemaVersion {
+		t.Fatalf("user_version = %d, want %d", v, schemaVersion)
 	}
 
 	var refreshHours string

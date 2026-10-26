@@ -131,7 +131,7 @@ var internallyManagedSettings = map[string]bool{
 // bulk-update / restore-config endpoints: it must match the key-name convention,
 // be within the length bound, and not be an internally-managed key or one of
 // database.RetiredSettings (which nothing reads; their rows were deleted by
-// schema version 5, and two of them held tokens in clear).
+// schema versions 6 and 8, and two of them held tokens in clear).
 func isWritableSettingKey(key string) bool {
 	return len(key) <= 100 && validKeyRE.MatchString(key) && !internallyManagedSettings[key] && !database.IsRetiredSetting(key)
 }
