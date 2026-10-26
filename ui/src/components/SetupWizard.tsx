@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { Shield, Baby, Server, Lock, Monitor, Tv, Wifi, Smartphone, ChevronRight, ChevronLeft, Zap, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import { cn } from '../lib/utils';
 import { useModal } from '../hooks/useModal';
 import { ClientSetup } from './ClientSetup';
+import { Button } from './ui/Button';
 
 interface Props {
   onComplete: () => void;
@@ -12,11 +14,11 @@ interface Props {
 type Environment = 'homelab' | 'family' | 'smb' | 'advanced';
 type StrictLevel = 'relaxed' | 'balanced' | 'strict';
 
-const ENV_OPTIONS: { id: Environment; icon: typeof Shield; color: string; label: string; desc: string }[] = [
-  { id: 'homelab', icon: Monitor, color: 'text-cyan-400', label: 'Homelab', desc: 'Personal servers, NAS, dev environment' },
-  { id: 'family', icon: Baby, color: 'text-blue-400', label: 'Family', desc: 'Home network with kids, safe browsing' },
-  { id: 'smb', icon: Server, color: 'text-yellow-400', label: 'Small Business', desc: 'Office network, compliance needs' },
-  { id: 'advanced', icon: Lock, color: 'text-red-400', label: 'Advanced', desc: 'I know what I\'m doing, skip wizard' },
+const ENV_OPTIONS: { id: Environment; icon: typeof Shield; label: string; desc: string }[] = [
+  { id: 'homelab', icon: Monitor, label: 'Homelab', desc: 'Personal servers, NAS, dev environment' },
+  { id: 'family', icon: Baby, label: 'Family', desc: 'Home network with kids, safe browsing' },
+  { id: 'smb', icon: Server, label: 'Small Business', desc: 'Office network, compliance needs' },
+  { id: 'advanced', icon: Lock, label: 'Advanced', desc: 'I know what I\'m doing, skip wizard' },
 ];
 
 const DEVICE_OPTIONS: { id: string; icon: typeof Monitor; label: string }[] = [
@@ -27,10 +29,10 @@ const DEVICE_OPTIONS: { id: string; icon: typeof Monitor; label: string }[] = [
   { id: 'servers', icon: Server, label: 'Servers' },
 ];
 
-const STRICT_OPTIONS: { id: StrictLevel; color: string; label: string; desc: string }[] = [
-  { id: 'relaxed', color: 'text-emerald-400', label: 'Relaxed', desc: 'Minimal blocking, just the essentials' },
-  { id: 'balanced', color: 'text-yellow-400', label: 'Balanced', desc: 'Good protection without breaking things' },
-  { id: 'strict', color: 'text-red-400', label: 'Strict', desc: 'Maximum security, may need whitelist tuning' },
+const STRICT_OPTIONS: { id: StrictLevel; label: string; desc: string }[] = [
+  { id: 'relaxed', label: 'Relaxed', desc: 'Minimal blocking, just the essentials' },
+  { id: 'balanced', label: 'Balanced', desc: 'Good protection without breaking things' },
+  { id: 'strict', label: 'Strict', desc: 'Maximum security, may need whitelist tuning' },
 ];
 
 function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): Record<string, string> {
@@ -156,27 +158,35 @@ export function SetupWizard({ onComplete }: Props) {
   return (
     <div
       ref={modalRef}
-      className="fixed inset-0 z-100 bg-background flex items-center justify-center p-4"
+      className="fixed inset-0 z-100 bg-ground text-ink flex items-center justify-center p-4 overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-labelledby="setup-wizard-title"
     >
-      <div className="w-full max-w-2xl">
+      <div className="w-full max-w-2xl rounded-panel border border-line bg-surface p-6">
         {/* Logo + title */}
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <img src="/logo.svg" alt="" className="w-12 h-12" />
+        <div className="text-center mb-6">
+          <div className="flex justify-center mb-3">
+            <div className="w-12 h-12 rounded-panel border border-line bg-surface-muted flex items-center justify-center">
+              <img src="/logo.svg" alt="" className="w-7 h-7" />
+            </div>
           </div>
-          <h1 id="setup-wizard-title" className="text-2xl font-bold tracking-tight">Welcome to Secure Proxy Manager</h1>
-          <p className="text-sm text-muted-foreground mt-1">Let's configure your proxy in 30 seconds</p>
+          <h1 id="setup-wizard-title" className="text-xl font-semibold tracking-tight text-ink">
+            Welcome to Secure Proxy Manager
+          </h1>
+          <p className="text-sm text-ink-muted mt-1">Let's configure your proxy in 30 seconds</p>
         </div>
 
         {/* Progress */}
-        <div className="flex items-center justify-center gap-2 mb-8">
+        <div className="flex items-center justify-center gap-2 mb-6" aria-hidden="true">
           {[0, 1, 2, 3].map(i => (
-            <div key={i} className={`h-1.5 rounded-full transition-all ${
-              i === step ? 'w-10 bg-primary' : i < step ? 'w-6 bg-primary/50' : 'w-6 bg-secondary'
-            }`} />
+            <div
+              key={i}
+              className={cn(
+                'h-1.5 rounded-full transition-all',
+                i === step ? 'w-10 bg-accent-solid' : i < step ? 'w-6 bg-accent-line' : 'w-6 bg-line',
+              )}
+            />
           ))}
         </div>
 
@@ -184,9 +194,9 @@ export function SetupWizard({ onComplete }: Props) {
         <div className="min-h-[280px]">
           {step === 0 && (
             <div>
-              <h2 className="text-lg font-semibold mb-1">What's your setup?</h2>
-              <p className="text-xs text-muted-foreground mb-4">This helps us choose the right defaults</p>
-              <div className="grid grid-cols-2 gap-3">
+              <h2 className="text-base font-semibold text-ink mb-1">What's your setup?</h2>
+              <p className="text-xs text-ink-muted mb-4">This helps us choose the right defaults</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {ENV_OPTIONS.map(opt => {
                   const Icon = opt.icon;
                   const selected = env === opt.id;
@@ -194,17 +204,21 @@ export function SetupWizard({ onComplete }: Props) {
                     <button
                       key={opt.id}
                       type="button"
+                      aria-pressed={selected}
                       onClick={() => setEnv(opt.id)}
-                      className={`flex items-start gap-3 p-4 border rounded-lg text-left transition-all ${
-                        selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-border/80 hover:bg-secondary/30'
-                      }`}
+                      className={cn(
+                        'flex items-start gap-3 p-4 border rounded-control text-left transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent',
+                        selected
+                          ? 'border-accent-line bg-accent-subtle ring-1 ring-accent'
+                          : 'border-line bg-surface hover:bg-surface-muted',
+                      )}
                     >
-                      <Icon className={`w-5 h-5 mt-0.5 shrink-0 ${selected ? opt.color : 'text-muted-foreground'}`} />
+                      <Icon aria-hidden="true" className={cn('w-5 h-5 mt-0.5 shrink-0', selected ? 'text-accent' : 'text-ink-muted')} />
                       <div>
-                        <p className={`text-sm font-medium ${selected ? opt.color : ''}`}>{opt.label}</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">{opt.desc}</p>
+                        <p className={cn('text-sm font-semibold', selected ? 'text-accent' : 'text-ink')}>{opt.label}</p>
+                        <p className="text-xs text-ink-muted mt-0.5">{opt.desc}</p>
                       </div>
-                      {selected && <Check className="w-4 h-4 text-primary ml-auto shrink-0 mt-0.5" />}
+                      {selected && <Check aria-hidden="true" className="w-4 h-4 text-accent ml-auto shrink-0 mt-0.5" />}
                     </button>
                   );
                 })}
@@ -214,9 +228,9 @@ export function SetupWizard({ onComplete }: Props) {
 
           {step === 1 && (
             <div>
-              <h2 className="text-lg font-semibold mb-1">What devices use this proxy?</h2>
-              <p className="text-xs text-muted-foreground mb-4">Select all that apply. This helps tune the blocking rules.</p>
-              <div className="grid grid-cols-3 gap-2">
+              <h2 className="text-base font-semibold text-ink mb-1">What devices use this proxy?</h2>
+              <p className="text-xs text-ink-muted mb-4">Select all that apply. This helps tune the blocking rules.</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {DEVICE_OPTIONS.map(opt => {
                   const Icon = opt.icon;
                   const selected = devices.includes(opt.id);
@@ -224,25 +238,29 @@ export function SetupWizard({ onComplete }: Props) {
                     <button
                       key={opt.id}
                       type="button"
+                      aria-pressed={selected}
                       onClick={() => toggleDevice(opt.id)}
-                      className={`flex flex-col items-center gap-2 p-4 border rounded-lg transition-all ${
-                        selected ? 'border-primary bg-primary/5' : 'border-border hover:border-border/80 hover:bg-secondary/30'
-                      }`}
+                      className={cn(
+                        'flex flex-col items-center gap-2 p-4 border rounded-control transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent',
+                        selected
+                          ? 'border-accent-line bg-accent-subtle ring-1 ring-accent'
+                          : 'border-line bg-surface hover:bg-surface-muted',
+                      )}
                     >
-                      <Icon className={`w-5 h-5 ${selected ? 'text-primary' : 'text-muted-foreground'}`} />
-                      <span className={`text-xs font-medium ${selected ? 'text-primary' : 'text-muted-foreground'}`}>{opt.label}</span>
+                      <Icon aria-hidden="true" className={cn('w-5 h-5', selected ? 'text-accent' : 'text-ink-muted')} />
+                      <span className={cn('text-xs font-medium', selected ? 'text-accent' : 'text-ink-secondary')}>{opt.label}</span>
                     </button>
                   );
                 })}
               </div>
-              <p className="text-[10px] text-muted-foreground mt-3 text-center">Skip if unsure. You can always change this later in Settings.</p>
+              <p className="text-xs text-ink-muted mt-3 text-center">Skip if unsure. You can always change this later in Settings.</p>
             </div>
           )}
 
           {step === 2 && (
             <div>
-              <h2 className="text-lg font-semibold mb-1">How strict?</h2>
-              <p className="text-xs text-muted-foreground mb-4">You can fine-tune individual settings anytime</p>
+              <h2 className="text-base font-semibold text-ink mb-1">How strict?</h2>
+              <p className="text-xs text-ink-muted mb-4">You can fine-tune individual settings anytime</p>
               <div className="space-y-2">
                 {STRICT_OPTIONS.map(opt => {
                   const selected = strict === opt.id;
@@ -250,16 +268,20 @@ export function SetupWizard({ onComplete }: Props) {
                     <button
                       key={opt.id}
                       type="button"
+                      aria-pressed={selected}
                       onClick={() => setStrict(opt.id)}
-                      className={`w-full flex items-center justify-between p-4 border rounded-lg text-left transition-all ${
-                        selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-border/80 hover:bg-secondary/30'
-                      }`}
+                      className={cn(
+                        'w-full flex items-center justify-between p-4 border rounded-control text-left transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent',
+                        selected
+                          ? 'border-accent-line bg-accent-subtle ring-1 ring-accent'
+                          : 'border-line bg-surface hover:bg-surface-muted',
+                      )}
                     >
                       <div>
-                        <p className={`text-sm font-bold ${selected ? opt.color : ''}`}>{opt.label}</p>
-                        <p className="text-[11px] text-muted-foreground">{opt.desc}</p>
+                        <p className={cn('text-sm font-semibold', selected ? 'text-accent' : 'text-ink')}>{opt.label}</p>
+                        <p className="text-xs text-ink-muted">{opt.desc}</p>
                       </div>
-                      {selected && <Check className="w-4 h-4 text-primary shrink-0" />}
+                      {selected && <Check aria-hidden="true" className="w-4 h-4 text-accent shrink-0" />}
                     </button>
                   );
                 })}
@@ -269,8 +291,8 @@ export function SetupWizard({ onComplete }: Props) {
 
           {step === 3 && (
             <div>
-              <h2 className="text-lg font-semibold mb-1">You're set: connect your devices</h2>
-              <p className="text-xs text-muted-foreground mb-4">Point a device at the proxy to start filtering its traffic.</p>
+              <h2 className="text-base font-semibold text-ink mb-1">You're set: connect your devices</h2>
+              <p className="text-xs text-ink-muted mb-4">Point a device at the proxy to start filtering its traffic.</p>
               <div className="max-h-[50vh] overflow-y-auto -mx-1 px-1">
                 <ClientSetup />
               </div>
@@ -280,50 +302,32 @@ export function SetupWizard({ onComplete }: Props) {
 
         {/* Navigation */}
         <div className="flex items-center justify-between mt-6">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            icon={<ChevronLeft />}
             onClick={() => setStep(s => s - 1)}
             disabled={step === 0 || step === 3}
-            className="flex items-center gap-1 px-4 py-2 text-sm text-muted-foreground hover:text-foreground disabled:opacity-0 transition-all"
+            className={step === 0 || step === 3 ? 'invisible' : ''}
           >
-            <ChevronLeft className="w-4 h-4" /> Back
-          </button>
+            Back
+          </Button>
 
           {step === 3 ? (
-            <button
-              type="button"
-              onClick={onComplete}
-              className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-            >
-              <Check className="w-4 h-4" /> Done
-            </button>
+            <Button variant="primary" icon={<Check />} onClick={onComplete}>
+              Done
+            </Button>
           ) : env === 'advanced' && step === 0 ? (
-            <button
-              type="button"
-              onClick={handleFinish}
-              className="flex items-center gap-2 px-6 py-2 bg-secondary text-foreground rounded-lg text-sm font-medium hover:bg-secondary/80 transition-colors"
-            >
-              Skip Wizard <ChevronRight className="w-4 h-4" />
-            </button>
+            <Button variant="secondary" onClick={handleFinish}>
+              Skip Wizard <ChevronRight aria-hidden="true" className="w-4 h-4" />
+            </Button>
           ) : step < 2 ? (
-            <button
-              type="button"
-              onClick={() => setStep(s => s + 1)}
-              disabled={!canNext}
-              className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            >
-              Next <ChevronRight className="w-4 h-4" />
-            </button>
+            <Button variant="primary" onClick={() => setStep(s => s + 1)} disabled={!canNext}>
+              Next <ChevronRight aria-hidden="true" className="w-4 h-4" />
+            </Button>
           ) : (
-            <button
-              type="button"
-              onClick={handleFinish}
-              disabled={saving}
-              className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            >
-              <Zap className="w-4 h-4" />
+            <Button variant="primary" icon={<Zap />} onClick={handleFinish} disabled={saving}>
               {saving ? 'Applying...' : 'Apply & Start'}
-            </button>
+            </Button>
           )}
         </div>
       </div>

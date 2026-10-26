@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/helpers'
+import { expectNoAxeViolations } from '../test/axe'
 import { SetupWizard } from './SetupWizard'
 
 vi.mock('../lib/api', () => ({
@@ -96,5 +97,36 @@ describe('SetupWizard', () => {
       // not a strictness choice (offline mode) are not written.
       for (const dead of ['block_direct_ip', 'waf_block_threshold', 'enable_offline_mode']) expect(settings).not.toHaveProperty(dead)
     })
+  })
+
+  it.each(['light', 'dark'] as const)('passes axe accessibility checks on every wizard step in %s theme', async (theme) => {
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    try {
+      const user = userEvent.setup()
+      const { container } = renderWithProviders(<SetupWizard onComplete={onComplete} />)
+
+      // Step 0: Environment
+      await expectNoAxeViolations(container)
+      await user.click(screen.getByText('Homelab'))
+      await expectNoAxeViolations(container)
+      await user.click(screen.getByText(/^next$/i))
+
+      // Step 1: Devices
+      await waitFor(() => expect(screen.getByText('PCs / Laptops')).toBeInTheDocument())
+      await user.click(screen.getByText('PCs / Laptops'))
+      await expectNoAxeViolations(container)
+      await user.click(screen.getByText(/^next$/i))
+
+      // Step 2: Strictness
+      await waitFor(() => expect(screen.getByText('Balanced')).toBeInTheDocument())
+      await expectNoAxeViolations(container)
+      await user.click(screen.getByText(/apply/i))
+
+      // Step 3: Connect your devices (ClientSetup)
+      await waitFor(() => expect(screen.getByText('Connect Your Devices')).toBeInTheDocument())
+      await expectNoAxeViolations(container)
+    } finally {
+      document.documentElement.classList.remove('dark')
+    }
   })
 })

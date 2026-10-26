@@ -1,9 +1,14 @@
 import { useState } from 'react';
 import { api, setAuthToken } from '../lib/api';
+import { Button } from '../components/ui/Button';
 
 interface Props {
   onLogin: () => void;
 }
+
+const INPUT =
+  'h-9 w-full rounded-control border border-line-strong bg-surface px-3 text-sm text-ink ' +
+  'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent';
 
 export function Login({ onLogin }: Props) {
   const [username, setUsername] = useState('');
@@ -29,24 +34,23 @@ export function Login({ onLogin }: Props) {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4 ambient-glow">
-      <div className="w-full max-w-sm space-y-6 page-enter">
+    <main className="min-h-screen bg-ground text-ink flex items-center justify-center px-4">
+      <div className="w-full max-w-sm rounded-panel border border-line bg-surface p-6 space-y-6 page-enter">
         <div className="text-center space-y-2">
           <div className="flex justify-center">
-            <div className="relative w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <img src="/logo.svg" alt="Secure Proxy Manager" className="w-8 h-8" />
-              <div className="absolute inset-0 rounded-2xl bg-primary/5 animate-glow-pulse" />
+            <div className="w-12 h-12 rounded-panel border border-line bg-surface-muted flex items-center justify-center">
+              <img src="/logo.svg" alt="Secure Proxy Manager" className="w-7 h-7" />
             </div>
           </div>
-          <h1 className="text-2xl font-extrabold tracking-tight bg-linear-to-b from-foreground to-foreground/70 bg-clip-text text-transparent">
+          <h1 className="text-xl font-semibold tracking-tight text-ink">
             Secure Proxy Manager
           </h1>
-          <p className="text-sm text-muted-foreground">Sign in to continue</p>
+          <p className="text-sm text-ink-muted">Sign in to continue</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="username" className="text-sm font-medium">Username</label>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="username" className="text-sm font-medium text-ink">Username</label>
             <input
               id="username"
               type="text"
@@ -54,11 +58,11 @@ export function Login({ onLogin }: Props) {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
-              className="w-full glass-surface rounded-lg px-3 py-2.5 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+              className={INPUT}
             />
           </div>
-          <div className="space-y-2">
-            <label htmlFor="password" className="text-sm font-medium">Password</label>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="password" className="text-sm font-medium text-ink">Password</label>
             <input
               id="password"
               type="password"
@@ -66,28 +70,26 @@ export function Login({ onLogin }: Props) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full glass-surface rounded-lg px-3 py-2.5 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 focus:ring-offset-background transition-all"
+              className={INPUT}
             />
           </div>
 
           {error && (
-            <p role="alert" className="text-sm text-destructive animate-fade-in-up">{error}</p>
+            <p role="alert" className="rounded-control border border-danger-line bg-danger-subtle px-3 py-2 text-sm text-danger animate-fade-in-up">
+              {error}
+            </p>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed btn-press"
-          >
+          <Button type="submit" variant="primary" disabled={loading} className="w-full">
             {loading ? (
               <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                <span className="w-4 h-4 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin" aria-hidden="true" />
                 Signing in...
               </span>
             ) : 'Sign in'}
-          </button>
+          </Button>
         </form>
       </div>
-    </div>
+    </main>
   );
 }
