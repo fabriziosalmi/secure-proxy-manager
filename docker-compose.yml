@@ -93,6 +93,7 @@ services:
       # documented in .env.example but never passed to the container.
       - WAF_DISABLED_CATEGORIES=${WAF_DISABLED_CATEGORIES:-}
       - WAF_H_SEQUENCE=${WAF_H_SEQUENCE:-0}
+      - WAF_FAIL_OPEN=${WAF_FAIL_OPEN:-0}
     deploy:
       resources:
         limits:

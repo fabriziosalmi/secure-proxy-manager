@@ -84,6 +84,7 @@ services:
       - WAF_H_GHOSTING=${WAF_H_GHOSTING:-1}
       - WAF_DISABLED_CATEGORIES=${WAF_DISABLED_CATEGORIES:-}
       - WAF_H_SEQUENCE=${WAF_H_SEQUENCE:-0}
+      - WAF_FAIL_OPEN=${WAF_FAIL_OPEN:-0}
     deploy:
       resources:
         limits:
