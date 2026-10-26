@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -131,6 +132,14 @@ func (f *fakeProviderFeedServer) setCatalog(dir, v4, v6 string) {
 	f.v6[dir] = v6
 	delete(f.v4Code, dir)
 	delete(f.v6Code, dir)
+}
+
+func (f *fakeProviderFeedServer) UnlockAndSet(dir, v4, v6 string) {
+	f.v4[dir] = v4
+	f.v6[dir] = v6
+	delete(f.v4Code, dir)
+	delete(f.v6Code, dir)
+	f.mu.Unlock()
 }
 
 func (f *fakeProviderFeedServer) requests() []string {
@@ -265,6 +274,10 @@ func TestEgressProviderProtections(t *testing.T) {
 		{"nonpublic_doc_v6_2001_db8", "1.1.1.0/24\n", "2001:db8::/32\n"},
 		{"nonpublic_cgnat", "100.64.0.0/16\n", ""},
 		{"nonpublic_ula", "1.1.1.0/24\n", "fd00::/48\n"},
+		{"nonpublic_v6_unassigned_4000_16", "1.1.1.0/24\n", "4000::/16\n"},
+		{"nonpublic_v6_ietf_2001_23", "1.1.1.0/24\n", "2001::/32\n"},
+		{"nonpublic_v6_6to4_2002_16", "1.1.1.0/24\n", "2002::/16\n"},
+		{"nonpublic_v4_6to4_relay_192_88_99", "192.88.99.0/24\n", ""},
 		{"over_50000_entries", over50k.String(), ""},
 	}
 
@@ -288,6 +301,9 @@ func TestEgressProviderProtections(t *testing.T) {
 			commit, lastErr, _ := providerStateInDB(t, db, "telegram")
 			if lastErr == "" {
 				t.Errorf("%s: last_error is empty after failed refresh", tc.name)
+			}
+			if tc.name == "nonpublic_v6_unassigned_4000_16" && !strings.Contains(lastErr, "unassigned") {
+				t.Errorf("%s: last_error = %q, want class 'unassigned'", tc.name, lastErr)
 			}
 			if commit != "d03d319a255c0000000000000000000000000001" {
 				t.Errorf("%s: last_commit changed to %q on failed refresh", tc.name, commit)
@@ -373,6 +389,77 @@ func TestEgressProviderProtections(t *testing.T) {
 		appliedRow := oneAuditRow(t, db, "egress_provider_held_applied")
 		if appliedRow.user != "admin" || appliedRow.target != "facebook" || !strings.Contains(appliedRow.details, "1251") {
 			t.Errorf("egress_provider_held_applied = %+v", appliedRow)
+		}
+	})
+
+	// 3. F1: When a provider already has a good list and a previously empty family
+	// transitions from 0 to >0 covered addresses/blocks, the update is held.
+	// Initial download stays without comparison.
+	t.Run("family_appearing_from_zero_held", func(t *testing.T) {
+		// 3a. Initial download of oracle with IPv4 only (no IPv6): applied without hold.
+		feed.mu.Lock()
+		feed.sha = "d03d319a255c0000000000000000000000000020"
+		feed.v4["oracle"] = "129.146.0.0/16\n"
+		feed.v6Code["oracle"] = http.StatusNotFound
+		feed.mu.Unlock()
+		code, out := call(t, h, "PUT", "/api/egress-providers/oracle", `{"enabled":true,"confirm_shared":true}`)
+		if code != http.StatusOK || out["held"] != false {
+			t.Fatalf("enable oracle (initial download) = %d %v", code, out)
+		}
+		if got := providerEntriesInDB(t, db, "oracle"); strings.Join(got, ",") != "129.146.0.0/16" {
+			t.Fatalf("oracle initial entries = %v, want [129.146.0.0/16]", got)
+		}
+
+		// Update oracle adding IPv6 (2a00::/16) where IPv6 was previously 0: must be held.
+		beforeHeld := len(auditRows(t, db, "egress_provider_held"))
+		feed.mu.Lock()
+		feed.sha = "d03d319a255c0000000000000000000000000021"
+		feed.UnlockAndSet("oracle", "129.146.0.0/16\n", "2a00::/16\n")
+		code, out = call(t, h, "POST", "/api/egress-providers/oracle/refresh", "")
+		if code != http.StatusOK || out["held"] != true {
+			t.Fatalf("oracle refresh adding IPv6 from 0 = %d %v, want 200 with held=true", code, out)
+		}
+		if got := providerEntriesInDB(t, db, "oracle"); strings.Join(got, ",") != "129.146.0.0/16" {
+			t.Fatalf("oracle active entries changed when IPv6 appeared: %v", got)
+		}
+		_, _, heldJSON := providerStateInDB(t, db, "oracle")
+		if !strings.Contains(heldJSON, "IPv6 appeared: 0 to ") {
+			t.Fatalf("oracle held_json = %s, want reason 'IPv6 appeared: 0 to ...'", heldJSON)
+		}
+		if len(auditRows(t, db, "egress_provider_held")) != beforeHeld+1 {
+			t.Fatalf("expected egress_provider_held audit row for oracle IPv6 appearance")
+		}
+
+		// 3b. Initial download of linode with IPv6 only (empty IPv4): applied without hold.
+		feed.mu.Lock()
+		feed.sha = "d03d319a255c0000000000000000000000000022"
+		feed.UnlockAndSet("linode", "", "2600:3c00::/32\n")
+		code, out = call(t, h, "PUT", "/api/egress-providers/linode", `{"enabled":true,"confirm_shared":true}`)
+		if code != http.StatusOK || out["held"] != false {
+			t.Fatalf("enable linode (initial IPv6-only download) = %d %v", code, out)
+		}
+		if got := providerEntriesInDB(t, db, "linode"); strings.Join(got, ",") != "2600:3c00::/32" {
+			t.Fatalf("linode initial entries = %v, want [2600:3c00::/32]", got)
+		}
+
+		// Update linode adding IPv4 (139.144.0.0/16) where IPv4 was previously 0: must be held.
+		beforeHeld = len(auditRows(t, db, "egress_provider_held"))
+		feed.mu.Lock()
+		feed.sha = "d03d319a255c0000000000000000000000000023"
+		feed.UnlockAndSet("linode", "139.144.0.0/16\n", "2600:3c00::/32\n")
+		code, out = call(t, h, "POST", "/api/egress-providers/linode/refresh", "")
+		if code != http.StatusOK || out["held"] != true {
+			t.Fatalf("linode refresh adding IPv4 from 0 = %d %v, want 200 with held=true", code, out)
+		}
+		if got := providerEntriesInDB(t, db, "linode"); strings.Join(got, ",") != "2600:3c00::/32" {
+			t.Fatalf("linode active entries changed when IPv4 appeared: %v", got)
+		}
+		_, _, heldJSON = providerStateInDB(t, db, "linode")
+		if !strings.Contains(heldJSON, "IPv4 appeared: 0 to ") {
+			t.Fatalf("linode held_json = %s, want reason 'IPv4 appeared: 0 to ...'", heldJSON)
+		}
+		if len(auditRows(t, db, "egress_provider_held")) != beforeHeld+1 {
+			t.Fatalf("expected egress_provider_held audit row for linode IPv4 appearance")
 		}
 	})
 }
@@ -587,16 +674,188 @@ func TestEgressProviderBackupRestoreAndReset(t *testing.T) {
 		t.Fatalf("entries after reset = %v, want empty", got)
 	}
 
-	// Restore re-creates the providers and downloads their entries again.
+	// Restore re-creates the providers and downloads their entries in the background.
 	if code, out := call(t, h, "POST", "/api/maintenance/restore-config", mustJSON(t, backupData)); code != http.StatusOK {
 		t.Fatalf("restore = %d %v", code, out)
 	}
+	workers.Wait()
 	if got := providerEntriesInDB(t, db, "telegram"); strings.Join(got, ",") != "149.154.160.0/20" {
 		t.Fatalf("telegram entries after restore = %v, want [149.154.160.0/20]", got)
 	}
 	if got := providerEntriesInDB(t, db, "custom"); strings.Join(got, ",") != "9.9.9.0/24" {
 		t.Fatalf("custom entries after restore = %v, want [9.9.9.0/24]", got)
 	}
+}
+
+func TestEgressProviderRev1Fixes(t *testing.T) {
+	// F2: Even when EgressCommitsURL and EgressRawBaseURL are overridden (as in
+	// test deployments), the default EgressHTTPClient must still enforce SSRF
+	// protection and reject 127.0.0.1.
+	t.Run("ssrf_preserved_with_test_env_urls", func(t *testing.T) {
+		db, _, cfg, cleanup := setupTestDB(t)
+		defer cleanup()
+
+		loopbackSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte("9.9.9.0/24\n"))
+		}))
+		defer loopbackSrv.Close()
+
+		origCommits := workers.EgressCommitsURL
+		origRaw := workers.EgressRawBaseURL
+		workers.EgressCommitsURL = "https://example.invalid/commits/main"
+		workers.EgressRawBaseURL = "https://example.invalid/raw"
+		defer func() {
+			workers.EgressCommitsURL = origCommits
+			workers.EgressRawBaseURL = origRaw
+		}()
+
+		h := egressRouter(t, db, cfg)
+		code, out := call(t, h, "POST", "/api/egress-providers/url", fmt.Sprintf(`{"url":%q,"label":"loopback"}`, loopbackSrv.URL+"/feed.txt"))
+		if code != http.StatusBadRequest {
+			t.Fatalf("POST /api/egress-providers/url to 127.0.0.1 = %d %v, want 400", code, out)
+		}
+
+		// Also verify EgressHTTPClient itself blocks 127.0.0.1 at dial time (e.g.
+		// on DNS rebinding after the pre-check, or if EgressCommitsURL is set in
+		// the environment) when EgressCommitsURL/EgressRawBaseURL are non-default.
+		origCheck := workers.EgressCheckURL
+		workers.EgressCheckURL = func(string) (bool, error) { return false, nil }
+		defer func() { workers.EgressCheckURL = origCheck }()
+
+		if _, err := db.Exec(`INSERT INTO egress_providers(kind, name, url, enabled) VALUES('url', 'loopback-direct', ?, 1)`, loopbackSrv.URL+"/feed.txt"); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := workers.RefreshEgressProvider(db, cfg.ConfigDir, "url", "loopback-direct", "admin"); err == nil {
+			t.Fatalf("RefreshEgressProvider to 127.0.0.1 succeeded when EgressCommitsURL was overridden; SSRF dial protection in EgressHTTPClient was bypassed")
+		}
+		if got := providerEntriesInDB(t, db, "loopback-direct"); len(got) != 0 {
+			t.Fatalf("loopback-direct entries = %v, want empty", got)
+		}
+	})
+
+	// F3: Restore triggers provider refresh in the background so a slow feed
+	// does not block the HTTP response, and the response reports how many
+	// providers were restored and that download is in progress.
+	t.Run("restore_refreshes_providers_in_background", func(t *testing.T) {
+		db, _, cfg, cleanup := setupTestDB(t)
+		defer cleanup()
+
+		releaseFeed := make(chan struct{})
+		feedEntered := make(chan struct{}, 1)
+		slowSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			select {
+			case feedEntered <- struct{}{}:
+			default:
+			}
+			<-releaseFeed
+			_, _ = w.Write([]byte("9.9.9.0/24\n"))
+		}))
+		defer slowSrv.Close()
+
+		origClient := workers.EgressHTTPClient
+		origCheck := workers.EgressCheckURL
+		workers.EgressHTTPClient = func() *http.Client { return slowSrv.Client() }
+		workers.EgressCheckURL = func(rawURL string) (bool, error) {
+			if strings.HasPrefix(rawURL, slowSrv.URL) {
+				return false, nil
+			}
+			return origCheck(rawURL)
+		}
+		defer func() {
+			workers.EgressHTTPClient = origClient
+			workers.EgressCheckURL = origCheck
+		}()
+
+		h := egressRouter(t, db, cfg)
+		payload := fmt.Sprintf(`{"backup_version":2,"egress_providers":[{"kind":"url","name":"slow-feed","url":%q,"enabled":true}]}`, slowSrv.URL+"/slow.txt")
+
+		done := make(chan struct{})
+		var code int
+		var out map[string]any
+		go func() {
+			code, out = call(t, h, "POST", "/api/maintenance/restore-config", payload)
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(150 * time.Millisecond):
+			close(releaseFeed)
+			<-done
+			t.Fatalf("POST /api/maintenance/restore-config blocked on slow provider download instead of running in background")
+		}
+
+		if code != http.StatusOK {
+			close(releaseFeed)
+			workers.Wait()
+			t.Fatalf("restore = %d %v", code, out)
+		}
+		if out["restored_egress_providers"] != float64(1) || out["egress_providers_refreshing"] != true {
+			close(releaseFeed)
+			workers.Wait()
+			t.Fatalf("restore response = %v, want restored_egress_providers=1 and egress_providers_refreshing=true", out)
+		}
+
+		// Now unblock the slow feed and wait for the background worker to finish.
+		<-feedEntered
+		close(releaseFeed)
+		workers.Wait()
+
+		if got := providerEntriesInDB(t, db, "slow-feed"); strings.Join(got, ",") != "9.9.9.0/24" {
+			t.Fatalf("slow-feed entries after background refresh = %v, want [9.9.9.0/24]", got)
+		}
+	})
+
+	// F5: (a) Initial refresh failure on PUT /api/egress-providers/{name} returns
+	// 200 with enabled=true, last_error populated, and refresh_error in the response;
+	// (b) a failure inside applyValidatedProviderList records last_error and an
+	// egress_provider_refresh_failed audit row.
+	t.Run("apply_failure_audit_and_enable_initial_refresh_error", func(t *testing.T) {
+		db, _, cfg, cleanup := setupTestDB(t)
+		defer cleanup()
+		feed, _ := newFakeProviderFeedServer(t, "d03d319a255c0000000000000000000000000099")
+		feed.mu.Lock()
+		feed.v4Code["digitalocean"] = http.StatusInternalServerError
+		feed.mu.Unlock()
+
+		h := egressRouter(t, db, cfg)
+		code, out := call(t, h, "PUT", "/api/egress-providers/digitalocean", `{"enabled":true,"confirm_shared":true}`)
+		if code != http.StatusOK {
+			t.Fatalf("enable digitalocean with failing initial download = %d %v, want 200", code, out)
+		}
+		refreshErr, _ := out["refresh_error"].(string)
+		if refreshErr == "" {
+			t.Fatalf("expected refresh_error in response, got %v", out)
+		}
+		data, _ := out["data"].(map[string]any)
+		if data["enabled"] != true || data["last_error"] == "" {
+			t.Fatalf("expected data.enabled=true and data.last_error set, got %v", data)
+		}
+
+		// Now test applyValidatedProviderList failure recording last_error and audit row.
+		feed.setCatalog("telegram", "149.154.160.0/20\n", "")
+		if _, err := db.Exec(`
+			CREATE TRIGGER fail_provider_entry_insert
+			BEFORE INSERT ON egress_provider_entries
+			BEGIN
+				SELECT RAISE(ABORT, 'simulated applyValidatedProviderList failure');
+			END;
+		`); err != nil {
+			t.Fatal(err)
+		}
+		beforeFailed := len(auditRows(t, db, "egress_provider_refresh_failed"))
+		_, _, err := workers.RefreshEgressProvider(db, cfg.ConfigDir, "catalog", "telegram", "admin")
+		if err == nil {
+			t.Fatalf("expected RefreshEgressProvider to fail when trigger aborts insert")
+		}
+		_, lastErr, _ := providerStateInDB(t, db, "telegram")
+		if !strings.Contains(lastErr, "simulated applyValidatedProviderList failure") {
+			t.Fatalf("telegram last_error = %q, want 'simulated applyValidatedProviderList failure'", lastErr)
+		}
+		if len(auditRows(t, db, "egress_provider_refresh_failed")) != beforeFailed+1 {
+			t.Fatalf("expected egress_provider_refresh_failed audit row when applyValidatedProviderList fails")
+		}
+	})
 }
 
 func mustJSON(t *testing.T, v any) string {

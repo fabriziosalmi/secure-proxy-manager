@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -50,18 +51,9 @@ var (
 	EgressRawBaseURL = defaultEgressRawBaseURL
 
 	// EgressHTTPClient returns the HTTP client used to fetch egress provider feeds.
+	// It always returns an SSRF-safe client; Go unit tests that use a loopback
+	// httptest.Server override EgressHTTPClient directly.
 	EgressHTTPClient = func() *http.Client {
-		if EgressCommitsURL != defaultEgressCommitsURL || EgressRawBaseURL != defaultEgressRawBaseURL {
-			return &http.Client{
-				Timeout: 30 * time.Second,
-				CheckRedirect: func(_ *http.Request, via []*http.Request) error {
-					if len(via) >= 5 {
-						return errors.New("stopped after 5 redirects")
-					}
-					return nil
-				},
-			}
-		}
 		c := netguard.SSRFSafeClient()
 		c.Timeout = 30 * time.Second
 		return c
@@ -69,9 +61,15 @@ var (
 
 	// EgressCheckURL validates that a custom URL provider does not target an SSRF address.
 	EgressCheckURL = netguard.IsSSRFTarget
+
+	egressWorkerMu  sync.Mutex
+	egressWorkerCtx context.Context
 )
 
 func init() {
+	// SPM_EGRESS_COMMITS_URL and SPM_EGRESS_RAW_BASE_URL are used by integration
+	// tests (where the feed server runs on a public test IP) and do not alter
+	// the SSRF protection in EgressHTTPClient.
 	if v := strings.TrimSpace(os.Getenv("SPM_EGRESS_COMMITS_URL")); v != "" {
 		EgressCommitsURL = v
 	}
@@ -148,9 +146,10 @@ var nonPublicRanges = func() []nonPublicRange {
 		// Multicast
 		{"224.0.0.0/4", "multicast"},
 		{"ff00::/8", "multicast"},
-		// Reserved / unspecified / benchmarking / protocol assignments
+		// Reserved / unspecified / benchmarking / protocol assignments / 6to4
 		{"0.0.0.0/8", "reserved"},
 		{"192.0.0.0/24", "reserved"},
+		{"192.88.99.0/24", "reserved"},
 		{"198.18.0.0/15", "reserved"},
 		{"240.0.0.0/4", "reserved"},
 		{"::/128", "reserved"},
@@ -158,6 +157,8 @@ var nonPublicRanges = func() []nonPublicRange {
 		{"64:ff9b::/96", "reserved"},
 		{"64:ff9b:1::/48", "reserved"},
 		{"100::/64", "reserved"},
+		{"2001::/23", "reserved"},
+		{"2002::/16", "reserved"},
 		// Documentation
 		{"192.0.2.0/24", "documentation"},
 		{"198.51.100.0/24", "documentation"},
@@ -179,9 +180,12 @@ var nonPublicRanges = func() []nonPublicRange {
 	return out
 }()
 
+var globalUnicastV6 = netip.MustParsePrefix("2000::/3")
+
 // IsNonPublicPrefix reports whether p falls within or overlaps any non-public
 // IPv4 or IPv6 range (private, loopback, link-local, multicast, reserved,
-// documentation, CGNAT, or ULA), returning the matched class name.
+// documentation, CGNAT, ULA, or unassigned IPv6 outside 2000::/3), returning
+// the matched class name.
 func IsNonPublicPrefix(p netip.Prefix) (bool, string) {
 	if !p.IsValid() {
 		return true, "invalid"
@@ -194,6 +198,9 @@ func IsNonPublicPrefix(p netip.Prefix) (bool, string) {
 		if p.Overlaps(r.prefix) {
 			return true, r.class
 		}
+	}
+	if p.Addr().Is6() && (p.Bits() < 3 || !globalUnicastV6.Contains(p.Addr())) {
+		return true, "unassigned"
 	}
 	return false, ""
 }
@@ -595,18 +602,28 @@ func RefreshEgressProvider(db *sql.DB, configDir, kind, name, user string) (*Egr
 	// Growth check: only when the provider already has a good list stored.
 	if oldV4+oldV6 > 0 {
 		var v4Growth, v6Growth float64
-		if oldV4Cov > 0 && validated.IPv4Covered > oldV4Cov {
+		var holdReason string
+		if oldV4Cov == 0 && validated.IPv4Covered > 0 {
+			holdReason = fmt.Sprintf("IPv4 appeared: 0 to %d addresses", validated.IPv4Covered)
+			v4Growth = 100.0
+		} else if oldV4Cov > 0 && validated.IPv4Covered > oldV4Cov {
 			v4Growth = float64(validated.IPv4Covered-oldV4Cov) * 100.0 / float64(oldV4Cov)
 		}
-		if oldV6Cov > 0 && validated.IPv664Covered > oldV6Cov {
+		if oldV6Cov == 0 && validated.IPv664Covered > 0 {
+			holdReason = fmt.Sprintf("IPv6 appeared: 0 to %d /64 blocks", validated.IPv664Covered)
+			v6Growth = 100.0
+		} else if oldV6Cov > 0 && validated.IPv664Covered > oldV6Cov {
 			v6Growth = float64(validated.IPv664Covered-oldV6Cov) * 100.0 / float64(oldV6Cov)
 		}
 		growthPct := v4Growth
 		if v6Growth > growthPct {
 			growthPct = v6Growth
 		}
-		if growthPct > 25.0 {
+		if holdReason != "" || growthPct > 25.0 {
 			roundedGrowth := math.Round(growthPct*100) / 100
+			if holdReason == "" {
+				holdReason = fmt.Sprintf("covered addresses grew by %.2f%% (threshold 25%%)", roundedGrowth)
+			}
 			held := HeldUpdate{
 				Commit:        commit,
 				V4Count:       len(validated.V4),
@@ -614,7 +631,7 @@ func RefreshEgressProvider(db *sql.DB, configDir, kind, name, user string) (*Egr
 				IPv4Covered:   validated.IPv4Covered,
 				IPv664Covered: validated.IPv664Covered,
 				GrowthPct:     roundedGrowth,
-				Reason:        fmt.Sprintf("covered addresses grew by %.2f%% (threshold 25%%)", roundedGrowth),
+				Reason:        holdReason,
 				HeldAt:        time.Now().UTC().Format(time.RFC3339),
 				EntriesV4:     validated.V4,
 				EntriesV6:     validated.V6,
@@ -625,14 +642,17 @@ func RefreshEgressProvider(db *sql.DB, configDir, kind, name, user string) (*Egr
 			}
 			metrics.EgressProviderRefresh("held")
 			writeAuditJSON(db, user, "egress_provider_held", name, map[string]any{
-				"commit":              commit,
-				"growth_pct":          roundedGrowth,
-				"v4_before":           oldV4,
-				"v4_after":            len(validated.V4),
-				"v6_before":           oldV6,
-				"v6_after":            len(validated.V6),
-				"ipv4_covered_before": oldV4Cov,
-				"ipv4_covered_after":  validated.IPv4Covered,
+				"commit":                 commit,
+				"growth_pct":             roundedGrowth,
+				"reason":                 holdReason,
+				"v4_before":              oldV4,
+				"v4_after":               len(validated.V4),
+				"v6_before":              oldV6,
+				"v6_after":               len(validated.V6),
+				"ipv4_covered_before":    oldV4Cov,
+				"ipv4_covered_after":     validated.IPv4Covered,
+				"ipv6_64_covered_before": oldV6Cov,
+				"ipv6_64_covered_after":  validated.IPv664Covered,
 			})
 			st, err := GetEgressProviderState(db, kind, name)
 			return st, true, err
@@ -640,6 +660,7 @@ func RefreshEgressProvider(db *sql.DB, configDir, kind, name, user string) (*Egr
 	}
 
 	if err := applyValidatedProviderList(db, pid, commit, validated); err != nil {
+		recordRefreshFailure(db, pid, kind, name, user, err.Error())
 		return nil, false, err
 	}
 	metrics.EgressProviderRefresh("success")
@@ -888,6 +909,9 @@ func ListEgressProviders(db *sql.DB) ([]EgressProviderState, error) {
 // egress_provider_refresh_hours (default 24, minimum 6), even when
 // egress_default_deny is disabled so the lists stay ready.
 func StartEgressProviderRefresh(ctx context.Context, db *sql.DB, configDir string) {
+	egressWorkerMu.Lock()
+	egressWorkerCtx = ctx
+	egressWorkerMu.Unlock()
 	Track(func() {
 		log.Info().Msg("egress provider refresh worker started")
 		for {
@@ -920,6 +944,15 @@ func readEgressRefreshHours(db *sql.DB) int {
 	return n
 }
 
+// RefreshEnabledEgressProvidersAsync runs RefreshEnabledEgressProviders in a
+// tracked background worker goroutine so callers like config restore return
+// immediately without waiting on remote downloads.
+func RefreshEnabledEgressProvidersAsync(db *sql.DB, configDir, user string) {
+	Track(func() {
+		RefreshEnabledEgressProviders(db, configDir, user)
+	})
+}
+
 // RefreshEnabledEgressProviders refreshes every currently enabled provider.
 func RefreshEnabledEgressProviders(db *sql.DB, configDir, user string) {
 	rows, err := db.Query(`SELECT kind, name FROM egress_providers WHERE enabled = 1 ORDER BY id`)
@@ -937,7 +970,13 @@ func RefreshEnabledEgressProviders(db *sql.DB, configDir, user string) {
 	}
 	rows.Close()
 
+	egressWorkerMu.Lock()
+	wctx := egressWorkerCtx
+	egressWorkerMu.Unlock()
 	for _, p := range enabled {
+		if wctx != nil && wctx.Err() != nil {
+			return
+		}
 		if _, _, err := RefreshEgressProvider(db, configDir, p.kind, p.name, user); err != nil {
 			log.Warn().Str("provider", p.name).Err(err).Msg("egress provider refresh failed")
 		}

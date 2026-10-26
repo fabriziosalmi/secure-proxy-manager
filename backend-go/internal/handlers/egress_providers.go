@@ -119,9 +119,19 @@ func (h *EgressProviderHandlers) SetEnabled(w http.ResponseWriter, r *http.Reque
 			if h.cfg != nil {
 				cfgDir = h.cfg.ConfigDir
 			}
-			st, held, err := workers.RefreshEgressProvider(h.db, cfgDir, kind, name, requestUser(r))
-			if err != nil {
-				writeError(w, http.StatusBadGateway, err.Error())
+			st, held, refreshErr := workers.RefreshEgressProvider(h.db, cfgDir, kind, name, requestUser(r))
+			if refreshErr != nil {
+				st, err := workers.GetEgressProviderState(h.db, kind, name)
+				if err != nil {
+					writeInternalError(w, "get_egress_provider", err)
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]any{
+					"status":        "success",
+					"data":          st,
+					"held":          false,
+					"refresh_error": refreshErr.Error(),
+				})
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{

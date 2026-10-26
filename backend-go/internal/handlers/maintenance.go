@@ -203,13 +203,13 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, "failed to commit configuration")
 		return
 	}
-	if len(body.EgressProviders) > 0 {
+	if provRestored > 0 {
 		cfgDir := ""
 		if h.cfg != nil {
 			cfgDir = h.cfg.ConfigDir
 		}
 		username, _ := r.Context().Value(middleware.CtxUsername).(string)
-		workers.RefreshEnabledEgressProviders(h.db, cfgDir, username)
+		workers.RefreshEnabledEgressProvidersAsync(h.db, cfgDir, username)
 	}
 	// The lists just changed, so the exported files must be republished.
 	workers.RequestExport()
@@ -253,14 +253,20 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		pl := perList[name]
 		auditChange(h.db, r, "restore_"+auditListName(name), "", map[string]any{"added": pl.added, "skipped": pl.skipped})
 	}
+	msg := "Configuration restored successfully"
+	if provRestored > 0 {
+		msg = fmt.Sprintf("Configuration restored successfully (%d egress providers restored; list download in progress)", provRestored)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":   "success",
-		"message":  "Configuration restored successfully",
+		"message":  msg,
 		"restored": restored,
 		"skipped":  skipped,
 		// The two halves of restored, so a caller can say what it applied.
-		"restored_settings": settingsRestored,
-		"restored_entries":  listsRestored,
+		"restored_settings":           settingsRestored,
+		"restored_entries":            listsRestored,
+		"restored_egress_providers":   provRestored,
+		"egress_providers_refreshing": provRestored > 0,
 		// Each setting that was not restored, and why.
 		"skipped_settings": skippedSettings,
 		// Entries in the lists that failed validation and were not restored.
