@@ -25,10 +25,38 @@ at boot stops all traffic until a verified copy arrives.
 
 ### Security
 
-<!-- security entry added at release -->
+- **Turning on the proxy login makes the proxy ask for credentials**
+  (GHSA-g9jf-vq92-4vpp, medium). The configuration generator inserted the
+  login rule only when `/config/proxy_users.htpasswd` existed, and created
+  that file only from `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD`, which no
+  shipped compose file passes to the proxy. With "Require proxy login" on, the
+  generator logged that authentication was enabled and wrote a configuration
+  without the rule, so every client on an allowed network kept using the proxy
+  without logging in (from 3.4.1). The proxy login now has its own credentials,
+  set in Settings, Clients and access, Login: `proxy_auth_username` and the
+  write-only secret `proxy_auth_password`. The backend writes the password
+  file itself, as bcrypt, and asks the proxy to reload; the proxy container
+  never receives the dashboard's admin password. With the login on and no
+  usable password file, the proxy refuses every client on the allowed networks
+  with 403 and the block reason `proxy_auth_unset`, and the dashboard says so
+  on the Overview and in the section. `/api/status` reports `proxy_auth` and
+  `/api/analytics/coverage` `proxy_login_status`. After a change of
+  credentials, Squid reads the new file within about 2 seconds; a client
+  without cached credentials gets 407 in that window. The password file holds
+  bcrypt hashes only and is readable, inside the stack, by the services that
+  mount `config/`.
+- The `web` image ships curl and libcurl 8.23.0-r0, fixing CVE-2026-92392
+  (HTTP/2 upload use-after-free, HIGH), on a base image that still carries
+  8.22.0-r0 (#452).
 
 ### Action worth knowing about on upgrade
 
+- **An install that turned on the proxy login before 3.15.0 refuses every
+  client until proxy credentials are set** (GHSA-g9jf-vq92-4vpp). The login
+  was never enforced; after the upgrade it is, and without credentials the
+  proxy fails closed. Set them in Settings, Clients and access, Login, then
+  configure the devices with them. An install that passed `BASIC_AUTH_*` to
+  the proxy by hand keeps its password file and keeps working.
 - **Take a backup first; the migrations are not reversible.** On the first
   start the backend runs schema versions 3 to 6, each once, in one transaction
   that also records the version (`PRAGMA user_version` 6 afterwards, logged as
@@ -339,6 +367,10 @@ at boot stops all traffic until a verified copy arrives.
 
 ### Fixed
 
+- **`/api/status` counts today's requests in the zone the logs are stored
+  in.** It compared the UTC timestamps with the server's local date, so on a
+  server east of UTC `requests_count` read 0 from local midnight to UTC
+  midnight.
 - **The content filter blocks `.EXE`, `.Exe` and a blocked extension
   followed by a query string** (#434). The ACL had no `-i`, and Squid matches
   the path with its query, so `/X.EXE` and `/x.exe?dl=1` passed. The pattern
