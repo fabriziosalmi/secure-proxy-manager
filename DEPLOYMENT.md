@@ -405,10 +405,22 @@ delivery because it reached its hourly limit. WAF metrics include
 `waf_reqmod_duration_seconds`, `waf_trafficlog_enabled`,
 `waf_trafficlog_dropped_total` and `waf_notify_dropped_total`.
 
-The `observability` profile (Prometheus and Grafana) mounts configuration from
-`./infra/`, which is not in the repository: started as shipped, Prometheus
-fails to start because Docker creates `infra/prometheus/prometheus.yml` as an
-empty directory.
+The `observability` profile starts Prometheus (`127.0.0.1:9090`) and Grafana
+(`127.0.0.1:3000`; set `GRAFANA_ADMIN_PASSWORD` in `.env` first) with the
+configuration in `./infra/`:
+
+```bash
+GRAFANA_ADMIN_PASSWORD='<password>' docker compose --profile observability up -d
+```
+
+Prometheus (`infra/prometheus/prometheus.yml`) scrapes `backend:5000/metrics`
+and `waf:8080/metrics` every 15 seconds and loads the alert rules in
+`infra/prometheus/rules/spm.rules.yml` (`SPMTargetDown`,
+`SPMBlacklistExportFailed`, `SPMWafReconcileFailed`,
+`SPMNotificationDeliveryFailed`, `SPMDatabaseIntegrityFailed`,
+`SPMLogRetentionDisabled`). Grafana provisions Prometheus (`http://prometheus:9090`)
+as its default datasource from
+`infra/grafana/provisioning/datasources/prometheus.yml`.
 
 ### Logs and shell access
 

@@ -27,9 +27,11 @@ A build of the proxy image from this repository on 2026-10-25 installed
 At start the backend reads the Squid version the proxy wrote to
 `/config/squid_version.txt` and matches its major version against the list in
 `backend-go/internal/workers/cve_checker.go`. That list has entries for Squid
-3, 4 and 5 only, so the Squid 7 the image ships matches none.
-`GET /api/status` reports the version and the number of matches
-(`squid_version`, `squid_cves`), and `GET /api/security/cve` the details.
+3, 4 and 5 only: for a major version with no table (such as the Squid 7 the
+image ships), `GET /api/status` and `GET /api/security/cve` report
+`cves_checked: false` alongside `squid_version` and `squid_cves: 0` (or
+`cves: []`), and the dashboard shows `Not checked for Squid 7.x` instead of a
+zero CVE count.
 
 > A running container keeps the package it was built with. After a Squid
 > security update, rebuild (or pull) the proxy image and recreate the
