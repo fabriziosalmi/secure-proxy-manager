@@ -471,9 +471,9 @@ settle  # the refused request's own log line, before counting lines again
 check_cache_stats "WAF down"
 
 echo "── error pages ──"
-# err_page GET|CONNECT URL_OR_HOSTPORT: prints "<status>|<x-squid-error>|<title>|<has_squid_sig>"
+# err_page GET|CONNECT URL_OR_HOSTPORT [NEEDLE]: prints "<status>|<x-squid-error>|<title>|<has_squid_sig>[|<has_needle>]"
 err_page() {
-  local mode="$1" target="$2"
+  local mode="$1" target="$2" needle="${3:-}"
   docker run --rm --network "$PFX-lan" --ip "$LAN_CLIENT" --memory 64m --entrypoint /bin/bash "$IMAGE" -c '
     if [ "$1" = "CONNECT" ]; then
       raw=$(curl -s -D - --max-time 10 -X CONNECT --request-target "$2" -H "Host: $2" "http://'"$PROXY_LAN"':3128")
@@ -485,8 +485,13 @@ err_page() {
     body=$(printf "%s\n" "$raw" | sed "1,/^\r*$/d")
     title=$(printf "%s\n" "$body" | sed -n "s|.*<title>\(.*\)</title>.*|\1|p" | head -1 | tr -d "\r")
     sig=$(printf "%s\n" "$body" | grep -ci "squid/" || true)
-    printf "%s|%s|%s|%s\n" "$st" "$xerr" "$title" "$sig"
-  ' _ "$mode" "$target" 2>/dev/null
+    if [ -n "$3" ]; then
+      has=$(printf "%s\n" "$body" | grep -Fc "$3" || true)
+      printf "%s|%s|%s|%s|%s\n" "$st" "$xerr" "$title" "$sig" "$has"
+    else
+      printf "%s|%s|%s|%s\n" "$st" "$xerr" "$title" "$sig"
+    fi
+  ' _ "$mode" "$target" "$needle" 2>/dev/null
 }
 # With WAF_FAIL_OPEN=0 and ICAP unreachable (closed port on 127.0.0.1:1344),
 # a request that passes ACLs receives the SPM ERR_ICAP_FAILURE page (no "squid/" in body).
@@ -509,8 +514,8 @@ expect "error page: CONNECT closed port on pub.test" \
   "$(err_page CONNECT pub.test:443)" \
   "503|ERR_CONNECT_FAIL 111|Connection Failed: Secure Proxy Manager|0"
 expect "error page: ACL deny" \
-  "$(err_page GET "http://$PUB_SVC/")" \
-  "403|ERR_ACCESS_DENIED 0|Access Denied: Secure Proxy Manager|0"
+  "$(err_page GET "http://$PUB_SVC/" "$LAN_CLIENT")" \
+  "403|ERR_ACCESS_DENIED 0|Access Denied: Secure Proxy Manager|0|1"
 expect "error page: zero ERROR: loading file lines in cache.log" \
   "$(docker exec "$PFX-proxy" sh -c 'grep -c "ERROR: loading file" /var/log/squid/cache.log || true')" \
   "0"

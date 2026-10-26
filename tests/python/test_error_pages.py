@@ -194,7 +194,7 @@ def test_generation_matches_committed_files():
 
 
 def test_access_denied_matches_main_b7e2ace():
-    """ERR_ACCESS_DENIED must match main (blob b7e2ace) except for xmlns on <svg> and the F3/F4 <style> additions."""
+    """ERR_ACCESS_DENIED matches main (b7e2ace) except xmlns removal, %a -> %i for Client IP, and F3/F4 CSS."""
     if shutil.which("git"):
         chk = subprocess.run(
             ["git", "cat-file", "-e", "b7e2ace"],
@@ -215,18 +215,26 @@ def test_access_denied_matches_main_b7e2ace():
 
     actual = (ERROR_PAGES_DIR / "ERR_ACCESS_DENIED").read_text(encoding="utf-8")
 
+    # On main (b7e2ace), the "Client IP" row used Squid token %a (authenticated
+    # user identity, which renders "-" without proxy login or the username with
+    # proxy login) instead of %i (the client IP address). We replace %a with %i
+    # so the "Client IP" row renders the client IP.
     expected_outside_style = STYLE_RE.sub(
         "<style></style>",
         MAIN_ERR_ACCESS_DENIED_B7E2ACE.replace(
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">',
             '<svg viewBox="0 0 64 64" fill="none">',
             1,
+        ).replace(
+            '<span class="detail-label">Client IP</span>\n      <span class="detail-value">%a</span>',
+            '<span class="detail-label">Client IP</span>\n      <span class="detail-value">%i</span>',
+            1,
         ),
         count=1,
     )
     actual_outside_style = STYLE_RE.sub("<style></style>", actual, count=1)
     assert actual_outside_style == expected_outside_style, (
-        "ERR_ACCESS_DENIED differs from main (b7e2ace) outside <style> by more than xmlns removal"
+        "ERR_ACCESS_DENIED differs from main (b7e2ace) outside <style> by more than xmlns removal and %a -> %i"
     )
 
     expected_style = (
@@ -303,8 +311,8 @@ def _check_single_page(code: str, text: str, kind: str) -> list[str]:
     if bad_urls:
         errs.append(f"{code}: contains external URL(s) {bad_urls}")
 
-    req = ("%U", "%a", "%T") if code == "ERR_ACCESS_DENIED" else ("%U", "%T", "%c")
-    forb = ("%c",) if code == "ERR_ACCESS_DENIED" else ("%a",)
+    req = ("%U", "%i", "%T") if code == "ERR_ACCESS_DENIED" else ("%U", "%T", "%c")
+    forb = ("%a", "%c") if code == "ERR_ACCESS_DENIED" else ("%a", "%i")
     errs.extend(f"{code}: missing Squid token {t}" for t in req if t not in text)
     errs.extend(f"{code}: unexpected Squid token {t}" for t in forb if t in text)
     return errs

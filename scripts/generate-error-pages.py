@@ -39,6 +39,7 @@ STOCK_FILES: dict[str, str] = {
 #   %U -> canonical request URL without password (html_quote applied, do_quote=1)
 #   %T -> current UTC timestamp in RFC 1123 format (html_quote applied, do_quote=1)
 #   %c -> Squid error page name, e.g. ERR_DNS_FAIL (html_quote applied, do_quote=1)
+#   %i -> client IP address (html_quote applied, do_quote=1; used in ERR_ACCESS_DENIED)
 PAGES: list[tuple[str, str, str, str, str]] = [
     (
         "ERR_ACCESS_DENIED",
@@ -457,7 +458,7 @@ document.querySelectorAll('.detail-value').forEach(function(el){{
 
 ACCESS_DENIED_ROWS = """    <div class="detail-row">
       <span class="detail-label">Client IP</span>
-      <span class="detail-value">%a</span>
+      <span class="detail-value">%i</span>
     </div>
     <div class="detail-row">
       <span class="detail-label">Time</span>
