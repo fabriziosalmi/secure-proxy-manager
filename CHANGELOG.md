@@ -13,6 +13,37 @@ a `### Removed` or `### Changed` heading with the phrase **BREAKING** and the
 changes affecting it. Retired routes answer `410 Gone` naming their replacement
 for at least one minor release before disappearing.
 
+## [Unreleased]
+
+### Added
+
+- The `observability` profile starts: `infra/` holds the Prometheus
+  configuration (scraping `backend:5000/metrics` and `waf:8080/metrics`), six
+  alert rules in `infra/prometheus/rules/spm.rules.yml` and the Grafana
+  Prometheus datasource. A CI job starts the profile and checks both.
+- `GET /api/status` and `GET /api/security/cve` report `cves_checked`, false
+  for a Squid major version the CVE list does not cover (the Squid 7 the image
+  ships); the dashboard shows "Not checked for Squid 7.x" instead of a zero
+  count.
+
+### Changed
+
+- `WAF_FAIL_OPEN` reaches the WAF as well as the proxy in both compose files,
+  as their comment said; the config contract check fails if a shared variable
+  is missing from either service.
+- A new install stores a 2000 MB disk cache, the size Squid already used until
+  the first save; an install that saved 1000 keeps 1000.
+
+### Fixed
+
+- `POST /api/database/reset` clears the tables in one transaction and answers
+  500 naming the table that failed, instead of reporting success after errors;
+  its own audit row is written after the wipe, so it is the first row of the
+  new log.
+- `GET /api/docs` is listed as requiring authentication, as it does.
+- The installer's port check and its hint read `compose.prod.yml`, the file
+  the production stack runs.
+
 ## [3.15.0] - 2026-10-25
 
 The interface is rebuilt page by page on what the backend measures, every
