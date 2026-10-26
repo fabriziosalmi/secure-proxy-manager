@@ -17,9 +17,11 @@ type SquidCVE struct {
 	Summary  string `json:"summary"`
 }
 
-// CVEInfo holds the Squid version and known CVEs.
+// CVEInfo holds the Squid version, whether a CVE table exists for that major
+// version, and the matched CVEs.
 type CVEInfo struct {
 	Version string     `json:"version"`
+	Checked bool       `json:"cves_checked"`
 	CVEs    []SquidCVE `json:"cves"`
 }
 
@@ -77,8 +79,10 @@ func CheckSquidCVEs() {
 
 func runCheck(version string) {
 	var matched []SquidCVE
+	checked := false
 	for prefix, cves := range knownCVEs {
 		if strings.HasPrefix(version, prefix) {
+			checked = true
 			matched = append(matched, cves...)
 		}
 	}
@@ -86,11 +90,14 @@ func runCheck(version string) {
 	cveMu.Lock()
 	cveInfo = CVEInfo{
 		Version: version,
+		Checked: checked,
 		CVEs:    matched,
 	}
 	cveMu.Unlock()
 
-	if len(matched) > 0 {
+	if !checked {
+		log.Info().Str("squid_version", version).Msg("no CVE table for this Squid version; CVEs not checked")
+	} else if len(matched) > 0 {
 		log.Warn().Str("squid_version", version).Int("cves", len(matched)).Msg("known CVEs for this Squid version")
 	} else {
 		log.Info().Str("squid_version", version).Msg("no known CVEs for this Squid version")

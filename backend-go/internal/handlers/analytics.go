@@ -381,6 +381,7 @@ func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 		if cve := h.sys.CVEInfo(); cve.Version != "" {
 			out["squid_version"] = cve.Version
 			out["squid_cves"] = len(cve.CVEs)
+			out["cves_checked"] = cve.Checked
 		}
 	}
 	writeOK(w, out)

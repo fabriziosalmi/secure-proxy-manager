@@ -45,6 +45,17 @@ export function wafRow(summary: Load<DashboardSummary>): ServiceRow {
   }
 }
 
+function squidCveNote(st: StatusData): string {
+  if (st.cves_checked === false) {
+    const major = st.squid_version?.split('.')[0];
+    return major ? ` · Not checked for Squid ${major}.x` : ' · CVEs not checked';
+  }
+  if (typeof st.squid_cves === 'number') {
+    return ` · ${st.squid_cves} known ${st.squid_cves === 1 ? 'CVE' : 'CVEs'}`;
+  }
+  return '';
+}
+
 function statusRows(status: Load<StatusData>): ServiceRow[] {
   const st = status.data;
   if (status.isPending) {
@@ -63,7 +74,7 @@ function statusRows(status: Load<StatusData>): ServiceRow[] {
   const port = st.proxy_port ? `port ${st.proxy_port}` : 'port not reported';
   const squid = st.squid_version ? `Squid ${st.squid_version}, ` : '';
   let proxy: ServiceRow;
-  if (st.proxy_status === 'running') proxy = { name: 'Proxy', health: 'ok', state: 'running', detail: `${squid}${port}` };
+  if (st.proxy_status === 'running') proxy = { name: 'Proxy', health: 'ok', state: 'running', detail: `${squid}${port}${squidCveNote(st)}` };
   else if (st.proxy_status) proxy = { name: 'Proxy', health: 'down', state: 'not answering', detail: `The backend's probe of Squid failed (${port})` };
   else proxy = { name: 'Proxy', health: 'unknown', state: 'not reported', detail: 'The backend did not report the proxy' };
   return [backend, proxy];

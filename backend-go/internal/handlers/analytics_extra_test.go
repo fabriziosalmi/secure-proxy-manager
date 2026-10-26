@@ -10,6 +10,7 @@ import (
 	"time"
 
 	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
 // TestDashboardSummary_WAFBreakerDegrades verifies that when the WAF is down the
@@ -79,6 +80,29 @@ func TestAnalyticsHandlers_Status_Mocked(t *testing.T) {
 	data := resp["data"].(map[string]any)
 	if data["proxy_status"] != "running" {
 		t.Errorf("Expected proxy_status running, got %v", data["proxy_status"])
+	}
+}
+
+type stubSysInfo struct {
+	cve workers.CVEInfo
+}
+
+func (s stubSysInfo) UpdateInfo() workers.UpdateInfo { return workers.UpdateInfo{} }
+func (s stubSysInfo) CVEInfo() workers.CVEInfo       { return s.cve }
+
+func TestAnalyticsHandlers_Status_ReportsCVEsChecked(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	h := NewAnalyticsHandlers(db, cfg)
+	h.sys = stubSysInfo{cve: workers.CVEInfo{Version: "7.7"}}
+	w := httptest.NewRecorder()
+	h.Status(w, httptest.NewRequest("GET", "/api/status", nil))
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	data := resp["data"].(map[string]any)
+	if data["cves_checked"] != false {
+		t.Errorf("Squid 7.7: cves_checked = %v, want false", data["cves_checked"])
 	}
 }
 
