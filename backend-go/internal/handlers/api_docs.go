@@ -35,7 +35,7 @@ var routeDocs = map[string]docMeta{
 	"GET /api/analytics/top-domains":            {auth: true, desc: "Top 50 accessed domains (for word cloud)"},
 	"GET /api/analytics/user-agents":            {auth: true, desc: "Client requests of the last 7 days by HTTP method and by kind of service (from the host)"},
 	"GET /api/audit-log":                        {auth: true, desc: "Admin action audit trail (who changed what, when), newest first; ?category=all|changes|signins filters on the server; meta.retention_days is how long a row is kept"},
-	"POST /api/auth/login":                      {auth: false, desc: "JWT login: returns access_token"},
+	"POST /api/auth/login":                      {auth: false, desc: "Login: returns access_token and refresh_token; with X-SPM-Session: cookie (the UI) sets the HttpOnly session cookie and returns username and expires_at instead"},
 	"POST /api/blacklists/import":               {auth: true, desc: "Import blacklist from URL or text ({type: 'ip'|'domain', url?, content?, name?}); the entries are recorded under the URL, or a new pasted-list source"},
 	"GET /api/blacklists/enforcement":           {auth: true, desc: "What enforces each list: the domain limit, the blocked domains the allowed list removes, and the proxy's records of what Squid holds (null when not written)"},
 	"GET /api/ip-blacklist/sources":             {auth: true, desc: "Where the IP blacklist entries came from: one row per source with its entry count and date range; id null for entries whose source was not recorded"},
@@ -115,6 +115,7 @@ var routeDocs = map[string]docMeta{
 	"GET /api/traffic/statistics":               {auth: true, desc: "Traffic statistics by time period"},
 	"GET /api/waf/stats":                        {auth: true, desc: "WAF engine stats (inspected, blocked, entropy, categories, cache)"},
 	"GET /api/ws-token":                         {auth: true, desc: "Get one-time WebSocket auth token for live log streaming"},
+	"GET /api/session":                          {auth: true, desc: "The signed-in session: username, how it authenticated (cookie, bearer or basic) and expires_at (Unix seconds, null for Basic)"},
 	"GET /api/ws/logs":                          {auth: false, desc: "WebSocket: real-time log stream (offer the subprotocols spm.v1 and spm-ws-token.<token>, token from /api/ws-token; the server selects spm.v1)"},
 	"GET /health":                               {auth: false, desc: "Legacy health check (simple)"},
 }

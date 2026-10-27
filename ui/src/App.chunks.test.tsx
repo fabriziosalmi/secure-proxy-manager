@@ -11,7 +11,7 @@ vi.mock('./pages/Login', () => {
 vi.mock('./lib/api', () => ({
   api: { get: vi.fn(), post: vi.fn(), interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } } },
   getData: vi.fn(),
-  isTokenExpired: vi.fn(() => true),
+  loadSession: vi.fn(() => Promise.resolve(null)),
   getErrorMessage: (_e: unknown, f: string) => f,
   signOut: vi.fn(() => Promise.resolve()),
 }))

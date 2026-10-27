@@ -11,15 +11,21 @@ vi.mock('./lib/api', () => ({
     interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
   },
   getData: (path: string) => (api.get(path) as Promise<{ data?: { data?: unknown } }>).then((r) => r?.data?.data ?? null),
-  isTokenExpired: vi.fn(() => false),
+  loadSession: vi.fn(() => Promise.resolve(null)),
   getErrorMessage: (_e: unknown, f: string) => f,
   signOut: vi.fn(() => Promise.resolve()),
 }))
 
-import { api, isTokenExpired } from './lib/api'
+import { api, loadSession } from './lib/api'
+
+// GET /api/session answers for a signed-in admin (the cookie is HttpOnly:
+// the page learns of the session only from the backend).
+function signedIn() {
+  vi.mocked(loadSession).mockResolvedValue({ username: 'admin', via: 'cookie', expires_at: Math.floor(Date.now() / 1000) + 3600 })
+}
 
 function clearStorage() {
-  localStorage.removeItem('auth_token')
+  vi.mocked(loadSession).mockResolvedValue(null)
 }
 
 describe('App', () => {
@@ -35,9 +41,7 @@ describe('App', () => {
   })
 
   it('shows loading spinner when authenticated and checking wizard', () => {
-    const payload = btoa(JSON.stringify({ sub: 'admin', exp: Math.floor(Date.now() / 1000) + 3600 }))
-    const fakeToken = `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`
-    localStorage.setItem('auth_token', fakeToken)
+    signedIn()
 
     vi.mocked(api.get).mockImplementation(() => new Promise(() => {}))
 
@@ -48,9 +52,7 @@ describe('App', () => {
 
   it('does not skip the wizard when GET /api/settings fails on first load, and shows an error with Try again', async () => {
     const user = userEvent.setup()
-    const payload = btoa(JSON.stringify({ sub: 'admin', exp: Math.floor(Date.now() / 1000) + 3600 }))
-    const fakeToken = `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`
-    localStorage.setItem('auth_token', fakeToken)
+    signedIn()
 
     let attempts = 0
     vi.mocked(api.get).mockImplementation((url: string) => {
@@ -80,9 +82,7 @@ describe('App', () => {
   })
 
   it('shows dashboard after auth and wizard check', async () => {
-    const payload = btoa(JSON.stringify({ sub: 'admin', exp: Math.floor(Date.now() / 1000) + 3600 }))
-    const fakeToken = `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`
-    localStorage.setItem('auth_token', fakeToken)
+    signedIn()
 
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url === 'settings') {
@@ -104,8 +104,7 @@ describe('App', () => {
   // Threat Intel became Analytics: an old link or bookmark to /threats must
   // still land on the page, under its new address and name.
   it('sends /threats to /analytics, the renamed Threat Intel page', async () => {
-    const payload = btoa(JSON.stringify({ sub: 'admin', exp: Math.floor(Date.now() / 1000) + 3600 }))
-    localStorage.setItem('auth_token', `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`)
+    signedIn()
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url === 'settings') {
         return Promise.resolve({ data: { data: [{ setting_name: 'wizard_completed', setting_value: 'true' }] } })
@@ -123,23 +122,29 @@ describe('App', () => {
     }
   })
 
-  it('clears expired token on mount', async () => {
-    const payload = btoa(JSON.stringify({ sub: 'admin', exp: Math.floor(Date.now() / 1000) - 120 }))
-    const fakeToken = `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`
-    localStorage.setItem('auth_token', fakeToken)
-    // App delegates expiry detection to the shared isTokenExpired helper
-    // (unit-tested in lib/api.test.ts); here we assert App acts on its verdict.
-    vi.mocked(isTokenExpired).mockReturnValue(true)
-
+  it('shows the sign-in screen when GET /api/session has no session, and never reads localStorage for one', async () => {
+    localStorage.setItem('auth_token', 'left-by-an-old-version')
     render(<App />)
     expect(await screen.findByText(/sign in to continue/i)).toBeInTheDocument()
-    expect(localStorage.getItem('auth_token')).toBeNull()
+    expect(loadSession).toHaveBeenCalled()
+    localStorage.removeItem('auth_token')
   })
 
-  it('makes 3 GET requests (1 settings, 1 status, 1 health) instead of 6 when mounting /settings/access inside App', async () => {
-    const payload = btoa(JSON.stringify({ sub: 'admin', exp: Math.floor(Date.now() / 1000) + 3600 }))
-    localStorage.setItem('auth_token', `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`)
-    vi.mocked(isTokenExpired).mockReturnValue(false)
+  it('returns to the sign-in screen when the session ends under the page', async () => {
+    signedIn()
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === 'settings') return Promise.resolve({ data: { data: [{ setting_name: 'wizard_completed', setting_value: 'true' }] } })
+      return Promise.resolve({ data: { data: [] } })
+    })
+    render(<App />)
+    expect(await screen.findByRole('navigation', { name: 'Main' }, { timeout: 5000 })).toBeInTheDocument()
+    vi.mocked(loadSession).mockResolvedValue(null)
+    window.dispatchEvent(new CustomEvent('session-ended'))
+    expect(await screen.findByText(/sign in to continue/i)).toBeInTheDocument()
+  })
+
+  it('makes 3 GET requests (1 settings, 1 status, 1 health) after GET /api/session, instead of 6, when mounting /settings/access inside App', async () => {
+    signedIn()
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url === 'settings') {
         return Promise.resolve({
@@ -170,9 +175,7 @@ describe('App', () => {
   })
 
   it('keeps the app and its unsaved drafts when a settings refetch fails after the first load', async () => {
-    const payload = btoa(JSON.stringify({ sub: 'admin', exp: Math.floor(Date.now() / 1000) + 3600 }))
-    localStorage.setItem('auth_token', `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`)
-    vi.mocked(isTokenExpired).mockReturnValue(false)
+    signedIn()
     let settingsDown = false
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url === 'settings') {
@@ -203,9 +206,7 @@ describe('App', () => {
 
   it('does not open a duplicate global toast when a page with an inline error receives a 500 response', async () => {
     const toastErrorSpy = vi.spyOn(toast, 'error')
-    const payload = btoa(JSON.stringify({ sub: 'admin', exp: Math.floor(Date.now() / 1000) + 3600 }))
-    localStorage.setItem('auth_token', `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`)
-    vi.mocked(isTokenExpired).mockReturnValue(false)
+    signedIn()
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url === 'settings') {
         return Promise.resolve({ data: { data: [{ setting_name: 'wizard_completed', setting_value: 'true' }] } })

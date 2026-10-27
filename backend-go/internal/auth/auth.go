@@ -414,6 +414,42 @@ func (s *Service) RevokeJWTOnce(tokenStr string) bool {
 	return true
 }
 
+// SessionCookieName is the cookie that carries a browser session's access
+// token. It is HttpOnly, so script in the page cannot read the token; see
+// handlers.setSessionCookie for its other attributes.
+const SessionCookieName = "spm_session"
+
+// Where a request's credential came from (AuthenticateRequest).
+const (
+	ViaBearer = "bearer"
+	ViaBasic  = "basic"
+	ViaCookie = "cookie"
+)
+
+// AuthenticateRequest is Authenticate, falling back to the session cookie
+// when the request carries no Authorization header, and it reports where the
+// credential came from. An Authorization header always wins, so an API
+// client is never judged by a stale cookie.
+func (s *Service) AuthenticateRequest(r *http.Request) (username, via string, err error) {
+	if r.Header.Get("Authorization") != "" {
+		username, basic, err := s.Authenticate(r)
+		if basic {
+			return username, ViaBasic, err
+		}
+		return username, ViaBearer, err
+	}
+	c, cerr := r.Cookie(SessionCookieName)
+	if cerr != nil || c.Value == "" {
+		return "", "", errors.New("missing Authorization header or session cookie")
+	}
+	username, err = s.ValidateJWT(c.Value)
+	return username, ViaCookie, err
+}
+
+// TokenExpiry is when a signed token expires (now plus the access lifetime
+// when it carries no readable exp).
+func (s *Service) TokenExpiry(tokenStr string) time.Time { return s.tokenExpiry(tokenStr) }
+
 // Authenticate extracts and validates credentials from r.
 func (s *Service) Authenticate(r *http.Request) (string, bool, error) {
 	authHeader := r.Header.Get("Authorization")

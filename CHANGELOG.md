@@ -17,6 +17,16 @@ for at least one minor release before disappearing.
 
 ### Upgrade notes
 
+- **The dashboard signs in with an HttpOnly session cookie** (`spm_session`)
+  instead of keeping the token in the browser's `localStorage`. Everyone
+  signed in to the dashboard signs in once more after the upgrade; a token an
+  earlier version left in `localStorage` is revoked and removed on the first
+  load. API clients are unchanged: `POST /api/auth/login` without
+  `X-SPM-Session: cookie` still returns `access_token` and `refresh_token`, and
+  Basic and bearer authentication work as before. An external reverse proxy
+  in front of the dashboard must pass the `Cookie` and `X-Requested-With`
+  headers through (nginx and Caddy do by default).
+
 - **The backend service joins the proxy group: `group_add: ["13"]`** in
   `docker-compose.yml` and `deploy/docker-compose.prod.yml`. A deployment that
   keeps its own compose file should add it to the backend service; without it
@@ -89,6 +99,16 @@ for at least one minor release before disappearing.
   count.
 
 ### Changed
+
+- **Dashboard sessions moved from `localStorage` to an HttpOnly cookie.**
+  Script in the page, an injected one included, can no longer read the
+  session token. The cookie is `SameSite=Strict`, `Path=/api`, `Secure` over
+  https, and lasts `JWT_EXPIRE_DURATION`. A state-changing request
+  authenticated by the cookie alone needs `X-Requested-With: spm` and a
+  same-site `Origin`, or answers `403`. `GET /api/session` reports the session
+  (`username`, `via`, `expires_at`), and logout and password changes clear or
+  renew the cookie. CORS no longer names the dashboard's host over plain
+  `http://`.
 
 - The notification queue reads and decrypts the notification settings once
   for a burst of alerts instead of once per alert (measured: about 28 µs and

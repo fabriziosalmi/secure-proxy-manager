@@ -2,7 +2,8 @@
 
 ## Authentication
 
-Every protected endpoint accepts either scheme:
+Every protected endpoint accepts HTTP Basic, a JWT bearer token, or the
+dashboard's session cookie:
 
 - **HTTP Basic.** `Authorization: Basic base64(user:pass)`, checked against the
   bcrypt hash stored in the database. Only when no hash is stored yet (first
@@ -14,15 +15,36 @@ Every protected endpoint accepts either scheme:
   tokens also carry `auth_time`, the time of the login they descend from.
   Refresh tokens are refused on protected endpoints. Changing the password
   changes `pv`, so every token issued before the change stops validating.
+- **Session cookie (the dashboard).** The dashboard signs in with
+  `X-SPM-Session: cookie`, and the backend puts the access token in the
+  `spm_session` cookie: `HttpOnly`, so script in the page, an injected one
+  included, cannot read it; `SameSite=Strict`, so a request another site
+  starts does not carry it; `Path=/api`; `Secure` over https; expiring with
+  the token. The token never appears in a response body or in browser
+  storage. An `Authorization` header, when present, wins over the cookie.
+
+A state-changing request (any method but `GET`, `HEAD`, `OPTIONS`)
+authenticated by the cookie alone also needs `X-Requested-With: spm` and, when
+the browser sends an `Origin`, the dashboard's own host over https or an
+origin in `CORS_ALLOWED_ORIGINS`; otherwise it is refused with `403`. This is
+the CSRF protection behind `SameSite`: cross-origin, that header needs a CORS
+preflight, which the backend answers only for those origins. API clients
+using Basic or a bearer token are not affected. A token an earlier version
+kept in the browser's `localStorage` is revoked and removed the first time the
+new dashboard loads.
 
 `POST /api/auth/login` takes `{username, password}` and returns an access token
-and a refresh token. `POST /api/auth/refresh` exchanges a refresh token for a
+and a refresh token, or, with `X-SPM-Session: cookie`, sets the session cookie
+and returns only `username` and `expires_at`; the dashboard session lasts
+`JWT_EXPIRE_DURATION` (8 hours by default) with no refresh. `POST /api/auth/refresh` exchanges a refresh token for a
 new pair; a refresh token works once, and a chain of refreshes ends seven days
-after the login. `POST /api/logout` revokes the bearer token of the request
-and, when the body carries `{"refresh_token": ...}` for the same user, that
+after the login. `POST /api/logout` revokes the bearer token of the request,
+or the cookie's token and clears the cookie, and, when the body carries `{"refresh_token": ...}` for the same user, that
 refresh token too; revocations are stored in the `jwt_blacklist` table and
 survive a restart. `POST /api/change-password` ends every earlier session and
-returns a new pair for the caller.
+returns a new pair for the caller (a new cookie for a cookie session).
+`GET /api/session` tells the dashboard who is signed in and when the session
+expires.
 
 ## Rate limiting
 
@@ -72,7 +94,9 @@ Downloads are limited to 32 MB.
 
 The backend names an origin in `Access-Control-Allow-Origin` only when it is in
 `CORS_ALLOWED_ORIGINS` (default `https://localhost:8443`) or is the request's
-own host. `*` is dropped when the variable is read.
+own host over https; the same host over plain http is not named. `*` is
+dropped when the variable is read. A preflight allows the headers
+`Authorization`, `Content-Type`, `X-Requested-With` and `X-SPM-Session`.
 
 ```bash
 # .env
