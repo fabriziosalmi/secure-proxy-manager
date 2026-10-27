@@ -21,11 +21,13 @@ export interface BackupEnvelope {
   /** The version 1 shape: a bare settings map. */
   config?: Record<string, string>;
   lists?: Record<string, { value: string; description?: string }[]>;
+  egress_providers?: { kind?: string; name: string; url?: string; enabled?: boolean }[];
 }
 
 export interface BackupSummary {
   settings: number;
   lists: { name: string; label: string; count: number }[];
+  egressProviders: number;
   exportedAt?: string;
   appVersion?: string;
 }
@@ -56,7 +58,8 @@ export function parseBackupFile(text: string): { envelope: BackupEnvelope; summa
   const listSummary = Object.entries(lists ?? {})
     .filter(([, entries]) => Array.isArray(entries))
     .map(([name, entries]) => ({ name, label: LIST_LABELS[name] ?? name, count: (entries as unknown[]).length }));
-  if (settingsCount === 0 && listSummary.every((l) => l.count === 0)) {
+  const egressProviders = Array.isArray(raw.egress_providers) ? raw.egress_providers.length : 0;
+  if (settingsCount === 0 && listSummary.every((l) => l.count === 0) && egressProviders === 0) {
     throw new Error('The file holds no settings and no list entries to restore.');
   }
   return {
@@ -64,6 +67,7 @@ export function parseBackupFile(text: string): { envelope: BackupEnvelope; summa
     summary: {
       settings: settingsCount,
       lists: listSummary,
+      egressProviders,
       exportedAt: typeof raw.exported_at === 'string' ? raw.exported_at : undefined,
       appVersion: typeof raw.app_version === 'string' ? raw.app_version : undefined,
     },
@@ -74,6 +78,8 @@ export function parseBackupFile(text: string): { envelope: BackupEnvelope; summa
 export interface RestoreResponse {
   restored_settings?: number;
   restored_entries?: number;
+  restored_egress_providers?: number;
+  egress_providers_refreshing?: boolean;
   skipped_settings?: { key: string; reason: string }[];
   skipped_entries?: number;
   failed_files?: string[];

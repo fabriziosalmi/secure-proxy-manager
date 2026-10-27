@@ -96,6 +96,24 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- With `gdpr_mode` on, `GET /api/dashboard/summary` (`last_24h_clients` and
+  `last_24h_internal_sources`) and `GET /api/clients/statistics` (`meta.total`
+  and `meta.internal`) count distinct `/24` and `/64` networks via
+  `privacy.NetworkPrefix` instead of distinct unmasked IP addresses; `Clients`
+  labels the search box (`Filter clients by network or IP address`) and lifetime
+  detail note (`for this network`) for network rows, and `Logs` converts masked
+  `192.168.1.x` and `2001:db8:1:2::x` addresses to `/24` and `/64` CIDRs (`Show
+  this network's requests`) instead of hiding the filter action.
+- `POST /api/maintenance/restore-config` no longer adds `restored_egress_providers`
+  into `restored_entries`; `Maintenance` states in the Backup description that
+  enabled egress providers and custom URLs are backed up without their downloaded
+  entries, lists egress providers in the pre-restore confirmation and post-restore
+  result (`8 list entries and 1 egress provider`), notes when provider lists are
+  downloading in the background (`egress_providers_refreshing`), and invalidates
+  the query cache after a restore; `egress_provider_refresh_hours` uses its own
+  `provider_cycle` apply mode (`StartEgressProviderRefresh` sleeps for the full
+  interval even when `egress_default_deny` is off), and `ChangePassword` uses
+  sentence case on its field labels and submit button.
 - First-run sign-in, setup wizard and client setup report what actually
   happened: `Login` distinguishes 401 (`Invalid username or password`), 429
   rate-limit responses (showing the backend's `detail`), 5xx or unreachable

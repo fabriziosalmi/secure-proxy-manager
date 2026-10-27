@@ -302,7 +302,7 @@ describe('Settings sections, part B', () => {
   describe('Admin and backup', () => {
     it('lays out the password, backup and maintenance with their results in place, and notes unmasked addresses in database export', async () => {
       const { container } = renderAt('/settings/admin')
-      expect(await screen.findByRole('button', { name: 'Change Password' })).toBeDisabled()
+      expect(await screen.findByRole('button', { name: 'Change password' })).toBeDisabled()
       expect(screen.getByRole('button', { name: 'Download a backup' })).toBeInTheDocument()
       expect(screen.getByText(/holds the full, unmasked client addresses/)).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Empty disk and memory cache' })).toBeInTheDocument()

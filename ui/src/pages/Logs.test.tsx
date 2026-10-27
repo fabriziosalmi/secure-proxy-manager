@@ -407,15 +407,27 @@ describe('Logs', () => {
     expect(new URLSearchParams(window.location.search).get('client')).toBe('192.168.1.20')
   })
 
-  // GDPR mode masks the last part of the address; the filter matches whole
-  // addresses, so a masked one would list nothing.
-  it('does not offer to filter by a masked address', async () => {
-    logsBody = () => page([row({ id: 9, source_ip: '192.168.1.x' })])
+  // GDPR mode masks the last part of the address; the filter accepts /24 and
+  // /64 network CIDRs, so a masked address converts to its network CIDR.
+  it("converts a masked IPv4 or IPv6 address to its /24 or /64 network CIDR and offers Show this network's requests", async () => {
+    logsBody = () => page([
+      row({ id: 9, destination: 'v4.example.com:443', source_ip: '192.168.1.x' }),
+      row({ id: 8, destination: 'v6.example.com:443', source_ip: '2001:db8:1:2::x' }),
+    ])
     renderWithProviders(<Logs />)
-    fireEvent.click(await screen.findByRole('button', { name: 'example.com:443' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'v4.example.com:443' }))
     const details = screen.getByRole('region', { name: 'Request details' })
     expect(within(details).getByText('192.168.1.x')).toBeInTheDocument()
-    expect(within(details).queryByRole('button', { name: "Show this client's requests" })).not.toBeInTheDocument()
+    const netBtn = within(details).getByRole('button', { name: "Show this network's requests" })
+    fireEvent.click(netBtn)
+    await waitFor(() => expect(lastLogParams().get('source_ip')).toBe('192.168.1.0/24'))
+    expect(new URLSearchParams(window.location.search).get('client')).toBe('192.168.1.0/24')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'v6.example.com:443' }))
+    const details6 = screen.getByRole('region', { name: 'Request details' })
+    fireEvent.click(within(details6).getByRole('button', { name: "Show this network's requests" }))
+    await waitFor(() => expect(lastLogParams().get('source_ip')).toBe('2001:db8:1:2::/64'))
+    expect(new URLSearchParams(window.location.search).get('client')).toBe('2001:db8:1:2::/64')
   })
 
   it('opens the detail in a drawer on a phone', async () => {

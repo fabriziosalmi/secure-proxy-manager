@@ -397,3 +397,87 @@ func TestGDPR_DatabaseExportContainsUnmaskedFlagOnlyWhenOn(t *testing.T) {
 		t.Error("GDPR on: database export must keep full addresses in proxy_logs")
 	}
 }
+
+func TestGDPR_CountsNetworksInDashboardAndClients(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	now := time.Now().UTC()
+	// 6 external addresses across 4 networks (/24 and /64):
+	//   - 198.51.100.0/24: 198.51.100.10, 198.51.100.20
+	//   - 203.0.113.0/24:  203.0.113.5
+	//   - 2001:db8:1:2::/64: 2001:db8:1:2::1, 2001:db8:1:2::2
+	//   - 2001:db8:9:9::/64: 2001:db8:9:9::1
+	for _, ip := range []string{
+		"198.51.100.10",
+		"198.51.100.20",
+		"203.0.113.5",
+		"2001:db8:1:2::1",
+		"2001:db8:1:2::2",
+		"2001:db8:9:9::1",
+	} {
+		insertLogRow(t, db, now, ip, "GET", "http://example.com/", 0, "none")
+	}
+	// 6 internal addresses (loopback) across 4 networks (/24 and /64):
+	//   - 127.0.0.0/24: 127.0.0.1, 127.0.0.2
+	//   - 127.0.1.0/24: 127.0.1.1, 127.0.1.2
+	//   - 127.0.2.0/24: 127.0.2.1
+	//   - ::/64:        ::1
+	for _, ip := range []string{
+		"127.0.0.1",
+		"127.0.0.2",
+		"127.0.1.1",
+		"127.0.1.2",
+		"127.0.2.1",
+		"::1",
+	} {
+		insertLogRow(t, db, now, ip, "GET", "http://internal.test/", 0, "none")
+	}
+
+	ah := NewAnalyticsHandlers(db, cfg)
+
+	checkCounts := func(gdprOn bool, want int) {
+		t.Helper()
+		setGDPRMode(t, db, gdprOn)
+		ah.forgetLifetimeCounts()
+
+		recDash := httptest.NewRecorder()
+		ah.DashboardSummary(recDash, httptest.NewRequest(http.MethodGet, "/api/dashboard/summary", nil))
+		var dash struct {
+			Data struct {
+				Clients  int `json:"last_24h_clients"`
+				Internal int `json:"last_24h_internal_sources"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(recDash.Body.Bytes(), &dash); err != nil {
+			t.Fatalf("decode dashboard summary: %v", err)
+		}
+		if dash.Data.Clients != want {
+			t.Errorf("gdpr=%v: dashboard/summary last_24h_clients = %d, want %d", gdprOn, dash.Data.Clients, want)
+		}
+		if dash.Data.Internal != want {
+			t.Errorf("gdpr=%v: dashboard/summary last_24h_internal_sources = %d, want %d", gdprOn, dash.Data.Internal, want)
+		}
+
+		recClients := httptest.NewRecorder()
+		ah.ClientStats(recClients, httptest.NewRequest(http.MethodGet, "/api/clients/statistics", nil))
+		var clients struct {
+			Meta struct {
+				Total    int `json:"total"`
+				Internal int `json:"internal"`
+			} `json:"meta"`
+		}
+		if err := json.Unmarshal(recClients.Body.Bytes(), &clients); err != nil {
+			t.Fatalf("decode clients/statistics: %v", err)
+		}
+		if clients.Meta.Total != want {
+			t.Errorf("gdpr=%v: clients/statistics meta.total = %d, want %d", gdprOn, clients.Meta.Total, want)
+		}
+		if clients.Meta.Internal != want {
+			t.Errorf("gdpr=%v: clients/statistics meta.internal = %d, want %d", gdprOn, clients.Meta.Internal, want)
+		}
+	}
+
+	checkCounts(true, 4)
+	checkCounts(false, 6)
+}

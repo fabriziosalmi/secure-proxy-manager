@@ -29,7 +29,7 @@ import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData, getErrorMessage } from '../lib/api';
 import { formatBytes, formatCount, formatDate, formatDateTime, formatTime } from '../lib/format';
 import {
-  allowableDomain, apiParams, hasFilters, isBlocked, matchesFilters, readFilters, splitStatus, statusTone, whyText, writeFilters,
+  allowableDomain, apiParams, hasFilters, isBlocked, maskedToNetwork, matchesFilters, readFilters, splitStatus, statusTone, whyText, writeFilters,
   NO_FILTERS, type LogFilters, type Outcome,
 } from '../lib/accessLog';
 import { cn } from '../lib/utils';
@@ -580,6 +580,8 @@ function RequestDetail({ r, filters, onAllow, onShowClient }: {
 }) {
   const host = allowableDomain(r);
   const { squid, code } = splitStatus(r.status);
+  const maskedNet = maskedToNetwork(r.source_ip);
+  const clientTarget = maskedNet ?? r.source_ip;
   return (
     <div className="flex flex-col gap-4">
       <dl className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-x-6 gap-y-3 text-sm">
@@ -613,9 +615,10 @@ function RequestDetail({ r, filters, onAllow, onShowClient }: {
       </dl>
       <div className="flex flex-wrap gap-2">
         {host && <Button size="sm" onClick={() => onAllow(host, r)}>Allow this domain</Button>}
-        {/* GDPR mode masks the address (192.168.1.x): it names no single client to filter by. */}
-        {r.source_ip && !/[.:]x$/.test(r.source_ip) && filters.client !== r.source_ip && (
-          <Button size="sm" onClick={() => onShowClient(r.source_ip)}>Show this client's requests</Button>
+        {clientTarget && filters.client !== clientTarget && (
+          <Button size="sm" onClick={() => onShowClient(clientTarget)}>
+            {maskedNet ? "Show this network's requests" : "Show this client's requests"}
+          </Button>
         )}
       </div>
     </div>

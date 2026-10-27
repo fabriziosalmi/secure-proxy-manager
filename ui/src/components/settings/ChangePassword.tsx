@@ -87,9 +87,9 @@ export function ChangePassword() {
     <Section level={3} title="Admin password" description="The password of the dashboard account. The proxy login, if it is on, uses its own username and password, set under Clients and access.">
       <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-4">
         <div className="grid gap-4 md:grid-cols-3">
-          <PasswordInput id={`${id}-current`} label="Current Password" value={currentPwd} onChange={setCurrentPwd} autoComplete="current-password" reveal />
-          <PasswordInput id={`${id}-new`} label="New Password" value={newPwd} onChange={setNewPwd} autoComplete="new-password" describedBy={`${id}-rules`} reveal />
-          <PasswordInput id={`${id}-confirm`} label="Confirm New Password" value={confirmPwd} onChange={setConfirmPwd} autoComplete="new-password" describedBy={mismatch ? `${id}-mismatch` : undefined} invalid={mismatch} reveal />
+          <PasswordInput id={`${id}-current`} label="Current password" value={currentPwd} onChange={setCurrentPwd} autoComplete="current-password" reveal />
+          <PasswordInput id={`${id}-new`} label="New password" value={newPwd} onChange={setNewPwd} autoComplete="new-password" describedBy={`${id}-rules`} reveal />
+          <PasswordInput id={`${id}-confirm`} label="Confirm new password" value={confirmPwd} onChange={setConfirmPwd} autoComplete="new-password" describedBy={mismatch ? `${id}-mismatch` : undefined} invalid={mismatch} reveal />
         </div>
         <ul id={`${id}-rules`} aria-label="Password rules" className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
           {rules.map(([met, text]) => (
@@ -100,7 +100,7 @@ export function ChangePassword() {
         </ul>
         {mismatch && <p id={`${id}-mismatch`} className="text-sm text-danger">The two new passwords do not match.</p>}
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" variant="primary" disabled={!isValid || saving}>{saving ? 'Changing...' : 'Change Password'}</Button>
+          <Button type="submit" variant="primary" disabled={!isValid || saving}>{saving ? 'Changing...' : 'Change password'}</Button>
           <p role="status" className={cn('text-sm', result?.ok ? 'text-success' : 'text-danger')}>{result?.text}</p>
         </div>
       </form>

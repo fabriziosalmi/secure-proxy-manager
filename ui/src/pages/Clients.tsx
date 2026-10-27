@@ -193,6 +193,7 @@ export function Clients() {
   }
 
   const footer = clients.data ? footerText({ rows, all, showInternal, internalTotal, clientTotal, filtered: search.trim() !== '' }) : null;
+  const hasNetworks = all.some((c) => Boolean(c.network));
 
   return (
     <div className="flex flex-col gap-5">
@@ -213,8 +214,8 @@ export function Clients() {
 
       <div className="flex flex-wrap items-center gap-3">
         <SearchInput
-          label="Filter clients by IP address"
-          placeholder="Filter by IP address"
+          label={hasNetworks ? 'Filter clients by network or IP address' : 'Filter clients by IP address'}
+          placeholder={hasNetworks ? 'Filter by network or IP address' : 'Filter by IP address'}
           value={search}
           onChange={setSearch}
           className="w-full sm:w-auto sm:flex-[1_1_280px] sm:max-w-[360px]"
@@ -391,7 +392,7 @@ function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
 
       {(widerThanRow || unclassified > 0) && (
         <div className="flex flex-col gap-1 px-5 text-[13px] text-ink-muted">
-          {widerThanRow && <p>These counts cover every request logged for this address; the table counts the last 7 days.</p>}
+          {widerThanRow && <p>These counts cover every request logged for this {isNetwork ? 'network' : 'address'}; the table counts the last 7 days.</p>}
           {unclassified > 0 && <p>{unclassifiedNote(unclassified, info.blocked)}</p>}
         </div>
       )}

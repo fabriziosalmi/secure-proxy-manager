@@ -260,6 +260,8 @@ describe('Clients', () => {
       expect(screen.getByText(/2001:db8:1:2::\/64 · 2 addresses · mixed/)).toBeInTheDocument()
       const link = await within(panel).findByRole('link', { name: 'Show requests from this network in the access log' })
       expect(link).toHaveAttribute('href', '/logs?client=192.168.0.0%2F24')
+      expect(within(panel).getByText('These counts cover every request logged for this network; the table counts the last 7 days.')).toBeInTheDocument()
+      expect(screen.getByRole('searchbox', { name: 'Filter clients by network or IP address' })).toHaveAttribute('placeholder', 'Filter by network or IP address')
     })
   })
 
