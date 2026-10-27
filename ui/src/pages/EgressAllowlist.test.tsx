@@ -242,7 +242,7 @@ describe('EgressAllowlist', () => {
     expect(within(urlRow).getByText('URL')).toBeInTheDocument()
     expect(within(urlRow).getByText('https://feeds.example.com/cidr.txt')).toBeInTheDocument()
 
-    fireEvent.click(within(ghRow).getByRole('button', { name: 'Refresh github now' }))
+    fireEvent.click(within(ghRow).getByRole('button', { name: 'Refresh now: github' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('egress-providers/github/refresh'))
 
     await expectNoAxeViolations(container)

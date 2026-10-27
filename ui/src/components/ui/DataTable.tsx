@@ -179,7 +179,10 @@ export function DataTable<T>({
     <div className={cn('min-w-0', className)}>
       {loading && <p role="status" className="sr-only">Loading {caption.toLowerCase()}</p>}
       <div
-        role="region"
+        // Focusable so a keyboard can scroll a table wider than the screen.
+        // A group, not a region: a region is a landmark and repeated the name
+        // of the Section around the table.
+        role="group"
         aria-labelledby={captionId}
         tabIndex={0}
         // relative: a visually hidden header (headerHidden) is absolutely

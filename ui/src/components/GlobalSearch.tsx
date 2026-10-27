@@ -210,6 +210,11 @@ export function GlobalSearch() {
           <Search className="h-4 w-4 shrink-0 text-ink-subtle" aria-hidden="true" />
           <input
             ref={inputRef}
+            role="combobox"
+            aria-expanded={results.length > 0}
+            aria-controls="global-search-listbox"
+            aria-autocomplete="list"
+            aria-activedescendant={results.length > 0 && results[selected] ? `global-search-option-${selected}` : undefined}
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
@@ -230,28 +235,36 @@ export function GlobalSearch() {
           </button>
         </div>
 
+        <div className="sr-only" aria-live="polite" aria-atomic="true">
+          {query.trim().length > 0 && !loading
+            ? results.length === 0
+              ? `No results for "${query}"`
+              : `${results.length} ${results.length === 1 ? 'result' : 'results'} available`
+            : ''}
+        </div>
+
         <div className="max-h-[55vh] overflow-y-auto">
           {results.length > 0 ? (
-            <ul className="p-2">
+            <ul id="global-search-listbox" role="listbox" aria-label="Search results" className="p-2">
               {results.map((r, i) => (
-                <li key={`${r.type}-${r.label}-${i}`}>
-                  <button
-                    type="button"
-                    onClick={r.action}
-                    onMouseEnter={() => setSelected(i)}
-                    aria-current={i === selected ? 'true' : undefined}
-                    className={cn(
-                      'flex w-full items-center gap-3 rounded-control px-3 py-2 text-left',
-                      i === selected ? 'bg-accent-subtle' : 'hover:bg-surface-muted',
-                    )}
-                  >
-                    {typeIcon(r.type)}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-ink">{r.label}</span>
-                      {r.description && <span className="block truncate text-xs text-ink-muted">{r.description}</span>}
-                    </span>
-                    <span className="shrink-0 text-xs text-ink-muted">{TYPE_LABEL[r.type]}</span>
-                  </button>
+                <li
+                  key={`${r.type}-${r.label}-${i}`}
+                  id={`global-search-option-${i}`}
+                  role="option"
+                  aria-selected={i === selected}
+                  onClick={r.action}
+                  onMouseEnter={() => setSelected(i)}
+                  className={cn(
+                    'flex w-full cursor-pointer items-center gap-3 rounded-control px-3 py-2 text-left',
+                    i === selected ? 'bg-accent-subtle' : 'hover:bg-surface-muted',
+                  )}
+                >
+                  {typeIcon(r.type)}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-ink">{r.label}</span>
+                    {r.description && <span className="block truncate text-xs text-ink-muted">{r.description}</span>}
+                  </span>
+                  <span className="shrink-0 text-xs text-ink-muted">{TYPE_LABEL[r.type]}</span>
                 </li>
               ))}
             </ul>

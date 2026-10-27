@@ -37,8 +37,8 @@ function SectionList({ current, dirty = {}, attention, onPick, id }: SettingsNav
         // One name, built here: browsers join the parts of a flex link with
         // different spacing, so the dot and badge only repeat it visually.
         let name = s.label;
-        if (changes > 0) name += `, ${unsavedText(changes)}`;
         if (badge > 0) name += `, ${badge} ${badge === 1 ? 'item needs' : 'items need'} attention`;
+        if (changes > 0) name += `, ${unsavedText(changes)}`;
         return (
           <li key={s.id}>
             <Link
@@ -57,7 +57,10 @@ function SectionList({ current, dirty = {}, attention, onPick, id }: SettingsNav
                 <span aria-hidden="true" data-testid={`dirty-${s.id}`} className="h-2 w-2 flex-none rounded-full bg-accent-solid" />
               )}
               {badge > 0 && (
-                <span aria-hidden="true" className="flex-none rounded-full bg-warning-subtle px-2 text-xs font-semibold text-warning">{badge}</span>
+                <>
+                  {' '}
+                  <span aria-hidden="true" className="flex-none rounded-full bg-warning-subtle px-2 text-xs font-semibold text-warning">{badge}</span>
+                </>
               )}
             </Link>
           </li>

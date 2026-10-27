@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../../test/helpers'
-import { ChangePassword } from './ChangePassword'
+import { ChangePassword, PasswordInput } from './ChangePassword'
 
 vi.mock('../../lib/api', () => ({
   api: { post: vi.fn(() => Promise.resolve({ data: {} })) },
@@ -73,5 +73,37 @@ describe('ChangePassword uses the shared password rule', () => {
     expect(confirmInput).toHaveAttribute('type', 'password')
     await userEvent.click(confirmReveal)
     expect(confirmInput).toHaveAttribute('type', 'text')
+  })
+
+  it('positions the reveal toggle inside a full-width relative wrapper with aria-pressed and Tab order after the input', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(
+      <div>
+        <PasswordInput id="plain-pwd" label="Plain password" value="" onChange={() => {}} autoComplete="current-password" />
+        <PasswordInput id="reveal-pwd" label="Reveal password" value="" onChange={() => {}} autoComplete="current-password" reveal />
+      </div>,
+    )
+    const plainInput = screen.getByLabelText('Plain password')
+    const revealInput = screen.getByLabelText('Reveal password')
+    const revealBtn = screen.getByRole('button', { name: 'Show reveal password' })
+
+    expect(plainInput.className).toMatch(/\bw-full\b/)
+    expect(revealInput.className).toMatch(/\bw-full\b/)
+    expect(revealInput.className).toMatch(/\bpr-10\b/)
+    expect(revealInput.parentElement).toBe(revealBtn.parentElement)
+    expect(revealInput.parentElement?.className).toMatch(/\brelative\b/)
+    expect(revealInput.parentElement?.className).not.toMatch(/\bflex\b/)
+    expect(revealBtn.className).toMatch(/\babsolute\b/)
+    expect(revealBtn).toHaveAttribute('aria-pressed', 'false')
+
+    revealInput.focus()
+    expect(document.activeElement).toBe(revealInput)
+    await user.tab()
+    expect(document.activeElement).toBe(revealBtn)
+
+    await user.click(revealBtn)
+    expect(revealBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(revealBtn).toHaveAccessibleName('Show reveal password')
+    expect(revealInput).toHaveAttribute('type', 'text')
   })
 })

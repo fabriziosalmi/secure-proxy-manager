@@ -14,8 +14,10 @@ vi.mock('../lib/api', () => ({
 }))
 
 describe('GlobalSearch', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    const { api } = await import('../lib/api')
+    vi.mocked(api.get).mockResolvedValue({ data: { data: [] } })
   })
 
   it('opens with Cmd+K', async () => {
@@ -120,5 +122,51 @@ describe('GlobalSearch', () => {
       expect(p.get('limit'), list).toBe('5')
       expect(p.has('page_size'), list).toBe(false)
     }
+  })
+
+  it('exposes a keyboard combobox with aria-activedescendant, polite count announcements, and focus restoration on Escape', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(
+      <>
+        <button type="button">Trigger before search</button>
+        <GlobalSearch />
+      </>,
+    )
+    const trigger = screen.getByRole('button', { name: 'Trigger before search' })
+    trigger.focus()
+    expect(document.activeElement).toBe(trigger)
+
+    await user.keyboard('{Meta>}k{/Meta}')
+    const combobox = await screen.findByRole('combobox', { name: /search ips, domains, requests, pages/i })
+    expect(combobox).toHaveAttribute('aria-expanded', 'false')
+
+    await user.type(combobox, 'al')
+    await waitFor(() => expect(screen.getAllByRole('option').length).toBeGreaterThanOrEqual(2))
+    const options = screen.getAllByRole('option')
+    expect(combobox).toHaveAttribute('aria-expanded', 'true')
+    const listboxId = combobox.getAttribute('aria-controls')
+    expect(listboxId).toBeTruthy()
+    expect(document.getElementById(listboxId!)).toHaveAttribute('role', 'listbox')
+
+    expect(combobox).toHaveAttribute('aria-activedescendant', options[0].id)
+    expect(options[0]).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{ArrowDown}')
+    expect(combobox).toHaveAttribute('aria-activedescendant', options[1].id)
+    expect(options[1]).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{ArrowUp}')
+    expect(combobox).toHaveAttribute('aria-activedescendant', options[0].id)
+
+    const polite = document.querySelector('[aria-live="polite"]')
+    expect(polite).toHaveTextContent(`${options.length} results available`)
+
+    await user.clear(combobox)
+    await user.type(combobox, 'zzzznonexistent')
+    await waitFor(() => expect(polite).toHaveTextContent('No results for "zzzznonexistent"'))
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(document.activeElement).toBe(trigger)
   })
 })
