@@ -223,6 +223,7 @@ func extractDomain(dest string) string {
 	return strings.ToLower(d)
 }
 
-// maskIP anonymizes the last octet of an IPv4 address: 192.168.1.7 to
-// 192.168.1.x. One implementation with the live log feed (package privacy).
+// maskIP masks an IPv4 address to /24 (192.168.1.7 to 192.168.1.x) and an IPv6
+// address to /64 (2001:db8:1:2:3:4:5:6 to 2001:db8:1:2::x), returning "unknown"
+// for anything that cannot be parsed as an address (package privacy).
 func maskIP(ip string) string { return privacy.MaskIP(ip) }

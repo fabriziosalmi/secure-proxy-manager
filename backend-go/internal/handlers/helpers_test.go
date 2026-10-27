@@ -119,8 +119,9 @@ func TestHelpers_MaskIP(t *testing.T) {
 		want  string
 	}{
 		{"192.168.1.7", "192.168.1.x"},
+		{"2001:db8:1:2:3:4:5:6", "2001:db8:1:2::x"},
 		{"::1", "::x"},
-		{"invalid", "invalid"},
+		{"invalid", "unknown"},
 	}
 	for _, c := range cases {
 		if got := maskIP(c.input); got != c.want {

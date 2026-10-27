@@ -224,7 +224,9 @@ export function Dashboard() {
   const domainRules = s?.domain_blacklist_count;
   const rules = typeof ipRules === 'number' && typeof domainRules === 'number' ? ipRules + domainRules : undefined;
   const lastRequest = s?.last_request_at ? formatHourMinute(s.last_request_at) : null;
-  const onlyClient = clients === 1 ? s?.top_clients?.[0]?.ip : undefined;
+  const onlyClient = clients === 1 || (s?.top_clients?.length === 1 && Boolean(s.top_clients[0]?.network))
+    ? s?.top_clients?.[0]?.ip
+    : undefined;
 
   let clientsSub: ReactNode;
   if (clients === 0) clientsSub = 'No client in the last 24 hours';

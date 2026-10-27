@@ -37,6 +37,11 @@ func (h *LogHandlers) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	gdpr := h.gdprEnabled()
+	f, err = f.resolveSource(h.db, gdpr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	internal := h.src.Present()
 	rc := http.NewResponseController(w)
 

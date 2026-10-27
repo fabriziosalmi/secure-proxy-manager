@@ -21,7 +21,7 @@ Returns access log rows matching the filters, with pagination metadata.
 | `offset` | `0` | Pagination offset |
 | `sort` | `timestamp` | `timestamp`, `source_ip`, `destination`, `status`, `bytes`, `method` or `id`; anything else is `timestamp` |
 | `order` | `desc` | `asc` or `desc` |
-| `source_ip` | | One source address, exact. A named source is listed even when it is internal |
+| `source_ip` | | One source address, exact, or a `/24` (IPv4) or `/64` (IPv6) network CIDR. With `gdpr_mode` on, a single address is refused with `400`; pass the network CIDR. A named source is listed even when it is internal |
 | `outcome` | | `allowed` or `blocked` (`all` or empty: both), from the `blocked` flag |
 | `reason` | | The rule that blocked the request (a `reason` value below); selects blocked rows only |
 | `q` | | A substring of `destination`, case-insensitive for ASCII; `%` and `_` match themselves. At most 256 bytes |
@@ -73,10 +73,10 @@ address"), and is empty otherwise.
 To page back through the log, pass the `id` of the last row received as
 `before_id`; a page shorter than `limit` is the last one.
 
-With GDPR mode on (Settings > Logs and privacy), `source_ip` is masked (the
-last IPv4 octet, or the last IPv6 group, becomes `x`); the source is
-classified before it is masked. The top-level `total`, `limit` and `offset`
-are deprecated copies of `meta`.
+With `gdpr_mode` on (Settings > Logs and privacy > Mask client IPs), `source_ip`
+is masked to `/24` for IPv4 (`192.168.1.x`) and `/64` for IPv6
+(`2001:db8:1:2::x`); the source is classified before it is masked. The top-level
+`total`, `limit` and `offset` are deprecated copies of `meta`.
 
 `reason` is the rule that blocked the request, recorded by Squid or the WAF
 when the request was logged (see
@@ -277,10 +277,10 @@ These return JSON in the standard envelope, in the shape the UI renders:
 |---|---|
 | `GET /api/status` | Proxy reachability (`proxy_status`, `proxy_host`, `proxy_port`), version, commit, today's client request count (`requests_count`), `proxy_auth` state when recorded, update availability (`update_available`, `update_url`), and Squid CVE state (`squid_version`, `squid_cves`, `cves_checked`: `false` when the major version has no table in `cve_checker.go`, such as Squid 7.x) |
 | `GET /api/security/cve` | The Squid version (`version`), whether its major version has an advisory table (`cves_checked`), and the matched advisories (`cves`) |
-| `GET /api/dashboard/summary` | The dashboard's data in one call |
+| `GET /api/dashboard/summary` | The dashboard's data in one call (with `gdpr_mode` on, `top_clients` are aggregated by `/24` or `/64` network and `recent_blocks[].source_ip` is masked) |
 | `GET /api/traffic/statistics?period=day` | Requests and blocks per bucket (`hour`, `day`, `week`, `month`) |
-| `GET /api/clients/statistics` | Top 50 clients, then the internal sources |
-| `GET /api/clients/{ip}/details` | One client's totals, top domains and recent requests |
+| `GET /api/clients/statistics` | Top 50 clients (or `/24` and `/64` networks with `gdpr_mode` on, including `network` CIDR and distinct `addresses` count), then the internal sources |
+| `GET /api/clients/{ip}/details` | One client's or network CIDR's totals, top domains and recent requests (with `gdpr_mode` on, only `/24` or `/64` CIDRs are accepted and a single address answers `400`) |
 | `GET /api/domains/statistics` | Top 50 domains |
 | `GET /api/analytics/shadow-it` | Requests of the last 7 days to known services, by host |
 | `GET /api/analytics/user-agents` | Requests of the last 7 days by method and kind of service |

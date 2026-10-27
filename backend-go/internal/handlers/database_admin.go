@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 )
 
 type DatabaseHandlers struct{ db *sql.DB }
@@ -91,7 +92,11 @@ func (h *DatabaseHandlers) Export(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", "attachment; filename=database_export.json")
-	json.NewEncoder(w).Encode(map[string]any{"status": "success", "data": export}) //nolint:errcheck
+	resp := map[string]any{"status": "success", "data": export}
+	if privacy.Enabled(h.db) {
+		resp["contains_unmasked_addresses"] = true
+	}
+	json.NewEncoder(w).Encode(resp) //nolint:errcheck
 }
 
 func (h *DatabaseHandlers) Reset(w http.ResponseWriter, r *http.Request) {

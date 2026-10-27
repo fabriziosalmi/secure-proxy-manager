@@ -49,6 +49,22 @@ describe('matchesFilters (live rows)', () => {
     // An older backend sends no classification: the row is not known to be internal.
     expect(matchesFilters(entry({ internal: undefined }), NO_FILTERS, false)).toBe(true)
   })
+
+  it('matches live rows by network CIDR when GDPR mode masks client addresses', () => {
+    const v4Filter = { ...NO_FILTERS, client: '192.168.1.0/24' }
+    expect(matchesFilters(entry({ source_ip: '192.168.1.x' }), v4Filter, false)).toBe(true)
+    expect(matchesFilters(entry({ source_ip: '192.168.1.77' }), v4Filter, false)).toBe(true)
+    expect(matchesFilters(entry({ source_ip: '192.168.2.x' }), v4Filter, false)).toBe(false)
+
+    const v6Filter = { ...NO_FILTERS, client: '2001:db8:1:2::/64' }
+    expect(matchesFilters(entry({ source_ip: '2001:db8:1:2::x' }), v6Filter, false)).toBe(true)
+    expect(matchesFilters(entry({ source_ip: '2001:db8:1:2:3:4:5:6' }), v6Filter, false)).toBe(true)
+    expect(matchesFilters(entry({ source_ip: '2001:db8:1:3::x' }), v6Filter, false)).toBe(false)
+
+    const v6CompressedFilter = { ...NO_FILTERS, client: '2001:db8::/64' }
+    expect(matchesFilters(entry({ source_ip: '2001:db8::x' }), v6CompressedFilter, false)).toBe(true)
+    expect(matchesFilters(entry({ source_ip: '2001:db8::1' }), v6CompressedFilter, false)).toBe(true)
+  })
 })
 
 describe('row facts', () => {

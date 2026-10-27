@@ -214,7 +214,7 @@ export const FIELD_LABELS: Record<string, string> = {
   ntfy_url: 'ntfy server URL',
   ntfy_topic: 'ntfy topic',
   teams_webhook_url: 'Teams webhook URL',
-  gdpr_mode: 'Mask client IPs in the log viewer',
+  gdpr_mode: 'Mask client IPs',
   log_retention_days: 'Keep logs for (days)',
   proxy_port: 'Proxy port',
   cache_size: 'Disk cache (MB)',

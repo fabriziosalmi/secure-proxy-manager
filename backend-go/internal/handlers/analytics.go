@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"sort"
@@ -23,6 +24,8 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/sources"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
@@ -318,6 +321,7 @@ func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	r.With(authMW, etag).Get("/api/traffic/statistics", h.TrafficStats)
 	r.With(authMW, etag).Get("/api/clients/statistics", h.ClientStats)
 	r.With(authMW).Get("/api/clients/{ip}/details", h.ClientDetails)
+	r.With(authMW).Get("/api/clients/{ip}/{prefix}/details", h.ClientDetails)
 	r.With(authMW, etag).Get("/api/domains/statistics", h.DomainStats)
 	r.With(authMW).Get("/api/cache/statistics", h.CacheStats)
 	r.With(authMW).Get("/api/waf/stats", h.WAFStats)
@@ -575,6 +579,10 @@ const clientsLimit = 50
 // recorded included.
 func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) {
 	since := sinceUnix(analyticsWindow)
+	if privacy.Enabled(h.db) {
+		h.clientStatsByNetwork(w, since)
+		return
+	}
 	internal := h.src.Present()
 	ext, extArgs := notInternal(internal)
 	in, inArgs := onlyInternal(internal)
@@ -626,14 +634,186 @@ func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) 
 	writeList(w, clients, ListMeta{Total: total, Limit: clientsLimit, Offset: 0, Internal: &internalTotal})
 }
 
-// ClientDetails returns a per-client drill-down for a single source IP:
-// totals, top destinations (with how many were blocked), and the most recent
-// requests. The IP is bound as a query parameter, so it is not an injection
-// vector; isValidCIDR rejects obviously malformed input early.
-func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request) {
+type networkStatBucket struct {
+	network     string
+	maskedIP    string
+	requests    int
+	blocked     int
+	lastSeen    string
+	addrs       map[string]struct{}
+	hasInternal bool
+	hasExternal bool
+	kinds       map[string]struct{}
+	firstKind   string
+}
+
+func (b *networkStatBucket) add(src *InternalSources, ip string, cnt, blocked int, lastSeen string) {
+	b.requests += cnt
+	b.blocked += blocked
+	if lastSeen > b.lastSeen {
+		b.lastSeen = lastSeen
+	}
+	canon := strings.TrimSpace(ip)
+	if a, err := netip.ParseAddr(canon); err == nil {
+		canon = a.WithZone("").Unmap().String()
+	}
+	b.addrs[canon] = struct{}{}
+	isInt, kind := src.Classify(ip)
+	if isInt {
+		b.hasInternal = true
+	} else {
+		b.hasExternal = true
+	}
+	if kind != "" {
+		if b.firstKind == "" {
+			b.firstKind = kind
+		}
+		b.kinds[kind] = struct{}{}
+	}
+}
+
+func (b *networkStatBucket) classify() (internal bool, kind, classification string) {
+	switch {
+	case b.hasInternal && b.hasExternal:
+		return false, "mixed", "mixed"
+	case b.hasInternal:
+		k := b.firstKind
+		if len(b.kinds) > 1 {
+			k = sources.KindStack
+		}
+		return true, k, "internal"
+	default:
+		return false, b.firstKind, "external"
+	}
+}
+
+func (h *AnalyticsHandlers) clientStatsByNetwork(w http.ResponseWriter, since int64) {
+	// #nosec G202 -- clientRows is a constant expression; since is bound.
+	rows, err := h.db.Query(`
+		SELECT source_ip, COUNT(*) AS requests,
+		       SUM(blocked) AS blocked,
+		       MAX(timestamp) AS last_seen
+		FROM proxy_logs
+		WHERE source_ip IS NOT NULL AND source_ip != '' AND unix_timestamp >= ? AND `+clientRows+`
+		GROUP BY source_ip`, since)
+	if err != nil {
+		writeInternalError(w, "client_stats", err)
+		return
+	}
+	defer rows.Close()
+
+	buckets := map[string]*networkStatBucket{}
+	for rows.Next() {
+		var ip string
+		var cnt, blocked int
+		var lastSeen sql.NullString
+		rows.Scan(&ip, &cnt, &blocked, &lastSeen) //nolint:errcheck
+		netKey := "unknown"
+		if p, ok := privacy.NetworkPrefix(ip); ok {
+			netKey = p.String()
+		}
+		b, ok := buckets[netKey]
+		if !ok {
+			b = &networkStatBucket{
+				network:  netKey,
+				maskedIP: privacy.MaskIP(ip),
+				addrs:    map[string]struct{}{},
+				kinds:    map[string]struct{}{},
+			}
+			buckets[netKey] = b
+		}
+		b.add(h.src, ip, cnt, blocked, lastSeen.String)
+	}
+	if err := rows.Err(); err != nil {
+		writeInternalError(w, "client_stats", err)
+		return
+	}
+
+	var extList, intList []*networkStatBucket
+	for _, b := range buckets {
+		isInt, _, _ := b.classify()
+		if isInt {
+			intList = append(intList, b)
+		} else {
+			extList = append(extList, b)
+		}
+	}
+	sortNets := func(s []*networkStatBucket) {
+		sort.Slice(s, func(i, j int) bool {
+			if s[i].requests != s[j].requests {
+				return s[i].requests > s[j].requests
+			}
+			return s[i].network < s[j].network
+		})
+	}
+	sortNets(extList)
+	sortNets(intList)
+
+	total := len(extList)
+	internalTotal := len(intList)
+	if len(extList) > clientsLimit {
+		extList = extList[:clientsLimit]
+	}
+
+	clients := make([]map[string]any, 0, len(extList)+len(intList))
+	appendBucket := func(b *networkStatBucket) {
+		isInt, kind, classification := b.classify()
+		clients = append(clients, map[string]any{
+			"ip_address":     b.maskedIP,
+			"network":        b.network,
+			"addresses":      len(b.addrs),
+			"requests":       b.requests,
+			"blocked":        b.blocked,
+			"last_seen":      b.lastSeen,
+			"status":         "Active",
+			"internal":       isInt,
+			"kind":           kind,
+			"classification": classification,
+		})
+	}
+	for _, b := range extList {
+		appendBucket(b)
+	}
+	for _, b := range intList {
+		appendBucket(b)
+	}
+	writeList(w, clients, ListMeta{Total: total, Limit: clientsLimit, Offset: 0, Internal: &internalTotal})
+}
+
+func extractClientTarget(r *http.Request) string {
 	ip := chi.URLParam(r, "ip")
+	if pfx := chi.URLParam(r, "prefix"); pfx != "" {
+		return ip + "/" + pfx
+	}
+	if unescaped, err := url.PathUnescape(ip); err == nil && unescaped != "" {
+		return unescaped
+	}
+	if ip != "" {
+		return ip
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/clients/")
+	path = strings.TrimSuffix(path, "/details")
+	if unescaped, err := url.PathUnescape(path); err == nil {
+		return unescaped
+	}
+	return path
+}
+
+// ClientDetails returns a per-client drill-down for a single source IP or
+// network CIDR: totals, top destinations (with how many were blocked), and the
+// most recent requests. With gdpr_mode on, only a network CIDR is accepted.
+func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request) {
+	ip := strings.TrimSpace(extractClientTarget(r))
+	if strings.Contains(ip, "/") {
+		h.clientDetailsByNetwork(w, ip)
+		return
+	}
 	if !isValidCIDR(ip) {
 		writeError(w, http.StatusBadRequest, "invalid IP address")
+		return
+	}
+	if privacy.Enabled(h.db) {
+		writeError(w, http.StatusBadRequest, "GDPR mode is enabled: use the network CIDR (for example 192.168.1.0/24 or 2001:db8:1:2::/64) instead of a single IP address")
 		return
 	}
 	const blockedCase = `SUM(blocked)`
@@ -695,6 +875,112 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 		"recent":         recent,
 		// The client's blocked requests by the rule that blocked them.
 		"blocked_by_reason": h.blockedByReason(`source_ip = ?`, ip),
+	})
+}
+
+func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCIDR string) {
+	prefix, err := parseNetworkCIDR(rawCIDR)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid network CIDR")
+		return
+	}
+	ips, err := matchNetworkIPs(h.db, prefix)
+	if err != nil {
+		writeInternalError(w, "client_details_network", err)
+		return
+	}
+
+	b := &networkStatBucket{
+		network:  prefix.String(),
+		maskedIP: privacy.MaskIP(prefix.Addr().String()),
+		addrs:    map[string]struct{}{},
+		kinds:    map[string]struct{}{},
+	}
+
+	cond := "0 = 1"
+	var args []any
+	if len(ips) > 0 {
+		cond = "source_ip IN (" + placeholders(len(ips)) + ")"
+		args = toArgs(ips)
+		// Classify only addresses that have clientRows in proxy_logs.
+		// #nosec G202 -- cond and clientRows use constants and placeholders; args are bound.
+		if sRows, err := h.db.Query(`SELECT DISTINCT source_ip FROM proxy_logs WHERE `+cond+` AND `+clientRows, args...); err == nil {
+			for sRows.Next() {
+				var sip string
+				if sRows.Scan(&sip) == nil {
+					b.add(h.src, sip, 0, 0, "")
+				}
+			}
+			sRows.Close()
+		}
+	}
+	if len(b.addrs) == 0 {
+		isInt, kind := h.src.Classify(prefix.Addr().String())
+		if isInt {
+			b.hasInternal = true
+		} else {
+			b.hasExternal = true
+		}
+		b.firstKind = kind
+	}
+	isInternal, kind, classification := b.classify()
+
+	const blockedCase = `SUM(blocked)`
+	var total, blocked int
+	var firstSeen, lastSeen sql.NullString
+	// #nosec G202 -- cond and clientRows are constants and placeholders; args are bound.
+	_ = h.db.QueryRow(
+		`SELECT COUNT(*), IFNULL(`+blockedCase+`, 0), MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE `+cond+` AND `+clientRows,
+		args...,
+	).Scan(&total, &blocked, &firstSeen, &lastSeen)
+
+	topDomains := []map[string]any{}
+	// #nosec G202 -- destinationKey, cond and clientRows are constants and placeholders; args are bound.
+	if dr, err := h.db.Query(
+		`SELECT `+destinationKey+` AS dest, COUNT(*) AS c, `+blockedCase+` AS b
+		 FROM proxy_logs WHERE `+cond+` AND destination IS NOT NULL AND destination != '' AND `+clientRows+`
+		 GROUP BY dest ORDER BY c DESC LIMIT 10`, args...); err == nil {
+		for dr.Next() {
+			var d string
+			var c, blk int
+			dr.Scan(&d, &c, &blk) //nolint:errcheck
+			topDomains = append(topDomains, map[string]any{"destination": d, "requests": c, "blocked": blk})
+		}
+		dr.Close()
+	}
+
+	recent := []map[string]any{}
+	// #nosec G202 -- cond and clientRows are constants and placeholders; args are bound.
+	if rr, err := h.db.Query(
+		`SELECT timestamp, method, destination, status, bytes, blocked, block_reason
+		 FROM proxy_logs WHERE `+cond+` AND `+clientRows+` ORDER BY id DESC LIMIT 20`, args...); err == nil {
+		for rr.Next() {
+			var ts, method, dest, status, reason string
+			var nbytes int64
+			var blk int
+			rr.Scan(&ts, &method, &dest, &status, &nbytes, &blk, &reason) //nolint:errcheck
+			recent = append(recent, map[string]any{
+				"timestamp": ts, "method": method, "destination": dest, "status": status, "bytes": nbytes,
+				"blocked": blk == 1, "reason": reason, "reason_label": workers.ReasonLabel(reason),
+			})
+		}
+		rr.Close()
+	}
+
+	writeOK(w, map[string]any{
+		"ip_address":        b.maskedIP,
+		"network":           b.network,
+		"addresses":         len(b.addrs),
+		"internal":          isInternal,
+		"kind":              kind,
+		"classification":    classification,
+		"total_requests":    total,
+		"blocked":           blocked,
+		"first_seen":        firstSeen.String,
+		"last_seen":         lastSeen.String,
+		"top_domains":       topDomains,
+		"recent":            recent,
+		"blocked_by_reason": h.blockedByReason(cond, args...),
 	})
 }
 
@@ -843,18 +1129,76 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 		result["squid_domain_acl"] = nil
 	}
 
+	gdpr := privacy.Enabled(h.db)
+
 	// Top clients (last 24h)
 	var topClients []map[string]any
-	// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
-	cRows, _ := h.db.Query(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' AND `+clientRows+` AND `+ext+` GROUP BY source_ip ORDER BY cnt DESC LIMIT 10`, append([]any{day}, extArgs...)...)
-	if cRows != nil {
-		for cRows.Next() {
-			var ip string
-			var cnt int
-			cRows.Scan(&ip, &cnt) //nolint:errcheck
-			topClients = append(topClients, map[string]any{"ip": ip, "count": cnt})
+	if gdpr {
+		// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
+		cRows, _ := h.db.Query(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' AND `+clientRows+` AND `+ext+` GROUP BY source_ip`, append([]any{day}, extArgs...)...)
+		if cRows != nil {
+			type netCount struct {
+				ip      string
+				network string
+				count   int
+				addrs   map[string]struct{}
+			}
+			byNet := map[string]*netCount{}
+			for cRows.Next() {
+				var ip string
+				var cnt int
+				cRows.Scan(&ip, &cnt) //nolint:errcheck
+				netKey := "unknown"
+				if p, ok := privacy.NetworkPrefix(ip); ok {
+					netKey = p.String()
+				}
+				nc, ok := byNet[netKey]
+				if !ok {
+					nc = &netCount{ip: privacy.MaskIP(ip), network: netKey, addrs: map[string]struct{}{}}
+					byNet[netKey] = nc
+				}
+				nc.count += cnt
+				canon := strings.TrimSpace(ip)
+				if a, err := netip.ParseAddr(canon); err == nil {
+					canon = a.WithZone("").Unmap().String()
+				}
+				nc.addrs[canon] = struct{}{}
+			}
+			cRows.Close()
+			list := make([]*netCount, 0, len(byNet))
+			for _, nc := range byNet {
+				list = append(list, nc)
+			}
+			sort.Slice(list, func(i, j int) bool {
+				if list[i].count != list[j].count {
+					return list[i].count > list[j].count
+				}
+				return list[i].network < list[j].network
+			})
+			if len(list) > 10 {
+				list = list[:10]
+			}
+			for _, nc := range list {
+				topClients = append(topClients, map[string]any{
+					"ip":        nc.ip,
+					"network":   nc.network,
+					"addresses": len(nc.addrs),
+					"count":     nc.count,
+				})
+			}
 		}
-		cRows.Close()
+	} else {
+		// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
+		cRows, _ := h.db.Query(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' AND `+clientRows+` AND `+ext+` GROUP BY source_ip ORDER BY cnt DESC LIMIT 10`, append([]any{day}, extArgs...)...)
+		if cRows != nil {
+			for cRows.Next() {
+				var ip string
+				var cnt int
+				cRows.Scan(&ip, &cnt) //nolint:errcheck
+				topClients = append(topClients, map[string]any{"ip": ip, "count": cnt})
+			}
+			cRows.Close()
+		}
 	}
 	if topClients == nil {
 		topClients = []map[string]any{}
@@ -887,8 +1231,12 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 		for rRows.Next() {
 			var ts, srcIP, method, dest, host, status, reason sql.NullString
 			rRows.Scan(&ts, &srcIP, &method, &dest, &host, &status, &reason) //nolint:errcheck
+			ip := srcIP.String
+			if gdpr {
+				ip = privacy.MaskIP(ip)
+			}
 			recentBlocks = append(recentBlocks, map[string]any{
-				"timestamp": ts.String, "source_ip": srcIP.String, "method": method.String,
+				"timestamp": ts.String, "source_ip": ip, "method": method.String,
 				"destination": dest.String, "host": host.String, "status": status.String,
 				"reason": reason.String, "reason_label": workers.ReasonLabel(reason.String),
 			})

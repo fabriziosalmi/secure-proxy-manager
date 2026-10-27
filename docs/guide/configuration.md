@@ -160,6 +160,21 @@ It is off by default and set in the UI, not in `.env`:
 See [Lists](./blacklists.md#destination-allowlist-default-deny-egress) for the
 API.
 
+## Client IP masking (`gdpr_mode`)
+
+Settings > Logs and privacy > Mask client IPs (`gdpr_mode`) masks client IP
+addresses across all API responses (`GET /api/logs`, `GET /api/logs/export`,
+`/api/ws/logs`, `GET /api/clients/statistics`, `GET /api/clients/{ip}/details`,
+`GET /api/dashboard/summary`), the MCP server and outbound alert notifications
+(webhooks, Gotify, Telegram, ntfy, Teams and alert digests). IPv4 addresses are
+masked to `/24` (`192.168.1.x`) and IPv6 addresses to `/64`
+(`2001:db8:1:2::x`). In `GET /api/clients/statistics` and
+`GET /api/dashboard/summary`, clients are grouped by their `/24` or `/64`
+network CIDR (`network`, `addresses`), and `GET /api/clients/{ip}/details` and
+`source_ip` filters on `GET /api/logs` and `GET /api/logs/export` accept the
+network CIDR while refusing single addresses with `400`. The SQLite database
+and `GET /api/database/export` keep the full unmasked client addresses.
+
 ## WAF custom rules
 
 Put one regular expression (Go RE2 syntax) per line in

@@ -4,19 +4,16 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 	"github.com/go-chi/chi/v5"
 )
 
 type LogHandlers struct {
-	db       *sql.DB
-	gdprMu   sync.RWMutex
-	gdprVal  bool
-	gdprTime time.Time
+	db *sql.DB
 	// src finds the internal sources the timeline leaves out, as the
 	// dashboard's counts do.
 	src *InternalSources
@@ -42,25 +39,7 @@ func (h *LogHandlers) Register(r chi.Router, authMW func(http.Handler) http.Hand
 }
 
 func (h *LogHandlers) gdprEnabled() bool {
-	const ttl = 30 * time.Second
-	h.gdprMu.RLock()
-	if time.Since(h.gdprTime) < ttl {
-		v := h.gdprVal
-		h.gdprMu.RUnlock()
-		return v
-	}
-	h.gdprMu.RUnlock()
-
-	var val string
-	enabled := false
-	if err := h.db.QueryRow("SELECT setting_value FROM settings WHERE setting_name = 'gdpr_mode'").Scan(&val); err == nil {
-		enabled = val == "true"
-	}
-	h.gdprMu.Lock()
-	h.gdprVal = enabled
-	h.gdprTime = time.Now()
-	h.gdprMu.Unlock()
-	return enabled
+	return privacy.Enabled(h.db)
 }
 
 // GetLogs lists access-log rows matching the filters (logFilter), newest
@@ -69,6 +48,12 @@ func (h *LogHandlers) gdprEnabled() bool {
 // out for that reason alone, so the page can say what it hides.
 func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 	f, err := parseLogFilter(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	gdpr := h.gdprEnabled()
+	f, err = f.resolveSource(h.db, gdpr)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -82,7 +67,6 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 		// lower ids, whatever sort was asked for.
 		sort, order, offset = "id", "DESC", 0
 	}
-	gdpr := h.gdprEnabled()
 	internal := h.src.Present()
 
 	total, hidden, err := countLogs(h.db, f, internal)

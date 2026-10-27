@@ -18,6 +18,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 )
@@ -536,6 +537,9 @@ func (h *SettingsHandlers) persistSettings(body map[string]string, clearKeys map
 	}
 	if err := tx.Commit(); err != nil {
 		return kept, http.StatusInternalServerError, "failed to commit settings"
+	}
+	if _, ok := body["gdpr_mode"]; ok {
+		privacy.InvalidateDB(h.db)
 	}
 	sort.Strings(kept)
 	return kept, 0, ""

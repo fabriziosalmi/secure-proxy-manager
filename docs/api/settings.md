@@ -178,6 +178,14 @@ The message names the three most frequent categories and sums the rest as `other
 
 The counts are kept in memory. A graceful shutdown sends every pending digest and every held-back notice before the backend exits; a crash loses them. `spm_notifications_held_total{reason, channel}` on `/metrics` counts what was held: `reason="grouped"` with `channel="all"` for each event counted into a digest (grouping happens before an event is split into channels), `reason="cap"` with the channel's name for each delivery that channel held. Both labels are always present, so the series do not change shape.
 
+With `gdpr_mode` on, `client_ip` on `POST /api/internal/alert` is masked before the event enters the notification queue (IPv4 to `/24` as `a.b.c.x`, IPv6 to `/64` as `<prefix>::x`), so formatted messages, raw webhook payloads and digests all carry the masked address and group by network.
+
+---
+
+## Privacy (`gdpr_mode`)
+
+`gdpr_mode` (`"true"` or `"false"`, default `"false"`, Settings > Logs and privacy > Mask client IPs) masks client IP addresses across all API responses (`GET /api/logs`, `GET /api/logs/export`, `/api/ws/logs`, `GET /api/clients/statistics`, `GET /api/clients/{ip}/details`, `GET /api/dashboard/summary`), the MCP server and outbound alert deliveries. IPv4 addresses are masked to `/24` (`192.168.1.x`) and IPv6 addresses to `/64` (`2001:db8:1:2::x`). The SQLite database (`proxy_logs`) and `GET /api/database/export` keep the full unmasked client addresses so network aggregation and classification remain exact when the setting is toggled.
+
 ---
 
 ## Health
@@ -200,7 +208,10 @@ Returns `{"status": "success", "data": {<table>: [rows]}}` for `users`,
 served as the attachment `database_export.json`. Columns named `password`,
 `secret` or `token` are replaced with `***REDACTED***`. The alert channel
 secrets are rows of `settings`, so they appear in their encrypted form
-(`enc::...`). Restore cannot read this file; use the configuration backup.
+(`enc::...`). Client addresses in `proxy_logs` are exported in full even when
+`gdpr_mode` is on, in which case the top-level response includes
+`"contains_unmasked_addresses": true`. Restore cannot read this file; use the
+configuration backup.
 
 ---
 

@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"net/netip"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -13,7 +15,8 @@ import (
 // Every value is bound as a query argument; the SQL text holds only
 // constants and placeholders.
 //
-//   - source_ip: one source address, exact.
+//   - source_ip: one source address (exact) or a network CIDR (/24, /64).
+//     With gdpr_mode on, only a network CIDR is accepted.
 //   - outcome: "allowed" or "blocked", from the blocked flag.
 //   - reason: the rule that blocked the request (a block_reason key, as in
 //     docs/design/block-reasons.md). It selects blocked rows only.
@@ -25,6 +28,8 @@ import (
 //   - before_id: a cursor; only rows with a lower id, for "Load older".
 type logFilter struct {
 	sourceIP        string
+	sourceCIDR      bool
+	sourceIPs       []string
 	outcome         string
 	reason          string
 	q               string
@@ -83,6 +88,77 @@ func parseLogFilter(r *http.Request) (logFilter, error) {
 	return f, nil
 }
 
+// parseNetworkCIDR parses and normalizes a network CIDR (e.g. 192.168.1.0/24 or 2001:db8::/64).
+func parseNetworkCIDR(raw string) (netip.Prefix, error) {
+	p, err := netip.ParsePrefix(strings.TrimSpace(raw))
+	if err != nil {
+		return netip.Prefix{}, err
+	}
+	addr := p.Addr().WithZone("")
+	bits := p.Bits()
+	if addr.Is4In6() {
+		addr = addr.Unmap()
+		if bits >= 96 {
+			bits -= 96
+		} else {
+			bits = 24
+		}
+	}
+	return netip.PrefixFrom(addr, bits).Masked(), nil
+}
+
+// matchNetworkIPs returns all distinct source_ip strings stored in proxy_logs
+// whose parsed address falls inside prefix.
+func matchNetworkIPs(db *sql.DB, prefix netip.Prefix) ([]string, error) {
+	rows, err := db.Query("SELECT DISTINCT source_ip FROM proxy_logs WHERE source_ip IS NOT NULL AND source_ip != ''")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var matched []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		addr, err := netip.ParseAddr(strings.TrimSpace(s))
+		if err != nil {
+			continue
+		}
+		addr = addr.WithZone("").Unmap()
+		if prefix.Contains(addr) {
+			matched = append(matched, s)
+		}
+	}
+	sort.Strings(matched)
+	return matched, rows.Err()
+}
+
+// resolveSource validates f.sourceIP against gdpr_mode and expands a network
+// CIDR into the matching source_ip values in db.
+func (f logFilter) resolveSource(db *sql.DB, gdpr bool) (logFilter, error) {
+	if f.sourceIP == "" {
+		return f, nil
+	}
+	if strings.Contains(f.sourceIP, "/") {
+		prefix, err := parseNetworkCIDR(f.sourceIP)
+		if err != nil {
+			return f, errors.New("source_ip must be a valid IP address or network CIDR")
+		}
+		ips, err := matchNetworkIPs(db, prefix)
+		if err != nil {
+			return f, errors.New("failed to resolve network filter")
+		}
+		f.sourceCIDR = true
+		f.sourceIPs = ips
+		return f, nil
+	}
+	if gdpr {
+		return f, errors.New("GDPR mode is enabled: filter source_ip by network CIDR (for example 192.168.1.0/24 or 2001:db8:1:2::/64) instead of a single IP address")
+	}
+	return f, nil
+}
+
 // hidesInternal reports whether the filter leaves internal sources out.
 func (f logFilter) hidesInternal() bool {
 	return !f.includeInternal && f.sourceIP == ""
@@ -93,7 +169,14 @@ func (f logFilter) hidesInternal() bool {
 func (f logFilter) conds() ([]string, []any) {
 	var c []string
 	var a []any
-	if f.sourceIP != "" {
+	if f.sourceCIDR {
+		if len(f.sourceIPs) == 0 {
+			c = append(c, "0 = 1")
+		} else {
+			c = append(c, "source_ip IN ("+placeholders(len(f.sourceIPs))+")")
+			a = append(a, toArgs(f.sourceIPs)...)
+		}
+	} else if f.sourceIP != "" {
 		c, a = append(c, "source_ip = ?"), append(a, f.sourceIP)
 	}
 	switch f.outcome {
