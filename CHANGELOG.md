@@ -15,8 +15,20 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.16.0] - 2026-10-28
+
+Egress can follow the IP ranges a provider publishes, the dashboard session
+moves to an HttpOnly cookie that no script in the page can read, and with
+GDPR mode on client addresses are masked everywhere they leave the backend.
+Two API changes are **BREAKING** under `X-API-Version: 1`: read the Upgrade
+notes and Removed first.
+
 ### Upgrade notes
 
+- **Take a backup first.** On the first start the backend runs schema
+  versions 7 (creates `egress_providers` and `egress_provider_entries`) and 8
+  (archives three retired settings into the Audit log and deletes them, see
+  below), each once; `PRAGMA user_version` is 8 afterwards.
 - **The dashboard signs in with an HttpOnly session cookie** (`spm_session`)
   instead of keeping the token in the browser's `localStorage`. Everyone
   signed in to the dashboard signs in once more after the upgrade; a token an
