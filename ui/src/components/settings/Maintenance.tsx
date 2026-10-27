@@ -14,6 +14,7 @@
  * removed, pending when nothing answered, 500 with the step that stopped it.
  */
 import { useRef, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Upload } from 'lucide-react';
 import { api, getErrorMessage } from '../../lib/api';
 import { useConfirm } from '../../hooks/useConfirm';
@@ -30,16 +31,22 @@ const TONE: Record<Tone, string> = { success: 'text-success', warning: 'text-war
 /** What the restore dialog says the file will change. */
 function RestoreSummaryText({ summary }: { summary: BackupSummary }) {
   const lists = summary.lists.filter((l) => l.count > 0);
+  const listEntries = lists.reduce((acc, l) => acc + l.count, 0);
+  const providers = summary.egressProviders ?? 0;
+  const addedLead = providers > 0
+    ? `These ${formatCount(listEntries)} list ${listEntries === 1 ? 'entry' : 'entries'} and ${formatCount(providers)} egress ${providers === 1 ? 'provider' : 'providers'} are added:`
+    : 'These list entries are added:';
   return (
     <div className="space-y-2">
       {summary.settings > 0 && (
         <p>The {formatCount(summary.settings)} settings in the file replace the current values.</p>
       )}
-      {lists.length > 0 && (
+      {(lists.length > 0 || providers > 0) && (
         <div>
-          <p>These list entries are added:</p>
+          <p>{addedLead}</p>
           <ul className="mt-1 list-disc pl-4">
             {lists.map((l) => <li key={l.name}>{l.label}: {formatCount(l.count)}</li>)}
+            {providers > 0 && <li>Egress providers: {formatCount(providers)}</li>}
           </ul>
         </div>
       )}
@@ -71,13 +78,17 @@ function RestoreResult({ outcome }: { outcome: RestoreOutcome }) {
   const apply = describeApply(outcome.apply, 'Restored');
   const skipped = r.skipped_settings ?? [];
   const failed = r.failed_files ?? [];
+  const providersRestored = r.restored_egress_providers ?? 0;
   return (
     <div className={cn('flex flex-col gap-1.5 text-sm', TONE[failed.length ? 'warning' : apply.tone])}>
       <p className="font-medium">
         {r.restored_settings !== undefined && r.restored_entries !== undefined
-          ? `Restored ${formatCount(r.restored_settings)} settings and ${formatCount(r.restored_entries)} list entries.`
+          ? providersRestored > 0
+            ? `Restored ${formatCount(r.restored_settings)} settings, ${formatCount(r.restored_entries)} list entries, and ${formatCount(providersRestored)} egress ${providersRestored === 1 ? 'provider' : 'providers'}.`
+            : `Restored ${formatCount(r.restored_settings)} settings and ${formatCount(r.restored_entries)} list entries.`
           : `Restored ${formatCount(r.restored ?? 0)} items.`}
       </p>
+      {r.egress_providers_refreshing && <p>The egress provider lists are downloading in the background.</p>}
       {skipped.length > 0 && (
         <div>
           <p>Not restored:</p>
@@ -117,6 +128,7 @@ function ActionRow({ title, help, button, outcome, busy, onRun, danger }: {
 }
 
 export function BackupRestore() {
+  const queryClient = useQueryClient();
   const { confirm, dialog } = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<'backup' | 'restore' | 'export' | null>(null);
@@ -179,6 +191,7 @@ export function BackupRestore() {
     try {
       const res = await api.post('maintenance/restore-config', parsed.envelope);
       const apply = await applyToProxy();
+      void queryClient.invalidateQueries();
       setRestoreOutcome({ kind: 'done', response: res.data ?? {}, apply });
     } catch (err) {
       setRestoreOutcome({ kind: 'failed', message: getErrorMessage(err, 'The backend did not accept the file.') });
@@ -193,7 +206,7 @@ export function BackupRestore() {
       <ul className="flex flex-col">
         <ActionRow
           title="Backup"
-          help="The settings and the five lists (blocked and allowed IPs and domains, the egress allowlist), in a file Restore reads back. Alert channel secrets stay encrypted in it."
+          help="The settings, the five lists (blocked and allowed IPs and domains, the egress allowlist), and the list of enabled egress providers and custom URLs (not their downloaded entries), in a file Restore reads back. Alert channel secrets stay encrypted in it."
           button="Download a backup"
           outcome={backup}
           busy={busy === 'backup'}

@@ -103,7 +103,7 @@ export function isSecretKey(key: string): boolean {
  * daily: read by the daily log retention pass.
  * cycle: read by the blocklist refresh worker when its current wait ends.
  */
-export type ApplyMode = 'reload' | 'dns' | 'waf' | 'live' | 'daily' | 'cycle';
+export type ApplyMode = 'reload' | 'dns' | 'waf' | 'live' | 'daily' | 'cycle' | 'provider_cycle';
 
 export const APPLY_LABEL: Record<ApplyMode, string> = {
   reload: 'Proxy reload',
@@ -112,6 +112,7 @@ export const APPLY_LABEL: Record<ApplyMode, string> = {
   live: 'Live',
   daily: 'Daily',
   cycle: 'Next cycle',
+  provider_cycle: 'Next cycle',
 };
 
 export const APPLY_HELP: Record<ApplyMode, string> = {
@@ -121,6 +122,7 @@ export const APPLY_HELP: Record<ApplyMode, string> = {
   live: 'Read on every use: in effect as soon as it is saved.',
   daily: 'Applied by the daily log cleanup.',
   cycle: 'Read by the blocklist refresh worker when its current wait ends: within 30 minutes while refresh is off, otherwise after the running interval.',
+  provider_cycle: 'Read by the egress provider refresh worker when its current wait ends: after the running interval, even when egress default-deny is off.',
 };
 
 export const APPLY_MODE: Record<string, ApplyMode> = {
@@ -134,7 +136,7 @@ export const APPLY_MODE: Record<string, ApplyMode> = {
   bandwidth_limit_mbps: 'reload',
   bandwidth_limit_per_user_kbps: 'reload',
   egress_default_deny: 'reload',
-  egress_provider_refresh_hours: 'cycle',
+  egress_provider_refresh_hours: 'provider_cycle',
   enable_content_filtering: 'reload',
   blocked_file_types: 'reload',
   enable_safesearch: 'dns',

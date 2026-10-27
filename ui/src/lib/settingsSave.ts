@@ -87,7 +87,7 @@ export type SaveResult =
 
 type Tone = 'success' | 'warning' | 'danger';
 
-const ORDER: ApplyMode[] = ['dns', 'waf', 'live', 'daily', 'cycle'];
+const ORDER: ApplyMode[] = ['dns', 'waf', 'live', 'daily', 'cycle', 'provider_cycle'];
 
 /** The lines a finished save shows, most important first. */
 export function describeSave(result: SaveResult): { tone: Tone; lines: string[]; retry: boolean } {

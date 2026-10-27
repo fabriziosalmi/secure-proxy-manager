@@ -30,4 +30,12 @@ describe('ApplyBadge', () => {
     const { container } = render(<ApplyBadge setting="tailscale_enabled" />)
     expect(container).toBeEmptyDOMElement()
   })
+
+  it('gives egress_provider_refresh_hours its own worker description instead of the blocklist refresh worker text', () => {
+    render(<ApplyBadge setting="egress_provider_refresh_hours" />)
+    const badge = screen.getByText('Next cycle')
+    expect(badge).toHaveAttribute('data-apply', 'provider_cycle')
+    expect(badge.getAttribute('title')).toMatch(/egress provider refresh worker/i)
+    expect(badge.getAttribute('title')).not.toMatch(/blocklist refresh worker|within 30 minutes/i)
+  })
 })

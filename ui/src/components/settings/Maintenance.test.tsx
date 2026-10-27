@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { QueryClient } from '@tanstack/react-query'
 import { renderWithProviders } from '../../test/helpers'
 import { expectNoAxeViolations } from '../../test/axe'
 import { AxiosError, AxiosHeaders } from 'axios'
@@ -191,5 +192,65 @@ describe('Maintenance', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
     expect(api.post).not.toHaveBeenCalledWith('counters/reset')
+  })
+
+  it('describes egress providers in Backup help, confirms 8 list entries and 1 egress provider, reports background download, and invalidates queries', async () => {
+    const backupWithProvider = {
+      backup_version: 2,
+      app_version: '3.15.0',
+      exported_at: '2026-10-27T12:00:00Z',
+      settings: { log_retention_days: '14', enable_safesearch: 'true' },
+      lists: {
+        ip_blacklist: [
+          { value: '203.0.113.1' },
+          { value: '203.0.113.2' },
+          { value: '203.0.113.3' },
+          { value: '203.0.113.4' },
+        ],
+        domain_blacklist: [
+          { value: 'bad1.example.test' },
+          { value: 'bad2.example.test' },
+          { value: 'bad3.example.test' },
+          { value: 'bad4.example.test' },
+        ],
+      },
+      egress_providers: [
+        { kind: 'catalog', name: 'telegram', url: '', enabled: true },
+      ],
+    }
+    vi.mocked(api.post).mockImplementation((url: string) => {
+      if (url === 'maintenance/restore-config') {
+        return Promise.resolve({
+          data: {
+            status: 'success',
+            restored_settings: 2,
+            restored_entries: 8,
+            restored_egress_providers: 1,
+            egress_providers_refreshing: true,
+            skipped_settings: [],
+            skipped_entries: 0,
+            failed_files: [],
+            restored: 11,
+            skipped: 0,
+          },
+        })
+      }
+      if (url === 'maintenance/reload-config') return Promise.resolve({ data: { status: 'success', message: 'Proxy reloaded' } })
+      return Promise.resolve({ data: { status: 'success' } })
+    })
+
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries')
+    renderWithProviders(<Maintenance />)
+
+    expect(screen.getByText(/enabled egress providers and custom URLs.*not their downloaded entries/i)).toBeInTheDocument()
+
+    chooseFile(JSON.stringify(backupWithProvider), 'proxy-backup-2026-10-27.json')
+    const dialog = await screen.findByRole('alertdialog', { name: 'Restore proxy-backup-2026-10-27.json?' })
+    expect(within(dialog).getByText(/8 list entries and 1 egress provider/)).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Restore' }))
+    expect(await screen.findByText('Restored 2 settings, 8 list entries, and 1 egress provider.')).toBeInTheDocument()
+    expect(screen.getByText(/downloading in the background/i)).toBeInTheDocument()
+    expect(invalidateSpy).toHaveBeenCalled()
   })
 })

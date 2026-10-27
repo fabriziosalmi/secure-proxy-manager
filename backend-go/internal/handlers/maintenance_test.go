@@ -527,3 +527,48 @@ func TestReloadConfigUnwritableTriggerDoesNotReportSuccess(t *testing.T) {
 		t.Errorf("unwritable .reload-squid: got %d %v, want 500 code=trigger_write_failed", w.Code, body)
 	}
 }
+
+func TestRestoreConfigDoesNotCountEgressProvidersInRestoredEntries(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewMaintenanceHandlers(db, cfg)
+
+	payload := `{
+		"backup_version": 2,
+		"settings": {"log_retention_days": "14", "enable_safesearch": "true"},
+		"lists": {
+			"ip_blacklist": [
+				{"value": "203.0.113.1"},
+				{"value": "203.0.113.2"},
+				{"value": "203.0.113.3"},
+				{"value": "203.0.113.4"}
+			],
+			"domain_blacklist": [
+				{"value": "bad1.example.test"},
+				{"value": "bad2.example.test"},
+				{"value": "bad3.example.test"},
+				{"value": "bad4.example.test"}
+			]
+		},
+		"egress_providers": [
+			{"kind": "catalog", "name": "telegram", "enabled": true}
+		]
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/restore-config", strings.NewReader(payload))
+	h.RestoreConfig(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("RestoreConfig returned %d: %s", w.Code, w.Body.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if out["restored_entries"] != float64(8) {
+		t.Errorf("restored_entries = %v, want 8 (egress providers must not be summed into restored_entries)", out["restored_entries"])
+	}
+	if out["restored_egress_providers"] != float64(1) {
+		t.Errorf("restored_egress_providers = %v, want 1", out["restored_egress_providers"])
+	}
+}

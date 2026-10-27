@@ -51,7 +51,7 @@ export function FilteringSection({ form }: { form: SectionForm }) {
             label="Refresh provider lists every (hours)"
             inputMode="numeric"
             className="sm:max-w-[240px]"
-            hint="From 6 to 168. How often enabled provider lists are fetched and checked against their safety rules."
+            hint="From 6 to 168. How often enabled provider lists are fetched and checked against their safety rules; the worker sleeps for the full interval between cycles, even when egress default-deny is off."
           />
         </div>
       </Section>

@@ -196,9 +196,8 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	settingsRestored := restored
-	listsRestored += provRestored
 	skippedEntries += provSkipped
-	restored += listsRestored
+	restored += listsRestored + provRestored
 
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to commit configuration")

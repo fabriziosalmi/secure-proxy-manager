@@ -282,7 +282,41 @@ func (h *AnalyticsHandlers) requestCounts(now time.Time) requestCounts {
 	).Scan(&newTotal, &newBlocked, &c.Today, &c.TodayBlocked, &c.Day, &c.DayBlocked, &c.Clients, &c.LastRequest,
 		&c.DayInternal, &c.DayInternalRequests)
 	c.Total, c.Blocked = baseTotal+newTotal, baseBlocked+newBlocked
+	if privacy.Enabled(h.db) {
+		c.Clients = h.countDistinctNetworks(dayStart, ext, extArgs)
+		c.DayInternal = h.countDistinctNetworks(dayStart, in, inArgs)
+	}
 	return c
+}
+
+// countDistinctNetworks counts distinct /24 and /64 networks via privacy.NetworkPrefix
+// among rows matching the condition since dayStart.
+func (h *AnalyticsHandlers) countDistinctNetworks(dayStart int64, cond string, condArgs []any) int {
+	qArgs := make([]any, 0, 1+len(condArgs))
+	qArgs = append(qArgs, dayStart)
+	qArgs = append(qArgs, condArgs...)
+	// #nosec G202 -- clientRows and cond are constants and placeholders; values are bound.
+	rows, err := h.db.Query(
+		`SELECT DISTINCT source_ip FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND source_ip != '' AND `+cond,
+		qArgs...,
+	)
+	if err != nil {
+		return 0
+	}
+	defer rows.Close()
+	nets := map[string]struct{}{}
+	for rows.Next() {
+		var ip string
+		if rows.Scan(&ip) != nil {
+			continue
+		}
+		if p, ok := privacy.NetworkPrefix(ip); ok {
+			nets[p.String()] = struct{}{}
+		} else {
+			nets[ip] = struct{}{}
+		}
+	}
+	return len(nets)
 }
 
 const domainBlacklistTTL = 30 * time.Second

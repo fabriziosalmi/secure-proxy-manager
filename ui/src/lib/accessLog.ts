@@ -156,6 +156,30 @@ function matchesClientFilter(sourceIp: string | undefined, clientFilter: string)
 }
 
 /**
+ * Converts a GDPR-masked address ("192.168.1.x" or "2001:db8:1:2::x") to the
+ * /24 or /64 network CIDR that GET /api/logs accepts as source_ip, or null when
+ * the address is not masked.
+ */
+export function maskedToNetwork(raw: string | undefined): string | null {
+  const s = (raw ?? '').trim();
+  if (!s) return null;
+  if (/\.x$/i.test(s)) {
+    const o = parseIpv4Octets(s);
+    if (!o) return null;
+    return `${o[0]}.${o[1]}.${o[2]}.0/24`;
+  }
+  if (/::x$/i.test(s)) {
+    if (!parseIpv6Hextets(s)) return null;
+    return `${s.slice(0, -1)}/64`;
+  }
+  if (/:x$/i.test(s)) {
+    if (!parseIpv6Hextets(s)) return null;
+    return `${s.slice(0, -1)}0/64`;
+  }
+  return null;
+}
+
+/**
  * Whether a row from the live feed belongs in the view f selects, by the
  * rules GET /api/logs applies: a client by exact address or network CIDR, the
  * outcome by the blocked flag, a rule among blocked rows, the destination by
