@@ -238,7 +238,8 @@ same IP address pools (`github` also includes GitHub Actions runner addresses,
 where any public workflow can run). Allowing a shared network allows clients
 behind the proxy to reach every site or workload hosted on that provider's IP
 ranges, not only the provider's own services. Enabling `all` allows every
-catalog provider at once (around 8% to 10% of the public IPv4 address space).
+catalog provider at once (on 2026-10-26, commit `d03d319`, `all` covered
+223,674,393 IPv4 addresses, 5.21% of the IPv4 space).
 
 Because of that scope, enabling a `shared_network` provider requires explicit
 confirmation in the UI (and `"confirm_shared": true` in
@@ -272,13 +273,22 @@ the active entries:
 #### Audit trail
 
 Every state change and refresh outcome is recorded in the **Audit** log
-(`GET /api/audit-log`):
+(`GET /api/audit-log`) with the provider name as `target` and a JSON `details`
+payload:
 
-- `egress_provider_enabled` and `egress_provider_disabled`
-- `egress_provider_refreshed` (with commit SHA or SHA-256, `v4_count`,
-  `v6_count`, `ipv4_covered`, `ipv6_64_covered`)
-- `egress_provider_refresh_failed` (with the rejection or network error)
-- `egress_provider_update_held` and `egress_provider_held_applied`
+- `egress_provider_enabled` (`kind`, `shared_network` when toggling; `kind`,
+  redacted `url` when adding a custom URL list) and `egress_provider_disabled`
+  (`kind`; plus redacted `url` and `deleted: true` when deleting a custom URL
+  list)
+- `egress_provider_refreshed` (`commit`, `v4_before`, `v4_after`, `v6_before`,
+  `v6_after`, `ipv4_covered_before`, `ipv4_covered_after`)
+- `egress_provider_refresh_failed` (`kind`, `reason`)
+- `egress_provider_held` (`commit`, `growth_pct`, `reason`, `v4_before`,
+  `v4_after`, `v6_before`, `v6_after`, `ipv4_covered_before`,
+  `ipv4_covered_after`, `ipv6_64_covered_before`, `ipv6_64_covered_after`)
+- `egress_provider_held_applied` (`commit`, `growth_pct`, `v4_before`,
+  `v4_after`, `v6_before`, `v6_after`, `ipv4_covered_before`,
+  `ipv4_covered_after`)
 
 ## Importing lists
 

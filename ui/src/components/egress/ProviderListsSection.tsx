@@ -85,7 +85,7 @@ export function ProviderListsSection({ refreshHours, onChanged }: { refreshHours
         body: isAll
           ? p.ipv4_covered > 0
             ? `Enabling "all" merges every catalog provider into one allowlist (${cov.count} IPv4 addresses, ${cov.pct} of the IPv4 address space). Clients will reach any website or workload hosted across all listed cloud and CDN providers.`
-            : `Enabling "all" merges every catalog provider into one allowlist (${cov.pct} of the IPv4 address space before first fetch; typically over 350 million IPv4 addresses, around 8% to 10% of the public IPv4 address space). Clients will reach any website or workload hosted across all listed cloud and CDN providers.`
+            : 'Enabling "all" merges every catalog provider into one allowlist. Prefix counts and the covered share of the IPv4 address space appear after the first download, and later refreshes that grow covered addresses by more than 25% are held for confirmation. Clients will reach any website or workload hosted across all listed cloud and CDN providers.'
           : p.ipv4_covered > 0
             ? `${p.name} is a shared cloud, CDN, or hosting network (${cov.count} IPv4 addresses, ${cov.pct} of the IPv4 address space). Clients will reach every third-party site or workload hosted on ${p.name}, not only ${p.name}'s own services.`
             : `${p.name} is a shared cloud, CDN, or hosting network spanning millions of public IPv4 addresses where third-party sites and workloads run. Clients will reach every site or service hosted on ${p.name}, not only ${p.name}'s own services.`,
@@ -307,21 +307,31 @@ export function ProviderListsSection({ refreshHours, onChanged }: { refreshHours
       header: 'Prefixes (v4 / v6)',
       align: 'right',
       className: 'whitespace-nowrap text-ink-secondary',
-      cell: (p) => `${formatCount(p.v4_count)} / ${formatCount(p.v6_count)}`,
+      cell: (p) =>
+        p.last_refresh ? (
+          `${formatCount(p.v4_count)} / ${formatCount(p.v6_count)}`
+        ) : (
+          <span className="text-ink-muted">Not downloaded yet</span>
+        ),
     },
     {
       id: 'coverage',
       header: 'IPv4 covered',
       align: 'right',
       className: 'whitespace-nowrap text-ink-secondary',
-      cell: (p) => formatIpv4Coverage(p.ipv4_covered).summary,
+      cell: (p) =>
+        p.last_refresh ? (
+          formatIpv4Coverage(p.ipv4_covered).summary
+        ) : (
+          <span className="text-ink-muted">Not downloaded yet</span>
+        ),
     },
     {
       id: 'refresh',
       header: 'Last refresh',
       hideOnPhone: true,
       className: 'whitespace-nowrap text-ink-muted',
-      cell: (p) => (p.last_refresh ? formatDateTime(p.last_refresh) : 'Never'),
+      cell: (p) => (p.last_refresh ? formatDateTime(p.last_refresh) : 'Not downloaded yet'),
     },
     {
       id: 'commit',
@@ -329,7 +339,9 @@ export function ProviderListsSection({ refreshHours, onChanged }: { refreshHours
       hideOnPhone: true,
       className: 'whitespace-nowrap',
       cell: (p) => {
-        if (!p.last_commit) return <span className="text-ink-muted">None</span>;
+        if (!p.last_refresh || !p.last_commit) {
+          return <span className="sr-only">Not downloaded yet</span>;
+        }
         const short = p.last_commit.slice(0, 7);
         if (p.kind === 'catalog') {
           return (

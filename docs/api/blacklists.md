@@ -692,3 +692,17 @@ Promotes the held candidate (`held`) to the active prefix list for `{name}`,
 clears `held` and `last_error`, writes an `egress_provider_held_applied` audit
 row, exports `/config/dst_allow_ip.txt`, and returns the updated provider state.
 Answers `400` when `{name}` has no held update.
+
+### Audit actions
+
+Provider operations write the following `action` values to `audit_log` with the
+provider name as `target` and JSON `details`:
+
+| Action | `details` fields |
+|---|---|
+| `egress_provider_enabled` | `kind`, `shared_network` (on `PUT /api/egress-providers/{name}`); `kind`, `url` (redacted, on `POST /api/egress-providers/url`) |
+| `egress_provider_disabled` | `kind` (on `PUT /api/egress-providers/{name}`); `kind`, `url` (redacted), `deleted` (on `DELETE /api/egress-providers/url/{id}`) |
+| `egress_provider_refreshed` | `commit`, `v4_before`, `v4_after`, `v6_before`, `v6_after`, `ipv4_covered_before`, `ipv4_covered_after` |
+| `egress_provider_refresh_failed` | `kind`, `reason` |
+| `egress_provider_held` | `commit`, `growth_pct`, `reason`, `v4_before`, `v4_after`, `v6_before`, `v6_after`, `ipv4_covered_before`, `ipv4_covered_after`, `ipv6_64_covered_before`, `ipv6_64_covered_after` |
+| `egress_provider_held_applied` | `commit`, `growth_pct`, `v4_before`, `v4_after`, `v6_before`, `v6_after`, `ipv4_covered_before`, `ipv4_covered_after` |

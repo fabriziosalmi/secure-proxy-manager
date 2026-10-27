@@ -305,6 +305,33 @@ describe('EgressAllowlist', () => {
     await waitFor(() => expect(api.put).toHaveBeenCalledWith('egress-providers/all', { enabled: true, confirm_shared: true }))
   })
 
+  it('shows Not downloaded yet instead of 0 / 0, 0.0%, Never, or None when last_refresh is empty, and describes all before first download without invented numbers', async () => {
+    providers = [
+      {
+        id: 0, kind: 'catalog', name: 'all', url: '', source: 'all upstream directories',
+        enabled: false, shared_network: true, v4_count: 0, v6_count: 0,
+        ipv4_covered: 0, ipv6_64_covered: 0,
+        last_refresh: '', last_commit: '', last_error: '', held: null,
+      },
+    ]
+    renderWithProviders(<EgressAllowlist />)
+    const pTable = await screen.findByRole('table', { name: 'Provider lists' })
+    const allRow = (await within(pTable).findByText('all')).closest('tr')!
+    expect(within(allRow).getAllByText('Not downloaded yet').length).toBeGreaterThanOrEqual(1)
+    expect(within(allRow).queryByText('0 / 0')).not.toBeInTheDocument()
+    expect(within(allRow).queryByText('0 (0.0% of IPv4)')).not.toBeInTheDocument()
+    expect(within(allRow).queryByText('Never')).not.toBeInTheDocument()
+    expect(within(allRow).queryByText('None')).not.toBeInTheDocument()
+
+    fireEvent.click(within(allRow).getByRole('switch', { name: 'Enable all' }))
+    const allDialog = await screen.findByRole('alertdialog')
+    expect(within(allDialog).getByText(/after the first download/i)).toBeInTheDocument()
+    expect(within(allDialog).getByText(/25%/)).toBeInTheDocument()
+    expect(within(allDialog).queryByText(/350 million/i)).not.toBeInTheDocument()
+    expect(within(allDialog).queryByText(/8% to 10%/i)).not.toBeInTheDocument()
+    fireEvent.click(within(allDialog).getByRole('button', { name: 'Cancel' }))
+  })
+
   it('shows last_error, refresh_error on initial enable, and held updates with confirmation on Apply update', async () => {
     providers = [
       {
