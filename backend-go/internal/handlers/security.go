@@ -63,6 +63,10 @@ func startNotifyQueue(ctx context.Context, db *sql.DB, encKey string,
 	q := make(NotifyQueue, notifyQueueSize)
 	fan := newNotifyFanout()
 	lim := newNotifyLimiter(now)
+	settingsCache := &notifySettingsCache{
+		load: func() (map[string]string, bool) { return notifySettingsLoad(db, encKey) },
+		now:  now,
+	}
 	workers.Track(func() {
 		if stop != nil {
 			defer stop()
@@ -80,14 +84,10 @@ func startNotifyQueue(ctx context.Context, db *sql.DB, encKey string,
 			}
 		}
 		dispatch := func(event map[string]any) {
-			// Read on every event, so a save applies to the next one (the
-			// page marks these settings Live). Follow-up: this is one query
-			// per event, the dispatcher's cost during a flood, and while it
-			// runs the 256-slot queue can still fill and drop at random
-			// before grouping sees the event; caching the settings for about
-			// a second would remove that, at the price of a save taking up
-			// to a second to apply.
-			settings, ok := loadNotificationSettings(db, encKey)
+			// From the cache: one read for a burst, while a save through the
+			// handlers still applies to the next event (the page marks these
+			// settings Live; see notifySettingsCache).
+			settings, ok := settingsCache.get()
 			if !ok {
 				return
 			}
@@ -112,7 +112,7 @@ func startNotifyQueue(ctx context.Context, db *sql.DB, encKey string,
 			if len(digests) == 0 && !lim.holding() {
 				return
 			}
-			settings, ok := loadNotificationSettings(db, encKey)
+			settings, ok := settingsCache.get()
 			if !ok {
 				lim.forgetHeld()
 				return
