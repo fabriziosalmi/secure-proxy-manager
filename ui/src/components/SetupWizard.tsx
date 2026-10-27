@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { Shield, Baby, Server, Lock, Monitor, Tv, Wifi, Smartphone, ChevronRight, ChevronLeft, Zap, Check } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Shield, Baby, Server, Lock, Monitor, ChevronRight, ChevronLeft, Zap, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import { applyToProxy, describeApply, type ApplyOutcome } from '../lib/reload';
 import { cn } from '../lib/utils';
 import { useModal } from '../hooks/useModal';
 import { ClientSetup } from './ClientSetup';
 import { Button } from './ui/Button';
+import { Notice, type NoticeTone } from './ui/Notice';
 
 interface Props {
   onComplete: () => void;
@@ -14,28 +17,55 @@ interface Props {
 type Environment = 'homelab' | 'family' | 'smb' | 'advanced';
 type StrictLevel = 'relaxed' | 'balanced' | 'strict';
 
-const ENV_OPTIONS: { id: Environment; icon: typeof Shield; label: string; desc: string }[] = [
-  { id: 'homelab', icon: Monitor, label: 'Homelab', desc: 'Personal servers, NAS, dev environment' },
-  { id: 'family', icon: Baby, label: 'Family', desc: 'Home network with kids, safe browsing' },
-  { id: 'smb', icon: Server, label: 'Small Business', desc: 'Office network, compliance needs' },
-  { id: 'advanced', icon: Lock, label: 'Advanced', desc: 'I know what I\'m doing, skip wizard' },
-];
+const RISKY_EXEC = 'exe,bat,cmd,dll,msi,scr,ps1,vbs';
+const RISKY_ALL = 'exe,bat,cmd,dll,msi,scr,ps1,vbs,sh,py,rb,zip,7z,rar,tar,iso';
 
-const DEVICE_OPTIONS: { id: string; icon: typeof Monitor; label: string }[] = [
-  { id: 'pcs', icon: Monitor, label: 'PCs / Laptops' },
-  { id: 'phones', icon: Smartphone, label: 'Phones / Tablets' },
-  { id: 'smart_tv', icon: Tv, label: 'Smart TVs' },
-  { id: 'iot', icon: Wifi, label: 'IoT Devices' },
-  { id: 'servers', icon: Server, label: 'Servers' },
+const ENV_OPTIONS: { id: Environment; icon: typeof Shield; label: string; desc: string }[] = [
+  {
+    id: 'homelab',
+    icon: Monitor,
+    label: 'Homelab',
+    desc: 'Turns on entropy and beaconing WAF heuristics; leaves SafeSearch, YouTube restricted mode, and file-type blocking off.',
+  },
+  {
+    id: 'family',
+    icon: Baby,
+    label: 'Family',
+    desc: 'Turns on SafeSearch, YouTube restricted mode, entropy and beaconing WAF heuristics, and blocks executable and script downloads (exe, bat, cmd, dll, msi, scr, ps1, vbs).',
+  },
+  {
+    id: 'smb',
+    icon: Server,
+    label: 'Small Business',
+    desc: 'Turns on all five WAF heuristics (entropy, beaconing, PII, sharding, ghosting) and blocks executable and script downloads (exe, bat, cmd, dll, msi, scr, ps1, vbs).',
+  },
+  {
+    id: 'advanced',
+    icon: Lock,
+    label: 'Advanced',
+    desc: 'Skips the wizard and keeps the current settings untouched.',
+  },
 ];
 
 const STRICT_OPTIONS: { id: StrictLevel; label: string; desc: string }[] = [
-  { id: 'relaxed', label: 'Relaxed', desc: 'Minimal blocking, just the essentials' },
-  { id: 'balanced', label: 'Balanced', desc: 'Good protection without breaking things' },
-  { id: 'strict', label: 'Strict', desc: 'Maximum security, may need whitelist tuning' },
+  {
+    id: 'relaxed',
+    label: 'Relaxed',
+    desc: 'Keeps only the WAF heuristics and filters from the chosen setup, without extra rules.',
+  },
+  {
+    id: 'balanced',
+    label: 'Balanced',
+    desc: 'Also turns on the protocol ghosting WAF heuristic on top of the chosen setup.',
+  },
+  {
+    id: 'strict',
+    label: 'Strict',
+    desc: 'Turns on all five WAF heuristics (entropy, beaconing, PII, sharding, ghosting) and blocks executable, script, and archive downloads: exe, bat, cmd, dll, msi, scr, ps1, vbs, zip, 7z, rar, tar, iso, sh, py, rb.',
+  },
 ];
 
-function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): Record<string, string> {
+function mapToPreset(env: Environment, strict: StrictLevel): Record<string, string> {
   const base: Record<string, string> = {
     waf_h_entropy: 'true',
     waf_h_beaconing: 'true',
@@ -52,64 +82,69 @@ function mapToPreset(env: Environment, devices: string[], strict: StrictLevel): 
     aggressive_caching_enabled: 'false',
   };
 
-  // Environment overrides
   if (env === 'family') {
     base.enable_safesearch = 'true';
     base.enable_youtube_restricted = 'true';
     base.enable_content_filtering = 'true';
-    base.blocked_file_types = 'exe,bat,cmd,dll,msi,scr,ps1,vbs';
+    base.blocked_file_types = RISKY_EXEC;
   } else if (env === 'smb') {
     base.enable_content_filtering = 'true';
-    base.blocked_file_types = 'exe,bat,cmd,dll,msi,scr,ps1,vbs';
+    base.blocked_file_types = RISKY_EXEC;
     base.waf_h_pii = 'true';
     base.waf_h_sharding = 'true';
     base.waf_h_ghosting = 'true';
   }
 
-  // Device overrides
-  if (devices.includes('smart_tv') || devices.includes('iot')) {
-    base.waf_h_beaconing = 'true';
-    base.waf_h_sharding = 'true';
-  }
-  if (devices.includes('phones')) {
-    base.enable_bandwidth_limits = 'true';
-    base.bandwidth_limit_mbps = '50';
-    base.bandwidth_limit_per_user_kbps = '2000';
-  }
-
-  // Strictness overrides. The WAF's block threshold is WAF_BLOCK_THRESHOLD
-  // in .env, read once at WAF start: the wizard cannot set it, so strictness
-  // is the set of heuristics and filters it turns on. Direct-IP blocking is
-  // always on in the proxy, and offline mode serves stale pages, so neither
-  // is a strictness choice (both used to be written here and changed
-  // nothing, or the wrong thing).
+  // The WAF's block threshold is WAF_BLOCK_THRESHOLD in .env, read once at WAF
+  // start: the wizard cannot set it, so strictness is the set of heuristics and
+  // filters it turns on. Direct-IP blocking is always on in the proxy, offline
+  // mode serves stale pages, and aggressive_caching_enabled overrides upstream
+  // cache headers (profiles.ts and EngineSection advise against turning it on by
+  // default), so none of those is enabled here.
   if (strict === 'balanced') {
     base.waf_h_ghosting = 'true';
-    base.aggressive_caching_enabled = 'true';
   } else if (strict === 'strict') {
     base.waf_h_pii = 'true';
     base.waf_h_sharding = 'true';
     base.waf_h_ghosting = 'true';
     base.enable_content_filtering = 'true';
-    base.blocked_file_types = 'exe,bat,cmd,dll,msi,scr,ps1,vbs,sh,py,rb,zip,7z,rar,tar,iso';
-    base.aggressive_caching_enabled = 'true';
+    base.blocked_file_types = RISKY_ALL;
   }
 
   return base;
 }
 
+function formatWizardApply(outcome: ApplyOutcome): { tone: NoticeTone; title: string; text: string } {
+  const base = describeApply(outcome, 'Saved');
+  if (outcome.kind === 'applied') {
+    return {
+      tone: 'info',
+      title: 'Configuration applied',
+      text: base.text,
+    };
+  }
+  const title =
+    outcome.kind === 'pending'
+      ? 'Saved, waiting for the proxy'
+      : outcome.kind === 'refused'
+        ? 'Proxy refused the configuration'
+        : 'Could not reload the proxy';
+  return {
+    tone: base.tone === 'warning' ? 'warning' : 'danger',
+    title,
+    text: `${base.text} Use Settings, Admin and backup, Reload the proxy to retry.`,
+  };
+}
+
 export function SetupWizard({ onComplete }: Props) {
+  const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
   const [env, setEnv] = useState<Environment | null>(null);
-  const [devices, setDevices] = useState<string[]>([]);
   const [strict, setStrict] = useState<StrictLevel>('balanced');
   const [saving, setSaving] = useState(false);
+  const [applyOutcome, setApplyOutcome] = useState<ApplyOutcome | null>(null);
   // First-run gate: trap focus inside the wizard, but no Escape-to-dismiss.
   const modalRef = useModal<HTMLDivElement>(true);
-
-  const toggleDevice = (id: string) => {
-    setDevices(prev => prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]);
-  };
 
   const handleFinish = async () => {
     if (!env) return;
@@ -118,6 +153,7 @@ export function SetupWizard({ onComplete }: Props) {
     if (env === 'advanced') {
       try {
         await api.post('settings', { wizard_completed: 'true' });
+        await queryClient.invalidateQueries({ queryKey: ['settings'] });
       } catch { /* ignore */ }
       onComplete();
       return;
@@ -125,27 +161,14 @@ export function SetupWizard({ onComplete }: Props) {
 
     setSaving(true);
     try {
-      const settings = mapToPreset(env, devices, strict);
+      const settings = mapToPreset(env, strict);
       settings.wizard_completed = 'true';
       await api.post('settings', settings);
-      // Saving only writes the toggle files; they take effect when startup.sh
-      // regenerates squid.conf, which happens on a proxy reload. Without this the
-      // wizard's "Setup complete" was misleading: nothing was actually applied.
-      // Fire-and-forget (mirrors Settings.tsx) so we don't block the wizard on
-      // the proxy restart; the toast reports progress in the background.
-      toast.promise(
-        api.post('maintenance/reload-config', {}, {
-          headers: { 'Idempotency-Key': `wizard-reload-${Date.now()}` },
-        }),
-        {
-          loading: 'Applying your configuration to the proxy…',
-          success: 'Setup complete: your proxy is live with these settings! 🚀',
-          error: 'Saved, but auto-apply failed. Use Settings → Admin and backup → Reload Config.',
-        }
-      );
-      // Advance to the final "connect your devices" step instead of closing, so a
-      // first-run user is shown how to actually route traffic through the proxy.
-      setStep(3);
+      await queryClient.invalidateQueries({ queryKey: ['settings'] });
+
+      const outcome = await applyToProxy();
+      setApplyOutcome(outcome);
+      setStep(2);
     } catch {
       toast.error('Failed to save configuration');
     } finally {
@@ -153,7 +176,8 @@ export function SetupWizard({ onComplete }: Props) {
     }
   };
 
-  const canNext = step === 0 ? env !== null : step === 1 ? true : true;
+  const canNext = step === 0 ? env !== null : true;
+  const applyNotice = applyOutcome ? formatWizardApply(applyOutcome) : null;
 
   return (
     <div
@@ -179,7 +203,7 @@ export function SetupWizard({ onComplete }: Props) {
 
         {/* Progress */}
         <div className="flex items-center justify-center gap-2 mb-6" aria-hidden="true">
-          {[0, 1, 2, 3].map(i => (
+          {[0, 1, 2].map(i => (
             <div
               key={i}
               className={cn(
@@ -195,7 +219,7 @@ export function SetupWizard({ onComplete }: Props) {
           {step === 0 && (
             <div>
               <h2 className="text-base font-semibold text-ink mb-1">What's your setup?</h2>
-              <p className="text-xs text-ink-muted mb-4">This helps us choose the right defaults</p>
+              <p className="text-xs text-ink-muted mb-4">Each option lists the filters and heuristics it turns on</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {ENV_OPTIONS.map(opt => {
                   const Icon = opt.icon;
@@ -228,39 +252,8 @@ export function SetupWizard({ onComplete }: Props) {
 
           {step === 1 && (
             <div>
-              <h2 className="text-base font-semibold text-ink mb-1">What devices use this proxy?</h2>
-              <p className="text-xs text-ink-muted mb-4">Select all that apply. This helps tune the blocking rules.</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {DEVICE_OPTIONS.map(opt => {
-                  const Icon = opt.icon;
-                  const selected = devices.includes(opt.id);
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => toggleDevice(opt.id)}
-                      className={cn(
-                        'flex flex-col items-center gap-2 p-4 border rounded-control transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent',
-                        selected
-                          ? 'border-accent-line bg-accent-subtle ring-1 ring-accent'
-                          : 'border-line bg-surface hover:bg-surface-muted',
-                      )}
-                    >
-                      <Icon aria-hidden="true" className={cn('w-5 h-5', selected ? 'text-accent' : 'text-ink-muted')} />
-                      <span className={cn('text-xs font-medium', selected ? 'text-accent' : 'text-ink-secondary')}>{opt.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-ink-muted mt-3 text-center">Skip if unsure. You can always change this later in Settings.</p>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div>
               <h2 className="text-base font-semibold text-ink mb-1">How strict?</h2>
-              <p className="text-xs text-ink-muted mb-4">You can fine-tune individual settings anytime</p>
+              <p className="text-xs text-ink-muted mb-4">You can fine-tune individual settings anytime in Settings</p>
               <div className="space-y-2">
                 {STRICT_OPTIONS.map(opt => {
                   const selected = strict === opt.id;
@@ -271,7 +264,7 @@ export function SetupWizard({ onComplete }: Props) {
                       aria-pressed={selected}
                       onClick={() => setStrict(opt.id)}
                       className={cn(
-                        'w-full flex items-center justify-between p-4 border rounded-control text-left transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent',
+                        'w-full flex items-center justify-between gap-3 p-4 border rounded-control text-left transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent',
                         selected
                           ? 'border-accent-line bg-accent-subtle ring-1 ring-accent'
                           : 'border-line bg-surface hover:bg-surface-muted',
@@ -279,7 +272,7 @@ export function SetupWizard({ onComplete }: Props) {
                     >
                       <div>
                         <p className={cn('text-sm font-semibold', selected ? 'text-accent' : 'text-ink')}>{opt.label}</p>
-                        <p className="text-xs text-ink-muted">{opt.desc}</p>
+                        <p className="text-xs text-ink-muted mt-0.5">{opt.desc}</p>
                       </div>
                       {selected && <Check aria-hidden="true" className="w-4 h-4 text-accent shrink-0" />}
                     </button>
@@ -289,10 +282,17 @@ export function SetupWizard({ onComplete }: Props) {
             </div>
           )}
 
-          {step === 3 && (
-            <div>
-              <h2 className="text-base font-semibold text-ink mb-1">You're set: connect your devices</h2>
-              <p className="text-xs text-ink-muted mb-4">Point a device at the proxy to start filtering its traffic.</p>
+          {step === 2 && (
+            <div className="space-y-3">
+              <div>
+                <h2 className="text-base font-semibold text-ink mb-1">Connect your devices</h2>
+                <p className="text-xs text-ink-muted">Point a device at the proxy to start filtering its traffic.</p>
+              </div>
+              {applyNotice && (
+                <Notice tone={applyNotice.tone} title={applyNotice.title}>
+                  {applyNotice.text}
+                </Notice>
+              )}
               <div className="max-h-[50vh] overflow-y-auto -mx-1 px-1">
                 <ClientSetup />
               </div>
@@ -306,13 +306,13 @@ export function SetupWizard({ onComplete }: Props) {
             variant="ghost"
             icon={<ChevronLeft />}
             onClick={() => setStep(s => s - 1)}
-            disabled={step === 0 || step === 3}
-            className={step === 0 || step === 3 ? 'invisible' : ''}
+            disabled={step === 0 || step === 2}
+            className={step === 0 || step === 2 ? 'invisible' : ''}
           >
             Back
           </Button>
 
-          {step === 3 ? (
+          {step === 2 ? (
             <Button variant="primary" icon={<Check />} onClick={onComplete}>
               Done
             </Button>
@@ -320,7 +320,7 @@ export function SetupWizard({ onComplete }: Props) {
             <Button variant="secondary" onClick={handleFinish}>
               Skip Wizard <ChevronRight aria-hidden="true" className="w-4 h-4" />
             </Button>
-          ) : step < 2 ? (
+          ) : step < 1 ? (
             <Button variant="primary" onClick={() => setStep(s => s + 1)} disabled={!canNext}>
               Next <ChevronRight aria-hidden="true" className="w-4 h-4" />
             </Button>

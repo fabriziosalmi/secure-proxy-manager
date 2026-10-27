@@ -62,4 +62,16 @@ describe('ChangePassword uses the shared password rule', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Change Password' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Not changed: current password is incorrect.')
   })
+
+  it('provides a reveal button on all three password inputs including Confirm New Password', async () => {
+    renderWithProviders(<ChangePassword />)
+    expect(screen.getByRole('button', { name: 'Show current password' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show new password' })).toBeInTheDocument()
+    const confirmReveal = screen.getByRole('button', { name: 'Show confirm new password' })
+    expect(confirmReveal).toBeInTheDocument()
+    const confirmInput = screen.getByLabelText('Confirm New Password')
+    expect(confirmInput).toHaveAttribute('type', 'password')
+    await userEvent.click(confirmReveal)
+    expect(confirmInput).toHaveAttribute('type', 'text')
+  })
 })

@@ -417,7 +417,7 @@ describe('Settings sections', () => {
       expect(steps).toHaveAttribute('aria-expanded', 'false')
       fireEvent.click(steps)
       expect(steps).toHaveAttribute('aria-expanded', 'true')
-      expect(screen.getByText('Connect Your Devices')).toBeInTheDocument()
+      expect(screen.getByRole('tablist', { name: 'Operating system' })).toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: 'Look for Pi-hole or AdGuard Home' }))
       expect(await screen.findByText('Pi-hole @ 192.168.1.2')).toBeInTheDocument()
       expect(screen.getByText('DNS_UPSTREAM_1=192.168.1.2')).toBeInTheDocument()

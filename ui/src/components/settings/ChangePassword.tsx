@@ -14,9 +14,9 @@ import { Button, IconButton } from '../ui/Button';
 
 const INPUT = 'h-9 w-full min-w-0 rounded-control border bg-surface px-3 text-sm text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent';
 
-function PasswordInput({ id, label, value, onChange, autoComplete, describedBy, invalid, reveal }: {
+export function PasswordInput({ id, label, value, onChange, autoComplete, describedBy, invalid, reveal, required }: {
   id: string; label: string; value: string; onChange: (v: string) => void; autoComplete: string;
-  describedBy?: string; invalid?: boolean; reveal?: boolean;
+  describedBy?: string; invalid?: boolean; reveal?: boolean; required?: boolean;
 }) {
   const [shown, setShown] = useState(false);
   return (
@@ -31,6 +31,7 @@ function PasswordInput({ id, label, value, onChange, autoComplete, describedBy, 
           autoComplete={autoComplete}
           aria-describedby={describedBy}
           aria-invalid={invalid || undefined}
+          required={required}
           className={cn(INPUT, invalid ? 'border-danger-line' : 'border-line-strong')}
         />
         {reveal && (
@@ -88,7 +89,7 @@ export function ChangePassword() {
         <div className="grid gap-4 md:grid-cols-3">
           <PasswordInput id={`${id}-current`} label="Current Password" value={currentPwd} onChange={setCurrentPwd} autoComplete="current-password" reveal />
           <PasswordInput id={`${id}-new`} label="New Password" value={newPwd} onChange={setNewPwd} autoComplete="new-password" describedBy={`${id}-rules`} reveal />
-          <PasswordInput id={`${id}-confirm`} label="Confirm New Password" value={confirmPwd} onChange={setConfirmPwd} autoComplete="new-password" describedBy={mismatch ? `${id}-mismatch` : undefined} invalid={mismatch} />
+          <PasswordInput id={`${id}-confirm`} label="Confirm New Password" value={confirmPwd} onChange={setConfirmPwd} autoComplete="new-password" describedBy={mismatch ? `${id}-mismatch` : undefined} invalid={mismatch} reveal />
         </div>
         <ul id={`${id}-rules`} aria-label="Password rules" className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
           {rules.map(([met, text]) => (

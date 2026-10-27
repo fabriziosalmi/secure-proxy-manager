@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Monitor, Smartphone, Apple, Terminal, Copy, Check, Download, QrCode } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Monitor, Smartphone, Apple, Terminal, Copy, Check, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { api } from '../lib/api';
 import { PROXY_PORT, proxyAddress, cn } from '../lib/utils';
+import type { SettingRow } from '../types';
 import { Button } from './ui/Button';
 
 function CopyBtn({ text, label, copied, onCopy }: { text: string; label: string; copied: string; onCopy: (text: string, label: string) => void }) {
@@ -23,13 +26,32 @@ export function ClientSetup() {
   const proxyPort = String(PROXY_PORT);
   const proxyAddr = proxyAddress();
 
+  const settings = useQuery<SettingRow[]>({
+    queryKey: ['settings'],
+    queryFn: () => {
+      const req = api.get('settings');
+      if (!req || typeof req.then !== 'function') return Promise.resolve([]);
+      return req.then((r) => (r?.data?.data ?? []) as SettingRow[]);
+    },
+  });
+  const proxyAuthOn = settings.data?.some(
+    (s) => s.setting_name === 'enable_proxy_auth' && s.setting_value === 'true',
+  ) ?? false;
+
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const copy = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(label);
-    toast.success(`Copied ${label}`);
-    if (copyTimer.current) clearTimeout(copyTimer.current);
-    copyTimer.current = setTimeout(() => setCopied(''), 2000);
+  const copy = async (text: string, label: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('Clipboard unavailable');
+      }
+      await navigator.clipboard.writeText(text);
+      setCopied(label);
+      toast.success(`Copied ${label}`);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(''), 2000);
+    } catch {
+      toast.error('Clipboard access denied');
+    }
   };
   useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
 
@@ -90,7 +112,7 @@ export function ClientSetup() {
         'Scroll to HTTP Proxy → Configure Proxy → Manual',
         `Server: ${host}`,
         `Port: ${proxyPort}`,
-        'Authentication: Off',
+        proxyAuthOn ? 'Authentication: Username and password' : 'Authentication: Off',
       ],
     },
     {
@@ -110,18 +132,12 @@ export function ClientSetup() {
 
   return (
     <div className="rounded-panel border border-line bg-surface p-4 text-ink">
-      <div className="pb-2">
-        <h3 className="text-sm font-semibold leading-none tracking-tight text-ink flex items-center gap-2">
-          <QrCode aria-hidden="true" className="w-4 h-4 text-accent" />
-          Connect Your Devices
-        </h3>
-      </div>
-      <div className="pt-2">
+      <div>
         {/* Proxy address */}
         <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-accent-subtle border border-accent-line rounded-control">
           <span className="text-xs text-ink-muted">Proxy:</span>
           <code className="text-sm font-bold font-mono text-accent">{proxyAddr}</code>
-          <CopyBtn text={proxyAddr} label="proxy" copied={copied} onCopy={copy} />
+          <CopyBtn text={proxyAddr} label="proxy" copied={copied} onCopy={(t, l) => void copy(t, l)} />
         </div>
 
         {/* PAC file download */}
@@ -129,7 +145,7 @@ export function ClientSetup() {
           <Button size="sm" icon={<Download />} onClick={downloadPAC}>
             Download PAC File
           </Button>
-          <Button size="sm" icon={<Copy />} onClick={() => copy(pacContent, 'pac')}>
+          <Button size="sm" icon={<Copy />} onClick={() => void copy(pacContent, 'pac')}>
             Copy PAC
           </Button>
         </div>
@@ -189,7 +205,7 @@ export function ClientSetup() {
               </pre>
               <button
                 type="button"
-                onClick={() => copy(active.cmd!, 'cmd')}
+                onClick={() => void copy(active.cmd!, 'cmd')}
                 aria-label="Copy command"
                 className="absolute top-2 right-2 p-1 rounded-control border border-line bg-surface text-ink-muted hover:bg-surface-muted hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
               >

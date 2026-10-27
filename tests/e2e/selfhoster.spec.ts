@@ -588,7 +588,7 @@ test.describe('UI: Clients', () => {
     await expect(connect).toHaveAttribute('aria-expanded', 'false');
     await connect.click();
     await expect(connect).toHaveAttribute('aria-expanded', 'true');
-    await expect(page.getByText('Connect Your Devices')).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Operating system' })).toBeVisible();
   });
 
   test('fits a 390 px wide screen without horizontal scrolling', async ({ page }) => {

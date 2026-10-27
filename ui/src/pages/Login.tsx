@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, setAuthToken } from '../lib/api';
 import { Button } from '../components/ui/Button';
+import { PasswordInput } from '../components/settings/ChangePassword';
 
 interface Props {
   onLogin: () => void;
@@ -9,6 +10,26 @@ interface Props {
 const INPUT =
   'h-9 w-full rounded-control border border-line-strong bg-surface px-3 text-sm text-ink ' +
   'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent';
+
+function describeLoginError(err: unknown): string {
+  const response = (err as {
+    response?: {
+      status?: number;
+      data?: { detail?: string; message?: string };
+      headers?: Record<string, string | undefined>;
+    };
+  })?.response;
+  const status = response?.status;
+  if (status === 401 || (status !== undefined && status >= 400 && status < 500 && status !== 429)) {
+    return 'Invalid username or password';
+  }
+  if (status === 429) {
+    const detail = response?.data?.detail || response?.data?.message || 'Too many failed attempts, try again later';
+    const retryAfter = response?.headers?.['retry-after'] || response?.headers?.['Retry-After'];
+    return retryAfter ? `${detail} (retry after ${retryAfter}s)` : detail;
+  }
+  return 'The backend did not answer. Check that the backend container is running and healthy.';
+}
 
 export function Login({ onLogin }: Props) {
   const [username, setUsername] = useState('');
@@ -22,12 +43,15 @@ export function Login({ onLogin }: Props) {
     setError('');
     try {
       const res = await api.post<{ access_token?: string; token?: string }>('auth/login', { username, password });
-      const token = res.data.access_token || res.data.token;
-      if (!token) throw new Error('No token received');
+      const token = res.data?.access_token || res.data?.token;
+      if (!token) {
+        setError('No token received from the server.');
+        return;
+      }
       setAuthToken(token);
       onLogin();
-    } catch {
-      setError('Invalid username or password');
+    } catch (err) {
+      setError(describeLoginError(err));
     } finally {
       setLoading(false);
     }
@@ -61,18 +85,15 @@ export function Login({ onLogin }: Props) {
               className={INPUT}
             />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="password" className="text-sm font-medium text-ink">Password</label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className={INPUT}
-            />
-          </div>
+          <PasswordInput
+            id="password"
+            label="Password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="current-password"
+            reveal
+            required
+          />
 
           {error && (
             <p role="alert" className="rounded-control border border-danger-line bg-danger-subtle px-3 py-2 text-sm text-danger animate-fade-in-up">

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import App from './App'
 
 vi.mock('./lib/api', () => ({
@@ -40,6 +41,39 @@ describe('App', () => {
     render(<App />)
     const spinner = document.querySelector('.animate-spin')
     expect(spinner).toBeTruthy()
+  })
+
+  it('does not skip the wizard when GET /api/settings fails on first load, and shows an error with Try again', async () => {
+    const user = userEvent.setup()
+    const payload = btoa(JSON.stringify({ sub: 'admin', exp: Math.floor(Date.now() / 1000) + 3600 }))
+    const fakeToken = `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`
+    localStorage.setItem('auth_token', fakeToken)
+
+    let attempts = 0
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === 'settings') {
+        attempts += 1
+        if (attempts === 1) {
+          return Promise.reject(new Error('500 Internal Server Error'))
+        }
+        return Promise.resolve({
+          data: {
+            data: [{ setting_name: 'wizard_completed', setting_value: 'false' }],
+          },
+        })
+      }
+      return Promise.resolve({ data: { data: [] } })
+    })
+
+    render(<App />)
+
+    const retryBtn = await screen.findByRole('button', { name: /try again/i })
+    expect(retryBtn).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /overview|dashboard/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await user.click(retryBtn)
+    expect(await screen.findByRole('heading', { name: /welcome to secure proxy manager/i })).toBeInTheDocument()
   })
 
   it('shows dashboard after auth and wizard check', async () => {
