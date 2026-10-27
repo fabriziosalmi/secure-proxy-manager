@@ -10,6 +10,9 @@ import { isActivePath, summarizeHealth, NAV_GROUPS } from './nav'
 import { createTestQueryClient } from '../../test/helpers'
 import { expectNoAxeViolations } from '../../test/axe'
 import { DESKTOP_QUERY } from '../../hooks/useMediaQuery'
+import { useEffect } from 'react'
+import { SettingsDraftsProvider } from '../settings/SettingsDrafts'
+import { useSettingsDrafts } from '../../hooks/useSettingsDrafts'
 
 const get = vi.fn()
 
@@ -262,6 +265,47 @@ describe('shell on a wide screen', () => {
   it('signs out from the footer', async () => {
     const { onLogout } = shell('/')
     await userEvent.click(within(sidebar()).getByRole('button', { name: 'Sign out' }))
+    expect(onLogout).toHaveBeenCalledTimes(1)
+  })
+
+  it('asks before signing out over unsaved Settings changes, naming how many and where', async () => {
+    function Drafts() {
+      const d = useSettingsDrafts()
+      useEffect(() => {
+        d.setEdit('access', 'enable_time_restrictions', 'true')
+        d.setEdit('access', 'time_restriction_start', '08:00')
+        d.setEdit('alerts', 'enable_notifications', 'true')
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [])
+      return null
+    }
+    const onLogout = vi.fn()
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/']}>
+            <SettingsDraftsProvider>
+              <Drafts />
+              <Routes>
+                <Route path="/" element={<Layout onLogout={onLogout} />}>
+                  <Route index element={<h1>Dashboard page</h1>} />
+                </Route>
+              </Routes>
+            </SettingsDraftsProvider>
+          </MemoryRouter>
+        </ThemeProvider>
+      </QueryClientProvider>,
+    )
+    await userEvent.click(within(sidebar()).getByRole('button', { name: 'Sign out' }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText('Sign out and lose 3 unsaved changes?')).toBeInTheDocument()
+    expect(within(dialog).getByText(/Clients and access and Alerts/)).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Keep editing' }))
+    expect(onLogout).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+
+    await userEvent.click(within(sidebar()).getByRole('button', { name: 'Sign out' }))
+    await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Sign out' }))
     expect(onLogout).toHaveBeenCalledTimes(1)
   })
 

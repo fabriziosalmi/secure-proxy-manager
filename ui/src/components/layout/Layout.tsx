@@ -13,6 +13,9 @@
  * with its entrance animation, while moving between the sections of one page
  * (/settings/access to /settings/alerts) keeps it mounted, with whatever was
  * typed in it. Error boundaries sit around each route in App.
+ *
+ * Signing out ends the Settings drafts with the session, so with any unsaved
+ * change it asks first, naming how many changes and in which sections.
  */
 import { useCallback, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
@@ -21,7 +24,28 @@ import { Sidebar, SIDEBAR_ID } from './Sidebar';
 import { firstSegment, pageLabel, readCollapsed, writeCollapsed } from './nav';
 import { useMediaQuery, DESKTOP_QUERY } from '../../hooks/useMediaQuery';
 import { useModal } from '../../hooks/useModal';
+import { useConfirm } from '../../hooks/useConfirm';
+import { useSettingsDraftsOptional, type DraftState } from '../../hooks/useSettingsDrafts';
+import { SECTIONS } from '../../lib/settingsMeta';
 import { cn } from '../../lib/utils';
+
+/** The sections holding a change, in page order, and the number of changes. */
+function unsavedChanges(d: DraftState): { count: number; sections: string[] } {
+  let count = 0;
+  const sections: string[] = [];
+  for (const s of SECTIONS) {
+    const n = Object.keys(d.edits[s.id] ?? {}).length + Object.keys(d.secretEdits[s.id] ?? {}).length;
+    if (n > 0) {
+      count += n;
+      sections.push(s.label);
+    }
+  }
+  return { count, sections };
+}
+
+function joinNames(names: string[]): string {
+  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
 
 export function Layout({ onLogout }: { onLogout?: () => void }) {
   const location = useLocation();
@@ -35,6 +59,23 @@ export function Layout({ onLogout }: { onLogout?: () => void }) {
   const collapsed = isDesktop && collapsedPref;
 
   const closeDrawer = useCallback(() => setOpenedAt(null), []);
+  const drafts = useSettingsDraftsOptional();
+  const { confirm, dialog } = useConfirm();
+
+  const signOut = onLogout && (async () => {
+    if (drafts?.anyDirty) {
+      const { count, sections } = unsavedChanges(drafts);
+      const ok = await confirm({
+        title: `Sign out and lose ${count} unsaved ${count === 1 ? 'change' : 'changes'}?`,
+        body: `Your changes in ${joinNames(sections)} are not saved. Signing out discards them.`,
+        confirmLabel: 'Sign out',
+        cancelLabel: 'Keep editing',
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    onLogout();
+  });
   const drawerRef = useModal<HTMLDivElement>(drawerOpen, closeDrawer);
 
   const toggleCollapsed = () => {
@@ -69,7 +110,7 @@ export function Layout({ onLogout }: { onLogout?: () => void }) {
           drawer={!isDesktop}
           onClose={closeDrawer}
           onNavigate={closeDrawer}
-          onLogout={onLogout}
+          onLogout={signOut}
         />
       </div>
 
@@ -102,6 +143,7 @@ export function Layout({ onLogout }: { onLogout?: () => void }) {
           <Outlet />
         </div>
       </main>
+      {dialog}
     </div>
   );
 }
