@@ -11,10 +11,9 @@ vi.mock('../lib/api', () => ({
     get: vi.fn(),
     interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
   },
-  // Mirrors the real helper: persist the token so the existing assertions
-  // on localStorage.getItem('auth_token') keep working after Login.tsx
-  // switched from a direct setItem to setAuthToken().
-  setAuthToken: (token: string) => localStorage.setItem('auth_token', token),
+  // Mirrors the real helper: one POST that asks for a cookie session.
+  signIn: (username: string, password: string) =>
+    (api.post as (...a: unknown[]) => Promise<unknown>)('auth/login', { username, password }, { headers: { 'X-SPM-Session': 'cookie' } }).then(() => undefined),
 }))
 
 import { api } from '../lib/api'
@@ -46,10 +45,10 @@ describe('Login', () => {
     expect(revealBtn).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('calls API and stores token on successful login', async () => {
+  it('signs in with a cookie session and keeps no token in the page', async () => {
     const user = userEvent.setup()
     vi.mocked(api.post).mockResolvedValueOnce({
-      data: { access_token: 'test-jwt-token' },
+      data: { status: 'success', username: 'admin', expires_at: 1900000000 },
     })
 
     renderWithProviders(<Login onLogin={onLogin} />)
@@ -62,10 +61,10 @@ describe('Login', () => {
       expect(api.post).toHaveBeenCalledWith('auth/login', {
         username: 'admin',
         password: 'secret',
-      })
-      expect(localStorage.getItem('auth_token')).toBe('test-jwt-token')
+      }, { headers: { 'X-SPM-Session': 'cookie' } })
       expect(onLogin).toHaveBeenCalled()
     })
+    expect(localStorage.length).toBe(0)
   })
 
   it('shows Invalid username or password on 401', async () => {
@@ -156,41 +155,6 @@ describe('Login', () => {
 
     resolveLogin!({ data: { access_token: 'tok' } })
     await waitFor(() => expect(onLogin).toHaveBeenCalled())
-  })
-
-  it('accepts token from alternate field name', async () => {
-    const user = userEvent.setup()
-    vi.mocked(api.post).mockResolvedValueOnce({
-      data: { token: 'alt-token' },
-    })
-
-    renderWithProviders(<Login onLogin={onLogin} />)
-
-    await user.type(screen.getByLabelText('Username'), 'u')
-    await user.type(screen.getByLabelText('Password'), 'p')
-    await user.click(screen.getByRole('button', { name: /sign in/i }))
-
-    await waitFor(() => {
-      expect(localStorage.getItem('auth_token')).toBe('alt-token')
-    })
-  })
-
-  it('shows a distinct error when API returns no token at all', async () => {
-    const user = userEvent.setup()
-    vi.mocked(api.post).mockResolvedValueOnce({
-      data: { status: 'success' }, // no access_token or token field
-    })
-
-    renderWithProviders(<Login onLogin={onLogin} />)
-
-    await user.type(screen.getByLabelText('Username'), 'admin')
-    await user.type(screen.getByLabelText('Password'), 'pass')
-    await user.click(screen.getByRole('button', { name: /sign in/i }))
-
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/no token received/i)
-    expect(alert).not.toHaveTextContent(/invalid username or password/i)
-    expect(onLogin).not.toHaveBeenCalled()
   })
 
   it('does not expose arbitrary backend error details on 400/401', async () => {

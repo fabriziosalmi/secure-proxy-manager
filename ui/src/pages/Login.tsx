@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, setAuthToken } from '../lib/api';
+import { signIn } from '../lib/api';
 import { Button } from '../components/ui/Button';
 import { PasswordInput } from '../components/settings/ChangePassword';
 
@@ -42,13 +42,8 @@ export function Login({ onLogin }: Props) {
     setLoading(true);
     setError('');
     try {
-      const res = await api.post<{ access_token?: string; token?: string }>('auth/login', { username, password });
-      const token = res.data?.access_token || res.data?.token;
-      if (!token) {
-        setError('No token received from the server.');
-        return;
-      }
-      setAuthToken(token);
+      // The backend keeps the token in an HttpOnly cookie; the page never sees it.
+      await signIn(username, password);
       onLogin();
     } catch (err) {
       setError(describeLoginError(err));

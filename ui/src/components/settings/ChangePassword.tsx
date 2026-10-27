@@ -6,7 +6,7 @@
  */
 import { useId, useState, type FormEvent } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
-import { api, getErrorMessage, setAuthToken } from '../../lib/api';
+import { api, getErrorMessage, startSession } from '../../lib/api';
 import { validatePassword } from '../../lib/validation';
 import { cn } from '../../lib/utils';
 import { Section } from '../ui/Section';
@@ -76,8 +76,9 @@ export function ChangePassword() {
     setResult(null);
     try {
       const res = await api.post('change-password', { current_password: currentPwd, new_password: newPwd });
-      const fresh = (res.data as { access_token?: string } | undefined)?.access_token;
-      if (fresh) setAuthToken(fresh);
+      // The backend renewed the session cookie; only its expiry comes back.
+      const expiresAt = (res.data as { expires_at?: number } | undefined)?.expires_at;
+      if (typeof expiresAt === 'number') startSession(expiresAt);
       setResult({ ok: true, text: 'Password changed. Every other session was signed out; this one continues.' });
       setCurrentPwd('');
       setNewPwd('');

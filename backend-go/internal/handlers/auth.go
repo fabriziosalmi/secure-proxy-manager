@@ -84,11 +84,61 @@ func (h *AuthHandlers) Register(r chi.Router) {
 	r.With(authMW).Post("/api/logout", h.Logout)
 	r.With(authMW).Post("/api/change-password", h.ChangePassword)
 	r.With(authMW).Get("/api/ws-token", h.WSToken)
+	r.With(authMW).Get("/api/session", h.Session)
 	r.Get("/health", h.HealthLegacy)
 	r.Get("/livez", h.HealthLegacy)
 	r.Get("/readyz", h.Ready)
 	r.Get("/api/health", h.Health)
 	r.Get("/api/ready", h.Ready)
+}
+
+// sessionHeader is the header a browser sends to sign in with a session
+// cookie instead of receiving the tokens in the body (sessionHeaderCookie).
+const (
+	sessionHeader       = "X-SPM-Session"
+	sessionHeaderCookie = "cookie"
+)
+
+// wantsCookieSession reports whether a login asks for a cookie session.
+func wantsCookieSession(r *http.Request) bool {
+	return r.Header.Get(sessionHeader) == sessionHeaderCookie
+}
+
+// requestIsHTTPS reports whether the browser reached the dashboard over
+// https: directly, or through nginx, which sets X-Forwarded-Proto. Only the
+// backend's own port, bound to 127.0.0.1, is plain http.
+func requestIsHTTPS(r *http.Request) bool {
+	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+// setSessionCookie gives the browser its session: the access token in an
+// HttpOnly cookie (script in the page cannot read it), SameSite=Strict (a
+// request started by another site does not carry it), scoped to /api, Secure
+// whenever the request came over https, and expiring with the token.
+func setSessionCookie(w http.ResponseWriter, r *http.Request, token string, exp time.Time) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.SessionCookieName,
+		Value:    token,
+		Path:     "/api",
+		Expires:  exp,
+		MaxAge:   max(1, int(time.Until(exp).Seconds())),
+		HttpOnly: true,
+		Secure:   requestIsHTTPS(r),
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+// clearSessionCookie removes the session cookie.
+func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.SessionCookieName,
+		Value:    "",
+		Path:     "/api",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   requestIsHTTPS(r),
+		SameSite: http.SameSiteStrictMode,
+	})
 }
 
 func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
@@ -132,6 +182,20 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	token, err := h.svc.IssueJWT(username)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to issue token")
+		return
+	}
+	if wantsCookieSession(r) {
+		// The browser: the token goes only into the HttpOnly cookie, never
+		// into a body a script could read, and there is no refresh token (the
+		// session lasts JWT_EXPIRE_DURATION, then the user signs in again).
+		exp := h.svc.TokenExpiry(token)
+		setSessionCookie(w, r, token, exp)
+		h.store.Audit(username, "login", auth.ClientIP(r), "")
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":     "success",
+			"username":   username,
+			"expires_at": exp.Unix(),
+		})
 		return
 	}
 	refreshToken, err := h.svc.IssueRefreshToken(username)
@@ -193,9 +257,18 @@ func (h *AuthHandlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
+	via, _ := r.Context().Value(middleware.CtxAuthVia).(string)
 	var revokeErr error
-	if strings.HasPrefix(authHeader, "Bearer ") && len(authHeader) > 7 {
+	switch {
+	case strings.HasPrefix(authHeader, "Bearer ") && len(authHeader) > 7:
 		revokeErr = h.svc.RevokeJWT(authHeader[7:])
+	case via == auth.ViaCookie:
+		// The cookie's token is revoked like a Bearer one, and the cookie is
+		// cleared, so neither a copy of it nor the browser can use it again.
+		if c, err := r.Cookie(auth.SessionCookieName); err == nil && c.Value != "" {
+			revokeErr = h.svc.RevokeJWT(c.Value)
+		}
+		clearSessionCookie(w, r)
 	}
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
 	// A client that holds a refresh token (API clients; the UI does not) can
@@ -275,6 +348,27 @@ func (h *AuthHandlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	// Every token issued before this point is bound to the old password hash
 	// and no longer validates, including the one that made this request. The
 	// caller gets a fresh pair so its own session continues.
+	if via, _ := r.Context().Value(middleware.CtxAuthVia).(string); via == auth.ViaCookie {
+		// A browser session continues with a new cookie, and the tokens stay
+		// out of the body as at login.
+		access, err := h.svc.IssueJWT(username)
+		if err != nil {
+			clearSessionCookie(w, r)
+			writeJSON(w, http.StatusOK, map[string]string{
+				"status":  "success",
+				"message": "Password changed successfully. Existing sessions were ended; sign in again.",
+			})
+			return
+		}
+		exp := h.svc.TokenExpiry(access)
+		setSessionCookie(w, r, access, exp)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":     "success",
+			"message":    "Password changed successfully. Other sessions were ended.",
+			"expires_at": exp.Unix(),
+		})
+		return
+	}
 	access, aerr := h.svc.IssueJWT(username)
 	refresh, rerr := h.svc.IssueRefreshToken(username)
 	if aerr != nil || rerr != nil {
@@ -290,6 +384,31 @@ func (h *AuthHandlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		"access_token":  access,
 		"refresh_token": refresh,
 		"token_type":    "Bearer",
+	})
+}
+
+// Session is the signed-in session: who, how (cookie, bearer or basic) and,
+// for a token, when it expires. The UI cannot read its HttpOnly cookie, so it
+// asks here at start and plans the expiry warning from expires_at.
+func (h *AuthHandlers) Session(w http.ResponseWriter, r *http.Request) {
+	username, _ := r.Context().Value(middleware.CtxUsername).(string)
+	via, _ := r.Context().Value(middleware.CtxAuthVia).(string)
+	var token string
+	switch via {
+	case auth.ViaCookie:
+		if c, err := r.Cookie(auth.SessionCookieName); err == nil {
+			token = c.Value
+		}
+	case auth.ViaBearer:
+		token = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	}
+	var expiresAt any // null for Basic, which does not expire
+	if token != "" {
+		expiresAt = h.svc.TokenExpiry(token).Unix()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status": "success",
+		"data":   map[string]any{"username": username, "via": via, "expires_at": expiresAt},
 	})
 }
 

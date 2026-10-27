@@ -24,8 +24,8 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
 
-  // No globalSetup / storageState: auth is injected per-test via addInitScript
-  // into localStorage (where the app reads the JWT).
+  // No globalSetup / storageState: each test that needs a session signs its
+  // browser context in (injectAuth), which stores the HttpOnly cookie.
 
   projects: [
     {

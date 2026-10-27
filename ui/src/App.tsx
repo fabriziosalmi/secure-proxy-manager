@@ -5,7 +5,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import { Layout } from './components/layout/Layout';
 import { Button } from './components/ui/Button';
 import { Notice } from './components/ui/Notice';
-import { getErrorMessage, isTokenExpired, signOut } from './lib/api';
+import { getErrorMessage, loadSession, signOut } from './lib/api';
 import { settingsQuery } from './lib/queries';
 import { ThemeProvider } from './components/ThemeProvider';
 import { SettingsDraftsProvider } from './components/settings/SettingsDrafts';
@@ -99,22 +99,16 @@ function NotFound() {
 function AppContent({ queryClient }: { queryClient: QueryClient }) {
   const handleLogout = async () => {
     await signOut();
-    setIsAuthenticated(false);
+    setSignedIn(false);
     setWizardCompletedOverride(false);
     queryClient.clear();
   };
 
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    const token = localStorage.getItem('auth_token');
-    if (!token) return false;
-    // Clear stale tokens on mount via the shared JWT helper. A malformed or
-    // exp-less token is kept (isTokenExpired → false) and the API will 401.
-    if (isTokenExpired(token)) {
-      localStorage.removeItem('auth_token');
-      return false;
-    }
-    return true;
-  });
+  // The session cookie is HttpOnly, so the page asks the backend whether
+  // there is a session: null (401) shows the sign-in screen.
+  const session = useQuery({ queryKey: ['session'], queryFn: loadSession, retry: false, staleTime: Infinity });
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const isAuthenticated = signedIn ?? Boolean(session.data);
 
   const [wizardCompletedOverride, setWizardCompletedOverride] = useState(false);
 
@@ -127,6 +121,19 @@ function AppContent({ queryClient }: { queryClient: QueryClient }) {
     return () => window.removeEventListener('session-expiring', handler);
   }, []);
 
+  // The session ended under the page (expired, revoked, password changed
+  // elsewhere): back to the sign-in screen.
+  useEffect(() => {
+    const ended = () => {
+      setSignedIn(false);
+      setWizardCompletedOverride(false);
+      queryClient.clear();
+      toast('Your session ended. Sign in again.', { id: 'session-ended', duration: 6000 });
+    };
+    window.addEventListener('session-ended', ended);
+    return () => window.removeEventListener('session-ended', ended);
+  }, [queryClient]);
+
   // Read wizard_completed through settingsQuery so the page that mounts next
   // reuses the cached GET /api/settings response instead of fetching it twice.
   const settings = useQuery({
@@ -135,13 +142,22 @@ function AppContent({ queryClient }: { queryClient: QueryClient }) {
     retry: false,
   });
 
+  if (signedIn === null && session.isPending) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-ground" role="status" aria-live="polite">
+        <div className="animate-spin w-6 h-6 border-2 border-accent border-t-transparent rounded-full" aria-hidden="true" />
+        <span className="sr-only">Checking your session…</span>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     // Lazy screens sit inside a boundary: a chunk that fails to load (a tab
     // left open across an upgrade) shows an error instead of a blank page.
     return (
       <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
-          <Login onLogin={() => setIsAuthenticated(true)} />
+          <Login onLogin={() => setSignedIn(true)} />
         </Suspense>
       </ErrorBoundary>
     );

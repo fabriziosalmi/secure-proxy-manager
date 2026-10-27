@@ -162,6 +162,7 @@ func run() error {
 	r.Use(appMW.Metrics)   // RED metrics per route (records after routing)
 	r.Use(appMW.AccessLog) // one structured log line per request
 	r.Use(appMW.CORS(cfg))
+	r.Use(appMW.SessionCSRF(cfg)) // before any handler: a cookie alone never changes state from another site
 	r.Use(appMW.SecurityHeaders)
 	r.Use(appMW.APIVersion)
 	r.Use(appMW.GlobalRateLimit(20, 60))       // 20 req/s sustained, 60 burst per IP

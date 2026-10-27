@@ -8,8 +8,8 @@
  *
  * Architecture notes:
  *   - API tests run via Playwright's `request` fixture (no browser overhead)
- *   - UI tests drive real Chromium, inject JWT into localStorage via addInitScript
- *     (Playwright storageState only persists localStorage, so we inject per-test)
+ *   - UI tests drive real Chromium, signed in per test with a cookie session
+ *     (injectAuth), as the UI signs in
  *   - Auth tests deliberately run WITHOUT token injection
  *
  * Environment variables (set in docker-compose.test.yml):
@@ -53,15 +53,16 @@ async function apiToken(request: APIRequestContext): Promise<string> {
 }
 
 /**
- * Inject a valid JWT into localStorage BEFORE the page script runs.
- * Must be called before page.goto() — addInitScript registers a script that
- * fires on every subsequent navigation within the test.
+ * Sign the page's browser context in as the UI does: a cookie session. The
+ * context's request client shares the browser's cookie jar, so the HttpOnly
+ * session cookie it receives is sent by the page on the next page.goto().
  */
-async function injectAuth(page: Page, request: APIRequestContext): Promise<void> {
-  const token = await apiToken(request);
-  await page.addInitScript((t: string) => {
-    localStorage.setItem('auth_token', t);
-  }, token);
+async function injectAuth(page: Page, _request?: APIRequestContext): Promise<void> {
+  const res = await page.context().request.post('/api/auth/login', {
+    headers: { 'X-SPM-Session': 'cookie' },
+    data: { username: USERNAME, password: PASSWORD },
+  });
+  expect(res.ok(), `Cookie login failed (${res.status()}): ${await res.text()}`).toBeTruthy();
 }
 
 // Mark the first-run Setup Wizard complete once for the whole run, so
@@ -79,7 +80,8 @@ test.beforeAll(async ({ request }) => {
 test.describe('Authentication', () => {
   // No token injection — these tests verify the unauthenticated flow
   test.beforeEach(async ({ page }) => {
-    // Ensure storage is clear (no leftover token from other tests)
+    // No session left from other tests
+    await page.context().clearCookies();
     await page.addInitScript(() => { localStorage.clear(); sessionStorage.clear(); });
   });
 
@@ -108,6 +110,29 @@ test.describe('Authentication', () => {
     await page.fill('#password', PASSWORD);
     await page.click('button[type="submit"]');
     await expect(page.getByRole('heading', { level: 1, name: 'Overview' }).first()).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('keeps the session token where no script in the page can read it', async ({ page }) => {
+    await page.goto('/');
+    await page.fill('#username', USERNAME);
+    await page.fill('#password', PASSWORD);
+    await page.click('button[type="submit"]');
+    await expect(page.getByRole('heading', { level: 1, name: 'Overview' }).first()).toBeVisible({ timeout: 15_000 });
+    const cookie = (await page.context().cookies()).find((c) => c.name === 'spm_session');
+    expect(cookie, 'the session cookie').toBeTruthy();
+    expect(cookie).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Strict', path: '/api' });
+    const seen = await page.evaluate(() => ({
+      cookie: document.cookie,
+      storage: JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }),
+    }));
+    expect(seen.cookie).not.toContain('spm_session');
+    expect(seen.storage).not.toContain(cookie!.value);
+    // Signing out ends it on the server: the same cookie is refused afterwards.
+    const value = cookie!.value;
+    await page.getByRole('button', { name: 'Sign out' }).first().click();
+    await expect(page.locator('#username')).toBeVisible({ timeout: 10_000 });
+    const replay = await page.request.get('/api/session', { headers: { Cookie: `spm_session=${value}` } });
+    expect(replay.status()).toBe(401);
   });
 
   test('submit button shows loading state', async ({ page }) => {

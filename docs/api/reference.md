@@ -6,7 +6,8 @@ Base URLs:
   `https://localhost:8443/api`
 - Directly to the backend, from the host only: `http://127.0.0.1:5001/api`
 
-Every route needs HTTP Basic or JWT bearer authentication except
+Every route needs HTTP Basic, JWT bearer or session cookie authentication (see
+[Authentication](./authentication.md)) except
 `POST /api/auth/login`, `POST /api/auth/refresh`, `GET /api/health`,
 `GET /api/ready`, `GET /health`, `GET /livez`, `GET /readyz` and `GET /metrics`.
 The WebSocket authenticates with a single-use token (see
@@ -47,11 +48,12 @@ depends on changes, unlike `version` in `/api/health`, which is the release.
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/auth/login` | Check credentials, return an access and a refresh JWT (no auth) |
+| `POST` | `/api/auth/login` | Check credentials, return an access and a refresh JWT, or with `X-SPM-Session: cookie` set the HttpOnly session cookie (no auth) |
 | `POST` | `/api/auth/refresh` | Exchange a refresh token for a new pair (no auth) |
-| `POST` | `/api/logout` | Revoke the bearer token of the request, and the refresh token in an optional `{"refresh_token": ...}` body |
+| `POST` | `/api/logout` | Revoke the bearer or session-cookie token of the request (clearing the cookie), and the refresh token in an optional `{"refresh_token": ...}` body |
 | `POST` | `/api/change-password` | Change the admin password |
 | `GET`  | `/api/ws-token` | Issue a single-use WebSocket token |
+| `GET`  | `/api/session` | Who is signed in, how (`cookie`, `bearer`, `basic`) and `expires_at` |
 | `GET`  | `/api/health` | Status, version, commit (no auth) |
 | `GET`  | `/api/ready`, `/readyz` | `200` when the database answers, `503` otherwise (no auth) |
 | `GET`  | `/health`, `/livez` | `200` while the process runs (no auth) |

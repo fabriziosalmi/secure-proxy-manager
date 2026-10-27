@@ -1,9 +1,22 @@
 # Authentication
 
-Every protected endpoint accepts either scheme:
+Every protected endpoint accepts any of these:
 
 - **HTTP Basic.** `Authorization: Basic base64(user:pass)`.
 - **JWT bearer.** `Authorization: Bearer <access_token>`.
+- **Session cookie (the dashboard).** `spm_session`, set by a login that sends
+  `X-SPM-Session: cookie`. It holds an access token and is `HttpOnly` (script
+  in the page cannot read it), `SameSite=Strict`, `Path=/api`, `Secure` when
+  the request came over https, and expires with the token. An `Authorization`
+  header, when present, is used instead of the cookie.
+
+A request authenticated by the cookie alone that changes state (any method
+but `GET`, `HEAD` and `OPTIONS`) must also carry `X-Requested-With: spm` and,
+if the browser sends an `Origin`, one that is the dashboard's host over https
+or listed in `CORS_ALLOWED_ORIGINS`; otherwise it answers `403`
+(`cross-site request refused`). Requests with an `Authorization` header are
+not affected. Cross-origin, `X-Requested-With` needs a CORS preflight, which
+is answered only for those origins.
 
 No authentication is needed for `POST /api/auth/login`,
 `POST /api/auth/refresh`, `GET /api/health`, `GET /api/ready`, `GET /health`,
@@ -46,6 +59,17 @@ Both fields are required, at most 128 characters each.
 }
 ```
 
+With the header `X-SPM-Session: cookie` (what the dashboard sends), the
+token goes into the `spm_session` cookie instead, no refresh token is issued,
+and the answer carries no token:
+
+```json
+{ "status": "success", "username": "admin", "expires_at": 1793145676 }
+```
+
+`expires_at` is in Unix seconds. The dashboard session lasts
+`JWT_EXPIRE_DURATION`; then the dashboard shows the sign-in screen.
+
 Wrong credentials answer `401` (`incorrect username or password`). Both tokens
 are HS256, signed with `SECRET_KEY`, with a `type` claim of `access` or
 `refresh`. An access token lasts `JWT_EXPIRE_DURATION` (default `8h`; the
@@ -74,7 +98,8 @@ refreshes ends seven days after the login.
 POST /api/logout
 ```
 
-Revokes the bearer token that authenticated the request. An optional body
+Revokes the bearer token that authenticated the request, or the session
+cookie's token, and then clears the cookie. An optional body
 `{"refresh_token": "..."}` revokes that refresh token too, when it belongs to
 the same user. Revocations are stored in the database and survive a restart.
 Called with Basic authentication and no body, it revokes nothing. If a
@@ -97,7 +122,24 @@ POST /api/change-password
 The new password needs at least 8 characters, a digit and a character that is
 neither a letter nor a digit. A wrong `current_password` answers `400`. On
 success every token issued before the change stops validating, and the answer
-carries a new `access_token` and `refresh_token` for the caller.
+carries a new `access_token` and `refresh_token` for the caller. A caller
+authenticated by the session cookie gets a new cookie and `expires_at`
+instead, with no token in the body.
+
+### Session
+
+```
+GET /api/session
+```
+
+```json
+{ "status": "success", "data": { "username": "admin", "via": "cookie", "expires_at": 1793145676 } }
+```
+
+Who is signed in, how (`cookie`, `bearer` or `basic`) and, for a token, when
+it expires in Unix seconds (`null` for Basic). The dashboard calls it at start,
+since it cannot read its own `HttpOnly` cookie. Without credentials it answers
+`401`.
 
 ### WebSocket token
 
