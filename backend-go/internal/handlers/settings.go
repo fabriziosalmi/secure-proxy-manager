@@ -538,6 +538,7 @@ func (h *SettingsHandlers) persistSettings(body map[string]string, clearKeys map
 	if err := tx.Commit(); err != nil {
 		return kept, http.StatusInternalServerError, "failed to commit settings"
 	}
+	settingsChanged()
 	if _, ok := body["gdpr_mode"]; ok {
 		privacy.InvalidateDB(h.db)
 	}

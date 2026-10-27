@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -228,7 +229,7 @@ func loadNotificationSettings(db *sql.DB, encKey string) (map[string]string, boo
 		return nil, false
 	}
 	defer rows.Close()
-	settings := map[string]string{}
+	settings := map[string]string{} // non-nil from here: the read succeeded
 	for rows.Next() {
 		var k, v string
 		rows.Scan(&k, &v) //nolint:errcheck
@@ -246,6 +247,51 @@ func loadNotificationSettings(db *sql.DB, encKey string) (map[string]string, boo
 		settings[k] = v
 	}
 	return settings, settings["enable_notifications"] == "true"
+}
+
+// notifySettingsGeneration counts the writes the handlers make to the
+// settings table (persistSettings for POST and PUT /api/settings, the config
+// restore and the database reset, through settingsChanged). The queue's
+// cache rereads when it moves, so a save applies to the next event.
+var notifySettingsGeneration atomic.Uint64
+
+// settingsChanged marks the queue's copy of the notification settings stale.
+// Every handler that writes the settings table calls it after the commit.
+func settingsChanged() { notifySettingsGeneration.Add(1) }
+
+// notifySettingsTTL is how long the queue reuses a read no handler has
+// marked stale, so a change made outside the handlers (sqlite3 on the data
+// volume) still reaches it.
+const notifySettingsTTL = 2 * time.Second
+
+// notifySettingsLoad is the queue's read of the settings; a test counts it.
+var notifySettingsLoad = loadNotificationSettings
+
+// notifySettingsCache is the dispatcher's copy of the notification settings:
+// one read and one decryption of the secrets for a burst of events, instead
+// of one per event. Only the dispatcher goroutine uses it.
+type notifySettingsCache struct {
+	load     func() (map[string]string, bool)
+	now      func() time.Time
+	valid    bool
+	gen      uint64
+	at       time.Time
+	settings map[string]string
+	ok       bool
+}
+
+func (c *notifySettingsCache) get() (map[string]string, bool) {
+	// The generation is read before the settings, so a save that lands during
+	// the read moves it past what is stored and the next call rereads.
+	gen := notifySettingsGeneration.Load()
+	if c.valid && gen == c.gen && c.now().Sub(c.at) < notifySettingsTTL {
+		return c.settings, c.ok
+	}
+	settings, ok := c.load()
+	// A failed read (settings nil) is not kept: the next event tries again.
+	c.valid = settings != nil
+	c.gen, c.at, c.settings, c.ok = gen, c.now(), settings, ok
+	return settings, ok
 }
 
 // planNotifications is the deliveries an event produces under the current

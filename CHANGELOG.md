@@ -90,6 +90,12 @@ for at least one minor release before disappearing.
 
 ### Changed
 
+- The notification queue reads and decrypts the notification settings once
+  for a burst of alerts instead of once per alert (measured: about 28 µs and
+  119 allocations per read on an Apple M4, 31 ns for a cached one). A save
+  through the API, a config restore or a database reset applies to the next
+  alert; a change made outside the API reaches the queue within 2 seconds.
+
 - The UI no longer shows the global "Failed to load data" toast on top of the
   error each page already reports in place. Signing in reads
   `GET /api/settings` once instead of twice, and the active Blacklists tab and
@@ -125,6 +131,12 @@ for at least one minor release before disappearing.
   the first save; an install that saved 1000 keeps 1000.
 
 ### Fixed
+
+- Signing out with unsaved Settings changes asks first ("Sign out and lose 3
+  unsaved changes?", naming the sections); before, the changes were dropped
+  without a word.
+- A database reset now clears the cached `gdpr_mode`, which kept its old
+  value for up to 30 seconds after the reset emptied the settings.
 
 - Proxy login: a changed proxy password works at once. The backend writes
   `proxy_users.htpasswd` with the proxy group (gid 13) itself, also on the

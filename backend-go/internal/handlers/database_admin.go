@@ -132,5 +132,9 @@ func (h *DatabaseHandlers) Reset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to commit database reset")
 		return
 	}
+	// The reset emptied settings: gdpr_mode and the notification settings
+	// must not live on in their caches.
+	privacy.InvalidateDB(h.db)
+	settingsChanged()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Database reset (users preserved)"})
 }

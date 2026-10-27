@@ -204,6 +204,7 @@ func (h *MaintenanceHandlers) RestoreConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	privacy.InvalidateDB(h.db)
+	settingsChanged()
 	if provRestored > 0 {
 		cfgDir := ""
 		if h.cfg != nil {
