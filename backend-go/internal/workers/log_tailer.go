@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -165,15 +164,8 @@ func readBatch(f *os.File, size, offset int64, spec tailSpec) (batch []map[strin
 	return batch, next, nil
 }
 
-// feedSettings caches gdpr_mode per database for the live feed.
-var feedSettings sync.Map // *sql.DB -> *privacy.Setting
-
 func feedPrivacy(db *sql.DB) *privacy.Setting {
-	if s, ok := feedSettings.Load(db); ok {
-		return s.(*privacy.Setting)
-	}
-	s, _ := feedSettings.LoadOrStore(db, privacy.NewSetting(db, 30*time.Second))
-	return s.(*privacy.Setting)
+	return privacy.ForDB(db)
 }
 
 // broadcastBatch streams committed rows to the WebSocket hub. The hub is

@@ -59,14 +59,111 @@ export function apiParams(f: LogFilters, showInternal: boolean): URLSearchParams
 export const isBlocked = (r: LogEntry) => r.blocked === true || r.blocked === 1;
 
 /**
+ * Parses an IPv4 address (or a masked IPv4 address like "192.168.1.x") into its
+ * four octets, or null when it is not IPv4.
+ */
+function parseIpv4Octets(raw: string): number[] | null {
+  const s = raw.trim().replace(/\.x$/i, '.0');
+  const parts = s.split('.');
+  if (parts.length !== 4) return null;
+  const out: number[] = [];
+  for (const p of parts) {
+    if (!/^\d{1,3}$/.test(p)) return null;
+    const n = Number(p);
+    if (n < 0 || n > 255) return null;
+    out.push(n);
+  }
+  return out;
+}
+
+/**
+ * Parses an IPv6 address (or a masked IPv6 address like "2001:db8:1:2::x") into
+ * eight 16-bit hextets, or null when it is not IPv6.
+ */
+function parseIpv6Hextets(raw: string): number[] | null {
+  let s = raw.trim().split('%')[0];
+  if (s.endsWith('::x') || s.endsWith('::X')) {
+    s = s.slice(0, -1);
+  } else if (s.endsWith(':x') || s.endsWith(':X')) {
+    s = `${s.slice(0, -1)}0`;
+  }
+  if (!s.includes(':')) return null;
+  const halves = s.split('::');
+  if (halves.length > 2) return null;
+  const parsePart = (part: string): number[] | null => {
+    if (!part) return [];
+    const tokens = part.split(':');
+    const nums: number[] = [];
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      if (i === tokens.length - 1 && t.includes('.')) {
+        const v4 = parseIpv4Octets(t);
+        if (!v4) return null;
+        nums.push((v4[0] << 8) | v4[1], (v4[2] << 8) | v4[3]);
+        continue;
+      }
+      if (!/^[0-9a-fA-F]{1,4}$/.test(t)) return null;
+      nums.push(parseInt(t, 16));
+    }
+    return nums;
+  };
+  const left = parsePart(halves[0]);
+  if (!left) return null;
+  if (halves.length === 1) {
+    return left.length === 8 ? left : null;
+  }
+  const right = parsePart(halves[1]);
+  if (!right || left.length + right.length > 8) return null;
+  const zeros = Array.from({ length: 8 - left.length - right.length }, () => 0);
+  return [...left, ...zeros, ...right];
+}
+
+function matchesClientFilter(sourceIp: string | undefined, clientFilter: string): boolean {
+  const ip = (sourceIp ?? '').trim();
+  const filter = clientFilter.trim();
+  if (!filter) return true;
+  if (!filter.includes('/')) return ip === filter;
+
+  const [netAddr, bitsStr] = filter.split('/');
+  const bits = Number(bitsStr);
+  if (!Number.isInteger(bits) || bits < 0) return false;
+
+  const netV4 = parseIpv4Octets(netAddr);
+  if (netV4) {
+    if (bits > 32) return false;
+    const rowV4 = parseIpv4Octets(ip);
+    if (!rowV4) return false;
+    const toU32 = (o: number[]) => ((o[0] << 24) | (o[1] << 16) | (o[2] << 8) | o[3]) >>> 0;
+    const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+    return (toU32(rowV4) & mask) === (toU32(netV4) & mask);
+  }
+
+  const netV6 = parseIpv6Hextets(netAddr);
+  if (netV6) {
+    if (bits > 128) return false;
+    const rowV6 = parseIpv6Hextets(ip);
+    if (!rowV6) return false;
+    let rem = bits;
+    for (let i = 0; i < 8 && rem > 0; i++) {
+      const take = Math.min(16, rem);
+      const mask = take === 16 ? 0xffff : (0xffff << (16 - take)) & 0xffff;
+      if ((rowV6[i] & mask) !== (netV6[i] & mask)) return false;
+      rem -= take;
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
  * Whether a row from the live feed belongs in the view f selects, by the
- * rules GET /api/logs applies: a client exactly, the outcome by the blocked
- * flag, a rule among blocked rows, the destination by substring (SQLite's
- * LIKE ignores ASCII case), and the stack's own traffic only when shown or
- * when the client filter names it.
+ * rules GET /api/logs applies: a client by exact address or network CIDR, the
+ * outcome by the blocked flag, a rule among blocked rows, the destination by
+ * substring (SQLite's LIKE ignores ASCII case), and the stack's own traffic
+ * only when shown or when the client filter names it.
  */
 export function matchesFilters(r: LogEntry, f: LogFilters, showInternal: boolean): boolean {
-  if (f.client && r.source_ip !== f.client) return false;
+  if (f.client && !matchesClientFilter(r.source_ip, f.client)) return false;
   if (f.outcome === 'blocked' && !isBlocked(r)) return false;
   if (f.outcome === 'allowed' && isBlocked(r)) return false;
   if (f.rule && !(isBlocked(r) && r.reason === f.rule)) return false;

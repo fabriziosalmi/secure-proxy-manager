@@ -1,9 +1,10 @@
 /**
  * Logs and privacy: how long requests are kept (workers/log_retention.go:
  * once when the backend starts, then every 24 hours, proxy_logs only; the
- * audit log has its own 365 days) and what the log viewer shows. gdpr_mode
- * masks source_ip in GET /api/logs and in the live feed (/api/ws/logs), the
- * two the Logs page reads, and nothing else.
+ * audit log has its own 365 days) and what client IP masking covers. gdpr_mode
+ * masks client addresses everywhere they leave the backend (all API responses,
+ * the live feed, CSV export, MCP tools, and alerts), while the SQLite database
+ * and /api/database/export keep the full addresses.
  */
 import { Section } from '../../ui/Section';
 import { TextField, ToggleRow } from '../fields';
@@ -26,8 +27,8 @@ export function LogsSection({ form }: { form: SectionForm }) {
         <ToggleRow
           form={form}
           setting="gdpr_mode"
-          label="Mask client IPs in the log viewer"
-          help="The Logs page, its table and its live feed, shows each client address with the last part replaced by x (192.168.1.x), within 30 seconds of the save. The stored requests keep the full address, and the rest of the app shows it, the Clients page among them, which tells clients apart by it."
+          label="Mask client IPs"
+          help="Masks client addresses everywhere they leave the backend: all API endpoints (the Logs table, CSV export and live feed, the Clients page grouped by network, and the Overview), MCP tools, and WAF alerts. IPv4 is masked to /24 (192.168.1.x) and IPv6 down to /64 (2001:db8:1:2::x). The SQLite database and its full export (/api/database/export) are not masked and keep the full addresses."
         />
       </Section>
     </div>

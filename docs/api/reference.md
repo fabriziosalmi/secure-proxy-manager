@@ -114,10 +114,10 @@ Details: [Logs and Analytics API](./logs.md).
 | `POST` | `/api/logs/clear-old` | Delete rows older than `days` (query parameter, default 30) |
 | `POST` | `/api/counters/reset` | Delete every log row and reset the WAF's counters |
 | `GET`  | `/api/status` | Proxy reachability, version, today's request count, Squid version, CVE count (`squid_cves`) and whether that major version has an advisory table (`cves_checked`), update availability |
-| `GET`  | `/api/dashboard/summary` | The dashboard's data in one call |
+| `GET`  | `/api/dashboard/summary` | The dashboard's data in one call (`top_clients` aggregated by network and `recent_blocks` masked when `gdpr_mode` is on) |
 | `GET`  | `/api/traffic/statistics` | Requests and blocks per bucket (`period` = `hour`, `day`, `week`, `month`) |
-| `GET`  | `/api/clients/statistics` | Top 50 clients, then the internal sources |
-| `GET`  | `/api/clients/{ip}/details` | One client's totals, top domains and recent requests |
+| `GET`  | `/api/clients/statistics` | Top 50 clients (or `/24` and `/64` networks when `gdpr_mode` is on), then the internal sources |
+| `GET`  | `/api/clients/{ip}/details` | One client's or `/24` / `/64` network CIDR's totals, top domains and recent requests |
 | `GET`  | `/api/domains/statistics` | Top 50 domains |
 | `GET`  | `/api/analytics/shadow-it` | Requests of the last 7 days to known services (file sharing, messaging, AI, social) |
 | `GET`  | `/api/analytics/user-agents` | Requests of the last 7 days by method and kind of service |
@@ -145,7 +145,7 @@ Details: [Settings and Maintenance API](./settings.md).
 | `POST`   | `/api/settings` | Store several values and write the proxy files they drive |
 | `GET`    | `/api/database/size` | Database size (`size_bytes`, `size_mb`) |
 | `GET`    | `/api/database/stats` | Row count per table |
-| `GET`    | `/api/database/export` | Every table as JSON, `password`, `secret` and `token` columns redacted |
+| `GET`    | `/api/database/export` | Every table as JSON, `password`, `secret` and `token` columns redacted; client addresses in `proxy_logs` are unmasked (`contains_unmasked_addresses: true` when `gdpr_mode` is on) |
 | `POST`   | `/api/database/optimize` | `VACUUM` and `REINDEX` |
 | `POST`   | `/api/database/reset` | Delete every row of every table except `users` |
 | `GET`    | `/api/cache/statistics` | Squid cache statistics as the proxy last collected them |

@@ -73,9 +73,10 @@ Each message is one row just stored in the access log:
 `id`, `reason`, `reason_label`, `internal` and `kind` mean what they mean in
 `GET /api/logs` (see [Logs](./logs.md)); `blocked` is `0` or `1` here. The feed
 carries every row, the stack's own traffic included: a client that shows the
-log with filters applies them to each message. With GDPR mode on, `source_ip`
-is masked as it is in `GET /api/logs`; `internal` and `kind` are worked out
-from the real address before masking.
+log with filters applies them to each message. With `gdpr_mode` on, `source_ip`
+is masked to `/24` for IPv4 (`192.168.1.x`) and `/64` for IPv6
+(`2001:db8:1:2::x`), as it is in `GET /api/logs`; `internal` and `kind` are
+worked out from the real address before masking.
 
 The same connection also carries events with a `type` field, such as
 `{"type": "login_failure", "data": {...}}` for a failed sign-in. A client that

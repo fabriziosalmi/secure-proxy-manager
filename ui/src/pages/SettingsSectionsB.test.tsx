@@ -288,11 +288,11 @@ describe('Settings sections, part B', () => {
   })
 
   describe('Logs and privacy', () => {
-    it('says what retention deletes and exactly what the mask covers', async () => {
+    it('says what retention deletes and what client IP masking covers and leaves out', async () => {
       const { container } = renderAt('/settings/logs')
       const days = await screen.findByLabelText('Keep logs for (days)')
       expect(days).toHaveAccessibleDescription(/every 24 hours, requests older than this are deleted.*The audit log is kept for 365 days/)
-      expect(screen.getByRole('switch', { name: 'Mask client IPs in the log viewer' })).toHaveAccessibleDescription(/its table and its live feed.*The stored requests keep the full address/)
+      expect(screen.getByRole('switch', { name: 'Mask client IPs' })).toHaveAccessibleDescription(/everywhere they leave the backend.*MCP.*alerts.*\/64.*\/api\/database\/export/)
       expect(screen.queryByText(/GDPR Mode/)).not.toBeInTheDocument()
       headingsInOrder()
       await expectNoAxeViolations(container)
@@ -300,10 +300,11 @@ describe('Settings sections, part B', () => {
   })
 
   describe('Admin and backup', () => {
-    it('lays out the password, backup and maintenance with their results in place', async () => {
+    it('lays out the password, backup and maintenance with their results in place, and notes unmasked addresses in database export', async () => {
       const { container } = renderAt('/settings/admin')
       expect(await screen.findByRole('button', { name: 'Change Password' })).toBeDisabled()
       expect(screen.getByRole('button', { name: 'Download a backup' })).toBeInTheDocument()
+      expect(screen.getByText(/holds the full, unmasked client addresses/)).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Empty disk and memory cache' })).toBeInTheDocument()
       headingsInOrder()
       await expectNoAxeViolations(container)

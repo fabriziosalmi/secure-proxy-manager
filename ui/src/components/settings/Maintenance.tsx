@@ -226,7 +226,7 @@ export function BackupRestore() {
         </li>
         <ActionRow
           title="Database export"
-          help="Every table, the request log and the audit log included, for analysis. Restore cannot read it."
+          help="Every table, the request log and the audit log included, for analysis. It holds the full, unmasked client addresses even when client IP masking is on. Restore cannot read it."
           button="Export the database"
           outcome={exported}
           busy={busy === 'export'}

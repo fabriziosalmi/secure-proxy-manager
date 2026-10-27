@@ -180,6 +180,10 @@ export interface AuditPageData {
 
 export interface ClientStat {
   ip_address: string;
+  /** Present when GDPR mode is on: the /24 (IPv4) or /64 (IPv6) network CIDR. */
+  network?: string;
+  /** Distinct addresses in the network when GDPR mode is on. */
+  addresses?: number;
   requests: number;
   /** Client rows recorded as blocked, any reason, "unclassified" included. */
   blocked: number;
@@ -187,8 +191,9 @@ export interface ClientStat {
   status: string;
   /** The stack's own traffic (loopback, the Docker host, the backend), not a device. Absent from older backends. */
   internal?: boolean;
-  /** What the address is, where the backend can say ("Internal: this host", "Private network address"); may be empty. */
+  /** What the address is, where the backend can say ("Internal: this host", "Private network address", "mixed"); may be empty. */
   kind?: string;
+  classification?: 'internal' | 'external' | 'mixed';
 }
 
 /** GET /api/clients/statistics: the clients with the most requests, then the internal sources. */
@@ -218,8 +223,11 @@ export interface ClientRecent {
 /** GET /api/clients/{ip}/details: every logged client request of the address, not only the last 7 days. */
 export interface ClientDetail {
   ip_address: string;
+  network?: string;
+  addresses?: number;
   internal?: boolean;
   kind?: string;
+  classification?: 'internal' | 'external' | 'mixed';
   total_requests: number;
   blocked: number;
   first_seen: string;
@@ -284,7 +292,7 @@ export interface DashboardSummary {
   last_request_at?: string | null;
   /** Hosts with the most blocked requests in the last 24 hours, with the rules that blocked them. */
   top_blocked: { dest: string; count: number; reasons?: ReasonCount[] }[];
-  top_clients: { ip: string; count: number }[];
+  top_clients: { ip: string; network?: string; addresses?: number; count: number }[];
   threat_categories: { category: string; count: number }[];
   blocked_by_reason?: ReasonCount[];
   blocked_by_reason_24h?: ReasonCount[];

@@ -17,6 +17,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/validate"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
@@ -220,6 +221,9 @@ func (h *SecurityHandlers) ReceiveAlert(w http.ResponseWriter, r *http.Request) 
 	}
 	for k, v := range alert.Details {
 		event[k] = v
+	}
+	if ip, ok := event["client_ip"]; ok && privacy.Enabled(h.db) {
+		event["client_ip"] = privacy.MaskIP(fmt.Sprint(ip))
 	}
 	// Non-blocking enqueue.
 	select {

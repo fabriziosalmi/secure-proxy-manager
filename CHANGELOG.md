@@ -72,6 +72,18 @@ for at least one minor release before disappearing.
 
 ### Changed
 
+- **BREAKING** (`X-API-Version: 1`): **with `gdpr_mode` on, client endpoints
+  and log filters operate on `/24` (IPv4) and `/64` (IPv6) networks instead of
+  single addresses** (#445). `GET /api/clients/statistics` and `top_clients` in
+  `GET /api/dashboard/summary` aggregate rows by network (`ip_address` / `ip`
+  masked as `192.168.1.x` or `2001:db8:1:2::x`, `network` CIDR, distinct
+  `addresses` count, and `"mixed"` classification when a network mixes internal
+  and external addresses); `GET /api/clients/{ip}/details` and the `source_ip`
+  filter on `GET /api/logs` and `GET /api/logs/export` accept `/24` and `/64`
+  CIDRs (both URL-encoded `%2F` and `/api/clients/{ip}/{prefix}/details`) and
+  refuse single addresses with `400` while `gdpr_mode` is on; `GET
+  /api/database/export` adds `"contains_unmasked_addresses": true` when
+  `gdpr_mode` is on.
 - The sign-in page, the setup wizard and the device setup panel use the design
   system the other pages use (tokens, shared buttons and notices, both
   themes); a test fails if a legacy colour or shadcn class returns under
@@ -84,6 +96,14 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- `gdpr_mode` (Settings > Logs and privacy > Mask client IPs) masks client
+  addresses everywhere they leave the backend: `GET /api/clients/statistics`,
+  `GET /api/clients/{ip}/details`, `GET /api/dashboard/summary` (`top_clients`
+  and `recent_blocks`), `GET /api/logs`, `GET /api/logs/export`, `/api/ws/logs`,
+  the MCP server and outbound WAF alert notifications (formatted messages, raw
+  webhooks and digests), instead of leaving full addresses in client statistics,
+  the dashboard and alerts; IPv6 addresses are masked to their `/64` prefix
+  (`2001:db8:1:2::x`) instead of only the last 16-bit group (#445).
 - Squid serves distinct branded error pages for DNS lookup failures
   (`ERR_DNS_FAIL`), refused or unreachable destinations (`ERR_CONNECT_FAIL`),
   interrupted reads (`ERR_READ_ERROR`), socket creation failures

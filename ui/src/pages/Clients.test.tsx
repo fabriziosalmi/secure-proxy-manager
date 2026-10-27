@@ -243,6 +243,24 @@ describe('Clients', () => {
       expect(levels[0]).toBe(1)
       for (let i = 1; i < levels.length; i++) expect(levels[i] - levels[i - 1]).toBeLessThanOrEqual(1)
     })
+
+    it('groups rows by network CIDR when GDPR mode is on, fetches detail by CIDR and links to ?client=<CIDR>', async () => {
+      body = {
+        status: 'success',
+        data: [
+          { ip_address: '192.168.0.x', network: '192.168.0.0/24', addresses: 3, requests: 1180, blocked: 908, last_seen: '2026-07-01 09:00:00', status: 'Active', internal: false, kind: 'Private network address' },
+          { ip_address: '2001:db8:1:2::x', network: '2001:db8:1:2::/64', addresses: 2, requests: 40, blocked: 5, last_seen: '2026-07-01 08:30:00', status: 'Active', internal: false, kind: 'mixed', classification: 'mixed' },
+        ],
+        meta: { total: 2, limit: 50, offset: 0, internal: 0 },
+      }
+      renderWithProviders(<Clients />)
+      const panel = await screen.findByRole('region', { name: '192.168.0.0/24' })
+      expect(detailCalls).toContain('192.168.0.0/24')
+      expect(screen.getByText(/192\.168\.0\.0\/24 · 3 addresses/)).toBeInTheDocument()
+      expect(screen.getByText(/2001:db8:1:2::\/64 · 2 addresses · mixed/)).toBeInTheDocument()
+      const link = await within(panel).findByRole('link', { name: 'Show requests from this network in the access log' })
+      expect(link).toHaveAttribute('href', '/logs?client=192.168.0.0%2F24')
+    })
   })
 
   describe('below lg', () => {

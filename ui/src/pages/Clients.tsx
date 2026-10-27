@@ -60,10 +60,12 @@ function shortTime(ts: string): string {
   return day === today ? formatHourMinute(ts) : `${day} ${formatHourMinute(ts)}`;
 }
 
+const clientKey = (c: ClientStat): string => c.network || c.ip_address;
+
 function sortRows(rows: ClientStat[], sort: SortState): ClientStat[] {
   const key = sort.columnId === 'blocked' ? 'blocked' : 'requests';
   const dir = sort.direction === 'ascending' ? 1 : -1;
-  return [...rows].sort((a, b) => (a[key] - b[key]) * dir || a.ip_address.localeCompare(b.ip_address));
+  return [...rows].sort((a, b) => (a[key] - b[key]) * dir || clientKey(a).localeCompare(clientKey(b)));
 }
 
 function ShareBar({ blocked, total }: { blocked: number; total: number }) {
@@ -104,17 +106,19 @@ export function Clients() {
 
   const rows = useMemo(() => {
     const t = search.trim().toLowerCase();
-    const visible = all.filter((c) => (showInternal || !c.internal) && (!t || c.ip_address.toLowerCase().includes(t)));
+    const visible = all.filter(
+      (c) => (showInternal || !c.internal) && (!t || c.ip_address.toLowerCase().includes(t) || (c.network?.toLowerCase().includes(t) ?? false)),
+    );
     return sortRows(visible, sort);
   }, [all, search, showInternal, sort]);
 
   // On a wide screen the panel always shows a client: the one picked, or the
   // first row while none is (or the picked one is filtered out).
   const panelIp = isDesktop
-    ? (selectedIp && rows.some((r) => r.ip_address === selectedIp) ? selectedIp : rows[0]?.ip_address ?? null)
+    ? (selectedIp && rows.some((r) => clientKey(r) === selectedIp) ? selectedIp : (rows[0] ? clientKey(rows[0]) : null))
     : null;
   const activeIp = isDesktop ? panelIp : selectedIp;
-  const activeRow = all.find((c) => c.ip_address === activeIp);
+  const activeRow = all.find((c) => clientKey(c) === activeIp);
 
   const toggleInternal = (on: boolean) => {
     setShowInternal(on);
@@ -125,20 +129,28 @@ export function Clients() {
     {
       id: 'client',
       header: 'Client',
-      cell: (c) => (
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <button
-            type="button"
-            onClick={() => setSelectedIp(c.ip_address)}
-            aria-pressed={isDesktop ? c.ip_address === activeIp : undefined}
-            aria-haspopup={isDesktop ? undefined : 'dialog'}
-            className="self-start rounded-sm text-left font-mono text-[13px] font-medium text-ink hover:text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            {c.ip_address}
-          </button>
-          {c.kind && <span className="text-xs text-ink-muted">{c.kind}</span>}
-        </div>
-      ),
+      cell: (c) => {
+        const key = clientKey(c);
+        const sub = [
+          c.network,
+          typeof c.addresses === 'number' ? plural(c.addresses, 'address', 'addresses') : null,
+          c.kind,
+        ].filter(Boolean).join(' · ');
+        return (
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <button
+              type="button"
+              onClick={() => setSelectedIp(key)}
+              aria-pressed={isDesktop ? key === activeIp : undefined}
+              aria-haspopup={isDesktop ? undefined : 'dialog'}
+              className="self-start rounded-sm text-left font-mono text-[13px] font-medium text-ink hover:text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              {c.ip_address}
+            </button>
+            {sub && <span className="text-xs text-ink-muted">{sub}</span>}
+          </div>
+        );
+      },
     },
     { id: 'requests', header: 'Requests', align: 'right', sortable: true, firstSort: 'descending', cell: (c) => <span className="font-medium">{formatCount(c.requests)}</span> },
     {
@@ -219,14 +231,14 @@ export function Clients() {
             caption="Clients in the last 7 days"
             columns={columns}
             rows={rows}
-            rowKey={(c) => c.ip_address}
+            rowKey={clientKey}
             sort={sort}
             onSortChange={setSort}
             loading={clients.isPending}
             error={clients.isError ? 'clients/statistics did not answer.' : null}
             onRetry={() => { void clients.refetch(); }}
             empty={empty}
-            isRowSelected={isDesktop ? (c) => c.ip_address === activeIp : undefined}
+            isRowSelected={isDesktop ? (c) => clientKey(c) === activeIp : undefined}
           />
           {footer && <p className="border-t border-line-subtle px-5 py-3 text-[13px] text-ink-muted">{footer}</p>}
         </Section>
@@ -336,21 +348,29 @@ function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
   const share = formatShare(info.blocked, info.total_requests);
   const unclassified = info.blocked_by_reason?.find((r) => r.reason === 'unclassified')?.count ?? 0;
   const widerThanRow = row !== undefined && row.requests !== info.total_requests;
+  const networkCidr = info.network || row?.network || (ip.includes('/') ? ip : undefined);
+  const isNetwork = Boolean(networkCidr);
+  const logTarget = networkCidr || ip;
+  const detailSub = [
+    info.network,
+    typeof info.addresses === 'number' ? plural(info.addresses, 'address', 'addresses') : null,
+    info.kind,
+  ].filter(Boolean).join(' · ');
 
   return (
     <div className="flex flex-col gap-5 pb-5">
       <div className="flex flex-col gap-1 px-5 text-[13px] text-ink-muted">
-        {info.kind && <p>{info.kind}</p>}
+        {detailSub && <p>{detailSub}</p>}
         <p>
           {info.first_seen
             ? <>First request {formatDateTime(info.first_seen)}, last request {info.last_seen ? formatDateTime(info.last_seen) : 'not recorded'}</>
             : 'No request recorded'}
         </p>
         <Link
-          to={`/logs?client=${encodeURIComponent(ip)}`}
+          to={`/logs?client=${encodeURIComponent(logTarget)}`}
           className="self-start rounded-sm font-semibold text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
         >
-          Show this client's requests in the access log
+          {isNetwork ? 'Show requests from this network in the access log' : "Show this client's requests in the access log"}
         </Link>
       </div>
 

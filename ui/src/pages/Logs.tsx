@@ -438,10 +438,14 @@ export function Logs() {
 
   const clientOptions = useMemo(() => {
     const all = clients.data?.data ?? [];
-    const opts = all.filter((c) => showInternal || !c.internal).map((c) => ({
-      value: c.ip_address,
-      label: c.internal && c.kind ? `${c.ip_address} (${c.kind.replace(/^Internal: /, 'internal: ')})` : c.ip_address,
-    }));
+    const opts = all.filter((c) => showInternal || !c.internal).map((c) => {
+      const value = c.network || c.ip_address;
+      const base = c.network ? `${c.ip_address} (${c.network})` : c.ip_address;
+      return {
+        value,
+        label: c.internal && c.kind ? `${base} (${c.kind.replace(/^Internal: /, 'internal: ')})` : base,
+      };
+    });
     if (filters.client && !opts.some((o) => o.value === filters.client)) opts.unshift({ value: filters.client, label: filters.client });
     return opts;
   }, [clients.data, showInternal, filters.client]);
