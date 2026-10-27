@@ -97,9 +97,9 @@ for at least one minor release before disappearing.
 ### Fixed
 
 - With `gdpr_mode` on, `GET /api/dashboard/summary` (`last_24h_clients` and
-  `last_24h_internal_sources`) and `GET /api/clients/statistics` (`meta.total`
-  and `meta.internal`) count distinct `/24` and `/64` networks via
-  `privacy.NetworkPrefix` instead of distinct unmasked IP addresses; `Clients`
+  `last_24h_internal_sources`) counts distinct `/24` and `/64` networks via
+  `privacy.NetworkPrefix` instead of distinct unmasked IP addresses, as
+  `GET /api/clients/statistics` already does (#459); `Clients`
   labels the search box (`Filter clients by network or IP address`) and lifetime
   detail note (`for this network`) for network rows, and `Logs` converts masked
   `192.168.1.x` and `2001:db8:1:2::x` addresses to `/24` and `/64` CIDRs (`Show
