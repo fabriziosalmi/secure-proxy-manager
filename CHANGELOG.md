@@ -74,7 +74,7 @@ for at least one minor release before disappearing.
 
 - **BREAKING** (`X-API-Version: 1`): **with `gdpr_mode` on, client endpoints
   and log filters operate on `/24` (IPv4) and `/64` (IPv6) networks instead of
-  single addresses** (#445). `GET /api/clients/statistics` and `top_clients` in
+  single addresses** (#459). `GET /api/clients/statistics` and `top_clients` in
   `GET /api/dashboard/summary` aggregate rows by network (`ip_address` / `ip`
   masked as `192.168.1.x` or `2001:db8:1:2::x`, `network` CIDR, distinct
   `addresses` count, and `"mixed"` classification when a network mixes internal
@@ -103,7 +103,7 @@ for at least one minor release before disappearing.
   the MCP server and outbound WAF alert notifications (formatted messages, raw
   webhooks and digests), instead of leaving full addresses in client statistics,
   the dashboard and alerts; IPv6 addresses are masked to their `/64` prefix
-  (`2001:db8:1:2::x`) instead of only the last 16-bit group (#445).
+  (`2001:db8:1:2::x`) instead of only the last 16-bit group (#459).
 - Squid serves distinct branded error pages for DNS lookup failures
   (`ERR_DNS_FAIL`), refused or unreachable destinations (`ERR_CONNECT_FAIL`),
   interrupted reads (`ERR_READ_ERROR`), socket creation failures
