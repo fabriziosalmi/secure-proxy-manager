@@ -15,7 +15,48 @@ and the UI unit tests in `ui/src` (`cd ui && npm test`).
 | `shell/squid_acl_matrix_test.sh` | The access policy: real Squid, WAF and dnsmasq, clients on three networks | Docker | *Squid config generation* |
 | `shell/restore_test.sh` | `scripts/restore.sh` refuses a corrupt backup and keeps `data/` | `sqlite3` | *Restore drill (backup verification)* |
 | `shell/ui_tls_entrypoint_test.sh` | The `web` container starts with a certificate in every TLS mode | Docker | *Docker build (all images)* |
+| `shell/local_ci_lock_test.sh` | `scripts/local-ci.sh` lock and non-interactive CI guards | `bash` | *Shellcheck / local CI* |
 | `mock-lists/` | Fixture lists served to the test stack | | |
+
+## Local CI (`scripts/local-ci.sh`)
+
+```bash
+git worktree add ../spm-ci HEAD
+bash scripts/local-ci.sh ../spm-ci                  # logs in a timestamped dir in $TMPDIR
+bash scripts/local-ci.sh ../spm-ci /tmp/spm-ci-logs
+```
+
+`scripts/local-ci.sh` runs all 26 required CI gates locally in sequence,
+recording `PASS` or `FAIL` and elapsed seconds per gate in `<log_dir>/results.txt`
+without stopping early, and exits non-zero if any gate fails. Use it to verify a
+branch end-to-end before opening a pull request, and on private security
+advisory forks (GHSA) where GitHub Actions do not run.
+
+- **What it does:** resets gitignored runtime state in `config/`, `data/` and
+  `logs/` between stack suites, rebuilds the test images (`spm-waf-test`,
+  `spm-dns-test`, `spm-backend-test`, `spm-proxy-test`) from the target
+  worktree so stale tags from another branch are never reused, runs Go
+  `vet` + `-race` tests, `golangci-lint`, `gosec`, UI `tsc` + Vitest + ESLint +
+  Vite build, version/pin/contract/shellcheck/Python/ruff checks, the shell
+  suites (`generate_squid_conf_test.sh`, `squid_acl_matrix_test.sh`,
+  `ui_tls_entrypoint_test.sh`, `restore_test.sh`), the 5-plane adversarial
+  suite, `tests/ci-e2e.sh`, the containerized Playwright suite, the production
+  compose image builds, and Trivy (`HIGH,CRITICAL`) across all five images.
+- **Concurrency lock:** acquires an atomic lock directory at
+  `${TMPDIR:-/tmp}/spm-local-ci.lock` (override with `SPM_LOCAL_CI_LOCK_DIR`).
+  A second run on the same host exits immediately with an error message instead
+  of colliding on Docker networks, container names, ports or `config/` state.
+  A lock whose process no longer runs (a run killed with `SIGKILL`) is taken over.
+- **Linked worktree only:** the script refuses any checkout that is not a linked
+  worktree (`git worktree add`), since the suites wipe `config/`, `data/` and
+  `logs/` and rewrite `.env`. For a disposable clone, set
+  `SPM_LOCAL_CI_ALLOW_RESET=1`.
+- **Measured duration:** ~21 to 25 minutes for all 26 gates on Apple Silicon M4
+  (Go tests ~5m, linters + `gosec` ~2m, UI ~40s, Squid config + ACL matrix ~4.5m,
+  adversarial suite ~6.8m, compose smoke ~1.2m, Playwright ~2.8m, Trivy ~10s).
+- **Prerequisites:** Docker daemon running, Go 1.26+, Node.js + `npm`, and `uv`
+  (`uvx`). `golangci-lint`, `gosec`, `shellcheck` and `trivy` run in their
+  pinned container images.
 
 ## e2e.sh: against a running stack
 

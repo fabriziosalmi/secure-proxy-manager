@@ -64,9 +64,22 @@ build_if_missing() { # image dir
 }
 build_if_missing "$IMAGE" proxy/
 
-docker network create --subnet 198.18.0.0/24   "$PFX-ext" >/dev/null || exit 1
-docker network create --subnet 192.168.77.0/24 "$PFX-lan" >/dev/null || exit 1
-docker network create --subnet 203.0.113.0/24  "$PFX-pub" >/dev/null || exit 1
+create_network() { # subnet name
+  local subnet="$1" name="$2" err
+  if ! err=$(docker network create --subnet "$subnet" "$name" 2>&1 >/dev/null); then
+    echo "error: could not create network $name ($subnet): $err" >&2
+    if printf '%s' "$err" | grep -qi "Pool overlaps"; then
+      echo "hint: a stale test network or concurrent matrix run is holding $subnet." >&2
+      echo "      List bridge networks with: docker network ls --filter driver=bridge" >&2
+      echo "      Remove stale matrix networks with: docker network rm \$(docker network ls --format '{{.Name}}' | grep '^spmacl')" >&2
+    fi
+    exit 1
+  fi
+}
+
+create_network 198.18.0.0/24   "$PFX-ext"
+create_network 192.168.77.0/24 "$PFX-lan"
+create_network 203.0.113.0/24  "$PFX-pub"
 
 # Upstreams: a plain HTTP server on :80 and :8443 (the CONNECT target) serving
 # an index and an .exe in three letter cases, plus a file whose name holds
@@ -427,7 +440,7 @@ PROV_SVC=93.184.216.10
 PROXY_PROV=93.184.216.2
 BACKEND_PROV=93.184.216.3
 PROV_SHA="d03d319a255c0000000000000000000000000000"
-docker network create --subnet 93.184.216.0/24 "$PFX-prov" >/dev/null || exit 1
+create_network 93.184.216.0/24 "$PFX-prov"
 docker run -d --name "$PFX-prov-srv" --network "$PFX-prov" --ip "$PROV_SVC" --memory 64m --entrypoint /bin/bash "$IMAGE" -c "
   mkdir -p /srv/commits /srv/$PROV_SHA/telegram && cd /srv
   echo ok > index.html
