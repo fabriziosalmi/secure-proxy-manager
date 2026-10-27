@@ -17,6 +17,12 @@ for at least one minor release before disappearing.
 
 ### Upgrade notes
 
+- **The backend service joins the proxy group: `group_add: ["13"]`** in
+  `docker-compose.yml` and `deploy/docker-compose.prod.yml`. A deployment that
+  keeps its own compose file should add it to the backend service; without it
+  the backend logs a warning on each proxy password change and new
+  credentials get `407` until the proxy reloads, as before.
+
 - **Schema version 8 archives and deletes `allowed_networks`, `waf_custom_rules`
   and `waf_block_threshold` from `settings`** (#444). If any of the three keys
   had a row in `settings`, the migration copies its previous value into the
@@ -119,6 +125,15 @@ for at least one minor release before disappearing.
   the first save; an install that saved 1000 keeps 1000.
 
 ### Fixed
+
+- Proxy login: a changed proxy password works at once. The backend writes
+  `proxy_users.htpasswd` with the proxy group (gid 13) itself, also on the
+  file's first write, as a member of that group through `group_add` and with
+  no capabilities added. Before, the file kept the backend's group until the
+  proxy's generator reset it on the next reload, and Squid answered `407` to
+  the new credentials in between. `scripts/check-config-contract.sh` fails if
+  a compose file loses `group_add`, and the ACL matrix fails if the proxy
+  image's `proxy` user moves off gid 13.
 
 - Accessibility: the password reveal button sits inside the field and keeps
   one name ("Show password") with a pressed state; the expanded Search button's

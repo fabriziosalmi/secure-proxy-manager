@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -46,9 +45,8 @@ const (
 	proxyUsersMarker = "# Written by the Secure Proxy Manager backend from Settings, Clients and access, Login. A save replaces it."
 
 	// proxyUsersPerm lets the proxy's helper, which runs as the proxy user,
-	// read the file through its group. The generator sets root:proxy 0640 on
-	// every run; the backend keeps the group of the file it replaces when it
-	// may (see writeProxyUsersFile).
+	// read the file through its group (proxyGroupID). The generator sets
+	// root:proxy 0640 on every run, and the backend writes the same.
 	proxyUsersPerm = 0o640
 
 	// Bcrypt reads at most 72 bytes of a password.
@@ -129,24 +127,36 @@ func proxyUsersMatch(data []byte, user, password string) bool {
 	return ok && name == user && bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
-// writeProxyUsersFile replaces path atomically. The new file keeps the group
-// of the one it replaces when the process may set it, so the proxy's helper
-// can read it at once. The backend runs with no capabilities, so it usually
-// cannot: the file then has the backend's group until the proxy's generator
+// proxyGroupID is the gid of the proxy user in the proxy image (Debian's
+// fixed "proxy" user, uid and gid 13), whose basic_ncsa_auth helper reads the
+// password file. Both compose files add it to the backend (group_add), which
+// runs with no capabilities: a file's owner may give it a group it is a member
+// of without CAP_CHOWN. tests/shell/squid_acl_matrix_test.sh checks the image
+// still has it and scripts/check-config-contract.sh checks the compose files.
+// A variable, not a constant, so a test can stand in a group of its own.
+var proxyGroupID = 13
+
+// writeProxyUsersFile replaces path atomically with a file of the proxy
+// group, set before the rename, so the proxy's helper reads the new
+// credentials at once, also on the file's first write.
+//
+// A backend outside the proxy group (a compose file without group_add) cannot
+// set it: the file then has the backend's group until the proxy's generator
 // sets root:proxy, which it does before Squid reloads, and the reload the
 // backend requests right after this write bounds that gap. While it lasts
 // Squid answers 407 to a credential it has not cached (measured on the proxy
 // image: the helper exits on a file it cannot open, Squid restarts it and
 // keeps running).
 func writeProxyUsersFile(path string, data []byte) error {
-	gid := -1
-	if fi, err := os.Stat(path); err == nil {
-		if st, ok := fi.Sys().(*syscall.Stat_t); ok {
-			gid = int(st.Gid)
-		}
+	groupSet, err := atomicfile.WriteGroup(path, data, proxyUsersPerm, proxyGroupID)
+	if err != nil {
+		return err
 	}
-	_, err := atomicfile.WriteGroup(path, data, proxyUsersPerm, gid)
-	return err
+	if !groupSet {
+		log.Warn().Int("gid", proxyGroupID).Str("file", proxyUsersFileName).
+			Msg("the proxy password file could not be given the proxy group (the backend needs group_add: 13): the proxy answers 407 to the new credentials until it reloads")
+	}
+	return nil
 }
 
 // SyncProxyUsers brings the password file in line with the stored proxy

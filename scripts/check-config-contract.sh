@@ -136,7 +136,25 @@ for v in $shared_waf_vars; do
     done
 done
 
+# The backend gives the proxy password file the proxy group, which it may do
+# without CAP_CHOWN only as a member of that group: both compose files must
+# add the gid that backend-go names to the backend service (the ACL matrix
+# checks that the proxy image's "proxy" user still has it).
+proxy_gid="$(sed -n 's/^var proxyGroupID = \([0-9][0-9]*\)$/\1/p' backend-go/internal/handlers/proxy_login.go)"
+if [ -z "$proxy_gid" ]; then
+    printf "${R}MISSING${N}: backend-go/internal/handlers/proxy_login.go no longer declares var proxyGroupID = <gid>\n"
+    fail=1
+else
+    for f in docker-compose.yml deploy/docker-compose.prod.yml; do
+        added="$(awk '/^  [a-z][a-z0-9_-]*:/{svc=$1; ga=0} svc=="backend:" && /^    group_add:/{ga=1; next} svc=="backend:" && ga && /^      - /{v=$2; gsub(/"/, "", v); print v; next} /^    [a-z]/{ga=0}' "$f")"
+        if ! printf '%s\n' "$added" | grep -qx "$proxy_gid"; then
+            printf "${R}MISSING${N}: %s does not add the proxy group %s to service backend (group_add)\n" "$f" "$proxy_gid"
+            fail=1
+        fi
+    done
+fi
+
 if [ "$fail" -eq "$list_fail" ]; then
-    printf "${G}OK${N}: the proxy login files agree, BASIC_AUTH_* reaches only the backend, and shared WAF variables reach both waf and proxy\n"
+    printf "${G}OK${N}: the proxy login files agree, BASIC_AUTH_* reaches only the backend, the backend is in the proxy group, and shared WAF variables reach both waf and proxy\n"
 fi
 exit "$fail"

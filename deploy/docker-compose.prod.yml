@@ -147,6 +147,12 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # The proxy group (gid 13, the proxy image's "proxy" user): a file's owner
+    # may give it a group it belongs to without CAP_CHOWN, so the password file
+    # the backend writes is readable by Squid's auth helper at once, not only
+    # after the next reload (writeProxyUsersFile, proxyGroupID).
+    group_add:
+      - "13"
     # The backend was the only service with a writable root filesystem, and it
     # is also the one documented as running as root — so a process that achieved
     # execution here could modify /server itself and persist across a restart,
