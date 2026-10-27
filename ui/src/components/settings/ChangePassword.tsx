@@ -10,7 +10,7 @@ import { api, getErrorMessage, setAuthToken } from '../../lib/api';
 import { validatePassword } from '../../lib/validation';
 import { cn } from '../../lib/utils';
 import { Section } from '../ui/Section';
-import { Button, IconButton } from '../ui/Button';
+import { Button } from '../ui/Button';
 
 const INPUT = 'h-9 w-full min-w-0 rounded-control border bg-surface px-3 text-sm text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent';
 
@@ -22,7 +22,7 @@ export function PasswordInput({ id, label, value, onChange, autoComplete, descri
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium text-ink">{label}</label>
-      <div className="flex items-center gap-1">
+      <div className="relative">
         <input
           id={id}
           type={shown ? 'text' : 'password'}
@@ -32,14 +32,22 @@ export function PasswordInput({ id, label, value, onChange, autoComplete, descri
           aria-describedby={describedBy}
           aria-invalid={invalid || undefined}
           required={required}
-          className={cn(INPUT, invalid ? 'border-danger-line' : 'border-line-strong')}
+          className={cn(INPUT, reveal && 'pr-10', invalid ? 'border-danger-line' : 'border-line-strong')}
         />
         {reveal && (
-          <IconButton
-            aria-label={shown ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
-            icon={shown ? <EyeOff /> : <Eye />}
+          <button
+            type="button"
+            // One name and a pressed state: a name that also flipped to "Hide"
+            // would be read as "Hide password, pressed".
+            aria-label={`Show ${label.toLowerCase()}`}
+            aria-pressed={shown}
             onClick={() => setShown(!shown)}
-          />
+            className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-control text-ink-subtle hover:bg-surface-muted hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {shown
+              ? <EyeOff aria-hidden="true" className="h-4 w-4" />
+              : <Eye aria-hidden="true" className="h-4 w-4" />}
+          </button>
         )}
       </div>
     </div>

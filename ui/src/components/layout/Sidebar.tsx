@@ -73,7 +73,8 @@ export function Sidebar({ collapsed = false, onToggleCollapsed, drawer, onClose,
   const updateUrl = safeExternalUrl(status.data?.update_url);
 
   return (
-    <div
+    <aside
+      aria-label="Sidebar"
       className={cn(
         'flex h-full flex-col border-r border-line bg-surface text-ink-secondary transition-[width] duration-150 ease-out',
         collapsed ? 'w-[72px]' : 'w-[248px]',
@@ -104,7 +105,7 @@ export function Sidebar({ collapsed = false, onToggleCollapsed, drawer, onClose,
       <div className="px-3 pb-1 pt-3">
         <button
           type="button"
-          aria-label="Search"
+          aria-label={collapsed ? 'Search' : undefined}
           aria-keyshortcuts="Meta+K Control+K"
           title={collapsed ? `Search (${shortcut})` : undefined}
           onClick={openSearch}
@@ -118,7 +119,7 @@ export function Sidebar({ collapsed = false, onToggleCollapsed, drawer, onClose,
           {!collapsed && (
             <>
               <span className="flex-1 text-left">Search</span>
-              <kbd className="rounded border border-line bg-surface px-1.5 py-px font-mono text-[11px] text-ink-subtle">{shortcut}</kbd>
+              <kbd aria-hidden="true" className="rounded border border-line bg-surface px-1.5 py-px font-mono text-[11px] text-ink-subtle">{shortcut}</kbd>
             </>
           )}
         </button>
@@ -219,6 +220,6 @@ export function Sidebar({ collapsed = false, onToggleCollapsed, drawer, onClose,
           </button>
         )}
       </div>
-    </div>
+    </aside>
   );
 }

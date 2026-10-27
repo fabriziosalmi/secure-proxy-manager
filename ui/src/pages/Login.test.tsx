@@ -40,8 +40,10 @@ describe('Login', () => {
     const revealBtn = screen.getByRole('button', { name: 'Show password' })
     await user.click(revealBtn)
     expect(pwd).toHaveAttribute('type', 'text')
-    await user.click(screen.getByRole('button', { name: 'Hide password' }))
+    expect(revealBtn).toHaveAttribute('aria-pressed', 'true')
+    await user.click(screen.getByRole('button', { name: 'Show password' }))
     expect(pwd).toHaveAttribute('type', 'password')
+    expect(revealBtn).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('calls API and stores token on successful login', async () => {

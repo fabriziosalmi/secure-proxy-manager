@@ -75,16 +75,28 @@ export function formatEgressBreakdown(manual: number, providerEntries: number, p
   return `${manualPart} and ${providerPart}`;
 }
 
-export function useEgressSummary(): EgressSummary {
-  const manualQ = useQuery(egressTotalQuery);
-  const providersQ = useQuery(egressProvidersQuery);
+export interface EgressSummaryOptions {
+  enabled?: boolean;
+  manualQuery?: {
+    data: number | null | undefined;
+    isPending: boolean;
+    isError: boolean;
+  };
+}
 
-  const manualFailed = manualQ.isError || (!manualQ.isPending && manualQ.data === null);
+export function useEgressSummary(options?: EgressSummaryOptions): EgressSummary {
+  const enabled = options?.enabled ?? true;
+  const manualOverride = options?.manualQuery;
+  const manualQ = useQuery({ ...egressTotalQuery, enabled: enabled && !manualOverride });
+  const providersQ = useQuery({ ...egressProvidersQuery, enabled });
+
+  const m = manualOverride ?? manualQ;
+  const manualFailed = m.isError || (!m.isPending && m.data === null);
   const providersFailed = providersQ.isError;
-  const isPending = manualQ.isPending || providersQ.isPending;
+  const isPending = m.isPending || providersQ.isPending;
   const isError = manualFailed || providersFailed;
 
-  const manual = manualFailed ? null : manualQ.data;
+  const manual = manualFailed ? null : m.data;
   const enabledProviders = !providersFailed && providersQ.data ? providersQ.data.filter((p) => p.enabled) : undefined;
   const providerCount = providersFailed ? null : enabledProviders?.length;
   const providerEntries = providersFailed

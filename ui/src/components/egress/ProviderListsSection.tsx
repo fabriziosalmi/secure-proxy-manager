@@ -372,7 +372,7 @@ export function ProviderListsSection({ refreshHours, onChanged }: { refreshHours
         <div className="inline-flex items-center justify-end gap-1.5">
           <Button
             size="sm"
-            aria-label={`Refresh ${p.name} now`}
+            aria-label={`Refresh now: ${p.name}`}
             disabled={busyRow === p.name}
             onClick={() => { void refreshNow(p); }}
           >

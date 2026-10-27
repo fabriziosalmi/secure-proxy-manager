@@ -11,7 +11,7 @@
 #   NO_BUILD=1 tests/adversarial/run.sh # skip image rebuild (faster re-runs)
 set -uo pipefail
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 
 # Resolve a docker binary (Docker Desktop on macOS is not always on PATH).
 DOCKER="docker"
@@ -190,11 +190,11 @@ fi
 
 # Plane 1 — data-plane block-matrix (traffic through proxy + WAF/ICAP).
 echo "── plane 1: block-matrix (proxy + WAF/ICAP) ──"
-"${DC[@]}" run --rm attacker;               p1=$?
+"${DC[@]}" run --rm -T attacker;               p1=$?
 
 # Plane 2 — API attacker (direct to the backend auth boundary).
 echo "── plane 2: API attacker (backend auth boundary) ──"
-"${DC[@]}" run --rm --entrypoint /adversarial/api-attack.sh attacker; p2=$?
+"${DC[@]}" run --rm -T --entrypoint /adversarial/api-attack.sh attacker; p2=$?
 
 # Plane 3 — bench/latency (k6). Baseline (direct) is informational; the proxied
 # run through proxy + WAF carries the thresholds and is the gate.
@@ -206,10 +206,10 @@ echo "── plane 3: bench/latency (k6 through proxy + WAF) ──"
 # SUMMARY_PATH, not --summary-export: k6 v1 removed that flag. handleSummary in
 # bench.js writes the same flat shape to the path given here, so bench_report
 # above is unchanged.
-"${DC[@]}" run --rm --user 0 -e TARGET=http://mock-upstream/bench \
+"${DC[@]}" run --rm -T --user 0 -e TARGET=http://mock-upstream/bench \
   -e SUMMARY_PATH=/report/bench-baseline.json \
   k6 run --quiet /bench/bench.js >/dev/null 2>&1 || true
-"${DC[@]}" run --rm --user 0 -e TARGET=http://upstream.test/bench -e HTTP_PROXY=http://proxy:3128 \
+"${DC[@]}" run --rm -T --user 0 -e TARGET=http://upstream.test/bench -e HTTP_PROXY=http://proxy:3128 \
   -e SUMMARY_PATH=/report/bench-proxied.json \
   k6 run --quiet /bench/bench.js; p3=$?
 bench_report
@@ -218,7 +218,7 @@ bench_report
 # (WAF category toggles through the real backend→WAF push path). Runs before the
 # disruptive resilience plane, at the healthy default config.
 echo "── plane 5: config-matrix (settings flip the data plane) ──"
-"${DC[@]}" run --rm --entrypoint /adversarial/config-matrix.sh attacker; p5=$?
+"${DC[@]}" run --rm -T --entrypoint /adversarial/config-matrix.sh attacker; p5=$?
 
 # Plane 4 — resilience (fail-closed + self-heal). Runs last: it disrupts the
 # data plane by stopping/starting waf and dns.

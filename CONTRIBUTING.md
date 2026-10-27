@@ -123,6 +123,11 @@ Playwright suite (`docker-compose.test.yml`), Trivy and the licence inventory.
 `scripts/pre-commit-validate.sh` runs the TypeScript check, ESLint, `go vet`,
 the Go tests and the UI build in one go.
 
+`scripts/local-ci.sh [worktree] [log_dir]` runs all 26 required CI gates
+locally, in a linked worktree only (`git worktree add`), (including the Docker stack suites, Playwright and Trivy) and writes a
+summary table to `<log_dir>/results.txt`; see [tests/README.md](tests/README.md)
+for prerequisites and details.
+
 ## End-to-end tests
 
 `tests/e2e.sh` drives a running deployment; it does not start one. Run

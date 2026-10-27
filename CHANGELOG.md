@@ -39,6 +39,18 @@ for at least one minor release before disappearing.
 
 ### Added
 
+- `scripts/local-ci.sh` runs the 26 required CI gates locally, including the
+  Docker stack suites, Playwright and Trivy, and writes `results.txt` with
+  one line per gate. It runs only in a linked git worktree, since the suites
+  wipe `config/`, `data/` and `logs/` and rewrite `.env`
+  (`SPM_LOCAL_CI_ALLOW_RESET=1` accepts a disposable clone), and holds a lock
+  so two runs on one Docker host never collide; a lock left by a process that
+  no longer runs is taken over. See `tests/README.md`.
+- The global search (Cmd+K / Ctrl+K) also searches Allowed IPs, Allowed
+  domains and the egress allowlist, and a result opens its own tab of
+  Blacklists, or the Egress page, with the searched term in the filter. The
+  "Domain blacklist" line of Analytics opens the Blocked domains tab.
+
 - Managed egress destination provider lists (`GET /api/egress-providers`,
   `PUT /api/egress-providers/{name}`, `POST /api/egress-providers/url`,
   `DELETE /api/egress-providers/url/{id}`,
@@ -72,6 +84,18 @@ for at least one minor release before disappearing.
 
 ### Changed
 
+- The UI no longer shows the global "Failed to load data" toast on top of the
+  error each page already reports in place. Signing in reads
+  `GET /api/settings` once instead of twice, and the active Blacklists tab and
+  the Egress page take the list count from the page they already download
+  instead of a second `?limit=1` request. The sign-in screen, the setup wizard
+  and the global search load as separate chunks: the entry chunk goes from
+  76.3 kB to 35.7 kB (23.1 kB to 11.0 kB gzip). Unused CSS, components and the
+  `zod` dependency are gone.
+- The setup wizard writes only the settings it shows: it no longer sets
+  `enable_proxy_auth`, `ssl_bump_enabled`, `enable_time_restrictions` and
+  `enable_bandwidth_limits` to `false`.
+
 - **BREAKING** (`X-API-Version: 1`): **with `gdpr_mode` on, client endpoints
   and log filters operate on `/24` (IPv4) and `/64` (IPv6) networks instead of
   single addresses** (#459). `GET /api/clients/statistics` and `top_clients` in
@@ -95,6 +119,17 @@ for at least one minor release before disappearing.
   the first save; an install that saved 1000 keeps 1000.
 
 ### Fixed
+
+- Accessibility: the password reveal button sits inside the field and keeps
+  one name ("Show password") with a pressed state; the expanded Search button's
+  name matches its visible text; the sidebar is an `aside` landmark; the global
+  search is a combobox with a listbox, `aria-activedescendant` and a spoken
+  result count; tables keep a keyboard-focusable scroll box without repeating
+  the name of the section around them as a second region.
+- A settings refetch that fails after the first load (after a save, say) no
+  longer replaces the whole UI with the "backend did not answer" screen and
+  its unsaved drafts; a sign-in screen or wizard chunk that fails to load
+  shows an error instead of a blank page.
 
 - With `gdpr_mode` on, `GET /api/dashboard/summary` (`last_24h_clients` and
   `last_24h_internal_sources`) counts distinct `/24` and `/64` networks via

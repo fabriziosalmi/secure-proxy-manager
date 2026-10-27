@@ -1019,8 +1019,8 @@ test.describe('UI — Blacklists (Blocked IPs)', () => {
       const b = (await buttons.nth(i).boundingBox())!;
       expect(b.x + b.width, `Remove batch ${i} ends inside the card`).toBeLessThanOrEqual(box.x + box.width);
     }
-    const table = card.getByRole('region', { name: 'Sources of Blocked IPs' });
-    expect(await table.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+    const table = card.getByRole('table', { name: 'Sources of Blocked IPs' });
+    expect(await table.evaluate((el) => (el.parentElement ?? el).scrollWidth - (el.parentElement ?? el).clientWidth)).toBe(0);
   });
 
   test('fits a 390 px wide screen without horizontal scrolling', async ({ page, request }) => {

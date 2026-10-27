@@ -6,7 +6,7 @@ import css from './index.css?raw'
 // so a token edited into an unreadable pair fails here before anyone sees it.
 
 function block(selector: string): Record<string, string> {
-  const start = css.indexOf(`${selector} {\n    --background`)
+  const start = css.indexOf(`${selector} {\n`)
   if (start < 0) throw new Error(`no ${selector} token block in index.css`)
   const body = css.slice(start, css.indexOf('}', start))
   const out: Record<string, string> = {}

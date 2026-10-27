@@ -27,14 +27,16 @@ function table(props: Partial<React.ComponentProps<typeof DataTable<Client>>> = 
 }
 
 describe('DataTable', () => {
-  it('renders a named table inside a focusable scroll region', async () => {
+  it('renders a named table inside a focusable scroll box that is a group, not a landmark region', async () => {
     const { container } = table()
     const t = screen.getByRole('table', { name: 'Clients' })
     expect(within(t).getAllByRole('row')).toHaveLength(3)
     expect(within(t).getByText('1,180')).toBeInTheDocument()
-    const region = screen.getByRole('region', { name: 'Clients' })
-    expect(region).toHaveAttribute('tabindex', '0')
-    expect(region.className).toMatch(/overflow-x-auto/)
+    const scrollBox = screen.getByRole('group', { name: 'Clients' })
+    expect(scrollBox).toBe(t.parentElement)
+    expect(scrollBox).toHaveAttribute('tabindex', '0')
+    expect(scrollBox.className).toMatch(/overflow-x-auto/)
+    expect(screen.queryByRole('region', { name: 'Clients' })).toBeNull()
     // The actions header stays for screen readers only.
     expect(screen.getByRole('columnheader', { name: 'Actions' }).querySelector('.sr-only')).not.toBeNull()
     await expectNoAxeViolations(container)
@@ -122,8 +124,8 @@ describe('DataTable', () => {
 
   it('makes the header sticky inside a bounded scroll box when asked', () => {
     table({ stickyHeader: true, maxHeight: '320px' })
-    const region = screen.getByRole('region', { name: 'Clients' })
-    expect(region).toHaveStyle({ maxHeight: '320px' })
+    const scrollBox = screen.getByRole('table', { name: 'Clients' }).parentElement as HTMLElement
+    expect(scrollBox).toHaveStyle({ maxHeight: '320px' })
     for (const th of screen.getAllByRole('columnheader')) expect(th.className).toMatch(/sticky top-0/)
   })
 

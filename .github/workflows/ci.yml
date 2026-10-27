@@ -209,6 +209,8 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
       - name: Lint the shell that builds the data plane
         run: shellcheck --severity=warning proxy/*.sh deploy/*.sh scripts/*.sh tests/*.sh tests/shell/*.sh
+      - name: Local CI lock, worktree guard and non-interactive suites
+        run: bash tests/shell/local_ci_lock_test.sh
       # The /config filenames are a contract across three languages and nothing
       # compared the copies: rename one on the Go side and both proxy-side
       # copiers keep looking for the old name, silently, in the enforcement path

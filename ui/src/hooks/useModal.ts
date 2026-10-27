@@ -15,6 +15,11 @@ const FOCUSABLE =
 export function useModal<T extends HTMLElement>(isOpen: boolean, onClose?: () => void) {
   const ref = useRef<T>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -35,9 +40,9 @@ export function useModal<T extends HTMLElement>(isOpen: boolean, onClose?: () =>
     // container), rather than relying on the event bubbling up from inside.
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (onClose) {
+        if (onCloseRef.current) {
           e.preventDefault();
-          onClose();
+          onCloseRef.current();
         }
         return;
       }
@@ -63,7 +68,7 @@ export function useModal<T extends HTMLElement>(isOpen: boolean, onClose?: () =>
       document.removeEventListener('keydown', onKeyDown);
       restoreRef.current?.focus?.();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   return ref;
 }

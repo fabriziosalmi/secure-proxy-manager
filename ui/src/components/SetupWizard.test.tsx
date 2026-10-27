@@ -82,7 +82,6 @@ describe('SetupWizard', () => {
         enable_safesearch: 'false',
         enable_youtube_restricted: 'false',
         enable_content_filtering: 'false',
-        enable_bandwidth_limits: 'false',
         aggressive_caching_enabled: 'false',
       },
     },
@@ -98,7 +97,6 @@ describe('SetupWizard', () => {
         enable_safesearch: 'false',
         enable_youtube_restricted: 'false',
         enable_content_filtering: 'false',
-        enable_bandwidth_limits: 'false',
         aggressive_caching_enabled: 'false',
       },
     },
@@ -115,7 +113,6 @@ describe('SetupWizard', () => {
         enable_youtube_restricted: 'false',
         enable_content_filtering: 'true',
         blocked_file_types: 'exe,bat,cmd,dll,msi,scr,ps1,vbs,sh,py,rb,zip,7z,rar,tar,iso',
-        enable_bandwidth_limits: 'false',
         aggressive_caching_enabled: 'false',
       },
     },
@@ -132,7 +129,6 @@ describe('SetupWizard', () => {
         enable_youtube_restricted: 'true',
         enable_content_filtering: 'true',
         blocked_file_types: 'exe,bat,cmd,dll,msi,scr,ps1,vbs',
-        enable_bandwidth_limits: 'false',
         aggressive_caching_enabled: 'false',
       },
     },
@@ -149,7 +145,6 @@ describe('SetupWizard', () => {
         enable_youtube_restricted: 'true',
         enable_content_filtering: 'true',
         blocked_file_types: 'exe,bat,cmd,dll,msi,scr,ps1,vbs',
-        enable_bandwidth_limits: 'false',
         aggressive_caching_enabled: 'false',
       },
     },
@@ -166,7 +161,6 @@ describe('SetupWizard', () => {
         enable_youtube_restricted: 'true',
         enable_content_filtering: 'true',
         blocked_file_types: 'exe,bat,cmd,dll,msi,scr,ps1,vbs,sh,py,rb,zip,7z,rar,tar,iso',
-        enable_bandwidth_limits: 'false',
         aggressive_caching_enabled: 'false',
       },
     },
@@ -183,7 +177,6 @@ describe('SetupWizard', () => {
         enable_youtube_restricted: 'false',
         enable_content_filtering: 'true',
         blocked_file_types: 'exe,bat,cmd,dll,msi,scr,ps1,vbs',
-        enable_bandwidth_limits: 'false',
         aggressive_caching_enabled: 'false',
       },
     },
@@ -200,7 +193,6 @@ describe('SetupWizard', () => {
         enable_youtube_restricted: 'false',
         enable_content_filtering: 'true',
         blocked_file_types: 'exe,bat,cmd,dll,msi,scr,ps1,vbs',
-        enable_bandwidth_limits: 'false',
         aggressive_caching_enabled: 'false',
       },
     },
@@ -217,7 +209,6 @@ describe('SetupWizard', () => {
         enable_youtube_restricted: 'false',
         enable_content_filtering: 'true',
         blocked_file_types: 'exe,bat,cmd,dll,msi,scr,ps1,vbs,sh,py,rb,zip,7z,rar,tar,iso',
-        enable_bandwidth_limits: 'false',
         aggressive_caching_enabled: 'false',
       },
     },
@@ -236,7 +227,15 @@ describe('SetupWizard', () => {
       expect(settingsCall).toBeDefined()
       const settings = settingsCall![1] as Record<string, string>
       expect(settings).toMatchObject({ ...expected, wizard_completed: 'true' })
-      for (const dead of ['block_direct_ip', 'waf_block_threshold', 'enable_offline_mode']) {
+      for (const dead of [
+        'block_direct_ip',
+        'waf_block_threshold',
+        'enable_offline_mode',
+        'enable_proxy_auth',
+        'ssl_bump_enabled',
+        'enable_time_restrictions',
+        'enable_bandwidth_limits',
+      ]) {
         expect(settings).not.toHaveProperty(dead)
       }
     })

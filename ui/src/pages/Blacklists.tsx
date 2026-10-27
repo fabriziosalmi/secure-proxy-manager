@@ -112,21 +112,29 @@ function ListTabs({ active, counts, onSelect }: {
   );
 }
 
+// The count is read from meta (writeList); the top-level total beside it is
+// deprecated and goes away in the next contract version.
+function countQuery(l: ListDef) {
+  return {
+    queryKey: ['lists', l.path, 'count'],
+    queryFn: () => api.get(`${l.path}?limit=1`).then((r) => (r.data?.meta?.total ?? null) as number | null),
+    staleTime: 60_000,
+  };
+}
+
 export function Blacklists() {
   const [params, setParams] = useSearchParams();
   const list = listByKey(params.get('tab'));
+  const initialSearch = params.get('q') ?? params.get('search') ?? '';
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirm();
   const [addOpen, setAddOpen] = useState(false);
   const [method, setMethod] = useState<AddMethod>('single');
-
+  // The active tab is not fetched here: ListBody writes its count from
+  // meta.total of the unfiltered page it downloads anyway, and fetches it
+  // only while a search filters that page (see ListBody).
   const counts = useQueries({
-    queries: LISTS.map((l) => ({
-      queryKey: ['lists', l.path, 'count'],
-      // The count is read from meta (writeList); the top-level total beside
-      // it is deprecated and goes away in the next contract version.
-      queryFn: () => api.get(`${l.path}?limit=1`).then((r) => (r.data?.meta?.total ?? null) as number | null),
-    })),
+    queries: LISTS.map((l) => ({ ...countQuery(l), enabled: l.key !== list.key })),
   });
   const total = counts[LISTS.indexOf(list)]?.data ?? undefined;
 
@@ -200,21 +208,31 @@ export function Blacklists() {
           </Notice>
         )}
 
-        <ListBody key={list.key} list={list} total={total} enforcement={enforcement} confirm={confirm} onChanged={refresh} />
+        <ListBody
+          key={`${list.key}:${initialSearch}`}
+          list={list}
+          initialSearch={initialSearch}
+          total={total}
+          enforcement={enforcement}
+          confirm={confirm}
+          onChanged={refresh}
+        />
       </div>
       {dialog}
     </div>
   );
 }
 
-function ListBody({ list, total, enforcement, confirm, onChanged }: {
+function ListBody({ list, initialSearch = '', total, enforcement, confirm, onChanged }: {
   list: ListDef;
+  initialSearch?: string;
   total?: number | null;
   enforcement: { data?: Enforcement | null; isPending: boolean; isError: boolean };
   confirm: ReturnType<typeof useConfirm>['confirm'];
   onChanged: () => void;
 }) {
-  const [search, setSearch] = useState('');
+  const qc = useQueryClient();
+  const [search, setSearch] = useState(initialSearch);
   const query = useDebounced(search.trim(), 300);
   const [offset, setOffset] = useState(0);
   const onSearch = (v: string) => {
@@ -226,9 +244,17 @@ function ListBody({ list, total, enforcement, confirm, onChanged }: {
     queryKey: ['lists', list.path, 'entries', offset, query],
     queryFn: () =>
       api.get(`${list.path}?limit=${PAGE_SIZE}&offset=${offset}&search=${encodeURIComponent(query)}`)
-        .then((r) => ({ rows: (r.data?.data ?? []) as ListEntry[], total: (r.data?.meta?.total ?? 0) as number })),
+        .then((r) => {
+          const total = typeof r.data?.meta?.total === 'number' ? (r.data.meta.total as number) : null;
+          // Unfiltered, meta.total is the whole list: it is the tab's count.
+          if (!query) qc.setQueryData(countQuery(list).queryKey, total);
+          return { rows: (r.data?.data ?? []) as ListEntry[], total: total ?? 0 };
+        }),
     placeholderData: keepPreviousData,
   });
+  // Filtered (a search, or a link from the global search with ?q=), the page
+  // counts only its matches, so the whole list's count is read on its own.
+  useQuery({ ...countQuery(list), enabled: query !== '' });
   const sources = useQuery<ListSource[] | null>({
     queryKey: ['lists', list.path, 'sources'],
     queryFn: () => getData<ListSource[]>(`${list.path}/sources`),

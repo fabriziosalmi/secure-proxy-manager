@@ -512,4 +512,38 @@ describe('Blacklists', () => {
     fireEvent.click(within(screen.getByRole('group', { name: 'How to add' })).getByRole('button', { name: 'Popular lists' }))
     await expectNoAxeViolations(container)
   })
+
+  it('makes 6 GET requests on /blacklists instead of 7 (reusing meta.total of the active tab instead of ?limit=1) and pre-fills the search filter from ?q=', async () => {
+    const { unmount } = renderWithProviders(<Blacklists />)
+    await screen.findByText('10.0.0.1')
+    const urls = vi.mocked(api.get).mock.calls.map(([u]) => String(u))
+    expect(urls).not.toContain('ip-blacklist?limit=1')
+    expect(urls).toHaveLength(6)
+    await waitFor(() => expect(within(screen.getByRole('tab', { name: /^Blocked IPs/ })).getByText('5')).toBeInTheDocument())
+    unmount()
+
+    vi.mocked(api.get).mockClear()
+    go('?tab=blocked-domains&q=ads.example')
+    renderWithProviders(<Blacklists />)
+    const searchbox = await screen.findByRole('searchbox', { name: 'Search Blocked domains' })
+    expect(searchbox).toHaveValue('ads.example')
+    expect(screen.getByRole('tab', { name: /^Blocked domains/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('opened from search with ?q=, counts the whole active list in its tab and in the danger zone', async () => {
+    counts['ip-blacklist'] = 50772
+    vi.mocked(api.get).mockImplementation(((url: string) => {
+      if (/^ip-blacklist\?.*search=10\.0\.0\.1/.test(url)) {
+        getCalls.push(url)
+        return Promise.resolve({ data: listBody([ipEntries[0]], 1) })
+      }
+      return routeGet(url)
+    }) as never)
+    go('?tab=blocked-ips&q=10.0.0.1')
+    renderWithProviders(<Blacklists />)
+    expect(await screen.findByRole('searchbox', { name: 'Search Blocked IPs' })).toHaveValue('10.0.0.1')
+    await waitFor(() => expect(screen.getByRole('tab', { name: /^Blocked IPs/ })).toHaveTextContent('50,772'))
+    const zone = screen.getByRole('heading', { name: 'Remove every entry on this list' }).closest('section')!
+    await within(zone).findByText(/^50,772 blocked IPs and networks\./)
+  })
 })

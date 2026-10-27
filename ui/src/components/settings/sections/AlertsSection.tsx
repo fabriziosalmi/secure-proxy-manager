@@ -158,7 +158,7 @@ export function AlertsSection({ form, unsaved }: { form: SectionForm; unsaved: n
 
   return (
     <div className="flex flex-col gap-4">
-      <Section level={3} title="Alerts">
+      <Section level={3} title="Events and level">
         <ToggleRow
           form={form}
           setting="enable_notifications"

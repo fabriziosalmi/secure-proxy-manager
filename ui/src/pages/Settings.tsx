@@ -84,8 +84,12 @@ function SettingsPage() {
   });
   const rows = settings.data;
   const status = useQuery({ ...statusQuery, staleTime: 10_000 });
-  const egress = useEgressSummary();
   const parsed = useMemo(() => parseSettings(rows), [rows]);
+  const needEgress =
+    section?.id === 'filtering' ||
+    parsed.values.egress_default_deny === 'true' ||
+    drafts.edits.filtering?.egress_default_deny === 'true';
+  const egress = useEgressSummary({ enabled: needEgress });
   const [saving, setSaving] = useState<SectionId | null>(null);
   // Synchronous latch against a double click posting twice.
   const savingRef = useRef(false);

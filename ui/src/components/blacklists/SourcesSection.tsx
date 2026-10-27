@@ -89,8 +89,7 @@ export function SourcesSection({ list, sources, loading, error, onRetry, onRemov
       cell: (s) => (
         <Button size="sm" aria-label={batchLabel(s)} onClick={() => onRemove(s)}>
           {/* "Remove" on a phone leaves the source name room; the name of the button is the same. */}
-          <span className="sm:hidden">Remove</span>
-          <span className="hidden sm:inline">Remove batch</span>
+          Remove<span className="hidden sm:inline"> batch</span>
         </Button>
       ),
     },

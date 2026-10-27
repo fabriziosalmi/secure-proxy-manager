@@ -66,7 +66,7 @@ EOF
 echo "── preparing writable runtime dirs ──"
 mkdir -p config config/dnsmasq.d data logs
 chmod -R a+rwX config data 2>/dev/null || true
-sudo chown -R 65534:65534 logs 2>/dev/null || chown -R 65534:65534 logs 2>/dev/null || true
+sudo -n chown -R 65534:65534 logs 2>/dev/null || chown -R 65534:65534 logs 2>/dev/null || true
 chmod 0755 logs 2>/dev/null || true
 
 echo "── docker compose up -d --build ──"
