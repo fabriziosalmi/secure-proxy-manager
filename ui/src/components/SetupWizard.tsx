@@ -72,13 +72,9 @@ function mapToPreset(env: Environment, strict: StrictLevel): Record<string, stri
     waf_h_pii: 'false',
     waf_h_sharding: 'false',
     waf_h_ghosting: 'false',
-    ssl_bump_enabled: 'false',
     enable_safesearch: 'false',
     enable_youtube_restricted: 'false',
     enable_content_filtering: 'false',
-    enable_bandwidth_limits: 'false',
-    enable_time_restrictions: 'false',
-    enable_proxy_auth: 'false',
     aggressive_caching_enabled: 'false',
   };
 

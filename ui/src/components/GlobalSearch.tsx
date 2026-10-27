@@ -1,16 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router';
-import { Search, ArrowRight, Ban, Globe, List, Settings, X } from 'lucide-react';
+import { Search, ArrowRight, Ban, CheckCircle, Globe, List, Settings, Shield, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { useModal } from '../hooks/useModal';
-import type { IpEntry, DomainEntry, LogEntry } from '../types';
+import type { IpEntry, DomainEntry, EgressEntry, LogEntry } from '../types';
 import { SECTIONS as SETTINGS_SECTIONS, sectionPath } from '../lib/settingsMeta';
 import { NAV_GROUPS } from './layout/nav';
 import { cn } from '../lib/utils';
 
 interface SearchResult {
-  type: 'page' | 'ip' | 'domain' | 'log' | 'setting';
+  type: 'page' | 'ip' | 'domain' | 'allowed-ip' | 'allowed-domain' | 'egress' | 'log' | 'setting';
   label: string;
   description?: string;
   action: () => void;
@@ -33,7 +33,14 @@ const KEYWORDS: Record<string, string[]> = {
 const PAGES = NAV_GROUPS.flatMap((g) => g.items).map((it) => ({ ...it, keywords: KEYWORDS[it.to] ?? [] }));
 
 const TYPE_LABEL: Record<SearchResult['type'], string> = {
-  page: 'Page', setting: 'Setting', ip: 'Blocked IP', domain: 'Blocked domain', log: 'Request',
+  page: 'Page',
+  setting: 'Setting',
+  ip: 'Blocked IP',
+  domain: 'Blocked domain',
+  'allowed-ip': 'Allowed IP',
+  'allowed-domain': 'Allowed domain',
+  egress: 'Egress allowlist',
+  log: 'Request',
 };
 
 function Kbd({ children }: { children: React.ReactNode }) {
@@ -108,19 +115,23 @@ export function GlobalSearch() {
       }
     });
 
-    // API search (IP, domain, logs)
+    // API search (IP, domain, whitelists, egress allowlist, logs)
     if (q.length >= 2) {
       setLoading(true);
       try {
-        const [ipRes, domRes, logRes] = await Promise.allSettled([
+        const enc = encodeURIComponent(q);
+        const [ipRes, domRes, ipAllowRes, domAllowRes, egressRes, logRes] = await Promise.allSettled([
           // The lists page with limit and offset; page and page_size were
           // ignored, so up to 100 entries of each list came back.
-          api.get(`ip-blacklist?search=${encodeURIComponent(q)}&limit=5`),
-          api.get(`domain-blacklist?search=${encodeURIComponent(q)}&limit=5`),
+          api.get(`ip-blacklist?search=${enc}&limit=5`),
+          api.get(`domain-blacklist?search=${enc}&limit=5`),
+          api.get(`ip-whitelist?search=${enc}&limit=5`),
+          api.get(`domain-whitelist?search=${enc}&limit=5`),
+          api.get(`egress-allowlist?search=${enc}&limit=5`),
           // q is the access log's destination search. "search" was never a
           // parameter of /api/logs: it was ignored and the five newest rows
           // came back as matches for whatever was typed.
-          api.get(`logs?q=${encodeURIComponent(q)}&limit=5&sort=id&order=desc`),
+          api.get(`logs?q=${enc}&limit=5&sort=id&order=desc`),
         ]);
 
         if (ipRes.status === 'fulfilled') {
@@ -129,7 +140,7 @@ export function GlobalSearch() {
             items.push({
               type: 'ip', label: ip.ip,
               description: ip.description || 'On the blocked IPs',
-              action: () => { navigate('/blacklists'); setOpen(false); },
+              action: () => { navigate(`/blacklists?tab=blocked-ips&q=${enc}`); setOpen(false); },
             });
           });
         }
@@ -140,7 +151,40 @@ export function GlobalSearch() {
             items.push({
               type: 'domain', label: d.domain,
               description: d.description || 'On the blocked domains',
-              action: () => { navigate('/blacklists'); setOpen(false); },
+              action: () => { navigate(`/blacklists?tab=blocked-domains&q=${enc}`); setOpen(false); },
+            });
+          });
+        }
+
+        if (ipAllowRes.status === 'fulfilled') {
+          const ips = ipAllowRes.value.data?.data || [];
+          ips.forEach((ip: IpEntry) => {
+            items.push({
+              type: 'allowed-ip', label: ip.ip,
+              description: ip.description || 'On the allowed IPs',
+              action: () => { navigate(`/blacklists?tab=allowed-ips&q=${enc}`); setOpen(false); },
+            });
+          });
+        }
+
+        if (domAllowRes.status === 'fulfilled') {
+          const doms = domAllowRes.value.data?.data || [];
+          doms.forEach((d: DomainEntry) => {
+            items.push({
+              type: 'allowed-domain', label: d.domain,
+              description: d.description || 'On the allowed domains',
+              action: () => { navigate(`/blacklists?tab=allowed-domains&q=${enc}`); setOpen(false); },
+            });
+          });
+        }
+
+        if (egressRes.status === 'fulfilled') {
+          const egress = egressRes.value.data?.data || [];
+          egress.forEach((e: EgressEntry) => {
+            items.push({
+              type: 'egress', label: e.entry,
+              description: e.description || 'On the egress allowlist',
+              action: () => { navigate(`/egress?q=${enc}`); setOpen(false); },
             });
           });
         }
@@ -151,7 +195,7 @@ export function GlobalSearch() {
             items.push({
               type: 'log', label: `${l.method || '-'} ${l.destination}`,
               description: `${l.source_ip}, ${l.status}`,
-              action: () => { navigate(`/logs?q=${encodeURIComponent(q)}`); setOpen(false); },
+              action: () => { navigate(`/logs?q=${enc}`); setOpen(false); },
             });
           });
         }
@@ -184,6 +228,9 @@ export function GlobalSearch() {
       case 'page': return <ArrowRight className={cls} aria-hidden="true" />;
       case 'ip': return <Ban className={cls} aria-hidden="true" />;
       case 'domain': return <Globe className={cls} aria-hidden="true" />;
+      case 'allowed-ip':
+      case 'allowed-domain': return <CheckCircle className={cls} aria-hidden="true" />;
+      case 'egress': return <Shield className={cls} aria-hidden="true" />;
       case 'log': return <List className={cls} aria-hidden="true" />;
       case 'setting': return <Settings className={cls} aria-hidden="true" />;
     }

@@ -1,36 +1,42 @@
 import { Component, Suspense, lazy, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
-import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, QueryCache, useQuery } from '@tanstack/react-query';
 import toast, { Toaster } from 'react-hot-toast';
-import axios from 'axios';
-
-const queryClient = new QueryClient({
-  queryCache: new QueryCache({
-    onError: (error) => {
-      // Show toast for query errors (API down, 500, etc.), but not for 401 (handled by interceptor)
-      const status = (error as { response?: { status?: number } })?.response?.status;
-      if (status !== 401) {
-        toast.error('Failed to load data. Check API connection.', { id: 'query-error', duration: 3000 });
-      }
-    },
-  }),
-  defaultOptions: {
-    queries: {
-      staleTime: 60_000,
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
 import { Layout } from './components/layout/Layout';
 import { GlobalSearch } from './components/GlobalSearch';
 import { Login } from './pages/Login';
 import { SetupWizard } from './components/SetupWizard';
 import { Button } from './components/ui/Button';
 import { Notice } from './components/ui/Notice';
-import { api, getErrorMessage, isTokenExpired, signOut } from './lib/api';
+import { getErrorMessage, isTokenExpired, signOut } from './lib/api';
+import { settingsQuery } from './lib/queries';
 import { ThemeProvider } from './components/ThemeProvider';
 import { SettingsDraftsProvider } from './components/settings/SettingsDrafts';
+
+function createAppQueryClient() {
+  return new QueryClient({
+    queryCache: new QueryCache({
+      onError: (error, query) => {
+        // Pages render their own inline error states; only show a global toast
+        // when a query explicitly opts in via meta.toastOnError.
+        if (!query.meta?.toastOnError) return;
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        if (status === 401) return;
+        const msg = typeof status === 'number'
+          ? getErrorMessage(error, `Request failed (${status}).`)
+          : 'Could not reach the backend.';
+        toast.error(msg, { id: 'query-error', duration: 3000 });
+      },
+    }),
+    defaultOptions: {
+      queries: {
+        staleTime: 60_000,
+        retry: 1,
+        refetchOnWindowFocus: false,
+      },
+    },
+  });
+}
 
 // Lazy-loaded page components for code splitting
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -89,12 +95,11 @@ function NotFound() {
   );
 }
 
-function AppContent() {
+function AppContent({ queryClient }: { queryClient: QueryClient }) {
   const handleLogout = async () => {
     await signOut();
     setIsAuthenticated(false);
-    setWizardDone(null);
-    setWizardError(null);
+    setWizardCompletedOverride(false);
     queryClient.clear();
   };
 
@@ -110,9 +115,7 @@ function AppContent() {
     return true;
   });
 
-  const [wizardDone, setWizardDone] = useState<boolean | null>(null);
-  const [wizardError, setWizardError] = useState<string | null>(null);
-  const [wizardRetry, setWizardRetry] = useState(0);
+  const [wizardCompletedOverride, setWizardCompletedOverride] = useState(false);
 
   // Listen for session expiry warning from API interceptor
   useEffect(() => {
@@ -123,33 +126,25 @@ function AppContent() {
     return () => window.removeEventListener('session-expiring', handler);
   }, []);
 
-  // Check wizard status after login.
-  // AbortController guards against the StrictMode double-effect and against
-  // a re-render mid-flight (logout → login again) where a stale settings
-  // response could overwrite the fresh one (last-wins).
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    const ctrl = new AbortController();
-    api.get('settings', { signal: ctrl.signal }).then(res => {
-      const settings = res.data?.data || [];
-      const wizardSetting = Array.isArray(settings)
-        ? settings.find((s: { setting_name: string }) => s.setting_name === 'wizard_completed')
-        : null;
-      setWizardError(null);
-      setWizardDone(wizardSetting?.setting_value === 'true');
-    }).catch((err) => {
-      // Aborts are expected on cleanup; don't treat them as failures.
-      if (axios.isCancel?.(err) || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
-      setWizardError(getErrorMessage(err, 'The backend did not answer. Check that the backend container is running.'));
-    });
-    return () => ctrl.abort();
-  }, [isAuthenticated, wizardRetry]);
+  // Read wizard_completed through settingsQuery so the page that mounts next
+  // reuses the cached GET /api/settings response instead of fetching it twice.
+  const settings = useQuery({
+    ...settingsQuery,
+    enabled: isAuthenticated,
+    retry: false,
+  });
 
   if (!isAuthenticated) {
     return <Login onLogin={() => setIsAuthenticated(true)} />;
   }
 
-  if (wizardError !== null) {
+  // Only a first load that failed blocks the app: a later refetch that fails
+  // (after a save, say) keeps the cached rows, the page and its drafts.
+  if (settings.isError && settings.data === undefined && !wizardCompletedOverride) {
+    const wizardError = getErrorMessage(
+      settings.error,
+      'The backend did not answer. Check that the backend container is running.',
+    );
     return (
       <main className="flex items-center justify-center min-h-screen bg-ground text-ink px-4">
         <div className="w-full max-w-md">
@@ -161,9 +156,7 @@ function AppContent() {
                 variant="secondary"
                 size="sm"
                 onClick={() => {
-                  setWizardError(null);
-                  setWizardDone(null);
-                  setWizardRetry((n) => n + 1);
+                  void settings.refetch();
                 }}
               >
                 Try again
@@ -178,7 +171,7 @@ function AppContent() {
   }
 
   // Loading: checking wizard status
-  if (wizardDone === null) {
+  if (settings.isPending && !wizardCompletedOverride) {
     return (
       <div className="flex items-center justify-center h-screen bg-ground" role="status" aria-live="polite">
         <div className="animate-spin w-6 h-6 border-2 border-accent border-t-transparent rounded-full" aria-hidden="true" />
@@ -187,9 +180,14 @@ function AppContent() {
     );
   }
 
+  const wizardSetting = Array.isArray(settings.data)
+    ? settings.data.find((s) => s.setting_name === 'wizard_completed')
+    : null;
+  const wizardDone = wizardCompletedOverride || wizardSetting?.setting_value === 'true';
+
   // Show wizard if not completed
-  if (wizardDone === false) {
-    return <SetupWizard onComplete={() => setWizardDone(true)} />;
+  if (!wizardDone) {
+    return <SetupWizard onComplete={() => setWizardCompletedOverride(true)} />;
   }
 
   return (
@@ -224,10 +222,11 @@ function AppContent() {
 }
 
 function App() {
+  const [queryClient] = useState(createAppQueryClient);
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <AppContent />
+        <AppContent queryClient={queryClient} />
         <Toaster
           position="bottom-right"
           toastOptions={{

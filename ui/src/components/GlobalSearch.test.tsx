@@ -115,13 +115,48 @@ describe('GlobalSearch', () => {
     renderWithProviders(<GlobalSearch />)
     await user.keyboard('{Meta>}k{/Meta}')
     await user.type(await screen.findByPlaceholderText(/search/i), 'goo')
-    await waitFor(() => expect(vi.mocked(api.get).mock.calls.some(([u]) => String(u).startsWith('domain-blacklist?'))).toBe(true))
-    for (const list of ['ip-blacklist', 'domain-blacklist']) {
+    await waitFor(() => expect(vi.mocked(api.get).mock.calls.some(([u]) => String(u).startsWith('egress-allowlist?'))).toBe(true))
+    for (const list of ['ip-blacklist', 'domain-blacklist', 'ip-whitelist', 'domain-whitelist', 'egress-allowlist']) {
       const call = String(vi.mocked(api.get).mock.calls.map(([u]) => u).filter((u) => String(u).startsWith(`${list}?`)).at(-1))
       const p = new URLSearchParams(call.split('?')[1])
       expect(p.get('limit'), list).toBe('5')
       expect(p.has('page_size'), list).toBe(false)
     }
+  })
+
+  it('opens the matching Blacklists tab or Egress allowlist with the searched term pre-filled in ?q=', async () => {
+    const { api } = await import('../lib/api')
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      const u = String(url)
+      if (u.startsWith('ip-blacklist?')) return Promise.resolve({ data: { data: [{ ip: '203.0.113.9', description: 'Bad host' }] } })
+      if (u.startsWith('domain-blacklist?')) return Promise.resolve({ data: { data: [{ domain: 'ads.example.org', description: 'Ad tracker' }] } })
+      if (u.startsWith('domain-whitelist?')) return Promise.resolve({ data: { data: [{ domain: 'ok.example.org', description: 'Trusted' }] } })
+      if (u.startsWith('egress-allowlist?')) return Promise.resolve({ data: { data: [{ entry: 'api.example.org', type: 'domain', description: 'Partner' }] } })
+      return Promise.resolve({ data: { data: [] } })
+    })
+    const user = userEvent.setup()
+    window.history.pushState({}, '', '/')
+    renderWithProviders(<GlobalSearch />)
+
+    await user.keyboard('{Meta>}k{/Meta}')
+    await user.type(await screen.findByPlaceholderText(/search/i), 'example')
+    await user.click(await screen.findByText('ads.example.org'))
+    expect(window.location.pathname + window.location.search).toBe('/blacklists?tab=blocked-domains&q=example')
+
+    await user.keyboard('{Meta>}k{/Meta}')
+    await user.type(await screen.findByPlaceholderText(/search/i), '203.0')
+    await user.click(await screen.findByText('203.0.113.9'))
+    expect(window.location.pathname + window.location.search).toBe('/blacklists?tab=blocked-ips&q=203.0')
+
+    await user.keyboard('{Meta>}k{/Meta}')
+    await user.type(await screen.findByPlaceholderText(/search/i), 'ok.ex')
+    await user.click(await screen.findByText('ok.example.org'))
+    expect(window.location.pathname + window.location.search).toBe('/blacklists?tab=allowed-domains&q=ok.ex')
+
+    await user.keyboard('{Meta>}k{/Meta}')
+    await user.type(await screen.findByPlaceholderText(/search/i), 'api.ex')
+    await user.click(await screen.findByText('api.example.org'))
+    expect(window.location.pathname + window.location.search).toBe('/egress?q=api.ex')
   })
 
   it('exposes a keyboard combobox with aria-activedescendant, polite count announcements, and focus restoration on Escape', async () => {

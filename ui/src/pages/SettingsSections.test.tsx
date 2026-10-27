@@ -422,5 +422,13 @@ describe('Settings sections', () => {
       expect(await screen.findByText('Pi-hole @ 192.168.1.2')).toBeInTheDocument()
       expect(screen.getByText('DNS_UPSTREAM_1=192.168.1.2')).toBeInTheDocument()
     })
+
+    it('makes 2 GET requests on /settings/access instead of 4 when egress default deny is off', async () => {
+      renderAt('/settings/access')
+      await screen.findByRole('switch', { name: 'Require proxy login' })
+      const getUrls = vi.mocked(api.get).mock.calls.map(([u]) => String(u))
+      expect(getUrls).toEqual(expect.arrayContaining(['settings', 'status']))
+      expect(getUrls).toHaveLength(2)
+    })
   })
 })

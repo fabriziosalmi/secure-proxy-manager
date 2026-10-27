@@ -474,6 +474,33 @@ describe('EgressAllowlist', () => {
     expect(await screen.findByText('Default deny is on, and the size of this list could not be read')).toBeInTheDocument()
     expect(screen.queryByText(/this list is empty/)).not.toBeInTheDocument()
   })
+
+  it('makes 3 GET requests on /egress instead of 4 (reusing meta.total of the entries list instead of ?limit=1)', async () => {
+    renderWithProviders(<EgressAllowlist />)
+    await screen.findByText('acme-v02.api.letsencrypt.org')
+    expect(getCalls.map((c) => c.url)).toEqual(expect.arrayContaining(['settings', 'egress-providers', 'egress-allowlist']))
+    expect(getCalls.filter((c) => c.url === 'egress-allowlist')).toHaveLength(1)
+    expect(getCalls).toHaveLength(3)
+  })
+
+  it('opened from search with ?q=, says how many destinations the whole allowlist holds, not how many match', async () => {
+    deny = 'true'
+    vi.mocked(api.get).mockImplementation(((url: string, config?: { params?: Record<string, unknown> }) => {
+      if (url === 'egress-allowlist' && config?.params?.search) {
+        getCalls.push({ url, params: config.params })
+        return Promise.resolve({ data: listBody([rows[0]], 1) })
+      }
+      return routeGet(url, config)
+    }) as never)
+    window.history.replaceState(null, '', '/egress?q=acme')
+    try {
+      renderWithProviders(<EgressAllowlist />)
+      expect(await screen.findByRole('searchbox')).toHaveValue('acme')
+      expect(await screen.findByText('Default deny is on: clients reach only these 3 destinations')).toBeInTheDocument()
+    } finally {
+      window.history.replaceState(null, '', '/')
+    }
+  })
 })
 
 describe('checkDestination', () => {

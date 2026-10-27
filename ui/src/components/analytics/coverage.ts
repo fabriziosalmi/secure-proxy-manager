@@ -23,13 +23,14 @@ export function settingsPath(section: Extract<SectionId, 'inspection' | 'access'
 }
 
 const BLACKLISTS = { label: 'Blacklists', to: '/blacklists' };
+const DOMAIN_BLACKLIST = { label: 'Blacklists', to: '/blacklists?tab=blocked-domains' };
 
 function entries(n: number): string {
   return `${formatCount(n)} ${n === 1 ? 'entry' : 'entries'}`;
 }
 
 function domainLine(c: Coverage['domain_blacklist']): CoverageLine {
-  const base = { id: 'domain' as const, link: BLACKLISTS };
+  const base = { id: 'domain' as const, link: DOMAIN_BLACKLIST };
   if (c.entries === null) return { ...base, state: 'unknown', text: 'Domain blacklist: the backend could not count its entries' };
   if (c.entries === 0) return { ...base, state: 'off', text: 'Domain blacklist: empty, no domain is blocked' };
   const head = `Domain blacklist: ${entries(c.entries)}, blocked at the DNS sinkhole`;

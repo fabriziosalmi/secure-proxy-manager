@@ -17,7 +17,7 @@
  * `allow local_dst` (10.0.0.0/8, 192.168.0.0/16), so those stay reachable.
  */
 import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
@@ -213,19 +213,34 @@ function AddDestination({ onAdded }: { onAdded: () => void }) {
 export function EgressAllowlist() {
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirm();
-  const [search, setSearch] = useState('');
+  const [params] = useSearchParams();
+  const [search, setSearch] = useState(() => params.get('q') ?? params.get('search') ?? '');
   const query = useDebounced(search.trim(), 300);
   const [offset, setOffset] = useState(0);
 
   const settings = useQuery(settingsQuery);
-  const summary = useEgressSummary();
   const entries = useQuery({
     queryKey: ['egress-allowlist', 'entries', offset, query],
     queryFn: () =>
       api.get('egress-allowlist', { params: { limit: PAGE_SIZE, offset, search: query } })
-        .then((r) => ({ rows: (r.data?.data ?? []) as EgressEntry[], total: (r.data?.meta?.total ?? 0) as number })),
+        .then((r) => {
+          const rawTotal = r.data?.meta?.total ?? r.data?.total;
+          const total = typeof rawTotal === 'number' ? rawTotal : null;
+          if (!query) {
+            qc.setQueryData(['egress-allowlist', 'total'], total);
+          }
+          return { rows: (r.data?.data ?? []) as EgressEntry[], total: total ?? 0, rawTotal: total };
+        }),
     placeholderData: keepPreviousData,
   });
+  // The unfiltered list already carries the whole count in meta.total. A
+  // filtered one (a search, or a link from the global search with ?q=) counts
+  // only its matches, so the summary then reads egressTotalQuery, which the
+  // unfiltered fetch above keeps filled.
+  const unfiltered = !query && !entries.isPlaceholderData;
+  const summary = useEgressSummary(unfiltered
+    ? { manualQuery: { data: entries.data?.rawTotal, isPending: entries.isPending, isError: entries.isError } }
+    : undefined);
 
   const parsedSettings = settings.data ? parseSettings(settings.data).values : undefined;
   const denyOn = parsedSettings ? parsedSettings.egress_default_deny === 'true' : undefined;

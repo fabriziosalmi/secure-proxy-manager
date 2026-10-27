@@ -145,7 +145,9 @@ describe('Analytics', () => {
     expect(within(cov).getByText('IP blacklist: 50,772 entries, enforced by the proxy as 48,000 networks')).toBeInTheDocument()
     expect(within(cov).getByText('WAF: 31 request rules in 4 categories, inspecting plain HTTP only')).toBeInTheDocument()
     expect(within(cov).getByText('Alerts: off, blocks are not reported anywhere')).toBeInTheDocument()
-    expect(within(cov).getAllByRole('link', { name: 'Blacklists' })[0]).toHaveAttribute('href', '/blacklists')
+    const blacklistLinks = within(cov).getAllByRole('link', { name: 'Blacklists' })
+    expect(blacklistLinks[0]).toHaveAttribute('href', '/blacklists?tab=blocked-domains')
+    expect(blacklistLinks[1]).toHaveAttribute('href', '/blacklists')
     expect(within(cov).getByRole('link', { name: 'Alerts' })).toHaveAttribute('href', '/settings/alerts')
   })
 
