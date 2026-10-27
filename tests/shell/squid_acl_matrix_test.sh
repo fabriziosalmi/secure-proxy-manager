@@ -52,7 +52,7 @@ DNS_SVC=192.168.77.53; WAF_SVC=192.168.77.44
 cleanup() {
   docker rm -f "$PFX-proxy" "$PFX-pub" "$PFX-lan" "$PFX-dns" "$PFX-waf" "$PFX-backend" "$PFX-prov-srv" >/dev/null 2>&1
   docker network rm "$PFX-ext" "$PFX-lan" "$PFX-pub" "$PFX-prov" >/dev/null 2>&1
-  docker volume rm "$PFX-config" "$PFX-egress-config" >/dev/null 2>&1
+  docker volume rm "$PFX-config" "$PFX-data" "$PFX-egress-config" >/dev/null 2>&1
 }
 trap cleanup EXIT
 
@@ -321,15 +321,30 @@ echo "── proxy login on, password file written by the backend ──"
 build_if_missing "$BACKEND_IMAGE" backend-go/
 ADMIN_PW="matrix-admin-$$-pass"
 docker volume create "$PFX-config" >/dev/null || exit 1
-docker run -d --name "$PFX-backend" --network none --memory 128m --cap-drop ALL --read-only \
-  --tmpfs /tmp --tmpfs /data --tmpfs /logs -v "$PFX-config:/config" \
-  -e BASIC_AUTH_USERNAME=admin -e BASIC_AUTH_PASSWORD="$ADMIN_PW" \
-  -e SECRET_KEY="matrix-secret-key-$$-0123456789abcdef" "$BACKEND_IMAGE" >/dev/null || exit 1
-for _ in $(seq 1 40); do docker exec "$PFX-backend" /server -healthcheck >/dev/null 2>&1 && break; sleep 0.5; done
-saved="$(docker exec "$PFX-backend" wget -q -O- --header 'Content-Type: application/json' \
-  --header "Authorization: Basic $(printf 'admin:%s' "$ADMIN_PW" | base64)" \
-  --post-data '{"enable_proxy_auth":"true","proxy_auth_username":"acluser","proxy_auth_password":"acl-test-pass-1"}' \
-  http://127.0.0.1:5000/api/settings 2>&1)"
+docker volume create "$PFX-data" >/dev/null || exit 1
+# start_backend: the backend as the compose files run it, with the proxy group
+# they add (group_add 13). MATRIX_BACKEND_GROUP_ADD= (empty) leaves it out, as
+# a compose file without group_add would (the break test of the next section).
+start_backend() {
+  local ga="${MATRIX_BACKEND_GROUP_ADD-13}"
+  docker run -d --name "$PFX-backend" --network none --memory 128m --cap-drop ALL --read-only \
+    ${ga:+--group-add "$ga"} \
+    --tmpfs /tmp --tmpfs /logs -v "$PFX-data:/data" -v "$PFX-config:/config" \
+    -e BASIC_AUTH_USERNAME=admin -e BASIC_AUTH_PASSWORD="$ADMIN_PW" \
+    -e SECRET_KEY="matrix-secret-key-$$-0123456789abcdef" "$BACKEND_IMAGE" >/dev/null || return 1
+  local _
+  for _ in $(seq 1 40); do docker exec "$PFX-backend" /server -healthcheck >/dev/null 2>&1 && return 0; sleep 0.5; done
+  return 1
+}
+# save_proxy_login USER PASSWORD: POST /api/settings inside the backend.
+save_proxy_login() {
+  docker exec "$PFX-backend" wget -q -O- --header 'Content-Type: application/json' \
+    --header "Authorization: Basic $(printf 'admin:%s' "$ADMIN_PW" | base64)" \
+    --post-data "{\"enable_proxy_auth\":\"true\",\"proxy_auth_username\":\"$1\",\"proxy_auth_password\":\"$2\"}" \
+    http://127.0.0.1:5000/api/settings 2>&1
+}
+start_backend || exit 1
+saved="$(save_proxy_login acluser acl-test-pass-1)"
 case "$saved" in *'"status":"success"'*) ok "the backend saves the proxy credentials";; *) bad "the backend saves the proxy credentials" "$saved";; esac
 expect "the backend wrote a bcrypt line for the user"    "$(docker exec "$PFX-backend" grep -c '^acluser:\$2a\$10\$' /config/proxy_users.htpasswd)" 1
 expect "the file is 0640 as the backend leaves it"       "$(docker exec "$PFX-backend" stat -c '%a' /config/proxy_users.htpasswd)" 640
@@ -343,6 +358,27 @@ check  "LAN client with wrong credentials"               407 proxy_auth    code 
 # stay last for the 407); the allow rule that admits the request resets it.
 check  "LAN client with credentials"                     200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -U acluser:acl-test-pass-1
 check  "LAN client with credentials, CONNECT"            200 none          tunnel "$PFX-lan" "$LAN_CLIENT" pub.test:8443 -U acluser:acl-test-pass-1
+
+echo "── proxy login: a password change works at once, before any reload ──"
+# The same backend (same /data) changes the password while this proxy runs.
+# The proxy here has no watchdog, so nothing regenerates or reloads it: the
+# new credentials work only if Squid's helper can open the new file at once,
+# which it does through the proxy group the backend sets (basic_ncsa_auth
+# rereads the file when it changes). Without group_add the file keeps the
+# backend's group and every new credential gets 407 until a reload.
+start_backend || exit 1
+saved="$(save_proxy_login acluser acl-test-pass-2)"
+case "$saved" in *'"status":"success"'*) ok "the backend saves the new password";; *) bad "the backend saves the new password" "$saved";; esac
+check  "new password, no reload in between"              200 none          code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -U acluser:acl-test-pass-2
+check  "old password, refused"                           407 proxy_auth    code   "$PFX-lan" "$LAN_CLIENT" http://pub.test/ -U acluser:acl-test-pass-1
+expect "the backend gave the file the proxy group"       "$(docker exec "$PFX-proxy" stat -c '%G %a' /config/proxy_users.htpasswd)" "proxy 640"
+docker rm -f "$PFX-backend" >/dev/null
+# The gid both compose files add (group_add) and the backend sets
+# (proxyGroupID) is the proxy image's: an image that moved it would make
+# every password change wait for a reload again.
+expect "the proxy image's proxy user has the gid the backend sets" \
+  "$(docker run --rm --entrypoint id "$IMAGE" -g proxy)" \
+  "$(sed -n 's/^var proxyGroupID = \([0-9][0-9]*\)$/\1/p' backend-go/internal/handlers/proxy_login.go)"
 
 echo "── proxy login off ──"
 # A password file left behind changes nothing once the toggle is gone.

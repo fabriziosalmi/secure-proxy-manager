@@ -13,6 +13,8 @@ import (
 
 	appcrypto "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/crypto"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -154,38 +156,6 @@ func TestSyncProxyUsersReplacesTheFileAtomically(t *testing.T) {
 		if strings.Contains(e.Name(), proxyUsersFileName+".tmp") {
 			t.Errorf("temp file left behind: %s", e.Name())
 		}
-	}
-}
-
-// The new file keeps the group of the one it replaces when the process may
-// set it, so the proxy's helper (group proxy) can read it at once.
-func TestWriteProxyUsersFileKeepsTheGroup(t *testing.T) {
-	groups, _ := os.Getgroups()
-	primary := os.Getgid()
-	other := -1
-	for _, g := range groups {
-		if g != primary {
-			other = g
-			break
-		}
-	}
-	if other < 0 {
-		t.Skip("the test user is in no second group to move the file to")
-	}
-	h, path := proxyLoginHandlers(t)
-	if err := os.WriteFile(path, []byte("x:y\n"), 0o640); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chown(path, -1, other); err != nil {
-		t.Skipf("cannot set group %d: %v", other, err)
-	}
-	seedProxyLogin(t, h, true, testProxyUser, testProxyPass)
-	if _, err := h.SyncProxyUsers(); err != nil {
-		t.Fatal(err)
-	}
-	fi, _ := os.Stat(path)
-	if gid := int(fi.Sys().(*syscall.Stat_t).Gid); gid != other {
-		t.Errorf("gid = %d, want %d, the group of the file it replaced", gid, other)
 	}
 }
 
@@ -607,5 +577,99 @@ func TestStatusReportsTheProxyLoginState(t *testing.T) {
 	getJSON(t, NewAnalyticsHandlers(db, cfg).Status, "/api/status", &resp)
 	if resp.Data.ProxyAuth == nil || resp.Data.ProxyAuth.State != "no_credentials" {
 		t.Fatalf("proxy_auth = %+v, want the proxy's no_credentials record", resp.Data.ProxyAuth)
+	}
+}
+
+func fileGid(t *testing.T, path string) int {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return int(fi.Sys().(*syscall.Stat_t).Gid)
+}
+
+// The proxy's helper reads the password file through the proxy group, so the
+// backend gives the file that group itself: on a new file too, and over a
+// file that has another group. The test stands a group of its own process in
+// for 13 (the compose files add 13 to the backend; the ACL matrix runs that).
+func TestWriteProxyUsersFileGivesTheProxyGroup(t *testing.T) {
+	dir := t.TempDir()
+	dirGid := fileGid(t, dir) // BSD and macOS give a new file its directory's group
+	groups, err := os.Getgroups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := -1
+	for _, g := range groups {
+		if g != dirGid && g != os.Getegid() {
+			target = g
+			break
+		}
+	}
+	if target < 0 {
+		t.Skip("the test process has no supplementary group besides its own and the temp dir's; the ACL matrix covers the group with --group-add 13")
+	}
+	old := proxyGroupID
+	proxyGroupID = target
+	t.Cleanup(func() { proxyGroupID = old })
+
+	path := filepath.Join(dir, proxyUsersFileName)
+	if err := writeProxyUsersFile(path, []byte("first\n")); err != nil {
+		t.Fatal(err)
+	}
+	if got := fileGid(t, path); got != target {
+		t.Fatalf("new file: group %d, want the proxy group %d", got, target)
+	}
+	if err := os.Chown(path, -1, dirGid); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeProxyUsersFile(path, []byte("second\n")); err != nil {
+		t.Fatal(err)
+	}
+	if got := fileGid(t, path); got != target {
+		t.Fatalf("replaced file: group %d, want the proxy group %d", got, target)
+	}
+	if fi, _ := os.Stat(path); fi.Mode().Perm() != proxyUsersPerm {
+		t.Fatalf("mode %o, want %o", fi.Mode().Perm(), proxyUsersPerm)
+	}
+}
+
+// A backend that is not in the proxy group (a compose file without group_add)
+// still writes the file, and says in the log that the proxy refuses the new
+// credentials until it reloads.
+func TestWriteProxyUsersFileWarnsWhenItCannotSetTheProxyGroup(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root may set any group")
+	}
+	groups, _ := os.Getgroups()
+	member := map[int]bool{os.Getegid(): true}
+	for _, g := range groups {
+		member[g] = true
+	}
+	foreign := -1
+	for g := 1; g < 1000; g++ {
+		if !member[g] {
+			foreign = g
+			break
+		}
+	}
+	old := proxyGroupID
+	proxyGroupID = foreign
+	t.Cleanup(func() { proxyGroupID = old })
+	var logs bytes.Buffer
+	oldLog := log.Logger
+	log.Logger = zerolog.New(&logs)
+	t.Cleanup(func() { log.Logger = oldLog })
+
+	path := filepath.Join(t.TempDir(), proxyUsersFileName)
+	if err := writeProxyUsersFile(path, []byte("data\n")); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(path); string(got) != "data\n" {
+		t.Fatalf("file holds %q", got)
+	}
+	if !strings.Contains(logs.String(), `"level":"warn"`) || !strings.Contains(logs.String(), "407") {
+		t.Fatalf("no warning naming the 407 window: %s", logs.String())
 	}
 }

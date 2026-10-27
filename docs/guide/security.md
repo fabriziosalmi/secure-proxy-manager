@@ -101,13 +101,17 @@ the proxy container, and changing it does not change them.
 - The password is a write-only secret (see
   [Secrets at rest](#secrets-at-rest-and-in-exports)).
 - The backend writes `config/proxy_users.htpasswd`: one line with the username
-  and a bcrypt hash of the password, replaced atomically, mode `0640`. The
-  proxy's generator sets `root:proxy` on it, so Squid's `basic_ncsa_auth`
-  helper, which runs as the proxy user, can read it. Turning login off, or
+  and a bcrypt hash of the password, replaced atomically, mode `0640`, group
+  `proxy` (gid 13). Squid's `basic_ncsa_auth` helper, which runs as the proxy
+  user, reads it through that group, so a new password works at once, before
+  the proxy reloads. The backend has no capabilities; it may set the group
+  because both compose files add gid 13 to it (`group_add`). The proxy's
+  generator also sets `root:proxy` on every run. Turning login off, or
   removing a credential, removes the file.
-- When the file changes the backend asks the proxy to reload. Until the proxy
-  has set the group (about 2 seconds, measured), a credential Squid has not
-  cached yet gets `407`; Squid keeps running.
+- A backend run without `group_add: ["13"]` (an older or edited compose file)
+  cannot set the group and logs a warning saying so: until the proxy reloads,
+  which the backend asks for right after the write, a credential Squid has
+  not cached yet gets `407`; Squid keeps running.
 - Login cannot be saved on without both credentials (`400`). If the proxy
   still finds login on with no user in the password file, as an install
   upgraded with login on and no stored credentials does, it refuses every
