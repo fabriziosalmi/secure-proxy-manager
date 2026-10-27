@@ -3,9 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { QueryClient, QueryClientProvider, QueryCache, useQuery } from '@tanstack/react-query';
 import toast, { Toaster } from 'react-hot-toast';
 import { Layout } from './components/layout/Layout';
-import { GlobalSearch } from './components/GlobalSearch';
-import { Login } from './pages/Login';
-import { SetupWizard } from './components/SetupWizard';
 import { Button } from './components/ui/Button';
 import { Notice } from './components/ui/Notice';
 import { getErrorMessage, isTokenExpired, signOut } from './lib/api';
@@ -39,6 +36,9 @@ function createAppQueryClient() {
 }
 
 // Lazy-loaded page components for code splitting
+const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
+const SetupWizard = lazy(() => import('./components/SetupWizard').then(m => ({ default: m.SetupWizard })));
+const GlobalSearch = lazy(() => import('./components/GlobalSearch').then(m => ({ default: m.GlobalSearch })));
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const Blacklists = lazy(() => import('./pages/Blacklists').then(m => ({ default: m.Blacklists })));
 const Logs = lazy(() => import('./pages/Logs').then(m => ({ default: m.Logs })));
@@ -48,8 +48,8 @@ const Audit = lazy(() => import('./pages/Audit').then(m => ({ default: m.Audit }
 const Clients = lazy(() => import('./pages/Clients').then(m => ({ default: m.Clients })));
 const EgressAllowlist = lazy(() => import('./pages/EgressAllowlist').then(m => ({ default: m.EgressAllowlist })));
 
-class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
-  constructor(props: { children: React.ReactNode }) {
+class ErrorBoundary extends Component<{ children: React.ReactNode; silent?: boolean }, { error: Error | null }> {
+  constructor(props: { children: React.ReactNode; silent?: boolean }) {
     super(props);
     this.state = { error: null };
   }
@@ -58,6 +58,7 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Er
   }
   render() {
     if (this.state.error) {
+      if (this.props.silent) return null;
       return (
         <div className="flex items-center justify-center h-screen bg-ground text-ink">
           <div className="text-center space-y-3 max-w-md px-4">
@@ -135,7 +136,15 @@ function AppContent({ queryClient }: { queryClient: QueryClient }) {
   });
 
   if (!isAuthenticated) {
-    return <Login onLogin={() => setIsAuthenticated(true)} />;
+    // Lazy screens sit inside a boundary: a chunk that fails to load (a tab
+    // left open across an upgrade) shows an error instead of a blank page.
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <Login onLogin={() => setIsAuthenticated(true)} />
+        </Suspense>
+      </ErrorBoundary>
+    );
   }
 
   // Only a first load that failed blocks the app: a later refetch that fails
@@ -187,14 +196,25 @@ function AppContent({ queryClient }: { queryClient: QueryClient }) {
 
   // Show wizard if not completed
   if (!wizardDone) {
-    return <SetupWizard onComplete={() => setWizardCompletedOverride(true)} />;
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <SetupWizard onComplete={() => setWizardCompletedOverride(true)} />
+        </Suspense>
+      </ErrorBoundary>
+    );
   }
 
   return (
     <BrowserRouter>
       {/* Unsaved Settings drafts outlive a visit to another page, not the session. */}
       <SettingsDraftsProvider>
-        <GlobalSearch />
+        {/* Search failing to load leaves the page usable, so its boundary shows nothing. */}
+        <ErrorBoundary silent>
+          <Suspense fallback={null}>
+            <GlobalSearch />
+          </Suspense>
+        </ErrorBoundary>
         <ErrorBoundary>
           <Suspense fallback={<PageLoader />}>
             <Routes>

@@ -12,14 +12,14 @@ const sources = import.meta.glob<string>(['./**/*.{ts,tsx}', '!./**/*.test.{ts,t
 })
 
 describe('styles', () => {
-  it('never paints with a variable that holds bare HSL components', () => {
-    // --card is "0 0% 100%", the components hsl() is built from in --color-card.
-    // bg-(--card) compiles to background: var(--card), which is not a colour,
+  it('never defines or paints with a variable that holds bare HSL components', () => {
+    // --card was "0 0% 100%", the components hsl() was built from in --color-card.
+    // bg-(--card) compiled to background: var(--card), which is not a colour,
     // so the Clients drawer had no background and the table showed through.
     const bare = new Set(
       [...css.matchAll(/(--[a-z0-9-]+):\s*\d+(?:\.\d+)?\s+\d+(?:\.\d+)?%\s+\d+(?:\.\d+)?%\s*;/g)].map((m) => m[1]),
     )
-    expect(bare.has('--card')).toBe(true)
+    expect([...bare]).toEqual([])
     const offenders: string[] = []
     expect(Object.keys(sources).length).toBeGreaterThan(20)
     for (const [file, text] of Object.entries(sources)) {
@@ -31,12 +31,12 @@ describe('styles', () => {
   })
 
   it('page entrance animations end without a transform', () => {
-    // page-enter and stagger-child keep their last frame (fill-mode both). A
-    // final transform other than none, even translateY(0), makes the element
-    // the containing block of its position: fixed descendants, so the Clients
-    // drawer and the dialogs opened from a page were laid out inside the page
-    // box instead of the viewport.
-    for (const utility of ['page-enter', 'stagger-child']) {
+    // page-enter keeps its last frame (fill-mode both). A final transform
+    // other than none, even translateY(0), makes the element the containing
+    // block of its position: fixed descendants, so the Clients drawer and the
+    // dialogs opened from a page were laid out inside the page box instead of
+    // the viewport.
+    for (const utility of ['page-enter']) {
       const body = css.match(new RegExp(`@utility ${utility} \\{([^}]*)\\}`))?.[1] ?? ''
       const name = body.match(/animation:\s*([a-z0-9-]+)/)?.[1]
       expect(name, utility).toBeTruthy()
@@ -72,5 +72,38 @@ describe('styles', () => {
       }
     }
     expect(offenders).toEqual([])
+  })
+
+  it('defines no unused classes, @utility rules, or legacy CSS variables in index.css', () => {
+    // Documented exceptions:
+    // - .dark: theme class toggled on document.documentElement by ThemeProvider
+    // - space-y-*: wildcard @utility that overrides Tailwind v4 space-y-<n>
+    const ALLOWED_EXCEPTIONS = new Set(['dark', 'space-y-*'])
+
+    const allSourceText = Object.values(sources)
+      .map((s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, ''))
+      .join('\n')
+
+    const cssWithoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '')
+    const definedUtilities = [...cssWithoutComments.matchAll(/@utility\s+([a-zA-Z0-9_-]+(?:\*)?)/g)].map((m) => m[1])
+    const definedClasses = [...cssWithoutComments.matchAll(/(?:^|[\s,:(])\.([a-zA-Z_-][a-zA-Z0-9_-]*)/gm)].map(
+      (m) => m[1],
+    )
+
+    const unused: string[] = []
+    for (const name of new Set([...definedUtilities, ...definedClasses])) {
+      if (ALLOWED_EXCEPTIONS.has(name)) continue
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const re = new RegExp(`\\b${escaped}\\b`)
+      if (!re.test(allSourceText)) {
+        unused.push(name)
+      }
+    }
+
+    // Legacy glassmorphism and shadcn HSL variables must not remain in index.css
+    const legacyVars = [...cssWithoutComments.matchAll(/(--(?:glass-[a-z0-9-]+|background|foreground|card(?:-foreground)?|popover(?:-foreground)?|primary(?:-foreground)?|secondary(?:-foreground)?|muted(?:-foreground)?|destructive(?:-foreground)?|border|input|ring|radius))\s*:/g)].map((m) => m[1])
+    unused.push(...new Set(legacyVars))
+
+    expect(unused).toEqual([])
   })
 })

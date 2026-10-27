@@ -28,9 +28,9 @@ describe('App', () => {
     clearStorage()
   })
 
-  it('shows login page when not authenticated', () => {
+  it('shows login page when not authenticated', async () => {
     render(<App />)
-    expect(screen.getByText(/sign in to continue/i)).toBeInTheDocument()
+    expect(await screen.findByText(/sign in to continue/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/username/i)).toBeInTheDocument()
   })
 
@@ -123,7 +123,7 @@ describe('App', () => {
     }
   })
 
-  it('clears expired token on mount', () => {
+  it('clears expired token on mount', async () => {
     const payload = btoa(JSON.stringify({ sub: 'admin', exp: Math.floor(Date.now() / 1000) - 120 }))
     const fakeToken = `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`
     localStorage.setItem('auth_token', fakeToken)
@@ -132,7 +132,7 @@ describe('App', () => {
     vi.mocked(isTokenExpired).mockReturnValue(true)
 
     render(<App />)
-    expect(screen.getByText(/sign in to continue/i)).toBeInTheDocument()
+    expect(await screen.findByText(/sign in to continue/i)).toBeInTheDocument()
     expect(localStorage.getItem('auth_token')).toBeNull()
   })
 

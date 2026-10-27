@@ -87,88 +87,9 @@
   --text-lg--line-height: 1.75rem;
   --text-xl--line-height: 1.75rem;
   --text-2xl--line-height: 2rem;
-  --text-3xl--line-height: 2.25rem;
-  --text-4xl--line-height: 2.5rem;
   --text-5xl--line-height: 1;
-  --text-6xl--line-height: 1;
-  --text-7xl--line-height: 1;
-  --text-8xl--line-height: 1;
-  --text-9xl--line-height: 1;
 
-  /*
-    The v3 palette for the shades this UI uses. v4 redefined the default
-    palette in OKLCH with slightly different values; these keep every colour
-    exactly as it rendered under v3. Generated from tailwindcss@3 colors.
-  */
-  --color-amber-300: #fcd34d;
-  --color-amber-400: #fbbf24;
-  --color-amber-500: #f59e0b;
-  --color-amber-600: #d97706;
-  --color-blue-300: #93c5fd;
-  --color-blue-400: #60a5fa;
-  --color-blue-500: #3b82f6;
-  --color-blue-600: #2563eb;
-  --color-cyan-300: #67e8f9;
-  --color-cyan-400: #22d3ee;
-  --color-cyan-500: #06b6d4;
-  --color-cyan-600: #0891b2;
-  --color-emerald-300: #6ee7b7;
-  --color-emerald-400: #34d399;
-  --color-emerald-500: #10b981;
-  --color-emerald-600: #059669;
   --color-gray-200: #e5e7eb;
-  --color-green-400: #4ade80;
-  --color-green-500: #22c55e;
-  --color-green-600: #16a34a;
-  --color-indigo-500: #6366f1;
-  --color-orange-300: #fdba74;
-  --color-orange-400: #fb923c;
-  --color-orange-500: #f97316;
-  --color-orange-600: #ea580c;
-  --color-purple-400: #c084fc;
-  --color-purple-500: #a855f7;
-  --color-purple-600: #9333ea;
-  --color-red-300: #fca5a5;
-  --color-red-400: #f87171;
-  --color-red-500: #ef4444;
-  --color-red-600: #dc2626;
-  --color-sky-500: #0ea5e9;
-  --color-slate-300: #cbd5e1;
-  --color-slate-600: #475569;
-  --color-violet-500: #8b5cf6;
-  --color-yellow-400: #facc15;
-  --color-yellow-500: #eab308;
-
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-
-  --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
 
   /*
     Design tokens (the redesign). Semantic names, one value per theme in the
@@ -216,9 +137,6 @@
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --animate-fade-in-up: fade-in-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
-  --animate-shimmer: shimmer 1.8s ease-in-out infinite;
-  --animate-glow-pulse: glow-pulse 3s ease-in-out infinite;
-  --animate-status-ping: status-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 
 /*
@@ -239,119 +157,9 @@
   }
 }
 
-@utility glass-surface {
-  /* Glass surface: the core aerospace panel */
-  background: var(--glass-bg);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-
-  &:hover {
-    border-color: var(--glass-hover-border);
-    box-shadow: var(--glass-hover-shadow);
-  }
-}
-
-@utility skeleton-shimmer {
-  /* Shimmer skeleton replacement */
-  background: linear-gradient(
-    90deg,
-    hsl(var(--secondary)) 25%,
-    hsl(var(--secondary) / 0.5) 50%,
-    hsl(var(--secondary)) 75%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.8s ease-in-out infinite;
-}
-
-@utility status-dot {
-  /* Status indicator with ping ring */
-  @apply relative;
-  &::after {
-    content: '';
-    @apply absolute inset-0 rounded-full;
-    background: inherit;
-    animation: status-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-  }
-}
-
-@utility progress-glow {
-  /* Animated progress bar */
-  transform-origin: left;
-  animation: bar-fill 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
 @utility page-enter {
   /* Page entrance animation */
   animation: fade-in-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-@utility stagger-child {
-  /* Stagger children: set --stagger-index via style */
-  animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(var(--stagger-index, 0) * 60ms);
-}
-
-@utility btn-press {
-  /* Button micro-interaction */
-  @apply transition-all duration-150;
-  &:active {
-    transform: scale(0.97);
-  }
-}
-
-@utility focus-ring {
-  /* Focus ring animation */
-  @apply transition-all duration-200;
-  &:focus {
-    @apply outline-hidden ring-2 ring-primary/40 ring-offset-2 ring-offset-background;
-  }
-}
-
-@utility glow-emerald {
-  /* Glow variants for progress bars */
-  box-shadow:
-    0 0 8px rgba(16, 185, 129, 0.4),
-    0 0 20px rgba(16, 185, 129, 0.15);
-}
-
-@utility glow-yellow {
-  box-shadow:
-    0 0 8px rgba(234, 179, 8, 0.4),
-    0 0 20px rgba(234, 179, 8, 0.15);
-}
-
-@utility glow-destructive {
-  box-shadow:
-    0 0 8px rgba(239, 68, 68, 0.4),
-    0 0 20px rgba(239, 68, 68, 0.15);
-}
-
-@utility glow-primary {
-  box-shadow:
-    0 0 8px rgba(59, 130, 246, 0.4),
-    0 0 20px rgba(59, 130, 246, 0.15);
-}
-
-@utility row-hover {
-  /* Table row hover slide */
-  @apply transition-colors duration-150;
-  /* Highlight rows on hover with colour only; never move/scale data that is
-     being read (no transform). */
-  &:hover {
-    @apply bg-muted/40;
-  }
-}
-
-@utility ambient-glow {
-  /* Ambient background glow */
-  background: radial-gradient(
-    ellipse at 50% 40%,
-    rgba(59, 130, 246, 0.08) 0%,
-    transparent 70%
-  );
 }
 
 @utility custom-scrollbar {
@@ -363,46 +171,16 @@
     background: transparent;
   }
   &::-webkit-scrollbar-thumb {
-    background: hsl(var(--secondary));
+    background: var(--ds-border);
     border-radius: 2px;
   }
   &::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground) / 0.3);
+    background: var(--ds-border-strong);
   }
 }
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 224 71.4% 4.1%;
-    --card: 0 0% 100%;
-    --card-foreground: 224 71.4% 4.1%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 224 71.4% 4.1%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
-
-    /* Light glassmorphism overlay variables */
-    --glass-bg: rgba(0, 0, 0, 0.015);
-    --glass-border: rgba(0, 0, 0, 0.07);
-    --glass-shadow: 0 0 0 1px rgba(0, 0, 0, 0.01) inset, 0 1px 2px rgba(0, 0, 0, 0.05), 0 0 20px rgba(59, 130, 246, 0.01);
-    --glass-hover-border: rgba(0, 0, 0, 0.12);
-    --glass-hover-shadow: 0 0 0 1px rgba(0, 0, 0, 0.02) inset, 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 30px rgba(59, 130, 246, 0.03);
-
-    /* Light chart tooltip variables */
-
     /* Design tokens, light. Text pairs measured at 4.5:1 or more on surface
        and ground (WCAG 1.4.3); bars and dots at 3:1 where they carry meaning. */
     --ds-ground: #F7F8FA;
@@ -445,35 +223,6 @@
   }
 
   .dark {
-    --background: 0 0% 4%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 7%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 7%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 65%;
-    --accent: 0 0% 15%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 15%;
-    --input: 0 0% 15%;
-    --ring: 217 91% 60%;
-
-    /* Dark glassmorphism overlay variables */
-    --glass-bg: rgba(255, 255, 255, 0.02);
-    --glass-border: rgba(255, 255, 255, 0.06);
-    --glass-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03) inset, 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 20px rgba(59, 130, 246, 0.03);
-    --glass-hover-border: rgba(255, 255, 255, 0.1);
-    --glass-hover-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05) inset, 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 30px rgba(59, 130, 246, 0.06);
-
-    /* Dark chart tooltip variables */
-
     /* Design tokens, dark. Same roles; every text pair re-measured at 4.5:1
        or more on the dark surface and ground. */
     --ds-ground: #0C111D;
@@ -515,19 +264,18 @@
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-line;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-ground text-ink;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
-  body, aside, main, .glass-surface, tr, td, button, input, select, .card, hr, h1, h2, h3, h4, p, span, svg {
+  body, aside, main, tr, td, button, input, select, hr, h1, h2, h3, h4, p, span, svg {
     transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), color 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   /* Tabular numbers globally on numeric elements */
   .font-bold,
-  .font-extrabold,
   .font-mono,
   td,
   th,
@@ -538,48 +286,12 @@
 }
 
 @layer utilities {
-  /* ── Keyframes ─────────────────────────────────────────────── */
-
-  @keyframes shimmer {
-    0% {
-      background-position: -200% 0;
-    }
-    100% {
-      background-position: 200% 0;
-    }
-  }
-
-  @keyframes glow-pulse {
-    0%,
-    100% {
-      opacity: 0.4;
-    }
-    50% {
-      opacity: 1;
-    }
-  }
-
-  @keyframes status-ping {
-    0% {
-      transform: scale(1);
-      opacity: 0.8;
-    }
-    75% {
-      transform: scale(2.5);
-      opacity: 0;
-    }
-    100% {
-      transform: scale(2.5);
-      opacity: 0;
-    }
-  }
-
-  /* Ends on transform: none, not translateY(0). page-enter and stagger-child
-     keep the last frame (fill-mode both), and any transform other than none
-     makes the element the containing block of its position: fixed
-     descendants: the Clients detail drawer and every ConfirmDialog opened
-     from a page were laid out inside the page box instead of the viewport,
-     cut off at its edge and scrolled with it. */
+  /* Ends on transform: none, not translateY(0). page-enter keeps the last
+     frame (fill-mode both), and any transform other than none makes the
+     element the containing block of its position: fixed descendants: the
+     Clients detail drawer and every ConfirmDialog opened from a page were
+     laid out inside the page box instead of the viewport, cut off at its
+     edge and scrolled with it. */
   @keyframes fade-in-up {
     from {
       opacity: 0;
@@ -590,24 +302,12 @@
       transform: none;
     }
   }
-
-  @keyframes bar-fill {
-    from {
-      transform: scaleX(0);
-    }
-    to {
-      transform: scaleX(1);
-    }
-  }
-
-  /* ── Utility Classes ───────────────────────────────────────── */
 }
 
 /* ── Reduced motion ────────────────────────────────────────────
    Honor the OS "reduce motion" setting: neutralize every CSS keyframe
    animation, transition, and smooth-scroll in one sweep. Outside @layer so it
-   wins specificity over component utilities. JS-driven motion (the rAF number
-   counter) is handled separately via the useReducedMotion hook. */
+   wins specificity over component utilities. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
