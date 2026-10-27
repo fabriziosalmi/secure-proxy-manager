@@ -20,19 +20,37 @@ const rows = [
 ]
 
 let deny: string
+let refreshHours: string
 let entries: unknown[]
+let manualTotalOverride: number | null
+let providers: unknown[]
 let settingsFail: boolean
+let providersFail: boolean
 const getCalls: { url: string; params?: Record<string, unknown> }[] = []
 
 function routeGet(url: string, config?: { params?: Record<string, unknown> }) {
   getCalls.push({ url, params: config?.params })
   if (url === 'settings') {
     if (settingsFail) return Promise.reject(new Error('down'))
-    return Promise.resolve({ data: { status: 'success', data: [{ setting_name: 'egress_default_deny', setting_value: deny }, { setting_name: 'proxy_port', setting_value: '3128' }] } })
+    return Promise.resolve({
+      data: {
+        status: 'success',
+        data: [
+          { setting_name: 'egress_default_deny', setting_value: deny },
+          { setting_name: 'egress_provider_refresh_hours', setting_value: refreshHours },
+          { setting_name: 'proxy_port', setting_value: '3128' },
+        ],
+      },
+    })
   }
   if (url === 'egress-allowlist') {
-    if (config?.params?.limit === 1) return Promise.resolve({ data: listBody([], entries.length) })
-    return Promise.resolve({ data: listBody(entries, entries.length) })
+    const total = manualTotalOverride ?? entries.length
+    if (config?.params?.limit === 1) return Promise.resolve({ data: listBody([], total) })
+    return Promise.resolve({ data: listBody(entries, total) })
+  }
+  if (url === 'egress-providers') {
+    if (providersFail) return Promise.reject(new Error('providers down'))
+    return Promise.resolve({ data: { status: 'success', data: providers } })
   }
   return Promise.resolve({ data: { status: 'success', data: null } })
 }
@@ -41,17 +59,29 @@ const badRequest = (detail: string) => new AxiosError('400', 'ERR_BAD_REQUEST', 
   status: 400, statusText: 'Bad Request', data: { status: 'error', detail }, headers: {}, config: { headers: new AxiosHeaders() },
 })
 
+const conflictError = (detail: string) => new AxiosError('409', 'ERR_BAD_REQUEST', undefined, undefined, {
+  status: 409, statusText: 'Conflict', data: { status: 'error', detail }, headers: {}, config: { headers: new AxiosHeaders() },
+})
+
 describe('EgressAllowlist', () => {
   beforeEach(() => {
     deny = 'false'
+    refreshHours = '24'
     entries = rows
+    manualTotalOverride = null
+    providers = []
     settingsFail = false
+    providersFail = false
     getCalls.length = 0
     vi.spyOn(api, 'get').mockImplementation(((url: string, config?: { params?: Record<string, unknown> }) => routeGet(url, config)) as never)
     vi.spyOn(api, 'post').mockResolvedValue({ data: { status: 'success' } } as never)
+    vi.spyOn(api, 'put').mockResolvedValue({ data: { status: 'success' } } as never)
     vi.spyOn(api, 'delete').mockResolvedValue({ data: { status: 'success' } } as never)
   })
-  afterEach(() => { vi.restoreAllMocks() })
+  afterEach(() => {
+    document.documentElement.classList.remove('dark')
+    vi.restoreAllMocks()
+  })
 
   it('shows the header, the add form and the list from the mockup, headings in order, with no axe violation', async () => {
     const restoreTz = setRomeTimeZone()
@@ -60,7 +90,7 @@ describe('EgressAllowlist', () => {
     expect(screen.getByText('With default deny on, clients may reach only the destinations listed here.')).toBeInTheDocument()
     const table = await screen.findByRole('table', { name: 'Allowed destinations' })
     expect(screen.getAllByRole('heading').map((h) => `${h.tagName}:${h.textContent}`)).toEqual([
-      'H1:Egress allowlist', 'H2:Add a destination', 'H2:Allowed destinations',
+      'H1:Egress allowlist', 'H2:Add a destination', 'H2:Provider lists', 'H2:Allowed destinations',
     ])
     // Labels on every field.
     expect(screen.getByLabelText('Kind')).toHaveValue('domain')
@@ -168,6 +198,281 @@ describe('EgressAllowlist', () => {
     renderWithProviders(<EgressAllowlist />)
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search the egress allowlist' }), { target: { value: 'debian' } })
     await waitFor(() => expect(getCalls.some((c) => c.url === 'egress-allowlist' && c.params?.search === 'debian')).toBe(true))
+  })
+
+  it('renders provider lists with catalog metadata, GitHub Actions note, commit link, refresh button and no axe violations in light and dark themes', async () => {
+    const restoreTz = setRomeTimeZone()
+    refreshHours = '12'
+    providers = [
+      {
+        id: 1, kind: 'catalog', name: 'github', url: '', source: 'api.github.com/meta',
+        enabled: true, shared_network: true, v4_count: 512, v6_count: 140,
+        ipv4_covered: 42949673, ipv6_64_covered: 140,
+        last_refresh: '2026-07-01 09:00:00', last_commit: 'd03d319a255c8899',
+        last_error: '', held: null,
+      },
+      {
+        id: 2, kind: 'catalog', name: 'telegram', url: '', source: 'core.telegram.org/resources/cidr.txt',
+        enabled: true, shared_network: false, v4_count: 15, v6_count: 8,
+        ipv4_covered: 18432, ipv6_64_covered: 8,
+        last_refresh: '2026-07-01 09:00:00', last_commit: 'd03d319a255c8899',
+        last_error: '', held: null,
+      },
+      {
+        id: 9, kind: 'url', name: 'partner-feed', url: 'https://feeds.example.com/cidr.txt',
+        enabled: true, shared_network: false, v4_count: 4, v6_count: 1,
+        ipv4_covered: 1024, ipv6_64_covered: 1,
+        last_refresh: '2026-07-01 09:00:00', last_commit: '9f86d081884c7d65',
+        last_error: '', held: null,
+      },
+    ]
+    const { container } = renderWithProviders(<EgressAllowlist />)
+    const pTable = await screen.findByRole('table', { name: 'Provider lists' })
+    expect(screen.getByText(/lord-alfred\/ipranges/)).toBeInTheDocument()
+    expect(await screen.findByText(/every 12 hours/)).toBeInTheDocument()
+
+    const ghRow = (await within(pTable).findByText('github')).closest('tr')!
+    expect(within(ghRow).getByText('Shared network')).toBeInTheDocument()
+    expect(within(ghRow).getByText(/GitHub Actions/)).toBeInTheDocument()
+    expect(within(ghRow).getByText('42,949,673 (1.0% of IPv4)')).toBeInTheDocument()
+    const commitLink = within(ghRow).getByRole('link', { name: 'd03d319' })
+    expect(commitLink).toHaveAttribute('href', 'https://github.com/lord-alfred/ipranges/commit/d03d319a255c8899')
+
+    const urlRow = within(pTable).getByText('partner-feed').closest('tr')!
+    expect(within(urlRow).getByText('URL')).toBeInTheDocument()
+    expect(within(urlRow).getByText('https://feeds.example.com/cidr.txt')).toBeInTheDocument()
+
+    fireEvent.click(within(ghRow).getByRole('button', { name: 'Refresh github now' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('egress-providers/github/refresh'))
+
+    await expectNoAxeViolations(container)
+    document.documentElement.classList.add('dark')
+    await expectNoAxeViolations(container)
+    restoreTz()
+  })
+
+  it('requires confirmation before enabling shared_network providers and uses a danger dialog with IPv4 space percentage for all', async () => {
+    providers = [
+      {
+        id: 0, kind: 'catalog', name: 'amazon', url: '', source: 'ip-ranges.amazonaws.com',
+        enabled: false, shared_network: true, v4_count: 0, v6_count: 0,
+        ipv4_covered: 100663296, ipv6_64_covered: 0,
+        last_refresh: '', last_commit: '', last_error: '', held: null,
+      },
+      {
+        id: 0, kind: 'catalog', name: 'all', url: '', source: 'all upstream directories',
+        enabled: false, shared_network: true, v4_count: 0, v6_count: 0,
+        ipv4_covered: 429496730, ipv6_64_covered: 0,
+        last_refresh: '', last_commit: '', last_error: '', held: null,
+      },
+      {
+        id: 0, kind: 'catalog', name: 'telegram', url: '', source: 'core.telegram.org/resources/cidr.txt',
+        enabled: false, shared_network: false, v4_count: 0, v6_count: 0,
+        ipv4_covered: 0, ipv6_64_covered: 0,
+        last_refresh: '', last_commit: '', last_error: '', held: null,
+      },
+    ]
+    renderWithProviders(<EgressAllowlist />)
+    await screen.findByText('amazon')
+
+    // Non-shared provider enables immediately without a dialog.
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable telegram' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith('egress-providers/telegram', { enabled: true }))
+    vi.mocked(api.put).mockClear()
+
+    // Shared network provider opens a confirmation dialog; cancelling sends nothing.
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable amazon' }))
+    const amazonDialog = await screen.findByRole('alertdialog')
+    expect(within(amazonDialog).getByText(/100,663,296 IPv4 addresses/)).toBeInTheDocument()
+    fireEvent.click(within(amazonDialog).getByRole('button', { name: 'Cancel' }))
+    expect(api.put).not.toHaveBeenCalled()
+
+    // Confirming amazon sends confirm_shared: true.
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable amazon' }))
+    const amazonDialog2 = await screen.findByRole('alertdialog')
+    fireEvent.click(within(amazonDialog2).getByRole('button', { name: 'Enable amazon' }))
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith('egress-providers/amazon', { enabled: true, confirm_shared: true }))
+    vi.mocked(api.put).mockClear()
+
+    // Enabling "all" opens a danger dialog reporting the percentage of the IPv4 space.
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable all' }))
+    const allDialog = await screen.findByRole('alertdialog')
+    expect(within(allDialog).getByText(/10\.0% of the IPv4 address space/)).toBeInTheDocument()
+    const confirmBtn = within(allDialog).getByRole('button', { name: 'Enable all' })
+    expect(confirmBtn.className).toMatch(/text-danger/)
+    fireEvent.click(confirmBtn)
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith('egress-providers/all', { enabled: true, confirm_shared: true }))
+  })
+
+  it('shows Not downloaded yet instead of 0 / 0, 0.0%, Never, or None when last_refresh is empty, and describes all before first download without invented numbers', async () => {
+    providers = [
+      {
+        id: 0, kind: 'catalog', name: 'all', url: '', source: 'all upstream directories',
+        enabled: false, shared_network: true, v4_count: 0, v6_count: 0,
+        ipv4_covered: 0, ipv6_64_covered: 0,
+        last_refresh: '', last_commit: '', last_error: '', held: null,
+      },
+    ]
+    renderWithProviders(<EgressAllowlist />)
+    const pTable = await screen.findByRole('table', { name: 'Provider lists' })
+    const allRow = (await within(pTable).findByText('all')).closest('tr')!
+    expect(within(allRow).getAllByText('Not downloaded yet').length).toBeGreaterThanOrEqual(1)
+    expect(within(allRow).queryByText('0 / 0')).not.toBeInTheDocument()
+    expect(within(allRow).queryByText('0 (0.0% of IPv4)')).not.toBeInTheDocument()
+    expect(within(allRow).queryByText('Never')).not.toBeInTheDocument()
+    expect(within(allRow).queryByText('None')).not.toBeInTheDocument()
+
+    fireEvent.click(within(allRow).getByRole('switch', { name: 'Enable all' }))
+    const allDialog = await screen.findByRole('alertdialog')
+    expect(within(allDialog).getByText(/after the first download/i)).toBeInTheDocument()
+    expect(within(allDialog).getByText(/25%/)).toBeInTheDocument()
+    expect(within(allDialog).queryByText(/350 million/i)).not.toBeInTheDocument()
+    expect(within(allDialog).queryByText(/8% to 10%/i)).not.toBeInTheDocument()
+    fireEvent.click(within(allDialog).getByRole('button', { name: 'Cancel' }))
+  })
+
+  it('shows last_error, refresh_error on initial enable, and held updates with confirmation on Apply update', async () => {
+    providers = [
+      {
+        id: 1, kind: 'catalog', name: 'cloudflare', url: '', source: 'cloudflare.com/ips',
+        enabled: true, shared_network: true, v4_count: 15, v6_count: 7,
+        ipv4_covered: 1048576, ipv6_64_covered: 7,
+        last_refresh: '2026-07-01 09:00:00', last_commit: 'aaaa1111',
+        last_error: '',
+        held: {
+          commit: 'bbbb2222', v4_count: 25, v6_count: 7,
+          ipv4_covered: 1572864, ipv6_64_covered: 7,
+          growth_pct: 50.0, reason: 'IPv4 covered addresses grew by 50.0% (from 1048576 to 1572864)',
+          held_at: '2026-07-01 10:00:00',
+        },
+      },
+      {
+        id: 2, kind: 'catalog', name: 'oracle', url: '', source: 'public_ip_ranges.json',
+        enabled: true, shared_network: true, v4_count: 10, v6_count: 0,
+        ipv4_covered: 65536, ipv6_64_covered: 0,
+        last_refresh: '2026-07-01 08:00:00', last_commit: 'cccc3333',
+        last_error: 'HTTP 503 from raw.githubusercontent.com', held: null,
+      },
+      {
+        id: 0, kind: 'catalog', name: 'telegram', url: '', source: 'core.telegram.org/resources/cidr.txt',
+        enabled: false, shared_network: false, v4_count: 0, v6_count: 0,
+        ipv4_covered: 0, ipv6_64_covered: 0,
+        last_refresh: '', last_commit: '', last_error: '', held: null,
+      },
+    ]
+    renderWithProviders(<EgressAllowlist />)
+    expect(await screen.findByText(/HTTP 503 from raw\.githubusercontent\.com/)).toBeInTheDocument()
+    expect(screen.getByText(/IPv4 covered addresses grew by 50\.0%/)).toBeInTheDocument()
+
+    // Clicking "Apply update" asks for confirmation first (with before/after numbers) before calling apply-held.
+    fireEvent.click(screen.getByRole('button', { name: 'Apply update for cloudflare' }))
+    expect(api.post).not.toHaveBeenCalled()
+    const holdDialog = await screen.findByRole('alertdialog')
+    expect(within(holdDialog).getByText(/50\.0%/)).toBeInTheDocument()
+    expect(within(holdDialog).getByText(/1,048,576/)).toBeInTheDocument()
+    expect(within(holdDialog).getByText(/1,572,864/)).toBeInTheDocument()
+    fireEvent.click(within(holdDialog).getByRole('button', { name: 'Apply update' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('egress-providers/cloudflare/apply-held'))
+
+    // Initial enable returning refresh_error shows a row notice while keeping the provider enabled.
+    vi.mocked(api.put).mockResolvedValueOnce({
+      data: {
+        status: 'success',
+        data: {
+          id: 3, kind: 'catalog', name: 'telegram', url: '', source: 'core.telegram.org/resources/cidr.txt',
+          enabled: true, shared_network: false, v4_count: 0, v6_count: 0,
+          ipv4_covered: 0, ipv6_64_covered: 0,
+          last_refresh: '', last_commit: '', last_error: '', held: null,
+        },
+        held: false,
+        refresh_error: 'upstream feed timed out',
+      },
+    } as never)
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable telegram' }))
+    expect(await screen.findByText(/upstream feed timed out/)).toBeInTheDocument()
+  })
+
+  it('adds and deletes custom URL provider lists and shows 400 and 409 errors under the relevant field', async () => {
+    providers = [
+      {
+        id: 11, kind: 'url', name: 'existing-feed', url: 'https://feeds.example.com/ips.txt',
+        enabled: true, shared_network: false, v4_count: 3, v6_count: 0,
+        ipv4_covered: 768, ipv6_64_covered: 0,
+        last_refresh: '2026-07-01 09:00:00', last_commit: '1234567890abcdef',
+        last_error: '', held: null,
+      },
+    ]
+    renderWithProviders(<EgressAllowlist />)
+    await screen.findByText('existing-feed')
+
+    const labelInput = screen.getByLabelText('List label')
+    const urlInput = screen.getByLabelText('List URL')
+    const addBtn = screen.getByRole('button', { name: 'Add list' })
+
+    // 400 SSRF error under the URL field.
+    vi.mocked(api.post).mockRejectedValueOnce(badRequest('url resolves to a private or disallowed address'))
+    fireEvent.change(labelInput, { target: { value: 'internal-feed' } })
+    fireEvent.change(urlInput, { target: { value: 'http://127.0.0.1/ips.txt' } })
+    fireEvent.click(addBtn)
+    expect(await screen.findByText('url resolves to a private or disallowed address')).toBeInTheDocument()
+    expect(urlInput).toHaveAttribute('aria-invalid', 'true')
+    expect(urlInput).toHaveAccessibleDescription('url resolves to a private or disallowed address')
+
+    // 409 duplicate error under the URL field.
+    vi.mocked(api.post).mockRejectedValueOnce(conflictError('a URL provider with that label or URL already exists'))
+    fireEvent.change(urlInput, { target: { value: 'https://feeds.example.com/ips.txt' } })
+    fireEvent.click(addBtn)
+    expect(await screen.findByText('a URL provider with that label or URL already exists')).toBeInTheDocument()
+    expect(urlInput).toHaveAttribute('aria-invalid', 'true')
+
+    // Successful creation.
+    vi.mocked(api.post).mockResolvedValueOnce({ data: { status: 'success' } } as never)
+    fireEvent.change(labelInput, { target: { value: 'partner-cidr' } })
+    fireEvent.change(urlInput, { target: { value: 'https://feeds.example.com/partner.txt' } })
+    fireEvent.click(addBtn)
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('egress-providers/url', {
+      label: 'partner-cidr',
+      url: 'https://feeds.example.com/partner.txt',
+    }))
+
+    // Deleting a URL provider asks for confirmation first.
+    fireEvent.click(screen.getByRole('button', { name: 'Remove existing-feed' }))
+    const delDialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(delDialog).getByRole('button', { name: 'Remove' }))
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('egress-providers/url/11'))
+  })
+
+  it('uses the combined manual + provider count in StateNotice and reports when provider reading fails', async () => {
+    deny = 'true'
+    entries = []
+    manualTotalOverride = 12
+    providers = [
+      {
+        id: 1, kind: 'catalog', name: 'telegram', url: '', source: 'core.telegram.org/resources/cidr.txt',
+        enabled: true, shared_network: false, v4_count: 5000, v6_count: 200,
+        ipv4_covered: 18432, ipv6_64_covered: 8,
+        last_refresh: '2026-07-01 09:00:00', last_commit: 'aaaa', last_error: '', held: null,
+      },
+      {
+        id: 2, kind: 'catalog', name: 'cloudflare', url: '', source: 'cloudflare.com/ips',
+        enabled: true, shared_network: true, v4_count: 90, v6_count: 5,
+        ipv4_covered: 1048576, ipv6_64_covered: 5,
+        last_refresh: '2026-07-01 09:00:00', last_commit: 'bbbb', last_error: '', held: null,
+      },
+    ]
+    const { unmount } = renderWithProviders(<EgressAllowlist />)
+    expect(await screen.findByText('Default deny is on: clients reach only these 5,307 destinations')).toBeInTheDocument()
+    expect(screen.getByText(/12 manual entries and 5,295 from 2 provider lists/)).toBeInTheDocument()
+    expect(screen.queryByText(/this list is empty/)).not.toBeInTheDocument()
+    unmount()
+
+    // When egress-providers fails to load with 0 manual entries, never claim the allowlist is empty.
+    manualTotalOverride = 0
+    providersFail = true
+    renderWithProviders(<EgressAllowlist />)
+    expect(await screen.findByText('Default deny is on, and the size of this list could not be read')).toBeInTheDocument()
+    expect(screen.queryByText(/this list is empty/)).not.toBeInTheDocument()
   })
 })
 

@@ -22,10 +22,11 @@ for at least one minor release before disappearing.
   had a row in `settings`, the migration copies its previous value into the
   Audit log (`action = retire_setting_value`, `username = system`, `target` set
   to the key name, `details` holding `{"value": "..."}`, truncated at 64 KiB
-  with `"truncated": true` when longer) before deleting the row, so values can
-  be recovered from the Audit log or from a database export. `waf_custom_rules`
-  in the database was never read by the WAF: active custom rules live in
-  `/config/waf_custom_rules.txt`.
+  with `"truncated": true` when longer) before deleting the row. `retire_setting_value`
+  rows follow the Audit log retention of 365 days (`AuditRetentionDays`), so
+  values can be recovered from the Audit log for a year or from a database
+  export at any time. `waf_custom_rules` in the database was never read by the
+  WAF: active custom rules live in `/config/waf_custom_rules.txt`.
 
 ### Removed
 
@@ -42,19 +43,24 @@ for at least one minor release before disappearing.
   `PUT /api/egress-providers/{name}`, `POST /api/egress-providers/url`,
   `DELETE /api/egress-providers/url/{id}`,
   `POST /api/egress-providers/{name}/refresh`,
-  `POST /api/egress-providers/{name}/apply-held`): operators can enable IPv4
-  and IPv6 CIDR ranges from a fixed 12-provider catalog (`amazon`,
-  `cloudflare`, `digitalocean`, `facebook`, `github`, `google`, `linode`,
-  `microsoft`, `oracle`, `telegram`, `twitter`, `vultr`, plus `all`) fetched at
-  a pinned commit of `lord-alfred/ipranges`, or add custom CIDR list URLs.
+  `POST /api/egress-providers/{name}/apply-held`) and the **Provider lists**
+  section on the Egress allowlist page: operators can enable IPv4 and IPv6 CIDR
+  ranges from a fixed 12-provider catalog (`amazon`, `cloudflare`,
+  `digitalocean`, `facebook`, `github`, `google`, `linode`, `microsoft`,
+  `oracle`, `telegram`, `twitter`, `vultr`, plus `all`) fetched at a pinned
+  commit of `lord-alfred/ipranges`, or add custom CIDR list URLs.
   Shared-network providers require explicit confirmation (`confirm_shared:
-  true`). Updates are validated as a whole before replacing the previous list
-  (rejecting malformed lines, prefixes wider than `/8` in IPv4 or `/16` in
-  IPv6, any non-public range, or lists over 50,000 entries), held for manual
-  approval when covered addresses grow by more than 25%, refreshed every
-  `egress_provider_refresh_hours` hours (default 24, minimum 6), recorded in
-  the Audit log with commit SHA and counts, and exported into `dst_allow_ip.txt`
-  as a deduplicated union without touching the manual egress allowlist.
+  true`, with a confirmation dialog in the UI and a danger dialog showing the
+  IPv4 space percentage for `all`). Updates are validated as a whole before
+  replacing the previous list (rejecting malformed lines, prefixes wider than
+  `/8` in IPv4 or `/16` in IPv6, any non-public range, or lists over 50,000
+  entries), held for manual approval when covered addresses grow by more than
+  25% or when a previously empty address family appears from zero while the
+  other family already had entries, refreshed every
+  `egress_provider_refresh_hours` hours (default 24, from 6 to 168, configurable
+  under Settings, Filtering), recorded in the Audit log with commit SHA and
+  counts, and exported into `dst_allow_ip.txt` as a deduplicated union without
+  touching the manual egress allowlist.
 - The `observability` profile starts: `infra/` holds the Prometheus
   configuration (scraping `backend:5000/metrics` and `waf:8080/metrics`), six
   alert rules in `infra/prometheus/rules/spm.rules.yml` and the Grafana

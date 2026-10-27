@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { checkProxyPassword, checkProxyUsername, validateProxyLogin, validateSecrets } from './settingsValidation'
+import { checkProxyPassword, checkProxyUsername, validateProxyLogin, validateSecrets, validateSection } from './settingsValidation'
 
 // The same domains as validProxyUsername and validProxyPassword in
 // backend-go/internal/handlers/proxy_login.go, with the same messages.
@@ -36,5 +36,20 @@ describe('proxy login checks', () => {
     })
     expect(validateProxyLogin({ enable_proxy_auth: 'true', proxy_auth_username: 'office' }, true)).toEqual({})
     expect(validateProxyLogin({ enable_proxy_auth: 'false' }, false)).toEqual({})
+  })
+
+  it('validates egress_provider_refresh_hours from 6 to 168 hours', () => {
+    expect(validateSection('filtering', { egress_provider_refresh_hours: '6' })).toEqual({})
+    expect(validateSection('filtering', { egress_provider_refresh_hours: '24' })).toEqual({})
+    expect(validateSection('filtering', { egress_provider_refresh_hours: '168' })).toEqual({})
+    expect(validateSection('filtering', { egress_provider_refresh_hours: '5' })).toEqual({
+      egress_provider_refresh_hours: 'must be a whole number from 6 to 168 (hours)',
+    })
+    expect(validateSection('filtering', { egress_provider_refresh_hours: '169' })).toEqual({
+      egress_provider_refresh_hours: 'must be a whole number from 6 to 168 (hours)',
+    })
+    expect(validateSection('filtering', { egress_provider_refresh_hours: 'abc' })).toEqual({
+      egress_provider_refresh_hours: 'must be a whole number from 6 to 168 (hours)',
+    })
   })
 })

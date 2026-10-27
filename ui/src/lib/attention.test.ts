@@ -48,6 +48,11 @@ describe('needsAttention', () => {
     expect(item.title).toBe('Clients reach only LAN destinations and Allowed IPs')
     expect(item.body).toContain('With default deny on and an empty list, clients reach only LAN destinations and the addresses on Allowed IPs.')
     expect(item.body).not.toMatch(/every destination/i)
+    // Provider lists count toward the effective allowlist: 0 manual entries + enabled provider entries is not empty.
+    expect(ids(input({ values: on, egressTotal: 0, egressProviderEntries: 5295 }))).not.toContain('warning:egress-empty')
+    // When reading provider lists fails, report egress-unknown rather than egress-empty.
+    expect(ids(input({ values: on, egressTotal: 0, egressProviderEntries: null }))).not.toContain('warning:egress-empty')
+    expect(ids(input({ values: on, egressTotal: 0, egressProviderEntries: null }))).toContain('warning:egress-unknown')
   })
 
   it('warns when download blocking is on with no extension', () => {

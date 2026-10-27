@@ -1,5 +1,7 @@
+import { useQuery } from '@tanstack/react-query';
 import { api, getData } from './api';
-import type { ProxyAuthStatus, SettingRow } from '../types';
+import { formatCount } from './format';
+import type { EgressProvider, ProxyAuthStatus, SettingRow } from '../types';
 
 // Queries that more than one component reads. One definition per key, so two
 // components never cache different shapes under the same key.
@@ -41,6 +43,74 @@ export const egressTotalQuery = {
       return typeof total === 'number' ? total : null;
     }),
 };
+
+/**
+ * GET /api/egress-providers: catalog and custom URL provider lists and their
+ * counts.
+ */
+export const egressProvidersQuery = {
+  queryKey: ['egress-providers'] as const,
+  queryFn: (): Promise<EgressProvider[]> =>
+    api.get('egress-providers').then((r) => (Array.isArray(r.data?.data) ? (r.data.data as EgressProvider[]) : [])),
+};
+
+export interface EgressSummary {
+  /** Combined manual + enabled provider entries; null when either read failed, undefined while loading. */
+  total: number | null | undefined;
+  /** Manual entries count; null when reading manual entries failed, undefined while loading. */
+  manual: number | null | undefined;
+  /** Entries across enabled provider lists; null when reading providers failed, undefined while loading. */
+  providerEntries: number | null | undefined;
+  /** Enabled provider lists count; null when reading providers failed, undefined while loading. */
+  providerCount: number | null | undefined;
+  manualFailed: boolean;
+  providersFailed: boolean;
+  isPending: boolean;
+  isError: boolean;
+}
+
+export function formatEgressBreakdown(manual: number, providerEntries: number, providerCount: number): string {
+  const manualPart = `${formatCount(manual)} manual ${manual === 1 ? 'entry' : 'entries'}`;
+  const providerPart = `${formatCount(providerEntries)} from ${formatCount(providerCount)} ${providerCount === 1 ? 'provider list' : 'provider lists'}`;
+  return `${manualPart} and ${providerPart}`;
+}
+
+export function useEgressSummary(): EgressSummary {
+  const manualQ = useQuery(egressTotalQuery);
+  const providersQ = useQuery(egressProvidersQuery);
+
+  const manualFailed = manualQ.isError || (!manualQ.isPending && manualQ.data === null);
+  const providersFailed = providersQ.isError;
+  const isPending = manualQ.isPending || providersQ.isPending;
+  const isError = manualFailed || providersFailed;
+
+  const manual = manualFailed ? null : manualQ.data;
+  const enabledProviders = !providersFailed && providersQ.data ? providersQ.data.filter((p) => p.enabled) : undefined;
+  const providerCount = providersFailed ? null : enabledProviders?.length;
+  const providerEntries = providersFailed
+    ? null
+    : enabledProviders?.reduce((sum, p) => sum + p.v4_count + p.v6_count, 0);
+
+  let total: number | null | undefined;
+  if (isError) {
+    total = null;
+  } else if (typeof manual === 'number' && typeof providerEntries === 'number') {
+    total = manual + providerEntries;
+  } else {
+    total = undefined;
+  }
+
+  return {
+    total,
+    manual,
+    providerEntries,
+    providerCount,
+    manualFailed,
+    providersFailed,
+    isPending,
+    isError,
+  };
+}
 
 /**
  * GET /api/settings: every setting row. The key and the shape are the ones

@@ -83,15 +83,22 @@ depends on changes, unlike `version` in `/api/health`, which is the release.
 
 Used only while the `egress_default_deny` setting is `true` (default
 `false`); the setting is changed through `POST /api/settings`. See
-[Egress allowlist](./blacklists.md#egress-allowlist).
+[Egress allowlist](./blacklists.md#egress-allowlist) and
+[Egress provider lists](./blacklists.md#egress-providers).
 
 | Method | Path | Description |
 |---|---|---|
-| `GET`    | `/api/egress-allowlist` | List entries |
-| `POST`   | `/api/egress-allowlist` | Add an entry (`{"entry": "<ip, cidr or domain>", "description": "<optional>"}`) |
-| `DELETE` | `/api/egress-allowlist/{id}` | Delete an entry |
-| `POST`   | `/api/egress-allowlist/bulk-delete` | Delete entries by ID |
-| `DELETE` | `/api/egress-allowlist/clear-all` | Delete every entry |
+| `GET`    | `/api/egress-allowlist` | List manual entries |
+| `POST`   | `/api/egress-allowlist` | Add a manual entry (`{"entry": "<ip, cidr or domain>", "description": "<optional>"}`) |
+| `DELETE` | `/api/egress-allowlist/{id}` | Delete a manual entry |
+| `POST`   | `/api/egress-allowlist/bulk-delete` | Delete manual entries by ID |
+| `DELETE` | `/api/egress-allowlist/clear-all` | Delete every manual entry |
+| `GET`    | `/api/egress-providers` | List built-in catalog and custom URL egress provider lists |
+| `PUT`    | `/api/egress-providers/{name}` | Enable or disable a provider list (`confirm_shared: true` required to enable a shared network) |
+| `POST`   | `/api/egress-providers/url` | Add and fetch a custom URL provider list (`{"label": "...", "url": "..."}`) |
+| `DELETE` | `/api/egress-providers/url/{id}` | Delete a custom URL provider list and its prefixes |
+| `POST`   | `/api/egress-providers/{name}/refresh` | Fetch and validate the provider list now |
+| `POST`   | `/api/egress-providers/{name}/apply-held` | Apply a held update for a provider list |
 
 ## Logs and analytics
 

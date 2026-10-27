@@ -522,3 +522,187 @@ every name under it.
 | `entry must be an IP, CIDR, or domain` | Not an address or CIDR, and not a valid domain with a dot |
 | `write .example.com, with a leading dot, ...` | A domain written `*.example.com` |
 | `entry already in allowlist` | A duplicate |
+
+---
+
+## Egress provider lists {#egress-providers}
+
+Managed IPv4 and IPv6 CIDR destination lists for default-deny egress. Built-in
+catalog providers (`kind: "catalog"`) are fetched from
+`lord-alfred/ipranges` pinned to the latest commit on `main`; custom URL
+providers (`kind: "url"`) are fetched from operator-configured HTTP or HTTPS
+CIDR feeds.
+
+Enabled provider prefixes are stored in `egress_provider_entries` and exported
+together with manual CIDR entries into `/config/dst_allow_ip.txt` as a
+deduplicated union without altering the manual `dst_allowlist` table.
+
+### List providers
+
+```
+GET /api/egress-providers
+```
+
+Returns all 13 catalog entries (`amazon`, `cloudflare`, `digitalocean`,
+`facebook`, `github`, `google`, `linode`, `microsoft`, `oracle`, `telegram`,
+`twitter`, `vultr`, `all`) in catalog order, followed by any custom URL
+providers in creation order.
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": 0,
+      "kind": "catalog",
+      "name": "amazon",
+      "url": "",
+      "source": "ip-ranges.amazonaws.com",
+      "enabled": false,
+      "shared_network": true,
+      "v4_count": 0,
+      "v6_count": 0,
+      "ipv4_covered": 0,
+      "ipv6_64_covered": 0,
+      "last_refresh": "",
+      "last_commit": "",
+      "last_error": "",
+      "held": null
+    },
+    {
+      "id": 1,
+      "kind": "catalog",
+      "name": "telegram",
+      "url": "",
+      "source": "core.telegram.org/resources/cidr.txt",
+      "enabled": true,
+      "shared_network": false,
+      "v4_count": 7,
+      "v6_count": 4,
+      "ipv4_covered": 11008,
+      "ipv6_64_covered": 4295229440,
+      "last_refresh": "2026-10-26T22:05:12Z",
+      "last_commit": "bbd1c91eab7e21b1e700049b2a115b9a55a10a18",
+      "last_error": "",
+      "held": null,
+      "created": "2026-10-26 22:05:12"
+    }
+  ]
+}
+```
+
+**Fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | number | Row ID in `egress_providers` (`0` for a catalog provider that has never been enabled or refreshed) |
+| `kind` | `"catalog"` \| `"url"` | Built-in catalog provider or custom URL feed |
+| `name` | string | Catalog name or custom URL label |
+| `url` | string | Feed URL for `kind: "url"`, empty for catalog providers |
+| `source` | string | Upstream origin description for catalog providers |
+| `enabled` | boolean | Whether the provider's prefixes are included in `dst_allow_ip.txt` |
+| `shared_network` | boolean | Whether third-party sites and workloads run on the provider's IP ranges (`confirm_shared: true` required to enable) |
+| `v4_count` | number | Validated IPv4 CIDR prefixes stored for this provider |
+| `v6_count` | number | Validated IPv6 CIDR prefixes stored for this provider |
+| `ipv4_covered` | number | Total distinct IPv4 addresses covered after merging overlapping prefixes |
+| `ipv6_64_covered` | number | Total distinct IPv6 `/64` blocks covered after merging overlapping prefixes |
+| `last_refresh` | string | RFC 3339 UTC timestamp of the last successful refresh |
+| `last_commit` | string | Upstream Git commit SHA for catalog providers, or SHA-256 hex digest of the body for URL providers |
+| `last_error` | string | Error message from the most recent failed refresh (`""` when the last refresh succeeded) |
+| `held` | object \| `null` | Candidate update held because covered addresses grew by more than 25% or a previously empty address family appeared from zero (`commit`, `v4_count`, `v6_count`, `ipv4_covered`, `ipv6_64_covered`, `growth_pct`, `reason`, `held_at`) |
+
+### Enable or disable a provider
+
+```
+PUT /api/egress-providers/{name}
+```
+
+```json
+{
+  "enabled": true,
+  "confirm_shared": true
+}
+```
+
+- Enabling a provider with `shared_network: true` without `"confirm_shared": true`
+  is refused with `400`.
+- When a provider is enabled for the first time with `0` stored entries, the
+  backend fetches and validates its feed immediately. If the initial fetch
+  fails, the provider remains enabled and the `200` response includes
+  `"refresh_error": "<reason>"` alongside `"data"`.
+- Disabling (`"enabled": false`) keeps the stored prefixes for future re-use,
+  excludes them from `/config/dst_allow_ip.txt`, and triggers an export.
+
+### Add a custom URL provider
+
+```
+POST /api/egress-providers/url
+```
+
+```json
+{
+  "label": "partner-cidr-feed",
+  "url": "https://feeds.example.com/allowlist.txt"
+}
+```
+
+- `label` is 1 to 100 characters and must not collide with a catalog provider
+  name (`400` otherwise) or an existing URL provider (`409`).
+- `url` must be an `http` or `https` URL that does not resolve to a loopback,
+  private, link-local, or other SSRF-disallowed address (`400` otherwise), and
+  must not duplicate an existing URL (`409`).
+- The feed is fetched and validated immediately (`502` if the initial fetch or
+  validation fails).
+
+### Delete a custom URL provider
+
+```
+DELETE /api/egress-providers/url/{id}
+```
+
+Deletes the custom URL provider and its stored prefixes in one transaction,
+then exports `/config/dst_allow_ip.txt`. Answers `404` when no URL provider has
+that ID.
+
+### Refresh a provider now
+
+```
+POST /api/egress-providers/{name}/refresh
+```
+
+Fetches and validates the provider's feed immediately:
+
+- `200` with `{"status": "success", "data": {...}, "held": false}` when the new
+  list is applied (or unchanged at the same commit/hash).
+- `200` with `{"status": "success", "data": {...}, "held": true}` when the
+  candidate update is held for manual confirmation (`data.held` holds the
+  candidate summary).
+- `422` when the upstream fetch fails or any line in the feed violates the
+  validation rules (invalid CIDR, IPv4 wider than `/8`, IPv6 wider than `/16`,
+  non-public range, or more than 50,000 entries); the previous good entries stay
+  untouched and `last_error` records the failure.
+
+### Apply a held update
+
+```
+POST /api/egress-providers/{name}/apply-held
+```
+
+Promotes the held candidate (`held`) to the active prefix list for `{name}`,
+clears `held` and `last_error`, writes an `egress_provider_held_applied` audit
+row, exports `/config/dst_allow_ip.txt`, and returns the updated provider state.
+Answers `400` when `{name}` has no held update.
+
+### Audit actions
+
+Provider operations write the following `action` values to `audit_log` with the
+provider name as `target` and JSON `details`:
+
+| Action | `details` fields |
+|---|---|
+| `egress_provider_enabled` | `kind`, `shared_network` (on `PUT /api/egress-providers/{name}`); `kind`, `url` (redacted, on `POST /api/egress-providers/url`) |
+| `egress_provider_disabled` | `kind` (on `PUT /api/egress-providers/{name}`); `kind`, `url` (redacted), `deleted` (on `DELETE /api/egress-providers/url/{id}`) |
+| `egress_provider_refreshed` | `commit`, `v4_before`, `v4_after`, `v6_before`, `v6_after`, `ipv4_covered_before`, `ipv4_covered_after` |
+| `egress_provider_refresh_failed` | `kind`, `reason` |
+| `egress_provider_held` | `commit`, `growth_pct`, `reason`, `v4_before`, `v4_after`, `v6_before`, `v6_after`, `ipv4_covered_before`, `ipv4_covered_after`, `ipv6_64_covered_before`, `ipv6_64_covered_after` |
+| `egress_provider_held_applied` | `commit`, `growth_pct`, `v4_before`, `v4_after`, `v6_before`, `v6_after`, `ipv4_covered_before`, `ipv4_covered_after` |

@@ -43,6 +43,8 @@ const base: Row[] = [
 
 let rows: Row[] = base
 let egressTotal = 0
+let egressProviders: unknown[] = []
+let egressProvidersFail = false
 let proxyStatus = 'running'
 let proxyAuth: { state: string; users: number; written_at: number } | undefined
 const withCredentials: Row[] = [
@@ -91,6 +93,8 @@ describe('Settings sections', () => {
     vi.clearAllMocks()
     rows = base
     egressTotal = 0
+    egressProviders = []
+    egressProvidersFail = false
     proxyStatus = 'running'
     proxyAuth = undefined
     setViewport(true)
@@ -98,6 +102,10 @@ describe('Settings sections', () => {
       if (url === 'settings') return Promise.resolve({ data: { status: 'success', data: rows } })
       if (url === 'status') return Promise.resolve({ data: { status: 'success', data: { proxy_status: proxyStatus, proxy_auth: proxyAuth } } })
       if (url === 'egress-allowlist') return Promise.resolve({ data: { status: 'success', data: [], meta: { total: egressTotal, limit: 1, offset: 0 }, total: egressTotal } })
+      if (url === 'egress-providers') {
+        if (egressProvidersFail) return Promise.reject(new Error('down'))
+        return Promise.resolve({ data: { status: 'success', data: egressProviders } })
+      }
       return Promise.resolve({ data: { status: 'success', data: null } })
     })
     vi.mocked(api.post).mockImplementation((url: string) => {
@@ -286,6 +294,31 @@ describe('Settings sections', () => {
       save()
       expect(await screen.findByText(/^Applied to the proxy at/)).toBeInTheDocument()
       expect(settingsPosts()[0][1]).toMatchObject({ egress_default_deny: 'true' })
+    })
+
+    it('counts enabled provider lists toward the allowlist and validates egress_provider_refresh_hours', async () => {
+      egressTotal = 0
+      egressProviders = [
+        { id: 1, kind: 'catalog', name: 'telegram', url: '', source: 'core.telegram.org/resources/cidr.txt', enabled: true, shared_network: false, v4_count: 15, v6_count: 8, ipv4_covered: 18432, ipv6_64_covered: 8, last_refresh: '2026-07-01 09:00:00', last_commit: 'abcdef123456', last_error: '', held: null },
+        { id: 2, kind: 'catalog', name: 'cloudflare', url: '', source: 'cloudflare.com/ips', enabled: true, shared_network: true, v4_count: 15, v6_count: 7, ipv4_covered: 1835008, ipv6_64_covered: 7, last_refresh: '2026-07-01 09:00:00', last_commit: 'abcdef123456', last_error: '', held: null },
+      ]
+      renderAt('/settings/filtering')
+      expect(await screen.findByText(/The egress allowlist holds 0 manual entries and 45 from 2 provider lists\./)).toBeInTheDocument()
+      const refreshInput = screen.getByLabelText('Refresh provider lists every (hours)')
+      fireEvent.change(refreshInput, { target: { value: '4' } })
+      fireEvent.click(screen.getByRole('switch', { name: 'Only allowlisted destinations' }))
+      save()
+      expect(settingsPosts()).toHaveLength(0)
+      expect(refreshInput).toHaveAttribute('aria-invalid', 'true')
+      expect(refreshInput).toHaveAccessibleDescription(/Must be a whole number from 6 to 168 \(hours\)/)
+
+      fireEvent.change(refreshInput, { target: { value: '12' } })
+      save()
+      await waitFor(() => expect(settingsPosts()).toHaveLength(1))
+      expect(settingsPosts()[0][1]).toMatchObject({
+        egress_default_deny: 'true',
+        egress_provider_refresh_hours: '12',
+      })
     })
 
     it('shows the patterns the proxy will match, and refuses what is not an extension', async () => {

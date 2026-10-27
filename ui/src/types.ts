@@ -22,6 +22,36 @@ export interface EgressEntry {
   added_date: string;
 }
 
+export interface EgressProviderHeld {
+  commit: string;
+  v4_count: number;
+  v6_count: number;
+  ipv4_covered: number;
+  ipv6_64_covered: number;
+  growth_pct: number;
+  reason: string;
+  held_at: string;
+}
+
+export interface EgressProvider {
+  id: number;
+  kind: 'catalog' | 'url';
+  name: string;
+  url: string;
+  source?: string;
+  enabled: boolean;
+  shared_network: boolean;
+  v4_count: number;
+  v6_count: number;
+  ipv4_covered: number;
+  ipv6_64_covered: number;
+  last_refresh: string;
+  last_commit: string;
+  last_error: string;
+  held: EgressProviderHeld | null;
+  created?: string;
+}
+
 export interface DomainWhitelistEntry {
   id: number;
   domain: string;
