@@ -19,11 +19,17 @@ export async function applyToProxy(): Promise<ApplyOutcome> {
   try {
     const res = await api.post('maintenance/reload-config', {});
     if (res.data?.status === 'pending') return { kind: 'pending' };
+    if (res.data?.status && res.data.status !== 'success') {
+      return {
+        kind: 'failed',
+        message: res.data.message || res.data.detail || 'the reload trigger could not be written',
+      };
+    }
     return { kind: 'applied', at: new Date() };
   } catch (err) {
     if (axios.isAxiosError(err) && err.response?.data?.code === 'reload_failed') {
       const d = err.response.data.data ?? {};
-      return { kind: 'refused', generatorRc: d.generator_rc, reconfigureRc: d.reconfigure_rc };
+      return { kind: 'refused', generatorRc: d.generator_rc, reconfigureRc: d.reconfigureRc ?? d.reconfigure_rc };
     }
     return { kind: 'failed', message: getErrorMessage(err, 'the backend did not answer') };
   }

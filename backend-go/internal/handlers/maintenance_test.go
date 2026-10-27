@@ -500,3 +500,30 @@ func TestBackupRestorePreservesEgressEntryType(t *testing.T) {
 		t.Errorf("dst_allow_ip.txt would receive %d rows, want 1", nIP)
 	}
 }
+
+func TestReloadConfigUnwritableTriggerDoesNotReportSuccess(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewMaintenanceHandlers(db, cfg)
+
+	// Make .reload-squid a directory so os.WriteFile fails deterministically
+	// even when running as root inside a container.
+	triggerPath := filepath.Join(cfg.ConfigDir, ".reload-squid")
+	if err := os.MkdirAll(triggerPath, 0o750); err != nil {
+		t.Fatalf("mkdir triggerPath: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	h.ReloadConfig(w, httptest.NewRequest(http.MethodPost, "/api/maintenance/reload-config", nil))
+
+	var body map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if w.Code == http.StatusOK && body["status"] == "success" {
+		t.Fatalf("unwritable .reload-squid returned 200 status=success (%v); applyToProxy would report it as applied", body)
+	}
+	if w.Code != http.StatusInternalServerError || body["code"] != "trigger_write_failed" {
+		t.Errorf("unwritable .reload-squid: got %d %v, want 500 code=trigger_write_failed", w.Code, body)
+	}
+}

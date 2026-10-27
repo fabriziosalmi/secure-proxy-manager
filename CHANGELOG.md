@@ -96,6 +96,23 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- First-run sign-in, setup wizard and client setup report what actually
+  happened: `Login` distinguishes 401 (`Invalid username or password`), 429
+  rate-limit responses (showing the backend's `detail`), 5xx or unreachable
+  backend errors, and missing tokens, and adds a password reveal toggle (also
+  added to Confirm New Password in Settings); `App` shows a retry notice instead
+  of skipping the setup wizard when `GET /api/settings` fails on initial load;
+  `SetupWizard` removes the misleading devices step, describes every setup and
+  strictness option by the exact settings it enables without turning on
+  bandwidth limits or `aggressive_caching_enabled`, invalidates the settings
+  query cache after saving, and reports the real `applyToProxy()` outcome
+  (`applied`, `pending`, `refused`, `failed`) referencing `Settings, Admin and
+  backup, Reload the proxy`; `POST /api/maintenance/reload-config` answers 500
+  (`code: trigger_write_failed`) instead of 200 `success` when `.reload-squid`
+  cannot be written; `ClientSetup` awaits `navigator.clipboard.writeText` before
+  reporting a copy, shows `Authentication: Username and password` on iOS when
+  `enable_proxy_auth` is on, and removes the duplicate `Connect Your Devices`
+  heading.
 - `gdpr_mode` (Settings > Logs and privacy > Mask client IPs) masks client
   addresses everywhere they leave the backend: `GET /api/clients/statistics`,
   `GET /api/clients/{ip}/details`, `GET /api/dashboard/summary` (`top_clients`

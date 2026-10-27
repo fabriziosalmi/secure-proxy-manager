@@ -104,10 +104,10 @@ describe('Clients', () => {
     expect(screen.getByText('Devices that sent traffic through the proxy in the last 7 days.')).toBeInTheDocument()
     const connect = screen.getByRole('button', { name: 'Connect a device' })
     expect(connect).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByText('Connect Your Devices')).not.toBeInTheDocument()
+    expect(screen.queryByRole('tablist', { name: 'Operating system' })).not.toBeInTheDocument()
     fireEvent.click(connect)
     expect(connect).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText('Connect Your Devices')).toBeInTheDocument()
+    expect(screen.getByRole('tablist', { name: 'Operating system' })).toBeInTheDocument()
   })
 
   it('hides the internal addresses until the viewer shows them, and says how many it hides', async () => {

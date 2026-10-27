@@ -577,7 +577,12 @@ func (h *MaintenanceHandlers) ReloadConfig(w http.ResponseWriter, r *http.Reques
 	// #nosec G306 — reload trigger, must be readable by the proxy/dns container
 	if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(stamp, 10)), 0644); err != nil {
 		log.Warn().Err(err).Msg("proxy reload file trigger failed")
-		writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Config exported, but the reload trigger could not be written; apply manually"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"status":  "error",
+			"code":    "trigger_write_failed",
+			"message": "Config exported, but the reload trigger could not be written; apply manually",
+			"detail":  "Config exported, but the reload trigger could not be written; apply manually",
+		})
 		return
 	}
 

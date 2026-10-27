@@ -27,7 +27,8 @@ import { GlobalSearch } from './components/GlobalSearch';
 import { Login } from './pages/Login';
 import { SetupWizard } from './components/SetupWizard';
 import { Button } from './components/ui/Button';
-import { api, isTokenExpired, signOut } from './lib/api';
+import { Notice } from './components/ui/Notice';
+import { api, getErrorMessage, isTokenExpired, signOut } from './lib/api';
 import { ThemeProvider } from './components/ThemeProvider';
 import { SettingsDraftsProvider } from './components/settings/SettingsDrafts';
 
@@ -92,6 +93,8 @@ function AppContent() {
   const handleLogout = async () => {
     await signOut();
     setIsAuthenticated(false);
+    setWizardDone(null);
+    setWizardError(null);
     queryClient.clear();
   };
 
@@ -108,6 +111,8 @@ function AppContent() {
   });
 
   const [wizardDone, setWizardDone] = useState<boolean | null>(null);
+  const [wizardError, setWizardError] = useState<string | null>(null);
+  const [wizardRetry, setWizardRetry] = useState(0);
 
   // Listen for session expiry warning from API interceptor
   useEffect(() => {
@@ -130,17 +135,46 @@ function AppContent() {
       const wizardSetting = Array.isArray(settings)
         ? settings.find((s: { setting_name: string }) => s.setting_name === 'wizard_completed')
         : null;
+      setWizardError(null);
       setWizardDone(wizardSetting?.setting_value === 'true');
     }).catch((err) => {
       // Aborts are expected on cleanup; don't treat them as failures.
       if (axios.isCancel?.(err) || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
-      setWizardDone(true); // If API fails, skip wizard
+      setWizardError(getErrorMessage(err, 'The backend did not answer. Check that the backend container is running.'));
     });
     return () => ctrl.abort();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, wizardRetry]);
 
   if (!isAuthenticated) {
     return <Login onLogin={() => setIsAuthenticated(true)} />;
+  }
+
+  if (wizardError !== null) {
+    return (
+      <main className="flex items-center justify-center min-h-screen bg-ground text-ink px-4">
+        <div className="w-full max-w-md">
+          <Notice
+            tone="danger"
+            title="Could not load settings"
+            action={
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setWizardError(null);
+                  setWizardDone(null);
+                  setWizardRetry((n) => n + 1);
+                }}
+              >
+                Try again
+              </Button>
+            }
+          >
+            {wizardError}
+          </Notice>
+        </div>
+      </main>
+    );
   }
 
   // Loading: checking wizard status
@@ -159,60 +193,58 @@ function AppContent() {
   }
 
   return (
-    <>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          {/* Unsaved Settings drafts outlive a visit to another page, not the session. */}
-          <SettingsDraftsProvider>
-          <GlobalSearch />
-          <ErrorBoundary>
-            <Suspense fallback={<PageLoader />}>
-              <Routes>
-                <Route path="/" element={<Layout onLogout={handleLogout} />}>
-                  <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
-                  <Route path="blacklists" element={<ErrorBoundary><Blacklists /></ErrorBoundary>} />
-                  <Route path="analytics" element={<ErrorBoundary><Analytics /></ErrorBoundary>} />
-                  {/* The Threat Intel page is now Analytics; old links and bookmarks still land on it. */}
-                  <Route path="threats" element={<Navigate to="/analytics" replace />} />
-                  <Route path="clients" element={<ErrorBoundary><Clients /></ErrorBoundary>} />
-                  <Route path="logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
-                  <Route path="audit" element={<ErrorBoundary><Audit /></ErrorBoundary>} />
-                  <Route path="egress" element={<ErrorBoundary><EgressAllowlist /></ErrorBoundary>} />
-                  {/* One section per URL; /settings opens the first one. */}
-                  <Route path="settings" element={<Navigate to="/settings/overview" replace />} />
-                  <Route path="settings/:section" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
-                  <Route path="*" element={<NotFound />} />
-                </Route>
-              </Routes>
-            </Suspense>
-          </ErrorBoundary>
-          </SettingsDraftsProvider>
-        </BrowserRouter>
-      </QueryClientProvider>
-      <Toaster
-        position="bottom-right"
-        toastOptions={{
-          style: {
-            background: 'var(--ds-surface)',
-            color: 'var(--ds-text)',
-            border: '1px solid var(--ds-border)',
-          },
-          success: {
-            iconTheme: {
-              primary: 'var(--ds-success-strong)',
-              secondary: 'var(--ds-surface)',
-            },
-          },
-        }}
-      />
-    </>
+    <BrowserRouter>
+      {/* Unsaved Settings drafts outlive a visit to another page, not the session. */}
+      <SettingsDraftsProvider>
+        <GlobalSearch />
+        <ErrorBoundary>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/" element={<Layout onLogout={handleLogout} />}>
+                <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+                <Route path="blacklists" element={<ErrorBoundary><Blacklists /></ErrorBoundary>} />
+                <Route path="analytics" element={<ErrorBoundary><Analytics /></ErrorBoundary>} />
+                {/* The Threat Intel page is now Analytics; old links and bookmarks still land on it. */}
+                <Route path="threats" element={<Navigate to="/analytics" replace />} />
+                <Route path="clients" element={<ErrorBoundary><Clients /></ErrorBoundary>} />
+                <Route path="logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
+                <Route path="audit" element={<ErrorBoundary><Audit /></ErrorBoundary>} />
+                <Route path="egress" element={<ErrorBoundary><EgressAllowlist /></ErrorBoundary>} />
+                {/* One section per URL; /settings opens the first one. */}
+                <Route path="settings" element={<Navigate to="/settings/overview" replace />} />
+                <Route path="settings/:section" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
+                <Route path="*" element={<NotFound />} />
+              </Route>
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
+      </SettingsDraftsProvider>
+    </BrowserRouter>
   );
 }
 
 function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <QueryClientProvider client={queryClient}>
+        <AppContent />
+        <Toaster
+          position="bottom-right"
+          toastOptions={{
+            style: {
+              background: 'var(--ds-surface)',
+              color: 'var(--ds-text)',
+              border: '1px solid var(--ds-border)',
+            },
+            success: {
+              iconTheme: {
+                primary: 'var(--ds-success-strong)',
+                secondary: 'var(--ds-surface)',
+              },
+            },
+          }}
+        />
+      </QueryClientProvider>
     </ThemeProvider>
   );
 }
