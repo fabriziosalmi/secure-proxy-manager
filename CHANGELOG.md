@@ -15,7 +15,39 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- **A boolean setting takes only `"true"` or `"false"`.** Every setting whose
+  default is one of the two, and `wizard_completed`, now refuses any other
+  value with 400 on `POST /api/settings` and `PUT /api/settings/{name}`, and a
+  restore skips it with the reason. A value such as `"1"` used to be stored
+  and read two ways: the WAF reconciler took it as on, the Settings page and
+  every other reader as off, so a heuristic the page showed as off ran in the
+  WAF. The reconciler now reads only `"true"` as on, like the others; a
+  heuristic stored as `"1"` before this version is pushed to the WAF as off,
+  which is what the page already showed.
+
 ### Fixed
+
+- **A failed read of the dashboard's all-time counts is no longer served as
+  zero for 25 seconds.** The query's error was discarded and the zeros it left
+  were cached as the counts, so a busy database made the Overview show wrong
+  totals to every tab. The previous counts are kept, the failure is logged,
+  and the next request retries.
+- **A damaged `data/.enc_key` stops the backend instead of being replaced.**
+  A file that exists but is not 64 hex characters (a partial restore, a stray
+  edit) was treated as missing: a new key was generated and written over it,
+  destroying the only copy that could decrypt the stored alert credentials and
+  the proxy password. The backend now exits with an error naming the file and
+  what to do. A damaged `data/.jwt_secret`, which costs only the open
+  sessions, is moved to `.jwt_secret.rejected-<time>` and replaced, with a log
+  line.
+- **The log tailers' read offset survives a power loss.** It was written with
+  a plain write and rename and no fsync, so a crash could leave an empty
+  `.pos` that reads back as 0 and re-ingests the whole access log as
+  duplicate rows; anything left at the fixed temporary name also made every
+  offset write fail. It is now written through the same fsync-and-rename path
+  as the key files, and that path has tests of its own.
 
 - **A response the WAF blocks now reaches the notifications and carries an
   event ID.** A blocked download (`application/x-msdownload`, a JAR, a
