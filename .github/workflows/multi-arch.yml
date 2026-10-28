@@ -223,7 +223,9 @@ jobs:
 
       # Keyless (OIDC) signature via cosign, so consumers can verify the image
       # against this repository's release workflow identity. Signing is
-      # required: if it fails the job fails.
+      # required: if it fails the job fails. scripts/cosign-sign.sh retries a
+      # transient failure (v3.18.1 lost its Docker Hub signature to a Rekor
+      # 409 on cosign's own retry) and then verifies the signature is there.
       - name: Install cosign
         if: ${{ env.RELEASE == 'true' }}
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
@@ -231,10 +233,10 @@ jobs:
         if: ${{ env.RELEASE == 'true' }}
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
-        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+        run: bash scripts/cosign-sign.sh "${IMAGE}@${DIGEST}"
       - name: Sign the Docker Hub image (keyless)
         if: ${{ env.RELEASE == 'true' && steps.dh.outputs.enabled == 'true' }}
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
           DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
-        run: cosign sign --yes "docker.io/${DH_USER}/secure-proxy-manager@${DIGEST}"
+        run: bash scripts/cosign-sign.sh "docker.io/${DH_USER}/secure-proxy-manager@${DIGEST}"
