@@ -60,7 +60,7 @@ var (
 		"network":       new(atomic.Int64), // no answer, after the retries
 		"rejected":      new(atomic.Int64), // 4xx: a credential or request problem, not retried
 		"server_error":  new(atomic.Int64), // 5xx, after the retries
-		"no_credential": new(atomic.Int64), // INTERNAL_ALERT_TOKEN and BASIC_AUTH_* unset
+		"no_credential": new(atomic.Int64), // no service token (env or file) and BASIC_AUTH_* unset
 	}
 
 	// bodyTruncatedCount counts requests whose body exceeded maxBodyInspectSize,
@@ -205,8 +205,9 @@ func warnNoAlertCredential() {
 	if now-prev < 60 || !lastCredWarn.CompareAndSwap(prev, now) {
 		return
 	}
-	log.Printf("no backend alert credential: set INTERNAL_ALERT_TOKEN (openssl rand -hex 32) " +
-		"on both the waf and backend services; alerts are being dropped\n")
+	log.Printf("no backend alert credential: INTERNAL_ALERT_TOKEN is unset and %s is missing; mount the "+
+		"service-token volume read-only as the shipped compose files do, or set INTERNAL_ALERT_TOKEN "+
+		"(openssl rand -hex 32) on both the waf and backend services; alerts are being dropped\n", serviceTokenFile())
 }
 
 // notifyAttempts bounds the deliveries of one alert; notifyRetryDelay is the
@@ -1016,11 +1017,7 @@ func serviceToken() string {
 	if t := strings.TrimSpace(os.Getenv("INTERNAL_ALERT_TOKEN")); t != "" {
 		return t
 	}
-	path := os.Getenv("SPM_SERVICE_TOKEN_FILE")
-	if path == "" {
-		path = defaultServiceTokenFile
-	}
-	data, err := os.ReadFile(path) // #nosec G304 -- fixed path or the operator's SPM_SERVICE_TOKEN_FILE
+	data, err := os.ReadFile(serviceTokenFile()) // #nosec G304 -- fixed path or the operator's SPM_SERVICE_TOKEN_FILE
 	if err != nil {
 		return ""
 	}
@@ -1028,6 +1025,14 @@ func serviceToken() string {
 		return t
 	}
 	return ""
+}
+
+// serviceTokenFile is where the backend writes the shared token.
+func serviceTokenFile() string {
+	if p := os.Getenv("SPM_SERVICE_TOKEN_FILE"); p != "" {
+		return p
+	}
+	return defaultServiceTokenFile
 }
 
 // ── Management Auth Middleware ──────────────────────────────────────────────
@@ -1052,7 +1057,7 @@ func mgmtAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		if token == "" && (user == "" || pass == "") {
 			// No credentials configured — deny all management access
 			http.Error(w,
-				`{"error":"management auth not configured: set INTERNAL_ALERT_TOKEN on the waf and backend services"}`,
+				`{"error":"management auth not configured: mount the service-token volume or set INTERNAL_ALERT_TOKEN on the waf and backend services"}`,
 				http.StatusForbidden)
 			return
 		}
