@@ -73,6 +73,19 @@ upgrade read `null`. The CSV export gains `resolved_ip` as its last column.
   inside the Grafana 13.3.0 bundled plugins, k6 2.3.0 and tailscale
   v1.104.2, each the newest tag of its image.
 
+### Internal
+
+- SQL statement text is its own type, `database.SQLText` (#467). An untyped
+  constant converts to it; a string variable does not compile, so a request
+  value cannot reach the text of a query by mistake. `database.Placeholders`
+  and `database.JoinSQL` are the only explicit conversions, and
+  `TestNoValueCanReachSQLText` walks every Go file and fails on any other, or
+  on a concatenation passed straight to `Query`, `QueryRow`, `Exec` or
+  `Prepare`. The daily breakdown binds its day index instead of formatting it.
+- slopless 1.18.1 runs in CI at error severity (#467). Every error it reported
+  was checked and is a false positive; each of the 36 is marked in place with
+  its reason, so a new one fails the job.
+
 ## [3.16.0] - 2026-10-28
 
 Egress can follow the IP ranges a provider publishes, the dashboard session
