@@ -15,6 +15,22 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Fixed
+
+- **With SafeSearch or YouTube Restricted Mode on, Google, Bing, DuckDuckGo
+  and YouTube load again.** Both features were `cname=` overrides to hosts
+  dnsmasq does not know locally, and dnsmasq follows a CNAME only to a local
+  name: it answered `www.google.com` with the CNAME and no address, so the
+  proxy could not connect (`TCP_TUNNEL/503` in 1 ms) for as long as the
+  feature was on. The enforcement hosts are now resolved through the
+  upstream resolvers when dnsmasq starts and declared with `host-record`.
+  If a lookup fails, Google and YouTube use 216.239.38.120, the address
+  Google documents, and Bing and DuckDuckGo are blocked (0.0.0.0) rather
+  than left unfiltered, with a warning in the dns log. The hosts are
+  resolved again every hour (`SAFESEARCH_REFRESH_SECONDS`), so a blocked
+  target recovers and a moved CDN address is followed; dnsmasq restarts
+  only when an address in use changed.
+
 ### Internal
 
 - **A release image is signed again after a transient failure, and the job
