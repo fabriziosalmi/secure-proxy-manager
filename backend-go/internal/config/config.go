@@ -111,11 +111,51 @@ func Load() *Config {
 		WAFServiceUser: envOrDefault("WAF_SERVICE_USERNAME", username),
 		WAFServicePass: envOrDefault("WAF_SERVICE_PASSWORD", password),
 		ProxyURL:       envOrDefault("PROXY_URL", "http://proxy:3128"),
-		AlertToken:     strings.TrimSpace(os.Getenv("INTERNAL_ALERT_TOKEN")),
+		AlertToken:     serviceToken(os.Getenv("INTERNAL_ALERT_TOKEN"), envOrDefault("SPM_SERVICE_TOKEN_FILE", DefaultServiceTokenFile)),
 		GeoIPURL:       envOrDefault("GEOIP_URL", ""), // Empty means use defaults
 		EncryptionKey:  loadOrGenerateEncKey(),
 	}
 	return cfg
+}
+
+// DefaultServiceTokenFile is where the backend keeps the generated service
+// token. The shipped compose files mount one volume there, read-write in the
+// backend and read-only in the WAF, and nowhere else: the proxy, which mounts
+// /config, cannot read it.
+const DefaultServiceTokenFile = "/var/lib/spm-service-token/alert_token"
+
+// serviceToken is the credential between the backend and the WAF (alerts to
+// /api/internal/alert, and the backend's calls to the WAF management API). A
+// value in INTERNAL_ALERT_TOKEN wins. Otherwise the token in path is used, or
+// generated and written there, so a manual install that leaves the variable
+// empty still gets working alerts: it used to leave every WAF alert dropped
+// and every WAF control refused, with only a warning. Without the volume
+// (path's directory missing, a hand-written compose file) it stays empty and
+// the startup warning in cmd/server says what to set.
+func serviceToken(env, path string) string {
+	if t := strings.TrimSpace(env); t != "" {
+		return t
+	}
+	if fi, err := os.Stat(filepath.Dir(path)); err != nil || !fi.IsDir() {
+		return ""
+	}
+	data, err := os.ReadFile(path) // #nosec G304 -- path is DefaultServiceTokenFile or SPM_SERVICE_TOKEN_FILE, set by the operator
+	if t := strings.TrimSpace(string(data)); err == nil && len(t) == 64 && encryptionKeyError(t) == nil {
+		return t
+	}
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		log.Fatal().Err(err).Msg("cannot generate the service token")
+	}
+	t := hex.EncodeToString(b)
+	// 0644: the WAF reads it as another user; the volume is mounted only in
+	// the backend and the WAF.
+	if err := atomicfile.Write(path, []byte(t+"\n"), 0o644); err != nil {
+		log.Warn().Err(err).Str("path", path).Msg("service token: cannot be written; WAF alerts and controls stay off until INTERNAL_ALERT_TOKEN is set")
+		return ""
+	}
+	log.Info().Str("path", path).Msg("service token generated for the WAF (INTERNAL_ALERT_TOKEN is not set)")
+	return t
 }
 
 func requireEnv(key string) string {

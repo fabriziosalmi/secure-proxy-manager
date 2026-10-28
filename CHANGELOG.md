@@ -27,6 +27,16 @@ for at least one minor release before disappearing.
   heuristic stored as `"1"` before this version is pushed to the WAF as off,
   which is what the page already showed.
 
+- **`INTERNAL_ALERT_TOKEN` can be left empty.** The backend then generates the
+  service token at first start into a new `service-token` volume, mounted
+  read-write in the backend and read-only in the WAF and in no other service
+  (`scripts/check-config-contract.sh` enforces this for both compose files),
+  and the WAF reads it when it needs it. A manual install from `.env.example`
+  used to start with the token empty: every WAF block alert was dropped and
+  the WAF refused the backend's management calls, with only a warning. A
+  value set in the environment still wins. A deployment that keeps its own
+  compose file needs the volume on both services to use this.
+
 ### Fixed
 
 - **A failed read of the dashboard's all-time counts is no longer served as

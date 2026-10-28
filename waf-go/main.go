@@ -229,7 +229,7 @@ func notifyBackend(data map[string]interface{}) {
 	// The basic-auth path is kept only as a fallback for deployments upgrading
 	// with a hand-written compose file that still passes BASIC_AUTH_* here. The
 	// shipped compose files no longer do.
-	alertToken := strings.TrimSpace(os.Getenv("INTERNAL_ALERT_TOKEN"))
+	alertToken := serviceToken()
 	authUser := os.Getenv("BASIC_AUTH_USERNAME")
 	authPass := os.Getenv("BASIC_AUTH_PASSWORD")
 	if alertToken == "" && (authUser == "" || authPass == "") {
@@ -1001,6 +1001,35 @@ func main() {
 	}
 }
 
+// ── Service token ───────────────────────────────────────────────────────────
+
+// defaultServiceTokenFile matches the backend's config.DefaultServiceTokenFile:
+// one volume mounted read-write in the backend and read-only here.
+const defaultServiceTokenFile = "/var/lib/spm-service-token/alert_token"
+
+// serviceToken is the credential shared with the backend: INTERNAL_ALERT_TOKEN
+// when it is set, otherwise the token the backend generated into the shared
+// volume (SPM_SERVICE_TOKEN_FILE overrides the path). It is read on each use,
+// which is a few times a minute, so a token the backend writes or replaces
+// after this process started is picked up without a restart.
+func serviceToken() string {
+	if t := strings.TrimSpace(os.Getenv("INTERNAL_ALERT_TOKEN")); t != "" {
+		return t
+	}
+	path := os.Getenv("SPM_SERVICE_TOKEN_FILE")
+	if path == "" {
+		path = defaultServiceTokenFile
+	}
+	data, err := os.ReadFile(path) // #nosec G304 -- fixed path or the operator's SPM_SERVICE_TOKEN_FILE
+	if err != nil {
+		return ""
+	}
+	if t := strings.TrimSpace(string(data)); len(t) == 64 {
+		return t
+	}
+	return ""
+}
+
 // ── Management Auth Middleware ──────────────────────────────────────────────
 
 // mgmtAuthMiddleware protects the management endpoints. The credential is
@@ -1014,10 +1043,12 @@ func main() {
 // configured" to the backend, silently. /health and /metrics stay open (Docker
 // healthcheck, Prometheus).
 func mgmtAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	token := strings.TrimSpace(os.Getenv("INTERNAL_ALERT_TOKEN"))
 	user := os.Getenv("BASIC_AUTH_USERNAME")
 	pass := os.Getenv("BASIC_AUTH_PASSWORD")
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Per request: the backend may write the shared token after the WAF
+		// has started.
+		token := serviceToken()
 		if token == "" && (user == "" || pass == "") {
 			// No credentials configured — deny all management access
 			http.Error(w,

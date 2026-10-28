@@ -71,6 +71,9 @@ services:
       # Dedicated writable volume for the traffic feature log, so it persists
       # across restarts and stays off the memory-backed /tmp tmpfs (issue #112).
       - waf-traffic:/var/lib/waf
+      # The service token the backend generates when INTERNAL_ALERT_TOKEN is
+      # empty; read-only here, mounted nowhere but the backend and the WAF.
+      - service-token:/var/lib/spm-service-token:ro
     environment:
       # Service credential for POST /api/internal/alert, scoped to that one
       # route. The WAF used to be handed BASIC_AUTH_USERNAME/PASSWORD — the
@@ -129,6 +132,9 @@ services:
       - ./config:/config
       - ./data:/data
       - ./logs:/logs
+      # Written here when INTERNAL_ALERT_TOKEN is empty (config.serviceToken);
+      # the WAF reads it from the same volume.
+      - service-token:/var/lib/spm-service-token
     environment:
       - PROXY_HOST=${PROXY_HOST:-proxy}
       - PROXY_PORT=${PROXY_PORT:-3128}
@@ -420,6 +426,8 @@ networks:
     internal: true
 
 volumes:
+  service-token:
+    driver: local
   waf-traffic:
     driver: local
   squid-cache:

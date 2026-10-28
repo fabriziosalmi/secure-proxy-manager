@@ -191,6 +191,22 @@ fi
 # export + toggle), reload-config to restart the proxy so startup.sh injects the
 # rule, then assert the allowlisted host is reachable and another is denied.
 # Runs last: default-deny changes proxy behaviour for everything after it.
+echo "── service token (INTERNAL_ALERT_TOKEN unset in this .env) ──"
+# The backend generates the token into the volume it shares with the WAF, so
+# with the variable empty the backend still reaches the WAF management API and
+# the WAF still has a credential for its alerts. Without it the first answered
+# 403 (proxied as 502) and the second logged "no backend alert credential".
+wc=$(curl -s -m 10 -u "$AUTH" -o /dev/null -w '%{http_code}' "$API/api/waf/categories")
+[ "$wc" = "200" ] && ok "backend reaches the WAF management API with the generated token (200)" \
+                   || bad "backend reaches the WAF management API with the generated token (got $wc)"
+curl -s -m 20 -x "$PROXY" -o /dev/null "http://example.com/?q=1%27%20UNION%20SELECT%20password%20FROM%20users--" || true
+sleep 3
+if docker compose logs waf 2>&1 | grep -q 'no backend alert credential'; then
+  bad "the WAF has a credential for its alerts (it logged: no backend alert credential)"
+else
+  ok "the WAF has a credential for its alerts"
+fi
+
 echo "── egress allowlist (default-deny) ──"
 curl -s -m 10 -u "$AUTH" -X POST -H 'Content-Type: application/json' \
   -d '{"entry":"example.com","description":"e2e allow"}' "$API/api/egress-allowlist" >/dev/null
