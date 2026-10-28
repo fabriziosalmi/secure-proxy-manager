@@ -15,6 +15,14 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.18.2] - 2026-10-28
+
+A fix release. With SafeSearch or YouTube Restricted Mode on, Google, Bing,
+DuckDuckGo and YouTube load again through the proxy. Only the dns image
+changes behaviour; the other images change only their version. Nothing is
+**BREAKING** and `X-API-Version` stays 1. `SAFESEARCH_REFRESH_SECONDS` is a
+new optional setting (default 3600).
+
 ### Fixed
 
 - **With SafeSearch or YouTube Restricted Mode on, Google, Bing, DuckDuckGo
