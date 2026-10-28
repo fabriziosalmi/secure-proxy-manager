@@ -25,10 +25,28 @@ API='http://127.0.0.1:5001'
 PROXY='http://127.0.0.1:3128'
 EXPECT_SERVICES=5 # web, backend, waf, dns, proxy (tailscale is profile-gated)
 
+# E2E_PROD=1 runs the production compose the way deploy/install.sh deploys it:
+# deploy/docker-compose.prod.yml copied to compose.prod.yml at the repository
+# root and selected with COMPOSE_FILE, on images already built and tagged with
+# SPM_IMAGE_TAG (no --build, nothing pulled). Without it, the development
+# compose is built from source as before.
+if [ "${E2E_PROD:-0}" = 1 ]; then
+  : "${SPM_IMAGE_TAG:?E2E_PROD=1 needs SPM_IMAGE_TAG naming the prebuilt images}"
+  export SPM_IMAGE_TAG
+  cp deploy/docker-compose.prod.yml compose.prod.yml
+  export COMPOSE_FILE=compose.prod.yml
+  UP_ARGS=(up -d --pull never)
+  echo "── production compose, images tagged ${SPM_IMAGE_TAG} ──"
+else
+  UP_ARGS=(up -d --build)
+fi
+
 cleanup() {
   echo "── teardown ──"
   docker compose down -v --remove-orphans >/dev/null 2>&1 || true
   rm -f .env
+  [ "${E2E_PROD:-0}" = 1 ] && rm -f compose.prod.yml
+  return 0
 }
 trap cleanup EXIT
 
@@ -69,8 +87,8 @@ chmod -R a+rwX config data 2>/dev/null || true
 sudo -n chown -R 65534:65534 logs 2>/dev/null || chown -R 65534:65534 logs 2>/dev/null || true
 chmod 0755 logs 2>/dev/null || true
 
-echo "── docker compose up -d --build ──"
-if ! docker compose up -d --build; then
+echo "── docker compose ${UP_ARGS[*]} ──"
+if ! docker compose "${UP_ARGS[@]}"; then
   echo "compose up failed"
   dump_logs
   exit 1

@@ -602,6 +602,33 @@ jobs:
       - name: Compose up + core smoke
         run: bash tests/ci-e2e.sh
 
+  # ── 9b. End-to-end smoke on the production compose ───────────────────
+  # deploy/docker-compose.prod.yml is what deploy/install.sh puts in place on
+  # every real install, and the job above only ever starts the development
+  # compose built from source, so a mistake that exists only in the production
+  # file (a mount, a capability, an environment variable) reached users
+  # untested. This builds the five images under the names that file uses,
+  # tags them :ci, and runs the same smoke through it with nothing pulled.
+  e2e-prod:
+    name: E2E (production compose + smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the images under the production names
+        run: |
+          set -euo pipefail
+          R=ghcr.io/fabriziosalmi/secure-proxy-manager
+          docker build -q -t "$R-web:ci"     -f ui/Dockerfile .
+          docker build -q -t "$R-backend:ci" backend-go
+          docker build -q -t "$R-waf:ci"     waf-go
+          docker build -q -t "$R-proxy:ci"   proxy
+          docker build -q -t "$R-dns:ci"     dns
+      - name: Production compose up + core smoke
+        env:
+          E2E_PROD: "1"
+          SPM_IMAGE_TAG: ci
+        run: bash tests/ci-e2e.sh
+
   # ── 10. End-to-end UI/API (Playwright) ────────────────────────────────
   # Runs the maintained Playwright suite (tests/e2e/selfhoster.spec.ts) against
   # the test stack (backend + web + mock-lists) via docker-compose.test.yml.

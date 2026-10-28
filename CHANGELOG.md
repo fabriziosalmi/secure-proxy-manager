@@ -102,6 +102,17 @@ for at least one minor release before disappearing.
   The WAF's `/metrics` looked the two values up under keys the cache never
   returned, so neither line was ever written.
 
+### Internal
+
+- **CI starts the production compose.** A new job, E2E (production compose +
+  smoke), builds the five images under the names
+  `deploy/docker-compose.prod.yml` uses, tags them `:ci`, and runs the compose
+  smoke through that file the way `deploy/install.sh` deploys it, with nothing
+  pulled. Until now CI only validated the file (`docker compose config -q`)
+  and ran the development compose, so a mistake only in the production file
+  reached users untested. `tests/ci-e2e.sh` takes `E2E_PROD=1` and
+  `SPM_IMAGE_TAG` for it.
+
 ## [3.17.0] - 2026-10-28
 
 Each access log row records the server address the proxy connected to, the
