@@ -72,6 +72,26 @@ var settingValidators = map[string]func(string) error{
 	settingProxyPassword: validProxyPassword,
 }
 
+// booleanSettingsNotSeeded are boolean settings with no seeded default.
+var booleanSettingsNotSeeded = []string{"wizard_completed"}
+
+// Every boolean setting takes exactly "true" or "false": the boolean ones are
+// the seeded defaults whose value is one of the two. Without a rule, "1" was
+// stored and read as on by the WAF reconciler and as off by the Settings page
+// and every other reader, which compare with "true".
+func init() {
+	for _, kv := range database.DefaultSettings {
+		if _, ruled := settingValidators[kv[0]]; !ruled && (kv[1] == "true" || kv[1] == "false") {
+			settingValidators[kv[0]] = validBool
+		}
+	}
+	for _, k := range booleanSettingsNotSeeded {
+		if _, ruled := settingValidators[k]; !ruled {
+			settingValidators[k] = validBool
+		}
+	}
+}
+
 // validBoundedInt accepts a whole number from lo to hi.
 func validBoundedInt(lo, hi int, unit string) func(string) error {
 	return func(v string) error {

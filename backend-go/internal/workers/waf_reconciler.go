@@ -141,7 +141,10 @@ func reconcileWAF(ctx context.Context, db *sql.DB, wafURL string, auth WAFAuth, 
 		if err := db.QueryRow("SELECT setting_value FROM settings WHERE setting_name = ?", key).Scan(&val); err != nil {
 			continue // not configured: the WAF's env default stands
 		}
-		enabled := val == "true" || val == "1"
+		// "true" only, as the Settings page and every other reader of a
+		// boolean setting read it; "1" used to switch on here a heuristic
+		// the page showed as off.
+		enabled := val == "true"
 		body, err := json.Marshal(map[string]any{"heuristic": key, "enabled": enabled})
 		if err != nil {
 			continue
