@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"io"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -320,7 +321,25 @@ func parseSquidLine(line string) map[string]any {
 		"blocked":     blocked,
 		"event_id":    eventID,
 		"reason":      reason,
+		"resolved_ip": extractResolvedIP(fields[8]),
 	}
+}
+
+// extractResolvedIP is the upstream address Squid connected to, from the
+// %Sh/%<a field (HIER_DIRECT/203.0.113.7), in canonical form (IPv6 shortened,
+// an IPv4-mapped address as IPv4). It is empty when Squid connected nowhere
+// (HIER_NONE/-, a denied request), names a peer by host name, or logs an
+// unspecified address (0.0.0.0 or ::).
+func extractResolvedIP(hier string) string {
+	_, peer, ok := strings.Cut(hier, "/")
+	if !ok {
+		return ""
+	}
+	addr, err := netip.ParseAddr(strings.TrimSuffix(strings.TrimPrefix(peer, "["), "]"))
+	if err != nil || addr.IsUnspecified() {
+		return ""
+	}
+	return addr.Unmap().String()
 }
 
 // isBlockedStatus reports whether a Squid "action/code" status string denotes a
@@ -351,8 +370,8 @@ func insertLogBatch(db *sql.DB, entries []map[string]any) error {
 		return err
 	}
 	stmt, err := tx.Prepare(
-		`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, bytes, elapsed_ms, blocked, event_id, block_reason)
-		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, bytes, elapsed_ms, blocked, event_id, block_reason, resolved_ip)
+		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		_ = tx.Rollback()
 		return err
@@ -372,10 +391,15 @@ func insertLogBatch(db *sql.DB, entries []map[string]any) error {
 		if reason == "" {
 			reason = ReasonUnclassified
 		}
+		// NULL when Squid connected nowhere, so "not known" stays apart.
+		var resolvedIP any
+		if ip, _ := e["resolved_ip"].(string); ip != "" {
+			resolvedIP = ip
+		}
 		res, err := stmt.Exec(
 			e["timestamp"], e["unix_timestamp"], e["source_ip"], e["method"],
 			e["destination"], e["status"], e["bytes"], e["elapsed_ms"], blocked,
-			e["event_id"], reason,
+			e["event_id"], reason, resolvedIP,
 		)
 		if err != nil {
 			_ = tx.Rollback()
@@ -405,6 +429,10 @@ func SetLiveSourceClassifier(classify func(ip string) (internal bool, kind strin
 func describeLive(e map[string]any) {
 	if reason, ok := e["reason"].(string); ok {
 		e["reason_label"] = ReasonLabel(reason)
+	}
+	// null when there is no upstream address, as GET /api/logs has it.
+	if ip, _ := e["resolved_ip"].(string); ip == "" {
+		e["resolved_ip"] = nil
 	}
 	if c := liveSources.Load(); c != nil {
 		ip, _ := e["source_ip"].(string)

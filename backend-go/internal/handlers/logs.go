@@ -110,17 +110,18 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 
 // logColumns are the proxy_logs columns a log row is read from, in the order
 // scanLogRow expects.
-const logColumns = "id,timestamp,source_ip,method,destination,status,bytes,blocked,block_reason"
+const logColumns = "id,timestamp,source_ip,method,destination,status,bytes,blocked,block_reason,resolved_ip"
 
 type logRow struct {
 	id                                      int64
 	ts, srcIP, method, dest, status, reason sql.NullString
 	bytes, blocked                          sql.NullInt64
+	resolvedIP                              sql.NullString
 }
 
 func scanLogRow(rows *sql.Rows) (logRow, error) {
 	var l logRow
-	err := rows.Scan(&l.id, &l.ts, &l.srcIP, &l.method, &l.dest, &l.status, &l.bytes, &l.blocked, &l.reason)
+	err := rows.Scan(&l.id, &l.ts, &l.srcIP, &l.method, &l.dest, &l.status, &l.bytes, &l.blocked, &l.reason, &l.resolvedIP)
 	return l, err
 }
 
@@ -154,6 +155,10 @@ func (l logRow) wire(src *InternalSources, gdpr bool) map[string]any {
 		// is, where that is known; kind is empty otherwise.
 		"internal": internal,
 		"kind":     kind,
+		// The upstream address the proxy connected to, null when it reached
+		// no server (a denied request) or for a row logged before it was
+		// recorded. A server's address, not a client's: GDPR mode keeps it.
+		"resolved_ip": nullString(l.resolvedIP),
 	}
 }
 

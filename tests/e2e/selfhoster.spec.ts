@@ -395,7 +395,7 @@ test.describe('API — logs, stats, security score', () => {
     expect(res.status()).toBe(200);
     expect(res.headers()['content-type']).toContain('text/csv');
     expect(res.headers()['content-disposition']).toContain('attachment');
-    expect((await res.text()).split('\n')[0]).toBe('id,timestamp_utc,source_ip,internal,kind,method,destination,status,bytes,blocked,reason,reason_label');
+    expect((await res.text()).split('\n')[0]).toBe('id,timestamp_utc,source_ip,internal,kind,method,destination,status,bytes,blocked,reason,reason_label,resolved_ip');
   });
 
   test('GET /api/logs/stats returns counts', async ({ request }) => {

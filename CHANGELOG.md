@@ -15,6 +15,16 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- Each access log row records the server address the proxy connected to
+  (`resolved_ip`, from the `%<a` field of the `spm` log format): in
+  `GET /api/logs`, the live feed, a new last column of the CSV export, and
+  the request details on the Logs page ("Server address"). It is `null` for a
+  request that reached no server (a denied one) and for rows logged before.
+  It is a server's address, so GDPR mode does not mask it. The column is
+  added to `proxy_logs` without an index.
+
 ### Security
 
 - **Grafana in the `observability` profile moves 13.2.4 to 13.3.0**, in both
@@ -33,6 +43,7 @@ for at least one minor release before disappearing.
   without `GRAFANA_ADMIN_PASSWORD`, reports 13.3.0 healthy, and provisions the
   Prometheus datasource read-only. The provisioning messages it logs are the
   same as on 13.2.4.
+
 
 ## [3.16.0] - 2026-10-28
 

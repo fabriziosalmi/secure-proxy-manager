@@ -66,11 +66,12 @@ Each message is one row just stored in the access log:
   "reason": "none",
   "reason_label": "Not blocked",
   "internal": false,
-  "kind": "Private network address"
+  "kind": "Private network address",
+  "resolved_ip": "93.184.216.34"
 }
 ```
 
-`id`, `reason`, `reason_label`, `internal` and `kind` mean what they mean in
+`id`, `reason`, `reason_label`, `internal`, `kind` and `resolved_ip` mean what they mean in
 `GET /api/logs` (see [Logs](./logs.md)); `blocked` is `0` or `1` here. The feed
 carries every row, the stack's own traffic included: a client that shows the
 log with filters applies them to each message. With `gdpr_mode` on, `source_ip`

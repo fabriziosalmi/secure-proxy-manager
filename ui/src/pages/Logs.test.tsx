@@ -27,7 +27,7 @@ const row = (over: Partial<LogEntry> & { id: number }): LogEntry => ({
   ...over,
 })
 
-const allowed = row({ id: 3 })
+const allowed = row({ id: 3, resolved_ip: '93.184.216.34' })
 const dnsBlock = row({
   id: 2, method: 'GET', destination: 'http://ads.example.net/pixel', status: 'TCP_DENIED/403', bytes: 4900,
   blocked: true, reason: 'domain_blacklist_dns', reason_label: 'Domain blacklist (DNS)',
@@ -373,6 +373,21 @@ describe('Logs', () => {
     expect(within(details).getByText('TCP_DENIED/403')).toBeInTheDocument()
     expect(within(details).getByRole('button', { name: 'Allow this domain' })).toBeInTheDocument()
     await expectNoAxeViolations()
+  })
+
+  it('names the server address the proxy connected to, and says when it connected to none', async () => {
+    renderWithProviders(<Logs />)
+    await waitFor(() => expect(bodyRows()).toHaveLength(4))
+    fireEvent.click(screen.getByRole('button', { name: allowed.destination }))
+    let details = screen.getByRole('region', { name: 'Request details' })
+    const term = within(details).getByText('Server address')
+    expect(term.nextElementSibling).toHaveTextContent('93.184.216.34')
+    fireEvent.click(screen.getByRole('button', { name: dnsBlock.destination }))
+    details = screen.getByRole('region', { name: 'Request details' })
+    expect(within(details).getByText('Server address').nextElementSibling).toHaveTextContent('None: the proxy connected to no server')
+    fireEvent.click(screen.getByRole('button', { name: oldBlock.destination }))
+    details = screen.getByRole('region', { name: 'Request details' })
+    expect(within(details).getByText('Server address').nextElementSibling).toHaveTextContent('None: the proxy connected to no server')
   })
 
   it('offers Allow this domain only for a rule a domain whitelist overrides', async () => {
