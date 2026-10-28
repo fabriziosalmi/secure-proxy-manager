@@ -2,25 +2,25 @@ package handlers
 
 import (
 	"database/sql"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"net/http"
-	"strings"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
 // auditCategories are the filters the Audit page offers. Sign-ins are the
 // session events; every other action is a change.
-var signInActions = []string{"login", "login_failed", "logout"}
+var signInActions = []database.SQLText{"login", "login_failed", "logout"}
 
-func auditCategoryWhere(category string) (where string, ok bool) {
-	in := "('" + strings.Join(signInActions, "','") + "')"
+func auditCategoryWhere(category string) (where database.SQLText, ok bool) {
+	in := "('" + database.JoinSQL(signInActions, "','") + "')"
 	switch category {
 	case "", "all":
 		return "", true
 	case "signins":
-		return " WHERE action IN " + in, true
+		return " WHERE action IN " + in, true // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 	case "changes":
-		return " WHERE action IS NULL OR action NOT IN " + in, true
+		return " WHERE action IS NULL OR action NOT IN " + in, true // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 	}
 	return "", false
 }
@@ -38,12 +38,12 @@ func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
 	}
 	// where is one of the constant clauses above; nothing from the request
 	// reaches the SQL text.
-	total, err := countRows(h.db, "SELECT COUNT(*) FROM audit_log"+where) // #nosec G202 -- constant clause
+	total, err := countRows(h.db, "SELECT COUNT(*) FROM audit_log"+where) // #nosec G202 -- constant clause  // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 	if err != nil {
 		writeInternalError(w, "audit_log_count", err)
 		return
 	}
-	rows, err := h.db.Query("SELECT id, username, action, target, details, timestamp FROM audit_log"+where+" ORDER BY id DESC LIMIT ? OFFSET ?", limit, offset) // #nosec G202 -- constant clause
+	rows, err := h.db.Query(string("SELECT id, username, action, target, details, timestamp FROM audit_log"+where+" ORDER BY id DESC LIMIT ? OFFSET ?"), limit, offset) // #nosec G202 -- constant clause  // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 	if err != nil {
 		writeInternalError(w, "audit_log", err)
 		return

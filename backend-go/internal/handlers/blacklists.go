@@ -84,7 +84,7 @@ func (h *BlacklistHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 
 // ── generic list handler ──────────────────────────────────────────────────────
 
-func listHandler(db *sql.DB, table, col string) http.HandlerFunc {
+func listHandler(db *sql.DB, table, col database.SQLText) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		limit := clamp(queryInt(r, "limit", 100), 1, 1000)
 		offset := max0(queryInt(r, "offset", 0))
@@ -97,22 +97,22 @@ func listHandler(db *sql.DB, table, col string) http.HandlerFunc {
 		// A list whose entries record their source is listed with it:
 		// source_kind, source and source_label are null for an entry whose
 		// source was not recorded.
-		selectFrom := fmt.Sprintf("SELECT e.* FROM %s e", table)
-		if database.IsSourceList(table) {
-			selectFrom = fmt.Sprintf("SELECT e.*, s.kind AS source_kind, s.source AS source, s.label AS source_label FROM %s e LEFT JOIN list_sources s ON s.id = e.source_id", table)
+		selectFrom := "SELECT e.* FROM " + table + " e" // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
+		if database.IsSourceList(string(table)) {
+			selectFrom = "SELECT e.*, s.kind AS source_kind, s.source AS source, s.label AS source_label FROM " + table + " e LEFT JOIN list_sources s ON s.id = e.source_id" // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		}
 		if search != "" {
 			// Escape LIKE metacharacters
 			escaped := strings.NewReplacer("%", "\\%", "_", "\\_").Replace(search)
 			like := "%" + escaped + "%"
-			total, err = countRows(db, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'", table, col), like, like)
+			total, err = countRows(db, "SELECT COUNT(*) FROM "+table+" WHERE "+col+` LIKE ? ESCAPE '\' OR description LIKE ? ESCAPE '\'`, like, like) // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 			if err == nil {
-				rows, err = db.Query(fmt.Sprintf("%s WHERE e.%s LIKE ? ESCAPE '\\' OR e.description LIKE ? ESCAPE '\\' ORDER BY e.id DESC LIMIT ? OFFSET ?", selectFrom, col), like, like, limit, offset)
+				rows, err = db.Query(string(selectFrom+" WHERE e."+col+` LIKE ? ESCAPE '\' OR e.description LIKE ? ESCAPE '\' ORDER BY e.id DESC LIMIT ? OFFSET ?`), like, like, limit, offset) // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 			}
 		} else {
-			total, err = countRows(db, fmt.Sprintf("SELECT COUNT(*) FROM %s", table))
+			total, err = countRows(db, "SELECT COUNT(*) FROM "+table) // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 			if err == nil {
-				rows, err = db.Query(fmt.Sprintf("%s ORDER BY e.id DESC LIMIT ? OFFSET ?", selectFrom), limit, offset)
+				rows, err = db.Query(string(selectFrom+" ORDER BY e.id DESC LIMIT ? OFFSET ?"), limit, offset)
 			}
 		}
 		if err != nil {

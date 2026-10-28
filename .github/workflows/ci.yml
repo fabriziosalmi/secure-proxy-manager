@@ -194,6 +194,24 @@ jobs:
           working-directory: ${{ matrix.module }}
           args: --timeout 5m
 
+  # slopless (static analysis for AI-generated code patterns) gates its errors
+  # only. Every error it reported was checked by hand and found to be a false
+  # positive, and is marked on its line with the reason
+  # (slopless-disable-line ... -- why), so any error here is a new finding.
+  # Warnings stay in the editor. The version is pinned.
+  lint-slopless:
+    name: Static analysis (slopless errors)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: slopless 1.18.1, errors only
+        run: |
+          mapfile -t files < <(git ls-files '*.go' '*.ts' '*.tsx' '*.py' '*.sh' '*.js' '*.md' '*.css' '*.yml' '*.yaml' | grep -v '^ui/public/')
+          npx --yes @fabriziosalmi/slopless@1.18.1 --no-cache --link-budget 1 --min-severity error "${files[@]}"
+
   # ── 5c. Shell lint (shellcheck) ───────────────────────────────────────
   # SECURE-TEST-01. 3,387 lines of shell carry the data plane, including the
   # 633-line generate_squid_conf.sh that is the sole producer of squid.conf,

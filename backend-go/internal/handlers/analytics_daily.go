@@ -1,9 +1,9 @@
 package handlers
 
 import (
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 	// The runtime image has no zoneinfo; this embeds the IANA database so a
@@ -73,16 +73,15 @@ func (h *AnalyticsHandlers) BlockedByDay(w http.ResponseWriter, r *http.Request)
 	ext, extArgs := notInternal(internal)
 
 	// One CASE arm per day, newest first: a row is in the first day whose
-	// midnight it is not before.
-	var bucket strings.Builder
-	bucket.WriteString("CASE")
-	args := make([]any, 0, blockedByDayDays+2+len(extArgs))
+	// midnight it is not before. The midnight and the day's index are both
+	// bound, so the text is constants and placeholders only.
+	var bucket database.SQLText = "CASE"
+	args := make([]any, 0, 2*blockedByDayDays+2+len(extArgs))
 	for i := blockedByDayDays - 1; i > 0; i-- {
-		bucket.WriteString(" WHEN unix_timestamp >= ? THEN ")
-		bucket.WriteString(strconv.Itoa(i))
-		args = append(args, bounds[i].Unix())
+		bucket += " WHEN unix_timestamp >= ? THEN ?"
+		args = append(args, bounds[i].Unix(), i)
 	}
-	bucket.WriteString(" ELSE 0 END")
+	bucket += " ELSE 0 END"
 	args = append(args, bounds[0].Unix(), bounds[blockedByDayDays].Unix())
 	args = append(args, extArgs...)
 
@@ -98,9 +97,9 @@ func (h *AnalyticsHandlers) BlockedByDay(w http.ResponseWriter, r *http.Request)
 	totals := map[string]int{}
 
 	// #nosec G202 -- the CASE is built from constants and placeholders, clientRows and ext are constants and placeholders; values are bound.
-	rows, err := h.db.Query(`SELECT `+bucket.String()+` AS day, block_reason, COUNT(*) AS cnt FROM proxy_logs
+	rows, err := h.db.Query(string(`SELECT `+bucket+` AS day, block_reason, COUNT(*) AS cnt FROM proxy_logs
 		WHERE blocked = 1 AND unix_timestamp >= ? AND unix_timestamp < ? AND `+clientRows+` AND `+ext+`
-		GROUP BY day, block_reason ORDER BY day, cnt DESC, block_reason`, args...)
+		GROUP BY day, block_reason ORDER BY day, cnt DESC, block_reason`), args...)
 	if err != nil {
 		writeInternalError(w, "blocked_by_day", err)
 		return

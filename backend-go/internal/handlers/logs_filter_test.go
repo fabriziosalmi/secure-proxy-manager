@@ -276,7 +276,7 @@ func TestLogCountsEqualTheDirectCount(t *testing.T) {
 	} {
 		w, a := f.where(internal, false)
 		var direct int
-		if err := h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE "+w, a...).Scan(&direct); err != nil {
+		if err := h.db.QueryRow(string("SELECT COUNT(*) FROM proxy_logs WHERE "+w), a...).Scan(&direct); err != nil {
 			t.Fatal(err)
 		}
 		total, hidden, err := countLogs(h.db, f, internal)
@@ -291,7 +291,7 @@ func TestLogCountsEqualTheDirectCount(t *testing.T) {
 			g.includeInternal = true
 			gw, ga := g.where(internal, false)
 			var withInternal int
-			_ = h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE "+gw, ga...).Scan(&withInternal)
+			_ = h.db.QueryRow(string("SELECT COUNT(*) FROM proxy_logs WHERE "+gw), ga...).Scan(&withInternal)
 			if hidden == nil || *hidden != withInternal-direct {
 				t.Errorf("%+v: hidden %v, want %d", f, hidden, withInternal-direct)
 			}

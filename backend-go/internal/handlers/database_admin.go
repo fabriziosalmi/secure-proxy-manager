@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -46,15 +47,15 @@ func (h *DatabaseHandlers) Optimize(w http.ResponseWriter, r *http.Request) {
 // list_sources comes after the four lists that refer to it, and egress_providers
 // comes after egress_provider_entries, so Reset empties child rows first and
 // the foreign key never refuses parent rows.
-var allowedTables = []string{"users", "ip_whitelist", "ip_blacklist", "domain_blacklist", "domain_whitelist", "list_sources", "dst_allowlist", "egress_provider_entries", "egress_providers", "proxy_logs", "settings", "audit_log"}
+var allowedTables = []database.SQLText{"users", "ip_whitelist", "ip_blacklist", "domain_blacklist", "domain_whitelist", "list_sources", "dst_allowlist", "egress_provider_entries", "egress_providers", "proxy_logs", "settings", "audit_log"}
 
 func (h *DatabaseHandlers) Stats(w http.ResponseWriter, r *http.Request) {
 	counts := map[string]int64{}
 	for _, tbl := range allowedTables {
 		var n int64
 		// #nosec G202
-		h.db.QueryRow("SELECT COUNT(*) FROM " + tbl).Scan(&n) //nolint:errcheck
-		counts[tbl] = n
+		h.db.QueryRow(string("SELECT COUNT(*) FROM " + tbl)).Scan(&n) //nolint:errcheck  // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
+		counts[string(tbl)] = n
 	}
 	writeOK(w, counts)
 }
@@ -63,7 +64,7 @@ func (h *DatabaseHandlers) Export(w http.ResponseWriter, r *http.Request) {
 	export := map[string]any{}
 	for _, tbl := range allowedTables {
 		// #nosec G202
-		rows, err := h.db.Query("SELECT * FROM " + tbl)
+		rows, err := h.db.Query(string("SELECT * FROM " + tbl)) // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		if err != nil {
 			continue
 		}
@@ -88,7 +89,7 @@ func (h *DatabaseHandlers) Export(w http.ResponseWriter, r *http.Request) {
 			tableRows = append(tableRows, row)
 		}
 		rows.Close()
-		export[tbl] = tableRows
+		export[string(tbl)] = tableRows
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", "attachment; filename=database_export.json")
@@ -113,8 +114,8 @@ func (h *DatabaseHandlers) Reset(w http.ResponseWriter, r *http.Request) {
 			continue // Never wipe users.
 		}
 		// #nosec G202
-		if _, err := tx.ExecContext(r.Context(), "DELETE FROM "+tbl); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to clear table "+tbl)
+		if _, err := tx.ExecContext(r.Context(), string("DELETE FROM "+tbl)); err != nil { // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
+			writeError(w, http.StatusInternalServerError, "failed to clear table "+string(tbl))
 			return
 		}
 	}

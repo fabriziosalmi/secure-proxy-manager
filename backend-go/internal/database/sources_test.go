@@ -60,7 +60,7 @@ func TestVersion4GivesExistingEntriesAnUnrecordedSource(t *testing.T) {
 	}
 	for _, table := range listSourceTables {
 		var n, unrecorded int
-		if err := db.QueryRow("SELECT COUNT(*), SUM(source_id IS NULL) FROM "+table).Scan(&n, &unrecorded); err != nil {
+		if err := db.QueryRow(string("SELECT COUNT(*), SUM(source_id IS NULL) FROM "+table)).Scan(&n, &unrecorded); err != nil {
 			t.Fatalf("%s: %v", table, err)
 		}
 		if n != 1 || unrecorded != 1 {
@@ -91,7 +91,7 @@ func TestFreshDatabaseRecordsSources(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		has, err := hasColumn(tx, table, "source_id")
+		has, err := hasColumn(tx, string(table), "source_id")
 		_ = tx.Rollback()
 		if err != nil || !has {
 			t.Errorf("%s has no source_id (err %v)", table, err)

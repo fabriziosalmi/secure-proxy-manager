@@ -103,7 +103,7 @@ export function ClientSetup() {
       steps: [
         'Add to ~/.bashrc or /etc/environment:',
       ],
-      cmd: `export http_proxy=http://${proxyAddr}\nexport https_proxy=http://${proxyAddr}\nexport no_proxy=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`,
+      cmd: `export http_proxy=http://${proxyAddr}\nexport https_proxy=http://${proxyAddr}\nexport no_proxy=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`,  // slopless-disable-line VBC-034 -- http_proxy names the proxy, which speaks plain HTTP; https would break every client
     },
     {
       id: 'ios', icon: Smartphone, label: 'iOS',

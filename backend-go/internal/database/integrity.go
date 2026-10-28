@@ -30,8 +30,8 @@ const maxReported = 10
 // otherwise an error carrying the first maxReported lines it returned.
 func checkLines(ctx context.Context, q interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-}, pragma string) error {
-	rows, err := q.QueryContext(ctx, "PRAGMA "+pragma)
+}, pragma SQLText) error {
+	rows, err := q.QueryContext(ctx, string("PRAGMA "+pragma))
 	if err != nil {
 		return fmt.Errorf("%s: %w", pragma, err)
 	}

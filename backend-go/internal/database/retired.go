@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/rs/zerolog/log"
 )
@@ -77,9 +76,9 @@ func deleteRetiredSettings(db *sql.DB) error {
 	for i, k := range retiredSettingsV6 {
 		args[i] = k
 	}
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(retiredSettingsV6)), ",")
+	placeholders := Placeholders(len(retiredSettingsV6))
 	// #nosec G202 -- placeholders only; the keys are bound
-	res, err := tx.Exec("DELETE FROM settings WHERE setting_name IN ("+placeholders+")", args...)
+	res, err := tx.Exec(string("DELETE FROM settings WHERE setting_name IN ("+placeholders+")"), args...) // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 	if err != nil {
 		return err
 	}
@@ -110,11 +109,11 @@ func retireThreeSettings(db *sql.DB) error {
 	for i, k := range RetiredSettingsV8 {
 		args[i] = k
 	}
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(RetiredSettingsV8)), ",")
+	placeholders := Placeholders(len(RetiredSettingsV8))
 
 	// #nosec G202 -- placeholders only; the keys are bound
 	rows, err := tx.Query(
-		"SELECT setting_name, setting_value FROM settings WHERE setting_name IN ("+placeholders+") ORDER BY setting_name",
+		string("SELECT setting_name, setting_value FROM settings WHERE setting_name IN ("+placeholders+") ORDER BY setting_name"), // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		args...,
 	)
 	if err != nil {
@@ -156,7 +155,7 @@ func retireThreeSettings(db *sql.DB) error {
 	var deleted int64
 	if len(found) > 0 {
 		// #nosec G202 -- placeholders only; the keys are bound
-		res, err := tx.Exec("DELETE FROM settings WHERE setting_name IN ("+placeholders+")", args...)
+		res, err := tx.Exec(string("DELETE FROM settings WHERE setting_name IN ("+placeholders+")"), args...) // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		if err != nil {
 			return err
 		}
