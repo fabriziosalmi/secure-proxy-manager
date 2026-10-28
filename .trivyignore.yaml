@@ -52,3 +52,6 @@ vulnerabilities:
   - id: CVE-2026-97031
     statement: "Go stdlib < 1.26.9 / 1.27.2 in the grafana 13.3.0 plugins and k6 2.3.0; same, upstream rebuild required."
     expired_at: 2026-11-30
+  - id: CVE-2026-56857
+    statement: "Go stdlib os.Root Mkdir/MkdirAll following junctions (fixed in 1.26.9 / 1.27.2) in the grafana 13.3.0 plugins (Go 1.26.7) and k6 2.3.0 (Go 1.27.1); both are the newest tags, checked 2026-10-28. Junctions are a Windows feature and both images are Linux. Our own images are built with 1.27.3."
+    expired_at: 2026-11-30
