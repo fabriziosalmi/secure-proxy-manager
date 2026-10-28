@@ -55,7 +55,8 @@ counts the matching rows that were left out.
       "reason": "domain_blacklist_dns",
       "reason_label": "Domain blacklist (DNS)",
       "internal": false,
-      "kind": "Private network address"
+      "kind": "Private network address",
+      "resolved_ip": null
     }
   ],
   "meta": { "total": 15420, "limit": 25, "offset": 0, "internal": 2880 },
@@ -68,7 +69,10 @@ counts the matching rows that were left out.
 `meta.total` counts the rows the filters match. `kind` says what the source is
 where the backend can tell (for example "Internal: the backend", "Internal:
 this host", "Internal: the proxy", "Private network address", "Public
-address"), and is empty otherwise.
+address"), and is empty otherwise. `resolved_ip` is the server address the
+proxy connected to (from the `%<a` field of Squid's access log, IPv6 in short
+form), or `null` when it connected to none, as for a denied request, and for
+rows logged before the backend recorded it.
 
 To page back through the log, pass the `id` of the last row received as
 `before_id`; a page shorter than `limit` is the last one.
@@ -129,7 +133,8 @@ Streams, as CSV, every row `GET /api/logs` selects for the same filters
 newest first, read 2,000 rows at a time. `limit`, `offset` and `sort` do not
 apply. The file is named `access-log-<date>.csv`. Columns: `id`,
 `timestamp_utc`, `source_ip`, `internal`, `kind`, `method`, `destination`,
-`status`, `bytes`, `blocked`, `reason`, `reason_label`. A cell that starts
+`status`, `bytes`, `blocked`, `reason`, `reason_label`, `resolved_ip` (empty
+when there is none). A cell that starts
 with `=`, `+`, `-`, `@`, a tab or a carriage return is written with a leading
 apostrophe, so a spreadsheet shows it as text rather than running it as a
 formula (a method logged as `-` is exported as `'-`). With GDPR mode on,

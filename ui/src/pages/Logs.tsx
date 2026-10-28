@@ -590,6 +590,14 @@ function RequestDetail({ r, filters, onAllow, onShowClient }: {
           <dd className="mt-0.5"><code className="break-all font-mono text-[13px]">{r.destination || 'Not recorded'}</code></dd>
         </div>
         <div className="min-w-0">
+          <dt className="text-xs text-ink-muted">Server address</dt>
+          <dd className="mt-0.5">
+            {r.resolved_ip
+              ? <code className="break-all font-mono text-[13px]">{r.resolved_ip}</code>
+              : (r.blocked ? 'None: the proxy connected to no server' : 'Not recorded')}
+          </dd>
+        </div>
+        <div className="min-w-0">
           <dt className="text-xs text-ink-muted">Client</dt>
           <dd className="mt-0.5">
             <code className="font-mono text-[13px]">{r.source_ip || 'Not recorded'}</code>

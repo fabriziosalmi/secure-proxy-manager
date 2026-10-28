@@ -145,7 +145,8 @@ var schemaStatements = []string{
 		unix_timestamp INTEGER,
 		blocked INTEGER NOT NULL DEFAULT 0,
 		event_id TEXT,
-		block_reason TEXT NOT NULL DEFAULT 'unclassified'
+		block_reason TEXT NOT NULL DEFAULT 'unclassified',
+		resolved_ip TEXT
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_proxy_logs_timestamp ON proxy_logs(timestamp)`,
 	`CREATE INDEX IF NOT EXISTS idx_proxy_logs_source_ip ON proxy_logs(source_ip)`,
@@ -202,6 +203,9 @@ func applyColumnMigrations(db *sql.DB) error {
 		// ADD COLUMN with a constant default rewrites no row.
 		"ALTER TABLE proxy_logs ADD COLUMN block_reason TEXT NOT NULL DEFAULT 'unclassified'",
 		"ALTER TABLE domain_whitelist ADD COLUMN type TEXT DEFAULT 'fqdn'",
+		// The upstream address Squid connected to (workers.extractResolvedIP);
+		// NULL for older rows and for requests that reached no server.
+		"ALTER TABLE proxy_logs ADD COLUMN resolved_ip TEXT",
 	}
 	for _, m := range migrations {
 		// Only the expected "duplicate column" error is harmless — it means the

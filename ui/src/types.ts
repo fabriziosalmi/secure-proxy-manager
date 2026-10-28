@@ -141,6 +141,8 @@ export interface LogEntry {
   internal?: boolean;
   /** What the source is, where the backend can tell; may be empty. */
   kind?: string;
+  /** The server address the proxy connected to; null when it connected to none, or for rows logged before it was recorded. */
+  resolved_ip?: string | null;
 }
 
 /** Pagination envelope shared by every collection endpoint (SECURE-API-02). */

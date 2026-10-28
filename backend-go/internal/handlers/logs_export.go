@@ -25,7 +25,7 @@ const exportPageDeadline = 60 * time.Second
 
 var exportHeader = []string{
 	"id", "timestamp_utc", "source_ip", "internal", "kind", "method", "destination",
-	"status", "bytes", "blocked", "reason", "reason_label",
+	"status", "bytes", "blocked", "reason", "reason_label", "resolved_ip",
 }
 
 // Export streams the rows GET /api/logs would list for the same filters, all
@@ -101,6 +101,7 @@ func writeExportRows(cw *csv.Writer, rows *sql.Rows, src *InternalSources, gdpr 
 			strconv.FormatInt(l.id, 10), l.ts.String, ip, strconv.FormatBool(internal), kind,
 			l.method.String, l.dest.String, l.status.String, strconv.FormatInt(l.bytes.Int64, 10),
 			strconv.FormatBool(l.blocked.Int64 == 1), l.reason.String, workers.ReasonLabel(l.reason.String),
+			l.resolvedIP.String,
 		}
 		for i := range rec {
 			rec[i] = csvText(rec[i])
