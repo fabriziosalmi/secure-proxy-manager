@@ -22,8 +22,8 @@ for at least one minor release before disappearing.
   shortcut) or a response leaking a private key or a token was answered with
   the 403 but with no `X-WAF-Event-Id` and no alert to the backend, so it sent
   no notification and could not be joined to its access log row. It now gets
-  an event ID on the 403, a `WAF BLOCKED`-style log line with the client and
-  the URL, and a `waf_block` notification with `source: RESPONSE`.
+  an event ID on the 403, a `RESPMOD BLOCKED` log line with the event ID, the
+  client and the URL, and a `waf_block` notification with `source: RESPONSE`.
 - **`waf_safe_cache_hits_total` and `waf_safe_cache_size` are exported.**
   The WAF's `/metrics` looked the two values up under keys the cache never
   returned, so neither line was ever written.
