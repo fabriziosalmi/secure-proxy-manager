@@ -113,6 +113,14 @@ for at least one minor release before disappearing.
   reached users untested. `tests/ci-e2e.sh` takes `E2E_PROD=1` and
   `SPM_IMAGE_TAG` for it.
 
+- *Verify popular list URLs* checks every URL even when a host is slow. It ran
+  under `set -e`, so the first curl timeout (exit 28) ended the step without
+  checking the URLs after it, and the red job stopped merges that had nothing
+  to do with the lists. `scripts/check-list-urls.sh` tries each URL up to three
+  times (again only on no response, 429 or 5xx); a host that never answers is
+  a warning, a status other than 200 is still a failure, and so is a run where
+  no URL answered at all.
+
 ## [3.17.0] - 2026-10-28
 
 Each access log row records the server address the proxy connected to, the

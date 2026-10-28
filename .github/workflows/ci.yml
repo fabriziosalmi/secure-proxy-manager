@@ -547,31 +547,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # A host that never answers is a warning, a wrong status a failure; see
+      # the script header.
       - name: Check all popular list URLs return 200
-        run: |
-          set -e
-          FAILED=0
-          check_url() {
-            local name="$1" url="$2"
-            local code
-            code=$(curl -sL -o /dev/null -w "%{http_code}" --max-time 25 \
-              -H "User-Agent: SecureProxyManager/CI" "$url")
-            if [ "$code" = "200" ]; then
-              echo "OK   [$code] $name"
-            else
-              echo "FAIL [$code] $name — $url"
-              FAILED=1
-            fi
-          }
-          # Every URL the UI offers in Popular Lists and every auto-refresh
-          # default, read from the source rather than listed here: four
-          # hand-picked URLs passed while HaGeZi answered 404 and Talos 403,
-          # and the UI kept offering them.
-          urls=$( { grep -oE "url: 'https://[^']+'" ui/src/components/blacklists/popularLists.ts | sed -E "s/^url: '//; s/'$//";
-                    grep -oE '"https://[^"]+"' backend-go/internal/workers/blacklist_refresh.go | tr -d '"'; } | sort -u)
-          [ -n "$urls" ] || { echo "no list URLs found in the sources"; exit 1; }
-          for url in $urls; do check_url "$url" "$url"; done
-          [ "$FAILED" -ne 0 ] && exit 1 || true
+        run: bash scripts/check-list-urls.sh
 
   # ── 8b. Compose validation (incl. the prod file users actually run) ───
   # deploy/docker-compose.prod.yml is what deploy/install.sh copies into place on
