@@ -15,6 +15,13 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.18.3] - 2026-10-28
+
+A fix release. The web UI keeps working when the backend container is
+recreated on its own. Only the web image changes behaviour; the other images
+change only their version. Nothing is **BREAKING** and `X-API-Version`
+stays 1.
+
 ### Fixed
 
 - **The web UI keeps working when the backend container is recreated on
