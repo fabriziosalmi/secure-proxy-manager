@@ -171,7 +171,10 @@ scripts/branch-protection.sh apply    # push the file's state to GitHub (needs a
 Two checks run but do **not** gate: *Verify popular list URLs* reaches
 third-party hosts, where an upstream outage would block every unrelated
 merge, and the CodeQL *Analyze* jobs are managed by GitHub. Their findings
-still show in the job log and in the Security tab.
+still show in the job log and in the Security tab. The URL check
+(`scripts/check-list-urls.sh`) reports a host that never answers as a warning
+and fails only on a status other than 200, so a red run there is a list that
+moved or vanished.
 
 `apply` cannot set one field: GitHub's branch-protection API accepts
 `allow_force_pushes: false` and leaves it as it was. `verify` compares it, so
