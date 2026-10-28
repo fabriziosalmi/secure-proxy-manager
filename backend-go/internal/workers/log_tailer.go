@@ -89,8 +89,13 @@ func tailOnce(db *sql.DB, hub *websocket.Hub, logPath string, offset int64, spec
 	if err != nil {
 		return offset, false
 	}
-	// Detect log rotation / truncation.
+	// Detect log rotation / truncation. Squid's rotation renames the file to
+	// <name>.0 (logfile_rotate), so what this tailer had not read yet is at the
+	// end of that file: read it first, then start the new one from 0.
 	if fi.Size() < offset {
+		if !drainRotated(db, hub, logPath+".0", fi, offset, spec) {
+			return offset, false // the rest of the old file is retried next tick
+		}
 		offset = 0
 	}
 	if fi.Size() == offset {
@@ -116,6 +121,51 @@ func tailOnce(db *sql.DB, hub *websocket.Hub, logPath string, offset int64, spec
 		return fi.Size(), true
 	}
 	return next, true
+}
+
+// drainRotated reads the rotated file from offset to its end and stores what it
+// finds, so the lines the tailer had not reached before the rotation are not
+// lost. It reads nothing when there is no rotated file, when it is the current
+// file, or when it is shorter than offset (then it is not the file the offset
+// belongs to). It returns false only when an insert failed, so the caller keeps
+// its offset and tries again on the next tick.
+func drainRotated(db *sql.DB, hub *websocket.Hub, rotated string, current os.FileInfo, offset int64, spec tailSpec) bool {
+	f, err := os.Open(rotated) // #nosec G304 -- derived from the configured log path
+	if err != nil {
+		return true
+	}
+	defer f.Close()
+	rfi, err := f.Stat()
+	if err != nil || os.SameFile(rfi, current) || rfi.Size() <= offset {
+		return true
+	}
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return true
+	}
+	drained := 0
+	for pos := offset; pos < rfi.Size(); {
+		batch, next, seekErr := readBatch(f, rfi.Size(), pos, spec)
+		if len(batch) == 0 && seekErr == nil && next <= pos {
+			break
+		}
+		if err := insertLogBatch(db, batch); err != nil {
+			log.Warn().Err(err).Int("lines", len(batch)).Msg(spec.name + ": insert of the rotated file's remaining lines failed, will retry")
+			return false
+		}
+		broadcastBatch(hub, batch, hub != nil && feedPrivacy(db).Enabled())
+		drained += len(batch)
+		if seekErr != nil || next <= pos {
+			break
+		}
+		pos = next
+		if _, err := f.Seek(pos, io.SeekStart); err != nil {
+			break
+		}
+	}
+	if drained > 0 {
+		log.Info().Int("lines", drained).Str("file", rotated).Msg(spec.name + ": read the lines left in the rotated file")
+	}
+	return true
 }
 
 // readBatch parses up to maxBatchLines lines from f, which is positioned at

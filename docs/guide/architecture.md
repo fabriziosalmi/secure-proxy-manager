@@ -210,7 +210,7 @@ generates its own configuration. These are the bounds in the code:
 | Backend request rate | 20 per second per address, burst 60 | `429` with `Retry-After: 1` |
 | Concurrent DNS detection scans | 2 | `429` |
 | Request body | 10 MB through nginx; 55 MB at the backend; 32 MB per list download | `413`, or the import fails |
-| Log ingest | 5,000 lines per 500 ms | A backlog is read over the following ticks |
+| Log ingest | 5,000 lines per 500 ms | A backlog is read over the following ticks; after a rotation the lines left in `access.log.0` are read first. A backlog that outlasts two rotations, or a new file that has already grown past the saved offset when the tailer looks, is not recovered |
 | Domain blacklist | `SPM_DNS_BLOCKLIST_MAX_DOMAINS`, default 1,000,000 | Adds and imports refused with `413` |
 | Backend container | 0.25 CPU, 128 MB | Raise `deploy.resources.limits` in the compose file |
 
