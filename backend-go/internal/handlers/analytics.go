@@ -139,10 +139,6 @@ type AnalyticsHandlers struct {
 	// package's globals (SECURE-ARCH-04); nil is valid and omits those fields.
 	sys SysInfo
 
-	// domain_blacklist is re-read on every DomainStats request and only changes
-	// when the blacklist-refresh worker runs (minutes apart), so a short-TTL
-	// snapshot avoids reloading the whole table on each dashboard poll. Snapshots
-	// are immutable once published, so callers may read them without the lock.
 	// Lifetime request counts, cached: see lifetimeCounts (SECURE-PERF-01).
 	countsMu      sync.Mutex
 	countsMaxID   int64
@@ -156,11 +152,6 @@ type AnalyticsHandlers struct {
 	// src finds the internal source addresses (the stack's own traffic),
 	// which no client count includes.
 	src *InternalSources
-
-	blMu      sync.Mutex
-	blSet     map[string]struct{}
-	blWild    []string
-	blFetched time.Time
 }
 
 func NewAnalyticsHandlers(db *sql.DB, cfg *config.Config) *AnalyticsHandlers {
@@ -326,32 +317,42 @@ func (h *AnalyticsHandlers) countDistinctNetworks(dayStart int64, cond database.
 	return len(nets)
 }
 
-const domainBlacklistTTL = 30 * time.Second
+// enforcedHost is the name the proxy enforces for a destination host (HostKey
+// output): lower case, without a port. Squid and dnsmasq match the name alone.
+func enforcedHost(host string) string {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if i := strings.LastIndexByte(host, ':'); i > 0 && !strings.Contains(host[:i], ":") {
+		host = host[:i]
+	}
+	return strings.TrimSuffix(host, ".")
+}
 
-// domainBlacklist returns a cached snapshot of the domain blacklist (exact-match
-// set + wildcard suffixes), refreshing from the DB at most once per TTL.
-func (h *AnalyticsHandlers) domainBlacklist() (map[string]struct{}, []string) {
-	h.blMu.Lock()
-	defer h.blMu.Unlock()
-	if h.blSet != nil && time.Since(h.blFetched) < domainBlacklistTTL {
-		return h.blSet, h.blWild
+// enforcedOnBlocklistQuery is true when the blocklist holds a stored form of
+// name n that the proxy enforces as n (database.EnforcedDomain: n, *.n, .n,
+// *..n, or a mixed-case spelling of one of them), and n is not on the allowed
+// list, which the export takes out. The lower-case forms are searched through
+// the UNIQUE index on domain; the mixed-case spellings by a scan of
+// idx_domain_blacklist_mixed_case, a partial index that holds only those
+// entries (as blockedOnAllowedQuery does). It replaces a snapshot of the whole
+// table, which measured 83.7 MiB for 1,000,000 names in a container limited to
+// 128 MB.
+const enforcedOnBlocklistQuery = `SELECT
+	(EXISTS (SELECT 1 FROM domain_blacklist WHERE domain IN (?1, '*.' || ?1, '.' || ?1, '*..' || ?1))
+	 OR EXISTS (SELECT 1 FROM domain_blacklist INDEXED BY idx_domain_blacklist_mixed_case
+	     WHERE domain != lower(domain)
+	       AND ltrim(lower(CASE WHEN domain LIKE '*.%' THEN substr(domain, 3) ELSE domain END), '.') = ?1))
+	AND NOT EXISTS (SELECT 1 FROM domain_whitelist WHERE type = 'fqdn' AND ltrim(lower(domain), '.') = ?1)`
+
+func (h *AnalyticsHandlers) enforcedOnBlocklist(name string) bool {
+	if name == "" {
+		return false
 	}
-	set := map[string]struct{}{}
-	var wild []string
-	rows, _ := h.db.Query("SELECT domain FROM domain_blacklist")
-	if rows != nil {
-		for rows.Next() {
-			var d string
-			rows.Scan(&d) //nolint:errcheck
-			set[d] = struct{}{}
-			if strings.HasPrefix(d, "*.") {
-				wild = append(wild, d[2:])
-			}
-		}
-		rows.Close()
+	var on bool
+	if err := h.db.QueryRow(enforcedOnBlocklistQuery, name).Scan(&on); err != nil {
+		log.Warn().Err(err).Str("name", name).Msg("domain statistics: blocklist lookup failed")
+		return false
 	}
-	h.blSet, h.blWild, h.blFetched = set, wild, time.Now()
-	return set, wild
+	return on
 }
 
 func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) http.Handler) {
@@ -1029,7 +1030,7 @@ func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCID
 func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(string(`
 		SELECT destination, COUNT(*) AS requests,
-		       SUM(blocked) AS blocked_requests
+		       SUM(blocked) AS blocked_requests, `+database.HostKey("destination")+` AS host
 		FROM proxy_logs WHERE destination IS NOT NULL AND destination != '' AND unix_timestamp >= ? AND `+clientRows+`
 		GROUP BY destination ORDER BY requests DESC LIMIT 50`), sinceUnix(analyticsWindow))
 	if err != nil {
@@ -1041,30 +1042,20 @@ func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) 
 		dest    string
 		reqs    int
 		blkReqs int
+		host    string
 	}
 	var entries []logEntry
 	for rows.Next() {
-		var dest string
+		var dest, host string
 		var reqs, blkReqs int
-		rows.Scan(&dest, &reqs, &blkReqs) //nolint:errcheck
-		entries = append(entries, logEntry{dest, reqs, blkReqs})
+		rows.Scan(&dest, &reqs, &blkReqs, &host) //nolint:errcheck
+		entries = append(entries, logEntry{dest, reqs, blkReqs, host})
 	}
 	rows.Close()
 
-	blSet, wildcards := h.domainBlacklist()
-
 	var domains []map[string]any
 	for _, e := range entries {
-		_, inSet := blSet[e.dest]
-		isBlocked := inSet || e.blkReqs > 0
-		if !isBlocked {
-			for _, w := range wildcards {
-				if strings.HasSuffix(e.dest, w) {
-					isBlocked = true
-					break
-				}
-			}
-		}
+		isBlocked := e.blkReqs > 0 || h.enforcedOnBlocklist(enforcedHost(e.host))
 		status := "Allowed"
 		if isBlocked {
 			status = "Blocked"

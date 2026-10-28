@@ -80,6 +80,17 @@ for at least one minor release before disappearing.
 - **The WAF's management port has timeouts.** `:8080` (health, metrics, the
   backend's management calls) ran with none, so idle connections could hold
   it; it now has read, write, header and idle timeouts.
+
+- **The domain statistics show the status the proxy enforces, without loading
+  the blocklist into memory.** `GET /api/domains/statistics` read every
+  blocklist entry into a map every 30 seconds (measured 83.7 MiB for
+  1,000,000 names, against the backend's 128 MB limit) and then compared it
+  with the raw destination, a URL or `host:port`, which rarely matched: a
+  blocked domain reached over CONNECT showed as Allowed unless a request to it
+  had been blocked. Each of the 50 destinations is now looked up by its host,
+  through the indexes, against the name the proxy enforces (exact name, the
+  `*.` and `.` prefixes dropped, any case), and a name on the allowed list is
+  not reported as blocked.
 - **A response the WAF blocks now reaches the notifications and carries an
   event ID.** A blocked download (`application/x-msdownload`, a JAR, a
   shortcut) or a response leaking a private key or a token was answered with
