@@ -280,7 +280,7 @@ func (f logFilter) countTerms(internal []string) []countTerm {
 		}
 		return countTerm{
 			// The conditions are constants with placeholders; every value is bound.
-			query:    "SELECT COUNT(*) FROM proxy_logs WHERE " + w,
+			query:    "SELECT COUNT(*) FROM proxy_logs WHERE " + w, // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 			args:     append(append([]any{}, baseArgs...), extraArgs...),
 			sign:     sign,
 			internal: isInternal,

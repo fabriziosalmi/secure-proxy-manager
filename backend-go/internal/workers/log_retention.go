@@ -39,7 +39,7 @@ func StartLogRetention(ctx context.Context, db *sql.DB) {
 const AuditRetentionDays = 365
 
 func pruneAuditLog(db *sql.DB) {
-	res, err := db.Exec("DELETE FROM audit_log WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(AuditRetentionDays)+" days")
+	res, err := db.Exec("DELETE FROM audit_log WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(AuditRetentionDays)+" days") // slopless-disable-line VBC-004 -- the concatenation builds a bound argument, not the statement
 	if err != nil {
 		log.Warn().Err(err).Msg("audit log retention cleanup failed")
 		return

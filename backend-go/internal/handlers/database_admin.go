@@ -54,7 +54,7 @@ func (h *DatabaseHandlers) Stats(w http.ResponseWriter, r *http.Request) {
 	for _, tbl := range allowedTables {
 		var n int64
 		// #nosec G202
-		h.db.QueryRow(string("SELECT COUNT(*) FROM " + tbl)).Scan(&n) //nolint:errcheck
+		h.db.QueryRow(string("SELECT COUNT(*) FROM " + tbl)).Scan(&n) //nolint:errcheck  // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		counts[string(tbl)] = n
 	}
 	writeOK(w, counts)
@@ -64,7 +64,7 @@ func (h *DatabaseHandlers) Export(w http.ResponseWriter, r *http.Request) {
 	export := map[string]any{}
 	for _, tbl := range allowedTables {
 		// #nosec G202
-		rows, err := h.db.Query(string("SELECT * FROM " + tbl))
+		rows, err := h.db.Query(string("SELECT * FROM " + tbl)) // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		if err != nil {
 			continue
 		}
@@ -114,7 +114,7 @@ func (h *DatabaseHandlers) Reset(w http.ResponseWriter, r *http.Request) {
 			continue // Never wipe users.
 		}
 		// #nosec G202
-		if _, err := tx.ExecContext(r.Context(), string("DELETE FROM "+tbl)); err != nil {
+		if _, err := tx.ExecContext(r.Context(), string("DELETE FROM "+tbl)); err != nil { // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 			writeError(w, http.StatusInternalServerError, "failed to clear table "+string(tbl))
 			return
 		}

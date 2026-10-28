@@ -83,7 +83,7 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 	// #nosec G202
 	// #nosec G701
 	rows, err := h.db.Query(
-		string("SELECT "+logColumns+" FROM proxy_logs WHERE "+pageWhere+" ORDER BY "+sort+" "+order+" LIMIT ? OFFSET ?"),
+		string("SELECT "+logColumns+" FROM proxy_logs WHERE "+pageWhere+" ORDER BY "+sort+" "+order+" LIMIT ? OFFSET ?"), // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		append(pageArgs, limit, offset)...,
 	)
 	if err != nil {
@@ -161,11 +161,12 @@ func (h *LogHandlers) Stats(w http.ResponseWriter, r *http.Request) {
 	var total, blocked, ipBlocks int
 	var lastImport sql.NullString
 	// Client requests only, like every other statistic (clientRows).
-	h.db.QueryRow(string("SELECT COUNT(*) FROM proxy_logs WHERE " + clientRows)).Scan(&total)                   //nolint:errcheck
-	h.db.QueryRow(string("SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND " + clientRows)).Scan(&blocked) //nolint:errcheck
+	h.db.QueryRow(string("SELECT COUNT(*) FROM proxy_logs WHERE " + clientRows)).Scan(&total)                   //nolint:errcheck  // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
+	h.db.QueryRow(string("SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND " + clientRows)).Scan(&blocked) //nolint:errcheck  // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 	// Direct-IP blocks are the rows whose reason says so. A row logged before
 	// reasons were recorded keeps the count it always had, the URL heuristic,
 	// rather than being reassigned.
+	// slopless-disable-next-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 	h.db.QueryRow(string("SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND " + clientRows + ` AND (block_reason = 'direct_ip'
 		OR (block_reason = 'unclassified' AND (destination LIKE 'http://%.%.%.%' OR destination LIKE 'https://%.%.%.%')))`)).Scan(&ipBlocks) //nolint:errcheck
 	h.db.QueryRow("SELECT MAX(timestamp) FROM proxy_logs").Scan(&lastImport) //nolint:errcheck
@@ -227,7 +228,7 @@ func (h *LogHandlers) ClearOld(w http.ResponseWriter, r *http.Request) {
 	if days < 1 {
 		days = 30
 	}
-	res, err := h.db.Exec("DELETE FROM proxy_logs WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(days)+" days")
+	res, err := h.db.Exec("DELETE FROM proxy_logs WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(days)+" days") // slopless-disable-line VBC-004 -- the concatenation builds a bound argument, not the statement
 	var deleted int64
 	if err == nil && res != nil {
 		deleted, _ = res.RowsAffected()

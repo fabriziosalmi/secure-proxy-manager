@@ -78,7 +78,7 @@ func deleteRetiredSettings(db *sql.DB) error {
 	}
 	placeholders := Placeholders(len(retiredSettingsV6))
 	// #nosec G202 -- placeholders only; the keys are bound
-	res, err := tx.Exec(string("DELETE FROM settings WHERE setting_name IN ("+placeholders+")"), args...)
+	res, err := tx.Exec(string("DELETE FROM settings WHERE setting_name IN ("+placeholders+")"), args...) // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func retireThreeSettings(db *sql.DB) error {
 
 	// #nosec G202 -- placeholders only; the keys are bound
 	rows, err := tx.Query(
-		string("SELECT setting_name, setting_value FROM settings WHERE setting_name IN ("+placeholders+") ORDER BY setting_name"),
+		string("SELECT setting_name, setting_value FROM settings WHERE setting_name IN ("+placeholders+") ORDER BY setting_name"), // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		args...,
 	)
 	if err != nil {
@@ -155,7 +155,7 @@ func retireThreeSettings(db *sql.DB) error {
 	var deleted int64
 	if len(found) > 0 {
 		// #nosec G202 -- placeholders only; the keys are bound
-		res, err := tx.Exec(string("DELETE FROM settings WHERE setting_name IN ("+placeholders+")"), args...)
+		res, err := tx.Exec(string("DELETE FROM settings WHERE setting_name IN ("+placeholders+")"), args...) // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		if err != nil {
 			return err
 		}

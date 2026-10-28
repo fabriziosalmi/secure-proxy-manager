@@ -11,7 +11,7 @@ describe('expectNoAxeViolations', () => {
   })
 
   it('fails a button with no accessible name and names the rule', async () => {
-    const { container } = render(<button type="button"><svg aria-hidden="true" /></button>)
+    const { container } = render(<button type="button"><svg aria-hidden="true" /></button>)  // slopless-disable-line VBC-035 -- deliberately unnamed button: the test proves the axe gate rejects it
     await expect(expectNoAxeViolations(container)).rejects.toThrow(/button-name/)
   })
 

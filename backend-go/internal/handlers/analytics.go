@@ -297,7 +297,7 @@ func (h *AnalyticsHandlers) countDistinctNetworks(dayStart int64, cond database.
 	qArgs = append(qArgs, condArgs...)
 	// #nosec G202 -- clientRows and cond are constants and placeholders; values are bound.
 	rows, err := h.db.Query(
-		string(`SELECT DISTINCT source_ip FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND source_ip != '' AND `+cond),
+		string(`SELECT DISTINCT source_ip FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND source_ip != '' AND `+cond), // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		qArgs...,
 	)
 	if err != nil {
@@ -384,7 +384,7 @@ func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 	// boundary at local midnight, so on a host east of UTC the count read 0
 	// from local midnight until UTC midnight.
 	todayStr := time.Now().UTC().Format("2006-01-02")
-	h.db.QueryRow(string("SELECT COUNT(*) FROM proxy_logs WHERE timestamp >= ? AND timestamp < date(?, '+1 day') AND "+clientRows), todayStr, todayStr).Scan(&todayCount) //nolint:errcheck
+	h.db.QueryRow(string("SELECT COUNT(*) FROM proxy_logs WHERE timestamp >= ? AND timestamp < date(?, '+1 day') AND "+clientRows), todayStr, todayStr).Scan(&todayCount) //nolint:errcheck  // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 
 	// Read the configured proxy port rather than hard-coding 3128.
 	proxyPort := "3128"
@@ -858,7 +858,7 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 	// A no-rows or scan error leaves the zero values, which is the correct
 	// answer for a client with no logged requests.
 	_ = h.db.QueryRow(
-		string(`SELECT COUNT(*), IFNULL(`+blockedCase+`, 0), MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE source_ip = ? AND `+clientRows),
+		string(`SELECT COUNT(*), IFNULL(`+blockedCase+`, 0), MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE source_ip = ? AND `+clientRows), // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		ip,
 	).Scan(&total, &blocked, &firstSeen, &lastSeen)
 
@@ -939,7 +939,7 @@ func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCID
 		args = toArgs(ips)
 		// Classify only addresses that have clientRows in proxy_logs.
 		// #nosec G202 -- cond and clientRows use constants and placeholders; args are bound.
-		if sRows, err := h.db.Query(string(`SELECT DISTINCT source_ip FROM proxy_logs WHERE `+cond+` AND `+clientRows), args...); err == nil {
+		if sRows, err := h.db.Query(string(`SELECT DISTINCT source_ip FROM proxy_logs WHERE `+cond+` AND `+clientRows), args...); err == nil { // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 			for sRows.Next() {
 				var sip string
 				if sRows.Scan(&sip) == nil {
@@ -965,7 +965,7 @@ func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCID
 	var firstSeen, lastSeen sql.NullString
 	// #nosec G202 -- cond and clientRows are constants and placeholders; args are bound.
 	_ = h.db.QueryRow(
-		string(`SELECT COUNT(*), IFNULL(`+blockedCase+`, 0), MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE `+cond+` AND `+clientRows),
+		string(`SELECT COUNT(*), IFNULL(`+blockedCase+`, 0), MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE `+cond+` AND `+clientRows), // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		args...,
 	).Scan(&total, &blocked, &firstSeen, &lastSeen)
 
@@ -988,7 +988,7 @@ func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCID
 	// #nosec G202 -- cond and clientRows are constants and placeholders; args are bound.
 	if rr, err := h.db.Query(
 		string(`SELECT timestamp, method, destination, status, bytes, blocked, block_reason
-		 FROM proxy_logs WHERE `+cond+` AND `+clientRows+` ORDER BY id DESC LIMIT 20`), args...); err == nil {
+		 FROM proxy_logs WHERE `+cond+` AND `+clientRows+` ORDER BY id DESC LIMIT 20`), args...); err == nil { // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		for rr.Next() {
 			var ts, method, dest, status, reason string
 			var nbytes int64
@@ -1170,7 +1170,7 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	var topClients []map[string]any
 	if gdpr {
 		// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
-		cRows, _ := h.db.Query(string(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' AND `+clientRows+` AND `+ext+` GROUP BY source_ip`), append([]any{day}, extArgs...)...)
+		cRows, _ := h.db.Query(string(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' AND `+clientRows+` AND `+ext+` GROUP BY source_ip`), append([]any{day}, extArgs...)...) // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		if cRows != nil {
 			type netCount struct {
 				ip      string
@@ -1224,7 +1224,7 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 		}
 	} else {
 		// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
-		cRows, _ := h.db.Query(string(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' AND `+clientRows+` AND `+ext+` GROUP BY source_ip ORDER BY cnt DESC LIMIT 10`), append([]any{day}, extArgs...)...)
+		cRows, _ := h.db.Query(string(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' AND `+clientRows+` AND `+ext+` GROUP BY source_ip ORDER BY cnt DESC LIMIT 10`), append([]any{day}, extArgs...)...) // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		if cRows != nil {
 			for cRows.Next() {
 				var ip string
@@ -1261,7 +1261,7 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	var recentBlocks []map[string]any
 	// #nosec G202 -- destinationKey and clientRows are constant expressions.
 	rRows, _ := h.db.Query(string(`SELECT timestamp, source_ip, method, destination, `+destinationKey+`, status, block_reason
-		FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+` ORDER BY id DESC LIMIT 10`), append([]any{day}, extArgs...)...)
+		FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+` ORDER BY id DESC LIMIT 10`), append([]any{day}, extArgs...)...) // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 	if rRows != nil {
 		for rRows.Next() {
 			var ts, srcIP, method, dest, host, status, reason sql.NullString
@@ -1759,7 +1759,7 @@ func (h *AnalyticsHandlers) TestRule(w http.ResponseWriter, r *http.Request) {
 
 	// Query recent destinations from logs
 	rows, err := h.db.Query(
-		string("SELECT destination FROM proxy_logs WHERE unix_timestamp >= ? AND destination IS NOT NULL AND destination != '' AND "+clientRows+" LIMIT 10000"),
+		string("SELECT destination FROM proxy_logs WHERE unix_timestamp >= ? AND destination IS NOT NULL AND destination != '' AND "+clientRows+" LIMIT 10000"), // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		sinceUnix(time.Duration(req.Hours)*time.Hour),
 	)
 	if err != nil {

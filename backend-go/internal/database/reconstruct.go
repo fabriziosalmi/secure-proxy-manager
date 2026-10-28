@@ -68,7 +68,7 @@ var (
 	                WHERE b.domain IN (` + rowHost + `, '*.' || ` + rowHost + `)
 	                  AND ` + listed + `
 	                  AND ` + loggedAt + ` >= CAST(strftime('%s', b.added_date) AS INTEGER))
-	        OR ` + loggedAt + ` >= (SELECT m.added_unix FROM main.spm_reconstruct_mixed m WHERE m.name = ` + rowHost + `))`
+	        OR ` + loggedAt + ` >= (SELECT m.added_unix FROM main.spm_reconstruct_mixed m WHERE m.name = ` + rowHost + `))` // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 )
 
 // reconstructBatch is the id range one UPDATE covers.
