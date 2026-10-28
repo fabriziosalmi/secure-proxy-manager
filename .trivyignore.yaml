@@ -2,7 +2,7 @@
 #
 # ONLY for a vulnerability in a THIRD-PARTY image where the only remedy in our
 # hands — moving to a newer tag — has already been taken. Everything below is
-# upstream's to rebuild: a Go module vendored inside Grafana's own binary, or
+# upstream's to rebuild: a Go module vendored inside a binary the image ships, or
 # an Alpine package whose fixed build has not been published in the image yet.
 #
 # Every entry carries an expiry. When it lapses the scan goes red again and the
@@ -13,23 +13,21 @@
 # Recorded 2026-09-30, after the bump that took these four images from 340
 # fixable HIGH/CRITICAL findings to 9.
 vulnerabilities:
-  # grafana/grafana:13.2.4 — vendored Go modules inside the Grafana binary.
-  # Fixing them means Grafana shipping a release built against the patched
-  # module; there is no tag available to us that does.
-  - id: CVE-2026-84445
-    statement: "google.golang.org/grpc v1.83.1 vendored in grafana/grafana:13.2.4; no Grafana release carries the patched module yet."
-    expired_at: 2026-12-31
-  - id: CVE-2026-84304
-    statement: "google.golang.org/grpc v1.83.0 vendored in grafana/grafana:13.2.4; same, upstream rebuild required."
-    expired_at: 2026-12-31
+  # grafana/grafana:13.3.0: Grafana's own binary scans clean. What is left
+  # sits in the datasource plugins the image bundles (tempo, loki, jaeger,
+  # mysql, mssql, postgresql, influxdb, cloudwatch, opentsdb, pyroscope),
+  # built with Go 1.26.7 and golang.org/x/net 0.58.0/0.59.0. 13.3.0
+  # (2026-10-27) is the newest tag; fixing these needs Grafana to rebuild the
+  # plugins. Recorded 2026-10-28, when the move from 13.2.4 retired the grpc,
+  # kin-openapi and go-jose findings of the Grafana binary.
   - id: CVE-2026-21728
-    statement: "github.com/grafana/tempo vendored in grafana/grafana:13.2.4; Grafana pins a pre-release of it, so no tag of ours fixes this."
+    statement: "github.com/grafana/tempo pre-release v1.5.1-0.20260910130453 in the tempo datasource plugin bundled with grafana/grafana:13.3.0; Grafana pins a pre-release of it, so no tag of ours fixes this."
     expired_at: 2026-12-31
   - id: CVE-2026-28377
-    statement: "github.com/grafana/tempo vendored in grafana/grafana:13.2.4; same."
+    statement: "github.com/grafana/tempo in the tempo datasource plugin bundled with grafana/grafana:13.3.0; same."
     expired_at: 2026-12-31
   - id: CVE-2026-111943
-    statement: "Go stdlib crypto/x509 (fixed in 1.26.10 / 1.27.3) inside grafana/grafana:13.2.4's own binary and its bundled plugins, built with 1.26.6-1.27.1; 13.2.4 is the newest tag. Recorded 2026-10-24: it was the only finding of the image scan and it red-gated every dependency PR. Our own images move to 1.27.3 in the same change."
+    statement: "Go stdlib crypto/x509 (fixed in 1.26.10 / 1.27.3) in the datasource plugins bundled with grafana/grafana:13.3.0 (Go 1.26.7), and in k6 2.3.0, prometheus v3.15.0 and tailscale v1.104.1; all are the newest tags. Recorded 2026-10-24. Our own images are built with 1.27.3."
     expired_at: 2026-11-30
   # curl in third-party Alpine images, published 2026-10-26: Alpine 3.24 has the
   # fixed 8.23.0-r0, the images below still ship 8.22.0-r0 and no newer tag or
@@ -37,22 +35,8 @@ vulnerabilities:
   # (ui/Dockerfile). nginx:1.31.8-alpine is used only by the test and
   # adversarial stacks.
   - id: CVE-2026-92392
-    statement: "curl/libcurl 8.22.0-r0 in grafana/grafana:13.2.4 and nginx:1.31.8-alpine (test stacks only); Alpine 3.24 has 8.23.0-r0, no image rebuild published yet. Recorded 2026-10-26."
+    statement: "curl/libcurl 8.22.0-r0 in nginx:1.31.8-alpine (test stacks only); Alpine 3.24 has 8.23.0-r0, no image rebuild published yet. Recorded 2026-10-26; grafana/grafana:13.3.0 no longer carries it."
     expired_at: 2026-11-15
-  # tailscale/tailscale:v1.102.5 — vendored Go modules inside the tailscale
-  # binary. This pin now matches overlay/tailscale/Dockerfile, which is what
-  # scripts/check-image-pins.sh enforces; before that it sat at v1.80.3 with
-  # 122 fixable findings, because Dependabot watches the Dockerfile and cannot
-  # see a compose file.
-  - id: CVE-2026-56854
-    statement: "golang.org/x/crypto v0.54.0 vendored in tailscale/tailscale:v1.102.5; needs an upstream rebuild."
-    expired_at: 2026-12-31
-  - id: CVE-2026-46602
-    statement: "golang.org/x/image v0.41.0 vendored in tailscale/tailscale:v1.102.5; needs an upstream rebuild."
-    expired_at: 2026-12-31
-  - id: CVE-2026-46603
-    statement: "golang.org/x/image v0.41.0 vendored in tailscale/tailscale:v1.102.5; needs an upstream rebuild."
-    expired_at: 2026-12-31
   # grafana/k6:2.3.0 — Alpine packages whose fixed build k6 has not published
   # in the image yet. Test-only (the bench plane). Carried here rather than
   # left out of the scan: 0.55.0 had 69 findings, and excluding the image was
@@ -69,33 +53,17 @@ vulnerabilities:
   # remedy is an upstream rebuild. Shorter expiry than the entries above:
   # rebuilds for a Go patch release usually follow within weeks.
   - id: CVE-2026-78667
-    statement: "Go stdlib < 1.26.9 / 1.27.2 in grafana 13.2.4, k6 2.3.0, prometheus v3.15.0, tailscale v1.102.5; no tag built with the fixed Go yet."
+    statement: "Go stdlib < 1.26.9 / 1.27.2 in the datasource plugins bundled with grafana 13.3.0, and in k6 2.3.0, prometheus v3.15.0, tailscale v1.104.1; no tag built with the fixed Go yet."
     expired_at: 2026-11-30
   - id: CVE-2026-78669
-    statement: "Go stdlib and golang.org/x/net < 0.60.0 in grafana 13.2.4, k6 2.3.0, prometheus v3.15.0, tailscale v1.102.5; no tag built with the fix yet."
+    statement: "Go stdlib and golang.org/x/net < 0.60.0 in the datasource plugins bundled with grafana 13.3.0, and in k6 2.3.0, prometheus v3.15.0, tailscale v1.104.1; no tag built with the fix yet."
     expired_at: 2026-11-30
   - id: CVE-2026-97031
     statement: "Go stdlib < 1.26.9 / 1.27.2 in the same four images; same, upstream rebuild required."
     expired_at: 2026-11-30
-  - id: CVE-2026-100349
-    statement: "kin-openapi v0.144.0 in grafana/grafana:13.2.4; fixed in 0.146.0, same."
-    expired_at: 2026-11-30
-  - id: CVE-2026-100351
-    statement: "github.com/getkin/kin-openapi v0.144.0 vendored in grafana/grafana:13.2.4; fixed in 0.147.0, no Grafana release carries it yet."
-    expired_at: 2026-11-30
-  - id: CVE-2026-100352
-    statement: "kin-openapi v0.144.0 in grafana/grafana:13.2.4; fixed in 0.148.0, same."
-    expired_at: 2026-11-30
-  - id: CVE-2026-100353
-    statement: "kin-openapi v0.144.0 in grafana/grafana:13.2.4; fixed in 0.149.0, same."
-    expired_at: 2026-11-30
-  - id: CVE-2026-100354
-    statement: "kin-openapi v0.144.0 in grafana/grafana:13.2.4; fixed in 0.149.0, same."
-    expired_at: 2026-11-30
-  # nginx:1.31.8-alpine and grafana/grafana:13.2.4 — brotli-libs 1.2.0-r1 as
-  # published. The UI image this project ships upgrades it at build time
-  # (ui/Dockerfile); the plain nginx image is pulled as-is only by the test
-  # compose files, and Grafana only by the observability profile.
+  # nginx:1.31.8-alpine: brotli-libs 1.2.0-r1 as published. The UI image this
+  # project ships upgrades it at build time (ui/Dockerfile); the plain nginx
+  # image is pulled as-is only by the test compose files.
   - id: CVE-2026-111497
-    statement: "brotli-libs 1.2.0-r1 in nginx:1.31.8-alpine and grafana/grafana:13.2.4 as published; ui/Dockerfile installs 1.2.1-r0, the plain images wait for an upstream rebuild. Recorded 2026-10-24."
+    statement: "brotli-libs 1.2.0-r1 in nginx:1.31.8-alpine as published; ui/Dockerfile installs 1.2.1-r0, the plain image waits for an upstream rebuild. Recorded 2026-10-24; grafana/grafana:13.3.0 no longer carries it."
     expired_at: 2026-11-30
