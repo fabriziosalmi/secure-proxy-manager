@@ -42,7 +42,9 @@ in the stock-format line with nothing naming the rule.
 ### 2.2 WAF (ICAP REQMOD and RESPMOD)
 
 `main:waf-go/main.go:751-771` `sendBlockResponse` answers ICAP 200 with an
-encapsulated HTTP 403 and, for REQMOD, an `X-WAF-Event-Id` HTTP header. Squid
+encapsulated HTTP 403 and an `X-WAF-Event-Id` HTTP header, on REQMOD and
+RESPMOD blocks alike (RESPMOD blocks carried none before the change listed
+under Unreleased in the CHANGELOG). Squid
 logs a REQMOD block as `NONE_NONE/403` and a RESPMOD block as `TCP_MISS/403`
 (measured, section 4). Nothing in the line says the WAF decided. `X-WAF-Event-Id`
 is read with `%{X-WAF-Event-Id}<h` from the HTTP reply (`main:...generate_squid_conf.sh:425`),
