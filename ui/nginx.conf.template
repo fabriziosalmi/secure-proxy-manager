@@ -114,6 +114,14 @@ server {
         proxy_buffering       off;
     }
 
+    # Service-to-service routes are not published. The WAF posts its block
+    # alerts to backend:5000 on the internal network; through this port the
+    # route was reachable by anyone who could reach the UI, guarded only by
+    # its token. ^~ makes this win over the /api/ prefix below.
+    location ^~ /api/internal/ {
+        return 404;
+    }
+
     # API reverse proxy → Go backend
     location /api/ {
         limit_req zone=api burst=40 nodelay;

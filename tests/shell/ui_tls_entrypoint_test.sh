@@ -56,5 +56,19 @@ fi
 logs_contain 'certbot is not in this image' \
   && ok "says why Let's Encrypt is not active" || bad "says why Let's Encrypt is not active" "$(docker logs "$NAME" 2>&1 | tail -5)"
 
+echo "── the service-to-service API is not published ──"
+# /api/internal/alert is for the WAF on the internal network, which posts to
+# backend:5000 directly. Through the public port it must be refused by nginx
+# itself (404), while the rest of /api/ is still proxied (here 502: nothing
+# listens on the backend address the test gives it).
+start || bad "restart for the API checks" "$(docker logs "$NAME" 2>&1 | tail -3)"
+code() { docker exec "$NAME" curl -sk -o /dev/null -w '%{http_code}' -X "$1" "https://127.0.0.1:8443$2"; }
+c=$(code POST /api/internal/alert)
+[ "$c" = 404 ] && ok "POST /api/internal/alert is refused by nginx (404)" || bad "POST /api/internal/alert is refused by nginx (404)" "got $c"
+c=$(code GET /api/internal/anything)
+[ "$c" = 404 ] && ok "anything under /api/internal/ is refused (404)" || bad "anything under /api/internal/ is refused (404)" "got $c"
+c=$(code GET /api/health)
+[ "$c" = 502 ] && ok "the rest of /api/ is still proxied to the backend" || bad "the rest of /api/ is still proxied to the backend" "got $c, want 502 from the proxy pass"
+
 printf "\n  %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

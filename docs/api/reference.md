@@ -166,7 +166,7 @@ Details: [Settings and Maintenance API](./settings.md).
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/internal/alert` | WAF block notifications. With `INTERNAL_ALERT_TOKEN` set, only `Authorization: Bearer <that token>` is accepted; without it, normal admin authentication. The alerts pass the [notification limits](./settings.md#notification-limits) |
+| `POST` | `/api/internal/alert` | WAF block notifications, on the backend's port only (`backend:5000` inside the stack); the web container answers `404` for `/api/internal/`. With `INTERNAL_ALERT_TOKEN` set, only `Authorization: Bearer <that token>` is accepted; without it, normal admin authentication. The alerts pass the [notification limits](./settings.md#notification-limits) |
 | `POST` | `/api/dns/detect` | Probe a subnet for Pi-hole or AdGuard instances (at most 2 scans at a time) |
 | `GET`  | `/debug/pprof/...` | Go runtime profiles (authenticated) |
 
