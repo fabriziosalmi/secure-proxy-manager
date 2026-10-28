@@ -60,7 +60,7 @@ var (
 		"network":       new(atomic.Int64), // no answer, after the retries
 		"rejected":      new(atomic.Int64), // 4xx: a credential or request problem, not retried
 		"server_error":  new(atomic.Int64), // 5xx, after the retries
-		"no_credential": new(atomic.Int64), // INTERNAL_ALERT_TOKEN and BASIC_AUTH_* unset
+		"no_credential": new(atomic.Int64), // no service token (env or file) and BASIC_AUTH_* unset
 	}
 
 	// bodyTruncatedCount counts requests whose body exceeded maxBodyInspectSize,
@@ -205,8 +205,9 @@ func warnNoAlertCredential() {
 	if now-prev < 60 || !lastCredWarn.CompareAndSwap(prev, now) {
 		return
 	}
-	log.Printf("no backend alert credential: set INTERNAL_ALERT_TOKEN (openssl rand -hex 32) " +
-		"on both the waf and backend services; alerts are being dropped\n")
+	log.Printf("no backend alert credential: INTERNAL_ALERT_TOKEN is unset and %s is missing; mount the "+
+		"service-token volume read-only as the shipped compose files do, or set INTERNAL_ALERT_TOKEN "+
+		"(openssl rand -hex 32) on both the waf and backend services; alerts are being dropped\n", serviceTokenFile())
 }
 
 // notifyAttempts bounds the deliveries of one alert; notifyRetryDelay is the
@@ -229,7 +230,7 @@ func notifyBackend(data map[string]interface{}) {
 	// The basic-auth path is kept only as a fallback for deployments upgrading
 	// with a hand-written compose file that still passes BASIC_AUTH_* here. The
 	// shipped compose files no longer do.
-	alertToken := strings.TrimSpace(os.Getenv("INTERNAL_ALERT_TOKEN"))
+	alertToken := serviceToken()
 	authUser := os.Getenv("BASIC_AUTH_USERNAME")
 	authPass := os.Getenv("BASIC_AUTH_PASSWORD")
 	if alertToken == "" && (authUser == "" || authPass == "") {
@@ -1001,6 +1002,39 @@ func main() {
 	}
 }
 
+// ── Service token ───────────────────────────────────────────────────────────
+
+// defaultServiceTokenFile matches the backend's config.DefaultServiceTokenFile:
+// one volume mounted read-write in the backend and read-only here.
+const defaultServiceTokenFile = "/var/lib/spm-service-token/alert_token"
+
+// serviceToken is the credential shared with the backend: INTERNAL_ALERT_TOKEN
+// when it is set, otherwise the token the backend generated into the shared
+// volume (SPM_SERVICE_TOKEN_FILE overrides the path). It is read on each use,
+// which is a few times a minute, so a token the backend writes or replaces
+// after this process started is picked up without a restart.
+func serviceToken() string {
+	if t := strings.TrimSpace(os.Getenv("INTERNAL_ALERT_TOKEN")); t != "" {
+		return t
+	}
+	data, err := os.ReadFile(serviceTokenFile()) // #nosec G304 -- fixed path or the operator's SPM_SERVICE_TOKEN_FILE
+	if err != nil {
+		return ""
+	}
+	if t := strings.TrimSpace(string(data)); len(t) == 64 {
+		return t
+	}
+	return ""
+}
+
+// serviceTokenFile is where the backend writes the shared token.
+func serviceTokenFile() string {
+	if p := os.Getenv("SPM_SERVICE_TOKEN_FILE"); p != "" {
+		return p
+	}
+	return defaultServiceTokenFile
+}
+
 // ── Management Auth Middleware ──────────────────────────────────────────────
 
 // mgmtAuthMiddleware protects the management endpoints. The credential is
@@ -1014,14 +1048,16 @@ func main() {
 // configured" to the backend, silently. /health and /metrics stay open (Docker
 // healthcheck, Prometheus).
 func mgmtAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	token := strings.TrimSpace(os.Getenv("INTERNAL_ALERT_TOKEN"))
 	user := os.Getenv("BASIC_AUTH_USERNAME")
 	pass := os.Getenv("BASIC_AUTH_PASSWORD")
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Per request: the backend may write the shared token after the WAF
+		// has started.
+		token := serviceToken()
 		if token == "" && (user == "" || pass == "") {
 			// No credentials configured — deny all management access
 			http.Error(w,
-				`{"error":"management auth not configured: set INTERNAL_ALERT_TOKEN on the waf and backend services"}`,
+				`{"error":"management auth not configured: mount the service-token volume or set INTERNAL_ALERT_TOKEN on the waf and backend services"}`,
 				http.StatusForbidden)
 			return
 		}

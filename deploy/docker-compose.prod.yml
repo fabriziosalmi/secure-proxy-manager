@@ -65,6 +65,9 @@ services:
       # so the log fell back to the memory-backed /tmp tmpfs (capped at 16MB) and
       # every event-ID forensic record was lost on each restart.
       - waf-traffic:/var/lib/waf
+      # The service token the backend generates when INTERNAL_ALERT_TOKEN is
+      # empty; read-only here, mounted nowhere but the backend and the WAF.
+      - service-token:/var/lib/spm-service-token:ro
     environment:
       - WAF_TRAFFIC_LOG_PATH=${WAF_TRAFFIC_LOG_PATH:-/var/lib/waf/waf_traffic.jsonl}
       # Service credential for POST /api/internal/alert, scoped to that one
@@ -120,6 +123,9 @@ services:
       - ./config:/config
       - ./data:/data
       - ./logs:/logs
+      # Written here when INTERNAL_ALERT_TOKEN is empty (config.serviceToken);
+      # the WAF reads it from the same volume.
+      - service-token:/var/lib/spm-service-token
     environment:
       - PROXY_HOST=${PROXY_HOST:-proxy}
       - PROXY_PORT=${PROXY_PORT:-3128}
@@ -393,6 +399,8 @@ networks:
     internal: true
 
 volumes:
+  service-token:
+    driver: local
   squid-cache:
     driver: local
   waf-traffic:

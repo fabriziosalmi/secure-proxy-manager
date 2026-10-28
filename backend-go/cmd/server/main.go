@@ -176,9 +176,10 @@ func run() error {
 	// management API (SECURE-AUTH-02). We keep accepting it so an upgrade does
 	// not silently stop delivering alerts, but say so once, loudly.
 	if cfg.AlertToken == "" {
-		log.Warn().Msg("INTERNAL_ALERT_TOKEN is not set: WAF block alerts are dropped and the WAF management API " +
-			"(stats, category and heuristic toggles) refuses the backend, because the shipped compose does not give " +
-			"the WAF the admin credential. Set INTERNAL_ALERT_TOKEN (openssl rand -hex 32) on both the backend and the waf service.")
+		log.Warn().Msg("no service token: INTERNAL_ALERT_TOKEN is not set and the service-token volume is not mounted at " +
+			config.DefaultServiceTokenFile + ", so WAF block alerts are dropped and the WAF management API (stats, category " +
+			"and heuristic toggles) refuses the backend. Mount the volume as the shipped compose files do, or set " +
+			"INTERNAL_ALERT_TOKEN (openssl rand -hex 32) on both the backend and the waf service.")
 	}
 
 	// Register handler groups.

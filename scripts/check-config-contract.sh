@@ -154,7 +154,27 @@ else
     done
 fi
 
+# The service token the backend generates (config.DefaultServiceTokenFile)
+# reaches the WAF through one volume: read-write in the backend, read-only in
+# the waf, and in no other service, so the proxy that mounts /config cannot
+# read the credential that drives the WAF management API.
+token_dir="$(sed -n 's|^const DefaultServiceTokenFile = "\(.*\)/[^/]*"$|\1|p' backend-go/internal/config/config.go)"
+if [ -z "$token_dir" ]; then
+    printf "${R}MISSING${N}: backend-go/internal/config/config.go no longer declares DefaultServiceTokenFile\n"
+    fail=1
+else
+    for f in docker-compose.yml deploy/docker-compose.prod.yml; do
+        mounts="$(awk -v d="$token_dir" '/^  [a-z][a-z0-9_-]*:/{svc=$1} index($0, ":" d) && /^      - /{sub(/^      - /, ""); print svc " " $0}' "$f")"
+        printf '%s\n' "$mounts" | grep -qx "backend: service-token:$token_dir" \
+            || { printf "${R}MISSING${N}: %s does not mount service-token:%s read-write in backend\n" "$f" "$token_dir"; fail=1; }
+        printf '%s\n' "$mounts" | grep -qx "waf: service-token:$token_dir:ro" \
+            || { printf "${R}MISSING${N}: %s does not mount service-token:%s read-only in waf\n" "$f" "$token_dir"; fail=1; }
+        others="$(printf '%s\n' "$mounts" | grep -vE '^(backend|waf): ' | grep -v '^$' || true)"
+        [ -z "$others" ] || { printf "${R}EXPOSED${N}: %s mounts the service token in another service: %s\n" "$f" "$others"; fail=1; }
+    done
+fi
+
 if [ "$fail" -eq "$list_fail" ]; then
-    printf "${G}OK${N}: the proxy login files agree, BASIC_AUTH_* reaches only the backend, the backend is in the proxy group, and shared WAF variables reach both waf and proxy\n"
+    printf "${G}OK${N}: the proxy login files agree, BASIC_AUTH_* reaches only the backend, the backend is in the proxy group, shared WAF variables reach both waf and proxy, and the service token volume is mounted only in backend and waf\n"
 fi
 exit "$fail"
