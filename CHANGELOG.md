@@ -15,6 +15,18 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The web UI keeps working when the backend container is recreated on
+  its own.** nginx resolved the backend name once at start: a backend that
+  came back on a new address (`docker compose up -d backend`, a rebuild of
+  that service alone) left every `/api` request answering 502 until `web`
+  was restarted. Seen on the standing test host after the v3.18.2 update:
+  nginx kept 172.18.0.2, the backend was on 172.18.0.3. The backend name is
+  now resolved again every 10 seconds through the container's resolver. A
+  `BACKEND_URL` with an address, or with a name only `/etc/hosts` holds, is
+  resolved once at start as before.
+
 ## [3.18.2] - 2026-10-28
 
 A fix release. With SafeSearch or YouTube Restricted Mode on, Google, Bing,
