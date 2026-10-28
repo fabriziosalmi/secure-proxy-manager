@@ -15,6 +15,17 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.17.0] - 2026-10-28
+
+Each access log row records the server address the proxy connected to, the
+SQL the backend builds is a type a request value cannot reach, and the
+third-party images the compose files pin move to tags that drop their fixable
+findings. Nothing is **BREAKING** and `X-API-Version` stays 1.
+
+On the first start the backend adds the nullable column `resolved_ip` to
+`proxy_logs` (no index, no schema version change). Rows logged before the
+upgrade read `null`. The CSV export gains `resolved_ip` as its last column.
+
 ### Added
 
 - Each access log row records the server address the proxy connected to
@@ -61,6 +72,19 @@ for at least one minor release before disappearing.
   The ignore file holds seven entries, all for Go modules or Alpine packages
   inside the Grafana 13.3.0 bundled plugins, k6 2.3.0 and tailscale
   v1.104.2, each the newest tag of its image.
+
+### Internal
+
+- SQL statement text is its own type, `database.SQLText` (#467). An untyped
+  constant converts to it; a string variable does not compile, so a request
+  value cannot reach the text of a query by mistake. `database.Placeholders`
+  and `database.JoinSQL` are the only explicit conversions, and
+  `TestNoValueCanReachSQLText` walks every Go file and fails on any other, or
+  on a concatenation passed straight to `Query`, `QueryRow`, `Exec` or
+  `Prepare`. The daily breakdown binds its day index instead of formatting it.
+- slopless 1.18.1 runs in CI at error severity (#467). Every error it reported
+  was checked and is a false positive; each of the 36 is marked in place with
+  its reason, so a new one fails the job.
 
 ## [3.16.0] - 2026-10-28
 
