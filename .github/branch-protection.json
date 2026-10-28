@@ -54,6 +54,9 @@
         "context": "E2E UI (Playwright)"
       },
       {
+        "context": "E2E (production compose + smoke)"
+      },
+      {
         "context": "Adversarial block-matrix (proxy + WAF)"
       },
       {
