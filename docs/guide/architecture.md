@@ -36,7 +36,10 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
 - Serves the compiled React app and proxies `/api/` and `/api/ws/` to the
   backend (`BACKEND_URL`, default `http://backend:5000`), except
   `/api/internal/`, which it answers with `404`: that route is for the WAF on
-  the internal network.
+  the internal network. A backend name is resolved again every 10 seconds
+  through the container's resolver, so a recreated backend on a new address
+  is reached without restarting `web`; an address, or a name only
+  `/etc/hosts` holds, is resolved once at start.
 - Port 8011 redirects to `https://<host>:8443` except `/health`, `/wpad.dat`
   and `/.well-known/acme-challenge/`; port 8443 serves the UI with TLS 1.2 and
   1.3 and HSTS.

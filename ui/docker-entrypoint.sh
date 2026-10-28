@@ -8,6 +8,28 @@ _backend="${_backend#https://}"
 BACKEND_HOST="${_backend%:*}"
 BACKEND_PORT="${_backend##*:}"
 export BACKEND_HOST BACKEND_PORT
+
+# A backend name is resolved again at runtime through the container's DNS
+# resolver (nginx.conf.template, upstream spm_backend). An address, or a name
+# /etc/hosts holds (extra_hosts), is used as it is, resolved once at start:
+# nginx's resolver asks DNS only, so it would not find that name.
+BACKEND_RESOLVE=" resolve"
+case "$BACKEND_HOST" in
+    *[!0-9.]*) ;;
+    *) BACKEND_RESOLVE="" ;;
+esac
+case "$BACKEND_HOST" in
+    \[*\]) BACKEND_RESOLVE="" ;;
+esac
+if [ -n "$BACKEND_RESOLVE" ] && awk -v h="$BACKEND_HOST" '$1 !~ /^#/ { for (i = 2; i <= NF; i++) if ($i == h) f = 1 } END { exit !f }' /etc/hosts 2>/dev/null; then
+    BACKEND_RESOLVE=""
+fi
+NGINX_RESOLVER=$(awk '$1 == "nameserver" { print $2; exit }' /etc/resolv.conf 2>/dev/null || true)
+case "$NGINX_RESOLVER" in
+    "") NGINX_RESOLVER=127.0.0.11 ;;
+    *:*) NGINX_RESOLVER="[$NGINX_RESOLVER]" ;;
+esac
+export BACKEND_RESOLVE NGINX_RESOLVER
 export REQUEST_TIMEOUT="${REQUEST_TIMEOUT:-120}"
 
 # ── TLS Setup ────────────────────────────────────────────────────────
@@ -96,7 +118,7 @@ else
 fi
 
 # Substitute env vars into the nginx template
-envsubst '${BACKEND_HOST} ${BACKEND_PORT} ${REQUEST_TIMEOUT}' \
+envsubst '${BACKEND_HOST} ${BACKEND_PORT} ${BACKEND_RESOLVE} ${NGINX_RESOLVER} ${REQUEST_TIMEOUT}' \
     < /etc/nginx/templates/default.conf.template \
     > /etc/nginx/conf.d/default.conf
 
