@@ -542,6 +542,10 @@ jobs:
       # ran. This starts it under the compose runtime flags in each TLS mode.
       - name: Web container starts with a certificate in every TLS mode
         run: bash tests/shell/ui_tls_entrypoint_test.sh
+      # SafeSearch and YouTube Restricted Mode were cname= overrides dnsmasq
+      # answered with no address, so the forced names could not be reached.
+      - name: DNS overrides resolve to an address with SafeSearch on
+        run: bash tests/shell/dns_safesearch_test.sh
 
   # ── 8. Popular list URL health check ──────────────────────────────────
   check-urls:

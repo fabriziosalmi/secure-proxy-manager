@@ -69,6 +69,7 @@ win over the `WAF_H_*` values after start.
 | `DNS_UPSTREAM_1` | `1.1.1.3` | First upstream resolver |
 | `DNS_UPSTREAM_2` | `9.9.9.9` | Second upstream resolver |
 | `DNS_UPSTREAM_3` | `8.8.8.8` | Third upstream resolver |
+| `SAFESEARCH_REFRESH_SECONDS` | `3600` | With SafeSearch or YouTube Restricted Mode on, how often their enforcement hosts are resolved again; dnsmasq restarts only when an address in use changed |
 
 ## Optional services
 

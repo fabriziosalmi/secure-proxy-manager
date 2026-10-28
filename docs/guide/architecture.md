@@ -151,7 +151,16 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
 - Upstream resolvers `DNS_UPSTREAM_1..3`, default `1.1.1.3`, `9.9.9.9`,
   `8.8.8.8`.
 - SafeSearch and YouTube restricted mode are CNAME overrides added when their
-  marker files exist; dnsmasq restarts when they change.
+  marker files exist; dnsmasq restarts when they change. The enforcement
+  hosts (forcesafesearch.google.com, restrict.youtube.com, strict.bing.com,
+  safe.duckduckgo.com) are resolved through the upstream resolvers when
+  dnsmasq starts and declared with `host-record`, since dnsmasq follows a
+  CNAME only to a name it knows locally. If a lookup fails, Google and
+  YouTube use 216.239.38.120, the address Google documents, and Bing and
+  DuckDuckGo are pinned to 0.0.0.0 (blocked). The hosts are resolved again
+  every `SAFESEARCH_REFRESH_SECONDS` (default 3600): when every one answers
+  and an address in use is no longer among the answers, dnsmasq restarts
+  with the new ones; when one does not answer, the running addresses stay.
 
 ### `tailscale`: optional
 

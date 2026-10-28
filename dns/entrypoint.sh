@@ -6,6 +6,62 @@ DNS3="${DNS_UPSTREAM_3:-8.8.8.8}"
 
 PROXY_IP="${PROXY_IP:-}"
 
+# How often the SafeSearch and YouTube enforcement targets are resolved again
+# while dnsmasq runs (see targets_moved).
+ENFORCE_REFRESH="${SAFESEARCH_REFRESH_SECONDS:-3600}"
+case "$ENFORCE_REFRESH" in
+    ''|*[!0-9]*) echo "WARNING: SAFESEARCH_REFRESH_SECONDS=$ENFORCE_REFRESH is not a number of seconds; using 3600" >&2
+                 ENFORCE_REFRESH=3600 ;;
+esac
+
+# ipv4_set NAME: the IPv4 addresses of NAME from the first upstream resolver
+# that has any; fails when none answers. dnsmasq follows a cname= only to a
+# name it knows locally (hosts, host-record, DHCP); a target set with
+# address= or left to upstream does not count, so a cname= alone answered the
+# CNAME with no address and every client failed to connect (SafeSearch made
+# www.google.com unreachable). The enforcement targets are therefore resolved
+# here and declared with host-record=.
+ipv4_set() {
+    for _srv in "$DNS1" "$DNS2" "$DNS3"; do
+        _set=$(dig +short +time=2 +tries=1 "$1" A @"$_srv" 2>/dev/null \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')
+        if [ -n "$_set" ]; then
+            echo "$_set"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# enforce_target NAME FALLBACK LABEL: a host-record= for NAME, on its first
+# upstream address, else FALLBACK. With neither the target is pinned to
+# 0.0.0.0: the service is blocked rather than left unfiltered while its
+# enforcement is on, until a refresh resolves it.
+enforce_target() {
+    _ip=$(ipv4_set "$1" | head -1)
+    [ -n "$_ip" ] || _ip="$2"
+    if [ -z "$_ip" ]; then
+        echo "WARNING: $3: $1 did not resolve; blocked (0.0.0.0) until it does (checked every ${ENFORCE_REFRESH}s)" >&2
+        _ip=0.0.0.0
+    fi
+    echo "host-record=$1,$_ip"
+}
+
+# targets_moved: true when every enforcement target in the running config
+# answered and at least one address in use is no longer among its answers
+# (the Bing and DuckDuckGo targets sit on CDNs, and a target pinned to
+# 0.0.0.0 at start has an answer now). A target with no answer keeps the
+# running config as it is.
+targets_moved() {
+    _moved=0
+    for _line in $(grep '^host-record=' /tmp/dnsmasq.conf 2>/dev/null); do
+        _rec=${_line#host-record=}
+        _set=$(ipv4_set "${_rec%%,*}") || return 1
+        echo "$_set" | grep -qxF "${_rec#*,}" || _moved=1
+    done
+    [ "$_moved" = 1 ]
+}
+
 # Helper function to compile dnsmasq.conf dynamically based on toggles
 build_dnsmasq_conf() {
     echo "Building dnsmasq configuration..."
@@ -36,7 +92,10 @@ EOF
         cat >> /tmp/dnsmasq.conf << EOF
 
 # ── SafeSearch (forced via DNS) ──
-address=/forcesafesearch.google.com/216.239.38.120
+# 216.239.38.120 is the address Google documents for forcesafesearch.
+$(enforce_target forcesafesearch.google.com 216.239.38.120 SafeSearch)
+$(enforce_target strict.bing.com "" SafeSearch)
+$(enforce_target safe.duckduckgo.com "" SafeSearch)
 cname=www.google.com,forcesafesearch.google.com
 cname=www.google.co.uk,forcesafesearch.google.com
 cname=www.google.de,forcesafesearch.google.com
@@ -60,6 +119,8 @@ EOF
         cat >> /tmp/dnsmasq.conf << EOF
 
 # ── YouTube Restricted Mode (forced via DNS) ──
+# 216.239.38.120 is the address Google documents for restrict.youtube.com.
+$(enforce_target restrict.youtube.com 216.239.38.120 "YouTube Restricted Mode")
 cname=www.youtube.com,restrict.youtube.com
 cname=m.youtube.com,restrict.youtube.com
 cname=youtubei.googleapis.com,restrict.youtube.com
@@ -94,10 +155,22 @@ watch_dnsmasq() {
     [ -f "/config/safesearch_enabled" ] && last_safesearch_mtime=$(stat -c %Y "/config/safesearch_enabled" 2>/dev/null || stat -f %m "/config/safesearch_enabled" 2>/dev/null || echo 0)
     [ -f "/config/youtube_restricted_enabled" ] && last_youtube_mtime=$(stat -c %Y "/config/youtube_restricted_enabled" 2>/dev/null || stat -f %m "/config/youtube_restricted_enabled" 2>/dev/null || echo 0)
 
+    local since_refresh=0
+
     echo "[watchdog] Started dnsmasq sidecar watch loop"
 
     while true; do
         sleep 2
+
+        # 0. Re-resolve the SafeSearch/YouTube enforcement targets
+        since_refresh=$((since_refresh + 2))
+        if [ "$since_refresh" -ge "$ENFORCE_REFRESH" ]; then
+            since_refresh=0
+            if targets_moved; then
+                echo "[watchdog] a SafeSearch/YouTube target address changed, restarting dnsmasq process..."
+                killall dnsmasq 2>/dev/null || true
+            fi
+        fi
 
         # 1. Check blocklist.hosts
         local cur_hosts_mtime=0
