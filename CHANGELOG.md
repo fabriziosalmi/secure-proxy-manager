@@ -57,6 +57,12 @@ for at least one minor release before disappearing.
   than the 5,000 lines per 500 ms the tailer reads. It now reads the rest of
   `access.log.0` first, batch by batch, and keeps its offset to retry if that
   insert fails.
+
+- **The web container no longer publishes `/api/internal/`.** nginx proxied
+  every path under `/api/`, so `POST /api/internal/alert`, the WAF's
+  service-to-service route, was reachable from anything that could reach the
+  UI, guarded only by `INTERNAL_ALERT_TOKEN`. It now answers `404` there; the
+  WAF keeps posting to `backend:5000` on the internal network.
 - **A response the WAF blocks now reaches the notifications and carries an
   event ID.** A blocked download (`application/x-msdownload`, a JAR, a
   shortcut) or a response leaking a private key or a token was answered with
