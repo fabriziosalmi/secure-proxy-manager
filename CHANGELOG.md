@@ -43,7 +43,24 @@ for at least one minor release before disappearing.
   without `GRAFANA_ADMIN_PASSWORD`, reports 13.3.0 healthy, and provisions the
   Prometheus datasource read-only. The provisioning messages it logs are the
   same as on 13.2.4.
+- **Prometheus moves v3.15.0 to v3.15.1 and tailscale v1.104.1 to v1.104.2**,
+  each pinned by digest. Without the ignore file, Prometheus goes from four
+  fixable HIGH/CRITICAL findings to none and tailscale from four to one
+  (golang.org/x/net 0.59.0, no tag fixes it yet). The tailscale pin moves in
+  `overlay/tailscale/Dockerfile` and the production compose together, as
+  `scripts/check-image-pins.sh` requires. Prometheus v3.15.1 loads the same
+  six alert rules as v3.15.0 with no error in its log.
+- **The test and adversarial stacks serve their mocks from
+  `nginx:1.31.8-alpine-slim`**, pinned by digest, instead of the unpinned
+  `nginx:1.31.8-alpine`. The slim image ships neither curl nor brotli, so
+  their two findings (curl 8.22.0-r0, brotli-libs 1.2.0-r1) and the two
+  ignore entries for them are gone, the one expiring on 2026-11-15 among
+  them. The mocks need no module the slim image lacks, and the health checks
+  use busybox `wget`, which it has.
 
+  The ignore file holds seven entries, all for Go modules or Alpine packages
+  inside the Grafana 13.3.0 bundled plugins, k6 2.3.0 and tailscale
+  v1.104.2, each the newest tag of its image.
 
 ## [3.16.0] - 2026-10-28
 

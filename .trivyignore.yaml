@@ -27,16 +27,8 @@ vulnerabilities:
     statement: "github.com/grafana/tempo in the tempo datasource plugin bundled with grafana/grafana:13.3.0; same."
     expired_at: 2026-12-31
   - id: CVE-2026-111943
-    statement: "Go stdlib crypto/x509 (fixed in 1.26.10 / 1.27.3) in the datasource plugins bundled with grafana/grafana:13.3.0 (Go 1.26.7), and in k6 2.3.0, prometheus v3.15.0 and tailscale v1.104.1; all are the newest tags. Recorded 2026-10-24. Our own images are built with 1.27.3."
+    statement: "Go stdlib crypto/x509 (fixed in 1.26.10 / 1.27.3) in the datasource plugins bundled with grafana/grafana:13.3.0 (Go 1.26.7) and in k6 2.3.0 (Go 1.27.1); both are the newest tags. Recorded 2026-10-24. Our own images are built with 1.27.3."
     expired_at: 2026-11-30
-  # curl in third-party Alpine images, published 2026-10-26: Alpine 3.24 has the
-  # fixed 8.23.0-r0, the images below still ship 8.22.0-r0 and no newer tag or
-  # digest carries it yet. Our own web image upgrades the package itself
-  # (ui/Dockerfile). nginx:1.31.8-alpine is used only by the test and
-  # adversarial stacks.
-  - id: CVE-2026-92392
-    statement: "curl/libcurl 8.22.0-r0 in nginx:1.31.8-alpine (test stacks only); Alpine 3.24 has 8.23.0-r0, no image rebuild published yet. Recorded 2026-10-26; grafana/grafana:13.3.0 no longer carries it."
-    expired_at: 2026-11-15
   # grafana/k6:2.3.0 — Alpine packages whose fixed build k6 has not published
   # in the image yet. Test-only (the bench plane). Carried here rather than
   # left out of the scan: 0.55.0 had 69 findings, and excluding the image was
@@ -46,24 +38,17 @@ vulnerabilities:
     expired_at: 2026-12-31
 
   # Go released 1.26.9 / 1.27.2 and golang.org/x/net 0.60.0 in mid-October
-  # 2026. As of 2026-10-17 no published tag of these four images is built with
-  # them: grafana 13.2.4 and tailscale v1.104.1 (both 2026-10-13) still ship
-  # Go 1.27.1 and x/net 0.59.0, and k6 2.3.0 and prometheus v3.15.0 are the
-  # newest of their lines. Grafana is moved to its newest tag; the rest of the
-  # remedy is an upstream rebuild. Shorter expiry than the entries above:
-  # rebuilds for a Go patch release usually follow within weeks.
+  # 2026. Recorded 2026-10-17 for four images; on 2026-10-28 prometheus
+  # v3.15.1 scans clean and tailscale v1.104.2 keeps only x/net 0.59.0, so
+  # both moved. What is left is the Grafana plugins (13.3.0 is the newest tag)
+  # and k6 2.3.0 (the newest, test-only). Shorter expiry than the entries
+  # above: rebuilds for a Go patch release usually follow within weeks.
   - id: CVE-2026-78667
-    statement: "Go stdlib < 1.26.9 / 1.27.2 in the datasource plugins bundled with grafana 13.3.0, and in k6 2.3.0, prometheus v3.15.0, tailscale v1.104.1; no tag built with the fixed Go yet."
+    statement: "Go stdlib < 1.26.9 / 1.27.2 in the datasource plugins bundled with grafana 13.3.0 and in k6 2.3.0; no tag built with the fixed Go yet."
     expired_at: 2026-11-30
   - id: CVE-2026-78669
-    statement: "Go stdlib and golang.org/x/net < 0.60.0 in the datasource plugins bundled with grafana 13.3.0, and in k6 2.3.0, prometheus v3.15.0, tailscale v1.104.1; no tag built with the fix yet."
+    statement: "Go stdlib and golang.org/x/net < 0.60.0 in the datasource plugins bundled with grafana 13.3.0 and in k6 2.3.0, and x/net 0.59.0 alone in tailscale v1.104.2 (2026-10-21, the newest tag); no tag built with the fix yet."
     expired_at: 2026-11-30
   - id: CVE-2026-97031
-    statement: "Go stdlib < 1.26.9 / 1.27.2 in the same four images; same, upstream rebuild required."
-    expired_at: 2026-11-30
-  # nginx:1.31.8-alpine: brotli-libs 1.2.0-r1 as published. The UI image this
-  # project ships upgrades it at build time (ui/Dockerfile); the plain nginx
-  # image is pulled as-is only by the test compose files.
-  - id: CVE-2026-111497
-    statement: "brotli-libs 1.2.0-r1 in nginx:1.31.8-alpine as published; ui/Dockerfile installs 1.2.1-r0, the plain image waits for an upstream rebuild. Recorded 2026-10-24; grafana/grafana:13.3.0 no longer carries it."
+    statement: "Go stdlib < 1.26.9 / 1.27.2 in the grafana 13.3.0 plugins and k6 2.3.0; same, upstream rebuild required."
     expired_at: 2026-11-30
