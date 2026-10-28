@@ -49,6 +49,14 @@ for at least one minor release before disappearing.
   offset write fail. It is now written through the same fsync-and-rename path
   as the key files, and that path has tests of its own.
 
+- **A log rotation no longer drops the lines the tailer had not read yet.**
+  When Squid rotated `access.log` (daily, to `access.log.0`), the tailer saw
+  a file shorter than its offset and started the new one from 0, so the unread
+  end of the old file never reached `proxy_logs`: always the last moments
+  before each rotation, and the whole backlog when the proxy logged faster
+  than the 5,000 lines per 500 ms the tailer reads. It now reads the rest of
+  `access.log.0` first, batch by batch, and keeps its offset to retry if that
+  insert fails.
 - **A response the WAF blocks now reaches the notifications and carries an
   event ID.** A blocked download (`application/x-msdownload`, a JAR, a
   shortcut) or a response leaking a private key or a token was answered with
