@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -14,11 +15,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/go-icap/icap"
@@ -47,6 +50,18 @@ var (
 	// Bounded notification channel — circuit breaker for backend alerts
 	notifyChan    = make(chan map[string]interface{}, 64)
 	notifyDropped atomic.Int64
+	// notifyPending counts alerts queued or being delivered, so shutdown can
+	// wait for them instead of exiting with them in the queue.
+	notifyPending atomic.Int64
+	// notifyFailed counts deliveries that did not reach the backend, by
+	// reason. They used to be a log line each and no metric, so with a wrong
+	// token every alert was lost while waf_notify_dropped_total stayed 0.
+	notifyFailed = map[string]*atomic.Int64{
+		"network":       new(atomic.Int64), // no answer, after the retries
+		"rejected":      new(atomic.Int64), // 4xx: a credential or request problem, not retried
+		"server_error":  new(atomic.Int64), // 5xx, after the retries
+		"no_credential": new(atomic.Int64), // INTERNAL_ALERT_TOKEN and BASIC_AUTH_* unset
+	}
 
 	// bodyTruncatedCount counts requests whose body exceeded maxBodyInspectSize,
 	// so only a 1 MB prefix was scanned. Surfaced via /metrics so the coverage
@@ -194,6 +209,12 @@ func warnNoAlertCredential() {
 		"on both the waf and backend services; alerts are being dropped\n")
 }
 
+// notifyAttempts bounds the deliveries of one alert; notifyRetryDelay is the
+// wait before retry n (a variable so tests need not sleep).
+const notifyAttempts = 3
+
+var notifyRetryDelay = func(attempt int) time.Duration { return time.Duration(250<<attempt) * time.Millisecond }
+
 func notifyBackend(data map[string]interface{}) {
 	backendURL := os.Getenv("BACKEND_URL")
 	if backendURL == "" {
@@ -212,6 +233,7 @@ func notifyBackend(data map[string]interface{}) {
 	authUser := os.Getenv("BASIC_AUTH_USERNAME")
 	authPass := os.Getenv("BASIC_AUTH_PASSWORD")
 	if alertToken == "" && (authUser == "" || authPass == "") {
+		notifyFailed["no_credential"].Add(1)
 		warnNoAlertCredential()
 		return
 	}
@@ -221,30 +243,51 @@ func notifyBackend(data map[string]interface{}) {
 		log.Printf("Failed to marshal alert data: %v\n", err)
 		return
 	}
-
-	req, err := http.NewRequest("POST", backendURL+"/api/internal/alert", bytes.NewBuffer(payload))
-	if err != nil {
-		log.Printf("Failed to create alert request: %v\n", err)
-		return
+	eventID := ""
+	if d, ok := data["details"].(map[string]interface{}); ok {
+		eventID, _ = d["event_id"].(string)
 	}
 
-	if alertToken != "" {
-		req.Header.Set("Authorization", "Bearer "+alertToken)
-	} else {
-		req.SetBasicAuth(authUser, authPass)
-	}
-	req.Header.Set("Content-Type", "application/json")
+	// A 4xx is the backend refusing this credential or this payload, which a
+	// retry cannot fix; a network error or a 5xx may pass on the next try.
+	for attempt := 0; attempt < notifyAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(notifyRetryDelay(attempt - 1))
+		}
+		req, err := http.NewRequest("POST", backendURL+"/api/internal/alert", bytes.NewReader(payload))
+		if err != nil {
+			log.Printf("Failed to create alert request: %v\n", err)
+			return
+		}
+		if alertToken != "" {
+			req.Header.Set("Authorization", "Bearer "+alertToken)
+		} else {
+			req.SetBasicAuth(authUser, authPass)
+		}
+		req.Header.Set("Content-Type", "application/json")
 
-	client := notifyClient
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("Error sending alert to backend: %v\n", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		log.Printf("Backend returned status %d\n", resp.StatusCode)
+		resp, err := notifyClient.Do(req)
+		if err != nil {
+			if attempt == notifyAttempts-1 {
+				notifyFailed["network"].Add(1)
+				slog.Warn("alert not delivered to the backend", "event_id", eventID, "reason", "network", "attempts", notifyAttempts, "error", err.Error())
+			}
+			continue
+		}
+		resp.Body.Close()
+		switch {
+		case resp.StatusCode < 400:
+			return
+		case resp.StatusCode < 500:
+			notifyFailed["rejected"].Add(1)
+			slog.Warn("alert rejected by the backend: check INTERNAL_ALERT_TOKEN on the waf and backend services",
+				"event_id", eventID, "status", resp.StatusCode)
+			return
+		case attempt == notifyAttempts-1:
+			notifyFailed["server_error"].Add(1)
+			slog.Warn("alert not delivered to the backend", "event_id", eventID, "reason", "server_error",
+				"status", resp.StatusCode, "attempts", notifyAttempts)
+		}
 	}
 }
 
@@ -645,11 +688,39 @@ func notifyBlock(eventID, clientIP, rawURL, source string, score int, categories
 		},
 		"level": "error",
 	}
+	notifyPending.Add(1)
 	select {
 	case notifyChan <- alertData:
 	default:
+		notifyPending.Add(-1)
 		notifyDropped.Add(1)
 	}
+}
+
+// notifyWorker delivers queued alerts until stop is closed (nil: forever).
+func notifyWorker(stop <-chan struct{}) {
+	for {
+		select {
+		case <-stop:
+			return
+		case data := <-notifyChan:
+			notifyBackend(data)
+			notifyPending.Add(-1)
+		}
+	}
+}
+
+// drainPendingAlerts waits until every queued alert has been delivered or has
+// failed, or until timeout; it reports whether the queue emptied.
+func drainPendingAlerts(timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for notifyPending.Load() > 0 {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return true
 }
 
 // blockResponse blocks a response in RESPMOD. It used to write the block page
@@ -839,11 +910,7 @@ func main() {
 
 	// Start bounded notification worker pool (circuit breaker pattern)
 	for i := 0; i < maxNotifyWorkers; i++ {
-		go func() {
-			for data := range notifyChan {
-				notifyBackend(data)
-			}
-		}()
+		go notifyWorker(nil)
 	}
 	log.Printf("Notification worker pool: %d workers, queue=%d\n", maxNotifyWorkers, cap(notifyChan))
 
@@ -895,9 +962,35 @@ func main() {
 		healthMux.HandleFunc("/heuristics/toggle", mgmtAuthMiddleware(h.HeuristicsToggleHandler))
 
 		log.Printf("Starting health endpoint on :8080\n")
-		if err := http.ListenAndServe(":8080", healthMux); err != nil {
+		// Bounded like the backend's server: without timeouts a client that
+		// opens connections and sends nothing holds them, and this listener
+		// also answers the Docker healthcheck.
+		mgmtSrv := &http.Server{
+			Addr:              ":8080",
+			Handler:           healthMux,
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       10 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       60 * time.Second,
+		}
+		if err := mgmtSrv.ListenAndServe(); err != nil {
 			log.Printf("Health endpoint error: %v\n", err)
 		}
+	}()
+
+	// On SIGTERM (docker stop, an upgrade) deliver the queued block alerts and
+	// flush the traffic log before exiting. The process used to have no signal
+	// handler, so both were lost on every restart. In-flight ICAP transactions
+	// are still cut: the ICAP library has no graceful shutdown (#143).
+	sigCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stopSignals()
+	go func() {
+		<-sigCtx.Done()
+		pending := notifyPending.Load()
+		drained := drainPendingAlerts(5 * time.Second)
+		trafficLog.Close()
+		slog.Info("WAF shutting down", "alerts_pending_at_signal", pending, "alerts_delivered", drained)
+		os.Exit(0)
 	}()
 
 	port := 1344
@@ -1083,6 +1176,12 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 			"# HELP waf_notify_dropped_total Backend notifications (alerts) dropped because the queue was full.\n"+
 			"# TYPE waf_notify_dropped_total counter\n"+
 			"waf_notify_dropped_total %d\n"+
+			"# HELP waf_notify_failed_total Backend notifications (alerts) that did not reach the backend, by reason.\n"+
+			"# TYPE waf_notify_failed_total counter\n"+
+			"waf_notify_failed_total{reason=\"network\"} %d\n"+
+			"waf_notify_failed_total{reason=\"rejected\"} %d\n"+
+			"waf_notify_failed_total{reason=\"server_error\"} %d\n"+
+			"waf_notify_failed_total{reason=\"no_credential\"} %d\n"+
 			"# HELP waf_body_truncated_total Requests whose body exceeded the inspection limit (only a prefix was scanned).\n"+
 			"# TYPE waf_body_truncated_total counter\n"+
 			"waf_body_truncated_total %d\n"+
@@ -1094,6 +1193,10 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		trafficWritable,
 		trafficLogSinkDropped.Load(),
 		notifyDropped.Load(),
+		notifyFailed["network"].Load(),
+		notifyFailed["rejected"].Load(),
+		notifyFailed["server_error"].Load(),
+		notifyFailed["no_credential"].Load(),
 		bodyTruncatedCount.Load(),
 		respmodUninspectable.Load(),
 	)

@@ -63,6 +63,23 @@ for at least one minor release before disappearing.
   service-to-service route, was reachable from anything that could reach the
   UI, guarded only by `INTERNAL_ALERT_TOKEN`. It now answers `404` there; the
   WAF keeps posting to `backend:5000` on the internal network.
+
+- **A WAF alert the backend refuses or never answers is counted and, when it
+  may succeed, retried.** It used to be one log line and no metric: with
+  `INTERNAL_ALERT_TOKEN` set differently on the two services every block alert
+  was lost while `waf_notify_dropped_total` stayed 0. Network errors and 5xx
+  are now tried 3 times with a short backoff; every delivery that still fails
+  is counted in `waf_notify_failed_total{reason}` (`network`, `rejected`,
+  `server_error`, `no_credential`) and logged with its event ID.
+- **The WAF delivers its queued alerts and flushes the traffic log on
+  SIGTERM.** It had no signal handler, so every `docker compose` restart or
+  upgrade lost up to 64 queued alerts and the unflushed tail of the traffic
+  log. It now waits up to 5 seconds for the queue. ICAP transactions in flight
+  at that moment are still cut, because the ICAP library has no graceful
+  shutdown (#143).
+- **The WAF's management port has timeouts.** `:8080` (health, metrics, the
+  backend's management calls) ran with none, so idle connections could hold
+  it; it now has read, write, header and idle timeouts.
 - **A response the WAF blocks now reaches the notifications and carries an
   event ID.** A blocked download (`application/x-msdownload`, a JAR, a
   shortcut) or a response leaking a private key or a token was answered with

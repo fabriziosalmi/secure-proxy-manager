@@ -207,7 +207,7 @@ generates its own configuration. These are the bounds in the code:
 | Database | One SQLite file, 4 connections, `busy_timeout` 5 s | Writes wait for the lock; past 5 s they fail |
 | WAF per-client heuristic state | 10,000 client addresses | An entry is evicted |
 | Live log feed | 256 queued messages, 64 per viewer | Messages to a slow viewer are dropped |
-| WAF block alerts | 64 queued, 8 delivery workers | Alerts are dropped and counted in `waf_notify_dropped_total`; the block itself still happens |
+| WAF block alerts | 64 queued, 8 delivery workers, 3 attempts per alert | Alerts are dropped and counted in `waf_notify_dropped_total`; deliveries the backend refuses or never answers are counted in `waf_notify_failed_total{reason}`; the block itself still happens. On SIGTERM the WAF waits up to 5 s for the queue to empty |
 | Backend alert queue | 256 queued, 64 per channel, 10,000 addresses with an open group | A full queue drops the alert (`spm_notifications_total{channel="queue", outcome="dropped"}`); past 10,000 addresses a new one joins its event type's overflow group, whose digest says "from other addresses" |
 | Backend request rate | 20 per second per address, burst 60 | `429` with `Retry-After: 1` |
 | Concurrent DNS detection scans | 2 | `429` |
