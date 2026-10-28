@@ -21,6 +21,7 @@ func drainNotifications() {
 	for {
 		select {
 		case <-notifyChan:
+			notifyPending.Add(-1)
 		default:
 			return
 		}
@@ -31,6 +32,7 @@ func nextNotification(t *testing.T) map[string]interface{} {
 	t.Helper()
 	select {
 	case a := <-notifyChan:
+		notifyPending.Add(-1)
 		return a
 	case <-time.After(time.Second):
 		t.Fatal("no notification was queued for the block")

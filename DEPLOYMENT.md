@@ -403,7 +403,11 @@ limits held back on purpose: `reason="grouped"` with `channel="all"` for an
 alert counted into a digest, `reason="cap"` with the channel that held a
 delivery because it reached its hourly limit. WAF metrics include
 `waf_reqmod_duration_seconds`, `waf_trafficlog_enabled`,
-`waf_trafficlog_dropped_total` and `waf_notify_dropped_total`.
+`waf_trafficlog_dropped_total`, `waf_notify_dropped_total` (alerts dropped
+because the queue was full) and `waf_notify_failed_total{reason}` (alerts that
+did not reach the backend: `network` and `server_error` after 3 attempts,
+`rejected` for a 4xx such as a mismatched `INTERNAL_ALERT_TOKEN`, and
+`no_credential`).
 
 The `observability` profile starts Prometheus (`127.0.0.1:9090`) and Grafana
 (`127.0.0.1:3000`; set `GRAFANA_ADMIN_PASSWORD` in `.env` first) with the
