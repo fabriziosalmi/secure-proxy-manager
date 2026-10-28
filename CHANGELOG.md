@@ -15,6 +15,26 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Security
+
+- **Grafana in the `observability` profile moves 13.2.4 to 13.3.0**, in both
+  compose files. CVE-2026-116587 (go-jose v4.1.4, a denial of service when
+  parsing JWKs with RSA keys) reached the Trivy database on 2026-10-28 and
+  turned the compose-image scan red; 13.2.5 still carries it, 13.3.0 does not.
+  The same move retires the grpc and
+  kin-openapi findings of the Grafana binary, and Grafana's curl and brotli
+  packages.
+
+  The Trivy ignore file loses ten entries no pinned image needs any more: the
+  seven Grafana 13.2.4 ones above, and three for tailscale v1.102.5 that have
+  been dead since the pin moved to v1.104.1. An ignore nothing needs is one a
+  regression could hide behind.
+
+  Checked before the change: the compose Grafana service still refuses to start
+  without `GRAFANA_ADMIN_PASSWORD`, reports 13.3.0 healthy, and provisions the
+  Prometheus datasource read-only. The provisioning messages it logs are the
+  same as on 13.2.4.
+
 ## [3.16.0] - 2026-10-28
 
 Egress can follow the IP ranges a provider publishes, the dashboard session
