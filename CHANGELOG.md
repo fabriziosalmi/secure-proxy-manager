@@ -15,6 +15,12 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Internal
+
+- E2E (production compose + smoke) is a required check on `main`, in the
+  ruleset and in `.github/branch-protection.json`, so a change that breaks
+  only the production compose can no longer merge.
+
 ## [3.18.0] - 2026-10-28
 
 The WAF and the backend get their shared service token without any
