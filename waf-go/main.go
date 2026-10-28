@@ -617,31 +617,56 @@ func block(w icap.ResponseWriter, in *inspection, ruleIDs, categories []string) 
 		"source", source, "url", truncate(in.rawURL, 200))
 
 	tarPit(in.clientIP)
+	notifyBlock(in.eventID, in.clientIP, in.rawURL, source, in.score, categories, ruleIDs)
+	sendBlockResponse(w, primaryCategory, in.score, in.eventID)
+}
 
+// notifyBlock queues the backend notification for a block, from a request or
+// from a response. It never waits: when the backend cannot keep up the alert
+// is dropped and counted (circuit breaker).
+func notifyBlock(eventID, clientIP, rawURL, source string, score int, categories, ruleIDs []string) {
+	primaryCategory := "UNKNOWN"
+	if len(categories) > 0 {
+		primaryCategory = categories[0]
+	}
 	alertData := map[string]interface{}{
 		"event_type": "waf_block",
-		"message":    fmt.Sprintf("WAF blocked %s: score %d, categories: %s", source, in.score, strings.Join(categories, ", ")),
+		"message":    fmt.Sprintf("WAF blocked %s: score %d, categories: %s", source, score, strings.Join(categories, ", ")),
 		"details": map[string]interface{}{
-			"event_id":   in.eventID,
+			"event_id":   eventID,
 			"category":   primaryCategory,
 			"categories": categories,
 			"rules":      ruleIDs,
-			"score":      in.score,
+			"score":      score,
 			"threshold":  eng.BlockThreshold(),
-			"url":        truncate(in.rawURL, 500),
-			"client_ip":  in.clientIP,
+			"url":        truncate(rawURL, 500),
+			"client_ip":  clientIP,
 			"source":     source,
 		},
 		"level": "error",
 	}
-	// Non-blocking enqueue — drops if backend can't keep up (circuit breaker)
 	select {
 	case notifyChan <- alertData:
 	default:
 		notifyDropped.Add(1)
 	}
+}
 
-	sendBlockResponse(w, primaryCategory, in.score, in.eventID)
+// blockResponse blocks a response in RESPMOD. It used to write the block page
+// with no event ID, so a blocked download or a leaked secret reached neither
+// the backend's notifications nor, through X-WAF-Event-Id, the access log row
+// of the request: only the 403 and the reason "waf" were left to see.
+func blockResponse(w icap.ResponseWriter, req *icap.Request, category string, score int, ruleIDs []string, logAttrs ...any) {
+	eventID := nextEventID(time.Now())
+	clientIP := clientIPFrom(req)
+	rawURL := ""
+	if req.Request != nil && req.Request.URL != nil {
+		rawURL = req.Request.URL.String()
+	}
+	slog.Info("RESPMOD BLOCKED", append([]any{"event_id", eventID, "client_ip", clientIP,
+		"score", score, "category", category, "rules", ruleIDs, "url", truncate(rawURL, 200)}, logAttrs...)...)
+	notifyBlock(eventID, clientIP, rawURL, "RESPONSE", score, []string{category}, ruleIDs)
+	sendBlockResponse(w, category, score, eventID)
 }
 
 // tarPit delays the response to an address that has been blocked repeatedly in
@@ -699,8 +724,7 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 	}
 	for _, dt := range dangerousTypes {
 		if strings.Contains(contentTypeLower, dt) {
-			slog.Info("RESPMOD blocked dangerous content-type", "content_type", contentType)
-			sendBlockResponse(w, "DANGEROUS_CONTENT_TYPE", 10, "")
+			blockResponse(w, req, "DANGEROUS_CONTENT_TYPE", 10, nil, "content_type", contentType)
 			return
 		}
 	}
@@ -732,8 +756,7 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 			}
 
 			if eng.Blocked(totalScore) {
-				slog.Info("RESPMOD BLOCKED", "score", totalScore, "rules", matchedRules, "content_type", contentType)
-				sendBlockResponse(w, matchedCat, totalScore, "")
+				blockResponse(w, req, matchedCat, totalScore, matchedRules, "content_type", contentType)
 				return
 			}
 			_ = piiScore
@@ -1014,13 +1037,16 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		heuristicsEnabled,
 	)
 
-	if hits, ok := cacheStats["safe_cache_hits"]; ok {
+	// The keys are SafeURLCache.Stats()'s. These two read "safe_cache_hits" and
+	// "safe_cache_size", which Stats() never returned, so neither metric was
+	// ever written.
+	if hits, ok := cacheStats["cache_hits"]; ok {
 		fmt.Fprintf(w,
 			"# HELP waf_safe_cache_hits_total Cache hits on the safe-URL fast path.\n"+
 				"# TYPE waf_safe_cache_hits_total counter\n"+
 				"waf_safe_cache_hits_total %v\n", hits)
 	}
-	if size, ok := cacheStats["safe_cache_size"]; ok {
+	if size, ok := cacheStats["cache_size"]; ok {
 		fmt.Fprintf(w,
 			"# HELP waf_safe_cache_size Number of entries currently in the safe-URL cache.\n"+
 				"# TYPE waf_safe_cache_size gauge\n"+
