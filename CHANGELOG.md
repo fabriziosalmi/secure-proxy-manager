@@ -15,6 +15,15 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Internal
+
+- **A release image whose signature Docker Hub lists a few seconds late
+  passes the signing step.** On v3.18.2 the dns image was signed on Docker
+  Hub at 21:18:02Z (an OCI referrer), `cosign verify` ran at 21:18:04Z and
+  found none, and the release failed; a rerun did the same with 3 s between
+  the two. `scripts/cosign-sign.sh` now checks up to 6 times, 10 s apart,
+  before it fails the step, and signs only once.
+
 ## [3.18.2] - 2026-10-28
 
 A fix release. With SafeSearch or YouTube Restricted Mode on, Google, Bing,

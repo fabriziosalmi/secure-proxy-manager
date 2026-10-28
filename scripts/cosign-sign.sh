@@ -13,10 +13,17 @@
 # Success is not cosign's exit code alone: the reference is then verified
 # against the release workflow identity documented in SECURITY.md, so the
 # step fails unless a valid signature is attached.
+#
+# The verify is retried: on v3.18.2 Docker Hub listed the signature (an OCI
+# referrer created at 21:18:02Z) only after cosign verify had run at
+# 21:18:04Z and found none, so a signed image failed the release. A
+# signature that is still missing after VERIFY_ATTEMPTS checks fails it.
 set -uo pipefail
 ref="${1:?usage: cosign-sign.sh REF}"
 attempts="${COSIGN_ATTEMPTS:-3}"
 delay="${COSIGN_RETRY_DELAY:-15}"
+verify_attempts="${VERIFY_ATTEMPTS:-6}"
+verify_delay="${VERIFY_RETRY_DELAY:-10}"
 identity='^https://github\.com/fabriziosalmi/secure-proxy-manager/\.github/workflows/multi-arch\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$'
 issuer=https://token.actions.githubusercontent.com
 
@@ -32,8 +39,12 @@ for i in $(seq 1 "$attempts"); do
     sleep "$delay"
 done
 
-if ! cosign verify --certificate-identity-regexp "$identity" --certificate-oidc-issuer "$issuer" "$ref" >/dev/null; then
-    echo "::error::$ref has no valid signature from the release workflow after signing"
-    exit 1
-fi
-echo "signed and verified: $ref"
+for i in $(seq 1 "$verify_attempts"); do
+    if cosign verify --certificate-identity-regexp "$identity" --certificate-oidc-issuer "$issuer" "$ref" >/dev/null; then
+        echo "signed and verified: $ref"
+        exit 0
+    fi
+    [ "$i" -lt "$verify_attempts" ] && sleep "$verify_delay"
+done
+echo "::error::$ref has no valid signature from the release workflow after signing ($verify_attempts checks, ${verify_delay}s apart)"
+exit 1
