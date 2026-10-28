@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"net/http"
 	"strconv"
 	"time"
@@ -60,7 +61,7 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	limit := clamp(queryInt(r, "limit", 25), 1, 500)
 	offset := max0(queryInt(r, "offset", 0))
-	sort := sanitiseSort(r.URL.Query().Get("sort"), []string{"timestamp", "source_ip", "destination", "status", "bytes", "method", "id"}, "timestamp")
+	sort := sanitiseSort(r.URL.Query().Get("sort"), []database.SQLText{"timestamp", "source_ip", "destination", "status", "bytes", "method", "id"}, "timestamp")
 	order := sanitiseOrder(r.URL.Query().Get("order"))
 	if f.beforeID > 0 {
 		// A cursor is a position in id order: the page after it is the next
@@ -82,7 +83,7 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 	// #nosec G202
 	// #nosec G701
 	rows, err := h.db.Query(
-		"SELECT "+logColumns+" FROM proxy_logs WHERE "+pageWhere+" ORDER BY "+sort+" "+order+" LIMIT ? OFFSET ?",
+		string("SELECT "+logColumns+" FROM proxy_logs WHERE "+pageWhere+" ORDER BY "+sort+" "+order+" LIMIT ? OFFSET ?"),
 		append(pageArgs, limit, offset)...,
 	)
 	if err != nil {
@@ -160,13 +161,13 @@ func (h *LogHandlers) Stats(w http.ResponseWriter, r *http.Request) {
 	var total, blocked, ipBlocks int
 	var lastImport sql.NullString
 	// Client requests only, like every other statistic (clientRows).
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE " + clientRows).Scan(&total)                   //nolint:errcheck
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND " + clientRows).Scan(&blocked) //nolint:errcheck
+	h.db.QueryRow(string("SELECT COUNT(*) FROM proxy_logs WHERE " + clientRows)).Scan(&total)                   //nolint:errcheck
+	h.db.QueryRow(string("SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND " + clientRows)).Scan(&blocked) //nolint:errcheck
 	// Direct-IP blocks are the rows whose reason says so. A row logged before
 	// reasons were recorded keeps the count it always had, the URL heuristic,
 	// rather than being reassigned.
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND " + clientRows + ` AND (block_reason = 'direct_ip'
-		OR (block_reason = 'unclassified' AND (destination LIKE 'http://%.%.%.%' OR destination LIKE 'https://%.%.%.%')))`).Scan(&ipBlocks) //nolint:errcheck
+	h.db.QueryRow(string("SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND " + clientRows + ` AND (block_reason = 'direct_ip'
+		OR (block_reason = 'unclassified' AND (destination LIKE 'http://%.%.%.%' OR destination LIKE 'https://%.%.%.%')))`)).Scan(&ipBlocks) //nolint:errcheck
 	h.db.QueryRow("SELECT MAX(timestamp) FROM proxy_logs").Scan(&lastImport) //nolint:errcheck
 	writeOK(w, map[string]any{
 		"total_count":       total,
@@ -186,13 +187,13 @@ func (h *LogHandlers) Timeline(w http.ResponseWriter, r *http.Request) {
 	// internal sources: so does the timeline, or its hours add up to more.
 	ext, extArgs := notInternal(h.src.Present())
 	// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
-	rows, err := h.db.Query(`
+	rows, err := h.db.Query(string(`
 		SELECT strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
 		       COUNT(*) as total,
 		       SUM(blocked) as blocked
 		FROM proxy_logs
 		WHERE unix_timestamp >= ? AND `+clientRows+` AND `+ext+`
-		GROUP BY hour ORDER BY hour ASC`,
+		GROUP BY hour ORDER BY hour ASC`),
 		append([]any{time.Now().Add(-time.Duration(hours) * time.Hour).Unix()}, extArgs...)...,
 	)
 	if err != nil {
@@ -275,16 +276,16 @@ func max0(v int) int {
 // even though the value can only ever be one of six literals. Returning the
 // literal makes that provable instead of arguable, to the analyser and to a
 // reader, and costs nothing.
-func sanitiseSort(s string, allowed []string, def string) string {
+func sanitiseSort(s string, allowed []database.SQLText, def database.SQLText) database.SQLText {
 	for _, a := range allowed {
-		if s == a {
+		if s == string(a) {
 			return a
 		}
 	}
 	return def
 }
 
-func sanitiseOrder(s string) string {
+func sanitiseOrder(s string) database.SQLText {
 	if s == "asc" || s == "ASC" {
 		return "ASC"
 	}

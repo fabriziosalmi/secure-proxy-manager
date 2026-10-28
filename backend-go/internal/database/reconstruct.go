@@ -49,9 +49,9 @@ const sinkholeCandidate = `block_reason = 'unclassified' AND status LIKE '%/503'
 // The step also adds no page cache of its own: it runs on the pool's most
 // recently used connection, the one the start-up check just filled.
 var (
-	loggedAt = `COALESCE(unix_timestamp, CAST(strftime('%s', timestamp) AS INTEGER))`
-	rowHost  = `lower(` + HostKey("destination") + `)`
-	listed   = `strftime('%s', b.added_date) IS NOT NULL
+	loggedAt SQLText = `COALESCE(unix_timestamp, CAST(strftime('%s', timestamp) AS INTEGER))`
+	rowHost          = `lower(` + HostKey("destination") + `)`
+	listed   SQLText = `strftime('%s', b.added_date) IS NOT NULL
 	   AND NOT EXISTS (SELECT 1 FROM domain_whitelist w WHERE w.type = 'fqdn' AND w.domain = b.domain)`
 
 	createMixedCase = `CREATE TABLE main.spm_reconstruct_mixed (name TEXT PRIMARY KEY, added_unix INTEGER NOT NULL) WITHOUT ROWID`
@@ -91,7 +91,7 @@ func reconstructSinkholedBlocks(db *sql.DB) error {
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op once committed
 
-	for _, s := range []string{createMixedCase, fillMixedCase} {
+	for _, s := range []string{createMixedCase, string(fillMixedCase)} {
 		if _, err := tx.Exec(s); err != nil {
 			return fmt.Errorf("blacklist entries with upper-case letters: %w", err)
 		}
@@ -105,7 +105,7 @@ func reconstructSinkholedBlocks(db *sql.DB) error {
 	var rows int64
 	if lo.Valid {
 		for from := lo.Int64 - 1; from < hi.Int64; from += reconstructBatch {
-			res, err := tx.Exec(reconstructRange, ReasonDNSReconstructed, from, from+reconstructBatch)
+			res, err := tx.Exec(string(reconstructRange), ReasonDNSReconstructed, from, from+reconstructBatch)
 			if err != nil {
 				return fmt.Errorf("reconstruct sinkholed requests: %w", err)
 			}

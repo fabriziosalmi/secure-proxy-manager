@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"database/sql"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -92,7 +92,7 @@ func (s *InternalSources) scan() []string {
 // notInternal is the condition that keeps rows whose source is not one of
 // ips, with its arguments. A row with no source address is kept: it is not
 // known to be internal.
-func notInternal(ips []string) (string, []any) {
+func notInternal(ips []string) (database.SQLText, []any) {
 	if len(ips) == 0 {
 		return "1 = 1", nil
 	}
@@ -100,15 +100,15 @@ func notInternal(ips []string) (string, []any) {
 }
 
 // onlyInternal is the condition that keeps rows whose source is one of ips.
-func onlyInternal(ips []string) (string, []any) {
+func onlyInternal(ips []string) (database.SQLText, []any) {
 	if len(ips) == 0 {
 		return "0 = 1", nil
 	}
 	return "source_ip IN (" + placeholders(len(ips)) + ")", toArgs(ips)
 }
 
-func placeholders(n int) string {
-	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
+func placeholders(n int) database.SQLText {
+	return database.Placeholders(n)
 }
 
 func toArgs(ips []string) []any {

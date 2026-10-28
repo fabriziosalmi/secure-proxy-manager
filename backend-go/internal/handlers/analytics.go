@@ -205,12 +205,12 @@ func (h *AnalyticsHandlers) lifetimeBase() (maxID int64, total, blocked int, int
 	onlyInt, onlyArgs := onlyInternal(internal)
 	var all, dns, internalRows int
 	// #nosec G202 -- clientRows and the conditions are constants and placeholders; values are bound.
-	_ = h.db.QueryRow(`SELECT
+	_ = h.db.QueryRow(string(`SELECT
 		IFNULL((SELECT MAX(id) FROM proxy_logs), 0),
 		(SELECT COUNT(*) FROM proxy_logs),
 		(SELECT COUNT(*) FROM proxy_logs WHERE method = 'DNS'),
 		(SELECT COUNT(*) FROM proxy_logs WHERE `+onlyInt+` AND `+clientRows+`),
-		(SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND `+clientRows+` AND `+notInt+`)`,
+		(SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND `+clientRows+` AND `+notInt+`)`),
 		append(onlyArgs, notArgs...)...).Scan(&maxID, &all, &dns, &internalRows, &blocked)
 	total = all - dns - internalRows
 	h.countsMaxID, h.countsTotal, h.countsBlocked, h.countsInternal, h.countsFetched = maxID, total, blocked, internal, time.Now()
@@ -267,7 +267,7 @@ func (h *AnalyticsHandlers) requestCounts(now time.Time) requestCounts {
 	args = append(args, dayStart)
 	args = append(args, inArgs...)
 	// #nosec G202 -- clientRows and the conditions are constants and placeholders; values are bound.
-	_ = h.db.QueryRow(`SELECT n.total, n.blocked, t.total, t.blocked, d.total, d.blocked, d.clients, d.last, i.sources, i.total
+	_ = h.db.QueryRow(string(`SELECT n.total, n.blocked, t.total, t.blocked, d.total, d.blocked, d.clients, d.last, i.sources, i.total
 		FROM (SELECT COUNT(*) AS total, IFNULL(SUM(blocked), 0) AS blocked
 		        FROM proxy_logs WHERE id > ? AND `+clientRows+` AND `+ext+`) AS n,
 		     (SELECT COUNT(*) AS total, IFNULL(SUM(blocked), 0) AS blocked
@@ -277,7 +277,7 @@ func (h *AnalyticsHandlers) requestCounts(now time.Time) requestCounts {
 		             IFNULL(MAX(timestamp), '') AS last
 		        FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND `+ext+`) AS d,
 		     (SELECT COUNT(DISTINCT source_ip) AS sources, COUNT(*) AS total
-		        FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND `+in+`) AS i`,
+		        FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND `+in+`) AS i`),
 		args...,
 	).Scan(&newTotal, &newBlocked, &c.Today, &c.TodayBlocked, &c.Day, &c.DayBlocked, &c.Clients, &c.LastRequest,
 		&c.DayInternal, &c.DayInternalRequests)
@@ -291,13 +291,13 @@ func (h *AnalyticsHandlers) requestCounts(now time.Time) requestCounts {
 
 // countDistinctNetworks counts distinct /24 and /64 networks via privacy.NetworkPrefix
 // among rows matching the condition since dayStart.
-func (h *AnalyticsHandlers) countDistinctNetworks(dayStart int64, cond string, condArgs []any) int {
+func (h *AnalyticsHandlers) countDistinctNetworks(dayStart int64, cond database.SQLText, condArgs []any) int {
 	qArgs := make([]any, 0, 1+len(condArgs))
 	qArgs = append(qArgs, dayStart)
 	qArgs = append(qArgs, condArgs...)
 	// #nosec G202 -- clientRows and cond are constants and placeholders; values are bound.
 	rows, err := h.db.Query(
-		`SELECT DISTINCT source_ip FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND source_ip != '' AND `+cond,
+		string(`SELECT DISTINCT source_ip FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND source_ip != '' AND `+cond),
 		qArgs...,
 	)
 	if err != nil {
@@ -384,7 +384,7 @@ func (h *AnalyticsHandlers) Status(w http.ResponseWriter, r *http.Request) {
 	// boundary at local midnight, so on a host east of UTC the count read 0
 	// from local midnight until UTC midnight.
 	todayStr := time.Now().UTC().Format("2006-01-02")
-	h.db.QueryRow("SELECT COUNT(*) FROM proxy_logs WHERE timestamp >= ? AND timestamp < date(?, '+1 day') AND "+clientRows, todayStr, todayStr).Scan(&todayCount) //nolint:errcheck
+	h.db.QueryRow(string("SELECT COUNT(*) FROM proxy_logs WHERE timestamp >= ? AND timestamp < date(?, '+1 day') AND "+clientRows), todayStr, todayStr).Scan(&todayCount) //nolint:errcheck
 
 	// Read the configured proxy port rather than hard-coding 3128.
 	proxyPort := "3128"
@@ -431,7 +431,8 @@ func (h *AnalyticsHandlers) TrafficStats(w http.ResponseWriter, r *http.Request)
 		period = "day"
 	}
 
-	var interval, intervalFormat string
+	var interval database.SQLText
+	var intervalFormat string
 	var startDuration string
 	switch period {
 	case "hour":
@@ -457,10 +458,10 @@ func (h *AnalyticsHandlers) TrafficStats(w http.ResponseWriter, r *http.Request)
 	}
 
 	// #nosec G202
-	rows, err := h.db.Query(`
+	rows, err := h.db.Query(string(`
 		SELECT `+interval+` AS bucket, COUNT(*) AS total,
 		       SUM(blocked) AS blocked
-		FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` GROUP BY bucket`,
+		FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` GROUP BY bucket`),
 		sinceUnix(parseDuration(startDuration)),
 	)
 	bucketMap := map[string]map[string]int{}
@@ -568,23 +569,23 @@ func sinceUnix(d time.Duration) int64 { return time.Now().Add(-d).Unix() }
 // proxy a client with only blocked requests and counted a client's one
 // request up to three times (Squid's line, the A answer and the AAAA answer).
 // IFNULL keeps rows with no method, which only tests and very old rows have.
-const clientRows = "IFNULL(method, '') != 'DNS'"
+const clientRows database.SQLText = "IFNULL(method, '') != 'DNS'"
 
 // blockedByReason counts the blocked client requests matching where (a
 // condition on proxy_logs, with its arguments) by block_reason, largest
 // first. Rows logged before reasons were recorded count as "unclassified",
 // except the sinkholed /503s that schema version 3 reassigned once, by a
 // declared rule, to "domain_blacklist_dns_reconstructed" (database/reconstruct.go).
-func (h *AnalyticsHandlers) blockedByReason(where string, args ...any) []map[string]any {
+func (h *AnalyticsHandlers) blockedByReason(where database.SQLText, args ...any) []map[string]any {
 	return blockedByReason(h.db, where, args...)
 }
 
-func blockedByReason(db *sql.DB, where string, args ...any) []map[string]any {
+func blockedByReason(db *sql.DB, where database.SQLText, args ...any) []map[string]any {
 	out := []map[string]any{}
 	// #nosec G202 -- where is a constant at every call site; values are bound.
-	rows, err := db.Query(`SELECT block_reason, COUNT(*) AS cnt FROM proxy_logs
+	rows, err := db.Query(string(`SELECT block_reason, COUNT(*) AS cnt FROM proxy_logs
 		WHERE blocked = 1 AND `+clientRows+` AND `+where+`
-		GROUP BY block_reason ORDER BY cnt DESC, block_reason`, args...)
+		GROUP BY block_reason ORDER BY cnt DESC, block_reason`), args...)
 	if err != nil {
 		return out
 	}
@@ -621,15 +622,15 @@ func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) 
 	ext, extArgs := notInternal(internal)
 	in, inArgs := onlyInternal(internal)
 	clients := []map[string]any{}
-	read := func(cond string, args []any, limit int) error {
+	read := func(cond database.SQLText, args []any, limit int) error {
 		// #nosec G202 -- clientRows and cond are constants and placeholders; values are bound.
-		rows, err := h.db.Query(`
+		rows, err := h.db.Query(string(`
 			SELECT source_ip, COUNT(*) AS requests,
 			       SUM(blocked) AS blocked,
 			       MAX(timestamp) AS last_seen
 			FROM proxy_logs
 			WHERE source_ip IS NOT NULL AND source_ip != '' AND unix_timestamp >= ? AND `+clientRows+` AND `+cond+`
-			GROUP BY source_ip ORDER BY requests DESC, source_ip LIMIT ?`, append(append([]any{since}, args...), limit)...)
+			GROUP BY source_ip ORDER BY requests DESC, source_ip LIMIT ?`), append(append([]any{since}, args...), limit)...)
 		if err != nil {
 			return err
 		}
@@ -658,9 +659,9 @@ func (h *AnalyticsHandlers) ClientStats(w http.ResponseWriter, r *http.Request) 
 	}
 	var total, internalTotal int
 	// #nosec G202 -- clientRows and the conditions are constants and placeholders; values are bound.
-	h.db.QueryRow(`SELECT
+	h.db.QueryRow(string(`SELECT
 		(SELECT COUNT(DISTINCT source_ip) FROM proxy_logs WHERE source_ip IS NOT NULL AND source_ip != '' AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+`),
-		(SELECT COUNT(DISTINCT source_ip) FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND `+in+`)`,
+		(SELECT COUNT(DISTINCT source_ip) FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND `+in+`)`),
 		append(append(append([]any{since}, extArgs...), since), inArgs...)...).Scan(&total, &internalTotal) //nolint:errcheck
 	// The collection goes under data like every other list, with its count in
 	// meta — not nested under data.clients with the count beside it, which was
@@ -723,13 +724,13 @@ func (b *networkStatBucket) classify() (internal bool, kind, classification stri
 
 func (h *AnalyticsHandlers) clientStatsByNetwork(w http.ResponseWriter, since int64) {
 	// #nosec G202 -- clientRows is a constant expression; since is bound.
-	rows, err := h.db.Query(`
+	rows, err := h.db.Query(string(`
 		SELECT source_ip, COUNT(*) AS requests,
 		       SUM(blocked) AS blocked,
 		       MAX(timestamp) AS last_seen
 		FROM proxy_logs
 		WHERE source_ip IS NOT NULL AND source_ip != '' AND unix_timestamp >= ? AND `+clientRows+`
-		GROUP BY source_ip`, since)
+		GROUP BY source_ip`), since)
 	if err != nil {
 		writeInternalError(w, "client_stats", err)
 		return
@@ -850,23 +851,23 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "GDPR mode is enabled: use the network CIDR (for example 192.168.1.0/24 or 2001:db8:1:2::/64) instead of a single IP address")
 		return
 	}
-	const blockedCase = `SUM(blocked)`
+	const blockedCase database.SQLText = `SUM(blocked)`
 
 	var total, blocked int
 	var firstSeen, lastSeen sql.NullString
 	// A no-rows or scan error leaves the zero values, which is the correct
 	// answer for a client with no logged requests.
 	_ = h.db.QueryRow(
-		`SELECT COUNT(*), IFNULL(`+blockedCase+`, 0), MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE source_ip = ? AND `+clientRows,
+		string(`SELECT COUNT(*), IFNULL(`+blockedCase+`, 0), MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE source_ip = ? AND `+clientRows),
 		ip,
 	).Scan(&total, &blocked, &firstSeen, &lastSeen)
 
 	topDomains := []map[string]any{}
 	// #nosec G202 -- destinationKey is built once from a constant column name by database.HostKey; values are bound.
 	if dr, err := h.db.Query(
-		`SELECT `+destinationKey+` AS dest, COUNT(*) AS c, `+blockedCase+` AS b
+		string(`SELECT `+destinationKey+` AS dest, COUNT(*) AS c, `+blockedCase+` AS b
 		 FROM proxy_logs WHERE source_ip = ? AND destination IS NOT NULL AND destination != '' AND `+clientRows+`
-		 GROUP BY dest ORDER BY c DESC LIMIT 10`, ip); err == nil {
+		 GROUP BY dest ORDER BY c DESC LIMIT 10`), ip); err == nil {
 		for dr.Next() {
 			var d string
 			var c, b int
@@ -878,8 +879,8 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 
 	recent := []map[string]any{}
 	if rr, err := h.db.Query(
-		`SELECT timestamp, method, destination, status, bytes, blocked, block_reason
-		 FROM proxy_logs WHERE source_ip = ? AND `+clientRows+` ORDER BY id DESC LIMIT 20`, ip); err == nil {
+		string(`SELECT timestamp, method, destination, status, bytes, blocked, block_reason
+		 FROM proxy_logs WHERE source_ip = ? AND `+clientRows+` ORDER BY id DESC LIMIT 20`), ip); err == nil {
 		for rr.Next() {
 			var ts, method, dest, status, reason string
 			var nbytes int64
@@ -931,14 +932,14 @@ func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCID
 		kinds:    map[string]struct{}{},
 	}
 
-	cond := "0 = 1"
+	var cond database.SQLText = "0 = 1"
 	var args []any
 	if len(ips) > 0 {
 		cond = "source_ip IN (" + placeholders(len(ips)) + ")"
 		args = toArgs(ips)
 		// Classify only addresses that have clientRows in proxy_logs.
 		// #nosec G202 -- cond and clientRows use constants and placeholders; args are bound.
-		if sRows, err := h.db.Query(`SELECT DISTINCT source_ip FROM proxy_logs WHERE `+cond+` AND `+clientRows, args...); err == nil {
+		if sRows, err := h.db.Query(string(`SELECT DISTINCT source_ip FROM proxy_logs WHERE `+cond+` AND `+clientRows), args...); err == nil {
 			for sRows.Next() {
 				var sip string
 				if sRows.Scan(&sip) == nil {
@@ -959,21 +960,21 @@ func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCID
 	}
 	isInternal, kind, classification := b.classify()
 
-	const blockedCase = `SUM(blocked)`
+	const blockedCase database.SQLText = `SUM(blocked)`
 	var total, blocked int
 	var firstSeen, lastSeen sql.NullString
 	// #nosec G202 -- cond and clientRows are constants and placeholders; args are bound.
 	_ = h.db.QueryRow(
-		`SELECT COUNT(*), IFNULL(`+blockedCase+`, 0), MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE `+cond+` AND `+clientRows,
+		string(`SELECT COUNT(*), IFNULL(`+blockedCase+`, 0), MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE `+cond+` AND `+clientRows),
 		args...,
 	).Scan(&total, &blocked, &firstSeen, &lastSeen)
 
 	topDomains := []map[string]any{}
 	// #nosec G202 -- destinationKey, cond and clientRows are constants and placeholders; args are bound.
 	if dr, err := h.db.Query(
-		`SELECT `+destinationKey+` AS dest, COUNT(*) AS c, `+blockedCase+` AS b
+		string(`SELECT `+destinationKey+` AS dest, COUNT(*) AS c, `+blockedCase+` AS b
 		 FROM proxy_logs WHERE `+cond+` AND destination IS NOT NULL AND destination != '' AND `+clientRows+`
-		 GROUP BY dest ORDER BY c DESC LIMIT 10`, args...); err == nil {
+		 GROUP BY dest ORDER BY c DESC LIMIT 10`), args...); err == nil {
 		for dr.Next() {
 			var d string
 			var c, blk int
@@ -986,8 +987,8 @@ func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCID
 	recent := []map[string]any{}
 	// #nosec G202 -- cond and clientRows are constants and placeholders; args are bound.
 	if rr, err := h.db.Query(
-		`SELECT timestamp, method, destination, status, bytes, blocked, block_reason
-		 FROM proxy_logs WHERE `+cond+` AND `+clientRows+` ORDER BY id DESC LIMIT 20`, args...); err == nil {
+		string(`SELECT timestamp, method, destination, status, bytes, blocked, block_reason
+		 FROM proxy_logs WHERE `+cond+` AND `+clientRows+` ORDER BY id DESC LIMIT 20`), args...); err == nil {
 		for rr.Next() {
 			var ts, method, dest, status, reason string
 			var nbytes int64
@@ -1019,11 +1020,11 @@ func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCID
 }
 
 func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.db.Query(`
+	rows, err := h.db.Query(string(`
 		SELECT destination, COUNT(*) AS requests,
 		       SUM(blocked) AS blocked_requests
 		FROM proxy_logs WHERE destination IS NOT NULL AND destination != '' AND unix_timestamp >= ? AND `+clientRows+`
-		GROUP BY destination ORDER BY requests DESC LIMIT 50`, sinceUnix(analyticsWindow))
+		GROUP BY destination ORDER BY requests DESC LIMIT 50`), sinceUnix(analyticsWindow))
 	if err != nil {
 		writeOK(w, []any{})
 		return
@@ -1169,7 +1170,7 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	var topClients []map[string]any
 	if gdpr {
 		// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
-		cRows, _ := h.db.Query(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' AND `+clientRows+` AND `+ext+` GROUP BY source_ip`, append([]any{day}, extArgs...)...)
+		cRows, _ := h.db.Query(string(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' AND `+clientRows+` AND `+ext+` GROUP BY source_ip`), append([]any{day}, extArgs...)...)
 		if cRows != nil {
 			type netCount struct {
 				ip      string
@@ -1223,7 +1224,7 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 		}
 	} else {
 		// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
-		cRows, _ := h.db.Query(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' AND `+clientRows+` AND `+ext+` GROUP BY source_ip ORDER BY cnt DESC LIMIT 10`, append([]any{day}, extArgs...)...)
+		cRows, _ := h.db.Query(string(`SELECT source_ip, COUNT(*) AS cnt FROM proxy_logs WHERE unix_timestamp >= ? AND source_ip IS NOT NULL AND source_ip != '' AND `+clientRows+` AND `+ext+` GROUP BY source_ip ORDER BY cnt DESC LIMIT 10`), append([]any{day}, extArgs...)...)
 		if cRows != nil {
 			for cRows.Next() {
 				var ip string
@@ -1259,8 +1260,8 @@ func (h *AnalyticsHandlers) DashboardSummary(w http.ResponseWriter, r *http.Requ
 	// so the page never lists a block its "blocked by rule" does not count.
 	var recentBlocks []map[string]any
 	// #nosec G202 -- destinationKey and clientRows are constant expressions.
-	rRows, _ := h.db.Query(`SELECT timestamp, source_ip, method, destination, `+destinationKey+`, status, block_reason
-		FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+` ORDER BY id DESC LIMIT 10`, append([]any{day}, extArgs...)...)
+	rRows, _ := h.db.Query(string(`SELECT timestamp, source_ip, method, destination, `+destinationKey+`, status, block_reason
+		FROM proxy_logs WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+` ORDER BY id DESC LIMIT 10`), append([]any{day}, extArgs...)...)
 	if rRows != nil {
 		for rRows.Next() {
 			var ts, srcIP, method, dest, host, status, reason sql.NullString
@@ -1324,12 +1325,12 @@ func (h *AnalyticsHandlers) topBlocked(since int64, internal []string) []map[str
 	out := []map[string]any{}
 	ext, extArgs := notInternal(internal)
 	// #nosec G202 -- destinationKey, clientRows and ext are constants and placeholders; values are bound.
-	rows, err := h.db.Query(`WITH b AS (
+	rows, err := h.db.Query(string(`WITH b AS (
 			SELECT `+destinationKey+` AS dest, block_reason AS reason FROM proxy_logs
 			WHERE blocked = 1 AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+`),
 		top AS (SELECT dest, COUNT(*) AS cnt FROM b GROUP BY dest ORDER BY cnt DESC, dest LIMIT 10)
 		SELECT top.dest, top.cnt, b.reason, COUNT(*) AS n FROM top JOIN b ON b.dest = top.dest
-		GROUP BY top.dest, b.reason ORDER BY top.cnt DESC, top.dest, n DESC, b.reason`, append([]any{since}, extArgs...)...)
+		GROUP BY top.dest, b.reason ORDER BY top.cnt DESC, top.dest, n DESC, b.reason`), append([]any{since}, extArgs...)...)
 	if err != nil {
 		return out
 	}
@@ -1406,11 +1407,11 @@ var saaS_categories = map[string][]string{
 func (h *AnalyticsHandlers) ShadowIT(w http.ResponseWriter, r *http.Request) {
 	ext, extArgs := notInternal(h.src.Present())
 	// #nosec G202 -- destinationKey, clientRows and ext are constants and placeholders; values are bound.
-	rows, err := h.db.Query(`
+	rows, err := h.db.Query(string(`
 		SELECT `+destinationKey+` AS host, COUNT(*) AS cnt FROM proxy_logs
 		WHERE destination IS NOT NULL AND destination != ''
 		AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+`
-		GROUP BY host ORDER BY cnt DESC`, append([]any{sinceUnix(analyticsWindow)}, extArgs...)...)
+		GROUP BY host ORDER BY cnt DESC`), append([]any{sinceUnix(analyticsWindow)}, extArgs...)...)
 	if err != nil {
 		writeOK(w, []any{})
 		return
@@ -1473,11 +1474,11 @@ func (h *AnalyticsHandlers) UserAgents(w http.ResponseWriter, r *http.Request) {
 	ext, extArgs := notInternal(h.src.Present())
 	args := append([]any{since}, extArgs...)
 	// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
-	rows, err := h.db.Query(`
+	rows, err := h.db.Query(string(`
 		SELECT method, COUNT(*) AS cnt FROM proxy_logs
 		WHERE method IS NOT NULL AND method != '' AND method != '-'
 		AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+`
-		GROUP BY method ORDER BY cnt DESC LIMIT 50`, args...)
+		GROUP BY method ORDER BY cnt DESC LIMIT 50`), args...)
 	var methods []map[string]any
 	if err == nil {
 		defer rows.Close()
@@ -1493,7 +1494,7 @@ func (h *AnalyticsHandlers) UserAgents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// #nosec G202 -- destinationKey, clientRows and ext are constants and placeholders; values are bound.
-	stRows, err := h.db.Query(`
+	stRows, err := h.db.Query(string(`
 		WITH r AS (SELECT `+destinationKey+` AS host FROM proxy_logs
 			WHERE unix_timestamp >= ? AND destination IS NOT NULL AND `+clientRows+` AND `+ext+`)
 		SELECT
@@ -1510,7 +1511,7 @@ func (h *AnalyticsHandlers) UserAgents(w http.ResponseWriter, r *http.Request) {
 			END as service_type,
 			COUNT(*) as cnt
 		FROM r
-		GROUP BY service_type ORDER BY cnt DESC`, args...)
+		GROUP BY service_type ORDER BY cnt DESC`), args...)
 	var serviceTypes []map[string]any
 	if err == nil {
 		defer stRows.Close()
@@ -1569,9 +1570,9 @@ func urlPath(dest string) (string, bool) {
 func (h *AnalyticsHandlers) FileExtensions(w http.ResponseWriter, r *http.Request) {
 	ext, extArgs := notInternal(h.src.Present())
 	// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
-	rows, err := h.db.Query(`SELECT destination FROM proxy_logs
+	rows, err := h.db.Query(string(`SELECT destination FROM proxy_logs
 		WHERE destination IS NOT NULL AND instr(destination, '://') > 0 AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+`
-		ORDER BY id DESC LIMIT ?`, append(append([]any{sinceUnix(analyticsWindow)}, extArgs...), fileExtensionsLimit)...)
+		ORDER BY id DESC LIMIT ?`), append(append([]any{sinceUnix(analyticsWindow)}, extArgs...), fileExtensionsLimit)...)
 	extCounts := map[string]int{}
 	examined := 0
 	if err == nil {
@@ -1660,11 +1661,11 @@ func (h *AnalyticsHandlers) FileExtensions(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *AnalyticsHandlers) TopDomains(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.db.Query(`
+	rows, err := h.db.Query(string(`
 		SELECT destination, COUNT(*) AS cnt FROM proxy_logs
 		WHERE destination IS NOT NULL AND destination != ''
 		AND unix_timestamp >= ? AND `+clientRows+`
-		GROUP BY destination ORDER BY cnt DESC LIMIT 200`, sinceUnix(analyticsWindow))
+		GROUP BY destination ORDER BY cnt DESC LIMIT 200`), sinceUnix(analyticsWindow))
 	domainCounts := map[string]int{}
 	if err == nil {
 		defer rows.Close()
@@ -1758,7 +1759,7 @@ func (h *AnalyticsHandlers) TestRule(w http.ResponseWriter, r *http.Request) {
 
 	// Query recent destinations from logs
 	rows, err := h.db.Query(
-		"SELECT destination FROM proxy_logs WHERE unix_timestamp >= ? AND destination IS NOT NULL AND destination != '' AND "+clientRows+" LIMIT 10000",
+		string("SELECT destination FROM proxy_logs WHERE unix_timestamp >= ? AND destination IS NOT NULL AND destination != '' AND "+clientRows+" LIMIT 10000"),
 		sinceUnix(time.Duration(req.Hours)*time.Hour),
 	)
 	if err != nil {

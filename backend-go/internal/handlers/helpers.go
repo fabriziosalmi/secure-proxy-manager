@@ -47,9 +47,9 @@ func writeError(w http.ResponseWriter, status int, detail string) {
 // query, run a moment later, might well have filled, so the response described a
 // non-empty page as belonging to an empty collection and the caller could not
 // tell.
-func countRows(db *sql.DB, query string, args ...any) (int, error) {
+func countRows(db *sql.DB, query database.SQLText, args ...any) (int, error) {
 	var n int
-	if err := db.QueryRow(query, args...).Scan(&n); err != nil {
+	if err := db.QueryRow(string(query), args...).Scan(&n); err != nil {
 		return 0, err
 	}
 	return n, nil

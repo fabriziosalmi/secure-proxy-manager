@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"net/http"
 	"net/netip"
 	"regexp"
@@ -166,8 +167,8 @@ func (f logFilter) hidesInternal() bool {
 
 // conds are the filter's conditions other than the internal-source one and
 // the cursor, with their arguments.
-func (f logFilter) conds() ([]string, []any) {
-	var c []string
+func (f logFilter) conds() ([]database.SQLText, []any) {
+	var c []database.SQLText
 	var a []any
 	if f.sourceCIDR {
 		if len(f.sourceIPs) == 0 {
@@ -201,7 +202,7 @@ func (f logFilter) conds() ([]string, []any) {
 // where is the condition selecting the filter's rows. internal is the list
 // of internal sources present in the log (InternalSources.Present). The
 // cursor applies only with page set: a count covers every matching row.
-func (f logFilter) where(internal []string, page bool) (string, []any) {
+func (f logFilter) where(internal []string, page bool) (database.SQLText, []any) {
 	c, a := f.conds()
 	if f.hidesInternal() {
 		ext, extArgs := notInternal(internal)
@@ -213,7 +214,7 @@ func (f logFilter) where(internal []string, page bool) (string, []any) {
 	if len(c) == 0 {
 		return "1 = 1", nil
 	}
-	return strings.Join(c, " AND "), a
+	return database.JoinSQL(c, " AND "), a
 }
 
 // countLogs counts the rows f matches and, when f leaves internal sources
@@ -236,7 +237,7 @@ func countLogs(db *sql.DB, f logFilter, internal []string) (total int, hidden *i
 	var h int
 	for _, t := range f.countTerms(internal) {
 		var v int
-		if err := tx.QueryRow(t.query, t.args...).Scan(&v); err != nil {
+		if err := tx.QueryRow(string(t.query), t.args...).Scan(&v); err != nil {
 			return 0, nil, err
 		}
 		v *= t.sign
@@ -258,7 +259,7 @@ func countLogs(db *sql.DB, f logFilter, internal []string) (total int, hidden *i
 // countTerm is one COUNT query of countLogs, added (sign 1) or subtracted
 // (sign -1). internal marks the terms that count the internal sources' rows.
 type countTerm struct {
-	query    string
+	query    database.SQLText
 	args     []any
 	sign     int
 	internal bool
@@ -271,11 +272,11 @@ func (f logFilter) countTerms(internal []string) []countTerm {
 		g.outcome = ""
 	}
 	base, baseArgs := g.conds()
-	term := func(sign int, isInternal bool, extra []string, extraArgs []any) countTerm {
-		c := append(append([]string{}, base...), extra...)
-		w := "1 = 1"
+	term := func(sign int, isInternal bool, extra []database.SQLText, extraArgs []any) countTerm {
+		c := append(append([]database.SQLText{}, base...), extra...)
+		var w database.SQLText = "1 = 1"
 		if len(c) > 0 {
-			w = strings.Join(c, " AND ")
+			w = database.JoinSQL(c, " AND ")
 		}
 		return countTerm{
 			// The conditions are constants with placeholders; every value is bound.
@@ -288,17 +289,17 @@ func (f logFilter) countTerms(internal []string) []countTerm {
 	// with adds the rows meeting extra, less the blocked ones among them when
 	// the filter asks for allowed rows.
 	var terms []countTerm
-	with := func(isInternal bool, extra []string, extraArgs []any) {
+	with := func(isInternal bool, extra []database.SQLText, extraArgs []any) {
 		terms = append(terms, term(1, isInternal, extra, extraArgs))
 		if allowed {
-			terms = append(terms, term(-1, isInternal, append([]string{"blocked = 1"}, extra...), extraArgs))
+			terms = append(terms, term(-1, isInternal, append([]database.SQLText{"blocked = 1"}, extra...), extraArgs))
 		}
 	}
 	const everyRow, internalRows = false, true
 	with(everyRow, nil, nil)
 	if f.hidesInternal() && len(internal) > 0 {
 		in, inArgs := onlyInternal(internal)
-		with(internalRows, []string{in}, inArgs)
+		with(internalRows, []database.SQLText{in}, inArgs)
 	}
 	return terms
 }

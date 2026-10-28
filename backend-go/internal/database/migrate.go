@@ -123,7 +123,7 @@ func migrateEgressProviders(db *sql.DB) error {
 // listSourceTables are the tables whose entries record where they came from
 // (sources.go). Version 4 runs after version 2, which rebuilds
 // domain_whitelist, so the column it adds is not lost to that rebuild.
-var listSourceTables = []string{"ip_blacklist", "domain_blacklist", "ip_whitelist", "domain_whitelist"}
+var listSourceTables = []SQLText{"ip_blacklist", "domain_blacklist", "ip_whitelist", "domain_whitelist"}
 
 // migrateListSources creates list_sources and gives every list table a
 // source_id, in one transaction that also records version 4. Existing rows
@@ -158,18 +158,18 @@ func migrateListSources(db *sql.DB) error {
 		}
 	}
 	for _, t := range listSourceTables {
-		has, err := hasColumn(tx, t, "source_id")
+		has, err := hasColumn(tx, string(t), "source_id")
 		if err != nil {
 			return err
 		}
 		if !has {
 			// #nosec G202 -- t is a constant of listSourceTables
-			if _, err := tx.Exec("ALTER TABLE " + t + " ADD COLUMN source_id INTEGER REFERENCES list_sources(id)"); err != nil {
+			if _, err := tx.Exec(string("ALTER TABLE " + t + " ADD COLUMN source_id INTEGER REFERENCES list_sources(id)")); err != nil {
 				return fmt.Errorf("add %s.source_id: %w", t, err)
 			}
 		}
 		// #nosec G202 -- t is a constant of listSourceTables
-		if _, err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_" + t + "_source ON " + t + "(source_id, added_date)"); err != nil {
+		if _, err := tx.Exec(string("CREATE INDEX IF NOT EXISTS idx_" + t + "_source ON " + t + "(source_id, added_date)")); err != nil {
 			return fmt.Errorf("index %s.source_id: %w", t, err)
 		}
 	}

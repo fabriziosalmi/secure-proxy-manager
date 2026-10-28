@@ -59,7 +59,7 @@ func (h *LogHandlers) Export(w http.ResponseWriter, r *http.Request) {
 		// The conditions are constants with placeholders; every value is bound.
 		// #nosec G202
 		rows, err := h.db.QueryContext(r.Context(),
-			"SELECT "+logColumns+" FROM proxy_logs WHERE "+where+" ORDER BY id DESC LIMIT ?",
+			string("SELECT "+logColumns+" FROM proxy_logs WHERE "+where+" ORDER BY id DESC LIMIT ?"),
 			append(args, exportPage)...)
 		if err != nil {
 			// The header and earlier rows are already sent: the status cannot

@@ -35,7 +35,7 @@ func planOf(t *testing.T, db *sql.DB, query string, args ...any) string {
 // logPageQuery is the page query GetLogs runs for f.
 func logPageQuery(f logFilter, internal []string) (string, []any) {
 	w, a := f.where(internal, true)
-	return "SELECT " + logColumns + " FROM proxy_logs WHERE " + w + " ORDER BY id DESC LIMIT ? OFFSET ?", append(a, 100, 0)
+	return string("SELECT " + logColumns + " FROM proxy_logs WHERE " + w + " ORDER BY id DESC LIMIT ? OFFSET ?"), append(a, 100, 0)
 }
 
 // countPlans is the plans of the COUNT queries countLogs runs for f.
@@ -43,7 +43,7 @@ func countPlans(t *testing.T, db *sql.DB, f logFilter, internal []string) []stri
 	t.Helper()
 	var out []string
 	for _, ct := range f.countTerms(internal) {
-		out = append(out, planOf(t, db, ct.query, ct.args...))
+		out = append(out, planOf(t, db, string(ct.query), ct.args...))
 	}
 	return out
 }

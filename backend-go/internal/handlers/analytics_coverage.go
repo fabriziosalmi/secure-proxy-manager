@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"io"
 	"net/http"
 )
@@ -57,7 +58,7 @@ func (h *AnalyticsHandlers) wafRuleCoverage(r *http.Request) wafCoverage {
 
 // countOrNil is a COUNT(*) of query, nil when it fails: a count that could
 // not be read is not zero.
-func (h *AnalyticsHandlers) countOrNil(query string) *int {
+func (h *AnalyticsHandlers) countOrNil(query database.SQLText) *int {
 	n, err := countRows(h.db, query)
 	if err != nil {
 		return nil

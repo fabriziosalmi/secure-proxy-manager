@@ -13,8 +13,8 @@ package database
 // The analytics top lists group by it, and the start-up reconstruction of
 // sinkholed requests (reconstruct.go) matches it against the blacklist, so
 // both read the same host from the same row. col is a column name written by
-// the caller, never a value.
-func HostKey(col string) string {
+// the caller, never a value (SQLText).
+func HostKey(col SQLText) SQLText {
 	scheme := "instr(" + col + ", '://')"
 	// substr from 1 when there is no scheme, from just after "://" otherwise.
 	rest := "substr(" + col + ", 1 + (" + scheme + " + 2) * (" + scheme + " > 0))"

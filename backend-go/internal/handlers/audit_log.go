@@ -2,18 +2,18 @@ package handlers
 
 import (
 	"database/sql"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"net/http"
-	"strings"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
 // auditCategories are the filters the Audit page offers. Sign-ins are the
 // session events; every other action is a change.
-var signInActions = []string{"login", "login_failed", "logout"}
+var signInActions = []database.SQLText{"login", "login_failed", "logout"}
 
-func auditCategoryWhere(category string) (where string, ok bool) {
-	in := "('" + strings.Join(signInActions, "','") + "')"
+func auditCategoryWhere(category string) (where database.SQLText, ok bool) {
+	in := "('" + database.JoinSQL(signInActions, "','") + "')"
 	switch category {
 	case "", "all":
 		return "", true
@@ -43,7 +43,7 @@ func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w, "audit_log_count", err)
 		return
 	}
-	rows, err := h.db.Query("SELECT id, username, action, target, details, timestamp FROM audit_log"+where+" ORDER BY id DESC LIMIT ? OFFSET ?", limit, offset) // #nosec G202 -- constant clause
+	rows, err := h.db.Query(string("SELECT id, username, action, target, details, timestamp FROM audit_log"+where+" ORDER BY id DESC LIMIT ? OFFSET ?"), limit, offset) // #nosec G202 -- constant clause
 	if err != nil {
 		writeInternalError(w, "audit_log", err)
 		return
