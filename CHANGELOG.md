@@ -15,6 +15,23 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.18.0] - 2026-10-28
+
+The WAF and the backend get their shared service token without any
+configuration, the WAF's block alerts are retried, counted and delivered on
+shutdown, a log rotation no longer drops lines, the web container stops
+publishing `/api/internal/`, and the domain statistics show the status the
+proxy enforces. Nothing is **BREAKING** and `X-API-Version` stays 1.
+
+Three things change on upgrade. A boolean setting stored as anything other
+than `"true"` or `"false"` (such as `"1"`) is now read as off everywhere,
+including by the WAF reconciler, and the API refuses such a value with 400. A
+`data/.enc_key` that is not 64 hex characters stops the backend instead of
+being replaced. A deployment that keeps its own compose file, and leaves
+`INTERNAL_ALERT_TOKEN` empty, needs the new `service-token` volume on the
+backend (read-write) and the waf (read-only); with the variable set, nothing
+changes.
+
 ### Changed
 
 - **A boolean setting takes only `"true"` or `"false"`.** Every setting whose
