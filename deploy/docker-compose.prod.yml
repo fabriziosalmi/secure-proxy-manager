@@ -1,6 +1,6 @@
 services:
   web:
-    image: ghcr.io/fabriziosalmi/secure-proxy-manager-web:${SPM_IMAGE_TAG:-v3.16.0}
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-web:${SPM_IMAGE_TAG:-v3.17.0}
     ports:
       - "80:8011"     # HTTP (redirect + ACME challenges)
       - "443:8443"    # HTTPS (main UI)
@@ -54,7 +54,7 @@ services:
     restart: unless-stopped
 
   waf:
-    image: ghcr.io/fabriziosalmi/secure-proxy-manager-waf:${SPM_IMAGE_TAG:-v3.16.0}
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-waf:${SPM_IMAGE_TAG:-v3.17.0}
     volumes:
       - ./config:/config:ro
       # NOTE: ./data is deliberately NOT mounted here — see the comment in the
@@ -113,7 +113,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: ghcr.io/fabriziosalmi/secure-proxy-manager-backend:${SPM_IMAGE_TAG:-v3.16.0}
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-backend:${SPM_IMAGE_TAG:-v3.17.0}
     ports:
       - "127.0.0.1:5001:5000"
     volumes:
@@ -172,7 +172,7 @@ services:
     restart: unless-stopped
 
   dns:
-    image: ghcr.io/fabriziosalmi/secure-proxy-manager-dns:${SPM_IMAGE_TAG:-v3.16.0}
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-dns:${SPM_IMAGE_TAG:-v3.17.0}
     volumes:
       - ./config:/config:ro
       - ./logs:/var/log
@@ -218,7 +218,7 @@ services:
     restart: unless-stopped
 
   proxy:
-    image: ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:${SPM_IMAGE_TAG:-v3.16.0}
+    image: ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:${SPM_IMAGE_TAG:-v3.17.0}
     container_name: secure-proxy-manager-proxy
     environment:
       - GUI_IP_WHITELIST=${GUI_IP_WHITELIST:-}
