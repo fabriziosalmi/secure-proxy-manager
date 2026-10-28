@@ -229,6 +229,8 @@ jobs:
         run: shellcheck --severity=warning proxy/*.sh deploy/*.sh scripts/*.sh tests/*.sh tests/shell/*.sh
       - name: Local CI lock, worktree guard and non-interactive suites
         run: bash tests/shell/local_ci_lock_test.sh
+      - name: Release signing retries a transient failure and verifies the result
+        run: bash tests/shell/cosign_sign_test.sh
       # The /config filenames are a contract across three languages and nothing
       # compared the copies: rename one on the Go side and both proxy-side
       # copiers keep looking for the old name, silently, in the enforcement path

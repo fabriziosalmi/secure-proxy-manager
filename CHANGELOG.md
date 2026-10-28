@@ -15,6 +15,19 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Internal
+
+- **A release image is signed again after a transient failure, and the job
+  checks the signature is there.** v3.18.1's Docker Hub copy of the backend
+  image has no signature: Rekor recorded cosign's first upload, its
+  response was lost, cosign's own retry got 409 "an equivalent entry
+  already exists", and the signature was never attached. The GHCR images,
+  which the installer and the compose files use, are signed.
+  `scripts/cosign-sign.sh` runs cosign afresh up to three times (a new run
+  uses a new key, so it cannot collide with the last attempt) and then runs
+  `cosign verify` with the identity in SECURITY.md, so the step fails only
+  when no valid signature is attached.
+
 ## [3.18.1] - 2026-10-28
 
 A security fix release. A request body of 64 KiB or more crossing the WAF
