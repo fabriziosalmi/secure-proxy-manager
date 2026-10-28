@@ -398,7 +398,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	// Skip WAF inspection for LAN destinations (proxy UI, backend, local
 	// services). These are legitimate internal traffic, not SSRF attempts.
 	if engine.IsLANHost(req.Request.Host) {
-		w.WriteHeader(204, nil, false)
+		passThrough(w, req)
 		return
 	}
 
@@ -449,7 +449,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	if in.cacheable && !in.urlCached && in.score == 0 && in.bodySize == 0 {
 		eng.SafeCache().MarkSafe(in.cacheKey)
 	}
-	w.WriteHeader(204, nil, false)
+	passThrough(w, req)
 }
 
 // clientIPFrom reads the address Squid stamped on the ICAP request. Anything
@@ -520,13 +520,15 @@ func scanBody(in *inspection, r *http.Request) {
 	if readErr != nil || len(bodyBytes) == 0 {
 		return
 	}
+	// The request is forwarded whole: what was read goes back in front of
+	// what was not. Only the first maxBodyInspectSize bytes are inspected.
+	r.Body = rejoin(bodyBytes, r.Body)
 	truncated := len(bodyBytes) > maxBodyInspectSize
 	if truncated {
 		bodyBytes = bodyBytes[:maxBodyInspectSize]
 	}
 	in.bodyStr = engine.NormalizeInput(string(bodyBytes))
 	in.bodySize = len(bodyBytes)
-	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	bodyMatches, bodyScore := eng.MatchRulesScored(in.bodyStr)
 	in.matches = append(in.matches, bodyMatches...)
@@ -806,15 +808,15 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 	// returning a clean verdict. Decompression is deferred to a later phase.
 	if req.Response.Body != nil && engine.IsTextContent(contentType) && engine.IsCompressedEncoding(req.Response.Header.Get("Content-Encoding")) {
 		respmodUninspectable.Add(1)
-		w.WriteHeader(204, nil, false)
+		passThrough(w, req)
 		return
 	}
 
 	// Inspect text response bodies for reflected XSS and secret leaks
 	if req.Response.Body != nil && engine.IsTextContent(contentType) {
 		bodyBytes, err := io.ReadAll(io.LimitReader(req.Response.Body, maxBodyInspectSize))
+		req.Response.Body = rejoin(bodyBytes, req.Response.Body)
 		if err == nil && len(bodyBytes) > 0 {
-			req.Response.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 			body := string(bodyBytes)
 			totalScore, matchedRules, matchedCat := eng.MatchResponseRules(body)
 			// H3: PII counter heuristic on response body
@@ -835,7 +837,63 @@ func handleRespmod(w icap.ResponseWriter, req *icap.Request) {
 		}
 	}
 
-	w.WriteHeader(204, nil, false)
+	passThrough(w, req)
+}
+
+// allowsNoContent reports whether the ICAP client accepts a 204 for this
+// transaction: only when it sent "Allow: 204" (RFC 3507, 4.6).
+func allowsNoContent(req *icap.Request) bool {
+	for _, v := range req.Header.Values("Allow") {
+		for _, tok := range strings.Split(v, ",") {
+			if strings.TrimSpace(tok) == "204" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// passThrough answers "no modification". With "Allow: 204" that is a 204.
+// Squid leaves 204 out when it cannot keep a copy of the body, which it does
+// for 64 KiB or more; a 204 then is a protocol error that Squid turns into a
+// 500 for the client, and eleven of them suspend the ICAP service, which with
+// REQMOD fail-closed refused every client for three minutes. Without the
+// header the original message goes back unchanged in a 200.
+func passThrough(w icap.ResponseWriter, req *icap.Request) {
+	if allowsNoContent(req) {
+		w.WriteHeader(204, nil, false)
+		return
+	}
+	var msg interface{}
+	var body io.Reader
+	switch {
+	case req.Method == "RESPMOD" && req.Response != nil:
+		msg, body = req.Response, req.Response.Body
+	case req.Request != nil:
+		msg, body = req.Request, req.Request.Body
+	default:
+		w.WriteHeader(204, nil, false)
+		return
+	}
+	hasBody := body != nil && body != http.NoBody
+	w.WriteHeader(200, msg, hasBody)
+	if hasBody {
+		if _, err := io.Copy(w, body); err != nil {
+			slog.Warn("ICAP pass-through: body copy failed", "method", req.Method, "error", err.Error())
+		}
+	}
+}
+
+// rejoin puts bytes already read from a body back in front of the rest of
+// it, so a message that was partly read for inspection is forwarded whole.
+func rejoin(read []byte, rest io.ReadCloser) io.ReadCloser {
+	if rest == nil {
+		return io.NopCloser(bytes.NewReader(read))
+	}
+	return struct {
+		io.Reader
+		io.Closer
+	}{io.MultiReader(bytes.NewReader(read), rest), rest}
 }
 
 // sendBlockResponse encapsulates a 403 in the ICAP reply. When eventID is

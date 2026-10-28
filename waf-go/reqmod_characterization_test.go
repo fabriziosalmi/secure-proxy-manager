@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/textproto"
 	"sort"
 	"strings"
 	"testing"
@@ -54,7 +53,7 @@ func runReqmod(t *testing.T, r *http.Request, clientIP string) verdict {
 	trafficLog = &TrafficLogger{ch: make(chan TrafficFeature, 8)}
 	defer func() { trafficLog = prevLog }()
 
-	ireq := &icap.Request{Request: r, Header: textproto.MIMEHeader{}}
+	ireq := &icap.Request{Request: r, Header: squidHeader()}
 	if clientIP != "" {
 		ireq.Header.Set("X-Client-Ip", clientIP)
 	}

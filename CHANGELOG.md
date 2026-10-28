@@ -15,6 +15,37 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.18.1] - 2026-10-28
+
+A security fix release. A request body of 64 KiB or more crossing the WAF
+no longer fails, and can no longer stop the proxy for every client
+([GHSA-9x87-g42q-5w3f](https://github.com/fabriziosalmi/secure-proxy-manager/security/advisories/GHSA-9x87-g42q-5w3f)).
+Only the WAF changes behaviour; the other images change only their
+version. Nothing is **BREAKING** and `X-API-Version` stays 1.
+
+Until you can upgrade, `icap_service_failure_limit -1` in
+`config/custom_squid_extra.conf`, followed by a restart of the proxy
+container, prevents the outage.
+
+### Security
+
+- **A request body of 64 KiB or more no longer fails, and can no longer
+  stop the proxy for every client** (GHSA-9x87-g42q-5w3f). Squid offers the WAF a 204 ("no
+  modification") only for a message it can keep a copy of; for a body of
+  64 KiB or more it does not. The WAF answered 204 anyway, so Squid
+  answered the client 500, and after eleven such requests suspended the
+  ICAP service: with REQMOD fail-closed (the default) every request from
+  every client got 500 for 180 seconds, repeatable by anyone who can use
+  the proxy. The WAF now returns the message itself in a 200 when a 204 is
+  not offered, with the whole body: it inspects at most the first 1 MiB,
+  and before this it also forwarded only what it had read. Measured on
+  Squid 7.7: before, 65,535 bytes passed and 65,536 got 500; after, bodies
+  up to 2 MB pass and eleven 64 KiB uploads leave the service up. Until you
+  upgrade, `icap_service_failure_limit -1` in
+  `config/custom_squid_extra.conf` prevents the suspension. Inspecting a
+  large body costs about 1 microsecond per byte (about 0.95 s for 1 MB),
+  which these uploads now pay instead of failing.
+
 ### Internal
 
 - E2E (production compose + smoke) is a required check on `main`, in the

@@ -2,7 +2,9 @@ package main
 
 import (
 	"io"
+	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"strings"
 	"testing"
 
@@ -60,8 +62,11 @@ func TestIsCompressedEncoding(t *testing.T) {
 func TestOversizeBodyFlagged(t *testing.T) {
 	before := bodyTruncatedCount.Load()
 	big := strings.Repeat("A", maxBodyInspectSize+1024) // benign padding, over the limit
+	// No "Allow: 204": Squid does not offer it for a body this size.
 	req := &icap.Request{
+		Method:  "REQMOD",
 		Request: httptest.NewRequest("POST", "http://example.com/upload", strings.NewReader(big)),
+		Header:  textproto.MIMEHeader{},
 	}
 	req.Request.Header.Set("Content-Type", "text/plain")
 	w := &mockResponseWriter{}
@@ -71,8 +76,15 @@ func TestOversizeBodyFlagged(t *testing.T) {
 		t.Errorf("bodyTruncatedCount = %d, want %d", got, before+1)
 	}
 	// Benign padding + the oversize signal alone must NOT block (signal < threshold).
-	if w.code == 200 {
+	if resp, ok := w.resp.(*http.Response); ok && resp.StatusCode == http.StatusForbidden {
 		t.Error("benign oversize body should not block on the oversize signal alone")
+	}
+	// It is passed through whole: the bytes past the inspection limit too.
+	if _, ok := w.resp.(*http.Request); !ok || w.code != 200 {
+		t.Fatalf("got ICAP %d with %T, want 200 carrying the request", w.code, w.resp)
+	}
+	if w.body.Len() != len(big) {
+		t.Errorf("forwarded %d body bytes, want all %d", w.body.Len(), len(big))
 	}
 }
 

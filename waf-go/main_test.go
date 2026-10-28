@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"sync/atomic"
 	"testing"
 
@@ -19,6 +20,13 @@ type mockResponseWriter struct {
 	header http.Header
 	code   int
 	resp   interface{}
+	body   bytes.Buffer
+}
+
+// squidHeader is the ICAP header Squid sends for a message it can keep a
+// copy of (a body under 64 KiB): it accepts a 204.
+func squidHeader() textproto.MIMEHeader {
+	return textproto.MIMEHeader{"Allow": {"204, trailers"}}
 }
 
 func (m *mockResponseWriter) Header() http.Header {
@@ -34,7 +42,7 @@ func (m *mockResponseWriter) WriteHeader(code int, httpMessage interface{}, body
 }
 
 func (m *mockResponseWriter) Write(p []byte) (int, error) {
-	return len(p), nil
+	return m.body.Write(p)
 }
 
 func TestHandleOptions(t *testing.T) {
@@ -81,6 +89,7 @@ func TestHandleReqmod_Basic(t *testing.T) {
 	w := &mockResponseWriter{}
 	req := &icap.Request{
 		Request: httptest.NewRequest("GET", "http://example.com/safe", nil),
+		Header:  squidHeader(),
 	}
 	handleReqmod(w, req)
 	// Should be 204 No Content for safe URL
