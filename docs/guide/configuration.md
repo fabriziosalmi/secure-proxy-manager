@@ -13,7 +13,7 @@ and edited in the UI under Settings.
 |---|---|---|
 | `BASIC_AUTH_USERNAME` | backend | Admin user name. Required |
 | `BASIC_AUTH_PASSWORD` | backend | Admin password. It is stored as a bcrypt hash when the user is first created; after that the stored hash is what counts, and the password is changed in the UI, not here. Required: the backend exits if it is empty, shorter than 8 characters, or one of `changeme`, `password`, `admin`, `secret`, `test`, `12345678`, `qwerty` (any case) |
-| `SECRET_KEY` | backend | HMAC key for the JWTs. Empty: generated once and kept in `data/.jwt_secret`. Set: at least 32 characters, at least 8 distinct characters, not a known example value, or the backend exits |
+| `SECRET_KEY` | backend | HMAC key for the JWTs. Empty: generated once and kept in `data/.jwt_secret`; a file there shorter than 32 characters is moved to `data/.jwt_secret.rejected-<time>` and a new secret generated, which ends every session. Set: at least 32 characters, at least 8 distinct characters, not a known example value, or the backend exits |
 | `INTERNAL_ALERT_TOKEN` | backend, waf | Service credential between the two. The WAF sends it on `POST /api/internal/alert`; the backend sends it to the WAF management API (statistics, category and heuristic toggles, reset). Generate with `openssl rand -hex 32`. Empty: the WAF has no credential, so block alerts are dropped and the WAF refuses the backend's management calls |
 
 `BASIC_AUTH_*` is the dashboard and API login and reaches only the backend.
@@ -90,7 +90,7 @@ do not pass them. To use one, add it to the backend's `environment:` list.
 | `JWT_EXPIRE_DURATION` | `8h` | Access token lifetime (Go duration). Refresh tokens end 7 days after the login whatever this is |
 | `MAX_LOGIN_ATTEMPTS` | `5` | Failed logins per client address within the window |
 | `RATE_LIMIT_WINDOW_SECONDS` | `300` | The failed-login window |
-| `ENCRYPTION_KEY` | generated | 64 hex characters. Empty: generated once and kept in `data/.enc_key`. Encrypts the alert channel secrets |
+| `ENCRYPTION_KEY` | generated | 64 hex characters. Empty: generated once and kept in `data/.enc_key`. Encrypts the alert channel secrets. A `data/.enc_key` that exists but is not 64 hex characters stops the backend with an error naming the file; it is never replaced, because it may be the only key that decrypts the stored secrets |
 | `GEOIP_URL` | empty | Replaces the country feed: `<GEOIP_URL>?cc=<code>` is fetched instead of ipdeny.com and GitHub |
 | `WAF_SERVICE_USERNAME`, `WAF_SERVICE_PASSWORD` | `BASIC_AUTH_*` | Basic credential for the WAF management API, used only when `INTERNAL_ALERT_TOKEN` is empty |
 | `LOG_FORMAT` | JSON | `pretty` for console-formatted logs |

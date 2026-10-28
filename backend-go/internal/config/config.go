@@ -4,7 +4,9 @@ package config
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -237,9 +239,12 @@ func loadOrGenerateEncKey() string {
 	// request-supplied value reaches this path. gosec flags it only because the
 	// directory stopped being a literal when the two keys were made to follow
 	// the database (SECURE-CONF-04).
-	data, err := os.ReadFile(encFile)
-	if err == nil && len(strings.TrimSpace(string(data))) == 64 {
-		return strings.TrimSpace(string(data))
+	stored, err := storedEncKey(encFile)
+	if err != nil {
+		log.Fatal().Msg(err.Error())
+	}
+	if stored != "" {
+		return stored
 	}
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -263,6 +268,26 @@ func loadOrGenerateEncKey() string {
 	return key
 }
 
+// storedEncKey reads the persisted encryption key. It returns "" and no error
+// when there is no file, so a key is generated. A file that is there but is not
+// a 64-character hex key is an error and is left untouched: it may be the only
+// copy of the key that decrypts the stored secrets (a partial restore, a stray
+// edit), and generating a new key used to overwrite it with no log line.
+func storedEncKey(path string) (string, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is stateDir()/.enc_key, see the caller
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("encryption key %s cannot be read: %w", path, err)
+	}
+	key := strings.TrimSpace(string(data))
+	if len(key) != 64 || encryptionKeyError(key) != nil {
+		return "", fmt.Errorf("encryption key %s is not a 64-character hex key (%d characters). It is left as it is, because it may be the key that decrypts the stored secrets: restore the right file, or move it away to start with a new key and enter every alert credential and the proxy password again", path, len(key))
+	}
+	return key, nil
+}
+
 // loadOrGenerateSecret reads the JWT secret from env → file → auto-generate.
 func loadOrGenerateSecret() string {
 	if s := os.Getenv("SECRET_KEY"); s != "" {
@@ -278,6 +303,17 @@ func loadOrGenerateSecret() string {
 	data, err := os.ReadFile(jwtFile)
 	if err == nil && len(strings.TrimSpace(string(data))) >= 32 {
 		return strings.TrimSpace(string(data))
+	}
+	if err == nil {
+		// Present but unusable. A new secret only ends the open sessions, so
+		// one is generated, but the old file is kept beside it rather than
+		// overwritten, which used to happen with no log line.
+		aside := jwtFile + ".rejected-" + strconv.FormatInt(time.Now().Unix(), 10)
+		if rerr := os.Rename(jwtFile, aside); rerr != nil {
+			log.Warn().Err(rerr).Str("path", jwtFile).Msg("JWT secret: the file is not a usable secret and could not be moved aside")
+		} else {
+			log.Warn().Str("path", jwtFile).Str("moved_to", aside).Msg("JWT secret: the file is not a usable secret (fewer than 32 characters); moved aside and a new one generated, so every session ends")
+		}
 	}
 	// Auto-generate and persist.
 	b := make([]byte, 32)

@@ -21,7 +21,9 @@ GET /api/settings
 ```
 
 Values are strings. The defaults a new database gets are in
-`seedDefaultSettings` in `backend-go/internal/database/db.go`.
+`DefaultSettings` in `backend-go/internal/database/db.go`. A boolean setting
+(every default that is `"true"` or `"false"`, plus `wizard_completed`) takes
+exactly `"true"` or `"false"`; any other value, `"1"` included, answers `400`.
 
 The alert channel settings are secrets: `webhook_url`, `webhook_bearer_token` (sent as `Authorization: Bearer <token>` with each webhook delivery), `gotify_url`, `gotify_token`, `teams_webhook_url`, `telegram_bot_token`, `telegram_chat_id`, `ntfy_url` and `ntfy_topic` (`crypto.SensitiveKeys` in the backend), and so is `proxy_auth_password` (see [Proxy login](#proxy-login)). They are stored encrypted and are write-only: their row carries `"secret": true`, an empty `setting_value`, `"is_set": true` when a value is stored, and `"decrypt_failed": true` when the stored value cannot be decrypted with the current key (`ENCRYPTION_KEY`, or the key the backend generated in its state directory when that is unset).
 

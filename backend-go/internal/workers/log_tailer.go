@@ -17,6 +17,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/atomicfile"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/websocket"
@@ -224,14 +225,13 @@ func readOffset(posPath string) int64 {
 	return n
 }
 
+// writeOffset persists the read offset through atomicfile: a unique temp file,
+// fsync, rename and a directory fsync. A plain write and rename could leave an
+// empty .pos after a power loss, which readOffset reads as 0, re-ingesting the
+// whole log as duplicate rows.
 func writeOffset(posPath string, offset int64) {
-	tmp := posPath + ".tmp"
-	if err := os.WriteFile(tmp, []byte(strconv.FormatInt(offset, 10)), 0o600); err != nil {
+	if err := atomicfile.Write(posPath, []byte(strconv.FormatInt(offset, 10)), 0o600); err != nil {
 		log.Warn().Err(err).Msg("log tailer: cannot persist offset (will re-read on restart)")
-		return
-	}
-	if err := os.Rename(tmp, posPath); err != nil {
-		log.Warn().Err(err).Msg("log tailer: cannot move offset file into place")
 	}
 }
 

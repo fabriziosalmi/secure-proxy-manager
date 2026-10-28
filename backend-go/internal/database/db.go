@@ -298,81 +298,84 @@ const DefaultBlockedFileTypes = "exe,bat,cmd,dll,msi,scr,ps1,vbs"
 // matching PROXY_CACHE_SIZE_MB in proxy/generate_squid_conf.sh.
 const DefaultCacheSizeMB = "2000"
 
+// DefaultSettings is every setting a new database starts with, as name and
+// value. The handlers derive the boolean settings from it (the ones whose
+// default is "true" or "false") so each one gets a value check.
+var DefaultSettings = [][]string{
+	// Proxy configuration
+	{"proxy_port", "3128"},
+	{"cache_size", DefaultCacheSizeMB},
+	{"memory_cache", "256"},
+	// Feature toggles
+	{"ssl_bump_enabled", "false"},
+	{"egress_default_deny", "false"},
+	{"aggressive_caching_enabled", "false"},
+	{"cache_bypass_domains", ""},
+	{"enable_offline_mode", "false"},
+	{"extra_ssl_ports", ""},
+	{"enable_safesearch", "false"},
+	{"enable_youtube_restricted", "false"},
+	{"enable_proxy_auth", "false"},
+	// Content filtering is off, but its list is stored, so turning the
+	// switch on blocks something. Without a stored list the page showed
+	// "exe,bat,cmd,dll,js" as a fallback that was never saved, no file
+	// was written, and the generator left the rule out: on with nothing
+	// blocked. The list is the Windows formats that run on a double click
+	// and are how droppers arrive. No archives or documents (normal
+	// downloads), no js or css (every web page loads them; the pattern
+	// matches any URL path ending so).
+	{"enable_content_filtering", "false"},
+	{"blocked_file_types", DefaultBlockedFileTypes},
+	// The values the backend writes when the switch is on and nothing is
+	// stored (writeBandwidthSettings, writeTimeRestrictions), stored so the
+	// page shows what will be applied instead of a value of its own.
+	{"enable_bandwidth_limits", "false"},
+	{"bandwidth_limit_mbps", "100"},
+	{"bandwidth_limit_per_user_kbps", "0"},
+	{"enable_time_restrictions", "false"},
+	{"time_restriction_start", "08:00"},
+	{"time_restriction_end", "18:00"},
+	// The WAF heuristics as the shipped compose starts the WAF
+	// (WAF_H_*: all on except sequence validation). With no row the page
+	// showed every heuristic on, sequence validation included, while the
+	// WAF ran it off.
+	{"waf_h_entropy", "true"},
+	{"waf_h_beaconing", "true"},
+	{"waf_h_pii", "true"},
+	{"waf_h_sharding", "true"},
+	{"waf_h_ghosting", "true"},
+	{"waf_h_sequence", "false"},
+	// Logging
+	{"log_retention_days", "30"},
+	{"gdpr_mode", "false"},
+	// Notifications
+	{"enable_notifications", "false"},
+	{"webhook_url", ""},
+	{"gotify_url", ""},
+	{"gotify_token", ""},
+	{"teams_webhook_url", ""},
+	{"telegram_bot_token", ""},
+	{"telegram_chat_id", ""},
+	// Notification limits (handlers/notify_limit.go, which reads a missing
+	// or unusable value as these same defaults): group alerts from one
+	// address for 10 minutes, at most 20 deliveries per channel per hour,
+	// both event types on, every level.
+	{"notify_group_window_minutes", "10"},
+	{"notify_max_per_hour", "20"},
+	{"notify_waf_block", "true"},
+	{"notify_login_failure", "true"},
+	{"notify_min_level", "info"},
+	// Auto-refresh
+	{"auto_refresh_enabled", "false"},
+	{"auto_refresh_hours", "24"},
+	{"egress_provider_refresh_hours", "24"},
+	// State
+	{"default_password_changed", "false"},
+}
+
 // seedDefaultSettings inserts any default setting that is not already present.
 func seedDefaultSettings(db *sql.DB) {
-	// Default settings.
-	defaultSettings := [][]string{
-		// Proxy configuration
-		{"proxy_port", "3128"},
-		{"cache_size", DefaultCacheSizeMB},
-		{"memory_cache", "256"},
-		// Feature toggles
-		{"ssl_bump_enabled", "false"},
-		{"egress_default_deny", "false"},
-		{"aggressive_caching_enabled", "false"},
-		{"cache_bypass_domains", ""},
-		{"enable_offline_mode", "false"},
-		{"extra_ssl_ports", ""},
-		{"enable_safesearch", "false"},
-		{"enable_youtube_restricted", "false"},
-		{"enable_proxy_auth", "false"},
-		// Content filtering is off, but its list is stored, so turning the
-		// switch on blocks something. Without a stored list the page showed
-		// "exe,bat,cmd,dll,js" as a fallback that was never saved, no file
-		// was written, and the generator left the rule out: on with nothing
-		// blocked. The list is the Windows formats that run on a double click
-		// and are how droppers arrive. No archives or documents (normal
-		// downloads), no js or css (every web page loads them; the pattern
-		// matches any URL path ending so).
-		{"enable_content_filtering", "false"},
-		{"blocked_file_types", DefaultBlockedFileTypes},
-		// The values the backend writes when the switch is on and nothing is
-		// stored (writeBandwidthSettings, writeTimeRestrictions), stored so the
-		// page shows what will be applied instead of a value of its own.
-		{"enable_bandwidth_limits", "false"},
-		{"bandwidth_limit_mbps", "100"},
-		{"bandwidth_limit_per_user_kbps", "0"},
-		{"enable_time_restrictions", "false"},
-		{"time_restriction_start", "08:00"},
-		{"time_restriction_end", "18:00"},
-		// The WAF heuristics as the shipped compose starts the WAF
-		// (WAF_H_*: all on except sequence validation). With no row the page
-		// showed every heuristic on, sequence validation included, while the
-		// WAF ran it off.
-		{"waf_h_entropy", "true"},
-		{"waf_h_beaconing", "true"},
-		{"waf_h_pii", "true"},
-		{"waf_h_sharding", "true"},
-		{"waf_h_ghosting", "true"},
-		{"waf_h_sequence", "false"},
-		// Logging
-		{"log_retention_days", "30"},
-		{"gdpr_mode", "false"},
-		// Notifications
-		{"enable_notifications", "false"},
-		{"webhook_url", ""},
-		{"gotify_url", ""},
-		{"gotify_token", ""},
-		{"teams_webhook_url", ""},
-		{"telegram_bot_token", ""},
-		{"telegram_chat_id", ""},
-		// Notification limits (handlers/notify_limit.go, which reads a missing
-		// or unusable value as these same defaults): group alerts from one
-		// address for 10 minutes, at most 20 deliveries per channel per hour,
-		// both event types on, every level.
-		{"notify_group_window_minutes", "10"},
-		{"notify_max_per_hour", "20"},
-		{"notify_waf_block", "true"},
-		{"notify_login_failure", "true"},
-		{"notify_min_level", "info"},
-		// Auto-refresh
-		{"auto_refresh_enabled", "false"},
-		{"auto_refresh_hours", "24"},
-		{"egress_provider_refresh_hours", "24"},
-		// State
-		{"default_password_changed", "false"},
-	}
-	for _, kv := range defaultSettings {
+	for _, kv := range DefaultSettings {
 		db.Exec( //nolint:errcheck
 			"INSERT OR IGNORE INTO settings(setting_name,setting_value) VALUES(?,?)",
 			kv[0], kv[1],

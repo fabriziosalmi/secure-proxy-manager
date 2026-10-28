@@ -205,13 +205,20 @@ func (h *AnalyticsHandlers) lifetimeBase() (maxID int64, total, blocked int, int
 	onlyInt, onlyArgs := onlyInternal(internal)
 	var all, dns, internalRows int
 	// #nosec G202 -- clientRows and the conditions are constants and placeholders; values are bound.
-	_ = h.db.QueryRow(string(`SELECT
+	err := h.db.QueryRow(string(`SELECT
 		IFNULL((SELECT MAX(id) FROM proxy_logs), 0),
 		(SELECT COUNT(*) FROM proxy_logs),
 		(SELECT COUNT(*) FROM proxy_logs WHERE method = 'DNS'),
 		(SELECT COUNT(*) FROM proxy_logs WHERE `+onlyInt+` AND `+clientRows+`),
 		(SELECT COUNT(*) FROM proxy_logs WHERE blocked = 1 AND `+clientRows+` AND `+notInt+`)`),
 		append(onlyArgs, notArgs...)...).Scan(&maxID, &all, &dns, &internalRows, &blocked)
+	if err != nil {
+		// Keep the previous answer and leave the cache expired, so the next
+		// request retries. The error used to be discarded and the zeros it
+		// left cached for lifetimeCountsTTL as if they were the counts.
+		log.Warn().Err(err).Msg("dashboard: all-time request counts could not be read; keeping the previous counts")
+		return h.countsMaxID, h.countsTotal, h.countsBlocked, h.countsInternal
+	}
 	total = all - dns - internalRows
 	h.countsMaxID, h.countsTotal, h.countsBlocked, h.countsInternal, h.countsFetched = maxID, total, blocked, internal, time.Now()
 	return maxID, total, blocked, internal
