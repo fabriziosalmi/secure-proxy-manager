@@ -193,7 +193,8 @@ describe('Blacklists', () => {
       expect(within(section).getByText('473,936')).toBeInTheDocument()
       expect(within(section).getByText('Every entry but the 3 on Allowed domains')).toBeInTheDocument()
       expect(within(section).getByText('No copy: 473,936 names is over its limit of 250,000 (SPM_SQUID_DOMAIN_ACL_MAX)')).toBeInTheDocument()
-      expect(within(section).getByText('1,000,000 entries (SPM_DNS_BLOCKLIST_MAX_DOMAINS)')).toBeInTheDocument()
+      expect(within(section).getByText('1,000,000 entries')).toBeInTheDocument()
+      expect(within(section).getByText('Set by SPM_DNS_BLOCKLIST_MAX_DOMAINS.')).toBeInTheDocument()
       // The semantics db.go (EnforcedDomain) and the watchdog implement: "*."
       // and a leading dot are dropped, the exact name is blocked.
       expect(within(section).getByText(/"\*\.example\.com" and "\.example\.com" each block example\.com itself, in the DNS sinkhole and in Squid alike/)).toBeInTheDocument()
@@ -216,7 +217,7 @@ describe('Blacklists', () => {
       renderWithProviders(<Blacklists />)
       const section = (await screen.findByRole('heading', { name: 'Enforcement' })).closest('section')!
       expect(await within(section).findByText('32,215')).toBeInTheDocument()
-      expect(within(section).getByText(/merged from 50,772 entries, recorded/)).toBeInTheDocument()
+      expect(within(section).getByText(/^Merged from 50,772 entries, recorded /)).toBeInTheDocument()
       expect(within(section).getByText(/Squid checks this list before Allowed IPs, so an address on both stays blocked/)).toBeInTheDocument()
     })
 
@@ -254,7 +255,7 @@ describe('Blacklists', () => {
         // The Added column (the range is also under the name, for a phone).
         expect(row('Firehol Level 1').cells[2]).toHaveTextContent(/^Sun 25 11:00 to 11:02$/)
         expect(row('Manual').cells[2]).toHaveTextContent(/^Sun 25 10:00$/)
-        expect(within(row('Source not recorded')).getByText('Added before this release recorded where entries come from')).toBeInTheDocument()
+        expect(within(row('Source not recorded')).getByText('Added before sources were recorded')).toBeInTheDocument()
         expect(within(row('Source not recorded')).getByText('50,772')).toBeInTheDocument()
       } finally { restoreTz() }
     })

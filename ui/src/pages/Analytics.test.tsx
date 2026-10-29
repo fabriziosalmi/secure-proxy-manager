@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
+import { AxiosError, AxiosHeaders } from 'axios'
 import { renderWithProviders, simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 import { expectNoAxeViolations } from '../test/axe'
 import { api } from '../lib/api'
@@ -42,23 +43,21 @@ const coverage: Coverage = {
   alerts: { enabled: false, channels: 0, waf_alerts_delivered: true },
 }
 
-const summary = {
-  waf_status: 'ok',
-  waf: { total_requests: 1030, total_blocked: 1, avg_url_entropy: 2, high_entropy_count: 0, requests_last_minute: 0, top_blocked_categories: [{ key: 'SQL injection', count: 1 }] },
-  top_blocked: [{ dest: 'malware.example', count: 1328, reasons: [] }],
-  recent_blocks: [{ timestamp: '2026-10-25 09:00:00', destination: 'live-feed.example', host: 'live-feed.example' }],
-}
+// GET /api/waf/stats: the WAF's own counters, as the backend passes them on.
+const wafStats = { total_requests: 1030, total_blocked: 1, avg_url_entropy: 2, high_entropy_count: 0, requests_last_minute: 0, top_blocked_categories: [{ key: 'SQL_INJECTION', count: 3 }, { key: 'HEURISTIC_BEACONING', count: 1 }] }
 
 const bodies: Record<string, unknown> = {
   'analytics/blocked-by-day': blockedByDay,
   'analytics/coverage': coverage,
-  'dashboard/summary': summary,
+  'waf/stats': wafStats,
   'analytics/shadow-it': [{ name: 'Facebook', domain: 'facebook.com', requests: 1328, category: 'Social' }],
   'analytics/user-agents': { methods: [], service_types: [{ name: 'Other', count: 50772 }, { name: 'CDN', count: 230 }] },
   'analytics/file-extensions': { extensions: [{ ext: '.js', count: 12 }, { ext: '.png', count: 3 }], categories: [{ category: 'Web', count: 12 }, { category: 'Images', count: 3 }], examined: 40, limit: 10000 },
 }
 
 let failing = new Set<string>()
+// Paths that answer an HTTP error with a body, as the backend does.
+let errors: Record<string, { status: number; data: unknown }> = {}
 const calls: string[] = []
 
 function serve() {
@@ -66,6 +65,10 @@ function serve() {
     calls.push(url)
     const key = url.split('?')[0]
     if (failing.has(key)) return Promise.reject(new Error('Network Error'))
+    if (errors[key]) {
+      const { status, data } = errors[key]
+      return Promise.reject(new AxiosError(String(status), 'ERR_BAD_RESPONSE', undefined, undefined, { status, data, statusText: '', headers: {}, config: { headers: new AxiosHeaders() } }))
+    }
     return Promise.resolve({ data: { status: 'success', data: bodies[key] ?? null } })
   })
 }
@@ -76,6 +79,7 @@ describe('Analytics', () => {
   let restoreTz: () => void
   beforeEach(() => {
     failing = new Set()
+    errors = {}
     calls.length = 0
     restoreTz = setRomeTimeZone()
     serve()
@@ -93,7 +97,7 @@ describe('Analytics', () => {
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'Blocked requests per day, by rule',
       'Protection coverage',
-      'WAF categories',
+      'WAF rule matches',
       'Cloud services in use',
       'Traffic by kind of service',
       'Downloads by file type',
@@ -106,6 +110,8 @@ describe('Analytics', () => {
     expect(screen.queryByText('live-feed.example')).toBeNull()
     expect(calls).not.toContain('analytics/top-domains')
     expect(calls).not.toContain('security/score')
+    // The menu group is Insights; Overview is only the page at "/".
+    expect(screen.getByText('Insights')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Last 24 hours: Overview' })).toHaveAttribute('href', '/')
     expect(screen.getByRole('link', { name: 'Every request: Access logs' })).toHaveAttribute('href', '/logs')
   })
@@ -117,12 +123,16 @@ describe('Analytics', () => {
     const days = [...screen.getByTestId('day-bars').querySelectorAll('[data-day]')]
     expect(days.map((d) => d.getAttribute('data-day'))).toEqual(DAYS.map((d) => `2026-10-${d}`))
     for (const d of days.slice(0, 6)) expect(d.querySelectorAll('[data-series]')).toHaveLength(0)
-    // Bottom first: the rules in their fixed order, then the rows with no reason.
+    // Bottom first: the rules by their colour, fixed per rule, then the rows with no reason.
     const today = [...days[6].querySelectorAll('[data-series]')]
     expect(today.map((s) => [s.getAttribute('data-series'), s.getAttribute('data-count')])).toEqual([
       ['domain_blacklist_dns', '22'], ['waf', '1'], ['unclassified', '1300'],
     ])
-    expect(today.map((s) => s.className.match(/bg-[a-z0-9-]+/)?.[0])).toEqual(['bg-series-1', 'bg-series-2', 'bg-chart-neutral'])
+    expect(today.map((s) => s.className.match(/bg-[a-z0-9-]+/)?.[0])).toEqual(['bg-series-2', 'bg-series-4', 'bg-chart-neutral'])
+    // The rules share the day's bar by their counts; only the whole bar has a floor.
+    expect(today.map((s) => (s as HTMLElement).style.flexGrow)).toEqual(['22', '1', '1300'])
+    expect(today.every((s) => !(s as HTMLElement).style.height)).toBe(true)
+    expect((days[6].querySelector('[data-testid="day-bar"]') as HTMLElement).style.height).toMatch(/^max\(4px, /)
     const chart = region('Blocked requests per day, by rule')
     // The legend names each rule by the API label.
     for (const label of ['Domain blacklist (DNS)', 'WAF', 'Unclassified (no reason recorded)']) expect(within(chart).getAllByText(label).length).toBeGreaterThan(0)
@@ -151,12 +161,26 @@ describe('Analytics', () => {
     expect(within(cov).getByRole('link', { name: 'Alerts' })).toHaveAttribute('href', '/settings/alerts')
   })
 
+  it('names each WAF category in words with its kind, never as the raw key, and says a match is not a block', async () => {
+    renderWithProviders(<Analytics />)
+    const waf = region('WAF rule matches')
+    await waitFor(() => { expect(within(waf).getByText('SQL injection')).toBeInTheDocument() })
+    expect(within(waf).getByText('Beaconing (regular call-backs)')).toBeInTheDocument()
+    expect(within(waf).getByText('rule')).toBeInTheDocument()
+    expect(within(waf).getByText('heuristic')).toBeInTheDocument()
+    expect(waf.textContent).not.toMatch(/[A-Z]+_[A-Z_]+/)
+    expect(waf).toHaveTextContent('A match is not a block')
+  })
+
   it('shows the WAF counters with their window, and the three 7-day sections with what they count', async () => {
     renderWithProviders(<Analytics />)
-    const waf = region('WAF categories')
-    await waitFor(() => { expect(within(waf).getByText('Since the WAF last started or its counters were reset, 1,030 requests inspected.')).toBeInTheDocument() })
-    expect(within(waf).getByText('SQL injection')).toBeInTheDocument()
-    expect(within(waf).getByText(/No other category matched\. 1 of the inspected requests were blocked\./)).toBeInTheDocument()
+    const waf = region('WAF rule matches')
+    await waitFor(() => {
+      expect(within(waf).getByText(
+        'Since the WAF started or its counters were reset: 1,030 requests inspected, 1 blocked. A match is not a block: a request is blocked only when its matches add up to the block threshold.',
+      )).toBeInTheDocument()
+    })
+    expect(within(waf).getByText('No other category matched.')).toBeInTheDocument()
 
     const svc = region('Cloud services in use')
     expect(svc).toHaveTextContent('Client requests in the last 7 days to services recognised by their host name.')
@@ -172,17 +196,24 @@ describe('Analytics', () => {
     expect(within(files).getByText('Extensions: .js 12, .png 3.')).toBeInTheDocument()
   })
 
+  // The WAF card reads waf/stats; the whole dashboard summary was fetched every 30 s for it.
+  it('asks the WAF endpoint for the WAF figures, not the dashboard summary', async () => {
+    renderWithProviders(<Analytics />)
+    await waitFor(() => expect(calls).toContain('waf/stats'))
+    expect(calls).not.toContain('dashboard/summary')
+  })
+
   it('says which part is missing when an endpoint does not answer, or the WAF refuses the backend', async () => {
     failing = new Set(['analytics/blocked-by-day', 'analytics/coverage', 'analytics/user-agents'])
-    bodies['dashboard/summary'] = { ...summary, waf: null, waf_status: 'auth_failed' }
+    errors['waf/stats'] = { status: 502, data: { status: 'error', detail: 'WAF stats returned 403 Forbidden', waf_status: 'auth_failed' } }
     try {
       renderWithProviders(<Analytics />)
       await waitFor(() => { expect(within(region('Blocked requests per day, by rule')).getByRole('alert')).toHaveTextContent('Could not load the daily counts (analytics/blocked-by-day).') })
-      await waitFor(() => { expect(within(region('Protection coverage')).getByRole('alert')).toHaveTextContent('Not reported: analytics/coverage did not answer.') })
-      await waitFor(() => { expect(within(region('Traffic by kind of service')).getByRole('alert')).toHaveTextContent('Not reported: analytics/user-agents did not answer.') })
-      await waitFor(() => { expect(within(region('WAF categories')).getByRole('alert')).toHaveTextContent('Not available: the WAF refuses the backend credential.') })
+      await waitFor(() => { expect(within(region('Protection coverage')).getByRole('alert')).toHaveTextContent('What protection is on could not be read.Detail: GET /api/analytics/coverage did not answer.') })
+      await waitFor(() => { expect(within(region('Traffic by kind of service')).getByRole('alert')).toHaveTextContent('The traffic by kind of service could not be loaded.Detail: GET /api/analytics/user-agents did not answer.') })
+      await waitFor(() => { expect(within(region('WAF rule matches')).getByRole('alert')).toHaveTextContent('Not available: the WAF refuses the backend credential.') })
     } finally {
-      bodies['dashboard/summary'] = summary
+      errors = {}
     }
   })
 

@@ -67,6 +67,9 @@
       },
       {
         "context": "Licence inventory"
+      },
+      {
+        "context": "UI layout (Playwright)"
       }
     ]
   },

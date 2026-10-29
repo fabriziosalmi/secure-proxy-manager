@@ -466,7 +466,10 @@ export function Logs() {
     return opts;
   }, [stats.data, filters.rule]);
 
-  const liveLabel = !live ? 'Paused' : wsStatus === 'connected' ? 'Live' : wsStatus === 'connecting' ? 'Connecting' : 'Reconnecting';
+  // The switch keeps one name; the connection is a status line beside it.
+  // The button used to be renamed Live, Paused, Connecting and Reconnecting,
+  // so a screen reader heard a different control at each state.
+  const liveState = !live ? 'Paused' : wsStatus === 'connected' ? 'Connected' : wsStatus === 'connecting' ? 'Connecting' : 'Reconnecting';
 
   return (
     <div className="flex flex-col gap-5">
@@ -482,8 +485,9 @@ export function Logs() {
               className={cn(live && wsStatus === 'connected' && 'border-success/40 bg-success-subtle text-success hover:enabled:bg-success-subtle hover:enabled:text-success')}
               icon={<span className={cn('block h-2 w-2 rounded-full', live && wsStatus === 'connected' ? 'bg-success' : 'bg-ink-subtle')} />}
             >
-              {liveLabel}
+              Live updates
             </Button>
+            <span role="status" aria-label="Live updates" className="self-center text-xs text-ink-muted">{liveState}</span>
             <Button icon={<Download />} onClick={() => { void exportCsv(); }} disabled={exporting}>
               {exporting ? 'Exporting' : 'Export CSV'}
             </Button>
