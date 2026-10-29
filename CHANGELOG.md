@@ -17,6 +17,15 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **The browser e2e suite waits for the geo-block import it starts.** The
+  Geo-block test clicked "Download and block IPs" and moved on after 5
+  seconds; the backend went on importing the CN networks (8.4 s on one CI
+  run) and committed them during the next test, above the two addresses
+  that test had just imported, so "fits a 390 px wide screen" did not find
+  203.0.113.201 on the first page, on its retry either. The Geo-block test
+  now waits for the answer (200, or 502 when the feed is unreachable), the
+  phone test checks its import answered 200 and finds the address by
+  search instead of by its place in the list.
 - The WAF image stores its binary once, owned by root and run by the `waf`
   user, who can no longer change it. A `chown` after the copy wrote a second
   full copy of the binary in its own layer (8.1 MB on amd64) and let the
@@ -52,6 +61,15 @@ for at least one minor release before disappearing.
   marks in both places differ by shape (triangle, hollow circle, filled
   circle, dashed circle) as well as colour, and Protection coverage has a
   legend. Alerts off is *worth knowing* on both pages.
+- **The Analytics WAF card says it counts matches, not blocks.** Titled
+  "WAF categories", it listed the categories that matched a request, weak
+  matches below the block threshold included, since the WAF started, on a
+  page whose subtitle says "Last 7 days", and only its last line said how
+  many requests were blocked (often 0). It is now "WAF rule matches", says
+  "a match is not a block" and the blocked count in its description, and
+  names each category in words with its kind (rule, heuristic, domain
+  reputation, size limit) instead of the raw key (`SQL_INJECTION`,
+  `HEURISTIC_BEACONING`).
 
 ### Internal
 
