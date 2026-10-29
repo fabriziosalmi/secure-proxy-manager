@@ -21,6 +21,15 @@ for at least one minor release before disappearing.
   user, who can no longer change it. A `chown` after the copy wrote a second
   full copy of the binary in its own layer (8.1 MB on amd64) and let the
   process change the mode of its own executable. CI checks both.
+- **Analytics counts the internal addresses of its own 7 days.** "Requests
+  from N internal addresses are not counted" under the blocks-per-day chart
+  counted every internal address ever logged, sinkhole (DNS) rows included,
+  so it read 4 where the Clients page, over the same days, read 2.
+  `GET /api/analytics/blocked-by-day` now returns in `internal_sources` the
+  internal sources that sent client requests in the chart's 7 days (networks
+  in GDPR mode), and the text says "in these 7 days". The Clients page no
+  longer says its internal addresses are "not counted on the Overview", whose
+  own figure covers 24 hours: they are not counted in any statistic.
 
 ## [3.18.3] - 2026-10-28
 
