@@ -34,6 +34,12 @@ for at least one minor release before disappearing.
   `3 KB` next to `6.9 KB` and `7 KB`, as if measured to two precisions. A
   size under 100 of its unit now always has one decimal (`3.0 KB`,
   `50.0 MB`); from 100 up it has none (`252 KB`), as before.
+- **A small blocked share is drawn as a bar, not as a sliver.** The share
+  bar of the Overview's Blocked card and of the Clients table filled its
+  share of a rounded track: 2.2% of an 80 px track was 1.75 px, which the
+  rounding clipped into something like a "(". The fill is now at least 2 px
+  with a square start; a client with no blocked request shows a muted "0%"
+  and no empty track, rather than "0.0%" over an empty bar on every row.
 
 ## [3.18.3] - 2026-10-28
 
