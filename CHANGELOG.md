@@ -15,6 +15,16 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Overview's hourly chart writes no hour twice and marks its partial
+  hours.** Its 24 hours span 25 hourly bars, the first and last covering only
+  part of an hour, and the axis read 08:00 at both ends: the first 08:00 was
+  the 8 minutes of yesterday after 08:52. The axis now starts with the
+  window's own start ("Wed 08:52") and ends with "Now"; the first and last
+  bars are drawn lighter and their tooltips name the minutes they cover
+  ("08:52 to 09:00 only").
+
 ## [3.18.3] - 2026-10-28
 
 A fix release. The web UI keeps working when the backend container is
