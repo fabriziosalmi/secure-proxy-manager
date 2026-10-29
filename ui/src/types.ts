@@ -385,7 +385,7 @@ export interface BlockedByDay {
   days: BlockedDay[];
   /** The totals of the 7 days, largest first. */
   reasons: ReasonCount[];
-  /** Internal sources whose rows no day counts. */
+  /** Internal sources that sent client requests in these 7 days (networks in GDPR mode); no day counts their rows. */
   internal_sources: number;
 }
 
