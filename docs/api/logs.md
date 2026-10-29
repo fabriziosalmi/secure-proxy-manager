@@ -53,7 +53,7 @@ counts the matching rows that were left out.
       "bytes": 4862,
       "blocked": true,
       "reason": "domain_blacklist_dns",
-      "reason_label": "Domain blacklist (DNS)",
+      "reason_label": "Domain blacklist (DNS sinkhole)",
       "internal": false,
       "kind": "Private network address",
       "resolved_ip": null
@@ -158,8 +158,8 @@ GET /api/logs/stats
     "blocked_count": 342,
     "ip_blocks_count": 18,
     "blocked_by_reason": [
-      { "reason": "domain_blacklist_dns", "label": "Domain blacklist (DNS)", "count": 300 },
-      { "reason": "domain_blacklist", "label": "Domain blacklist", "count": 24 },
+      { "reason": "domain_blacklist_dns", "label": "Domain blacklist (DNS sinkhole)", "count": 300 },
+      { "reason": "domain_blacklist", "label": "Domain blacklist (proxy)", "count": 24 },
       { "reason": "direct_ip", "label": "Direct IP", "count": 18 }
     ],
     "last_import": "2026-03-25 14:32:10"
@@ -262,6 +262,17 @@ change to a list (add, remove, bulk remove, clear, import, removal of a
 source, restore) writes a row. Sign-in, failed sign-in and sign-out rows carry
 the client address in `target`.
 
+A settings save (`update_settings` for `POST /api/settings`, `update_setting`
+for `PUT /api/settings/{name}`) writes a row only when it changed something,
+after the change is stored: `target` is the changed keys, comma-separated, and
+`details` gives each one's old and new value. A secret is never written, only
+whether it was set or cleared; a value longer than 512 characters is cut and
+marked `truncated`.
+
+```json
+{ "changes": { "enable_notifications": { "from": "false", "to": "true" } }, "secrets": { "telegram_bot_token": "set" } }
+```
+
 ```json
 {
   "status": "success",
@@ -285,7 +296,7 @@ These return JSON in the standard envelope, in the shape the UI renders:
 | `GET /api/dashboard/summary` | The dashboard's data in one call (with `gdpr_mode` on, `top_clients` are aggregated by `/24` or `/64` network and `recent_blocks[].source_ip` is masked) |
 | `GET /api/traffic/statistics?period=day` | Requests and blocks per bucket (`hour`, `day`, `week`, `month`) |
 | `GET /api/clients/statistics` | Top 50 clients (or `/24` and `/64` networks with `gdpr_mode` on, including `network` CIDR and distinct `addresses` count), then the internal sources |
-| `GET /api/clients/{ip}/details` | One client's or network CIDR's totals, top domains and recent requests (with `gdpr_mode` on, only `/24` or `/64` CIDRs are accepted and a single address answers `400`) |
+| `GET /api/clients/{ip}/details?window=7d` | One client's or network CIDR's totals, top domains, recent requests and blocks by rule. `window=7d` counts the last 7 days, as `GET /api/clients/statistics` does; `window=all`, the default, counts every request logged; any other value answers `400`. The answer says which in `window`. With `gdpr_mode` on, only `/24` or `/64` CIDRs are accepted and a single address answers `400` |
 | `GET /api/domains/statistics` | Top 50 domains |
 | `GET /api/analytics/shadow-it` | Requests of the last 7 days to known services, by host |
 | `GET /api/analytics/user-agents` | Requests of the last 7 days by method and kind of service |
@@ -293,7 +304,7 @@ These return JSON in the standard envelope, in the shape the UI renders:
 | `GET /api/analytics/top-domains` | Top 50 domains |
 | `GET /api/analytics/blocked-by-day` | Blocked requests per day by rule for 7 days (`tz`, default UTC) |
 | `GET /api/analytics/coverage` | What protection is on now |
-| `GET /api/waf/stats` | WAF statistics, from the WAF |
+| `GET /api/waf/stats` | WAF statistics, from the WAF. When there are none it answers `502` (`503` while the circuit breaker is open) with `waf_status`, the reason in the words of `dashboard/summary`: `unreachable`, `auth_failed` (the WAF refused the backend's credential) or `error` |
 | `GET /api/waf/categories` | WAF rule categories and whether each is on |
 
 See the [API reference](/api/reference) for the full list.

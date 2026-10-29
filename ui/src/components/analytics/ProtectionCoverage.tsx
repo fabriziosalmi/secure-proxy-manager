@@ -8,6 +8,7 @@ import { Link } from 'react-router';
 import type { Coverage } from '../../types';
 import { POSTURE_WORD, type Posture } from '../../lib/posture';
 import { Section } from '../ui/Section';
+import { Unavailable } from '../ui/Unavailable';
 import { PostureMark } from '../ui/PostureMark';
 import { coverageLines } from './coverage';
 
@@ -44,7 +45,7 @@ export function ProtectionCoverage({ data, loading, error }: ProtectionCoverageP
       </div>
     );
   } else if (error || !data) {
-    body = <p role="alert" className="text-sm text-ink-muted">Not reported: analytics/coverage did not answer.</p>;
+    body = <Unavailable endpoint="analytics/coverage">What protection is on could not be read.</Unavailable>;
   } else {
     const lines = coverageLines(data);
     body = (

@@ -6,8 +6,8 @@
  * - analytics/blocked-by-day?tz=<zone>: blocked requests per calendar day,
  *   by rule;
  * - analytics/coverage: what is switched on and enforced now;
- * - dashboard/summary (waf, waf_status): the WAF's own category counters,
- *   shared with the Overview's query;
+ * - waf/stats (or waf_status saying why not): the WAF's own category counters,
+ *   the only WAF call: the dashboard summary is not downloaded for it;
  * - analytics/shadow-it, analytics/user-agents, analytics/file-extensions:
  *   services, kinds of service and file types of the last 7 days.
  *
@@ -25,7 +25,8 @@ import { Link } from 'react-router';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getData } from '../lib/api';
-import type { BlockedByDay, Coverage, DashboardSummary, FileExtData, ServiceTypeData, ShadowItService } from '../types';
+import type { BlockedByDay, Coverage, FileExtData, ServiceTypeData, ShadowItService } from '../types';
+import { readWafStats, type WafReading } from '../lib/wafStats';
 import { PageHeader } from '../components/ui/PageHeader';
 import { BlockedPerDay } from '../components/analytics/BlockedPerDay';
 import { ProtectionCoverage } from '../components/analytics/ProtectionCoverage';
@@ -65,11 +66,12 @@ export function Analytics() {
     queryFn: () => getData<Coverage>('analytics/coverage'),
     refetchInterval,
   });
-  // The Overview's query: one fetch serves both pages.
-  const summary = useQuery<DashboardSummary | null>({
-    queryKey: ['dashboard'],
-    queryFn: () => getData<DashboardSummary>('dashboard/summary'),
-    refetchInterval: visible ? 30_000 : false,
+  // Only the WAF's figures: the whole dashboard summary (24-hour counts,
+  // top lists, recent blocks) was downloaded every 30 s for this one card.
+  const waf = useQuery<WafReading>({
+    queryKey: ['waf', 'stats'],
+    queryFn: readWafStats,
+    refetchInterval,
   });
   const services = useQuery<ShadowItService[] | null>({
     queryKey: ['analytics', 'shadow-it'],
@@ -90,7 +92,7 @@ export function Analytics() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Overview"
+        eyebrow="Insights"
         title="Analytics"
         description="Last 7 days, client traffic only. Times are your local time."
         actions={
@@ -107,7 +109,7 @@ export function Analytics() {
       </div>
 
       <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))]">
-        <WafCategories summary={state(summary)} />
+        <WafCategories reading={state(waf)} />
         <ServicesInUse services={state(services)} onRetry={() => { void services.refetch(); }} />
         <ServiceKinds kinds={state(kinds)} />
         <FileTypes files={state(files)} />

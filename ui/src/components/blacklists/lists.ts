@@ -3,7 +3,7 @@
  * and enforced. The URL keeps the list in ?tab=, so a link opens it and the
  * back button returns to the one before.
  */
-import { formatDate, formatDateTime, formatHourMinute } from '../../lib/format';
+import { formatDate, formatHourMinute, formatWhen } from '../../lib/format';
 import type { ListEntry, ListSource } from '../../types';
 
 export type ListKey = 'blocked-ips' | 'blocked-domains' | 'allowed-ips' | 'allowed-domains';
@@ -131,11 +131,12 @@ export function sourceName(kind: string | null | undefined, source?: string | nu
 /** The line under a source's name: the URL it was fetched from, or why it has none. */
 export function sourceDetail(s: Pick<ListSource, 'kind' | 'source' | 'label' | 'first_added'>): string | null {
   if (s.kind === 'url') return s.source || null;
-  if (s.kind === 'unrecorded') return 'Added before this release recorded where entries come from';
+  if (s.kind === 'unrecorded') return 'Added before sources were recorded';
   // Each paste and each restore is a source of its own: the time tells two
   // apart.
-  if (s.kind === 'paste') return s.first_added ? `Pasted ${formatDateTime(s.first_added)}` : null;
-  if (s.kind === 'restore') return s.first_added ? `Restored ${formatDateTime(s.first_added)}` : null;
+  // To the second: two pastes a minute apart must read differently.
+  if (s.kind === 'paste') return s.first_added ? `Pasted ${formatWhen(s.first_added, { style: 'full' })}` : null;
+  if (s.kind === 'restore') return s.first_added ? `Restored ${formatWhen(s.first_added, { style: 'full' })}` : null;
   return null;
 }
 
@@ -147,12 +148,12 @@ function hostOf(url: string): string {
   }
 }
 
-/** "2026-10-25 08:00" in the viewer's time zone. */
+/** "08:00" today, "Yesterday 08:00", "Sun 25 08:00" in the last week, "2026-10-21 08:00" before (formatWhen, glance). */
 export function shortDateTime(ts: string): string {
-  return ts ? `${formatDate(ts)} ${formatHourMinute(ts)}` : 'Not recorded';
+  return ts ? formatWhen(ts, { style: 'glance' }) : 'Not recorded';
 }
 
-/** "2026-10-25 08:00 to 08:02", or one time when the range is one minute. */
+/** "Sun 25 08:00 to 08:02" (the first time as shortDateTime writes it), or one time when the range is one minute. */
 export function addedRange(first: string, last: string): string {
   if (!first) return 'Not recorded';
   const a = shortDateTime(first);

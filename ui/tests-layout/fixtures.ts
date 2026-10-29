@@ -30,17 +30,17 @@ const summary = {
   last_24h_internal_sources: 1, last_24h_internal_requests: 40,
   last_request_at: '2026-10-29 07:51:30',
   top_blocked: [
-    { dest: 'iadsdk.apple.com', count: 31, reasons: [r('domain_blacklist', 'Domain blacklist', 31)] },
+    { dest: 'iadsdk.apple.com', count: 31, reasons: [r('domain_blacklist', 'Domain blacklist (proxy)', 31)] },
     { dest: 'mtalk.google.com:5228', count: 27, reasons: [r('port_policy', 'Port policy', 27)] },
-    { dest: 'github.com', count: 24, reasons: [r('domain_blacklist', 'Domain blacklist', 20), r('domain_blacklist_dns', 'Domain blacklist (DNS)', 4)] },
+    { dest: 'github.com', count: 24, reasons: [r('domain_blacklist', 'Domain blacklist (proxy)', 20), r('domain_blacklist_dns', 'Domain blacklist (DNS sinkhole)', 4)] },
   ],
   top_clients: [{ ip: '10.20.0.109', count: 2300 }, { ip: '10.20.0.20', count: 50 }, { ip: '10.20.0.30', count: 7 }],
   threat_categories: [],
-  blocked_by_reason_24h: [r('domain_blacklist', 'Domain blacklist', 66), r('port_policy', 'Port policy', 27), r('domain_blacklist_dns', 'Domain blacklist (DNS)', 4)],
+  blocked_by_reason_24h: [r('domain_blacklist', 'Domain blacklist (proxy)', 66), r('port_policy', 'Port policy', 27), r('domain_blacklist_dns', 'Domain blacklist (DNS sinkhole)', 4)],
   recent_blocks: [
-    { timestamp: '2026-10-29 00:34:30', source_ip: '10.20.0.109', method: 'CONNECT', destination: 'iadsdk.apple.com:443', host: 'iadsdk.apple.com', status: 'TCP_DENIED/403', reason: 'domain_blacklist', reason_label: 'Domain blacklist' },
-    { timestamp: '2026-10-28 22:51:10', source_ip: '10.20.0.109', method: 'CONNECT', destination: 'github.com:443', host: 'github.com', status: 'TCP_DENIED/403', reason: 'domain_blacklist', reason_label: 'Domain blacklist' },
-    { timestamp: '2026-10-28 22:43:05', source_ip: '10.20.0.109', method: 'CONNECT', destination: 'iadsdk.apple.com:443', host: 'iadsdk.apple.com', status: 'TCP_DENIED/403', reason: 'domain_blacklist', reason_label: 'Domain blacklist' },
+    { timestamp: '2026-10-29 00:34:30', source_ip: '10.20.0.109', method: 'CONNECT', destination: 'iadsdk.apple.com:443', host: 'iadsdk.apple.com', status: 'TCP_DENIED/403', reason: 'domain_blacklist', reason_label: 'Domain blacklist (proxy)' },
+    { timestamp: '2026-10-28 22:51:10', source_ip: '10.20.0.109', method: 'CONNECT', destination: 'github.com:443', host: 'github.com', status: 'TCP_DENIED/403', reason: 'domain_blacklist', reason_label: 'Domain blacklist (proxy)' },
+    { timestamp: '2026-10-28 22:43:05', source_ip: '10.20.0.109', method: 'CONNECT', destination: 'iadsdk.apple.com:443', host: 'iadsdk.apple.com', status: 'TCP_DENIED/403', reason: 'domain_blacklist', reason_label: 'Domain blacklist (proxy)' },
   ],
   ip_blacklist_count: 50772, domain_blacklist_count: 77569,
   squid_domain_acl: domainAcl,
@@ -62,10 +62,10 @@ const blockedByDay = {
     const proxy = Math.floor(n * 0.5);
     const reasons = n === 0 ? [] : i === 2
       ? [r('unclassified', 'Unclassified (no reason recorded)', n)]
-      : [r('domain_blacklist_dns', 'Domain blacklist (DNS)', dns), r('domain_blacklist', 'Domain blacklist', proxy), r('port_policy', 'Port policy', n - dns - proxy)];
+      : [r('domain_blacklist_dns', 'Domain blacklist (DNS sinkhole)', dns), r('domain_blacklist', 'Domain blacklist (proxy)', proxy), r('port_policy', 'Port policy', n - dns - proxy)];
     return { date, start: 0, end: 0, blocked: n, reasons };
   }),
-  reasons: [r('domain_blacklist', 'Domain blacklist', 70), r('domain_blacklist_dns', 'Domain blacklist (DNS)', 37), r('port_policy', 'Port policy', 30), r('unclassified', 'Unclassified (no reason recorded)', 8)],
+  reasons: [r('domain_blacklist', 'Domain blacklist (proxy)', 70), r('domain_blacklist_dns', 'Domain blacklist (DNS sinkhole)', 37), r('port_policy', 'Port policy', 30), r('unclassified', 'Unclassified (no reason recorded)', 8)],
 };
 
 const coverage = {
@@ -95,17 +95,17 @@ const clientDetail = {
     { destination: 'gdmf.apple.com', requests: 398, blocked: 0 },
     { destination: 'github.com', requests: 40, blocked: 24 },
   ],
-  recent: [{ timestamp: '2026-10-29 07:51:30', method: 'CONNECT', destination: 'clientservices.googleapis.com:443', status: 'TCP_TUNNEL/200', bytes: 3072, blocked: false, reason: 'none', reason_label: 'Not blocked' }],
-  blocked_by_reason: [r('domain_blacklist', 'Domain blacklist', 100), r('unclassified', 'Unclassified (no reason recorded)', 8)],
+  recent: [{ timestamp: '2026-10-29 07:51:30', method: 'CONNECT', destination: 'clientservices.googleapis.com:443', status: 'TCP_TUNNEL/200', bytes: 3072, blocked: false, reason: 'none', reason_label: 'Allowed' }],
+  blocked_by_reason: [r('domain_blacklist', 'Domain blacklist (proxy)', 100), r('unclassified', 'Unclassified (no reason recorded)', 8)],
 };
 
 const logRows = [3072, 7066, 4096, 6963, 7168, 3379].map((bytes, i) => ({
   id: 1000 - i, timestamp: `2026-10-29 07:51:${String(30 - i).padStart(2, '0')}`, source_ip: '10.20.0.109', method: 'CONNECT',
-  destination: 'clientservices.googleapis.com:443', status: 'TCP_TUNNEL/200', bytes, blocked: false, reason: 'none', reason_label: 'Not blocked',
+  destination: 'clientservices.googleapis.com:443', status: 'TCP_TUNNEL/200', bytes, blocked: false, reason: 'none', reason_label: 'Allowed',
   internal: false, kind: 'Private network address', resolved_ip: '142.250.180.10',
 })).concat([{
   id: 990, timestamp: '2026-10-28 22:51:10', source_ip: '10.20.0.109', method: 'CONNECT', destination: 'github.com:443', status: 'TCP_DENIED/403',
-  bytes: 3900, blocked: true, reason: 'domain_blacklist', reason_label: 'Domain blacklist', internal: false, kind: 'Private network address', resolved_ip: null as unknown as string,
+  bytes: 3900, blocked: true, reason: 'domain_blacklist', reason_label: 'Domain blacklist (proxy)', internal: false, kind: 'Private network address', resolved_ip: null as unknown as string,
 }]);
 
 const enforcement = {
@@ -178,6 +178,7 @@ export function answer(url: URL): Json | undefined {
     case 'status': return ok({ proxy_status: 'running', backend_status: 'running', proxy_port: '3128', version: '3.18.3' });
     case 'health': return { status: 'healthy', version: '3.18.3' };
     case 'dashboard/summary': return ok(summary);
+    case 'waf/stats': return ok(summary.waf);
     case 'logs/timeline': return ok(timeline);
     case 'cache/statistics': return ok({ state: 'not_collected', collected_at: null, age_s: null });
     case 'analytics/blocked-by-day': return ok(blockedByDay);
@@ -190,7 +191,7 @@ export function answer(url: URL): Json | undefined {
     case 'analytics/user-agents': return ok({ methods: [], service_types: [{ name: 'Apple', count: 4445 }, { name: 'Other', count: 3086 }, { name: 'Google Services', count: 418 }] });
     case 'analytics/file-extensions': return ok({ extensions: [], categories: [], examined: 0, limit: 10000 });
     case 'clients/statistics': return { status: 'success', ...clients };
-    case 'logs/stats': return ok({ total_count: 6539, blocked_count: 145, blocked_by_reason: [r('domain_blacklist', 'Domain blacklist', 100)] });
+    case 'logs/stats': return ok({ total_count: 6539, blocked_count: 145, blocked_by_reason: [r('domain_blacklist', 'Domain blacklist (proxy)', 100)] });
     case 'logs': return list(logRows, { total: 6539, limit: 100, offset: 0, internal: 120 });
     case 'blacklists/enforcement': return ok(enforcement);
     case 'egress-allowlist': return list([], { total: 0, limit: 50, offset: 0 });

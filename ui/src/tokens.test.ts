@@ -81,40 +81,74 @@ describe('design tokens', () => {
     })
 
   // The series of one chart (the Analytics page's blocks per day by rule)
-  // stack in one bar, so a reader must tell them apart without hue: from
-  // neutral-bar, each step is darker (light theme) or lighter (dark theme)
-  // than the one before by at least 0.06 in OKLab lightness, the step the
-  // data-viz method takes as visible, and each is a mark at 3:1 on the page.
+  // stack in one bar, one colour per group of rules. A reader must tell any
+  // two apart, also with a colour vision deficiency: every pair, neutral-bar
+  // included, is at least 0.12 apart in OKLab, and 0.07 apart once the
+  // colours are passed through the protanopia, deuteranopia and tritanopia
+  // simulations of Machado et al. (2009, severity 1). Each is a mark at 3:1
+  // on the page. The four reds this replaced were 0.08 apart.
   const SERIES = ['neutral-bar', 'series-1', 'series-2', 'series-3', 'series-4']
-  for (const [theme, tokens, direction, grounds] of [
-    ['light', light, -1, ['surface', 'ground']],
-    ['dark', dark, 1, ['surface', 'ground']],
+  for (const [theme, tokens, grounds] of [
+    ['light', light, ['surface', 'ground']],
+    ['dark', dark, ['surface', 'ground']],
   ] as const) {
-    it(`${theme}: the chart series step in lightness, ${direction < 0 ? 'darker' : 'lighter'} by 0.06 or more`, () => {
-      const steps = SERIES.map((s) => {
-        expect(tokens[s], `--ds-${s}`).toBeDefined()
-        return oklabL(tokens[s])
+    for (const [vision, matrix, min] of VISIONS) {
+      it(`${theme}: any two chart series are ${min} or more apart in OKLab with ${vision}`, () => {
+        for (let i = 0; i < SERIES.length; i++) {
+          for (let j = i + 1; j < SERIES.length; j++) {
+            const [a, b] = [tokens[SERIES[i]], tokens[SERIES[j]]]
+            expect(a, `--ds-${SERIES[i]}`).toBeDefined()
+            expect(b, `--ds-${SERIES[j]}`).toBeDefined()
+            expect(oklabDistance(a, b, matrix), `${SERIES[i]} and ${SERIES[j]}`).toBeGreaterThanOrEqual(min)
+          }
+        }
       })
-      for (let i = 1; i < steps.length; i++) {
-        expect((steps[i] - steps[i - 1]) * direction, `${SERIES[i - 1]} to ${SERIES[i]}`).toBeGreaterThanOrEqual(0.06)
-      }
-    })
+    }
     it.each(SERIES.slice(1).flatMap((s) => grounds.map((g) => [s, g])))(`${theme}: %s reaches 3:1 on %s`, (s, g) => {
       expect(contrast(tokens[s], tokens[g])).toBeGreaterThanOrEqual(3)
     })
   }
 })
 
-/** OKLab lightness (0 black, 1 white) of a #RRGGBB colour. */
-function oklabL(hex: string): number {
-  const [r, g, b] = [1, 3, 5].map((i) => {
+type Matrix = [number, number, number][]
+
+// Simulations of colour vision deficiency on linear sRGB, Machado, Oliveira
+// and Fernandes (2009), severity 1.0.
+const VISIONS: [string, Matrix | null, number][] = [
+  ['normal vision', null, 0.12],
+  ['protanopia', [[0.152286, 1.052583, -0.204868], [0.114503, 0.786281, 0.099216], [-0.003882, -0.048116, 1.051998]], 0.07],
+  ['deuteranopia', [[0.367322, 0.860646, -0.227968], [0.280085, 0.672501, 0.047413], [-0.01182, 0.04294, 0.968881]], 0.07],
+  ['tritanopia', [[1.255528, -0.076749, -0.178779], [-0.078411, 0.930809, 0.147602], [0.004733, 0.691367, 0.3039]], 0.07],
+]
+
+/** The linear sRGB of a #RRGGBB colour. */
+function linear(hex: string): number[] {
+  return [1, 3, 5].map((i) => {
     const c = parseInt(hex.slice(i, i + 2), 16) / 255
     return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
   })
+}
+
+/** OKLab (L, a, b) of linear sRGB. */
+function oklab([r, g, b]: number[]): number[] {
   const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
   const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
   const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
-  return 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  ]
+}
+
+/** The OKLab distance of two colours, as seen through matrix (null: normal vision). */
+function oklabDistance(a: string, b: string, matrix: Matrix | null): number {
+  const seen = (hex: string) => {
+    const c = linear(hex)
+    return oklab(matrix ? matrix.map((row) => Math.min(1, Math.max(0, row[0] * c[0] + row[1] * c[1] + row[2] * c[2]))) : c)
+  }
+  const [x, y] = [seen(a), seen(b)]
+  return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2])
 }
 
 describe('vendored fonts', () => {
