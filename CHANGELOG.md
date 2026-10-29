@@ -77,6 +77,13 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **Blacklists, Where the entries came from: a source's URL is shown
+  whole.** Feed URLs and the note on entries with no recorded source were
+  cut with an ellipsis on their first line (two of three URLs at 1440 px,
+  all of them at 1250). A URL now runs onto up to three lines and is a
+  link to the list; the note reads "Added before sources were recorded".
+  "Remove batch" no longer looks double-spaced: its two words were two
+  flex items of the button, 6 px apart.
 - **Blacklists, Enforcement: every value is aligned to the right edge.**
   "Networks Squid loads 32,215" carried its explanation inside the value, so
   the value dropped under its label and floated 93 px from the edge; "Limit
