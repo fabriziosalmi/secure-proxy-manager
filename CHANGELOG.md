@@ -17,6 +17,15 @@ for at least one minor release before disappearing.
 
 ### Changed
 
+- **Every audit event reads as a sentence, in plain text.** The egress
+  provider events showed their raw key and JSON (`egress_provider_disabled`,
+  `telegram. {"kind":"catalog"}`); they now read "Turned off the provider list
+  telegram", "Downloaded the provider list github" with its prefix counts,
+  and so on. A settings save names each setting by its label with its old and
+  new value ("Send alerts: off to on"), and a secret only as set or cleared.
+  A key the page does not know is written in words with its details as
+  fields, never as raw JSON. Events are plain text: they were blue pills, the
+  colour of a link, that wrapped inside the pill when long.
 - **The preset buttons say what is already on the list.** "+ Docker" read
   the same before and after Docker was added, and the DNS-over-HTTPS card
   never said whether its resolvers were blocked. Each common-services button
