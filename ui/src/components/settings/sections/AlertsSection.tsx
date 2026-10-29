@@ -39,7 +39,7 @@ const CHANNELS: Channel[] = [
     name: 'Webhook',
     id: 'webhook',
     fields: [
-      { key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://alerts.example.com/hook' },
+      { key: 'webhook_url', label: 'Webhook URL', placeholder: 'e.g. https://alerts.example.com/hook' },
       { key: 'webhook_bearer_token', label: 'Bearer token' },
     ],
     note: <>Each alert is posted as JSON. With a token, each post carries <Code>Authorization: Bearer</Code> and the token, so the receiver can refuse posts that do not come from this backend; without one, anybody who learns the URL can post alerts that look like these.</>,
@@ -48,15 +48,15 @@ const CHANNELS: Channel[] = [
     name: 'Telegram',
     id: 'telegram',
     fields: [
-      { key: 'telegram_bot_token', label: 'Bot token', placeholder: '123456:ABC-DEF1234ghIkl' },
-      { key: 'telegram_chat_id', label: 'Chat ID', placeholder: '-1001234567890' },
+      { key: 'telegram_bot_token', label: 'Bot token', placeholder: 'e.g. 123456:ABC-DEF1234ghIkl' },
+      { key: 'telegram_chat_id', label: 'Chat ID', placeholder: 'e.g. -1001234567890' },
     ],
   },
   {
     name: 'Gotify',
     id: 'gotify',
     fields: [
-      { key: 'gotify_url', label: 'Gotify URL', placeholder: 'https://gotify.example.com' },
+      { key: 'gotify_url', label: 'Gotify URL', placeholder: 'e.g. https://gotify.example.com' },
       { key: 'gotify_token', label: 'App token' },
     ],
   },
@@ -64,8 +64,8 @@ const CHANNELS: Channel[] = [
     name: 'ntfy',
     id: 'ntfy',
     fields: [
-      { key: 'ntfy_url', label: 'ntfy server URL', placeholder: 'https://ntfy.sh' },
-      { key: 'ntfy_topic', label: 'ntfy topic', placeholder: 'proxy-alerts' },
+      { key: 'ntfy_url', label: 'ntfy server URL', placeholder: 'e.g. https://ntfy.sh' },
+      { key: 'ntfy_topic', label: 'ntfy topic', placeholder: 'e.g. proxy-alerts' },
     ],
   },
   {

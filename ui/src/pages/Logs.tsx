@@ -27,7 +27,7 @@ import { useConfirm } from '../hooks/useConfirm';
 import { useModal } from '../hooks/useModal';
 import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData, getErrorMessage } from '../lib/api';
-import { formatBytes, formatCount, formatDate, formatDateTime, formatTime } from '../lib/format';
+import { formatBytes, formatCount, formatWhen, formatWhenExact, viewerZone } from '../lib/format';
 import {
   allowableDomain, apiParams, hasFilters, isBlocked, maskedToNetwork, matchesFilters, readFilters, splitStatus, statusTone, whyText, writeFilters,
   NO_FILTERS, type LogFilters, type Outcome,
@@ -67,12 +67,9 @@ interface Row {
 
 const plural = (n: number, one: string, many: string) => `${formatCount(n)} ${n === 1 ? one : many}`;
 
-/** "12:07:56" for a request today in the viewer's zone, "2026-10-21 12:07:56" otherwise. */
+/** "2026-10-29 12:07:56" whatever the day: a log row is looked up, so its time is written whole. */
 function rowTime(ts: string): string {
-  if (!ts) return 'Not recorded';
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  return formatDate(ts) === today ? formatTime(ts) : formatDateTime(ts);
+  return ts ? formatWhen(ts, { style: 'full' }) : 'Not recorded';
 }
 
 function RuleBadge({ r }: { r: LogEntry }) {
@@ -365,7 +362,7 @@ export function Logs() {
       id: 'time',
       header: 'Time',
       className: 'whitespace-nowrap font-mono text-xs text-ink-muted',
-      cell: ({ entry }) => <span title={entry.timestamp ? formatDateTime(entry.timestamp) : undefined}>{rowTime(entry.timestamp)}</span>,
+      cell: ({ entry }) => <span title={entry.timestamp ? formatWhenExact(entry.timestamp) : undefined}>{rowTime(entry.timestamp)}</span>,
     },
     {
       id: 'client',
@@ -456,7 +453,10 @@ export function Logs() {
     return opts;
   }, [stats.data, filters.rule]);
 
-  const liveLabel = !live ? 'Paused' : wsStatus === 'connected' ? 'Live' : wsStatus === 'connecting' ? 'Connecting' : 'Reconnecting';
+  // The switch keeps one name; the connection is a status line beside it.
+  // The button used to be renamed Live, Paused, Connecting and Reconnecting,
+  // so a screen reader heard a different control at each state.
+  const liveState = !live ? 'Paused' : wsStatus === 'connected' ? 'Connected' : wsStatus === 'connecting' ? 'Connecting' : 'Reconnecting';
 
   return (
     <div className="flex flex-col gap-5">
@@ -472,8 +472,9 @@ export function Logs() {
               className={cn(live && wsStatus === 'connected' && 'border-success/40 bg-success-subtle text-success hover:enabled:bg-success-subtle hover:enabled:text-success')}
               icon={<span className={cn('block h-2 w-2 rounded-full', live && wsStatus === 'connected' ? 'bg-success' : 'bg-ink-subtle')} />}
             >
-              {liveLabel}
+              Live updates
             </Button>
+            <span role="status" aria-label="Live updates" className="self-center text-xs text-ink-muted">{liveState}</span>
             <Button icon={<Download />} onClick={() => { void exportCsv(); }} disabled={exporting}>
               {exporting ? 'Exporting' : 'Export CSV'}
             </Button>
@@ -515,7 +516,7 @@ export function Logs() {
         </div>
       </section>
 
-      <Section title="Requests" flush>
+      <Section title="Requests" description={timesNote()} flush>
         <DataTable<Row>
           caption="Access log requests"
           columns={columns}
@@ -558,6 +559,12 @@ export function Logs() {
       {dialog}
     </div>
   );
+}
+
+/** Where the times of the table are written, as the Audit log says it. */
+function timesNote(): string {
+  const zone = viewerZone();
+  return `Times are in your time zone${zone ? ` (${zone})` : ''}.`;
 }
 
 function footerText(shown: number, total: number, filtered: boolean, showInternal: boolean, namedClient: boolean, hidden: number): string {
@@ -606,7 +613,7 @@ function RequestDetail({ r, filters, onAllow, onShowClient }: {
         </div>
         <div className="min-w-0">
           <dt className="text-xs text-ink-muted">Time</dt>
-          <dd className="mt-0.5 font-mono text-[13px]">{r.timestamp ? formatDateTime(r.timestamp) : 'Not recorded'}</dd>
+          <dd className="mt-0.5 font-mono text-[13px]">{r.timestamp ? formatWhenExact(r.timestamp) : 'Not recorded'}</dd>
         </div>
         <div className="min-w-0">
           <dt className="text-xs text-ink-muted">Squid result</dt>

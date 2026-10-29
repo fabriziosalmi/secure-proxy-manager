@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -17,8 +18,10 @@ import (
 // (egress_wildcards.go). Version 6 deletes the settings nothing reads
 // (RetiredSettings, retired.go). Version 7 creates egress_providers and
 // egress_provider_entries. Version 8 archives and deletes allowed_networks,
-// waf_custom_rules, and waf_block_threshold (retired.go).
-const schemaVersion = 8
+// waf_custom_rules, and waf_block_threshold (retired.go). Version 9 rebuilds
+// list_sources so a source can be a preset (a named group of common
+// services, added in one request).
+const schemaVersion = 9
 
 // applyVersionedMigrations runs the steps a database has not seen yet.
 //
@@ -70,6 +73,113 @@ func applyVersionedMigrations(db *sql.DB) error {
 			return fmt.Errorf("schema version 8: %w", err)
 		}
 	}
+	if v < 9 {
+		if err := migratePresetSources(db); err != nil {
+			return fmt.Errorf("schema version 9: %w", err)
+		}
+	}
+	return nil
+}
+
+// presetSourcesTable is list_sources as version 9 defines it: the kinds of
+// version 4 and preset, keyed like url, manual and geo (by the preset's id).
+const presetSourcesTable = `CREATE TABLE list_sources_v9 (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	list TEXT NOT NULL CHECK (list IN ('ip_blacklist','domain_blacklist','ip_whitelist','domain_whitelist')),
+	kind TEXT NOT NULL CHECK (kind IN ('url','manual','geo','paste','restore','preset')),
+	source TEXT NOT NULL DEFAULT '',
+	label TEXT NOT NULL DEFAULT '',
+	created TEXT DEFAULT (datetime('now'))
+)`
+
+// migratePresetSources rebuilds list_sources with 'preset' among the kinds its
+// CHECK allows, and records version 9. A CHECK cannot be altered in SQLite, so
+// the table is rebuilt (create, copy, drop, rename) as version 2 rebuilt
+// dst_allowlist; every row is copied with its id, so the source_id of every
+// list entry still names the same source, and AUTOINCREMENT carries on from
+// the highest id.
+//
+// list_sources is the parent of four foreign keys, and dropping a parent with
+// foreign keys enforced fails. The rebuild runs on one connection with
+// foreign_keys off (the pragma is per connection and cannot change inside a
+// transaction), checks every reference with PRAGMA foreign_key_check before it
+// commits, and turns foreign keys back on before the connection returns to the
+// pool. Like the other versioned steps it is one-way: an older backend keeps
+// working on the rebuilt table, and a rollback restores the pre-upgrade data
+// (DEPLOYMENT.md, Rolling back).
+func migratePresetSources(db *sql.DB) (err error) {
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close() //nolint:errcheck // returns the connection to the pool; foreign keys are back on by then
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return err
+	}
+	defer func() {
+		if _, ferr := conn.ExecContext(ctx, "PRAGMA foreign_keys = ON"); ferr != nil && err == nil {
+			err = fmt.Errorf("turn foreign keys back on: %w", ferr)
+		}
+	}()
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op once committed
+
+	var before int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM list_sources").Scan(&before); err != nil {
+		return fmt.Errorf("count list_sources: %w", err)
+	}
+	steps := []string{
+		presetSourcesTable,
+		`INSERT INTO list_sources_v9(id, list, kind, source, label, created)
+		 SELECT id, list, kind, source, label, created FROM list_sources`,
+		`DROP TABLE list_sources`,
+		`ALTER TABLE list_sources_v9 RENAME TO list_sources`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_list_sources_key ON list_sources(list, kind, source) WHERE kind IN ('url','manual','geo','preset')`,
+	}
+	for _, s := range steps {
+		if _, err := tx.ExecContext(ctx, s); err != nil {
+			return err
+		}
+	}
+	var after int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM list_sources").Scan(&after); err != nil {
+		return fmt.Errorf("count list_sources: %w", err)
+	}
+	if after != before {
+		return fmt.Errorf("list_sources rebuild copied %d of %d rows", after, before)
+	}
+	// Every entry's source_id must still name a source: the four list tables
+	// are checked, and only they (a reference elsewhere is not this step's).
+	broken := 0
+	for _, t := range listSourceTables {
+		// #nosec G202 -- t is a constant of listSourceTables
+		rows, err := tx.QueryContext(ctx, string("PRAGMA foreign_key_check("+t+")"))
+		if err != nil {
+			return fmt.Errorf("foreign key check of %s: %w", t, err)
+		}
+		for rows.Next() {
+			broken++
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("foreign key check of %s: %w", t, err)
+		}
+	}
+	if broken > 0 {
+		return fmt.Errorf("list_sources rebuild left %d broken references", broken)
+	}
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", 9)); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	log.Info().Int("version", 9).Int("sources", after).Msg("schema migrated: list_sources accepts preset sources")
 	return nil
 }
 

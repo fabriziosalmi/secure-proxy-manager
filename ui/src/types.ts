@@ -70,7 +70,7 @@ export interface WhitelistEntry {
 }
 
 /** Where list entries came from (list_sources); 'unrecorded' names the entries added before sources were recorded. */
-export type SourceKind = 'url' | 'manual' | 'geo' | 'paste' | 'restore' | 'unrecorded';
+export type SourceKind = 'url' | 'manual' | 'geo' | 'paste' | 'restore' | 'preset' | 'unrecorded';
 
 /** One row of GET /api/{list}: an entry of any of the four lists, with its source (null when not recorded). */
 export interface ListEntry {
@@ -230,6 +230,8 @@ export interface ClientDetail {
   internal?: boolean;
   kind?: string;
   classification?: 'internal' | 'external' | 'mixed';
+  /** What the counts cover: "7d", the client list's window, or "all", every request logged. */
+  window?: '7d' | 'all';
   total_requests: number;
   blocked: number;
   first_seen: string;
