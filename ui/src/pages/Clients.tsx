@@ -18,6 +18,7 @@ import { X } from 'lucide-react';
 import { ClientSetup } from '../components/ClientSetup';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Section } from '../components/ui/Section';
+import { Unavailable } from '../components/ui/Unavailable';
 import { DataTable, type Column, type SortState } from '../components/ui/DataTable';
 import { SearchInput } from '../components/ui/SearchInput';
 import { Switch } from '../components/ui/Switch';
@@ -282,7 +283,8 @@ const DEST_COLUMNS: Column<ClientDomain>[] = [
   {
     id: 'host',
     header: 'Destination',
-    cell: (d) => <code title={d.destination} className="block max-w-[11rem] truncate font-mono text-xs sm:max-w-[14rem]">{d.destination}</code>,
+    // The whole name, wrapped: it was cut with an ellipsis, whole only in a tooltip.
+    cell: (d) => <code className="block max-w-[11rem] break-all font-mono text-xs sm:max-w-[14rem]">{d.destination}</code>,
   },
   { id: 'requests', header: 'Requests', align: 'right', cell: (d) => formatCount(d.requests) },
   {
@@ -342,7 +344,7 @@ function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
   if (detail.isError || !info) {
     return (
       <div className="flex flex-col items-start gap-2 px-5 pb-5" role="alert">
-        <p className="text-sm text-ink-muted">Not reported: clients/{ip}/details did not answer.</p>
+        <Unavailable endpoint={`clients/${ip}/details`}>The detail of {ip} could not be loaded.</Unavailable>
         <Button size="sm" onClick={() => { void detail.refetch(); }}>Retry</Button>
       </div>
     );
@@ -429,7 +431,7 @@ function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
           <ul>
             {info.recent.map((r, i) => (
               <li key={`${r.timestamp}-${i}`} className="flex flex-col gap-1 border-t border-line-subtle px-5 py-2 text-xs">
-                <code className="truncate font-mono text-ink" title={r.destination}>{r.destination}</code>
+                <code className="break-all font-mono text-ink">{r.destination}</code>
                 <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-ink-muted">
                   <span className="whitespace-nowrap font-mono tabular-nums" title={formatWhenExact(r.timestamp)}>{shortTime(r.timestamp)}</span>
                   <span className="font-mono">{r.method}</span>

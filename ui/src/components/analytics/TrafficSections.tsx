@@ -22,6 +22,7 @@ import type { WafReading } from '../../lib/wafStats';
 import { formatCount } from '../../lib/format';
 import { wafCategoryLabel } from '../../lib/wafCategories';
 import { Section } from '../ui/Section';
+import { Unavailable } from '../ui/Unavailable';
 import { DataTable, type Column } from '../ui/DataTable';
 
 interface QueryState<T> {
@@ -91,7 +92,7 @@ export function WafCategories({ reading }: { reading: QueryState<WafReading> }) 
   if (reading.loading) {
     body = <Loading what="WAF rule matches" />;
   } else if (reading.error || !s) {
-    body = <Missing>Not reported: waf/stats did not answer.</Missing>;
+    body = <Unavailable endpoint="waf/stats">The WAF rule matches could not be loaded.</Unavailable>;
   } else if (!waf || s.waf_status !== 'ok') {
     body = <Missing>{wafMissing(s.waf_status)}</Missing>;
   } else {
@@ -158,7 +159,7 @@ export function ServicesInUse({ services, onRetry }: { services: QueryState<Shad
 export function ServiceKinds({ kinds }: { kinds: QueryState<ServiceTypeData> }) {
   let body: ReactNode;
   if (kinds.loading) body = <Loading what="traffic by kind of service" />;
-  else if (kinds.error || !kinds.data) body = <Missing>Not reported: analytics/user-agents did not answer.</Missing>;
+  else if (kinds.error || !kinds.data) body = <Unavailable endpoint="analytics/user-agents">The traffic by kind of service could not be loaded.</Unavailable>;
   else if ((kinds.data.service_types ?? []).length === 0) body = <p className="text-sm text-ink-muted">No client requests in the last 7 days.</p>;
   else body = <CountBars label="Client requests by kind of service" rows={kinds.data.service_types} />;
   return (
@@ -180,7 +181,7 @@ export function FileTypes({ files }: { files: QueryState<FileExtData> }) {
   if (files.loading) {
     body = <Loading what="downloads by file type" />;
   } else if (files.error || !d) {
-    body = <Missing>Not reported: analytics/file-extensions did not answer.</Missing>;
+    body = <Unavailable endpoint="analytics/file-extensions">The downloads by file type could not be loaded.</Unavailable>;
   } else {
     // A backend before the empty-list fix sent null for a window with no file
     // request; that is no file request, not a crash.

@@ -209,8 +209,8 @@ describe('Analytics', () => {
     try {
       renderWithProviders(<Analytics />)
       await waitFor(() => { expect(within(region('Blocked requests per day, by rule')).getByRole('alert')).toHaveTextContent('Could not load the daily counts (analytics/blocked-by-day).') })
-      await waitFor(() => { expect(within(region('Protection coverage')).getByRole('alert')).toHaveTextContent('Not reported: analytics/coverage did not answer.') })
-      await waitFor(() => { expect(within(region('Traffic by kind of service')).getByRole('alert')).toHaveTextContent('Not reported: analytics/user-agents did not answer.') })
+      await waitFor(() => { expect(within(region('Protection coverage')).getByRole('alert')).toHaveTextContent('What protection is on could not be read.Detail: GET /api/analytics/coverage did not answer.') })
+      await waitFor(() => { expect(within(region('Traffic by kind of service')).getByRole('alert')).toHaveTextContent('The traffic by kind of service could not be loaded.Detail: GET /api/analytics/user-agents did not answer.') })
       await waitFor(() => { expect(within(region('WAF rule matches')).getByRole('alert')).toHaveTextContent('Not available: the WAF refuses the backend credential.') })
     } finally {
       errors = {}
