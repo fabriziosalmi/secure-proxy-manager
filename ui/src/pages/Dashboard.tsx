@@ -27,6 +27,7 @@ import type { CacheStats, DashboardSummary, TimelineEntry } from '../types';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Section } from '../components/ui/Section';
 import { StatCard } from '../components/ui/StatCard';
+import { ShareBar } from '../components/ui/ShareBar';
 import { Badge } from '../components/ui/Badge';
 import { Notice } from '../components/ui/Notice';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -233,15 +234,8 @@ export function Dashboard() {
   }
 
   let blockedSub: ReactNode;
-  if (share) {
-    blockedSub = (
-      <span className="flex items-center gap-2">
-        <span aria-hidden="true" className="hidden h-1.5 flex-1 overflow-hidden rounded-full bg-line-subtle sm:block">
-          <span className="block h-1.5 bg-danger-strong" style={{ width: share }} />
-        </span>
-        <span>{share} of requests</span>
-      </span>
-    );
+  if (share && typeof blocked === 'number' && typeof requests === 'number') {
+    blockedSub = <ShareBar part={blocked} total={requests} suffix="of requests" />;
   } else if (requests === 0) {
     blockedSub = 'No requests to block';
   }

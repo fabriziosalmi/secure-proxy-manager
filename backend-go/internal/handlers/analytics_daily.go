@@ -10,6 +10,7 @@ import (
 	// viewer's zone ("Europe/Rome") resolves the same on every image.
 	_ "time/tzdata"
 
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
@@ -52,6 +53,8 @@ func dayBounds(now time.Time, loc *time.Location, n int) []time.Time {
 // tz (an IANA name, default UTC), by the rule that blocked them. Every day is
 // returned, a day without blocks with blocked 0 and no reasons. reasons are
 // the totals of the 7 days, largest first; each carries the API's label.
+// internal_sources is how many internal sources sent client requests in
+// those 7 days (networks in GDPR mode), the requests the days leave out.
 func (h *AnalyticsHandlers) BlockedByDay(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(r.URL.Query().Get("tz"))
 	if name == "" {
@@ -139,7 +142,28 @@ func (h *AnalyticsHandlers) BlockedByDay(w http.ResponseWriter, r *http.Request)
 		"tz":      loc.String(),
 		"days":    days,
 		"reasons": reasons,
-		// The internal sources whose rows no day counts.
-		"internal_sources": len(internal),
+		// The internal sources that sent client requests in these 7 days and
+		// that no day counts. It used to be every internal address ever seen
+		// in the log, sinkhole rows included, so the page said 4 where the
+		// Clients page, counting the same 7 days, said 2.
+		"internal_sources": h.internalInWindow(bounds[0].Unix(), bounds[blockedByDayDays].Unix(), internal),
 	})
+}
+
+// internalInWindow counts the internal sources with client rows (clientRows)
+// logged at or after start and before end: distinct addresses, or distinct
+// networks in GDPR mode, as clients/statistics counts them.
+func (h *AnalyticsHandlers) internalInWindow(start, end int64, internal []string) int {
+	in, inArgs := onlyInternal(internal)
+	if privacy.Enabled(h.db) {
+		return h.countDistinctNetworksBetween(start, end, in, inArgs)
+	}
+	var n int
+	args := append([]any{start, end}, inArgs...)
+	// #nosec G202 -- clientRows and in are constants and placeholders; values are bound.
+	if err := h.db.QueryRow(string(`SELECT COUNT(DISTINCT source_ip) FROM proxy_logs
+		WHERE unix_timestamp >= ? AND unix_timestamp < ? AND source_ip != '' AND `+clientRows+` AND `+in), args...).Scan(&n); err != nil {
+		return 0
+	}
+	return n
 }

@@ -55,7 +55,7 @@ describe('serviceRows', () => {
     it("shows the proxy's current record: hit ratio, disk use and when it was collected", () => {
       expect(cacheRow({ ...currentCacheStats, uptime_s: 7200 })).toEqual({
         name: 'Cache statistics', health: 'ok', state: 'collected',
-        detail: 'Hit ratio 64.7% (last hour) · 252 KB of 50 MB on disk · collected 13:15',
+        detail: 'Hit ratio 64.7% (last hour) · 252 KB of 50.0 MB on disk · collected 13:15',
       })
     })
 

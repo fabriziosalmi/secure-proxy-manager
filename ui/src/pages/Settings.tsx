@@ -112,7 +112,7 @@ function SettingsPage() {
     egressProviderEntries: egress.providerEntries,
     proxyAuth: status.data?.proxy_auth,
   }), [parsed, status.isError, status.data, egress.manual, egress.providerEntries]);
-  const warnings = attention.filter((a) => a.tone === 'warning').length;
+  const warnings = attention.filter((a) => a.posture === 'needs-attention').length;
 
   const changesIn = (id: SectionId) =>
     Object.keys(drafts.edits[id] ?? {}).length + Object.keys(drafts.secretEdits[id] ?? {}).length;
