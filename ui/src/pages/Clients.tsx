@@ -261,11 +261,11 @@ function footerText({ rows, all, showInternal, internalTotal, clientTotal, filte
   if (showInternal) {
     const internalShown = rows.filter((c) => c.internal).length;
     parts.push(`${plural(rows.length, 'address', 'addresses')} ${filtered && rows.length === 1 ? 'matches the filter' : shown}, ${formatCount(internalShown)} of them internal.`);
-    parts.push('Internal traffic is not counted on the Overview.');
+    parts.push('Internal traffic is not counted in any statistic.');
   } else {
     parts.push(`${plural(rows.length, 'client', 'clients')} ${filtered && rows.length === 1 ? 'matches the filter' : shown}.`);
     if (internalTotal > 0) {
-      parts.push(`${plural(internalTotal, 'internal address is', 'internal addresses are')} hidden and not counted on the Overview.`);
+      parts.push(`${plural(internalTotal, 'internal address is', 'internal addresses are')} hidden and not counted in any statistic.`);
     }
   }
   if (typeof clientTotal === 'number' && clientTotal > listedClients) {
