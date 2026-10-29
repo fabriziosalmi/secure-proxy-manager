@@ -15,6 +15,18 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Internal
+
+- **The canary waits for the proxy after a restart instead of failing.**
+  After the backend restarts it exports the lists, and the proxy's watchdog
+  reconfigures Squid, which closes port 3128 for a few seconds. When the
+  proxy container was not recreated its health status predated the restart,
+  so the data-plane probes could land in that window and report no response
+  as a failure (the first canary after v3.19.0). A probe with no response is
+  now repeated, up to 10 times 3 seconds apart; an HTTP status is the verdict
+  and is never repeated, so a missed block or a false positive still fails at
+  once.
+
 ## [3.19.0] - 2026-10-29
 
 A feature release for the web UI and the API behind it, from a review of its
