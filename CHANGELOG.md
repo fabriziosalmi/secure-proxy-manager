@@ -17,6 +17,10 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- The WAF image stores its binary once, owned by root and run by the `waf`
+  user, who can no longer change it. A `chown` after the copy wrote a second
+  full copy of the binary in its own layer (8.1 MB on amd64) and let the
+  process change the mode of its own executable. CI checks both.
 - **Analytics counts the internal addresses of its own 7 days.** "Requests
   from N internal addresses are not counted" under the blocks-per-day chart
   counted every internal address ever logged, sinkhole (DNS) rows included,
