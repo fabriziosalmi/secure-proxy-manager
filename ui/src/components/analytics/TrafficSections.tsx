@@ -2,8 +2,10 @@
  * The four smaller Analytics sections. Each says what it counts and over
  * which window, and every number is a field of its endpoint:
  *
- * - WAF categories: the WAF's own counters, since it last started or its
- *   counters were reset (dashboard/summary, waf and waf_status);
+ * - WAF rule matches: the WAF's own counters, since it last started or its
+ *   counters were reset (waf/stats, or waf_status saying why not). A match is
+ *   not a block: the WAF counts every category that matched a request,
+ *   including matches too weak to block it;
  * - Cloud services in use: client requests of the last 7 days to known
  *   services, by host (analytics/shadow-it);
  * - Traffic by kind of service: client requests of the last 7 days by the
@@ -15,9 +17,12 @@
  * requests from the stack's own addresses.
  */
 import type { ReactNode } from 'react';
-import type { DashboardSummary, FileExtData, ServiceTypeData, ShadowItService } from '../../types';
+import type { FileExtData, ServiceTypeData, ShadowItService, WafStatus } from '../../types';
+import type { WafReading } from '../../lib/wafStats';
 import { formatCount } from '../../lib/format';
+import { wafCategoryLabel } from '../../lib/wafCategories';
 import { Section } from '../ui/Section';
+import { Unavailable } from '../ui/Unavailable';
 import { DataTable, type Column } from '../ui/DataTable';
 
 interface QueryState<T> {
@@ -40,14 +45,17 @@ function Missing({ children }: { children: ReactNode }) {
 }
 
 /** Name and count rows with a bar each, scaled to the largest; the bar repeats the number. */
-function CountBars({ rows, label }: { rows: { name: string; count: number }[]; label: string }) {
+function CountBars({ rows, label }: { rows: { name: string; count: number; detail?: string }[]; label: string }) {
   const max = Math.max(1, ...rows.map((r) => r.count));
   return (
     <ul aria-label={label} className="flex flex-col gap-2.5">
       {rows.map((r) => (
         <li key={r.name} className="flex flex-col gap-1">
           <div className="flex items-baseline justify-between gap-3 text-sm">
-            <span className="min-w-0 text-ink [overflow-wrap:anywhere]">{r.name}</span>
+            <span className="min-w-0 text-ink [overflow-wrap:anywhere]">
+              {r.name}
+              {r.detail && <span className="ml-2 text-xs text-ink-muted">{r.detail}</span>}
+            </span>
             <span className="font-semibold tabular-nums text-ink">{formatCount(r.count)}</span>
           </div>
           <div aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-line-subtle">
@@ -61,9 +69,9 @@ function CountBars({ rows, label }: { rows: { name: string; count: number }[]; l
 
 const GRID_ITEM = 'min-w-0';
 
-// ── WAF categories ──────────────────────────────────────────────────────────
+// ── WAF rule matches ────────────────────────────────────────────────────────
 
-function wafMissing(status: DashboardSummary['waf_status']): string {
+function wafMissing(status: WafStatus): string {
   switch (status) {
     case 'auth_failed':
       return 'Not available: the WAF refuses the backend credential. Set INTERNAL_ALERT_TOKEN to the same value on the waf and backend services.';
@@ -76,33 +84,39 @@ function wafMissing(status: DashboardSummary['waf_status']): string {
   }
 }
 
-export function WafCategories({ summary }: { summary: QueryState<DashboardSummary> }) {
-  const s = summary.data;
+export function WafCategories({ reading }: { reading: QueryState<WafReading> }) {
+  const s = reading.data;
   const waf = s?.waf;
-  let description: ReactNode = 'Requests that matched a rule in each category, as the WAF counts them.';
+  let description: ReactNode = 'Requests that matched a rule in each category, as the WAF counts them. A match is not a block.';
   let body: ReactNode;
-  if (summary.loading) {
-    body = <Loading what="WAF categories" />;
-  } else if (summary.error || !s) {
-    body = <Missing>Not reported: dashboard/summary did not answer.</Missing>;
+  if (reading.loading) {
+    body = <Loading what="WAF rule matches" />;
+  } else if (reading.error || !s) {
+    body = <Unavailable endpoint="waf/stats">The WAF rule matches could not be loaded.</Unavailable>;
   } else if (!waf || s.waf_status !== 'ok') {
     body = <Missing>{wafMissing(s.waf_status)}</Missing>;
   } else {
     const cats = waf.top_blocked_categories ?? [];
-    description = `Since the WAF last started or its counters were reset, ${formatCount(waf.total_requests)} ${waf.total_requests === 1 ? 'request' : 'requests'} inspected.`;
+    const inspected = `${formatCount(waf.total_requests)} ${waf.total_requests === 1 ? 'request' : 'requests'}`;
+    description = `Since the WAF started or its counters were reset: ${inspected} inspected, ${formatCount(waf.total_blocked)} blocked. A match is not a block: a request is blocked only when its matches add up to the block threshold.`;
     body = cats.length === 0 ? (
-      <p className="text-sm text-ink-muted">No rule category matched a request.</p>
+      <p className="text-sm text-ink-muted">No category matched a request.</p>
     ) : (
       <div className="flex flex-col gap-3">
-        <CountBars label="Requests that matched each WAF rule category" rows={cats.map((c) => ({ name: c.key, count: c.count }))} />
+        <CountBars
+          label="Requests that matched each WAF category"
+          rows={cats.map((c) => {
+            const { label, kind } = wafCategoryLabel(c.key);
+            return { name: label, count: c.count, detail: kind };
+          })}
+        />
         <p className="text-[13px] text-ink-muted">
           {cats.length >= 10 ? 'The WAF reports its 10 most matched categories.' : 'No other category matched.'}
-          {` ${formatCount(waf.total_blocked)} of the inspected requests were blocked.`}
         </p>
       </div>
     );
   }
-  return <Section title="WAF categories" description={description} className={GRID_ITEM}>{body}</Section>;
+  return <Section title="WAF rule matches" description={description} className={GRID_ITEM}>{body}</Section>;
 }
 
 // ── Cloud services in use ───────────────────────────────────────────────────
@@ -145,7 +159,7 @@ export function ServicesInUse({ services, onRetry }: { services: QueryState<Shad
 export function ServiceKinds({ kinds }: { kinds: QueryState<ServiceTypeData> }) {
   let body: ReactNode;
   if (kinds.loading) body = <Loading what="traffic by kind of service" />;
-  else if (kinds.error || !kinds.data) body = <Missing>Not reported: analytics/user-agents did not answer.</Missing>;
+  else if (kinds.error || !kinds.data) body = <Unavailable endpoint="analytics/user-agents">The traffic by kind of service could not be loaded.</Unavailable>;
   else if ((kinds.data.service_types ?? []).length === 0) body = <p className="text-sm text-ink-muted">No client requests in the last 7 days.</p>;
   else body = <CountBars label="Client requests by kind of service" rows={kinds.data.service_types} />;
   return (
@@ -167,7 +181,7 @@ export function FileTypes({ files }: { files: QueryState<FileExtData> }) {
   if (files.loading) {
     body = <Loading what="downloads by file type" />;
   } else if (files.error || !d) {
-    body = <Missing>Not reported: analytics/file-extensions did not answer.</Missing>;
+    body = <Unavailable endpoint="analytics/file-extensions">The downloads by file type could not be loaded.</Unavailable>;
   } else {
     // A backend before the empty-list fix sent null for a window with no file
     // request; that is no file request, not a crash.

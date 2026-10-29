@@ -119,8 +119,8 @@ func TestBlockedByDayCountsTheViewersCalendarDays(t *testing.T) {
 			t.Errorf("reasons[%d] = %+v, want %s with a label", i, r, order[i])
 		}
 	}
-	if d.Reasons[0].Count != 2 || d.Reasons[0].Label != "Domain blacklist (DNS)" {
-		t.Errorf("reasons[0] = %+v, want 2 labelled Domain blacklist (DNS)", d.Reasons[0])
+	if d.Reasons[0].Count != 2 || d.Reasons[0].Label != "Domain blacklist (DNS sinkhole)" {
+		t.Errorf("reasons[0] = %+v, want 2 labelled Domain blacklist (DNS sinkhole)", d.Reasons[0])
 	}
 	if d.Internal == nil || *d.Internal != 1 {
 		t.Errorf("internal_sources = %v, want 1 (127.0.0.1)", d.Internal)

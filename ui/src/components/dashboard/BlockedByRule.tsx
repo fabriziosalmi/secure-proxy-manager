@@ -6,11 +6,13 @@
  * than left out.
  */
 import { ShieldCheck } from 'lucide-react';
+import { Link } from 'react-router';
 import type { ReasonCount } from '../../types';
 import { formatCount } from '../../lib/format';
 import { Section } from '../ui/Section';
 import { EmptyState } from '../ui/EmptyState';
 import { idleRulesSentence } from './rules';
+import { blockedLogsLink } from './links';
 
 export interface BlockedByRuleProps {
   reasons?: ReasonCount[] | null;
@@ -27,7 +29,8 @@ export function BlockedByRule({ reasons, loading }: BlockedByRuleProps) {
       </div>
     );
   } else if (!reasons) {
-    body = <p className="text-sm text-ink-muted">Not reported: the backend sent no blocked_by_reason_24h.</p>;
+    // Not a failed request: an answer without the field, from an older backend.
+    body = <p className="text-sm text-ink-muted">Not reported: this backend does not count blocks by rule. Updating it adds them.</p>;
   } else {
     const shown = reasons.filter((r) => r.count > 0);
     const total = shown.reduce((s, r) => s + r.count, 0);
@@ -44,7 +47,7 @@ export function BlockedByRule({ reasons, loading }: BlockedByRuleProps) {
           {shown.map((r) => (
             <li key={r.reason} className="flex flex-col gap-1.5">
               <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="min-w-0 font-medium text-ink">{r.label}</span>
+                <Link to={blockedLogsLink({ rule: r.reason })} className="min-w-0 font-medium text-ink underline-offset-2 hover:underline">{r.label}</Link>
                 <span className="font-semibold tabular-nums text-ink">{formatCount(r.count)}</span>
               </div>
               <div aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-line-subtle">

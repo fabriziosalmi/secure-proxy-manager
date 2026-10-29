@@ -23,6 +23,15 @@ for at least one minor release before disappearing.
   now reads "+ Docker", "+ Docker (2 missing)" or, disabled, "Docker added";
   the DoH card says how many of its resolvers are blocked and offers "Block
   the other 2", or a disabled "All 14 blocked".
+- **The audit log says what a settings save changed, and to what.** A save
+  recorded the keys the request carried, before they were checked and with
+  no value, so saving one field of a section read "Changed 8 settings" and
+  whether alerts were switched on or off could not be told from the log. A
+  save now writes a row only when it changed something, after the change is
+  stored, naming the changed keys with their old and new values
+  (`details.changes`); a secret is recorded only as set or cleared
+  (`details.secrets`), never its value, and a value over 512 characters is
+  cut and marked truncated. A save refused by validation writes no row.
 - **A common-services preset is added in one request, under a source of its
   own.** "+ Docker" on Allowed domains (and "Block DoH resolvers" on Blocked
   domains) sent one request per domain from the page: each domain became a
@@ -62,6 +71,115 @@ for at least one minor release before disappearing.
 - **Block DoH resolvers is an ordinary button.** It was drawn red
   (danger-outline), the style kept for an action that removes or stops
   something; blocking the resolvers adds protection.
+- **Every page writes a time the same way.** Seven formatters gave
+  `01:34:30` next to `2026-10-28 23:51` in one list, and dates that wrapped
+  under their time. Now one rule holds: the Access logs, the Audit log and
+  a request's detail write every time whole (`2026-10-29 08:51:30`), today's
+  too; lists and cards write `08:51` today, `Yesterday 23:51`, `Sun 25 23:55`
+  in the last week and `2026-10-21 23:55` before, on one line. A tooltip
+  gives the exact time with the zone, and the Access logs say which zone
+  their times are in. A pasted or restored source still names its time to
+  the second, so two pastes a minute apart read differently.
+- **The Analytics WAF card says it counts matches, not blocks.** Titled
+  "WAF categories", it listed the categories that matched a request, weak
+  matches below the block threshold included, since the WAF started, on a
+  page whose subtitle says "Last 7 days", and only its last line said how
+  many requests were blocked (often 0). It is now "WAF rule matches", says
+  "a match is not a block" and the blocked count in its description, and
+  names each category in words with its kind (rule, heuristic, domain
+  reputation, size limit) instead of the raw key (`SQL_INJECTION`,
+  `HEURISTIC_BEACONING`).
+- **The access log's live switch keeps one name.** The button was renamed
+  "Live", "Paused", "Connecting" and "Reconnecting" as the connection
+  changed, so a screen reader heard a different control each time. It is
+  "Live updates", pressed or not, and a status line beside it says
+  "Connected", "Connecting", "Reconnecting" or "Paused".
+- **Error states say what is missing in words, with the request that failed
+  as a detail.** They led with an endpoint: "Not reported:
+  analytics/coverage did not answer.", "GET /api/cache/statistics did not
+  answer.". Each now says what could not be shown ("What protection is on
+  could not be read.") and, under it in smaller type, which request did not
+  answer. A unit test fails on an error text that leads with the endpoint.
+  The client detail shows its destinations whole, wrapped, instead of cut
+  with the full name only in a tooltip.
+- **Analytics reads the WAF figures from `GET /api/waf/stats`.** The page
+  downloaded the whole dashboard summary every 30 seconds, 24-hour counts,
+  top lists and recent blocks, for the one WAF card. It now asks the WAF
+  endpoint, on the page's own refresh. `GET /api/waf/stats` answers a failure
+  with `waf_status`, the reason in the words of the dashboard summary
+  (`unreachable`, `auth_failed`, `error`), so the card still says when the
+  WAF refuses the backend's credential.
+- **The client detail states the window it counts, and the share blocked
+  can be sorted.** The client list counts the last 7 days and the detail it
+  opens counted every request ever logged, saying so only when the two
+  numbers differed. `GET /api/clients/{ip}/details` takes `window=7d` (the
+  list's window) or `window=all` (the default, as before) and says in
+  `window` which it counted; another value answers `400`. The detail now
+  counts the last 7 days, offers "All time", and always says which. The
+  Share blocked column of the client list sorts, largest first.
+- **The blocks-per-day chart can be read with any colour vision, and each
+  rule keeps its colour.** Analytics stacked the rules in four reds stepped
+  in lightness, 1.36 to 1.50:1 from each other, and handed the colours out in
+  order to the rules present, so the WAF was the first red one week and the
+  second the next. The chart now uses the Okabe-Ito hues, adjusted so that
+  every two series stay apart under simulated protanopia, deuteranopia and
+  tritanopia, and each rule has a fixed colour: the domain blacklist, the DNS
+  sinkhole, the address and network rules, and the WAF with every other rule.
+  Rules of one colour that blocked in the same week are one stack, named in
+  the legend and counted one by one in the table. The 4 px floor that kept a
+  small count visible applies to a day's whole bar, not to each rule: a day of
+  10 blocks over 3 rules drew 12 px.
+- **The Overview calls blacklist entries entries and links each figure to
+  its rows.** "Rules in force, 50,772 IPs, 77,569 domains" summed table rows:
+  the IP entries include networks the proxy merges before loading, and the
+  domain entries include those Allowed domains takes out. The card is now
+  "Blacklist entries", "50,772 IP and network entries, 77,569 domain
+  entries", and opens Blacklists. "Client requests" no longer repeats "from
+  N clients" next to the Active clients card. "Most blocked destinations"
+  offered "Open analytics", a page that no longer lists destinations, and
+  "Latest blocks" opened the unfiltered access log: both now offer "Open
+  blocked requests", the access log filtered to blocked requests. Each
+  destination opens the blocked requests to it, and each rule in Blocked by
+  rule the requests it blocked.
+- **Example values in fields read as examples.** The Egress allowlist form
+  showed "acme-v02.api.letsencrypt.org" in its empty Destination field, in
+  the same monospace as a typed value, so it looked already filled in. Every
+  placeholder that shows an example value now starts with "e.g.", as the
+  Blacklists form already did: the Egress allowlist and provider list forms,
+  pasted and imported entries, the alert channels, cache and port exclusions,
+  blocked file types and the rule tester. The Egress example is now
+  "e.g. updates.example.com". A unit test reads every placeholder in the UI
+  sources and fails on an example value without "e.g.".
+- **The Overview's hourly chart writes no hour twice and marks its partial
+  hours.** Its 24 hours span 25 hourly bars, the first and last covering only
+  part of an hour, and the axis read 08:00 at both ends: the first 08:00 was
+  the 8 minutes of yesterday after 08:52. The axis now starts with the
+  window's own start ("Wed 08:52") and ends with "Now"; the first and last
+  bars are drawn lighter and their tooltips name the minutes they cover
+  ("08:52 to 09:00 only").
+- **Blacklists, Where the entries came from: a source's URL is shown
+  whole.** Feed URLs and the note on entries with no recorded source were
+  cut with an ellipsis on their first line (two of three URLs at 1440 px,
+  all of them at 1250). A URL now runs onto up to three lines and is a
+  link to the list; the note reads "Added before sources were recorded".
+  "Remove batch" no longer looks double-spaced: its two words were two
+  flex items of the button, 6 px apart.
+- **Blacklists, Enforcement: every value is aligned to the right edge.**
+  "Networks Squid loads 32,215" carried its explanation inside the value, so
+  the value dropped under its label and floated 93 px from the edge; "Limit
+  1,000,000 entries (SPM_DNS_BLOCKLIST_MAX_DOMAINS)" wrapped onto two lines
+  under its label. Each row is now a label and a value on one line, with an
+  explanation ("Merged from ...", "Set by SPM_DNS_BLOCKLIST_MAX_DOMAINS.")
+  on its own line under both.
+- **The browser e2e suite waits for the geo-block import it starts.** The
+  Geo-block test clicked "Download and block IPs" and moved on after 5
+  seconds; the backend went on importing the CN networks (8.4 s on one CI
+  run) and committed them during the next test, above the two addresses
+  that test had just imported, so "fits a 390 px wide screen" did not find
+  203.0.113.201 on the first page, on its retry either. The Geo-block test
+  now waits for the answer (200, or 502 when the feed is unreachable), the
+  phone test checks its import answered 200 and finds the address by
+  search instead of by its place in the list.
 - The WAF image stores its binary once, owned by root and run by the `waf`
   user, who can no longer change it. A `chown` after the copy wrote a second
   full copy of the binary in its own layer (8.1 MB on amd64) and let the
@@ -85,6 +203,24 @@ for at least one minor release before disappearing.
   rounding clipped into something like a "(". The fill is now at least 2 px
   with a square start; a client with no blocked request shows a muted "0%"
   and no empty track, rather than "0.0%" over an empty bar on every row.
+- **One name per concept.** "Overview" names only the page at "/": the
+  menu item that read "Dashboard" is now "Overview", the menu group that
+  held it is "Insights", and the Settings section that was also called
+  "Overview" is "Summary" (its address stays `/settings/overview`). A
+  permitted request is "Allowed" everywhere; the client detail said "Not
+  blocked". The two domain rules are named by where they block, "Domain
+  blacklist (proxy)" and "Domain blacklist (DNS sinkhole)". These are the
+  `reason_label` and `label` values the API returns (`reason` keys are
+  unchanged): "Not blocked" is now "Allowed", "Domain blacklist" is
+  "Domain blacklist (proxy)" and "Domain blacklist (DNS)" is "Domain
+  blacklist (DNS sinkhole)". In "Most blocked destinations" a host blocked
+  by two rules shows each rule with its count.
+
+### Internal
+
+- The `UI layout (Playwright)` check is required on `main`, in the ruleset and
+  in `.github/branch-protection.json`, so a page that overflows, wraps or
+  misaligns at desktop, 1250 px or phone width cannot merge.
 
 ## [3.18.3] - 2026-10-28
 

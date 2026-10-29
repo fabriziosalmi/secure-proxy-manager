@@ -64,7 +64,7 @@ Each message is one row just stored in the access log:
   "blocked": 0,
   "event_id": "",
   "reason": "none",
-  "reason_label": "Not blocked",
+  "reason_label": "Allowed",
   "internal": false,
   "kind": "Private network address",
   "resolved_ip": "93.184.216.34"
