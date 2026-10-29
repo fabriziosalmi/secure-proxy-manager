@@ -178,7 +178,7 @@ function AddDestination({ onAdded }: { onAdded: () => void }) {
               ref={entryRef}
               value={value}
               onChange={(e) => { setValue(e.target.value); if (entryError) setEntryError(null); }}
-              placeholder={kind === 'domain' ? 'acme-v02.api.letsencrypt.org' : '203.0.113.0/24'}
+              placeholder={kind === 'domain' ? 'e.g. updates.example.com' : 'e.g. 203.0.113.0/24'}
               autoComplete="off"
               spellCheck={false}
               aria-invalid={entryError ? true : undefined}
