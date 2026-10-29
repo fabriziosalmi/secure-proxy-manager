@@ -17,7 +17,9 @@ Each tab has an **Enforcement** section that reports what the proxy recorded
 when it loaded the list (`/config/domain_acl_status.json` for the domains,
 `/config/ip_blacklist_acl_status.json` and `/config/ip_whitelist_acl_status.json`
 for the networks Squid loads after merging overlapping entries). It says "Not
-reported" when a record is missing.
+reported" when a record is missing. Its rows speak of the DNS sinkhole and the
+proxy; which program each is, the record files and the variables that set the
+limits are under **How it works** in the same section.
 
 The examples below use the API through the UI's address. The certificate is
 self-signed unless you mounted your own, hence `-k`:

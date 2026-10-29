@@ -94,6 +94,15 @@ for at least one minor release before disappearing.
   names each category in words with its kind (rule, heuristic, domain
   reputation, size limit) instead of the raw key (`SQL_INJECTION`,
   `HEURISTIC_BEACONING`).
+- **The Enforcement sections speak of the proxy and of limits.** Their rows
+  read "Proxy (Squid)" and "Networks Squid loads", named
+  `SPM_SQUID_DOMAIN_ACL_MAX` in a value and `SPM_DNS_BLOCKLIST_MAX_DOMAINS`
+  under the limit, and put file names such as
+  `ip_blacklist_acl_status.json` in "Not reported". The rows and paragraphs
+  now say "the proxy" and "limit"; which program enforces each list, the files the proxy records and the variables
+  that set the limits are under "How it works" in each section. The
+  Overview's notices about the domain blacklist say "the proxy" too, and
+  keep `SPM_SQUID_DOMAIN_ACL_MAX` where raising it is the way out.
 - **Egress allowlist, Provider lists: the table fits at 1250 px and says
   what it does.** Seven columns ran 50 px past the card at 1250 px, cutting
   "Refresh now"; a list never downloaded said "Not downloaded yet" four
