@@ -45,10 +45,13 @@ const EMPTY: Record<Category, { title: string; description: string }> = {
   signins: { title: 'No sign-in recorded', description: 'Every sign-in, failed sign-in and sign-out appears here.' },
 };
 
+// Plain text, told apart by weight and a word for a failure: the events were
+// blue pills, the colour of a link, and nothing in them is clickable; a long
+// one wrapped inside its pill.
 const KIND_STYLE: Record<AuditKind, string> = {
-  change: 'bg-accent-subtle text-accent',
-  signin: 'bg-line-subtle text-ink-muted',
-  'signin-failed': 'bg-warning-subtle text-warning',
+  change: 'text-ink',
+  signin: 'text-ink-muted',
+  'signin-failed': 'text-warning',
 };
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -135,7 +138,7 @@ export function Audit() {
       cell: (e) => {
         const d = describeAudit(e);
         return (
-          <span className={cn('inline-block rounded-md px-2 py-0.5 text-xs font-medium [overflow-wrap:anywhere]', KIND_STYLE[d.kind])}>
+          <span className={cn('text-[13px] font-medium [overflow-wrap:anywhere]', KIND_STYLE[d.kind])}>
             {d.event}
           </span>
         );

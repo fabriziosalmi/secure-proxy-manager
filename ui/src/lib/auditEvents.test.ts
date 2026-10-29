@@ -51,7 +51,7 @@ describe('describeAudit', () => {
     const capped = describeAudit(row('rewrite_egress_wildcards', 'egress_allowlist', '{"dropped":0,"entries":["*.a > .a"],"rewritten":51}'))
     expect(capped.details).toBe('*.a > .a, and 50 more')
     // A shape this module does not know is shown as recorded.
-    expect(describeAudit(row('rewrite_egress_wildcards', 'egress_allowlist', 'text')).event).toBe('rewrite_egress_wildcards')
+    expect(describeAudit(row('rewrite_egress_wildcards', 'egress_allowlist', 'text')).event).toBe('Rewrite egress wildcards')
   })
 
   it('names the sign-ins and keeps a failed one apart', () => {
@@ -72,13 +72,40 @@ describe('describeAudit', () => {
     expect(describeAudit(row('remove_source_ip_blacklist', 'source=3', '4 entries removed'))).toEqual({
       event: 'Removed a source from Blocked IPs', details: 'source=3. 4 entries removed', kind: 'change',
     })
-    expect(describeAudit(row('update_settings', 'log_retention_days,enable_waf'))).toMatchObject({ event: 'Changed 2 settings', details: 'log_retention_days, enable_waf' })
+    expect(describeAudit(row('update_settings', 'log_retention_days,enable_waf'))).toMatchObject({ event: 'Changed 2 settings', details: 'Keep logs for (days), Enable waf' })
     expect(describeAudit(row('reload_config', 'proxy')).event).toBe('Reloaded the proxy configuration')
   })
 
   it('shows a key it does not know verbatim, with what was recorded', () => {
-    expect(describeAudit(row('rotate_keys', 'waf', 'manual'))).toEqual({ event: 'rotate_keys', details: 'waf. manual', kind: 'change' })
+    expect(describeAudit(row('rotate_keys', 'waf', 'manual'))).toEqual({ event: 'Rotate keys', details: 'waf. manual', kind: 'change' })
     // A known key whose details are not what the backend writes is not guessed at.
-    expect(describeAudit(row('clear_ip_blacklist', '', 'Cleared some'))).toEqual({ event: 'clear_ip_blacklist', details: 'Cleared some', kind: 'change' })
+    expect(describeAudit(row('clear_ip_blacklist', '', 'Cleared some'))).toEqual({ event: 'Clear ip blacklist', details: 'Cleared some', kind: 'change' })
+    // Its JSON details read as fields, never as raw JSON.
+    expect(describeAudit(row('rotate_keys', 'waf', '{"kind":"catalog","shared_network":false}')).details).toBe('waf. kind: catalog, shared network: false')
+  })
+
+  // "egress_provider_disabled" with "telegram. {\"kind\":\"catalog\"}" was
+  // what the page showed: the key and the JSON as recorded.
+  it('writes the egress provider events as sentences', () => {
+    expect(describeAudit(row('egress_provider_enabled', 'telegram', '{"kind":"catalog","shared_network":false}'))).toEqual({ event: 'Turned on the provider list telegram', details: null, kind: 'change' })
+    expect(describeAudit(row('egress_provider_enabled', 'amazon', '{"kind":"catalog","shared_network":true}')).details).toBe('A shared network')
+    expect(describeAudit(row('egress_provider_disabled', 'telegram', '{"kind":"catalog"}')).event).toBe('Turned off the provider list telegram')
+    expect(describeAudit(row('egress_provider_disabled', 'partner', '{"kind":"url","url":"https://feeds.example/x","deleted":true}'))).toEqual({ event: 'Removed the URL list partner', details: 'https://feeds.example/x', kind: 'change' })
+    expect(describeAudit(row('egress_provider_refreshed', 'github', '{"commit":"d03d319a255c","v4_before":0,"v4_after":512,"v6_before":0,"v6_after":140}'))).toEqual({
+      event: 'Downloaded the provider list github', details: 'IPv4 prefixes 0 to 512. IPv6 prefixes 0 to 140. Commit d03d319', kind: 'change',
+    })
+    expect(describeAudit(row('egress_provider_refresh_failed', 'github', '{"kind":"catalog","reason":"timeout"}'))).toEqual({ event: 'Could not download the provider list github', details: 'timeout', kind: 'change' })
+  })
+
+  // A settings save named only its keys: "Changed 8 settings" and a list of
+  // keys, nothing about the values.
+  it('names each setting a save changed, from what to what, and a secret only as set or cleared', () => {
+    expect(describeAudit(row('update_settings', 'blocked_file_types,enable_notifications,telegram_bot_token',
+      '{"changes":{"enable_notifications":{"from":"false","to":"true"},"blocked_file_types":{"from":"","to":"exe,msi"}},"secrets":{"telegram_bot_token":"set"}}'))).toEqual({
+      event: 'Changed 3 settings',
+      details: 'Send alerts: off to on; Blocked extensions: not set to exe,msi; Bot token: set',
+      kind: 'change',
+    })
+    expect(describeAudit(row('update_setting', 'cache_size', '{"changes":{"cache_size":{"from":"2000","to":"2500"}}}')).details).toMatch(/: 2000 to 2500$/)
   })
 })
