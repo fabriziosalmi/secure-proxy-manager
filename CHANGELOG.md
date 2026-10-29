@@ -36,35 +36,6 @@ for at least one minor release before disappearing.
   marks in both places differ by shape (triangle, hollow circle, filled
   circle, dashed circle) as well as colour, and Protection coverage has a
   legend. Alerts off is *worth knowing* on both pages.
-- **Settings and Analytics judge the configuration the same way.** The
-  Settings menu showed 1 next to Overview, whose "Needs attention" list held
-  4 items, and alerts switched off were orange in Analytics but grey in
-  Settings. One model now decides: *needs attention* (it stops clients or
-  gives false safety), *worth knowing* (a choice with a cost: HTTPS not
-  inspected, alerts off, proxy login off), *on* and *unknown*. Settings,
-  Overview lists the two kinds apart and the menu counts the first; the
-  marks in both places differ by shape (triangle, hollow circle, filled
-  circle, dashed circle) as well as colour, and Protection coverage has a
-  legend. Alerts off is *worth knowing* on both pages.
-- **The Analytics WAF card says it counts matches, not blocks.** Titled
-  "WAF categories", it listed the categories that matched a request, weak
-  matches below the block threshold included, since the WAF started, on a
-  page whose subtitle says "Last 7 days", and only its last line said how
-  many requests were blocked (often 0). It is now "WAF rule matches", says
-  "a match is not a block" and the blocked count in its description, and
-  names each category in words with its kind (rule, heuristic, domain
-  reputation, size limit) instead of the raw key (`SQL_INJECTION`,
-  `HEURISTIC_BEACONING`).
-- **Settings and Analytics judge the configuration the same way.** The
-  Settings menu showed 1 next to Overview, whose "Needs attention" list held
-  4 items, and alerts switched off were orange in Analytics but grey in
-  Settings. One model now decides: *needs attention* (it stops clients or
-  gives false safety), *worth knowing* (a choice with a cost: HTTPS not
-  inspected, alerts off, proxy login off), *on* and *unknown*. Settings,
-  Overview lists the two kinds apart and the menu counts the first; the
-  marks in both places differ by shape (triangle, hollow circle, filled
-  circle, dashed circle) as well as colour, and Protection coverage has a
-  legend. Alerts off is *worth knowing* on both pages.
 - **The Analytics WAF card says it counts matches, not blocks.** Titled
   "WAF categories", it listed the categories that matched a request, weak
   matches below the block threshold included, since the WAF started, on a
@@ -77,6 +48,13 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **The Overview's hourly chart writes no hour twice and marks its partial
+  hours.** Its 24 hours span 25 hourly bars, the first and last covering only
+  part of an hour, and the axis read 08:00 at both ends: the first 08:00 was
+  the 8 minutes of yesterday after 08:52. The axis now starts with the
+  window's own start ("Wed 08:52") and ends with "Now"; the first and last
+  bars are drawn lighter and their tooltips name the minutes they cover
+  ("08:52 to 09:00 only").
 - **Blacklists, Where the entries came from: a source's URL is shown
   whole.** Feed URLs and the note on entries with no recorded source were
   cut with an ellipsis on their first line (two of three URLs at 1440 px,
