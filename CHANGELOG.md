@@ -15,6 +15,18 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- **Every page writes a time the same way.** Seven formatters gave
+  `01:34:30` next to `2026-10-28 23:51` in one list, and dates that wrapped
+  under their time. Now one rule holds: the Access logs, the Audit log and
+  a request's detail write every time whole (`2026-10-29 08:51:30`), today's
+  too; lists and cards write `08:51` today, `Yesterday 23:51`, `Sun 25 23:55`
+  in the last week and `2026-10-21 23:55` before, on one line. A tooltip
+  gives the exact time with the zone, and the Access logs say which zone
+  their times are in. A pasted or restored source still names its time to
+  the second, so two pastes a minute apart read differently.
+
 ## [3.18.3] - 2026-10-28
 
 A fix release. The web UI keeps working when the backend container is

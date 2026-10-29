@@ -26,7 +26,7 @@ import { Badge } from '../components/ui/Badge';
 import { useModal } from '../hooks/useModal';
 import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData } from '../lib/api';
-import { formatCount, formatDate, formatDateTime, formatHourMinute, formatShare } from '../lib/format';
+import { formatCount, formatShare, formatWhen, formatWhenExact } from '../lib/format';
 import { cn } from '../lib/utils';
 import type { ClientsData, ClientStat, ClientDetail, ClientDomain, ClientRecent } from '../types';
 
@@ -51,13 +51,9 @@ function writeShowInternal(on: boolean) {
 
 const plural = (n: number, one: string, many: string) => `${formatCount(n)} ${n === 1 ? one : many}`;
 
-/** "09:21" for a time today in the viewer's zone, "2026-10-21 09:21" otherwise. */
+/** "09:21" today, "Yesterday 23:55", "Sun 25 23:55" in the last week, "2026-10-21 09:21" before. */
 function shortTime(ts: string): string {
-  if (!ts) return 'Not recorded';
-  const day = formatDate(ts);
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  return day === today ? formatHourMinute(ts) : `${day} ${formatHourMinute(ts)}`;
+  return ts ? formatWhen(ts, { style: 'glance' }) : 'Not recorded';
 }
 
 const clientKey = (c: ClientStat): string => c.network || c.ip_address;
@@ -166,7 +162,7 @@ export function Clients() {
       id: 'last',
       header: 'Last request',
       className: 'whitespace-nowrap text-ink-muted',
-      cell: (c) => <span title={c.last_seen ? formatDateTime(c.last_seen) : undefined}>{shortTime(c.last_seen)}</span>,
+      cell: (c) => <span title={c.last_seen ? formatWhenExact(c.last_seen) : undefined}>{shortTime(c.last_seen)}</span>,
     },
   ];
 
@@ -362,11 +358,15 @@ function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
     <div className="flex flex-col gap-5 pb-5">
       <div className="flex flex-col gap-1 px-5 text-[13px] text-ink-muted">
         {detailSub && <p>{detailSub}</p>}
-        <p>
-          {info.first_seen
-            ? <>First request {formatDateTime(info.first_seen)}, last request {info.last_seen ? formatDateTime(info.last_seen) : 'not recorded'}</>
-            : 'No request recorded'}
-        </p>
+        {info.first_seen ? (
+          // One row each, never broken: a date used to wrap away from its time.
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+            <dt>First request</dt>
+            <dd className="whitespace-nowrap text-ink-secondary" title={formatWhenExact(info.first_seen)}>{shortTime(info.first_seen)}</dd>
+            <dt>Last request</dt>
+            <dd className="whitespace-nowrap text-ink-secondary" title={info.last_seen ? formatWhenExact(info.last_seen) : undefined}>{info.last_seen ? shortTime(info.last_seen) : 'Not recorded'}</dd>
+          </dl>
+        ) : <p>No request recorded</p>}
         <Link
           to={`/logs?client=${encodeURIComponent(logTarget)}`}
           className="self-start rounded-sm font-semibold text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
@@ -418,7 +418,7 @@ function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
               <li key={`${r.timestamp}-${i}`} className="flex flex-col gap-1 border-t border-line-subtle px-5 py-2 text-xs">
                 <code className="truncate font-mono text-ink" title={r.destination}>{r.destination}</code>
                 <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-ink-muted">
-                  <span className="font-mono tabular-nums" title={formatDateTime(r.timestamp)}>{shortTime(r.timestamp)}</span>
+                  <span className="whitespace-nowrap font-mono tabular-nums" title={formatWhenExact(r.timestamp)}>{shortTime(r.timestamp)}</span>
                   <span className="font-mono">{r.method}</span>
                   <RecentReason r={r} />
                 </span>

@@ -90,9 +90,12 @@ describe('Dashboard (Overview)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     restoreTz = setRomeTimeZone()
+    // The fixtures are of 1 July 2026: times are written relative to today.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 6, 1, 12, 0, 0) })
     serve(DEFAULT_ROUTES)
   })
   afterEach(() => {
+    vi.useRealTimers()
     restoreTz()
     vi.restoreAllMocks()
   })
@@ -179,12 +182,21 @@ describe('Dashboard (Overview)', () => {
 
   // recent_blocks timestamps are UTC without a zone marker.
   it('shows a recent block at the viewer time, not at the UTC wall-clock time', async () => {
-    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 6, 1, 12, 0, 0) })
-    try {
-      renderWithProviders(<Dashboard />)
-      const latest = await screen.findByRole('region', { name: 'Latest blocks' })
-      expect(await within(latest).findByText('09:04:12')).toBeInTheDocument()
-    } finally { vi.useRealTimers() }
+    renderWithProviders(<Dashboard />)
+    const latest = await screen.findByRole('region', { name: 'Latest blocks' })
+    expect(await within(latest).findByText('09:04')).toBeInTheDocument()
+  })
+
+  // Today's blocks read 01:34:30 and yesterday's 2026-10-28 23:51, with and
+  // without seconds, the date wrapping under the time.
+  it('writes every latest block in one shape: the time today, "Yesterday" and the time the day before', async () => {
+    const block = summaryData.recent_blocks[0]
+    serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, recent_blocks: [block, { ...block, timestamp: '2026-06-30 21:51:10' }] } })
+    renderWithProviders(<Dashboard />)
+    const latest = await screen.findByRole('region', { name: 'Latest blocks' })
+    expect(await within(latest).findByText('Yesterday 23:51')).toBeInTheDocument()
+    expect(within(latest).getByText('09:04')).toHaveAttribute('title', '2026-07-01 09:04:12 (Europe/Rome)')
+    expect(within(latest).queryByText(/:\d\d:\d\d$/)).toBeNull()
   })
 
   it('lists the most blocked destinations as hosts with their rule', async () => {

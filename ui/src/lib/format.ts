@@ -59,6 +59,68 @@ export function formatHourMinute(ts: string): string {
   return d ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : ts;
 }
 
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAY = 86_400_000;
+
+/** Midnight of d's calendar day in the viewer's time zone, epoch milliseconds. */
+function midnight(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+/** How many calendar days of the viewer's zone lie between d and now: 0 today, 1 yesterday, negative ahead. */
+function daysAgo(d: Date, now: Date): number {
+  // Rounded: a day across a clock change is 23 or 25 hours long.
+  return Math.round((midnight(now) - midnight(d)) / DAY);
+}
+
+export interface WhenOptions {
+  /**
+   * full: "2026-10-28 23:51:10" whatever the day, for the tables a time is
+   * looked up in (Access logs, Audit log, a request's detail).
+   * glance: "08:51" today, "Yesterday 23:51", "Sun 25 23:55" in the last
+   * week, "2026-10-21 23:55" before (and for a time ahead of the clock).
+   */
+  style: 'full' | 'glance';
+  /** The present, for glance; the browser's clock when left out. */
+  now?: Date | number;
+  /** Lower-case "yesterday", for a time inside a sentence. */
+  inSentence?: boolean;
+}
+
+/**
+ * The one way the UI writes a backend timestamp in a list or a sentence
+ * (see WhenOptions). Never more than one line: the caller keeps it on one
+ * with whitespace-nowrap. The input when unparseable.
+ */
+export function formatWhen(ts: string, { style, now, inSentence }: WhenOptions): string {
+  const d = parsed(ts);
+  if (!d) return ts;
+  if (style === 'full') return formatDateTime(ts);
+  const at = now === undefined ? new Date() : new Date(now);
+  const hm = formatHourMinute(ts);
+  const n = daysAgo(d, at);
+  if (n === 0) return hm;
+  if (n === 1) return `${inSentence ? 'yesterday' : 'Yesterday'} ${hm}`;
+  if (n > 1 && n < 7) return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${hm}`;
+  return `${formatDate(ts)} ${hm}`;
+}
+
+/** The viewer's IANA time zone, or null when the browser reports none. */
+export function viewerZone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+}
+
+/** "2026-10-28 23:51:10 (Europe/Rome)": a timestamp whole, for a tooltip or a detail. */
+export function formatWhenExact(ts: string): string {
+  if (!parsed(ts)) return ts;
+  const zone = viewerZone();
+  return zone ? `${formatDateTime(ts)} (${zone})` : formatDateTime(ts);
+}
+
 /** "11:00" in the viewer's time zone, for a moment in the browser (a Date or epoch milliseconds). */
 export function formatClock(at: Date | number): string {
   const d = typeof at === 'number' ? new Date(at) : at;
