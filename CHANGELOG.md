@@ -41,6 +41,43 @@ for at least one minor release before disappearing.
   their times are in. A pasted or restored source still names its time to
   the second, so two pastes a minute apart read differently.
 
+- **Settings and Analytics judge the configuration the same way.** The
+  Settings menu showed 1 next to Overview, whose "Needs attention" list held
+  4 items, and alerts switched off were orange in Analytics but grey in
+  Settings. One model now decides: *needs attention* (it stops clients or
+  gives false safety), *worth knowing* (a choice with a cost: HTTPS not
+  inspected, alerts off, proxy login off), *on* and *unknown*. Settings,
+  Overview lists the two kinds apart and the menu counts the first; the
+  marks in both places differ by shape (triangle, hollow circle, filled
+  circle, dashed circle) as well as colour, and Protection coverage has a
+  legend. Alerts off is *worth knowing* on both pages.
+
+### Fixed
+
+- The WAF image stores its binary once, owned by root and run by the `waf`
+  user, who can no longer change it. A `chown` after the copy wrote a second
+  full copy of the binary in its own layer (8.1 MB on amd64) and let the
+  process change the mode of its own executable. CI checks both.
+- **Analytics counts the internal addresses of its own 7 days.** "Requests
+  from N internal addresses are not counted" under the blocks-per-day chart
+  counted every internal address ever logged, sinkhole (DNS) rows included,
+  so it read 4 where the Clients page, over the same days, read 2.
+  `GET /api/analytics/blocked-by-day` now returns in `internal_sources` the
+  internal sources that sent client requests in the chart's 7 days (networks
+  in GDPR mode), and the text says "in these 7 days". The Clients page no
+  longer says its internal addresses are "not counted on the Overview", whose
+  own figure covers 24 hours: they are not counted in any statistic.
+- **Sizes keep one decimal below 100 of a unit.** The Access logs showed
+  `3 KB` next to `6.9 KB` and `7 KB`, as if measured to two precisions. A
+  size under 100 of its unit now always has one decimal (`3.0 KB`,
+  `50.0 MB`); from 100 up it has none (`252 KB`), as before.
+- **A small blocked share is drawn as a bar, not as a sliver.** The share
+  bar of the Overview's Blocked card and of the Clients table filled its
+  share of a rounded track: 2.2% of an 80 px track was 1.75 px, which the
+  rounding clipped into something like a "(". The fill is now at least 2 px
+  with a square start; a client with no blocked request shows a muted "0%"
+  and no empty track, rather than "0.0%" over an empty bar on every row.
+
 ## [3.18.3] - 2026-10-28
 
 A fix release. The web UI keeps working when the backend container is
