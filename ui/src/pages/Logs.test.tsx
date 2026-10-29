@@ -172,7 +172,8 @@ describe('Logs', () => {
     await waitFor(() => expect(bodyRows()).toHaveLength(4))
     const [a, dns, waf, old] = bodyRows()
     expect(within(a).getByText('192.168.1.10')).toBeInTheDocument()
-    expect(within(a).getByText('Private network address')).toBeInTheDocument()
+    // Every LAN client is a private network address: the row does not say it.
+    expect(within(a).queryByText('Private network address')).toBeNull()
     expect(within(a).getByText('CONNECT')).toBeInTheDocument()
     expect(within(a).getByRole('button', { name: 'example.com:443' })).toHaveAttribute('title', 'example.com:443')
     expect(within(a).getByText('200')).toHaveClass('text-success')
@@ -214,6 +215,19 @@ describe('Logs', () => {
     const [sink] = bodyRows()
     expect(within(sink).getByText('Answered by the DNS sinkhole')).toBeInTheDocument()
     expect(within(sink).queryByText('0.0.0.0')).toBeNull()
+    logsBody = () => page([allowed, dnsBlock, wafBlock, oldBlock])
+  })
+
+  it('names the kind of a client under it when it is internal or public', async () => {
+    logsBody = () => page([
+      row({ id: 7, source_ip: '203.0.113.9', kind: 'Public address' }),
+      row({ id: 6, source_ip: '172.18.0.1', internal: true, kind: 'Internal: this host' }),
+    ])
+    renderWithProviders(<Logs />)
+    await waitFor(() => expect(bodyRows()).toHaveLength(2))
+    const [pub, host] = bodyRows()
+    expect(within(pub).getByText('Public address')).toBeInTheDocument()
+    expect(within(host).getByText('Internal: this host')).toBeInTheDocument()
     logsBody = () => page([allowed, dnsBlock, wafBlock, oldBlock])
   })
 

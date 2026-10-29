@@ -190,6 +190,24 @@ describe('Clients', () => {
     }
   })
 
+  // "Private network address" was under every row, on two lines at 1440 px:
+  // on a LAN every client is one. A public or internal address is still said.
+  it('labels a client with its kind only when it is not a private network address', async () => {
+    body = {
+      ...clientsBody,
+      data: [
+        clientsBody.data[0],
+        { ip_address: '203.0.113.9', requests: 5, blocked: 0, last_seen: '2026-07-01 08:00:00', status: 'Active', internal: false, kind: 'Public address' },
+      ],
+      meta: { ...clientsBody.meta, internal: 0 },
+    }
+    renderWithProviders(<Clients />)
+    await waitFor(() => expect(ips()).toHaveLength(2))
+    const [lan, pub] = tableRows()
+    expect(lan).not.toHaveTextContent('Private network address')
+    expect(pub).toHaveTextContent('Public address')
+  })
+
   it('filters by IP address', async () => {
     renderWithProviders(<Clients />)
     await waitFor(() => expect(ips()).toHaveLength(2))

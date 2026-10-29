@@ -99,6 +99,12 @@ for at least one minor release before disappearing.
   not finish. A code it does not know is shown as it is, and the raw code
   stays in the request details and the tooltip. A DNS sinkhole row no longer
   shows its 0.0.0.0 answer where the HTTP code goes.
+- **A client is labelled with its kind only when it is internal, public or
+  mixed.** The access log and the client list wrote "Private network
+  address" under every client, on two lines at 1440 px, though every client
+  on a LAN is one. The tables now leave that kind out and still name an
+  internal address, a public address or a mixed network; the request and
+  client details keep every kind.
 - **The Analytics WAF card says it counts matches, not blocks.** Titled
   "WAF categories", it listed the categories that matched a request, weak
   matches below the block threshold included, since the WAF started, on a
