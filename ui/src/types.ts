@@ -230,6 +230,8 @@ export interface ClientDetail {
   internal?: boolean;
   kind?: string;
   classification?: 'internal' | 'external' | 'mixed';
+  /** What the counts cover: "7d", the client list's window, or "all", every request logged. */
+  window?: '7d' | 'all';
   total_requests: number;
   blocked: number;
   first_seen: string;

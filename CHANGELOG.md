@@ -17,6 +17,14 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **The client detail states the window it counts, and the share blocked
+  can be sorted.** The client list counts the last 7 days and the detail it
+  opens counted every request ever logged, saying so only when the two
+  numbers differed. `GET /api/clients/{ip}/details` takes `window=7d` (the
+  list's window) or `window=all` (the default, as before) and says in
+  `window` which it counted; another value answers `400`. The detail now
+  counts the last 7 days, offers "All time", and always says which. The
+  Share blocked column of the client list sorts, largest first.
 - The WAF image stores its binary once, owned by root and run by the `waf`
   user, who can no longer change it. A `chown` after the copy wrote a second
   full copy of the binary in its own layer (8.1 MB on amd64) and let the

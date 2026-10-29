@@ -285,7 +285,7 @@ These return JSON in the standard envelope, in the shape the UI renders:
 | `GET /api/dashboard/summary` | The dashboard's data in one call (with `gdpr_mode` on, `top_clients` are aggregated by `/24` or `/64` network and `recent_blocks[].source_ip` is masked) |
 | `GET /api/traffic/statistics?period=day` | Requests and blocks per bucket (`hour`, `day`, `week`, `month`) |
 | `GET /api/clients/statistics` | Top 50 clients (or `/24` and `/64` networks with `gdpr_mode` on, including `network` CIDR and distinct `addresses` count), then the internal sources |
-| `GET /api/clients/{ip}/details` | One client's or network CIDR's totals, top domains and recent requests (with `gdpr_mode` on, only `/24` or `/64` CIDRs are accepted and a single address answers `400`) |
+| `GET /api/clients/{ip}/details?window=7d` | One client's or network CIDR's totals, top domains, recent requests and blocks by rule. `window=7d` counts the last 7 days, as `GET /api/clients/statistics` does; `window=all`, the default, counts every request logged; any other value answers `400`. The answer says which in `window`. With `gdpr_mode` on, only `/24` or `/64` CIDRs are accepted and a single address answers `400` |
 | `GET /api/domains/statistics` | Top 50 domains |
 | `GET /api/analytics/shadow-it` | Requests of the last 7 days to known services, by host |
 | `GET /api/analytics/user-agents` | Requests of the last 7 days by method and kind of service |
