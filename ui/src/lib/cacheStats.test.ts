@@ -11,7 +11,7 @@ describe('cache statistics text', () => {
   it("says the current record's hit ratio, disk use and collection time", () => {
     // 12:15:28 UTC is 13:15 in Rome on 2026-10-25 (CET).
     expect(cacheSummary({ ...currentCacheStats, uptime_s: 7200 }))
-      .toBe('Hit ratio 64.7% (last hour) · 252 KB of 50 MB on disk · collected 13:15')
+      .toBe('Hit ratio 64.7% (last hour) · 252 KB of 50.0 MB on disk · collected 13:15')
   })
 
   // Squid's 60 minute window covers the time since it started until it has
@@ -32,7 +32,7 @@ describe('cache statistics text', () => {
   })
 
   it('writes the disk use with its capacity when Squid reported one', () => {
-    expect(cacheDisk({ ...currentCacheStats, disk_used_kb: 1258291, disk_capacity_kb: 10485760 })).toBe('1.2 GB of 10 GB on disk')
+    expect(cacheDisk({ ...currentCacheStats, disk_used_kb: 1258291, disk_capacity_kb: 10485760 })).toBe('1.2 GB of 10.0 GB on disk')
     expect(cacheDisk({ ...currentCacheStats, disk_capacity_kb: null })).toBe('252 KB on disk')
     expect(cacheDisk({ ...currentCacheStats, disk_used_kb: null })).toBeNull()
   })

@@ -14,11 +14,18 @@ npm run build      # tsc -b, then vite build into dist/
 npm run lint       # ESLint
 npm test           # Vitest (jsdom), src/**/*.test.ts(x)
 npm run test:e2e   # Playwright, tests-e2e/, against BASE_URL (default http://localhost:5173)
+npm run test:layout # Playwright, tests-layout/: the pages at 1440, 1250 and 390 px, API answered by fixtures
 npm run preview    # serve the production build
 ```
 
 `npm run dev` needs a backend on `http://localhost:5001`, for example the
 stack started with `docker compose up -d` from the repository root.
+
+`npm run test:layout` needs no backend: it starts the Vite dev server and
+answers every `/api` request from `tests-layout/fixtures.ts`, the numbers of
+a real install. It measures what jsdom cannot (alignment, line breaks,
+overflow), so a layout fix comes with a check there that fails without it.
+Run `npx playwright install chromium` once before the first run.
 
 ## Layout
 

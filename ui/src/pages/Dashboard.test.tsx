@@ -270,7 +270,7 @@ describe('Dashboard (Overview)', () => {
     renderWithProviders(<Dashboard />)
     const services = await screen.findByRole('region', { name: 'Services' })
     await waitFor(() => {
-      expect(services).toHaveTextContent('Cache statistics · collectedHit ratio 64.7% (last hour) · 252 KB of 50 MB on disk · collected 13:15')
+      expect(services).toHaveTextContent('Cache statistics · collectedHit ratio 64.7% (last hour) · 252 KB of 50.0 MB on disk · collected 13:15')
     })
   })
 

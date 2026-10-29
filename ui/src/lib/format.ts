@@ -80,12 +80,13 @@ export function formatPercent(pct: number): string {
 }
 
 const SIZE_UNITS = ['KB', 'MB', 'GB', 'TB'];
-const SIZE_SMALL = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
+// One decimal always, zero included: 3 KB next to 6.9 KB read as two precisions.
+const SIZE_SMALL = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 /**
  * A size Squid reports in KB (1024 bytes) in the largest unit that keeps it
- * at 1 or more: 252 -> "252 KB", 51200 -> "50 MB", 1258291 -> "1.2 GB".
- * One decimal below 100 of a unit, none above.
+ * at 1 or more: 252 -> "252 KB", 51200 -> "50.0 MB", 1258291 -> "1.2 GB".
+ * One decimal below 100 of a unit, zero included, none above.
  */
 export function formatKilobytes(kb: number): string {
   let v = kb;
@@ -99,7 +100,7 @@ export function formatKilobytes(kb: number): string {
 
 /**
  * A size in bytes (an access-log row's): "205 B" under 1 KB, then as
- * formatKilobytes writes it: 6758 -> "6.6 KB", 1258291 -> "1.2 MB".
+ * formatKilobytes writes it: 3072 -> "3.0 KB", 6758 -> "6.6 KB", 1258291 -> "1.2 MB".
  */
 export function formatBytes(bytes: number): string {
   if (Math.abs(bytes) < 1024) return `${COUNT.format(bytes)} B`;
