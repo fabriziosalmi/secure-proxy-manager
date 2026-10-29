@@ -130,6 +130,7 @@ step "golangci backend"      docker run --rm -v "$W:/repo" -w /repo/backend-go g
 step "golangci waf"          docker run --rm -v "$W:/repo" -w /repo/waf-go golangci/golangci-lint:v2.12.2 golangci-lint run --timeout 5m
 step "gosec backend (go 1.26 as CI)" docker run --rm -v "$W/backend-go:/src:ro" -w /src -e GOTOOLCHAIN=local golang:1.26 sh -c 'go install github.com/securego/gosec/v2/cmd/gosec@v2.22.4 >/dev/null 2>&1 && /go/bin/gosec -quiet -severity medium -confidence medium ./...'
 step "ui tsc+vitest+eslint+build" bash -c 'cd ui && npm ci --no-audit --no-fund >/dev/null && npx tsc --noEmit && npx vitest run && npx eslint src && npm run build'
+step "ui layout (playwright)"    bash -c 'cd ui && npx playwright install chromium >/dev/null && npm run test:layout'
 step "version sync"          bash scripts/check-version-sync.sh
 step "image pins"            bash scripts/check-image-pins.sh
 step "config contract"       bash scripts/check-config-contract.sh

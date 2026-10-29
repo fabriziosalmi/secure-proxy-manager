@@ -34,7 +34,7 @@ export function cacheHitRatio(c: CacheStats): string | null {
   return pct === null ? null : `Hit ratio ${pct} (${cacheHitWindow(c)})`;
 }
 
-/** "252 KB of 50 MB on disk", or "252 KB on disk" without the capacity; null without either. */
+/** "252 KB of 50.0 MB on disk", or "252 KB on disk" without the capacity; null without either. */
 export function cacheDisk(c: CacheStats): string | null {
   if (c.disk_used_kb === null || c.disk_used_kb === undefined) return null;
   const of = c.disk_capacity_kb === null || c.disk_capacity_kb === undefined ? '' : ` of ${formatKilobytes(c.disk_capacity_kb)}`;

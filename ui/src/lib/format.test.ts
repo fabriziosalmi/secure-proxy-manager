@@ -149,6 +149,10 @@ describe('formatBytes', () => {
     expect(formatBytes(205)).toBe('205 B')
     expect(formatBytes(1023)).toBe('1,023 B')
     expect(formatBytes(6758)).toBe('6.6 KB')
+    // The access log's 3 KB sat next to 6.9 KB: one precision for every row.
+    expect(formatBytes(3072)).toBe('3.0 KB')
+    expect(formatBytes(4096)).toBe('4.0 KB')
+    expect(formatBytes(7168)).toBe('7.0 KB')
     expect(formatBytes(1258291)).toBe('1.2 MB')
     expect(formatBytes(1288490189)).toBe('1.2 GB')
   })
@@ -160,16 +164,16 @@ describe('formatKilobytes', () => {
   // Squid's KB is 1024 bytes: cache_dir 50 MB is "Maximum Swap Size: 51200 KB".
   it('writes a size Squid reports in KB in the largest unit that keeps it at 1 or more', () => {
     expect(formatKilobytes(252)).toBe('252 KB')
-    expect(formatKilobytes(51200)).toBe('50 MB')
+    expect(formatKilobytes(51200)).toBe('50.0 MB')
     expect(formatKilobytes(1258291)).toBe('1.2 GB')
-    expect(formatKilobytes(10485760)).toBe('10 GB')
-    expect(formatKilobytes(0)).toBe('0 KB')
+    expect(formatKilobytes(10485760)).toBe('10.0 GB')
+    expect(formatKilobytes(0)).toBe('0.0 KB')
   })
 
   it('keeps one decimal below 100 of a unit and none above', () => {
     expect(formatKilobytes(1536)).toBe('1.5 MB')
     expect(formatKilobytes(150 * 1024 + 300)).toBe('150 MB')
-    expect(formatKilobytes(2048 * 1024 * 1024)).toBe('2 TB')
+    expect(formatKilobytes(2048 * 1024 * 1024)).toBe('2.0 TB')
   })
 
   it('does not follow the browser locale', async () => {

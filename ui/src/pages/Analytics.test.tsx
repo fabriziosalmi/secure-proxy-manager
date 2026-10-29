@@ -129,7 +129,7 @@ describe('Analytics', () => {
     expect(screen.getByRole('img', { name: /^Blocked requests per day/ })).toHaveAccessibleName(
       'Blocked requests per day, today and the 6 days before: today 1,323 (1,300 Unclassified (no reason recorded), 22 Domain blacklist (DNS), 1 WAF); none on the other 6 days.',
     )
-    expect(within(chart).getByText(/midnight to midnight in your time zone \(Europe\/Rome\)\. 1,323 blocked in all\. Requests from 2 internal addresses are not counted\./)).toBeInTheDocument()
+    expect(within(chart).getByText(/midnight to midnight in your time zone \(Europe\/Rome\)\. 1,323 blocked in all\. Requests from 2 internal addresses in these 7 days are not counted\./)).toBeInTheDocument()
     // The table has every day, the empty ones as None.
     const rows = within(within(chart).getByRole('table', { name: 'Blocked requests on each of the last 7 days' })).getAllByRole('row').slice(1)
     expect(rows).toHaveLength(7)
