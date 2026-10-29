@@ -54,8 +54,8 @@ export function ruleColor(reason: string): RuleColor {
 
 // What a colour is called when more than one of its rules blocked in the week.
 const GROUP_LABEL: Record<RuleColor, string> = {
-  'series-1': 'Domain blacklist',
-  'series-2': 'Domain blacklist (DNS)',
+  'series-1': 'Domain blacklist (proxy)',
+  'series-2': 'Domain blacklist (DNS sinkhole)',
   'series-3': 'Address and network rules',
   'series-4': 'WAF and other rules',
 };
