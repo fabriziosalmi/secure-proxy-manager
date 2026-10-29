@@ -12,7 +12,7 @@ describe('wafCategoryLabel', () => {
     expect(wafCategoryLabel('BODY_OVERSIZE').kind).toBe('size limit')
   })
   it('writes an unknown key in words, keeping acronyms', () => {
-    expect(wafCategoryLabel('CRS_SQLI_EXTRA')).toEqual({ label: 'CRS sqli extra', kind: 'rule' })
+    expect(wafCategoryLabel('XSS_EXTRA_CHECK')).toEqual({ label: 'XSS extra check', kind: 'rule' })
     expect(wafCategoryLabel('HEURISTIC_NEW_THING')).toEqual({ label: 'Heuristic new thing', kind: 'heuristic' })
   })
 })

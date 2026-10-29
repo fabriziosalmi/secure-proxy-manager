@@ -54,7 +54,7 @@ const LABELS: Record<string, string> = {
 };
 
 const DOMAIN_REPUTATION = new Set(['DGA_DOMAIN', 'TYPOSQUATTING']);
-const ACRONYMS = new Set(['SQL', 'XSS', 'XXE', 'SSRF', 'PII', 'DGA', 'CRS', 'DLP', 'C2', 'RCE', 'LFI', 'RFI', 'SSTI', 'API', 'JWT', 'HTTP']);
+const ACRONYMS = new Set(['SQL', 'XSS', 'XXE', 'SSRF', 'PII', 'DGA', 'DLP', 'C2', 'RCE', 'LFI', 'RFI', 'SSTI', 'API', 'JWT', 'HTTP']);
 
 function kindOf(key: string): WafCategoryKind {
   if (key.startsWith('HEURISTIC_')) return 'heuristic';
@@ -63,7 +63,7 @@ function kindOf(key: string): WafCategoryKind {
   return 'rule';
 }
 
-/** "CRS_SQLI_EXTRA" -> "CRS sqli extra": words in lower case, acronyms kept, the first capitalised. */
+/** "XSS_EXTRA_CHECK" -> "XSS extra check": words in lower case, acronyms kept, the first capitalised. */
 function fromKey(key: string): string {
   const words = key.split('_').filter(Boolean).map((w) => (ACRONYMS.has(w.toUpperCase()) ? w.toUpperCase() : w.toLowerCase()));
   if (words.length === 0) return key;
