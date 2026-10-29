@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test/helpers'
 import type { ListSource } from '../../types'
@@ -46,10 +46,13 @@ describe('SourcesSection layout', () => {
     expect(classes(btn.closest('td'))).toEqual(expect.arrayContaining(['w-px', 'whitespace-nowrap']))
   })
 
+  afterEach(() => { vi.useRealTimers() })
+
   it('lets a date range break only before "to"', () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 9, 29, 7, 52, 30) })
     const table = renderSources()
     const row = within(table).getAllByRole('row')[1]
-    const pieces = within(row).getAllByText(/^(2026-10-25 \d\d:\d\d|to 2026-10-26 \d\d:\d\d)$/)
+    const pieces = within(row).getAllByText(/^(Sun 25 \d\d:\d\d|to Mon 26 \d\d:\d\d)$/)
     // Once in the Added column and once under the name for a phone.
     expect(pieces).toHaveLength(4)
     for (const p of pieces) expect(classes(p)).toContain('whitespace-nowrap')
