@@ -15,6 +15,15 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A small blocked share is drawn as a bar, not as a sliver.** The share
+  bar of the Overview's Blocked card and of the Clients table filled its
+  share of a rounded track: 2.2% of an 80 px track was 1.75 px, which the
+  rounding clipped into something like a "(". The fill is now at least 2 px
+  with a square start; a client with no blocked request shows a muted "0%"
+  and no empty track, rather than "0.0%" over an empty bar on every row.
+
 ## [3.18.3] - 2026-10-28
 
 A fix release. The web UI keeps working when the backend container is

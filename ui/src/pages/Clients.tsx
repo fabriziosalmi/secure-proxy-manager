@@ -23,10 +23,12 @@ import { SearchInput } from '../components/ui/SearchInput';
 import { Switch } from '../components/ui/Switch';
 import { Button, IconButton } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { ShareBar } from '../components/ui/ShareBar';
+import { shareText } from '../lib/share';
 import { useModal } from '../hooks/useModal';
 import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData } from '../lib/api';
-import { formatCount, formatDate, formatDateTime, formatHourMinute, formatShare } from '../lib/format';
+import { formatCount, formatDate, formatDateTime, formatHourMinute } from '../lib/format';
 import { cn } from '../lib/utils';
 import type { ClientsData, ClientStat, ClientDetail, ClientDomain, ClientRecent } from '../types';
 
@@ -66,19 +68,6 @@ function sortRows(rows: ClientStat[], sort: SortState): ClientStat[] {
   const key = sort.columnId === 'blocked' ? 'blocked' : 'requests';
   const dir = sort.direction === 'ascending' ? 1 : -1;
   return [...rows].sort((a, b) => (a[key] - b[key]) * dir || clientKey(a).localeCompare(clientKey(b)));
-}
-
-function ShareBar({ blocked, total }: { blocked: number; total: number }) {
-  const share = formatShare(blocked, total);
-  if (!share) return <span className="text-[13px] text-ink-muted">No requests</span>;
-  return (
-    <span className="flex items-center gap-2">
-      <span aria-hidden="true" className="hidden h-1.5 min-w-16 flex-1 overflow-hidden rounded-full bg-line-subtle sm:block">
-        <span className="block h-1.5 bg-danger-strong" style={{ width: share }} />
-      </span>
-      <span className="w-12 shrink-0 text-right text-[13px] tabular-nums text-ink-muted">{share}</span>
-    </span>
-  );
 }
 
 export function Clients() {
@@ -161,7 +150,7 @@ export function Clients() {
       firstSort: 'descending',
       cell: (c) => <span className={cn('font-medium', c.blocked > 0 ? 'text-danger' : 'text-ink-muted')}>{formatCount(c.blocked)}</span>,
     },
-    { id: 'share', header: 'Share blocked', className: 'w-40', cell: (c) => <ShareBar blocked={c.blocked} total={c.requests} /> },
+    { id: 'share', header: 'Share blocked', className: 'w-40', cell: (c) => <ShareBar part={c.blocked} total={c.requests} trackClassName="min-w-16" textClassName="w-12 text-right text-[13px]" /> },
     {
       id: 'last',
       header: 'Last request',
@@ -346,7 +335,7 @@ function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
     );
   }
 
-  const share = formatShare(info.blocked, info.total_requests);
+  const share = shareText(info.blocked, info.total_requests);
   const unclassified = info.blocked_by_reason?.find((r) => r.reason === 'unclassified')?.count ?? 0;
   const widerThanRow = row !== undefined && row.requests !== info.total_requests;
   const networkCidr = info.network || row?.network || (ip.includes('/') ? ip : undefined);
