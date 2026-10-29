@@ -17,6 +17,18 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **The Overview calls blacklist entries entries and links each figure to
+  its rows.** "Rules in force, 50,772 IPs, 77,569 domains" summed table rows:
+  the IP entries include networks the proxy merges before loading, and the
+  domain entries include those Allowed domains takes out. The card is now
+  "Blacklist entries", "50,772 IP and network entries, 77,569 domain
+  entries", and opens Blacklists. "Client requests" no longer repeats "from
+  N clients" next to the Active clients card. "Most blocked destinations"
+  offered "Open analytics", a page that no longer lists destinations, and
+  "Latest blocks" opened the unfiltered access log: both now offer "Open
+  blocked requests", the access log filtered to blocked requests. Each
+  destination opens the blocked requests to it, and each rule in Blocked by
+  rule the requests it blocked.
 - The WAF image stores its binary once, owned by root and run by the `waf`
   user, who can no longer change it. A `chown` after the copy wrote a second
   full copy of the binary in its own layer (8.1 MB on amd64) and let the

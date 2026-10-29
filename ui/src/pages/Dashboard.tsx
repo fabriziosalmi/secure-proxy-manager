@@ -36,6 +36,7 @@ import { RequestsPerHour } from '../components/dashboard/RequestsPerHour';
 import { BlockedByRule } from '../components/dashboard/BlockedByRule';
 import { ServicesPanel } from '../components/dashboard/ServicesPanel';
 import { serviceRows } from '../components/dashboard/services';
+import { blockedLogsLink } from '../components/dashboard/links';
 
 const REFETCH = 30_000;
 
@@ -139,7 +140,12 @@ const TOP_COLUMNS: Column<TopBlocked>[] = [
     header: 'Destination',
     // A host is not broken across lines: a long one is cut with an ellipsis,
     // whole in the tooltip, so the Blocked column stays in view.
-    cell: (r) => <code title={r.dest} className="block max-w-[12rem] truncate font-mono text-[13px] 2xl:max-w-[18rem]">{r.dest}</code>,
+    // Each host opens the blocked requests to it in the access log.
+    cell: (r) => (
+      <Link to={blockedLogsLink({ q: r.dest })} title={r.dest} className="block max-w-[12rem] truncate font-mono text-[13px] text-ink underline-offset-2 hover:underline 2xl:max-w-[18rem]">
+        {r.dest}
+      </Link>
+    ),
   },
   {
     id: 'rule',
@@ -185,7 +191,7 @@ function LatestBlocks({ rows, loading, error, now }: { rows?: RecentBlock[]; loa
     );
   }
   return (
-    <Section title="Latest blocks" flush action={{ label: 'Open access logs', to: '/logs' }} className="flex-[1_1_420px]">
+    <Section title="Latest blocks" flush action={{ label: 'Open blocked requests', to: blockedLogsLink() }} className="flex-[1_1_420px]">
       {body}
     </Section>
   );
@@ -268,15 +274,15 @@ export function Dashboard() {
           label="Client requests"
           loading={loading}
           value={requests}
-          sub={typeof clients === 'number' && clients > 0 ? `from ${formatCount(clients)} ${clients === 1 ? 'client' : 'clients'}` : undefined}
         />
         <StatCard label="Blocked" tone={blocked ? 'danger' : 'default'} loading={loading} value={blocked} sub={blockedSub} />
         <StatCard label="Active clients" loading={loading} value={clients} sub={clientsSub} />
         <StatCard
-          label="Rules in force"
+          label="Blacklist entries"
           loading={loading}
           value={rules}
-          sub={rules !== undefined ? `${countOf(ipRules ?? 0, 'IP', 'IPs')}, ${countOf(domainRules ?? 0, 'domain', 'domains')}` : undefined}
+          to="/blacklists"
+          sub={rules !== undefined ? `${countOf(ipRules ?? 0, 'IP and network entry', 'IP and network entries')}, ${countOf(domainRules ?? 0, 'domain entry', 'domain entries')}` : undefined}
         />
       </section>
 
@@ -292,7 +298,7 @@ export function Dashboard() {
 
       <div className="flex flex-wrap gap-4">
         {/* Not on a phone, as in Mobile.dc.html: the Access logs list every block. */}
-        <Section title="Most blocked destinations" flush action={{ label: 'Open analytics', to: '/analytics' }} className="hidden flex-[1_1_420px] sm:block">
+        <Section title="Most blocked destinations" flush action={{ label: 'Open blocked requests', to: blockedLogsLink() }} className="hidden flex-[1_1_420px] sm:block">
           <DataTable
             caption="Most blocked destinations in the last 24 hours"
             columns={TOP_COLUMNS}
