@@ -299,6 +299,9 @@ for at least one minor release before disappearing.
 - The `UI layout (Playwright)` check is required on `main`, in the ruleset and
   in `.github/branch-protection.json`, so a page that overflows, wraps or
   misaligns at desktop, 1250 px or phone width cannot merge.
+- The Analytics layout test reads the four smaller cards once every section
+  has loaded, in one pass: read one at a time, a chart loading above them
+  could move the grid between two reads and fail the check on a correct page.
 
 ## [3.18.3] - 2026-10-28
 
