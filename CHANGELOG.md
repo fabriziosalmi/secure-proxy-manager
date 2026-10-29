@@ -15,6 +15,13 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Fixed
+
+- The WAF image stores its binary once, owned by root and run by the `waf`
+  user, who can no longer change it. A `chown` after the copy wrote a second
+  full copy of the binary in its own layer (8.1 MB on amd64) and let the
+  process change the mode of its own executable. CI checks both.
+
 ## [3.18.3] - 2026-10-28
 
 A fix release. The web UI keeps working when the backend container is
