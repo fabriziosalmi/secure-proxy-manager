@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import type { BlockedDay, ReasonCount } from '../../types'
-import { daySegments, dayLabel, describeDays, seriesFor } from './days'
+import { barHeight, daySegments, dayLabel, describeDays, ruleColor, seriesFor } from './days'
 import { setRomeTimeZone } from '../../test/helpers'
 
 const r = (reason: string, label: string, count: number): ReasonCount => ({ reason, label, count })
@@ -14,60 +14,66 @@ function day(date: string, reasons: ReasonCount[]): BlockedDay {
 }
 
 describe('seriesFor', () => {
-  it('gives each rule a colour in a fixed order, whatever the counts, and the neutral bar to rows with no reason', () => {
-    // The API sends the totals largest first: unclassified, DNS, WAF.
+  // Colours were handed out in order to the rules present: the WAF was
+  // series-1 in a week without domain blocks and series-2 in a week with them.
+  it('gives each rule the same colour whatever else blocked, and the neutral bar to rows with no reason', () => {
     const s = seriesFor([UNC, DNS, WAF])
     expect(s.map((x) => [x.key, x.color])).toEqual([
-      ['domain_blacklist_dns', 'series-1'],
-      ['waf', 'series-2'],
+      ['domain_blacklist_dns', 'series-2'],
+      ['waf', 'series-4'],
       ['unclassified', 'neutral'],
     ])
-    // Swapping the counts does not repaint them.
-    expect(seriesFor([r('waf', 'WAF', 9), r('domain_blacklist_dns', 'Domain blacklist (DNS)', 1)]).map((x) => [x.key, x.color])).toEqual([
-      ['domain_blacklist_dns', 'series-1'],
-      ['waf', 'series-2'],
+    expect(seriesFor([r('waf', 'WAF', 9)]).map((x) => [x.key, x.color])).toEqual([['waf', 'series-4']])
+    expect(seriesFor([r('domain_blacklist', 'Domain blacklist', 3), DNS]).map((x) => [x.key, x.color])).toEqual([
+      ['domain_blacklist', 'series-1'],
+      ['domain_blacklist_dns', 'series-2'],
     ])
   })
 
-  it('keeps the lists gate a rule of its own, before other, with the API label', () => {
-    // Alphabetical order would put "lists_unverified" first, ahead of the
-    // configured rules; it is ranked just before other.
-    const s = seriesFor([r('other', 'Other', 5), r('lists_unverified', 'Lists not verified', 9), WAF])
-    expect(s.map((x) => [x.key, x.label, x.color])).toEqual([
-      ['waf', 'WAF', 'series-1'],
-      ['lists_unverified', 'Lists not verified', 'series-2'],
-      ['other', 'Other', 'series-3'],
-    ])
+  it('maps every rule to its colour, and a rule the UI does not know to the other rules', () => {
+    expect(['domain_blacklist', 'domain_blacklist_dns', 'domain_blacklist_dns_reconstructed', 'ip_blacklist', 'direct_ip', 'egress_policy', 'port_policy', 'protocol_policy', 'source_gate', 'waf', 'proxy_auth', 'lists_unverified', 'other', 'brand_new_rule'].map(ruleColor))
+      .toEqual(['series-1', 'series-2', 'series-2', 'series-3', 'series-3', 'series-3', 'series-3', 'series-3', 'series-3', 'series-4', 'series-4', 'series-4', 'series-4', 'series-4'])
   })
 
   it('leaves out a reason with no blocks and keeps the API label', () => {
     const s = seriesFor([r('ip_blacklist', 'IP blacklist', 0), WAF])
     expect(s).toHaveLength(1)
-    expect(s[0]).toMatchObject({ key: 'waf', label: 'WAF', color: 'series-1' })
+    expect(s[0]).toMatchObject({ key: 'waf', label: 'WAF', color: 'series-4' })
   })
 
-  it('folds the rules beyond four colours into Other rules, keeping the three that blocked the most', () => {
+  it('draws the rules of one colour as one stack, named by the group and listing its rules', () => {
     const s = seriesFor([
       r('direct_ip', 'Direct IP', 50), r('waf', 'WAF', 40), r('egress_policy', 'Egress policy', 30),
-      r('domain_blacklist', 'Domain blacklist', 2), r('proxy_auth', 'Proxy authentication', 1), UNC,
+      r('domain_blacklist', 'Domain blacklist', 2), r('proxy_auth', 'Proxy authentication', 1), r('lists_unverified', 'Lists not verified', 9), UNC,
     ])
-    expect(s.map((x) => [x.key, x.color])).toEqual([
-      ['waf', 'series-1'], ['direct_ip', 'series-2'], ['egress_policy', 'series-3'],
-      ['other-rules', 'series-4'], ['unclassified', 'neutral'],
+    expect(s.map((x) => [x.key, x.label, x.color])).toEqual([
+      ['domain_blacklist', 'Domain blacklist', 'series-1'],
+      ['group-series-3', 'Address and network rules', 'series-3'],
+      ['group-series-4', 'WAF and other rules', 'series-4'],
+      ['unclassified', 'Unclassified (no reason recorded)', 'neutral'],
     ])
-    expect(s[3].labels).toEqual(['Domain blacklist', 'Proxy authentication'])
-    expect(s[3].reasons).toEqual(['domain_blacklist', 'proxy_auth'])
+    expect(s[1].labels).toEqual(['Direct IP', 'Egress policy'])
+    expect(s[2].reasons).toEqual(['waf', 'proxy_auth', 'lists_unverified'])
   })
 })
 
 describe('daySegments', () => {
-  it('gives every series its count that day, zero included, and sums a fold', () => {
+  it('gives every series its count that day, zero included, and sums a group', () => {
     const series = seriesFor([
       r('direct_ip', 'Direct IP', 50), r('waf', 'WAF', 40), r('egress_policy', 'Egress policy', 30),
       r('domain_blacklist', 'Domain blacklist', 2), r('proxy_auth', 'Proxy authentication', 1),
     ])
     const segs = daySegments(day('2026-10-25', [r('waf', 'WAF', 4), r('domain_blacklist', 'Domain blacklist', 2), r('proxy_auth', 'Proxy authentication', 1)]), series)
-    expect(segs.map((x) => [x.series.key, x.count])).toEqual([['waf', 4], ['direct_ip', 0], ['egress_policy', 0], ['other-rules', 3]])
+    expect(segs.map((x) => [x.series.key, x.count])).toEqual([['domain_blacklist', 2], ['group-series-3', 0], ['group-series-4', 5]])
+  })
+})
+
+describe('barHeight', () => {
+  // The 4 px floor was on each rule: 10 blocks over 3 rules drew 12 px.
+  it('floors the whole day at 4 px, not each rule, and draws nothing for a day without blocks', () => {
+    expect(barHeight(10, 1000)).toBe('max(4px, 1%)')
+    expect(barHeight(500, 1000)).toBe('max(4px, 50%)')
+    expect(barHeight(0, 1000)).toBe('0')
   })
 })
 

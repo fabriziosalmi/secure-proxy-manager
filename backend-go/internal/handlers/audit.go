@@ -28,6 +28,7 @@ import (
 //	geo_block             target country codes, details {"added","countries","requested","failed"?}
 //	remove_source_<list>  target the source's URL or country, details {"removed","kind","name"?}
 //	restore_<list>        details {"added","skipped"}
+//	add_preset_<list>     <list> domain_whitelist or domain_blacklist; target the preset's name, details {"preset","added","already","domains"}
 //	refresh_blacklists    user "system", details per list {"added","fetched","failed","not_added"?}
 //	rewrite_egress_wildcards  user "system", schema version 5, details {"rewritten","dropped","entries"}
 //	retire_setting_value      user "system", schema version 8, target setting key, details {"value","truncated"?}

@@ -54,7 +54,7 @@ func TestNotifyQueueAppliesASaveToTheNextEvent(t *testing.T) {
 	postAlert(t, h, wafAlert(1))
 	rig.sync()
 	settings := NewSettingsHandlers(h.db, h.cfg)
-	if _, status, msg := settings.persistSettings(map[string]string{"enable_notifications": "false"}, nil); status != 0 {
+	if _, _, status, msg := settings.persistSettings(map[string]string{"enable_notifications": "false"}, nil); status != 0 {
 		t.Fatalf("save: %d %s", status, msg)
 	}
 	postAlert(t, h, wafAlert(2))
@@ -98,7 +98,7 @@ func TestSettingsWritersMarkTheNotificationSettingsStale(t *testing.T) {
 		}
 	}
 	check("persistSettings (POST and PUT /api/settings)", func() {
-		if _, status, msg := NewSettingsHandlers(db, cfg).persistSettings(map[string]string{"enable_notifications": "true"}, nil); status != 0 {
+		if _, _, status, msg := NewSettingsHandlers(db, cfg).persistSettings(map[string]string{"enable_notifications": "true"}, nil); status != 0 {
 			t.Fatalf("save: %d %s", status, msg)
 		}
 	})

@@ -18,9 +18,11 @@ import { X } from 'lucide-react';
 import { ClientSetup } from '../components/ClientSetup';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Section } from '../components/ui/Section';
+import { Unavailable } from '../components/ui/Unavailable';
 import { DataTable, type Column, type SortState } from '../components/ui/DataTable';
 import { SearchInput } from '../components/ui/SearchInput';
 import { Switch } from '../components/ui/Switch';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { Button, IconButton } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { ShareBar } from '../components/ui/ShareBar';
@@ -28,7 +30,7 @@ import { shareText } from '../lib/share';
 import { useModal } from '../hooks/useModal';
 import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData } from '../lib/api';
-import { formatCount, formatDate, formatDateTime, formatHourMinute } from '../lib/format';
+import { formatCount, formatWhen, formatWhenExact } from '../lib/format';
 import { cn } from '../lib/utils';
 import type { ClientsData, ClientStat, ClientDetail, ClientDomain, ClientRecent } from '../types';
 
@@ -53,21 +55,22 @@ function writeShowInternal(on: boolean) {
 
 const plural = (n: number, one: string, many: string) => `${formatCount(n)} ${n === 1 ? one : many}`;
 
-/** "09:21" for a time today in the viewer's zone, "2026-10-21 09:21" otherwise. */
+/** "09:21" today, "Yesterday 23:55", "Sun 25 23:55" in the last week, "2026-10-21 09:21" before. */
 function shortTime(ts: string): string {
-  if (!ts) return 'Not recorded';
-  const day = formatDate(ts);
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  return day === today ? formatHourMinute(ts) : `${day} ${formatHourMinute(ts)}`;
+  return ts ? formatWhen(ts, { style: 'glance' }) : 'Not recorded';
 }
 
 const clientKey = (c: ClientStat): string => c.network || c.ip_address;
 
+/** The share of a client's requests that were blocked, 0 for a client with none. */
+const blockedShare = (c: ClientStat) => (c.requests > 0 ? c.blocked / c.requests : 0);
+
 function sortRows(rows: ClientStat[], sort: SortState): ClientStat[] {
-  const key = sort.columnId === 'blocked' ? 'blocked' : 'requests';
+  const value = sort.columnId === 'blocked' ? (c: ClientStat) => c.blocked
+    : sort.columnId === 'share' ? blockedShare
+      : (c: ClientStat) => c.requests;
   const dir = sort.direction === 'ascending' ? 1 : -1;
-  return [...rows].sort((a, b) => (a[key] - b[key]) * dir || clientKey(a).localeCompare(clientKey(b)));
+  return [...rows].sort((a, b) => (value(a) - value(b)) * dir || clientKey(a).localeCompare(clientKey(b)));
 }
 
 export function Clients() {
@@ -150,12 +153,14 @@ export function Clients() {
       firstSort: 'descending',
       cell: (c) => <span className={cn('font-medium', c.blocked > 0 ? 'text-danger' : 'text-ink-muted')}>{formatCount(c.blocked)}</span>,
     },
-    { id: 'share', header: 'Share blocked', className: 'w-40', cell: (c) => <ShareBar part={c.blocked} total={c.requests} trackClassName="min-w-16" textClassName="w-12 text-right text-[13px]" /> },
+    // Sortable, so the client with the largest share blocked can be found
+    // among many with small counts.
+    { id: 'share', header: 'Share blocked', className: 'w-40', sortable: true, firstSort: 'descending', cell: (c) => <ShareBar part={c.blocked} total={c.requests} trackClassName="min-w-16" textClassName="w-12 text-right text-[13px]" /> },
     {
       id: 'last',
       header: 'Last request',
       className: 'whitespace-nowrap text-ink-muted',
-      cell: (c) => <span title={c.last_seen ? formatDateTime(c.last_seen) : undefined}>{shortTime(c.last_seen)}</span>,
+      cell: (c) => <span title={c.last_seen ? formatWhenExact(c.last_seen) : undefined}>{shortTime(c.last_seen)}</span>,
     },
   ];
 
@@ -278,7 +283,8 @@ const DEST_COLUMNS: Column<ClientDomain>[] = [
   {
     id: 'host',
     header: 'Destination',
-    cell: (d) => <code title={d.destination} className="block max-w-[11rem] truncate font-mono text-xs sm:max-w-[14rem]">{d.destination}</code>,
+    // The whole name, wrapped: it was cut with an ellipsis, whole only in a tooltip.
+    cell: (d) => <code className="block max-w-[11rem] break-all font-mono text-xs sm:max-w-[14rem]">{d.destination}</code>,
   },
   { id: 'requests', header: 'Requests', align: 'right', cell: (d) => formatCount(d.requests) },
   {
@@ -305,16 +311,25 @@ function RecentReason({ r }: { r: ClientRecent }) {
   return <Badge tone={r.reason === 'unclassified' ? 'neutral' : 'danger'}>{r.reason_label}</Badge>;
 }
 
+type DetailWindow = '7d' | 'all';
+
+const WINDOW_OPTIONS: { value: DetailWindow; label: string }[] = [
+  { value: '7d', label: 'Last 7 days' },
+  { value: 'all', label: 'All time' },
+];
+
 /**
  * The detail of one client: its first and last request, counts, top
- * destinations and recent requests. The counts cover every request logged
- * for the address, not only the table's 7 days; when they differ from the
- * row, a line says so.
+ * destinations and recent requests, over the table's 7 days unless the
+ * viewer asks for all time (GET .../details?window=). The window is always
+ * written: the counts used to cover all time, said only when they differed
+ * from the row.
  */
 function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
+  const [span, setSpan] = useState<DetailWindow>('7d');
   const detail = useQuery<ClientDetail | null>({
-    queryKey: ['client-details', ip],
-    queryFn: () => getData<ClientDetail>(`clients/${encodeURIComponent(ip)}/details`),
+    queryKey: ['client-details', ip, span],
+    queryFn: () => getData<ClientDetail>(`clients/${encodeURIComponent(ip)}/details?window=${span}`),
   });
   const info = detail.data;
 
@@ -329,7 +344,7 @@ function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
   if (detail.isError || !info) {
     return (
       <div className="flex flex-col items-start gap-2 px-5 pb-5" role="alert">
-        <p className="text-sm text-ink-muted">Not reported: clients/{ip}/details did not answer.</p>
+        <Unavailable endpoint={`clients/${ip}/details`}>The detail of {ip} could not be loaded.</Unavailable>
         <Button size="sm" onClick={() => { void detail.refetch(); }}>Retry</Button>
       </div>
     );
@@ -337,7 +352,6 @@ function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
 
   const share = shareText(info.blocked, info.total_requests);
   const unclassified = info.blocked_by_reason?.find((r) => r.reason === 'unclassified')?.count ?? 0;
-  const widerThanRow = row !== undefined && row.requests !== info.total_requests;
   const networkCidr = info.network || row?.network || (ip.includes('/') ? ip : undefined);
   const isNetwork = Boolean(networkCidr);
   const logTarget = networkCidr || ip;
@@ -351,17 +365,30 @@ function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
     <div className="flex flex-col gap-5 pb-5">
       <div className="flex flex-col gap-1 px-5 text-[13px] text-ink-muted">
         {detailSub && <p>{detailSub}</p>}
-        <p>
-          {info.first_seen
-            ? <>First request {formatDateTime(info.first_seen)}, last request {info.last_seen ? formatDateTime(info.last_seen) : 'not recorded'}</>
-            : 'No request recorded'}
-        </p>
+        {info.first_seen ? (
+          // One row each, never broken: a date used to wrap away from its time.
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+            <dt>First request</dt>
+            <dd className="whitespace-nowrap text-ink-secondary" title={formatWhenExact(info.first_seen)}>{shortTime(info.first_seen)}</dd>
+            <dt>Last request</dt>
+            <dd className="whitespace-nowrap text-ink-secondary" title={info.last_seen ? formatWhenExact(info.last_seen) : undefined}>{info.last_seen ? shortTime(info.last_seen) : 'Not recorded'}</dd>
+          </dl>
+        ) : <p>No request recorded</p>}
         <Link
           to={`/logs?client=${encodeURIComponent(logTarget)}`}
           className="self-start rounded-sm font-semibold text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
         >
           {isNetwork ? 'Show requests from this network in the access log' : "Show this client's requests in the access log"}
         </Link>
+      </div>
+
+      <div className="flex flex-col items-start gap-2 px-5">
+        <SegmentedControl label="Counts over" options={WINDOW_OPTIONS} value={span} onChange={setSpan} size="sm" />
+        <p className="text-[13px] text-ink-muted">
+          {info.window === '7d'
+            ? `These counts cover the last 7 days, as the table does.`
+            : `These counts cover every request logged for this ${isNetwork ? 'network' : 'address'}${row ? '; the table counts the last 7 days' : ''}.`}
+        </p>
       </div>
 
       <dl className="grid grid-cols-3 gap-3 px-5">
@@ -379,10 +406,9 @@ function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
         </div>
       </dl>
 
-      {(widerThanRow || unclassified > 0) && (
+      {unclassified > 0 && (
         <div className="flex flex-col gap-1 px-5 text-[13px] text-ink-muted">
-          {widerThanRow && <p>These counts cover every request logged for this {isNetwork ? 'network' : 'address'}; the table counts the last 7 days.</p>}
-          {unclassified > 0 && <p>{unclassifiedNote(unclassified, info.blocked)}</p>}
+          <p>{unclassifiedNote(unclassified, info.blocked)}</p>
         </div>
       )}
 
@@ -405,9 +431,9 @@ function ClientDetailBody({ ip, row }: { ip: string; row?: ClientStat }) {
           <ul>
             {info.recent.map((r, i) => (
               <li key={`${r.timestamp}-${i}`} className="flex flex-col gap-1 border-t border-line-subtle px-5 py-2 text-xs">
-                <code className="truncate font-mono text-ink" title={r.destination}>{r.destination}</code>
+                <code className="break-all font-mono text-ink">{r.destination}</code>
                 <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-ink-muted">
-                  <span className="font-mono tabular-nums" title={formatDateTime(r.timestamp)}>{shortTime(r.timestamp)}</span>
+                  <span className="whitespace-nowrap font-mono tabular-nums" title={formatWhenExact(r.timestamp)}>{shortTime(r.timestamp)}</span>
                   <span className="font-mono">{r.method}</span>
                   <RecentReason r={r} />
                 </span>
