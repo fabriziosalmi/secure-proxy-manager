@@ -246,7 +246,7 @@ describe('Dashboard (Overview)', () => {
     })
 
     // Only from the proxy's record: no record, no notice.
-    it('says the blacklist is blocked at DNS only when the proxy recorded that Squid does not hold it', async () => {
+    it('says the blacklist is blocked at DNS only when the proxy recorded that it does not hold it', async () => {
       serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, squid_domain_acl: { names: 473936, limit: 250000, held: false, written_at: 1 } } })
       renderWithProviders(<Dashboard />)
       const title = await screen.findByText('Blacklisted domains are blocked at DNS only')
@@ -262,10 +262,10 @@ describe('Dashboard (Overview)', () => {
       expect(shownNotices()).toEqual([])
     })
 
-    it('says Squid could not load its copy when the proxy recorded a list under the limit as not held', async () => {
+    it('says the proxy could not load its copy when the proxy recorded a list under the limit as not held', async () => {
       serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, squid_domain_acl: { names: 12, limit: 250000, held: false, written_at: 1 } } })
       renderWithProviders(<Dashboard />)
-      expect(await screen.findByText('Squid could not load its copy of the domain blacklist')).toBeInTheDocument()
+      expect(await screen.findByText('The proxy could not load its copy of the domain blacklist')).toBeInTheDocument()
       expect(screen.queryByText(/blocked at DNS only/)).toBeNull()
       expect(shownNotices()).toHaveLength(1)
     })

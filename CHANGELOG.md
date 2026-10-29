@@ -17,6 +17,21 @@ for at least one minor release before disappearing.
 
 ### Changed
 
+- **Every audit event reads as a sentence, in plain text.** The egress
+  provider events showed their raw key and JSON (`egress_provider_disabled`,
+  `telegram. {"kind":"catalog"}`); they now read "Turned off the provider list
+  telegram", "Downloaded the provider list github" with its prefix counts,
+  and so on. A settings save names each setting by its label with its old and
+  new value ("Send alerts: off to on"), and a secret only as set or cleared.
+  A key the page does not know is written in words with its details as
+  fields, never as raw JSON. Events are plain text: they were blue pills, the
+  colour of a link, that wrapped inside the pill when long.
+- **The preset buttons say what is already on the list.** "+ Docker" read
+  the same before and after Docker was added, and the DNS-over-HTTPS card
+  never said whether its resolvers were blocked. Each common-services button
+  now reads "+ Docker", "+ Docker (2 missing)" or, disabled, "Docker added";
+  the DoH card says how many of its resolvers are blocked and offers "Block
+  the other 2", or a disabled "All 14 blocked".
 - **The audit log says what a settings save changed, and to what.** A save
   recorded the keys the request carried, before they were checked and with
   no value, so saving one field of a section read "Changed 8 settings" and
@@ -57,6 +72,19 @@ for at least one minor release before disappearing.
   gives the exact time with the zone, and the Access logs say which zone
   their times are in. A pasted or restored source still names its time to
   the second, so two pastes a minute apart read differently.
+
+### Fixed
+
+- **The access log shows the outcome of each request and the proxy result in
+  words.** The column headed "Rule" said "Allowed" for every request no rule
+  touched; it is now "Outcome": "Allowed", or the rule that blocked the
+  request, which a screen reader hears as "Blocked by" the rule. The Result
+  column read "200 TCP_TUNNEL" and "403 NONE_NONE"; it now gives the HTTP code
+  with "HTTPS tunnel", "Refused by the proxy", "Fetched", "From cache" or
+  "Not forwarded", and ", cut off" or ", timed out" when the transfer did
+  not finish. A code it does not know is shown as it is, and the raw code
+  stays in the request details and the tooltip. A DNS sinkhole row no longer
+  shows its 0.0.0.0 answer where the HTTP code goes.
 - **The Analytics WAF card says it counts matches, not blocks.** Titled
   "WAF categories", it listed the categories that matched a request, weak
   matches below the block threshold included, since the WAF started, on a
@@ -78,9 +106,6 @@ for at least one minor release before disappearing.
   "Domain blacklist (proxy)" and "Domain blacklist (DNS)" is "Domain
   blacklist (DNS sinkhole)". In "Most blocked destinations" a host blocked
   by two rules shows each rule with its count.
-
-### Fixed
-
 - **Finishing touches across Blacklists, Analytics and the access log.**
   - The Blacklists entries table leaves its Source column out while the
     list has one source or none; "Source not recorded" was on every row.
@@ -98,6 +123,26 @@ for at least one minor release before disappearing.
   - "Clear the access log" moved from the access log page to Settings,
     Maintenance, beside "Reset statistics", and each says what it does to
     the WAF's counters.
+- **The Enforcement sections speak of the proxy and of limits.** Their rows
+  read "Proxy (Squid)" and "Networks Squid loads", named
+  `SPM_SQUID_DOMAIN_ACL_MAX` in a value and `SPM_DNS_BLOCKLIST_MAX_DOMAINS`
+  under the limit, and put file names such as
+  `ip_blacklist_acl_status.json` in "Not reported". The rows and paragraphs
+  now say "the proxy" and "limit"; which program enforces each list, the files the proxy records and the variables
+  that set the limits are under "How it works" in each section. The
+  Overview's notices about the domain blacklist say "the proxy" too, and
+  keep `SPM_SQUID_DOMAIN_ACL_MAX` where raising it is the way out.
+- **Egress allowlist, Provider lists: the table fits at 1250 px and says
+  what it does.** Seven columns ran 50 px past the card at 1250 px, cutting
+  "Refresh now"; a list never downloaded said "Not downloaded yet" four
+  times. Prefixes and IPv4 coverage are one Coverage column, the time and
+  commit one Last download column, and "Not downloaded yet" is said once.
+  A switched-off list offers "Download to preview" (it is only downloaded
+  and counted) rather than "Refresh now". The text no longer says the
+  catalog is "pinned to the latest commit on main": each download takes the
+  newest commit and records it. "Shared network" is explained under the
+  description and attached to every such badge: allowing a shared network
+  allows every site and service it hosts.
 - **The access log's live switch keeps one name.** The button was renamed
   "Live", "Paused", "Connecting" and "Reconnecting" as the connection
   changed, so a screen reader heard a different control each time. It is

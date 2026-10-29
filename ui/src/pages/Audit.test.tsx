@@ -61,10 +61,19 @@ describe('Audit', () => {
     expect(within(table).getByText('Signed in')).toBeInTheDocument()
     expect(within(table).getByText('Sign-in failed')).toBeInTheDocument()
     expect(within(table).getByText('From 203.0.113.5. invalid credentials')).toBeInTheDocument()
-    expect(within(table).getByText('rotate_keys')).toBeInTheDocument()
+    expect(within(table).getByText('Rotate keys')).toBeInTheDocument()
     expect(within(table).getByText('waf. manual')).toBeInTheDocument()
     expect(within(table).getByText('No user recorded')).toBeInTheDocument()
     expect(within(table).getAllByText('No details').length).toBeGreaterThan(0)
+  })
+
+  // The events were blue pills, the colour of a link, though none is one.
+  it('writes an event as plain text, not in the colour of a link', async () => {
+    renderWithProviders(<Audit />)
+    const table = await screen.findByRole('table', { name: 'Audit events' })
+    const event = await within(table).findByText('Removed all 640,929 blocked domains')
+    expect(event.className).not.toMatch(/accent/)
+    expect(event.className).not.toMatch(/rounded/)
   })
 
   it('shows times in the viewer\'s time zone and says which', async () => {

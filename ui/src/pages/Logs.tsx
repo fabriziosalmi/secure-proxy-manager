@@ -29,7 +29,8 @@ import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData, getErrorMessage } from '../lib/api';
 import { formatBytes, formatCount, formatWhen, formatWhenExact, viewerZone } from '../lib/format';
 import {
-  allowableDomain, apiParams, hasFilters, isBlocked, maskedToNetwork, matchesFilters, readFilters, splitStatus, statusTone, whyText, writeFilters,
+  allowableDomain, apiParams, hasFilters, isBlocked, isHttpCode, maskedToNetwork, matchesFilters, readFilters, splitStatus, squidResultText, statusTone, whyText,
+  writeFilters,
   NO_FILTERS, type LogFilters, type Outcome,
 } from '../lib/accessLog';
 import { cn } from '../lib/utils';
@@ -80,10 +81,21 @@ function rowTime(ts: string): string {
   return ts ? formatWhen(ts, { style: 'full' }) : 'Not recorded';
 }
 
-function RuleBadge({ r }: { r: LogEntry }) {
+/**
+ * What happened to the request: "Allowed", or the rule that blocked it. The
+ * column was headed "Rule" and said "Allowed" for every request no rule
+ * touched. A block is named "Blocked by <rule>" to a screen reader, as the
+ * colour says it to the eye.
+ */
+function OutcomeBadge({ r }: { r: LogEntry }) {
   if (!isBlocked(r)) return <Badge tone="success">Allowed</Badge>;
-  const label = r.reason_label || r.reason || 'Blocked';
-  return <Badge tone={r.reason === 'unclassified' || !r.reason ? 'neutral' : 'danger'}>{label}</Badge>;
+  const unknown = r.reason === 'unclassified' || !r.reason;
+  const label = r.reason_label || r.reason || 'Rule not reported';
+  return (
+    <Badge tone={unknown ? 'neutral' : 'danger'}>
+      <span className="sr-only">{unknown ? 'Blocked: ' : 'Blocked by '}</span>{label}
+    </Badge>
+  );
 }
 
 const TONE_TEXT = { danger: 'text-danger', warning: 'text-warning', success: 'text-success' } as const;
@@ -92,8 +104,8 @@ function Result({ r }: { r: LogEntry }) {
   const { squid, code } = splitStatus(r.status);
   return (
     <span className="whitespace-nowrap">
-      {code && <span className={cn('font-semibold tabular-nums', TONE_TEXT[statusTone(code, isBlocked(r))])}>{code}</span>}{' '}
-      <span className="text-xs text-ink-muted">{squid || 'Not recorded'}</span>
+      {isHttpCode(code) && <span className={cn('font-semibold tabular-nums', TONE_TEXT[statusTone(code, isBlocked(r))])}>{code}</span>}{' '}
+      <span className="text-xs text-ink-muted" title={r.status || undefined}>{squid ? squidResultText(squid) : 'Not recorded'}</span>
     </span>
   );
 }
@@ -387,7 +399,7 @@ export function Logs() {
       ),
     },
     { id: 'result', header: 'Result', cell: ({ entry }) => <Result r={entry} /> },
-    { id: 'rule', header: 'Rule', cell: ({ entry }) => <RuleBadge r={entry} /> },
+    { id: 'outcome', header: 'Outcome', cell: ({ entry }) => <OutcomeBadge r={entry} /> },
     {
       id: 'size',
       header: 'Size',
@@ -611,8 +623,8 @@ function RequestDetail({ r, filters, onAllow, onShowClient }: {
           <dd className="mt-0.5 font-mono text-[13px]">{r.status ? `${squid}${code ? `/${code}` : ''}` : 'Not recorded'} <span className="font-sans text-ink-muted">{r.method}</span></dd>
         </div>
         <div className="min-w-0">
-          <dt className="text-xs text-ink-muted">Rule</dt>
-          <dd className="mt-0.5"><RuleBadge r={r} /></dd>
+          <dt className="text-xs text-ink-muted">Outcome</dt>
+          <dd className="mt-0.5"><OutcomeBadge r={r} /></dd>
         </div>
         <div className="min-w-0">
           <dt className="text-xs text-ink-muted">Why</dt>

@@ -937,7 +937,7 @@ test.describe('UI — Blacklists (Blocked IPs)', () => {
     }
     // This stack runs no proxy, so its record of the merged networks is missing,
     // and the page says so instead of a number.
-    await expect(page.getByText('Not reported: the proxy has not written ip_blacklist_acl_status.json')).toBeVisible();
+    await expect(page.getByText('Not reported: the proxy has not recorded it')).toBeVisible();
   });
 
   test('Add a single IP: it is listed as Manual, and removed after a confirmation naming it', async ({ page }) => {
@@ -1099,10 +1099,13 @@ test.describe('UI — Blacklists (Blocked domains)', () => {
   test('says what enforces the list, and how "*." entries match', async ({ page }) => {
     const enforcement = page.getByRole('region', { name: 'Enforcement' });
     await expect(enforcement.getByText('DNS sinkhole', { exact: true })).toBeVisible();
-    await expect(enforcement.getByText('Set by SPM_DNS_BLOCKLIST_MAX_DOMAINS.')).toBeVisible();
+    await expect(enforcement.getByText('Limit', { exact: true })).toBeVisible();
     // This stack runs no proxy; a record left in ./config from another run
-    // would say whether Squid holds a copy instead.
-    await expect(enforcement.getByText(/^(Not reported: the proxy has not written domain_acl_status\.json|Its own copy of all|No copy:)/)).toBeVisible();
+    // would say whether the proxy holds a copy instead.
+    await expect(enforcement.getByText(/^(Not reported: the proxy has not recorded whether it holds a copy|Its own copy of all|No copy:)/)).toBeVisible();
+    // The variables that set the limits are under How it works.
+    await enforcement.getByText('How it works', { exact: true }).click();
+    await expect(enforcement.getByText(/which is why SPM_DNS_BLOCKLIST_MAX_DOMAINS limits the list\./)).toBeVisible();
     await expect(enforcement.getByText(/"\*\.example\.com" and "\.example\.com" each block example\.com itself/)).toBeVisible();
   });
 
