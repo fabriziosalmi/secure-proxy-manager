@@ -86,7 +86,7 @@ export function RegexPlayground() {
             id={`${id}-pattern`}
             value={pattern}
             onChange={(e) => setPattern(e.target.value)}
-            placeholder="\.torrent$"
+            placeholder="e.g. \.torrent$"
             spellCheck={false}
             maxLength={1020}
             aria-describedby={`${id}-hint`}

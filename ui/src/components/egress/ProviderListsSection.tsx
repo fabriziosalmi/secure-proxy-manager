@@ -417,7 +417,7 @@ export function ProviderListsSection({ refreshHours, onChanged }: { refreshHours
                 ref={labelRef}
                 value={label}
                 onChange={(e) => { setLabel(e.target.value); if (labelError) setLabelError(null); }}
-                placeholder="partner-cidr-feed"
+                placeholder="e.g. partner-cidr-feed"
                 maxLength={100}
                 autoComplete="off"
                 spellCheck={false}
@@ -432,7 +432,7 @@ export function ProviderListsSection({ refreshHours, onChanged }: { refreshHours
                 ref={urlRef}
                 value={url}
                 onChange={(e) => { setUrl(e.target.value); if (urlError) setUrlError(null); }}
-                placeholder="https://feeds.example.com/allowlist.txt"
+                placeholder="e.g. https://feeds.example.com/allowlist.txt"
                 autoComplete="off"
                 spellCheck={false}
                 aria-invalid={urlError ? true : undefined}

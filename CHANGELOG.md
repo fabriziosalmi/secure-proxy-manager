@@ -17,6 +17,15 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **Example values in fields read as examples.** The Egress allowlist form
+  showed "acme-v02.api.letsencrypt.org" in its empty Destination field, in
+  the same monospace as a typed value, so it looked already filled in. Every
+  placeholder that shows an example value now starts with "e.g.", as the
+  Blacklists form already did: the Egress allowlist and provider list forms,
+  pasted and imported entries, the alert channels, cache and port exclusions,
+  blocked file types and the rule tester. The Egress example is now
+  "e.g. updates.example.com". A unit test reads every placeholder in the UI
+  sources and fails on an example value without "e.g.".
 - The WAF image stores its binary once, owned by root and run by the `waf`
   user, who can no longer change it. A `chown` after the copy wrote a second
   full copy of the binary in its own layer (8.1 MB on amd64) and let the

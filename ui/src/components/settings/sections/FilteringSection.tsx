@@ -67,7 +67,7 @@ export function FilteringSection({ form }: { form: SectionForm }) {
             form={form}
             setting="blocked_file_types"
             label="Blocked extensions"
-            placeholder="exe, msi, bat, ps1"
+            placeholder="e.g. exe, msi, bat, ps1"
             hint="Separated by commas."
           />
           {patterns.length > 0 && (
