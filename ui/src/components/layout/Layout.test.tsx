@@ -133,12 +133,12 @@ describe('shell on a wide screen', () => {
       within(ul).getAllByRole('link').map((a) => [a.getAttribute('aria-label'), a.getAttribute('href')]),
     ]))
     expect(byGroup).toEqual({
-      Overview: [['Dashboard', '/'], ['Analytics', '/analytics']],
+      Insights: [['Overview', '/'], ['Analytics', '/analytics']],
       Traffic: [['Access logs', '/logs'], ['Clients', '/clients']],
       Protection: [['Blacklists', '/blacklists'], ['Egress allowlist', '/egress']],
       System: [['Settings', '/settings'], ['Audit log', '/audit']],
     })
-    const dash = within(mainNav()).getByRole('link', { name: 'Dashboard' })
+    const dash = within(mainNav()).getByRole('link', { name: 'Overview' })
     expect(dash).toHaveAttribute('aria-current', 'page')
     expect(dash.className).toMatch(/bg-accent-subtle/)
     expect(dash.className).toMatch(/text-accent/)
@@ -150,7 +150,7 @@ describe('shell on a wide screen', () => {
   it('keeps Settings active on a settings sub-page', () => {
     shell('/settings/alerts')
     expect(within(mainNav()).getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page')
-    expect(within(mainNav()).getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current')
+    expect(within(mainNav()).getByRole('link', { name: 'Overview' })).not.toHaveAttribute('aria-current')
   })
 
   it('keeps the page mounted between its sections and mounts a new page fresh', async () => {

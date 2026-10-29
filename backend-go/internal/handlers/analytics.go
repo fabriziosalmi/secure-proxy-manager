@@ -848,13 +848,33 @@ func extractClientTarget(r *http.Request) string {
 	return path
 }
 
+// clientWindow reads ?window= for the client detail. "7d" counts the last 7
+// days, the window of the client list (analyticsWindow), so the detail can
+// match the row it opens from; "all", the default, counts every request
+// logged, as the detail always did. ok is false for any other value.
+func clientWindow(r *http.Request) (name string, cond database.SQLText, args []any, ok bool) {
+	switch r.URL.Query().Get("window") {
+	case "", "all":
+		return "all", "", nil, true
+	case "7d":
+		return "7d", ` AND unix_timestamp >= ?`, []any{sinceUnix(analyticsWindow)}, true
+	}
+	return "", "", nil, false
+}
+
 // ClientDetails returns a per-client drill-down for a single source IP or
 // network CIDR: totals, top destinations (with how many were blocked), and the
-// most recent requests. With gdpr_mode on, only a network CIDR is accepted.
+// most recent requests, over ?window= (clientWindow). With gdpr_mode on, only
+// a network CIDR is accepted.
 func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request) {
+	window, win, winArgs, ok := clientWindow(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "window must be 7d or all")
+		return
+	}
 	ip := strings.TrimSpace(extractClientTarget(r))
 	if strings.Contains(ip, "/") {
-		h.clientDetailsByNetwork(w, ip)
+		h.clientDetailsByNetwork(w, ip, window, win, winArgs)
 		return
 	}
 	if !isValidCIDR(ip) {
@@ -866,22 +886,24 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 		return
 	}
 	const blockedCase database.SQLText = `SUM(blocked)`
+	where := `source_ip = ?` + win
+	args := append([]any{ip}, winArgs...)
 
 	var total, blocked int
 	var firstSeen, lastSeen sql.NullString
 	// A no-rows or scan error leaves the zero values, which is the correct
 	// answer for a client with no logged requests.
 	_ = h.db.QueryRow(
-		string(`SELECT COUNT(*), IFNULL(`+blockedCase+`, 0), MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE source_ip = ? AND `+clientRows), // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
-		ip,
+		string(`SELECT COUNT(*), IFNULL(`+blockedCase+`, 0), MIN(timestamp), MAX(timestamp) FROM proxy_logs WHERE `+where+` AND `+clientRows), // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
+		args...,
 	).Scan(&total, &blocked, &firstSeen, &lastSeen)
 
 	topDomains := []map[string]any{}
 	// #nosec G202 -- destinationKey is built once from a constant column name by database.HostKey; values are bound.
 	if dr, err := h.db.Query(
 		string(`SELECT `+destinationKey+` AS dest, COUNT(*) AS c, `+blockedCase+` AS b
-		 FROM proxy_logs WHERE source_ip = ? AND destination IS NOT NULL AND destination != '' AND `+clientRows+`
-		 GROUP BY dest ORDER BY c DESC LIMIT 10`), ip); err == nil {
+		 FROM proxy_logs WHERE `+where+` AND destination IS NOT NULL AND destination != '' AND `+clientRows+`
+		 GROUP BY dest ORDER BY c DESC LIMIT 10`), args...); err == nil {
 		for dr.Next() {
 			var d string
 			var c, b int
@@ -894,7 +916,7 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 	recent := []map[string]any{}
 	if rr, err := h.db.Query(
 		string(`SELECT timestamp, method, destination, status, bytes, blocked, block_reason
-		 FROM proxy_logs WHERE source_ip = ? AND `+clientRows+` ORDER BY id DESC LIMIT 20`), ip); err == nil {
+		 FROM proxy_logs WHERE `+where+` AND `+clientRows+` ORDER BY id DESC LIMIT 20`), args...); err == nil { // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		for rr.Next() {
 			var ts, method, dest, status, reason string
 			var nbytes int64
@@ -914,6 +936,7 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 	isInternal, kind := h.src.Classify(ip)
 	writeOK(w, map[string]any{
 		"ip_address":     ip,
+		"window":         window,
 		"internal":       isInternal,
 		"kind":           kind,
 		"total_requests": total,
@@ -923,11 +946,11 @@ func (h *AnalyticsHandlers) ClientDetails(w http.ResponseWriter, r *http.Request
 		"top_domains":    topDomains,
 		"recent":         recent,
 		// The client's blocked requests by the rule that blocked them.
-		"blocked_by_reason": h.blockedByReason(`source_ip = ?`, ip),
+		"blocked_by_reason": h.blockedByReason(where, args...),
 	})
 }
 
-func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCIDR string) {
+func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCIDR, window string, win database.SQLText, winArgs []any) {
 	prefix, err := parseNetworkCIDR(rawCIDR)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid network CIDR")
@@ -973,6 +996,9 @@ func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCID
 		b.firstKind = kind
 	}
 	isInternal, kind, classification := b.classify()
+	// The addresses are classified over every row; the counts over the window.
+	cond += win
+	args = append(args, winArgs...)
 
 	const blockedCase database.SQLText = `SUM(blocked)`
 	var total, blocked int
@@ -1018,6 +1044,7 @@ func (h *AnalyticsHandlers) clientDetailsByNetwork(w http.ResponseWriter, rawCID
 
 	writeOK(w, map[string]any{
 		"ip_address":        b.maskedIP,
+		"window":            window,
 		"network":           b.network,
 		"addresses":         len(b.addrs),
 		"internal":          isInternal,

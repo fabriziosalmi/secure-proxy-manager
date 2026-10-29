@@ -92,7 +92,7 @@ export function Analytics() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Overview"
+        eyebrow="Insights"
         title="Analytics"
         description="Last 7 days, client traffic only. Times are your local time."
         actions={
