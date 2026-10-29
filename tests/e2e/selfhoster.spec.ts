@@ -478,19 +478,19 @@ test.describe('UI — Dashboard', () => {
   // The cards of the last 24 hours, each with a value from dashboard/summary:
   // a count, or "Not reported" when the backend did not send the field.
   // The score and the "Today" / "Total" pair are gone from this page.
-  test('shows the last-24-hours cards (Client requests, Blocked, Active clients, Rules in force)', async ({ page }) => {
+  test('shows the last-24-hours cards (Client requests, Blocked, Active clients, Blacklist entries)', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('h1:has-text("Overview")');
     await expect(page.getByText(/^Last 24 hours · updated \d\d:\d\d$/)).toBeVisible();
     const cards = page.getByRole('region', { name: 'Last 24 hours at a glance' });
-    for (const label of ['Client requests', 'Blocked', 'Active clients', 'Rules in force']) {
+    for (const label of ['Client requests', 'Blocked', 'Active clients', 'Blacklist entries']) {
       const card = cards.locator('div').filter({ has: page.getByText(label, { exact: true }) }).last();
       await expect(card).toBeVisible();
       await expect(card.locator('p').nth(1)).toHaveText(/^(\d{1,3}(,\d{3})*|Not reported)$/);
     }
     // The e2e stack runs the current backend, which sends every field.
     await expect(cards.getByText('Not reported')).toHaveCount(0);
-    for (const gone of ['Score', 'Today', 'Block Rate', 'IP Rules']) {
+    for (const gone of ['Score', 'Today', 'Block Rate', 'IP Rules', 'Rules in force']) {
       await expect(page.getByText(gone, { exact: true })).toHaveCount(0);
     }
   });
@@ -1005,9 +1005,17 @@ test.describe('UI — Blacklists (Blocked IPs)', () => {
     const countryInput = page.getByLabel('Country codes');
     await countryInput.fill('CN');
     await expect(countryInput).toHaveValue('CN');
-    // The feed may or may not be reachable from CI; no crash is the assertion.
-    await page.getByRole('button', { name: 'Download and block IPs' }).click();
-    await page.waitForTimeout(5_000);
+    // The feed may or may not be reachable from CI: 200 when it was, 502 when
+    // it was not. The test waits for the answer. It used to move on after 5 s
+    // while the backend went on importing (8.4 s on a CI run, thousands of CN
+    // networks), so the rows landed during a later test, above the entries it
+    // had just added, and pushed them off the first page.
+    const [resp] = await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/blacklists/import-geo') && r.request().method() === 'POST', { timeout: 90_000 }),
+      page.getByRole('button', { name: 'Download and block IPs' }).click(),
+    ]);
+    expect([200, 502]).toContain(resp.status());
+    await expect(page.getByRole('button', { name: 'Download and block IPs' })).toBeEnabled();
     await expect(page.getByText('Something went wrong')).not.toBeVisible();
   });
 
@@ -1017,10 +1025,11 @@ test.describe('UI — Blacklists (Blocked IPs)', () => {
     // (the SSRF guard refuses mock-lists), so the URL source is added to the
     // real answer of /sources.
     const token = await apiToken(request);
-    await request.post(`${API_URL}/api/blacklists/import`, {
+    const imported = await request.post(`${API_URL}/api/blacklists/import`, {
       headers: { Authorization: `Bearer ${token}` },
       data: { type: 'ip', content: '203.0.113.211\n203.0.113.212' },
     });
+    expect(imported.status(), await imported.text()).toBe(200);
     const longUrl = 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/a/very/long/path/to/the/list/firehol_level1.netset';
     await page.route('**/api/ip-blacklist/sources', async (route) => {
       const res = await route.fetch();
@@ -1052,14 +1061,19 @@ test.describe('UI — Blacklists (Blocked IPs)', () => {
     // With rows, both tables are wider than a phone and must scroll inside
     // their own boxes; an empty table would fit and prove nothing.
     const token = await apiToken(request);
-    await request.post(`${API_URL}/api/blacklists/import`, {
+    const imported = await request.post(`${API_URL}/api/blacklists/import`, {
       headers: { Authorization: `Bearer ${token}` },
       data: { type: 'ip', content: '203.0.113.201\n203.0.113.202' },
     });
+    expect(imported.status(), await imported.text()).toBe(200);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload();
     await expect(page.getByRole('heading', { level: 1, name: 'Blacklists' })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('table', { name: 'Blocked IPs entries' }).getByText('203.0.113.201')).toBeVisible();
+    // Found by search, not on the first page: the list is newest first, and
+    // on a retry these addresses are already listed under an older id, below
+    // whatever was added since.
+    await page.getByRole('searchbox', { name: /^Search / }).fill('203.0.113.20');
+    await expect(page.getByRole('table', { name: 'Blocked IPs entries' }).getByText('203.0.113.201', { exact: true })).toBeVisible();
     await expect(page.getByRole('table', { name: 'Sources of Blocked IPs' }).getByRole('button', { name: /^Remove batch:/ }).first()).toBeAttached();
     await page.getByRole('button', { name: 'Add entries', exact: true }).click();
     await page.getByRole('group', { name: 'How to add' }).getByRole('button', { name: 'Popular lists' }).click();
@@ -1083,7 +1097,7 @@ test.describe('UI — Blacklists (Blocked domains)', () => {
   test('says what enforces the list, and how "*." entries match', async ({ page }) => {
     const enforcement = page.getByRole('region', { name: 'Enforcement' });
     await expect(enforcement.getByText('DNS sinkhole', { exact: true })).toBeVisible();
-    await expect(enforcement.getByText(/\(SPM_DNS_BLOCKLIST_MAX_DOMAINS\)$/)).toBeVisible();
+    await expect(enforcement.getByText('Set by SPM_DNS_BLOCKLIST_MAX_DOMAINS.')).toBeVisible();
     // This stack runs no proxy; a record left in ./config from another run
     // would say whether Squid holds a copy instead.
     await expect(enforcement.getByText(/^(Not reported: the proxy has not written domain_acl_status\.json|Its own copy of all|No copy:)/)).toBeVisible();

@@ -100,7 +100,7 @@ describe('EgressAllowlist', () => {
     const acme = (await within(table).findByText('acme-v02.api.letsencrypt.org')).closest('tr')!
     expect(within(acme).getByText('Exact domain')).toBeInTheDocument()
     expect(within(acme).getByText('certificate renewals')).toBeInTheDocument()
-    expect(within(acme).getByText('2026-07-01 11:00:00')).toBeInTheDocument()
+    expect(within(acme).getByText('2026-07-01 11:00')).toHaveAttribute('title', '2026-07-01 11:00:00 (Europe/Rome)')
     expect(within(within(table).getByText('.debian.org').closest('tr')!).getByText('Domain and its subdomains')).toBeInTheDocument()
     expect(within(within(table).getByText('203.0.113.0/24').closest('tr')!).getByText('Network')).toBeInTheDocument()
     restoreTz()

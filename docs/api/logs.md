@@ -262,6 +262,17 @@ change to a list (add, remove, bulk remove, clear, import, removal of a
 source, restore) writes a row. Sign-in, failed sign-in and sign-out rows carry
 the client address in `target`.
 
+A settings save (`update_settings` for `POST /api/settings`, `update_setting`
+for `PUT /api/settings/{name}`) writes a row only when it changed something,
+after the change is stored: `target` is the changed keys, comma-separated, and
+`details` gives each one's old and new value. A secret is never written, only
+whether it was set or cleared; a value longer than 512 characters is cut and
+marked `truncated`.
+
+```json
+{ "changes": { "enable_notifications": { "from": "false", "to": "true" } }, "secrets": { "telegram_bot_token": "set" } }
+```
+
 ```json
 {
   "status": "success",

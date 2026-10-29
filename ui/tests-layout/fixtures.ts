@@ -123,6 +123,19 @@ const docker = ['docker.com', 'hub.docker.com', 'registry.docker.io', 'auth.dock
 const allowedEntries = docker.map((domain, i) => ({ id: i + 1, domain, description: 'Essential: Docker', added_date: '2026-10-28 13:26:00', source_id: 9, source_kind: 'manual' }));
 const listEntries: Record<string, Json[]> = { 'ip-blacklist': ipEntries, 'domain-blacklist': [], 'ip-whitelist': [], 'domain-whitelist': allowedEntries };
 
+// GET /api/{list}/presets (backend-go/internal/handlers/presets.go): Docker is
+// on the allowed list, as listEntries says; no DoH resolver is blocked.
+const presets: Record<string, Json[]> = {
+  'domain-whitelist': [
+    { id: 'github', name: 'GitHub', domains: ['github.com', 'raw.githubusercontent.com', 'api.github.com', 'gist.github.com', 'objects.githubusercontent.com'], listed: [] },
+    { id: 'docker', name: 'Docker', domains: docker, listed: docker },
+    { id: 'cloudflare', name: 'Cloudflare', domains: ['cloudflare.com', 'dash.cloudflare.com'], listed: [] },
+  ],
+  'domain-blacklist': [
+    { id: 'doh', name: 'DNS-over-HTTPS resolvers', domains: ['dns.google', 'cloudflare-dns.com', 'dns.quad9.net', 'doh.opendns.com'], listed: [] },
+  ],
+};
+
 const listSources: Record<string, Json[]> = {
   'ip-blacklist': [{ id: null, kind: 'unrecorded', source: '', label: '', entries: 50772, first_added: '2026-10-25 08:00:00', last_added: '2026-10-25 08:02:00' }],
   'domain-blacklist': [
@@ -158,6 +171,7 @@ export function answer(url: URL): Json | undefined {
   const p = url.pathname.replace(/^\/api\//, '');
   const lists = /^(ip|domain)-(blacklist|whitelist)$/;
   const sourcesOf = /^((?:ip|domain)-(?:blacklist|whitelist))\/sources$/;
+  const presetsOf = /^(domain-(?:blacklist|whitelist))\/presets$/;
   switch (p) {
     case 'session': return ok({ username: 'admin', expires_at: Math.floor(NOW.getTime() / 1000) + 3600 });
     case 'settings': return ok(settings);
@@ -186,6 +200,8 @@ export function answer(url: URL): Json | undefined {
   if (/^clients\/.+\/details$/.test(p)) return ok(clientDetail);
   const src = sourcesOf.exec(p);
   if (src) return ok(listSources[src[1]] ?? []);
+  const pre = presetsOf.exec(p);
+  if (pre) return ok(presets[pre[1]] ?? []);
   if (lists.test(p)) {
     const limit = Number(url.searchParams.get('limit') || 50);
     return list((listEntries[p] ?? []).slice(0, limit), { total: listTotals[p] ?? 0, limit, offset: 0 });
