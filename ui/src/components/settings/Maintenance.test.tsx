@@ -163,13 +163,13 @@ describe('Maintenance', () => {
     })
     vi.mocked(api.post).mockImplementation((url: string) => {
       if (url === 'counters/reset') return Promise.resolve({ data: { status: 'success', data: { logs_cleared: 1234, waf_reset: false } } })
-      if (url === 'maintenance/reload-dns') return Promise.resolve({ data: { status: 'success', data: { domains: 42 } } })
+      if (url === 'maintenance/reload-dns') return Promise.resolve({ data: { status: 'success', data: { domains: 42, left_out: 3 } } })
       return Promise.resolve({ data: { status: 'success' } })
     })
     const { container } = renderWithProviders(<Maintenance />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reload DNS' }))
-    expect(await screen.findByText('Wrote 42 blocked domains for DNS. The DNS service rereads them within about 2 seconds; this page cannot confirm it.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Send the lists again' }))
+    expect(await screen.findByText('42 domain entries went to the DNS sinkhole, 3 left out by Allowed domains. The DNS sinkhole and the proxy reread them within a few seconds; this page cannot confirm it.')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset statistics' }))
     const ask = await screen.findByRole('alertdialog', { name: 'Delete every logged request?' })
@@ -184,6 +184,21 @@ describe('Maintenance', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Optimize' }))
     expect(await screen.findByText(/^Optimized \(VACUUM and REINDEX\)\. Size 1\.9 MB before, 977 KB after\.$/)).toBeInTheDocument()
     await expectNoAxeViolations(container)
+  })
+
+  // "Clear the log" sat on the access log page and "Reset statistics" here;
+  // both delete every logged request, and nothing said only one resets the WAF.
+  it('clears the access log beside Reset statistics, and says the WAF keeps its counters', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { status: 'success', message: 'All logs cleared' } } as never)
+    renderWithProviders(<Maintenance />)
+    expect(screen.getByText('Deletes every logged request. The WAF keeps its counters.')).toBeInTheDocument()
+    expect(screen.getByText("Deletes every logged request, as Clear the access log does, and resets the WAF's counters.")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear the log' }))
+    const ask = await screen.findByRole('alertdialog', { name: 'Clear the access log?' })
+    expect(ask).toHaveTextContent('The WAF keeps its counters and the audit log is kept.')
+    fireEvent.click(within(ask).getByRole('button', { name: 'Clear the log' }))
+    expect(await screen.findByText('The access log is empty. The WAF kept its counters.')).toBeInTheDocument()
+    expect(api.post).toHaveBeenCalledWith('logs/clear')
   })
 
   it('does nothing destructive when the confirmation is cancelled', async () => {

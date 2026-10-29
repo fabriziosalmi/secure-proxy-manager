@@ -567,7 +567,8 @@ every name under it.
 
 Managed IPv4 and IPv6 CIDR destination lists for default-deny egress. Built-in
 catalog providers (`kind: "catalog"`) are fetched from
-`lord-alfred/ipranges` pinned to the latest commit on `main`; custom URL
+`lord-alfred/ipranges` at the newest commit of `main` at each download (the
+commit is returned in `last_commit`); custom URL
 providers (`kind: "url"`) are fetched from operator-configured HTTP or HTTPS
 CIDR feeds.
 

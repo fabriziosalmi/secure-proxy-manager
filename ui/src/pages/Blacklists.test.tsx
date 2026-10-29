@@ -146,7 +146,8 @@ describe('Blacklists', () => {
       expect(within(row('198.51.100.0/24')).getByText('scanner seen at the edge')).toBeInTheDocument()
 
       expect(within(row('10.0.0.1')).getByText('IP')).toBeInTheDocument()
-      expect(within(row('198.51.100.0/24')).getByText('Network /24')).toBeInTheDocument()
+      // How much a network covers; "Network /24" repeated the prefix.
+      expect(within(row('198.51.100.0/24')).getByText('Network, 256 addresses')).toBeInTheDocument()
 
       expect(within(row('10.0.0.1')).getByText('Source not recorded')).toBeInTheDocument()
       expect(within(row('198.51.100.0/24')).getByText('Manual')).toBeInTheDocument()
@@ -162,6 +163,16 @@ describe('Blacklists', () => {
       ])
       expect(screen.getByText('1 to 5 of 5')).toBeInTheDocument()
     } finally { restoreTz() }
+  })
+
+  // "Source not recorded" was on every row of a list with one source.
+  it('leaves the Source column out when the list has one source or none', async () => {
+    sources = { 'ip-blacklist': [ipSources[2]] }
+    renderWithProviders(<Blacklists />)
+    const table = await screen.findByRole('table', { name: 'Blocked IPs entries' })
+    await within(table).findByText('10.0.0.1')
+    await waitFor(() => expect(within(table).queryByRole('columnheader', { name: 'Source' })).not.toBeInTheDocument())
+    expect(within(table).queryByText('Source not recorded')).not.toBeInTheDocument()
   })
 
   it('searches the list on the backend from a search field with the search icon', async () => {
@@ -184,7 +195,7 @@ describe('Blacklists', () => {
   })
 
   describe('Enforcement', () => {
-    it('blocked domains: the DNS sinkhole holds every name, and whether Squid holds its own copy is the proxy record', async () => {
+    it('blocked domains: the DNS sinkhole holds every name, and whether the proxy holds its own copy is the proxy record', async () => {
       go('?tab=blocked-domains')
       counts['domain-blacklist'] = 640929
       renderWithProviders(<Blacklists />)
@@ -192,13 +203,49 @@ describe('Blacklists', () => {
       await within(section).findByText('640,929')
       expect(within(section).getByText('473,936')).toBeInTheDocument()
       expect(within(section).getByText('Every entry but the 3 on Allowed domains')).toBeInTheDocument()
-      expect(within(section).getByText('No copy: 473,936 names is over its limit of 250,000 (SPM_SQUID_DOMAIN_ACL_MAX)')).toBeInTheDocument()
+      expect(within(section).getByText('No copy: 473,936 names is over its limit of 250,000')).toBeInTheDocument()
       expect(within(section).getByText('1,000,000 entries')).toBeInTheDocument()
-      expect(within(section).getByText('Set by SPM_DNS_BLOCKLIST_MAX_DOMAINS.')).toBeInTheDocument()
       // The semantics db.go (EnforcedDomain) and the watchdog implement: "*."
       // and a leading dot are dropped, the exact name is blocked.
-      expect(within(section).getByText(/"\*\.example\.com" and "\.example\.com" each block example\.com itself, in the DNS sinkhole and in Squid alike/)).toBeInTheDocument()
+      expect(within(section).getByText(/"\*\.example\.com" and "\.example\.com" each block example\.com itself, in the DNS sinkhole and in the proxy alike/)).toBeInTheDocument()
+      // The programs and the variables that set the limits are under How it works.
+      const how = within(section).getByText('How it works').closest('details')!
+      expect(how).toHaveTextContent('SPM_DNS_BLOCKLIST_MAX_DOMAINS')
+      expect(how).toHaveTextContent('SPM_SQUID_DOMAIN_ACL_MAX')
+      expect(how).toHaveTextContent('domain_acl_status.json')
     })
+
+    // "Rewrite the DNS list" said neither that every list is sent again, the
+    // proxy's included, nor when to use it; its toast counted the entries
+    // Allowed domains leaves out as written.
+    it('blocked domains: the re-send button says what it sends and when, and the toast what was sent', async () => {
+      go('?tab=blocked-domains')
+      counts['domain-blacklist'] = 640929
+      vi.spyOn(toast, 'success')
+      vi.mocked(api.post).mockResolvedValueOnce({ data: { status: 'success', data: { domains: 640926, left_out: 3 } } } as never)
+      renderWithProviders(<Blacklists />)
+      const button = await screen.findByRole('button', { name: 'Send the lists to the DNS sinkhole and the proxy again' })
+      expect(button).toHaveAccessibleDescription('Use it when a change has not taken effect.')
+      fireEvent.click(button)
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith(
+        'Lists sent again. 640,926 domain entries went to the DNS sinkhole, 3 left out by Allowed domains. The DNS sinkhole and the proxy reread them within a few seconds; this page cannot confirm it.'))
+      expect(api.post).toHaveBeenCalledWith('maintenance/reload-dns')
+    })
+
+    // "Proxy (Squid)", "Networks Squid loads" and the variable names were in
+    // the rows and paragraphs. Squid, file names and variables are named only
+    // under How it works.
+    it.each(['blocked-ips', 'blocked-domains', 'allowed-ips', 'allowed-domains'])(
+      '%s: names Squid, files and variables only under How it works', async (tab) => {
+        go(`?tab=${tab}`)
+        enforcement = { ...enforcementBody, squid_ip_blacklist: null, squid_ip_whitelist: null }
+        renderWithProviders(<Blacklists />)
+        const section = (await screen.findByRole('heading', { name: 'Enforcement' })).closest('section')!
+        await within(section).findAllByText(/^(Entries|Loading)$/)
+        const outside = section.cloneNode(true) as HTMLElement
+        outside.querySelectorAll('details').forEach((d) => d.remove())
+        expect(outside.textContent).not.toMatch(/Squid|dnsmasq|SPM_|\.json/)
+      })
 
     it('blocked domains: a held copy, and no record at all, are each said as they are', async () => {
       go('?tab=blocked-domains')
@@ -209,22 +256,22 @@ describe('Blacklists', () => {
       unmount()
       enforcement = { ...enforcementBody, squid_domain_acl: null }
       renderWithProviders(<Blacklists />)
-      expect(await screen.findByText('Not reported: the proxy has not written domain_acl_status.json')).toBeInTheDocument()
+      expect(await screen.findByText('Not reported: the proxy has not recorded whether it holds a copy')).toBeInTheDocument()
       expect(screen.queryByText('Distinct names')).not.toBeInTheDocument()
     })
 
-    it('blocked IPs: the networks Squid loads after merging come from the proxy record, never a guess', async () => {
+    it('blocked IPs: the networks the proxy loads after merging come from the proxy record, never a guess', async () => {
       renderWithProviders(<Blacklists />)
       const section = (await screen.findByRole('heading', { name: 'Enforcement' })).closest('section')!
       expect(await within(section).findByText('32,215')).toBeInTheDocument()
       expect(within(section).getByText(/^Merged from 50,772 entries, recorded /)).toBeInTheDocument()
-      expect(within(section).getByText(/Squid checks this list before Allowed IPs, so an address on both stays blocked/)).toBeInTheDocument()
+      expect(within(section).getByText(/The proxy checks this list before Allowed IPs, so an address on both stays blocked/)).toBeInTheDocument()
     })
 
     it('says "Not reported" when the proxy has written no IP record', async () => {
       enforcement = { ...enforcementBody, squid_ip_blacklist: null }
       renderWithProviders(<Blacklists />)
-      expect(await screen.findByText('Not reported: the proxy has not written ip_blacklist_acl_status.json')).toBeInTheDocument()
+      expect(await screen.findByText('Not reported: the proxy has not recorded it')).toBeInTheDocument()
     })
 
     it('allowed domains: says which blocked forms a name takes out, as the exporter does', async () => {
@@ -232,13 +279,15 @@ describe('Blacklists', () => {
       renderWithProviders(<Blacklists />)
       // db.go loadWhitelistSet compares EnforcedDomain of both sides.
       expect(await screen.findByText(/example\.com also takes out \*\.example\.com and \.example\.com, which block example\.com itself\. It does not cover subdomains/)).toBeInTheDocument()
+      // "Blocked entries taken out" did not say of what, or by what.
+      expect(screen.getByText('Blocked domains this list overrides')).toBeInTheDocument()
     })
 
     it('allowed IPs: says the blocked lists are checked first', async () => {
       go('?tab=allowed-ips')
       renderWithProviders(<Blacklists />)
       expect(await screen.findByText(/It checks Blocked IPs and Blocked domains first, so an entry here does not override them/)).toBeInTheDocument()
-      expect(screen.getByText('Not reported: the proxy has not written ip_whitelist_acl_status.json')).toBeInTheDocument()
+      expect(screen.getByText('Not reported: the proxy has not recorded it')).toBeInTheDocument()
     })
   })
 

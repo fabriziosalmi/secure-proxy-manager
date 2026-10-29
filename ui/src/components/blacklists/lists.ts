@@ -5,6 +5,7 @@
  */
 import { formatDate, formatHourMinute, formatWhen } from '../../lib/format';
 import type { ListEntry, ListSource } from '../../types';
+import { formatCount } from '../../lib/format';
 
 export type ListKey = 'blocked-ips' | 'blocked-domains' | 'allowed-ips' | 'allowed-domains';
 
@@ -66,7 +67,7 @@ export const LISTS: readonly ListDef[] = [
     searchPlaceholder: 'Search IPs and networks',
     entryLabel: 'IP address or network',
     entryPlaceholder: 'e.g. 192.168.1.50 or 192.168.1.0/24',
-    consequence: (what) => `Squid stops letting ${what} past its direct-IP rule once it reloads the list.`,
+    consequence: (what) => `The proxy stops letting ${what} past its direct-IP rule once it reloads the list.`,
   },
   {
     key: 'allowed-domains',
@@ -89,11 +90,22 @@ export function listByKey(key: string | null): ListDef {
   return LISTS.find((l) => l.key === key) ?? LISTS[0];
 }
 
-/** "IP", "Network /24", "Domain": what the entry is, read from its value. */
+/**
+ * "IP", "Network, 1,024 addresses", "IPv6 network", "Domain": what the entry
+ * is, read from its value. The Entry column already shows the prefix, so the
+ * kind says how much it covers; "Network /22" repeated it. An IPv6 network
+ * larger than 2^20 addresses is named without a count no one reads.
+ */
 export function entryKind(list: ListDef, value: string): string {
   if (list.field === 'domain') return 'Domain';
   const slash = value.indexOf('/');
-  return slash >= 0 ? `Network /${value.slice(slash + 1)}` : 'IP';
+  if (slash < 0) return 'IP';
+  const v6 = value.includes(':');
+  const bits = (v6 ? 128 : 32) - Number(value.slice(slash + 1));
+  if (!Number.isInteger(bits) || bits < 0) return v6 ? 'IPv6 network' : 'Network';
+  if (bits === 0) return 'IP';
+  if (bits > 20 && v6) return 'IPv6 network';
+  return `${v6 ? 'IPv6 network' : 'Network'}, ${formatCount(2 ** bits)} addresses`;
 }
 
 /** The description the importer used to write, which only repeated the date. */

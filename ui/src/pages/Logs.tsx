@@ -43,6 +43,14 @@ export const SHOW_INTERNAL_TRAFFIC_KEY = 'spm.logs.showInternal';
 /** Rows per request, for the first page and each "Load older". */
 export const PAGE_SIZE = 100;
 
+/**
+ * The most rows "Load older" brings onto the page. Each load re-rendered the
+ * whole table: measured with the CPU slowed four times, a click took 104 ms
+ * at 1,100 rows and up to 248 ms at 3,100, past the 200 ms of a responsive
+ * page. Older requests are reached by search, the filters or the export.
+ */
+export const MAX_LOADED = 1000;
+
 /** Live rows kept above the fetched pages. */
 const LIVE_MAX = 200;
 
@@ -351,25 +359,6 @@ export function Logs() {
     setFilters({ client: ip });
   };
 
-  const clearLogs = async () => {
-    const ok = await confirm({
-      title: 'Clear the access log?',
-      body: 'Every logged request is deleted, for every client, and the statistics built from them start again from zero. This cannot be undone.',
-      confirmLabel: 'Clear the log',
-      destructive: true,
-    });
-    if (!ok) return;
-    try {
-      await api.post('logs/clear');
-      toast.success('The access log is empty.');
-      setLiveRows([]);
-      setSelectedKey(null);
-      void queryClient.invalidateQueries({ queryKey: ['logs'] });
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'The access log was not cleared.'));
-    }
-  };
-
   const columns: Column<Row>[] = [
     {
       id: 'time',
@@ -457,6 +446,7 @@ export function Logs() {
     };
   }
 
+  const loaded = logs.data?.pages.reduce((n, p) => n + (p?.data?.length ?? 0), 0) ?? 0;
   const footer = firstMeta ? footerText(rows.length, firstMeta.total + Math.max(0, liveAdded), filtered, showInternal, filters.client !== '', hidden) : null;
 
   const clientOptions = useMemo(() => {
@@ -557,10 +547,15 @@ export function Logs() {
         {footer && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle px-5 py-3">
             <p className="text-[13px] text-ink-muted">{footer}</p>
-            {logs.hasNextPage && (
+            {logs.hasNextPage && loaded < MAX_LOADED && (
               <Button size="sm" onClick={() => { void logs.fetchNextPage(); }} disabled={logs.isFetchingNextPage}>
                 {logs.isFetchingNextPage ? 'Loading older' : 'Load older'}
               </Button>
+            )}
+            {logs.hasNextPage && loaded >= MAX_LOADED && (
+              <p className="text-[13px] text-ink-muted">
+                The newest {formatCount(MAX_LOADED)} are loaded. Search, filter or export the log to reach older requests.
+              </p>
             )}
           </div>
         )}
@@ -577,10 +572,6 @@ export function Logs() {
           <RequestDetail r={selected} filters={filters} onAllow={allowDomain} onShowClient={showClient} />
         </RequestDrawer>
       )}
-
-      <Section title="Clear the access log" tone="danger" description="Deletes every logged request. The statistics on the Overview and the Clients page are built from them.">
-        <Button variant="danger-outline" onClick={() => { void clearLogs(); }}>Clear the log</Button>
-      </Section>
 
       {dialog}
     </div>

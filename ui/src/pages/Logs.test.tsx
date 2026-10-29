@@ -4,7 +4,7 @@ import { renderWithProviders, setRomeTimeZone } from '../test/helpers'
 import { expectNoAxeViolations } from '../test/axe'
 import { api } from '../lib/api'
 import { DESKTOP_QUERY } from '../hooks/useMediaQuery'
-import { Logs, PAGE_SIZE, SHOW_INTERNAL_TRAFFIC_KEY } from './Logs'
+import { Logs, MAX_LOADED, PAGE_SIZE, SHOW_INTERNAL_TRAFFIC_KEY } from './Logs'
 import type { LogEntry } from '../types'
 
 // Rows as GET /api/logs returns them (logRow.wire in
@@ -375,10 +375,30 @@ describe('Logs', () => {
     expect(screen.queryByRole('button', { name: 'Load older' })).not.toBeInTheDocument()
   })
 
+  // "Load older" added 100 rows a click without end; at 3,100 rows a click
+  // took 248 ms with the CPU slowed four times. It stops at MAX_LOADED.
+  it('stops loading older rows at MAX_LOADED and says how to reach the rest', async () => {
+    logsBody = (url) => {
+      const before = Number(new URLSearchParams(url.split('?')[1]).get('before_id') ?? 100001)
+      return page(Array.from({ length: PAGE_SIZE }, (_, i) => row({ id: before - 1 - i, destination: `h${before - 1 - i}.example.com:443` })), { total: 100000 })
+    }
+    renderWithProviders(<Logs />)
+    for (let loaded = PAGE_SIZE; loaded < MAX_LOADED; loaded += PAGE_SIZE) {
+      await waitFor(() => expect(bodyRows()).toHaveLength(loaded))
+      fireEvent.click(await screen.findByRole('button', { name: 'Load older' }))
+    }
+    await waitFor(() => expect(bodyRows()).toHaveLength(MAX_LOADED))
+    expect(screen.queryByRole('button', { name: 'Load older' })).not.toBeInTheDocument()
+    expect(screen.getByText('The newest 1,000 are loaded. Search, filter or export the log to reach older requests.')).toBeInTheDocument()
+    logsBody = () => page([allowed, dnsBlock, wafBlock, oldBlock])
+  }, 30_000)
+
   it('has no Load older when the first page holds everything', async () => {
     renderWithProviders(<Logs />)
     await waitFor(() => expect(bodyRows()).toHaveLength(4))
     expect(screen.queryByRole('button', { name: 'Load older' })).not.toBeInTheDocument()
+    // Clearing the log is in Settings, Maintenance, beside Reset statistics.
+    expect(screen.queryByRole('button', { name: 'Clear the log' })).not.toBeInTheDocument()
   })
 
   // The hub also carries {"type":"login_failure", ...} events, which anyone can
