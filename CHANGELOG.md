@@ -17,15 +17,18 @@ for at least one minor release before disappearing.
 
 ### Changed
 
-- **Every page writes a time the same way.** Seven formatters gave
-  `01:34:30` next to `2026-10-28 23:51` in one list, and dates that wrapped
-  under their time. Now one rule holds: the Access logs, the Audit log and
-  a request's detail write every time whole (`2026-10-29 08:51:30`), today's
-  too; lists and cards write `08:51` today, `Yesterday 23:51`, `Sun 25 23:55`
-  in the last week and `2026-10-21 23:55` before, on one line. A tooltip
-  gives the exact time with the zone, and the Access logs say which zone
-  their times are in. A pasted or restored source still names its time to
-  the second, so two pastes a minute apart read differently.
+- **A common-services preset is added in one request, under a source of its
+  own.** "+ Docker" on Allowed domains (and "Block DoH resolvers" on Blocked
+  domains) sent one request per domain from the page: each domain became a
+  "Manual" entry, the audit log got one row per domain, and the preset could
+  not be told apart from typed entries or removed on its own. The backend now
+  holds the presets: `GET /api/domain-whitelist/presets` and
+  `GET /api/domain-blacklist/presets` list them with the domains already on
+  the list, and `POST /api/{list}/presets/{id}` adds the missing ones under a
+  `preset` source ("Common services: Docker") with one `add_preset_<list>`
+  audit event and one export. Schema version 9 rebuilds `list_sources` to
+  allow that kind, keeping every source and its id; like the other versioned
+  steps it is one-way (see DEPLOYMENT.md, Rolling back).
 - **Settings and Analytics judge the configuration the same way.** The
   Settings menu showed 1 next to Overview, whose "Needs attention" list held
   4 items, and alerts switched off were orange in Analytics but grey in
@@ -36,6 +39,15 @@ for at least one minor release before disappearing.
   marks in both places differ by shape (triangle, hollow circle, filled
   circle, dashed circle) as well as colour, and Protection coverage has a
   legend. Alerts off is *worth knowing* on both pages.
+- **Every page writes a time the same way.** Seven formatters gave
+  `01:34:30` next to `2026-10-28 23:51` in one list, and dates that wrapped
+  under their time. Now one rule holds: the Access logs, the Audit log and
+  a request's detail write every time whole (`2026-10-29 08:51:30`), today's
+  too; lists and cards write `08:51` today, `Yesterday 23:51`, `Sun 25 23:55`
+  in the last week and `2026-10-21 23:55` before, on one line. A tooltip
+  gives the exact time with the zone, and the Access logs say which zone
+  their times are in. A pasted or restored source still names its time to
+  the second, so two pastes a minute apart read differently.
 - **The Analytics WAF card says it counts matches, not blocks.** Titled
   "WAF categories", it listed the categories that matched a request, weak
   matches below the block threshold included, since the WAF started, on a
