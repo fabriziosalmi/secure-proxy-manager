@@ -120,6 +120,9 @@ export function sourceName(kind: string | null | undefined, source?: string | nu
       return 'Restore';
     case 'geo':
       return `GeoIP: ${source ?? ''}`.trim();
+    case 'preset':
+      // The backend's name for it: "Common services: Docker".
+      return label || `Common services: ${source ?? ''}`.trim();
     default:
       return UNRECORDED;
   }
