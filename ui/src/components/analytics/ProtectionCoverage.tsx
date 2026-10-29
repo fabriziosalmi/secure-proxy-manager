@@ -6,17 +6,27 @@
  */
 import { Link } from 'react-router';
 import type { Coverage } from '../../types';
-import { cn } from '../../lib/utils';
+import { POSTURE_WORD, type Posture } from '../../lib/posture';
 import { Section } from '../ui/Section';
-import { coverageLines, type CoverageState } from './coverage';
+import { PostureMark } from '../ui/PostureMark';
+import { coverageLines } from './coverage';
 
-// The dot repeats what the text says; it is never the only signal.
-const DOT: Record<CoverageState, string> = {
-  on: 'bg-success-strong',
-  off: 'bg-chart-neutral',
-  attention: 'bg-warning-strong',
-  unknown: 'bg-line-strong',
-};
+/** The marks of the states the lines show, in a fixed order, for the legend. */
+const LEGEND_ORDER: Posture[] = ['on', 'worth-knowing', 'needs-attention', 'unknown'];
+
+// Inline elements only: it sits in a paragraph-free list footer.
+function Legend({ states }: { states: Posture[] }) {
+  return (
+    <p className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line-subtle pt-3 text-xs text-ink-muted">
+      {LEGEND_ORDER.filter((p) => states.includes(p)).map((p) => (
+        <span key={p} className="inline-flex items-center gap-1.5" aria-hidden="true">
+          <PostureMark posture={p} />
+          {POSTURE_WORD[p]}
+        </span>
+      ))}
+    </p>
+  );
+}
 
 export interface ProtectionCoverageProps {
   data?: Coverage | null;
@@ -36,21 +46,25 @@ export function ProtectionCoverage({ data, loading, error }: ProtectionCoverageP
   } else if (error || !data) {
     body = <p role="alert" className="text-sm text-ink-muted">Not reported: analytics/coverage did not answer.</p>;
   } else {
+    const lines = coverageLines(data);
     body = (
-      <ul className="flex flex-col gap-2.5 text-sm">
-        {coverageLines(data).map((l) => (
-          <li key={l.id} data-line={l.id} data-state={l.state} className="flex items-start gap-2.5">
-            <span aria-hidden="true" className={cn('mt-1.5 h-2 w-2 flex-none rounded-full', DOT[l.state])} />
-            <span className="min-w-0 flex-1 text-ink [overflow-wrap:anywhere]">{l.text}</span>
-            <Link
-              to={l.link.to}
-              className="shrink-0 whitespace-nowrap rounded-sm text-[13px] font-semibold text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
-            >
-              {l.link.label}
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <div className="flex flex-col gap-3">
+        <ul className="flex flex-col gap-2.5 text-sm">
+          {lines.map((l) => (
+            <li key={l.id} data-line={l.id} data-state={l.state} className="flex items-start gap-2.5">
+              <PostureMark posture={l.state} className="mt-0.5" />
+              <span className="min-w-0 flex-1 text-ink [overflow-wrap:anywhere]">{l.text}</span>
+              <Link
+                to={l.link.to}
+                className="shrink-0 whitespace-nowrap rounded-sm text-[13px] font-semibold text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                {l.link.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+        <Legend states={lines.map((l) => l.state)} />
+      </div>
     );
   }
   return (

@@ -21,13 +21,13 @@ describe('coverageLines', () => {
   it('says each protection with the numbers the API sent', () => {
     const l = lines(coverageBody)
     expect(Object.keys(l)).toEqual(['domain', 'ip', 'waf', 'https', 'login', 'alerts'])
-    expect(l.domain).toMatchObject({ state: 'attention', text: "Domain blacklist: 640,929 entries, blocked at the DNS sinkhole only: 640,929 names are above the proxy's limit of 100,000" })
+    expect(l.domain).toMatchObject({ state: 'needs-attention', text: "Domain blacklist: 640,929 entries, blocked at the DNS sinkhole only: 640,929 names are above the proxy's limit of 100,000" })
     expect(l.ip).toMatchObject({ state: 'on', text: 'IP blacklist: 50,772 entries, enforced by the proxy as 50,770 networks; 2 lines are not an address and not loaded' })
     // The WAF's own count, not a number written into the UI.
     expect(l.waf).toMatchObject({ state: 'on', text: 'WAF: 9 request rules in 3 categories, inspecting plain HTTP only' })
-    expect(l.https).toMatchObject({ state: 'off', text: 'HTTPS inspection: off, so the WAF does not see inside HTTPS' })
-    expect(l.login).toMatchObject({ state: 'off', text: 'Proxy login: off, any device on an allowed network can use the proxy' })
-    expect(l.alerts).toMatchObject({ state: 'attention', text: 'Alerts: off, blocks are not reported anywhere' })
+    expect(l.https).toMatchObject({ state: 'worth-knowing', text: 'HTTPS inspection: off, so the WAF does not see inside HTTPS' })
+    expect(l.login).toMatchObject({ state: 'worth-knowing', text: 'Proxy login: off, any device on an allowed network can use the proxy' })
+    expect(l.alerts).toMatchObject({ state: 'worth-knowing', text: 'Alerts: off, blocks are not reported anywhere' })
     expect(l.domain.link).toEqual({ label: 'Blacklists', to: '/blacklists?tab=blocked-domains' })
     expect(l.ip.link).toEqual({ label: 'Blacklists', to: '/blacklists' })
     expect(l.waf.link).toEqual({ label: 'Inspection', to: '/settings/inspection' })
@@ -49,7 +49,7 @@ describe('coverageLines', () => {
     expect(l.login.text).toBe('Proxy login: on, a device signs in to use the proxy')
     // The proxy's own record: login on with no user refuses every client.
     expect(lines({ ...coverageBody, proxy_login: true, proxy_login_status: { state: 'no_credentials', users: 0, written_at: 1 } }).login).toMatchObject({
-      state: 'attention',
+      state: 'needs-attention',
       text: 'Proxy login: on, but no proxy credentials are set: every client is refused until you set them',
     })
     expect(lines({ ...coverageBody, proxy_login: true, proxy_login_status: { state: 'enforced', users: 1, written_at: 1 } }).login.state).toBe('on')
@@ -67,11 +67,11 @@ describe('coverageLines', () => {
     })
     for (const id of ['domain', 'ip', 'https', 'login'] as const) expect(l[id].state, id).toBe('unknown')
     expect(l.domain.text).toBe('Domain blacklist: the backend could not count its entries')
-    expect(l.waf).toMatchObject({ state: 'attention', text: 'WAF: refuses the backend credential, so its rules are not reported (INTERNAL_ALERT_TOKEN must match)' })
+    expect(l.waf).toMatchObject({ state: 'needs-attention', text: 'WAF: refuses the backend credential, so its rules are not reported (INTERNAL_ALERT_TOKEN must match)' })
     expect(l.alerts.text).toBe('Alerts: on, sent to 1 channel, but WAF block alerts do not arrive: INTERNAL_ALERT_TOKEN is not set')
     expect(lines({ ...coverageBody, waf: { ...coverageBody.waf, status: 'unreachable' } }).waf.text).toBe('WAF: did not answer the backend, so its rules are not reported')
     expect(lines({ ...coverageBody, alerts: { enabled: true, channels: 0, waf_alerts_delivered: true } }).alerts.text).toBe('Alerts: on, but no channel is set up, so they go nowhere')
     expect(lines({ ...coverageBody, ip_blacklist: { entries: 3, squid_acl: null } }).ip.text).toBe('IP blacklist: 3 entries; the proxy has not reported loading them')
-    expect(lines({ ...coverageBody, domain_blacklist: { entries: 0, squid_acl: null } }).domain).toMatchObject({ state: 'off', text: 'Domain blacklist: empty, no domain is blocked' })
+    expect(lines({ ...coverageBody, domain_blacklist: { entries: 0, squid_acl: null } }).domain).toMatchObject({ state: 'worth-knowing', text: 'Domain blacklist: empty, no domain is blocked' })
   })
 })
