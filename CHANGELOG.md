@@ -72,6 +72,19 @@ for at least one minor release before disappearing.
   gives the exact time with the zone, and the Access logs say which zone
   their times are in. A pasted or restored source still names its time to
   the second, so two pastes a minute apart read differently.
+
+### Fixed
+
+- **The access log shows the outcome of each request and the proxy result in
+  words.** The column headed "Rule" said "Allowed" for every request no rule
+  touched; it is now "Outcome": "Allowed", or the rule that blocked the
+  request, which a screen reader hears as "Blocked by" the rule. The Result
+  column read "200 TCP_TUNNEL" and "403 NONE_NONE"; it now gives the HTTP code
+  with "HTTPS tunnel", "Refused by the proxy", "Fetched", "From cache" or
+  "Not forwarded", and ", cut off" or ", timed out" when the transfer did
+  not finish. A code it does not know is shown as it is, and the raw code
+  stays in the request details and the tooltip. A DNS sinkhole row no longer
+  shows its 0.0.0.0 answer where the HTTP code goes.
 - **The Analytics WAF card says it counts matches, not blocks.** Titled
   "WAF categories", it listed the categories that matched a request, weak
   matches below the block threshold included, since the WAF started, on a
@@ -81,9 +94,6 @@ for at least one minor release before disappearing.
   names each category in words with its kind (rule, heuristic, domain
   reputation, size limit) instead of the raw key (`SQL_INJECTION`,
   `HEURISTIC_BEACONING`).
-
-### Fixed
-
 - **Egress allowlist, Provider lists: the table fits at 1250 px and says
   what it does.** Seven columns ran 50 px past the card at 1250 px, cutting
   "Refresh now"; a list never downloaded said "Not downloaded yet" four
