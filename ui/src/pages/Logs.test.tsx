@@ -480,7 +480,7 @@ describe('Logs', () => {
     expect(within(details).getByText('Server address').nextElementSibling).toHaveTextContent('None: the proxy connected to no server')
   })
 
-  it('offers Allow this domain only for a rule a domain whitelist overrides', async () => {
+  it('offers Allow this domain only for a rule a Domain exceptions overrides', async () => {
     renderWithProviders(<Logs />)
     await waitFor(() => expect(bodyRows()).toHaveLength(4))
     for (const r of [wafBlock, allowed, oldBlock]) {
@@ -496,7 +496,7 @@ describe('Logs', () => {
     fireEvent.click(screen.getByRole('button', { name: dnsBlock.destination }))
     fireEvent.click(screen.getByRole('button', { name: 'Allow this domain' }))
     const dialog = await screen.findByRole('alertdialog', { name: 'Allow ads.example.net?' })
-    expect(dialog).toHaveTextContent('domain whitelist')
+    expect(dialog).toHaveTextContent('Domain exceptions')
     expect(dialog).toHaveTextContent('"Domain blacklist (DNS)" no longer blocks it')
     expect(api.post).not.toHaveBeenCalled()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Allow domain' }))

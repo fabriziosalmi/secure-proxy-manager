@@ -107,7 +107,7 @@ describe('GlobalSearch', () => {
     const labels = NAV_GROUPS.flatMap((g) => g.items).map((i) => i.label)
     const buttons = within(dialog).getAllByRole('button').filter((b) => /^\D.*\d+$/.test(b.textContent ?? ''))
     expect(buttons.map((b) => b.textContent)).toEqual(labels.map((l, i) => `${l}${i + 1}`))
-    expect(labels).toEqual(expect.arrayContaining(['Clients', 'Egress allowlist', 'Audit log']))
+    expect(labels).toEqual(expect.arrayContaining(['Clients', 'Default-deny allowlist', 'Audit log']))
   })
 
   it('asks each list for five entries with the parameter the backend reads', async () => {
@@ -125,7 +125,7 @@ describe('GlobalSearch', () => {
     }
   })
 
-  it('opens the matching Blacklists tab or Egress allowlist with the searched term pre-filled in ?q=', async () => {
+  it('opens the matching Blacklists tab or Default-deny allowlist with the searched term pre-filled in ?q=', async () => {
     const { api } = await import('../lib/api')
     vi.mocked(api.get).mockImplementation((url: string) => {
       const u = String(url)

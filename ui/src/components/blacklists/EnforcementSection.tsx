@@ -132,7 +132,7 @@ export function EnforcementSection({ list, total, data, loading, error, onReload
           <Row term="Entries">{formatCount(total ?? data.domain_blacklist_entries)}</Row>
           {acl && <Row term="Distinct names">{formatCount(acl.names)}</Row>}
           <Row term="DNS sinkhole" tone="success">
-            {left > 0 ? `Every entry but the ${formatCount(left)} on Allowed domains` : 'Every entry'}
+            {left > 0 ? `Every entry but the ${formatCount(left)} on Domain exceptions` : 'Every entry'}
           </Row>
           <Row term="Proxy" tone={tone}>{proxy}</Row>
           <Row term="Limit">{formatCount(data.dns_blocklist_limit)} entries</Row>
@@ -169,7 +169,7 @@ export function EnforcementSection({ list, total, data, loading, error, onReload
         </dl>
         <p className="text-[13px] leading-5 text-ink-muted">
           The proxy matches the address a request goes to. Overlapping and adjacent entries are merged before the proxy loads them; the same
-          addresses stay blocked. The proxy checks this list before Allowed IPs, so an address on both stays blocked. Private and LAN ranges
+          addresses stay blocked. The proxy checks this list before IP exceptions, so an address on both stays blocked. Private and LAN ranges
           cannot be added.
         </p>
         <HowItWorks>
@@ -186,7 +186,8 @@ export function EnforcementSection({ list, total, data, loading, error, onReload
         </dl>
         <p className="text-[13px] leading-5 text-ink-muted">
           The proxy lets these destinations through ahead of its direct-IP rule and its final deny. It checks Blocked IPs and Blocked domains
-          first, so an entry here does not override them.
+          first, so an entry here does not override them. With default deny on, clients reach these addresses too, whether or not the
+          default-deny allowlist names them.
         </p>
         <HowItWorks>
           <p>The proxy is Squid. It loads the merged list and records how many networks it loaded in ip_whitelist_acl_status.json.</p>

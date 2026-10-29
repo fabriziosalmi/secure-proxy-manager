@@ -149,7 +149,7 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
 - Squid's resolver. The service publishes no port, so LAN clients cannot query
   it.
 - Answers `0.0.0.0` and `::` for each blocked domain, from the hosts file the
-  backend writes; Allowed domains are left out of that file. A change is picked
+  backend writes; Domain exceptions are left out of that file. A change is picked
   up with `SIGHUP` within about 2 seconds.
 - Upstream resolvers `DNS_UPSTREAM_1..3`, default `1.1.1.3`, `9.9.9.9`,
   `8.8.8.8`.
@@ -181,7 +181,7 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
    the cache manager, the IP blacklist, the domain blacklist, a name that
    resolved to the sinkhole address, the policy rules inserted for the access
    settings that are on, `CONNECT` to a LAN destination
-   (allowed), `CONNECT` to a port outside `SSL_ports` (denied), Allowed IPs and
+   (allowed), `CONNECT` to a port outside `SSL_ports` (denied), IP exceptions and
    LAN destinations (allowed), direct-IP URLs (denied), the egress rule when
    default-deny is on, and finally local clients (allowed) and everything else
    (denied).

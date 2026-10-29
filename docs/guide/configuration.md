@@ -145,18 +145,19 @@ section that holds proxy settings also reloads the proxy. The generator also rea
 
 By default the proxy is a deny-list gateway: clients reach any destination that
 is not blocked. Default-deny egress lets local clients reach only the entries
-on the Egress allowlist, LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and
-Allowed IPs; everything else gets a Squid 403.
+on the Default-deny allowlist, LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`)
+and IP exceptions; everything else gets a Squid 403.
 
 It is off by default and set in the UI, not in `.env`:
 
 - Turn on Settings > Filtering > Only allowlisted destinations (the
   `egress_default_deny` setting). The page refuses to save it while the
   allowlist is empty.
-- Manage the destinations on the Egress allowlist page. An entry is an
+- Manage the destinations on the Default-deny allowlist page. An entry is an
   address, a CIDR range or a domain. A domain entry matches that exact name;
-  `.example.com` covers the domain and every name under it; `*.example.com` is
-  refused.
+  with Include subdomains (`include_subdomains` in the API, stored as
+  `.example.com`) it covers the domain and every name under it;
+  `*.example.com` is refused.
 
 See [Lists](./blacklists.md#destination-allowlist-default-deny-egress) for the
 API.

@@ -207,7 +207,7 @@ export function BackupRestore() {
       <ul className="flex flex-col">
         <ActionRow
           title="Backup"
-          help="The settings, the five lists (blocked and allowed IPs and domains, the egress allowlist), and the list of enabled egress providers and custom URLs (not their downloaded entries), in a file Restore reads back. Alert channel secrets stay encrypted in it."
+          help="The settings, the five lists (blocked IPs and domains, IP and domain exceptions, the default-deny allowlist), and the list of enabled egress providers and custom URLs (not their downloaded entries), in a file Restore reads back. Alert channel secrets stay encrypted in it."
           button="Download a backup"
           outcome={backup}
           busy={busy === 'backup'}

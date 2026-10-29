@@ -24,10 +24,10 @@ export function FilteringSection({ form }: { form: SectionForm }) {
   const patterns = extensionPatterns(v.blocked_file_types ?? '');
 
   let allowlist: string;
-  if (egress.isPending) allowlist = 'Reading the egress allowlist...';
-  else if (egress.isError || egress.total === null) allowlist = 'The size of the egress allowlist could not be read.';
-  else if ((egress.providerCount ?? 0) > 0) allowlist = `The egress allowlist holds ${formatEgressBreakdown(egress.manual ?? 0, egress.providerEntries ?? 0, egress.providerCount ?? 0)}.`;
-  else allowlist = egress.total === 1 ? 'The egress allowlist holds 1 entry.' : `The egress allowlist holds ${formatCount(egress.total ?? 0)} entries.`;
+  if (egress.isPending) allowlist = 'Reading the default-deny allowlist...';
+  else if (egress.isError || egress.total === null) allowlist = 'The size of the default-deny allowlist could not be read.';
+  else if ((egress.providerCount ?? 0) > 0) allowlist = `The default-deny allowlist holds ${formatEgressBreakdown(egress.manual ?? 0, egress.providerEntries ?? 0, egress.providerCount ?? 0)}.`;
+  else allowlist = egress.total === 1 ? 'The default-deny allowlist holds 1 entry.' : `The default-deny allowlist holds ${formatCount(egress.total ?? 0)} entries.`;
 
   return (
     <div className="flex flex-col gap-4">

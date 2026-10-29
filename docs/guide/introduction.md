@@ -17,14 +17,14 @@ egress point without a commercial appliance.
   Squid also denies the names while the list is small enough.
 - **Blocked IPs.** Single addresses or CIDR ranges of destinations. Private,
   loopback and other non-routable ranges are refused.
-- **Allowed IPs.** Destination addresses exempt from the direct-IP rule. The
+- **IP exceptions.** Destination addresses exempt from the direct-IP rule. The
   blocked lists are checked first, so this list does not override them.
-- **Allowed domains.** Exact names. Each takes the same name off the blocked
+- **Domain exceptions.** Exact names. Each takes the same name off the blocked
   domains, however it is written there (`name`, `*.name`, `.name`, any case),
   before they reach dnsmasq and Squid.
-- **Egress allowlist.** Off by default. When Settings > Filtering > Only
+- **Default-deny allowlist.** Off by default. When Settings > Filtering > Only
   allowlisted destinations is on, clients reach only the entries on this list,
-  LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and Allowed IPs.
+  LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and IP exceptions.
 - **WAF.** A Go ICAP service with 172 request rules in 21 categories, 5
   response rules in 2 categories and six behavioural heuristics (entropy,
   beaconing, personal data, destination sharding, protocol ghosting, sequence

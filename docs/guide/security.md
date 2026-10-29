@@ -152,14 +152,14 @@ the proxy container, and changing it does not change them.
 
 The blocked lists and direct-IP blocking are deny-lists: a client reaches any
 destination that is not forbidden. Default-deny egress inverts this: local
-clients reach only the destinations on the egress allowlist, LAN destinations
-and Allowed IPs, and everything else gets HTTP 403 from Squid.
+clients reach only the destinations on the default-deny allowlist, LAN
+destinations and IP exceptions, and everything else gets HTTP 403 from Squid.
 
 It is **off by default** (`egress_default_deny` is `false`). Turn it on in
 Settings > Filtering > Only allowlisted destinations, and manage the
-destinations on the Egress allowlist page. The API is described in
+destinations on the Default-deny allowlist page. The API is described in
 [Lists](./blacklists.md#destination-allowlist-default-deny-egress) and
-[the egress allowlist API](/api/blacklists#egress-allowlist).
+[the default-deny allowlist API](/api/blacklists#egress-allowlist).
 
 If the proxy cannot insert its egress rule where it belongs, it replaces the
 rule that allows local clients with a deny, so the failure blocks traffic

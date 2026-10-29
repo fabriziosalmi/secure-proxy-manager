@@ -36,9 +36,9 @@ interface ListWords {
 const LISTS: Record<string, ListWords> = {
   ip_blacklist: { label: 'Blocked IPs', one: 'blocked IP', many: 'blocked IPs', imported: ['IP', 'IPs'] },
   domain_blacklist: { label: 'Blocked domains', one: 'blocked domain', many: 'blocked domains', imported: ['domain', 'domains'] },
-  ip_whitelist: { label: 'Allowed IPs', one: 'allowed IP', many: 'allowed IPs', imported: ['IP', 'IPs'] },
-  domain_whitelist: { label: 'Allowed domains', one: 'allowed domain', many: 'allowed domains', imported: ['domain', 'domains'] },
-  egress_allowlist: { label: 'the egress allowlist', one: 'egress destination', many: 'egress destinations', imported: ['destination', 'destinations'] },
+  ip_whitelist: { label: 'IP exceptions', one: 'IP exception', many: 'IP exceptions', imported: ['IP', 'IPs'] },
+  domain_whitelist: { label: 'Domain exceptions', one: 'domain exception', many: 'domain exceptions', imported: ['domain', 'domains'] },
+  egress_allowlist: { label: 'the default-deny allowlist', one: 'egress destination', many: 'egress destinations', imported: ['destination', 'destinations'] },
 };
 
 const LIST_NAMES = Object.keys(LISTS).join('|');

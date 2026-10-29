@@ -172,7 +172,7 @@ export function ProviderListsSection({ refreshHours, onChanged }: { refreshHours
     if (busyRow) return;
     const ok = await confirm({
       title: `Remove ${p.name}?`,
-      body: `Removes the custom URL list ${p.name} (${p.url}) and its ${formatCount(p.v4_count + p.v6_count)} prefixes from the egress allowlist.`,
+      body: `Removes the custom URL list ${p.name} (${p.url}) and its ${formatCount(p.v4_count + p.v6_count)} prefixes from the default-deny allowlist.`,
       confirmLabel: 'Remove',
       destructive: true,
     });

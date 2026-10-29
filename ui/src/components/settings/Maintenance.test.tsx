@@ -169,7 +169,7 @@ describe('Maintenance', () => {
     const { container } = renderWithProviders(<Maintenance />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Send the lists again' }))
-    expect(await screen.findByText('42 domain entries went to the DNS sinkhole, 3 left out by Allowed domains. The DNS sinkhole and the proxy reread them within a few seconds; this page cannot confirm it.')).toBeInTheDocument()
+    expect(await screen.findByText('42 domain entries went to the DNS sinkhole, 3 left out by Domain exceptions. The DNS sinkhole and the proxy reread them within a few seconds; this page cannot confirm it.')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset statistics' }))
     const ask = await screen.findByRole('alertdialog', { name: 'Delete every logged request?' })

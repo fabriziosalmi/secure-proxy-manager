@@ -174,7 +174,7 @@ function SettingsPage() {
     // An empty allowlist with default-deny on leaves only LAN destinations
     // and Allowed IPs reachable (lib/egress).
     if (id === 'filtering' && values.egress_default_deny === 'true' && egress.total === 0) {
-      errors.egress_default_deny = 'the egress allowlist is empty, so clients would reach only LAN destinations and the addresses on Allowed IPs: add destinations first';
+      errors.egress_default_deny = 'the default-deny allowlist is empty, so clients would reach only LAN destinations and the addresses on IP exceptions: add destinations first';
     }
     if (Object.keys(errors).length) {
       drafts.setErrors(id, errors);

@@ -139,9 +139,9 @@ POST /api/settings
 
 `egress_default_deny` is a boolean setting, sent as the string `"true"` or `"false"` (default `"false"`). `POST /api/settings` and `PUT /api/settings/egress_default_deny` write or remove the marker file `/config/egress_default_deny`; `POST /api/maintenance/reload-config` then makes the proxy apply it. The setting is also the "Only allowlisted destinations" toggle under Settings > Filtering, which refuses to save it while the allowlist is empty; the API does not refuse.
 
-When `"false"` (the default) local clients may reach any destination that is not blocked. When `"true"` they may reach only the destinations on the egress allowlist, LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and Allowed IPs; everything else is refused with a Squid 403.
+When `"false"` (the default) local clients may reach any destination that is not blocked. When `"true"` they may reach only the destinations on the default-deny allowlist, LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and IP exceptions; everything else is refused with a Squid 403.
 
-The allowlist destinations themselves are not setting values. Manual entries are managed through `/api/egress-allowlist` (IP/CIDR or domain), and managed CIDR feeds through `/api/egress-providers` (see [Blacklist and Whitelist API](./blacklists.md#egress-providers)).
+The allowlist destinations themselves are not setting values. Manual entries are managed through `/api/egress-allowlist` (IP/CIDR or domain), and managed CIDR feeds through `/api/egress-providers` (see [Blacklist and exception API](./blacklists.md#egress-providers)).
 
 `egress_provider_refresh_hours` (whole number from `6` to `168`, default `"24"`) sets how often the background worker refreshes enabled egress provider lists. A value outside `6` to `168` is refused with `400` (`must be a whole number from 6 to 168 (hours)`).
 
@@ -294,7 +294,7 @@ POST /api/maintenance/reload-dns
 ```
 
 Exports every list again, the files Squid reads and the dnsmasq hosts file
-(Allowed domains left out), and writes `/config/.reload-dns`. The dns
+(Domain exceptions left out), and writes `/config/.reload-dns`. The dns
 container's watchdog sends dnsmasq `SIGHUP` within about 2 seconds, and the
 proxy's watchdog reloads Squid when it sees its files change; the answer waits
 for neither. The UI offers it as "Send the lists to the DNS sinkhole and the
@@ -306,7 +306,7 @@ Maintenance, for a change that has not taken effect.
 | Field | Meaning |
 |---|---|
 | `domains` | Domain blacklist entries given to the DNS sinkhole. |
-| `left_out` | Entries left out because their name is on Allowed domains. |
+| `left_out` | Entries left out because their name is on Domain exceptions. |
 
 Both count entries, not distinct names: `*.example.com` and `example.com` are
 two. Before this, `domains` was the number of rows in the table, entries left

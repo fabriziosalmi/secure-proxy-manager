@@ -17,7 +17,7 @@ export function describeListResend(data: ListResend | undefined): string {
   const sent = data?.domains;
   if (typeof sent !== 'number') return 'The lists were written again.';
   const out = data?.left_out;
-  const left = typeof out === 'number' && out > 0 ? `, ${formatCount(out)} left out by Allowed domains` : '';
+  const left = typeof out === 'number' && out > 0 ? `, ${formatCount(out)} left out by Domain exceptions` : '';
   return `${formatCount(sent)} domain ${sent === 1 ? 'entry' : 'entries'} went to the DNS sinkhole${left}.`;
 }
 

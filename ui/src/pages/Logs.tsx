@@ -339,7 +339,7 @@ export function Logs() {
     const ok = await confirm({
       title: `Allow ${host}?`,
       body:
-        `${host} is added to the domain whitelist. That takes this exact name off the domain blacklist, which the proxy ` +
+        `${host} is added to Domain exceptions. That takes this exact name off the domain blacklist, which the proxy ` +
         `and the DNS sinkhole enforce, so "${r.reason_label || r.reason}" no longer blocks it. Other names are not ` +
         'covered, and the other rules (IP blacklist, WAF, egress policy, time and content rules) still apply.',
       confirmLabel: 'Allow domain',
@@ -347,10 +347,11 @@ export function Logs() {
     if (!ok) return;
     try {
       await api.post('domain-whitelist', { domain: host, description: 'Allowed from the access log' });
-      toast.success(`${host} is on the domain whitelist. The lists are being exported to the proxy and the DNS sinkhole.`);
-      void queryClient.invalidateQueries({ queryKey: ['whitelist', 'domain'] });
+      toast.success(`${host} is on Domain exceptions. The lists are being exported to the proxy and the DNS sinkhole.`);
+      // The Blacklists page keys its lists ['lists', path, ...]; ['whitelist', 'domain'] matched no query.
+      void queryClient.invalidateQueries({ queryKey: ['lists'] });
     } catch (err) {
-      toast.error(getErrorMessage(err, `${host} was not added to the whitelist.`));
+      toast.error(getErrorMessage(err, `${host} was not added to Domain exceptions.`));
     }
   };
 

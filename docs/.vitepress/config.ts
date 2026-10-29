@@ -120,7 +120,7 @@ export default defineConfig({
         text: 'Configuration',
         items: [
           { text: 'Environment Variables', link: '/guide/configuration' },
-          { text: 'Blacklists and Whitelists', link: '/guide/blacklists' },
+          { text: 'Blacklists and exceptions', link: '/guide/blacklists' },
           { text: 'Security', link: '/guide/security' },
           { text: 'Security Advisories', link: '/guide/security-advisories' }
         ]
@@ -130,7 +130,7 @@ export default defineConfig({
         items: [
           { text: 'Overview', link: '/api/reference' },
           { text: 'Authentication', link: '/api/authentication' },
-          { text: 'Blacklists and Whitelists', link: '/api/blacklists' },
+          { text: 'Blacklists and exceptions', link: '/api/blacklists' },
           { text: 'Logs and Analytics', link: '/api/logs' },
           { text: 'Settings and Maintenance', link: '/api/settings' },
           { text: 'WebSocket', link: '/api/websocket' }

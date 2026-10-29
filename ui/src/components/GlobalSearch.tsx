@@ -23,7 +23,8 @@ const KEYWORDS: Record<string, string[]> = {
   '/analytics': ['waf', 'threat', 'attack', 'security', 'intel', 'statistics'],
   '/logs': ['log', 'traffic', 'request', 'access'],
   '/clients': ['device', 'client', 'ip', 'host'],
-  '/blacklists': ['ip', 'domain', 'block', 'whitelist', 'allow', 'geo'],
+  // Search keywords, not shown: the old names still find the pages.
+  '/blacklists': ['ip', 'domain', 'block', 'whitelist', 'allow', 'exception', 'geo'],
   '/egress': ['egress', 'allowlist', 'outbound', 'destination', 'deny'],
   '/settings': ['config', 'preferences'],
   '/audit': ['audit', 'history', 'change', 'sign-in', 'login'],
@@ -40,7 +41,7 @@ const TYPE_LABEL: Record<SearchResult['type'], string> = {
   domain: 'Blocked domain',
   'allowed-ip': 'Allowed IP',
   'allowed-domain': 'Allowed domain',
-  egress: 'Egress allowlist',
+  egress: 'Default-deny allowlist',
   log: 'Request',
 };
 
@@ -162,7 +163,7 @@ export function GlobalSearch() {
           ips.forEach((ip: IpEntry) => {
             items.push({
               type: 'allowed-ip', label: ip.ip,
-              description: ip.description || 'On the allowed IPs',
+              description: ip.description || 'On IP exceptions',
               action: () => { navigate(`/blacklists?tab=allowed-ips&q=${enc}`); setOpen(false); },
             });
           });
@@ -173,7 +174,7 @@ export function GlobalSearch() {
           doms.forEach((d: DomainEntry) => {
             items.push({
               type: 'allowed-domain', label: d.domain,
-              description: d.description || 'On the allowed domains',
+              description: d.description || 'On Domain exceptions',
               action: () => { navigate(`/blacklists?tab=allowed-domains&q=${enc}`); setOpen(false); },
             });
           });
@@ -184,7 +185,7 @@ export function GlobalSearch() {
           egress.forEach((e: EgressEntry) => {
             items.push({
               type: 'egress', label: e.entry,
-              description: e.description || 'On the egress allowlist',
+              description: e.description || 'On the default-deny allowlist',
               action: () => { navigate(`/egress?q=${enc}`); setOpen(false); },
             });
           });

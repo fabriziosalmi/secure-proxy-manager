@@ -3,7 +3,7 @@
  *
  * Simulates the full onboarding → daily-use workflow of a self-hoster:
  *   Login · Dashboard · Blacklists (add / paste / URL import / geo-block / remove,
- *   sources, enforcement, tabs in the URL) · Egress allowlist · Audit log ·
+ *   sources, enforcement, tabs in the URL) · Default-deny allowlist · Audit log ·
  *   Logs page · Settings
  *
  * Architecture notes:
@@ -715,13 +715,13 @@ test.describe('UI: Analytics', () => {
   });
 });
 
-// ─── UI: Egress allowlist ─────────────────────────────────────────────────────
+// ─── UI: Default-deny allowlist ───────────────────────────────────────────────
 
-test.describe('UI: Egress allowlist', () => {
+test.describe('UI: Default-deny allowlist', () => {
   test.beforeEach(async ({ page, request }) => {
     await injectAuth(page, request);
     await page.goto('/egress');
-    await expect(page.getByRole('heading', { level: 1, name: 'Egress allowlist' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { level: 1, name: 'Default-deny allowlist' })).toBeVisible({ timeout: 15_000 });
   });
 
   test('says what the list does from the stored setting, and links to Filtering', async ({ page, request }) => {
@@ -733,7 +733,7 @@ test.describe('UI: Egress allowlist', () => {
     const notice = page.getByRole('status').filter({ has: page.getByText(title) });
     await expect(notice).toBeVisible({ timeout: 10_000 });
     await expect(notice.getByRole('link', { name: 'Open Filtering' })).toHaveAttribute('href', '/settings/filtering');
-    await expect(page.getByText(/A domain allows that exact name only: example\.com does not cover www\.example\.com\./)).toBeVisible();
+    await expect(page.getByText('A domain covers that exact name only: example.com does not cover www.example.com. Tick Include subdomains to cover example.com and every name under it.')).toBeVisible();
   });
 
   test('a destination of the wrong kind is refused at its field before anything is sent', async ({ page }) => {
@@ -756,7 +756,7 @@ test.describe('UI: Egress allowlist', () => {
       page.getByRole('button', { name: 'Add', exact: true }).click(),
     ]);
     expect(added.status()).toBe(200);
-    await page.getByRole('searchbox', { name: 'Search the egress allowlist' }).fill(dest);
+    await page.getByRole('searchbox', { name: 'Search the default-deny allowlist' }).fill(dest);
     const row = page.getByRole('table', { name: 'Allowed destinations' }).getByRole('row').filter({ has: page.getByText(dest, { exact: true }) });
     await expect(row).toBeVisible({ timeout: 10_000 });
     await expect(row.getByText('Exact domain')).toBeVisible();
@@ -777,14 +777,35 @@ test.describe('UI: Egress allowlist', () => {
     await page.goto('/audit');
     await page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Changes' }).click();
     const events = page.getByRole('table', { name: 'Audit events' });
-    await expect(events.getByText(`Added ${dest} to the egress allowlist`)).toBeVisible({ timeout: 10_000 });
-    await expect(events.getByText(`Removed ${dest} from the egress allowlist`)).toBeVisible();
+    await expect(events.getByText(`Added ${dest} to the default-deny allowlist`)).toBeVisible({ timeout: 10_000 });
+    await expect(events.getByText(`Removed ${dest} from the default-deny allowlist`)).toBeVisible();
+  });
+
+  test('Include subdomains adds the domain and every name under it, shown as the name', async ({ page, request }) => {
+    const name = `e2e-${Date.now().toString(36)}.example.net`;
+    await page.getByLabel('Destination', { exact: true }).fill(name);
+    await page.getByRole('checkbox', { name: 'Include subdomains' }).check();
+    const [added] = await Promise.all([
+      page.waitForResponse(r => r.url().endsWith('/api/egress-allowlist') && r.request().method() === 'POST', { timeout: 15_000 }),
+      page.getByRole('button', { name: 'Add', exact: true }).click(),
+    ]);
+    expect(added.status()).toBe(200);
+    expect(added.request().postDataJSON()).toMatchObject({ entry: name, include_subdomains: true });
+    await page.getByRole('searchbox', { name: 'Search the default-deny allowlist' }).fill(name);
+    const row = page.getByRole('table', { name: 'Allowed destinations' }).getByRole('row').filter({ has: page.getByText(name, { exact: true }) });
+    await expect(row.getByText('Domain and its subdomains')).toBeVisible({ timeout: 10_000 });
+    // Stored in the leading-dot form the proxy reads.
+    const token = await apiToken(request);
+    const list = await request.get(`${API_URL}/api/egress-allowlist?search=${name}`, { headers: { Authorization: `Bearer ${token}` } });
+    const rows = ((await list.json()) as { data: { id: number; entry: string }[] }).data;
+    expect(rows.map((r) => r.entry)).toEqual([`.${name}`]);
+    await request.delete(`${API_URL}/api/egress-allowlist/${rows[0].id}`, { headers: { Authorization: `Bearer ${token}` } });
   });
 
   test('fits a 390 px wide screen without horizontal scrolling', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/egress');
-    await expect(page.getByRole('heading', { level: 1, name: 'Egress allowlist' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { level: 1, name: 'Default-deny allowlist' })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('table', { name: 'Allowed destinations' })).toBeAttached();
     const overflow = await page.evaluate(() => {
       const main = document.querySelector('main')!;
@@ -1148,7 +1169,7 @@ test.describe('UI — Blacklists (Blocked domains)', () => {
 
 // ─── UI — Blacklists: Allowed lists ───────────────────────────────────────────
 
-test.describe('UI — Blacklists (Allowed lists)', () => {
+test.describe('UI — Blacklists (exceptions)', () => {
   test.beforeEach(async ({ page, request }) => {
     await injectAuth(page, request);
     await page.goto('/blacklists');
@@ -1156,16 +1177,16 @@ test.describe('UI — Blacklists (Allowed lists)', () => {
   });
 
   test('a tab is in the URL, and Back returns to the one before', async ({ page }) => {
-    await page.getByRole('tab', { name: /^Allowed IPs/ }).click();
+    await page.getByRole('tab', { name: /^IP exceptions/ }).click();
     await expect(page).toHaveURL(/\/blacklists\?tab=allowed-ips$/);
-    await expect(page.getByRole('tab', { name: /^Allowed IPs/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: /^IP exceptions/ })).toHaveAttribute('aria-selected', 'true');
     await page.goBack();
     await expect(page.getByRole('tab', { name: /^Blocked IPs/ })).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('add an allowed network and see it listed as Manual', async ({ page }) => {
+  test('add an IP exception and see it listed as Manual', async ({ page }) => {
     const allowed = '10.88.88.0/28';
-    await page.getByRole('tab', { name: /^Allowed IPs/ }).click();
+    await page.getByRole('tab', { name: /^IP exceptions/ }).click();
     await openAdd(page);
     await page.getByLabel('IP address or network').fill(allowed);
     const [resp] = await Promise.all([
@@ -1180,14 +1201,14 @@ test.describe('UI — Blacklists (Allowed lists)', () => {
     await expect(row.getByText('Network, 16 addresses')).toBeVisible();
   });
 
-  test('the Allowed domains tab offers the common services that used to sit in Settings', async ({ page }) => {
-    await page.getByRole('tab', { name: /^Allowed domains/ }).click();
+  test('the Domain exceptions tab offers the common services that used to sit in Settings', async ({ page }) => {
+    await page.getByRole('tab', { name: /^Domain exceptions/ }).click();
     await expect(page.getByRole('region', { name: 'Add common services' })).toBeVisible();
     await expect(page.getByRole('button', { name: '+ GitHub' })).toBeVisible();
   });
 
-  test('an allowed list offers no URL import, Popular lists, Geo-block or Remove all', async ({ page }) => {
-    await page.getByRole('tab', { name: /^Allowed domains/ }).click();
+  test('an exceptions list offers no URL import, Popular lists, Geo-block or Remove all', async ({ page }) => {
+    await page.getByRole('tab', { name: /^Domain exceptions/ }).click();
     await expect(page.getByRole('button', { name: 'Popular lists' })).not.toBeVisible();
     await expect(page.getByRole('heading', { name: 'Remove every entry on this list' })).not.toBeVisible();
     await openAdd(page);
@@ -1350,9 +1371,9 @@ test.describe('UI — Settings page', () => {
     await expect(page.getByRole('button', { name: 'Save section' })).toHaveCount(0);
   });
 
-  test('Filtering shows the size of the egress allowlist it depends on', async ({ page }) => {
+  test('Filtering shows the size of the default-deny allowlist it depends on', async ({ page }) => {
     await page.goto('/settings/filtering');
-    await expect(page.getByText(/^The egress allowlist holds [\d,]+ (entry|entries)\.$/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/^The default-deny allowlist holds [\d,]+ (entry|entries)\.$/)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('link', { name: 'Edit the allowlist' })).toHaveAttribute('href', '/egress');
   });
 

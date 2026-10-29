@@ -274,13 +274,13 @@ describe('Settings sections', () => {
   describe('Filtering', () => {
     it('refuses to turn on default-deny over an empty allowlist', async () => {
       const { container } = renderAt('/settings/filtering')
-      expect(await screen.findByText('The egress allowlist holds 0 entries.')).toBeInTheDocument()
+      expect(await screen.findByText('The default-deny allowlist holds 0 entries.')).toBeInTheDocument()
       expect(screen.getByRole('link', { name: 'Edit the allowlist' })).toHaveAttribute('href', '/egress')
       fireEvent.click(screen.getByRole('switch', { name: 'Only allowlisted destinations' }))
-      expect(screen.getByText('The allowlist is empty').parentElement).toHaveTextContent('With default deny on and an empty list, clients reach only LAN destinations and the addresses on Allowed IPs.')
-      expect(screen.getByRole('switch', { name: 'Only allowlisted destinations' })).toHaveAccessibleDescription(/except LAN destinations \(10\.0\.0\.0\/8 and 192\.168\.0\.0\/16\) and the addresses on Allowed IPs/)
+      expect(screen.getByText('The allowlist is empty').parentElement).toHaveTextContent('With default deny on and an empty list, clients reach only LAN destinations and the addresses on IP exceptions.')
+      expect(screen.getByRole('switch', { name: 'Only allowlisted destinations' })).toHaveAccessibleDescription(/except LAN destinations \(10\.0\.0\.0\/8 and 192\.168\.0\.0\/16\) and the addresses on IP exceptions/)
       save()
-      expect(screen.getByRole('switch', { name: 'Only allowlisted destinations' })).toHaveAccessibleDescription(/The egress allowlist is empty, so clients would reach only LAN destinations and the addresses on Allowed IPs/)
+      expect(screen.getByRole('switch', { name: 'Only allowlisted destinations' })).toHaveAccessibleDescription(/The default-deny allowlist is empty, so clients would reach only LAN destinations and the addresses on IP exceptions/)
       expect(settingsPosts()).toHaveLength(0)
       headingsInOrder()
       await expectNoAxeViolations(container)
@@ -289,7 +289,7 @@ describe('Settings sections', () => {
     it('saves default-deny once the allowlist has entries', async () => {
       egressTotal = 4
       renderAt('/settings/filtering')
-      expect(await screen.findByText('The egress allowlist holds 4 entries.')).toBeInTheDocument()
+      expect(await screen.findByText('The default-deny allowlist holds 4 entries.')).toBeInTheDocument()
       fireEvent.click(screen.getByRole('switch', { name: 'Only allowlisted destinations' }))
       save()
       expect(await screen.findByText(/^Applied to the proxy at/)).toBeInTheDocument()
@@ -303,7 +303,7 @@ describe('Settings sections', () => {
         { id: 2, kind: 'catalog', name: 'cloudflare', url: '', source: 'cloudflare.com/ips', enabled: true, shared_network: true, v4_count: 15, v6_count: 7, ipv4_covered: 1835008, ipv6_64_covered: 7, last_refresh: '2026-07-01 09:00:00', last_commit: 'abcdef123456', last_error: '', held: null },
       ]
       renderAt('/settings/filtering')
-      expect(await screen.findByText(/The egress allowlist holds 0 manual entries and 45 from 2 provider lists\./)).toBeInTheDocument()
+      expect(await screen.findByText(/The default-deny allowlist holds 0 manual entries and 45 from 2 provider lists\./)).toBeInTheDocument()
       const refreshInput = screen.getByLabelText('Refresh provider lists every (hours)')
       fireEvent.change(refreshInput, { target: { value: '4' } })
       fireEvent.click(screen.getByRole('switch', { name: 'Only allowlisted destinations' }))

@@ -317,7 +317,7 @@ describe('Dashboard (Overview)', () => {
 
   // The Settings Listen tile reads the same helper.
   // "Rules in force" summed table rows: IP entries are networks Squid merges,
-  // and domain entries include the ones Allowed domains takes out. They are
+  // and domain entries include the ones Domain exceptions takes out. They are
   // entries, and the card opens the lists they are in.
   it('calls the blacklist figure entries and links the card to the blacklists', async () => {
     renderWithProviders(<Dashboard />)

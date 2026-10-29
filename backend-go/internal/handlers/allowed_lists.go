@@ -16,8 +16,8 @@ import (
 var listLabels = map[string]string{
 	"ip_blacklist":     "Blocked IPs",
 	"domain_blacklist": "Blocked domains",
-	"ip_whitelist":     "Allowed IPs",
-	"domain_whitelist": "Allowed domains",
+	"ip_whitelist":     "IP exceptions",
+	"domain_whitelist": "Domain exceptions",
 }
 
 // The refusals the list endpoints give, worded as the page's add form words
@@ -41,7 +41,7 @@ func alreadyListedMessage(v, table string) string {
 // its subdomains" and allow only example.com. The refusal used to say "a
 // parent domain covers its subdomains", which is not what the export does.
 func notExactMessage(v, name string) string {
-	return fmt.Sprintf("%q is not an exact name: write %s. An allowed name takes that same name off Blocked domains, "+
+	return fmt.Sprintf("%q is not an exact name: write %s. A domain exception takes that same name off Blocked domains, "+
 		"however it is written there, and covers no name under it", v, name)
 }
 
@@ -70,7 +70,7 @@ func allowedDomainValue(raw string) (string, string) {
 		return "", notADomainMessage(domain)
 	}
 	if strings.ContainsAny(domain, "*?[(|\\") {
-		return "", fmt.Sprintf("%q is not an exact name: wildcards and regular expressions are not supported on Allowed domains", domain)
+		return "", fmt.Sprintf("%q is not an exact name: wildcards and regular expressions are not supported on Domain exceptions", domain)
 	}
 	if !isValidHostname(domain) {
 		return "", notADomainMessage(domain)

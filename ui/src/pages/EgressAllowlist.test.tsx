@@ -86,11 +86,11 @@ describe('EgressAllowlist', () => {
   it('shows the header, the add form and the list from the mockup, headings in order, with no axe violation', async () => {
     const restoreTz = setRomeTimeZone()
     const { container } = renderWithProviders(<EgressAllowlist />)
-    expect(screen.getByRole('heading', { level: 1, name: 'Egress allowlist' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Default-deny allowlist' })).toBeInTheDocument()
     expect(screen.getByText('With default deny on, clients may reach only the destinations listed here.')).toBeInTheDocument()
     const table = await screen.findByRole('table', { name: 'Allowed destinations' })
     expect(screen.getAllByRole('heading').map((h) => `${h.tagName}:${h.textContent}`)).toEqual([
-      'H1:Egress allowlist', 'H2:Add a destination', 'H2:Provider lists', 'H2:Allowed destinations',
+      'H1:Default-deny allowlist', 'H2:Add a destination', 'H2:Provider lists', 'H2:Allowed destinations',
     ])
     // Labels on every field.
     expect(screen.getByLabelText('Kind')).toHaveValue('domain')
@@ -101,15 +101,36 @@ describe('EgressAllowlist', () => {
     expect(within(acme).getByText('Exact domain')).toBeInTheDocument()
     expect(within(acme).getByText('certificate renewals')).toBeInTheDocument()
     expect(within(acme).getByText('2026-07-01 11:00')).toHaveAttribute('title', '2026-07-01 11:00:00 (Europe/Rome)')
-    expect(within(within(table).getByText('.debian.org').closest('tr')!).getByText('Domain and its subdomains')).toBeInTheDocument()
+    // Stored as .debian.org; shown as the name, with what it covers beside it.
+    expect(within(table).queryByText('.debian.org')).toBeNull()
+    expect(within(within(table).getByText('debian.org').closest('tr')!).getByText('Domain and its subdomains')).toBeInTheDocument()
     expect(within(within(table).getByText('203.0.113.0/24').closest('tr')!).getByText('Network')).toBeInTheDocument()
     restoreTz()
     await expectNoAxeViolations(container)
   })
 
-  it('says what the domain entries match, as the proxy reads them', () => {
+  // The form asked for a leading dot, which meant something else on each list.
+  it('says what a domain covers in the shared words, and offers Include subdomains instead of a leading dot', () => {
     renderWithProviders(<EgressAllowlist />)
-    expect(screen.getByText(/A domain allows that exact name only: example\.com does not cover www\.example\.com\. Start it with a dot, as in \.example\.com,/)).toBeInTheDocument()
+    const help = document.querySelector('[data-help="domain-scope"]')!
+    expect(help).toHaveTextContent('A domain covers that exact name only: example.com does not cover www.example.com. Tick Include subdomains to cover example.com and every name under it.')
+    expect(screen.getByRole('checkbox', { name: 'Include subdomains' })).not.toBeChecked()
+    expect(screen.queryByText(/Start it with a dot/)).toBeNull()
+  })
+
+  it('sends include_subdomains, and reads a typed leading dot as the same', async () => {
+    renderWithProviders(<EgressAllowlist />)
+    fireEvent.change(screen.getByLabelText('Destination'), { target: { value: 'updates.example.org' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Include subdomains' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('egress-allowlist', { entry: 'updates.example.org', include_subdomains: true, description: '' }))
+    await waitFor(() => expect(screen.getByLabelText('Destination')).toHaveValue(''))
+    fireEvent.change(screen.getByLabelText('Destination'), { target: { value: '.mirror.example.net' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('egress-allowlist', { entry: 'mirror.example.net', include_subdomains: true, description: '' }))
+    // No checkbox for an address.
+    fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'ip' } })
+    expect(screen.queryByRole('checkbox', { name: 'Include subdomains' })).toBeNull()
   })
 
   it('with default deny off, says the list has no effect and links to Filtering', async () => {
@@ -126,7 +147,7 @@ describe('EgressAllowlist', () => {
     const title = await screen.findByText('Default deny is on and this list is empty: clients reach only LAN destinations')
     const box = title.closest('[role="status"]') as HTMLElement
     expect(box).toHaveAttribute('data-tone', 'danger')
-    expect(box).toHaveTextContent('Every destination outside 10.0.0.0/8 and 192.168.0.0/16 is refused, except the addresses on Allowed IPs.')
+    expect(box).toHaveTextContent('Every destination outside 10.0.0.0/8 and 192.168.0.0/16 is refused, except the addresses on IP exceptions.')
     expect(await screen.findByText('No destination yet')).toBeInTheDocument()
     expect(screen.getByText(/Default deny is on, so every client reaches only LAN destinations/)).toBeInTheDocument()
   })
@@ -163,7 +184,7 @@ describe('EgressAllowlist', () => {
     fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'ip' } })
     fireEvent.change(screen.getByLabelText('Note (optional)'), { target: { value: 'office VPN' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('egress-allowlist', { entry: '203.0.113.7', description: 'office VPN' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('egress-allowlist', { entry: '203.0.113.7', include_subdomains: false, description: 'office VPN' }))
     await waitFor(() => expect(dest).toHaveValue(''))
   })
 
@@ -196,7 +217,7 @@ describe('EgressAllowlist', () => {
 
   it('searches on the backend', async () => {
     renderWithProviders(<EgressAllowlist />)
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search the egress allowlist' }), { target: { value: 'debian' } })
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search the default-deny allowlist' }), { target: { value: 'debian' } })
     await waitFor(() => expect(getCalls.some((c) => c.url === 'egress-allowlist' && c.params?.search === 'debian')).toBe(true))
   })
 
@@ -517,7 +538,7 @@ describe('checkDestination', () => {
   it('accepts what the backend accepts for each kind and names the mistake otherwise', () => {
     expect(checkDestination('domain', 'Example.COM')).toBeNull()
     expect(checkDestination('domain', '.example.com')).toBeNull()
-    expect(checkDestination('domain', '*.example.com')).toMatch(/^Write \.example\.com, with a leading dot/)
+    expect(checkDestination('domain', '*.example.com')).toMatch(/^Write example\.com and tick Include subdomains/)
     expect(checkDestination('domain', '10.0.0.1')).toBe('This is an address: choose IP or network as the kind.')
     expect(checkDestination('domain', 'bad name')).toMatch(/is not a domain name/)
     expect(checkDestination('ip', '203.0.113.0/24')).toBeNull()

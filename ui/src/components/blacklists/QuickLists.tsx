@@ -1,6 +1,6 @@
 /**
  * One-click list additions next to the list they change: common services for
- * the domain whitelist (so the DNS blocklist never blocks them) and public
+ * Domain exceptions (so the DNS blocklist never blocks them) and public
  * DNS-over-HTTPS resolvers for the domain blacklist (so a device cannot step
  * around the DNS blocklist).
  *
@@ -86,7 +86,7 @@ export function EssentialWhitelist() {
   const presets = useQuery(presetsQuery('domain-whitelist'));
   const { busy, result, add } = usePresetAdder('domain-whitelist');
   return (
-    <Section title="Add common services" description="Whitelists the domains these services need, so the DNS blocklist never blocks them, then reloads DNS.">
+    <Section title="Add common services" description="Adds the domains these services need to Domain exceptions, so the DNS blocklist never blocks them, then reloads DNS.">
       {presets.isError ? (
         <p role="alert" className="text-sm text-ink-muted">The presets could not be read: domain-whitelist/presets did not answer.</p>
       ) : (

@@ -10,9 +10,9 @@ import type { EgressEntry } from '../types';
 
 export type EgressKind = 'domain' | 'ip';
 
-/** The backend's refusal of "*.example.com", in the same words. */
+/** The refusal of "*.example.com", in the words of the form. */
 export const WILDCARD_REFUSAL =
-  'Write .example.com, with a leading dot, to allow example.com and every name under it: *.example.com would match nothing.';
+  'Write example.com and tick Include subdomains to allow example.com and every name under it: *.example.com would match nothing.';
 
 // A dotted quad with an optional prefix length: 203.0.113.7, 203.0.113.0/24.
 const DOTTED_QUAD = /^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/;
@@ -35,6 +35,16 @@ export function checkDestination(kind: EgressKind, raw: string): string | null {
   return `"${value}" is not an IP address or network, such as 203.0.113.7 or 203.0.113.0/24.`;
 }
 
+/** An entry as the page shows it: the name, without the leading dot that stores "and its subdomains". */
+export function shownEntry(e: Pick<EgressEntry, 'entry' | 'type'>): string {
+  return e.type === 'domain' ? e.entry.replace(/^\./, '') : e.entry;
+}
+
+/** An entry in a sentence: "example.com and its subdomains", or the entry. */
+export function describeEntry(e: Pick<EgressEntry, 'entry' | 'type'>): string {
+  return e.type === 'domain' && e.entry.startsWith('.') ? `${shownEntry(e)} and its subdomains` : shownEntry(e);
+}
+
 /** What one entry allows, in words. */
 export function egressEntryKind(e: Pick<EgressEntry, 'entry' | 'type'>): string {
   if (e.type === 'cidr') return e.entry.includes('/') ? 'Network' : 'IP address';
@@ -52,7 +62,7 @@ export function egressEntryKind(e: Pick<EgressEntry, 'entry' | 'type'>): string 
 export const LAN_DESTINATIONS = ['10.0.0.0/8', '192.168.0.0/16'];
 
 export const EGRESS_EMPTY_REACH =
-  'With default deny on and an empty list, clients reach only LAN destinations and the addresses on Allowed IPs.';
+  'With default deny on and an empty list, clients reach only LAN destinations and the addresses on IP exceptions.';
 
 export const EGRESS_DENY_HELP =
-  `Refuses every destination that is not on the egress allowlist, except LAN destinations (${LAN_DESTINATIONS.join(' and ')}) and the addresses on Allowed IPs, which the proxy allows before this rule.`;
+  `Refuses every destination that is not on the default-deny allowlist, except LAN destinations (${LAN_DESTINATIONS.join(' and ')}) and the addresses on IP exceptions, which the proxy allows before this rule.`;

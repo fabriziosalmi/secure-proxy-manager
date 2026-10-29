@@ -26,7 +26,7 @@ import { api, getErrorMessage } from '../lib/api';
 import { formatCount, formatWhen, formatWhenExact } from '../lib/format';
 import { formatEgressBreakdown, settingsQuery, useEgressSummary, type EgressSummary } from '../lib/queries';
 import { parseSettings } from '../lib/secrets';
-import { checkDestination, egressEntryKind, type EgressKind, LAN_DESTINATIONS } from '../lib/egress';
+import { checkDestination, describeEntry, egressEntryKind, shownEntry, type EgressKind, LAN_DESTINATIONS } from '../lib/egress';
 import { cn } from '../lib/utils';
 import { useConfirm } from '../hooks/useConfirm';
 import { useDebounced } from '../hooks/useDebounced';
@@ -38,6 +38,7 @@ import { DataTable, type Column } from '../components/ui/DataTable';
 import { SearchInput } from '../components/ui/SearchInput';
 import { Button, IconButton } from '../components/ui/Button';
 import { ProviderListsSection } from '../components/egress/ProviderListsSection';
+import { DomainScopeHelp } from '../components/ui/DomainScopeHelp';
 
 const PAGE_SIZE = 50;
 
@@ -87,20 +88,20 @@ function StateNotice({ denyOn, settingsFailed, summary }: { denyOn: boolean | un
   if (total === 0) {
     return (
       <Notice tone="danger" title="Default deny is on and this list is empty: clients reach only LAN destinations" action={open}>
-        Every destination outside {LAN} is refused, except the addresses on Allowed IPs. Add the destinations your clients need, or turn default deny off in Settings, Filtering.
+        Every destination outside {LAN} is refused, except the addresses on IP exceptions. Add the destinations your clients need, or turn default deny off in Settings, Filtering.
       </Notice>
     );
   }
   if (typeof total !== 'number') {
     return (
       <Notice tone="warning" title="Default deny is on, and the size of this list could not be read" action={open}>
-        Clients reach only the destinations listed here, LAN destinations ({LAN}) and the addresses on Allowed IPs.
+        Clients reach only the destinations listed here, LAN destinations ({LAN}) and the addresses on IP exceptions.
       </Notice>
     );
   }
   return (
     <Notice title={`Default deny is on: clients reach only these ${formatCount(total)} ${total === 1 ? 'destination' : 'destinations'}`} action={open}>
-      {breakdown}LAN destinations ({LAN}) and the addresses on Allowed IPs stay reachable too. Everything else is refused.
+      {breakdown}LAN destinations ({LAN}) and the addresses on IP exceptions stay reachable too. Everything else is refused.
     </Notice>
   );
 }
@@ -109,6 +110,7 @@ function AddDestination({ onAdded }: { onAdded: () => void }) {
   const ids = useId();
   const [kind, setKind] = useState<EgressKind>('domain');
   const [value, setValue] = useState('');
+  const [subdomains, setSubdomains] = useState(false);
   const [note, setNote] = useState('');
   const [entryError, setEntryError] = useState<string | null>(null);
   const [noteError, setNoteError] = useState<string | null>(null);
@@ -128,13 +130,18 @@ function AddDestination({ onAdded }: { onAdded: () => void }) {
       entryRef.current?.focus();
       return;
     }
-    const entry = value.trim().toLowerCase();
+    // A leading dot typed out of habit is the same as the checkbox: the API
+    // gets the name and include_subdomains, and stores the dotted form.
+    const typed = value.trim().toLowerCase();
+    const entry = kind === 'domain' ? typed.replace(/^\./, '') : typed;
+    const include = kind === 'domain' && (subdomains || typed.startsWith('.'));
     inFlight.current = true;
     setBusy(true);
     try {
-      await api.post('egress-allowlist', { entry, description: note.trim() });
-      toast.success(`Added ${entry} to the egress allowlist`);
+      await api.post('egress-allowlist', { entry, include_subdomains: include, description: note.trim() });
+      toast.success(`Added ${include ? `${entry} and its subdomains` : entry} to the default-deny allowlist`);
       setValue('');
+      setSubdomains(false);
       setNote('');
       onAdded();
     } catch (err) {
@@ -200,10 +207,15 @@ function AddDestination({ onAdded }: { onAdded: () => void }) {
           </Field>
           <Button type="submit" variant="primary" disabled={busy} className="sm:mt-[26px]">{busy ? 'Adding...' : 'Add'}</Button>
         </div>
+        {kind === 'domain' && (
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={subdomains} onChange={(e) => setSubdomains(e.target.checked)} className="h-4 w-4 accent-accent" />
+            Include subdomains
+          </label>
+        )}
+        <DomainScopeHelp subdomains />
         <p className="text-[13px] text-ink-muted">
-          A domain allows that exact name only: example.com does not cover www.example.com. Start it with a dot, as in .example.com,
-          to allow the domain and every name under it. A network such as 203.0.113.0/24 allows every address in it, and any name
-          that resolves into it.
+          A network such as 203.0.113.0/24 allows every address in it, and any name that resolves into it.
         </p>
       </form>
     </Section>
@@ -249,9 +261,9 @@ export function EgressAllowlist() {
 
   const remove = async (e: EgressEntry) => {
     const ok = await confirm({
-      title: `Remove ${e.entry}?`,
+      title: `Remove ${shownEntry(e)}?`,
       body: denyOn
-        ? `Default deny is on: clients can no longer reach ${e.entry} once the proxy has the new list.`
+        ? `Default deny is on: clients can no longer reach ${describeEntry(e)} once the proxy has the new list.`
         : 'Default deny is off, so nothing changes for clients until it is turned on.',
       confirmLabel: 'Remove',
       destructive: true,
@@ -259,7 +271,7 @@ export function EgressAllowlist() {
     if (!ok) return;
     try {
       await api.delete(`egress-allowlist/${e.id}`);
-      toast.success(`Removed ${e.entry} from the egress allowlist`);
+      toast.success(`Removed ${describeEntry(e)} from the default-deny allowlist`);
     } catch (err) {
       toast.error(getErrorMessage(err, `Could not remove ${e.entry}`));
     } finally {
@@ -274,7 +286,8 @@ export function EgressAllowlist() {
       className: 'min-w-[11rem]',
       cell: (e) => (
         <div className="flex min-w-0 flex-col gap-0.5">
-          <code className="font-mono text-[13px] text-ink [overflow-wrap:anywhere]">{e.entry}</code>
+          {/* The name without the leading dot: Allows says it covers its subdomains. */}
+          <code className="font-mono text-[13px] text-ink [overflow-wrap:anywhere]">{shownEntry(e)}</code>
           {e.description && <span className="text-xs text-ink-muted">{e.description}</span>}
         </div>
       ),
@@ -286,7 +299,7 @@ export function EgressAllowlist() {
       header: 'Actions',
       headerHidden: true,
       align: 'right',
-      cell: (e) => <IconButton size="sm" aria-label={`Remove ${e.entry}`} icon={<Trash2 />} onClick={() => { void remove(e); }} />,
+      cell: (e) => <IconButton size="sm" aria-label={`Remove ${shownEntry(e)}`} icon={<Trash2 />} onClick={() => { void remove(e); }} />,
     },
   ];
 
@@ -296,8 +309,8 @@ export function EgressAllowlist() {
         title: 'No destination yet',
         description: denyOn
           ? (summary.providerEntries ?? 0) > 0
-            ? `No manual destinations yet. Clients reach the ${formatCount(summary.providerEntries ?? 0)} entries from ${formatCount(summary.providerCount ?? 0)} ${(summary.providerCount ?? 0) === 1 ? 'provider list' : 'provider lists'}, LAN destinations (${LAN}) and the addresses on Allowed IPs.`
-            : `Default deny is on, so every client reaches only LAN destinations (${LAN}) and the addresses on Allowed IPs. Add what your clients need.`
+            ? `No manual destinations yet. Clients reach the ${formatCount(summary.providerEntries ?? 0)} entries from ${formatCount(summary.providerCount ?? 0)} ${(summary.providerCount ?? 0) === 1 ? 'provider list' : 'provider lists'}, LAN destinations (${LAN}) and the addresses on IP exceptions.`
+            : `Default deny is on, so every client reaches only LAN destinations (${LAN}) and the addresses on IP exceptions. Add what your clients need.`
           : 'If you turn default deny on with an empty list, every client loses access to everything except the LAN. Add what your clients need first.',
       };
 
@@ -305,7 +318,7 @@ export function EgressAllowlist() {
     <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="Protection"
-        title="Egress allowlist"
+        title="Default-deny allowlist"
         description="With default deny on, clients may reach only the destinations listed here."
       />
 
@@ -318,7 +331,7 @@ export function EgressAllowlist() {
       <Section title="Allowed destinations" flush>
         <div className="px-5 pb-3">
           <SearchInput
-            label="Search the egress allowlist"
+            label="Search the default-deny allowlist"
             placeholder="Search destinations and notes"
             value={search}
             onChange={(v) => { setSearch(v); setOffset(0); }}
@@ -331,7 +344,7 @@ export function EgressAllowlist() {
           rows={entries.data?.rows ?? []}
           rowKey={(e) => String(e.id)}
           loading={entries.isPending}
-          error={entries.isError ? 'The egress allowlist did not answer.' : null}
+          error={entries.isError ? 'The default-deny allowlist did not answer.' : null}
           onRetry={() => { void entries.refetch(); }}
           empty={empty}
           pagination={{ offset, limit: PAGE_SIZE, total: entries.data?.total ?? 0, onChange: setOffset }}
