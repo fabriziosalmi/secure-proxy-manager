@@ -79,8 +79,8 @@ func findPreset(table, id string) (listPreset, bool) {
 // listedDomains returns the domains of names that table holds, as stored.
 func listedDomains(db *sql.DB, table string, names []string) ([]string, error) {
 	// #nosec G202 -- the table is a constant of presetTables; values are bound.
-	q := "SELECT domain FROM " + presetTables[table] + " WHERE domain IN (" + placeholders(len(names)) + ")"
-	rows, err := db.Query(string(q), toArgs(names)...) // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
+	q := "SELECT domain FROM " + presetTables[table] + " WHERE domain IN (" + placeholders(len(names)) + ")" // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
+	rows, err := db.Query(string(q), toArgs(names)...)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +189,7 @@ func (h *BlacklistHandlers) addPreset(table string) http.HandlerFunc {
 				return
 			}
 			// #nosec G202 -- the table is a constant of presetTables; values are bound.
-			insert := "INSERT OR IGNORE INTO " + presetTables[table] + "(domain, description, source_id) VALUES(?, '', ?)"
+			insert := "INSERT OR IGNORE INTO " + presetTables[table] + "(domain, description, source_id) VALUES(?, '', ?)" // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 			for _, d := range missing {
 				res, err := tx.Exec(string(insert), d, sourceID) // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 				if err != nil {
