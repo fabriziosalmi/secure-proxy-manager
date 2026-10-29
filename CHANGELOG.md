@@ -69,6 +69,17 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **Egress allowlist, Provider lists: the table fits at 1250 px and says
+  what it does.** Seven columns ran 50 px past the card at 1250 px, cutting
+  "Refresh now"; a list never downloaded said "Not downloaded yet" four
+  times. Prefixes and IPv4 coverage are one Coverage column, the time and
+  commit one Last download column, and "Not downloaded yet" is said once.
+  A switched-off list offers "Download to preview" (it is only downloaded
+  and counted) rather than "Refresh now". The text no longer says the
+  catalog is "pinned to the latest commit on main": each download takes the
+  newest commit and records it. "Shared network" is explained under the
+  description and attached to every such badge: allowing a shared network
+  allows every site and service it hosts.
 - **The access log's live switch keeps one name.** The button was renamed
   "Live", "Paused", "Connecting" and "Reconnecting" as the connection
   changed, so a screen reader heard a different control each time. It is
