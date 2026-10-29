@@ -44,7 +44,7 @@ const coverage: Coverage = {
 
 const summary = {
   waf_status: 'ok',
-  waf: { total_requests: 1030, total_blocked: 1, avg_url_entropy: 2, high_entropy_count: 0, requests_last_minute: 0, top_blocked_categories: [{ key: 'SQL injection', count: 1 }] },
+  waf: { total_requests: 1030, total_blocked: 1, avg_url_entropy: 2, high_entropy_count: 0, requests_last_minute: 0, top_blocked_categories: [{ key: 'SQL_INJECTION', count: 3 }, { key: 'HEURISTIC_BEACONING', count: 1 }] },
   top_blocked: [{ dest: 'malware.example', count: 1328, reasons: [] }],
   recent_blocks: [{ timestamp: '2026-10-25 09:00:00', destination: 'live-feed.example', host: 'live-feed.example' }],
 }
@@ -93,7 +93,7 @@ describe('Analytics', () => {
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'Blocked requests per day, by rule',
       'Protection coverage',
-      'WAF categories',
+      'WAF rule matches',
       'Cloud services in use',
       'Traffic by kind of service',
       'Downloads by file type',
@@ -151,12 +151,26 @@ describe('Analytics', () => {
     expect(within(cov).getByRole('link', { name: 'Alerts' })).toHaveAttribute('href', '/settings/alerts')
   })
 
+  it('names each WAF category in words with its kind, never as the raw key, and says a match is not a block', async () => {
+    renderWithProviders(<Analytics />)
+    const waf = region('WAF rule matches')
+    await waitFor(() => { expect(within(waf).getByText('SQL injection')).toBeInTheDocument() })
+    expect(within(waf).getByText('Beaconing (regular call-backs)')).toBeInTheDocument()
+    expect(within(waf).getByText('rule')).toBeInTheDocument()
+    expect(within(waf).getByText('heuristic')).toBeInTheDocument()
+    expect(waf.textContent).not.toMatch(/[A-Z]+_[A-Z_]+/)
+    expect(waf).toHaveTextContent('A match is not a block')
+  })
+
   it('shows the WAF counters with their window, and the three 7-day sections with what they count', async () => {
     renderWithProviders(<Analytics />)
-    const waf = region('WAF categories')
-    await waitFor(() => { expect(within(waf).getByText('Since the WAF last started or its counters were reset, 1,030 requests inspected.')).toBeInTheDocument() })
-    expect(within(waf).getByText('SQL injection')).toBeInTheDocument()
-    expect(within(waf).getByText(/No other category matched\. 1 of the inspected requests were blocked\./)).toBeInTheDocument()
+    const waf = region('WAF rule matches')
+    await waitFor(() => {
+      expect(within(waf).getByText(
+        'Since the WAF started or its counters were reset: 1,030 requests inspected, 1 blocked. A match is not a block: a request is blocked only when its matches add up to the block threshold.',
+      )).toBeInTheDocument()
+    })
+    expect(within(waf).getByText('No other category matched.')).toBeInTheDocument()
 
     const svc = region('Cloud services in use')
     expect(svc).toHaveTextContent('Client requests in the last 7 days to services recognised by their host name.')
@@ -180,7 +194,7 @@ describe('Analytics', () => {
       await waitFor(() => { expect(within(region('Blocked requests per day, by rule')).getByRole('alert')).toHaveTextContent('Could not load the daily counts (analytics/blocked-by-day).') })
       await waitFor(() => { expect(within(region('Protection coverage')).getByRole('alert')).toHaveTextContent('Not reported: analytics/coverage did not answer.') })
       await waitFor(() => { expect(within(region('Traffic by kind of service')).getByRole('alert')).toHaveTextContent('Not reported: analytics/user-agents did not answer.') })
-      await waitFor(() => { expect(within(region('WAF categories')).getByRole('alert')).toHaveTextContent('Not available: the WAF refuses the backend credential.') })
+      await waitFor(() => { expect(within(region('WAF rule matches')).getByRole('alert')).toHaveTextContent('Not available: the WAF refuses the backend credential.') })
     } finally {
       bodies['dashboard/summary'] = summary
     }
