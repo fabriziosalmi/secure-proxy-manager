@@ -25,6 +25,11 @@ for at least one minor release before disappearing.
   bars are drawn lighter and their tooltips name the minutes they cover
   ("08:52 to 09:00 only").
 
+- The WAF image stores its binary once, owned by root and run by the `waf`
+  user, who can no longer change it. A `chown` after the copy wrote a second
+  full copy of the binary in its own layer (8.1 MB on amd64) and let the
+  process change the mode of its own executable. CI checks both.
+
 ## [3.18.3] - 2026-10-28
 
 A fix release. The web UI keeps working when the backend container is

@@ -612,6 +612,14 @@ jobs:
           docker build -q -t "$R-waf:ci"     waf-go
           docker build -q -t "$R-proxy:ci"   proxy
           docker build -q -t "$R-dns:ci"     dns
+      - name: The WAF binary is root's and stored in one layer
+        run: |
+          set -euo pipefail
+          img=ghcr.io/fabriziosalmi/secure-proxy-manager-waf:ci
+          owner=$(docker run --rm --entrypoint stat "$img" -c '%U:%G %a' /app/waf-server)
+          [ "$owner" = "root:root 755" ] || { echo "::error::/app/waf-server is $owner, want root:root 755: the waf user could change its own binary"; exit 1; }
+          layers=$(docker history --no-trunc --format '{{.CreatedBy}}' "$img" | grep -c '/app/waf-server')
+          [ "$layers" -eq 1 ] || { echo "::error::$layers layers write /app/waf-server, want 1: each one stores a full copy of the binary"; exit 1; }
       - name: Production compose up + core smoke
         env:
           E2E_PROD: "1"
