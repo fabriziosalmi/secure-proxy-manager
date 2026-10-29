@@ -205,6 +205,47 @@ export function splitStatus(status: string | undefined): { squid: string; code: 
 }
 
 /**
+ * The proxy's result in words, for the Result column; the raw code stays in
+ * the request details. "TCP_TUNNEL" and "NONE_NONE" told a reader nothing.
+ * Squid appends _ABORTED or _TIMEDOUT when the transfer did not finish
+ * (Squid wiki, SquidFaq/SquidLogs). A code not listed is shown as it is.
+ */
+const SQUID_RESULT_WORDS: Record<string, string> = {
+  TCP_TUNNEL: 'HTTPS tunnel',
+  TCP_DENIED: 'Refused by the proxy',
+  TCP_DENIED_REPLY: 'Refused by the proxy',
+  TCP_MISS: 'Fetched',
+  TCP_CLIENT_REFRESH_MISS: 'Fetched',
+  TCP_SWAPFAIL_MISS: 'Fetched',
+  TCP_REFRESH_MODIFIED: 'Fetched',
+  TCP_HIT: 'From cache',
+  TCP_MEM_HIT: 'From cache',
+  TCP_IMS_HIT: 'From cache',
+  TCP_INM_HIT: 'From cache',
+  TCP_NEGATIVE_HIT: 'From cache',
+  TCP_REFRESH_UNMODIFIED: 'From cache',
+  // The proxy answered without contacting a server: an error page or a block.
+  NONE_NONE: 'Not forwarded',
+  NONE: 'Not forwarded',
+  DNS_SINKHOLE: 'Answered by the DNS sinkhole',
+};
+
+const SQUID_ENDINGS: [string, string][] = [['_ABORTED', ', cut off'], ['_TIMEDOUT', ', timed out']];
+
+export function squidResultText(squid: string): string {
+  for (const [ending, words] of SQUID_ENDINGS) {
+    if (squid.endsWith(ending)) {
+      const base = SQUID_RESULT_WORDS[squid.slice(0, -ending.length)];
+      return base ? `${base}${words}` : squid;
+    }
+  }
+  return SQUID_RESULT_WORDS[squid] ?? squid;
+}
+
+/** An HTTP status code: three digits. A DNS sinkhole row carries an address instead. */
+export const isHttpCode = (code: string) => /^\d{3}$/.test(code);
+
+/**
  * The tone of a row's HTTP code. A block is danger. A request the proxy let
  * through can still fail: a 503 to a name that does not resolve, a 404 from
  * the origin, a 000 when the client went away. Those are warning, so a

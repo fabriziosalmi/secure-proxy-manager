@@ -208,9 +208,11 @@ a provider off or deleting a custom URL list removes its prefixes from
 #### Built-in catalog
 
 Catalog lists are fetched from
-[`lord-alfred/ipranges`](https://github.com/lord-alfred/ipranges) pinned to the
-latest commit SHA on `main` (`ipv4_merged.txt` and `ipv6_merged.txt` under each
-directory):
+[`lord-alfred/ipranges`](https://github.com/lord-alfred/ipranges): each download
+asks GitHub for the newest commit of `main` and reads `ipv4_merged.txt` and
+`ipv6_merged.txt` under the provider's directory at that commit, so the two
+files of one download come from one commit. The commit is recorded and shown
+under Last download; the next download takes whatever `main` is then.
 
 | Provider | Directory | Upstream source | Shared network |
 |---|---|---|---|

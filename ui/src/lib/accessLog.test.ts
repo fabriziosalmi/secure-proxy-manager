@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  allowableDomain, apiParams, matchesFilters, readFilters, requestHost, splitStatus, statusTone, whyText, writeFilters, NO_FILTERS,
+  allowableDomain, apiParams, isHttpCode, matchesFilters, readFilters, requestHost, splitStatus, squidResultText, statusTone, whyText, writeFilters,
+  NO_FILTERS,
 } from './accessLog'
 import type { LogEntry } from '../types'
 
@@ -68,6 +69,26 @@ describe('matchesFilters (live rows)', () => {
 })
 
 describe('row facts', () => {
+  it('says the proxy result in words, and leaves a code it does not know as it is', () => {
+    expect(squidResultText('TCP_TUNNEL')).toBe('HTTPS tunnel')
+    expect(squidResultText('TCP_DENIED')).toBe('Refused by the proxy')
+    expect(squidResultText('TCP_MISS')).toBe('Fetched')
+    expect(squidResultText('TCP_HIT')).toBe('From cache')
+    expect(squidResultText('NONE_NONE')).toBe('Not forwarded')
+    expect(squidResultText('TCP_MISS_ABORTED')).toBe('Fetched, cut off')
+    expect(squidResultText('TCP_TUNNEL_TIMEDOUT')).toBe('HTTPS tunnel, timed out')
+    expect(squidResultText('DNS_SINKHOLE')).toBe('Answered by the DNS sinkhole')
+    expect(squidResultText('TCP_SOMETHING_NEW')).toBe('TCP_SOMETHING_NEW')
+    expect(squidResultText('X_ABORTED')).toBe('X_ABORTED')
+  })
+
+  it('takes three digits as an HTTP code and an address as not one', () => {
+    expect(isHttpCode('200')).toBe(true)
+    expect(isHttpCode('000')).toBe(true)
+    expect(isHttpCode('0.0.0.0')).toBe(false)
+    expect(isHttpCode('')).toBe(false)
+  })
+
   it('splits the Squid result from the HTTP code', () => {
     expect(splitStatus('TCP_TUNNEL/200')).toEqual({ squid: 'TCP_TUNNEL', code: '200' })
     expect(splitStatus('weird')).toEqual({ squid: 'weird', code: '' })
