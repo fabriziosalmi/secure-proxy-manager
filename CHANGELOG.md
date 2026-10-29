@@ -17,6 +17,12 @@ for at least one minor release before disappearing.
 
 ### Changed
 
+- **The preset buttons say what is already on the list.** "+ Docker" read
+  the same before and after Docker was added, and the DNS-over-HTTPS card
+  never said whether its resolvers were blocked. Each common-services button
+  now reads "+ Docker", "+ Docker (2 missing)" or, disabled, "Docker added";
+  the DoH card says how many of its resolvers are blocked and offers "Block
+  the other 2", or a disabled "All 14 blocked".
 - **The audit log says what a settings save changed, and to what.** A save
   recorded the keys the request carried, before they were checked and with
   no value, so saving one field of a section read "Changed 8 settings" and
