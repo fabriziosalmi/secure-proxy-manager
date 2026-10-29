@@ -106,6 +106,8 @@ describe('Analytics', () => {
     expect(screen.queryByText('live-feed.example')).toBeNull()
     expect(calls).not.toContain('analytics/top-domains')
     expect(calls).not.toContain('security/score')
+    // The menu group is Insights; Overview is only the page at "/".
+    expect(screen.getByText('Insights')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Last 24 hours: Overview' })).toHaveAttribute('href', '/')
     expect(screen.getByRole('link', { name: 'Every request: Access logs' })).toHaveAttribute('href', '/logs')
   })
@@ -117,12 +119,16 @@ describe('Analytics', () => {
     const days = [...screen.getByTestId('day-bars').querySelectorAll('[data-day]')]
     expect(days.map((d) => d.getAttribute('data-day'))).toEqual(DAYS.map((d) => `2026-10-${d}`))
     for (const d of days.slice(0, 6)) expect(d.querySelectorAll('[data-series]')).toHaveLength(0)
-    // Bottom first: the rules in their fixed order, then the rows with no reason.
+    // Bottom first: the rules by their colour, fixed per rule, then the rows with no reason.
     const today = [...days[6].querySelectorAll('[data-series]')]
     expect(today.map((s) => [s.getAttribute('data-series'), s.getAttribute('data-count')])).toEqual([
       ['domain_blacklist_dns', '22'], ['waf', '1'], ['unclassified', '1300'],
     ])
-    expect(today.map((s) => s.className.match(/bg-[a-z0-9-]+/)?.[0])).toEqual(['bg-series-1', 'bg-series-2', 'bg-chart-neutral'])
+    expect(today.map((s) => s.className.match(/bg-[a-z0-9-]+/)?.[0])).toEqual(['bg-series-2', 'bg-series-4', 'bg-chart-neutral'])
+    // The rules share the day's bar by their counts; only the whole bar has a floor.
+    expect(today.map((s) => (s as HTMLElement).style.flexGrow)).toEqual(['22', '1', '1300'])
+    expect(today.every((s) => !(s as HTMLElement).style.height)).toBe(true)
+    expect((days[6].querySelector('[data-testid="day-bar"]') as HTMLElement).style.height).toMatch(/^max\(4px, /)
     const chart = region('Blocked requests per day, by rule')
     // The legend names each rule by the API label.
     for (const label of ['Domain blacklist (DNS)', 'WAF', 'Unclassified (no reason recorded)']) expect(within(chart).getAllByText(label).length).toBeGreaterThan(0)

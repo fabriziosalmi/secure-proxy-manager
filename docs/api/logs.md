@@ -53,7 +53,7 @@ counts the matching rows that were left out.
       "bytes": 4862,
       "blocked": true,
       "reason": "domain_blacklist_dns",
-      "reason_label": "Domain blacklist (DNS)",
+      "reason_label": "Domain blacklist (DNS sinkhole)",
       "internal": false,
       "kind": "Private network address",
       "resolved_ip": null
@@ -158,8 +158,8 @@ GET /api/logs/stats
     "blocked_count": 342,
     "ip_blocks_count": 18,
     "blocked_by_reason": [
-      { "reason": "domain_blacklist_dns", "label": "Domain blacklist (DNS)", "count": 300 },
-      { "reason": "domain_blacklist", "label": "Domain blacklist", "count": 24 },
+      { "reason": "domain_blacklist_dns", "label": "Domain blacklist (DNS sinkhole)", "count": 300 },
+      { "reason": "domain_blacklist", "label": "Domain blacklist (proxy)", "count": 24 },
       { "reason": "direct_ip", "label": "Direct IP", "count": 18 }
     ],
     "last_import": "2026-03-25 14:32:10"
@@ -261,6 +261,17 @@ the filtered log. `meta.retention_days` is how long a row is kept (365). Every
 change to a list (add, remove, bulk remove, clear, import, removal of a
 source, restore) writes a row. Sign-in, failed sign-in and sign-out rows carry
 the client address in `target`.
+
+A settings save (`update_settings` for `POST /api/settings`, `update_setting`
+for `PUT /api/settings/{name}`) writes a row only when it changed something,
+after the change is stored: `target` is the changed keys, comma-separated, and
+`details` gives each one's old and new value. A secret is never written, only
+whether it was set or cleared; a value longer than 512 characters is cut and
+marked `truncated`.
+
+```json
+{ "changes": { "enable_notifications": { "from": "false", "to": "true" } }, "secrets": { "telegram_bot_token": "set" } }
+```
 
 ```json
 {

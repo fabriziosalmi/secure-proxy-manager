@@ -17,7 +17,7 @@ export interface SectionDef {
 }
 
 export const SECTIONS: SectionDef[] = [
-  { id: 'overview', label: 'Overview', purpose: 'What needs attention, and how to connect a device.', keywords: ['status', 'connect', 'device', 'profile', 'preset', 'attention'] },
+  { id: 'overview', label: 'Summary', purpose: 'What needs attention, and how to connect a device.', keywords: ['status', 'connect', 'device', 'profile', 'preset', 'attention', 'overview'] },
   { id: 'access', label: 'Clients and access', purpose: 'Who may use the proxy, when, and how fast.', keywords: ['auth', 'login', 'password', 'time', 'hours', 'bandwidth', 'throttle', 'clients'] },
   { id: 'filtering', label: 'Filtering', purpose: 'What clients are blocked from reaching. The lists themselves are under Blacklists and Egress allowlist.', keywords: ['egress', 'safesearch', 'youtube', 'download', 'extension', 'refresh', 'blocklist'] },
   { id: 'inspection', label: 'Inspection', purpose: 'WAF heuristics and HTTPS inspection.', keywords: ['waf', 'heuristic', 'https', 'ssl', 'bump', 'certificate', 'ca', 'regex', 'pattern', 'rule'] },

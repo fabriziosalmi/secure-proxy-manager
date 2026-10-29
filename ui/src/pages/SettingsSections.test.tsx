@@ -347,7 +347,7 @@ describe('Settings sections', () => {
     })
   })
 
-  describe('Overview', () => {
+  describe('Summary', () => {
     it('lists what needs attention from the API, links each item to its section and counts the warnings in the nav', async () => {
       proxyStatus = 'stopped'
       const { container } = renderAt('/settings/overview')
@@ -356,7 +356,7 @@ describe('Settings sections', () => {
       expect(within(list).getByText('The admin password was never changed here')).toBeInTheDocument()
       expect(within(list).getByRole('link', { name: 'Admin and backup' })).toHaveAttribute('href', '/settings/admin')
       const nav = screen.getByRole('navigation', { name: 'Settings sections' })
-      expect(within(nav).getByRole('link', { name: 'Overview, 2 items need attention' })).toHaveTextContent('2')
+      expect(within(nav).getByRole('link', { name: 'Summary, 2 items need attention' })).toHaveTextContent('2')
       headingsInOrder()
       await expectNoAxeViolations(container)
     })
@@ -368,7 +368,7 @@ describe('Settings sections', () => {
       const list = await screen.findByRole('region', { name: 'Needs attention' })
       const urgent = await within(list).findAllByRole('listitem')
       const nav = screen.getByRole('navigation', { name: 'Settings sections' })
-      expect(within(nav).getByRole('link', { name: `Overview, ${urgent.length} ${urgent.length === 1 ? 'item needs' : 'items need'} attention` })).toBeInTheDocument()
+      expect(within(nav).getByRole('link', { name: `Summary, ${urgent.length} ${urgent.length === 1 ? 'item needs' : 'items need'} attention` })).toBeInTheDocument()
       const known = screen.getByRole('region', { name: 'Worth knowing' })
       expect(within(known).getByText('Blocks are not reported anywhere')).toBeInTheDocument()
       expect(within(list).queryByText('Blocks are not reported anywhere')).toBeNull()
@@ -415,7 +415,7 @@ describe('Settings sections', () => {
     it('will not apply a profile over unsaved changes in a section it touches', async () => {
       renderAt('/settings/filtering')
       fireEvent.click(await screen.findByRole('switch', { name: 'SafeSearch' }))
-      fireEvent.click(screen.getByRole('link', { name: /^Overview/ }))
+      fireEvent.click(screen.getByRole('link', { name: /^Summary/ }))
       fireEvent.click(await screen.findByRole('button', { name: /^Family/ }))
       expect(await screen.findByText('Save or discard the unsaved changes in Filtering first.')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Apply Family' })).toBeDisabled()

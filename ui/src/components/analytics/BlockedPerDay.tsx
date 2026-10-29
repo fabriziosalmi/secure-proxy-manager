@@ -15,17 +15,12 @@ import { Section } from '../ui/Section';
 import { EmptyState } from '../ui/EmptyState';
 import { DataTable, type Column } from '../ui/DataTable';
 import { axisMax, axisTicks } from '../dashboard/hourly';
-import { SERIES_BG, daySegments, dayLabel, dayName, describeDays, reasonsText, seriesFor, type Series } from './days';
+import { SERIES_BG, barHeight, daySegments, dayLabel, dayName, describeDays, reasonsText, seriesFor, type Series } from './days';
 
 export interface BlockedPerDayProps {
   data?: BlockedByDay | null;
   loading?: boolean;
   error?: boolean;
-}
-
-function pct(n: number, max: number): string {
-  // A non-zero count stays visible: 4px, 2 of them the gap above it.
-  return n > 0 ? `max(4px, ${(n / max) * 100}%)` : '0';
 }
 
 // Inline elements only: Section puts its description in a paragraph.
@@ -35,7 +30,7 @@ function Legend({ series }: { series: Series[] }) {
       {series.map((s) => (
         <span key={s.key} className="flex items-center gap-1.5">
           <span aria-hidden="true" className={cn('h-2.5 w-2.5 shrink-0 rounded-[2px]', SERIES_BG[s.color])} />
-          {s.key === 'other-rules' ? `Other rules (${s.labels.join(', ')})` : s.label}
+          {s.labels.length > 1 ? `${s.label} (${s.labels.join(', ')})` : s.label}
         </span>
       ))}
     </span>
@@ -73,23 +68,25 @@ function Chart({ data }: { data: BlockedByDay }) {
                 key={d.date}
                 data-day={d.date}
                 title={`${dayName(d.date)}: ${d.blocked > 0 ? `${formatCount(d.blocked)} blocked (${reasonsText(d.reasons)})` : 'none blocked'}`}
-                className="flex h-full min-w-0 flex-1 flex-col-reverse"
+                className="flex h-full min-w-0 flex-1 flex-col justify-end"
               >
-                {segments.map((s, i) => (
-                  <div
-                    key={s.series.key}
-                    data-series={s.series.key}
-                    data-count={s.count}
-                    className={cn(
-                      SERIES_BG[s.series.color],
-                      // A 2px surface line between stacked rules, so two
-                      // neighbours read as two even where they are close.
-                      i < segments.length - 1 && 'border-t-2 border-surface',
-                      i === segments.length - 1 && 'rounded-t-[3px]',
-                    )}
-                    style={{ height: pct(s.count, max) }}
-                  />
-                ))}
+                <div data-testid="day-bar" className="flex min-h-0 flex-col-reverse overflow-hidden rounded-t-[3px]" style={{ height: barHeight(d.blocked, max) }}>
+                  {segments.map((s, i) => (
+                    <div
+                      key={s.series.key}
+                      data-series={s.series.key}
+                      data-count={s.count}
+                      className={cn(
+                        'min-h-0 basis-0',
+                        SERIES_BG[s.series.color],
+                        // A 2px surface line between stacked rules, so two
+                        // neighbours read as two even where they are close.
+                        i < segments.length - 1 && 'border-t-2 border-surface',
+                      )}
+                      style={{ flexGrow: s.count }}
+                    />
+                  ))}
+                </div>
               </div>
             );
           })}
