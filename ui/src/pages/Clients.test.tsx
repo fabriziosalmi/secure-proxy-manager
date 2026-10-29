@@ -208,7 +208,13 @@ describe('Clients', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
       await within(panel).findByText('1,300')
-      expect(within(panel).getByText('First request 2026-06-28 09:59:00, last request 2026-07-01 11:21:00', { exact: false })).toBeInTheDocument()
+      // One row each, so a date never wraps away from its time.
+      const firstSeen = within(panel).getByText('First request').nextElementSibling!
+      const lastSeen = within(panel).getByText('Last request').nextElementSibling!
+      expect(firstSeen).toHaveTextContent(/^2026-06-28 09:59$/)
+      expect(lastSeen).toHaveTextContent(/^2026-07-01 11:21$/)
+      expect(firstSeen).toHaveClass('whitespace-nowrap')
+      expect(lastSeen).toHaveAttribute('title', '2026-07-01 11:21:00 (Europe/Rome)')
       expect(within(panel).getByText('908')).toBeInTheDocument()
       // 908 of 1,300.
       expect(within(panel).getByText('69.8%')).toBeInTheDocument()

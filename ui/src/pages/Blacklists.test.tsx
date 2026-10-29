@@ -67,11 +67,13 @@ describe('Blacklists', () => {
     enforcement = enforcementBody
     getCalls.length = 0
     go('')
+    // The fixtures are of 25 October 2026; times are written relative to today.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 9, 29, 7, 52, 30) })
     vi.spyOn(api, 'get').mockImplementation(((url: string) => routeGet(url)) as never)
     vi.spyOn(api, 'post').mockResolvedValue({ data: { status: 'success', data: { added: 2, skipped: 0 } } } as never)
     vi.spyOn(api, 'delete').mockResolvedValue({ data: { status: 'success', data: { removed: 4521 } } } as never)
   })
-  afterEach(() => { vi.restoreAllMocks() })
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
   it('shows the header from the mockup, four tabs and the sections, with headings in order', async () => {
     renderWithProviders(<Blacklists />)
@@ -154,7 +156,7 @@ describe('Blacklists', () => {
 
       // Rome leaves summer time at 01:00 UTC on 25 October 2026, so 08:00 UTC
       // is 09:00 there.
-      expect(within(row('10.0.0.1')).getByText('2026-10-25 09:00')).toBeInTheDocument()
+      expect(within(row('10.0.0.1')).getByText('Sun 25 09:00')).toBeInTheDocument()
       expect(within(table).getAllByRole('button', { name: /^Remove / }).map((b) => b.getAttribute('aria-label'))).toEqual([
         'Remove 10.0.0.1', 'Remove 198.51.100.0/24', 'Remove 203.0.113.0/24', 'Remove 2.32.0.0/16', 'Remove 192.0.2.9',
       ])
@@ -270,8 +272,8 @@ describe('Blacklists', () => {
         expect(within(row('Firehol Level 1')).getByText('https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset')).toBeInTheDocument()
         expect(within(row('Firehol Level 1')).getByText('4,521')).toBeInTheDocument()
         // The Added column (the range is also under the name, for a phone).
-        expect(row('Firehol Level 1').cells[2]).toHaveTextContent(/^2026-10-25 11:00 to 11:02$/)
-        expect(row('Manual').cells[2]).toHaveTextContent(/^2026-10-25 10:00$/)
+        expect(row('Firehol Level 1').cells[2]).toHaveTextContent(/^Sun 25 11:00 to 11:02$/)
+        expect(row('Manual').cells[2]).toHaveTextContent(/^Sun 25 10:00$/)
         expect(within(row('Source not recorded')).getByText('Added before this release recorded where entries come from')).toBeInTheDocument()
         expect(within(row('Source not recorded')).getByText('50,772')).toBeInTheDocument()
       } finally { restoreTz() }

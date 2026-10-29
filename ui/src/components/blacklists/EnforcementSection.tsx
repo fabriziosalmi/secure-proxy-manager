@@ -18,7 +18,7 @@
  * environment variables that set the limits are under "How it works".
  */
 import type { ReactNode } from 'react';
-import { formatClock, formatCount, formatDate } from '../../lib/format';
+import { formatCount, formatWhen } from '../../lib/format';
 import { cn } from '../../lib/utils';
 import type { Enforcement, IpAclStatus } from '../../types';
 import { Button } from '../ui/Button';
@@ -58,15 +58,12 @@ function HowItWorks({ children }: { children: ReactNode }) {
   );
 }
 
-/** When the proxy wrote a record: the time today, the date and time before. */
+/** When the proxy wrote a record, as formatWhen writes it inside a sentence. */
 function recordedAt(epochSeconds: number): string {
-  if (!epochSeconds) return 'time not recorded';
-  const d = new Date(epochSeconds * 1000);
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  // formatDate takes a backend timestamp; give it the same moment in UTC.
-  const iso = d.toISOString().replace('T', ' ').slice(0, 19);
-  return sameDay ? `at ${formatClock(d)}` : `on ${formatDate(iso)} at ${formatClock(d)}`;
+  if (!epochSeconds) return 'at a time not recorded';
+  // formatWhen takes a backend timestamp; give it the same moment in UTC.
+  const iso = new Date(epochSeconds * 1000).toISOString().replace('T', ' ').slice(0, 19);
+  return formatWhen(iso, { style: 'glance', inSentence: true });
 }
 
 function ProxyIpCopy({ record }: { record: IpAclStatus | null | undefined }) {

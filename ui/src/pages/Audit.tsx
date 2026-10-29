@@ -19,7 +19,7 @@ import toast from 'react-hot-toast';
 import { Download } from 'lucide-react';
 import { api, getErrorMessage } from '../lib/api';
 import { auditCsv, describeAudit, type AuditKind } from '../lib/auditEvents';
-import { formatCount, formatDateTime } from '../lib/format';
+import { formatCount, formatWhen, viewerZone } from '../lib/format';
 import { cn } from '../lib/utils';
 import type { AuditEntry, AuditPageData } from '../types';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -68,14 +68,6 @@ async function fetchWholeLog(category: Category): Promise<AuditEntry[]> {
   return out;
 }
 
-function timeZone(): string | null {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
-  } catch {
-    return null;
-  }
-}
-
 export function Audit() {
   const [category, setCategory] = useState<Category>('all');
   const [offset, setOffset] = useState(0);
@@ -120,7 +112,7 @@ export function Audit() {
       id: 'time',
       header: 'Time',
       className: 'whitespace-nowrap font-mono text-xs text-ink-muted',
-      cell: (e) => formatDateTime(e.timestamp),
+      cell: (e) => formatWhen(e.timestamp, { style: 'full' }),
     },
     {
       id: 'user',
@@ -149,7 +141,7 @@ export function Audit() {
     },
   ];
 
-  const zone = timeZone();
+  const zone = viewerZone();
   let description = 'Who changed what, and every sign-in.';
   if (typeof retention === 'number') description += ` Kept for ${formatCount(retention)} days.`;
   else if (log.isSuccess) description += ' How long events are kept is not reported.';
