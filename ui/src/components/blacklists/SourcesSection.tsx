@@ -72,7 +72,20 @@ export function SourcesSection({ list, sources, loading, error, onRetry, onRemov
         return (
           <div className="flex min-w-[6rem] flex-col gap-0.5">
             <span title={title} className="block truncate font-medium text-ink">{title}</span>
-            {detail && <span title={detail} className="block truncate text-xs text-ink-muted">{detail}</span>}
+            {/* Up to three lines (a URL) or two, never cut on the first: a URL or the reason a source is unknown was an ellipsis at 275 px. */}
+            {detail && (s.kind === 'url' && /^https?:\/\//.test(detail) ? (
+              <a
+                href={detail}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={detail}
+                className="line-clamp-3 break-all text-xs text-ink-muted hover:text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                {detail}
+              </a>
+            ) : (
+              <span title={detail} className="line-clamp-2 text-xs text-ink-muted [overflow-wrap:anywhere]">{detail}</span>
+            ))}
             <span className="text-xs text-ink-muted sm:hidden">Added <AddedRange first={s.first_added} last={s.last_added} /></span>
           </div>
         );
@@ -88,8 +101,9 @@ export function SourcesSection({ list, sources, loading, error, onRetry, onRemov
       className: ACTION_CELL,
       cell: (s) => (
         <Button size="sm" aria-label={batchLabel(s)} onClick={() => onRemove(s)}>
-          {/* "Remove" on a phone leaves the source name room; the name of the button is the same. */}
-          Remove<span className="hidden sm:inline"> batch</span>
+          {/* "Remove" on a phone leaves the source name room; the name of the button is the same.
+              One element: two would be two flex items of the button, 6 px apart, which read as a double space. */}
+          <span>Remove<span className="hidden sm:inline"> batch</span></span>
         </Button>
       ),
     },

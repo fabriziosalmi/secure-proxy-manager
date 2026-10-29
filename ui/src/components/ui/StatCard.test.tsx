@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { StatCard } from './StatCard'
 import { expectNoAxeViolations } from '../../test/axe'
-import { simulateItalianLocale } from '../../test/helpers'
+import { renderWithProviders, simulateItalianLocale } from '../../test/helpers'
 
 describe('StatCard', () => {
   afterEach(() => { vi.restoreAllMocks() })
@@ -19,6 +19,15 @@ describe('StatCard', () => {
   it('shows a string value as given', () => {
     render(<StatCard label="Rules in force" value="50,772 IPs, 640,929 domains" />)
     expect(screen.getByText('50,772 IPs, 640,929 domains')).toBeInTheDocument()
+  })
+
+  it('links its label, and through it the whole card, when given a route', async () => {
+    const { container } = renderWithProviders(<StatCard label="Blacklist entries" value={691701} to="/blacklists" />)
+    const link = screen.getByRole('link', { name: 'Blacklist entries' })
+    expect(link).toHaveAttribute('href', '/blacklists')
+    expect(link.className).toContain('after:inset-0')
+    expect(container.firstElementChild?.className).toContain('relative')
+    await expectNoAxeViolations(container)
   })
 
   it('shows a real zero as 0', () => {

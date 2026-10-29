@@ -75,3 +75,51 @@ func TestDashboardSummaryReportsWhyWAFStatsAreMissing(t *testing.T) {
 		}
 	})
 }
+
+// GET /api/waf/stats answers a failure with the same reason as the
+// dashboard's waf_status, so the Analytics page can read the WAF figures
+// from it instead of downloading the whole dashboard summary every 30 s.
+func TestWAFStatsSaysWhyItHasNoFigures(t *testing.T) {
+	cases := []struct {
+		name       string
+		status     int
+		wantCode   int
+		wantReason string
+	}{
+		{"credential refused (403)", http.StatusForbidden, http.StatusBadGateway, "auth_failed"},
+		{"credential refused (401)", http.StatusUnauthorized, http.StatusBadGateway, "auth_failed"},
+		{"server error", http.StatusInternalServerError, http.StatusBadGateway, "error"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			db, _, cfg, cleanup := setupTestDB(t)
+			defer cleanup()
+			wafBreaker = appMW.NewCircuitBreaker(3, 30*time.Second)
+			defer func() { wafBreaker = appMW.NewCircuitBreaker(3, 30*time.Second) }()
+			waf := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(c.status) }))
+			defer waf.Close()
+			cfg.WAFURL = waf.URL
+			w := httptest.NewRecorder()
+			NewAnalyticsHandlers(db, cfg).WAFStats(w, httptest.NewRequest("GET", "/api/waf/stats", nil))
+			var resp map[string]any
+			_ = json.NewDecoder(w.Body).Decode(&resp)
+			if w.Code != c.wantCode || resp["waf_status"] != c.wantReason {
+				t.Errorf("status %d, waf_status %v; want %d, %s", w.Code, resp["waf_status"], c.wantCode, c.wantReason)
+			}
+		})
+	}
+	t.Run("unreachable", func(t *testing.T) {
+		db, _, cfg, cleanup := setupTestDB(t)
+		defer cleanup()
+		wafBreaker = appMW.NewCircuitBreaker(3, 30*time.Second)
+		defer func() { wafBreaker = appMW.NewCircuitBreaker(3, 30*time.Second) }()
+		cfg.WAFURL = "http://127.0.0.1:1"
+		w := httptest.NewRecorder()
+		NewAnalyticsHandlers(db, cfg).WAFStats(w, httptest.NewRequest("GET", "/api/waf/stats", nil))
+		var resp map[string]any
+		_ = json.NewDecoder(w.Body).Decode(&resp)
+		if w.Code != http.StatusBadGateway || resp["waf_status"] != "unreachable" {
+			t.Errorf("status %d, waf_status %v; want 502, unreachable", w.Code, resp["waf_status"])
+		}
+	})
+}

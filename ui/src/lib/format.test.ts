@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest'
-import { formatAge, formatBytes, formatClock, formatCount, formatDate, formatDateTime, formatHourMinute, formatKilobytes, formatPercent, formatRange, formatShare, formatTime } from './format'
+import { formatAge, formatBytes, formatClock, formatCount, formatDate, formatDateTime, formatHourMinute, formatKilobytes, formatPercent, formatRange, formatShare, formatTime, formatWhen, formatWhenExact } from './format'
 import { simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 
 describe('formatRange', () => {
@@ -192,5 +192,40 @@ describe('formatAge', () => {
     expect(formatAge(3 * 3600 + 59)).toBe('3 h')
     expect(formatAge(3 * 86400)).toBe('3 d')
     expect(formatAge(-5)).toBe('0s')
+  })
+})
+
+describe('formatWhen', () => {
+  let restoreTz: () => void
+  beforeAll(() => { restoreTz = setRomeTimeZone() })
+  afterAll(() => { restoreTz() })
+  // 08:52:30 in Rome on Thursday 29 October 2026 (UTC+1).
+  const now = Date.UTC(2026, 9, 29, 7, 52, 30)
+
+  it('writes a forensic time whole, today included', () => {
+    expect(formatWhen('2026-10-29 07:51:30', { style: 'full', now })).toBe('2026-10-29 08:51:30')
+  })
+
+  it('writes a glance time as the time today, Yesterday, the weekday in the last week, the date before', () => {
+    expect(formatWhen('2026-10-29 00:34:30', { style: 'glance', now })).toBe('01:34')
+    expect(formatWhen('2026-10-28 22:51:10', { style: 'glance', now })).toBe('Yesterday 23:51')
+    expect(formatWhen('2026-10-28 22:51:10', { style: 'glance', now, inSentence: true })).toBe('yesterday 23:51')
+    expect(formatWhen('2026-10-25 22:55:00', { style: 'glance', now })).toBe('Sun 25 23:55')
+    expect(formatWhen('2026-10-22 22:55:00', { style: 'glance', now })).toBe('Fri 23 00:55')
+    expect(formatWhen('2026-10-21 20:55:00', { style: 'glance', now })).toBe('2026-10-21 22:55')
+  })
+
+  it('counts calendar days across the end of summer time', () => {
+    // 25 October 2026 has 25 hours in Rome: 00:30 on the 26th is still 4 days ago on the 29th.
+    expect(formatWhen('2026-10-25 23:30:00', { style: 'glance', now })).toBe('Mon 26 00:30')
+  })
+
+  it('writes a time ahead of the clock with its date, and anything unparseable as given', () => {
+    expect(formatWhen('2026-10-30 09:00:00', { style: 'glance', now })).toBe('2026-10-30 10:00')
+    expect(formatWhen('not a time', { style: 'glance', now })).toBe('not a time')
+  })
+
+  it('gives the exact time with the zone for a tooltip', () => {
+    expect(formatWhenExact('2026-10-28 22:51:10')).toBe('2026-10-28 23:51:10 (Europe/Rome)')
   })
 })

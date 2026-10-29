@@ -24,6 +24,10 @@ import (
 //   - geo: a country's address blocks. Keyed by the country code.
 //   - paste: a list pasted into the import form. A new source each time.
 //   - restore: a configuration restore. A new source each time.
+//   - preset: a named group of common services added in one request
+//     (handlers/presets.go). Keyed by the preset's id, so adding it again adds
+//     to the same source; label is its name ("Common services: Docker").
+//     Schema version 9 added it.
 //
 // An entry keeps the source that added it first: every write path inserts with
 // INSERT OR IGNORE (or refuses a duplicate), so a second source that lists the
@@ -35,6 +39,7 @@ const (
 	SourceGeo     = "geo"
 	SourcePaste   = "paste"
 	SourceRestore = "restore"
+	SourcePreset  = "preset"
 	// SourceUnrecorded is not stored: it names the entries whose source_id is
 	// NULL in a listing.
 	SourceUnrecorded = "unrecorded"
@@ -92,14 +97,14 @@ type execQuerier interface {
 }
 
 // KeyedSource returns the id of list's source of this kind and key (a URL, a
-// country code, or "" for manual), creating it on first use. A non-empty label
+// country code, a preset id, or "" for manual), creating it on first use. A non-empty label
 // replaces the stored one, so a Popular list keeps the name it was last
 // imported under.
 func KeyedSource(q execQuerier, list, kind, key, label string) (int64, error) {
 	if !IsSourceList(list) {
 		return 0, ErrUnknownList
 	}
-	if kind != SourceURL && kind != SourceManual && kind != SourceGeo {
+	if kind != SourceURL && kind != SourceManual && kind != SourceGeo && kind != SourcePreset {
 		return 0, fmt.Errorf("source kind %q is not keyed", kind)
 	}
 	if _, err := q.Exec(
