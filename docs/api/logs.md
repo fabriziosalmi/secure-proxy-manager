@@ -207,6 +207,8 @@ POST /api/logs/clear
 ```
 
 Deletes every row in `proxy_logs` and records the action in the audit log.
+The UI offers it as "Clear the access log" in Settings, Maintenance, beside
+"Reset statistics", which is `POST /api/counters/reset`.
 
 ```json
 { "status": "success", "message": "All logs cleared" }

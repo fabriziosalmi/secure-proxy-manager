@@ -94,6 +94,35 @@ for at least one minor release before disappearing.
   names each category in words with its kind (rule, heuristic, domain
   reputation, size limit) instead of the raw key (`SQL_INJECTION`,
   `HEURISTIC_BEACONING`).
+- **One name per concept.** "Overview" names only the page at "/": the
+  menu item that read "Dashboard" is now "Overview", the menu group that
+  held it is "Insights", and the Settings section that was also called
+  "Overview" is "Summary" (its address stays `/settings/overview`). A
+  permitted request is "Allowed" everywhere; the client detail said "Not
+  blocked". The two domain rules are named by where they block, "Domain
+  blacklist (proxy)" and "Domain blacklist (DNS sinkhole)". These are the
+  `reason_label` and `label` values the API returns (`reason` keys are
+  unchanged): "Not blocked" is now "Allowed", "Domain blacklist" is
+  "Domain blacklist (proxy)" and "Domain blacklist (DNS)" is "Domain
+  blacklist (DNS sinkhole)". In "Most blocked destinations" a host blocked
+  by two rules shows each rule with its count.
+- **Finishing touches across Blacklists, Analytics and the access log.**
+  - The Blacklists entries table leaves its Source column out while the
+    list has one source or none; "Source not recorded" was on every row.
+  - A network's kind says how much it covers, "Network, 1,024 addresses",
+    instead of repeating its prefix ("Network /22").
+  - Allowed domains reads "Blocked domains this list overrides" instead of
+    "Blocked entries taken out".
+  - Analytics' subtitle no longer says "Last 7 days" for the two sections
+    that count something else; each section says its own window. The four
+    smaller cards sit two by two (four in a row on the widest screens): at
+    1440 px the fourth stood alone on its row.
+  - "Load older" in the access log stops at the newest 1,000 rows and says
+    how to reach older ones. Measured with the CPU slowed four times, a
+    click took 104 ms at 1,100 rows and up to 248 ms at 3,100.
+  - "Clear the access log" moved from the access log page to Settings,
+    Maintenance, beside "Reset statistics", and each says what it does to
+    the WAF's counters.
 - **The Enforcement sections speak of the proxy and of limits.** Their rows
   read "Proxy (Squid)" and "Networks Squid loads", named
   `SPM_SQUID_DOMAIN_ACL_MAX` in a value and `SPM_DNS_BLOCKLIST_MAX_DOMAINS`
@@ -228,18 +257,6 @@ for at least one minor release before disappearing.
   rounding clipped into something like a "(". The fill is now at least 2 px
   with a square start; a client with no blocked request shows a muted "0%"
   and no empty track, rather than "0.0%" over an empty bar on every row.
-- **One name per concept.** "Overview" names only the page at "/": the
-  menu item that read "Dashboard" is now "Overview", the menu group that
-  held it is "Insights", and the Settings section that was also called
-  "Overview" is "Summary" (its address stays `/settings/overview`). A
-  permitted request is "Allowed" everywhere; the client detail said "Not
-  blocked". The two domain rules are named by where they block, "Domain
-  blacklist (proxy)" and "Domain blacklist (DNS sinkhole)". These are the
-  `reason_label` and `label` values the API returns (`reason` keys are
-  unchanged): "Not blocked" is now "Allowed", "Domain blacklist" is
-  "Domain blacklist (proxy)" and "Domain blacklist (DNS)" is "Domain
-  blacklist (DNS sinkhole)". In "Most blocked destinations" a host blocked
-  by two rules shows each rule with its count.
 
 ### Internal
 
