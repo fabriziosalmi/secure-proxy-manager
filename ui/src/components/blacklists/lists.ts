@@ -66,7 +66,7 @@ export const LISTS: readonly ListDef[] = [
     searchPlaceholder: 'Search IPs and networks',
     entryLabel: 'IP address or network',
     entryPlaceholder: 'e.g. 192.168.1.50 or 192.168.1.0/24',
-    consequence: (what) => `Squid stops letting ${what} past its direct-IP rule once it reloads the list.`,
+    consequence: (what) => `The proxy stops letting ${what} past its direct-IP rule once it reloads the list.`,
   },
   {
     key: 'allowed-domains',

@@ -17,6 +17,15 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **The Enforcement sections speak of the proxy and of limits.** Their rows
+  read "Proxy (Squid)" and "Networks Squid loads", named
+  `SPM_SQUID_DOMAIN_ACL_MAX` in a value and `SPM_DNS_BLOCKLIST_MAX_DOMAINS`
+  under the limit, and put file names such as
+  `ip_blacklist_acl_status.json` in "Not reported". The rows and paragraphs
+  now say "the proxy" and "limit"; which program enforces each list, the files the proxy records and the variables
+  that set the limits are under "How it works" in each section. The
+  Overview's notices about the domain blacklist say "the proxy" too, and
+  keep `SPM_SQUID_DOMAIN_ACL_MAX` where raising it is the way out.
 - **Blacklists, Enforcement: every value is aligned to the right edge.**
   "Networks Squid loads 32,215" carried its explanation inside the value, so
   the value dropped under its label and floated 93 px from the edge; "Limit
