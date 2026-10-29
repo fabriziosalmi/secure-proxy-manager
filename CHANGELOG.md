@@ -26,7 +26,6 @@ for at least one minor release before disappearing.
   gives the exact time with the zone, and the Access logs say which zone
   their times are in. A pasted or restored source still names its time to
   the second, so two pastes a minute apart read differently.
-
 - **Settings and Analytics judge the configuration the same way.** The
   Settings menu showed 1 next to Overview, whose "Needs attention" list held
   4 items, and alerts switched off were orange in Analytics but grey in
@@ -37,6 +36,25 @@ for at least one minor release before disappearing.
   marks in both places differ by shape (triangle, hollow circle, filled
   circle, dashed circle) as well as colour, and Protection coverage has a
   legend. Alerts off is *worth knowing* on both pages.
+- **Settings and Analytics judge the configuration the same way.** The
+  Settings menu showed 1 next to Overview, whose "Needs attention" list held
+  4 items, and alerts switched off were orange in Analytics but grey in
+  Settings. One model now decides: *needs attention* (it stops clients or
+  gives false safety), *worth knowing* (a choice with a cost: HTTPS not
+  inspected, alerts off, proxy login off), *on* and *unknown*. Settings,
+  Overview lists the two kinds apart and the menu counts the first; the
+  marks in both places differ by shape (triangle, hollow circle, filled
+  circle, dashed circle) as well as colour, and Protection coverage has a
+  legend. Alerts off is *worth knowing* on both pages.
+- **The Analytics WAF card says it counts matches, not blocks.** Titled
+  "WAF categories", it listed the categories that matched a request, weak
+  matches below the block threshold included, since the WAF started, on a
+  page whose subtitle says "Last 7 days", and only its last line said how
+  many requests were blocked (often 0). It is now "WAF rule matches", says
+  "a match is not a block" and the blocked count in its description, and
+  names each category in words with its kind (rule, heuristic, domain
+  reputation, size limit) instead of the raw key (`SQL_INJECTION`,
+  `HEURISTIC_BEACONING`).
 
 ### Fixed
 
