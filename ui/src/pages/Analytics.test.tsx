@@ -110,9 +110,6 @@ describe('Analytics', () => {
     expect(screen.queryByText('live-feed.example')).toBeNull()
     expect(calls).not.toContain('analytics/top-domains')
     expect(calls).not.toContain('security/score')
-    // The WAF card reads waf/stats; the whole dashboard summary was fetched every 30 s for it.
-    await waitFor(() => expect(calls).toContain('waf/stats'))
-    expect(calls).not.toContain('dashboard/summary')
     expect(screen.getByRole('link', { name: 'Last 24 hours: Overview' })).toHaveAttribute('href', '/')
     expect(screen.getByRole('link', { name: 'Every request: Access logs' })).toHaveAttribute('href', '/logs')
   })
@@ -191,6 +188,13 @@ describe('Analytics', () => {
     expect(files).toHaveTextContent('HTTPS that is not inspected shows no URL to the proxy and is not counted.')
     await waitFor(() => { expect(within(files).getByText('15 downloads.')).toBeInTheDocument() })
     expect(within(files).getByText('Extensions: .js 12, .png 3.')).toBeInTheDocument()
+  })
+
+  // The WAF card reads waf/stats; the whole dashboard summary was fetched every 30 s for it.
+  it('asks the WAF endpoint for the WAF figures, not the dashboard summary', async () => {
+    renderWithProviders(<Analytics />)
+    await waitFor(() => expect(calls).toContain('waf/stats'))
+    expect(calls).not.toContain('dashboard/summary')
   })
 
   it('says which part is missing when an endpoint does not answer, or the WAF refuses the backend', async () => {
