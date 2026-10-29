@@ -193,7 +193,8 @@ describe('Blacklists', () => {
       expect(within(section).getByText('473,936')).toBeInTheDocument()
       expect(within(section).getByText('Every entry but the 3 on Allowed domains')).toBeInTheDocument()
       expect(within(section).getByText('No copy: 473,936 names is over its limit of 250,000 (SPM_SQUID_DOMAIN_ACL_MAX)')).toBeInTheDocument()
-      expect(within(section).getByText('1,000,000 entries (SPM_DNS_BLOCKLIST_MAX_DOMAINS)')).toBeInTheDocument()
+      expect(within(section).getByText('1,000,000 entries')).toBeInTheDocument()
+      expect(within(section).getByText('Set by SPM_DNS_BLOCKLIST_MAX_DOMAINS.')).toBeInTheDocument()
       // The semantics db.go (EnforcedDomain) and the watchdog implement: "*."
       // and a leading dot are dropped, the exact name is blocked.
       expect(within(section).getByText(/"\*\.example\.com" and "\.example\.com" each block example\.com itself, in the DNS sinkhole and in Squid alike/)).toBeInTheDocument()
@@ -216,7 +217,7 @@ describe('Blacklists', () => {
       renderWithProviders(<Blacklists />)
       const section = (await screen.findByRole('heading', { name: 'Enforcement' })).closest('section')!
       expect(await within(section).findByText('32,215')).toBeInTheDocument()
-      expect(within(section).getByText(/merged from 50,772 entries, recorded/)).toBeInTheDocument()
+      expect(within(section).getByText(/^Merged from 50,772 entries, recorded /)).toBeInTheDocument()
       expect(within(section).getByText(/Squid checks this list before Allowed IPs, so an address on both stays blocked/)).toBeInTheDocument()
     })
 

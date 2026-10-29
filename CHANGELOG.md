@@ -77,6 +77,13 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **Blacklists, Enforcement: every value is aligned to the right edge.**
+  "Networks Squid loads 32,215" carried its explanation inside the value, so
+  the value dropped under its label and floated 93 px from the edge; "Limit
+  1,000,000 entries (SPM_DNS_BLOCKLIST_MAX_DOMAINS)" wrapped onto two lines
+  under its label. Each row is now a label and a value on one line, with an
+  explanation ("Merged from ...", "Set by SPM_DNS_BLOCKLIST_MAX_DOMAINS.")
+  on its own line under both.
 - **The browser e2e suite waits for the geo-block import it starts.** The
   Geo-block test clicked "Download and block IPs" and moved on after 5
   seconds; the backend went on importing the CN networks (8.4 s on one CI
