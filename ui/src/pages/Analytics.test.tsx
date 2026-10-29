@@ -88,7 +88,8 @@ describe('Analytics', () => {
   it('shows the sections of the mockup, headings in order, and nothing the Overview already has', async () => {
     renderWithProviders(<Analytics />)
     expect(screen.getByRole('heading', { level: 1, name: 'Analytics' })).toBeInTheDocument()
-    expect(screen.getByText('Last 7 days, client traffic only. Times are your local time.')).toBeInTheDocument()
+    // "Last 7 days, client traffic only" was true of four sections in six.
+    expect(screen.getByText('Client traffic of the last 7 days, and what protection is on now. Each section says what it counts. Times are your local time.')).toBeInTheDocument()
     await waitFor(() => { expect(screen.getByRole('img', { name: /^Blocked requests per day/ })).toBeInTheDocument() })
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'Blocked requests per day, by rule',
@@ -186,6 +187,22 @@ describe('Analytics', () => {
     expect(files).toHaveTextContent('HTTPS that is not inspected shows no URL to the proxy and is not counted.')
     await waitFor(() => { expect(within(files).getByText('15 downloads.')).toBeInTheDocument() })
     expect(within(files).getByText('Extensions: .js 12, .png 3.')).toBeInTheDocument()
+  })
+
+  // Each section says its own window: the page's one line did not hold for all of them.
+  it('has every section say the window it counts', async () => {
+    renderWithProviders(<Analytics />)
+    const windows: [string, RegExp][] = [
+      ['Blocked requests per day, by rule', /Today and the 6 days before/],
+      ['Protection coverage', /right now/],
+      ['WAF rule matches', /Since the WAF started or its counters were reset/],
+      ['Cloud services in use', /in the last 7 days/],
+      ['Traffic by kind of service', /in the last 7 days/],
+      ['Downloads by file type', /in the last 7 days/],
+    ]
+    for (const [name, window] of windows) {
+      await waitFor(() => expect(region(name)).toHaveTextContent(window))
+    }
   })
 
   it('says which part is missing when an endpoint does not answer, or the WAF refuses the backend', async () => {

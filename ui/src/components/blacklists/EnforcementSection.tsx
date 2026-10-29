@@ -156,7 +156,7 @@ export function EnforcementSection({ list, total, data, loading, error, onReload
       <>
         <dl className="flex flex-col gap-2.5 text-sm">
           <Row term="Entries">{total === undefined ? 'Loading' : formatCount(total)}</Row>
-          <Row term="Blocked entries taken out">{formatCount(left)}</Row>
+          <Row term="Blocked domains this list overrides">{formatCount(left)}</Row>
         </dl>
         <p className="text-[13px] leading-5 text-ink-muted">
           A name here takes the same name off Blocked domains before the lists reach the DNS sinkhole and Squid, however it is written

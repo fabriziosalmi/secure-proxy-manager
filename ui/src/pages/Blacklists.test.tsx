@@ -144,7 +144,8 @@ describe('Blacklists', () => {
       expect(within(row('198.51.100.0/24')).getByText('scanner seen at the edge')).toBeInTheDocument()
 
       expect(within(row('10.0.0.1')).getByText('IP')).toBeInTheDocument()
-      expect(within(row('198.51.100.0/24')).getByText('Network /24')).toBeInTheDocument()
+      // How much a network covers; "Network /24" repeated the prefix.
+      expect(within(row('198.51.100.0/24')).getByText('Network, 256 addresses')).toBeInTheDocument()
 
       expect(within(row('10.0.0.1')).getByText('Source not recorded')).toBeInTheDocument()
       expect(within(row('198.51.100.0/24')).getByText('Manual')).toBeInTheDocument()
@@ -160,6 +161,16 @@ describe('Blacklists', () => {
       ])
       expect(screen.getByText('1 to 5 of 5')).toBeInTheDocument()
     } finally { restoreTz() }
+  })
+
+  // "Source not recorded" was on every row of a list with one source.
+  it('leaves the Source column out when the list has one source or none', async () => {
+    sources = { 'ip-blacklist': [ipSources[2]] }
+    renderWithProviders(<Blacklists />)
+    const table = await screen.findByRole('table', { name: 'Blocked IPs entries' })
+    await within(table).findByText('10.0.0.1')
+    await waitFor(() => expect(within(table).queryByRole('columnheader', { name: 'Source' })).not.toBeInTheDocument())
+    expect(within(table).queryByText('Source not recorded')).not.toBeInTheDocument()
   })
 
   it('searches the list on the backend from a search field with the search icon', async () => {
@@ -229,6 +240,8 @@ describe('Blacklists', () => {
       renderWithProviders(<Blacklists />)
       // db.go loadWhitelistSet compares EnforcedDomain of both sides.
       expect(await screen.findByText(/example\.com also takes out \*\.example\.com and \.example\.com, which block example\.com itself\. It does not cover subdomains/)).toBeInTheDocument()
+      // "Blocked entries taken out" did not say of what, or by what.
+      expect(screen.getByText('Blocked domains this list overrides')).toBeInTheDocument()
     })
 
     it('allowed IPs: says the blocked lists are checked first', async () => {

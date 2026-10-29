@@ -92,7 +92,7 @@ export function Analytics() {
       <PageHeader
         eyebrow="Insights"
         title="Analytics"
-        description="Last 7 days, client traffic only. Times are your local time."
+        description="Client traffic of the last 7 days, and what protection is on now. Each section says what it counts. Times are your local time."
         actions={
           <nav aria-label="Related pages" className="flex flex-wrap gap-4">
             <Link to="/" className={LINK}>Last 24 hours: Overview</Link>
@@ -106,7 +106,9 @@ export function Analytics() {
         <ProtectionCoverage data={coverage.data} loading={coverage.isPending} error={coverage.isError} />
       </div>
 
-      <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))]">
+      {/* Two by two, or four in a row on the widest screens: an auto-fit grid
+          put three on a row at 1440 px and left the fourth alone. */}
+      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
         <WafCategories summary={state(summary)} />
         <ServicesInUse services={state(services)} onRetry={() => { void services.refetch(); }} />
         <ServiceKinds kinds={state(kinds)} />

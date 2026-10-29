@@ -17,6 +17,23 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **Finishing touches across Blacklists, Analytics and the access log.**
+  - The Blacklists entries table leaves its Source column out while the
+    list has one source or none; "Source not recorded" was on every row.
+  - A network's kind says how much it covers, "Network, 1,024 addresses",
+    instead of repeating its prefix ("Network /22").
+  - Allowed domains reads "Blocked domains this list overrides" instead of
+    "Blocked entries taken out".
+  - Analytics' subtitle no longer says "Last 7 days" for the two sections
+    that count something else; each section says its own window. The four
+    smaller cards sit two by two (four in a row on the widest screens): at
+    1440 px the fourth stood alone on its row.
+  - "Load older" in the access log stops at the newest 1,000 rows and says
+    how to reach older ones. Measured with the CPU slowed four times, a
+    click took 104 ms at 1,100 rows and up to 248 ms at 3,100.
+  - "Clear the access log" moved from the access log page to Settings,
+    Maintenance, beside "Reset statistics", and each says what it does to
+    the WAF's counters.
 - The WAF image stores its binary once, owned by root and run by the `waf`
   user, who can no longer change it. A `chown` after the copy wrote a second
   full copy of the binary in its own layer (8.1 MB on amd64) and let the
