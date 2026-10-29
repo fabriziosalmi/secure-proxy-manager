@@ -49,6 +49,7 @@ for at least one minor release before disappearing.
   rounding clipped into something like a "(". The fill is now at least 2 px
   with a square start; a client with no blocked request shows a muted "0%"
   and no empty track, rather than "0.0%" over an empty bar on every row.
+
 ### Changed
 
 - **Settings and Analytics judge the configuration the same way.** The
@@ -70,6 +71,12 @@ for at least one minor release before disappearing.
   names each category in words with its kind (rule, heuristic, domain
   reputation, size limit) instead of the raw key (`SQL_INJECTION`,
   `HEURISTIC_BEACONING`).
+
+### Internal
+
+- The `UI layout (Playwright)` check is required on `main`, in the ruleset and
+  in `.github/branch-protection.json`, so a page that overflows, wraps or
+  misaligns at desktop, 1250 px or phone width cannot merge.
 
 ## [3.18.3] - 2026-10-28
 
