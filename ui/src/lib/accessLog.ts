@@ -309,7 +309,7 @@ const WHY: Record<string, string> = {
     'already on the domain blacklist, when it tried the address the DNS sinkhole answered.',
   ip_blacklist: 'The destination address is on the IP blacklist.',
   direct_ip: 'The request named an IP address instead of a host name, and direct IP access is blocked.',
-  egress_policy: 'Default-deny egress is on and the destination is not on the egress allowlist.',
+  egress_policy: 'Default-deny egress is on and the destination is not on the default-deny allowlist.',
   waf: 'The WAF matched one of its rules in the request or the response and blocked it.',
   proxy_auth: 'The proxy requires a username and password, and the request had none or a wrong one.',
   proxy_auth_unset: 'Proxy login is on but no proxy credentials are set, so the proxy refuses every client until they are set.',

@@ -13,7 +13,7 @@ Five containers: a React UI behind nginx, a Go backend (chi + SQLite in WAL mode
 ## Configuration
 
 - [Environment variables](https://fabriziosalmi.github.io/secure-proxy-manager/guide/configuration): every variable, its default, and what breaks without it
-- [Blacklists and whitelists](https://fabriziosalmi.github.io/secure-proxy-manager/guide/blacklists): source and destination lists, imports, and the egress default-deny mode
+- [Blacklists and exceptions](https://fabriziosalmi.github.io/secure-proxy-manager/guide/blacklists): source and destination lists, imports, and the egress default-deny mode
 - [Security](https://fabriziosalmi.github.io/secure-proxy-manager/guide/security): the WAF, SSL-bump, authentication, and the hardening choices
 - [Security advisories](https://fabriziosalmi.github.io/secure-proxy-manager/guide/security-advisories): published advisories and the fixed versions
 
@@ -21,7 +21,7 @@ Five containers: a React UI behind nginx, a Go backend (chi + SQLite in WAL mode
 
 - [API overview](https://fabriziosalmi.github.io/secure-proxy-manager/api/reference): conventions, pagination, and the X-API-Version contract
 - [Authentication](https://fabriziosalmi.github.io/secure-proxy-manager/api/authentication): JWT issue, refresh and revocation
-- [Blacklists and whitelists](https://fabriziosalmi.github.io/secure-proxy-manager/api/blacklists): list, add, import and geo-import endpoints
+- [Blacklists and exceptions](https://fabriziosalmi.github.io/secure-proxy-manager/api/blacklists): list, add, import and geo-import endpoints
 - [Logs and analytics](https://fabriziosalmi.github.io/secure-proxy-manager/api/logs): access logs, filtering, and the analytics aggregates
 - [Settings and maintenance](https://fabriziosalmi.github.io/secure-proxy-manager/api/settings): bulk settings, config reload, backup and restore
 - [WebSocket](https://fabriziosalmi.github.io/secure-proxy-manager/api/websocket): the live event stream and its single-use token

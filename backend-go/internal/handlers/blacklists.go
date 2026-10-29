@@ -352,8 +352,8 @@ func (h *BlacklistHandlers) AddDomain(w http.ResponseWriter, r *http.Request) {
 // part of a literal host name that matches nothing (the watchdog strips it from
 // the blacklist for the same reason): the entry would be listed as allowed and
 // allow nothing. A leading dot is the dstdomain form for a domain and every
-// name under it.
-const wildcardEgressMessage = "write .example.com, with a leading dot, to allow example.com and every name under it: *.example.com would match nothing"
+// name under it, which include_subdomains writes.
+const wildcardEgressMessage = "send example.com with include_subdomains (or write .example.com, with a leading dot) to allow example.com and every name under it: *.example.com would match nothing"
 
 // AddDstAllow adds an entry to the egress destination allowlist (default-deny
 // egress). The entry is auto-classified: an IP or CIDR is stored as 'cidr'
@@ -393,6 +393,16 @@ func (h *BlacklistHandlers) AddDstAllow(w http.ResponseWriter, r *http.Request) 
 	if typ == "domain" && strings.HasPrefix(entry, "*.") {
 		writeError(w, http.StatusBadRequest, wildcardEgressMessage)
 		return
+	}
+	// include_subdomains is the explicit form of the leading dot: the stored
+	// entry, the export and Squid are the same either way. It has no meaning
+	// for an address.
+	if item.IncludeSubdomains {
+		if typ != "domain" {
+			writeError(w, http.StatusBadRequest, "include_subdomains applies to a domain, not to an IP address or network")
+			return
+		}
+		entry = "." + strings.TrimPrefix(entry, ".")
 	}
 	_, err := h.db.Exec("INSERT INTO dst_allowlist(entry, type, description) VALUES(?,?,?)", entry, typ, item.Description)
 	if err != nil {

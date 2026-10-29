@@ -111,22 +111,22 @@ process holding one; free it, change the host side of the mapping, or set
 
 ## What it does
 
-- **Lists.** Blocked IPs, Blocked domains, Allowed IPs and Allowed domains,
+- **Lists.** Blocked IPs, Blocked domains, IP exceptions and Domain exceptions,
   managed on the Blacklists page or through the API. All four take pasted
   lists; the blocked lists also import from a URL, a curated list or (IPs) a
   country's address blocks. Every entry records the source that added it, so
-  an import or a paste can be removed as a whole. An allowed domain takes the
+  an import or a paste can be removed as a whole. A domain exception takes the
   same name off Blocked domains however it is written there (`name`,
   `*.name`, `.name`, any case). [Lists guide](docs/guide/blacklists.md).
 - **DNS sinkhole.** dnsmasq answers `0.0.0.0` and `::` for every blocked
   domain, and Squid also denies those names itself while the list has at most
   `SPM_SQUID_DOMAIN_ACL_MAX` (250,000) entries.
 - **Direct-IP and destination rules.** Squid always denies the IP blacklist and
-  URLs that address a public IP directly; Allowed IPs and LAN destinations
+  URLs that address a public IP directly; IP exceptions and LAN destinations
   (`10.0.0.0/8`, `192.168.0.0/16`) are exempt from the direct-IP rule.
 - **Default-deny egress (off by default).** With Settings > Filtering > Only
-  allowlisted destinations on, clients reach only the entries on the Egress
-  allowlist page, LAN destinations and Allowed IPs.
+  allowlisted destinations on, clients reach only the entries on the
+  Default-deny allowlist page, LAN destinations and IP exceptions.
 - **WAF.** 172 request rules in 21 categories and 5 response rules in 2
   categories (counted in `waf-go/internal/engine/rules.go`), six behavioural
   heuristics, anomaly scoring with a block threshold of 10, and runtime toggles

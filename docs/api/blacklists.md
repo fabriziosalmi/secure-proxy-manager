@@ -1,4 +1,4 @@
-# Blacklist and Whitelist API
+# Blacklist and exception API
 
 Base URLs:
 
@@ -9,8 +9,10 @@ All endpoints require authentication (Basic or JWT). Successful responses are
 `{"status": "success", ...}`; errors are `{"status": "error", "detail": "..."}`.
 
 The UI calls the four lists Blocked IPs (`ip-blacklist`), Blocked domains
-(`domain-blacklist`), Allowed IPs (`ip-whitelist`) and Allowed domains
-(`domain-whitelist`). Every change to a list requests an export of the files
+(`domain-blacklist`), IP exceptions (`ip-whitelist`) and Domain exceptions
+(`domain-whitelist`). The exceptions are never blocked; the default-deny
+allowlist (`egress-allowlist`), what clients may reach while default deny is
+on, is a separate list. Every change to a list requests an export of the files
 Squid and dnsmasq read, and writes an audit log row.
 
 ---
@@ -25,7 +27,7 @@ GET /api/ip-blacklist?limit=50&offset=0&search=203.0
 
 `limit` is 1 to 1000 (default 100); `search` matches the entry and its
 description. Newest first. The same parameters work on every list, including
-the egress allowlist.
+the default-deny allowlist.
 
 ```json
 {
@@ -49,7 +51,7 @@ the egress allowlist.
 `added_date` is UTC. `source_kind` is `url`, `manual`, `geo`, `paste` or
 `restore` (see [Sources](#sources)); it, `source` and `source_label` are
 `null` for an entry added before sources were recorded. The four lists carry
-these fields; the egress allowlist does not. Read the count from
+these fields; the default-deny allowlist does not. Read the count from
 `meta.total`: the top-level `total`, `limit` and `offset` beside it are
 deprecated.
 
@@ -61,7 +63,7 @@ DELETE /api/ip-blacklist/{id}
 
 `404` when no entry has that ID. The same route exists on every list.
 
-### Bulk delete and clear (blocked lists and egress allowlist)
+### Bulk delete and clear (blocked lists and default-deny allowlist)
 
 ```
 POST /api/ip-blacklist/bulk-delete
@@ -357,7 +359,7 @@ GET /api/blacklists/enforcement
 
 - `dns_blocklist_limit`: `SPM_DNS_BLOCKLIST_MAX_DOMAINS`.
 - `domain_blacklist_on_allowed`: blocked domains whose enforced name (lower
-  case, `*.` and a leading dot dropped) is on the domain whitelist, left out
+  case, `*.` and a leading dot dropped) is on Domain exceptions, left out
   of what dnsmasq and Squid receive.
 - `squid_domain_acl`: the proxy's record of Squid's own copy of the domain
   blacklist: the names after dropping prefixes and duplicates,
@@ -371,7 +373,7 @@ started) is `null`.
 
 ---
 
-## IP whitelist {#ip-whitelist}
+## IP exceptions {#ip-whitelist}
 
 Allowed destination addresses get past the direct-IP block rule and the final
 deny in Squid. Squid checks the blocked lists first, so an allowed address
@@ -410,7 +412,7 @@ already on the list keeps the source that added it first.
 ```json
 {
   "status": "success",
-  "message": "Added 2 entries to Allowed IPs (0 already listed, 1 refused)",
+  "message": "Added 2 entries to IP exceptions (0 already listed, 1 refused)",
   "data": {
     "added": 2,
     "skipped": 0,
@@ -426,9 +428,9 @@ counts the refused lines and `refusals` lists the first 20 with their reasons.
 
 ---
 
-## Domain whitelist {#domain-whitelist}
+## Domain exceptions {#domain-whitelist}
 
-A blocked domain whose enforced name is on the whitelist is left out of what
+A blocked domain whose enforced name is on Domain exceptions is left out of what
 the backend exports, so dnsmasq resolves it normally and Squid does not refuse
 it: `example.com` here takes out a blocked `example.com`, `*.example.com` and
 `.example.com`, in any case. It covers no name under it.
@@ -454,7 +456,7 @@ name are refused with `400` too. A pasted list goes to
 ## Presets {#presets}
 
 Named groups of domains the backend keeps for two lists: the common services a
-network usually needs on the domain whitelist (`github`, `google`,
+network usually needs on Domain exceptions (`github`, `google`,
 `microsoft`, `ai-services`, `docker`, `cdn-js`, `cloudflare`), and the public
 DNS-over-HTTPS resolvers on the domain blacklist (`doh`).
 
@@ -490,14 +492,15 @@ limit is `413`.
 
 ---
 
-## Egress allowlist {#egress-allowlist}
+## Default-deny allowlist {#egress-allowlist}
 
-The egress allowlist is consulted only while default-deny egress is on (the
+The default-deny allowlist (the UI's name; the API path is `egress-allowlist`)
+is consulted only while default-deny egress is on (the
 `egress_default_deny` setting, default `"false"`, changed through
 `POST /api/settings` and applied with `POST /api/maintenance/reload-config`;
 see [Settings](./settings.md#default-deny-egress)). While it is on, local
 clients reach only these destinations, LAN destinations (`10.0.0.0/8`,
-`192.168.0.0/16`) and Allowed IPs; everything else is refused with a Squid
+`192.168.0.0/16`) and IP exceptions; everything else is refused with a Squid
 403.
 
 Each entry is an address or CIDR (matched by a Squid `dst` ACL) or a domain
@@ -534,14 +537,23 @@ POST /api/egress-allowlist
 
 ```json
 {
-  "entry": "203.0.113.0/24",
+  "entry": "debian.org",
+  "include_subdomains": true,
   "description": "optional description"
 }
 ```
 
-`entry` (at most 253 characters) is lower-cased. A domain must contain a dot.
-A domain entry matches that exact name; `.example.com` covers the domain and
-every name under it.
+| Field | Meaning |
+|---|---|
+| `entry` | An address, a CIDR or a domain, at most 253 characters, lower-cased. A domain must contain a dot. |
+| `include_subdomains` | Optional, default `false`. For a domain, allow it and every name under it. Refused (`400`) for an address or CIDR. |
+| `description` | Optional, at most 500 characters. |
+
+A domain entry matches that exact name. With `include_subdomains` it is
+stored as `.debian.org`, the form Squid's `dstdomain` reads for a domain and
+every name under it, and listed and exported that way. A leading dot sent in
+`entry` means the same, so `{"entry": ".debian.org"}` is still accepted;
+sending both stores one dot.
 
 **Success:**
 
@@ -558,7 +570,8 @@ every name under it.
 |---|---|
 | `invalid entry` | Empty, or contains a space |
 | `entry must be an IP, CIDR, or domain` | Not an address or CIDR, and not a valid domain with a dot |
-| `write .example.com, with a leading dot, ...` | A domain written `*.example.com` |
+| `send example.com with include_subdomains (or write .example.com, with a leading dot) ...` | A domain written `*.example.com` |
+| `include_subdomains applies to a domain, not to an IP address or network` | `include_subdomains` with an address or CIDR |
 | `entry already in allowlist` | A duplicate |
 
 ---

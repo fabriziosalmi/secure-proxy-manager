@@ -16,9 +16,9 @@ describe('describeAudit', () => {
       [row('import_ip_blacklist', 'https://lists.example/ips.txt', '{"added":50772,"bogon_skipped":3,"from":"url","skipped":3}'),
         'Imported 50,772 IPs from https://lists.example/ips.txt', '3 skipped (already listed or not valid). 3 private or LAN ranges left out'],
       [row('import_ip_blacklist', '', '{"added":1,"from":"paste","skipped":0}'), 'Added 1 IP to Blocked IPs from a pasted list', null],
-      [row('add_egress_allowlist', 'acme-v02.api.letsencrypt.org', 'certificate renewals'), 'Added acme-v02.api.letsencrypt.org to the egress allowlist', 'Note: certificate renewals'],
-      [row('add_ip_whitelist', '198.51.100.7', ''), 'Added 198.51.100.7 to Allowed IPs', null],
-      [row('remove_domain_whitelist', 'good.example'), 'Removed good.example from Allowed domains', null],
+      [row('add_egress_allowlist', 'acme-v02.api.letsencrypt.org', 'certificate renewals'), 'Added acme-v02.api.letsencrypt.org to the default-deny allowlist', 'Note: certificate renewals'],
+      [row('add_ip_whitelist', '198.51.100.7', ''), 'Added 198.51.100.7 to IP exceptions', null],
+      [row('remove_domain_whitelist', 'good.example'), 'Removed good.example from Domain exceptions', null],
       [row('bulk_remove_ip_blacklist', '', '{"removed":2}'), 'Removed 2 blocked IPs', 'A selection removed at once'],
       [row('clear_egress_allowlist', '', '{"removed":1}'), 'Removed the only egress destination', null],
       [row('geo_block', 'CN,RU', '{"added":8123,"countries":1,"failed":["RU: no data"],"requested":2}'), 'Blocked 8,123 address blocks of CN, RU', 'Not imported: RU: no data'],
@@ -37,15 +37,15 @@ describe('describeAudit', () => {
     }
   })
 
-  // One click on "+ Docker" wrote five rows "Added <domain> to Allowed domains".
+  // One click on "+ Docker" wrote five rows "Added <domain> to Domain exceptions".
   it('writes a preset as one event naming what it added', () => {
     expect(describeAudit(row('add_preset_domain_whitelist', 'Docker', '{"preset":"docker","added":4,"already":1,"domains":["docker.com","registry.docker.io","auth.docker.io","production.cloudflare.docker.com"]}'))).toEqual({
-      event: 'Added Docker (4 domains) to Allowed domains',
+      event: 'Added Docker (4 domains) to Domain exceptions',
       details: 'docker.com, registry.docker.io, auth.docker.io, production.cloudflare.docker.com. 1 already listed',
       kind: 'change',
     })
     expect(describeAudit(row('remove_source_domain_whitelist', 'docker', '{"removed":4,"kind":"preset","name":"Common services: Docker"}')).event)
-      .toBe('Removed 4 allowed domains of Common services: Docker')
+      .toBe('Removed 4 domain exceptions of Common services: Docker')
   })
 
   it('describes a refresh run of the worker, which writes as system', () => {
@@ -77,7 +77,7 @@ describe('describeAudit', () => {
   })
 
   it('reads the rows recorded before this change', () => {
-    expect(describeAudit(row('delete_ip', 'id=42', 'dst_allowlist')).event).toBe('Removed entry 42 from the egress allowlist')
+    expect(describeAudit(row('delete_ip', 'id=42', 'dst_allowlist')).event).toBe('Removed entry 42 from the default-deny allowlist')
     expect(describeAudit(row('delete_domain', 'id=7', 'domain_blacklist')).event).toBe('Removed entry 7 from Blocked domains')
     // #426 wrote the source removal as text.
     expect(describeAudit(row('remove_source_ip_blacklist', 'source=3', '4 entries removed'))).toEqual({

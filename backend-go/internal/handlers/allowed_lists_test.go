@@ -58,8 +58,8 @@ func TestAPasteOnAllowedDomainsSaysWhyEachLineIsRefused(t *testing.T) {
 		t.Fatalf("data = %v, want 1 added and 4 refused", data)
 	}
 	want := map[string]string{
-		".dot.example":   `".dot.example" is not an exact name: write dot.example. An allowed name takes that same name off Blocked domains, however it is written there, and covers no name under it`,
-		"*.star.example": `"*.star.example" is not an exact name: write star.example. An allowed name takes that same name off Blocked domains, however it is written there, and covers no name under it`,
+		".dot.example":   `".dot.example" is not an exact name: write dot.example. A domain exception takes that same name off Blocked domains, however it is written there, and covers no name under it`,
+		"*.star.example": `"*.star.example" is not an exact name: write star.example. A domain exception takes that same name off Blocked domains, however it is written there, and covers no name under it`,
 		"bad name":       `"bad name" is not a domain name: labels of letters, digits and hyphens separated by dots`,
 		"not!valid":      `"not!valid" is not a domain name: labels of letters, digits and hyphens separated by dots`,
 	}
@@ -85,16 +85,16 @@ func TestTheListRefusalsNameTheListAndTheReason(t *testing.T) {
 	h := listRouter(t, db, cfg)
 	for _, c := range []struct{ path, body, want string }{
 		{"/api/domain-whitelist", `{"domain":"github.com"}`, ""},
-		{"/api/domain-whitelist", `{"domain":"GitHub.com"}`, `"github.com" is already on Allowed domains`},
-		{"/api/domain-whitelist", `{"domain":".github.com"}`, `".github.com" is not an exact name: write github.com. An allowed name takes that same name off Blocked domains, however it is written there, and covers no name under it`},
-		{"/api/domain-whitelist", `{"domain":"*.github.com"}`, `"*.github.com" is not an exact name: write github.com. An allowed name takes that same name off Blocked domains, however it is written there, and covers no name under it`},
-		{"/api/domain-whitelist", `{"domain":"git?hub.com"}`, `"git?hub.com" is not an exact name: wildcards and regular expressions are not supported on Allowed domains`},
+		{"/api/domain-whitelist", `{"domain":"GitHub.com"}`, `"github.com" is already on Domain exceptions`},
+		{"/api/domain-whitelist", `{"domain":".github.com"}`, `".github.com" is not an exact name: write github.com. A domain exception takes that same name off Blocked domains, however it is written there, and covers no name under it`},
+		{"/api/domain-whitelist", `{"domain":"*.github.com"}`, `"*.github.com" is not an exact name: write github.com. A domain exception takes that same name off Blocked domains, however it is written there, and covers no name under it`},
+		{"/api/domain-whitelist", `{"domain":"git?hub.com"}`, `"git?hub.com" is not an exact name: wildcards and regular expressions are not supported on Domain exceptions`},
 		{"/api/domain-whitelist", `{"domain":"not valid"}`, `"not valid" is not a domain name: labels of letters, digits and hyphens separated by dots`},
 		{"/api/domain-blacklist", `{"domain":"ads.example"}`, ""},
 		{"/api/domain-blacklist", `{"domain":"ads.example"}`, `"ads.example" is already on Blocked domains`},
 		{"/api/domain-blacklist", `{"domain":"not valid"}`, `"not valid" is not a domain name: labels of letters, digits and hyphens separated by dots`},
 		{"/api/ip-whitelist", `{"ip":"203.0.113.9"}`, ""},
-		{"/api/ip-whitelist", `{"ip":"203.0.113.9"}`, `"203.0.113.9" is already on Allowed IPs`},
+		{"/api/ip-whitelist", `{"ip":"203.0.113.9"}`, `"203.0.113.9" is already on IP exceptions`},
 		{"/api/ip-whitelist", `{"ip":"300.1.1.1"}`, `"300.1.1.1" is not an IP address or network`},
 		{"/api/ip-blacklist", `{"ip":"203.0.113.9"}`, ""},
 		{"/api/ip-blacklist", `{"ip":"203.0.113.9"}`, `"203.0.113.9" is already on Blocked IPs`},

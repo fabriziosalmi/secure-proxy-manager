@@ -79,7 +79,7 @@ describe('Blacklists', () => {
     renderWithProviders(<Blacklists />)
     expect(screen.getByRole('heading', { level: 1, name: 'Blacklists' })).toBeInTheDocument()
     expect(screen.getByText('Protection')).toBeInTheDocument()
-    expect(screen.getAllByRole('tab').map((t) => t.textContent?.replace(/[\d,]/g, ''))).toEqual(['Blocked IPs', 'Blocked domains', 'Allowed IPs', 'Allowed domains'])
+    expect(screen.getAllByRole('tab').map((t) => t.textContent?.replace(/[\d,]/g, ''))).toEqual(['Blocked IPs', 'Blocked domains', 'IP exceptions', 'Domain exceptions'])
     expect(screen.getByRole('tab', { name: /Blocked IPs/ })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'bl-tab-blocked-ips')
     await screen.findByText('10.0.0.1')
@@ -100,9 +100,9 @@ describe('Blacklists', () => {
     renderWithProviders(<Blacklists />)
     await waitFor(() => expect(screen.getByRole('tab', { name: /Blocked IPs/ })).toHaveTextContent('50,772'))
     expect(screen.getByRole('tab', { name: /Blocked domains/ })).toHaveTextContent('640,929')
-    expect(screen.getByRole('tab', { name: /Allowed IPs/ })).toHaveTextContent('2')
+    expect(screen.getByRole('tab', { name: /IP exceptions/ })).toHaveTextContent('2')
     // The deprecated top-level total is 0 in every body here: it is not read.
-    expect(screen.getByRole('tab', { name: /Allowed domains/ })).toHaveTextContent('0')
+    expect(screen.getByRole('tab', { name: /Domain exceptions/ })).toHaveTextContent('0')
   })
 
   it('keeps the tab in the URL, so a link opens it and Back returns to the one before', async () => {
@@ -111,9 +111,9 @@ describe('Blacklists', () => {
     expect(screen.getByRole('tab', { name: /Blocked domains/ })).toHaveAttribute('aria-selected', 'true')
     await waitFor(() => expect(getCalls).toContain('domain-blacklist/sources'))
 
-    fireEvent.click(screen.getByRole('tab', { name: /Allowed IPs/ }))
+    fireEvent.click(screen.getByRole('tab', { name: /IP exceptions/ }))
     expect(window.location.search).toBe('?tab=allowed-ips')
-    expect(screen.getByRole('tab', { name: /Allowed IPs/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /IP exceptions/ })).toHaveAttribute('aria-selected', 'true')
 
     await act(async () => {
       window.history.back()
@@ -129,7 +129,7 @@ describe('Blacklists', () => {
     expect(screen.getByRole('tab', { name: /Blocked domains/ })).toHaveAttribute('aria-selected', 'true')
     expect(document.activeElement).toBe(screen.getByRole('tab', { name: /Blocked domains/ }))
     fireEvent.keyDown(document.activeElement!, { key: 'End' })
-    expect(screen.getByRole('tab', { name: /Allowed domains/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /Domain exceptions/ })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('lists each entry with its kind, its source and when it was added, in the viewer time zone', async () => {
@@ -202,7 +202,7 @@ describe('Blacklists', () => {
       const section = (await screen.findByRole('heading', { name: 'Enforcement' })).closest('section')!
       await within(section).findByText('640,929')
       expect(within(section).getByText('473,936')).toBeInTheDocument()
-      expect(within(section).getByText('Every entry but the 3 on Allowed domains')).toBeInTheDocument()
+      expect(within(section).getByText('Every entry but the 3 on Domain exceptions')).toBeInTheDocument()
       expect(within(section).getByText('No copy: 473,936 names is over its limit of 250,000')).toBeInTheDocument()
       expect(within(section).getByText('1,000,000 entries')).toBeInTheDocument()
       // The semantics db.go (EnforcedDomain) and the watchdog implement: "*."
@@ -217,7 +217,7 @@ describe('Blacklists', () => {
 
     // "Rewrite the DNS list" said neither that every list is sent again, the
     // proxy's included, nor when to use it; its toast counted the entries
-    // Allowed domains leaves out as written.
+    // Domain exceptions leaves out as written.
     it('blocked domains: the re-send button says what it sends and when, and the toast what was sent', async () => {
       go('?tab=blocked-domains')
       counts['domain-blacklist'] = 640929
@@ -228,7 +228,7 @@ describe('Blacklists', () => {
       expect(button).toHaveAccessibleDescription('Use it when a change has not taken effect.')
       fireEvent.click(button)
       await waitFor(() => expect(toast.success).toHaveBeenCalledWith(
-        'Lists sent again. 640,926 domain entries went to the DNS sinkhole, 3 left out by Allowed domains. The DNS sinkhole and the proxy reread them within a few seconds; this page cannot confirm it.'))
+        'Lists sent again. 640,926 domain entries went to the DNS sinkhole, 3 left out by Domain exceptions. The DNS sinkhole and the proxy reread them within a few seconds; this page cannot confirm it.'))
       expect(api.post).toHaveBeenCalledWith('maintenance/reload-dns')
     })
 
@@ -265,7 +265,7 @@ describe('Blacklists', () => {
       const section = (await screen.findByRole('heading', { name: 'Enforcement' })).closest('section')!
       expect(await within(section).findByText('32,215')).toBeInTheDocument()
       expect(within(section).getByText(/^Merged from 50,772 entries, recorded /)).toBeInTheDocument()
-      expect(within(section).getByText(/The proxy checks this list before Allowed IPs, so an address on both stays blocked/)).toBeInTheDocument()
+      expect(within(section).getByText(/The proxy checks this list before IP exceptions, so an address on both stays blocked/)).toBeInTheDocument()
     })
 
     it('says "Not reported" when the proxy has written no IP record', async () => {
@@ -274,7 +274,7 @@ describe('Blacklists', () => {
       expect(await screen.findByText('Not reported: the proxy has not recorded it')).toBeInTheDocument()
     })
 
-    it('allowed domains: says which blocked forms a name takes out, as the exporter does', async () => {
+    it('domain exceptions: says which blocked forms a name takes out, as the exporter does', async () => {
       go('?tab=allowed-domains')
       renderWithProviders(<Blacklists />)
       // db.go loadWhitelistSet compares EnforcedDomain of both sides.
@@ -283,10 +283,12 @@ describe('Blacklists', () => {
       expect(screen.getByText('Blocked domains this list overrides')).toBeInTheDocument()
     })
 
-    it('allowed IPs: says the blocked lists are checked first', async () => {
+    it('IP exceptions: says the blocked lists are checked first', async () => {
       go('?tab=allowed-ips')
       renderWithProviders(<Blacklists />)
       expect(await screen.findByText(/It checks Blocked IPs and Blocked domains first, so an entry here does not override them/)).toBeInTheDocument()
+      // Said on the Default-deny allowlist page, and now here too: this list changes what default deny lets through.
+      expect(screen.getByText(/With default deny on, clients reach these addresses too, whether or not the default-deny allowlist names them\./)).toBeInTheDocument()
       expect(screen.getByText('Not reported: the proxy has not recorded it')).toBeInTheDocument()
     })
   })
@@ -395,6 +397,23 @@ describe('Blacklists', () => {
       if (method) fireEvent.click(within(screen.getByRole('group', { name: 'How to add' })).getByRole('button', { name: method }))
     }
 
+    // A leading dot meant the name and its subdomains on the egress list, the
+    // name itself on Blocked domains and a refusal on the exceptions. Every
+    // form that takes domains now says what a domain covers in the same words.
+    it.each(['blocked-domains', 'allowed-domains'])('%s: says what a domain covers in the words every domain form uses', (tab) => {
+      go(`?tab=${tab}`)
+      renderWithProviders(<Blacklists />)
+      open()
+      expect(document.querySelector('[data-help="domain-scope"]')).toHaveTextContent(
+        'A domain covers that exact name only: example.com does not cover www.example.com. This list has no way to cover the names under it.')
+    })
+
+    it('says nothing about domains on an IP list', () => {
+      renderWithProviders(<Blacklists />)
+      open()
+      expect(document.querySelector('[data-help="domain-scope"]')).toBeNull()
+    })
+
     it('offers every way to add to a blocked IP list, Geo-block included', () => {
       renderWithProviders(<Blacklists />)
       open()
@@ -464,8 +483,8 @@ describe('Blacklists', () => {
     // Then it posted each line to the single add, which recorded every entry
     // as Manual. It goes to the allowed list's own import, one paste source.
     describe.each([
-      ['allowed-ips', 'ip-whitelist', 'Allowed IPs', '203.0.113.7\n198.51.100.0/24'],
-      ['allowed-domains', 'domain-whitelist', 'Allowed domains', 'trusted.example.com\nok.example.org'],
+      ['allowed-ips', 'ip-whitelist', 'IP exceptions', '203.0.113.7\n198.51.100.0/24'],
+      ['allowed-domains', 'domain-whitelist', 'Domain exceptions', 'trusted.example.com\nok.example.org'],
     ])('a pasted list on %s', (tab, endpoint, label, text) => {
       it('goes to the allowed list\'s own import in one request, never to a blocked one', async () => {
         go(`?tab=${tab}`)
@@ -484,7 +503,7 @@ describe('Blacklists', () => {
       go('?tab=allowed-domains')
       vi.mocked(api.post).mockResolvedValueOnce({ data: { status: 'success', data: {
         added: 1, skipped: 1, refused: 2, refusals: [
-          { entry: '.dot.example', reason: '".dot.example" is not an exact name: write dot.example. An allowed name takes that same name off Blocked domains, however it is written there, and covers no name under it' },
+          { entry: '.dot.example', reason: '".dot.example" is not an exact name: write dot.example. A domain exception takes that same name off Blocked domains, however it is written there, and covers no name under it' },
           { entry: 'bad name', reason: '"bad name" is not a domain name: labels of letters, digits and hyphens separated by dots' },
         ] } } } as never)
       renderWithProviders(<Blacklists />)
@@ -492,12 +511,12 @@ describe('Blacklists', () => {
       fireEvent.change(screen.getByLabelText('Entries, one per line'), { target: { value: 'ok.example\nok.example\n.dot.example\nbad name' } })
       fireEvent.click(screen.getByRole('button', { name: 'Add pasted entries' }))
       expect(await screen.findByRole('alert')).toHaveTextContent(
-        'Added 1 entry to Allowed domains, 1 already listed; 2 refused: ".dot.example" is not an exact name: write dot.example. ' +
-        'An allowed name takes that same name off Blocked domains, however it is written there, and covers no name under it; ' +
+        'Added 1 entry to Domain exceptions, 1 already listed; 2 refused: ".dot.example" is not an exact name: write dot.example. ' +
+        'A domain exception takes that same name off Blocked domains, however it is written there, and covers no name under it; ' +
         '"bad name" is not a domain name: labels of letters, digits and hyphens separated by dots.')
     })
 
-    it('says the name to write for a leading dot on Allowed domains, before any request', async () => {
+    it('says the name to write for a leading dot on Domain exceptions, before any request', async () => {
       go('?tab=allowed-domains')
       renderWithProviders(<Blacklists />)
       open()

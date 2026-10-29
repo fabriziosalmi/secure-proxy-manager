@@ -63,7 +63,7 @@ depends on changes, unlike `version` in `/api/health`, which is the release.
 ## Lists
 
 `{list}` is one of `ip-blacklist`, `domain-blacklist`, `ip-whitelist`,
-`domain-whitelist`. Details: [Blacklist and Whitelist API](./blacklists.md).
+`domain-whitelist`. Details: [Blacklist and exception API](./blacklists.md).
 
 | Method | Path | Description |
 |---|---|---|
@@ -77,21 +77,21 @@ depends on changes, unlike `version` in `/api/health`, which is the release.
 | `GET`    | `/api/{list}/export` | Every entry, one per line, as text |
 | `POST`   | `/api/blacklists/import` | Import into the IP or domain blacklist from a URL or pasted content |
 | `POST`   | `/api/blacklists/import-geo` | Import countries' IPv4 blocks into the IP blacklist |
-| `POST`   | `/api/ip-whitelist/import`, `/api/domain-whitelist/import` | Add a pasted list to an allowed list as one pasted-list source |
+| `POST`   | `/api/ip-whitelist/import`, `/api/domain-whitelist/import` | Add a pasted list to IP exceptions or Domain exceptions as one pasted-list source |
 | `GET`    | `/api/blacklists/enforcement` | What enforces each list, from the proxy's records |
 | `POST`   | `/api/ip-blacklist/import`, `/api/domain-blacklist/import` | Retired: `410 Gone`, use `/api/blacklists/import` |
 
-## Egress allowlist
+## Default-deny allowlist
 
-Used only while the `egress_default_deny` setting is `true` (default
+The UI's Default-deny allowlist; the API path is `egress-allowlist`. Used only while the `egress_default_deny` setting is `true` (default
 `false`); the setting is changed through `POST /api/settings`. See
-[Egress allowlist](./blacklists.md#egress-allowlist) and
+[Default-deny allowlist](./blacklists.md#egress-allowlist) and
 [Egress provider lists](./blacklists.md#egress-providers).
 
 | Method | Path | Description |
 |---|---|---|
 | `GET`    | `/api/egress-allowlist` | List manual entries |
-| `POST`   | `/api/egress-allowlist` | Add a manual entry (`{"entry": "<ip, cidr or domain>", "description": "<optional>"}`) |
+| `POST`   | `/api/egress-allowlist` | Add a manual entry (`{"entry": "<ip, cidr or domain>", "include_subdomains": <optional, domains only>, "description": "<optional>"}`) |
 | `DELETE` | `/api/egress-allowlist/{id}` | Delete a manual entry |
 | `POST`   | `/api/egress-allowlist/bulk-delete` | Delete manual entries by ID |
 | `DELETE` | `/api/egress-allowlist/clear-all` | Delete every manual entry |

@@ -17,6 +17,24 @@ for at least one minor release before disappearing.
 
 ### Changed
 
+- **One name per allow concept, and one subdomain rule.** "Allowed",
+  "whitelist" and "allowlist" named two different things. The exceptions to
+  the blacklists, never blocked, are now the **IP exceptions** and **Domain
+  exceptions** tabs; the list of what clients may reach while default deny is
+  on is the **Default-deny allowlist** page. The UI no longer shows the word
+  "whitelist", and the backend's list refusals and import messages use the
+  new names ("is already on Domain exceptions"). Routes, `?tab=` keys and API
+  paths do not change. A leading dot meant the name and its subdomains on the
+  egress list, the name itself on Blocked domains and a refusal on the
+  exceptions: the forms no longer ask for it. `POST /api/egress-allowlist`
+  takes `include_subdomains` (default `false`, refused for an address); the
+  entry is still stored, exported and listed as `.example.com`, and a leading
+  dot in `entry` is still accepted. The Default-deny allowlist form has an
+  "Include subdomains" checkbox and shows such an entry as its name with
+  "Domain and its subdomains" beside it. Every form that takes domains says
+  what a domain covers in the same words. The IP exceptions Enforcement card
+  says that clients reach those addresses with default deny on, as the
+  Default-deny allowlist page already did.
 - **Every audit event reads as a sentence, in plain text.** The egress
   provider events showed their raw key and JSON (`egress_provider_disabled`,
   `telegram. {"kind":"catalog"}`); they now read "Turned off the provider list

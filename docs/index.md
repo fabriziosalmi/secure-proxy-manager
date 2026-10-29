@@ -24,7 +24,7 @@ hero:
 
 features:
   - title: Egress control
-    details: Blocked and allowed IPs and domains (single addresses, CIDR ranges, exact names), imports from a URL, pasted text, curated lists or a country's address blocks, and an optional default-deny egress allowlist.
+    details: Blocked IPs and domains and their exceptions (single addresses, CIDR ranges, exact names), imports from a URL, pasted text, curated lists or a country's address blocks, and an optional default-deny allowlist.
   - title: WAF over ICAP
     details: 172 request rules in 21 categories, 5 response rules in 2, six behavioural heuristics and anomaly scoring, with runtime toggles per category. Fails closed by default.
   - title: DNS sinkhole

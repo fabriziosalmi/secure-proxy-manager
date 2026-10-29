@@ -25,6 +25,7 @@ import { Section } from '../ui/Section';
 import { SegmentedControl } from '../ui/SegmentedControl';
 import { methodsFor, type AddMethod, type ListDef } from './lists';
 import { popularDomainLists, popularIpLists } from './popularLists';
+import { DomainScopeHelp } from '../ui/DomainScopeHelp';
 
 const METHOD_LABELS: Record<AddMethod, string> = {
   single: 'Single entry',
@@ -131,7 +132,7 @@ export function AddEntries({ list, method, onMethodChange, onChanged, onClose }:
     // subdomains", and an allowed name covers none.
     const exact = v.replace(/^(\*\.)?\.*/, '');
     if (list.allowed && list.field === 'domain' && exact !== v && isValidDomain(exact)) {
-      setError(`"${v}" is not an exact name: write ${exact}. An allowed name takes that same name off Blocked domains, however it is written there, and covers no name under it.`);
+      setError(`"${v}" is not an exact name: write ${exact}. A domain exception takes that same name off Blocked domains, however it is written there, and covers no name under it.`);
       return;
     }
     if (list.field === 'ip' ? !isValidIP(v) : !isValidDomain(v)) {
@@ -322,6 +323,7 @@ export function AddEntries({ list, method, onMethodChange, onChanged, onClose }:
         </div>
         {errorBox}
         {body}
+        {list.field === 'domain' && <DomainScopeHelp />}
       </div>
     </Section>
   );

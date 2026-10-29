@@ -44,7 +44,7 @@ describe('controls have an accessible name', () => {
     expect(screen.getByRole('combobox', { name: 'Kind' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Destination' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Note (optional)' })).toBeInTheDocument()
-    expect(screen.getByRole('searchbox', { name: 'Search the egress allowlist' })).toBeInTheDocument()
+    expect(screen.getByRole('searchbox', { name: 'Search the default-deny allowlist' })).toBeInTheDocument()
   })
 
   it('Blacklists search', () => {

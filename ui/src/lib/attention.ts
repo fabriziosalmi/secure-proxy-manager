@@ -99,9 +99,9 @@ export function needsAttention({ values, secrets, proxyStatus, egressTotal, egre
 
   if (on('egress_default_deny')) {
     if (effectiveEgressTotal === 0) {
-      items.push({ id: 'egress-empty', posture: 'needs-attention', title: 'Clients reach only LAN destinations and Allowed IPs', body: `Only allowlisted destinations is on and the egress allowlist is empty. ${EGRESS_EMPTY_REACH}`, section: 'filtering', action: 'Filtering' });
+      items.push({ id: 'egress-empty', posture: 'needs-attention', title: 'Clients reach only LAN destinations and IP exceptions', body: `Only allowlisted destinations is on and the default-deny allowlist is empty. ${EGRESS_EMPTY_REACH}`, section: 'filtering', action: 'Filtering' });
     } else if (effectiveEgressTotal === null) {
-      items.push({ id: 'egress-unknown', posture: 'needs-attention', title: 'The egress allowlist could not be read', body: 'Only allowlisted destinations is on, and this page cannot tell how many destinations are allowed.', section: 'filtering', action: 'Filtering' });
+      items.push({ id: 'egress-unknown', posture: 'needs-attention', title: 'The default-deny allowlist could not be read', body: 'Only allowlisted destinations is on, and this page cannot tell how many destinations are allowed.', section: 'filtering', action: 'Filtering' });
     }
   }
 

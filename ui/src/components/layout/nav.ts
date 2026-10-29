@@ -32,7 +32,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Protection',
     items: [
       { to: '/blacklists', label: 'Blacklists', icon: Ban },
-      { to: '/egress', label: 'Egress allowlist', icon: ArrowUpFromLine },
+      { to: '/egress', label: 'Default-deny allowlist', icon: ArrowUpFromLine },
     ],
   },
   {

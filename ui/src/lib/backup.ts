@@ -7,10 +7,10 @@
 
 export const LIST_LABELS: Record<string, string> = {
   ip_blacklist: 'IP blacklist',
-  ip_whitelist: 'IP whitelist',
+  ip_whitelist: 'IP exceptions',
   domain_blacklist: 'Domain blacklist',
-  domain_whitelist: 'Domain whitelist',
-  dst_allowlist: 'Egress allowlist',
+  domain_whitelist: 'Domain exceptions',
+  dst_allowlist: 'Default-deny allowlist',
 };
 
 export interface BackupEnvelope {

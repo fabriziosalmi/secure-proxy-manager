@@ -33,6 +33,10 @@ type DomainListItem struct {
 type EgressAllowItem struct {
 	Entry       string `json:"entry"       validate:"required,max=253"`
 	Description string `json:"description" validate:"max=500"`
+	// IncludeSubdomains allows a domain and every name under it. It is stored
+	// as the leading-dot form Squid's dstdomain reads (".example.com"), which
+	// the API also still accepts in Entry.
+	IncludeSubdomains bool `json:"include_subdomains"`
 }
 
 type InternalAlert struct {

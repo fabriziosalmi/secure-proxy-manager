@@ -16,7 +16,7 @@ const PAGES: { path: string; heading: string }[] = [
   { path: '/blacklists', heading: 'Blacklists' },
   { path: '/blacklists?tab=blocked-domains', heading: 'Blacklists' },
   { path: '/blacklists?tab=allowed-domains', heading: 'Blacklists' },
-  { path: '/egress', heading: 'Egress allowlist' },
+  { path: '/egress', heading: 'Default-deny allowlist' },
   { path: '/settings/overview', heading: 'Settings' },
   { path: '/audit', heading: 'Audit log' },
 ];

@@ -135,7 +135,7 @@ describe('shell on a wide screen', () => {
     expect(byGroup).toEqual({
       Insights: [['Overview', '/'], ['Analytics', '/analytics']],
       Traffic: [['Access logs', '/logs'], ['Clients', '/clients']],
-      Protection: [['Blacklists', '/blacklists'], ['Egress allowlist', '/egress']],
+      Protection: [['Blacklists', '/blacklists'], ['Default-deny allowlist', '/egress']],
       System: [['Settings', '/settings'], ['Audit log', '/audit']],
     })
     const dash = within(mainNav()).getByRole('link', { name: 'Overview' })
