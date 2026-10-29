@@ -112,6 +112,12 @@ function setViewport(desktop: boolean) {
 
 const table = () => screen.getByRole('table', { name: 'Access log requests' })
 const bodyRows = () => within(table()).getAllByRole('row').slice(1)
+// One cell of a row by its column. On a phone the row repeats the outcome
+// under the destination; jsdom applies no breakpoint, so both are in the DOM.
+const cellOf = (row: HTMLElement, header: string) => {
+  const i = within(table()).getAllByRole('columnheader').findIndex((h) => h.textContent === header)
+  return within(row).getAllByRole('cell')[i]
+}
 const destinations = () => bodyRows().map((r) => within(r).getAllByRole('button')[0].textContent)
 
 async function openSocket() {
@@ -178,14 +184,14 @@ describe('Logs', () => {
     expect(within(a).getByRole('button', { name: 'example.com:443' })).toHaveAttribute('title', 'example.com:443')
     expect(within(a).getByText('200')).toHaveClass('text-success')
     expect(within(a).getByText('HTTPS tunnel')).toHaveAttribute('title', 'TCP_TUNNEL/200')
-    expect(within(a).getByText('Allowed')).toHaveAttribute('data-tone', 'success')
+    expect(within(cellOf(a, 'Outcome')).getByText('Allowed')).toHaveAttribute('data-tone', 'success')
     expect(within(a).getByText('1.2 KB')).toBeInTheDocument()
 
     expect(within(dns).getByText('403')).toHaveClass('text-danger')
-    expect(within(dns).getByText('Domain blacklist (DNS)')).toHaveAttribute('data-tone', 'danger')
-    expect(within(waf).getByText('WAF')).toHaveAttribute('data-tone', 'danger')
+    expect(within(cellOf(dns, 'Outcome')).getByText('Domain blacklist (DNS)')).toHaveAttribute('data-tone', 'danger')
+    expect(within(cellOf(waf, 'Outcome')).getByText('WAF')).toHaveAttribute('data-tone', 'danger')
     expect(within(waf).getByText('205 B')).toBeInTheDocument()
-    expect(within(old).getByText('Unclassified (no reason recorded)')).toHaveAttribute('data-tone', 'neutral')
+    expect(within(cellOf(old, 'Outcome')).getByText('Unclassified (no reason recorded)')).toHaveAttribute('data-tone', 'neutral')
   })
 
   // The column was headed "Rule" and said "Allowed" for a request no rule
@@ -197,10 +203,10 @@ describe('Logs', () => {
     expect(headers).toContain('Outcome')
     expect(headers).not.toContain('Rule')
     const [a, dns, waf, old] = bodyRows()
-    expect(within(dns).getByText('Domain blacklist (DNS)')).toHaveTextContent('Blocked by Domain blacklist (DNS)')
-    expect(within(waf).getByText('WAF')).toHaveTextContent('Blocked by WAF')
-    expect(within(old).getByText('Unclassified (no reason recorded)')).toHaveTextContent('Blocked: Unclassified (no reason recorded)')
-    expect(within(a).getByText('Allowed')).toHaveTextContent(/^Allowed$/)
+    expect(within(cellOf(dns, 'Outcome')).getByText('Domain blacklist (DNS)')).toHaveTextContent('Blocked by Domain blacklist (DNS)')
+    expect(within(cellOf(waf, 'Outcome')).getByText('WAF')).toHaveTextContent('Blocked by WAF')
+    expect(within(cellOf(old, 'Outcome')).getByText('Unclassified (no reason recorded)')).toHaveTextContent('Blocked: Unclassified (no reason recorded)')
+    expect(within(cellOf(a, 'Outcome')).getByText('Allowed')).toHaveTextContent(/^Allowed$/)
     expect(within(dns).getByText('Refused by the proxy')).toBeInTheDocument()
     expect(within(waf).getByText('Not forwarded')).toBeInTheDocument()
     for (const r of bodyRows()) expect(r.textContent).not.toMatch(/TCP_|NONE_NONE/)
@@ -240,7 +246,7 @@ describe('Logs', () => {
     const [failed] = bodyRows()
     expect(within(failed).getByText('503')).toHaveClass('text-warning')
     expect(within(failed).getByText('503')).not.toHaveClass('text-success')
-    expect(within(failed).getByText('Allowed')).toHaveAttribute('data-tone', 'success')
+    expect(within(cellOf(failed, 'Outcome')).getByText('Allowed')).toHaveAttribute('data-tone', 'success')
     logsBody = () => page([allowed, dnsBlock, wafBlock, oldBlock])
   })
 

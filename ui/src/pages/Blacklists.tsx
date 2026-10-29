@@ -67,6 +67,20 @@ function ListTabs({ active, counts, onSelect }: {
   onSelect: (k: ListKey) => void;
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const listRef = useRef<HTMLDivElement>(null);
+  // On a phone the tabs are one row that scrolls sideways: the selected one
+  // is brought into view, also when a link opens a tab past the edge and
+  // when the counts arrive and widen the tabs. Only the row scrolls, never
+  // the page (scrollIntoView would move the page to the tabs).
+  const widths = counts.map((c) => c.data ?? '').join();
+  useEffect(() => {
+    const list = listRef.current;
+    const tab = refs.current[LISTS.findIndex((l) => l.key === active)];
+    if (!list || !tab) return;
+    const left = tab.offsetLeft - list.offsetLeft;
+    if (left < list.scrollLeft) list.scrollLeft = left;
+    else if (left + tab.offsetWidth > list.scrollLeft + list.clientWidth) list.scrollLeft = left + tab.offsetWidth - list.clientWidth;
+  }, [active, widths]);
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const i = LISTS.findIndex((l) => l.key === active);
     let next = -1;
@@ -80,7 +94,7 @@ function ListTabs({ active, counts, onSelect }: {
     refs.current[next]?.focus();
   };
   return (
-    <div role="tablist" aria-label="Lists" onKeyDown={onKey} className="flex flex-wrap gap-1 border-b border-line">
+    <div ref={listRef} role="tablist" aria-label="Lists" onKeyDown={onKey} className="flex gap-1 overflow-x-auto shadow-[inset_0_-1px_0_var(--color-line)]">
       {LISTS.map((l, i) => {
         const sel = l.key === active;
         const c = counts[i];
@@ -99,7 +113,7 @@ function ListTabs({ active, counts, onSelect }: {
             tabIndex={sel ? 0 : -1}
             onClick={() => onSelect(l.key)}
             className={cn(
-              '-mb-px flex h-11 items-center gap-2 border-b-2 px-3 text-sm transition-colors sm:px-3.5',
+              'flex h-11 shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 text-sm transition-colors sm:px-3.5',
               'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
               sel ? 'border-accent font-semibold text-accent' : 'border-transparent font-medium text-ink-muted hover:text-ink',
             )}

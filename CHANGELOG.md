@@ -89,6 +89,15 @@ for at least one minor release before disappearing.
   gives the exact time with the zone, and the Access logs say which zone
   their times are in. A pasted or restored source still names its time to
   the second, so two pastes a minute apart read differently.
+- **On a phone the Blacklists tabs stay on one line and the access log
+  shows each request's destination and outcome without scrolling.** At 390
+  px the four tabs took three lines; they are now one row that scrolls
+  sideways and keeps the selected tab in view. The access log row put the
+  outcome past the right edge, behind the time, client, request and result
+  columns; on a phone each row is now the destination with, under it, the
+  outcome, the time and the client, and the Result and Size columns are
+  left out (the request details have them). The layout suite measures both
+  at 390 px.
 - **The access log shows the outcome of each request and the proxy result in
   words.** The column headed "Rule" said "Allowed" for every request no rule
   touched; it is now "Outcome": "Allowed", or the rule that blocked the
