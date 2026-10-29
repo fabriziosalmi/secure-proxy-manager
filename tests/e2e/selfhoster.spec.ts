@@ -670,7 +670,7 @@ test.describe('UI: Analytics', () => {
     await page.goto('/threats');
     await expect(page).toHaveURL(/\/analytics$/);
     await expect(page.getByRole('heading', { level: 1, name: 'Analytics' })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('Last 7 days, client traffic only. Times are your local time.')).toBeVisible();
+    await expect(page.getByText('Client traffic of the last 7 days, and what protection is on now. Each section says what it counts. Times are your local time.')).toBeVisible();
     await expect(page.getByRole('heading', { level: 2 })).toHaveText([
       'Blocked requests per day, by rule',
       'Protection coverage',
@@ -937,7 +937,7 @@ test.describe('UI — Blacklists (Blocked IPs)', () => {
     }
     // This stack runs no proxy, so its record of the merged networks is missing,
     // and the page says so instead of a number.
-    await expect(page.getByText('Not reported: the proxy has not written ip_blacklist_acl_status.json')).toBeVisible();
+    await expect(page.getByText('Not reported: the proxy has not recorded it')).toBeVisible();
   });
 
   test('Add a single IP: it is listed as Manual, and removed after a confirmation naming it', async ({ page }) => {
@@ -950,7 +950,9 @@ test.describe('UI — Blacklists (Blocked IPs)', () => {
     ]);
     expect([200, 400]).toContain(resp.status()); // 400 = duplicate on retry
     const row = await findEntry(page, testIp);
-    await expect(row.getByText('Manual')).toBeVisible();
+    // The source is in the sources table; the entries table leaves its Source
+    // column out while the list has one source.
+    await expect(page.getByRole('table', { name: /^Sources of / }).getByText('Manual', { exact: true }).first()).toBeVisible();
     await expect(row.getByText('IP', { exact: true })).toBeVisible();
 
     await row.getByRole('button', { name: `Remove ${testIp}` }).click();
@@ -970,7 +972,7 @@ test.describe('UI — Blacklists (Blocked IPs)', () => {
     await expect(page.getByText(/^Added 3 entries/)).toBeVisible({ timeout: 15_000 });
 
     const row = await findEntry(page, ips[0]);
-    await expect(row.getByText('Pasted list')).toBeVisible();
+    await expect(page.getByRole('table', { name: /^Sources of / }).getByText('Pasted list', { exact: true }).first()).toBeVisible();
 
     // Sources are listed most recently added first: this paste is the top
     // row, and its button names it with the time it was pasted.
@@ -1097,10 +1099,13 @@ test.describe('UI — Blacklists (Blocked domains)', () => {
   test('says what enforces the list, and how "*." entries match', async ({ page }) => {
     const enforcement = page.getByRole('region', { name: 'Enforcement' });
     await expect(enforcement.getByText('DNS sinkhole', { exact: true })).toBeVisible();
-    await expect(enforcement.getByText('Set by SPM_DNS_BLOCKLIST_MAX_DOMAINS.')).toBeVisible();
+    await expect(enforcement.getByText('Limit', { exact: true })).toBeVisible();
     // This stack runs no proxy; a record left in ./config from another run
-    // would say whether Squid holds a copy instead.
-    await expect(enforcement.getByText(/^(Not reported: the proxy has not written domain_acl_status\.json|Its own copy of all|No copy:)/)).toBeVisible();
+    // would say whether the proxy holds a copy instead.
+    await expect(enforcement.getByText(/^(Not reported: the proxy has not recorded whether it holds a copy|Its own copy of all|No copy:)/)).toBeVisible();
+    // The variables that set the limits are under How it works.
+    await enforcement.getByText('How it works', { exact: true }).click();
+    await expect(enforcement.getByText(/which is why SPM_DNS_BLOCKLIST_MAX_DOMAINS limits the list\./)).toBeVisible();
     await expect(enforcement.getByText(/"\*\.example\.com" and "\.example\.com" each block example\.com itself/)).toBeVisible();
   });
 
@@ -1169,8 +1174,10 @@ test.describe('UI — Blacklists (Allowed lists)', () => {
     ]);
     expect([200, 400]).toContain(resp.status()); // 400 = duplicate on retry
     const row = await findEntry(page, allowed);
-    await expect(row.getByText('Manual')).toBeVisible();
-    await expect(row.getByText('Network /28')).toBeVisible();
+    // The source is in the sources table; the entries table leaves its Source
+    // column out while the list has one source.
+    await expect(page.getByRole('table', { name: /^Sources of / }).getByText('Manual', { exact: true }).first()).toBeVisible();
+    await expect(row.getByText('Network, 16 addresses')).toBeVisible();
   });
 
   test('the Allowed domains tab offers the common services that used to sit in Settings', async ({ page }) => {

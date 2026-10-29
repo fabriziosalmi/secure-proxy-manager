@@ -186,6 +186,21 @@ describe('Maintenance', () => {
     await expectNoAxeViolations(container)
   })
 
+  // "Clear the log" sat on the access log page and "Reset statistics" here;
+  // both delete every logged request, and nothing said only one resets the WAF.
+  it('clears the access log beside Reset statistics, and says the WAF keeps its counters', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { status: 'success', message: 'All logs cleared' } } as never)
+    renderWithProviders(<Maintenance />)
+    expect(screen.getByText('Deletes every logged request. The WAF keeps its counters.')).toBeInTheDocument()
+    expect(screen.getByText("Deletes every logged request, as Clear the access log does, and resets the WAF's counters.")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear the log' }))
+    const ask = await screen.findByRole('alertdialog', { name: 'Clear the access log?' })
+    expect(ask).toHaveTextContent('The WAF keeps its counters and the audit log is kept.')
+    fireEvent.click(within(ask).getByRole('button', { name: 'Clear the log' }))
+    expect(await screen.findByText('The access log is empty. The WAF kept its counters.')).toBeInTheDocument()
+    expect(api.post).toHaveBeenCalledWith('logs/clear')
+  })
+
   it('does nothing destructive when the confirmation is cancelled', async () => {
     renderWithProviders(<Maintenance />)
     fireEvent.click(screen.getByRole('button', { name: 'Reset statistics' }))

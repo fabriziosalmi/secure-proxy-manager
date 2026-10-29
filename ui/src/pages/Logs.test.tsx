@@ -4,7 +4,7 @@ import { renderWithProviders, setRomeTimeZone } from '../test/helpers'
 import { expectNoAxeViolations } from '../test/axe'
 import { api } from '../lib/api'
 import { DESKTOP_QUERY } from '../hooks/useMediaQuery'
-import { Logs, PAGE_SIZE, SHOW_INTERNAL_TRAFFIC_KEY } from './Logs'
+import { Logs, MAX_LOADED, PAGE_SIZE, SHOW_INTERNAL_TRAFFIC_KEY } from './Logs'
 import type { LogEntry } from '../types'
 
 // Rows as GET /api/logs returns them (logRow.wire in
@@ -167,7 +167,7 @@ describe('Logs', () => {
     expect(p.has('include_internal')).toBe(false)
   })
 
-  it('draws each row as the mockup does: client and kind, method and destination, result, rule, size', async () => {
+  it('draws each row as the mockup does: client and kind, method and destination, result, outcome, size', async () => {
     renderWithProviders(<Logs />)
     await waitFor(() => expect(bodyRows()).toHaveLength(4))
     const [a, dns, waf, old] = bodyRows()
@@ -176,7 +176,7 @@ describe('Logs', () => {
     expect(within(a).getByText('CONNECT')).toBeInTheDocument()
     expect(within(a).getByRole('button', { name: 'example.com:443' })).toHaveAttribute('title', 'example.com:443')
     expect(within(a).getByText('200')).toHaveClass('text-success')
-    expect(within(a).getByText('TCP_TUNNEL')).toBeInTheDocument()
+    expect(within(a).getByText('HTTPS tunnel')).toHaveAttribute('title', 'TCP_TUNNEL/200')
     expect(within(a).getByText('Allowed')).toHaveAttribute('data-tone', 'success')
     expect(within(a).getByText('1.2 KB')).toBeInTheDocument()
 
@@ -185,6 +185,36 @@ describe('Logs', () => {
     expect(within(waf).getByText('WAF')).toHaveAttribute('data-tone', 'danger')
     expect(within(waf).getByText('205 B')).toBeInTheDocument()
     expect(within(old).getByText('Unclassified (no reason recorded)')).toHaveAttribute('data-tone', 'neutral')
+  })
+
+  // The column was headed "Rule" and said "Allowed" for a request no rule
+  // touched; the result read "200 TCP_TUNNEL" and "403 NONE_NONE".
+  it('heads the rule column Outcome, names a block "Blocked by <rule>" and says the proxy result in words', async () => {
+    renderWithProviders(<Logs />)
+    await waitFor(() => expect(bodyRows()).toHaveLength(4))
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent)
+    expect(headers).toContain('Outcome')
+    expect(headers).not.toContain('Rule')
+    const [a, dns, waf, old] = bodyRows()
+    expect(within(dns).getByText('Domain blacklist (DNS)')).toHaveTextContent('Blocked by Domain blacklist (DNS)')
+    expect(within(waf).getByText('WAF')).toHaveTextContent('Blocked by WAF')
+    expect(within(old).getByText('Unclassified (no reason recorded)')).toHaveTextContent('Blocked: Unclassified (no reason recorded)')
+    expect(within(a).getByText('Allowed')).toHaveTextContent(/^Allowed$/)
+    expect(within(dns).getByText('Refused by the proxy')).toBeInTheDocument()
+    expect(within(waf).getByText('Not forwarded')).toBeInTheDocument()
+    for (const r of bodyRows()) expect(r.textContent).not.toMatch(/TCP_|NONE_NONE/)
+  })
+
+  // A DNS sinkhole row carries the answer, not an HTTP code: "0.0.0.0" was
+  // drawn in the code's place.
+  it('draws a DNS sinkhole row without an HTTP code', async () => {
+    logsBody = () => page([row({ id: 8, method: '', destination: 'ads.example.net', status: 'DNS_SINKHOLE/0.0.0.0', blocked: true, reason: 'domain_blacklist_dns', reason_label: 'Domain blacklist (DNS)' })])
+    renderWithProviders(<Logs />)
+    await waitFor(() => expect(bodyRows()).toHaveLength(1))
+    const [sink] = bodyRows()
+    expect(within(sink).getByText('Answered by the DNS sinkhole')).toBeInTheDocument()
+    expect(within(sink).queryByText('0.0.0.0')).toBeNull()
+    logsBody = () => page([allowed, dnsBlock, wafBlock, oldBlock])
   })
 
   // A 503 to a name that does not resolve was let through by the proxy and
@@ -325,10 +355,30 @@ describe('Logs', () => {
     expect(screen.queryByRole('button', { name: 'Load older' })).not.toBeInTheDocument()
   })
 
+  // "Load older" added 100 rows a click without end; at 3,100 rows a click
+  // took 248 ms with the CPU slowed four times. It stops at MAX_LOADED.
+  it('stops loading older rows at MAX_LOADED and says how to reach the rest', async () => {
+    logsBody = (url) => {
+      const before = Number(new URLSearchParams(url.split('?')[1]).get('before_id') ?? 100001)
+      return page(Array.from({ length: PAGE_SIZE }, (_, i) => row({ id: before - 1 - i, destination: `h${before - 1 - i}.example.com:443` })), { total: 100000 })
+    }
+    renderWithProviders(<Logs />)
+    for (let loaded = PAGE_SIZE; loaded < MAX_LOADED; loaded += PAGE_SIZE) {
+      await waitFor(() => expect(bodyRows()).toHaveLength(loaded))
+      fireEvent.click(await screen.findByRole('button', { name: 'Load older' }))
+    }
+    await waitFor(() => expect(bodyRows()).toHaveLength(MAX_LOADED))
+    expect(screen.queryByRole('button', { name: 'Load older' })).not.toBeInTheDocument()
+    expect(screen.getByText('The newest 1,000 are loaded. Search, filter or export the log to reach older requests.')).toBeInTheDocument()
+    logsBody = () => page([allowed, dnsBlock, wafBlock, oldBlock])
+  }, 30_000)
+
   it('has no Load older when the first page holds everything', async () => {
     renderWithProviders(<Logs />)
     await waitFor(() => expect(bodyRows()).toHaveLength(4))
     expect(screen.queryByRole('button', { name: 'Load older' })).not.toBeInTheDocument()
+    // Clearing the log is in Settings, Maintenance, beside Reset statistics.
+    expect(screen.queryByRole('button', { name: 'Clear the log' })).not.toBeInTheDocument()
   })
 
   // The hub also carries {"type":"login_failure", ...} events, which anyone can

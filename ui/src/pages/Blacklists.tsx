@@ -410,7 +410,10 @@ function ListBody({ list, initialSearch = '', total, enforcement, confirm, onCha
         </div>
         <DataTable<ListEntry>
           caption={`${list.label} entries`}
-          columns={columns}
+          // With one source or none, the source is the same on every row and
+          // the sources card above says it: "Source not recorded" was
+          // repeated on all 50 rows.
+          columns={(sources.data?.length ?? 0) > 1 ? columns : columns.filter((c) => c.id !== 'source')}
           rows={entries.data?.rows ?? []}
           rowKey={(e) => String(e.id)}
           loading={entries.isPending}

@@ -29,7 +29,8 @@ import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData, getErrorMessage } from '../lib/api';
 import { formatBytes, formatCount, formatWhen, formatWhenExact, viewerZone } from '../lib/format';
 import {
-  allowableDomain, apiParams, hasFilters, isBlocked, maskedToNetwork, matchesFilters, readFilters, splitStatus, statusTone, whyText, writeFilters,
+  allowableDomain, apiParams, hasFilters, isBlocked, isHttpCode, maskedToNetwork, matchesFilters, readFilters, splitStatus, squidResultText, statusTone, whyText,
+  writeFilters,
   NO_FILTERS, type LogFilters, type Outcome,
 } from '../lib/accessLog';
 import { cn } from '../lib/utils';
@@ -40,6 +41,14 @@ export const SHOW_INTERNAL_TRAFFIC_KEY = 'spm.logs.showInternal';
 
 /** Rows per request, for the first page and each "Load older". */
 export const PAGE_SIZE = 100;
+
+/**
+ * The most rows "Load older" brings onto the page. Each load re-rendered the
+ * whole table: measured with the CPU slowed four times, a click took 104 ms
+ * at 1,100 rows and up to 248 ms at 3,100, past the 200 ms of a responsive
+ * page. Older requests are reached by search, the filters or the export.
+ */
+export const MAX_LOADED = 1000;
 
 /** Live rows kept above the fetched pages. */
 const LIVE_MAX = 200;
@@ -72,10 +81,21 @@ function rowTime(ts: string): string {
   return ts ? formatWhen(ts, { style: 'full' }) : 'Not recorded';
 }
 
-function RuleBadge({ r }: { r: LogEntry }) {
+/**
+ * What happened to the request: "Allowed", or the rule that blocked it. The
+ * column was headed "Rule" and said "Allowed" for every request no rule
+ * touched. A block is named "Blocked by <rule>" to a screen reader, as the
+ * colour says it to the eye.
+ */
+function OutcomeBadge({ r }: { r: LogEntry }) {
   if (!isBlocked(r)) return <Badge tone="success">Allowed</Badge>;
-  const label = r.reason_label || r.reason || 'Blocked';
-  return <Badge tone={r.reason === 'unclassified' || !r.reason ? 'neutral' : 'danger'}>{label}</Badge>;
+  const unknown = r.reason === 'unclassified' || !r.reason;
+  const label = r.reason_label || r.reason || 'Rule not reported';
+  return (
+    <Badge tone={unknown ? 'neutral' : 'danger'}>
+      <span className="sr-only">{unknown ? 'Blocked: ' : 'Blocked by '}</span>{label}
+    </Badge>
+  );
 }
 
 const TONE_TEXT = { danger: 'text-danger', warning: 'text-warning', success: 'text-success' } as const;
@@ -84,8 +104,8 @@ function Result({ r }: { r: LogEntry }) {
   const { squid, code } = splitStatus(r.status);
   return (
     <span className="whitespace-nowrap">
-      {code && <span className={cn('font-semibold tabular-nums', TONE_TEXT[statusTone(code, isBlocked(r))])}>{code}</span>}{' '}
-      <span className="text-xs text-ink-muted">{squid || 'Not recorded'}</span>
+      {isHttpCode(code) && <span className={cn('font-semibold tabular-nums', TONE_TEXT[statusTone(code, isBlocked(r))])}>{code}</span>}{' '}
+      <span className="text-xs text-ink-muted" title={r.status || undefined}>{squid ? squidResultText(squid) : 'Not recorded'}</span>
     </span>
   );
 }
@@ -338,25 +358,6 @@ export function Logs() {
     setFilters({ client: ip });
   };
 
-  const clearLogs = async () => {
-    const ok = await confirm({
-      title: 'Clear the access log?',
-      body: 'Every logged request is deleted, for every client, and the statistics built from them start again from zero. This cannot be undone.',
-      confirmLabel: 'Clear the log',
-      destructive: true,
-    });
-    if (!ok) return;
-    try {
-      await api.post('logs/clear');
-      toast.success('The access log is empty.');
-      setLiveRows([]);
-      setSelectedKey(null);
-      void queryClient.invalidateQueries({ queryKey: ['logs'] });
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'The access log was not cleared.'));
-    }
-  };
-
   const columns: Column<Row>[] = [
     {
       id: 'time',
@@ -398,7 +399,7 @@ export function Logs() {
       ),
     },
     { id: 'result', header: 'Result', cell: ({ entry }) => <Result r={entry} /> },
-    { id: 'rule', header: 'Rule', cell: ({ entry }) => <RuleBadge r={entry} /> },
+    { id: 'outcome', header: 'Outcome', cell: ({ entry }) => <OutcomeBadge r={entry} /> },
     {
       id: 'size',
       header: 'Size',
@@ -431,6 +432,7 @@ export function Logs() {
     };
   }
 
+  const loaded = logs.data?.pages.reduce((n, p) => n + (p?.data?.length ?? 0), 0) ?? 0;
   const footer = firstMeta ? footerText(rows.length, firstMeta.total + Math.max(0, liveAdded), filtered, showInternal, filters.client !== '', hidden) : null;
 
   const clientOptions = useMemo(() => {
@@ -531,10 +533,15 @@ export function Logs() {
         {footer && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle px-5 py-3">
             <p className="text-[13px] text-ink-muted">{footer}</p>
-            {logs.hasNextPage && (
+            {logs.hasNextPage && loaded < MAX_LOADED && (
               <Button size="sm" onClick={() => { void logs.fetchNextPage(); }} disabled={logs.isFetchingNextPage}>
                 {logs.isFetchingNextPage ? 'Loading older' : 'Load older'}
               </Button>
+            )}
+            {logs.hasNextPage && loaded >= MAX_LOADED && (
+              <p className="text-[13px] text-ink-muted">
+                The newest {formatCount(MAX_LOADED)} are loaded. Search, filter or export the log to reach older requests.
+              </p>
             )}
           </div>
         )}
@@ -551,10 +558,6 @@ export function Logs() {
           <RequestDetail r={selected} filters={filters} onAllow={allowDomain} onShowClient={showClient} />
         </RequestDrawer>
       )}
-
-      <Section title="Clear the access log" tone="danger" description="Deletes every logged request. The statistics on the Overview and the Clients page are built from them.">
-        <Button variant="danger-outline" onClick={() => { void clearLogs(); }}>Clear the log</Button>
-      </Section>
 
       {dialog}
     </div>
@@ -620,8 +623,8 @@ function RequestDetail({ r, filters, onAllow, onShowClient }: {
           <dd className="mt-0.5 font-mono text-[13px]">{r.status ? `${squid}${code ? `/${code}` : ''}` : 'Not recorded'} <span className="font-sans text-ink-muted">{r.method}</span></dd>
         </div>
         <div className="min-w-0">
-          <dt className="text-xs text-ink-muted">Rule</dt>
-          <dd className="mt-0.5"><RuleBadge r={r} /></dd>
+          <dt className="text-xs text-ink-muted">Outcome</dt>
+          <dd className="mt-0.5"><OutcomeBadge r={r} /></dd>
         </div>
         <div className="min-w-0">
           <dt className="text-xs text-ink-muted">Why</dt>

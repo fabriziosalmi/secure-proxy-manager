@@ -99,7 +99,7 @@ var routeDocs = map[string]docMeta{
 	"POST /api/logs/clear":                      {auth: true, desc: "Delete all proxy logs"},
 	"POST /api/logs/clear-old":                  {auth: true, desc: "Delete logs older than N days (?days=30)"},
 	"GET /api/logs/stats":                       {auth: true, desc: "Log statistics (total, blocked, IP blocks count)"},
-	"GET /api/logs/timeline":                    {auth: true, desc: "Hourly traffic timeline (?hours=24)"},
+	"GET /api/logs/timeline":                    {auth: true, desc: "Hourly traffic timeline (?hours=24) in the hours of ?tz= (IANA name, default UTC)"},
 	"GET /api/maintenance/backup-config":        {auth: true, desc: "Export full config as JSON backup"},
 	"GET /api/maintenance/check-cert-security":  {auth: true, desc: "Check SSL certificate status and security"},
 	"POST /api/maintenance/clear-cache":         {auth: true, desc: "Clear Squid proxy cache"},
