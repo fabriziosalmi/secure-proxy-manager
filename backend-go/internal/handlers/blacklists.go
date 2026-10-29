@@ -80,6 +80,7 @@ func (h *BlacklistHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	r.With(authMW).Post("/api/domain-blacklist/import", h.ImportDomainLegacy)
 
 	h.registerListSources(r, authMW)
+	h.registerPresets(r, authMW)
 }
 
 // ── generic list handler ──────────────────────────────────────────────────────

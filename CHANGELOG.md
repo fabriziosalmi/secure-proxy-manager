@@ -15,6 +15,58 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- **The audit log says what a settings save changed, and to what.** A save
+  recorded the keys the request carried, before they were checked and with
+  no value, so saving one field of a section read "Changed 8 settings" and
+  whether alerts were switched on or off could not be told from the log. A
+  save now writes a row only when it changed something, after the change is
+  stored, naming the changed keys with their old and new values
+  (`details.changes`); a secret is recorded only as set or cleared
+  (`details.secrets`), never its value, and a value over 512 characters is
+  cut and marked truncated. A save refused by validation writes no row.
+- **A common-services preset is added in one request, under a source of its
+  own.** "+ Docker" on Allowed domains (and "Block DoH resolvers" on Blocked
+  domains) sent one request per domain from the page: each domain became a
+  "Manual" entry, the audit log got one row per domain, and the preset could
+  not be told apart from typed entries or removed on its own. The backend now
+  holds the presets: `GET /api/domain-whitelist/presets` and
+  `GET /api/domain-blacklist/presets` list them with the domains already on
+  the list, and `POST /api/{list}/presets/{id}` adds the missing ones under a
+  `preset` source ("Common services: Docker") with one `add_preset_<list>`
+  audit event and one export. Schema version 9 rebuilds `list_sources` to
+  allow that kind, keeping every source and its id; like the other versioned
+  steps it is one-way (see DEPLOYMENT.md, Rolling back).
+- **Settings and Analytics judge the configuration the same way.** The
+  Settings menu showed 1 next to Overview, whose "Needs attention" list held
+  4 items, and alerts switched off were orange in Analytics but grey in
+  Settings. One model now decides: *needs attention* (it stops clients or
+  gives false safety), *worth knowing* (a choice with a cost: HTTPS not
+  inspected, alerts off, proxy login off), *on* and *unknown*. Settings,
+  Overview lists the two kinds apart and the menu counts the first; the
+  marks in both places differ by shape (triangle, hollow circle, filled
+  circle, dashed circle) as well as colour, and Protection coverage has a
+  legend. Alerts off is *worth knowing* on both pages.
+- **Every page writes a time the same way.** Seven formatters gave
+  `01:34:30` next to `2026-10-28 23:51` in one list, and dates that wrapped
+  under their time. Now one rule holds: the Access logs, the Audit log and
+  a request's detail write every time whole (`2026-10-29 08:51:30`), today's
+  too; lists and cards write `08:51` today, `Yesterday 23:51`, `Sun 25 23:55`
+  in the last week and `2026-10-21 23:55` before, on one line. A tooltip
+  gives the exact time with the zone, and the Access logs say which zone
+  their times are in. A pasted or restored source still names its time to
+  the second, so two pastes a minute apart read differently.
+- **The Analytics WAF card says it counts matches, not blocks.** Titled
+  "WAF categories", it listed the categories that matched a request, weak
+  matches below the block threshold included, since the WAF started, on a
+  page whose subtitle says "Last 7 days", and only its last line said how
+  many requests were blocked (often 0). It is now "WAF rule matches", says
+  "a match is not a block" and the blocked count in its description, and
+  names each category in words with its kind (rule, heuristic, domain
+  reputation, size limit) instead of the raw key (`SQL_INJECTION`,
+  `HEURISTIC_BEACONING`).
+
 ### Fixed
 
 - **Example values in fields read as examples.** The Egress allowlist form
@@ -26,6 +78,36 @@ for at least one minor release before disappearing.
   blocked file types and the rule tester. The Egress example is now
   "e.g. updates.example.com". A unit test reads every placeholder in the UI
   sources and fails on an example value without "e.g.".
+- **The Overview's hourly chart writes no hour twice and marks its partial
+  hours.** Its 24 hours span 25 hourly bars, the first and last covering only
+  part of an hour, and the axis read 08:00 at both ends: the first 08:00 was
+  the 8 minutes of yesterday after 08:52. The axis now starts with the
+  window's own start ("Wed 08:52") and ends with "Now"; the first and last
+  bars are drawn lighter and their tooltips name the minutes they cover
+  ("08:52 to 09:00 only").
+- **Blacklists, Where the entries came from: a source's URL is shown
+  whole.** Feed URLs and the note on entries with no recorded source were
+  cut with an ellipsis on their first line (two of three URLs at 1440 px,
+  all of them at 1250). A URL now runs onto up to three lines and is a
+  link to the list; the note reads "Added before sources were recorded".
+  "Remove batch" no longer looks double-spaced: its two words were two
+  flex items of the button, 6 px apart.
+- **Blacklists, Enforcement: every value is aligned to the right edge.**
+  "Networks Squid loads 32,215" carried its explanation inside the value, so
+  the value dropped under its label and floated 93 px from the edge; "Limit
+  1,000,000 entries (SPM_DNS_BLOCKLIST_MAX_DOMAINS)" wrapped onto two lines
+  under its label. Each row is now a label and a value on one line, with an
+  explanation ("Merged from ...", "Set by SPM_DNS_BLOCKLIST_MAX_DOMAINS.")
+  on its own line under both.
+- **The browser e2e suite waits for the geo-block import it starts.** The
+  Geo-block test clicked "Download and block IPs" and moved on after 5
+  seconds; the backend went on importing the CN networks (8.4 s on one CI
+  run) and committed them during the next test, above the two addresses
+  that test had just imported, so "fits a 390 px wide screen" did not find
+  203.0.113.201 on the first page, on its retry either. The Geo-block test
+  now waits for the answer (200, or 502 when the feed is unreachable), the
+  phone test checks its import answered 200 and finds the address by
+  search instead of by its place in the list.
 - The WAF image stores its binary once, owned by root and run by the `waf`
   user, who can no longer change it. A `chown` after the copy wrote a second
   full copy of the binary in its own layer (8.1 MB on amd64) and let the
@@ -50,27 +132,11 @@ for at least one minor release before disappearing.
   with a square start; a client with no blocked request shows a muted "0%"
   and no empty track, rather than "0.0%" over an empty bar on every row.
 
-### Changed
+### Internal
 
-- **Settings and Analytics judge the configuration the same way.** The
-  Settings menu showed 1 next to Overview, whose "Needs attention" list held
-  4 items, and alerts switched off were orange in Analytics but grey in
-  Settings. One model now decides: *needs attention* (it stops clients or
-  gives false safety), *worth knowing* (a choice with a cost: HTTPS not
-  inspected, alerts off, proxy login off), *on* and *unknown*. Settings,
-  Overview lists the two kinds apart and the menu counts the first; the
-  marks in both places differ by shape (triangle, hollow circle, filled
-  circle, dashed circle) as well as colour, and Protection coverage has a
-  legend. Alerts off is *worth knowing* on both pages.
-- **The Analytics WAF card says it counts matches, not blocks.** Titled
-  "WAF categories", it listed the categories that matched a request, weak
-  matches below the block threshold included, since the WAF started, on a
-  page whose subtitle says "Last 7 days", and only its last line said how
-  many requests were blocked (often 0). It is now "WAF rule matches", says
-  "a match is not a block" and the blocked count in its description, and
-  names each category in words with its kind (rule, heuristic, domain
-  reputation, size limit) instead of the raw key (`SQL_INJECTION`,
-  `HEURISTIC_BEACONING`).
+- The `UI layout (Playwright)` check is required on `main`, in the ruleset and
+  in `.github/branch-protection.json`, so a page that overflows, wraps or
+  misaligns at desktop, 1250 px or phone width cannot merge.
 
 ## [3.18.3] - 2026-10-28
 

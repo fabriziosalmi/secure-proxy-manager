@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
 import { Trash2 } from 'lucide-react';
 import { api, getErrorMessage } from '../../lib/api';
-import { formatCount, formatDateTime } from '../../lib/format';
+import { formatCount, formatWhen } from '../../lib/format';
 import { egressProvidersQuery } from '../../lib/queries';
 import { cn } from '../../lib/utils';
 import { useConfirm } from '../../hooks/useConfirm';
@@ -331,7 +331,7 @@ export function ProviderListsSection({ refreshHours, onChanged }: { refreshHours
       header: 'Last refresh',
       hideOnPhone: true,
       className: 'whitespace-nowrap text-ink-muted',
-      cell: (p) => (p.last_refresh ? formatDateTime(p.last_refresh) : 'Not downloaded yet'),
+      cell: (p) => (p.last_refresh ? formatWhen(p.last_refresh, { style: 'glance' }) : 'Not downloaded yet'),
     },
     {
       id: 'commit',
