@@ -85,7 +85,7 @@ export function needsAttention({ values, secrets, proxyStatus, egressTotal, egre
   }
 
   if (proxyStatus === null) {
-    items.push({ id: 'proxy-unknown', posture: 'needs-attention', title: 'The proxy status could not be read', body: 'GET /api/status did not answer, so this page cannot tell whether clients can browse.' });
+    items.push({ id: 'proxy-unknown', posture: 'needs-attention', title: 'The proxy status could not be read', body: 'This page cannot tell whether clients can browse. Detail: GET /api/status did not answer.' });
   } else if (proxyStatus !== undefined && proxyStatus !== 'running') {
     items.push({ id: 'proxy-down', posture: 'needs-attention', title: 'The proxy is not running', body: `The backend reports the proxy as "${proxyStatus}". Clients cannot browse until the proxy container runs.` });
   }

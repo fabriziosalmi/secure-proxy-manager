@@ -19,6 +19,7 @@ import { cacheCollected, cacheDisk, cacheHitRatio } from '../../../lib/cacheStat
 import { formatKilobytes, formatCount } from '../../../lib/format';
 import { Section } from '../../ui/Section';
 import { Notice } from '../../ui/Notice';
+import { Unavailable } from '../../ui/Unavailable';
 import { TextField, ToggleRow } from '../fields';
 import type { SectionForm } from '../sectionForm';
 
@@ -32,7 +33,7 @@ function CacheStatistics({ inspecting }: { inspecting: boolean }) {
   const c = cache.data;
   let body: ReactNode;
   if (cache.isPending) body = <p>Reading the cache statistics...</p>;
-  else if (cache.isError || !c) body = <p>GET /api/cache/statistics did not answer.</p>;
+  else if (cache.isError || !c) body = <Unavailable endpoint="cache/statistics">The cache statistics could not be read.</Unavailable>;
   else if (c.state === 'not_collected') body = <p>The proxy has not written cache statistics yet. It collects them once a minute while Squid runs.</p>;
   else if (c.state === 'unreadable') body = <p>The backend cannot read the proxy's cache statistics file.</p>;
   else {
@@ -109,7 +110,7 @@ export function EngineSection({ form }: { form: SectionForm }) {
             form={form}
             setting="cache_bypass_domains"
             label="Never cache these domains"
-            placeholder="bank.example.com, intranet.example"
+            placeholder="e.g. bank.example.com, intranet.example"
             hint="Separated by commas. Each one covers its subdomains."
           />
         </div>
@@ -124,7 +125,7 @@ export function EngineSection({ form }: { form: SectionForm }) {
           form={form}
           setting="extra_ssl_ports"
           label="Extra HTTPS ports"
-          placeholder="8006 8443"
+          placeholder="e.g. 8006 8443"
           hint="Ports clients may open HTTPS tunnels to besides 443, separated by commas or spaces, such as 8006 for Proxmox. Applied when the proxy reloads, which saving does."
         />
         <div className="mt-4">
