@@ -70,7 +70,7 @@ export interface WhitelistEntry {
 }
 
 /** Where list entries came from (list_sources); 'unrecorded' names the entries added before sources were recorded. */
-export type SourceKind = 'url' | 'manual' | 'geo' | 'paste' | 'restore' | 'unrecorded';
+export type SourceKind = 'url' | 'manual' | 'geo' | 'paste' | 'restore' | 'preset' | 'unrecorded';
 
 /** One row of GET /api/{list}: an entry of any of the four lists, with its source (null when not recorded). */
 export interface ListEntry {

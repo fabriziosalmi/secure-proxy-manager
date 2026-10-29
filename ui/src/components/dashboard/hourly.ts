@@ -7,6 +7,12 @@ export interface HourSlot {
   time: string;
   total: number;
   blocked: number;
+  /**
+   * The part of the hour inside the window, epoch milliseconds, when the
+   * window covers only part of it: the first hour starts at now minus 24
+   * hours, the last ends now. Absent for a whole hour.
+   */
+  partial?: { from: number; to: number };
 }
 
 const HOUR = 3_600_000;
@@ -44,7 +50,42 @@ export function hourlySlots(entries: readonly TimelineEntry[], now: number, hour
     byTime.set(e.time, slot);
   }
   // Same fixed-width shape for every key, so text order is time order.
-  return [...byTime.values()].sort((a, b) => a.time.localeCompare(b.time));
+  const out = [...byTime.values()].sort((a, b) => a.time.localeCompare(b.time));
+  const start = now - hours * HOUR;
+  const first = out.find((s) => s.time === hourKey(start));
+  if (first && start % HOUR !== 0) first.partial = { from: start, to: Math.floor(start / HOUR) * HOUR + HOUR };
+  const last = out.find((s) => s.time === hourKey(now));
+  if (last && now % HOUR !== 0) last.partial = { from: Math.floor(now / HOUR) * HOUR, to: now };
+  return out;
+}
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const two = (n: number) => String(n).padStart(2, '0');
+/** "08:52" in the viewer's zone for epoch milliseconds. */
+const clock = (ms: number) => { const d = new Date(ms); return `${two(d.getHours())}:${two(d.getMinutes())}`; };
+
+/**
+ * The x axis labels, by slot index: the first is where the window starts
+ * ("Wed 08:52", yesterday), the last "Now", and every 3rd hour between, so
+ * no label is written twice. The axis used to read 08:00 at both ends, the
+ * first 08:00 covering 8 minutes of yesterday.
+ */
+export function axisLabels(slots: readonly HourSlot[]): Map<number, string> {
+  const labels = new Map<number, string>();
+  if (slots.length === 0) return labels;
+  const first = slots[0];
+  const startMs = first.partial?.from ?? Date.parse(first.time.replace(' ', 'T') + 'Z');
+  const d = new Date(startMs);
+  labels.set(0, `${WEEKDAYS[d.getDay()]} ${clock(startMs)}`);
+  const lastIdx = slots.length - 1;
+  labels.set(lastIdx, 'Now');
+  for (let i = 3; i < lastIdx - 1; i += 3) labels.set(i, formatHourMinute(slots[i].time));
+  return labels;
+}
+
+/** "08:52 to 09:00 only": the minutes of a partial hour inside the window. */
+export function partialText(slot: HourSlot): string | null {
+  return slot.partial ? `${clock(slot.partial.from)} to ${clock(slot.partial.to)} only` : null;
 }
 
 const STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];

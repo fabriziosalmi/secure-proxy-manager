@@ -21,8 +21,8 @@ import { Check, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getData } from '../lib/api';
 import { statusQuery } from '../lib/queries';
-import { proxyAddress, parseUtc } from '../lib/utils';
-import { formatClock, formatCount, formatDate, formatHourMinute, formatShare, formatTime } from '../lib/format';
+import { proxyAddress } from '../lib/utils';
+import { formatClock, formatCount, formatShare, formatWhen, formatWhenExact } from '../lib/format';
 import type { CacheStats, DashboardSummary, TimelineEntry } from '../types';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Section } from '../components/ui/Section';
@@ -121,15 +121,6 @@ function notices(summary: { data?: DashboardSummary | null; isError: boolean }):
   return out;
 }
 
-/** A recent block's time: HH:MM:SS today, the date as well before today. */
-function blockTime(ts: string, now: number): string {
-  const d = parseUtc(ts);
-  if (Number.isNaN(d.getTime())) return ts;
-  const today = new Date(now);
-  const sameDay = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
-  return sameDay ? formatTime(ts) : `${formatDate(ts)} ${formatHourMinute(ts)}`;
-}
-
 function ReasonBadge({ reason, label }: { reason?: string; label?: string }) {
   if (!label) return <Badge tone="neutral">Rule not reported</Badge>;
   return <Badge tone={reason === 'unclassified' ? 'neutral' : 'danger'}>{label}</Badge>;
@@ -178,8 +169,9 @@ function LatestBlocks({ rows, loading, error, now }: { rows?: RecentBlock[]; loa
       <ul>
         {rows.map((b, i) => (
           <li key={`${b.timestamp}-${i}`} className="flex flex-col gap-1 border-t border-line-subtle px-5 py-2.5 sm:flex-row sm:items-center sm:gap-3">
-            <span className="shrink-0 font-mono text-xs tabular-nums text-ink-muted sm:w-[72px]" title={b.timestamp ? `${formatDate(b.timestamp)} ${formatTime(b.timestamp)}` : undefined}>
-              {blockTime(b.timestamp, now)}
+            {/* One line, as wide as "2026-10-21 23:55": a date never wraps under its time. */}
+            <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-ink-muted sm:w-[8.5rem]" title={b.timestamp ? formatWhenExact(b.timestamp) : undefined}>
+              {formatWhen(b.timestamp, { style: 'glance', now: now || undefined })}
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <code className="truncate font-mono text-[13px] text-ink" title={b.destination}>{b.host || b.destination}</code>
@@ -230,7 +222,7 @@ export function Dashboard() {
   const ipRules = s?.ip_blacklist_count;
   const domainRules = s?.domain_blacklist_count;
   const rules = typeof ipRules === 'number' && typeof domainRules === 'number' ? ipRules + domainRules : undefined;
-  const lastRequest = s?.last_request_at ? formatHourMinute(s.last_request_at) : null;
+  const lastRequest = s?.last_request_at ? formatWhen(s.last_request_at, { style: 'glance', now: summary.dataUpdatedAt || undefined, inSentence: true }) : null;
   const onlyClient = clients === 1 || (s?.top_clients?.length === 1 && Boolean(s.top_clients[0]?.network))
     ? s?.top_clients?.[0]?.ip
     : undefined;

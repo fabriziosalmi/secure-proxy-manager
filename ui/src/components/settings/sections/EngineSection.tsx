@@ -109,7 +109,7 @@ export function EngineSection({ form }: { form: SectionForm }) {
             form={form}
             setting="cache_bypass_domains"
             label="Never cache these domains"
-            placeholder="bank.example.com, intranet.example"
+            placeholder="e.g. bank.example.com, intranet.example"
             hint="Separated by commas. Each one covers its subdomains."
           />
         </div>
@@ -124,7 +124,7 @@ export function EngineSection({ form }: { form: SectionForm }) {
           form={form}
           setting="extra_ssl_ports"
           label="Extra HTTPS ports"
-          placeholder="8006 8443"
+          placeholder="e.g. 8006 8443"
           hint="Ports clients may open HTTPS tunnels to besides 443, separated by commas or spaces, such as 8006 for Proxmox. Applied when the proxy reloads, which saving does."
         />
         <div className="mt-4">
