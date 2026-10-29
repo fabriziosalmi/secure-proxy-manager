@@ -106,6 +106,8 @@ describe('Analytics', () => {
     expect(screen.queryByText('live-feed.example')).toBeNull()
     expect(calls).not.toContain('analytics/top-domains')
     expect(calls).not.toContain('security/score')
+    // The menu group is Insights; Overview is only the page at "/".
+    expect(screen.getByText('Insights')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Last 24 hours: Overview' })).toHaveAttribute('href', '/')
     expect(screen.getByRole('link', { name: 'Every request: Access logs' })).toHaveAttribute('href', '/logs')
   })

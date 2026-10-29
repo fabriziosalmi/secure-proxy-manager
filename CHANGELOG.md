@@ -42,6 +42,18 @@ for at least one minor release before disappearing.
   and no empty track, rather than "0.0%" over an empty bar on every row.
 ### Changed
 
+- **One name per concept.** "Overview" names only the page at "/": the
+  menu item that read "Dashboard" is now "Overview", the menu group that
+  held it is "Insights", and the Settings section that was also called
+  "Overview" is "Summary" (its address stays `/settings/overview`). A
+  permitted request is "Allowed" everywhere; the client detail said "Not
+  blocked". The two domain rules are named by where they block, "Domain
+  blacklist (proxy)" and "Domain blacklist (DNS sinkhole)". These are the
+  `reason_label` and `label` values the API returns (`reason` keys are
+  unchanged): "Not blocked" is now "Allowed", "Domain blacklist" is
+  "Domain blacklist (proxy)" and "Domain blacklist (DNS)" is "Domain
+  blacklist (DNS sinkhole)". In "Most blocked destinations" a host blocked
+  by two rules shows each rule with its count.
 - **Settings and Analytics judge the configuration the same way.** The
   Settings menu showed 1 next to Overview, whose "Needs attention" list held
   4 items, and alerts switched off were orange in Analytics but grey in

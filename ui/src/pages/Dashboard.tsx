@@ -129,9 +129,13 @@ function blockTime(ts: string, now: number): string {
   return sameDay ? formatTime(ts) : `${formatDate(ts)} ${formatHourMinute(ts)}`;
 }
 
-function ReasonBadge({ reason, label }: { reason?: string; label?: string }) {
+function ReasonBadge({ reason, label, count }: { reason?: string; label?: string; count?: number }) {
   if (!label) return <Badge tone="neutral">Rule not reported</Badge>;
-  return <Badge tone={reason === 'unclassified' ? 'neutral' : 'danger'}>{label}</Badge>;
+  return (
+    <Badge tone={reason === 'unclassified' ? 'neutral' : 'danger'}>
+      {label}{count !== undefined && <span className="ml-1 font-semibold tabular-nums">{formatCount(count)}</span>}
+    </Badge>
+  );
 }
 
 const TOP_COLUMNS: Column<TopBlocked>[] = [
@@ -146,8 +150,10 @@ const TOP_COLUMNS: Column<TopBlocked>[] = [
     id: 'rule',
     header: 'Rule',
     cell: (r) => r.reasons?.length ? (
+      // Two rules on one host: each with the count the API sends, so the
+      // Blocked column is seen split, not two bare names stacked.
       <span className="flex flex-wrap gap-1">
-        {r.reasons.map((x) => <ReasonBadge key={x.reason} reason={x.reason} label={x.label} />)}
+        {r.reasons.map((x) => <ReasonBadge key={x.reason} reason={x.reason} label={x.label} count={r.reasons!.length > 1 ? x.count : undefined} />)}
       </span>
     ) : <ReasonBadge />,
   },
