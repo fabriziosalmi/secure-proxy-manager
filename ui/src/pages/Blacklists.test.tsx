@@ -255,7 +255,7 @@ describe('Blacklists', () => {
         // The Added column (the range is also under the name, for a phone).
         expect(row('Firehol Level 1').cells[2]).toHaveTextContent(/^Sun 25 11:00 to 11:02$/)
         expect(row('Manual').cells[2]).toHaveTextContent(/^Sun 25 10:00$/)
-        expect(within(row('Source not recorded')).getByText('Added before this release recorded where entries come from')).toBeInTheDocument()
+        expect(within(row('Source not recorded')).getByText('Added before sources were recorded')).toBeInTheDocument()
         expect(within(row('Source not recorded')).getByText('50,772')).toBeInTheDocument()
       } finally { restoreTz() }
     })

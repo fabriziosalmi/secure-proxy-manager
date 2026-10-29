@@ -478,19 +478,19 @@ test.describe('UI — Dashboard', () => {
   // The cards of the last 24 hours, each with a value from dashboard/summary:
   // a count, or "Not reported" when the backend did not send the field.
   // The score and the "Today" / "Total" pair are gone from this page.
-  test('shows the last-24-hours cards (Client requests, Blocked, Active clients, Rules in force)', async ({ page }) => {
+  test('shows the last-24-hours cards (Client requests, Blocked, Active clients, Blacklist entries)', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('h1:has-text("Overview")');
     await expect(page.getByText(/^Last 24 hours · updated \d\d:\d\d$/)).toBeVisible();
     const cards = page.getByRole('region', { name: 'Last 24 hours at a glance' });
-    for (const label of ['Client requests', 'Blocked', 'Active clients', 'Rules in force']) {
+    for (const label of ['Client requests', 'Blocked', 'Active clients', 'Blacklist entries']) {
       const card = cards.locator('div').filter({ has: page.getByText(label, { exact: true }) }).last();
       await expect(card).toBeVisible();
       await expect(card.locator('p').nth(1)).toHaveText(/^(\d{1,3}(,\d{3})*|Not reported)$/);
     }
     // The e2e stack runs the current backend, which sends every field.
     await expect(cards.getByText('Not reported')).toHaveCount(0);
-    for (const gone of ['Score', 'Today', 'Block Rate', 'IP Rules']) {
+    for (const gone of ['Score', 'Today', 'Block Rate', 'IP Rules', 'Rules in force']) {
       await expect(page.getByText(gone, { exact: true })).toHaveCount(0);
     }
   });
@@ -535,16 +535,16 @@ test.describe('UI: Access logs', () => {
   // A real browser fails the WebSocket handshake when it offers subprotocols
   // and the server selects none. The backend used to select none, so the live
   // feed never connected in any browser while non-browser tests passed.
-  test('the live feed connects (the button reads Live)', async ({ page }) => {
+  test('the live feed connects (the status line reads Connected)', async ({ page }) => {
     const wsErrors: string[] = [];
     page.on('console', (m) => { if (m.type() === 'error' && /WebSocket/.test(m.text())) wsErrors.push(m.text()); });
     await page.goto('/logs');
     await page.waitForSelector('h1:has-text("Access logs")', { timeout: 15_000 });
-    // "Live" only once the socket is open: "Connecting" and "Reconnecting"
-    // before, "Paused" when switched off.
-    const live = page.getByRole('button', { name: 'Live', exact: true });
-    await expect(live).toBeVisible({ timeout: 15_000 });
+    // "Connected" only once the socket is open: "Connecting" and
+    // "Reconnecting" before, "Paused" when switched off.
+    const live = page.getByRole('button', { name: 'Live updates', exact: true });
     await expect(live).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('status', { name: 'Live updates' })).toHaveText('Connected', { timeout: 15_000 });
     expect(wsErrors).toEqual([]);
   });
 
@@ -1224,10 +1224,10 @@ test.describe('UI — Settings page', () => {
     await page.waitForTimeout(1_500);
   });
 
-  test('/settings opens Overview and every section has its own URL', async ({ page }) => {
+  test('/settings opens Summary and every section has its own URL', async ({ page }) => {
     await expect(page).toHaveURL(/\/settings\/overview$/);
     const nav = page.getByRole('navigation', { name: 'Settings sections' });
-    await expect(nav.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
+    await expect(nav.getByRole('link', { name: 'Summary' })).toHaveAttribute('aria-current', 'page');
     for (const [label, path] of [
       ['Clients and access', 'access'], ['Filtering', 'filtering'], ['Inspection', 'inspection'], ['Alerts', 'alerts'],
       ['Logs and privacy', 'logs'], ['Admin and backup', 'admin'], ['Proxy engine', 'engine'], ['Appearance', 'appearance'],
@@ -1312,11 +1312,11 @@ test.describe('UI — Settings page', () => {
     await page.getByRole('button', { name: 'Discard' }).click();
   });
 
-  test('Overview lists what needs attention from the running stack and previews a profile before applying it', async ({ page }) => {
+  test('Summary lists what needs attention from the running stack and previews a profile before applying it', async ({ page }) => {
     const attention = page.getByRole('region', { name: 'Needs attention' });
     // The test stack runs no proxy container: GET /api/status reports it.
     await expect(attention.getByText('The proxy is not running')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: /^Overview, \d+ items? needs? attention$/ })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: /^Summary, \d+ items? needs? attention$/ })).toBeVisible();
     await page.getByRole('button', { name: /^Family/ }).click();
     await expect(page.getByRole('heading', { level: 4, name: /^Family (changes \d+ settings?|already match)|Your settings already match Family/ })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Apply Family' })).toBeVisible();

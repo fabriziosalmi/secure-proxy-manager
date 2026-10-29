@@ -393,16 +393,22 @@ describe('Logs', () => {
     expect(destinations().filter((d) => d === dnsBlock.destination)).toHaveLength(1)
   })
 
-  it('pauses the live feed: the button reads Paused and the socket is closed', async () => {
+  // The button was renamed Live, Paused, Connecting and Reconnecting; it
+  // keeps one name now and the connection is said in a status line.
+  it('pauses the live feed with one switch of one name, and says the connection in a status line', async () => {
     renderWithProviders(<Logs />)
     const sock = await openSocket()
-    const toggle = await screen.findByRole('button', { name: 'Live' })
+    const toggle = await screen.findByRole('button', { name: 'Live updates' })
+    const status = screen.getByRole('status', { name: 'Live updates' })
     expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(status).toHaveTextContent('Connected'))
     fireEvent.click(toggle)
-    expect(screen.getByRole('button', { name: 'Paused' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Live updates' })).toHaveAttribute('aria-pressed', 'false')
+    expect(status).toHaveTextContent('Paused')
     expect(sock.closed).toBe(true)
-    fireEvent.click(screen.getByRole('button', { name: 'Paused' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Live updates' }))
     await waitFor(() => expect(mockSockets.length).toBe(2))
+    expect(status).toHaveTextContent(/^(Connecting|Connected)$/)
   })
 
   it('details the selected request below the table, with why it was blocked', async () => {

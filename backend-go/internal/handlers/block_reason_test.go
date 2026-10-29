@@ -144,7 +144,7 @@ func TestDashboardCountsClientRequestsByReason(t *testing.T) {
 	for _, c := range d.Threats {
 		threats[c.Category] = c.Count
 	}
-	if threats["Domain blacklist (DNS)"] != 9 || threats["WAF"] != 1 || threats["Domain blacklist"] != 2 || threats["Unclassified (no reason recorded)"] != 1 {
+	if threats["Domain blacklist (DNS sinkhole)"] != 9 || threats["WAF"] != 1 || threats["Domain blacklist (proxy)"] != 2 || threats["Unclassified (no reason recorded)"] != 1 {
 		t.Errorf("threat_categories = %v", threats)
 	}
 	for _, guessed := range []string{"WAF Block", "Direct IP", "Policy", "Malware"} {

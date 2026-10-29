@@ -15,9 +15,9 @@ export interface NavGroup {
 /** The sidebar, in order. Analytics is the former Threat Intel page. */
 export const NAV_GROUPS: NavGroup[] = [
   {
-    label: 'Overview',
+    label: 'Insights',
     items: [
-      { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+      { to: '/', label: 'Overview', icon: LayoutDashboard },
       { to: '/analytics', label: 'Analytics', icon: ChartColumn },
     ],
   },

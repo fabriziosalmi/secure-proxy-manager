@@ -91,7 +91,7 @@ describe('Settings', () => {
       const { container } = renderAt('/settings/access')
       const links = within(sectionNav()).getAllByRole('link')
       expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
-        ['Overview', '/settings/overview'],
+        ['Summary', '/settings/overview'],
         ['Clients and access', '/settings/access'],
         ['Filtering', '/settings/filtering'],
         ['Inspection', '/settings/inspection'],
@@ -102,7 +102,7 @@ describe('Settings', () => {
         ['Appearance', '/settings/appearance'],
       ])
       expect(within(sectionNav()).getByRole('link', { name: 'Clients and access' })).toHaveAttribute('aria-current', 'page')
-      expect(within(sectionNav()).getByRole('link', { name: 'Overview' })).not.toHaveAttribute('aria-current')
+      expect(within(sectionNav()).getByRole('link', { name: 'Summary' })).not.toHaveAttribute('aria-current')
       expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
       expect(screen.getByRole('heading', { level: 2, name: 'Clients and access' })).toBeInTheDocument()
       await expectNoAxeViolations(container)
@@ -114,10 +114,10 @@ describe('Settings', () => {
       await waitFor(() => expect(screen.getByLabelText('Disk cache (MB)')).toHaveValue('1000'))
     })
 
-    it('sends an unknown section to Overview', async () => {
+    it('sends an unknown section to Summary', async () => {
       renderAt('/settings/nope')
       await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/settings/overview'))
-      expect(screen.getByRole('heading', { level: 2, name: 'Overview' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { level: 2, name: 'Summary' })).toBeInTheDocument()
     })
 
     it('keeps what was typed when moving to another section and back', async () => {
