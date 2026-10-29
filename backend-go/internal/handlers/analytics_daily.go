@@ -48,6 +48,24 @@ func dayBounds(now time.Time, loc *time.Location, n int) []time.Time {
 	return out
 }
 
+// viewerZone reads ?tz=, an IANA zone name, UTC when absent. ok is false for
+// a name that is not one, and for "Local", which is the server's zone, not
+// the viewer's.
+func viewerZone(r *http.Request) (*time.Location, bool) {
+	name := strings.TrimSpace(r.URL.Query().Get("tz"))
+	if name == "" {
+		name = "UTC"
+	}
+	if len(name) > 64 || name == "Local" {
+		return nil, false
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return nil, false
+	}
+	return loc, true
+}
+
 // BlockedByDay counts the blocked client requests, from sources other than
 // internal, of each of the last 7 calendar days (today included) in the zone
 // tz (an IANA name, default UTC), by the rule that blocked them. Every day is
@@ -56,17 +74,8 @@ func dayBounds(now time.Time, loc *time.Location, n int) []time.Time {
 // internal_sources is how many internal sources sent client requests in
 // those 7 days (networks in GDPR mode), the requests the days leave out.
 func (h *AnalyticsHandlers) BlockedByDay(w http.ResponseWriter, r *http.Request) {
-	name := strings.TrimSpace(r.URL.Query().Get("tz"))
-	if name == "" {
-		name = "UTC"
-	}
-	// "Local" is the server's zone, not the viewer's.
-	if len(name) > 64 || name == "Local" {
-		writeError(w, http.StatusBadRequest, "tz must be an IANA time zone name such as Europe/Rome")
-		return
-	}
-	loc, err := time.LoadLocation(name)
-	if err != nil {
+	loc, ok := viewerZone(r)
+	if !ok {
 		writeError(w, http.StatusBadRequest, "tz must be an IANA time zone name such as Europe/Rome")
 		return
 	}

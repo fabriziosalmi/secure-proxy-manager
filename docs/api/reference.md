@@ -111,7 +111,7 @@ Details: [Logs and Analytics API](./logs.md).
 | `GET`  | `/api/logs` | Access log rows, with filters (source, outcome, rule, destination, internal traffic) and a cursor |
 | `GET`  | `/api/logs/export` | The same rows as streamed CSV |
 | `GET`  | `/api/logs/stats` | Total, blocked and direct-IP counts, blocks by rule |
-| `GET`  | `/api/logs/timeline` | Requests and blocks per hour (`hours`, default 24) |
+| `GET`  | `/api/logs/timeline` | Requests and blocks per hour (`hours`, default 24) of the zone `tz` (default UTC) |
 | `POST` | `/api/logs/clear` | Delete every log row |
 | `POST` | `/api/logs/clear-old` | Delete rows older than `days` (query parameter, default 30) |
 | `POST` | `/api/counters/reset` | Delete every log row and reset the WAF's counters |
@@ -152,7 +152,7 @@ Details: [Settings and Maintenance API](./settings.md).
 | `POST`   | `/api/database/reset` | Delete every row of every table except `users` |
 | `GET`    | `/api/cache/statistics` | Squid cache statistics as the proxy last collected them |
 | `POST`   | `/api/maintenance/reload-config` | Export the lists, ask the proxy to regenerate and reload, and report what it did |
-| `POST`   | `/api/maintenance/reload-dns` | Export the lists and ask dnsmasq to reload |
+| `POST`   | `/api/maintenance/reload-dns` | Export every list again and ask dnsmasq to reload; says how many domain entries the DNS sinkhole got |
 | `POST`   | `/api/maintenance/clear-cache` | Clear the Squid cache (see [Settings and Maintenance](./settings.md#clear-proxy-cache)) |
 | `GET`    | `/api/maintenance/backup-config` | The settings and the five lists, as a backup |
 | `POST`   | `/api/maintenance/restore-config` | Add what a backup holds |

@@ -184,22 +184,34 @@ func (h *LogHandlers) Stats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Timeline counts the client requests of the last ?hours= hours (24 by
+// default) per hour of the zone ?tz= (an IANA name, UTC by default). time is
+// the hour as the zone's clock reads it, start the epoch second it begins.
+// Grouping by UTC hour put every hour at half past in a zone such as
+// Asia/Kolkata (UTC+05:30): the chart read 12:30, 15:30. Rows are counted
+// per quarter hour in SQL, every zone's offset being a whole number of
+// quarters, and each quarter goes to the hour of the zone it starts in.
 func (h *LogHandlers) Timeline(w http.ResponseWriter, r *http.Request) {
 	hours := queryInt(r, "hours", 24)
 	if hours < 1 || hours > 720 {
 		hours = 24
+	}
+	loc, ok := viewerZone(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "tz must be an IANA time zone name such as Europe/Rome")
+		return
 	}
 	// The Overview draws this next to its request counts, which leave out the
 	// internal sources: so does the timeline, or its hours add up to more.
 	ext, extArgs := notInternal(h.src.Present())
 	// #nosec G202 -- clientRows and ext are constants and placeholders; values are bound.
 	rows, err := h.db.Query(string(`
-		SELECT strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
+		SELECT (unix_timestamp / 900) * 900 AS quarter,
 		       COUNT(*) as total,
 		       SUM(blocked) as blocked
 		FROM proxy_logs
 		WHERE unix_timestamp >= ? AND `+clientRows+` AND `+ext+`
-		GROUP BY hour ORDER BY hour ASC`),
+		GROUP BY quarter ORDER BY quarter ASC`),
 		append([]any{time.Now().Add(-time.Duration(hours) * time.Hour).Unix()}, extArgs...)...,
 	)
 	if err != nil {
@@ -207,15 +219,39 @@ func (h *LogHandlers) Timeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	var data []map[string]any
-	for rows.Next() {
-		var hour string
-		var total, blocked int
-		rows.Scan(&hour, &total, &blocked) //nolint:errcheck
-		data = append(data, map[string]any{"time": hour, "total": total, "blocked": blocked})
+	type hourCount struct {
+		start          time.Time
+		total, blocked int
 	}
-	if data == nil {
-		data = []map[string]any{}
+	var order []int64
+	byStart := map[int64]*hourCount{}
+	for rows.Next() {
+		var quarter int64
+		var total, blocked int
+		rows.Scan(&quarter, &total, &blocked) //nolint:errcheck
+		t := time.Unix(quarter, 0).In(loc)
+		start := time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, loc)
+		// At the end of summer time the same wall-clock hour comes twice and
+		// Date picks the first; a quarter of the second belongs an hour later.
+		for t.Sub(start) >= time.Hour {
+			start = start.Add(time.Hour)
+		}
+		key := start.Unix()
+		c, seen := byStart[key]
+		if !seen {
+			c = &hourCount{start: start}
+			byStart[key] = c
+			order = append(order, key)
+		}
+		c.total += total
+		c.blocked += blocked
+	}
+	data := make([]map[string]any, 0, len(order))
+	for _, key := range order {
+		c := byStart[key]
+		data = append(data, map[string]any{
+			"time": c.start.Format("2006-01-02 15:00:00"), "start": key, "total": c.total, "blocked": c.blocked,
+		})
 	}
 	writeOK(w, data)
 }

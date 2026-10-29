@@ -38,7 +38,7 @@ describe('QuickLists', () => {
   // entries and five audit rows for "+ GitHub".
   it('adds a common service with one request to its preset, and says what was already listed', async () => {
     const { container } = renderWithProviders(<EssentialWhitelist />)
-    fireEvent.click(await screen.findByRole('button', { name: '+ GitHub' }))
+    fireEvent.click(await screen.findByRole('button', { name: '+ GitHub (4 missing)' }))
     expect(await screen.findByText('GitHub: 4 added, 1 already listed. The lists are being sent to the proxy and the DNS sinkhole.')).toBeInTheDocument()
     expect(api.post).toHaveBeenCalledTimes(1)
     expect(api.post).toHaveBeenCalledWith('domain-whitelist/presets/github')
@@ -49,10 +49,45 @@ describe('QuickLists', () => {
   it('blacklists the DoH resolvers with one request, naming how many the preset holds', async () => {
     const { container } = renderWithProviders(<BlockDoh />)
     expect(await screen.findByText(/^Blacklists 14 public DoH resolvers/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Block DoH resolvers' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Block the other 13' }))
     expect(await screen.findByText('DNS-over-HTTPS resolvers: 13 added, 1 already listed. The lists are being sent to the proxy and the DNS sinkhole.')).toBeInTheDocument()
     expect(api.post).toHaveBeenCalledTimes(1)
     await expectNoAxeViolations(container)
+  })
+
+  // "+ Docker" read the same before and after Docker was added: nothing said
+  // a preset was already on the list, and the DoH card had no state at all.
+  it('says on each button whether its preset is added, partly added or not added', async () => {
+    vi.mocked(api.get).mockImplementation(((url: string) => Promise.resolve({ data: { status: 'success', data: url === 'domain-whitelist/presets' ? [
+      { id: 'docker', name: 'Docker', domains: ['docker.com', 'hub.docker.com'], listed: ['docker.com', 'hub.docker.com'] },
+      { id: 'github', name: 'GitHub', domains: ['github.com', 'api.github.com'], listed: ['github.com'] },
+      { id: 'google', name: 'Google', domains: ['google.com'], listed: [] },
+    ] : [] } })) as never)
+    renderWithProviders(<EssentialWhitelist />)
+    expect(await screen.findByRole('button', { name: 'Docker added' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '+ GitHub (1 missing)' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '+ Google' })).toBeEnabled()
+  })
+
+  // Red is for an action that removes or stops something (Button.tsx). Blocking
+  // the DoH resolvers adds protection, and it was drawn as danger-outline.
+  it('draws Block DoH as an ordinary button, not a red one', async () => {
+    renderWithProviders(<BlockDoh />)
+    const button = await screen.findByRole('button', { name: 'Block the other 13' })
+    expect(button.className).not.toMatch(/\bdanger\b|text-danger|border-danger/)
+    expect(button.className).toContain('border-line-strong')
+  })
+
+  it('says how many DoH resolvers are blocked, and offers nothing when all are', async () => {
+    renderWithProviders(<BlockDoh />)
+    expect(await screen.findByText('1 of 14 are blocked.')).toBeInTheDocument()
+    vi.mocked(api.get).mockImplementation((() => Promise.resolve({ data: { status: 'success', data: [
+      { ...blockedPresets[0], listed: blockedPresets[0].domains },
+    ] } })) as never)
+    const { unmount } = renderWithProviders(<BlockDoh />)
+    expect(await screen.findByRole('button', { name: 'All 14 blocked' })).toBeDisabled()
+    expect(screen.getByText('All 14 are blocked.')).toBeInTheDocument()
+    unmount()
   })
 
   it('says so when the presets cannot be read', async () => {

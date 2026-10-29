@@ -3,8 +3,14 @@ import { formatCount, formatHourMinute } from '../../lib/format';
 
 /** One hour of the Requests per hour chart. */
 export interface HourSlot {
-  /** The hour bucket as the backend writes it: "2026-10-25 07:00:00", UTC. */
+  /**
+   * When the hour begins, as a backend timestamp ("2026-10-25 07:00:00",
+   * UTC), so the format helpers show it at the viewer time. In a zone with a
+   * half-hour offset it reads "...06:30:00" and shows as 12:00 in Kolkata.
+   */
   time: string;
+  /** When the hour begins, epoch milliseconds. */
+  start: number;
   total: number;
   blocked: number;
   /**
@@ -18,10 +24,28 @@ export interface HourSlot {
 const HOUR = 3_600_000;
 const pad = (n: number) => String(n).padStart(2, '0');
 
-/** The backend's hour key for the UTC hour that contains ms. */
-function hourKey(ms: number): string {
-  const d = new Date(Math.floor(ms / HOUR) * HOUR);
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:00:00`;
+/** The backend timestamp, UTC, of epoch milliseconds. */
+function utcStamp(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:00`;
+}
+
+/**
+ * The start of the viewer's hour that contains ms. Subtracted, not set:
+ * setMinutes(0) on the second 02:00 of a night that leaves summer time
+ * resolves to the first one, an hour earlier, and the walk never ended.
+ */
+function hourStart(ms: number): number {
+  const d = new Date(ms);
+  return ms - (d.getMinutes() * 60_000 + d.getSeconds() * 1000 + d.getMilliseconds());
+}
+
+/**
+ * Where an entry's hour begins: start (epoch seconds), which the backend
+ * sends for logs/timeline?tz=; an older backend sends only time, a UTC hour.
+ */
+function entryStart(e: TimelineEntry): number {
+  return typeof e.start === 'number' ? e.start * 1000 : Date.parse(`${e.time.replace(' ', 'T')}Z`);
 }
 
 /**
@@ -30,32 +54,32 @@ function hourKey(ms: number): string {
  * the hours that have rows, so three busy hours used to be drawn as three
  * adjacent bars, as if the day had three hours.
  *
- * The window is the backend's: rows since now minus `hours` hours, bucketed
- * by UTC hour, so it spans from the hour containing now minus `hours` to the
- * hour containing now (hours + 1 buckets, the first and last partial). An
- * entry outside that range (a clock that disagrees) is kept, in order, not
- * dropped: every bar comes from the API.
+ * The hours are the viewer's: the page asks logs/timeline?tz= for its zone,
+ * so in Asia/Kolkata an hour runs from 12:00 to 13:00, not from 12:30. The
+ * window is rows since now minus `hours` hours, from the hour containing that
+ * moment to the hour containing now (the first and last partial). An entry
+ * outside it (a clock that disagrees) is kept, in order, not dropped: every
+ * bar comes from the API.
  */
 export function hourlySlots(entries: readonly TimelineEntry[], now: number, hours = 24): HourSlot[] {
-  const byTime = new Map<string, HourSlot>();
-  for (let t = now - hours * HOUR; ; t += HOUR) {
-    const key = hourKey(t);
-    byTime.set(key, { time: key, total: 0, blocked: 0 });
-    if (key === hourKey(now)) break;
+  const byStart = new Map<number, HourSlot>();
+  const from = now - hours * HOUR;
+  for (let t = hourStart(from); t <= now; t = hourStart(t + HOUR)) {
+    byStart.set(t, { time: utcStamp(t), start: t, total: 0, blocked: 0 });
   }
   for (const e of entries) {
-    const slot = byTime.get(e.time) ?? { time: e.time, total: 0, blocked: 0 };
+    const at = entryStart(e);
+    if (Number.isNaN(at)) continue;
+    const slot = byStart.get(at) ?? { time: utcStamp(at), start: at, total: 0, blocked: 0 };
     slot.total += e.total || 0;
     slot.blocked += e.blocked || 0;
-    byTime.set(e.time, slot);
+    byStart.set(at, slot);
   }
-  // Same fixed-width shape for every key, so text order is time order.
-  const out = [...byTime.values()].sort((a, b) => a.time.localeCompare(b.time));
-  const start = now - hours * HOUR;
-  const first = out.find((s) => s.time === hourKey(start));
-  if (first && start % HOUR !== 0) first.partial = { from: start, to: Math.floor(start / HOUR) * HOUR + HOUR };
-  const last = out.find((s) => s.time === hourKey(now));
-  if (last && now % HOUR !== 0) last.partial = { from: Math.floor(now / HOUR) * HOUR, to: now };
+  const out = [...byStart.values()].sort((a, b) => a.start - b.start);
+  const first = byStart.get(hourStart(from));
+  if (first && from !== first.start) first.partial = { from, to: hourStart(first.start + HOUR) };
+  const last = byStart.get(hourStart(now));
+  if (last && now !== last.start) last.partial = { from: last.start, to: now };
   return out;
 }
 
@@ -74,7 +98,7 @@ export function axisLabels(slots: readonly HourSlot[]): Map<number, string> {
   const labels = new Map<number, string>();
   if (slots.length === 0) return labels;
   const first = slots[0];
-  const startMs = first.partial?.from ?? Date.parse(first.time.replace(' ', 'T') + 'Z');
+  const startMs = first.partial?.from ?? first.start;
   const d = new Date(startMs);
   labels.set(0, `${WEEKDAYS[d.getDay()]} ${clock(startMs)}`);
   const lastIdx = slots.length - 1;
@@ -91,7 +115,7 @@ export function partialText(slot: HourSlot): string | null {
 const STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
 
 /** The top of the y axis: the busiest hour rounded up to a round number (1,146 -> 1,500). 0 when every hour is empty. */
-export function axisMax(slots: readonly HourSlot[]): number {
+export function axisMax(slots: readonly Pick<HourSlot, 'time' | 'total' | 'blocked'>[]): number {
   const peak = Math.max(0, ...slots.map((s) => s.total));
   if (peak <= 0) return 0;
   const p = 10 ** Math.floor(Math.log10(peak));
