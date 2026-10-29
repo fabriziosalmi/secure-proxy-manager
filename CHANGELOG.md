@@ -53,6 +53,12 @@ for at least one minor release before disappearing.
   circle, dashed circle) as well as colour, and Protection coverage has a
   legend. Alerts off is *worth knowing* on both pages.
 
+### Internal
+
+- The `UI layout (Playwright)` check is required on `main`, in the ruleset and
+  in `.github/branch-protection.json`, so a page that overflows, wraps or
+  misaligns at desktop, 1250 px or phone width cannot merge.
+
 ## [3.18.3] - 2026-10-28
 
 A fix release. The web UI keeps working when the backend container is
