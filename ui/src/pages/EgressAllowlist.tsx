@@ -23,7 +23,7 @@ import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
 import { Trash2 } from 'lucide-react';
 import { api, getErrorMessage } from '../lib/api';
-import { formatCount, formatDateTime } from '../lib/format';
+import { formatCount, formatWhen, formatWhenExact } from '../lib/format';
 import { formatEgressBreakdown, settingsQuery, useEgressSummary, type EgressSummary } from '../lib/queries';
 import { parseSettings } from '../lib/secrets';
 import { checkDestination, egressEntryKind, type EgressKind, LAN_DESTINATIONS } from '../lib/egress';
@@ -280,7 +280,7 @@ export function EgressAllowlist() {
       ),
     },
     { id: 'kind', header: 'Allows', className: 'whitespace-nowrap text-ink-muted', cell: egressEntryKind },
-    { id: 'added', header: 'Added', className: 'whitespace-nowrap text-ink-muted', cell: (e) => formatDateTime(e.added_date) },
+    { id: 'added', header: 'Added', className: 'whitespace-nowrap text-ink-muted', cell: (e) => <span title={formatWhenExact(e.added_date)}>{formatWhen(e.added_date, { style: 'glance' })}</span> },
     {
       id: 'actions',
       header: 'Actions',
