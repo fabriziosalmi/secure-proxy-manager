@@ -69,6 +69,14 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **The client detail states the window it counts, and the share blocked
+  can be sorted.** The client list counts the last 7 days and the detail it
+  opens counted every request ever logged, saying so only when the two
+  numbers differed. `GET /api/clients/{ip}/details` takes `window=7d` (the
+  list's window) or `window=all` (the default, as before) and says in
+  `window` which it counted; another value answers `400`. The detail now
+  counts the last 7 days, offers "All time", and always says which. The
+  Share blocked column of the client list sorts, largest first.
 - **The blocks-per-day chart can be read with any colour vision, and each
   rule keeps its colour.** Analytics stacked the rules in four reds stepped
   in lightness, 1.36 to 1.50:1 from each other, and handed the colours out in
