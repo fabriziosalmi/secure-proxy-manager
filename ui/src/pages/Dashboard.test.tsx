@@ -80,7 +80,8 @@ const DEFAULT_ROUTES: Routes = {
 }
 
 function card(label: string): HTMLElement {
-  const el = screen.getByText(label, { selector: 'p' }).parentElement
+  // A card that links somewhere has its label in a link inside the <p>.
+  const el = screen.getByText(label, { selector: 'p, p > a' }).closest('p')?.parentElement
   if (!el) throw new Error(`no card ${label}`)
   return el
 }
@@ -109,21 +110,22 @@ describe('Dashboard (Overview)', () => {
   it('shows each card from its API field', async () => {
     renderWithProviders(<Dashboard />)
     await waitFor(() => { expect(card('Client requests')).toHaveTextContent('1,180') })
-    expect(card('Client requests')).toHaveTextContent('from 1 client')
+    // "from 1 client" repeated the Active clients card next to it.
+    expect(card('Client requests')).not.toHaveTextContent(/\bclients?\b/)
     expect(card('Blocked')).toHaveTextContent('908')
     expect(card('Blocked')).toHaveTextContent('76.9% of requests')
     // One client: its address, and the newest request at the viewer time (UTC+2 in July).
     expect(card('Active clients')).toHaveTextContent('1192.168.0.109, last request 09:21')
-    expect(card('Rules in force')).toHaveTextContent('691,701')
-    expect(card('Rules in force')).toHaveTextContent('50,772 IPs, 640,929 domains')
+    expect(card('Blacklist entries')).toHaveTextContent('691,701')
+    expect(card('Blacklist entries')).toHaveTextContent('50,772 IP and network entries, 640,929 domain entries')
   })
 
   // It read "1 IPs" on a deployment with one blocked network.
   it('counts one rule in the singular', async () => {
     serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, ip_blacklist_count: 1, domain_blacklist_count: 1 } })
     renderWithProviders(<Dashboard />)
-    await waitFor(() => { expect(card('Rules in force')).toHaveTextContent('1 IP, 1 domain') })
-    expect(card('Rules in force')).not.toHaveTextContent('IPs')
+    await waitFor(() => { expect(card('Blacklist entries')).toHaveTextContent('1 IP and network entry, 1 domain entry') })
+    expect(card('Blacklist entries')).not.toHaveTextContent(/(network|domain) entries/)
   })
 
   // The backend leaves the stack's own addresses out of every count and
@@ -153,7 +155,7 @@ describe('Dashboard (Overview)', () => {
     delete old.last_24h_clients
     serve({ ...DEFAULT_ROUTES, 'dashboard/summary': old })
     renderWithProviders(<Dashboard />)
-    await waitFor(() => { expect(card('Rules in force')).toHaveTextContent('691,701') })
+    await waitFor(() => { expect(card('Blacklist entries')).toHaveTextContent('691,701') })
     for (const label of ['Client requests', 'Blocked', 'Active clients']) {
       expect(card(label).querySelector('[data-state="not-reported"]')).toHaveTextContent('Not reported')
     }
@@ -290,11 +292,35 @@ describe('Dashboard (Overview)', () => {
   it('writes every count with en-US grouping in any browser locale', async () => {
     simulateItalianLocale()
     renderWithProviders(<Dashboard />)
-    await waitFor(() => { expect(card('Rules in force')).toHaveTextContent('50,772 IPs, 640,929 domains') })
+    await waitFor(() => { expect(card('Blacklist entries')).toHaveTextContent('50,772 IP and network entries, 640,929 domain entries') })
     expect(card('Client requests')).toHaveTextContent('1,180')
   })
 
   // The Settings Listen tile reads the same helper.
+  // "Rules in force" summed table rows: IP entries are networks Squid merges,
+  // and domain entries include the ones Allowed domains takes out. They are
+  // entries, and the card opens the lists they are in.
+  it('calls the blacklist figure entries and links the card to the blacklists', async () => {
+    renderWithProviders(<Dashboard />)
+    await waitFor(() => { expect(card('Blacklist entries')).toHaveTextContent('691,701') })
+    expect(screen.queryByText('Rules in force')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Blacklist entries' })).toHaveAttribute('href', '/blacklists')
+  })
+
+  // "Open analytics" led to a page that no longer lists destinations, and
+  // "Open access logs" to the unfiltered log.
+  it('links each block list to the blocked requests it summarises', async () => {
+    renderWithProviders(<Dashboard />)
+    const top = await screen.findByRole('region', { name: 'Most blocked destinations' })
+    expect(within(top).getByRole('link', { name: 'Open blocked requests' })).toHaveAttribute('href', '/logs?outcome=blocked')
+    expect(await within(top).findByRole('link', { name: 'dpm.demdex.net' })).toHaveAttribute('href', '/logs?q=dpm.demdex.net&outcome=blocked')
+    const latest = screen.getByRole('region', { name: 'Latest blocks' })
+    expect(within(latest).getByRole('link', { name: 'Open blocked requests' })).toHaveAttribute('href', '/logs?outcome=blocked')
+    const rules = screen.getByRole('region', { name: 'Blocked by rule' })
+    expect(await within(rules).findByRole('link', { name: 'Domain blacklist (DNS)' })).toHaveAttribute('href', '/logs?outcome=blocked&rule=domain_blacklist_dns')
+    expect(screen.queryByRole('link', { name: 'Open access logs' })).toBeNull()
+  })
+
   it('shows the reachable proxy address', async () => {
     renderWithProviders(<Dashboard />)
     expect(await screen.findByText(`${window.location.hostname}:3128`)).toBeInTheDocument()

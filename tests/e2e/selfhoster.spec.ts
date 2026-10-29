@@ -478,19 +478,19 @@ test.describe('UI — Dashboard', () => {
   // The cards of the last 24 hours, each with a value from dashboard/summary:
   // a count, or "Not reported" when the backend did not send the field.
   // The score and the "Today" / "Total" pair are gone from this page.
-  test('shows the last-24-hours cards (Client requests, Blocked, Active clients, Rules in force)', async ({ page }) => {
+  test('shows the last-24-hours cards (Client requests, Blocked, Active clients, Blacklist entries)', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('h1:has-text("Overview")');
     await expect(page.getByText(/^Last 24 hours · updated \d\d:\d\d$/)).toBeVisible();
     const cards = page.getByRole('region', { name: 'Last 24 hours at a glance' });
-    for (const label of ['Client requests', 'Blocked', 'Active clients', 'Rules in force']) {
+    for (const label of ['Client requests', 'Blocked', 'Active clients', 'Blacklist entries']) {
       const card = cards.locator('div').filter({ has: page.getByText(label, { exact: true }) }).last();
       await expect(card).toBeVisible();
       await expect(card.locator('p').nth(1)).toHaveText(/^(\d{1,3}(,\d{3})*|Not reported)$/);
     }
     // The e2e stack runs the current backend, which sends every field.
     await expect(cards.getByText('Not reported')).toHaveCount(0);
-    for (const gone of ['Score', 'Today', 'Block Rate', 'IP Rules']) {
+    for (const gone of ['Score', 'Today', 'Block Rate', 'IP Rules', 'Rules in force']) {
       await expect(page.getByText(gone, { exact: true })).toHaveCount(0);
     }
   });

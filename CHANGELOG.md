@@ -69,6 +69,18 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **The Overview calls blacklist entries entries and links each figure to
+  its rows.** "Rules in force, 50,772 IPs, 77,569 domains" summed table rows:
+  the IP entries include networks the proxy merges before loading, and the
+  domain entries include those Allowed domains takes out. The card is now
+  "Blacklist entries", "50,772 IP and network entries, 77,569 domain
+  entries", and opens Blacklists. "Client requests" no longer repeats "from
+  N clients" next to the Active clients card. "Most blocked destinations"
+  offered "Open analytics", a page that no longer lists destinations, and
+  "Latest blocks" opened the unfiltered access log: both now offer "Open
+  blocked requests", the access log filtered to blocked requests. Each
+  destination opens the blocked requests to it, and each rule in Blocked by
+  rule the requests it blocked.
 - **Example values in fields read as examples.** The Egress allowlist form
   showed "acme-v02.api.letsencrypt.org" in its empty Destination field, in
   the same monospace as a typed value, so it looked already filled in. Every
