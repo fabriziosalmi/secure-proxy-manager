@@ -15,6 +15,18 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- **The audit log says what a settings save changed, and to what.** A save
+  recorded the keys the request carried, before they were checked and with
+  no value, so saving one field of a section read "Changed 8 settings" and
+  whether alerts were switched on or off could not be told from the log. A
+  save now writes a row only when it changed something, after the change is
+  stored, naming the changed keys with their old and new values
+  (`details.changes`); a secret is recorded only as set or cleared
+  (`details.secrets`), never its value, and a value over 512 characters is
+  cut and marked truncated. A save refused by validation writes no row.
+
 ## [3.18.3] - 2026-10-28
 
 A fix release. The web UI keeps working when the backend container is
