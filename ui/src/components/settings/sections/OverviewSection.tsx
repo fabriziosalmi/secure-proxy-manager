@@ -11,6 +11,7 @@ import { api, getErrorMessage } from '../../../lib/api';
 import { Section } from '../../ui/Section';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
+import { PostureMark } from '../../ui/PostureMark';
 import { ClientSetup } from '../../ClientSetup';
 import { proxyAddress, cn } from '../../../lib/utils';
 import { formatCount } from '../../../lib/format';
@@ -22,37 +23,54 @@ import { proxyLoginWithoutCredentials, type AttentionItem } from '../../../lib/a
 import { parseSettings } from '../../../lib/secrets';
 import type { SectionForm } from '../sectionForm';
 
-const DOT = { warning: 'bg-warning-strong', info: 'bg-chart-neutral' };
-
-function NeedsAttention({ items, loading }: { items: AttentionItem[]; loading: boolean }) {
+function AttentionList({ items }: { items: AttentionItem[] }) {
   return (
-    <Section level={3} title="Needs attention" description="Worked out from the running configuration, not from a checklist you tick." flush>
-      {loading ? (
-        <p className="px-5 pb-4 text-sm text-ink-muted">Reading the configuration...</p>
-      ) : items.length === 0 ? (
-        <p className="px-5 pb-4 text-sm text-ink-muted">Nothing needs attention.</p>
-      ) : (
-        <ul>
-          {items.map((a) => (
-            <li key={a.id} data-tone={a.tone} className="flex flex-wrap items-start gap-3 border-t border-line-subtle px-5 py-4">
-              <span aria-hidden="true" className={cn('mt-1.5 h-2.5 w-2.5 flex-none rounded-full', DOT[a.tone])} />
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <p className="text-sm font-semibold text-ink">
-                  {a.title}
-                  <span className="sr-only">{a.tone === 'warning' ? ' (needs attention)' : ' (for information)'}</span>
-                </p>
-                <p className="text-sm leading-5 text-ink-muted">{a.body}</p>
-              </div>
-              {a.section && a.action && (
-                <Link to={sectionPath(a.section)} className="flex-none text-sm font-semibold text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent">
-                  {a.action}
-                </Link>
-              )}
-            </li>
-          ))}
-        </ul>
+    <ul>
+      {items.map((a) => (
+        <li key={a.id} data-posture={a.posture} className="flex flex-wrap items-start gap-3 border-t border-line-subtle px-5 py-4">
+          <PostureMark posture={a.posture} className="mt-0.5" />
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <p className="text-sm font-semibold text-ink">{a.title}</p>
+            <p className="text-sm leading-5 text-ink-muted">{a.body}</p>
+          </div>
+          {a.section && a.action && (
+            <Link to={sectionPath(a.section)} className="flex-none text-sm font-semibold text-accent hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent">
+              {a.action}
+            </Link>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * What the running configuration calls for, in two lists: what needs
+ * attention (the count the Settings menu shows next to Overview) and what is
+ * worth knowing (choices with a cost). They used to be one list titled
+ * "Needs attention" under a badge that counted only the first kind: 1 on the
+ * badge, 4 in the list.
+ */
+function NeedsAttention({ items, loading }: { items: AttentionItem[]; loading: boolean }) {
+  const urgent = items.filter((a) => a.posture === 'needs-attention');
+  const known = items.filter((a) => a.posture === 'worth-knowing');
+  return (
+    <>
+      <Section level={3} title="Needs attention" description="Worked out from the running configuration, not from a checklist you tick." flush>
+        {loading ? (
+          <p className="px-5 pb-4 text-sm text-ink-muted">Reading the configuration...</p>
+        ) : urgent.length === 0 ? (
+          <p className="px-5 pb-4 text-sm text-ink-muted">Nothing needs attention.</p>
+        ) : (
+          <AttentionList items={urgent} />
+        )}
+      </Section>
+      {!loading && known.length > 0 && (
+        <Section level={3} title="Worth knowing" description="Choices that have a cost. Each is fine if it is the one you meant." flush>
+          <AttentionList items={known} />
+        </Section>
       )}
-    </Section>
+    </>
   );
 }
 

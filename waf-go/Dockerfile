@@ -20,8 +20,9 @@ RUN apk --no-cache add ca-certificates tzdata \
     && addgroup -g 1000 waf && adduser -u 1000 -G waf -s /bin/sh -D waf
 
 WORKDIR /app
+# The binary stays root's, mode 0755: the waf user runs it and cannot rewrite
+# it. A chown here would also store a second full copy of it in its own layer.
 COPY --from=builder /app/waf-server .
-RUN chown waf:waf /app/waf-server
 
 # Persistent, writable sink for the traffic feature log (issue #112). Created
 # owned by waf so that when the empty `waf-traffic` named volume is first mounted

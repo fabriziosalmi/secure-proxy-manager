@@ -115,13 +115,13 @@ describe('Clients', () => {
     await waitFor(() => expect(ips()).toEqual(['192.168.0.109', '172.20.5.9']))
     const toggle = screen.getByRole('switch', { name: 'Show internal addresses (3)' })
     expect(toggle).toHaveAttribute('aria-checked', 'false')
-    expect(screen.getByText('2 clients shown. 3 internal addresses are hidden and not counted on the Overview.')).toBeInTheDocument()
+    expect(screen.getByText('2 clients shown. 3 internal addresses are hidden and not counted in any statistic.')).toBeInTheDocument()
 
     fireEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-checked', 'true')
     expect(ips()).toEqual(['192.168.0.109', '172.20.5.9', '172.18.0.2', '172.18.0.1', '127.0.0.1'])
     expect(screen.getByText('Internal: this host')).toBeInTheDocument()
-    expect(screen.getByText('5 addresses shown, 3 of them internal. Internal traffic is not counted on the Overview.')).toBeInTheDocument()
+    expect(screen.getByText('5 addresses shown, 3 of them internal. Internal traffic is not counted in any statistic.')).toBeInTheDocument()
     expect(window.localStorage.getItem(SHOW_INTERNAL_KEY)).toBe('true')
   })
 
