@@ -69,6 +69,11 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **The access log's live switch keeps one name.** The button was renamed
+  "Live", "Paused", "Connecting" and "Reconnecting" as the connection
+  changed, so a screen reader heard a different control each time. It is
+  "Live updates", pressed or not, and a status line beside it says
+  "Connected", "Connecting", "Reconnecting" or "Paused".
 - **Error states say what is missing in words, with the request that failed
   as a detail.** They led with an endpoint: "Not reported:
   analytics/coverage did not answer.", "GET /api/cache/statistics did not
