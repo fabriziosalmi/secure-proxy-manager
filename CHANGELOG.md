@@ -49,6 +49,7 @@ for at least one minor release before disappearing.
   rounding clipped into something like a "(". The fill is now at least 2 px
   with a square start; a client with no blocked request shows a muted "0%"
   and no empty track, rather than "0.0%" over an empty bar on every row.
+
 ### Changed
 
 - **Settings and Analytics judge the configuration the same way.** The
