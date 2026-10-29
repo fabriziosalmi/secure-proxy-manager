@@ -160,3 +160,56 @@ func TestBlockedByDayRejectsAZoneItCannotResolve(t *testing.T) {
 		t.Errorf("no tz: %q with %d days, want UTC with 7", resp.Data.TZ, len(resp.Data.Days))
 	}
 }
+
+// internal_sources counts the internal addresses that sent client requests
+// in the chart's 7 days, as the Clients page does, and no other: not an
+// address seen only in sinkhole (DNS) rows, not one seen only before the
+// window. It used to count every internal address ever logged, so the page
+// said "4 internal addresses" where Clients, over the same days, said 2.
+func TestBlockedByDayCountsOnlyInternalSourcesOfItsWindow(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	rome := mustZone(t, "Europe/Rome")
+	withAnalyticsNow(t, time.Date(2026, 10, 27, 12, 0, 0, 0, rome))
+	at := func(d, h int) time.Time { return time.Date(2026, 10, d, h, 0, 0, 0, rome) }
+
+	insertLogRow(t, db, at(27, 10), hostGateway, "GET", "http://in-window.test/", 0, "none")
+	insertLogRow(t, db, at(10, 10), backendIP, "GET", "http://before-window.test/", 0, "none")
+	insertLogRow(t, db, at(27, 10), proxyClient, "DNS", "sinkhole.test", 1, "domain_blacklist_dns")
+	insertLogRow(t, db, at(27, 10), lanClient, "CONNECT", "c.test:443", 1, "domain_blacklist")
+
+	h := NewAnalyticsHandlers(db, cfg).WithSources(composeSources(t, db))
+	var resp blockedByDayResp
+	getJSON(t, h.BlockedByDay, "/api/analytics/blocked-by-day?tz=Europe/Rome", &resp)
+	if resp.Data.Internal == nil {
+		t.Fatal("internal_sources is missing")
+	}
+	if got := *resp.Data.Internal; got != 1 {
+		t.Errorf("internal_sources = %d, want 1 (%s; not %s, seen only before the window, nor %s, seen only in DNS rows)",
+			got, hostGateway, backendIP, proxyClient)
+	}
+}
+
+// In GDPR mode internal_sources counts networks, as clients/statistics does:
+// two internal addresses of 172.18.0.0/24 in the window are one.
+func TestBlockedByDayCountsInternalNetworksInGDPRMode(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	setGDPRMode(t, db, true)
+	rome := mustZone(t, "Europe/Rome")
+	withAnalyticsNow(t, time.Date(2026, 10, 27, 12, 0, 0, 0, rome))
+	at := time.Date(2026, 10, 27, 10, 0, 0, 0, rome)
+
+	insertLogRow(t, db, at, hostGateway, "GET", "http://a.test/", 0, "none")
+	insertLogRow(t, db, at, backendIP, "GET", "http://b.test/", 0, "none")
+
+	h := NewAnalyticsHandlers(db, cfg).WithSources(composeSources(t, db))
+	var resp blockedByDayResp
+	getJSON(t, h.BlockedByDay, "/api/analytics/blocked-by-day?tz=Europe/Rome", &resp)
+	if resp.Data.Internal == nil {
+		t.Fatal("internal_sources is missing")
+	}
+	if got := *resp.Data.Internal; got != 1 {
+		t.Errorf("internal_sources = %d, want 1 network (172.18.0.0/24)", got)
+	}
+}
