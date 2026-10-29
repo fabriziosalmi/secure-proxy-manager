@@ -137,7 +137,7 @@ export function BlockedPerDay({ data, loading, error }: BlockedPerDayProps) {
       <p className="text-[13px] leading-5 text-ink-muted">
         Today and the 6 days before, midnight to midnight in your time zone ({data.tz}).
         {total > 0 && ` ${formatCount(total)} blocked in all.`}
-        {internal > 0 && ` Requests from ${formatCount(internal)} internal ${internal === 1 ? 'address are' : 'addresses are'} not counted.`}
+        {internal > 0 && ` Requests from ${formatCount(internal)} internal ${internal === 1 ? 'address' : 'addresses'} in these 7 days are not counted.`}
       </p>
     );
     body = total === 0 ? (

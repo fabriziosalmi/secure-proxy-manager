@@ -6,9 +6,10 @@
 import type { Coverage } from '../../types';
 import { formatCount } from '../../lib/format';
 import { sectionPath, type SectionId } from '../../lib/settingsMeta';
+import { SHARED_SEVERITY, type Posture } from '../../lib/posture';
 
-/** on: switched on and enforced. off: switched off. attention: on but not fully working, or off where that leaves a gap. unknown: not reported. */
-export type CoverageState = 'on' | 'off' | 'attention' | 'unknown';
+/** A line's state, in the one model Settings uses too (lib/posture). */
+export type CoverageState = Posture;
 
 export interface CoverageLine {
   id: 'domain' | 'ip' | 'waf' | 'https' | 'login' | 'alerts';
@@ -32,21 +33,21 @@ function entries(n: number): string {
 function domainLine(c: Coverage['domain_blacklist']): CoverageLine {
   const base = { id: 'domain' as const, link: DOMAIN_BLACKLIST };
   if (c.entries === null) return { ...base, state: 'unknown', text: 'Domain blacklist: the backend could not count its entries' };
-  if (c.entries === 0) return { ...base, state: 'off', text: 'Domain blacklist: empty, no domain is blocked' };
+  if (c.entries === 0) return { ...base, state: 'worth-knowing', text: 'Domain blacklist: empty, no domain is blocked' };
   const head = `Domain blacklist: ${entries(c.entries)}, blocked at the DNS sinkhole`;
   const acl = c.squid_acl;
   if (!acl) return { ...base, state: 'on', text: `${head}; the proxy has not reported whether it holds its own copy` };
   if (acl.held) return { ...base, state: 'on', text: `${head} and by the proxy's own copy` };
   if (acl.names > acl.limit) {
-    return { ...base, state: 'attention', text: `${head} only: ${formatCount(acl.names)} names are above the proxy's limit of ${formatCount(acl.limit)}` };
+    return { ...base, state: 'needs-attention', text: `${head} only: ${formatCount(acl.names)} names are above the proxy's limit of ${formatCount(acl.limit)}` };
   }
-  return { ...base, state: 'attention', text: `${head} only: the proxy could not load its own copy` };
+  return { ...base, state: 'needs-attention', text: `${head} only: the proxy could not load its own copy` };
 }
 
 function ipLine(c: Coverage['ip_blacklist']): CoverageLine {
   const base = { id: 'ip' as const, link: BLACKLISTS };
   if (c.entries === null) return { ...base, state: 'unknown', text: 'IP blacklist: the backend could not count its entries' };
-  if (c.entries === 0) return { ...base, state: 'off', text: 'IP blacklist: empty, no address is blocked' };
+  if (c.entries === 0) return { ...base, state: 'worth-knowing', text: 'IP blacklist: empty, no address is blocked' };
   const acl = c.squid_acl;
   if (!acl) return { ...base, state: 'on', text: `IP blacklist: ${entries(c.entries)}; the proxy has not reported loading them` };
   const nets = `${formatCount(acl.networks)} ${acl.networks === 1 ? 'network' : 'networks'}`;
@@ -57,13 +58,13 @@ function ipLine(c: Coverage['ip_blacklist']): CoverageLine {
 function wafLine(c: Coverage): CoverageLine {
   const base = { id: 'waf' as const, link: { label: 'Inspection', to: settingsPath('inspection') } };
   const w = c.waf;
-  if (w.status === 'auth_failed') return { ...base, state: 'attention', text: 'WAF: refuses the backend credential, so its rules are not reported (INTERNAL_ALERT_TOKEN must match)' };
-  if (w.status === 'unreachable') return { ...base, state: 'attention', text: 'WAF: did not answer the backend, so its rules are not reported' };
+  if (w.status === 'auth_failed') return { ...base, state: 'needs-attention', text: 'WAF: refuses the backend credential, so its rules are not reported (INTERNAL_ALERT_TOKEN must match)' };
+  if (w.status === 'unreachable') return { ...base, state: 'needs-attention', text: 'WAF: did not answer the backend, so its rules are not reported' };
   if (w.status !== 'ok' || w.rules === null || w.rules_enabled === null || w.categories === null || w.categories_enabled === null) {
-    return { ...base, state: 'attention', text: 'WAF: answered with an error, so its rules are not reported' };
+    return { ...base, state: 'needs-attention', text: 'WAF: answered with an error, so its rules are not reported' };
   }
   const scope = c.https_inspection ? 'plain HTTP and inspected HTTPS' : 'plain HTTP only';
-  if (w.rules_enabled === 0) return { ...base, state: 'attention', text: `WAF: every rule category is switched off (${formatCount(w.categories)} categories)` };
+  if (w.rules_enabled === 0) return { ...base, state: 'needs-attention', text: `WAF: every rule category is switched off (${formatCount(w.categories)} categories)` };
   const rules = w.rules_enabled === w.rules
     ? `${formatCount(w.rules)} request rules in ${formatCount(w.categories)} categories`
     : `${formatCount(w.rules_enabled)} of ${formatCount(w.rules)} request rules on, in ${formatCount(w.categories_enabled)} of ${formatCount(w.categories)} categories`;
@@ -75,7 +76,7 @@ function httpsLine(on: boolean | null): CoverageLine {
   if (on === null) return { ...base, state: 'unknown', text: 'HTTPS inspection: not reported' };
   return on
     ? { ...base, state: 'on', text: 'HTTPS inspection: on, the WAF sees inside HTTPS' }
-    : { ...base, state: 'off', text: 'HTTPS inspection: off, so the WAF does not see inside HTTPS' };
+    : { ...base, state: SHARED_SEVERITY.httpsOff, text: 'HTTPS inspection: off, so the WAF does not see inside HTTPS' };
 }
 
 function loginLine(on: boolean | null, status: Coverage['proxy_login_status']): CoverageLine {
@@ -83,22 +84,22 @@ function loginLine(on: boolean | null, status: Coverage['proxy_login_status']): 
   // The proxy's own record decides: login on with no user to check against
   // refuses every client, which "on" would hide.
   if (status?.state === 'no_credentials') {
-    return { ...base, state: 'attention', text: 'Proxy login: on, but no proxy credentials are set: every client is refused until you set them' };
+    return { ...base, state: SHARED_SEVERITY.proxyLoginWithoutCredentials, text: 'Proxy login: on, but no proxy credentials are set: every client is refused until you set them' };
   }
   if (on === null) return { ...base, state: 'unknown', text: 'Proxy login: not reported' };
   return on
     ? { ...base, state: 'on', text: 'Proxy login: on, a device signs in to use the proxy' }
-    : { ...base, state: 'off', text: 'Proxy login: off, any device on an allowed network can use the proxy' };
+    : { ...base, state: SHARED_SEVERITY.proxyLoginOff, text: 'Proxy login: off, any device on an allowed network can use the proxy' };
 }
 
 function alertsLine(a: Coverage['alerts']): CoverageLine {
   const base = { id: 'alerts' as const, link: { label: 'Alerts', to: settingsPath('alerts') } };
   if (a.enabled === null || a.channels === null) return { ...base, state: 'unknown', text: 'Alerts: the backend could not read the alert settings' };
-  if (!a.enabled) return { ...base, state: 'attention', text: 'Alerts: off, blocks are not reported anywhere' };
-  if (a.channels === 0) return { ...base, state: 'attention', text: 'Alerts: on, but no channel is set up, so they go nowhere' };
+  if (!a.enabled) return { ...base, state: SHARED_SEVERITY.alertsOff, text: 'Alerts: off, blocks are not reported anywhere' };
+  if (a.channels === 0) return { ...base, state: SHARED_SEVERITY.alertsWithoutChannel, text: 'Alerts: on, but no channel is set up, so they go nowhere' };
   const to = `sent to ${formatCount(a.channels)} ${a.channels === 1 ? 'channel' : 'channels'}`;
   if (!a.waf_alerts_delivered) {
-    return { ...base, state: 'attention', text: `Alerts: on, ${to}, but WAF block alerts do not arrive: INTERNAL_ALERT_TOKEN is not set` };
+    return { ...base, state: 'needs-attention', text: `Alerts: on, ${to}, but WAF block alerts do not arrive: INTERNAL_ALERT_TOKEN is not set` };
   }
   return { ...base, state: 'on', text: `Alerts: on, ${to}` };
 }
