@@ -27,6 +27,19 @@ for at least one minor release before disappearing.
   their times are in. A pasted or restored source still names its time to
   the second, so two pastes a minute apart read differently.
 
+### Fixed
+
+- **The access log shows the outcome of each request and the proxy result in
+  words.** The column headed "Rule" said "Allowed" for every request no rule
+  touched; it is now "Outcome": "Allowed", or the rule that blocked the
+  request, which a screen reader hears as "Blocked by" the rule. The Result
+  column read "200 TCP_TUNNEL" and "403 NONE_NONE"; it now gives the HTTP code
+  with "HTTPS tunnel", "Refused by the proxy", "Fetched", "From cache" or
+  "Not forwarded", and ", cut off" or ", timed out" when the transfer did
+  not finish. A code it does not know is shown as it is, and the raw code
+  stays in the request details and the tooltip. A DNS sinkhole row no longer
+  shows its 0.0.0.0 answer where the HTTP code goes.
+
 ## [3.18.3] - 2026-10-28
 
 A fix release. The web UI keeps working when the backend container is
