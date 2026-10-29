@@ -23,6 +23,7 @@ import { cn } from '../../lib/utils';
 import type { Enforcement, IpAclStatus } from '../../types';
 import { Button } from '../ui/Button';
 import { Section } from '../ui/Section';
+import { Unavailable } from '../ui/Unavailable';
 import type { ListDef } from './lists';
 
 /**
@@ -108,7 +109,7 @@ export function EnforcementSection({ list, total, data, loading, error, onReload
       </>
     );
   } else if (error || !data) {
-    body = <p className="text-sm text-ink-muted">Not reported: blacklists/enforcement did not answer, so what enforces this list is unknown.</p>;
+    body = <Unavailable endpoint="blacklists/enforcement">What enforces this list could not be read.</Unavailable>;
   } else if (list.key === 'blocked-domains') {
     const acl = data.squid_domain_acl;
     let proxy: ReactNode;

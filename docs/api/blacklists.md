@@ -265,6 +265,7 @@ source that added it first.
 | `geo` | the country code | a geo import |
 | `paste` | empty | each pasted import, one source per request |
 | `restore` | empty | each configuration restore, one source per list |
+| `preset` | the preset's id (`label`: `Common services: <name>`) | a preset added with [`POST /api/{list}/presets/{id}`](#presets), one source per list and preset |
 
 ### List the sources of a list
 
@@ -449,6 +450,43 @@ and the name to write (`".github.com" is not an exact name: write github.com.
 patterns (`*`, `?`, `[`, `(`, `|`, `\`) and any name that is not a valid host
 name are refused with `400` too. A pasted list goes to
 [`POST /api/domain-whitelist/import`](#allowed-import).
+
+## Presets {#presets}
+
+Named groups of domains the backend keeps for two lists: the common services a
+network usually needs on the domain whitelist (`github`, `google`,
+`microsoft`, `ai-services`, `docker`, `cdn-js`, `cloudflare`), and the public
+DNS-over-HTTPS resolvers on the domain blacklist (`doh`).
+
+```
+GET /api/domain-whitelist/presets
+GET /api/domain-blacklist/presets
+```
+
+```json
+{
+  "status": "success",
+  "data": [
+    { "id": "docker", "name": "Docker", "domains": ["docker.com", "hub.docker.com", "registry.docker.io", "auth.docker.io", "production.cloudflare.docker.com"], "listed": ["hub.docker.com"] }
+  ]
+}
+```
+
+`listed` is the preset's domains the list already holds, whatever source added
+them.
+
+```
+POST /api/domain-whitelist/presets/{id}
+POST /api/domain-blacklist/presets/{id}
+```
+
+Adds, in one transaction, the domains of the preset the list does not hold yet,
+under the preset's source (`kind` `preset`), and requests one export, which
+reloads the DNS sinkhole as well. A domain already listed keeps the source that
+added it. The answer is `{"preset", "name", "added": [domains], "already": n}`;
+the audit log records one `add_preset_<list>` event with the same counts. An
+unknown id is `404`; a preset that would take the domain blacklist past its
+limit is `413`.
 
 ---
 

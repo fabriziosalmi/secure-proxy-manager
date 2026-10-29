@@ -31,12 +31,14 @@ import { ShareBar } from '../components/ui/ShareBar';
 import { Badge } from '../components/ui/Badge';
 import { Notice } from '../components/ui/Notice';
 import { EmptyState } from '../components/ui/EmptyState';
+import { Unavailable } from '../components/ui/Unavailable';
 import { DataTable, type Column } from '../components/ui/DataTable';
 import { IconButton } from '../components/ui/Button';
 import { RequestsPerHour } from '../components/dashboard/RequestsPerHour';
 import { BlockedByRule } from '../components/dashboard/BlockedByRule';
 import { ServicesPanel } from '../components/dashboard/ServicesPanel';
 import { serviceRows } from '../components/dashboard/services';
+import { blockedLogsLink } from '../components/dashboard/links';
 
 const REFETCH = 30_000;
 
@@ -81,7 +83,8 @@ function notices(summary: { data?: DashboardSummary | null; isError: boolean }):
   if (summary.isError) {
     out.push(
       <Notice key="summary" tone="danger" title="The overview could not be loaded">
-        dashboard/summary did not answer, so the counts, the rules and the latest blocks are missing until it does.
+        The counts, the rules and the latest blocks are missing until the backend answers.
+        <span className="block text-xs">Detail: <code className="font-mono">GET /api/dashboard/summary</code> did not answer.</span>
       </Notice>,
     );
   }
@@ -131,14 +134,25 @@ const TOP_COLUMNS: Column<TopBlocked>[] = [
     header: 'Destination',
     // A host is not broken across lines: a long one is cut with an ellipsis,
     // whole in the tooltip, so the Blocked column stays in view.
-    cell: (r) => <code title={r.dest} className="block max-w-[12rem] truncate font-mono text-[13px] 2xl:max-w-[18rem]">{r.dest}</code>,
+    // Each host opens the blocked requests to it in the access log.
+    cell: (r) => (
+      <Link to={blockedLogsLink({ q: r.dest })} title={r.dest} className="block max-w-[12rem] truncate font-mono text-[13px] text-ink underline-offset-2 hover:underline 2xl:max-w-[18rem]">
+        {r.dest}
+      </Link>
+    ),
   },
   {
     id: 'rule',
     header: 'Rule',
     cell: (r) => r.reasons?.length ? (
+      // Two rules on one host: each with the count the API sends, so the
+      // Blocked column is seen split, not two bare names stacked.
       <span className="flex flex-wrap gap-1">
-        {r.reasons.map((x) => <ReasonBadge key={x.reason} reason={x.reason} label={x.label} />)}
+        {r.reasons.map((x) => (r.reasons!.length > 1 ? (
+          <Badge key={x.reason} tone={x.reason === 'unclassified' ? 'neutral' : 'danger'}>
+            {x.label}<span className="ml-1 font-semibold tabular-nums">{formatCount(x.count)}</span>
+          </Badge>
+        ) : <ReasonBadge key={x.reason} reason={x.reason} label={x.label} />))}
       </span>
     ) : <ReasonBadge />,
   },
@@ -155,7 +169,7 @@ function LatestBlocks({ rows, loading, error, now }: { rows?: RecentBlock[]; loa
       </div>
     );
   } else if (error || !rows) {
-    body = <p className="px-5 pb-5 text-sm text-ink-muted">Not reported: the dashboard summary did not load.</p>;
+    body = <Unavailable endpoint="dashboard/summary" className="px-5 pb-5">The latest blocks could not be loaded.</Unavailable>;
   } else if (rows.length === 0) {
     body = <EmptyState title="No blocked requests yet" description="Blocks appear here when a rule stops a client request." />;
   } else {
@@ -178,7 +192,7 @@ function LatestBlocks({ rows, loading, error, now }: { rows?: RecentBlock[]; loa
     );
   }
   return (
-    <Section title="Latest blocks" flush action={{ label: 'Open access logs', to: '/logs' }} className="flex-[1_1_420px]">
+    <Section title="Latest blocks" flush action={{ label: 'Open blocked requests', to: blockedLogsLink() }} className="flex-[1_1_420px]">
       {body}
     </Section>
   );
@@ -254,15 +268,15 @@ export function Dashboard() {
           label="Client requests"
           loading={loading}
           value={requests}
-          sub={typeof clients === 'number' && clients > 0 ? `from ${formatCount(clients)} ${clients === 1 ? 'client' : 'clients'}` : undefined}
         />
         <StatCard label="Blocked" tone={blocked ? 'danger' : 'default'} loading={loading} value={blocked} sub={blockedSub} />
         <StatCard label="Active clients" loading={loading} value={clients} sub={clientsSub} />
         <StatCard
-          label="Rules in force"
+          label="Blacklist entries"
           loading={loading}
           value={rules}
-          sub={rules !== undefined ? `${countOf(ipRules ?? 0, 'IP', 'IPs')}, ${countOf(domainRules ?? 0, 'domain', 'domains')}` : undefined}
+          to="/blacklists"
+          sub={rules !== undefined ? `${countOf(ipRules ?? 0, 'IP and network entry', 'IP and network entries')}, ${countOf(domainRules ?? 0, 'domain entry', 'domain entries')}` : undefined}
         />
       </section>
 
@@ -278,7 +292,7 @@ export function Dashboard() {
 
       <div className="flex flex-wrap gap-4">
         {/* Not on a phone, as in Mobile.dc.html: the Access logs list every block. */}
-        <Section title="Most blocked destinations" flush action={{ label: 'Open analytics', to: '/analytics' }} className="hidden flex-[1_1_420px] sm:block">
+        <Section title="Most blocked destinations" flush action={{ label: 'Open blocked requests', to: blockedLogsLink() }} className="hidden flex-[1_1_420px] sm:block">
           <DataTable
             caption="Most blocked destinations in the last 24 hours"
             columns={TOP_COLUMNS}

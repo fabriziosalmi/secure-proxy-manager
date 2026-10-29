@@ -3,7 +3,7 @@
  * which window, and every number is a field of its endpoint:
  *
  * - WAF rule matches: the WAF's own counters, since it last started or its
- *   counters were reset (dashboard/summary, waf and waf_status). A match is
+ *   counters were reset (waf/stats, or waf_status saying why not). A match is
  *   not a block: the WAF counts every category that matched a request,
  *   including matches too weak to block it;
  * - Cloud services in use: client requests of the last 7 days to known
@@ -17,10 +17,12 @@
  * requests from the stack's own addresses.
  */
 import type { ReactNode } from 'react';
-import type { DashboardSummary, FileExtData, ServiceTypeData, ShadowItService } from '../../types';
+import type { FileExtData, ServiceTypeData, ShadowItService, WafStatus } from '../../types';
+import type { WafReading } from '../../lib/wafStats';
 import { formatCount } from '../../lib/format';
 import { wafCategoryLabel } from '../../lib/wafCategories';
 import { Section } from '../ui/Section';
+import { Unavailable } from '../ui/Unavailable';
 import { DataTable, type Column } from '../ui/DataTable';
 
 interface QueryState<T> {
@@ -69,7 +71,7 @@ const GRID_ITEM = 'min-w-0';
 
 // ── WAF rule matches ────────────────────────────────────────────────────────
 
-function wafMissing(status: DashboardSummary['waf_status']): string {
+function wafMissing(status: WafStatus): string {
   switch (status) {
     case 'auth_failed':
       return 'Not available: the WAF refuses the backend credential. Set INTERNAL_ALERT_TOKEN to the same value on the waf and backend services.';
@@ -82,15 +84,15 @@ function wafMissing(status: DashboardSummary['waf_status']): string {
   }
 }
 
-export function WafCategories({ summary }: { summary: QueryState<DashboardSummary> }) {
-  const s = summary.data;
+export function WafCategories({ reading }: { reading: QueryState<WafReading> }) {
+  const s = reading.data;
   const waf = s?.waf;
   let description: ReactNode = 'Requests that matched a rule in each category, as the WAF counts them. A match is not a block.';
   let body: ReactNode;
-  if (summary.loading) {
+  if (reading.loading) {
     body = <Loading what="WAF rule matches" />;
-  } else if (summary.error || !s) {
-    body = <Missing>Not reported: dashboard/summary did not answer.</Missing>;
+  } else if (reading.error || !s) {
+    body = <Unavailable endpoint="waf/stats">The WAF rule matches could not be loaded.</Unavailable>;
   } else if (!waf || s.waf_status !== 'ok') {
     body = <Missing>{wafMissing(s.waf_status)}</Missing>;
   } else {
@@ -157,7 +159,7 @@ export function ServicesInUse({ services, onRetry }: { services: QueryState<Shad
 export function ServiceKinds({ kinds }: { kinds: QueryState<ServiceTypeData> }) {
   let body: ReactNode;
   if (kinds.loading) body = <Loading what="traffic by kind of service" />;
-  else if (kinds.error || !kinds.data) body = <Missing>Not reported: analytics/user-agents did not answer.</Missing>;
+  else if (kinds.error || !kinds.data) body = <Unavailable endpoint="analytics/user-agents">The traffic by kind of service could not be loaded.</Unavailable>;
   else if ((kinds.data.service_types ?? []).length === 0) body = <p className="text-sm text-ink-muted">No client requests in the last 7 days.</p>;
   else body = <CountBars label="Client requests by kind of service" rows={kinds.data.service_types} />;
   return (
@@ -179,7 +181,7 @@ export function FileTypes({ files }: { files: QueryState<FileExtData> }) {
   if (files.loading) {
     body = <Loading what="downloads by file type" />;
   } else if (files.error || !d) {
-    body = <Missing>Not reported: analytics/file-extensions did not answer.</Missing>;
+    body = <Unavailable endpoint="analytics/file-extensions">The downloads by file type could not be loaded.</Unavailable>;
   } else {
     // A backend before the empty-list fix sent null for a window with no file
     // request; that is no file request, not a crash.

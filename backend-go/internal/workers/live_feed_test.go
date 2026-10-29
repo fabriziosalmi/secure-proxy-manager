@@ -56,8 +56,8 @@ func TestLiveRowsCarryWhatThePageFiltersBy(t *testing.T) {
 		reason, label, kind string
 		internal            bool
 	}{
-		{"domain_blacklist_dns", "Domain blacklist (DNS)", "Private network address", false},
-		{"none", "Not blocked", "Internal: the backend", true},
+		{"domain_blacklist_dns", "Domain blacklist (DNS sinkhole)", "Private network address", false},
+		{"none", "Allowed", "Internal: the backend", true},
 	} {
 		var got map[string]any
 		if err := json.Unmarshal(<-hub.Broadcast, &got); err != nil {

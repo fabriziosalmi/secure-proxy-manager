@@ -244,7 +244,7 @@ export function AddEntries({ list, method, onMethodChange, onChanged, onClose }:
         >
           <textarea id={`${ids}-text`} aria-describedby={`${ids}-text-hint`} value={text} onChange={(e) => setText(e.target.value)} rows={6} required
             spellCheck={false}
-            placeholder={list.field === 'ip' ? '203.0.113.7\n198.51.100.0/24' : 'ads.example.com\ntracker.example.net'}
+            placeholder={list.field === 'ip' ? 'e.g. 203.0.113.7\n198.51.100.0/24' : 'e.g. ads.example.com\ntracker.example.net'}
             className={cn(FIELD, 'h-auto resize-y py-2 font-mono')} />
         </Field>
         <div><Button type="submit" variant="primary" disabled={busy === 'paste'}>{busy === 'paste' ? 'Adding...' : 'Add pasted entries'}</Button></div>
@@ -259,7 +259,7 @@ export function AddEntries({ list, method, onMethodChange, onChanged, onClose }:
           hint={`A plain text file with one ${list.field === 'ip' ? 'address or network' : 'domain'} per line, or a hosts file. The backend fetches it; addresses on private networks are refused.`}
         >
           <input id={`${ids}-url`} type="url" aria-describedby={`${ids}-url-hint`} className={FIELD} value={url} onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://raw.githubusercontent.com/..." required />
+            placeholder="e.g. https://raw.githubusercontent.com/..." required />
         </Field>
         <Button type="submit" variant="primary" className="sm:mt-[26px]" disabled={busy === 'url'}>{busy === 'url' ? 'Importing...' : 'Import list'}</Button>
       </form>

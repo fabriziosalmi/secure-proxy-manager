@@ -160,7 +160,7 @@ func TestDashboardReportsTheLast24Hours(t *testing.T) {
 		t.Fatalf("top_blocked misses sink.test: %+v", d.TopBlocked)
 	}
 	if sink.Count != 10 || len(sink.Reasons) != 2 ||
-		sink.Reasons[0].Reason != "domain_blacklist_dns" || sink.Reasons[0].Count != 9 || sink.Reasons[0].Label != "Domain blacklist (DNS)" ||
+		sink.Reasons[0].Reason != "domain_blacklist_dns" || sink.Reasons[0].Count != 9 || sink.Reasons[0].Label != "Domain blacklist (DNS sinkhole)" ||
 		sink.Reasons[1].Reason != "domain_blacklist" || sink.Reasons[1].Count != 1 {
 		t.Errorf("top_blocked sink.test = %+v; want 10 blocked, 9 domain_blacklist_dns then 1 domain_blacklist", *sink)
 	}
@@ -181,7 +181,7 @@ func TestDashboardReportsTheLast24Hours(t *testing.T) {
 		}
 	}
 	r := d.Recent[0]
-	if r.Destination != "sink.test:443" || r.Host != "sink.test" || r.Reason != "domain_blacklist" || r.Label != "Domain blacklist" {
+	if r.Destination != "sink.test:443" || r.Host != "sink.test" || r.Reason != "domain_blacklist" || r.Label != "Domain blacklist (proxy)" {
 		t.Errorf("recent_blocks[0] = %+v", r)
 	}
 	for _, r := range d.Recent {

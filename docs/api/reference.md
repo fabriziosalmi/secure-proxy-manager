@@ -119,7 +119,7 @@ Details: [Logs and Analytics API](./logs.md).
 | `GET`  | `/api/dashboard/summary` | The dashboard's data in one call (`top_clients` aggregated by network and `recent_blocks` masked when `gdpr_mode` is on) |
 | `GET`  | `/api/traffic/statistics` | Requests and blocks per bucket (`period` = `hour`, `day`, `week`, `month`) |
 | `GET`  | `/api/clients/statistics` | Top 50 clients (or `/24` and `/64` networks when `gdpr_mode` is on), then the internal sources |
-| `GET`  | `/api/clients/{ip}/details` | One client's or `/24` / `/64` network CIDR's totals, top domains and recent requests |
+| `GET`  | `/api/clients/{ip}/details` | One client's or `/24` / `/64` network CIDR's totals, top domains and recent requests; `?window=7d` for the last 7 days, `all` (default) for every request |
 | `GET`  | `/api/domains/statistics` | Top 50 destinations of the last 24 hours with their requests and a `status`: `Blocked` when a request to it was blocked or the proxy enforces the name from the blocklist (exact name, not on the allowed list), `Allowed` otherwise |
 | `GET`  | `/api/analytics/shadow-it` | Requests of the last 7 days to known services (file sharing, messaging, AI, social) |
 | `GET`  | `/api/analytics/user-agents` | Requests of the last 7 days by method and kind of service |
