@@ -374,13 +374,12 @@ func (h *SettingsHandlers) Update(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if _, status, msg := h.persistSettings(body, clearKeys); status != 0 {
+	_, changes, status, msg := h.persistSettings(body, clearKeys)
+	if status != 0 {
 		writeError(w, status, msg)
 		return
 	}
-	if user, ok := r.Context().Value(middleware.CtxUsername).(string); ok {
-		database.Audit(h.db, user, "update_setting", name, "")
-	}
+	h.auditSettingChanges(r, "update_setting", changes)
 	data := map[string]any{}
 	if waf := h.pushHeuristicsToWAF(r.Context(), body); waf != nil {
 		data["waf"] = waf
@@ -419,7 +418,6 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 	for k := range clearKeys {
 		body[k] = ""
 	}
-	h.auditBulkUpdate(r, body)
 
 	// Every refused value at once, before anything is written: the first one
 	// found used to be the only one reported, in map order, so a section with
@@ -429,11 +427,12 @@ func (h *SettingsHandlers) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	kept, status, msg := h.persistSettings(body, clearKeys)
+	kept, changes, status, msg := h.persistSettings(body, clearKeys)
 	if status != 0 {
 		writeError(w, status, msg)
 		return
 	}
+	h.auditSettingChanges(r, "update_settings", changes)
 
 	// Push heuristic toggles to the running WAF so they take effect immediately:
 	// the WAF otherwise only reads WAF_H_* env at startup (issue #102). What the
@@ -489,18 +488,67 @@ func parseClearList(raw string, body map[string]string) (map[string]bool, string
 	return clearKeys, ""
 }
 
-// auditBulkUpdate records the attempt with the key names — never the values,
-// which may be secrets — before anything is written.
-func (h *SettingsHandlers) auditBulkUpdate(r *http.Request, body map[string]string) {
+// settingChange is one setting a save changed. A secret's value is never
+// recorded, only that it was set or cleared.
+type settingChange struct {
+	Key    string
+	From   string
+	To     string
+	Secret bool
+}
+
+// auditValueMax bounds each value the audit log keeps: a list of file types or
+// a webhook template fits; anything longer is cut and marked truncated.
+const auditValueMax = 512
+
+func auditValue(v string) (string, bool) {
+	if len(v) <= auditValueMax {
+		return v, false
+	}
+	return v[:auditValueMax], true
+}
+
+// auditSettingChanges records, after the save committed, which settings it
+// changed and from what to what: target is the changed keys, details
+// {"changes": {key: {"from","to","truncated"?}}, "secrets": {key: "set"|"cleared"}}.
+// A save that changed nothing writes no row. It used to record the keys the
+// request carried, before validation and without values: a section save of one
+// field read "Changed 8 settings" with no way to tell which, or to what.
+func (h *SettingsHandlers) auditSettingChanges(r *http.Request, action string, changes []settingChange) {
 	user, ok := r.Context().Value(middleware.CtxUsername).(string)
-	if !ok || len(body) == 0 {
+	if !ok || len(changes) == 0 {
 		return
 	}
-	keys := make([]string, 0, len(body))
-	for k := range body {
-		keys = append(keys, k)
+	sort.Slice(changes, func(i, j int) bool { return changes[i].Key < changes[j].Key })
+	keys := make([]string, 0, len(changes))
+	values := map[string]any{}
+	secrets := map[string]string{}
+	for _, c := range changes {
+		keys = append(keys, c.Key)
+		if c.Secret {
+			if c.To == "" {
+				secrets[c.Key] = "cleared"
+			} else {
+				secrets[c.Key] = "set"
+			}
+			continue
+		}
+		from, cutFrom := auditValue(c.From)
+		to, cutTo := auditValue(c.To)
+		v := map[string]any{"from": from, "to": to}
+		if cutFrom || cutTo {
+			v["truncated"] = true
+		}
+		values[c.Key] = v
 	}
-	database.Audit(h.db, user, "update_settings", strings.Join(keys, ","), "")
+	details := map[string]any{}
+	if len(values) > 0 {
+		details["changes"] = values
+	}
+	if len(secrets) > 0 {
+		details["secrets"] = secrets
+	}
+	database.Audit(h.db, user, action, strings.Join(keys, ","), auditJSON(details))
 }
 
 // persistSettings writes every writable key in body inside a single transaction,
@@ -508,11 +556,11 @@ func (h *SettingsHandlers) auditBulkUpdate(r *http.Request, body map[string]stri
 // artefacts written afterwards. A secret sent empty keeps its stored value
 // unless clear names it, and is returned in kept. It returns status 0 on
 // success, or the HTTP status and message the caller must send.
-func (h *SettingsHandlers) persistSettings(body map[string]string, clearKeys map[string]bool) (kept []string, status int, msg string) {
+func (h *SettingsHandlers) persistSettings(body map[string]string, clearKeys map[string]bool) (kept []string, changes []settingChange, status int, msg string) {
 	kept = []string{}
 	tx, err := h.db.Begin()
 	if err != nil {
-		return kept, http.StatusInternalServerError, "failed to start transaction"
+		return kept, nil, http.StatusInternalServerError, "failed to start transaction"
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op once committed
 	for k, v := range body {
@@ -534,7 +582,25 @@ func (h *SettingsHandlers) persistSettings(body map[string]string, clearKeys map
 			continue
 		}
 		if err := validateSettingValue(k, v); err != nil {
-			return kept, http.StatusBadRequest, err.Error()
+			return kept, nil, http.StatusBadRequest, err.Error()
+		}
+		// What the save changes, read in the same transaction. A secret is
+		// compared through its decrypted value only to tell a change from a
+		// re-send; neither value is kept.
+		var stored sql.NullString
+		_ = tx.QueryRow("SELECT setting_value FROM settings WHERE setting_name=?", k).Scan(&stored)
+		if appcrypto.IsSensitive(k) {
+			old := stored.String
+			if appcrypto.IsEncrypted(old) {
+				if dec, err := appcrypto.Decrypt(old, h.cfg.EncryptionKey); err == nil {
+					old = dec
+				}
+			}
+			if old != v {
+				changes = append(changes, settingChange{Key: k, To: v, Secret: true})
+			}
+		} else if !stored.Valid || stored.String != v {
+			changes = append(changes, settingChange{Key: k, From: stored.String, To: v})
 		}
 		val := v
 		if appcrypto.IsSensitive(k) && val != "" && !appcrypto.IsEncrypted(val) {
@@ -543,7 +609,7 @@ func (h *SettingsHandlers) persistSettings(body map[string]string, clearKeys map
 				// Refuse rather than store the secret in clear, as Update does
 				// (SECURE-ERR-04). This path kept the plaintext and answered 200.
 				log.Error().Str("key", k).Err(err).Msg("refusing to store sensitive setting: encryption failed")
-				return kept, http.StatusInternalServerError, "encryption unavailable: " + k + " not saved"
+				return kept, nil, http.StatusInternalServerError, "encryption unavailable: " + k + " not saved"
 			}
 			val = enc
 		}
@@ -552,18 +618,18 @@ func (h *SettingsHandlers) persistSettings(body map[string]string, clearKeys map
 			k, val,
 		); err != nil {
 			log.Error().Str("key", k).Err(err).Msg("BulkUpdate: failed to save setting, rolling back")
-			return kept, http.StatusInternalServerError, "failed to save settings (rolled back)"
+			return kept, nil, http.StatusInternalServerError, "failed to save settings (rolled back)"
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return kept, http.StatusInternalServerError, "failed to commit settings"
+		return kept, nil, http.StatusInternalServerError, "failed to commit settings"
 	}
 	settingsChanged()
 	if _, ok := body["gdpr_mode"]; ok {
 		privacy.InvalidateDB(h.db)
 	}
 	sort.Strings(kept)
-	return kept, 0, ""
+	return kept, changes, 0, ""
 }
 
 // writeSquidArtefacts writes the /config files the proxy reads, and names the

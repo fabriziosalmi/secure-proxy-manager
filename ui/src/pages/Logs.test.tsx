@@ -209,6 +209,20 @@ describe('Logs', () => {
     } finally { restoreTz() }
   })
 
+  // A row of today read "08:51:30" and one of yesterday "2026-10-28 23:51:10":
+  // a log is looked up, so every row is written whole, today's too, and the
+  // table says which zone its times are in.
+  it('writes every row time whole, today included, and names the time zone', async () => {
+    const restoreTz = setRomeTimeZone()
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 3, 4, 13, 0, 0) })
+    try {
+      renderWithProviders(<Logs />)
+      expect(await screen.findAllByText('2026-04-04 14:00:00')).not.toHaveLength(0)
+      expect(screen.queryByText('14:00:00')).toBeNull()
+      expect(screen.getByText('Times are in your time zone (Europe/Rome).')).toBeInTheDocument()
+    } finally { vi.useRealTimers(); restoreTz() }
+  })
+
   it('says how many requests it shows and how many internal ones it hides', async () => {
     logsBody = () => page([allowed, dnsBlock], { total: 250 })
     renderWithProviders(<Logs />)

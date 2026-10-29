@@ -18,7 +18,8 @@ interface SearchResult {
 
 // What else a page answers to, beyond its name.
 const KEYWORDS: Record<string, string[]> = {
-  '/': ['home', 'overview', 'stats', 'traffic'],
+  // The page was called Dashboard in the menu: the old name still finds it.
+  '/': ['home', 'dashboard', 'stats', 'traffic'],
   '/analytics': ['waf', 'threat', 'attack', 'security', 'intel', 'statistics'],
   '/logs': ['log', 'traffic', 'request', 'access'],
   '/clients': ['device', 'client', 'ip', 'host'],

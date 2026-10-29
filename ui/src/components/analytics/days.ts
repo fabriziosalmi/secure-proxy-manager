@@ -8,7 +8,7 @@ import { formatCount } from '../../lib/format';
 
 export type SeriesColor = 'series-1' | 'series-2' | 'series-3' | 'series-4' | 'neutral';
 
-/** The fill class of each colour: design tokens, stepped in lightness (tokens.test.ts). */
+/** The fill class of each colour: design tokens told apart with any colour vision (tokens.test.ts). */
 export const SERIES_BG: Record<SeriesColor, string> = {
   'series-1': 'bg-series-1',
   'series-2': 'bg-series-2',
@@ -17,25 +17,57 @@ export const SERIES_BG: Record<SeriesColor, string> = {
   neutral: 'bg-chart-neutral',
 };
 
-/** One stack of the chart: a rule, or the rules folded into one when there are more rules than colours. */
+/** One stack of the chart: one rule, or the rules of one colour group when several of them blocked. */
 export interface Series {
   key: string;
-  /** The API's label, or "Other rules" for the fold. */
+  /** The API's label, or the group's name when the series counts more than one rule. */
   label: string;
   color: SeriesColor;
   /** The block reasons it counts. */
   reasons: string[];
-  /** The API labels of the reasons it counts, for the fold. */
+  /** The API labels of the reasons it counts. */
   labels: string[];
 }
 
-// The rules in the order they take colours: the ones a self-hoster sets up
-// first. A reason the UI does not know comes after, by name.
+type RuleColor = Exclude<SeriesColor, 'neutral'>;
+
+// Each rule always has the same colour, whatever else blocked that week: the
+// two domain blacklists one each, the address and network rules one, the WAF
+// and every other rule one. Colours used to be handed out in order to the
+// rules present, so the WAF was series-1 one week and series-2 the next.
+const RULE_COLOR: Record<string, RuleColor> = {
+  domain_blacklist: 'series-1',
+  domain_blacklist_dns: 'series-2',
+  domain_blacklist_dns_reconstructed: 'series-2',
+  ip_blacklist: 'series-3',
+  direct_ip: 'series-3',
+  egress_policy: 'series-3',
+  port_policy: 'series-3',
+  protocol_policy: 'series-3',
+  source_gate: 'series-3',
+};
+
+/** The colour of a block reason; a rule the UI does not know is drawn with the other rules. */
+export function ruleColor(reason: string): RuleColor {
+  return RULE_COLOR[reason] ?? 'series-4';
+}
+
+// What a colour is called when more than one of its rules blocked in the week.
+const GROUP_LABEL: Record<RuleColor, string> = {
+  'series-1': 'Domain blacklist (proxy)',
+  'series-2': 'Domain blacklist (DNS sinkhole)',
+  'series-3': 'Address and network rules',
+  'series-4': 'WAF and other rules',
+};
+
+const COLORS: readonly RuleColor[] = ['series-1', 'series-2', 'series-3', 'series-4'];
+
+// Within a group, the rules in the order a self-hoster sets them up; a reason
+// the UI does not know comes after, by name.
 const ORDER = [
   'domain_blacklist_dns', 'domain_blacklist_dns_reconstructed', 'domain_blacklist', 'ip_blacklist', 'waf', 'direct_ip', 'egress_policy', 'proxy_auth',
   'proxy_auth_unset', 'time_restriction', 'content_filter', 'source_gate', 'port_policy', 'protocol_policy', 'lists_unverified', 'other',
 ];
-const COLORS = ['series-1', 'series-2', 'series-3', 'series-4'] as const;
 
 function rank(reason: string): number {
   const i = ORDER.indexOf(reason);
@@ -46,40 +78,42 @@ function byOrder(a: ReasonCount, b: ReasonCount): number {
   return rank(a.reason) - rank(b.reason) || a.reason.localeCompare(b.reason);
 }
 
-function single(r: ReasonCount, color: SeriesColor): Series {
-  return { key: r.reason, label: r.label, color, reasons: [r.reason], labels: [r.label] };
-}
-
 /**
  * The stacks, bottom first, for the reasons that blocked something in the
- * window (the API's totals). Each rule keeps one colour for the whole chart,
- * taken in ORDER, so the same rules are always drawn the same way. Rows with
- * no recorded reason are the neutral bar, on top. Four colours stay apart in
- * lightness; with more than four rules in a week, the three that blocked the
- * most keep theirs and the rest are folded into "Other rules", named in the
- * legend and counted one by one in the table.
+ * window (the API's totals): one per colour group that blocked, in colour
+ * order, then rows with no recorded reason as the neutral bar on top. A
+ * group with one rule is named by its API label; with more, by the group's
+ * name, its rules listed in the legend and counted one by one in the table.
  */
 export function seriesFor(totals: readonly ReasonCount[]): Series[] {
   const present = totals.filter((r) => r.count > 0);
-  const rules = present.filter((r) => r.reason !== 'unclassified');
   const out: Series[] = [];
-  if (rules.length <= COLORS.length) {
-    [...rules].sort(byOrder).forEach((r, i) => out.push(single(r, COLORS[i])));
-  } else {
-    const keep = [...rules].sort((a, b) => b.count - a.count || byOrder(a, b)).slice(0, COLORS.length - 1);
-    const rest = rules.filter((r) => !keep.includes(r)).sort(byOrder);
-    keep.sort(byOrder).forEach((r, i) => out.push(single(r, COLORS[i])));
+  for (const color of COLORS) {
+    const rules = present.filter((r) => r.reason !== 'unclassified' && ruleColor(r.reason) === color).sort(byOrder);
+    if (rules.length === 0) continue;
     out.push({
-      key: 'other-rules',
-      label: 'Other rules',
-      color: COLORS[COLORS.length - 1],
-      reasons: rest.map((r) => r.reason),
-      labels: rest.map((r) => r.label),
+      key: rules.length === 1 ? rules[0].reason : `group-${color}`,
+      label: rules.length === 1 ? rules[0].label : GROUP_LABEL[color],
+      color,
+      reasons: rules.map((r) => r.reason),
+      labels: rules.map((r) => r.label),
     });
   }
   const unclassified = present.find((r) => r.reason === 'unclassified');
-  if (unclassified) out.push(single(unclassified, 'neutral'));
+  if (unclassified) {
+    out.push({ key: unclassified.reason, label: unclassified.label, color: 'neutral', reasons: [unclassified.reason], labels: [unclassified.label] });
+  }
   return out;
+}
+
+/**
+ * The height of a day's whole bar. A day with blocks stays visible at 4 px;
+ * the rules share the bar by their counts. The floor used to apply to each
+ * rule, so a day of 10 blocks over 3 rules drew 12 px, as tall as a day of
+ * hundreds on a scale of thousands.
+ */
+export function barHeight(total: number, max: number): string {
+  return total > 0 ? `max(4px, ${(total / max) * 100}%)` : '0';
 }
 
 /** One series' part of one day's bar. */
