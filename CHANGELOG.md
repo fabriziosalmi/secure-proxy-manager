@@ -15,6 +15,16 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Blacklists, Enforcement: every value is aligned to the right edge.**
+  "Networks Squid loads 32,215" carried its explanation inside the value, so
+  the value dropped under its label and floated 93 px from the edge; "Limit
+  1,000,000 entries (SPM_DNS_BLOCKLIST_MAX_DOMAINS)" wrapped onto two lines
+  under its label. Each row is now a label and a value on one line, with an
+  explanation ("Merged from ...", "Set by SPM_DNS_BLOCKLIST_MAX_DOMAINS.")
+  on its own line under both.
+
 ## [3.18.3] - 2026-10-28
 
 A fix release. The web UI keeps working when the backend container is

@@ -21,14 +21,23 @@ import { Button } from '../ui/Button';
 import { Section } from '../ui/Section';
 import type { ListDef } from './lists';
 
-function Row({ term, children, tone }: { term: string; children: ReactNode; tone?: 'success' | 'warning' | 'muted' }) {
+/**
+ * One term and its value: the term on the left, the value against the right
+ * edge, on one line when they fit and with the value wrapping inside its own
+ * column when they do not. A note sits under both, across the whole width.
+ * The row used to be a wrapping flex line with the note inside the value: the
+ * value then dropped under the term and stopped short of the edge (32,215 sat
+ * 93 px from it at 1440 px).
+ */
+function Row({ term, children, tone, note }: { term: string; children: ReactNode; tone?: 'success' | 'warning' | 'muted'; note?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-0.5">
       <dt className="text-ink-muted">{term}</dt>
       <dd className={cn('min-w-0 text-right font-medium tabular-nums [overflow-wrap:anywhere]',
         tone === 'success' && 'text-success', tone === 'warning' && 'text-warning', tone === 'muted' && 'font-normal text-ink-muted')}>
         {children}
       </dd>
+      {note && <dd className="col-span-2 text-xs font-normal text-ink-muted">{note}</dd>}
     </div>
   );
 }
@@ -54,11 +63,11 @@ function SquidIpCopy({ record, file }: { record: IpAclStatus | null | undefined;
   }
   return (
     <>
-      <Row term="Networks Squid loads">
+      <Row
+        term="Networks Squid loads"
+        note={`Merged from ${formatCount(record.entries)} ${record.entries === 1 ? 'entry' : 'entries'}, recorded ${recordedAt(record.written_at)}.`}
+      >
         {formatCount(record.networks)}
-        <span className="block text-xs font-normal text-ink-muted">
-          merged from {formatCount(record.entries)} {record.entries === 1 ? 'entry' : 'entries'}, recorded {recordedAt(record.written_at)}
-        </span>
       </Row>
       {record.dropped > 0 && <Row term="Lines Squid could not read" tone="warning">{formatCount(record.dropped)}</Row>}
     </>
@@ -112,7 +121,7 @@ export function EnforcementSection({ list, total, data, loading, error, onReload
             {left > 0 ? `Every entry but the ${formatCount(left)} on Allowed domains` : 'Every entry'}
           </Row>
           <Row term="Proxy (Squid)" tone={tone}>{squid}</Row>
-          <Row term="Limit">{formatCount(data.dns_blocklist_limit)} entries (SPM_DNS_BLOCKLIST_MAX_DOMAINS)</Row>
+          <Row term="Limit" note="Set by SPM_DNS_BLOCKLIST_MAX_DOMAINS.">{formatCount(data.dns_blocklist_limit)} entries</Row>
         </dl>
         <p className="text-[13px] leading-5 text-ink-muted">
           A name blocks that exact host, not its subdomains. &quot;*.example.com&quot; and &quot;.example.com&quot; each block example.com itself, in the
