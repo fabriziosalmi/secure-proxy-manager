@@ -17,6 +17,13 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **The requests-per-hour chart counts the viewer's hours.** It grouped by
+  UTC hour, so in a zone with a half-hour offset every hour began at half
+  past: the axis read 12:30, 15:30, 18:30 in Asia/Kolkata and 04:30, 07:30
+  in America/St_Johns. `GET /api/logs/timeline` takes `tz`, an IANA name
+  (default UTC, as before), counts the requests per hour of that zone and
+  returns with each hour its `start` in epoch seconds. The Overview asks for
+  the viewer's zone.
 - **The Overview's hourly chart writes no hour twice and marks its partial
   hours.** Its 24 hours span 25 hourly bars, the first and last covering only
   part of an hour, and the axis read 08:00 at both ends: the first 08:00 was
