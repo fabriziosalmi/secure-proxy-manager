@@ -607,7 +607,7 @@ test.describe('UI: Clients', () => {
     await expect(toggle).toHaveAttribute('aria-checked', 'true');
     await page.reload();
     await expect(page.getByRole('switch', { name: /^Show internal addresses \(\d+\)$/ })).toHaveAttribute('aria-checked', 'true');
-    await expect(page.getByText(/Internal traffic is not counted on the Overview\./)).toBeVisible();
+    await expect(page.getByText(/Internal traffic is not counted in any statistic\./)).toBeVisible();
 
     const connect = page.getByRole('button', { name: 'Connect a device' }).first();
     await expect(connect).toHaveAttribute('aria-expanded', 'false');

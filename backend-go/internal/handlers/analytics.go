@@ -290,12 +290,18 @@ func (h *AnalyticsHandlers) requestCounts(now time.Time) requestCounts {
 // countDistinctNetworks counts distinct /24 and /64 networks via privacy.NetworkPrefix
 // among rows matching the condition since dayStart.
 func (h *AnalyticsHandlers) countDistinctNetworks(dayStart int64, cond database.SQLText, condArgs []any) int {
-	qArgs := make([]any, 0, 1+len(condArgs))
-	qArgs = append(qArgs, dayStart)
+	return h.countDistinctNetworksBetween(dayStart, 1<<62, cond, condArgs)
+}
+
+// countDistinctNetworksBetween is countDistinctNetworks for rows logged at or
+// after start and before end.
+func (h *AnalyticsHandlers) countDistinctNetworksBetween(start, end int64, cond database.SQLText, condArgs []any) int {
+	qArgs := make([]any, 0, 2+len(condArgs))
+	qArgs = append(qArgs, start, end)
 	qArgs = append(qArgs, condArgs...)
 	// #nosec G202 -- clientRows and cond are constants and placeholders; values are bound.
 	rows, err := h.db.Query(
-		string(`SELECT DISTINCT source_ip FROM proxy_logs WHERE unix_timestamp >= ? AND `+clientRows+` AND source_ip != '' AND `+cond), // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
+		string(`SELECT DISTINCT source_ip FROM proxy_logs WHERE unix_timestamp >= ? AND unix_timestamp < ? AND `+clientRows+` AND source_ip != '' AND `+cond), // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		qArgs...,
 	)
 	if err != nil {
