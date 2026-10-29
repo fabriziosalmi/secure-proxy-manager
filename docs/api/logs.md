@@ -53,7 +53,7 @@ counts the matching rows that were left out.
       "bytes": 4862,
       "blocked": true,
       "reason": "domain_blacklist_dns",
-      "reason_label": "Domain blacklist (DNS)",
+      "reason_label": "Domain blacklist (DNS sinkhole)",
       "internal": false,
       "kind": "Private network address",
       "resolved_ip": null
@@ -158,8 +158,8 @@ GET /api/logs/stats
     "blocked_count": 342,
     "ip_blocks_count": 18,
     "blocked_by_reason": [
-      { "reason": "domain_blacklist_dns", "label": "Domain blacklist (DNS)", "count": 300 },
-      { "reason": "domain_blacklist", "label": "Domain blacklist", "count": 24 },
+      { "reason": "domain_blacklist_dns", "label": "Domain blacklist (DNS sinkhole)", "count": 300 },
+      { "reason": "domain_blacklist", "label": "Domain blacklist (proxy)", "count": 24 },
       { "reason": "direct_ip", "label": "Direct IP", "count": 18 }
     ],
     "last_import": "2026-03-25 14:32:10"

@@ -296,7 +296,7 @@ function unclassifiedNote(unclassified: number, blocked: number): string {
 
 function RecentReason({ r }: { r: ClientRecent }) {
   if (r.blocked === undefined) return null;
-  if (!r.blocked) return <span className="text-xs text-ink-muted">Not blocked</span>;
+  if (!r.blocked) return <Badge tone="success">Allowed</Badge>;
   if (!r.reason_label) return <Badge tone="danger">Blocked</Badge>;
   return <Badge tone={r.reason === 'unclassified' ? 'neutral' : 'danger'}>{r.reason_label}</Badge>;
 }

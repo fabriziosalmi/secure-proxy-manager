@@ -143,8 +143,14 @@ const TOP_COLUMNS: Column<TopBlocked>[] = [
     id: 'rule',
     header: 'Rule',
     cell: (r) => r.reasons?.length ? (
+      // Two rules on one host: each with the count the API sends, so the
+      // Blocked column is seen split, not two bare names stacked.
       <span className="flex flex-wrap gap-1">
-        {r.reasons.map((x) => <ReasonBadge key={x.reason} reason={x.reason} label={x.label} />)}
+        {r.reasons.map((x) => (r.reasons!.length > 1 ? (
+          <Badge key={x.reason} tone={x.reason === 'unclassified' ? 'neutral' : 'danger'}>
+            {x.label}<span className="ml-1 font-semibold tabular-nums">{formatCount(x.count)}</span>
+          </Badge>
+        ) : <ReasonBadge key={x.reason} reason={x.reason} label={x.label} />))}
       </span>
     ) : <ReasonBadge />,
   },

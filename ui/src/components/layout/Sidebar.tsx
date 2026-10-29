@@ -1,6 +1,6 @@
 /**
  * Sidebar: the app's navigation, in the four groups of the approved design
- * (Overview, Traffic, Protection, System).
+ * (Insights, Traffic, Protection, System).
  *
  * Header: product name, the host the UI is served from and the backend
  * version (GET /api/health). Search opens the GlobalSearch dialog through

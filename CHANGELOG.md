@@ -155,6 +155,37 @@ for at least one minor release before disappearing.
   rounding clipped into something like a "(". The fill is now at least 2 px
   with a square start; a client with no blocked request shows a muted "0%"
   and no empty track, rather than "0.0%" over an empty bar on every row.
+- **One name per concept.** "Overview" names only the page at "/": the
+  menu item that read "Dashboard" is now "Overview", the menu group that
+  held it is "Insights", and the Settings section that was also called
+  "Overview" is "Summary" (its address stays `/settings/overview`). A
+  permitted request is "Allowed" everywhere; the client detail said "Not
+  blocked". The two domain rules are named by where they block, "Domain
+  blacklist (proxy)" and "Domain blacklist (DNS sinkhole)". These are the
+  `reason_label` and `label` values the API returns (`reason` keys are
+  unchanged): "Not blocked" is now "Allowed", "Domain blacklist" is
+  "Domain blacklist (proxy)" and "Domain blacklist (DNS)" is "Domain
+  blacklist (DNS sinkhole)". In "Most blocked destinations" a host blocked
+  by two rules shows each rule with its count.
+- **Settings and Analytics judge the configuration the same way.** The
+  Settings menu showed 1 next to Overview, whose "Needs attention" list held
+  4 items, and alerts switched off were orange in Analytics but grey in
+  Settings. One model now decides: *needs attention* (it stops clients or
+  gives false safety), *worth knowing* (a choice with a cost: HTTPS not
+  inspected, alerts off, proxy login off), *on* and *unknown*. Settings,
+  Overview lists the two kinds apart and the menu counts the first; the
+  marks in both places differ by shape (triangle, hollow circle, filled
+  circle, dashed circle) as well as colour, and Protection coverage has a
+  legend. Alerts off is *worth knowing* on both pages.
+- **The Analytics WAF card says it counts matches, not blocks.** Titled
+  "WAF categories", it listed the categories that matched a request, weak
+  matches below the block threshold included, since the WAF started, on a
+  page whose subtitle says "Last 7 days", and only its last line said how
+  many requests were blocked (often 0). It is now "WAF rule matches", says
+  "a match is not a block" and the blocked count in its description, and
+  names each category in words with its kind (rule, heuristic, domain
+  reputation, size limit) instead of the raw key (`SQL_INJECTION`,
+  `HEURISTIC_BEACONING`).
 
 ### Internal
 

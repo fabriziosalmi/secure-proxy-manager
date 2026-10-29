@@ -1224,10 +1224,10 @@ test.describe('UI — Settings page', () => {
     await page.waitForTimeout(1_500);
   });
 
-  test('/settings opens Overview and every section has its own URL', async ({ page }) => {
+  test('/settings opens Summary and every section has its own URL', async ({ page }) => {
     await expect(page).toHaveURL(/\/settings\/overview$/);
     const nav = page.getByRole('navigation', { name: 'Settings sections' });
-    await expect(nav.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
+    await expect(nav.getByRole('link', { name: 'Summary' })).toHaveAttribute('aria-current', 'page');
     for (const [label, path] of [
       ['Clients and access', 'access'], ['Filtering', 'filtering'], ['Inspection', 'inspection'], ['Alerts', 'alerts'],
       ['Logs and privacy', 'logs'], ['Admin and backup', 'admin'], ['Proxy engine', 'engine'], ['Appearance', 'appearance'],
@@ -1312,11 +1312,11 @@ test.describe('UI — Settings page', () => {
     await page.getByRole('button', { name: 'Discard' }).click();
   });
 
-  test('Overview lists what needs attention from the running stack and previews a profile before applying it', async ({ page }) => {
+  test('Summary lists what needs attention from the running stack and previews a profile before applying it', async ({ page }) => {
     const attention = page.getByRole('region', { name: 'Needs attention' });
     // The test stack runs no proxy container: GET /api/status reports it.
     await expect(attention.getByText('The proxy is not running')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: /^Overview, \d+ items? needs? attention$/ })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: /^Summary, \d+ items? needs? attention$/ })).toBeVisible();
     await page.getByRole('button', { name: /^Family/ }).click();
     await expect(page.getByRole('heading', { level: 4, name: /^Family (changes \d+ settings?|already match)|Your settings already match Family/ })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Apply Family' })).toBeVisible();

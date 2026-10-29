@@ -212,6 +212,21 @@ describe('Dashboard (Overview)', () => {
     ])
   })
 
+  // github.com showed two badges stacked, without the count of each rule
+  // that the API sends.
+  it('gives each rule of a destination blocked by two rules its count', async () => {
+    serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, top_blocked: [{
+      dest: 'github.com', count: 24,
+      reasons: [{ reason: 'domain_blacklist', label: 'Domain blacklist (proxy)', count: 20 }, { reason: 'domain_blacklist_dns', label: 'Domain blacklist (DNS sinkhole)', count: 4 }],
+    }] } })
+    renderWithProviders(<Dashboard />)
+    const table = await screen.findByRole('table', { name: 'Most blocked destinations in the last 24 hours' })
+    await waitFor(() => { expect(within(table).getByText('github.com')).toBeInTheDocument() })
+    const [row] = within(table).getAllByRole('row').slice(1)
+    expect(within(row).getByText('Domain blacklist (proxy)')).toHaveTextContent('Domain blacklist (proxy)20')
+    expect(within(row).getByText('Domain blacklist (DNS sinkhole)')).toHaveTextContent('Domain blacklist (DNS sinkhole)4')
+  })
+
   it('shows the blocked-by-rule card from blocked_by_reason_24h', async () => {
     renderWithProviders(<Dashboard />)
     const region = await screen.findByRole('region', { name: 'Blocked by rule' })
