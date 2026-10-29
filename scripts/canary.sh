@@ -32,6 +32,8 @@ HEALTH_URL="${HEALTH_URL:-https://localhost:8443/api/health}"
 PROXY="${PROXY:-http://localhost:3128}"
 PROBE_HOST="${PROBE_HOST:-http://example.com}"
 COMPOSE="${COMPOSE:-docker compose}"
+PROBE_ATTEMPTS="${PROBE_ATTEMPTS:-10}"
+PROBE_RETRY_DELAY="${PROBE_RETRY_DELAY:-3}"
 
 PASS=0; FAIL=0; NOTES=""
 ok()  { PASS=$((PASS+1)); printf '  PASS %s\n' "$1"; }
@@ -115,17 +117,35 @@ if [ -f config/domain_blacklist.txt ] \
   bad "probe host $probe_name is on this deployment's domain blacklist; set PROBE_HOST to another host"
   finish; exit 1
 fi
+# probe prints the HTTP status of one request through the proxy, 000 when no
+# response came. Only 000 is retried: after a restart the backend exports the
+# lists, the proxy's watchdog then reconfigures Squid, and Squid closes port
+# 3128 for a few seconds. "proxy healthy" does not see it when the proxy
+# container was not recreated, since its health status predates the restart
+# (v3.19.0, 2026-10-29: reconfigures at 19:39:48 and 19:39:52, both probes at
+# 19:39:50 got 000). Any HTTP status is the verdict and is never retried, so a
+# retry cannot turn a missed block or a false positive into a pass.
+probe() {
+  local code n=0
+  while :; do
+    n=$((n+1))
+    code=$(curl -s -o /dev/null -w '%{http_code}' -x "$PROXY" --max-time 20 "$@" 2>/dev/null) || code=000
+    if [ "$code" != "000" ] || [ "$n" -ge "$PROBE_ATTEMPTS" ]; then break; fi
+    sleep "$PROBE_RETRY_DELAY"
+  done
+  [ "$n" -gt 1 ] && printf '  (answered on attempt %d of %d)\n' "$n" "$PROBE_ATTEMPTS" >&2
+  printf '%s' "$code"
+}
+
 # A payload the WAF must refuse, in a BODY: the shape that passed until 3.13.1.
-code=$(curl -s -o /dev/null -w '%{http_code}' -x "$PROXY" --max-time 20 \
-  -X POST "$PROBE_HOST/login" -d "user=admin'--&pass=x" 2>/dev/null) || code=000
+code=$(probe -X POST "$PROBE_HOST/login" -d "user=admin'--&pass=x")
 if [ "$code" = "403" ]; then ok "WAF blocks a comment terminator in a body (403)"
 else bad "WAF did NOT block the body payload (got $code)"; fi
 
 # The control: a quote opening a literal that starts with dashes must pass.
 # Anything but 403 means it traversed; the origin's own status does not matter.
-code=$(curl -s -o /dev/null -w '%{http_code}' -x "$PROXY" --max-time 20 \
-  -X POST "$PROBE_HOST/api" -H 'Content-Type: application/json' \
-  -d '{"args":["--json","--verbose"]}' 2>/dev/null) || code=000
+code=$(probe -X POST "$PROBE_HOST/api" -H 'Content-Type: application/json' \
+  -d '{"args":["--json","--verbose"]}')
 if [ "$code" = "403" ]; then bad "false positive: benign CLI-flag JSON was blocked"
 elif [ "$code" = "000" ]; then bad "benign probe did not complete (no response)"
 else ok "benign CLI-flag JSON traverses ($code from the origin)"; fi
