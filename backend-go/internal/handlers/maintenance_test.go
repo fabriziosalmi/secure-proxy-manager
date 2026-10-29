@@ -187,8 +187,15 @@ func TestMaintenanceHandlers_ReloadDNS(t *testing.T) {
 	defer cleanup()
 	h := NewMaintenanceHandlers(db, cfg)
 
-	if _, err := db.Exec("INSERT INTO domain_blacklist (domain) VALUES (?)", "blocked.example"); err != nil {
-		t.Fatalf("seed domain_blacklist: %v", err)
+	// Two forms of an allowed name: the export leaves both out of the DNS
+	// sinkhole, so the answer must not count them as sent. COUNT(*) said 3.
+	for _, d := range []string{"blocked.example", "allowed.example", "*.allowed.example"} {
+		if _, err := db.Exec("INSERT INTO domain_blacklist (domain) VALUES (?)", d); err != nil {
+			t.Fatalf("seed domain_blacklist: %v", err)
+		}
+	}
+	if _, err := db.Exec("INSERT INTO domain_whitelist (domain, type) VALUES ('allowed.example', 'fqdn')"); err != nil {
+		t.Fatalf("seed domain_whitelist: %v", err)
 	}
 
 	r := httptest.NewRequest("POST", "/api/maintenance/reload-dns", nil)
@@ -209,14 +216,25 @@ func TestMaintenanceHandlers_ReloadDNS(t *testing.T) {
 	if !strings.Contains(string(exported), "blocked.example") {
 		t.Errorf("exported blacklist is missing the seeded domain: %q", exported)
 	}
+	hosts, err := os.ReadFile(filepath.Join(cfg.ConfigDir, "dnsmasq.d", "blocklist.hosts")) // #nosec G304
+	if err != nil {
+		t.Fatalf("blocklist.hosts was not exported: %v", err)
+	}
+	if strings.Contains(string(hosts), "allowed.example") {
+		t.Errorf("the DNS sinkhole was given an allowed name: %q", hosts)
+	}
 	var resp struct {
 		Data struct {
 			Domains int `json:"domains"`
+			LeftOut int `json:"left_out"`
 		} `json:"data"`
 	}
 	_ = json.NewDecoder(w.Body).Decode(&resp)
 	if resp.Data.Domains != 1 {
-		t.Errorf("Expected 1 domain reported, got %d", resp.Data.Domains)
+		t.Errorf("domains: want 1, the entries the DNS sinkhole was given, got %d", resp.Data.Domains)
+	}
+	if resp.Data.LeftOut != 2 {
+		t.Errorf("left_out: want 2, the entries the allowed list took out, got %d", resp.Data.LeftOut)
 	}
 }
 

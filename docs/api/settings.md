@@ -287,18 +287,33 @@ A caller that treats any `200` as success will read `pending` as applied.
 
 ---
 
-## Reload DNS configuration
+## Send the lists again
 
 ```
 POST /api/maintenance/reload-dns
 ```
 
-Exports the lists, including the dnsmasq hosts file (Allowed domains left
-out), and writes `/config/.reload-dns`. The dns container's watchdog sends
-dnsmasq `SIGHUP` within about 2 seconds; the answer does not wait for it.
+Exports every list again, the files Squid reads and the dnsmasq hosts file
+(Allowed domains left out), and writes `/config/.reload-dns`. The dns
+container's watchdog sends dnsmasq `SIGHUP` within about 2 seconds, and the
+proxy's watchdog reloads Squid when it sees its files change; the answer waits
+for neither. The UI offers it as "Send the lists to the DNS sinkhole and the
+proxy again" on Blocked domains and "Send the lists again" in Settings,
+Maintenance, for a change that has not taken effect.
+
+`data` is counted by the export while it writes the hosts file:
+
+| Field | Meaning |
+|---|---|
+| `domains` | Domain blacklist entries given to the DNS sinkhole. |
+| `left_out` | Entries left out because their name is on Allowed domains. |
+
+Both count entries, not distinct names: `*.example.com` and `example.com` are
+two. Before this, `domains` was the number of rows in the table, entries left
+out included.
 
 ```json
-{ "status": "success", "message": "DNS blocklist updated with 640929 domains", "data": { "domains": 640929 } }
+{ "status": "success", "message": "Lists exported: 640926 domain entries for the DNS sinkhole, 3 left out by the allowed list", "data": { "domains": 640926, "left_out": 3 } }
 ```
 
 ---

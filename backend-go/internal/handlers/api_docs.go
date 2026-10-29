@@ -104,7 +104,7 @@ var routeDocs = map[string]docMeta{
 	"GET /api/maintenance/check-cert-security":  {auth: true, desc: "Check SSL certificate status and security"},
 	"POST /api/maintenance/clear-cache":         {auth: true, desc: "Clear Squid proxy cache"},
 	"POST /api/maintenance/reload-config":       {auth: true, desc: "Regenerate Squid ACL files and signal reload"},
-	"POST /api/maintenance/reload-dns":          {auth: true, desc: "Regenerate dnsmasq blocklist and signal reload"},
+	"POST /api/maintenance/reload-dns":          {auth: true, desc: "Export every list again and signal dnsmasq to reload; data.domains is the domain entries the DNS sinkhole got, data.left_out those Allowed domains took out"},
 	"POST /api/maintenance/restore-config":      {auth: true, desc: "Restore config from JSON backup"},
 	"GET /api/security/cve":                     {auth: true, desc: "Known CVEs for installed Squid version"},
 	"GET /api/security/download-ca":             {auth: true, desc: "Download SSL-Bump CA certificate (.pem)"},

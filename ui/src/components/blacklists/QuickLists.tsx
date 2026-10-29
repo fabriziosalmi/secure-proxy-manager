@@ -141,7 +141,6 @@ export function BlockDoh() {
         <div className="flex flex-wrap items-center gap-3">
           <Button
             size="sm"
-            variant="danger-outline"
             disabled={busy !== null || !doh || missing === 0}
             icon={missing === 0 ? <Check /> : undefined}
             title={doh?.domains.join(', ')}

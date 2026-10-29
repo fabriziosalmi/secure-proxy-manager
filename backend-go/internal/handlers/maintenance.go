@@ -661,8 +661,14 @@ type clearCacheResult struct {
 	At             int64   `json:"at"`
 }
 
+// ReloadDNS exports every list again and asks dnsmasq to reread its hosts
+// file; Squid rereads its own files when they change. data.domains is the
+// number of domain blacklist entries the export gave the DNS sinkhole and
+// data.left_out the entries the allowed list took out, both counted by the
+// export itself.
 func (h *MaintenanceHandlers) ReloadDNS(w http.ResponseWriter, r *http.Request) {
-	if err := database.ExportBlacklistsToFiles(h.db, h.cfg.ConfigDir); err != nil {
+	counts, err := database.ExportBlacklistsCounted(h.db, h.cfg.ConfigDir)
+	if err != nil {
 		writeInternalError(w, "reload_dns_export", err)
 		return
 	}
@@ -671,11 +677,11 @@ func (h *MaintenanceHandlers) ReloadDNS(w http.ResponseWriter, r *http.Request) 
 	if err := os.WriteFile(reloadFile, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
 		log.Warn().Err(err).Msg("dns reload file trigger failed")
 	}
-	var count int
-	h.db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&count) //nolint:errcheck
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "success", "message": fmt.Sprintf("DNS blocklist updated with %d domains", count),
-		"data": map[string]any{"domains": count},
+		"status": "success",
+		"message": fmt.Sprintf("Lists exported: %d domain entries for the DNS sinkhole, %d left out by the allowed list",
+			counts.DNSEntries, counts.LeftOut),
+		"data": map[string]any{"domains": counts.DNSEntries, "left_out": counts.LeftOut},
 	})
 }
 

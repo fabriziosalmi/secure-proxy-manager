@@ -23,6 +23,7 @@ import toast from 'react-hot-toast';
 import { Download, Plus, Trash2 } from 'lucide-react';
 import { api, getData, getErrorMessage } from '../lib/api';
 import { formatCount } from '../lib/format';
+import { describeListResend, RESEND_UNCONFIRMED } from '../lib/listResend';
 import { cn } from '../lib/utils';
 import { useConfirm } from '../hooks/useConfirm';
 import type { Enforcement, ListEntry, ListSource } from '../types';
@@ -320,9 +321,9 @@ function ListBody({ list, initialSearch = '', total, enforcement, confirm, onCha
   const reloadDns = async () => {
     try {
       const r = await api.post('maintenance/reload-dns');
-      toast.success(`DNS list rewritten: ${formatCount(r.data?.data?.domains ?? 0)} domains`);
+      toast.success(`Lists sent again. ${describeListResend(r.data?.data)} ${RESEND_UNCONFIRMED}`);
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Could not rewrite the DNS list'));
+      toast.error(getErrorMessage(err, 'Could not send the lists again'));
     }
   };
 

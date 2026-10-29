@@ -163,13 +163,13 @@ describe('Maintenance', () => {
     })
     vi.mocked(api.post).mockImplementation((url: string) => {
       if (url === 'counters/reset') return Promise.resolve({ data: { status: 'success', data: { logs_cleared: 1234, waf_reset: false } } })
-      if (url === 'maintenance/reload-dns') return Promise.resolve({ data: { status: 'success', data: { domains: 42 } } })
+      if (url === 'maintenance/reload-dns') return Promise.resolve({ data: { status: 'success', data: { domains: 42, left_out: 3 } } })
       return Promise.resolve({ data: { status: 'success' } })
     })
     const { container } = renderWithProviders(<Maintenance />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reload DNS' }))
-    expect(await screen.findByText('Wrote 42 blocked domains for DNS. The DNS service rereads them within about 2 seconds; this page cannot confirm it.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Send the lists again' }))
+    expect(await screen.findByText('42 domain entries went to the DNS sinkhole, 3 left out by Allowed domains. The DNS sinkhole and the proxy reread them within a few seconds; this page cannot confirm it.')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset statistics' }))
     const ask = await screen.findByRole('alertdialog', { name: 'Delete every logged request?' })
