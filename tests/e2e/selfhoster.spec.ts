@@ -535,16 +535,16 @@ test.describe('UI: Access logs', () => {
   // A real browser fails the WebSocket handshake when it offers subprotocols
   // and the server selects none. The backend used to select none, so the live
   // feed never connected in any browser while non-browser tests passed.
-  test('the live feed connects (the button reads Live)', async ({ page }) => {
+  test('the live feed connects (the status line reads Connected)', async ({ page }) => {
     const wsErrors: string[] = [];
     page.on('console', (m) => { if (m.type() === 'error' && /WebSocket/.test(m.text())) wsErrors.push(m.text()); });
     await page.goto('/logs');
     await page.waitForSelector('h1:has-text("Access logs")', { timeout: 15_000 });
-    // "Live" only once the socket is open: "Connecting" and "Reconnecting"
-    // before, "Paused" when switched off.
-    const live = page.getByRole('button', { name: 'Live', exact: true });
-    await expect(live).toBeVisible({ timeout: 15_000 });
+    // "Connected" only once the socket is open: "Connecting" and
+    // "Reconnecting" before, "Paused" when switched off.
+    const live = page.getByRole('button', { name: 'Live updates', exact: true });
     await expect(live).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('status', { name: 'Live updates' })).toHaveText('Connected', { timeout: 15_000 });
     expect(wsErrors).toEqual([]);
   });
 

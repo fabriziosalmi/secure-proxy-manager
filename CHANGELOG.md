@@ -17,6 +17,11 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **The access log's live switch keeps one name.** The button was renamed
+  "Live", "Paused", "Connecting" and "Reconnecting" as the connection
+  changed, so a screen reader heard a different control each time. It is
+  "Live updates", pressed or not, and a status line beside it says
+  "Connected", "Connecting", "Reconnecting" or "Paused".
 - The WAF image stores its binary once, owned by root and run by the `waf`
   user, who can no longer change it. A `chown` after the copy wrote a second
   full copy of the binary in its own layer (8.1 MB on amd64) and let the
