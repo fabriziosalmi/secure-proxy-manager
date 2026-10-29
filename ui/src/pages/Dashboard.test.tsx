@@ -253,6 +253,10 @@ describe('Dashboard (Overview)', () => {
       renderWithProviders(<Dashboard />)
       expect(await screen.findByText('The overview could not be loaded')).toBeInTheDocument()
       expect(card('Client requests')).toHaveTextContent('Not reported')
+      // What is missing first, the request that failed as a detail.
+      const notice = screen.getByText('The overview could not be loaded').closest('[role="status"]')!
+      expect(notice).toHaveTextContent(/The counts, the rules and the latest blocks are missing until the backend answers\.\s*Detail: GET \/api\/dashboard\/summary did not answer\./)
+      expect(within(screen.getByRole('region', { name: 'Latest blocks' })).getByRole('alert')).toHaveTextContent('The latest blocks could not be loaded.Detail: GET /api/dashboard/summary did not answer.')
     })
   })
 

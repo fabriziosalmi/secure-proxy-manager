@@ -27,7 +27,8 @@ export function BlockedByRule({ reasons, loading }: BlockedByRuleProps) {
       </div>
     );
   } else if (!reasons) {
-    body = <p className="text-sm text-ink-muted">Not reported: the backend sent no blocked_by_reason_24h.</p>;
+    // Not a failed request: an answer without the field, from an older backend.
+    body = <p className="text-sm text-ink-muted">Not reported: this backend does not count blocks by rule. Updating it adds them.</p>;
   } else {
     const shown = reasons.filter((r) => r.count > 0);
     const total = shown.reduce((s, r) => s + r.count, 0);

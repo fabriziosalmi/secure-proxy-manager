@@ -215,7 +215,9 @@ describe('Clients', () => {
       expect(within(panel).getByText('These counts cover every request logged for this address; the table counts the last 7 days.')).toBeInTheDocument()
       expect(within(panel).getByText('8 of the 908 blocked requests were logged before the proxy recorded why it blocked a request, so the rule is not known.')).toBeInTheDocument()
       const dest = within(panel).getByRole('table', { name: 'Top destinations of 192.168.0.109' })
-      expect(within(dest).getByText('ads.example.test')).toBeInTheDocument()
+      // The whole name, wrapped; it was cut, whole only in a tooltip.
+      expect(within(dest).getByText('ads.example.test')).toHaveClass('break-all')
+      expect(within(dest).getByText('ads.example.test')).not.toHaveClass('truncate')
       expect(within(dest).getAllByText('700')).toHaveLength(2)
       expect(within(panel).getByText('Domain blacklist')).toBeInTheDocument()
       expect(within(panel).getByText('Not blocked')).toBeInTheDocument()

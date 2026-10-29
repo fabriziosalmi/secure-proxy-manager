@@ -31,6 +31,7 @@ import { ShareBar } from '../components/ui/ShareBar';
 import { Badge } from '../components/ui/Badge';
 import { Notice } from '../components/ui/Notice';
 import { EmptyState } from '../components/ui/EmptyState';
+import { Unavailable } from '../components/ui/Unavailable';
 import { DataTable, type Column } from '../components/ui/DataTable';
 import { IconButton } from '../components/ui/Button';
 import { RequestsPerHour } from '../components/dashboard/RequestsPerHour';
@@ -81,7 +82,8 @@ function notices(summary: { data?: DashboardSummary | null; isError: boolean }):
   if (summary.isError) {
     out.push(
       <Notice key="summary" tone="danger" title="The overview could not be loaded">
-        dashboard/summary did not answer, so the counts, the rules and the latest blocks are missing until it does.
+        The counts, the rules and the latest blocks are missing until the backend answers.
+        <span className="block text-xs">Detail: <code className="font-mono">GET /api/dashboard/summary</code> did not answer.</span>
       </Notice>,
     );
   }
@@ -164,7 +166,7 @@ function LatestBlocks({ rows, loading, error, now }: { rows?: RecentBlock[]; loa
       </div>
     );
   } else if (error || !rows) {
-    body = <p className="px-5 pb-5 text-sm text-ink-muted">Not reported: the dashboard summary did not load.</p>;
+    body = <Unavailable endpoint="dashboard/summary" className="px-5 pb-5">The latest blocks could not be loaded.</Unavailable>;
   } else if (rows.length === 0) {
     body = <EmptyState title="No blocked requests yet" description="Blocks appear here when a rule stops a client request." />;
   } else {

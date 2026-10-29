@@ -17,6 +17,14 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **Error states say what is missing in words, with the request that failed
+  as a detail.** They led with an endpoint: "Not reported:
+  analytics/coverage did not answer.", "GET /api/cache/statistics did not
+  answer.". Each now says what could not be shown ("What protection is on
+  could not be read.") and, under it in smaller type, which request did not
+  answer. A unit test fails on an error text that leads with the endpoint.
+  The client detail shows its destinations whole, wrapped, instead of cut
+  with the full name only in a tooltip.
 - The WAF image stores its binary once, owned by root and run by the `waf`
   user, who can no longer change it. A `chown` after the copy wrote a second
   full copy of the binary in its own layer (8.1 MB on amd64) and let the
