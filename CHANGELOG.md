@@ -17,6 +17,21 @@ for at least one minor release before disappearing.
 
 ### Changed
 
+- **Every audit event reads as a sentence, in plain text.** The egress
+  provider events showed their raw key and JSON (`egress_provider_disabled`,
+  `telegram. {"kind":"catalog"}`); they now read "Turned off the provider list
+  telegram", "Downloaded the provider list github" with its prefix counts,
+  and so on. A settings save names each setting by its label with its old and
+  new value ("Send alerts: off to on"), and a secret only as set or cleared.
+  A key the page does not know is written in words with its details as
+  fields, never as raw JSON. Events are plain text: they were blue pills, the
+  colour of a link, that wrapped inside the pill when long.
+- **The preset buttons say what is already on the list.** "+ Docker" read
+  the same before and after Docker was added, and the DNS-over-HTTPS card
+  never said whether its resolvers were blocked. Each common-services button
+  now reads "+ Docker", "+ Docker (2 missing)" or, disabled, "Docker added";
+  the DoH card says how many of its resolvers are blocked and offers "Block
+  the other 2", or a disabled "All 14 blocked".
 - **The audit log says what a settings save changed, and to what.** A save
   recorded the keys the request carried, before they were checked and with
   no value, so saving one field of a section read "Changed 8 settings" and
@@ -79,6 +94,17 @@ for at least one minor release before disappearing.
   names each category in words with its kind (rule, heuristic, domain
   reputation, size limit) instead of the raw key (`SQL_INJECTION`,
   `HEURISTIC_BEACONING`).
+- **Egress allowlist, Provider lists: the table fits at 1250 px and says
+  what it does.** Seven columns ran 50 px past the card at 1250 px, cutting
+  "Refresh now"; a list never downloaded said "Not downloaded yet" four
+  times. Prefixes and IPv4 coverage are one Coverage column, the time and
+  commit one Last download column, and "Not downloaded yet" is said once.
+  A switched-off list offers "Download to preview" (it is only downloaded
+  and counted) rather than "Refresh now". The text no longer says the
+  catalog is "pinned to the latest commit on main": each download takes the
+  newest commit and records it. "Shared network" is explained under the
+  description and attached to every such badge: allowing a shared network
+  allows every site and service it hosts.
 - **The access log's live switch keeps one name.** The button was renamed
   "Live", "Paused", "Connecting" and "Reconnecting" as the connection
   changed, so a screen reader heard a different control each time. It is
