@@ -36,6 +36,7 @@ yarn-error.log
 # Playwright E2E artifacts
 ui/test-results/
 ui/playwright-report/
+ui/playwright-report-layout/
 ui/playwright/.cache/
 
 # OS generated files
