@@ -17,6 +17,15 @@ for at least one minor release before disappearing.
 
 ### Changed
 
+- **The audit log says what a settings save changed, and to what.** A save
+  recorded the keys the request carried, before they were checked and with
+  no value, so saving one field of a section read "Changed 8 settings" and
+  whether alerts were switched on or off could not be told from the log. A
+  save now writes a row only when it changed something, after the change is
+  stored, naming the changed keys with their old and new values
+  (`details.changes`); a secret is recorded only as set or cleared
+  (`details.secrets`), never its value, and a value over 512 characters is
+  cut and marked truncated. A save refused by validation writes no row.
 - **A common-services preset is added in one request, under a source of its
   own.** "+ Docker" on Allowed domains (and "Block DoH resolvers" on Blocked
   domains) sent one request per domain from the page: each domain became a
