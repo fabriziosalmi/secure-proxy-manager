@@ -128,7 +128,7 @@ export function sourceName(kind: string | null | undefined, source?: string | nu
 /** The line under a source's name: the URL it was fetched from, or why it has none. */
 export function sourceDetail(s: Pick<ListSource, 'kind' | 'source' | 'label' | 'first_added'>): string | null {
   if (s.kind === 'url') return s.source || null;
-  if (s.kind === 'unrecorded') return 'Added before this release recorded where entries come from';
+  if (s.kind === 'unrecorded') return 'Added before sources were recorded';
   // Each paste and each restore is a source of its own: the time tells two
   // apart.
   if (s.kind === 'paste') return s.first_added ? `Pasted ${formatDateTime(s.first_added)}` : null;
