@@ -52,6 +52,15 @@ for at least one minor release before disappearing.
   marks in both places differ by shape (triangle, hollow circle, filled
   circle, dashed circle) as well as colour, and Protection coverage has a
   legend. Alerts off is *worth knowing* on both pages.
+- **The Analytics WAF card says it counts matches, not blocks.** Titled
+  "WAF categories", it listed the categories that matched a request, weak
+  matches below the block threshold included, since the WAF started, on a
+  page whose subtitle says "Last 7 days", and only its last line said how
+  many requests were blocked (often 0). It is now "WAF rule matches", says
+  "a match is not a block" and the blocked count in its description, and
+  names each category in words with its kind (rule, heuristic, domain
+  reputation, size limit) instead of the raw key (`SQL_INJECTION`,
+  `HEURISTIC_BEACONING`).
 
 ## [3.18.3] - 2026-10-28
 
