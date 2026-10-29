@@ -304,7 +304,7 @@ These return JSON in the standard envelope, in the shape the UI renders:
 | `GET /api/analytics/top-domains` | Top 50 domains |
 | `GET /api/analytics/blocked-by-day` | Blocked requests per day by rule for 7 days (`tz`, default UTC) |
 | `GET /api/analytics/coverage` | What protection is on now |
-| `GET /api/waf/stats` | WAF statistics, from the WAF |
+| `GET /api/waf/stats` | WAF statistics, from the WAF. When there are none it answers `502` (`503` while the circuit breaker is open) with `waf_status`, the reason in the words of `dashboard/summary`: `unreachable`, `auth_failed` (the WAF refused the backend's credential) or `error` |
 | `GET /api/waf/categories` | WAF rule categories and whether each is on |
 
 See the [API reference](/api/reference) for the full list.

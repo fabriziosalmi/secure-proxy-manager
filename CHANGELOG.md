@@ -69,6 +69,13 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **Analytics reads the WAF figures from `GET /api/waf/stats`.** The page
+  downloaded the whole dashboard summary every 30 seconds, 24-hour counts,
+  top lists and recent blocks, for the one WAF card. It now asks the WAF
+  endpoint, on the page's own refresh. `GET /api/waf/stats` answers a failure
+  with `waf_status`, the reason in the words of the dashboard summary
+  (`unreachable`, `auth_failed`, `error`), so the card still says when the
+  WAF refuses the backend's credential.
 - **The client detail states the window it counts, and the share blocked
   can be sorted.** The client list counts the last 7 days and the detail it
   opens counted every request ever logged, saying so only when the two
