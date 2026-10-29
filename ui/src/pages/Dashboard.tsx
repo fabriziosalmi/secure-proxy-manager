@@ -35,6 +35,7 @@ import { Unavailable } from '../components/ui/Unavailable';
 import { DataTable, type Column } from '../components/ui/DataTable';
 import { IconButton } from '../components/ui/Button';
 import { RequestsPerHour } from '../components/dashboard/RequestsPerHour';
+import { viewerTimeZone } from '../components/analytics/days';
 import { BlockedByRule } from '../components/dashboard/BlockedByRule';
 import { ServicesPanel } from '../components/dashboard/ServicesPanel';
 import { serviceRows } from '../components/dashboard/services';
@@ -210,8 +211,9 @@ export function Dashboard() {
     refetchInterval,
   });
   const timeline = useQuery<TimelineEntry[] | null>({
-    queryKey: ['timeline'],
-    queryFn: () => getData<TimelineEntry[]>('logs/timeline'),
+    // The viewer's hours: by UTC hour, a half-hour zone read 12:30, 15:30.
+    queryKey: ['timeline', viewerTimeZone()],
+    queryFn: () => getData<TimelineEntry[]>(`logs/timeline?tz=${encodeURIComponent(viewerTimeZone())}`),
     refetchInterval,
   });
   const status = useQuery({ ...statusQuery, refetchInterval, staleTime: 10_000 });

@@ -183,17 +183,21 @@ GET /api/logs/timeline
 ```
 
 Requests and blocks per hour, client requests only, internal sources left out.
+The hours are those of `tz`: `time` is the hour as that zone's clock reads it,
+`start` the epoch second it begins. In a zone with a half-hour offset, such as
+`Asia/Kolkata`, the hours begin at :00 there, which is :30 UTC.
 
 | Parameter | Default | Range |
 |---|---|---|
 | `hours` | `24` | `1` to `720`; a value outside the range is `24` |
+| `tz` | `UTC` | An IANA time zone name; any other value answers `400` |
 
 ```json
 {
   "status": "success",
   "data": [
-    { "time": "2026-03-25 13:00:00", "total": 45, "blocked": 3 },
-    { "time": "2026-03-25 14:00:00", "total": 62, "blocked": 7 }
+    { "time": "2026-03-25 13:00:00", "start": 1774443600, "total": 45, "blocked": 3 },
+    { "time": "2026-03-25 14:00:00", "start": 1774447200, "total": 62, "blocked": 7 }
   ]
 }
 ```

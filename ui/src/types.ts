@@ -243,7 +243,10 @@ export interface ClientDetail {
 }
 
 export interface TimelineEntry {
+  /** The hour, as the clock of the zone asked for (?tz=) reads it; UTC by default. */
   time: string;
+  /** When the hour begins, epoch seconds. Absent from older backends. */
+  start?: number;
   total: number;
   blocked: number;
 }

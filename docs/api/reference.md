@@ -111,7 +111,7 @@ Details: [Logs and Analytics API](./logs.md).
 | `GET`  | `/api/logs` | Access log rows, with filters (source, outcome, rule, destination, internal traffic) and a cursor |
 | `GET`  | `/api/logs/export` | The same rows as streamed CSV |
 | `GET`  | `/api/logs/stats` | Total, blocked and direct-IP counts, blocks by rule |
-| `GET`  | `/api/logs/timeline` | Requests and blocks per hour (`hours`, default 24) |
+| `GET`  | `/api/logs/timeline` | Requests and blocks per hour (`hours`, default 24) of the zone `tz` (default UTC) |
 | `POST` | `/api/logs/clear` | Delete every log row |
 | `POST` | `/api/logs/clear-old` | Delete rows older than `days` (query parameter, default 30) |
 | `POST` | `/api/counters/reset` | Delete every log row and reset the WAF's counters |

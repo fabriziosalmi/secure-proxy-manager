@@ -94,6 +94,13 @@ for at least one minor release before disappearing.
   names each category in words with its kind (rule, heuristic, domain
   reputation, size limit) instead of the raw key (`SQL_INJECTION`,
   `HEURISTIC_BEACONING`).
+- **The requests-per-hour chart counts the viewer's hours.** It grouped by
+  UTC hour, so in a zone with a half-hour offset every hour began at half
+  past: the axis read 12:30, 15:30, 18:30 in Asia/Kolkata and 04:30, 07:30
+  in America/St_Johns. `GET /api/logs/timeline` takes `tz`, an IANA name
+  (default UTC, as before), counts the requests per hour of that zone and
+  returns with each hour its `start` in epoch seconds. The Overview asks for
+  the viewer's zone.
 - **One name per concept.** "Overview" names only the page at "/": the
   menu item that read "Dashboard" is now "Overview", the menu group that
   held it is "Insights", and the Settings section that was also called
