@@ -8,11 +8,16 @@ import type { SecretState } from './secrets';
 import type { ProxyAuthStatus } from './queries';
 import type { SectionId } from './settingsMeta';
 import { EGRESS_EMPTY_REACH } from './egress';
+import { SHARED_SEVERITY, type Posture } from './posture';
 
 export interface AttentionItem {
   id: string;
-  /** warning: something is wrong or will surprise; info: a choice worth knowing. */
-  tone: 'warning' | 'info';
+  /**
+   * In the one model Analytics shares (lib/posture): needs-attention when
+   * something is wrong or will surprise, worth-knowing for a choice with a
+   * cost.
+   */
+  posture: Extract<Posture, 'needs-attention' | 'worth-knowing'>;
   title: string;
   body: string;
   section?: SectionId;
@@ -71,7 +76,7 @@ export function needsAttention({ values, secrets, proxyStatus, egressTotal, egre
   if (proxyLoginWithoutCredentials(values, secrets, proxyAuth)) {
     items.push({
       id: 'proxy-login-no-credentials',
-      tone: 'warning',
+      posture: SHARED_SEVERITY.proxyLoginWithoutCredentials,
       title: PROXY_LOGIN_NO_CREDENTIALS,
       body: 'Devices get 403 on every request. Set the proxy username and password under Clients and access, Login, or turn proxy login off.',
       section: 'access',
@@ -80,9 +85,9 @@ export function needsAttention({ values, secrets, proxyStatus, egressTotal, egre
   }
 
   if (proxyStatus === null) {
-    items.push({ id: 'proxy-unknown', tone: 'warning', title: 'The proxy status could not be read', body: 'GET /api/status did not answer, so this page cannot tell whether clients can browse.' });
+    items.push({ id: 'proxy-unknown', posture: 'needs-attention', title: 'The proxy status could not be read', body: 'GET /api/status did not answer, so this page cannot tell whether clients can browse.' });
   } else if (proxyStatus !== undefined && proxyStatus !== 'running') {
-    items.push({ id: 'proxy-down', tone: 'warning', title: 'The proxy is not running', body: `The backend reports the proxy as "${proxyStatus}". Clients cannot browse until the proxy container runs.` });
+    items.push({ id: 'proxy-down', posture: 'needs-attention', title: 'The proxy is not running', body: `The backend reports the proxy as "${proxyStatus}". Clients cannot browse until the proxy container runs.` });
   }
 
   const effectiveEgressTotal =
@@ -94,20 +99,20 @@ export function needsAttention({ values, secrets, proxyStatus, egressTotal, egre
 
   if (on('egress_default_deny')) {
     if (effectiveEgressTotal === 0) {
-      items.push({ id: 'egress-empty', tone: 'warning', title: 'Clients reach only LAN destinations and Allowed IPs', body: `Only allowlisted destinations is on and the egress allowlist is empty. ${EGRESS_EMPTY_REACH}`, section: 'filtering', action: 'Filtering' });
+      items.push({ id: 'egress-empty', posture: 'needs-attention', title: 'Clients reach only LAN destinations and Allowed IPs', body: `Only allowlisted destinations is on and the egress allowlist is empty. ${EGRESS_EMPTY_REACH}`, section: 'filtering', action: 'Filtering' });
     } else if (effectiveEgressTotal === null) {
-      items.push({ id: 'egress-unknown', tone: 'warning', title: 'The egress allowlist could not be read', body: 'Only allowlisted destinations is on, and this page cannot tell how many destinations are allowed.', section: 'filtering', action: 'Filtering' });
+      items.push({ id: 'egress-unknown', posture: 'needs-attention', title: 'The egress allowlist could not be read', body: 'Only allowlisted destinations is on, and this page cannot tell how many destinations are allowed.', section: 'filtering', action: 'Filtering' });
     }
   }
 
   if (on('enable_content_filtering') && !(values.blocked_file_types ?? '').split(',').some((s) => s.trim())) {
-    items.push({ id: 'downloads-empty', tone: 'warning', title: 'Risky downloads are not blocked', body: 'Block risky downloads is on but lists no extension, so the proxy blocks nothing.', section: 'filtering', action: 'Filtering' });
+    items.push({ id: 'downloads-empty', posture: 'needs-attention', title: 'Risky downloads are not blocked', body: 'Block risky downloads is on but lists no extension, so the proxy blocks nothing.', section: 'filtering', action: 'Filtering' });
   }
 
   if (secrets.proxy_auth_password === 'unreadable') {
     items.push({
       id: 'proxy-password-unreadable',
-      tone: 'warning',
+      posture: 'needs-attention',
       title: 'The proxy password cannot be read',
       body: 'It was stored with another encryption key. The proxy keeps the password file it has; enter the password again to replace it.',
       section: 'access',
@@ -119,7 +124,7 @@ export function needsAttention({ values, secrets, proxyStatus, egressTotal, egre
   if (unreadable.length) {
     items.push({
       id: 'secrets-unreadable',
-      tone: 'warning',
+      posture: 'needs-attention',
       title: unreadable.length === 1 ? 'An alert setting cannot be read' : `${unreadable.length} alert settings cannot be read`,
       body: 'They were stored with another encryption key. Enter them again.',
       section: 'alerts',
@@ -129,17 +134,17 @@ export function needsAttention({ values, secrets, proxyStatus, egressTotal, egre
 
   const channels = configuredChannels(secrets);
   if (on('enable_notifications') && channels.length === 0) {
-    items.push({ id: 'alerts-no-channel', tone: 'warning', title: 'Alerts are on but go nowhere', body: 'No alert channel has all of its settings stored.', section: 'alerts', action: 'Set up alerts' });
+    items.push({ id: 'alerts-no-channel', posture: SHARED_SEVERITY.alertsWithoutChannel, title: 'Alerts are on but go nowhere', body: 'No alert channel has all of its settings stored.', section: 'alerts', action: 'Set up alerts' });
   }
 
   if (values.default_password_changed !== undefined && values.default_password_changed !== 'true') {
-    items.push({ id: 'password', tone: 'warning', title: 'The admin password was never changed here', body: 'It is still the one the install started with.', section: 'admin', action: 'Admin and backup' });
+    items.push({ id: 'password', posture: 'needs-attention', title: 'The admin password was never changed here', body: 'It is still the one the install started with.', section: 'admin', action: 'Admin and backup' });
   }
 
   if (values.proxy_port !== undefined && values.proxy_port !== '3128') {
     items.push({
       id: 'port',
-      tone: 'warning',
+      posture: 'needs-attention',
       title: `The proxy is set to listen on ${values.proxy_port}`,
       body: 'docker-compose.yml publishes 3128 and its health check looks for 3128, so clients cannot reach the proxy unless the compose file was changed to match.',
       section: 'engine',
@@ -148,17 +153,17 @@ export function needsAttention({ values, secrets, proxyStatus, egressTotal, egre
   }
 
   if (on('ssl_bump_enabled')) {
-    items.push({ id: 'https-on', tone: 'info', title: 'HTTPS inspection is on', body: 'A device without the proxy CA installed sees a certificate error on every HTTPS site.', section: 'inspection', action: 'Inspection' });
+    items.push({ id: 'https-on', posture: 'worth-knowing', title: 'HTTPS inspection is on', body: 'A device without the proxy CA installed sees a certificate error on every HTTPS site.', section: 'inspection', action: 'Inspection' });
   } else if (values.ssl_bump_enabled !== undefined) {
-    items.push({ id: 'https-off', tone: 'info', title: 'HTTPS traffic is not inspected', body: 'HTTPS requests pass as encrypted tunnels: the WAF and the download filter see only the destination name.', section: 'inspection', action: 'Inspection' });
+    items.push({ id: 'https-off', posture: SHARED_SEVERITY.httpsOff, title: 'HTTPS traffic is not inspected', body: 'HTTPS requests pass as encrypted tunnels: the WAF and the download filter see only the destination name.', section: 'inspection', action: 'Inspection' });
   }
 
   if (!on('enable_notifications') && values.enable_notifications !== undefined) {
-    items.push({ id: 'alerts-off', tone: 'info', title: 'Blocks are not reported anywhere', body: 'Alerts are off, so a block shows only in the logs.', section: 'alerts', action: 'Set up alerts' });
+    items.push({ id: 'alerts-off', posture: SHARED_SEVERITY.alertsOff, title: 'Blocks are not reported anywhere', body: 'Alerts are off, so a block shows only in the logs.', section: 'alerts', action: 'Set up alerts' });
   }
 
   if (!on('enable_proxy_auth')) {
-    items.push({ id: 'no-login', tone: 'info', title: 'Any device on a private network can use the proxy without signing in', body: 'Fine on a home network. Turn on proxy login if guests share it.', section: 'access', action: 'Clients and access' });
+    items.push({ id: 'no-login', posture: SHARED_SEVERITY.proxyLoginOff, title: 'Any device on a private network can use the proxy without signing in', body: 'Fine on a home network. Turn on proxy login if guests share it.', section: 'access', action: 'Clients and access' });
   }
 
   return items;

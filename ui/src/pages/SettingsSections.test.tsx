@@ -361,6 +361,20 @@ describe('Settings sections', () => {
       await expectNoAxeViolations(container)
     })
 
+    // The badge said 1 over a list titled "Needs attention" that held 4
+    // items: the three choices worth knowing are a list of their own now.
+    it('counts in the nav exactly the items listed under Needs attention, and lists the choices worth knowing apart', async () => {
+      renderAt('/settings/overview')
+      const list = await screen.findByRole('region', { name: 'Needs attention' })
+      const urgent = await within(list).findAllByRole('listitem')
+      const nav = screen.getByRole('navigation', { name: 'Settings sections' })
+      expect(within(nav).getByRole('link', { name: `Overview, ${urgent.length} ${urgent.length === 1 ? 'item needs' : 'items need'} attention` })).toBeInTheDocument()
+      const known = screen.getByRole('region', { name: 'Worth knowing' })
+      expect(within(known).getByText('Blocks are not reported anywhere')).toBeInTheDocument()
+      expect(within(list).queryByText('Blocks are not reported anywhere')).toBeNull()
+      expect(within(list).queryByText('HTTPS traffic is not inspected')).toBeNull()
+    })
+
     it('puts login on with no credentials first in the list, and links it to Clients and access', async () => {
       rows = [...base, { setting_name: 'enable_proxy_auth', setting_value: 'true' }]
       const { container } = renderAt('/settings/overview')
