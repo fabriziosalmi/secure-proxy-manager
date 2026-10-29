@@ -17,6 +17,18 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- **The blocks-per-day chart can be read with any colour vision, and each
+  rule keeps its colour.** Analytics stacked the rules in four reds stepped
+  in lightness, 1.36 to 1.50:1 from each other, and handed the colours out in
+  order to the rules present, so the WAF was the first red one week and the
+  second the next. The chart now uses the Okabe-Ito hues, adjusted so that
+  every two series stay apart under simulated protanopia, deuteranopia and
+  tritanopia, and each rule has a fixed colour: the domain blacklist, the DNS
+  sinkhole, the address and network rules, and the WAF with every other rule.
+  Rules of one colour that blocked in the same week are one stack, named in
+  the legend and counted one by one in the table. The 4 px floor that kept a
+  small count visible applies to a day's whole bar, not to each rule: a day of
+  10 blocks over 3 rules drew 12 px.
 - The WAF image stores its binary once, owned by root and run by the `waf`
   user, who can no longer change it. A `chown` after the copy wrote a second
   full copy of the binary in its own layer (8.1 MB on amd64) and let the
