@@ -151,6 +151,22 @@ func TestReasonLabelOfTheListsGate(t *testing.T) {
 
 // The tailer stores what it parsed: the real lines go through tailOnce into
 // proxy_logs, and the stored reason and flag are the parsed ones.
+// The UI names each rule by this label. "Domain blacklist" and "Domain
+// blacklist (DNS)" did not say where each blocks, and a permitted request was
+// "Not blocked" here and "Allowed" in the access log.
+func TestReasonLabelsNameWhereTheDomainRulesBlock(t *testing.T) {
+	for reason, want := range map[string]string{
+		ReasonDomainBlacklist:                 "Domain blacklist (proxy)",
+		ReasonDomainBlacklistDNS:              "Domain blacklist (DNS sinkhole)",
+		ReasonDomainBlacklistDNSReconstructed: "Domain blacklist (DNS sinkhole), reconstructed",
+		ReasonNone:                            "Allowed",
+	} {
+		if got := ReasonLabel(reason); got != want {
+			t.Errorf("ReasonLabel(%q) = %q, want %q", reason, got, want)
+		}
+	}
+}
+
 func TestTailerStoresTheBlockReason(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()

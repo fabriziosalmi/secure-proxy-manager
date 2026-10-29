@@ -10,7 +10,7 @@ import { formatCount, formatHourMinute } from '../../lib/format';
 import { cn } from '../../lib/utils';
 import { Section } from '../ui/Section';
 import { EmptyState } from '../ui/EmptyState';
-import { axisMax, axisTicks, describeHours, hourlySlots } from './hourly';
+import { axisLabels, axisMax, axisTicks, describeHours, hourlySlots, partialText } from './hourly';
 
 export interface RequestsPerHourProps {
   entries?: TimelineEntry[] | null;
@@ -63,6 +63,7 @@ export function RequestsPerHour({ entries, now, loading, error }: RequestsPerHou
       );
     } else {
       const ticks = axisTicks(max);
+      const labels = axisLabels(slots);
       body = (
         <div className="flex gap-2">
           <div aria-hidden="true" className="flex h-[120px] w-9 shrink-0 flex-col justify-between text-right text-[11px] tabular-nums leading-none text-ink-subtle sm:h-[180px]">
@@ -78,8 +79,11 @@ export function RequestsPerHour({ entries, now, loading, error }: RequestsPerHou
                 <div
                   key={s.time}
                   data-hour={s.time}
-                  title={`${formatHourMinute(s.time)}: ${formatCount(s.total)} requests, ${formatCount(s.blocked)} blocked`}
-                  className="flex h-full min-w-0 flex-1 flex-col justify-end"
+                  data-partial={s.partial ? 'true' : undefined}
+                  title={`${partialText(s) ?? formatHourMinute(s.time)}: ${formatCount(s.total)} requests, ${formatCount(s.blocked)} blocked`}
+                  // A partial hour is drawn lighter: its bar covers only the
+                  // minutes of the hour inside the window.
+                  className={cn('flex h-full min-w-0 flex-1 flex-col justify-end', s.partial && 'opacity-50')}
                 >
                   <div data-series="blocked" className="rounded-t-[2px] bg-danger-strong" style={{ height: pct(s.blocked, max) }} />
                   <div
@@ -91,22 +95,27 @@ export function RequestsPerHour({ entries, now, loading, error }: RequestsPerHou
               ))}
             </div>
             <div aria-hidden="true" className="flex h-5 items-end gap-[2px] sm:gap-1">
-              {slots.map((s, i) => (
+              {slots.map((s, i) => {
                 // A label is wider than its hour: the first one grows to the
                 // right, the last to the left, the others both ways, so none
-                // runs past the chart. Every 3rd hour, every 12th on a phone.
-                <span
-                  key={s.time}
-                  className={cn(
-                    'flex min-w-0 flex-1 text-[11px] tabular-nums text-ink-subtle',
-                    i === 0 ? 'justify-start' : i === slots.length - 1 ? 'justify-end' : 'justify-center',
-                    i % 12 !== 0 && i !== slots.length - 1 && 'invisible',
-                    i % 3 === 0 && 'sm:visible',
-                  )}
-                >
-                  {(i % 3 === 0 || i === slots.length - 1) && <span className="whitespace-nowrap">{formatHourMinute(s.time)}</span>}
-                </span>
-              ))}
+                // runs past the chart. The ends and every 3rd hour; on a
+                // phone the ends and the middle.
+                const label = labels.get(i);
+                const end = i === 0 || i === slots.length - 1;
+                return (
+                  <span
+                    key={s.time}
+                    data-label={label}
+                    className={cn(
+                      'flex min-w-0 flex-1 text-[11px] tabular-nums text-ink-subtle',
+                      i === 0 ? 'justify-start' : i === slots.length - 1 ? 'justify-end' : 'justify-center',
+                      !end && i !== 12 && 'invisible sm:visible',
+                    )}
+                  >
+                    {label && <span className="whitespace-nowrap">{label}</span>}
+                  </span>
+                );
+              })}
             </div>
           </div>
         </div>

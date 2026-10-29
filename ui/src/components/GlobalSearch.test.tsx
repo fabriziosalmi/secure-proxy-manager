@@ -58,7 +58,8 @@ describe('GlobalSearch', () => {
     await user.type(screen.getByPlaceholderText(/search/i), 'dash')
 
     await waitFor(() => {
-      expect(screen.getByText('Dashboard')).toBeInTheDocument()
+      // The old menu name finds the page by its new one.
+      expect(screen.getByText('Overview')).toBeInTheDocument()
     })
   })
 

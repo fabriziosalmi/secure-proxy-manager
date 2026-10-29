@@ -42,7 +42,7 @@ const LISTS: Record<string, ListWords> = {
 };
 
 const LIST_NAMES = Object.keys(LISTS).join('|');
-const LIST_ACTION = new RegExp(`^(add|remove|bulk_remove|clear|import|remove_source|restore)_(${LIST_NAMES})$`);
+const LIST_ACTION = new RegExp(`^(add_preset|add|remove|bulk_remove|clear|import|remove_source|restore)_(${LIST_NAMES})$`);
 
 const SIGN_INS: Record<string, string> = { login: 'Signed in', logout: 'Signed out' };
 
@@ -176,6 +176,7 @@ function sourcePhrase(kind: string | null, target: string, name: string | null):
     case 'paste': return 'from a pasted list';
     case 'geo': return `of ${target}`;
     case 'restore': return 'from a restore';
+    case 'preset': return `of ${name ?? target}`;
     case 'unrecorded': return 'whose source was not recorded';
     default: return `from ${target || 'a source'}`;
   }
@@ -185,6 +186,18 @@ function describeList(e: AuditEntry, verb: string, list: ListWords): AuditDescri
   const target = e.target ?? '';
   const f = fields(e.details);
   switch (verb) {
+    case 'add_preset': {
+      // One event for a whole preset: target its name, details the domains it added.
+      const added = num(f, 'added');
+      const already = num(f, 'already') ?? 0;
+      if (added === null) return null;
+      const domains = Array.isArray(f?.domains) ? (f.domains as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+      return {
+        event: `Added ${target || 'a preset'} (${count(added, list.imported[0], list.imported[1])}) to ${list.label}`,
+        details: join([domains.length ? domains.join(', ') : null, already > 0 ? `${formatCount(already)} already listed` : null]),
+        kind: 'change',
+      };
+    }
     case 'add':
       // The details of an add are the note typed with it, as text.
       return { event: `Added ${target || 'an entry'} to ${list.label}`, details: e.details ? `Note: ${e.details}` : null, kind: 'change' };

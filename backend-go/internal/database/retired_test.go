@@ -113,8 +113,8 @@ func TestVersion8RetiresThreeSettingsWithAuditAndTruncation(t *testing.T) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&v); err != nil {
 		t.Fatal(err)
 	}
-	if v != 8 {
-		t.Fatalf("user_version = %d, want 8", v)
+	if v != schemaVersion {
+		t.Fatalf("user_version = %d, want %d", v, schemaVersion)
 	}
 
 	for _, k := range []string{"allowed_networks", "waf_custom_rules", "waf_block_threshold"} {
@@ -211,8 +211,8 @@ func TestVersion8WithoutRetiredRowsWritesNoAudit(t *testing.T) {
 	}
 	var v int
 	_ = db.QueryRow("PRAGMA user_version").Scan(&v)
-	if v != 8 {
-		t.Fatalf("user_version = %d, want 8", v)
+	if v != schemaVersion {
+		t.Fatalf("user_version = %d, want %d", v, schemaVersion)
 	}
 	var auditCount int
 	_ = db.QueryRow("SELECT COUNT(*) FROM audit_log WHERE action = 'retire_setting_value'").Scan(&auditCount)

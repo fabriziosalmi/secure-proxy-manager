@@ -10,8 +10,12 @@
  *
  * tone colours the value only: danger for blocked counts, warning for a
  * number that needs attention, success for a healthy one.
+ *
+ * to makes the label a link to the page that lists what the number counts;
+ * the link covers the whole card, so the card is one target.
  */
 import type { ReactNode } from 'react';
+import { Link } from 'react-router';
 import { cn } from '../../lib/utils';
 import { formatCount } from '../../lib/format';
 
@@ -37,10 +41,12 @@ export interface StatCardProps {
   sub?: ReactNode;
   unavailable?: Unavailable;
   loading?: boolean;
+  /** A route: the label links there, and the link covers the card. */
+  to?: string;
   className?: string;
 }
 
-export function StatCard({ label, value, tone = 'default', sub, unavailable, loading, className }: StatCardProps) {
+export function StatCard({ label, value, tone = 'default', sub, unavailable, loading, to, className }: StatCardProps) {
   const missing = unavailable ?? (value === null || value === undefined || (typeof value === 'number' && !Number.isFinite(value)) ? 'not-reported' : null);
   let body: ReactNode;
   if (loading) {
@@ -60,8 +66,17 @@ export function StatCard({ label, value, tone = 'default', sub, unavailable, loa
     );
   }
   return (
-    <div className={cn('flex min-w-0 flex-col gap-2 rounded-panel border border-line bg-surface p-5', className)}>
-      <p className="text-[13px] font-medium text-ink-muted">{label}</p>
+    <div className={cn('flex min-w-0 flex-col gap-2 rounded-panel border border-line bg-surface p-5', to && 'relative hover:border-line-strong', className)}>
+      <p className="text-[13px] font-medium text-ink-muted">
+        {to ? (
+          <Link
+            to={to}
+            className="rounded-sm underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent after:absolute after:inset-0 after:rounded-panel after:content-['']"
+          >
+            {label}
+          </Link>
+        ) : label}
+      </p>
       {body}
       {sub && <div className="text-[13px] text-ink-muted">{sub}</div>}
     </div>

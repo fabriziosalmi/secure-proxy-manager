@@ -37,6 +37,17 @@ describe('describeAudit', () => {
     }
   })
 
+  // One click on "+ Docker" wrote five rows "Added <domain> to Allowed domains".
+  it('writes a preset as one event naming what it added', () => {
+    expect(describeAudit(row('add_preset_domain_whitelist', 'Docker', '{"preset":"docker","added":4,"already":1,"domains":["docker.com","registry.docker.io","auth.docker.io","production.cloudflare.docker.com"]}'))).toEqual({
+      event: 'Added Docker (4 domains) to Allowed domains',
+      details: 'docker.com, registry.docker.io, auth.docker.io, production.cloudflare.docker.com. 1 already listed',
+      kind: 'change',
+    })
+    expect(describeAudit(row('remove_source_domain_whitelist', 'docker', '{"removed":4,"kind":"preset","name":"Common services: Docker"}')).event)
+      .toBe('Removed 4 allowed domains of Common services: Docker')
+  })
+
   it('describes a refresh run of the worker, which writes as system', () => {
     const d = describeAudit({ ...row('refresh_blacklists', '', '{"domain_blacklist":{"added":71140,"fetched":2,"failed":0,"not_added":5},"ip_blacklist":{"added":0,"fetched":1,"failed":1}}'), username: 'system' })
     expect(d.event).toBe('Auto-refresh added 0 blocked IPs and 71,140 blocked domains')

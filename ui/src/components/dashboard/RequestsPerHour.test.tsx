@@ -62,6 +62,29 @@ describe('RequestsPerHour', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Could not load the hourly timeline')
   })
 
+  // The axis read 08:00 at both ends: 25 hourly buckets for 24 hours, the
+  // first covering only the minutes from now minus 24 hours to the next hour.
+  it('marks the partial first and last hours and writes no label twice', () => {
+    renderWithProviders(<RequestsPerHour entries={TEST_DEPLOYMENT} now={NOW} />)
+    const all = bars()
+    expect(all[0].dataset.partial).toBe('true')
+    expect(all[all.length - 1].dataset.partial).toBe('true')
+    expect(all.slice(1, -1).every((b) => b.dataset.partial === undefined)).toBe(true)
+    // 24 hours before 10:21:40 in Rome (UTC+1 now, UTC+2 the day before) is 11:21 on Saturday.
+    expect(all[0].title).toBe('11:21 to 12:00 only: 0 requests, 0 blocked')
+    expect(all[all.length - 1].title).toBe('10:00 to 10:21 only: 8 requests, 0 blocked')
+    const labels = [...document.querySelectorAll<HTMLElement>('[data-label]')].map((l) => l.dataset.label)
+    expect(new Set(labels).size).toBe(labels.length)
+    expect(labels[0]).toBe('Sat 11:21')
+    expect(labels[labels.length - 1]).toBe('Now')
+  })
+
+  it('treats a window that starts on the hour as whole hours', () => {
+    const onTheHour = Date.UTC(2026, 9, 25, 9, 0, 0)
+    renderWithProviders(<RequestsPerHour entries={TEST_DEPLOYMENT} now={onTheHour} />)
+    expect(bars().filter((b) => b.dataset.partial)).toHaveLength(0)
+  })
+
   it('passes axe', async () => {
     const { container } = renderWithProviders(<RequestsPerHour entries={TEST_DEPLOYMENT} now={NOW} />)
     await expectNoAxeViolations(container)

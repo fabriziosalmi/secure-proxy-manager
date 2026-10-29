@@ -54,9 +54,9 @@ const (
 // A reason that is not here is not one this backend writes.
 var reasonLabels = map[string]string{
 	ReasonIPBlacklist:                     "IP blacklist",
-	ReasonDomainBlacklist:                 "Domain blacklist",
-	ReasonDomainBlacklistDNS:              "Domain blacklist (DNS)",
-	ReasonDomainBlacklistDNSReconstructed: "Domain blacklist (DNS), reconstructed",
+	ReasonDomainBlacklist:                 "Domain blacklist (proxy)",
+	ReasonDomainBlacklistDNS:              "Domain blacklist (DNS sinkhole)",
+	ReasonDomainBlacklistDNSReconstructed: "Domain blacklist (DNS sinkhole), reconstructed",
 	ReasonDirectIP:                        "Direct IP",
 	ReasonEgressPolicy:                    "Egress policy",
 	ReasonWAF:                             "WAF",
@@ -70,7 +70,7 @@ var reasonLabels = map[string]string{
 	ReasonListsUnverified:                 "Lists not verified",
 	ReasonOther:                           "Other",
 	ReasonUnclassified:                    "Unclassified (no reason recorded)",
-	ReasonNone:                            "Not blocked",
+	ReasonNone:                            "Allowed",
 }
 
 // ReasonLabel is the display name of a block reason. An unknown value is shown
