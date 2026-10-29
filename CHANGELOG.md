@@ -55,9 +55,37 @@ for at least one minor release before disappearing.
   names each category in words with its kind (rule, heuristic, domain
   reputation, size limit) instead of the raw key (`SQL_INJECTION`,
   `HEURISTIC_BEACONING`).
+- **Settings and Analytics judge the configuration the same way.** The
+  Settings menu showed 1 next to Overview, whose "Needs attention" list held
+  4 items, and alerts switched off were orange in Analytics but grey in
+  Settings. One model now decides: *needs attention* (it stops clients or
+  gives false safety), *worth knowing* (a choice with a cost: HTTPS not
+  inspected, alerts off, proxy login off), *on* and *unknown*. Settings,
+  Overview lists the two kinds apart and the menu counts the first; the
+  marks in both places differ by shape (triangle, hollow circle, filled
+  circle, dashed circle) as well as colour, and Protection coverage has a
+  legend. Alerts off is *worth knowing* on both pages.
+- **The Analytics WAF card says it counts matches, not blocks.** Titled
+  "WAF categories", it listed the categories that matched a request, weak
+  matches below the block threshold included, since the WAF started, on a
+  page whose subtitle says "Last 7 days", and only its last line said how
+  many requests were blocked (often 0). It is now "WAF rule matches", says
+  "a match is not a block" and the blocked count in its description, and
+  names each category in words with its kind (rule, heuristic, domain
+  reputation, size limit) instead of the raw key (`SQL_INJECTION`,
+  `HEURISTIC_BEACONING`).
 
 ### Fixed
 
+- **The browser e2e suite waits for the geo-block import it starts.** The
+  Geo-block test clicked "Download and block IPs" and moved on after 5
+  seconds; the backend went on importing the CN networks (8.4 s on one CI
+  run) and committed them during the next test, above the two addresses
+  that test had just imported, so "fits a 390 px wide screen" did not find
+  203.0.113.201 on the first page, on its retry either. The Geo-block test
+  now waits for the answer (200, or 502 when the feed is unreachable), the
+  phone test checks its import answered 200 and finds the address by
+  search instead of by its place in the list.
 - The WAF image stores its binary once, owned by root and run by the `waf`
   user, who can no longer change it. A `chown` after the copy wrote a second
   full copy of the binary in its own layer (8.1 MB on amd64) and let the
@@ -81,6 +109,12 @@ for at least one minor release before disappearing.
   rounding clipped into something like a "(". The fill is now at least 2 px
   with a square start; a client with no blocked request shows a muted "0%"
   and no empty track, rather than "0.0%" over an empty bar on every row.
+
+### Internal
+
+- The `UI layout (Playwright)` check is required on `main`, in the ruleset and
+  in `.github/branch-protection.json`, so a page that overflows, wraps or
+  misaligns at desktop, 1250 px or phone width cannot merge.
 
 ## [3.18.3] - 2026-10-28
 
