@@ -1074,24 +1074,36 @@ func (h *AnalyticsHandlers) DomainStats(w http.ResponseWriter, r *http.Request) 
 	writeOK(w, domains)
 }
 
+// writeWAFStatsError answers a WAF statistics failure with waf_status, the
+// reason in the words DashboardSummary uses (unreachable, auth_failed,
+// error), so a caller can say why without reading detail.
+func writeWAFStatsError(w http.ResponseWriter, status int, wafStatus, detail string) {
+	writeJSON(w, status, map[string]string{"status": "error", "detail": detail, "waf_status": wafStatus})
+}
+
 func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {
 	resp, err := wafGetBreaker(r.Context(), h.cfg, "/stats")
 	if err != nil {
 		if errors.Is(err, appMW.ErrCircuitOpen) {
-			writeError(w, http.StatusServiceUnavailable, "WAF service circuit open; retrying soon")
+			writeWAFStatsError(w, http.StatusServiceUnavailable, "unreachable", "WAF service circuit open; retrying soon")
 		} else {
-			writeError(w, http.StatusBadGateway, "WAF service unreachable")
+			writeWAFStatsError(w, http.StatusBadGateway, "unreachable", "WAF service unreachable")
 		}
 		return
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		writeError(w, http.StatusBadGateway, "WAF stats returned "+resp.Status)
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusUnauthorized, http.StatusForbidden:
+		writeWAFStatsError(w, http.StatusBadGateway, "auth_failed", "WAF stats returned "+resp.Status)
+		return
+	default:
+		writeWAFStatsError(w, http.StatusBadGateway, "error", "WAF stats returned "+resp.Status)
 		return
 	}
 	var data any
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		writeError(w, http.StatusBadGateway, "invalid WAF stats response")
+		writeWAFStatsError(w, http.StatusBadGateway, "error", "invalid WAF stats response")
 		return
 	}
 	writeOK(w, data)

@@ -3,7 +3,7 @@
  * which window, and every number is a field of its endpoint:
  *
  * - WAF rule matches: the WAF's own counters, since it last started or its
- *   counters were reset (dashboard/summary, waf and waf_status). A match is
+ *   counters were reset (waf/stats, or waf_status saying why not). A match is
  *   not a block: the WAF counts every category that matched a request,
  *   including matches too weak to block it;
  * - Cloud services in use: client requests of the last 7 days to known
@@ -17,7 +17,8 @@
  * requests from the stack's own addresses.
  */
 import type { ReactNode } from 'react';
-import type { DashboardSummary, FileExtData, ServiceTypeData, ShadowItService } from '../../types';
+import type { FileExtData, ServiceTypeData, ShadowItService, WafStatus } from '../../types';
+import type { WafReading } from '../../lib/wafStats';
 import { formatCount } from '../../lib/format';
 import { wafCategoryLabel } from '../../lib/wafCategories';
 import { Section } from '../ui/Section';
@@ -69,7 +70,7 @@ const GRID_ITEM = 'min-w-0';
 
 // ── WAF rule matches ────────────────────────────────────────────────────────
 
-function wafMissing(status: DashboardSummary['waf_status']): string {
+function wafMissing(status: WafStatus): string {
   switch (status) {
     case 'auth_failed':
       return 'Not available: the WAF refuses the backend credential. Set INTERNAL_ALERT_TOKEN to the same value on the waf and backend services.';
@@ -82,15 +83,15 @@ function wafMissing(status: DashboardSummary['waf_status']): string {
   }
 }
 
-export function WafCategories({ summary }: { summary: QueryState<DashboardSummary> }) {
-  const s = summary.data;
+export function WafCategories({ reading }: { reading: QueryState<WafReading> }) {
+  const s = reading.data;
   const waf = s?.waf;
   let description: ReactNode = 'Requests that matched a rule in each category, as the WAF counts them. A match is not a block.';
   let body: ReactNode;
-  if (summary.loading) {
+  if (reading.loading) {
     body = <Loading what="WAF rule matches" />;
-  } else if (summary.error || !s) {
-    body = <Missing>Not reported: dashboard/summary did not answer.</Missing>;
+  } else if (reading.error || !s) {
+    body = <Missing>Not reported: waf/stats did not answer.</Missing>;
   } else if (!waf || s.waf_status !== 'ok') {
     body = <Missing>{wafMissing(s.waf_status)}</Missing>;
   } else {

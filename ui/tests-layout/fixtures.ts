@@ -164,6 +164,7 @@ export function answer(url: URL): Json | undefined {
     case 'status': return ok({ proxy_status: 'running', backend_status: 'running', proxy_port: '3128', version: '3.18.3' });
     case 'health': return { status: 'healthy', version: '3.18.3' };
     case 'dashboard/summary': return ok(summary);
+    case 'waf/stats': return ok(summary.waf);
     case 'logs/timeline': return ok(timeline);
     case 'cache/statistics': return ok({ state: 'not_collected', collected_at: null, age_s: null });
     case 'analytics/blocked-by-day': return ok(blockedByDay);

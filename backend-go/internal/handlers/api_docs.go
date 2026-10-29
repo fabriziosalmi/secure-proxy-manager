@@ -113,7 +113,7 @@ var routeDocs = map[string]docMeta{
 	"GET /api/waf/heuristics":                   {auth: true, desc: "The WAF heuristics the running WAF applies (data.available, data.running)"},
 	"GET /api/status":                           {auth: true, desc: "System status overview"},
 	"GET /api/traffic/statistics":               {auth: true, desc: "Traffic statistics by time period"},
-	"GET /api/waf/stats":                        {auth: true, desc: "WAF engine stats (inspected, blocked, entropy, categories, cache)"},
+	"GET /api/waf/stats":                        {auth: true, desc: "WAF engine stats (inspected, blocked, entropy, categories, cache); on failure 502 or 503 with waf_status: unreachable, auth_failed or error"},
 	"GET /api/ws-token":                         {auth: true, desc: "Get one-time WebSocket auth token for live log streaming"},
 	"GET /api/session":                          {auth: true, desc: "The signed-in session: username, how it authenticated (cookie, bearer or basic) and expires_at (Unix seconds, null for Basic)"},
 	"GET /api/ws/logs":                          {auth: false, desc: "WebSocket: real-time log stream (offer the subprotocols spm.v1 and spm-ws-token.<token>, token from /api/ws-token; the server selects spm.v1)"},
