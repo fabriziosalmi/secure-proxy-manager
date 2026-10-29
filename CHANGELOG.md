@@ -30,6 +30,10 @@ for at least one minor release before disappearing.
   in GDPR mode), and the text says "in these 7 days". The Clients page no
   longer says its internal addresses are "not counted on the Overview", whose
   own figure covers 24 hours: they are not counted in any statistic.
+- **Sizes keep one decimal below 100 of a unit.** The Access logs showed
+  `3 KB` next to `6.9 KB` and `7 KB`, as if measured to two precisions. A
+  size under 100 of its unit now always has one decimal (`3.0 KB`,
+  `50.0 MB`); from 100 up it has none (`252 KB`), as before.
 
 ## [3.18.3] - 2026-10-28
 
