@@ -23,9 +23,6 @@ for at least one minor release before disappearing.
   now reads "+ Docker", "+ Docker (2 missing)" or, disabled, "Docker added";
   the DoH card says how many of its resolvers are blocked and offers "Block
   the other 2", or a disabled "All 14 blocked".
-
-### Changed
-
 - **A common-services preset is added in one request, under a source of its
   own.** "+ Docker" on Allowed domains (and "Block DoH resolvers" on Blocked
   domains) sent one request per domain from the page: each domain became a
@@ -38,6 +35,16 @@ for at least one minor release before disappearing.
   audit event and one export. Schema version 9 rebuilds `list_sources` to
   allow that kind, keeping every source and its id; like the other versioned
   steps it is one-way (see DEPLOYMENT.md, Rolling back).
+- **Settings and Analytics judge the configuration the same way.** The
+  Settings menu showed 1 next to Overview, whose "Needs attention" list held
+  4 items, and alerts switched off were orange in Analytics but grey in
+  Settings. One model now decides: *needs attention* (it stops clients or
+  gives false safety), *worth knowing* (a choice with a cost: HTTPS not
+  inspected, alerts off, proxy login off), *on* and *unknown*. Settings,
+  Overview lists the two kinds apart and the menu counts the first; the
+  marks in both places differ by shape (triangle, hollow circle, filled
+  circle, dashed circle) as well as colour, and Protection coverage has a
+  legend. Alerts off is *worth knowing* on both pages.
 
 ### Fixed
 
@@ -64,18 +71,6 @@ for at least one minor release before disappearing.
   rounding clipped into something like a "(". The fill is now at least 2 px
   with a square start; a client with no blocked request shows a muted "0%"
   and no empty track, rather than "0.0%" over an empty bar on every row.
-### Changed
-
-- **Settings and Analytics judge the configuration the same way.** The
-  Settings menu showed 1 next to Overview, whose "Needs attention" list held
-  4 items, and alerts switched off were orange in Analytics but grey in
-  Settings. One model now decides: *needs attention* (it stops clients or
-  gives false safety), *worth knowing* (a choice with a cost: HTTPS not
-  inspected, alerts off, proxy login off), *on* and *unknown*. Settings,
-  Overview lists the two kinds apart and the menu counts the first; the
-  marks in both places differ by shape (triangle, hollow circle, filled
-  circle, dashed circle) as well as colour, and Protection coverage has a
-  legend. Alerts off is *worth knowing* on both pages.
 
 ## [3.18.3] - 2026-10-28
 
