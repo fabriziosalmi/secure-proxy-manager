@@ -212,14 +212,17 @@
     --ds-success-strong: #12B76A;
     --ds-success-bg: #ECFDF3;
     --ds-neutral-bar: #858F9F; /* 3.27:1 on surface, 3.07:1 on ground; the approved #98A2B3 was 2.58:1, under WCAG 1.4.11 */
-    /* Series of one chart, told apart by lightness and not by hue alone: each a
-       step darker than the one before, from neutral-bar (OKLab L 0.65) to
-       series-4 (0.31), every step at least 0.06 apart and every one at 3:1 or
-       more on surface and ground (tokens.test.ts). */
-    --ds-series-1: #D92D20;
-    --ds-series-2: #B42318;
-    --ds-series-3: #7A271A;
-    --ds-series-4: #55160C;
+    /* Series of one chart, one per group of rules (analytics/days.ts): the
+       Okabe-Ito hues (vermilion, blue, bluish green, reddish purple), each
+       moved in OKLab lightness until every pair, neutral-bar included, is at
+       least 0.12 apart and stays 0.07 apart under simulated protanopia,
+       deuteranopia and tritanopia, at 3:1 or more on surface and ground
+       (tokens.test.ts). Four reds stepped in lightness were 1.36 to 1.50:1
+       from each other. */
+    --ds-series-1: #DC6410;
+    --ds-series-2: #15669B;
+    --ds-series-3: #238F6A;
+    --ds-series-4: #8E416E;
   }
 
   .dark {
@@ -254,11 +257,11 @@
     --ds-success-strong: #17B26A;
     --ds-success-bg: #0A2E1F;
     --ds-neutral-bar: #85888E;
-    /* Dark: each a step lighter than neutral-bar (0.63), up to 0.94. */
-    --ds-series-1: #F97066;
-    --ds-series-2: #FC978E;
-    --ds-series-3: #FDC0BA;
-    --ds-series-4: #FEE4E2;
+    /* Dark: the same hues, chosen by the same test on the dark grounds. */
+    --ds-series-1: #EBAE4B;
+    --ds-series-2: #54B3E7;
+    --ds-series-3: #29795C;
+    --ds-series-4: #DD88B7;
   }
 }
 
