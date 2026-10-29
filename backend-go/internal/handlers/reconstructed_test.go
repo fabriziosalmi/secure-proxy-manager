@@ -55,7 +55,7 @@ func TestClientDetailsCountReconstructedSinkholeBlocks(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	want := reasonCount{Reason: "domain_blacklist_dns_reconstructed", Label: "Domain blacklist (DNS), reconstructed", Count: 4}
+	want := reasonCount{Reason: "domain_blacklist_dns_reconstructed", Label: "Domain blacklist (DNS sinkhole), reconstructed", Count: 4}
 	if len(resp.Data.ByReason) != 1 || resp.Data.ByReason[0] != want {
 		t.Errorf("blocked_by_reason = %+v, want [%+v]", resp.Data.ByReason, want)
 	}

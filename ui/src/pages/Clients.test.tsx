@@ -56,6 +56,7 @@ const detailBody = (ip: string) => ({
 
 let body: unknown = clientsBody
 const detailCalls: string[] = []
+const detailWindows: string[] = []
 
 function setViewport(desktop: boolean) {
   Object.defineProperty(window, 'matchMedia', {
@@ -81,6 +82,7 @@ describe('Clients', () => {
   beforeEach(() => {
     body = clientsBody
     detailCalls.length = 0
+    detailWindows.length = 0
     window.localStorage.clear()
     setViewport(false)
     vi.spyOn(api, 'get').mockImplementation((url: string) => {
@@ -90,7 +92,11 @@ describe('Clients', () => {
       if (detail) {
         const ip = decodeURIComponent(detail[1])
         detailCalls.push(ip)
-        return Promise.resolve({ data: detailBody(ip) })
+        // The backend answers with the window it counted (?window=, default all).
+        const span = new URLSearchParams(url.split('?')[1] ?? '').get('window') ?? 'all'
+        detailWindows.push(span)
+        const b = detailBody(ip)
+        return Promise.resolve({ data: { ...b, data: { ...b.data, window: span } } })
       }
       return Promise.resolve({ data: { status: 'success', data: null } })
     })
@@ -149,6 +155,20 @@ describe('Clients', () => {
     expect(ips()).toEqual(['127.0.0.1', '172.18.0.1', '172.18.0.2', '172.20.5.9', '192.168.0.109'])
     fireEvent.click(screen.getByRole('button', { name: 'Blocked' }))
     expect(ips().slice(0, 2)).toEqual(['192.168.0.109', '172.18.0.1'])
+  })
+
+  // "Share blocked" could not be sorted: a client with few requests, nearly
+  // all blocked, sat at the bottom under clients with large counts.
+  it('sorts by share blocked, largest first', async () => {
+    const client = (ip_address: string, requests: number, blocked: number) => (
+      { ip_address, requests, blocked, last_seen: '2026-07-01 08:00:00', status: 'Active', internal: false, kind: 'Private network address' })
+    body = { ...clientsBody, data: [client('10.20.0.1', 1180, 908), client('10.20.0.2', 30, 0), client('10.20.0.3', 10, 9)], meta: { ...clientsBody.meta, internal: 0 } }
+    renderWithProviders(<Clients />)
+    await waitFor(() => expect(ips()).toHaveLength(3))
+    fireEvent.click(screen.getByRole('button', { name: 'Share blocked' }))
+    expect(screen.getByRole('columnheader', { name: /Share blocked/ })).toHaveAttribute('aria-sort', 'descending')
+    // 90%, 76.9%, 0%; by requests they were 1,180, 30, 10.
+    expect(ips()).toEqual(['10.20.0.3', '10.20.0.1', '10.20.0.2'])
   })
 
   it('writes counts, the share blocked and the last request from the API, in the viewer time zone', async () => {
@@ -236,13 +256,18 @@ describe('Clients', () => {
       expect(within(panel).getByText('908')).toBeInTheDocument()
       // 908 of 1,300.
       expect(within(panel).getByText('69.8%')).toBeInTheDocument()
-      expect(within(panel).getByText('These counts cover every request logged for this address; the table counts the last 7 days.')).toBeInTheDocument()
+      // The detail counts the table's 7 days and says so.
+      expect(detailWindows).toEqual(['7d'])
+      expect(within(panel).getByText('These counts cover the last 7 days, as the table does.')).toBeInTheDocument()
       expect(within(panel).getByText('8 of the 908 blocked requests were logged before the proxy recorded why it blocked a request, so the rule is not known.')).toBeInTheDocument()
       const dest = within(panel).getByRole('table', { name: 'Top destinations of 192.168.0.109' })
-      expect(within(dest).getByText('ads.example.test')).toBeInTheDocument()
+      // The whole name, wrapped; it was cut, whole only in a tooltip.
+      expect(within(dest).getByText('ads.example.test')).toHaveClass('break-all')
+      expect(within(dest).getByText('ads.example.test')).not.toHaveClass('truncate')
       expect(within(dest).getAllByText('700')).toHaveLength(2)
       expect(within(panel).getByText('Domain blacklist')).toBeInTheDocument()
-      expect(within(panel).getByText('Not blocked')).toBeInTheDocument()
+      // "Not blocked" here, "Allowed" in the access log: one word now.
+      expect(within(panel).getByText('Allowed')).toHaveAttribute('data-tone', 'success')
       // A recent request from another day carries its date, in the viewer's zone.
       expect(within(panel).getByText('2026-06-28 10:00')).toBeInTheDocument()
       // The access log filters by client now: the panel links to this
@@ -284,7 +309,11 @@ describe('Clients', () => {
       expect(screen.getByText(/2001:db8:1:2::\/64 · 2 addresses · mixed/)).toBeInTheDocument()
       const link = await within(panel).findByRole('link', { name: 'Show requests from this network in the access log' })
       expect(link).toHaveAttribute('href', '/logs?client=192.168.0.0%2F24')
-      expect(within(panel).getByText('These counts cover every request logged for this network; the table counts the last 7 days.')).toBeInTheDocument()
+      expect(within(panel).getByText('These counts cover the last 7 days, as the table does.')).toBeInTheDocument()
+      // All time on request, said as such.
+      fireEvent.click(within(panel).getByRole('button', { name: 'All time' }))
+      expect(await within(panel).findByText('These counts cover every request logged for this network; the table counts the last 7 days.')).toBeInTheDocument()
+      expect(detailWindows).toEqual(['7d', 'all'])
       expect(screen.getByRole('searchbox', { name: 'Filter clients by network or IP address' })).toHaveAttribute('placeholder', 'Filter by network or IP address')
     })
   })
