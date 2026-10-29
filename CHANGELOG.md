@@ -15,6 +15,18 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.19.0] - 2026-10-29
+
+A feature release for the web UI and the API behind it, from a review of its
+pages: names, error states, phone layout, time zones and the words used for
+blocks and exceptions now say what the system does. The API gains
+the common-services presets (`GET /api/domain-whitelist/presets`,
+`GET /api/domain-blacklist/presets`, `POST /api/{list}/presets/{id}`),
+`include_subdomains` on `POST /api/egress-allowlist`, and `tz` on
+`GET /api/logs/timeline`. Some responses carry new fields and some messages
+are reworded; no route, field or status code is removed. Nothing is
+**BREAKING** and `X-API-Version` stays 1.
+
 ### Changed
 
 - **One name per allow concept, and one subdomain rule.** "Allowed",

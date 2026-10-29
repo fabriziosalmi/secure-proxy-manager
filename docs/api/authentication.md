@@ -161,7 +161,7 @@ GET /api/health
 ```
 
 ```json
-{ "status": "healthy", "version": "3.18.3", "commit": "...", "runtime": "go" }
+{ "status": "healthy", "version": "3.19.0", "commit": "...", "runtime": "go" }
 ```
 
 `GET /health` and `GET /livez` answer `{"status": "healthy"}` without touching
