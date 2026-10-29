@@ -28,32 +28,6 @@ for at least one minor release before disappearing.
   newest commit and records it. "Shared network" is explained under the
   description and attached to every such badge: allowing a shared network
   allows every site and service it hosts.
-
-### Changed
-
-- **Every page writes a time the same way.** Seven formatters gave
-  `01:34:30` next to `2026-10-28 23:51` in one list, and dates that wrapped
-  under their time. Now one rule holds: the Access logs, the Audit log and
-  a request's detail write every time whole (`2026-10-29 08:51:30`), today's
-  too; lists and cards write `08:51` today, `Yesterday 23:51`, `Sun 25 23:55`
-  in the last week and `2026-10-21 23:55` before, on one line. A tooltip
-  gives the exact time with the zone, and the Access logs say which zone
-  their times are in. A pasted or restored source still names its time to
-  the second, so two pastes a minute apart read differently.
-
-- **Settings and Analytics judge the configuration the same way.** The
-  Settings menu showed 1 next to Overview, whose "Needs attention" list held
-  4 items, and alerts switched off were orange in Analytics but grey in
-  Settings. One model now decides: *needs attention* (it stops clients or
-  gives false safety), *worth knowing* (a choice with a cost: HTTPS not
-  inspected, alerts off, proxy login off), *on* and *unknown*. Settings,
-  Overview lists the two kinds apart and the menu counts the first; the
-  marks in both places differ by shape (triangle, hollow circle, filled
-  circle, dashed circle) as well as colour, and Protection coverage has a
-  legend. Alerts off is *worth knowing* on both pages.
-
-### Fixed
-
 - The WAF image stores its binary once, owned by root and run by the `waf`
   user, who can no longer change it. A `chown` after the copy wrote a second
   full copy of the binary in its own layer (8.1 MB on amd64) and let the
@@ -77,6 +51,28 @@ for at least one minor release before disappearing.
   rounding clipped into something like a "(". The fill is now at least 2 px
   with a square start; a client with no blocked request shows a muted "0%"
   and no empty track, rather than "0.0%" over an empty bar on every row.
+
+### Changed
+
+- **Every page writes a time the same way.** Seven formatters gave
+  `01:34:30` next to `2026-10-28 23:51` in one list, and dates that wrapped
+  under their time. Now one rule holds: the Access logs, the Audit log and
+  a request's detail write every time whole (`2026-10-29 08:51:30`), today's
+  too; lists and cards write `08:51` today, `Yesterday 23:51`, `Sun 25 23:55`
+  in the last week and `2026-10-21 23:55` before, on one line. A tooltip
+  gives the exact time with the zone, and the Access logs say which zone
+  their times are in. A pasted or restored source still names its time to
+  the second, so two pastes a minute apart read differently.
+- **Settings and Analytics judge the configuration the same way.** The
+  Settings menu showed 1 next to Overview, whose "Needs attention" list held
+  4 items, and alerts switched off were orange in Analytics but grey in
+  Settings. One model now decides: *needs attention* (it stops clients or
+  gives false safety), *worth knowing* (a choice with a cost: HTTPS not
+  inspected, alerts off, proxy login off), *on* and *unknown*. Settings,
+  Overview lists the two kinds apart and the menu counts the first; the
+  marks in both places differ by shape (triangle, hollow circle, filled
+  circle, dashed circle) as well as colour, and Protection coverage has a
+  legend. Alerts off is *worth knowing* on both pages.
 
 ## [3.18.3] - 2026-10-28
 
