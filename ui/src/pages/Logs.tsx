@@ -374,12 +374,15 @@ export function Logs() {
     {
       id: 'time',
       header: 'Time',
+      // On a phone the time and the client are written under the destination.
+      hideOnPhone: true,
       className: 'whitespace-nowrap font-mono text-xs text-ink-muted',
       cell: ({ entry }) => <span title={entry.timestamp ? formatWhenExact(entry.timestamp) : undefined}>{rowTime(entry.timestamp)}</span>,
     },
     {
       id: 'client',
       header: 'Client',
+      hideOnPhone: true,
       cell: ({ entry }) => (
         <div className="flex min-w-0 flex-col gap-0.5 whitespace-nowrap">
           <code className="font-mono text-xs text-ink">{entry.source_ip || 'Not recorded'}</code>
@@ -393,9 +396,11 @@ export function Logs() {
       className: 'w-[40%]',
       cell: (row) => (
         // The destination is cut to the column with its full value on hover.
-        // The cap keeps a long URL from widening the table past its box; the
-        // floor keeps it readable when the table scrolls on a phone.
-        <div className="flex w-[14rem] min-w-0 items-baseline gap-2 sm:w-auto sm:max-w-[16rem] xl:max-w-[21rem] 2xl:max-w-[26rem]">
+        // The cap keeps a long URL from widening the table past its box. On a
+        // phone the row is this one cell: the destination, then the outcome,
+        // the time and the client on a second line, their columns hidden.
+        <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex w-[calc(100vw-5rem)] min-w-0 items-baseline gap-2 sm:w-auto sm:max-w-[16rem] xl:max-w-[21rem] 2xl:max-w-[26rem]">
           <span className="shrink-0 text-[11px] font-semibold text-ink-muted">{row.entry.method || '-'}</span>
           <button
             type="button"
@@ -408,14 +413,22 @@ export function Logs() {
             {row.entry.destination || 'Not recorded'}
           </button>
         </div>
+        <span className="flex w-[calc(100vw-5rem)] min-w-0 items-center gap-2 sm:hidden">
+          <OutcomeBadge r={row.entry} />
+          <span className="min-w-0 truncate font-mono text-[11px] text-ink-muted">
+            {rowTime(row.entry.timestamp)} · {row.entry.source_ip || 'client not recorded'}
+          </span>
+        </span>
+        </div>
       ),
     },
-    { id: 'result', header: 'Result', cell: ({ entry }) => <Result r={entry} /> },
-    { id: 'outcome', header: 'Outcome', cell: ({ entry }) => <OutcomeBadge r={entry} /> },
+    { id: 'result', header: 'Result', hideOnPhone: true, cell: ({ entry }) => <Result r={entry} /> },
+    { id: 'outcome', header: 'Outcome', hideOnPhone: true, cell: ({ entry }) => <OutcomeBadge r={entry} /> },
     {
       id: 'size',
       header: 'Size',
       align: 'right',
+      hideOnPhone: true,
       className: 'whitespace-nowrap text-ink-muted',
       cell: ({ entry }) => (typeof entry.bytes === 'number' ? formatBytes(entry.bytes) : 'Not recorded'),
     },
