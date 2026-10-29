@@ -58,7 +58,7 @@ func TestClassifyInTheComposeTopology(t *testing.T) {
 		// A LAN in 172.16.0.0/12 that is not one of the container's subnets.
 		{"172.20.5.9", false, KindPrivate},
 		{"172.16.0.10", false, KindPrivate},
-		{"192.168.0.109", false, KindPrivate},
+		{"192.168.1.109", false, KindPrivate},
 		{"10.0.0.8", false, KindPrivate},
 		{"8.8.8.8", false, KindPublic},
 		// CGNAT and Tailscale's range: neither private nor public.
@@ -149,7 +149,7 @@ func TestRangesCoverEveryInternalAddress(t *testing.T) {
 			t.Errorf("%s is in no range: %v", ip, s.Ranges())
 		}
 	}
-	for _, ip := range []string{"192.168.0.109", "172.20.0.1", "8.8.8.8", "48.0.0.1"} {
+	for _, ip := range []string{"192.168.1.109", "172.20.0.1", "8.8.8.8", "48.0.0.1"} {
 		if in(ip) {
 			t.Errorf("%s is in a range: %v", ip, s.Ranges())
 		}

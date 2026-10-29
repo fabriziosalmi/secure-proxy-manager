@@ -2,7 +2,7 @@
 # The web container must follow the backend to a new address. proxy_pass
 # named the backend, and nginx resolved the name once at start: when the
 # backend container was recreated alone it came back on a new address and
-# every /api request answered 502 until web was restarted (CT 404, v3.18.2).
+# every /api request answered 502 until web was restarted (v3.18.2).
 #
 # A stand-in backend (nginx in the web image, answering with a marker) runs
 # under the network alias "backend":

@@ -54,13 +54,13 @@ func reconstructFixture(t *testing.T) *sql.DB {
 	}
 	for _, r := range rows {
 		if _, err := db.Exec(`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, blocked, block_reason)
-			VALUES ('2026-03-01 00:00:00', ?, '192.168.0.109', ?, ?, ?, 0, ?)`, r.ts, r.method, r.dest, r.status, r.reason); err != nil {
+			VALUES ('2026-03-01 00:00:00', ?, '192.168.1.109', ?, ?, ?, 0, ?)`, r.ts, r.method, r.dest, r.status, r.reason); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// A row many id ranges further on: the update walks the whole table.
 	if _, err := db.Exec(`INSERT INTO proxy_logs(id, timestamp, unix_timestamp, source_ip, method, destination, status, blocked, block_reason)
-		VALUES (?, '2026-03-01 00:00:00', ?, '192.168.0.109', 'CONNECT', 'dpm.demdex.net:443', 'TCP_TUNNEL/503', 0, 'unclassified')`,
+		VALUES (?, '2026-03-01 00:00:00', ?, '192.168.1.109', 'CONNECT', 'dpm.demdex.net:443', 'TCP_TUNNEL/503', 0, 'unclassified')`,
 		farID, at); err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestReconstructSinkholedBlocksRunsOnce(t *testing.T) {
 	}
 	before := logStates(t, db)
 	if _, err := db.Exec(`INSERT INTO proxy_logs(timestamp, unix_timestamp, source_ip, method, destination, status, blocked)
-		VALUES (datetime('now'), strftime('%s','now'), '192.168.0.109', 'CONNECT', 'dpm.demdex.net:443', 'TCP_TUNNEL/503', 0)`); err != nil {
+		VALUES (datetime('now'), strftime('%s','now'), '192.168.1.109', 'CONNECT', 'dpm.demdex.net:443', 'TCP_TUNNEL/503', 0)`); err != nil {
 		t.Fatal(err)
 	}
 	if err := Init(db, "admin", "hash"); err != nil {

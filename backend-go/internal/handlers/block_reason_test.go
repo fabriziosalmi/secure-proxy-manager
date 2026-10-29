@@ -13,7 +13,7 @@ import (
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/workers"
 )
 
-// The test deployment in small. One LAN client (192.168.0.109) and the proxy
+// The test deployment in small. One LAN client (192.168.1.109) and the proxy
 // container (172.18.0.4), which resolves names for it through dnsmasq:
 //
 //   - 9 requests to sinkholed names. Squid logs each as a deny with reason
@@ -26,7 +26,7 @@ import (
 //
 // Real block count for the client: 9 + 2 + 1 = 12 new, plus 1 legacy.
 const (
-	lanClient   = "192.168.0.109"
+	lanClient   = "192.168.1.109"
 	proxyClient = "172.18.0.4"
 )
 

@@ -101,9 +101,9 @@ func TestDashboardReportsTheLast24Hours(t *testing.T) {
 	seedBlockReasonFixture(t, db) // 18 client requests from lanClient, 13 blocked; 18 DNS rows
 	now := time.Now()
 	// Outside the window: a blocked request from another client 30 hours ago.
-	insertLogRow(t, db, now.Add(-30*time.Hour), "192.168.0.50", "GET", "http://ip.test/", 1, "ip_blacklist")
+	insertLogRow(t, db, now.Add(-30*time.Hour), "192.168.1.50", "GET", "http://ip.test/", 1, "ip_blacklist")
 	// Inside: a second client, and Squid's own ACL denying a sinkholed name.
-	insertLogRow(t, db, now, "192.168.0.20", "GET", "http://pub.test/", 0, "none")
+	insertLogRow(t, db, now, "192.168.1.20", "GET", "http://pub.test/", 0, "none")
 	insertLogRow(t, db, now, lanClient, "CONNECT", "sink.test:443", 1, "domain_blacklist")
 	h := NewAnalyticsHandlers(db, cfg)
 

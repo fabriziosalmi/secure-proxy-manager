@@ -15,7 +15,7 @@ import (
 func TestClientDetailsCountReconstructedSinkholeBlocks(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
-	const ip = "192.168.0.109"
+	const ip = "192.168.1.109"
 	if _, err := db.Exec(`INSERT INTO domain_blacklist(domain, added_date) VALUES ('dpm.demdex.net', '2026-01-01 00:00:00')`); err != nil {
 		t.Fatal(err)
 	}

@@ -74,8 +74,8 @@ func TestLogFiltersUseIndexes(t *testing.T) {
 		count bool
 		want  string
 	}{
-		{"client page", logFilter{sourceIP: "192.168.0.10"}, false, "idx_proxy_logs_source_ip"},
-		{"client count", logFilter{sourceIP: "192.168.0.10"}, true, "idx_proxy_logs_source_ip"},
+		{"client page", logFilter{sourceIP: "192.168.1.10"}, false, "idx_proxy_logs_source_ip"},
+		{"client count", logFilter{sourceIP: "192.168.1.10"}, true, "idx_proxy_logs_source_ip"},
 		{"rule page", logFilter{reason: "waf"}, false, "idx_proxy_logs_blocked_reason"},
 		{"rule count", logFilter{reason: "waf"}, true, "idx_proxy_logs_blocked_reason"},
 		{"blocked page", logFilter{outcome: "blocked", includeInternal: true}, false, "idx_proxy_logs_blocked"},
@@ -149,7 +149,7 @@ func TestLogFilters1M(t *testing.T) {
 	}{
 		{"default (internal hidden)", logFilter{}, ""},
 		{"include internal", logFilter{includeInternal: true}, "include_internal=true"},
-		{"client", logFilter{sourceIP: "192.168.0.15"}, "source_ip=192.168.0.15"},
+		{"client", logFilter{sourceIP: "192.168.1.15"}, "source_ip=192.168.1.15"},
 		{"blocked", logFilter{outcome: "blocked"}, "outcome=blocked"},
 		{"allowed", logFilter{outcome: "allowed"}, "outcome=allowed"},
 		{"rule waf", logFilter{reason: "waf"}, "reason=waf"},
@@ -157,7 +157,7 @@ func TestLogFilters1M(t *testing.T) {
 		{"q common", logFilter{q: "host-12"}, "q=host-12"},
 		{"q rare", logFilter{q: "host-4999."}, "q=host-4999."},
 		{"q absent", logFilter{q: "nothing-matches"}, "q=nothing-matches"},
-		{"client + rule", logFilter{sourceIP: "192.168.0.15", reason: "domain_blacklist_dns"}, "source_ip=192.168.0.15&reason=domain_blacklist_dns"},
+		{"client + rule", logFilter{sourceIP: "192.168.1.15", reason: "domain_blacklist_dns"}, "source_ip=192.168.1.15&reason=domain_blacklist_dns"},
 		{"cursor deep", logFilter{beforeID: 100_000}, "before_id=100000"},
 	}
 	for _, c := range cases {

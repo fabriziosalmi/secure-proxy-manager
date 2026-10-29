@@ -39,7 +39,7 @@ const summaryData = {
     { dest: 'dpm.demdex.net', count: 74, reasons: [{ reason: 'domain_blacklist_dns', label: 'Domain blacklist (DNS)', count: 74 }] },
     { dest: 'example.com', count: 11, reasons: [{ reason: 'unclassified', label: 'Unclassified (no reason recorded)', count: 11 }] },
   ],
-  top_clients: [{ ip: '192.168.0.109', count: 1180 }],
+  top_clients: [{ ip: '192.168.1.109', count: 1180 }],
   threat_categories: [],
   blocked_by_reason_24h: [
     { reason: 'domain_blacklist_dns', label: 'Domain blacklist (DNS)', count: 900 },
@@ -47,7 +47,7 @@ const summaryData = {
   ],
   recent_blocks: [
     {
-      timestamp: '2026-07-01 07:04:12', source_ip: '192.168.0.109', method: 'CONNECT',
+      timestamp: '2026-07-01 07:04:12', source_ip: '192.168.1.109', method: 'CONNECT',
       destination: 'static.chartbeat.com:443', host: 'static.chartbeat.com', status: 'TCP_DENIED/403',
       reason: 'domain_blacklist_dns', reason_label: 'Domain blacklist (DNS)',
     },
@@ -115,7 +115,7 @@ describe('Dashboard (Overview)', () => {
     expect(card('Blocked')).toHaveTextContent('908')
     expect(card('Blocked')).toHaveTextContent('76.9% of requests')
     // One client: its address, and the newest request at the viewer time (UTC+2 in July).
-    expect(card('Active clients')).toHaveTextContent('1192.168.0.109, last request 09:21')
+    expect(card('Active clients')).toHaveTextContent('1192.168.1.109, last request 09:21')
     expect(card('Blacklist entries')).toHaveTextContent('691,701')
     expect(card('Blacklist entries')).toHaveTextContent('50,772 IP and network entries, 640,929 domain entries')
   })
@@ -134,14 +134,14 @@ describe('Dashboard (Overview)', () => {
     serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, last_24h_internal_sources: 3, last_24h_internal_requests: 40 } })
     renderWithProviders(<Dashboard />)
     await waitFor(() => { expect(card('Active clients')).toHaveTextContent('3 internal addresses not counted') })
-    expect(card('Active clients')).toHaveTextContent('192.168.0.109, last request 09:21')
+    expect(card('Active clients')).toHaveTextContent('192.168.1.109, last request 09:21')
     expect(card('Active clients')).toHaveTextContent(/^Active clients1/)
   })
 
   it('says nothing about internal addresses when none were left out', async () => {
     serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, last_24h_internal_sources: 0 } })
     renderWithProviders(<Dashboard />)
-    await waitFor(() => { expect(card('Active clients')).toHaveTextContent('1192.168.0.109') })
+    await waitFor(() => { expect(card('Active clients')).toHaveTextContent('1192.168.1.109') })
     expect(card('Active clients')).not.toHaveTextContent('internal')
   })
 
@@ -178,7 +178,7 @@ describe('Dashboard (Overview)', () => {
     await waitFor(() => { expect(within(latest).getByText('static.chartbeat.com')).toBeInTheDocument() })
     const row = within(latest).getByText('static.chartbeat.com').closest('li')!
     expect(row).toHaveTextContent('Domain blacklist (DNS)')
-    expect(row).toHaveTextContent('192.168.0.109')
+    expect(row).toHaveTextContent('192.168.1.109')
     expect(row).not.toHaveTextContent('WAF')
   })
 

@@ -17,6 +17,10 @@ for at least one minor release before disappearing.
 
 ### Internal
 
+- Tests and documents use example addresses and names only: the client
+  addresses in the backend, WAF and UI tests and in the block-reasons design
+  note move to `192.168.1.x`, and three comments no longer name a machine of
+  the maintainer's own deployment.
 - **The canary waits for the proxy after a restart instead of failing.**
   After the backend restarts it exports the lists, and the proxy's watchdog
   reconfigures Squid, which closes port 3128 for a few seconds. When the
