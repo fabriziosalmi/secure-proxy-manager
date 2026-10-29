@@ -215,6 +215,23 @@ describe('Blacklists', () => {
       expect(how).toHaveTextContent('domain_acl_status.json')
     })
 
+    // "Rewrite the DNS list" said neither that every list is sent again, the
+    // proxy's included, nor when to use it; its toast counted the entries
+    // Allowed domains leaves out as written.
+    it('blocked domains: the re-send button says what it sends and when, and the toast what was sent', async () => {
+      go('?tab=blocked-domains')
+      counts['domain-blacklist'] = 640929
+      vi.spyOn(toast, 'success')
+      vi.mocked(api.post).mockResolvedValueOnce({ data: { status: 'success', data: { domains: 640926, left_out: 3 } } } as never)
+      renderWithProviders(<Blacklists />)
+      const button = await screen.findByRole('button', { name: 'Send the lists to the DNS sinkhole and the proxy again' })
+      expect(button).toHaveAccessibleDescription('Use it when a change has not taken effect.')
+      fireEvent.click(button)
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith(
+        'Lists sent again. 640,926 domain entries went to the DNS sinkhole, 3 left out by Allowed domains. The DNS sinkhole and the proxy reread them within a few seconds; this page cannot confirm it.'))
+      expect(api.post).toHaveBeenCalledWith('maintenance/reload-dns')
+    })
+
     // "Proxy (Squid)", "Networks Squid loads" and the variable names were in
     // the rows and paragraphs. Squid, file names and variables are named only
     // under How it works.

@@ -63,6 +63,23 @@ for at least one minor release before disappearing.
   marks in both places differ by shape (triangle, hollow circle, filled
   circle, dashed circle) as well as colour, and Protection coverage has a
   legend. Alerts off is *worth knowing* on both pages.
+
+### Fixed
+
+- **The list re-send button says what it sends and when to use it.** On
+  Blocked domains, "Rewrite the DNS list" exported every list, the proxy's
+  included, and said neither that nor when it helps. It now reads "Send the
+  lists to the DNS sinkhole and the proxy again", with "Use it when a change
+  has not taken effect" under it; Settings, Maintenance calls the same action
+  "Send the lists again". Its toast said "77,569 domains", the rows of the
+  table, entries left out by Allowed domains included.
+  `POST /api/maintenance/reload-dns` now returns in `data.domains` the
+  entries the export gave the DNS sinkhole and in the new `data.left_out`
+  those Allowed domains took out, both counted while the file is written, and
+  the UI says both.
+- **Block DoH resolvers is an ordinary button.** It was drawn red
+  (danger-outline), the style kept for an action that removes or stops
+  something; blocking the resolvers adds protection.
 - **Every page writes a time the same way.** Seven formatters gave
   `01:34:30` next to `2026-10-28 23:51` in one list, and dates that wrapped
   under their time. Now one rule holds: the Access logs, the Audit log and
@@ -72,9 +89,6 @@ for at least one minor release before disappearing.
   gives the exact time with the zone, and the Access logs say which zone
   their times are in. A pasted or restored source still names its time to
   the second, so two pastes a minute apart read differently.
-
-### Fixed
-
 - **The access log shows the outcome of each request and the proxy result in
   words.** The column headed "Rule" said "Allowed" for every request no rule
   touched; it is now "Outcome": "Allowed", or the rule that blocked the

@@ -21,6 +21,7 @@ import { useConfirm } from '../../hooks/useConfirm';
 import { applyToProxy, describeApply, type ApplyOutcome } from '../../lib/reload';
 import { backupFileName, downloadJson, parseBackupFile, type BackupSummary, type RestoreResponse } from '../../lib/backup';
 import { formatClock, formatCount, formatDateTime, formatKilobytes } from '../../lib/format';
+import { describeListResend, RESEND_UNCONFIRMED } from '../../lib/listResend';
 import { cn } from '../../lib/utils';
 import { Section } from '../ui/Section';
 import { Button } from '../ui/Button';
@@ -288,9 +289,7 @@ export function MaintenanceActions() {
 
   const reloadDns = () => run('dns', async () => {
     const res = await api.post('maintenance/reload-dns');
-    const n = res.data?.data?.domains;
-    const wrote = typeof n === 'number' ? `Wrote ${formatCount(n)} blocked ${n === 1 ? 'domain' : 'domains'} for DNS.` : 'The blocklist files were written.';
-    return { tone: 'success', text: `${wrote} The DNS service rereads them within about 2 seconds; this page cannot confirm it.` };
+    return { tone: 'success', text: `${describeListResend(res.data?.data)} ${RESEND_UNCONFIRMED}` };
   });
 
   const clearCache = async () => {
@@ -359,7 +358,7 @@ export function MaintenanceActions() {
       {dialog}
       <ul className="flex flex-col">
         <ActionRow title="Reload the proxy" help="Regenerates the proxy configuration from the stored settings and lists, and reports whether the proxy took it. Saving a section already does this." button="Reload the proxy" outcome={out.reload ?? null} busy={busy === 'reload'} onRun={() => void reload()} />
-        <ActionRow title="Reload DNS" help="Writes the domain blocklist for the DNS service again." button="Reload DNS" outcome={out.dns ?? null} busy={busy === 'dns'} onRun={() => void reloadDns()} />
+        <ActionRow title="Send the lists again" help="Sends every list to the DNS sinkhole and the proxy again. Use it when a change has not taken effect." button="Send the lists again" outcome={out.dns ?? null} busy={busy === 'dns'} onRun={() => void reloadDns()} />
         <ActionRow title="Empty the cache" help="Stops the proxy, deletes its disk cache and starts it again, which also empties the memory cache. Clients lose their connections for a few seconds." button="Empty disk and memory cache" outcome={out.cache ?? null} busy={busy === 'cache'} onRun={() => void clearCache()} danger />
         <ActionRow title="Clear the access log" help="Deletes every logged request. The WAF keeps its counters." button="Clear the log" outcome={out.clear ?? null} busy={busy === 'clear'} onRun={() => void clearLog()} danger />
         <ActionRow title="Reset statistics" help="Deletes every logged request, as Clear the access log does, and resets the WAF's counters." button="Reset statistics" outcome={out.reset ?? null} busy={busy === 'reset'} onRun={() => void resetStats()} danger />

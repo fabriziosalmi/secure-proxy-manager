@@ -69,6 +69,15 @@ describe('QuickLists', () => {
     expect(screen.getByRole('button', { name: '+ Google' })).toBeEnabled()
   })
 
+  // Red is for an action that removes or stops something (Button.tsx). Blocking
+  // the DoH resolvers adds protection, and it was drawn as danger-outline.
+  it('draws Block DoH as an ordinary button, not a red one', async () => {
+    renderWithProviders(<BlockDoh />)
+    const button = await screen.findByRole('button', { name: 'Block the other 13' })
+    expect(button.className).not.toMatch(/\bdanger\b|text-danger|border-danger/)
+    expect(button.className).toContain('border-line-strong')
+  })
+
   it('says how many DoH resolvers are blocked, and offers nothing when all are', async () => {
     renderWithProviders(<BlockDoh />)
     expect(await screen.findByText('1 of 14 are blocked.')).toBeInTheDocument()

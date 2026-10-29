@@ -152,7 +152,10 @@ export function EnforcementSection({ list, total, data, loading, error, onReload
           </p>
         </HowItWorks>
         {onReloadDns && (
-          <div><Button size="sm" onClick={onReloadDns}>Rewrite the DNS list</Button></div>
+          <div className="flex flex-col items-start gap-1.5">
+            <Button size="sm" onClick={onReloadDns} aria-describedby="resend-lists-hint">Send the lists to the DNS sinkhole and the proxy again</Button>
+            <p id="resend-lists-hint" className="text-[13px] leading-5 text-ink-muted">Use it when a change has not taken effect.</p>
+          </div>
         )}
       </>
     );

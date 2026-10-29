@@ -457,17 +457,35 @@ func Init(db *sql.DB, adminUsername, adminPasswordHash string) error {
 var exportMu sync.Mutex
 
 func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
+	_, err := ExportBlacklistsCounted(db, configDir)
+	return err
+}
+
+// ExportCounts is what one export wrote to the DNS sinkhole's hosts file,
+// counted while it was written: DNSEntries domain blacklist entries, and
+// LeftOut entries the allowed list took out. Entries counts rows, so
+// "*.example.com" and "example.com" are two, as on the Blacklists page.
+type ExportCounts struct {
+	DNSEntries int
+	LeftOut    int
+}
+
+// ExportBlacklistsCounted is ExportBlacklistsToFiles that also says what the
+// DNS sinkhole was given. COUNT(*) of the table counted the entries the
+// allowed list leaves out as sent.
+func ExportBlacklistsCounted(db *sql.DB, configDir string) (ExportCounts, error) {
 	exportMu.Lock()
 	defer exportMu.Unlock()
+	var counts ExportCounts
 	// 1. ip_blacklist.txt
 	if err := exportLines(db, configDir+"/ip_blacklist.txt",
 		"SELECT ip FROM ip_blacklist ORDER BY ip"); err != nil {
-		return err
+		return ExportCounts{}, err
 	}
 	// 2. ip_whitelist.txt
 	if err := exportLines(db, configDir+"/ip_whitelist.txt",
 		"SELECT ip FROM ip_whitelist ORDER BY ip"); err != nil {
-		return err
+		return ExportCounts{}, err
 	}
 	// The whitelist reader below filters on type='fqdn'; a row with any other
 	// type would be listed but never applied. The CHECK makes that impossible
@@ -475,16 +493,16 @@ func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
 	var strayWhitelist int
 	if err := db.QueryRow(
 		"SELECT COUNT(*) FROM domain_whitelist WHERE type IS NOT 'fqdn'").Scan(&strayWhitelist); err != nil {
-		return fmt.Errorf("domain_whitelist type check: %w", err)
+		return ExportCounts{}, fmt.Errorf("domain_whitelist type check: %w", err)
 	}
 	if strayWhitelist > 0 {
-		return fmt.Errorf("domain_whitelist holds %d row(s) whose type is not 'fqdn'; "+
+		return ExportCounts{}, fmt.Errorf("domain_whitelist holds %d row(s) whose type is not 'fqdn'; "+
 			"nothing reads them; fix them before the lists can be exported", strayWhitelist)
 	}
 	// 3. domain_blacklist.txt (with whitelist exclusions)
 	exclusions := loadWhitelistSet(db)
 	if err := exportDomainBlacklist(db, configDir+"/domain_blacklist.txt", exclusions); err != nil {
-		return err
+		return ExportCounts{}, err
 	}
 	// 3b. Egress destination allowlist (default-deny mode): split by type into a
 	// CIDR/IP list and a domain list that Squid reads as `dst` / `dstdomain`.
@@ -496,10 +514,10 @@ func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
 	var strayTypes int
 	if err := db.QueryRow(
 		"SELECT COUNT(*) FROM dst_allowlist WHERE type NOT IN ('cidr','domain')").Scan(&strayTypes); err != nil {
-		return fmt.Errorf("dst_allowlist type check: %w", err)
+		return ExportCounts{}, fmt.Errorf("dst_allowlist type check: %w", err)
 	}
 	if strayTypes > 0 {
-		return fmt.Errorf("dst_allowlist holds %d row(s) whose type is neither 'cidr' nor 'domain'; "+
+		return ExportCounts{}, fmt.Errorf("dst_allowlist holds %d row(s) whose type is neither 'cidr' nor 'domain'; "+
 			"they would reach neither enforcement file; fix them before the allowlist can be exported", strayTypes)
 	}
 	if err := exportLines(db, configDir+"/dst_allow_ip.txt",
@@ -510,30 +528,30 @@ func ExportBlacklistsToFiles(db *sql.DB, configDir string) error {
 		 JOIN egress_providers p ON p.id = e.provider_id
 		 WHERE p.enabled = 1
 		 ORDER BY 1`); err != nil {
-		return err
+		return ExportCounts{}, err
 	}
 	if err := exportLines(db, configDir+"/dst_allow_domain.txt",
 		"SELECT entry FROM dst_allowlist WHERE type='domain' ORDER BY entry"); err != nil {
-		return err
+		return ExportCounts{}, err
 	}
 	// 3c. Manifest of the five lists Squid enforces, written after all of them
 	// so the proxy can verify what it is about to load (SECURE-ARCH-01). A
 	// failure here fails the export: the lists are on disk but not vouched for,
 	// and the proxy will keep its previous copies until the next export.
 	if err := writeListsManifest(configDir); err != nil {
-		return err
+		return ExportCounts{}, err
 	}
 	// 4. dnsmasq blocklist (hosts format, re-read on SIGHUP). Remove the legacy
 	// conf-dir address= file so it doesn't double-load with stale, restart-only data.
 	_ = os.Remove(configDir + "/dnsmasq.d/blocklist.conf")
-	if err := writeDnsmasqBlocklist(db, configDir+"/dnsmasq.d/blocklist.hosts", exclusions); err != nil {
+	if err := writeDnsmasqBlocklist(db, configDir+"/dnsmasq.d/blocklist.hosts", exclusions, &counts); err != nil {
 		// Not swallowed: the Squid lists above were written, so a domain added
 		// now would be enforced by Squid and not by dnsmasq, and the caller
 		// would be told the export succeeded. Returning the error makes a
 		// partial export a reported one; the caller can see which half is stale.
-		return fmt.Errorf("dnsmasq blocklist not written (the Squid lists were): %w", err)
+		return ExportCounts{}, fmt.Errorf("dnsmasq blocklist not written (the Squid lists were): %w", err)
 	}
-	return nil
+	return counts, nil
 }
 
 // atomicWrite writes content to a temp file then renames to target path.
@@ -743,7 +761,11 @@ func exportDomainBlacklist(db *sql.DB, path string, exclusions map[string]struct
 // identical file, avoiding a pointless full re-parse on every export.
 // (Trade-off: hosts entries are exact-match, not the `/domain/` subdomain
 // wildcard; the imported lists are explicit domains, so this matches them.)
-func writeDnsmasqBlocklist(db *sql.DB, path string, exclusions map[string]struct{}) error {
+//
+// counts receives the entries written and those the allowed list left out. A
+// failed write leaves them partial; the caller reports the error, not them.
+func writeDnsmasqBlocklist(db *sql.DB, path string, exclusions map[string]struct{}, counts *ExportCounts) error {
+	*counts = ExportCounts{}
 	return streamList(db, path, "SELECT domain FROM domain_blacklist ORDER BY domain", func(w *bufio.Writer, domain string) error {
 		// The hosts file gets the name dnsmasq is to answer, the same one
 		// Squid enforces (EnforcedDomain).
@@ -752,10 +774,14 @@ func writeDnsmasqBlocklist(db *sql.DB, path string, exclusions map[string]struct
 			return nil
 		}
 		if _, excluded := exclusions[d]; excluded {
+			counts.LeftOut++
 			return nil
 		}
-		_, err := fmt.Fprintf(w, "0.0.0.0 %s\n:: %s\n", d, d)
-		return err
+		if _, err := fmt.Fprintf(w, "0.0.0.0 %s\n:: %s\n", d, d); err != nil {
+			return err
+		}
+		counts.DNSEntries++
+		return nil
 	})
 }
 
