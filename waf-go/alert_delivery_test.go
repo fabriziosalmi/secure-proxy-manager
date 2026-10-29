@@ -123,7 +123,7 @@ func TestShutdownDeliversQueuedAlerts(t *testing.T) {
 	t.Setenv("INTERNAL_ALERT_TOKEN", "t0ken")
 
 	for i := 0; i < 5; i++ {
-		notifyBlock("e", "192.168.0.1", "http://x.test/", "URL", 10, []string{"SQL_INJECTION"}, []string{"SQL-001"})
+		notifyBlock("e", "192.168.1.1", "http://x.test/", "URL", 10, []string{"SQL_INJECTION"}, []string{"SQL-001"})
 	}
 	stop := make(chan struct{})
 	go notifyWorker(stop)

@@ -37,7 +37,7 @@ server {
 # The backend is looked up again while nginx runs. A bare name in proxy_pass
 # was resolved once at start: when the backend container was recreated
 # alone it came back on a new address, and every /api request answered 502
-# until web was restarted (CT 404, v3.18.2: nginx kept 172.18.0.2, the
+# until web was restarted (v3.18.2: nginx kept 172.18.0.2, the
 # backend was on 172.18.0.3). The resolver is the container's own (Docker's
 # 127.0.0.11), read by the entrypoint from /etc/resolv.conf.
 resolver ${NGINX_RESOLVER} valid=10s;

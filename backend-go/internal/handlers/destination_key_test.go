@@ -42,7 +42,7 @@ func TestDashboardSummaryTopBlockedGroupsByHost(t *testing.T) {
 	seedSplitDestinations(t, func(dest string, n int) {
 		for i := 0; i < n; i++ {
 			if _, err := db.Exec(`INSERT INTO proxy_logs (timestamp, unix_timestamp, source_ip, destination, status, blocked)
-				VALUES (datetime('now'), strftime('%s','now'), '192.168.0.109', ?, 'TCP_DENIED/403', 1)`, dest); err != nil {
+				VALUES (datetime('now'), strftime('%s','now'), '192.168.1.109', ?, 'TCP_DENIED/403', 1)`, dest); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -86,13 +86,13 @@ func TestClientDetailsTopDomainsGroupsByHost(t *testing.T) {
 	seedSplitDestinations(t, func(dest string, n int) {
 		for i := 0; i < n; i++ {
 			if _, err := db.Exec(`INSERT INTO proxy_logs (timestamp, unix_timestamp, source_ip, destination, status, blocked)
-				VALUES (datetime('now'), strftime('%s','now'), '192.168.0.109', ?, 'TCP_DENIED/403', ?)`, dest, i%2); err != nil {
+				VALUES (datetime('now'), strftime('%s','now'), '192.168.1.109', ?, 'TCP_DENIED/403', ?)`, dest, i%2); err != nil {
 				t.Fatal(err)
 			}
 		}
 	})
 
-	r := withChiParam(httptest.NewRequest("GET", "/api/clients/192.168.0.109/details", nil), "ip", "192.168.0.109")
+	r := withChiParam(httptest.NewRequest("GET", "/api/clients/192.168.1.109/details", nil), "ip", "192.168.1.109")
 	w := httptest.NewRecorder()
 	NewAnalyticsHandlers(db, cfg).ClientDetails(w, r)
 	var resp struct {

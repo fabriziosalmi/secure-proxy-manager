@@ -151,7 +151,7 @@ done
 
 # Whether Squid then actually denies the request (403) is a secondary,
 # best-effort check: `squid -k reconfigure` reliably re-reads the dstdomain ACL
-# file on a real host (opti10/Proxmox returns 403), but in the GitHub-runner
+# file on a real host (a real deployment returns 403), but in the GitHub-runner
 # container it does not pick up the change within the window, so this is a
 # WARN, not a gate. The gating signal above is that the watchdog synced the
 # file — that is the deploy-critical piece. (Follow-up: Squid reconfigure ACL

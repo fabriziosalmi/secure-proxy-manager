@@ -120,8 +120,8 @@ func TestLogsSourceFilterIsExactAndNamesAnInternalSourceToo(t *testing.T) {
 		t.Errorf("source_ip=%s: sources %v total %d", lanClient, got, p.Meta.Total)
 	}
 	// Exact: a prefix of an address is not the address.
-	if p, _ := getLogs(t, h, "source_ip=192.168.0.10"); len(p.Data) != 0 {
-		t.Errorf("source_ip=192.168.0.10 matched %v", p.sources())
+	if p, _ := getLogs(t, h, "source_ip=192.168.1.10"); len(p.Data) != 0 {
+		t.Errorf("source_ip=192.168.1.10 matched %v", p.sources())
 	}
 	p, _ = getLogs(t, h, "source_ip="+backendIP)
 	if len(p.Data) != 6 || p.Meta.Total != 6 || p.Meta.Internal != nil {

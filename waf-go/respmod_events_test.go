@@ -58,7 +58,7 @@ func TestRespmodBlocksCarryAnEventIDAndNotifyTheBackend(t *testing.T) {
 			drainNotifications()
 			w := &mockResponseWriter{}
 			req := &icap.Request{
-				Header:  textproto.MIMEHeader{"X-Client-Ip": []string{"192.168.0.42"}},
+				Header:  textproto.MIMEHeader{"X-Client-Ip": []string{"192.168.1.42"}},
 				Request: httptest.NewRequest("GET", "http://downloads.example.com/file", nil),
 				Response: &http.Response{
 					Header:     http.Header{"Content-Type": []string{c.contentType}},
@@ -88,7 +88,7 @@ func TestRespmodBlocksCarryAnEventIDAndNotifyTheBackend(t *testing.T) {
 			if d["source"] != "RESPONSE" || d["category"] != c.category {
 				t.Errorf("source %v category %v, want RESPONSE %s", d["source"], d["category"], c.category)
 			}
-			if d["client_ip"] != "192.168.0.42" || d["url"] != "http://downloads.example.com/file" {
+			if d["client_ip"] != "192.168.1.42" || d["url"] != "http://downloads.example.com/file" {
 				t.Errorf("client_ip %v url %v", d["client_ip"], d["url"])
 			}
 			if c.rule != "" {

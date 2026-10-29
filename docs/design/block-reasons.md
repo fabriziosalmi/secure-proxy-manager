@@ -10,7 +10,7 @@ function instead. The measurements are those taken on that branch.
 
 | Symptom | Measured | Cause |
 |---|---|---|
-| Dashboard: 146 blocked | Client 192.168.0.109 alone: 908 of 1,180 requests blocked by the domain blacklist (900 at DNS, 8 by Squid) | A request to a sinkholed name is logged by Squid as `TCP_TUNNEL/503`, and `blocked` is derived from the status string (`main:backend-go/internal/workers/log_tailer.go:296-301`), so it counts 0 |
+| Dashboard: 146 blocked | One client alone: 908 of 1,180 requests blocked by the domain blacklist (900 at DNS, 8 by Squid) | A request to a sinkholed name is logged by Squid as `TCP_TUNNEL/503`, and `blocked` is derived from the status string (`main:backend-go/internal/workers/log_tailer.go:296-301`), so it counts 0 |
 | The client sees a connection error, not the block page | same | Squid connects to the sinkhole address `::` and fails (section 2.3) |
 | The proxy is a client | 128 of the 146 "blocked" are dnsmasq rows with `source_ip` 172.18.0.4 (the proxy container), each lookup twice (A, AAAA) | `main:backend-go/internal/workers/dns_tailer.go:145-163` stores every sinkhole answer as a blocked request from the address that asked, which is always Squid |
 | Threats: 12 "WAF Block" vs 4 real | | `main:backend-go/internal/handlers/analytics.go:720` guesses: any status containing 403 is "WAF Block" (Squid denials too), any denied destination with `:` is "Direct IP" (every denied `CONNECT host:443`) |

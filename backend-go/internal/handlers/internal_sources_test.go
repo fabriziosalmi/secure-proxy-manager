@@ -44,7 +44,7 @@ const (
 
 // seedInternalFixture, all in the last 24 hours unless noted:
 //
-//	192.168.0.109  5 requests, 2 blocked (1 waf, 1 unclassified from before reasons)
+//	192.168.1.109  5 requests, 2 blocked (1 waf, 1 unclassified from before reasons)
 //	172.20.5.9     3 requests, 1 blocked (ip_blacklist)
 //	172.18.0.1     4 requests, 2 blocked (domain_blacklist), plus 1 from 30 hours ago
 //	172.18.0.2     6 requests

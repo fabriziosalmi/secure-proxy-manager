@@ -13,7 +13,7 @@ import { Clients, SHOW_INTERNAL_KEY } from './Clients'
 const clientsBody = {
   status: 'success',
   data: [
-    { ip_address: '192.168.0.109', requests: 1180, blocked: 908, last_seen: '2026-07-01 09:00:00', status: 'Active', internal: false, kind: 'Private network address' },
+    { ip_address: '192.168.1.109', requests: 1180, blocked: 908, last_seen: '2026-07-01 09:00:00', status: 'Active', internal: false, kind: 'Private network address' },
     { ip_address: '172.20.5.9', requests: 30, blocked: 0, last_seen: '2026-07-01 08:00:00', status: 'Active', internal: false, kind: 'Private network address' },
     { ip_address: '172.18.0.2', requests: 17, blocked: 0, last_seen: '2026-07-01 09:10:00', status: 'Active', internal: true, kind: 'Internal: the backend' },
     { ip_address: '172.18.0.1', requests: 16, blocked: 10, last_seen: '2026-07-01 09:00:00', status: 'Active', internal: true, kind: 'Internal: this host' },
@@ -118,14 +118,14 @@ describe('Clients', () => {
 
   it('hides the internal addresses until the viewer shows them, and says how many it hides', async () => {
     renderWithProviders(<Clients />)
-    await waitFor(() => expect(ips()).toEqual(['192.168.0.109', '172.20.5.9']))
+    await waitFor(() => expect(ips()).toEqual(['192.168.1.109', '172.20.5.9']))
     const toggle = screen.getByRole('switch', { name: 'Show internal addresses (3)' })
     expect(toggle).toHaveAttribute('aria-checked', 'false')
     expect(screen.getByText('2 clients shown. 3 internal addresses are hidden and not counted in any statistic.')).toBeInTheDocument()
 
     fireEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-checked', 'true')
-    expect(ips()).toEqual(['192.168.0.109', '172.20.5.9', '172.18.0.2', '172.18.0.1', '127.0.0.1'])
+    expect(ips()).toEqual(['192.168.1.109', '172.20.5.9', '172.18.0.2', '172.18.0.1', '127.0.0.1'])
     expect(screen.getByText('Internal: this host')).toBeInTheDocument()
     expect(screen.getByText('5 addresses shown, 3 of them internal. Internal traffic is not counted in any statistic.')).toBeInTheDocument()
     expect(window.localStorage.getItem(SHOW_INTERNAL_KEY)).toBe('true')
@@ -152,9 +152,9 @@ describe('Clients', () => {
     expect(screen.getByRole('columnheader', { name: /Requests/ })).toHaveAttribute('aria-sort', 'descending')
     fireEvent.click(screen.getByRole('button', { name: 'Requests' }))
     expect(screen.getByRole('columnheader', { name: /Requests/ })).toHaveAttribute('aria-sort', 'ascending')
-    expect(ips()).toEqual(['127.0.0.1', '172.18.0.1', '172.18.0.2', '172.20.5.9', '192.168.0.109'])
+    expect(ips()).toEqual(['127.0.0.1', '172.18.0.1', '172.18.0.2', '172.20.5.9', '192.168.1.109'])
     fireEvent.click(screen.getByRole('button', { name: 'Blocked' }))
-    expect(ips().slice(0, 2)).toEqual(['192.168.0.109', '172.18.0.1'])
+    expect(ips().slice(0, 2)).toEqual(['192.168.1.109', '172.18.0.1'])
   })
 
   // "Share blocked" could not be sorted: a client with few requests, nearly
@@ -239,8 +239,8 @@ describe('Clients', () => {
       onTestFinished(restoreTz)
       const { container } = renderWithProviders(<Clients />)
       // The first row is selected until another is picked.
-      const panel = await screen.findByRole('region', { name: '192.168.0.109' })
-      const first = screen.getByRole('button', { name: '192.168.0.109' })
+      const panel = await screen.findByRole('region', { name: '192.168.1.109' })
+      const first = screen.getByRole('button', { name: '192.168.1.109' })
       expect(first).toHaveAttribute('aria-pressed', 'true')
       expect(first.closest('tr')).toHaveAttribute('data-selected', 'true')
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -260,7 +260,7 @@ describe('Clients', () => {
       expect(detailWindows).toEqual(['7d'])
       expect(within(panel).getByText('These counts cover the last 7 days, as the table does.')).toBeInTheDocument()
       expect(within(panel).getByText('8 of the 908 blocked requests were logged before the proxy recorded why it blocked a request, so the rule is not known.')).toBeInTheDocument()
-      const dest = within(panel).getByRole('table', { name: 'Top destinations of 192.168.0.109' })
+      const dest = within(panel).getByRole('table', { name: 'Top destinations of 192.168.1.109' })
       // The whole name, wrapped; it was cut, whole only in a tooltip.
       expect(within(dest).getByText('ads.example.test')).toHaveClass('break-all')
       expect(within(dest).getByText('ads.example.test')).not.toHaveClass('truncate')
@@ -275,7 +275,7 @@ describe('Clients', () => {
       const links = within(panel).getAllByRole('link')
       expect(links).toHaveLength(1)
       expect(links[0]).toHaveAccessibleName("Show this client's requests in the access log")
-      expect(links[0]).toHaveAttribute('href', '/logs?client=192.168.0.109')
+      expect(links[0]).toHaveAttribute('href', '/logs?client=192.168.1.109')
 
       fireEvent.click(screen.getByRole('button', { name: '172.20.5.9' }))
       expect(await screen.findByRole('region', { name: '172.20.5.9' })).toBeInTheDocument()
@@ -297,18 +297,18 @@ describe('Clients', () => {
       body = {
         status: 'success',
         data: [
-          { ip_address: '192.168.0.x', network: '192.168.0.0/24', addresses: 3, requests: 1180, blocked: 908, last_seen: '2026-07-01 09:00:00', status: 'Active', internal: false, kind: 'Private network address' },
+          { ip_address: '192.168.1.x', network: '192.168.1.0/24', addresses: 3, requests: 1180, blocked: 908, last_seen: '2026-07-01 09:00:00', status: 'Active', internal: false, kind: 'Private network address' },
           { ip_address: '2001:db8:1:2::x', network: '2001:db8:1:2::/64', addresses: 2, requests: 40, blocked: 5, last_seen: '2026-07-01 08:30:00', status: 'Active', internal: false, kind: 'mixed', classification: 'mixed' },
         ],
         meta: { total: 2, limit: 50, offset: 0, internal: 0 },
       }
       renderWithProviders(<Clients />)
-      const panel = await screen.findByRole('region', { name: '192.168.0.0/24' })
-      expect(detailCalls).toContain('192.168.0.0/24')
-      expect(screen.getByText(/192\.168\.0\.0\/24 · 3 addresses/)).toBeInTheDocument()
+      const panel = await screen.findByRole('region', { name: '192.168.1.0/24' })
+      expect(detailCalls).toContain('192.168.1.0/24')
+      expect(screen.getByText(/192\.168\.1\.0\/24 · 3 addresses/)).toBeInTheDocument()
       expect(screen.getByText(/2001:db8:1:2::\/64 · 2 addresses · mixed/)).toBeInTheDocument()
       const link = await within(panel).findByRole('link', { name: 'Show requests from this network in the access log' })
-      expect(link).toHaveAttribute('href', '/logs?client=192.168.0.0%2F24')
+      expect(link).toHaveAttribute('href', '/logs?client=192.168.1.0%2F24')
       expect(within(panel).getByText('These counts cover the last 7 days, as the table does.')).toBeInTheDocument()
       // All time on request, said as such.
       fireEvent.click(within(panel).getByRole('button', { name: 'All time' }))
@@ -321,14 +321,14 @@ describe('Clients', () => {
   describe('below lg', () => {
     it('opens the detail in a drawer outside the page, directly in document.body', async () => {
       renderWithProviders(<Clients />)
-      const button = await screen.findByRole('button', { name: '192.168.0.109' })
+      const button = await screen.findByRole('button', { name: '192.168.1.109' })
       expect(button).toHaveAttribute('aria-haspopup', 'dialog')
-      expect(screen.queryByRole('region', { name: '192.168.0.109' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: '192.168.1.109' })).not.toBeInTheDocument()
       fireEvent.click(button)
-      const drawer = await screen.findByRole('dialog', { name: '192.168.0.109' })
+      const drawer = await screen.findByRole('dialog', { name: '192.168.1.109' })
       expect(drawer.parentElement).toBe(document.body)
       await within(drawer).findByText('1,300')
-      expect(within(drawer).getByRole('link', { name: "Show this client's requests in the access log" })).toHaveAttribute('href', '/logs?client=192.168.0.109')
+      expect(within(drawer).getByRole('link', { name: "Show this client's requests in the access log" })).toHaveAttribute('href', '/logs?client=192.168.1.109')
       await expectNoAxeViolations(drawer)
       fireEvent.click(within(drawer).getByRole('button', { name: 'Close' }))
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

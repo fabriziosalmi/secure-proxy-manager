@@ -7,7 +7,7 @@ import { formatCount } from '../../lib/format'
 interface Client { ip: string; requests: number; blocked: number }
 
 const ROWS: Client[] = [
-  { ip: '192.168.0.109', requests: 1180, blocked: 908 },
+  { ip: '192.168.1.109', requests: 1180, blocked: 908 },
   { ip: '172.18.0.4', requests: 128, blocked: 128 },
 ]
 
@@ -132,7 +132,7 @@ describe('DataTable', () => {
   it('draws the selected row in the accent tint, and only that row', () => {
     table({ isRowSelected: (c) => c.ip === '172.18.0.4' })
     const selected = screen.getByText('172.18.0.4').closest('tr') as HTMLElement
-    const other = screen.getByText('192.168.0.109').closest('tr') as HTMLElement
+    const other = screen.getByText('192.168.1.109').closest('tr') as HTMLElement
     expect(selected).toHaveAttribute('data-selected', 'true')
     expect(selected.className).toMatch(/bg-accent-subtle/)
     expect(other).not.toHaveAttribute('data-selected')
