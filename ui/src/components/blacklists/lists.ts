@@ -3,8 +3,9 @@
  * and enforced. The URL keeps the list in ?tab=, so a link opens it and the
  * back button returns to the one before.
  */
-import { formatCount, formatDate, formatDateTime, formatHourMinute } from '../../lib/format';
+import { formatDate, formatDateTime, formatHourMinute } from '../../lib/format';
 import type { ListEntry, ListSource } from '../../types';
+import { formatCount } from '../../lib/format';
 
 export type ListKey = 'blocked-ips' | 'blocked-domains' | 'allowed-ips' | 'allowed-domains';
 

@@ -189,22 +189,6 @@ describe('Analytics', () => {
     expect(within(files).getByText('Extensions: .js 12, .png 3.')).toBeInTheDocument()
   })
 
-  // Each section says its own window: the page's one line did not hold for all of them.
-  it('has every section say the window it counts', async () => {
-    renderWithProviders(<Analytics />)
-    const windows: [string, RegExp][] = [
-      ['Blocked requests per day, by rule', /Today and the 6 days before/],
-      ['Protection coverage', /right now/],
-      ['WAF rule matches', /Since the WAF started or its counters were reset/],
-      ['Cloud services in use', /in the last 7 days/],
-      ['Traffic by kind of service', /in the last 7 days/],
-      ['Downloads by file type', /in the last 7 days/],
-    ]
-    for (const [name, window] of windows) {
-      await waitFor(() => expect(region(name)).toHaveTextContent(window))
-    }
-  })
-
   it('says which part is missing when an endpoint does not answer, or the WAF refuses the backend', async () => {
     failing = new Set(['analytics/blocked-by-day', 'analytics/coverage', 'analytics/user-agents'])
     bodies['dashboard/summary'] = { ...summary, waf: null, waf_status: 'auth_failed' }
@@ -246,5 +230,20 @@ describe('Analytics', () => {
     await waitFor(() => { expect(within(region('Protection coverage')).getAllByRole('listitem')).toHaveLength(6) })
     await waitFor(() => { expect(within(region('Downloads by file type')).getByText('15 downloads.')).toBeInTheDocument() })
     await expectNoAxeViolations(container)
+  })
+  // Each section says its own window: the page's one line did not hold for all of them.
+  it('has every section say the window it counts', async () => {
+    renderWithProviders(<Analytics />)
+    const windows: [string, RegExp][] = [
+      ['Blocked requests per day, by rule', /Today and the 6 days before/],
+      ['Protection coverage', /right now/],
+      ['WAF rule matches', /Since the WAF started or its counters were reset/],
+      ['Cloud services in use', /in the last 7 days/],
+      ['Traffic by kind of service', /in the last 7 days/],
+      ['Downloads by file type', /in the last 7 days/],
+    ]
+    for (const [name, window] of windows) {
+      await waitFor(() => expect(region(name)).toHaveTextContent(window))
+    }
   })
 })
