@@ -29,6 +29,7 @@ import { api, getData } from '../lib/api';
 import { formatCount, formatShare, formatWhen, formatWhenExact } from '../lib/format';
 import { cn } from '../lib/utils';
 import type { ClientsData, ClientStat, ClientDetail, ClientDomain, ClientRecent } from '../types';
+import { tableKind } from '../lib/clientKind';
 
 /** Where the "Show internal addresses" choice is kept, per viewer. */
 export const SHOW_INTERNAL_KEY = 'spm.clients.showInternal';
@@ -130,7 +131,7 @@ export function Clients() {
         const sub = [
           c.network,
           typeof c.addresses === 'number' ? plural(c.addresses, 'address', 'addresses') : null,
-          c.kind,
+          tableKind(c.kind),
         ].filter(Boolean).join(' · ');
         return (
           <div className="flex min-w-0 flex-col gap-0.5">

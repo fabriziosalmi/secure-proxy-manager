@@ -35,6 +35,7 @@ import {
 } from '../lib/accessLog';
 import { cn } from '../lib/utils';
 import type { ClientsData, LogEntry, LogsPageData, ReasonCount } from '../types';
+import { tableKind } from '../lib/clientKind';
 
 /** Where the "Show internal traffic" choice is kept, per viewer. */
 export const SHOW_INTERNAL_TRAFFIC_KEY = 'spm.logs.showInternal';
@@ -382,7 +383,7 @@ export function Logs() {
       cell: ({ entry }) => (
         <div className="flex min-w-0 flex-col gap-0.5 whitespace-nowrap">
           <code className="font-mono text-xs text-ink">{entry.source_ip || 'Not recorded'}</code>
-          {entry.kind && <span className="text-xs text-ink-muted">{entry.kind}</span>}
+          {tableKind(entry.kind) && <span className="text-xs text-ink-muted">{tableKind(entry.kind)}</span>}
         </div>
       ),
     },
