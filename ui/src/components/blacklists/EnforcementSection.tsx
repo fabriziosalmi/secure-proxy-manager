@@ -12,6 +12,10 @@
  *   proxy's record, and "Not reported" when it has written none.
  * - The order of the rules (generate_squid_conf.sh) decides what an allowed
  *   entry can override: the blocked lists are checked first.
+ *
+ * The rows and paragraphs speak of the DNS sinkhole, the proxy and limits.
+ * Which program each is (dnsmasq, Squid), the files the proxy records and the
+ * environment variables that set the limits are under "How it works".
  */
 import type { ReactNode } from 'react';
 import { formatCount, formatWhen } from '../../lib/format';
@@ -43,6 +47,18 @@ function Row({ term, children, tone, note }: { term: string; children: ReactNode
   );
 }
 
+/** The technical side of a list, closed by default: programs, files, variables. */
+function HowItWorks({ children }: { children: ReactNode }) {
+  return (
+    <details className="group text-[13px] leading-5 text-ink-muted">
+      <summary className="cursor-pointer rounded-sm font-semibold text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent">
+        How it works
+      </summary>
+      <div className="mt-2 flex flex-col gap-2">{children}</div>
+    </details>
+  );
+}
+
 /** When the proxy wrote a record, as formatWhen writes it inside a sentence. */
 function recordedAt(epochSeconds: number): string {
   if (!epochSeconds) return 'at a time not recorded';
@@ -51,23 +67,23 @@ function recordedAt(epochSeconds: number): string {
   return formatWhen(iso, { style: 'glance', inSentence: true });
 }
 
-function SquidIpCopy({ record, file }: { record: IpAclStatus | null | undefined; file: string }) {
+function ProxyIpCopy({ record }: { record: IpAclStatus | null | undefined }) {
   if (!record) {
     return (
-      <Row term="Networks Squid loads" tone="muted">
-        Not reported: the proxy has not written {file}
+      <Row term="Networks the proxy loads" tone="muted">
+        Not reported: the proxy has not recorded it
       </Row>
     );
   }
   return (
     <>
       <Row
-        term="Networks Squid loads"
+        term="Networks the proxy loads"
         note={`Merged from ${formatCount(record.entries)} ${record.entries === 1 ? 'entry' : 'entries'}, recorded ${recordedAt(record.written_at)}.`}
       >
         {formatCount(record.networks)}
       </Row>
-      {record.dropped > 0 && <Row term="Lines Squid could not read" tone="warning">{formatCount(record.dropped)}</Row>}
+      {record.dropped > 0 && <Row term="Lines the proxy could not read" tone="warning">{formatCount(record.dropped)}</Row>}
     </>
   );
 }
@@ -96,18 +112,18 @@ export function EnforcementSection({ list, total, data, loading, error, onReload
     body = <Unavailable endpoint="blacklists/enforcement">What enforces this list could not be read.</Unavailable>;
   } else if (list.key === 'blocked-domains') {
     const acl = data.squid_domain_acl;
-    let squid: ReactNode;
+    let proxy: ReactNode;
     let tone: 'success' | 'warning' | 'muted' = 'warning';
     if (!acl) {
-      squid = 'Not reported: the proxy has not written domain_acl_status.json';
+      proxy = 'Not reported: the proxy has not recorded whether it holds a copy';
       tone = 'muted';
     } else if (acl.held) {
-      squid = `Its own copy of all ${formatCount(acl.names)} names`;
+      proxy = `Its own copy of all ${formatCount(acl.names)} names`;
       tone = 'success';
     } else if (acl.names > acl.limit) {
-      squid = `No copy: ${formatCount(acl.names)} names is over its limit of ${formatCount(acl.limit)} (SPM_SQUID_DOMAIN_ACL_MAX)`;
+      proxy = `No copy: ${formatCount(acl.names)} names is over its limit of ${formatCount(acl.limit)}`;
     } else {
-      squid = 'No copy: the proxy could not write it, the proxy log says why';
+      proxy = 'No copy: the proxy could not write it, the proxy log says why';
     }
     const left = data.domain_blacklist_on_allowed;
     body = (
@@ -118,13 +134,23 @@ export function EnforcementSection({ list, total, data, loading, error, onReload
           <Row term="DNS sinkhole" tone="success">
             {left > 0 ? `Every entry but the ${formatCount(left)} on Allowed domains` : 'Every entry'}
           </Row>
-          <Row term="Proxy (Squid)" tone={tone}>{squid}</Row>
-          <Row term="Limit" note="Set by SPM_DNS_BLOCKLIST_MAX_DOMAINS.">{formatCount(data.dns_blocklist_limit)} entries</Row>
+          <Row term="Proxy" tone={tone}>{proxy}</Row>
+          <Row term="Limit">{formatCount(data.dns_blocklist_limit)} entries</Row>
         </dl>
         <p className="text-[13px] leading-5 text-ink-muted">
           A name blocks that exact host, not its subdomains. &quot;*.example.com&quot; and &quot;.example.com&quot; each block example.com itself, in the
-          DNS sinkhole and in Squid alike. Distinct names count each name once, in lower case, with &quot;*.&quot; and a leading dot dropped.
+          DNS sinkhole and in the proxy alike. Distinct names count each name once, in lower case, with &quot;*.&quot; and a leading dot dropped.
         </p>
+        <HowItWorks>
+          <p>
+            The DNS sinkhole is dnsmasq: it answers 0.0.0.0 (and :: for IPv6) for every entry. It holds every entry in memory, about 230 MiB
+            per million, which is why SPM_DNS_BLOCKLIST_MAX_DOMAINS limits the list.
+          </p>
+          <p>
+            The proxy is Squid. It holds its own copy while the list has no more names than SPM_SQUID_DOMAIN_ACL_MAX, and records whether it
+            does in domain_acl_status.json. Without a copy, a client that resolved a name before it was listed can reach it for up to a minute.
+          </p>
+        </HowItWorks>
         {onReloadDns && (
           <div><Button size="sm" onClick={onReloadDns}>Rewrite the DNS list</Button></div>
         )}
@@ -135,13 +161,17 @@ export function EnforcementSection({ list, total, data, loading, error, onReload
       <>
         <dl className="flex flex-col gap-2.5 text-sm">
           <Row term="Entries">{total === undefined ? 'Loading' : formatCount(total)}</Row>
-          <SquidIpCopy record={data.squid_ip_blacklist} file="ip_blacklist_acl_status.json" />
-          <Row term="Proxy (Squid)" tone="success">Refuses every destination in the list</Row>
+          <ProxyIpCopy record={data.squid_ip_blacklist} />
+          <Row term="Proxy" tone="success">Refuses every destination in the list</Row>
         </dl>
         <p className="text-[13px] leading-5 text-ink-muted">
-          Squid matches the address a request goes to. Overlapping and adjacent entries are merged before Squid loads them; the same addresses
-          stay blocked. Squid checks this list before Allowed IPs, so an address on both stays blocked. Private and LAN ranges cannot be added.
+          The proxy matches the address a request goes to. Overlapping and adjacent entries are merged before the proxy loads them; the same
+          addresses stay blocked. The proxy checks this list before Allowed IPs, so an address on both stays blocked. Private and LAN ranges
+          cannot be added.
         </p>
+        <HowItWorks>
+          <p>The proxy is Squid. It loads the merged list and records how many networks it loaded in ip_blacklist_acl_status.json.</p>
+        </HowItWorks>
       </>
     );
   } else if (list.key === 'allowed-ips') {
@@ -149,12 +179,15 @@ export function EnforcementSection({ list, total, data, loading, error, onReload
       <>
         <dl className="flex flex-col gap-2.5 text-sm">
           <Row term="Entries">{total === undefined ? 'Loading' : formatCount(total)}</Row>
-          <SquidIpCopy record={data.squid_ip_whitelist} file="ip_whitelist_acl_status.json" />
+          <ProxyIpCopy record={data.squid_ip_whitelist} />
         </dl>
         <p className="text-[13px] leading-5 text-ink-muted">
-          Squid lets these destinations through ahead of its direct-IP rule and its final deny. It checks Blocked IPs and Blocked domains
+          The proxy lets these destinations through ahead of its direct-IP rule and its final deny. It checks Blocked IPs and Blocked domains
           first, so an entry here does not override them.
         </p>
+        <HowItWorks>
+          <p>The proxy is Squid. It loads the merged list and records how many networks it loaded in ip_whitelist_acl_status.json.</p>
+        </HowItWorks>
       </>
     );
   } else {
@@ -163,10 +196,10 @@ export function EnforcementSection({ list, total, data, loading, error, onReload
       <>
         <dl className="flex flex-col gap-2.5 text-sm">
           <Row term="Entries">{total === undefined ? 'Loading' : formatCount(total)}</Row>
-          <Row term="Blocked entries taken out">{formatCount(left)}</Row>
+          <Row term="Blocked domains this list overrides">{formatCount(left)}</Row>
         </dl>
         <p className="text-[13px] leading-5 text-ink-muted">
-          A name here takes the same name off Blocked domains before the lists reach the DNS sinkhole and Squid, however it is written
+          A name here takes the same name off Blocked domains before the lists reach the DNS sinkhole and the proxy, however it is written
           there: example.com also takes out *.example.com and .example.com, which block example.com itself. It does not cover subdomains,
           so a leading dot or &quot;*.&quot; is refused here.
         </p>

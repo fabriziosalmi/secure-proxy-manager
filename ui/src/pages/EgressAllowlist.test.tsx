@@ -229,6 +229,9 @@ describe('EgressAllowlist', () => {
     const { container } = renderWithProviders(<EgressAllowlist />)
     const pTable = await screen.findByRole('table', { name: 'Provider lists' })
     expect(screen.getByText(/lord-alfred\/ipranges/)).toBeInTheDocument()
+    // Each download takes the newest commit: nothing is pinned across downloads.
+    expect(screen.getByText(/each download takes the newest/)).toBeInTheDocument()
+    expect(screen.queryByText(/pinned/)).not.toBeInTheDocument()
     expect(await screen.findByText(/every 12 hours/)).toBeInTheDocument()
 
     const ghRow = (await within(pTable).findByText('github')).closest('tr')!
@@ -322,6 +325,13 @@ describe('EgressAllowlist', () => {
     expect(within(allRow).queryByText('0 (0.0% of IPv4)')).not.toBeInTheDocument()
     expect(within(allRow).queryByText('Never')).not.toBeInTheDocument()
     expect(within(allRow).queryByText('None')).not.toBeInTheDocument()
+    // Said once, not in four columns.
+    expect(within(allRow).getAllByText('Not downloaded yet')).toHaveLength(1)
+    // A switched-off list is downloaded to preview what it covers, not refreshed.
+    expect(within(allRow).getByRole('button', { name: 'Download to preview: all' })).toHaveTextContent('Download to preview')
+    // The badge says what a shared network means, without opening anything.
+    const badge = within(allRow).getByText('Shared network')
+    expect(document.getElementById(badge.getAttribute('aria-describedby') ?? '')).toHaveTextContent(/Allowing its addresses allows every one of them/)
 
     fireEvent.click(within(allRow).getByRole('switch', { name: 'Enable all' }))
     const allDialog = await screen.findByRole('alertdialog')

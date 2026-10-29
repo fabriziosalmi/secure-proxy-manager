@@ -10,6 +10,8 @@
  * details as recorded, never guessed at.
  */
 import { formatCount, formatDateTime } from './format';
+import { fieldLabel } from './settingsMeta';
+import { showValue } from './profiles';
 import type { AuditEntry } from '../types';
 
 /** Change for anything that changed state; the sign-in kinds for the session events. */
@@ -92,9 +94,78 @@ function join(parts: (string | null | undefined | false)[]): string | null {
   return kept.length ? kept.join('. ') : null;
 }
 
-/** The row as recorded, for a key or a shape this module does not know. */
+/** A JSON object of details as "key: value" pairs; anything else as recorded. */
+function readable(details: string | null): string | null {
+  const f = fields(details);
+  if (!f) return details || null;
+  const parts = Object.entries(f).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`);
+  return parts.length ? parts.join(', ') : null;
+}
+
+/**
+ * The row as recorded, for a key this module does not know: the key in words
+ * ("some_new_event" reads "Some new event"), its target, and its details as
+ * fields. The raw key and JSON used to be shown as they were.
+ */
 function verbatim(e: AuditEntry): AuditDescription {
-  return { event: e.action || 'No action recorded', details: join([e.target, e.details]), kind: 'change' };
+  const words = (e.action || '').replace(/_/g, ' ').trim();
+  const event = words ? words.charAt(0).toUpperCase() + words.slice(1) : 'No action recorded';
+  return { event, details: join([e.target, readable(e.details)]), kind: 'change' };
+}
+
+/** A setting by its label on the Settings page, or its key in words when it has none. */
+function settingName(key: string): string {
+  const label = fieldLabel(key);
+  if (label !== key) return label;
+  const words = key.replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** "Send alerts: off to on; Telegram bot token: set": what a settings save changed, from its details. */
+function settingChanges(f: Fields | null): string | null {
+  if (!f) return null;
+  const parts: string[] = [];
+  const changes = f.changes && typeof f.changes === 'object' ? (f.changes as Record<string, Fields>) : {};
+  for (const [key, c] of Object.entries(changes)) {
+    const from = typeof c?.from === 'string' ? c.from : undefined;
+    const to = typeof c?.to === 'string' ? c.to : undefined;
+    parts.push(`${settingName(key)}: ${showValue(from)} to ${showValue(to)}${c?.truncated ? ' (cut)' : ''}`);
+  }
+  const secrets = f.secrets && typeof f.secrets === 'object' ? (f.secrets as Record<string, unknown>) : {};
+  for (const [key, state] of Object.entries(secrets)) parts.push(`${settingName(key)}: ${state === 'cleared' ? 'cleared' : 'set'}`);
+  return parts.length ? parts.join('; ') : null;
+}
+
+/** The egress provider events (backend handlers and workers, egress_providers.go). */
+function describeProvider(e: AuditEntry, action: string): AuditDescription | null {
+  const f = fields(e.details);
+  const name = e.target || 'a provider';
+  const what = str(f, 'kind') === 'url' ? `the URL list ${name}` : `the provider list ${name}`;
+  const range = (before: string, after: string, label: string) => {
+    const a = num(f, before);
+    const b = num(f, after);
+    return a !== null && b !== null ? `${label} ${formatCount(a)} to ${formatCount(b)}` : null;
+  };
+  const commit = str(f, 'commit');
+  switch (action) {
+    case 'egress_provider_enabled':
+      return { event: `Turned on ${what}`, details: join([str(f, 'url'), f?.shared_network === true ? 'A shared network' : null]), kind: 'change' };
+    case 'egress_provider_disabled':
+      return { event: f?.deleted === true ? `Removed ${what}` : `Turned off ${what}`, details: str(f, 'url'), kind: 'change' };
+    case 'egress_provider_refreshed':
+      return {
+        event: `Downloaded ${what}`,
+        details: join([range('v4_before', 'v4_after', 'IPv4 prefixes'), range('v6_before', 'v6_after', 'IPv6 prefixes'), commit && `Commit ${commit.slice(0, 7)}`]),
+        kind: 'change',
+      };
+    case 'egress_provider_refresh_failed':
+      return { event: `Could not download ${what}`, details: str(f, 'reason'), kind: 'change' };
+    case 'egress_provider_held':
+      return { event: `Held an update of ${what} for review`, details: join([str(f, 'reason'), range('v4_before', 'v4_after', 'IPv4 prefixes')]), kind: 'change' };
+    case 'egress_provider_held_applied':
+      return { event: `Applied the held update of ${what}`, details: range('v4_before', 'v4_after', 'IPv4 prefixes'), kind: 'change' };
+  }
+  return null;
 }
 
 /** Where a removed source's entries came from, as the end of a sentence. */
@@ -257,11 +328,17 @@ export function describeAudit(e: AuditEntry): AuditDescription {
     return { event: 'Sign-in failed', details: join([e.target ? `From ${e.target}` : null, e.details]), kind: 'signin-failed' };
   }
   if (PLAIN[action]) return { event: PLAIN[action], details: e.details || null, kind: 'change' };
-  if (action === 'update_settings') {
+  if (action === 'update_settings' || action === 'update_setting') {
     const keys = (e.target ?? '').split(',').filter(Boolean);
-    return { event: keys.length ? `Changed ${count(keys.length, 'setting', 'settings')}` : 'Changed settings', details: keys.length ? keys.join(', ') : null, kind: 'change' };
+    // A row with values names each change; an older row only the keys.
+    const details = settingChanges(fields(e.details)) ?? (keys.length ? keys.map(settingName).join(', ') : null);
+    const event = keys.length === 1 ? `Changed ${settingName(keys[0])}` : keys.length ? `Changed ${count(keys.length, 'setting', 'settings')}` : 'Changed settings';
+    return { event, details, kind: 'change' };
   }
-  if (action === 'update_setting') return { event: `Changed the setting ${e.target || 'with no name'}`, details: e.details || null, kind: 'change' };
+  if (action.startsWith('egress_provider_')) {
+    const d = describeProvider(e, action);
+    if (d) return d;
+  }
   if (action === 'delete_ip' || action === 'delete_domain') return describeLegacyDelete(e);
   if (action === 'refresh_blacklists') return describeRefresh(e) ?? verbatim(e);
   if (action === 'geo_block') return describeGeo(e) ?? verbatim(e);

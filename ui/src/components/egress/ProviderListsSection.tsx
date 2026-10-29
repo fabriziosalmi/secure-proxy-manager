@@ -51,6 +51,7 @@ function Field({ id, label, error, className, children }: {
 export function ProviderListsSection({ refreshHours, onChanged }: { refreshHours?: string; onChanged?: () => void }) {
   const qc = useQueryClient();
   const ids = useId();
+  const sharedId = `${ids}-shared`;
   const { confirm, dialog } = useConfirm();
   const providers = useQuery(egressProvidersQuery);
 
@@ -248,7 +249,7 @@ export function ProviderListsSection({ refreshHours, onChanged }: { refreshHours
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-[13px] font-semibold text-ink">{p.name}</span>
               {p.kind === 'url' && <Badge tone="neutral">URL</Badge>}
-              {p.shared_network && <Badge tone="warning">Shared network</Badge>}
+              {p.shared_network && <Badge tone="warning" aria-describedby={sharedId}>Shared network</Badge>}
             </div>
             <span className="text-xs text-ink-muted [overflow-wrap:anywhere]">
               {p.kind === 'url' ? p.url : p.source}
@@ -303,62 +304,49 @@ export function ProviderListsSection({ refreshHours, onChanged }: { refreshHours
       ),
     },
     {
-      id: 'counts',
-      header: 'Prefixes (v4 / v6)',
-      align: 'right',
-      className: 'whitespace-nowrap text-ink-secondary',
-      cell: (p) =>
-        p.last_refresh ? (
-          `${formatCount(p.v4_count)} / ${formatCount(p.v6_count)}`
-        ) : (
-          <span className="text-ink-muted">Not downloaded yet</span>
-        ),
-    },
-    {
+      // Prefixes and the IPv4 space they cover, in one column: four columns
+      // that each said "Not downloaded yet" pushed Refresh now out of the
+      // card at 1250 px.
       id: 'coverage',
-      header: 'IPv4 covered',
-      align: 'right',
+      header: 'Coverage',
       className: 'whitespace-nowrap text-ink-secondary',
       cell: (p) =>
         p.last_refresh ? (
-          formatIpv4Coverage(p.ipv4_covered).summary
+          <div className="flex flex-col gap-0.5">
+            <span className="tabular-nums">{`${formatCount(p.v4_count)} IPv4 / ${formatCount(p.v6_count)} IPv6 prefixes`}</span>
+            <span className="text-xs tabular-nums text-ink-muted">{formatIpv4Coverage(p.ipv4_covered).summary}</span>
+          </div>
         ) : (
           <span className="text-ink-muted">Not downloaded yet</span>
         ),
     },
     {
-      id: 'refresh',
-      header: 'Last refresh',
+      // When and from which commit (a catalog list) or which content (a URL
+      // list, its SHA-256): empty until the first download, which Coverage
+      // already says.
+      id: 'downloaded',
+      header: 'Last download',
       hideOnPhone: true,
       className: 'whitespace-nowrap text-ink-muted',
-      cell: (p) => (p.last_refresh ? formatWhen(p.last_refresh, { style: 'glance' }) : 'Not downloaded yet'),
-    },
-    {
-      id: 'commit',
-      header: 'Commit',
-      hideOnPhone: true,
-      className: 'whitespace-nowrap',
       cell: (p) => {
-        if (!p.last_refresh || !p.last_commit) {
-          return <span className="sr-only">Not downloaded yet</span>;
-        }
-        const short = p.last_commit.slice(0, 7);
-        if (p.kind === 'catalog') {
-          return (
-            <a
-              href={`https://github.com/lord-alfred/ipranges/commit/${p.last_commit}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono text-xs text-accent hover:underline"
-            >
-              {short}
-            </a>
-          );
-        }
+        if (!p.last_refresh) return null;
+        const short = p.last_commit ? p.last_commit.slice(0, 7) : '';
         return (
-          <code className="font-mono text-xs text-ink-muted" title={`SHA-256: ${p.last_commit}`}>
-            {short}
-          </code>
+          <div className="flex flex-col gap-0.5">
+            <span>{formatWhen(p.last_refresh, { style: 'glance' })}</span>
+            {short && (p.kind === 'catalog' ? (
+              <a
+                href={`https://github.com/lord-alfred/ipranges/commit/${p.last_commit}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-xs text-accent hover:underline"
+              >
+                {short}
+              </a>
+            ) : (
+              <code className="font-mono text-xs text-ink-muted" title={`SHA-256: ${p.last_commit}`}>{short}</code>
+            ))}
+          </div>
         );
       },
     },
@@ -370,13 +358,15 @@ export function ProviderListsSection({ refreshHours, onChanged }: { refreshHours
       className: 'whitespace-nowrap',
       cell: (p) => (
         <div className="inline-flex items-center justify-end gap-1.5">
+          {/* A switched-off list is only downloaded and counted, so the
+              confirmation before turning it on can say what it covers. */}
           <Button
             size="sm"
-            aria-label={`Refresh now: ${p.name}`}
+            aria-label={p.enabled ? `Refresh now: ${p.name}` : `Download to preview: ${p.name}`}
             disabled={busyRow === p.name}
             onClick={() => { void refreshNow(p); }}
           >
-            Refresh now
+            {p.enabled ? 'Refresh now' : 'Download to preview'}
           </Button>
           {p.kind === 'url' && (
             <IconButton
@@ -397,11 +387,16 @@ export function ProviderListsSection({ refreshHours, onChanged }: { refreshHours
     <Section title="Provider lists" flush>
       <div className="flex flex-col gap-4 px-5 pb-4">
         <p className="text-sm text-ink-secondary">
-          Built-in catalog lists are fetched from{' '}
-          <code className="rounded bg-surface-muted px-1 py-px font-mono text-[12px] text-ink">lord-alfred/ipranges</code>{' '}
-          pinned to the latest commit on <code className="rounded bg-surface-muted px-1 py-px font-mono text-[12px] text-ink">main</code>.{' '}
+          Built-in catalog lists come from{' '}
+          <code className="rounded bg-surface-muted px-1 py-px font-mono text-[12px] text-ink">lord-alfred/ipranges</code>: each download takes the newest
+          commit of <code className="rounded bg-surface-muted px-1 py-px font-mono text-[12px] text-ink">main</code>, and Last download links the
+          commit a list came from.{' '}
           <span>{`Enabled lists refresh every ${hours} ${hours === '1' ? 'hour' : 'hours'}`}</span> (change this in{' '}
           <Link to="/settings/filtering" className="font-semibold text-accent hover:underline">Settings, Filtering</Link>).
+        </p>
+        <p id={sharedId} className="text-[13px] text-ink-muted">
+          <span className="font-semibold text-warning">Shared network</span>: the provider hosts other people&apos;s sites and services.
+          Allowing its addresses allows every one of them, not only the provider&apos;s own.
         </p>
 
         <form onSubmit={(e) => { void submitUrl(e); }} noValidate className="flex flex-col gap-3 rounded-control border border-line-subtle bg-surface-muted/40 p-3.5">

@@ -250,7 +250,7 @@ export function BackupRestore() {
   );
 }
 
-type ActionId = 'reload' | 'dns' | 'cache' | 'reset' | 'optimize';
+type ActionId = 'reload' | 'dns' | 'cache' | 'clear' | 'reset' | 'optimize';
 
 const sizeOf = async (): Promise<number | null> => {
   try {
@@ -263,6 +263,7 @@ const sizeOf = async (): Promise<number | null> => {
 };
 
 export function MaintenanceActions() {
+  const queryClient = useQueryClient();
   const { confirm, dialog } = useConfirm();
   const [busy, setBusy] = useState<ActionId | null>(null);
   const [out, setOut] = useState<Partial<Record<ActionId, Outcome>>>({});
@@ -310,6 +311,23 @@ export function MaintenanceActions() {
     });
   };
 
+  // Moved here from the access log page, beside Reset statistics: both
+  // delete every logged request, and only Reset statistics also resets the
+  // WAF's counters. Two buttons on two pages did not say so.
+  const clearLog = async () => {
+    if (!(await confirm({
+      title: 'Clear the access log?',
+      body: 'Every logged request is deleted, so the Logs, Clients and Overview figures start from zero. The WAF keeps its counters and the audit log is kept. This cannot be undone.',
+      confirmLabel: 'Clear the log',
+      destructive: true,
+    }))) return;
+    void run('clear', async () => {
+      await api.post('logs/clear');
+      void queryClient.invalidateQueries({ queryKey: ['logs'] });
+      return { tone: 'success', text: 'The access log is empty. The WAF kept its counters.' };
+    });
+  };
+
   const resetStats = async () => {
     if (!(await confirm({
       title: 'Delete every logged request?',
@@ -343,7 +361,8 @@ export function MaintenanceActions() {
         <ActionRow title="Reload the proxy" help="Regenerates the proxy configuration from the stored settings and lists, and reports whether the proxy took it. Saving a section already does this." button="Reload the proxy" outcome={out.reload ?? null} busy={busy === 'reload'} onRun={() => void reload()} />
         <ActionRow title="Reload DNS" help="Writes the domain blocklist for the DNS service again." button="Reload DNS" outcome={out.dns ?? null} busy={busy === 'dns'} onRun={() => void reloadDns()} />
         <ActionRow title="Empty the cache" help="Stops the proxy, deletes its disk cache and starts it again, which also empties the memory cache. Clients lose their connections for a few seconds." button="Empty disk and memory cache" outcome={out.cache ?? null} busy={busy === 'cache'} onRun={() => void clearCache()} danger />
-        <ActionRow title="Reset statistics" help="Deletes every logged request and resets the WAF's counters." button="Reset statistics" outcome={out.reset ?? null} busy={busy === 'reset'} onRun={() => void resetStats()} danger />
+        <ActionRow title="Clear the access log" help="Deletes every logged request. The WAF keeps its counters." button="Clear the log" outcome={out.clear ?? null} busy={busy === 'clear'} onRun={() => void clearLog()} danger />
+        <ActionRow title="Reset statistics" help="Deletes every logged request, as Clear the access log does, and resets the WAF's counters." button="Reset statistics" outcome={out.reset ?? null} busy={busy === 'reset'} onRun={() => void resetStats()} danger />
         <ActionRow title="Optimize the database" help="Compacts the database file and rebuilds its indexes. The backend waits for it, which can take a while on a large log." button="Optimize" outcome={out.optimize ?? null} busy={busy === 'optimize'} onRun={() => void optimize()} />
       </ul>
     </Section>

@@ -103,12 +103,12 @@ function notices(summary: { data?: DashboardSummary | null; isError: boolean }):
         <span className="sm:hidden">{formatCount(acl.names)} names, above the proxy limit of {formatCount(acl.limit)}.</span>
         <span className="hidden sm:inline">
           The list has {formatCount(acl.names)} names, above the proxy&apos;s limit of {formatCount(acl.limit)} (SPM_SQUID_DOMAIN_ACL_MAX), so
-          Squid does not hold its own copy. The DNS sinkhole still blocks every name, but a domain a client reached shortly before it was listed
+          the proxy does not hold its own copy. The DNS sinkhole still blocks every name, but a domain a client reached shortly before it was listed
           stays reachable for up to a minute.
         </span>
       </Notice>
     ) : (
-      <Notice key="acl" tone="warning" title="Squid could not load its copy of the domain blacklist">
+      <Notice key="acl" tone="warning" title="The proxy could not load its copy of the domain blacklist">
         The proxy could not write it, so only the DNS sinkhole blocks blacklisted domains. The proxy log says why.
       </Notice>
     ));
