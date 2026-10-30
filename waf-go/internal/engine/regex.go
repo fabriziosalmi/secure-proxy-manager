@@ -27,7 +27,11 @@ import (
 // RegexEngines are the values WAF_REGEX_ENGINE takes.
 var RegexEngines = []string{"re2", "go"}
 
-var regexEngine = regexEngineFromEnv()
+var (
+	regexEngine    = regexEngineFromEnv()
+	regexShadowRaw = strings.ToLower(strings.TrimSpace(os.Getenv("WAF_REGEX_SHADOW")))
+	regexShadow    = regexShadowRaw == "1" || regexShadowRaw == "true"
+)
 
 func regexEngineFromEnv() string {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("WAF_REGEX_ENGINE")))
@@ -37,30 +41,45 @@ func regexEngineFromEnv() string {
 	return v
 }
 
-// RegexEngine is the engine in force. ValidateRegexEngine says whether it is
-// one the WAF knows; the WAF does not start on one it does not.
+// RegexEngine is the engine in force. RegexShadow is whether the other
+// engine also runs, for comparison only (shadow.go). ValidateRegexEngine says
+// whether both settings are ones the WAF knows; it does not start otherwise.
 func RegexEngine() string { return regexEngine }
 
+func RegexShadow() bool { return regexShadow }
+
 func ValidateRegexEngine() error {
+	known := false
 	for _, e := range RegexEngines {
-		if regexEngine == e {
-			return nil
-		}
+		known = known || regexEngine == e
 	}
-	return fmt.Errorf("WAF_REGEX_ENGINE=%q: want re2 or go", os.Getenv("WAF_REGEX_ENGINE"))
+	if !known {
+		return fmt.Errorf("WAF_REGEX_ENGINE=%q: want re2 or go", os.Getenv("WAF_REGEX_ENGINE"))
+	}
+	switch regexShadowRaw {
+	case "", "0", "1", "true", "false":
+		return nil
+	}
+	return fmt.Errorf("WAF_REGEX_SHADOW=%q: want 1 or 0", os.Getenv("WAF_REGEX_SHADOW"))
+}
+
+// ruleRE2 is a rule's RE2 form and its ID, for the shadow's report.
+type ruleRE2 struct {
+	re *re2.Regexp
+	id string
 }
 
 // compiledRE2 maps each rule's Go pattern to its RE2 form, built with the
 // pre-filter and read without a lock.
-var compiledRE2 atomic.Pointer[map[*regexp.Regexp]*re2.Regexp]
+var compiledRE2 atomic.Pointer[map[*regexp.Regexp]ruleRE2]
 
-// buildRE2 compiles the RE2 form of every rule. A rule RE2 refuses keeps Go's
-// regexp.
+// buildRE2 compiles the RE2 form of every rule, with re2 in force or in the
+// shadow. A rule RE2 refuses keeps Go's regexp, and the shadow skips it.
 func buildRE2() {
-	if regexEngine != "re2" {
+	if regexEngine != "re2" && !regexShadow {
 		return
 	}
-	m := map[*regexp.Regexp]*re2.Regexp{}
+	m := map[*regexp.Regexp]ruleRE2{}
 	for _, cr := range blockRules {
 		for _, rule := range cr.Rules {
 			c, err := re2.Compile(rule.Pattern.String())
@@ -68,7 +87,7 @@ func buildRE2() {
 				slog.Warn("rule kept on Go's regexp: RE2 does not compile it", "rule", rule.ID, "error", err.Error())
 				continue
 			}
-			m[rule.Pattern] = c
+			m[rule.Pattern] = ruleRE2{re: c, id: rule.ID}
 		}
 	}
 	compiledRE2.Store(&m)
@@ -76,13 +95,29 @@ func buildRE2() {
 
 // matchRule runs one rule's pattern with the engine in force: on goInput
 // with Go's regexp, on re2Input (goInput as Go reads it, AsRE2Input) with RE2.
+// With the shadow on, the other engine runs too and a different answer is
+// recorded; the answer is always the engine in force's.
 func matchRule(p *regexp.Regexp, goInput string, re2Input func() string) bool {
-	if m := compiledRE2.Load(); m != nil {
-		if c, ok := (*m)[p]; ok {
-			return c.MatchString(re2Input())
-		}
+	m := compiledRE2.Load()
+	if m == nil {
+		return p.MatchString(goInput)
 	}
-	return p.MatchString(goInput)
+	c, ok := (*m)[p]
+	if !ok {
+		return p.MatchString(goInput)
+	}
+	if regexEngine == "re2" {
+		got := c.re.MatchString(re2Input())
+		if regexShadow {
+			RecordShadow(c.id, got, p.MatchString(goInput), goInput)
+		}
+		return got
+	}
+	got := p.MatchString(goInput)
+	if regexShadow {
+		RecordShadow(c.id, got, c.re.MatchString(re2Input()), goInput)
+	}
+	return got
 }
 
 // AsRE2Input is s as Go's regexp reads it, for RE2. Go reads each byte that

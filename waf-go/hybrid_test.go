@@ -285,3 +285,33 @@ func TestCategoriesReportObserveOnly(t *testing.T) {
 		t.Errorf("want exactly one observe-only category: %s", body)
 	}
 }
+
+// An unknown WAF_REGEX_SHADOW stops the WAF with the reason.
+func TestUnknownRegexShadowStopsTheWAF(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=^$")
+	cmd.Env = append(os.Environ(), "WAF_REGEX_SHADOW=yes")
+	out, err := cmd.CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 1 || !strings.Contains(string(out), `WAF_REGEX_SHADOW=\"yes\"`) {
+		t.Fatalf("exit %v, want status 1 with the reason\n%s", err, out)
+	}
+}
+
+// With the shadow on, /health says so and /metrics carries its counters.
+func TestRegexShadowIsReported(t *testing.T) {
+	restore := engine.SetRegexForTest("go", true)
+	defer restore()
+	engine.RecordShadow("XSS-001", true, false, "x")
+	w := httptest.NewRecorder()
+	(&MgmtHandlers{}).HealthHandler(w, httptest.NewRequest("GET", "/health", nil))
+	if !strings.Contains(w.Body.String(), `"regex_shadow":true`) {
+		t.Errorf("/health: %s", w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	(&MgmtHandlers{}).MetricsHandler(w, httptest.NewRequest("GET", "/metrics", nil))
+	for _, want := range []string{"waf_regex_shadow_checks_total ", `waf_regex_shadow_disagreements_total{rule="XSS-001"} `} {
+		if !strings.Contains(w.Body.String(), want) {
+			t.Errorf("/metrics lacks %s", want)
+		}
+	}
+}

@@ -1,6 +1,7 @@
 package crs
 
-// The rx operator on RE2, for WAF_REGEX_ENGINE=re2.
+// The rx operator on RE2, for WAF_REGEX_ENGINE=re2, and on both engines with
+// the regex shadow on.
 //
 // coraza-wasilibs ships one, but it runs RE2 on the value as given, and RE2
 // matches nothing on a byte that is not part of valid UTF-8, where Go's
@@ -16,6 +17,9 @@ package crs
 // own patterns.
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,9 +32,16 @@ import (
 	"secure-proxy-waf/internal/engine"
 )
 
-var rxCache sync.Map // pattern -> *re2.Regexp or *binaryregexp.Regexp
+var rxCache sync.Map // pattern -> *rxRE2 or *binaryregexp.Regexp
 
-type rxRE2 struct{ re *re2.Regexp }
+// rxRE2 holds a pattern on both engines: the one in force answers, and with
+// the regex shadow on the other runs too and a different answer is counted
+// under shadowName.
+type rxRE2 struct {
+	re         *re2.Regexp
+	goRe       *regexp.Regexp
+	shadowName string
+}
 
 type rxBinary struct{ re *binaryregexp.Regexp }
 
@@ -48,33 +59,70 @@ func newRX(options plugintypes.OperatorOptions) (plugintypes.Operator, error) {
 		return &rxBinary{re: re}, nil
 	}
 	if v, ok := rxCache.Load(data); ok {
-		return &rxRE2{re: v.(*re2.Regexp)}, nil
+		return v.(*rxRE2), nil
 	}
-	re, err := re2.Compile(data)
-	if err != nil {
+	o := &rxRE2{}
+	var err error
+	if o.goRe, err = regexp.Compile(data); err != nil {
 		return nil, err
 	}
-	rxCache.Store(data, re)
-	return &rxRE2{re: re}, nil
+	if o.re, err = re2.Compile(data); err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256([]byte(options.Arguments))
+	o.shadowName = "crs-rx:" + hex.EncodeToString(sum[:5])
+	rxCache.Store(data, o)
+	return o, nil
 }
 
 func (o *rxRE2) Evaluate(tx plugintypes.TransactionState, value string) bool {
-	value = engine.AsRE2Input(value)
-	if !tx.Capturing() {
-		return o.re.MatchString(value)
+	useRE2 := engine.RegexEngine() == "re2"
+	re2Value := value
+	if useRE2 || engine.RegexShadow() {
+		re2Value = engine.AsRE2Input(value)
 	}
-	match := o.re.FindStringSubmatchIndex(value)
+	if !tx.Capturing() {
+		var got bool
+		if useRE2 {
+			got = o.re.MatchString(re2Value)
+		} else {
+			got = o.goRe.MatchString(value)
+		}
+		o.shadow(got, value, re2Value)
+		return got
+	}
+	var match []int
+	src := value
+	if useRE2 {
+		match, src = o.re.FindStringSubmatchIndex(re2Value), re2Value
+	} else {
+		match = o.goRe.FindStringSubmatchIndex(value)
+	}
+	o.shadow(match != nil, value, re2Value)
 	if match == nil {
 		return false
 	}
 	for i := 0; i < len(match)/2 && i < 9; i++ {
 		if match[2*i] >= 0 {
-			tx.CaptureField(i, value[match[2*i]:match[2*i+1]])
+			tx.CaptureField(i, src[match[2*i]:match[2*i+1]])
 		} else {
 			tx.CaptureField(i, "")
 		}
 	}
 	return true
+}
+
+// shadow runs the engine not in force, with the shadow on, and counts a
+// different answer.
+func (o *rxRE2) shadow(inForce bool, value, re2Value string) {
+	if !engine.RegexShadow() {
+		return
+	}
+	other := o.goRe.MatchString(value)
+	if engine.RegexEngine() != "re2" {
+		other = o.re.MatchString(re2Value)
+	}
+	engine.RecordShadow(o.shadowName, inForce, other, value)
 }
 
 func (o *rxBinary) Evaluate(tx plugintypes.TransactionState, value string) bool {
