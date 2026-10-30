@@ -280,6 +280,8 @@ func TestHandleReqmodBlocksAtExactlyTheThreshold(t *testing.T) {
 		return httptest.NewRequest("GET", fmt.Sprintf("http://example.com/thr%d?q=<script>alert(1)</script>", n), nil)
 	}
 
+	// The spm threshold alone: CRS blocks this payload at any spm threshold.
+	withCRS(t, nil)
 	withEngine(t, engine.Config{BlockThreshold: xssScore})
 	if v := runReqmod(t, newReq(1), "198.51.100.40"); v.Action != "block" {
 		t.Errorf("score %d at threshold %d was not blocked: %s", xssScore, eng.BlockThreshold(), v)

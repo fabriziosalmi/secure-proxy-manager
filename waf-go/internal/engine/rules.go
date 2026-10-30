@@ -1,6 +1,9 @@
 package engine
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 // ── Rule engine types ───────────────────────────────────────────────────────
 
@@ -105,7 +108,13 @@ var blockRules = []CategoryRules{
 			r("XSS-002", `(?i)(javascript\s*:|vbscript\s*:|data\s*:\s*text/html)`, 10, 1),
 
 			// Tier 2
-			r("XSS-003", `(?i)\bon(load|error|click|focus|blur|mouseover|mouseout|submit|reset|change|keydown|keyup|keypress|dblclick|contextmenu|drag(start|end|over)?|drop|paste|copy|cut|input)\s*=`, 10, 2),
+			// An event-handler attribute. "on..." right after ?, & or , is a
+			// parameter name, not an attribute: reCAPTCHA and Turnstile load
+			// with ?onload=callback, and Cloudflare image resizing takes
+			// ,onerror=redirect, on a large share of real pages (Tranco).
+			// Attribute injection comes after a quote, a space, a slash or
+			// a tag: " onmouseover=, <svg/onload=, <img src=x onerror=.
+			r("XSS-003", `(?i)(?:^|[^\w?&,])on(load|error|click|focus|blur|mouseover|mouseout|submit|reset|change|keydown|keyup|keypress|dblclick|contextmenu|drag(start|end|over)?|drop|paste|copy|cut|input)\s*=`, 10, 2),
 			r("XSS-004", `(?i)(<iframe|<embed|<object|<applet|<form\s)`, 10, 2),
 			r("XSS-005", `(?i)(<svg|<math|<animate|<set\s|<image\s)`, 10, 2),
 			r("XSS-006", `(?i)(document\.(cookie|domain|write|location)|window\.(location|open)|eval\s*\(|Function\s*\()`, 10, 2),
@@ -113,7 +122,12 @@ var blockRules = []CategoryRules{
 
 			// Tier 3
 			r("XSS-008", `(?i)(fromCharCode|String\.fromCharCode|atob\s*\(|btoa\s*\()`, 4, 3),
-			r("XSS-009", `(\{\{.*\}\}|\$\{[^}]+\}|<%-.*%>)`, 4, 3),
+			// ${...} counts when it holds an expression (any character
+			// outside [A-Za-z0-9_]) or names a shell variable used for
+			// evasion. A bare ${NAME} is the unexpanded macro of an ad-tech
+			// cookie-sync URL (${CRITEO_USER_ID}), on 312 of 59,816 real
+			// Chrome requests (Tranco crawl), and carries no expression.
+			r("XSS-009", `(\{\{.*\}\}|\$\{(?:[^}]*[^A-Za-z0-9_}][^}]*|IFS|PATH|HOME|PWD|OLDPWD|SHELL|USER|LOGNAME|ENV|BASH|BASH_ENV|HOSTNAME|SHLVL|RANDOM|UID|EUID|PPID|PS1|PS2|PS4|TERM|TMPDIR|[0-9]+)\}|<%-.*%>)`, 4, 3),
 			r("XSS-010", `(?i)(expression\s*\(|url\s*\(|@import)`, 4, 3),
 		},
 	},
@@ -123,7 +137,11 @@ var blockRules = []CategoryRules{
 		Category: "COMMAND_INJECTION",
 		Rules: []Rule{
 			// Tier 1
-			r("CMDi-001", `;\s*(ls|cat|id|whoami|uname|wget|curl|nc|ncat|bash|sh|dash|zsh|python|perl|ruby|php|node)\b`, 10, 1),
+			// The command has to end where a shell word ends (space, end,
+			// another shell operator). With a plain \b, ";cat=" matched: the
+			// ;-separated parameters of DoubleClick Floodlight tags, on a
+			// large share of real pages (wafeval, Tranco crawl).
+			r("CMDi-001", `;\s*(ls|cat|id|whoami|uname|wget|curl|nc|ncat|bash|sh|dash|zsh|python|perl|ruby|php|node)(?:\s|$|[;&|<>])`, 10, 1),
 			r("CMDi-002", `\|\s*(cat|grep|sed|awk|cut|tr|base64|xxd|nc|bash|sh)\b`, 10, 1),
 
 			// Tier 2
@@ -184,14 +202,19 @@ var blockRules = []CategoryRules{
 			r("SSRF-001", `(?i)(169\.254\.169\.254|metadata\.google\.internal)`, 10, 1),
 
 			// Tier 2
-			r("SSRF-002", `(?i)(http|https)://(127\.\d+\.\d+\.\d+|localhost|0\.0\.0\.0|10\.\d+\.\d+\.\d+)`, 10, 2),
+			// The host has to end there: https://localhost.sensic.net is a
+			// public name that starts with "localhost" (real traffic).
+			r("SSRF-002", `(?i)(http|https)://(127\.\d+\.\d+\.\d+|localhost|0\.0\.0\.0|10\.\d+\.\d+\.\d+)(?:[:/?#\\]|$)`, 10, 2),
 			r("SSRF-003", `(?i)(http|https)://(172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+)`, 10, 2),
 			r("SSRF-004", `(?i)/latest/(meta-data|user-data|dynamic|api/token)`, 10, 2),
 			r("SSRF-005", `(?i)(file|gopher|dict|ftp)://`, 10, 2),
 			// Decimal/octal/hex IP bypass (e.g. http://2130706433 = 127.0.0.1)
 			r("SSRF-008", `(?i)(http|https)://\d{8,10}(/|$|\?)`, 10, 2),
 			// Octal IP (e.g. http://0177.0.0.1)
-			r("SSRF-009", `(?i)(http|https)://0[0-7]+\.`, 10, 2),
+			// An octal IPv4 (0177.0.0.1, 017700000001): numeric groups to
+			// the end of the host. A host name that starts with zeros is not
+			// one (001.com.ua, 02.cdn.example on real traffic).
+			r("SSRF-009", `(?i)(http|https)://0[0-7]*(\.(0x[0-9a-f]+|[0-9]+)){0,3}(/|:|\?|#|$)`, 10, 2),
 			// IPv6 loopback/private (e.g. http://[::1], http://[::ffff:127.0.0.1])
 			r("SSRF-010", `(?i)(http|https)://\[(::1|::ffff:127\.|::ffff:10\.|::ffff:192\.168\.|::ffff:172\.(1[6-9]|2\d|3[01])\.|0:0:0:0:0:0:0:1)`, 10, 2),
 			// Shortened IP (e.g. http://127.1)
@@ -215,7 +238,10 @@ var blockRules = []CategoryRules{
 			r("L4S-003", `(?i)(ldap|rmi|ldaps|dns|iiop|corba|nds)://`, 7, 2),
 
 			// Tier 3
-			r("L4S-004", `(?i)(\$\{.*){3,}`, 4, 3),
+			// Three or more ${ that hold an expression (the nested
+			// ${${lower:j}${lower:n}...} obfuscation always has ':'); three
+			// bare macros in a cookie-sync URL are not one.
+			r("L4S-004", `(\$\{[^}]*[^A-Za-z0-9_}][^}]*\}.*){3,}`, 4, 3),
 			r("L4S-005", `(?i)(ObjectInputStream|readObject|Runtime\.getRuntime|ProcessBuilder)`, 7, 3),
 		},
 	},
@@ -230,7 +256,10 @@ var blockRules = []CategoryRules{
 
 			// Tier 2
 			r("XXE-003", `(?i)(file|php|expect|data|java|jar|netdoc)://`, 7, 2),
-			r("XXE-004", `(?i)%\w+;`, 4, 2),
+			// A parameter-entity reference (%xxe;). An entity name is not a
+			// percent-encoded byte: "%2F;" and "%3A37;" are URLs with an
+			// encoded character before a ';', on real traffic (Tranco crawl).
+			r("XXE-004", `(?i)%(?:[g-z_][\w.-]*|[a-f](?:[g-z_.-][\w.-]*|[0-9a-f][\w.-]+)?);`, 4, 2),
 
 			// Tier 3
 			r("XXE-005", `(?i)(<!ENTITY\s+\S+\s+["'][^"']*["']\s*>.*){3,}`, 7, 3),
@@ -265,7 +294,13 @@ var blockRules = []CategoryRules{
 	{
 		Category: "UNICODE_OBFUSCATION",
 		Rules: []Rule{
-			r("UNI-001", "(\xe2\x80\x8b|\xe2\x80\x8c|\xe2\x80\x8d)", 10, 1),
+			// A zero-width character inside or next to an ASCII word is how a
+			// keyword is split past a filter (ad\u200bmin). ZWNJ and ZWJ are
+			// also ordinary characters of Indic and Persian scripts and of
+			// emoji sequences, so a zero-width character between non-ASCII
+			// letters is not flagged: it blocked a Kannada URL on real
+			// traffic (Tranco crawl).
+			r("UNI-001", "(?:[A-Za-z0-9](\xe2\x80\x8b|\xe2\x80\x8c|\xe2\x80\x8d)|(\xe2\x80\x8b|\xe2\x80\x8c|\xe2\x80\x8d)[A-Za-z0-9])", 10, 1),
 			r("UNI-002", "(\xe2\x80\xae|\xe2\x80\xad)", 10, 1),
 			r("UNI-003", "(?i)[a-z]+[\xd0\xb0\xd0\xb5\xd0\xbe\xd1\x80\xd1\x81\xd1\x83\xd1\x96\xd1\x98]+[a-z]+", 7, 2),
 			r("UNI-004", "(?i)[\xd0\xb0\xd0\xb5\xd0\xbe\xd1\x80\xd1\x81\xd1\x83\xd1\x96\xd1\x98]+[a-z]+", 4, 2),
@@ -342,7 +377,11 @@ var blockRules = []CategoryRules{
 			r("SHELL-006", `(?i)(python|bash|perl|ruby|php)\s+-[ice]\s`, 10, 2),
 			r("SHELL-007", `(?i)nc\s+-[lnvep]+\s`, 10, 2),
 			r("SHELL-008", `(?i)(powershell\.exe|cmd\.exe)\s`, 7, 2),
-			r("SHELL-009", `(?i)(mimikatz|CobaltStrike|Metasploit|Beacon)`, 10, 2),
+			// "Beacon" used to be in this list, unbounded: at 10 points it
+			// blocked on its own any host or URL containing the word (news
+			// sites, analytics endpoints such as beacon.<vendor>.io), and it
+			// caught no Cobalt Strike beacon, whose URIs do not say so.
+			r("SHELL-009", `(?i)\b(mimikatz|CobaltStrike|Metasploit)\b`, 10, 2),
 
 			// Tier 3
 			r("SHELL-010", `(?i)(IEX|Invoke-Expression|Invoke-WebRequest|iwr)\s`, 7, 3),
@@ -431,8 +470,15 @@ var blockRules = []CategoryRules{
 			r("PROTO-004", `(?i)X-Forwarded-For:.*,.*,.*,`, 4, 2), // Proxy chain
 
 			// Tier 3
-			r("PROTO-005", `(?i)(?:%[0-9a-fA-F]{2}){15,}`, 4, 3), // Massive URL encoding
-			r("PROTO-006", `(?i)[a-zA-Z0-9+/]{200,}=?=?`, 4, 3),  // Large base64 blob
+			// Massive URL encoding of ASCII. UTF-8 bytes (%80-%FF) are how
+			// any non-Latin text travels in a URL: a Cyrillic or Japanese
+			// search term is 15 encoded bytes in five characters.
+			r("PROTO-005", `(?:%[0-7][0-9a-fA-F]){15,}`, 4, 3),
+			// Large base64 blob. Observe-only (score 0, still recorded):
+			// consent strings, ad tokens and data URIs carry one on a large
+			// share of real requests; on every corpus it added to 4 true
+			// positives against 93 false ones (wafeval).
+			r("PROTO-006", `(?i)[a-zA-Z0-9+/]{200,}=?=?`, 0, 3),
 		},
 	},
 
@@ -456,7 +502,12 @@ var blockRules = []CategoryRules{
 		Rules: []Rule{
 			r("RANSOM-001", `(?i)\.(crypt|locked|crypted|encrypted|cerber|locky|wcry)$`, 10, 2),
 			r("RANSOM-002", `(?i)DECRYPT_INSTRUCTION`, 10, 2),
-			r("RANSOM-003", `(?i)(bitcoincash:[qzp][a-z0-9]{41}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})`, 4, 3),
+			// An address stands alone. Unbounded, the base58 form matched
+			// inside any base64 token (consent strings, ad IDs) and inside
+			// long domain names, where it added its 4 points to PROTO-006
+			// or to the DGA signal on the same text: it was behind every
+			// "DGA" block and most false positives on real browser traffic.
+			r("RANSOM-003", `(?i)(?:^|[^a-z0-9+/_.-])(bitcoincash:[qzp][a-z0-9]{41}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})(?:$|[^a-z0-9+/=_.-])`, 4, 3),
 		},
 	},
 }
@@ -532,6 +583,32 @@ func ruleEligible(rule Rule, tier int, matched map[string]bool, active map[strin
 // MatchRulesScored evaluates input against all rules in tiered order.
 // Returns all matches and the total anomaly score.
 func (e *Engine) MatchRulesScored(input string) ([]MatchResult, int) {
+	return e.MatchRulesScoredIn(input, nil)
+}
+
+// MatchRulesScoredIn is MatchRulesScored restricted to the categories in
+// only (nil: every enabled category). The restriction applies while
+// scanning, not to the result, so the early exit on a score already over
+// the threshold can only be reached by a category that was asked for.
+func (e *Engine) MatchRulesScoredIn(input string, only map[string]bool) ([]MatchResult, int) {
+	matches, _, score := e.MatchRulesFiltered(input, only, nil)
+	return matches, score
+}
+
+// RuleFilter is the operator's policy over single rules on one request: a
+// rule it skips is matched but neither scores nor is reported as a match; a
+// match it observes is reported with no score.
+type RuleFilter interface {
+	Skip(ruleID string) bool
+	ObserveMatch(ruleID, category string) bool
+}
+
+// MatchRulesFiltered is MatchRulesScoredIn under a filter (nil: none). The
+// filter applies while scanning, before the early exit on a score over the
+// threshold: a skipped rule that would have crossed it does not stop the
+// later tiers from being scanned. skipped are the rules the filter took off
+// that matched.
+func (e *Engine) MatchRulesFiltered(input string, only map[string]bool, f RuleFilter) (matches []MatchResult, skipped []string, totalScore int) {
 	// Cheap pre-filter (#110): screen the input against required-literal keywords
 	// derived from the patterns. On benign input no gated rule's literal is
 	// present, so `active` holds only the always-scan (ungated) rules — the vast
@@ -539,11 +616,9 @@ func (e *Engine) MatchRulesScored(input string) ([]MatchResult, int) {
 	// screen was built, in which case every rule is scanned (safe fallback).
 	active, gated := prefilterActive(input)
 	if gated && len(active) == 0 {
-		return nil, 0
+		return nil, nil, 0
 	}
 
-	var matches []MatchResult
-	totalScore := 0
 	matched := make(map[string]bool) // Deduplicate by rule ID
 	scan := scanInput{input: input}
 
@@ -552,26 +627,34 @@ func (e *Engine) MatchRulesScored(input string) ([]MatchResult, int) {
 			break // Early exit — score already over threshold, no need to check more rules
 		}
 		for _, cr := range blockRules {
-			if !e.CategoryEnabled(cr.Category) {
-				continue // Security Pack disabled
+			if !e.CategoryEnabled(cr.Category) || (only != nil && !only[cr.Category]) {
+				continue // Security Pack disabled, or not asked for
 			}
 			for _, rule := range cr.Rules {
 				if !ruleEligible(rule, tier, matched, active, gated) || !scan.hits(rule.Pattern) {
 					continue
 				}
 				matched[rule.ID] = true
+				if f != nil && f.Skip(rule.ID) {
+					skipped = append(skipped, rule.ID)
+					continue
+				}
+				score := rule.Severity
+				if e.observe[cr.Category] || f != nil && f.ObserveMatch(rule.ID, cr.Category) {
+					score = 0
+				}
 				matches = append(matches, MatchResult{
 					Category: cr.Category,
 					RuleID:   rule.ID,
 					Pattern:  rule.Pattern.String(),
-					Score:    rule.Severity,
+					Score:    score,
 				})
-				totalScore += rule.Severity
+				totalScore += score
 			}
 		}
 	}
 
-	return matches, totalScore
+	return matches, skipped, totalScore
 }
 
 // BlockRules is the request-side rule set, for callers that need to describe
@@ -599,4 +682,43 @@ func (e *Engine) MatchResponseRules(body string) (score int, ruleIDs []string, c
 		}
 	}
 	return score, ruleIDs, category
+}
+
+// shellEvasionVars are the shell variables used to smuggle a command past a
+// filter (${IFS} for a space, ${PATH} or ${HOME} for a slash); a ${NAME}
+// with one of these names is never treated as a bare macro.
+var shellEvasionVars = map[string]bool{
+	"IFS": true, "PATH": true, "HOME": true, "PWD": true, "OLDPWD": true, "SHELL": true, "USER": true,
+	"LOGNAME": true, "ENV": true, "BASH": true, "BASH_ENV": true, "HOSTNAME": true, "SHLVL": true,
+	"RANDOM": true, "UID": true, "EUID": true, "PPID": true, "PS1": true, "PS2": true, "PS4": true,
+	"TERM": true, "TMPDIR": true,
+}
+
+var (
+	reBareMacro    = regexp.MustCompile(`(?i)(?:\$|%24)(?:\{|%7b)([A-Za-z0-9_]{1,64}(?:\.[A-Za-z_][A-Za-z0-9_]{0,63}){0,4})(?:\}|%7d)`)
+	reBracketMacro = regexp.MustCompile(`(?i)(?:\[|%5b)([A-Za-z_][A-Za-z0-9_]{0,63})(?:\]|%5d)`)
+)
+
+// NeutralizeBareMacros rewrites the unexpanded placeholders of ad-tech URLs
+// to their names, plain or percent-encoded, for rule sets whose patterns
+// cannot be changed (CRS reads ${...} and [...] as shell or PHP): ${NAME}
+// and ${a.b} and [name] too
+// (${user.gdpr}, [sas_uid] on cookie-sync frames). Left as they are: a
+// macro holding any other character (an expression), a name of digits only
+// (a positional parameter), a shell evasion variable, and brackets around
+// anything but an identifier (items[0], [a-z]).
+func NeutralizeBareMacros(s string) string {
+	if strings.ContainsAny(s, "$") || strings.Contains(s, "%24") {
+		s = reBareMacro.ReplaceAllStringFunc(s, func(m string) string {
+			name := reBareMacro.FindStringSubmatch(m)[1]
+			if shellEvasionVars[name] || strings.Trim(name, "0123456789") == "" {
+				return m
+			}
+			return name
+		})
+	}
+	if strings.ContainsAny(s, "[") || strings.Contains(strings.ToLower(s), "%5b") {
+		s = reBracketMacro.ReplaceAllString(s, "$1")
+	}
+	return s
 }

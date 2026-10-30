@@ -29,8 +29,16 @@ mkdir -p "$REPORT_DIR"
 green() { printf '\033[32m%s\033[0m' "$1"; }
 red()   { printf '\033[31m%s\033[0m' "$1"; }
 
+# The toggles switch the WAF's built-in rule categories. Under the default
+# hybrid engine the OWASP Core Rule Set runs after them and is not switched by
+# a category toggle (WAF_ENGINE=legacy turns it off as a whole), so the pair
+# toggled here is one CRS does not cover at paranoia level 1: a mining pool
+# URL (CRYPTO_TUNNEL) and a known webshell path (WEBSHELL_C2). The SQL
+# injection probe shows the other half: with SQL_INJECTION off, CRS still
+# blocks it.
+MINE="/p?pool=stratum%2Btcp://xmr.example:3333"
+SHELL="/shell/c99.php?x=1"
 SQLI="/p?id=1%20UNION%20SELECT%20a%20FROM%20b"
-XSS="/p?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
 
 cb=0
 # probe sends an attack payload through the proxy with a fresh cache-buster and
@@ -74,38 +82,47 @@ echo "   api=$API  proxy=$PROXY"
 echo
 
 # Baseline: both attacks blocked with default (all categories on).
-s=$(probe "$SQLI" 403); [ "$s" = 403 ] && v=PASS || v=FAIL
-check "baseline-sqli-blocked" "$v" "SQLi→$s (want 403)"
-s=$(probe "$XSS" 403); [ "$s" = 403 ] && v=PASS || v=FAIL
-check "baseline-xss-blocked" "$v" "XSS→$s (want 403)"
+s=$(probe "$MINE" 403); [ "$s" = 403 ] && v=PASS || v=FAIL
+check "baseline-mining-blocked" "$v" "mining→$s (want 403)"
+s=$(probe "$SHELL" 403); [ "$s" = 403 ] && v=PASS || v=FAIL
+check "baseline-webshell-blocked" "$v" "webshell→$s (want 403)"
 
-# Disable SQL_INJECTION → SQLi passes, XSS still blocks (selective).
-t=$(toggleCat "SQL_INJECTION" false)
+# Disable CRYPTO_TUNNEL → mining passes, webshell still blocks (selective).
+t=$(toggleCat "CRYPTO_TUNNEL" false)
 [ "${t:0:1}" = 2 ] && v=PASS || v=FAIL
-check "toggle-off-sqli-api" "$v" "POST categories/toggle SQL_INJECTION=false → $t (want 2xx)"
-s=$(probe "$SQLI" 200); [ "$s" != 403 ] && v=PASS || v=FAIL
-check "sqli-disabled-passes" "$v" "category off: SQLi→$s (want NOT 403)"
-s=$(probe "$XSS" 403); [ "$s" = 403 ] && v=PASS || v=FAIL
-check "xss-still-blocks-while-sqli-off" "$v" "selective: XSS→$s (want 403)"
+check "toggle-off-mining-api" "$v" "POST categories/toggle CRYPTO_TUNNEL=false → $t (want 2xx)"
+s=$(probe "$MINE" 200); [ "$s" != 403 ] && v=PASS || v=FAIL
+check "mining-disabled-passes" "$v" "category off: mining→$s (want NOT 403)"
+s=$(probe "$SHELL" 403); [ "$s" = 403 ] && v=PASS || v=FAIL
+check "webshell-still-blocks-while-mining-off" "$v" "selective: webshell→$s (want 403)"
 
-# Re-enable SQL_INJECTION → SQLi blocks again.
-t=$(toggleCat "SQL_INJECTION" true)
-s=$(probe "$SQLI" 403); [ "$s" = 403 ] && v=PASS || v=FAIL
-check "sqli-reenabled-blocks" "$v" "re-enabled: SQLi→$s (want 403)"
+# Re-enable CRYPTO_TUNNEL → mining blocks again.
+t=$(toggleCat "CRYPTO_TUNNEL" true)
+s=$(probe "$MINE" 403); [ "$s" = 403 ] && v=PASS || v=FAIL
+check "mining-reenabled-blocks" "$v" "re-enabled: mining→$s (want 403)"
 
-# Symmetric: disable XSS_ATTACKS → XSS passes, SQLi still blocks.
-t=$(toggleCat "XSS_ATTACKS" false)
+# Symmetric: disable WEBSHELL_C2 → webshell passes, mining still blocks.
+t=$(toggleCat "WEBSHELL_C2" false)
 [ "${t:0:1}" = 2 ] && v=PASS || v=FAIL
-check "toggle-off-xss-api" "$v" "POST categories/toggle XSS_ATTACKS=false → $t (want 2xx)"
-s=$(probe "$XSS" 200); [ "$s" != 403 ] && v=PASS || v=FAIL
-check "xss-disabled-passes" "$v" "category off: XSS→$s (want NOT 403)"
-s=$(probe "$SQLI" 403); [ "$s" = 403 ] && v=PASS || v=FAIL
-check "sqli-still-blocks-while-xss-off" "$v" "selective: SQLi→$s (want 403)"
+check "toggle-off-webshell-api" "$v" "POST categories/toggle WEBSHELL_C2=false → $t (want 2xx)"
+s=$(probe "$SHELL" 200); [ "$s" != 403 ] && v=PASS || v=FAIL
+check "webshell-disabled-passes" "$v" "category off: webshell→$s (want NOT 403)"
+s=$(probe "$MINE" 403); [ "$s" = 403 ] && v=PASS || v=FAIL
+check "mining-still-blocks-while-webshell-off" "$v" "selective: mining→$s (want 403)"
 
 # Restore (also the flip-back assertion).
-t=$(toggleCat "XSS_ATTACKS" true)
-s=$(probe "$XSS" 403); [ "$s" = 403 ] && v=PASS || v=FAIL
-check "xss-reenabled-blocks" "$v" "re-enabled: XSS→$s (want 403)"
+t=$(toggleCat "WEBSHELL_C2" true)
+s=$(probe "$SHELL" 403); [ "$s" = 403 ] && v=PASS || v=FAIL
+check "webshell-reenabled-blocks" "$v" "re-enabled: webshell→$s (want 403)"
+
+# A category toggle does not switch the Core Rule Set: SQL injection is
+# still blocked with SQL_INJECTION off.
+t=$(toggleCat "SQL_INJECTION" false)
+s=$(probe "$SQLI" 403); [ "$s" = 403 ] && v=PASS || v=FAIL
+check "sqli-off-crs-still-blocks" "$v" "SQL_INJECTION off: SQLi→$s (want 403, CRS)"
+t=$(toggleCat "SQL_INJECTION" true)
+[ "${t:0:1}" = 2 ] && v=PASS || v=FAIL
+check "toggle-on-sqli-api" "$v" "POST categories/toggle SQL_INJECTION=true → $t (want 2xx)"
 
 # ── Report ───────────────────────────────────────────────────────────────────
 {

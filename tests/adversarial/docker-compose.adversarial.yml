@@ -53,6 +53,8 @@ services:
       - WAF_H_GHOSTING=1
       - WAF_H_SEQUENCE=0
       - WAF_DISABLED_CATEGORIES=
+      # hybrid (default) or legacy; bench/transport.sh compares the two.
+      - WAF_ENGINE=${WAF_ENGINE:-hybrid}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
       interval: 5s

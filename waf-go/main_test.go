@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-icap/icap"
 
+	"secure-proxy-waf/internal/crs"
 	"secure-proxy-waf/internal/engine"
 )
 
@@ -232,4 +233,12 @@ func withEngine(t *testing.T, cfg engine.Config) {
 	prev := eng
 	eng = engine.New(cfg)
 	t.Cleanup(func() { eng = prev })
+}
+
+// withCRS sets the CRS half for one test: nil is WAF_ENGINE=legacy.
+func withCRS(t *testing.T, c *crs.Engine) {
+	t.Helper()
+	prev := crsEng
+	crsEng = c
+	t.Cleanup(func() { crsEng = prev })
 }

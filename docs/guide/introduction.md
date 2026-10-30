@@ -28,7 +28,8 @@ egress point without a commercial appliance.
 - **WAF.** A Go ICAP service with 172 request rules in 21 categories, 5
   response rules in 2 categories and six behavioural heuristics (entropy,
   beaconing, personal data, destination sharding, protocol ghosting, sequence
-  validation). Responses are checked for reflected XSS, secret leaks, personal
+  validation), followed by the OWASP Core Rule Set at paranoia level 1 on the
+  requests it can read. Responses are checked for reflected XSS, secret leaks, personal
   data and executable content types.
 - **Logs.** The access log with server-side filters and CSV export, and a live
   feed over WebSocket.
