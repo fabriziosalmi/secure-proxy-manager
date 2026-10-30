@@ -15,6 +15,16 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Internal
+
+- **The canary waits for Squid to reach a recreated WAF.** A WAF container
+  recreated by an update can get a new address, and until the watchdog
+  rewrites `squid.conf` Squid answers every request with a 500 carrying
+  `X-Squid-Error: ERR_ICAP_FAILURE`. The canary took that for a missed block
+  after the v3.20.0 update. It now retries that answer like no answer, up to
+  `PROBE_ATTEMPTS`, and reports "WAF unreachable" if it persists; an
+  origin's own 500 is still a verdict and is never retried.
+
 ## [3.20.0] - 2026-10-30
 
 A feature release for the WAF. It runs the OWASP Core Rule Set 4.25.0
