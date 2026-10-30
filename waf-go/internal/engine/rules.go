@@ -161,14 +161,22 @@ var blockRules = []CategoryRules{
 		Category: "DIRECTORY_TRAVERSAL",
 		Rules: []Rule{
 			// Tier 1
-			r("DirT-001", `(\.\./){2,}`, 10, 1),
+			// Two steps up or more, with either separator or a run of them,
+			// "./" between the steps, or more than two dots in a step:
+			// "..//..//", "..\/..\/", ".././/../", "...\...\". DirT-002, the
+			// backslash-only form, stays so a policy that names it keeps its
+			// meaning.
+			r("DirT-001", `(?:\.{2,}[/\\]+(?:\.[/\\]+)*){2,}`, 10, 1),
 			r("DirT-002", `(\.\.\\){2,}`, 10, 1),
 
 			// Tier 2
-			r("DirT-003", `(?i)/etc/(passwd|shadow|group|sudoers|hosts|crontab)`, 10, 2),
+			r("DirT-003", `(?i)[/\\]+etc[/\\]+(passwd|shadow|group|sudoers|hosts|crontab|issue|hostname|os-release)`, 10, 2),
 			r("DirT-004", `(?i)/(root|home/\w+)/\.(ssh|bash_history|bashrc|profile)`, 7, 2),
-			r("DirT-005", `(?i)(windows[\\/]system32|windows[\\/]win\.ini|boot\.ini)`, 10, 2),
+			r("DirT-005", `(?i)(windows[\\/]+system32|windows[\\/]+win\.ini|boot\.ini)`, 10, 2),
 			r("DirT-006", `(?i)(\\\\[a-zA-Z0-9._-]+\\[a-zA-Z0-9._$-]+)`, 4, 2),
+			// A drive letter before a directory an attack reads on a Windows
+			// server; a path a browser sends for an upload is C:\fakepath.
+			r("DirT-010", `(?i)\b[a-z]:[\\/]+(?:windows|winnt|inetpub|xampp|wamp|users[\\/]+administrator)\b`, 10, 2),
 
 			// Tier 3
 			r("DirT-007", `(?i)(%2e%2e|%252e%252e|%c0%ae|%c0%af|%c0%2f|%c0%5c|%c1%1c|%c1%9c|%c1%af|%e0%80%af)`, 10, 3),

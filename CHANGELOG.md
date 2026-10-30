@@ -23,6 +23,16 @@ for at least one minor release before disappearing.
   overlong UTF-8 (`%e0%80%ae` and the other forms of `.` in too many bytes).
   On the labelled corpora 51 more path traversals are caught, with no new
   false positive.
+- The WAF's traversal rules read the shapes a payload takes to get past a
+  rule written for `../../`: DirT-001 reads two steps up or more with either
+  separator, a run of them, `./` between the steps or more than two dots
+  (`..//..//`, `..\/..\/`, `...\...\`); DirT-003 reads a file under `etc`
+  with either separator and adds `issue`, `hostname` and `os-release`;
+  DirT-005 reads a run of separators; the new DirT-010 reads a drive letter
+  before `windows`, `winnt`, `inetpub`, `xampp`, `wamp` or
+  `users\administrator`, and leaves the `C:\fakepath` a browser sends for an
+  upload alone. On the labelled corpora 72 more path traversals and file
+  inclusions are caught, with no new false positive.
 
 ### Changed
 

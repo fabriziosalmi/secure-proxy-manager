@@ -127,7 +127,7 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   configuration; `waf-go/internal/inspect` runs one request through both;
   package `main` is the ICAP transport and builds the engines from the
   environment at start.
-- ICAP on port 1344. Built-in rules: 178 request rules in 22 categories and 5
+- ICAP on port 1344. Built-in rules: 179 request rules in 22 categories and 5
   response rules in 2 (`waf-go/internal/engine/rules.go`), plus custom rules
   from `/config/waf_custom_rules.txt`.
 - Each built-in match adds its rule's severity to an anomaly score; a request
