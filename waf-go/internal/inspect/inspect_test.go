@@ -120,3 +120,28 @@ func itoa(n int) string {
 	}
 	return string(b)
 }
+
+// Cloudflare's image resizing takes its options in the path, and
+// onerror=redirect is one of them. Placed first, right after a slash, it
+// reads as an event handler to XSS-003 (and to CRS 941120, excluded under
+// the same prefix in internal/crs). Only that option under /cdn-cgi/image/
+// is let through: an event handler with any other value, the same option on
+// another path, and anything in the query still block.
+func TestCloudflareImageOnerrorRedirect(t *testing.T) {
+	for target, want := range map[string]bool{
+		"/cdn-cgi/image/onerror=redirect,width=640,format=webp/https://storage.example/u/a.jpg": false,
+		"/cdn-cgi/image/onerror=redirect,format=auto,metadata=none/banners/home.avif":           false,
+		"/cdn-cgi/image/width=640,onerror=redirect/img/a.jpg":                                   false,
+		"/cdn-cgi/image/onerror=alert(1),width=640/img/a.jpg":                                   true,
+		"/cdn-cgi/image/width=640/onerror=redirect/a.jpg":                                       true,
+		"/images/onerror=redirect,width=640/a.jpg":                                              true,
+		"/cdn-cgi/image/width=640/a.jpg?x=%22onerror=redirect":                                  true,
+	} {
+		raw := "GET http://img.example" + target + " HTTP/1.1\r\nHost: img.example\r\nUser-Agent: Mozilla/5.0\r\nAccept: */*\r\n\r\n"
+		in, _ := Evaluate(newEngine(), crsPL1, nil, req(t, raw), "192.0.2.40")
+		if in.Blocked() != want {
+			rules, _ := in.Verdict()
+			t.Errorf("%s: blocked %v want %v %v", target, in.Blocked(), want, rules)
+		}
+	}
+}

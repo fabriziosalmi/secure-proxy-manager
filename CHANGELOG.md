@@ -15,6 +15,15 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Fixed
+
+- A Cloudflare image URL whose option list starts with `onerror=redirect`
+  (`/cdn-cgi/image/onerror=redirect,width=640/...`) is no longer blocked by
+  the built-in rule XSS-003. Only that exact option, in the option list of a
+  path that starts with `/cdn-cgi/image/`, is left out of what the rules
+  read; any other `onerror` value, the image source and the query are
+  inspected as before.
+
 ## [3.20.0] - 2026-10-30
 
 A feature release for the WAF. It runs the OWASP Core Rule Set 4.25.0

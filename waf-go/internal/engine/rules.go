@@ -722,3 +722,39 @@ func NeutralizeBareMacros(s string) string {
 	}
 	return s
 }
+
+const cloudflareImagePrefix = "/cdn-cgi/image/"
+
+// WithoutCloudflareImageRedirect drops the onerror=redirect option from a
+// Cloudflare image URL's option list (/cdn-cgi/image/<options>/<source>),
+// for the text the regex rules read. It is one of the documented options,
+// and placed first, right after the slash, XSS-003 reads it as an event
+// handler: 2 of 59,816 Tranco requests. Only an item of the comma-separated
+// list that is exactly onerror=redirect goes, so no new text is joined; the
+// source, the query and any other value of onerror stay.
+func WithoutCloudflareImageRedirect(rawURL string) string {
+	i := strings.Index(rawURL, cloudflareImagePrefix)
+	if i < 0 || strings.Contains(rawURL[:i], "?") {
+		return rawURL
+	}
+	// The prefix must start the path: what comes before it is scheme://host.
+	if j := strings.Index(rawURL, "://"); j < 0 || strings.Contains(rawURL[j+3:i], "/") {
+		return rawURL
+	}
+	start := i + len(cloudflareImagePrefix)
+	end := strings.IndexAny(rawURL[start:], "/?#")
+	if end < 0 {
+		return rawURL
+	}
+	opts := strings.Split(rawURL[start:start+end], ",")
+	kept := opts[:0]
+	for _, o := range opts {
+		if o != "onerror=redirect" {
+			kept = append(kept, o)
+		}
+	}
+	if len(kept) == len(opts) {
+		return rawURL
+	}
+	return rawURL[:start] + strings.Join(kept, ",") + rawURL[start+end:]
+}
