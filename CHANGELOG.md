@@ -15,6 +15,19 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.20.0] - 2026-10-30
+
+A feature release for the WAF. It runs the OWASP Core Rule Set 4.25.0
+(Coraza 3.8.1, paranoia level 1, configured for an egress proxy) after its
+built-in rules, and data leak prevention, financial data and cloud secret
+rules alert without blocking by default. A policy file,
+`/config/waf_policy.json`, leaves rules or the whole WAF to log only and
+takes a single rule off one host, path or argument, reloaded without a
+restart. A request the built-in rules let through can now be blocked by the
+Core Rule Set: `WAF_ENGINE=legacy` restores the previous behaviour. The
+WAF's `/health` gains fields and its `/metrics` new series; no route, field or
+status code is removed. Nothing is **BREAKING** and `X-API-Version` stays 1.
+
 ### Added
 
 - A WAF policy file, `/config/waf_policy.json` (`WAF_POLICY_FILE`), takes a
