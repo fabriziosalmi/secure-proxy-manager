@@ -122,24 +122,26 @@ type Engine struct {
 	paranoia int
 }
 
-// wasiOnce registers the WebAssembly operators in place of Coraza's pure Go
-// ones, with WAF_REGEX_ENGINE=re2: rx on RE2 (rx.go), and from
-// coraza-wasilibs pm on Aho-Corasick and detectSQLi and detectXSS on
-// libinjection's C original. The registry is process-wide, so this is done
-// once, before the first WAF is compiled.
+// wasiOnce registers this package's rx (rx.go), with WAF_REGEX_ENGINE=re2 or
+// the regex shadow on, and with re2 in force also, from coraza-wasilibs, pm on
+// Aho-Corasick and detectSQLi and detectXSS on libinjection's C original. The
+// registry is process-wide, so this is done once, before the first WAF is
+// compiled.
 var wasiOnce sync.Once
 
 func registerWASI() {
 	plugins.RegisterOperator("rx", newRX)
-	wasilibs.RegisterPM()
-	wasilibs.RegisterSQLi()
-	wasilibs.RegisterXSS()
+	if engine.RegexEngine() == "re2" {
+		wasilibs.RegisterPM()
+		wasilibs.RegisterSQLi()
+		wasilibs.RegisterXSS()
+	}
 }
 
 // New compiles the rule set. An error means the WAF has no CRS half and must
 // not pretend otherwise.
 func New(o Options) (*Engine, error) {
-	if engine.RegexEngine() == "re2" {
+	if engine.RegexEngine() == "re2" || engine.RegexShadow() {
 		wasiOnce.Do(registerWASI)
 	}
 	if o.Paranoia < 1 || o.Paranoia > 4 {

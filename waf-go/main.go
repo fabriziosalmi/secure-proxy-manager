@@ -222,7 +222,7 @@ func init() {
 	}
 	log.Printf("WAF engine initialized: %d regex rules + 7 heuristic checks across %d categories (block threshold: %d)\n",
 		total, len(engine.BlockRules()), eng.BlockThreshold())
-	slog.Info("WAF engine selected", "engine", wafEngine, "regex_engine", engine.RegexEngine(), "crs", crsEng != nil, "observe_categories", eng.ObserveCategories())
+	slog.Info("WAF engine selected", "engine", wafEngine, "regex_engine", engine.RegexEngine(), "regex_shadow", engine.RegexShadow(), "crs", crsEng != nil, "observe_categories", eng.ObserveCategories())
 }
 
 // ── Backend notification ────────────────────────────────────────────────────
@@ -1074,6 +1074,7 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprintf(w, "# HELP waf_build_info Source revision this WAF binary was built from.\n# TYPE waf_build_info gauge\nwaf_build_info{commit=%q} 1\n", GitCommit)
 	fmt.Fprintf(w, "# HELP waf_engine_info Request engine in force (WAF_ENGINE) and the regex engine its rules run on (WAF_REGEX_ENGINE).\n# TYPE waf_engine_info gauge\nwaf_engine_info{engine=%q,regex=%q} 1\n", wafEngine, engine.RegexEngine())
+	writeShadowMetrics(w)
 
 	totalRules := 0
 	for _, cr := range engine.BlockRules() {
@@ -1232,9 +1233,9 @@ func (h *MgmtHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	policyMu.Lock()
 	policyFailed := policyLastError != ""
 	policyMu.Unlock()
-	fmt.Fprintf(w, `{"status":"healthy","commit":%q,"engine":%q,"regex_engine":%q,"rules":%d,"categories":%d,"threshold":%d,"heuristics":%d,`+
+	fmt.Fprintf(w, `{"status":"healthy","commit":%q,"engine":%q,"regex_engine":%q,"regex_shadow":%t,"rules":%d,"categories":%d,"threshold":%d,"heuristics":%d,`+
 		`"policy":{"mode":%q,"exceptions":%d,"reload_failed":%t}}`,
-		GitCommit, wafEngine, engine.RegexEngine(), total, len(engine.BlockRules()), eng.BlockThreshold(), hEnabled,
+		GitCommit, wafEngine, engine.RegexEngine(), engine.RegexShadow(), total, len(engine.BlockRules()), eng.BlockThreshold(), hEnabled,
 		pol.Mode(), pol.Exceptions(), policyFailed)
 }
 
@@ -1353,4 +1354,21 @@ func (h *MgmtHandlers) HeuristicsToggleHandler(w http.ResponseWriter, r *http.Re
 	slog.Info("WAF heuristic toggled", "heuristic", req.Heuristic, "enabled", req.Enabled)
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status":"ok","heuristic":"%s","enabled":%v}`, req.Heuristic, req.Enabled)
+}
+
+// writeShadowMetrics adds the regex shadow's counters to /metrics: the
+// comparisons made and, by rule, the times the engine not in force answered
+// differently (a built-in rule ID, or crs-rx:<hash> for a rule set pattern).
+func writeShadowMetrics(w io.Writer) {
+	if !engine.RegexShadow() {
+		return
+	}
+	checks, byRule := engine.ShadowStats()
+	fmt.Fprintf(w, "# HELP waf_regex_shadow_checks_total Rule matches also run on the regex engine not in force (WAF_REGEX_SHADOW).\n"+
+		"# TYPE waf_regex_shadow_checks_total counter\nwaf_regex_shadow_checks_total %d\n", checks)
+	fmt.Fprintf(w, "# HELP waf_regex_shadow_disagreements_total Matches the regex engine not in force answered differently, by rule.\n"+
+		"# TYPE waf_regex_shadow_disagreements_total counter\n")
+	for _, r := range byRule {
+		fmt.Fprintf(w, "waf_regex_shadow_disagreements_total{rule=%q} %d\n", r.Rule, r.Count)
+	}
 }

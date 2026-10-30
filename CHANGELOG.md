@@ -15,6 +15,18 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- `WAF_REGEX_SHADOW=1` runs every rule match on the other regex engine too,
+  for comparison only: the verdict stays the one of `WAF_REGEX_ENGINE`, and
+  a different answer is counted in `waf_regex_shadow_disagreements_total` by
+  rule and logged with the rule, the two answers, the input's length,
+  whether it is valid UTF-8 and a prefix of its SHA-256, never its content,
+  at most 20 lines a minute. It covers the built-in rules and the Core Rule
+  Set's `rx` operator. With `go` in force it shows, on real traffic and with
+  no risk to the verdicts, whether `re2` would answer the same. `/health`
+  says whether it is on (`regex_shadow`); an unknown value stops the WAF.
+
 ## [3.22.0] - 2026-10-30
 
 A performance release for the WAF. With the default engine it reads a

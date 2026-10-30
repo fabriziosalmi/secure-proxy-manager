@@ -161,6 +161,11 @@ func main() {
 		}
 	}
 	fmt.Fprintf(os.Stderr, "wafeval: %d records, report in %s\n", seq, *out)
+	if engine.RegexShadow() {
+		checks, byRule := engine.ShadowStats()
+		fmt.Fprintf(os.Stderr, "wafeval: regex shadow (%s in force): %d checks, %d rules disagreed %v\n",
+			engine.RegexEngine(), checks, len(byRule), byRule)
+	}
 }
 
 func runFile(path string, eng Engine, rep *Report, seq *int, limit int) error {

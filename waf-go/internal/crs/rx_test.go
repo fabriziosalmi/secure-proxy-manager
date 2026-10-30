@@ -139,3 +139,39 @@ func TestRXReadsInvalidBytesAsGo(t *testing.T) {
 		t.Errorf("captures %v", tx.caps)
 	}
 }
+
+func shadowCount(name string) uint64 {
+	_, byRule := engine.ShadowStats()
+	for _, r := range byRule {
+		if r.Rule == name {
+			return r.Count
+		}
+	}
+	return 0
+}
+
+// With go in force and the shadow on, rx answers with Go's regexp, captures
+// included, and a different RE2 answer is counted under the pattern's name.
+func TestRXShadowKeepsGoAndCountsRE2(t *testing.T) {
+	restore := engine.SetRegexForTest("go", true)
+	defer restore()
+	op, err := newRX(plugintypes.OperatorOptions{Arguments: `sh(adow)-test-(\d+)`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rx := op.(*rxRE2)
+	saved := rx.re
+	rx.re = re2.MustCompile(`\A\z never`)
+	defer func() { rx.re = saved }()
+	before := shadowCount(rx.shadowName)
+	tx := &fakeTx{capturing: true}
+	if !op.Evaluate(tx, "a shadow-test-42 b") || tx.caps[2] != "42" {
+		t.Errorf("go in force: no match or captures %v", tx.caps)
+	}
+	if !op.Evaluate(&fakeTx{}, "shadow-test-7") {
+		t.Error("go in force: no match without capturing")
+	}
+	if got := shadowCount(rx.shadowName) - before; got != 2 {
+		t.Errorf("%d disagreements counted under %s, want 2", got, rx.shadowName)
+	}
+}
