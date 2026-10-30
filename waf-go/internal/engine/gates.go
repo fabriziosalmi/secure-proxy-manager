@@ -187,6 +187,13 @@ var ruleGates = map[string]func(f *inputFacts) bool{
 	"FIN-004": func(f *inputFacts) bool { return f.upperAlnumRun >= 15 },
 	// 0x and 40 hex digits.
 	"FIN-006": func(f *inputFacts) bool { return f.hexRun >= 40 },
+	// Template delimiters (SERVER-SIDE TEMPLATE INJECTION).
+	"SSTI-001": func(f *inputFacts) bool { return f.lit("{{") },
+	"SSTI-002": func(f *inputFacts) bool { return f.lit("${") },
+	"SSTI-003": func(f *inputFacts) bool { return f.lit("#{", "*{") },
+	"SSTI-004": func(f *inputFacts) bool { return f.lit("@(") },
+	"SSTI-005": func(f *inputFacts) bool { return f.lit("<%") },
+	"SSTI-006": func(f *inputFacts) bool { return f.lit("{%") },
 	// bitcoincash:..., or a base58 address of 26 to 35 characters.
 	"RANSOM-003": func(f *inputFacts) bool { return f.alnumRun >= 26 || f.lit("bitcoincash:") },
 }

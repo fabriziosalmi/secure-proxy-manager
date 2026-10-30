@@ -63,13 +63,14 @@ func InspectedHeaderText(h http.Header) (string, int) {
 }
 
 // textPlainObserveOnly are the request-rule categories that only observe on
-// a text/plain body: in pasted text, <script>, a ".env",
+// a text/plain body: in pasted text, <script>, a ".env", a {{ x * 2 }},
 // an "ftp://", a 192.168 address or `a" #` are words, not a request. The
 // categories that mean something as text (exfiltration, mining, webshell
 // and C2, ransomware, ...) still score.
 var textPlainObserveOnly = map[string]bool{
 	"XSS_ATTACKS": true, "COMMAND_INJECTION": true, "SQL_INJECTION": true, "SSRF": true,
 	"DIRECTORY_TRAVERSAL": true, "PATH_MANIPULATION": true, "SENSITIVE_FILES": true,
+	"TEMPLATE_INJECTION": true,
 }
 
 var (

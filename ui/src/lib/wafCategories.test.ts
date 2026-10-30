@@ -4,6 +4,7 @@ import { wafCategoryLabel } from './wafCategories'
 describe('wafCategoryLabel', () => {
   it('names a request rule category in words', () => {
     expect(wafCategoryLabel('SQL_INJECTION')).toEqual({ label: 'SQL injection', kind: 'rule' })
+    expect(wafCategoryLabel('TEMPLATE_INJECTION')).toEqual({ label: 'Server-side template injection', kind: 'rule' })
   })
   it('tells heuristics and domain reputation apart from rule categories', () => {
     expect(wafCategoryLabel('HEURISTIC_BEACONING').kind).toBe('heuristic')

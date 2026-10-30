@@ -267,6 +267,29 @@ var blockRules = []CategoryRules{
 		},
 	},
 
+	// ── SERVER-SIDE TEMPLATE INJECTION ──────────────────────────────────
+	// An expression inside template delimiters: Jinja and Twig {{ }} and
+	// {% %}, Spring and Freemarker ${ } and #{ }, Thymeleaf *{ }, Razor @( ),
+	// ERB and JSP <% %>. A bare name or a dotted path inside them is a
+	// placeholder, as ad-tech URLs ({{US_PRIVACY}}, ${CRITEO_USER_ID}) and
+	// pasted configuration ({{ secrets.AWS_SECRET }}) carry: a rule needs a
+	// mark of an expression, an operator, a call, an index, a quote or a
+	// dunder. #{ } and *{ } are also Sass interpolation and the CSS universal
+	// selector, so they need arithmetic or a call, and take no double quote:
+	// the compacted headers glue Accept's */* to a next header's JSON value
+	// ({"BSI":"a06ba548-b988-..."}), and a UUID's dash reads as arithmetic.
+	{
+		Category: "TEMPLATE_INJECTION",
+		Rules: []Rule{
+			r("SSTI-001", `\{\{[^{}\n]{0,200}(?:[*+(\['"]|__)[^{}\n]{0,200}\}\}`, 10, 2),
+			r("SSTI-002", `\$\{\{?[^{}\n]{0,200}(?:[*+(\['"]|__)[^{}\n]{0,200}\}`, 10, 2),
+			r("SSTI-003", `[#*]\{[^{}\n"]{0,200}(?:\w\s*[*+/%-]\s*\w|\()[^{}\n"]{0,200}\}`, 10, 2),
+			r("SSTI-004", `@\(\s*\w+\s*[*+/%-]\s*\w+\s*\)`, 10, 2),
+			r("SSTI-005", `<%=?[^%\n]{0,200}(?:[*+(\['"]|__)[^%\n]{0,200}%>`, 10, 2),
+			r("SSTI-006", `(?i)\{%-?\s*(?:set|if|for|import|from|include|extends|macro|call|filter|with|raw|print|block)\b[^%\n]{0,200}%\}`, 10, 2),
+		},
+	},
+
 	// ── PROTOTYPE POLLUTION ─────────────────────────────────────────────
 	{
 		Category: "PROTOTYPE_POLLUTION",
