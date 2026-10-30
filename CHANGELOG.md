@@ -15,6 +15,19 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- The WAF detects server-side template injection with its built-in rules:
+  an expression inside template delimiters, Jinja and Twig `{{ }}` and
+  `{% %}`, Spring and Freemarker `${ }` and `#{ }`, Thymeleaf `*{ }`, Razor
+  `@( )`, ERB and JSP `<% %>` (category `TEMPLATE_INJECTION`, rules
+  SSTI-001 to SSTI-006). A bare name or a dotted path inside them, as ad-tech
+  URLs and pasted configuration carry (`{{US_PRIVACY}}`,
+  `${CRITEO_USER_ID}`, `{{ secrets.AWS_SECRET }}`), is not matched, and the
+  category only observes on a `text/plain` body. On the labelled corpora,
+  template injection caught goes from 327 to 1,549 of 1,600 requests with
+  no new false positive in 258,465 Tranco requests.
+
 ## [3.23.0] - 2026-10-30
 
 A small feature release for the WAF. `WAF_REGEX_SHADOW=1` runs every rule

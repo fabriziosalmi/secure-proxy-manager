@@ -28,6 +28,7 @@ const LABELS: Record<string, string> = {
   SENSITIVE_FILES: 'Sensitive files',
   JAVA_DESER: 'Java deserialisation',
   PROTOTYPE_POLLUTION: 'Prototype pollution',
+  TEMPLATE_INJECTION: 'Server-side template injection',
   UNICODE_OBFUSCATION: 'Unicode obfuscation',
   PROTOCOL_ANOMALY: 'Protocol anomaly',
   POST_EXPLOIT: 'Post-exploitation tools',

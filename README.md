@@ -127,7 +127,7 @@ process holding one; free it, change the host side of the mapping, or set
 - **Default-deny egress (off by default).** With Settings > Filtering > Only
   allowlisted destinations on, clients reach only the entries on the
   Default-deny allowlist page, LAN destinations and IP exceptions.
-- **WAF.** 172 request rules in 21 categories and 5 response rules in 2
+- **WAF.** 178 request rules in 22 categories and 5 response rules in 2
   categories (counted in `waf-go/internal/engine/rules.go`), six behavioural
   heuristics, anomaly scoring with a block threshold of 10, and runtime toggles
   per category, followed by the OWASP Core Rule Set at paranoia level 1 on
