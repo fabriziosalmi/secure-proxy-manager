@@ -549,10 +549,12 @@ type scanInput struct {
 	compact      string
 	checkCompact bool
 	compactReady bool
+	// The two forms as RE2 reads them (AsRE2Input), made once on first use.
+	inputRE2, compactRE2 *string
 }
 
 func (s *scanInput) hits(p *regexp.Regexp) bool {
-	if p.MatchString(s.input) {
+	if matchRule(p, s.input, func() string { return once(&s.inputRE2, s.input) }) {
 		return true
 	}
 	// Lazy-init compact on the first miss, and decide once whether it can
@@ -562,7 +564,15 @@ func (s *scanInput) hits(p *regexp.Regexp) bool {
 		s.checkCompact = s.compact != s.input
 		s.compactReady = true
 	}
-	return s.checkCompact && p.MatchString(s.compact)
+	return s.checkCompact && matchRule(p, s.compact, func() string { return once(&s.compactRE2, s.compact) })
+}
+
+func once(cache **string, s string) string {
+	if *cache == nil {
+		v := AsRE2Input(s)
+		*cache = &v
+	}
+	return **cache
 }
 
 // ruleEligible reports whether a rule should be evaluated in this tier: it

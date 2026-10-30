@@ -4,9 +4,13 @@
 package crs
 
 import (
+	"sync"
+
 	"bytes"
 	"errors"
 	"fmt"
+	wasilibs "github.com/corazawaf/coraza-wasilibs"
+	"github.com/corazawaf/coraza/v3/experimental/plugins"
 	"net/http"
 	"regexp"
 	"sort"
@@ -118,9 +122,26 @@ type Engine struct {
 	paranoia int
 }
 
+// wasiOnce registers the WebAssembly operators in place of Coraza's pure Go
+// ones, with WAF_REGEX_ENGINE=re2: rx on RE2 (rx.go), and from
+// coraza-wasilibs pm on Aho-Corasick and detectSQLi and detectXSS on
+// libinjection's C original. The registry is process-wide, so this is done
+// once, before the first WAF is compiled.
+var wasiOnce sync.Once
+
+func registerWASI() {
+	plugins.RegisterOperator("rx", newRX)
+	wasilibs.RegisterPM()
+	wasilibs.RegisterSQLi()
+	wasilibs.RegisterXSS()
+}
+
 // New compiles the rule set. An error means the WAF has no CRS half and must
 // not pretend otherwise.
 func New(o Options) (*Engine, error) {
+	if engine.RegexEngine() == "re2" {
+		wasiOnce.Do(registerWASI)
+	}
 	if o.Paranoia < 1 || o.Paranoia > 4 {
 		return nil, fmt.Errorf("paranoia level %d: want 1 to 4", o.Paranoia)
 	}

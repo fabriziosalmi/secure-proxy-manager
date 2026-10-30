@@ -117,6 +117,10 @@ func initISTag() {
 	// The engine and the observe-only set change verdicts as much as a rule
 	// does.
 	fmt.Fprintf(h, "E:%s\n", wafEngine)
+	// The regex engines agree on the RE2 syntax but not on every corner
+	// (libinjection's C original and its Go port): a switch drops cached
+	// verdicts.
+	fmt.Fprintf(h, "R:%s\n", engine.RegexEngine())
 	for _, cat := range eng.ObserveCategories() {
 		fmt.Fprintf(h, "O:%s\n", cat)
 	}
@@ -191,6 +195,10 @@ func init() {
 	// Rules first: the pre-filter gates the custom rules too (#110), and the
 	// ISTag digest must cover the set actually loaded.
 	engine.LoadCustomRules(engine.DefaultCustomRulesPath)
+	if err := engine.ValidateRegexEngine(); err != nil {
+		slog.Error("WAF not started", "error", err.Error())
+		os.Exit(1)
+	}
 	engine.BuildPrefilter()
 	name, c, observe, err := selectEngine(os.Getenv)
 	if err != nil {
@@ -214,7 +222,7 @@ func init() {
 	}
 	log.Printf("WAF engine initialized: %d regex rules + 7 heuristic checks across %d categories (block threshold: %d)\n",
 		total, len(engine.BlockRules()), eng.BlockThreshold())
-	slog.Info("WAF engine selected", "engine", wafEngine, "crs", crsEng != nil, "observe_categories", eng.ObserveCategories())
+	slog.Info("WAF engine selected", "engine", wafEngine, "regex_engine", engine.RegexEngine(), "crs", crsEng != nil, "observe_categories", eng.ObserveCategories())
 }
 
 // ── Backend notification ────────────────────────────────────────────────────
@@ -1065,7 +1073,7 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 
 	fmt.Fprintf(w, "# HELP waf_build_info Source revision this WAF binary was built from.\n# TYPE waf_build_info gauge\nwaf_build_info{commit=%q} 1\n", GitCommit)
-	fmt.Fprintf(w, "# HELP waf_engine_info Request engine in force (WAF_ENGINE).\n# TYPE waf_engine_info gauge\nwaf_engine_info{engine=%q} 1\n", wafEngine)
+	fmt.Fprintf(w, "# HELP waf_engine_info Request engine in force (WAF_ENGINE) and the regex engine its rules run on (WAF_REGEX_ENGINE).\n# TYPE waf_engine_info gauge\nwaf_engine_info{engine=%q,regex=%q} 1\n", wafEngine, engine.RegexEngine())
 
 	totalRules := 0
 	for _, cr := range engine.BlockRules() {
@@ -1224,9 +1232,9 @@ func (h *MgmtHandlers) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	policyMu.Lock()
 	policyFailed := policyLastError != ""
 	policyMu.Unlock()
-	fmt.Fprintf(w, `{"status":"healthy","commit":%q,"engine":%q,"rules":%d,"categories":%d,"threshold":%d,"heuristics":%d,`+
+	fmt.Fprintf(w, `{"status":"healthy","commit":%q,"engine":%q,"regex_engine":%q,"rules":%d,"categories":%d,"threshold":%d,"heuristics":%d,`+
 		`"policy":{"mode":%q,"exceptions":%d,"reload_failed":%t}}`,
-		GitCommit, wafEngine, total, len(engine.BlockRules()), eng.BlockThreshold(), hEnabled,
+		GitCommit, wafEngine, engine.RegexEngine(), total, len(engine.BlockRules()), eng.BlockThreshold(), hEnabled,
 		pol.Mode(), pol.Exceptions(), policyFailed)
 }
 

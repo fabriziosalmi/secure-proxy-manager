@@ -242,8 +242,32 @@ func TestEngineIsReported(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	(&MgmtHandlers{}).MetricsHandler(w, httptest.NewRequest("GET", "/metrics", nil))
-	if !strings.Contains(w.Body.String(), `waf_engine_info{engine="legacy"} 1`) {
+	if !strings.Contains(w.Body.String(), `waf_engine_info{engine="legacy",regex="`+engine.RegexEngine()+`"} 1`) {
 		t.Error("/metrics has no waf_engine_info for legacy")
+	}
+}
+
+// An unknown WAF_REGEX_ENGINE stops the WAF with the reason, as an unknown
+// WAF_ENGINE does: it does not run an engine the operator did not choose.
+func TestUnknownRegexEngineStopsTheWAF(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=^$")
+	cmd.Env = append(os.Environ(), "WAF_REGEX_ENGINE=pcre")
+	out, err := cmd.CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+		t.Fatalf("exit: %v, want status 1\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "WAF not started") || !strings.Contains(string(out), `WAF_REGEX_ENGINE=\"pcre\"`) {
+		t.Errorf("the reason is not in the output:\n%s", out)
+	}
+}
+
+// /health names the regex engine in force.
+func TestRegexEngineIsReported(t *testing.T) {
+	w := httptest.NewRecorder()
+	(&MgmtHandlers{}).HealthHandler(w, httptest.NewRequest("GET", "/health", nil))
+	if !strings.Contains(w.Body.String(), `"regex_engine":"`+engine.RegexEngine()+`"`) {
+		t.Errorf("/health: %s", w.Body.String())
 	}
 }
 
