@@ -102,11 +102,45 @@ const clientDetail = {
 const logRows = [3072, 7066, 4096, 6963, 7168, 3379].map((bytes, i) => ({
   id: 1000 - i, timestamp: `2026-10-29 07:51:${String(30 - i).padStart(2, '0')}`, source_ip: '10.20.0.109', method: 'CONNECT',
   destination: 'clientservices.googleapis.com:443', status: 'TCP_TUNNEL/200', bytes, blocked: false, reason: 'none', reason_label: 'Allowed',
-  internal: false, kind: 'Private network address', resolved_ip: '142.250.180.10',
+  internal: false, kind: 'Private network address', resolved_ip: '142.250.180.10', event_id: null as string | null,
 })).concat([{
   id: 990, timestamp: '2026-10-28 22:51:10', source_ip: '10.20.0.109', method: 'CONNECT', destination: 'github.com:443', status: 'TCP_DENIED/403',
   bytes: 3900, blocked: true, reason: 'domain_blacklist', reason_label: 'Domain blacklist (proxy)', internal: false, kind: 'Private network address', resolved_ip: null as unknown as string,
+  event_id: null,
+}, {
+  id: 989, timestamp: '2026-10-28 22:50:41', source_ip: '10.20.0.109', method: 'GET',
+  destination: 'http://tienda.shop-example.org/tienda1/publico/autenticar.jsp?modo=entrar&login=caria&pwd=EnSaCad%24oRa&remember=on',
+  status: 'NONE_NONE/403', bytes: 205, blocked: true, reason: 'waf', reason_label: 'WAF', internal: false, kind: 'Private network address',
+  resolved_ip: null as unknown as string, event_id: 'dmi3z8mpcz74-1',
 }]);
+
+/** The WAF's account of the WAF block above (GET /api/waf/events/{id}). */
+const wafEvent = {
+  event_id: 'dmi3z8mpcz74-1', timestamp: '2026-10-28 21:50:41', client_ip: '10.20.0.109', host: 'tienda.shop-example.org',
+  path: '/tienda1/publico/autenticar.jsp', url: logRowsUrl(), source: 'URL', blocked_by: 'crs', score: 0, crs_score: 5,
+  rules: ['CRS-942290', 'DLP-001'], scoring_rules: ['CRS-942290'], categories: ['CRS_SQLI', 'DATA_LEAK_PREVENTION'],
+  crs_targets: [{ rule: 'CRS-942290', target: 'ARGS:pwd' }],
+};
+
+function logRowsUrl() {
+  return 'http://tienda.shop-example.org/tienda1/publico/autenticar.jsp?modo=entrar&login=caria&pwd=EnSaCad%24oRa&remember=on';
+}
+
+/** The WAF policy file as GET /api/waf/policy answers it: long hosts, a target and a comment. */
+const wafPolicy = {
+  path: '/config/waf_policy.json', exists: true, sha256: '5d41402abc4b2a76b9719d911017c592', in_force: true,
+  waf: { mode: 'block', exceptions: 3, sha256: '5d41402abc4b2a76b9719d911017c592' },
+  policy: {
+    version: 1,
+    observe_rules: ['CRS-932370'],
+    observe_categories: ['FINANCIAL_DATA'],
+    exceptions: [
+      { rule: 'CRS-942290', host: 'tienda.shop-example.org', target: 'ARGS:pwd', comment: 'Added from the access log (event dmi3z8mpcz74-1)' },
+      { rule: 'CRS-941120', host: '.images.cdn-provider-example.net', path: '/cdn-cgi/image/' },
+      { rule: 'SQLi-015', host: 'search.example', path: '/api/v2/query/autocomplete/suggestions' },
+    ],
+  },
+};
 
 const enforcement = {
   dns_blocklist_limit: 1000000, domain_blacklist_entries: 77569, domain_blacklist_on_allowed: 0,
@@ -197,6 +231,10 @@ export function answer(url: URL): Json | undefined {
     case 'egress-allowlist': return list([], { total: 0, limit: 50, offset: 0 });
     case 'egress-providers': return ok(providers);
     case 'audit-log': return list(audit, { total: audit.length, limit: 50, offset: 0, retention_days: 365 });
+    case 'waf/events/dmi3z8mpcz74-1': return ok(wafEvent);
+    case 'waf/policy': return ok(wafPolicy);
+    case 'waf/heuristics': return ok({ available: true, running: { waf_h_entropy: true, waf_h_beaconing: true, waf_h_pii: true, waf_h_sharding: true, waf_h_ghosting: true, waf_h_sequence: false } });
+    case 'waf/categories': return ok([{ name: 'SQL_INJECTION', rules: 22, enabled: true }, { name: 'CUSTOM_USER_RULES', rules: 0, enabled: true }]);
   }
   if (/^clients\/.+\/details$/.test(p)) return ok(clientDetail);
   const src = sourcesOf.exec(p);

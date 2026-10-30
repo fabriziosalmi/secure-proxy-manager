@@ -503,6 +503,30 @@ describe('Logs', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('domain-whitelist', { domain: 'ads.example.net', description: 'Allowed from the access log' }))
   })
 
+  it('shows what the WAF matched on a WAF block with an event ID, and offers its exceptions', async () => {
+    logsBody = () => page([{ ...wafBlock, event_id: 'dmi3z8mpcz74-1' }, dnsBlock])
+    vi.mocked(api.get).mockImplementation(((url: string) => {
+      if (url.startsWith('logs?')) return Promise.resolve({ data: logsBody(url) })
+      if (url === 'waf/events/dmi3z8mpcz74-1') {
+        return Promise.resolve({ data: { status: 'success', data: {
+          event_id: 'dmi3z8mpcz74-1', timestamp: '2026-04-04 12:01:00', client_ip: '192.168.1.20', host: 'shop.example.org', path: '/login',
+          url: 'http://shop.example.org/login', source: 'URL+BODY', blocked_by: 'spm', score: 10, crs_score: 0,
+          rules: ['SQLi-018'], scoring_rules: ['SQLi-018'], categories: ['SQL_INJECTION'], crs_targets: [],
+        } } })
+      }
+      return Promise.resolve({ data: { status: 'success', data: null } })
+    }) as never)
+    renderWithProviders(<Logs />)
+    fireEvent.click(await screen.findByRole('button', { name: wafBlock.destination }))
+    const details = screen.getByRole('region', { name: 'Request details' })
+    expect(await within(details).findByText('What the WAF matched')).toBeInTheDocument()
+    expect(within(details).getByText('SQLi-018')).toBeInTheDocument()
+    expect(within(details).getByRole('button', { name: 'Exception for shop.example.org' })).toBeInTheDocument()
+    // A block that is not the WAF's has no such section.
+    fireEvent.click(screen.getByRole('button', { name: dnsBlock.destination }))
+    expect(within(screen.getByRole('region', { name: 'Request details' })).queryByText('What the WAF matched')).not.toBeInTheDocument()
+  })
+
   it("filters to the selected request's client", async () => {
     renderWithProviders(<Logs />)
     await waitFor(() => expect(bodyRows()).toHaveLength(4))

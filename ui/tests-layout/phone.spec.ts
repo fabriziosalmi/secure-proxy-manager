@@ -57,3 +57,18 @@ test('each access log row shows its destination and its outcome without scrollin
     expect(await scroller.evaluate((el) => el.scrollWidth - el.clientWidth), 'the table scrolls sideways').toBe(0);
   }
 });
+
+test("a WAF block's detail keeps its rules and exception buttons on the screen", async ({ page }, info) => {
+  phoneOnly(info.project.name);
+  await mockApi(page);
+  await page.goto('/logs');
+  await page.getByRole('button', { name: /tienda\.shop-example\.org/ }).click();
+  const drawer = page.getByRole('dialog', { name: 'Request details' });
+  await expect(drawer.getByText('What the WAF matched')).toBeVisible();
+  for (const name of ['Exception for tienda.shop-example.org', 'Only this path', 'Only ARGS:pwd', 'Log only, every host']) {
+    const b = (await drawer.getByRole('button', { name }).boundingBox())!;
+    expect(b.x, `"${name}" starts off the screen`).toBeGreaterThanOrEqual(0);
+    expect(b.x + b.width, `"${name}" ends past the screen`).toBeLessThanOrEqual(390);
+  }
+  expect(await drawer.evaluate((el) => el.scrollWidth - el.clientWidth), 'the drawer scrolls sideways').toBeLessThanOrEqual(0);
+});
