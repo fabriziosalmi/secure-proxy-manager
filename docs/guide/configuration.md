@@ -257,7 +257,8 @@ its score, each with an exception for the host, the path or, for a Core Rule
 Set rule, the argument it matched, and Settings > Inspection > WAF policy
 shows the file, switches the WAF between blocking and logging only, and
 removes exceptions. Both go through the backend, which edits the same file
-through the API (`/api/waf/policy`, see the [API reference](/api/reference)). It sends every new version to the WAF's
+through the API (`/api/waf/policy`, see the [API reference](/api/reference)).
+It sends every new version to the WAF's
 `POST /policy/validate` first and writes nothing the WAF refuses, or when the
 WAF cannot be reached; it then writes the file atomically, readable by the
 WAF's user, asks the WAF to reload it, and records the change in the audit
