@@ -5,6 +5,7 @@ import (
 	"net"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 )
@@ -49,6 +50,7 @@ func NormalizeInput(input string) string {
 
 		// URL-decode (tolerant: malformed escapes do not abort the whole string)
 		s = percentDecodeTolerant(s)
+		s = decodeOverlong(s)
 
 		// Stop when decoding produces no further change
 		if s == prev {
@@ -64,6 +66,7 @@ func NormalizeInput(input string) string {
 	// of keywords like <script>/SELECT that the regex rules expect in ASCII.
 	if !isASCII(s) {
 		s = norm.NFKC.String(s)
+		s = lookalikeSeparators.Replace(s)
 	}
 
 	// Strip inline comments used to break keywords apart, replacing each with a
@@ -179,6 +182,14 @@ func percentDecodeTolerant(s string) string {
 	for i := 0; i < len(s); i++ {
 		switch c := s[i]; c {
 		case '%':
+			// %uXXXX, IIS's escape for a UTF-16 code unit.
+			if i+5 < len(s) && (s[i+1] == 'u' || s[i+1] == 'U') {
+				if r, ok := hex4(s[i+2 : i+6]); ok {
+					b.WriteRune(r)
+					i += 5
+					continue
+				}
+			}
 			if i+2 < len(s) {
 				if hi, ok := fromHex(s[i+1]); ok {
 					if lo, ok2 := fromHex(s[i+2]); ok2 {
@@ -246,4 +257,81 @@ func hasSpaceRun(s string) bool {
 		prev = sp
 	}
 	return false
+}
+
+// hex4 reads four hex digits as a code point.
+func hex4(h string) (rune, bool) {
+	var r rune
+	for i := 0; i < 4; i++ {
+		d, ok := fromHex(h[i])
+		if !ok {
+			return 0, false
+		}
+		r = r<<4 | rune(d)
+	}
+	return r, true
+}
+
+// lookalikeSeparators are code points the traversal payloads in the attack
+// corpora put where a path separator goes, after %uXXXX decoding
+// ("..%u2216..%uefc8"); NFKC leaves them as they are. They are read as the
+// separator they stand for.
+var lookalikeSeparators = strings.NewReplacer(
+	"\u2215", "/", // DIVISION SLASH
+	"\uefc8", "/", // private use
+	"\u2216", "\\", // SET MINUS
+	"\uf025", "\\", // private use
+)
+
+// decodeOverlong reads an overlong UTF-8 sequence that encodes an ASCII
+// character as that character: %c0%ae, %e0%80%ae, %f0%80%80%ae and the five
+// and six byte forms all spell "." in more bytes than UTF-8 allows, which an
+// old decoder accepts and Go reads as invalid bytes ("..\xe0\x80\xae/").
+// Valid UTF-8, and a sequence that does not end in continuation bytes, stay
+// as they are.
+func decodeOverlong(s string) string {
+	i := strings.IndexFunc(s, func(r rune) bool { return r == utf8.RuneError })
+	if i < 0 {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	b.WriteString(s[:i])
+	for i < len(s) {
+		c := s[i]
+		n := 0
+		switch {
+		case c&0xE0 == 0xC0:
+			n = 2
+		case c&0xF0 == 0xE0:
+			n = 3
+		case c&0xF8 == 0xF0:
+			n = 4
+		case c&0xFC == 0xF8:
+			n = 5
+		case c&0xFE == 0xFC:
+			n = 6
+		}
+		if n > 0 && i+n <= len(s) {
+			if r, size := utf8.DecodeRuneInString(s[i:]); r == utf8.RuneError && size == 1 {
+				v, ok := rune(c)&(0x7F>>n), true
+				for k := 1; k < n; k++ {
+					cc := s[i+k]
+					if cc&0xC0 != 0x80 {
+						ok = false
+						break
+					}
+					v = v<<6 | rune(cc&0x3F)
+				}
+				if ok && v < 0x80 {
+					b.WriteByte(byte(v))
+					i += n
+					continue
+				}
+			}
+		}
+		b.WriteByte(c)
+		i++
+	}
+	return b.String()
 }

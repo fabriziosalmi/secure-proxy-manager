@@ -173,8 +173,12 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   (`us_privacy`, `usp`, `ccpa`); unexpanded ad-tech macros (`${NAME}`) are
   neutralized in the URI; a body that is not a form, multipart, JSON or XML
   is read raw rather than parsed into arguments.
-- Input normalisation before matching: multi-pass URL and HTML decoding,
-  removal of inline SQL and HTML comments, NFKC Unicode folding.
+- Input normalisation before matching: multi-pass URL decoding, IIS
+  `%uXXXX` escapes included, overlong UTF-8 sequences for an ASCII character
+  read as that character, HTML decoding, removal of inline SQL and HTML
+  comments, NFKC Unicode folding, and four separator lookalikes the
+  traversal payloads use (U+2215, U+2216, U+EFC8, U+F025) read as `/` or
+  `\`.
 - Request bodies are inspected up to 1 MB; a larger body adds the
   `WAF-BODY-OVERSIZE` finding and the rest is not inspected.
 - When a client has been blocked more than three times within 60 seconds,

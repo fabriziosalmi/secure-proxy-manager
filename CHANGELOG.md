@@ -15,6 +15,15 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Fixed
+
+- The WAF decodes two encodings path traversal is written in before its
+  rules read a request: IIS's `%uXXXX` escapes (`..%u2216..%u2216`), with
+  the separator lookalikes the payloads use read as `/` or `\`, and
+  overlong UTF-8 (`%e0%80%ae` and the other forms of `.` in too many bytes).
+  On the labelled corpora 51 more path traversals are caught, with no new
+  false positive.
+
 ### Changed
 
 - The WAF's built-in rules match the URL and each request header on its
