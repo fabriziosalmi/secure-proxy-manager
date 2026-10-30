@@ -93,10 +93,16 @@ func prefilterActive(input string) (active map[string]struct{}, ok bool) {
 
 	// Screen the compacted, lowercased input — a superset of both the raw and
 	// compact scans (see file header).
-	screen := compactInput(strings.ToLower(input))
+	screen := prefilterScreen(input)
 
 	active = make(map[string]struct{}, len(pf.ungated)+8)
+	// A rule with no required literal is scanned unless its gate (gates.go)
+	// says it cannot match this input.
+	facts := gatherFacts(input, screen)
 	for id := range pf.ungated {
+		if g, ok := ruleGates[id]; ok && !g(&facts) {
+			continue
+		}
 		active[id] = struct{}{}
 	}
 	for lit := range pf.ac.presentKeywords(screen) {
@@ -105,6 +111,15 @@ func prefilterActive(input string) (active map[string]struct{}, ok bool) {
 		}
 	}
 	return active, true
+}
+
+// prefilterScreen is the input compacted, then lowercased. Compacting first
+// keeps what the compacted form matches: strings.ToLower replaces an invalid
+// byte with U+FFFD, so a multi-byte character split by a space (invalid in
+// the input, whole once the space is removed, and seen whole by the compact
+// scan) would have been lost from the screen.
+func prefilterScreen(input string) string {
+	return strings.ToLower(compactBytes(input))
 }
 
 // ── Required-literal extraction (soundness-critical) ─────────────────────────
