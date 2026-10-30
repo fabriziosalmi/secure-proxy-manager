@@ -99,6 +99,9 @@ const clientDetail = {
   blocked_by_reason: [r('domain_blacklist', 'Domain blacklist (proxy)', 100), r('unclassified', 'Unclassified (no reason recorded)', 8)],
 };
 
+/** A request the WAF blocked, logged as the proxy saw it in plain HTTP. */
+const WAF_BLOCK_URL = 'http://tienda.shop-example.org/tienda1/publico/autenticar.jsp?modo=entrar&login=caria&pwd=EnSaCad%24oRa&remember=on'; // slopless-disable-line VBC-034 -- an access log row of a plain HTTP request, as the proxy logged it
+
 const logRows = [3072, 7066, 4096, 6963, 7168, 3379].map((bytes, i) => ({
   id: 1000 - i, timestamp: `2026-10-29 07:51:${String(30 - i).padStart(2, '0')}`, source_ip: '10.20.0.109', method: 'CONNECT',
   destination: 'clientservices.googleapis.com:443', status: 'TCP_TUNNEL/200', bytes, blocked: false, reason: 'none', reason_label: 'Allowed',
@@ -109,7 +112,7 @@ const logRows = [3072, 7066, 4096, 6963, 7168, 3379].map((bytes, i) => ({
   event_id: null,
 }, {
   id: 989, timestamp: '2026-10-28 22:50:41', source_ip: '10.20.0.109', method: 'GET',
-  destination: 'http://tienda.shop-example.org/tienda1/publico/autenticar.jsp?modo=entrar&login=caria&pwd=EnSaCad%24oRa&remember=on',
+  destination: WAF_BLOCK_URL,
   status: 'NONE_NONE/403', bytes: 205, blocked: true, reason: 'waf', reason_label: 'WAF', internal: false, kind: 'Private network address',
   resolved_ip: null as unknown as string, event_id: 'dmi3z8mpcz74-1',
 }]);
@@ -117,14 +120,10 @@ const logRows = [3072, 7066, 4096, 6963, 7168, 3379].map((bytes, i) => ({
 /** The WAF's account of the WAF block above (GET /api/waf/events/{id}). */
 const wafEvent = {
   event_id: 'dmi3z8mpcz74-1', timestamp: '2026-10-28 21:50:41', client_ip: '10.20.0.109', host: 'tienda.shop-example.org',
-  path: '/tienda1/publico/autenticar.jsp', url: logRowsUrl(), source: 'URL', blocked_by: 'crs', score: 0, crs_score: 5,
+  path: '/tienda1/publico/autenticar.jsp', url: WAF_BLOCK_URL, source: 'URL', blocked_by: 'crs', score: 0, crs_score: 5,
   rules: ['CRS-942290', 'DLP-001'], scoring_rules: ['CRS-942290'], categories: ['CRS_SQLI', 'DATA_LEAK_PREVENTION'],
   crs_targets: [{ rule: 'CRS-942290', target: 'ARGS:pwd' }],
 };
-
-function logRowsUrl() {
-  return 'http://tienda.shop-example.org/tienda1/publico/autenticar.jsp?modo=entrar&login=caria&pwd=EnSaCad%24oRa&remember=on';
-}
 
 /** The WAF policy file as GET /api/waf/policy answers it: long hosts, a target and a comment. */
 const wafPolicy = {
