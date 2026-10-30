@@ -256,7 +256,7 @@ func TestWAFBlockAlertIsKeptForTheAccessLog(t *testing.T) {
 	alert := models.InternalAlert{EventType: "waf_block", Message: "WAF blocked URL", Level: "error", Details: map[string]any{
 		"event_id": "dmi3i63n5d9c-2", "client_ip": "192.0.2.7", "host": "shop.example", "path": "/login",
 		"url": "http://shop.example/login?pwd=x", "source": "URL", "blocked_by": "crs", "score": 5, "crs_score": 5,
-		"rules": []string{"CRS-942290"}, "categories": []string{"CRS_SQLI"},
+		"rules": []string{"CRS-942290", "DLP-001"}, "scoring_rules": []string{"CRS-942290"}, "categories": []string{"CRS_SQLI"},
 		"crs_targets": []map[string]string{{"rule": "CRS-942290", "target": "ARGS:pwd"}},
 	}}
 	body, _ := json.Marshal(alert)
@@ -269,8 +269,8 @@ func TestWAFBlockAlertIsKeptForTheAccessLog(t *testing.T) {
 	}
 	code, out := f.do(t, "GET", "/api/waf/events/dmi3i63n5d9c-2", "")
 	d, _ := out["data"].(map[string]any)
-	got, _ := json.Marshal(map[string]any{"host": d["host"], "path": d["path"], "by": d["blocked_by"], "rules": d["rules"], "targets": d["crs_targets"], "ip": d["client_ip"]})
-	if code != 200 || string(got) != `{"by":"crs","host":"shop.example","ip":"192.0.2.7","path":"/login","rules":["CRS-942290"],"targets":[{"rule":"CRS-942290","target":"ARGS:pwd"}]}` {
+	got, _ := json.Marshal(map[string]any{"host": d["host"], "path": d["path"], "by": d["blocked_by"], "rules": d["rules"], "scoring": d["scoring_rules"], "targets": d["crs_targets"], "ip": d["client_ip"]})
+	if code != 200 || string(got) != `{"by":"crs","host":"shop.example","ip":"192.0.2.7","path":"/login","rules":["CRS-942290","DLP-001"],"scoring":["CRS-942290"],"targets":[{"rule":"CRS-942290","target":"ARGS:pwd"}]}` {
 		t.Errorf("event: %d %s", code, got)
 	}
 	_, _ = f.db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES ('gdpr_mode','true')")

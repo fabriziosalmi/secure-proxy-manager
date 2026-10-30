@@ -552,7 +552,7 @@ func block(w icap.ResponseWriter, in *inspection, ruleIDs, categories []string) 
 
 	tarPit(in.ClientIP)
 	notifyBlock(blockAlert{EventID: in.eventID, ClientIP: in.ClientIP, RawURL: in.RawURL, Source: source,
-		Score: score, Categories: categories, Rules: ruleIDs, BlockedBy: by,
+		Score: score, Categories: categories, Rules: ruleIDs, ScoringRules: in.ScoringRules(), BlockedBy: by,
 		CRSScore: crsScore(in.Inspection), CRSTargets: crsTargets(in.Inspection)})
 	sendBlockResponse(w, primaryCategory, score, in.eventID)
 }
@@ -585,14 +585,16 @@ func crsScore(in *inspect.Inspection) int {
 }
 
 // blockAlert is what the backend is told about a block. Host and path are
-// the request's, as a policy exception scopes them; BlockedBy says which
+// the request's, as a policy exception scopes them; ScoringRules are the
+// rules that added to a score, the ones an exception can take off (Rules
+// also names the observed ones); BlockedBy says which
 // half crossed its threshold (spm or crs); CRSTargets name what each
 // scoring CRS rule matched, so the block can become an exception for one
 // argument.
 type blockAlert struct {
 	EventID, ClientIP, RawURL, Source string
 	Score                             int
-	Categories, Rules                 []string
+	Categories, Rules, ScoringRules   []string
 	BlockedBy                         string
 	CRSScore                          int
 	CRSTargets                        []map[string]string
@@ -613,24 +615,28 @@ func notifyBlock(a blockAlert) {
 	if a.CRSTargets == nil {
 		a.CRSTargets = []map[string]string{}
 	}
+	if a.ScoringRules == nil {
+		a.ScoringRules = a.Rules
+	}
 	alertData := map[string]interface{}{
 		"event_type": "waf_block",
 		"message":    fmt.Sprintf("WAF blocked %s: score %d, categories: %s", a.Source, a.Score, strings.Join(a.Categories, ", ")),
 		"details": map[string]interface{}{
-			"event_id":    a.EventID,
-			"category":    primaryCategory,
-			"categories":  a.Categories,
-			"rules":       a.Rules,
-			"score":       a.Score,
-			"threshold":   eng.BlockThreshold(),
-			"url":         truncate(a.RawURL, 500),
-			"host":        host,
-			"path":        path,
-			"client_ip":   a.ClientIP,
-			"source":      a.Source,
-			"blocked_by":  a.BlockedBy,
-			"crs_score":   a.CRSScore,
-			"crs_targets": a.CRSTargets,
+			"event_id":      a.EventID,
+			"category":      primaryCategory,
+			"categories":    a.Categories,
+			"rules":         a.Rules,
+			"scoring_rules": a.ScoringRules,
+			"score":         a.Score,
+			"threshold":     eng.BlockThreshold(),
+			"url":           truncate(a.RawURL, 500),
+			"host":          host,
+			"path":          path,
+			"client_ip":     a.ClientIP,
+			"source":        a.Source,
+			"blocked_by":    a.BlockedBy,
+			"crs_score":     a.CRSScore,
+			"crs_targets":   a.CRSTargets,
 		},
 		"level": "error",
 	}

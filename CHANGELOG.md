@@ -30,7 +30,9 @@ for at least one minor release before disappearing.
   access log, and `GET /api/waf/events/{id}` returns it. An access log row
   of a WAF block carries its `event_id`. The WAF's block alert, sent to
   `/api/internal/alert` and on to webhooks, adds `host`, `path`,
-  `blocked_by` (`spm` or `crs`), `crs_score` and, for a Core Rule Set block,
+  `blocked_by` (`spm` or `crs`), `crs_score`, `scoring_rules` (the rules
+  that added to a score; `rules` also names the observed ones) and, for a
+  Core Rule Set block,
   `crs_targets`: the argument each scoring rule matched, in the form a policy
   exception takes (`ARGS:pwd`).
 

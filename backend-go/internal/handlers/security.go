@@ -371,7 +371,8 @@ func wafEventFrom(d map[string]any) (database.WAFEvent, bool) {
 	e := database.WAFEvent{
 		EventID: str("event_id"), ClientIP: str("client_ip"), Host: str("host"), Path: str("path"),
 		URL: str("url"), Source: str("source"), BlockedBy: str("blocked_by"),
-		Score: num("score"), CRSScore: num("crs_score"), Rules: list("rules"), Categories: list("categories"),
+		Score: num("score"), CRSScore: num("crs_score"), Rules: list("rules"), ScoringRules: list("scoring_rules"),
+		Categories: list("categories"),
 	}
 	raw, _ := d["crs_targets"].([]any)
 	for _, v := range raw {

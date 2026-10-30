@@ -183,6 +183,7 @@ var schemaStatements = []string{
 		score INTEGER NOT NULL DEFAULT 0,
 		crs_score INTEGER NOT NULL DEFAULT 0,
 		rules TEXT NOT NULL DEFAULT '[]',
+		scoring_rules TEXT NOT NULL DEFAULT '[]',
 		categories TEXT NOT NULL DEFAULT '[]',
 		crs_targets TEXT NOT NULL DEFAULT '[]'
 	)`,
