@@ -148,6 +148,8 @@ var ruleGates = map[string]func(f *inputFacts) bool{
 	"CMDi-002": func(f *inputFacts) bool { return f.has['|'] },
 	"CMDi-003": func(f *inputFacts) bool { return f.lit("$(") },
 	"CMDi-004": func(f *inputFacts) bool { return f.has['`'] },
+	// a step up: two dots
+	"DirT-001": func(f *inputFacts) bool { return f.lit("..") },
 	"DirT-006": func(f *inputFacts) bool { return f.has['\\'] },
 	"DirT-007": func(f *inputFacts) bool { return f.has['%'] },
 	// <name>\s*=\s*<value>

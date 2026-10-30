@@ -2,7 +2,7 @@
 
 > Self-hosted Secure Web Gateway: a Squid forward proxy, a real WAF speaking ICAP, a DNS sinkhole and a modern web UI, in one Docker Compose stack. It gives a network a single controllable egress point: the self-hosted counterpart to a cloud SWG, with no traffic leaving your network.
 
-Five containers: a React UI behind nginx, a Go backend (chi + SQLite in WAL mode), a Go WAF that Squid calls over ICAP for every request, Squid itself with optional SSL-bump, and dnsmasq as a sinkhole. The WAF carries 178 regex rules across 22 categories plus seven behavioural heuristics, screened by an Aho-Corasick pre-filter so benign traffic skips the rule set. Images are published multi-arch and signed with cosign.
+Five containers: a React UI behind nginx, a Go backend (chi + SQLite in WAL mode), a Go WAF that Squid calls over ICAP for every request, Squid itself with optional SSL-bump, and dnsmasq as a sinkhole. The WAF carries 179 regex rules across 22 categories plus seven behavioural heuristics, screened by an Aho-Corasick pre-filter so benign traffic skips the rule set. Images are published multi-arch and signed with cosign.
 
 ## Documentation
 

@@ -25,7 +25,7 @@ egress point without a commercial appliance.
 - **Default-deny allowlist.** Off by default. When Settings > Filtering > Only
   allowlisted destinations is on, clients reach only the entries on this list,
   LAN destinations (`10.0.0.0/8`, `192.168.0.0/16`) and IP exceptions.
-- **WAF.** A Go ICAP service with 178 request rules in 22 categories, 5
+- **WAF.** A Go ICAP service with 179 request rules in 22 categories, 5
   response rules in 2 categories and six behavioural heuristics (entropy,
   beaconing, personal data, destination sharding, protocol ghosting, sequence
   validation), followed by the OWASP Core Rule Set at paranoia level 1 on the
