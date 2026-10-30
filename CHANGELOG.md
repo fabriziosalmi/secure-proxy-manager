@@ -15,6 +15,18 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.24.0] - 2026-10-30
+
+A detection release for the WAF. The built-in rules detect server-side
+template injection (new category `TEMPLATE_INJECTION`), match the URL, each
+request header and each body argument on its own instead of one string, read
+IIS `%uXXXX` escapes and overlong UTF-8 decoded, and catch the path
+traversal shapes that got past rules written for `../../`. The rule count
+goes from 172 to 179. One change for a WAF policy: DirT-001 now also reads
+`..\..\`, so an exception that names only DirT-002 no longer lets a
+backslash traversal through; name DirT-001 as well. No route, field or
+status code is removed. Nothing is **BREAKING** and `X-API-Version` stays 1.
+
 ### Fixed
 
 - The WAF decodes two encodings path traversal is written in before its
