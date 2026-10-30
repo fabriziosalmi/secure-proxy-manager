@@ -118,19 +118,30 @@ if [ -f config/domain_blacklist.txt ] \
   finish; exit 1
 fi
 # probe prints the HTTP status of one request through the proxy, 000 when no
-# response came. Only 000 is retried: after a restart the backend exports the
-# lists, the proxy's watchdog then reconfigures Squid, and Squid closes port
-# 3128 for a few seconds. "proxy healthy" does not see it when the proxy
-# container was not recreated, since its health status predates the restart
-# (v3.19.0, 2026-10-29: reconfigures at 19:39:48 and 19:39:52, both probes at
-# 19:39:50 got 000). Any HTTP status is the verdict and is never retried, so a
-# retry cannot turn a missed block or a false positive into a pass.
+# response came, or "icap" when Squid answered that it could not reach the
+# WAF. Only those two are retried.
+#   - 000: after a restart the backend exports the lists, the proxy's
+#     watchdog then reconfigures Squid, and Squid closes port 3128 for a few
+#     seconds. "proxy healthy" does not see it when the proxy container was
+#     not recreated, since its health status predates the restart (v3.19.0,
+#     2026-10-29: reconfigures at 19:39:48 and 19:39:52, both probes at
+#     19:39:50 got 000).
+#   - icap: a recreated WAF container can get a new address, and Squid keeps
+#     the old one until the watchdog rewrites squid.conf; until then Squid
+#     answers 500 with X-Squid-Error: ERR_ICAP_FAILURE, the REQMOD service
+#     being essential (v3.20.0, 2026-10-30: WAF up at 08:44:41, probe at
+#     08:44:47 got that 500, squid.conf rewritten at 08:44:52).
+# Any other HTTP status is the verdict and is never retried, an origin's own
+# 500 included, so a retry cannot turn a missed block or a false positive
+# into a pass.
 probe() {
-  local code n=0
+  local out code n=0
   while :; do
     n=$((n+1))
-    code=$(curl -s -o /dev/null -w '%{http_code}' -x "$PROXY" --max-time 20 "$@" 2>/dev/null) || code=000
-    if [ "$code" != "000" ] || [ "$n" -ge "$PROBE_ATTEMPTS" ]; then break; fi
+    out=$(curl -s -o /dev/null -w '%{http_code} %header{x-squid-error}' -x "$PROXY" --max-time 20 "$@" 2>/dev/null) || out=000
+    code=${out%% *}
+    case "$out" in *ERR_ICAP_FAILURE*) code=icap ;; esac
+    if { [ "$code" != "000" ] && [ "$code" != "icap" ]; } || [ "$n" -ge "$PROBE_ATTEMPTS" ]; then break; fi
     sleep "$PROBE_RETRY_DELAY"
   done
   [ "$n" -gt 1 ] && printf '  (answered on attempt %d of %d)\n' "$n" "$PROBE_ATTEMPTS" >&2
@@ -140,6 +151,7 @@ probe() {
 # A payload the WAF must refuse, in a BODY: the shape that passed until 3.13.1.
 code=$(probe -X POST "$PROBE_HOST/login" -d "user=admin'--&pass=x")
 if [ "$code" = "403" ]; then ok "WAF blocks a comment terminator in a body (403)"
+elif [ "$code" = "icap" ]; then bad "WAF unreachable: Squid answered ERR_ICAP_FAILURE to the attack probe"
 else bad "WAF did NOT block the body payload (got $code)"; fi
 
 # The control: a quote opening a literal that starts with dashes must pass.
@@ -148,6 +160,7 @@ code=$(probe -X POST "$PROBE_HOST/api" -H 'Content-Type: application/json' \
   -d '{"args":["--json","--verbose"]}')
 if [ "$code" = "403" ]; then bad "false positive: benign CLI-flag JSON was blocked"
 elif [ "$code" = "000" ]; then bad "benign probe did not complete (no response)"
+elif [ "$code" = "icap" ]; then bad "WAF unreachable: Squid answered ERR_ICAP_FAILURE to the benign probe"
 else ok "benign CLI-flag JSON traverses ($code from the origin)"; fi
 
 finish
