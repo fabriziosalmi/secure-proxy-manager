@@ -101,8 +101,11 @@ func TestCloseDisconnectsClientsAndRefusesNewOnes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c1.Close()
+	// Wait on the handler's count, not on ClientCount: Register adds the
+	// client before it returns, so ClientCount reached 1 while the handler
+	// had not counted it yet, and a slow runner checked registered at 0.
 	deadline := time.Now().Add(2 * time.Second)
-	for hub.ClientCount() != 1 && time.Now().Before(deadline) {
+	for registered.Load() != 1 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
