@@ -48,8 +48,53 @@ func TestNormalizeFastPathsChangeNothing(t *testing.T) {
 			b.WriteString(pool[r.Intn(len(pool))])
 		}
 		s := b.String()
+		if strings.Contains(strings.ToLower(s), "%u") {
+			continue // %uXXXX decoding is new (TestPercentUDecoding)
+		}
 		if got, want := NormalizeInput(s), normalizeReference(s); got != want {
 			t.Fatalf("%q: %q, reference %q", s, got, want)
+		}
+	}
+}
+
+// %uXXXX decodes to its code point, and the separator lookalikes the
+// traversal payloads use read as separators; a traversal written with them
+// is caught, and a %u that is not followed by four hex digits stays.
+func TestPercentUDecoding(t *testing.T) {
+	for in, want := range map[string]string{
+		"..%u2216..%u2216windows":    `..\..\windows`,
+		"..%uefc8..%uefc8etc/passwd": "../../etc/passwd",
+		"%uff0e%uff0e%u2215etc":      "../etc",
+		"..%uF025boot.ini":           `..\boot.ini`,
+		"%u0041%U0042":               "AB",
+		"100%u off":                  "100%u off",
+		"%u12":                       "%u12",
+	} {
+		if got := NormalizeInput(in); got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
+		}
+	}
+	e := New(Config{BlockThreshold: 10})
+	if _, score := e.MatchRulesScored(NormalizeInput("/download?f=..%u2216..%u2216..%u2216windows%u2216win.ini")); score < 10 {
+		t.Errorf("traversal with %%u2216 separators scores %d", score)
+	}
+}
+
+// An overlong UTF-8 sequence for an ASCII character reads as the character,
+// in its two to six byte forms; valid UTF-8 and broken sequences stay.
+func TestOverlongUTF8Decoding(t *testing.T) {
+	for in, want := range map[string]string{
+		"\xc0\xae\xc0\xae/etc/passwd":                      "../etc/passwd",
+		"\xe0\x80\xae\xe0\x80\xae\\etc\\issue":             `..\etc\issue`,
+		"..\xf0\x80\x80\xafetc\xf0\x80\x80\xafissue":       "../etc/issue",
+		"..\xf8\x80\x80\x80\xafetc":                        "../etc",
+		"\xfc\x80\x80\x80\x80\xae\xfc\x80\x80\x80\x80\xae": "..",
+		"caf\xc3\xa9 K":                                    "café K",
+		"\xc0\xfe\xc0\xfe":                                 "\xc0\xfe\xc0\xfe",
+		"\xc3\xa9":                                         "é",
+	} {
+		if got := NormalizeInput(in); got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
 		}
 	}
 }
