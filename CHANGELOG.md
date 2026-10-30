@@ -40,6 +40,9 @@ for at least one minor release before disappearing.
   traffic log with no score. `WAF_OBSERVE_CATEGORIES` sets the list; `none`
   makes them block again.
 - `/health` reports the engine, and `/metrics` carries `waf_engine_info`.
+- A Cloudflare image URL with `onerror=redirect` among its resizing options
+  (`/cdn-cgi/image/.../`) is no longer read as an event handler by Core Rule
+  Set rule 941120. The exclusion covers that path prefix only.
 
 ### Internal
 

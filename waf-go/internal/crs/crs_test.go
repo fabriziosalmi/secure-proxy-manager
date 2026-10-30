@@ -72,6 +72,34 @@ func TestRestrictedExtensionsForEgress(t *testing.T) {
 	}
 }
 
+// Cloudflare's image resizing takes its options in the path, and
+// onerror=redirect is one of them: 941120 reads it as an event handler. The
+// path is let through 941120 under /cdn-cgi/image/ only; the same option
+// anywhere else, or in an argument, still blocks.
+func TestCloudflareImageOptions(t *testing.T) {
+	e := newPL1(t)
+	for target, want := range map[string]bool{
+		"/cdn-cgi/image/width=640,onerror=redirect,format=auto/img/a.jpg":     false,
+		"/cdn-cgi/image/onerror=redirect,width=640/https://cdn.example/a.jpg": false,
+		"/images/width=640,onerror=redirect/a.jpg":                            true,
+		"/cdn-cgi/image/width=640/a.jpg?x=%22%20onerror=alert(1)":             true,
+		"/cdn-cgi/image/width=640/a.jpg?x=%3Cscript%3Ealert(1)%3C/script%3E":  true,
+	} {
+		r := req(t, "GET http://img.example"+target+" HTTP/1.1\r\nHost: img.example\r\nUser-Agent: Mozilla/5.0\r\nAccept: */*\r\n\r\n")
+		if got := e.Inspect(r, nil, "192.0.2.1", false); got.Blocked != want {
+			t.Errorf("%s: blocked=%v want %v %v", target, got.Blocked, want, got.Rules)
+		}
+	}
+	keep, err := New(Options{Paranoia: 1, KeepPolicy: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := req(t, "GET http://img.example/cdn-cgi/image/width=640,onerror=redirect/a.jpg HTTP/1.1\r\nHost: img.example\r\nUser-Agent: Mozilla/5.0\r\nAccept: */*\r\n\r\n")
+	if res := keep.Inspect(r, nil, "192.0.2.1", false); !res.Blocked || !strings.Contains(strings.Join(res.Rules, ","), "941120") {
+		t.Errorf("CRS as shipped no longer flags the option: %+v", res)
+	}
+}
+
 // Framing that net/http keeps outside the header map is given back to CRS.
 func TestInspectSeesFraming(t *testing.T) {
 	e := newPL1(t)
@@ -112,7 +140,7 @@ func TestDirectivesOptions(t *testing.T) {
 	if d = directives(Options{Paranoia: 1, Restore: all}); strings.Contains(d, "SecRuleRemoveById") || !strings.Contains(d, "SecRuleUpdateTargetById 942100") {
 		t.Error("restoring every ID should leave the 942100 exclusion alone")
 	}
-	if d = directives(Options{Paranoia: 1, KeepPolicy: true}); strings.Contains(d, "SecRuleRemoveById") || strings.Contains(d, "id:900240") || strings.Contains(d, "942100") {
+	if d = directives(Options{Paranoia: 1, KeepPolicy: true}); strings.Contains(d, "SecRuleRemoveById") || strings.Contains(d, "id:900240") || strings.Contains(d, "942100") || strings.Contains(d, "cdn-cgi") {
 		t.Error("KeepPolicy kept an adjustment")
 	}
 }

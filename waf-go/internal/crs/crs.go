@@ -73,7 +73,14 @@ const policyRemovals = "SecRuleRemoveById 920420 920450 920451 920480 943110 943
 	// Sites give it many names (us_privacy, usp, uspstring, uspConsent,
 	// usps, sst.us_privacy, AV_CCPA): any argument whose name holds usp,
 	// privacy or ccpa.
-	"SecRuleUpdateTargetById 942100 \"!ARGS:/(?i)(usp|privacy|ccpa)/\"\n"
+	"SecRuleUpdateTargetById 942100 \"!ARGS:/(?i)(usp|privacy|ccpa)/\"\n" +
+	// Cloudflare's image resizing takes its options in the path
+	// (/cdn-cgi/image/width=640,onerror=redirect/...), and onerror=redirect
+	// reads as an event handler to 941120: 6 of 59,816 Tranco requests on
+	// 6 hosts, 4 of them blocked by it alone. The path leaves 941120 under
+	// that prefix only; the arguments, and the other XSS rules on the path,
+	// still apply.
+	"SecRule REQUEST_FILENAME \"@beginsWith /cdn-cgi/image/\" \"id:1000110,phase:1,pass,t:none,nolog,ctl:ruleRemoveTargetById=941120;REQUEST_FILENAME\"\n"
 
 // egressExtensions replaces CRS's restricted_extensions for 920440. The
 // default list names files a client downloads on
