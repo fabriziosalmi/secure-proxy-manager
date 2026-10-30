@@ -321,9 +321,10 @@ func (in *Inspection) scanSignatures(r *http.Request) {
 		only = connectCategories
 	}
 	// On a safe-cache hit the URL already scored zero; scan the rest.
+	scanURL := engine.WithoutCloudflareImageRedirect(in.RawURL)
 	normalizedURL := ""
 	if !in.URLCached {
-		normalizedURL = engine.NormalizeInput(in.RawURL)
+		normalizedURL = engine.NormalizeInput(scanURL)
 	}
 
 	headerStr, n := InspectedHeaderText(r.Header)
@@ -335,8 +336,8 @@ func (in *Inspection) scanSignatures(r *http.Request) {
 
 	// Also check raw (pre-decoded) URL for encoded evasion patterns like %c0%af
 	// that get decoded by engine.NormalizeInput and lose their detectable pattern
-	if !in.URLCached && !in.WouldBlock() && in.RawURL != normalizedURL {
-		rawMatches, rawSkipped, rawScore := in.Eng.MatchRulesFiltered(in.RawURL, only, in.ruleFilter(r))
+	if !in.URLCached && !in.WouldBlock() && scanURL != normalizedURL {
+		rawMatches, rawSkipped, rawScore := in.Eng.MatchRulesFiltered(scanURL, only, in.ruleFilter(r))
 		if rawScore > 0 {
 			in.Matches = append(in.Matches, rawMatches...)
 			in.Score += rawScore

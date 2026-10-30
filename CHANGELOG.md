@@ -15,6 +15,15 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Fixed
+
+- A Cloudflare image URL whose option list starts with `onerror=redirect`
+  (`/cdn-cgi/image/onerror=redirect,width=640/...`) is no longer blocked by
+  the built-in rule XSS-003. Only that exact option, in the option list of a
+  path that starts with `/cdn-cgi/image/`, is left out of what the rules
+  read; any other `onerror` value, the image source and the query are
+  inspected as before.
+
 ### Internal
 
 - **The canary waits for Squid to reach a recreated WAF.** A WAF container
