@@ -179,6 +179,10 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   comments, NFKC Unicode folding, and four separator lookalikes the
   traversal payloads use (U+2215, U+2216, U+EFC8, U+F025) read as `/` or
   `\`.
+- A base64 token of eight characters or more in the URL or a body argument
+  is decoded and matched by the traversal, path manipulation and command
+  injection rules, less CMDi-003 and CMDi-004 (`$(...)` and backticks, which
+  decoded bytes hold by chance). Header values are not decoded.
 - Request bodies are inspected up to 1 MB; a larger body adds the
   `WAF-BODY-OVERSIZE` finding and the rest is not inspected.
 - When a client has been blocked more than three times within 60 seconds,

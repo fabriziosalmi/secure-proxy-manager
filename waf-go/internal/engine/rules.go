@@ -628,9 +628,10 @@ func (e *Engine) MatchRulesScored(input string) ([]MatchResult, int) {
 }
 
 // MatchRulesScoredIn is MatchRulesScored restricted to the categories in
-// only (nil: every enabled category). The restriction applies while
-// scanning, not to the result, so the early exit on a score already over
-// the threshold can only be reached by a category that was asked for.
+// only (nil: every enabled category); a rule ID mapped to false in only is
+// left out of its category. The restriction applies while scanning, not to
+// the result, so the early exit on a score already over the threshold can
+// only be reached by a category that was asked for.
 func (e *Engine) MatchRulesScoredIn(input string, only map[string]bool) ([]MatchResult, int) {
 	matches, _, score := e.MatchRulesFiltered(input, only, nil)
 	return matches, score
@@ -701,6 +702,9 @@ func (e *Engine) matchCore(active map[string]struct{}, gated bool, hits func(*re
 				continue // Security Pack disabled, or not asked for
 			}
 			for _, rule := range cr.Rules {
+				if left, ok := only[rule.ID]; ok && !left {
+					continue // a rule of an asked-for category left out
+				}
 				if !ruleEligible(rule, tier, matched, active, gated) || !hits(rule.Pattern) {
 					continue
 				}
