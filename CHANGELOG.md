@@ -15,6 +15,16 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.23.0] - 2026-10-30
+
+A small feature release for the WAF. `WAF_REGEX_SHADOW=1` runs every rule
+match on the regex engine not in force too and counts each different
+answer, with no effect on the verdicts: with the default engine it shows on
+real traffic whether `WAF_REGEX_ENGINE=re2` would answer the same. `/health`
+gains `regex_shadow` and `/metrics` two counters when it is on; no route,
+field or status code is removed. Nothing is **BREAKING** and
+`X-API-Version` stays 1.
+
 ### Added
 
 - `WAF_REGEX_SHADOW=1` runs every rule match on the other regex engine too,
