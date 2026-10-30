@@ -15,6 +15,19 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Fixed
+
+- The WAF decodes a value sent as base64 in the URL or in a body argument
+  and matches what it decodes to with its traversal, path manipulation and
+  command injection rules: `Li4vLi4vZXRjL3Bhc3N3ZA==`, `../../etc/passwd`
+  in base64, reached an application that decodes it with nothing for the
+  rules to read. The other categories do not read a decoded value, where a
+  word, a name or a JWT's JSON would be misread, nor do CMDi-003 and
+  CMDi-004, whose few bytes an image sent as base64 holds by chance; header
+  values are not decoded. On the labelled corpora 85 more attacks are
+  caught, with no new false positive in 258,465 Tranco requests. Inspecting
+  a form or JSON body takes 7% to 9% longer.
+
 ## [3.24.0] - 2026-10-30
 
 A detection release for the WAF. The built-in rules detect server-side

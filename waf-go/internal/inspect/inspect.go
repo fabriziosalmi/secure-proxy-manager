@@ -393,6 +393,11 @@ func (in *Inspection) scanSignatures(r *http.Request) {
 		in.Excepted = append(in.Excepted, rawSkipped...)
 	}
 
+	// A value sent as base64 (base64.go).
+	if normalizedURL != "" && only == nil && !in.WouldBlock() {
+		in.matchBase64(r, []string{normalizedURL})
+	}
+
 	if !in.WouldBlock() {
 		in.scanBody(r)
 	}
@@ -437,8 +442,14 @@ func (in *Inspection) scanBody(r *http.Request) {
 			segs[i] = engine.NormalizeInput(s)
 		}
 		in.matchSegments(r, segs, nil)
+		if !in.WouldBlock() {
+			in.matchBase64(r, segs)
+		}
 	} else {
 		in.match(r, in.BodyStr, only)
+		if only == nil && !in.WouldBlock() {
+			in.matchBase64(r, []string{in.BodyStr})
+		}
 	}
 	if only != nil {
 		observed, skipped, _ := in.Eng.MatchRulesFiltered(in.BodyStr, textPlainObserveOnly, in.ruleFilter(r))
