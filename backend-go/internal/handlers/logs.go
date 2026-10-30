@@ -110,18 +110,18 @@ func (h *LogHandlers) GetLogs(w http.ResponseWriter, r *http.Request) {
 
 // logColumns are the proxy_logs columns a log row is read from, in the order
 // scanLogRow expects.
-const logColumns = "id,timestamp,source_ip,method,destination,status,bytes,blocked,block_reason,resolved_ip"
+const logColumns = "id,timestamp,source_ip,method,destination,status,bytes,blocked,block_reason,resolved_ip,event_id"
 
 type logRow struct {
 	id                                      int64
 	ts, srcIP, method, dest, status, reason sql.NullString
 	bytes, blocked                          sql.NullInt64
-	resolvedIP                              sql.NullString
+	resolvedIP, eventID                     sql.NullString
 }
 
 func scanLogRow(rows *sql.Rows) (logRow, error) {
 	var l logRow
-	err := rows.Scan(&l.id, &l.ts, &l.srcIP, &l.method, &l.dest, &l.status, &l.bytes, &l.blocked, &l.reason, &l.resolvedIP)
+	err := rows.Scan(&l.id, &l.ts, &l.srcIP, &l.method, &l.dest, &l.status, &l.bytes, &l.blocked, &l.reason, &l.resolvedIP, &l.eventID)
 	return l, err
 }
 
@@ -159,6 +159,10 @@ func (l logRow) wire(src *InternalSources, gdpr bool) map[string]any {
 		// no server (a denied request) or for a row logged before it was
 		// recorded. A server's address, not a client's: GDPR mode keeps it.
 		"resolved_ip": nullString(l.resolvedIP),
+		// The WAF's event ID on a WAF block (X-WAF-Event-Id), null otherwise:
+		// GET /api/waf/events/{event_id} has the rules behind it. The tailer
+		// stores "" for a row without one.
+		"event_id": nullIfEmpty(l.eventID),
 	}
 }
 
@@ -259,6 +263,7 @@ func (h *LogHandlers) Timeline(w http.ResponseWriter, r *http.Request) {
 func (h *LogHandlers) Clear(w http.ResponseWriter, r *http.Request) {
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
 	h.db.Exec("DELETE FROM proxy_logs") //nolint:errcheck
+	h.db.Exec("DELETE FROM waf_events") //nolint:errcheck
 	h.src.forget()
 	h.db.Exec("INSERT INTO audit_log(username,action,target,details) VALUES(?,?,?,?)", username, "clear_logs", "proxy_logs", "") //nolint:errcheck
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "All logs cleared"})
@@ -270,6 +275,7 @@ func (h *LogHandlers) ClearOld(w http.ResponseWriter, r *http.Request) {
 		days = 30
 	}
 	res, err := h.db.Exec("DELETE FROM proxy_logs WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(days)+" days") // slopless-disable-line VBC-004 -- the concatenation builds a bound argument, not the statement
+	h.db.Exec("DELETE FROM waf_events WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(days)+" days")             //nolint:errcheck // slopless-disable-line VBC-004 -- the concatenation builds a bound argument, not the statement
 	var deleted int64
 	if err == nil && res != nil {
 		deleted, _ = res.RowsAffected()
@@ -332,4 +338,12 @@ func sanitiseOrder(s string) database.SQLText {
 		return "ASC"
 	}
 	return "DESC"
+}
+
+// nullIfEmpty is nullString with an empty value read as no value.
+func nullIfEmpty(s sql.NullString) any {
+	if !s.Valid || s.String == "" {
+		return nil
+	}
+	return s.String
 }

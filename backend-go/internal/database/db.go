@@ -168,6 +168,25 @@ var schemaStatements = []string{
 		timestamp TEXT DEFAULT (datetime('now'))
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(timestamp)`,
+	// What the WAF said about each block (waf_events.go), keyed by the event
+	// ID the access log row carries. A new table, so no versioned step: this
+	// statement creates it on an existing database too.
+	`CREATE TABLE IF NOT EXISTS waf_events (
+		event_id TEXT PRIMARY KEY,
+		timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+		client_ip TEXT NOT NULL DEFAULT '',
+		host TEXT NOT NULL DEFAULT '',
+		path TEXT NOT NULL DEFAULT '',
+		url TEXT NOT NULL DEFAULT '',
+		source TEXT NOT NULL DEFAULT '',
+		blocked_by TEXT NOT NULL DEFAULT '',
+		score INTEGER NOT NULL DEFAULT 0,
+		crs_score INTEGER NOT NULL DEFAULT 0,
+		rules TEXT NOT NULL DEFAULT '[]',
+		categories TEXT NOT NULL DEFAULT '[]',
+		crs_targets TEXT NOT NULL DEFAULT '[]'
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_waf_events_ts ON waf_events(timestamp)`,
 }
 
 // createSchema creates every table and index the schema declares. It is

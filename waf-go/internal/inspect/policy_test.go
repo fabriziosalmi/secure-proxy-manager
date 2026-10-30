@@ -1,6 +1,7 @@
 package inspect
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -121,5 +122,28 @@ func TestCRSUnderAPolicy(t *testing.T) {
 	other := strings.ReplaceAll(u, "tienda.example", "shop.example")
 	if in, _ = Evaluate(newEngine(), crsPL1, ex, req(t, other), "192.0.2.33"); !in.Blocked() {
 		t.Error("the exception for tienda.example let another host through")
+	}
+}
+
+// A CRS block reports, without explain, the variable each scoring rule
+// matched, in the form a policy exception takes; an exception built from it
+// lets the request through. The alert carries these targets, so a block in
+// the logs becomes an exception for one argument.
+func TestCRSBlockTargetsMakeAnException(t *testing.T) {
+	const u = "GET http://tienda.example/tienda1/publico/autenticar.jsp?modo=entrar&login=caria&pwd=EnSaCad%24oRa&remember=on HTTP/1.1\r\nHost: tienda.example\r\n\r\n"
+	in, _ := Evaluate(newEngine(), crsPL1, nil, req(t, u), "192.0.2.34")
+	if !in.Blocked() || in.CRS == nil {
+		t.Fatalf("no CRS block: %s", ids(in))
+	}
+	var ex []string
+	for _, tg := range in.CRS.Targets {
+		ex = append(ex, fmt.Sprintf(`{"rule":"CRS-%d","host":"tienda.example","target":%q}`, tg.Rule, tg.Name()))
+	}
+	if strings.Join(ex, ",") != `{"rule":"CRS-942290","host":"tienda.example","target":"ARGS:pwd"}` {
+		t.Errorf("targets %s", strings.Join(ex, ","))
+	}
+	p := pol(t, `{"version":1,"exceptions":[`+strings.Join(ex, ",")+`]}`)
+	if in, _ = Evaluate(newEngine(), crsPL1, p, req(t, u), "192.0.2.35"); in.Blocked() {
+		t.Errorf("the exception built from the targets still blocks: %s", ids(in))
 	}
 }

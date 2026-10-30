@@ -252,6 +252,16 @@ Built-in rule matches an exception took off are listed in the traffic log
 (`waf_excepted`) and counted by `waf_exception_hits_total`. A Core Rule Set
 rule taken off does not run, so it is not counted.
 
+The backend edits the same file through the API (`/api/waf/policy`, see the
+[API reference](/api/reference)). It sends every new version to the WAF's
+`POST /policy/validate` first and writes nothing the WAF refuses, or when the
+WAF cannot be reached; it then writes the file atomically, readable by the
+WAF's user, asks the WAF to reload it, and records the change in the audit
+log. A file edited by hand stays the reference: a `PUT` must carry the digest
+of the file it was edited from, and a file changed since is refused. The waf
+and backend services must read the same `WAF_POLICY_FILE`; the compose files
+pass it to both.
+
 ## SSL bump CA (HTTPS inspection)
 
 If `/config/ssl_cert.pem` or `/config/ssl_key.pem` is missing, the proxy

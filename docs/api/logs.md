@@ -56,7 +56,8 @@ counts the matching rows that were left out.
       "reason_label": "Domain blacklist (DNS sinkhole)",
       "internal": false,
       "kind": "Private network address",
-      "resolved_ip": null
+      "resolved_ip": null,
+      "event_id": null
     }
   ],
   "meta": { "total": 15420, "limit": 25, "offset": 0, "internal": 2880 },
@@ -72,7 +73,9 @@ this host", "Internal: the proxy", "Private network address", "Public
 address"), and is empty otherwise. `resolved_ip` is the server address the
 proxy connected to (from the `%<a` field of Squid's access log, IPv6 in short
 form), or `null` when it connected to none, as for a denied request, and for
-rows logged before the backend recorded it.
+rows logged before the backend recorded it. `event_id` is the WAF's event ID
+on a request the WAF blocked, `null` otherwise:
+[`GET /api/waf/events/{id}`](/api/reference) has the rules behind the block.
 
 To page back through the log, pass the `id` of the last row received as
 `before_id`; a page shorter than `limit` is the last one.

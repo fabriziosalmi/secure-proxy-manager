@@ -135,6 +135,11 @@ Details: [Logs and Analytics API](./logs.md).
 | `POST` | `/api/waf/categories/toggle` | Turn a category on or off in the running WAF |
 | `GET`  | `/api/waf/heuristics` | The heuristics the running WAF applies, or `available: false` with the reason |
 | `POST` | `/api/waf/test-rule` | Match a Go regular expression against the destinations of recent requests (at most 10,000 read) |
+| `GET`  | `/api/waf/events/{id}` | What the WAF reported about one block, by the `event_id` of its access log row: rules, categories, host, path, `blocked_by` (`spm` or `crs`), scores and, for a Core Rule Set block, the argument each rule matched (`crs_targets`). `404` once pruned with the access log |
+| `GET`  | `/api/waf/policy` | The WAF policy file, its `sha256`, and the policy the WAF has in force (`waf`, `in_force`) |
+| `PUT`  | `/api/waf/policy` | Replace the policy file with `{policy, sha256}`, `sha256` being the digest `GET` returned; `409` when the file changed since |
+| `POST` | `/api/waf/policy/exceptions` | Add one exception `{rule, host?, path?, target?, comment?}` |
+| `POST` | `/api/waf/policy/observe-rules` | Leave one rule `{rule}` to log only |
 
 ## Settings and maintenance
 

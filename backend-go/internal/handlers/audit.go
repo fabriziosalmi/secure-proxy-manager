@@ -38,6 +38,9 @@ import (
 //	egress_provider_refresh_failed target provider name, details {"kind","reason"}
 //	egress_provider_held           target provider name, details {"commit","growth_pct","v4_before","v4_after","v6_before","v6_after","ipv4_covered_before","ipv4_covered_after"}
 //	egress_provider_held_applied   target provider name, details {"commit","growth_pct","v4_before","v4_after","v6_before","v6_after","ipv4_covered_before","ipv4_covered_after"}
+//	update_waf_policy  target the policy file, details {"exceptions","observe_rules","observe_categories","mode","exceptions_before"?,"mode_before"?}
+//	add_waf_exception  target rule ID, details {"host","path","target"}
+//	observe_waf_rule   target rule ID
 //
 // Before these were recorded, clearing 640,929 domains and importing 71,140
 // left no row at all: the log held only sign-ins and settings saves.

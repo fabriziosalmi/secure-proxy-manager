@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -185,6 +186,35 @@ func (h *MgmtHandlers) PolicyReloadHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "changed": changed, "data": policyStatus()})
+}
+
+// PolicyValidateHandler checks a candidate policy file, sent as the request
+// body, with the parser the WAF loads it with, and writes nothing. The
+// backend calls it before it writes /config/waf_policy.json: a file the WAF
+// refuses at start stops the WAF, so a file is written only once the WAF
+// has accepted it.
+func (h *MgmtHandlers) PolicyValidateHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	raw, err := io.ReadAll(io.LimitReader(r.Body, policy.MaxFileSize+1))
+	if err == nil && len(raw) > policy.MaxFileSize {
+		err = fmt.Errorf("the policy is over %d bytes", policy.MaxFileSize)
+	}
+	var p *policy.Policy
+	if err == nil {
+		p, err = policy.Parse(raw, engine.KnownRuleID)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "detail": err.Error()})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "data": map[string]any{
+		"mode": p.Mode(), "exceptions": p.Exceptions(), "sha256": p.Digest(),
+	}})
 }
 
 // writePolicyMetrics adds the policy's counters to /metrics.

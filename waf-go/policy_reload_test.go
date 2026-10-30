@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"secure-proxy-waf/internal/engine"
+	"secure-proxy-waf/internal/policy"
 )
 
 // withPolicyFile points the WAF at a policy file in a temporary directory,
@@ -271,5 +272,38 @@ func TestReloadUnderLoad(t *testing.T) {
 	}
 	if !strings.Contains(policyStatus()["sha256"].(string), currentPolicy.Load().Digest()) {
 		t.Error("status and policy in force disagree")
+	}
+}
+
+// /policy/validate answers with the parser's verdict on the body and leaves
+// the policy in force and the file alone.
+func TestPolicyValidateWritesNothing(t *testing.T) {
+	withEngine(t, engine.Config{BlockThreshold: 10})
+	path := withPolicyFile(t, `{"version":1}`)
+	before, _ := os.ReadFile(path)
+	h := &MgmtHandlers{}
+	for body, want := range map[string]int{
+		`{"version":1,"exceptions":[{"rule":"CRS-942290","host":"a.example","target":"ARGS:pwd"}]}`: 200,
+		`{"version":1,"exceptions":[{"rule":"SQLi-001"}]}`:                                          422,
+		`{"version":1,"exceptions":[{"rule":"NOPE-001","host":"a.example"}]}`:                       422,
+		`{"version":1,"exceptions":[{"rule":"CRS-942290","host":"a.example","target":"NOPE:x"}]}`:   422,
+		`{"version":1,"mode":"learn"}`:                                                              422,
+		`{"version":1} {}`:                                                                          422,
+		"{" + strings.Repeat(" ", policy.MaxFileSize) + `"version":1}`:                              422,
+	} {
+		w := httptest.NewRecorder()
+		h.PolicyValidateHandler(w, httptest.NewRequest("POST", "/policy/validate", strings.NewReader(body)))
+		if w.Code != want {
+			t.Errorf("%.80s: %d %s, want %d", body, w.Code, w.Body.String(), want)
+		}
+	}
+	w := httptest.NewRecorder()
+	h.PolicyValidateHandler(w, httptest.NewRequest("GET", "/policy/validate", nil))
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("GET: %d", w.Code)
+	}
+	after, _ := os.ReadFile(path)
+	if string(before) != string(after) || currentPolicy.Load().Exceptions() != 0 {
+		t.Error("validate changed the file or the policy in force")
 	}
 }

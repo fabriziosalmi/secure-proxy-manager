@@ -180,7 +180,7 @@ func (h *SettingsHandlers) pushHeuristicsToWAF(ctx context.Context, body map[str
 		if err != nil {
 			continue
 		}
-		resp, err := wafPostBreaker(ctx, h.cfg, "/heuristics/toggle", "application/json", bytes.NewReader(payload))
+		resp, err := wafPostBreaker(ctx, h.cfg, "/heuristics/toggle", bytes.NewReader(payload))
 		status := 0
 		if err == nil {
 			status = resp.StatusCode

@@ -168,8 +168,12 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
 - Blocks are posted to the backend at `POST /api/internal/alert` with
   `INTERNAL_ALERT_TOKEN`. The same token authenticates the backend to the WAF
   management API on port 8080 (`/stats`, `/reset`, `/categories`,
-  `/categories/toggle`, `/heuristics`, `/heuristics/toggle`); `/health` and
-  `/metrics` there are open on the internal network.
+  `/categories/toggle`, `/heuristics`, `/heuristics/toggle`, `/policy`,
+  `/policy/reload`, `/policy/validate`); `/health` and `/metrics` there are
+  open on the internal network.
+- The backend keeps each block the WAF reports (`waf_events`, pruned with the
+  access log) under the event ID the access log row carries, so a block can
+  be looked up and turned into a policy exception.
 - Every ICAP response carries an ISTag derived from the rule set, the engine
   and the observe-only categories, and bumped on each category toggle, so
   Squid drops cached verdicts when rules change.
