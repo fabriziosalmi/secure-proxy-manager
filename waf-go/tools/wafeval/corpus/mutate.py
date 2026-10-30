@@ -128,6 +128,7 @@ if REPO_CORPUS:
             out.write(json.dumps({"id": "adv/" + r["id"], "source": "adversarial-suite", "context": "bump",
                                   "label": "attack" if r["expect"] == "block" else "benign",
                                   "category": r["category"] + "|" + r["id"], "method": r["method"],
-                                  "url": "http://upstream.test" + r["path"], "headers": hdr,
+                                  "url": "http://upstream.test" + r["path"],  # slopless-disable-line VBC-034 -- the suite's requests are plain HTTP to its mock upstream, as the proxy sees them
+                                  "headers": hdr,
                                   "body": r.get("body", "")}, sort_keys=True) + "\n")
     print("adversarial-suite.jsonl", len(rows))
