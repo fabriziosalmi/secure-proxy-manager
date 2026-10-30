@@ -15,6 +15,19 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.21.0] - 2026-10-30
+
+A feature release for the WAF policy. A WAF block in the access log now
+shows the rules that added to its score, and each can become an exception
+for the host, the path or, for a Core Rule Set rule, the argument it
+matched, or be left to log only. Settings > Inspection shows and edits the
+policy file. The backend writes a new version only after the WAF has
+accepted it, and refuses a change made from a version that is no longer the
+file's. The API gains `/api/waf/policy`, `/api/waf/events/{id}` and
+`event_id` on access log rows, and the WAF's block alert gains fields; no
+route, field or status code is removed. Nothing is **BREAKING** and
+`X-API-Version` stays 1.
+
 ### Added
 
 - The WAF policy file can be edited through the API: `GET` and `PUT
