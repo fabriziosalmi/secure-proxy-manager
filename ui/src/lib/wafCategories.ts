@@ -51,6 +51,22 @@ const LABELS: Record<string, string> = {
   DGA_DOMAIN: 'Generated domain name (DGA)',
   TYPOSQUATTING: 'Typosquatted domain',
   BODY_OVERSIZE: 'Body over the inspection limit',
+  // The OWASP Core Rule Set's families (waf-go/internal/crs/crs.go, families).
+  CRS: 'Core Rule Set',
+  CRS_METHOD: 'Request method (Core Rule Set)',
+  CRS_SCANNER: 'Scanner (Core Rule Set)',
+  CRS_PROTOCOL: 'Protocol enforcement (Core Rule Set)',
+  CRS_PROTOCOL_ATTACK: 'Protocol attack (Core Rule Set)',
+  CRS_MULTIPART: 'Multipart attack (Core Rule Set)',
+  CRS_LFI: 'Local file inclusion (Core Rule Set)',
+  CRS_RFI: 'Remote file inclusion (Core Rule Set)',
+  CRS_RCE: 'Remote command execution (Core Rule Set)',
+  CRS_PHP: 'PHP injection (Core Rule Set)',
+  CRS_GENERIC: 'Generic attack (Core Rule Set)',
+  CRS_XSS: 'Cross-site scripting (Core Rule Set)',
+  CRS_SQLI: 'SQL injection (Core Rule Set)',
+  CRS_SESSION: 'Session fixation (Core Rule Set)',
+  CRS_JAVA: 'Java attack (Core Rule Set)',
 };
 
 const DOMAIN_REPUTATION = new Set(['DGA_DOMAIN', 'TYPOSQUATTING']);

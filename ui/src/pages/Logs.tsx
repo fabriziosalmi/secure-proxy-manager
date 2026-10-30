@@ -36,6 +36,7 @@ import {
 import { cn } from '../lib/utils';
 import type { ClientsData, LogEntry, LogsPageData, ReasonCount } from '../types';
 import { tableKind } from '../lib/clientKind';
+import { WafBlockDetail } from '../components/WafBlockDetail';
 
 /** Where the "Show internal traffic" choice is kept, per viewer. */
 export const SHOW_INTERNAL_TRAFFIC_KEY = 'spm.logs.showInternal';
@@ -646,6 +647,7 @@ function RequestDetail({ r, filters, onAllow, onShowClient }: {
           <dd className="mt-0.5">{whyText(r)}</dd>
         </div>
       </dl>
+      {r.reason === 'waf' && r.event_id && <WafBlockDetail eventId={r.event_id} />}
       <div className="flex flex-wrap gap-2">
         {host && <Button size="sm" onClick={() => onAllow(host, r)}>Allow this domain</Button>}
         {clientTarget && filters.client !== clientTarget && (

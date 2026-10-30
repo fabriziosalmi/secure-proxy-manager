@@ -26,6 +26,16 @@ for at least one minor release before disappearing.
   `add_waf_exception`, `observe_waf_rule`). A `PUT` carries the digest of
   the file it was edited from and is refused with `409` when the file
   changed since. The backend service now gets `WAF_POLICY_FILE` too.
+- The access log shows what the WAF matched on a WAF block: which half
+  blocked, its score, the categories, and each rule that added to the score,
+  with an exception for the host, the path or, for a Core Rule Set rule, the
+  argument it matched, or "Log only, every host". Settings > Inspection has a
+  WAF policy section: block or log only, the exceptions with their comments,
+  and the rules and categories left to log only, each removable. Every change
+  is confirmed first and saved as a new version of the policy file. The
+  Audit page writes the three policy changes as sentences, and the Core Rule
+  Set's categories are named in words ("SQL injection (Core Rule Set)")
+  instead of "Crs sqli".
 - The backend keeps what the WAF reports about each block, pruned with the
   access log, and `GET /api/waf/events/{id}` returns it. An access log row
   of a WAF block carries its `event_id`. The WAF's block alert, sent to

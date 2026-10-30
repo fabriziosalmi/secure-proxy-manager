@@ -1,6 +1,7 @@
 /**
  * Inspection: HTTPS inspection with its certificate authority, the six WAF
- * heuristics with what the running WAF applies, and the pattern tester.
+ * heuristics with what the running WAF applies, the WAF policy (log-only
+ * rules and exceptions, WafPolicySection) and the pattern tester.
  *
  * The heuristics are stored values pushed to the WAF on save and by the
  * backend's reconciler; GET /api/waf/heuristics says what the WAF runs now,
@@ -17,6 +18,7 @@ import { Notice } from '../../ui/Notice';
 import { Button } from '../../ui/Button';
 import { ToggleRow } from '../fields';
 import { RegexPlayground } from '../../RegexPlayground';
+import { WafPolicySection } from './WafPolicySection';
 import type { SectionForm } from '../sectionForm';
 
 function Code({ children }: { children: string }) {
@@ -173,6 +175,8 @@ export function InspectionSection({ form }: { form: SectionForm }) {
           </div>
         ))}
       </Section>
+
+      <WafPolicySection />
 
       <Section level={3} title="Test a pattern" description="Against the URLs of recent requests in the log.">
         <CustomPatterns />

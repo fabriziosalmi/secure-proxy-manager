@@ -7,6 +7,24 @@ const row = (action: string, target: string | null = null, details: string | nul
 })
 
 describe('describeAudit', () => {
+  it('writes the WAF policy changes as sentences', () => {
+    const cases: [AuditEntry, string, string | null][] = [
+      [row('add_waf_exception', 'CRS-942290', '{"host":"shop.example","path":"","target":"ARGS:pwd"}'), 'Added a WAF exception for CRS-942290', 'On shop.example, ARGS:pwd'],
+      [row('add_waf_exception', 'SQLi-015', '{"host":"","path":"/api/","target":""}'), 'Added a WAF exception for SQLi-015', 'On every host, path /api/'],
+      [row('observe_waf_rule', 'XSS-003', ''), 'Left the WAF rule XSS-003 to log only', null],
+      [row('update_waf_policy', '/config/waf_policy.json', '{"exceptions":3,"exceptions_before":4,"mode":"block","mode_before":"block","observe_categories":0,"observe_rules":1}'),
+        'Changed the WAF policy', '3 exceptions (was 4)'],
+      [row('update_waf_policy', '/config/waf_policy.json', '{"exceptions":4,"exceptions_before":4,"mode":"observe","mode_before":"block","observe_categories":0,"observe_rules":0}'),
+        'Changed the WAF policy', '4 exceptions. Now logs only'],
+    ]
+    for (const [e, event, details] of cases) {
+      const d = describeAudit(e)
+      expect(d.event, e.action).toBe(event)
+      expect(d.details, e.action).toBe(details)
+      expect(d.kind, e.action).toBe('change')
+    }
+  })
+
   it('writes the list changes the backend records as sentences, with their counts', () => {
     const cases: [AuditEntry, string, string | null][] = [
       [row('clear_domain_blacklist', '', '{"removed":640929}'), 'Removed all 640,929 blocked domains', null],

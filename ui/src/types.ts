@@ -143,6 +143,8 @@ export interface LogEntry {
   kind?: string;
   /** The server address the proxy connected to; null when it connected to none, or for rows logged before it was recorded. */
   resolved_ip?: string | null;
+  /** The WAF's event ID on a request the WAF blocked (GET /api/waf/events/{id}); null otherwise. */
+  event_id?: string | null;
 }
 
 /** Pagination envelope shared by every collection endpoint (SECURE-API-02). */

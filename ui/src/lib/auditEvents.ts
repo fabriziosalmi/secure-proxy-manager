@@ -310,6 +310,35 @@ function describeEgressRewrite(e: AuditEntry): AuditDescription | null {
   };
 }
 
+/** The WAF policy changes (backend-go/internal/handlers/waf_policy.go). */
+function describeWafPolicy(e: AuditEntry, action: string): AuditDescription | null {
+  const f = fields(e.details);
+  const str = (k: string) => (typeof f?.[k] === 'string' && f[k] !== '' ? (f[k] as string) : null);
+  if (action === 'add_waf_exception') {
+    const scope = [str('host') ?? 'every host', str('path') ? `path ${str('path')}` : null, str('target')].filter(Boolean).join(', ');
+    return { event: `Added a WAF exception for ${e.target || 'a rule'}`, details: `On ${scope}`, kind: 'change' };
+  }
+  if (action === 'observe_waf_rule') {
+    return { event: e.target ? `Left the WAF rule ${e.target} to log only` : 'Left a WAF rule to log only', details: null, kind: 'change' };
+  }
+  if (action === 'update_waf_policy') {
+    const n = num(f, 'exceptions');
+    const before = num(f, 'exceptions_before');
+    const mode = str('mode');
+    const modeBefore = str('mode_before');
+    return {
+      event: 'Changed the WAF policy',
+      details: join([
+        n === null ? null : `${count(n, 'exception', 'exceptions')}${before !== null && before !== n ? ` (was ${formatCount(before)})` : ''}`,
+        mode && modeBefore && mode !== modeBefore ? (mode === 'observe' ? 'Now logs only' : 'Blocks again') : null,
+        mode === 'observe' && !modeBefore ? 'Logs only' : null,
+      ]),
+      kind: 'change',
+    };
+  }
+  return null;
+}
+
 /** The legacy removal (before the lists were named): target "id=42", details the table. */
 function describeLegacyDelete(e: AuditEntry): AuditDescription {
   const list = LISTS[e.details ?? ''] ?? (e.details === 'dst_allowlist' ? LISTS.egress_allowlist : undefined);
@@ -339,6 +368,7 @@ export function describeAudit(e: AuditEntry): AuditDescription {
     const d = describeProvider(e, action);
     if (d) return d;
   }
+  if (action === 'add_waf_exception' || action === 'observe_waf_rule' || action === 'update_waf_policy') return describeWafPolicy(e, action) ?? verbatim(e);
   if (action === 'delete_ip' || action === 'delete_domain') return describeLegacyDelete(e);
   if (action === 'refresh_blacklists') return describeRefresh(e) ?? verbatim(e);
   if (action === 'geo_block') return describeGeo(e) ?? verbatim(e);
