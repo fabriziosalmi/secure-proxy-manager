@@ -107,11 +107,11 @@ any other workflow or on any other ref does not match:
 cosign verify \
   --certificate-identity-regexp '^https://github\.com/fabriziosalmi/secure-proxy-manager/\.github/workflows/multi-arch\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.21.0
+  ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.22.0
 
 # The SBOM and provenance are BuildKit attestations (not cosign artefacts):
-docker buildx imagetools inspect ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.21.0 --format '{{ json .SBOM }}'
-docker buildx imagetools inspect ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.21.0 --format '{{ json .Provenance }}'
+docker buildx imagetools inspect ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.22.0 --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/fabriziosalmi/secure-proxy-manager-proxy:v3.22.0 --format '{{ json .Provenance }}'
 ```
 
 This needs cosign 3 or later; `deploy/install.sh` skips the check with a

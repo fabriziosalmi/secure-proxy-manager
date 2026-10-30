@@ -15,6 +15,18 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.22.0] - 2026-10-30
+
+A performance release for the WAF. With the default engine it reads a
+request body in about a third of the time, with the same verdicts on every
+corpus measured: the rules the pre-filter could not gate on now run only
+when the input has what they need. `WAF_REGEX_ENGINE=re2` runs the rules on
+RE2 compiled to WebAssembly, 1.8 to 4.2 times faster again on bodies, for
+about 55 to 80 MB more memory; it is an option, off by default. `/health`
+gains `regex_engine` and `waf_engine_info` a `regex` label; no route, field
+or status code is removed. Nothing is **BREAKING** and `X-API-Version`
+stays 1.
+
 ### Added
 
 - `WAF_REGEX_ENGINE=re2` runs the WAF's rules on RE2 compiled to
