@@ -1,0 +1,216 @@
+{
+ "recorded": "2026-10-28",
+ "note": "Data stays out of the repository and out of any public artefact; NC licences are used only for local measurement.",
+ "files": [
+  {
+   "dataset": "fox-srt/cobaltstrike-beacon-corpus",
+   "revision": "aeb704f5767ec9f46f8efa23c52e000943e963d2",
+   "file": "data/beacons.parquet",
+   "size": 54829075,
+   "sha256": "028bfc84007e0e656b7fd8809ffd03faef9f0362962d173e07316529917e160d",
+   "license": "cc-by-4.0",
+   "use": "no-bump: C2 domains and beacon timing; bump: URIs and User-Agents",
+   "url": "https://huggingface.co/datasets/fox-srt/cobaltstrike-beacon-corpus/resolve/aeb704f5767ec9f46f8efa23c52e000943e963d2/data/beacons.parquet"
+  },
+  {
+   "dataset": "snsec-net/dga-detection-drift26dsn",
+   "revision": "3b31077020cd1c013d0a75cad51042a2327c4521",
+   "file": "raw_including_TLD/T25_benign.parquet",
+   "size": 19772657,
+   "sha256": "37e0c10bd2ec750706dd153f4900c8f1fb7ed2d8fddf18393373ec278a9c4eea",
+   "license": "cc-by-nc-sa-3.0",
+   "use": "no-bump: DGA by family",
+   "url": "https://huggingface.co/datasets/snsec-net/dga-detection-drift26dsn/resolve/3b31077020cd1c013d0a75cad51042a2327c4521/raw_including_TLD/T25_benign.parquet"
+  },
+  {
+   "dataset": "snsec-net/dga-detection-drift26dsn",
+   "revision": "3b31077020cd1c013d0a75cad51042a2327c4521",
+   "file": "raw_including_TLD/T25_dga.parquet",
+   "size": 336599103,
+   "sha256": "c6d410dbeb7e5d4e345523defb9752fbb62c1000182a20937c96192fc4080bbd",
+   "license": "cc-by-nc-sa-3.0",
+   "use": "no-bump: DGA by family",
+   "url": "https://huggingface.co/datasets/snsec-net/dga-detection-drift26dsn/resolve/3b31077020cd1c013d0a75cad51042a2327c4521/raw_including_TLD/T25_dga.parquet"
+  },
+  {
+   "dataset": "pirocheto/phishing-url",
+   "revision": "1375d450d4540205ac11781b807249c9509739cd",
+   "file": "data/train.parquet",
+   "size": 788989,
+   "sha256": "79a776a41e7f5c8a51d24ec6802284887fbdee296c5e09e8d881fc6c4852cc43",
+   "license": "cc-by-4.0",
+   "use": "no-bump: typosquat and phishing URLs",
+   "url": "https://huggingface.co/datasets/pirocheto/phishing-url/resolve/1375d450d4540205ac11781b807249c9509739cd/data/train.parquet"
+  },
+  {
+   "dataset": "pirocheto/phishing-url",
+   "revision": "1375d450d4540205ac11781b807249c9509739cd",
+   "file": "data/test.parquet",
+   "size": 430668,
+   "sha256": "8131f6e48b58136dac0222b419104d19d7d47938483d0a458403113750222a07",
+   "license": "cc-by-4.0",
+   "use": "no-bump: typosquat and phishing URLs",
+   "url": "https://huggingface.co/datasets/pirocheto/phishing-url/resolve/1375d450d4540205ac11781b807249c9509739cd/data/test.parquet"
+  },
+  {
+   "dataset": "SecureAI-SE/http-attack-requests",
+   "revision": "9ada662402e0620cc4e3bd32b2cc3c2025bb3804",
+   "file": "data/train-00000-of-00001.parquet",
+   "size": 236083,
+   "sha256": "0f73700a70327a8ef7ef6c9ec0e51a84f2f0ff0ad9b4bb01376156e28635772d",
+   "license": "cc-by-4.0",
+   "use": "bump: attack requests by category",
+   "url": "https://huggingface.co/datasets/SecureAI-SE/http-attack-requests/resolve/9ada662402e0620cc4e3bd32b2cc3c2025bb3804/data/train-00000-of-00001.parquet"
+  },
+  {
+   "dataset": "SecureAI-SE/http-attack-requests",
+   "revision": "9ada662402e0620cc4e3bd32b2cc3c2025bb3804",
+   "file": "data/validation-00000-of-00001.parquet",
+   "size": 37274,
+   "sha256": "ca0da9cbc2a7b12c2c94887a51a50064a38cd74333d144ef25763253feb5dcb3",
+   "license": "cc-by-4.0",
+   "use": "bump: attack requests by category",
+   "url": "https://huggingface.co/datasets/SecureAI-SE/http-attack-requests/resolve/9ada662402e0620cc4e3bd32b2cc3c2025bb3804/data/validation-00000-of-00001.parquet"
+  },
+  {
+   "dataset": "SecureAI-SE/http-attack-requests",
+   "revision": "9ada662402e0620cc4e3bd32b2cc3c2025bb3804",
+   "file": "data/test-00000-of-00001.parquet",
+   "size": 69572,
+   "sha256": "df2ac3ade4ecdc7169660e0beaff02995c0f0feb16fff4977f06ae75e3616ffc",
+   "license": "cc-by-4.0",
+   "use": "bump: attack requests by category",
+   "url": "https://huggingface.co/datasets/SecureAI-SE/http-attack-requests/resolve/9ada662402e0620cc4e3bd32b2cc3c2025bb3804/data/test-00000-of-00001.parquet"
+  },
+  {
+   "dataset": "b1nch3f/csic-dataset",
+   "revision": "783b7de14f88c175fe89737de2012fc52de031ea",
+   "file": "data/train-00000-of-00001.parquet",
+   "size": 5995489,
+   "sha256": "32296a73f0e6909d767eee3ac63e0e611619c4711ffa8d43a7a7007754365f10",
+   "license": "undeclared",
+   "use": "bump: CSIC 2010 baseline (synthetic)",
+   "url": "https://huggingface.co/datasets/b1nch3f/csic-dataset/resolve/783b7de14f88c175fe89737de2012fc52de031ea/data/train-00000-of-00001.parquet"
+  },
+  {
+   "dataset": "b1nch3f/csic-dataset",
+   "revision": "783b7de14f88c175fe89737de2012fc52de031ea",
+   "file": "data/validation-00000-of-00001.parquet",
+   "size": 1497962,
+   "sha256": "ab5af92b43374ab759d602cdd2e41003d5f59c60ee7f597f8badf389d44f09f4",
+   "license": "undeclared",
+   "use": "bump: CSIC 2010 baseline (synthetic)",
+   "url": "https://huggingface.co/datasets/b1nch3f/csic-dataset/resolve/783b7de14f88c175fe89737de2012fc52de031ea/data/validation-00000-of-00001.parquet"
+  },
+  {
+   "dataset": "b1nch3f/csic-dataset",
+   "revision": "783b7de14f88c175fe89737de2012fc52de031ea",
+   "file": "data/test-00000-of-00001.parquet",
+   "size": 3213856,
+   "sha256": "12b61561ed2913d47df769a8a9cac8e1bac2475aa10453635c2a87cf1bb3dc4c",
+   "license": "undeclared",
+   "use": "bump: CSIC 2010 baseline (synthetic)",
+   "url": "https://huggingface.co/datasets/b1nch3f/csic-dataset/resolve/783b7de14f88c175fe89737de2012fc52de031ea/data/test-00000-of-00001.parquet"
+  },
+  {
+   "dataset": "bvsam/cic-ids-2017",
+   "revision": "70bac6246d99cf046186a02e1cce6883e2ffe7ea",
+   "file": "traffic_labels/Monday-WorkingHours.pcap_ISCX.csv.parquet",
+   "size": 65465382,
+   "sha256": "dfdcef4b8670e52af54dc4f82174834365a393473e877174cca46d17b12dfd02",
+   "license": "undeclared",
+   "use": "trajectories: flows per host with timestamps",
+   "url": "https://huggingface.co/datasets/bvsam/cic-ids-2017/resolve/70bac6246d99cf046186a02e1cce6883e2ffe7ea/traffic_labels/Monday-WorkingHours.pcap_ISCX.csv.parquet"
+  },
+  {
+   "dataset": "bvsam/cic-ids-2017",
+   "revision": "70bac6246d99cf046186a02e1cce6883e2ffe7ea",
+   "file": "traffic_labels/Tuesday-WorkingHours.pcap_ISCX.csv.parquet",
+   "size": 52701751,
+   "sha256": "27e83d518cb093faefd0f883cb4df3ad8b353f150934004f28d0e7962f9f31c4",
+   "license": "undeclared",
+   "use": "trajectories: flows per host with timestamps",
+   "url": "https://huggingface.co/datasets/bvsam/cic-ids-2017/resolve/70bac6246d99cf046186a02e1cce6883e2ffe7ea/traffic_labels/Tuesday-WorkingHours.pcap_ISCX.csv.parquet"
+  },
+  {
+   "dataset": "bvsam/cic-ids-2017",
+   "revision": "70bac6246d99cf046186a02e1cce6883e2ffe7ea",
+   "file": "traffic_labels/Wednesday-workingHours.pcap_ISCX.csv.parquet",
+   "size": 76512727,
+   "sha256": "d23a259820b16e1ad54f9f3b58d5727c5032d383015f90bc7c07cebbdf8a7140",
+   "license": "undeclared",
+   "use": "trajectories: flows per host with timestamps",
+   "url": "https://huggingface.co/datasets/bvsam/cic-ids-2017/resolve/70bac6246d99cf046186a02e1cce6883e2ffe7ea/traffic_labels/Wednesday-workingHours.pcap_ISCX.csv.parquet"
+  },
+  {
+   "dataset": "bvsam/cic-ids-2017",
+   "revision": "70bac6246d99cf046186a02e1cce6883e2ffe7ea",
+   "file": "traffic_labels/Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv.parquet",
+   "size": 19674280,
+   "sha256": "d8110c04a7af91124ada1c5ad901c4210879df1af8882dc637767532e7165350",
+   "license": "undeclared",
+   "use": "trajectories: flows per host with timestamps",
+   "url": "https://huggingface.co/datasets/bvsam/cic-ids-2017/resolve/70bac6246d99cf046186a02e1cce6883e2ffe7ea/traffic_labels/Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv.parquet"
+  },
+  {
+   "dataset": "bvsam/cic-ids-2017",
+   "revision": "70bac6246d99cf046186a02e1cce6883e2ffe7ea",
+   "file": "traffic_labels/Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv.parquet",
+   "size": 27901448,
+   "sha256": "5da010354f0fc1040fd1fe65967096e1063475de8dd30ae4f657c07201d728a7",
+   "license": "undeclared",
+   "use": "trajectories: flows per host with timestamps",
+   "url": "https://huggingface.co/datasets/bvsam/cic-ids-2017/resolve/70bac6246d99cf046186a02e1cce6883e2ffe7ea/traffic_labels/Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv.parquet"
+  },
+  {
+   "dataset": "bvsam/cic-ids-2017",
+   "revision": "70bac6246d99cf046186a02e1cce6883e2ffe7ea",
+   "file": "traffic_labels/Friday-WorkingHours-Morning.pcap_ISCX.csv.parquet",
+   "size": 21999571,
+   "sha256": "2c00236b13a69f4b1c222b8f4a89451dc2148cb04a8cd0c45c2a87af51471774",
+   "license": "undeclared",
+   "use": "trajectories: flows per host with timestamps",
+   "url": "https://huggingface.co/datasets/bvsam/cic-ids-2017/resolve/70bac6246d99cf046186a02e1cce6883e2ffe7ea/traffic_labels/Friday-WorkingHours-Morning.pcap_ISCX.csv.parquet"
+  },
+  {
+   "dataset": "bvsam/cic-ids-2017",
+   "revision": "70bac6246d99cf046186a02e1cce6883e2ffe7ea",
+   "file": "traffic_labels/Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv.parquet",
+   "size": 18632427,
+   "sha256": "4d78cee297c27f1a9947b9384793e587a46c7a3ea89db199553dabddc9835d4a",
+   "license": "undeclared",
+   "use": "trajectories: flows per host with timestamps",
+   "url": "https://huggingface.co/datasets/bvsam/cic-ids-2017/resolve/70bac6246d99cf046186a02e1cce6883e2ffe7ea/traffic_labels/Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv.parquet"
+  },
+  {
+   "dataset": "bvsam/cic-ids-2017",
+   "revision": "70bac6246d99cf046186a02e1cce6883e2ffe7ea",
+   "file": "traffic_labels/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv.parquet",
+   "size": 23048086,
+   "sha256": "7c5876d52189fc01af54bad6cf23afe9f7fbc0e3ca6c3595920754f0c3ba8f66",
+   "license": "undeclared",
+   "use": "trajectories: flows per host with timestamps",
+   "url": "https://huggingface.co/datasets/bvsam/cic-ids-2017/resolve/70bac6246d99cf046186a02e1cce6883e2ffe7ea/traffic_labels/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv.parquet"
+  },
+  {
+   "dataset": "Podric/prowl-secrets-corpus",
+   "revision": "06f6d2cdf6a64c6d77ffb95a8dfb7abf7913b885",
+   "file": "corpus.parquet",
+   "size": 73064944,
+   "sha256": "71176186d31f04a489b0efd56eca45e33e7cbeacd61d4db333e585e7c38ae11d",
+   "license": "cc-by-nc-4.0",
+   "use": "response: secret spans",
+   "url": "https://huggingface.co/datasets/Podric/prowl-secrets-corpus/resolve/06f6d2cdf6a64c6d77ffb95a8dfb7abf7913b885/corpus.parquet"
+  },
+  {
+   "dataset": "Podric/prowl-secrets-corpus",
+   "revision": "06f6d2cdf6a64c6d77ffb95a8dfb7abf7913b885",
+   "file": "prowlbench.parquet",
+   "size": 2666597,
+   "sha256": "2f73d43e5f5aacb1558dcad26464d4edb3ab0e35bb0e7761751c5937041401c8",
+   "license": "cc-by-nc-4.0",
+   "use": "response: secret spans",
+   "url": "https://huggingface.co/datasets/Podric/prowl-secrets-corpus/resolve/06f6d2cdf6a64c6d77ffb95a8dfb7abf7913b885/prowlbench.parquet"
+  }
+ ]
+}

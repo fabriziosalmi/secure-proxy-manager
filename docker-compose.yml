@@ -95,6 +95,9 @@ services:
       # Comma-separated rule categories to disable (read by waf-go main.go). Was
       # documented in .env.example but never passed to the container.
       - WAF_DISABLED_CATEGORIES=${WAF_DISABLED_CATEGORIES:-}
+      - WAF_ENGINE=${WAF_ENGINE:-hybrid}
+      - WAF_OBSERVE_CATEGORIES=${WAF_OBSERVE_CATEGORIES:-}
+      - WAF_POLICY_FILE=${WAF_POLICY_FILE:-/config/waf_policy.json}
       - WAF_H_SEQUENCE=${WAF_H_SEQUENCE:-0}
       - WAF_FAIL_OPEN=${WAF_FAIL_OPEN:-0}
     deploy:

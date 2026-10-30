@@ -144,9 +144,9 @@
     "vector": "url",
     "method": "GET",
     "path": "/p?leak=ghp_0123456789abcdefghijABCDEFGHIJ0123456789",
-    "expect": "block",
+    "expect": "pass",
     "gate": "hard",
-    "desc": "GitHub PAT egress (DLP-003)"
+    "desc": "GitHub PAT egress (DLP-003): observe-only by default (WAF_OBSERVE_CATEGORIES), logged, not blocked"
   },
   {
     "id": "ssrf-imds",
@@ -226,9 +226,9 @@
     "vector": "url",
     "method": "GET",
     "path": "/p?token=AKIAIOSFODNN7EXAMPLE",
-    "expect": "block",
+    "expect": "pass",
     "gate": "hard",
-    "desc": "AWS access key egress (CLOUD-001)"
+    "desc": "AWS access key egress (CLOUD-001): observe-only by default (WAF_OBSERVE_CATEGORIES), logged, not blocked"
   },
   {
     "id": "file-git-config",

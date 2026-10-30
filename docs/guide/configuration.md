@@ -50,12 +50,15 @@ health check in the compose file.
 
 | Variable | Default | Description |
 |---|---|---|
-| `WAF_BLOCK_THRESHOLD` | `10` | Anomaly score at or above which a request is blocked. A value that is not a positive integer is ignored with a warning |
-| `WAF_DISABLED_CATEGORIES` | empty | Comma-separated rule categories switched off at start, for example `PROTOCOL_ANOMALY,FINANCIAL_DATA`. `GET /api/waf/categories` lists the names |
+| `WAF_ENGINE` | `hybrid` | Request engine. `hybrid` runs the built-in rules and then the OWASP Core Rule Set at paranoia level 1; `legacy` runs the built-in rules alone, as before. Any other value, or a Core Rule Set that fails to load, stops the WAF with the reason in its log |
+| `WAF_OBSERVE_CATEGORIES` | empty | Comma-separated rule categories that match and are logged but never add to the score. Empty takes the engine's default: `DATA_LEAK_PREVENTION,FINANCIAL_DATA,CLOUD_SECRETS` with `hybrid`, none with `legacy`. `none` makes every category score |
+| `WAF_BLOCK_THRESHOLD` | `10` | Anomaly score of the built-in rules at or above which a request is blocked. A value that is not a positive integer is ignored with a warning. The Core Rule Set keeps its own threshold of 5 |
+| `WAF_DISABLED_CATEGORIES` | empty | Comma-separated built-in rule categories switched off at start, for example `PROTOCOL_ANOMALY,FINANCIAL_DATA`. `GET /api/waf/categories` lists the names. Like the runtime category toggles, it does not switch the Core Rule Set: with `WAF_ENGINE=hybrid` an SQL injection is still blocked with `SQL_INJECTION` off |
 | `WAF_H_ENTROPY`, `WAF_H_BEACONING`, `WAF_H_PII`, `WAF_H_SHARDING`, `WAF_H_GHOSTING` | `1` | Heuristics at WAF start (`1`/`0`, `true`/`false`, `yes`/`no`, `on`/`off`) |
 | `WAF_H_SEQUENCE` | `0` | Sequence validation heuristic at WAF start |
 | `WAF_H_ENTROPY_MAX` | `7.5` | Entropy above which the entropy heuristic scores |
 | `WAF_TRAFFIC_LOG_PATH` | `/var/lib/waf/waf_traffic.jsonl` | The WAF's per-request feature log, on the `waf-traffic` volume |
+| `WAF_POLICY_FILE` | `/config/waf_policy.json` | Log-only settings and rule exceptions, re-read while the WAF runs (see [WAF policy](#waf-policy-log-only-and-exceptions)). A missing file is an empty policy |
 
 The heuristics are also settings (Settings > Inspection). With
 `INTERNAL_ALERT_TOKEN` set, the backend pushes the stored values to the WAF at
@@ -199,6 +202,55 @@ block a request; it blocks when another rule adds at least 3, or when
 project-codename
 pre-release-build
 ```
+
+## WAF policy: log-only and exceptions
+
+A false positive can be switched off for one rule, on one host, path or
+argument, without switching off the rule's category and without restarting
+the WAF. The policy is a JSON file, `/config/waf_policy.json` by default
+(`WAF_POLICY_FILE`):
+
+```json
+{
+  "version": 1,
+  "mode": "block",
+  "observe_rules": ["CRS-942290"],
+  "observe_categories": ["CRS_RCE"],
+  "exceptions": [
+    { "rule": "CRS-942290", "host": "shop.example", "target": "ARGS:password", "comment": "passwords with $ in them" },
+    { "rule": "CRS-930120", "host": ".ads.example", "target": "ARGS_NAMES:/^ep\\./" },
+    { "rule": "SQLi-015", "host": "search.example", "path": "/api/" }
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `version` | `1` |
+| `mode` | `block` (the default) or `observe`: the whole WAF decides as usual and blocks nothing. The traffic log marks the requests it would have blocked (`would_block`) and `waf_would_block_total` counts them |
+| `observe_rules` | Rules that match and are logged with no score. A Core Rule Set rule still runs, and what it added to the anomaly score is taken off before the decision |
+| `observe_categories` | The same for a whole category: a built-in one (`SSRF`) or a Core Rule Set family (`CRS_RCE`) |
+| `exceptions` | Each takes one `rule` off the requests it matches. `rule` is the ID as the WAF reports it: `CRS-942290` for the Core Rule Set, `SQLi-015` for a built-in rule. At least one of `host`, `path` and `target` is required |
+| `host` | A host name, or with a leading dot the name and every name under it. Matched without the port and without regard to case |
+| `path` | A prefix of the URL path, starting with `/` |
+| `target` | Core Rule Set rules only: the variable, or one key of it, taken out of the rule: `ARGS:password`, `REQUEST_HEADERS:Accept`, `REQUEST_FILENAME`. A key between slashes is a regular expression, matched against the key in lowercase |
+| `comment` | Free text |
+
+A field the format does not have, an unknown built-in rule ID, a host with a
+port or a wildcard, or an exception with only a rule is an error. At start an
+invalid file stops the WAF with the reason in its log. While the WAF runs, the
+file is checked every 5 seconds; `POST /policy/reload` on the WAF management
+port (behind the same credential as the other management routes) reads it at
+once and answers `422` with the reason when it is invalid. An invalid file
+leaves the policy in force: the reason is in the WAF log and in
+`GET /policy`, `/health` says `"reload_failed": true`, and
+`waf_policy_reloads_total{result="error"}` counts it. A valid change empties the
+safe-URL cache and changes the ICAP ISTag, so Squid drops the verdicts it
+cached under the old policy.
+
+Built-in rule matches an exception took off are listed in the traffic log
+(`waf_excepted`) and counted by `waf_exception_hits_total`. A Core Rule Set
+rule taken off does not run, so it is not counted.
 
 ## SSL bump CA (HTTPS inspection)
 

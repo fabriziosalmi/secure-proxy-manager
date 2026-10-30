@@ -26,7 +26,7 @@ features:
   - title: Egress control
     details: Blocked IPs and domains and their exceptions (single addresses, CIDR ranges, exact names), imports from a URL, pasted text, curated lists or a country's address blocks, and an optional default-deny allowlist.
   - title: WAF over ICAP
-    details: 172 request rules in 21 categories, 5 response rules in 2, six behavioural heuristics and anomaly scoring, with runtime toggles per category. Fails closed by default.
+    details: 172 request rules in 21 categories, 5 response rules in 2, six behavioural heuristics and anomaly scoring, then the OWASP Core Rule Set at paranoia level 1. Fails closed by default.
   - title: DNS sinkhole
     details: "dnsmasq answers 0.0.0.0 and :: for every blocked domain. SafeSearch and YouTube restricted mode are DNS overrides you can switch on."
   - title: MCP server

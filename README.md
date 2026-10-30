@@ -130,7 +130,10 @@ process holding one; free it, change the host side of the mapping, or set
 - **WAF.** 172 request rules in 21 categories and 5 response rules in 2
   categories (counted in `waf-go/internal/engine/rules.go`), six behavioural
   heuristics, anomaly scoring with a block threshold of 10, and runtime toggles
-  per category. It blocks responses with executable content types and fails
+  per category, followed by the OWASP Core Rule Set at paranoia level 1 on
+  every request it can read (`WAF_ENGINE=legacy` turns the Core Rule Set off).
+  Data leak, financial data and cloud secret rules alert without blocking by
+  default. It blocks responses with executable content types and fails
   closed by default (`WAF_FAIL_OPEN=0`).
 - **HTTPS.** HTTPS is tunnelled with `CONNECT` by default, so the WAF sees the
   destination only. Settings > Inspection > Inspect HTTPS traffic turns on

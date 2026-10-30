@@ -48,24 +48,30 @@ type TrafficFeature struct {
 	// split of this same field; the WAF was not included in that pass, so the
 	// split sat on the service boundary instead of inside one service
 	// (SECURE-DOM-03).
-	ClientIP        string   `json:"source_ip"`
-	Method          string   `json:"method"`
-	Host            string   `json:"host"`
-	Path            string   `json:"path"`
-	URLLength       int      `json:"url_length"`
-	URLEntropy      float64  `json:"url_entropy"`
-	QueryParamCount int      `json:"query_param_count"`
-	BodySize        int      `json:"body_size"`
-	BodyEntropy     float64  `json:"body_entropy"`
-	ContentType     string   `json:"content_type"`
-	HeaderCount     int      `json:"header_count"`
-	UserAgent       string   `json:"user_agent"`
-	IsTLS           bool     `json:"is_tls"`
-	DestPort        string   `json:"dest_port"`
-	WAFScore        int      `json:"waf_score"`
-	WAFRules        []string `json:"waf_rules"`
-	Action          string   `json:"action"`
-	LatencyUS       int64    `json:"latency_us"`
+	ClientIP        string  `json:"source_ip"`
+	Method          string  `json:"method"`
+	Host            string  `json:"host"`
+	Path            string  `json:"path"`
+	URLLength       int     `json:"url_length"`
+	URLEntropy      float64 `json:"url_entropy"`
+	QueryParamCount int     `json:"query_param_count"`
+	BodySize        int     `json:"body_size"`
+	BodyEntropy     float64 `json:"body_entropy"`
+	ContentType     string  `json:"content_type"`
+	HeaderCount     int     `json:"header_count"`
+	UserAgent       string  `json:"user_agent"`
+	IsTLS           bool    `json:"is_tls"`
+	DestPort        string  `json:"dest_port"`
+	WAFScore        int     `json:"waf_score"`
+	// CRSScore is the Core Rule Set's inbound anomaly score when it blocked.
+	CRSScore int      `json:"crs_score,omitempty"`
+	WAFRules []string `json:"waf_rules"`
+	// Excepted are the rules the policy took off this request that matched.
+	Excepted []string `json:"waf_excepted,omitempty"`
+	Action   string   `json:"action"`
+	// WouldBlock: the whole WAF only observes, and blocked it would have.
+	WouldBlock bool  `json:"would_block,omitempty"`
+	LatencyUS  int64 `json:"latency_us"`
 }
 
 // ── Async JSONL Traffic Logger ──────────────────────────────────────────────

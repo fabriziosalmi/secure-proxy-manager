@@ -121,15 +121,44 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
 
 ### `waf`: Go ICAP server
 
-- Two packages: `waf-go/internal/engine` holds the rules, pre-filter,
+- Packages: `waf-go/internal/engine` holds the built-in rules, pre-filter,
   heuristics, DGA and typosquatting checks and the state behind a block
-  decision; package `main` is the ICAP transport and builds one engine from
-  the environment at start.
-- ICAP on port 1344. Rules: 172 request rules in 21 categories and 5 response
-  rules in 2 (`waf-go/internal/engine/rules.go`), plus custom rules from
-  `/config/waf_custom_rules.txt`.
-- Each match adds its rule's severity to an anomaly score; a request is
-  blocked when the score reaches `WAF_BLOCK_THRESHOLD` (default `10`).
+  decision; `waf-go/internal/crs` holds the OWASP Core Rule Set
+  configuration; `waf-go/internal/inspect` runs one request through both;
+  package `main` is the ICAP transport and builds the engines from the
+  environment at start.
+- ICAP on port 1344. Built-in rules: 172 request rules in 21 categories and 5
+  response rules in 2 (`waf-go/internal/engine/rules.go`), plus custom rules
+  from `/config/waf_custom_rules.txt`.
+- Each built-in match adds its rule's severity to an anomaly score; a request
+  is blocked when the score reaches `WAF_BLOCK_THRESHOLD` (default `10`).
+  Categories in `WAF_OBSERVE_CATEGORIES` match and are logged with no score.
+- With `WAF_ENGINE=hybrid` (the default) a request the built-in rules let
+  through then goes to the OWASP Core Rule Set 4.25.0 on Coraza 3.8.1, at
+  paranoia level 1, which blocks at an inbound anomaly score of 5. It reads
+  what the WAF can read: plain HTTP and, with SSL bump, decrypted HTTPS; it
+  does not run on a `CONNECT`, which carries only a host and a port.
+  Responses are inspected by the built-in rules only. A Core Rule Set block
+  is reported under its rule family (`CRS_SQLI`, `CRS_XSS`, `CRS_PHP`, ...)
+  with rule IDs of the form `CRS-942100`. The category toggles and
+  `WAF_DISABLED_CATEGORIES` switch the built-in categories only; the Core
+  Rule Set is switched as a whole, by `WAF_ENGINE=legacy`, and rule by rule
+  by the WAF policy.
+- The WAF policy (`waf-go/internal/policy`, `/config/waf_policy.json`) takes
+  single rules off a host, a path or, for a Core Rule Set rule, an argument,
+  or leaves rules, categories or the whole WAF to log only. It is re-read
+  while the WAF runs; each request reads the policy in force once. Core Rule
+  Set exceptions are removed from that request's transaction, so a reload
+  compiles nothing; built-in exceptions apply while the rules are matched.
+- Core Rule Set adjustments for a forward proxy (`waf-go/internal/crs`):
+  `CONNECT`, `PUT`, `PATCH` and `DELETE` are allowed methods; the rules that
+  enforce what a destination accepts are removed (920420, 920450, 920451,
+  920480), with the session-fixation rules 943110 and 943120, 930130 and
+  932370; 920440 runs on a list of backup, temporary and server-side file
+  extensions only; 942100 skips arguments named like a privacy string
+  (`us_privacy`, `usp`, `ccpa`); unexpanded ad-tech macros (`${NAME}`) are
+  neutralized in the URI; a body that is not a form, multipart, JSON or XML
+  is read raw rather than parsed into arguments.
 - Input normalisation before matching: multi-pass URL and HTML decoding,
   removal of inline SQL and HTML comments, NFKC Unicode folding.
 - Request bodies are inspected up to 1 MB; a larger body adds the
@@ -141,8 +170,9 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   management API on port 8080 (`/stats`, `/reset`, `/categories`,
   `/categories/toggle`, `/heuristics`, `/heuristics/toggle`); `/health` and
   `/metrics` there are open on the internal network.
-- Every ICAP response carries an ISTag derived from the rule set and bumped on
-  each category toggle, so Squid drops cached verdicts when rules change.
+- Every ICAP response carries an ISTag derived from the rule set, the engine
+  and the observe-only categories, and bumped on each category toggle, so
+  Squid drops cached verdicts when rules change.
 
 ### `dns`: dnsmasq
 

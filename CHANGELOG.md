@@ -15,6 +15,35 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- A WAF policy file, `/config/waf_policy.json` (`WAF_POLICY_FILE`), takes a
+  single rule off one host, path or, for a Core Rule Set rule, one argument,
+  so a false positive is switched off without switching off its category. It
+  also leaves rules, categories or the whole WAF to log only (`mode:
+  observe`, with `would_block` in the traffic log). The WAF re-reads the
+  file every 5 seconds and on `POST /policy/reload`; an invalid file stops
+  the WAF at start and is refused, with the policy in force kept, while it
+  runs. `/health`, `GET /policy` and `/metrics` report the policy in force.
+
+### Changed
+
+- The WAF runs the OWASP Core Rule Set 4.25.0 (Coraza 3.8.1, paranoia level
+  1) after its built-in rules on every request it can read: plain HTTP and,
+  with SSL bump, decrypted HTTPS. A request is blocked when the built-in
+  score reaches `WAF_BLOCK_THRESHOLD` or the Core Rule Set's inbound anomaly
+  score reaches 5. `WAF_ENGINE=legacy` runs the built-in rules alone, as
+  before. An unknown `WAF_ENGINE`, or a Core Rule Set that fails to load,
+  stops the WAF with the reason in its log.
+- Data leak prevention, financial data and cloud secret rules alert without
+  blocking under the default engine: a match is logged and recorded in the
+  traffic log with no score. `WAF_OBSERVE_CATEGORIES` sets the list; `none`
+  makes them block again.
+- `/health` reports the engine, and `/metrics` carries `waf_engine_info`.
+- A Cloudflare image URL with `onerror=redirect` among its resizing options
+  (`/cdn-cgi/image/.../`) is no longer read as an event handler by Core Rule
+  Set rule 941120. The exclusion covers that path prefix only.
+
 ### Internal
 
 - Tests and documents use example addresses and names only: the client

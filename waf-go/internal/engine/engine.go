@@ -29,9 +29,12 @@ import (
 type Config struct {
 	BlockThreshold     int
 	DisabledCategories []string
-	Heuristics         HeuristicConfig
-	SafeCacheSize      int
-	SafeCacheTTL       time.Duration
+	// ObserveCategories match and are recorded but add nothing to the score:
+	// they show in the observe log and the traffic log and never block.
+	ObserveCategories []string
+	Heuristics        HeuristicConfig
+	SafeCacheSize     int
+	SafeCacheTTL      time.Duration
 }
 
 const (
@@ -51,6 +54,9 @@ type Engine struct {
 
 	disabledMu sync.RWMutex
 	disabled   map[string]bool
+
+	// observe is fixed at construction, so it is read without a lock.
+	observe map[string]bool
 
 	heurMu sync.RWMutex
 	heur   HeuristicConfig
@@ -85,6 +91,7 @@ func New(cfg Config) *Engine {
 	e := &Engine{
 		blockThreshold: threshold,
 		disabled:       make(map[string]bool, len(cfg.DisabledCategories)),
+		observe:        make(map[string]bool, len(cfg.ObserveCategories)),
 		heur:           cfg.Heuristics,
 		clientStates:   make(map[string]*clientState),
 		dgaCache:       make(map[string]dgaCacheEntry, 10000),
@@ -95,7 +102,26 @@ func New(cfg Config) *Engine {
 			e.disabled[cat] = true
 		}
 	}
+	for _, cat := range cfg.ObserveCategories {
+		if cat != "" {
+			e.observe[cat] = true
+		}
+	}
 	return e
+}
+
+// Observed reports whether a category only observes: its matches score 0.
+func (e *Engine) Observed(cat string) bool { return e.observe[cat] }
+
+// ObserveCategories returns the observe-only set, sorted, for the ISTag and
+// the management API.
+func (e *Engine) ObserveCategories() []string {
+	cats := make([]string, 0, len(e.observe))
+	for cat := range e.observe {
+		cats = append(cats, cat)
+	}
+	sort.Strings(cats)
+	return cats
 }
 
 // BlockThreshold is the score at or above which a request is refused.
