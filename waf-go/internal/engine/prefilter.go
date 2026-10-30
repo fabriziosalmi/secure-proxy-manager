@@ -77,6 +77,8 @@ func BuildPrefilter() {
 	prefilterMu.Lock()
 	activePrefilter = pf
 	prefilterMu.Unlock()
+	// The rule set is final here, custom rules included.
+	buildRE2()
 }
 
 // prefilterActive returns the set of rule IDs that COULD match `input` (every

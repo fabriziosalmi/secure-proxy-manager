@@ -15,6 +15,21 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- `WAF_REGEX_ENGINE=re2` runs the WAF's rules on RE2 compiled to
+  WebAssembly (go-re2, run in-process by wazero): the built-in rules, and the
+  Core Rule Set's `rx` operator, with `pm`, `detectSQLi` and `detectXSS` from
+  coraza-wasilibs. On benign bodies of 4 KiB to 1 MiB it reads a request
+  1.8 to 4.2 times faster than Go's `regexp`, for about 60 MB more memory.
+  RE2 matches nothing on a byte that is not valid UTF-8, where Go reads
+  U+FFFD, so a stray byte inside an attack would have let it through: the
+  input reaches RE2 with each such byte as U+FFFD, for the built-in rules and
+  for `rx`, whose value has been through the rule's transformations. The
+  default stays `go` until `re2` has run on real traffic with the same
+  verdicts. `/health` (`regex_engine`) and `waf_engine_info` (`regex`) name
+  the engine in force, and it is part of the ICAP ISTag.
+
 ### Changed
 
 - The WAF reads a request body in about a third of the time with its

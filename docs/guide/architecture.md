@@ -144,6 +144,13 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   `WAF_DISABLED_CATEGORIES` switch the built-in categories only; the Core
   Rule Set is switched as a whole, by `WAF_ENGINE=legacy`, and rule by rule
   by the WAF policy.
+- The rules run on Go's `regexp` by default. A pre-filter skips the rules an
+  input cannot match: by a literal each pattern requires, and for the rules
+  with none by a gate (`waf-go/internal/engine/gates.go`). With
+  `WAF_REGEX_ENGINE=re2` they run on RE2 compiled to WebAssembly, in-process,
+  and so do the Core Rule Set's `rx`, `pm`, `detectSQLi` and `detectXSS`
+  operators; the input reaches RE2 as Go's `regexp` reads it, each byte that
+  is not valid UTF-8 as U+FFFD.
 - The WAF policy (`waf-go/internal/policy`, `/config/waf_policy.json`) takes
   single rules off a host, a path or, for a Core Rule Set rule, an argument,
   or leaves rules, categories or the whole WAF to log only. It is re-read

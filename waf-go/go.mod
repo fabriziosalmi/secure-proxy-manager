@@ -4,10 +4,13 @@ go 1.26.0
 
 require (
 	github.com/corazawaf/coraza-coreruleset/v4 v4.25.0
+	github.com/corazawaf/coraza-wasilibs v0.3.0
 	github.com/corazawaf/coraza/v3 v3.8.1
 	github.com/go-icap/icap v0.0.0-20151011115316-ca4fad4ebb28
+	github.com/wasilibs/go-re2 v1.13.0
 	golang.org/x/net v0.61.0
 	golang.org/x/text v0.43.0
+	rsc.io/binaryregexp v0.2.0
 )
 
 require (
@@ -20,11 +23,14 @@ require (
 	github.com/kaptinlin/jsonschema v0.4.6 // indirect
 	github.com/magefile/mage v1.17.0 // indirect
 	github.com/petar-dambovaliev/aho-corasick v0.0.0-20250424160509-463d218d4745 // indirect
+	github.com/tetratelabs/wazero v1.12.0 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/valllabh/ocsf-schema-golang v1.0.3 // indirect
+	github.com/wasilibs/go-aho-corasick v0.6.0 // indirect
+	github.com/wasilibs/go-libinjection v0.5.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	rsc.io/binaryregexp v0.2.0 // indirect
 )

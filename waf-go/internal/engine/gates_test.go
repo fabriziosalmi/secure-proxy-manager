@@ -3,69 +3,10 @@ package engine
 import (
 	"math/rand"
 	"regexp/syntax"
+	"secure-proxy-waf/internal/regexsample"
 	"strings"
 	"testing"
-	"unicode"
 )
-
-// sample draws a string from a pattern's syntax tree. It covers what the
-// rule set uses; assertions (^, $, \b) produce nothing, so a draw may not
-// match, and the caller keeps only the draws that do. A case-folded literal
-// takes any member of each rune's fold orbit, so (?i)s yields s, S and the
-// long s, and (?i)k the Kelvin sign.
-func sample(re *syntax.Regexp, r *rand.Rand, b *strings.Builder) {
-	switch re.Op {
-	case syntax.OpLiteral:
-		for _, c := range re.Rune {
-			if re.Flags&syntax.FoldCase != 0 {
-				orbit := []rune{c}
-				for f := unicode.SimpleFold(c); f != c; f = unicode.SimpleFold(f) {
-					orbit = append(orbit, f)
-				}
-				c = orbit[r.Intn(len(orbit))]
-			}
-			b.WriteRune(c)
-		}
-	case syntax.OpCharClass:
-		if len(re.Rune) == 0 {
-			return
-		}
-		i := r.Intn(len(re.Rune)/2) * 2
-		lo, hi := re.Rune[i], re.Rune[i+1]
-		if hi-lo > 0xFFFF {
-			hi = lo + 0xFFFF
-		}
-		b.WriteRune(lo + rune(r.Intn(int(hi-lo)+1)))
-	case syntax.OpAnyCharNotNL, syntax.OpAnyChar:
-		const pool = "abcXYZ019 _-./:;=%'\"()<>{}$#éſKа"
-		rs := []rune(pool)
-		b.WriteRune(rs[r.Intn(len(rs))])
-	case syntax.OpCapture:
-		sample(re.Sub[0], r, b)
-	case syntax.OpStar, syntax.OpPlus, syntax.OpQuest, syntax.OpRepeat:
-		lo, hi := 0, 3
-		switch re.Op {
-		case syntax.OpPlus:
-			lo = 1
-		case syntax.OpQuest:
-			hi = 1
-		case syntax.OpRepeat:
-			lo, hi = re.Min, re.Max
-			if hi < 0 || hi > lo+3 {
-				hi = lo + 3
-			}
-		}
-		for n := lo + r.Intn(hi-lo+1); n > 0; n-- {
-			sample(re.Sub[0], r, b)
-		}
-	case syntax.OpConcat:
-		for _, s := range re.Sub {
-			sample(s, r, b)
-		}
-	case syntax.OpAlternate:
-		sample(re.Sub[r.Intn(len(re.Sub))], r, b)
-	}
-}
 
 var contextWords = []string{"order", "the", "invoice", "x", "", " ", "\n", "a=b", "&", "{\"k\":", "1", "\t"}
 
@@ -89,7 +30,7 @@ func TestGatesAreImpliedByTheirRules(t *testing.T) {
 			matched, compactOnly := 0, 0
 			for i := 0; i < 6000; i++ {
 				var b strings.Builder
-				sample(parsed, r, &b)
+				regexsample.Draw(parsed, r, &b)
 				s := b.String()
 				if i%3 == 1 && len(s) > 1 {
 					// Whitespace inside: only the compacted form may match.
