@@ -15,6 +15,16 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Changed
+
+- The WAF reads a request body in about a third of the time with its
+  built-in rules: 26 ms instead of 72 ms for 64 KiB of text, 0.42 s instead
+  of 1.2 s for 1 MiB, and 62% to 75% less across text, form and JSON bodies
+  of 4 KiB to 1 MiB. The 38 rules with no literal the pre-filter could gate
+  on, which ran on every input, now run only when the input has what they
+  need: a character, a run of digits or letters, a short word. On 552,501
+  labelled records every verdict is the same.
+
 ## [3.21.0] - 2026-10-30
 
 A feature release for the WAF policy. A WAF block in the access log now
