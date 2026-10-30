@@ -651,9 +651,38 @@ func (e *Engine) MatchRulesFiltered(input string, only map[string]bool, f RuleFi
 	if gated && len(active) == 0 {
 		return nil, nil, 0
 	}
-
-	matched := make(map[string]bool) // Deduplicate by rule ID
 	scan := scanInput{input: input}
+	return e.matchCore(active, gated, scan.hits, only, f)
+}
+
+// MatchSegmentsFiltered is MatchRulesFiltered over the arguments of a body,
+// each a segment "name=value": a rule matches when it matches one segment,
+// so a pattern cannot span two arguments (an UPDATE in one JSON field and a
+// SET in another). The pre-filter screens the segments joined, which holds
+// every literal any one of them holds.
+func (e *Engine) MatchSegmentsFiltered(segments []string, only map[string]bool, f RuleFilter) (matches []MatchResult, skipped []string, totalScore int) {
+	active, gated := prefilterActive(strings.Join(segments, "\n"))
+	if gated && len(active) == 0 {
+		return nil, nil, 0
+	}
+	scans := make([]scanInput, len(segments))
+	for i, s := range segments {
+		scans[i] = scanInput{input: s}
+	}
+	hits := func(p *regexp.Regexp) bool {
+		for i := range scans {
+			if scans[i].hits(p) {
+				return true
+			}
+		}
+		return false
+	}
+	return e.matchCore(active, gated, hits, only, f)
+}
+
+// matchCore runs the eligible rules tier by tier, hits deciding a match.
+func (e *Engine) matchCore(active map[string]struct{}, gated bool, hits func(*regexp.Regexp) bool, only map[string]bool, f RuleFilter) (matches []MatchResult, skipped []string, totalScore int) {
+	matched := make(map[string]bool) // Deduplicate by rule ID
 
 	for tier := 1; tier <= 3; tier++ {
 		if e.Blocked(totalScore) {
@@ -664,7 +693,7 @@ func (e *Engine) MatchRulesFiltered(input string, only map[string]bool, f RuleFi
 				continue // Security Pack disabled, or not asked for
 			}
 			for _, rule := range cr.Rules {
-				if !ruleEligible(rule, tier, matched, active, gated) || !scan.hits(rule.Pattern) {
+				if !ruleEligible(rule, tier, matched, active, gated) || !hits(rule.Pattern) {
 					continue
 				}
 				matched[rule.ID] = true

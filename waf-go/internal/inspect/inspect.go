@@ -41,6 +41,19 @@ var headersNotInspected = map[string]bool{
 // InspectedHeaderText is the text of every inspected request header, in
 // name order so a scan is deterministic, and how many headers it holds.
 func InspectedHeaderText(h http.Header) (string, int) {
+	values := InspectedHeaderValues(h)
+	var b strings.Builder
+	for _, v := range values {
+		b.WriteString(" ")
+		b.WriteString(v)
+	}
+	return b.String(), len(values)
+}
+
+// InspectedHeaderValues are the values InspectedHeaderText joins, one by
+// one: the rules match each on its own, so a pattern cannot run from one
+// header into the next (Accept's */* into a JSON value).
+func InspectedHeaderValues(h http.Header) []string {
 	names := make([]string, 0, len(h))
 	for name := range h {
 		if !headersNotInspected[http.CanonicalHeaderKey(name)] {
@@ -48,18 +61,15 @@ func InspectedHeaderText(h http.Header) (string, int) {
 		}
 	}
 	sort.Strings(names)
-	var b strings.Builder
-	n := 0
+	var out []string
 	for _, name := range names {
 		for _, v := range h[name] {
 			if v != "" {
-				b.WriteString(" ")
-				b.WriteString(v)
-				n++
+				out = append(out, v)
 			}
 		}
 	}
-	return b.String(), n
+	return out
 }
 
 // textPlainObserveOnly are the request-rule categories that only observe on
@@ -190,6 +200,18 @@ func (in *Inspection) ruleFilter(r *http.Request) engine.RuleFilter {
 }
 
 // match runs the rule set over input under the policy and records the result.
+// matchSegments matches segments one by one (segments.go): the body's
+// arguments, or the URL and the headers. Each is normalized once by the
+// caller: normalizing again would decode what the first pass produced
+// (fullwidth %2e becomes %2e under NFKC, then .. a second time), which the
+// rules read differently.
+func (in *Inspection) matchSegments(r *http.Request, segs []string, only map[string]bool) {
+	matches, skipped, score := in.Eng.MatchSegmentsFiltered(segs, only, in.ruleFilter(r))
+	in.Matches = append(in.Matches, matches...)
+	in.Excepted = append(in.Excepted, skipped...)
+	in.Score += score
+}
+
 func (in *Inspection) match(r *http.Request, input string, only map[string]bool) int {
 	matches, skipped, score := in.Eng.MatchRulesFiltered(input, only, in.ruleFilter(r))
 	in.Matches = append(in.Matches, matches...)
@@ -347,12 +369,18 @@ func (in *Inspection) scanSignatures(r *http.Request) {
 		normalizedURL = engine.NormalizeInput(scanURL)
 	}
 
-	headerStr, n := InspectedHeaderText(r.Header)
-	in.HeaderCount += n
-
-	// Combine URL + headers for scoring
-	combined := normalizedURL + " " + engine.NormalizeInput(headerStr)
-	in.match(r, combined, only)
+	// The URL and each header value are matched one by one (segments.go):
+	// joined, a pattern ran from one into the next.
+	var segs []string
+	if normalizedURL != "" {
+		segs = append(segs, normalizedURL)
+	}
+	values := InspectedHeaderValues(r.Header)
+	in.HeaderCount += len(values)
+	for _, v := range values {
+		segs = append(segs, engine.NormalizeInput(v))
+	}
+	in.matchSegments(r, segs, only)
 
 	// Also check raw (pre-decoded) URL for encoded evasion patterns like %c0%af
 	// that get decoded by engine.NormalizeInput and lose their detectable pattern
@@ -404,7 +432,14 @@ func (in *Inspection) scanBody(r *http.Request) {
 	if isTextPlain(r.Header.Get("Content-Type")) {
 		only = textPlainScored()
 	}
-	in.match(r, in.BodyStr, only)
+	if segs, ok := bodySegments(r.Header.Get("Content-Type"), bodyBytes); ok && only == nil {
+		for i, s := range segs {
+			segs[i] = engine.NormalizeInput(s)
+		}
+		in.matchSegments(r, segs, nil)
+	} else {
+		in.match(r, in.BodyStr, only)
+	}
 	if only != nil {
 		observed, skipped, _ := in.Eng.MatchRulesFiltered(in.BodyStr, textPlainObserveOnly, in.ruleFilter(r))
 		for _, m := range observed {

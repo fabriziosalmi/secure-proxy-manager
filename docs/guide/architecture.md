@@ -144,6 +144,13 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   `WAF_DISABLED_CATEGORIES` switch the built-in categories only; the Core
   Rule Set is switched as a whole, by `WAF_ENGINE=legacy`, and rule by rule
   by the WAF policy.
+- The built-in rules match the URL and each inspected header value on its
+  own, and a form, JSON or multipart body argument by argument
+  (`name=value`, a JSON key with its value, a part's headers and its
+  content), so a pattern cannot run from one header or argument into the
+  next. A body that does not parse, or has more than 100,000 arguments or
+  JSON nested deeper than 64, is matched whole; a `text/plain` body always
+  is.
 - The rules run on Go's `regexp` by default. A pre-filter skips the rules an
   input cannot match: by a literal each pattern requires, and for the rules
   with none by a gate (`waf-go/internal/engine/gates.go`). With

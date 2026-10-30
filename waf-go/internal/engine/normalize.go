@@ -43,7 +43,9 @@ func NormalizeInput(input string) string {
 	for i := 0; i < maxDecodeIterations; i++ {
 		// Double-decode: %252e → %2e
 		prev := s
-		s = reDoubleEncode.ReplaceAllString(s, "%$1")
+		if strings.Contains(s, "%25") { // all reDoubleEncode can match
+			s = reDoubleEncode.ReplaceAllString(s, "%$1")
+		}
 
 		// URL-decode (tolerant: malformed escapes do not abort the whole string)
 		s = percentDecodeTolerant(s)
@@ -75,11 +77,15 @@ func NormalizeInput(input string) string {
 		s = reHTMLComment.ReplaceAllString(s, " ")
 	}
 
-	// Remove null bytes
-	s = reNullBytes.ReplaceAllString(s, "")
+	// Remove null bytes; each form starts with one of these characters.
+	if strings.ContainsAny(s, "%\\&\x00") {
+		s = reNullBytes.ReplaceAllString(s, "")
+	}
 
 	// Collapse whitespace
-	s = reMultiSpace.ReplaceAllString(s, " ")
+	if hasSpaceRun(s) {
+		s = reMultiSpace.ReplaceAllString(s, " ")
+	}
 
 	return s
 }
@@ -224,4 +230,20 @@ func ShouldInspectBody(contentType string) bool {
 		}
 	}
 	return true
+}
+
+// hasSpaceRun reports whether s has two \s characters in a row, all
+// reMultiSpace can match. \s is ASCII: tab, newline, form feed, carriage
+// return and space.
+func hasSpaceRun(s string) bool {
+	prev := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		sp := c == ' ' || c == '\t' || c == '\n' || c == '\f' || c == '\r'
+		if sp && prev {
+			return true
+		}
+		prev = sp
+	}
+	return false
 }
