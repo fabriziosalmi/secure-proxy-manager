@@ -200,6 +200,7 @@ func run() error {
 	handlers.NewDatabaseHandlers(db).Register(r, authMW)
 	handlers.NewDNSDetectHandlers(db).Register(r, authMW)
 	handlers.NewEgressProviderHandlers(db, cfg).Register(r, authMW)
+	handlers.NewWAFPolicyHandlers(db, cfg).Register(r, authMW)
 	handlers.RegisterAPIDocs(r, authMW)
 
 	// ── Prometheus metrics (internal network only; not proxied by nginx) ──────

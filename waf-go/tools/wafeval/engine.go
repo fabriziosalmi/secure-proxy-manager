@@ -254,11 +254,7 @@ func exceptionsFor(in *inspect.Inspection, host, path string) []policy.Exception
 		if !scoring[id] {
 			continue
 		}
-		target := t.Variable
-		if t.Key != "" {
-			target += ":" + t.Key
-		}
-		out = append(out, policy.Exception{Rule: "CRS-" + id, Host: host, Target: target})
+		out = append(out, policy.Exception{Rule: "CRS-" + id, Host: host, Target: t.Name()})
 	}
 	return out
 }

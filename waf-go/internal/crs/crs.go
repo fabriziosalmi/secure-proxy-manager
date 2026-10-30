@@ -201,8 +201,10 @@ type Result struct {
 	Contrib map[string]int
 	// Explain is, when asked for, what each scoring rule matched.
 	Explain []string
-	// Targets are, when explain is asked for, the variable and key each
-	// scoring rule matched: what an exception for it would name.
+	// Targets are, on a block, the variable and key each scoring rule
+	// matched itself (not through a chained link): what an exception for it
+	// would name. The alert carries them, so a block in the logs can be
+	// turned into an exception for one argument.
 	Targets []Target
 }
 
@@ -211,6 +213,19 @@ type Target struct {
 	Rule     int
 	Variable string
 	Key      string
+}
+
+// Name is the target as a policy exception writes it: VARIABLE or
+// VARIABLE:key. A key the policy would read as a regex (/.../) is written as
+// a regex that matches that key alone; the policy compares keys lowercased.
+func (t Target) Name() string {
+	if t.Key == "" {
+		return t.Variable
+	}
+	if len(t.Key) > 1 && strings.HasPrefix(t.Key, "/") && strings.HasSuffix(t.Key, "/") {
+		return t.Variable + ":/^" + regexp.QuoteMeta(strings.ToLower(t.Key)) + "$/"
+	}
+	return t.Variable + ":" + t.Key
 }
 
 // Exclusion takes one rule, or one target of it, out of one transaction:
@@ -347,14 +362,19 @@ func (e *Engine) InspectWith(r *http.Request, body []byte, clientIP string, expl
 	}
 	if res.Blocked {
 		res.Score = res.Inbound - observedShare
-		if explain {
-			for _, m := range matched {
-				if m.Rule().Severity() == types.RuleSeverityUnset {
-					continue
-				}
-				for _, d := range m.MatchedDatas() {
+		seen := map[Target]bool{}
+		for _, m := range matched {
+			if m.Rule().Severity() == types.RuleSeverityUnset {
+				continue
+			}
+			for _, d := range m.MatchedDatas() {
+				if explain {
 					res.Explain = append(res.Explain, fmt.Sprintf("%d: %s:%s=%s", m.Rule().ID(), d.Variable().Name(), d.Key(), clip(d.Value(), 90)))
-					res.Targets = append(res.Targets, Target{Rule: m.Rule().ID(), Variable: d.Variable().Name(), Key: d.Key()})
+				}
+				t := Target{Rule: m.Rule().ID(), Variable: d.Variable().Name(), Key: d.Key()}
+				if d.ChainLevel() == 0 && !seen[t] {
+					seen[t] = true
+					res.Targets = append(res.Targets, t)
 				}
 			}
 		}

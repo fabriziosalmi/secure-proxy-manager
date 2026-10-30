@@ -14,6 +14,7 @@ import (
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/auth"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
 	appMW "github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/middleware"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
@@ -225,6 +226,16 @@ func (h *SecurityHandlers) ReceiveAlert(w http.ResponseWriter, r *http.Request) 
 	if ip, ok := event["client_ip"]; ok && privacy.Enabled(h.db) {
 		event["client_ip"] = privacy.MaskIP(fmt.Sprint(ip))
 	}
+	// A block is also kept, so the access log row with the same event ID can
+	// show its rules and be turned into a policy exception. The address is
+	// stored as the notification carries it, masked in GDPR mode.
+	if alert.EventType == "waf_block" {
+		if ev, ok := wafEventFrom(event); ok {
+			if err := database.StoreWAFEvent(h.db, ev); err != nil {
+				log.Warn().Err(err).Str("event_id", ev.EventID).Msg("WAF event not stored")
+			}
+		}
+	}
 	// Non-blocking enqueue.
 	select {
 	case h.notify <- event:
@@ -339,4 +350,38 @@ func titleCase(s string) string {
 		}
 	}
 	return strings.Join(words, " ")
+}
+
+// wafEventFrom reads a waf_block alert's details, as the WAF sends them
+// (notifyBlock in waf-go/main.go). An alert with no event ID is not stored:
+// nothing could look it up.
+func wafEventFrom(d map[string]any) (database.WAFEvent, bool) {
+	str := func(k string) string { v, _ := d[k].(string); return v }
+	num := func(k string) int { v, _ := d[k].(float64); return int(v) }
+	list := func(k string) []string {
+		var out []string
+		raw, _ := d[k].([]any)
+		for _, v := range raw {
+			if s, ok := v.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	e := database.WAFEvent{
+		EventID: str("event_id"), ClientIP: str("client_ip"), Host: str("host"), Path: str("path"),
+		URL: str("url"), Source: str("source"), BlockedBy: str("blocked_by"),
+		Score: num("score"), CRSScore: num("crs_score"), Rules: list("rules"), ScoringRules: list("scoring_rules"),
+		Categories: list("categories"),
+	}
+	raw, _ := d["crs_targets"].([]any)
+	for _, v := range raw {
+		m, _ := v.(map[string]any)
+		rule, _ := m["rule"].(string)
+		target, _ := m["target"].(string)
+		if rule != "" && target != "" {
+			e.CRSTargets = append(e.CRSTargets, database.WAFTarget{Rule: rule, Target: target})
+		}
+	}
+	return e, e.EventID != ""
 }

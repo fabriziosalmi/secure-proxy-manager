@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -28,6 +29,7 @@ import (
 
 	"secure-proxy-waf/internal/engine"
 	"secure-proxy-waf/internal/inspect"
+	"secure-proxy-waf/internal/policy"
 )
 
 const (
@@ -549,8 +551,29 @@ func block(w icap.ResponseWriter, in *inspection, ruleIDs, categories []string) 
 		"categories", categories, "rules", ruleIDs, "source", source, "url", truncate(in.RawURL, 200))
 
 	tarPit(in.ClientIP)
-	notifyBlock(in.eventID, in.ClientIP, in.RawURL, source, score, categories, ruleIDs)
+	notifyBlock(blockAlert{EventID: in.eventID, ClientIP: in.ClientIP, RawURL: in.RawURL, Source: source,
+		Score: score, Categories: categories, Rules: ruleIDs, ScoringRules: in.ScoringRules(), BlockedBy: by,
+		CRSScore: crsScore(in.Inspection), CRSTargets: crsTargets(in.Inspection)})
 	sendBlockResponse(w, primaryCategory, score, in.eventID)
+}
+
+// crsTargets are the variables CRS's scoring rules matched on this block, as
+// a policy exception names them; observed rules are left out.
+func crsTargets(in *inspect.Inspection) []map[string]string {
+	if in.CRS == nil {
+		return nil
+	}
+	scoring := map[string]bool{}
+	for _, id := range in.CRS.Rules {
+		scoring[id] = true
+	}
+	var out []map[string]string
+	for _, t := range in.CRS.Targets {
+		if id := strconv.Itoa(t.Rule); scoring[id] {
+			out = append(out, map[string]string{"rule": "CRS-" + id, "target": t.Name()})
+		}
+	}
+	return out
 }
 
 // crsScore is CRS's inbound anomaly score, 0 when CRS did not run.
@@ -561,27 +584,59 @@ func crsScore(in *inspect.Inspection) int {
 	return in.CRS.Score
 }
 
+// blockAlert is what the backend is told about a block. Host and path are
+// the request's, as a policy exception scopes them; ScoringRules are the
+// rules that added to a score, the ones an exception can take off (Rules
+// also names the observed ones); BlockedBy says which
+// half crossed its threshold (spm or crs); CRSTargets name what each
+// scoring CRS rule matched, so the block can become an exception for one
+// argument.
+type blockAlert struct {
+	EventID, ClientIP, RawURL, Source string
+	Score                             int
+	Categories, Rules, ScoringRules   []string
+	BlockedBy                         string
+	CRSScore                          int
+	CRSTargets                        []map[string]string
+}
+
 // notifyBlock queues the backend notification for a block, from a request or
 // from a response. It never waits: when the backend cannot keep up the alert
 // is dropped and counted (circuit breaker).
-func notifyBlock(eventID, clientIP, rawURL, source string, score int, categories, ruleIDs []string) {
+func notifyBlock(a blockAlert) {
 	primaryCategory := "UNKNOWN"
-	if len(categories) > 0 {
-		primaryCategory = categories[0]
+	if len(a.Categories) > 0 {
+		primaryCategory = a.Categories[0]
+	}
+	host, path := "", ""
+	if u, err := url.Parse(a.RawURL); err == nil {
+		host, path = policy.RequestHost(u.Host), truncate(u.Path, 500)
+	}
+	if a.CRSTargets == nil {
+		a.CRSTargets = []map[string]string{}
+	}
+	if a.ScoringRules == nil {
+		a.ScoringRules = a.Rules
 	}
 	alertData := map[string]interface{}{
 		"event_type": "waf_block",
-		"message":    fmt.Sprintf("WAF blocked %s: score %d, categories: %s", source, score, strings.Join(categories, ", ")),
+		"message":    fmt.Sprintf("WAF blocked %s: score %d, categories: %s", a.Source, a.Score, strings.Join(a.Categories, ", ")),
 		"details": map[string]interface{}{
-			"event_id":   eventID,
-			"category":   primaryCategory,
-			"categories": categories,
-			"rules":      ruleIDs,
-			"score":      score,
-			"threshold":  eng.BlockThreshold(),
-			"url":        truncate(rawURL, 500),
-			"client_ip":  clientIP,
-			"source":     source,
+			"event_id":      a.EventID,
+			"category":      primaryCategory,
+			"categories":    a.Categories,
+			"rules":         a.Rules,
+			"scoring_rules": a.ScoringRules,
+			"score":         a.Score,
+			"threshold":     eng.BlockThreshold(),
+			"url":           truncate(a.RawURL, 500),
+			"host":          host,
+			"path":          path,
+			"client_ip":     a.ClientIP,
+			"source":        a.Source,
+			"blocked_by":    a.BlockedBy,
+			"crs_score":     a.CRSScore,
+			"crs_targets":   a.CRSTargets,
 		},
 		"level": "error",
 	}
@@ -633,7 +688,8 @@ func blockResponse(w icap.ResponseWriter, req *icap.Request, category string, sc
 	}
 	slog.Info("RESPMOD BLOCKED", append([]any{"event_id", eventID, "client_ip", clientIP,
 		"score", score, "category", category, "rules", ruleIDs, "url", truncate(rawURL, 200)}, logAttrs...)...)
-	notifyBlock(eventID, clientIP, rawURL, "RESPONSE", score, []string{category}, ruleIDs)
+	notifyBlock(blockAlert{EventID: eventID, ClientIP: clientIP, RawURL: rawURL, Source: "RESPONSE",
+		Score: score, Categories: []string{category}, Rules: ruleIDs, BlockedBy: "spm"})
 	sendBlockResponse(w, category, score, eventID)
 }
 
@@ -864,6 +920,7 @@ func main() {
 		healthMux.HandleFunc("/heuristics/toggle", mgmtAuthMiddleware(h.HeuristicsToggleHandler))
 		healthMux.HandleFunc("/policy", mgmtAuthMiddleware(h.PolicyHandler))
 		healthMux.HandleFunc("/policy/reload", mgmtAuthMiddleware(h.PolicyReloadHandler))
+		healthMux.HandleFunc("/policy/validate", mgmtAuthMiddleware(h.PolicyValidateHandler))
 
 		log.Printf("Starting health endpoint on :8080\n")
 		// Bounded like the backend's server: without timeouts a client that

@@ -596,3 +596,24 @@ func TestRetentionPrunesTheAuditLogAtAYear(t *testing.T) {
 		t.Error("a recent audit row was deleted")
 	}
 }
+
+// The WAF's account of a block is pruned with the access log.
+func TestRetentionPrunesWAFEvents(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	_, _ = db.Exec("INSERT INTO settings (setting_name, setting_value) VALUES ('log_retention_days', '30')")
+	_, _ = db.Exec("INSERT INTO waf_events (event_id, timestamp) VALUES ('old-1', '2020-01-01 00:00:00')")
+	_, _ = db.Exec("INSERT INTO waf_events (event_id) VALUES ('new-1')")
+	runRetention(db)
+	var ids []string
+	rows, _ := db.Query("SELECT event_id FROM waf_events")
+	for rows.Next() {
+		var id string
+		_ = rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if len(ids) != 1 || ids[0] != "new-1" {
+		t.Errorf("waf_events after retention: %v", ids)
+	}
+}

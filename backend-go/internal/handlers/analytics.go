@@ -118,12 +118,12 @@ func wafGetBreaker(ctx context.Context, cfg *config.Config, path string) (*http.
 	return resp, nil
 }
 
-// wafPostBreaker is wafPost behind the same circuit breaker.
-func wafPostBreaker(ctx context.Context, cfg *config.Config, path, contentType string, body io.Reader) (*http.Response, error) {
+// wafPostBreaker is wafPost of a JSON body behind the same circuit breaker.
+func wafPostBreaker(ctx context.Context, cfg *config.Config, path string, body io.Reader) (*http.Response, error) {
 	if err := wafBreaker.Allow(); err != nil {
 		return nil, err
 	}
-	resp, err := wafPost(ctx, cfg, path, contentType, body)
+	resp, err := wafPost(ctx, cfg, path, "application/json", body)
 	if err != nil {
 		wafBreaker.RecordFailure()
 		return nil, err
@@ -1138,6 +1138,7 @@ func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {
 
 func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request) {
 	res, err := h.db.Exec("DELETE FROM proxy_logs")
+	h.db.Exec("DELETE FROM waf_events") //nolint:errcheck
 	var deleted int64
 	if err == nil && res != nil {
 		deleted, _ = res.RowsAffected()
@@ -1147,7 +1148,7 @@ func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request
 	// The log delete above is unconditional; the WAF reset is best-effort and
 	// behind the breaker, so a down/circuit-open WAF can't gate the DB clear.
 	wafReset := false
-	if resp, err := wafPostBreaker(r.Context(), h.cfg, "/reset", "application/json", nil); err == nil {
+	if resp, err := wafPostBreaker(r.Context(), h.cfg, "/reset", nil); err == nil {
 		resp.Body.Close()
 		wafReset = resp.StatusCode == 200
 	}
@@ -1756,7 +1757,7 @@ func (h *AnalyticsHandlers) WAFCategories(w http.ResponseWriter, r *http.Request
 
 // WAFCategoryToggle proxies POST /categories/toggle to WAF.
 func (h *AnalyticsHandlers) WAFCategoryToggle(w http.ResponseWriter, r *http.Request) {
-	resp, err := wafPostBreaker(r.Context(), h.cfg, "/categories/toggle", "application/json", r.Body)
+	resp, err := wafPostBreaker(r.Context(), h.cfg, "/categories/toggle", r.Body)
 	if err != nil {
 		if errors.Is(err, appMW.ErrCircuitOpen) {
 			writeError(w, http.StatusServiceUnavailable, "WAF circuit open")

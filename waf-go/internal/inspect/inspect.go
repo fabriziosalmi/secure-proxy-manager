@@ -260,6 +260,25 @@ func (in *Inspection) Verdict() (ruleIDs, categories []string) {
 	return ruleIDs, categories
 }
 
+// ScoringRules are the rules that added to a score, once each: the built-in
+// matches with a score, then CRS's scoring rules (as CRS-<id>). Observed
+// rules and categories are left out: an exception for one changes nothing,
+// since it blocks nowhere.
+func (in *Inspection) ScoringRules() []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, m := range in.Matches {
+		if m.Score > 0 && !seen[m.RuleID] {
+			seen[m.RuleID] = true
+			out = append(out, m.RuleID)
+		}
+	}
+	if in.CRS != nil {
+		out = append(out, prefixed(in.CRS.Rules)...)
+	}
+	return out
+}
+
 func prefixed(ids []string) []string {
 	out := make([]string, len(ids))
 	for i, id := range ids {

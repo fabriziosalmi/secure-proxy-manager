@@ -41,7 +41,11 @@ type Config struct {
 	DNSLogPath   string
 
 	// Internal component URLs (for WAF/Proxy communication)
-	WAFURL         string
+	WAFURL string
+	// WAFPolicyFile is the WAF's policy file, which the backend edits
+	// (handlers/waf_policy.go). The compose files give both services the
+	// same WAF_POLICY_FILE.
+	WAFPolicyFile  string
 	WAFServiceUser string // dedicated service credential for WAF management API
 	WAFServicePass string // separate from AdminPassword so password changes don't break WAF calls
 	ProxyURL       string
@@ -104,6 +108,7 @@ func Load() *Config {
 		LogPath:            envOrDefault("LOG_PATH", "/logs/access.log"),
 		DNSLogPath:         envOrDefault("DNS_LOG_PATH", "/logs/dnsmasq.log"),
 		WAFURL:             envOrDefault("WAF_URL", "http://waf:8080"),
+		WAFPolicyFile:      envOrDefault("WAF_POLICY_FILE", "/config/waf_policy.json"),
 		// WAF_SERVICE_USERNAME/PASSWORD default to BASIC_AUTH_* so existing
 		// single-credential deployments work unchanged. Set the WAF_SERVICE_*
 		// vars to a dedicated service account to decouple the human admin

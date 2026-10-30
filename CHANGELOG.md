@@ -15,6 +15,27 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- The WAF policy file can be edited through the API: `GET` and `PUT
+  /api/waf/policy`, `POST /api/waf/policy/exceptions` and
+  `POST /api/waf/policy/observe-rules`. The WAF checks every new version
+  first (a new management route, `POST /policy/validate`), and nothing is
+  written that it refuses or while it cannot be reached; the file is then
+  written readable by the WAF, reloaded and audited (`update_waf_policy`,
+  `add_waf_exception`, `observe_waf_rule`). A `PUT` carries the digest of
+  the file it was edited from and is refused with `409` when the file
+  changed since. The backend service now gets `WAF_POLICY_FILE` too.
+- The backend keeps what the WAF reports about each block, pruned with the
+  access log, and `GET /api/waf/events/{id}` returns it. An access log row
+  of a WAF block carries its `event_id`. The WAF's block alert, sent to
+  `/api/internal/alert` and on to webhooks, adds `host`, `path`,
+  `blocked_by` (`spm` or `crs`), `crs_score`, `scoring_rules` (the rules
+  that added to a score; `rules` also names the observed ones) and, for a
+  Core Rule Set block,
+  `crs_targets`: the argument each scoring rule matched, in the form a policy
+  exception takes (`ARGS:pwd`).
+
 ### Fixed
 
 - A Cloudflare image URL whose option list starts with `onerror=redirect`
