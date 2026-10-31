@@ -475,9 +475,10 @@ func (in *Inspection) scanBody(r *http.Request) {
 // Both are probabilistic, so each contributes LESS than the block threshold and
 // cannot block on its own; corroboration from another signal or a signature
 // rule is required. That is what keeps a typosquat near-miss on a real domain
-// observed rather than blocked.
+// observed rather than blocked. A name under a special-use top-level domain
+// (.invalid, .test, .example, .localhost) is skipped: nobody registered it.
 func (in *Inspection) scanDomainReputation(host string) {
-	if in.WouldBlock() || host == "" {
+	if in.WouldBlock() || host == "" || engine.IsReservedName(host) {
 		return
 	}
 	const dgaScore, typoScore = 6, 5
