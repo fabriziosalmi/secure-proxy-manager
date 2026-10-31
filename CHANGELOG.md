@@ -17,6 +17,23 @@ for at least one minor release before disappearing.
 
 ### Added
 
+- The WAF reads the TLS server name of a `CONNECT` when Squid sends it. With
+  `ssl_bump peek` and then `splice`, Squid passes a `CONNECT` through REQMOD
+  a second time, with the server name and the client's first bytes in the
+  ICAP headers `X-SPM-SNI` and `X-SPM-Client-Hello`.
+  - A server name other than the `CONNECT`'s host scores 5 (`TLS-SNI-001`,
+    category `TLS_SNI_MISMATCH`), and the SSRF rules and the DGA and
+    typosquat checks read that name. With either of those it blocks.
+  - The second pass is not counted again as a request or in the per-client
+    heuristics.
+  - `/metrics` counts the passes, the tunnels that were not TLS and the
+    mismatches.
+  - Measured with `wafeval` on 45,665 `CONNECT`s that hide an attack host in
+    the server name: 100% signalled; blocked 5.13% of the DGA set, 0.09% of
+    the phishing set and 0.12% of the Cobalt Strike set. 270,329 `CONNECT`s
+    whose server name is their host signalled nothing. No configuration
+    sends the headers yet.
+
 - A documentation page, WAF coverage, gives for each context (HTTPS
   without SSL bump, requests and responses with it) what each detector
   caught and how often it fires on benign traffic, measured on public

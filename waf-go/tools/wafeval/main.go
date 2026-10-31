@@ -41,6 +41,12 @@ type Record struct {
 	// carries Status, and its Headers and Body are the response's.
 	Kind   string `json:"kind,omitempty"`
 	Status int    `json:"status,omitempty"`
+	// SNI and Handshake are, on a CONNECT, the two ICAP headers Squid sets
+	// on the second pass of a peeked connection (X-SPM-SNI and
+	// X-SPM-Client-Hello, "-" when empty), written as Squid writes them.
+	// A record without Handshake is a first pass.
+	SNI       string `json:"sni,omitempty"`
+	Handshake string `json:"handshake,omitempty"`
 }
 
 func main() {

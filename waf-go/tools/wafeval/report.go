@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"secure-proxy-waf/internal/inspect"
 	"secure-proxy-waf/internal/policy"
 )
 
@@ -172,7 +173,7 @@ func (rep *Report) add(rec *Record, eng Engine, clientIP string) {
 			return
 		}
 		start = now()
-		v = eng.Inspect(r, clientIP)
+		v = eng.Inspect(r, clientIP, inspect.ParseHello(rec.SNI, rec.Handshake))
 	}
 	if rep.keepTiming {
 		d := now().Sub(start)

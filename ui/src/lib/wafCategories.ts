@@ -2,15 +2,16 @@
  * The WAF's category keys in words. The WAF counts a match under the
  * category of what matched (waf-go/main.go stats.record): a request rule
  * category (internal/engine/rules.go), a heuristic (internal/engine/
- * heuristics.go), a domain reputation check (DGA_DOMAIN, TYPOSQUATTING) or
- * the body size limit (BODY_OVERSIZE). Only the first kind is one of the
+ * heuristics.go), a domain reputation check (DGA_DOMAIN, TYPOSQUATTING), a
+ * check on a CONNECT's TLS handshake (TLS_SNI_MISMATCH) or the body size
+ * limit (BODY_OVERSIZE). Only the first kind is one of the
  * "request rule categories" that Protection coverage counts, so each label
  * says which kind it is.
  *
  * A key this file does not know (a new WAF category) is written in words
  * from its own name, never shown as the raw constant.
  */
-export type WafCategoryKind = 'rule' | 'heuristic' | 'domain reputation' | 'size limit';
+export type WafCategoryKind = 'rule' | 'heuristic' | 'domain reputation' | 'TLS handshake' | 'size limit';
 
 export interface WafCategoryLabel {
   label: string;
@@ -51,6 +52,7 @@ const LABELS: Record<string, string> = {
   HEURISTIC_SHARDING: 'Many destinations at once',
   DGA_DOMAIN: 'Generated domain name (DGA)',
   TYPOSQUATTING: 'Typosquatted domain',
+  TLS_SNI_MISMATCH: 'TLS server name other than the CONNECT host',
   BODY_OVERSIZE: 'Body over the inspection limit',
   // The OWASP Core Rule Set's families (waf-go/internal/crs/crs.go, families).
   CRS: 'Core Rule Set',
@@ -76,6 +78,7 @@ const ACRONYMS = new Set(['SQL', 'XSS', 'XXE', 'SSRF', 'PII', 'DGA', 'DLP', 'C2'
 function kindOf(key: string): WafCategoryKind {
   if (key.startsWith('HEURISTIC_')) return 'heuristic';
   if (DOMAIN_REPUTATION.has(key)) return 'domain reputation';
+  if (key === 'TLS_SNI_MISMATCH') return 'TLS handshake';
   if (key === 'BODY_OVERSIZE') return 'size limit';
   return 'rule';
 }
