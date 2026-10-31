@@ -28,6 +28,13 @@ type Report struct {
 	// FNObserved: attack records that scored above zero but stayed under the
 	// threshold, per source and context: misses that were close.
 	FNObserved map[string]int `json:"fn_observed"`
+	// Signals: per source, context and label, on how many records each
+	// detector scored, blocked or not; SignalRecords is how many records
+	// were inspected there (parse errors and LAN hosts left out). A detector
+	// scoring under the threshold is a signal too, so this is what each one
+	// sees in each context, on attacks and on benign traffic.
+	Signals       map[string]map[string]int `json:"signals"`
+	SignalRecords map[string]int            `json:"signal_records"`
 	// Examples: up to three record IDs per false positive and false
 	// negative cell, so a result can be traced back to its data. IDs only.
 	Examples map[string][]string    `json:"examples"`
@@ -100,16 +107,18 @@ type LatencyStat struct {
 
 func newReport(eng Engine, commit string, keepTiming bool) *Report {
 	return &Report{
-		Tool:       map[string]string{"go": runtime.Version(), "commit": commit, "engine": eng.Name()},
-		Engine:     eng.Describe(),
-		FPRules:    map[string]map[string]int{},
-		TPRules:    map[string]map[string]int{},
-		FNObserved: map[string]int{},
-		Examples:   map[string][]string{},
-		cells:      map[string]*Cell{},
-		catCells:   map[string]*Cell{},
-		latency:    map[string][]time.Duration{},
-		keepTiming: keepTiming,
+		Tool:          map[string]string{"go": runtime.Version(), "commit": commit, "engine": eng.Name()},
+		Engine:        eng.Describe(),
+		FPRules:       map[string]map[string]int{},
+		TPRules:       map[string]map[string]int{},
+		FNObserved:    map[string]int{},
+		Signals:       map[string]map[string]int{},
+		Examples:      map[string][]string{},
+		SignalRecords: map[string]int{},
+		cells:         map[string]*Cell{},
+		catCells:      map[string]*Cell{},
+		latency:       map[string][]time.Duration{},
+		keepTiming:    keepTiming,
 	}
 }
 
@@ -188,6 +197,19 @@ func (rep *Report) add(rec *Record, eng Engine, clientIP string) {
 			if len(rep.CRSScore.Examples) < 20 {
 				rep.CRSScore.Examples = append(rep.CRSScore.Examples, fmt.Sprintf("%s: inbound %d, sum %d %v", rec.ID, v.crsInbound, total, v.crsContrib))
 			}
+		}
+	}
+
+	if !v.LANSkipped {
+		sk := key + "|" + rec.Label
+		rep.SignalRecords[sk]++
+		for _, d := range v.Signals {
+			m := rep.Signals[sk]
+			if m == nil {
+				m = map[string]int{}
+				rep.Signals[sk] = m
+			}
+			m[d]++
 		}
 	}
 
@@ -357,6 +379,25 @@ func (rep *Report) markdown() string {
 				break
 			}
 			fmt.Fprintf(&b, " %s %d,", r.id, r.n)
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("\n## Detector signals (records where the detector scored, blocked or not)\n\n")
+	skeys := make([]string, 0, len(rep.SignalRecords))
+	for k := range rep.SignalRecords {
+		skeys = append(skeys, k)
+	}
+	sort.Strings(skeys)
+	for _, k := range skeys {
+		n := rep.SignalRecords[k]
+		ds := make([]string, 0, len(rep.Signals[k]))
+		for d := range rep.Signals[k] {
+			ds = append(ds, d)
+		}
+		sort.Strings(ds)
+		fmt.Fprintf(&b, "- %s (%d records):", k, n)
+		for _, d := range ds {
+			fmt.Fprintf(&b, " %s %d (%.4f),", d, rep.Signals[k][d], rate(rep.Signals[k][d], n))
 		}
 		b.WriteString("\n")
 	}
