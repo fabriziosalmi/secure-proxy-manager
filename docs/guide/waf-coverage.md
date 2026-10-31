@@ -42,7 +42,7 @@ row is therefore the share where the built-in rules had not already blocked.
 | Tranco top-million crawl, each host once | benign | 198,647 | 0 | SSRF 0.30%, DGA_DOMAIN 0.02%, TYPOSQUATTING 0.01% |
 | snsec-net/dga-detection-drift26dsn | benign | 20,118 | 0 | TYPOSQUATTING 0.03%, DGA_DOMAIN 0.02% |
 | pirocheto/phishing-url | benign | 5,715 | 0 | SSRF 0.02% |
-| Real egress traffic of one small installation | benign | 182 | 0 | DGA_DOMAIN 14.29% |
+| Real egress traffic of one small installation | benign | 182 | 0 | none |
 
 Without SSL bump the WAF blocks none of these attacks:
 
@@ -50,10 +50,12 @@ Without SSL bump the WAF blocks none of these attacks:
 - **C2 and phishing hosts.** Their SSRF signal is SSRF-006 alone: a name
   under `amazonaws.com`, scored 4. It fires on 0.30% of the Tranco hosts
   too, so it does not tell a C2 host from an ordinary cloud host.
-- **Real traffic.** The 26 DGA signals on the real sample are all one name,
+- **Real traffic.** On the real sample the DGA check used to signal 26 of
+  the 182 names. All 26 were one probe name,
   `this-url-does-not-exist-<uuid>.invalid`, with a different UUID each
-  time. The name is random, but `.invalid` is a reserved top-level domain
-  that never resolves (RFC 6761).
+  time. `.invalid` is a special-use top-level domain that never resolves
+  (RFC 6761). The DGA and typosquat checks now skip such names. No other
+  row changed.
 
 ## Plain HTTP or SSL bump: requests
 
