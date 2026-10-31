@@ -29,6 +29,14 @@ for at least one minor release before disappearing.
 
 ### Fixed
 
+- The DGA and typosquat checks skip a name under a special-use top-level
+  domain (`.invalid`, `.test`, `.example`, `.localhost`, RFC 6761): nobody
+  registered it, so it is neither a generated domain nor a lookalike.
+  Clients send `this-url-does-not-exist-<uuid>.invalid` as a probe, and the
+  DGA check flagged 26 of 182 hosts in a real traffic sample. All of them
+  were that probe; it flags none now. No verdict changed on the labelled
+  corpora.
+
 - The WAF decodes a value sent as base64 in the URL or in a body argument
   and matches what it decodes to with its traversal, path manipulation and
   command injection rules: `Li4vLi4vZXRjL3Bhc3N3ZA==`, `../../etc/passwd`

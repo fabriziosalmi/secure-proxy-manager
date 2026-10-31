@@ -141,6 +141,25 @@ func IsLANHost(host string) bool {
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
 }
 
+// reservedTLDs are the special-use top-level domains of RFC 6761. A name
+// under .invalid or .example never resolves on the public DNS, and one under
+// .test or .localhost is local by definition.
+var reservedTLDs = map[string]bool{"invalid": true, "test": true, "example": true, "localhost": true}
+
+// IsReservedName reports whether host, with or without a port, is under a
+// special-use top-level domain. Such a name was not registered by anyone, so
+// it is neither a generated domain nor a lookalike of a real one: clients
+// send this-url-does-not-exist-<uuid>.invalid as a probe (real traffic).
+func IsReservedName(host string) bool {
+	h, _, err := net.SplitHostPort(host)
+	if err != nil {
+		h = host
+	}
+	h = strings.ToLower(strings.TrimSuffix(h, "."))
+	i := strings.LastIndexByte(h, '.')
+	return reservedTLDs[h[i+1:]]
+}
+
 // IsCompressedEncoding reports whether a Content-Encoding marks the body as
 // compressed (so the raw bytes are not scannable by the plaintext rules).
 func IsCompressedEncoding(enc string) bool {
