@@ -128,7 +128,7 @@ func TestCorazaAdapterBaseline(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if v := eng.Inspect(r, "192.0.2.10"); v.Blocked != c.want {
+			if v := eng.Inspect(r, "192.0.2.10", nil); v.Blocked != c.want {
 				t.Errorf("PL%d %s %s: blocked=%v want %v (rules %v)", pl, c.rec.Method, c.rec.URL, v.Blocked, c.want, v.Rules)
 			}
 		}
@@ -150,7 +150,7 @@ func TestCorazaAdapterBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v := pl1.Inspect(r, "192.0.2.10"); v.Blocked {
+	if v := pl1.Inspect(r, "192.0.2.10", nil); v.Blocked {
 		t.Errorf("PL1 blocked a text/plain beacon (rules %v)", v.Rules)
 	}
 
@@ -178,7 +178,7 @@ func TestCorazaAdapterBaseline(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if v := pl1.Inspect(r, "192.0.2.10"); v.Blocked {
+		if v := pl1.Inspect(r, "192.0.2.10", nil); v.Blocked {
 			t.Errorf("PL1 blocked %s %s (rules %v)", rec.Method, rec.URL, v.Rules)
 		}
 	}
@@ -219,7 +219,7 @@ func TestRestrictedExtensionsEgress(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if v := eng.Inspect(r, "192.0.2.10"); v.Blocked != c.want {
+		if v := eng.Inspect(r, "192.0.2.10", nil); v.Blocked != c.want {
 			t.Errorf("%s: blocked=%v want %v (rules %v)", c.url, v.Blocked, c.want, v.Rules)
 		}
 	}
@@ -251,7 +251,7 @@ func TestHybridEngine(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if v := eng.Inspect(r, "192.0.2.10"); v.Blocked != c.want {
+		if v := eng.Inspect(r, "192.0.2.10", nil); v.Blocked != c.want {
 			t.Errorf("%s: blocked=%v want %v (rules %v)", c.name, v.Blocked, c.want, v.Rules)
 		}
 	}
@@ -316,5 +316,37 @@ func TestReportCountsResponses(t *testing.T) {
 	rep.finish()
 	if c := rep.Summary[0]; c.TP != 1 || c.TN != 1 || c.ParseErrors != 0 {
 		t.Errorf("responses counted as %+v, want TP 1 TN 1", c)
+	}
+}
+
+// A record with a handshake is the second pass of a peeked CONNECT: its
+// server name is read, and a name other than the CONNECT's host signals.
+func TestPeekRecords(t *testing.T) {
+	const corpus = `{"id":"e1","source":"t","label":"attack","category":"evasion","context":"peek","method":"CONNECT","url":"news.example.org:443","headers":[],"body":"","sni":"shop.example.net","handshake":"FgMBBiABAAYcAwO9XG6NdLOty8Ug"}
+{"id":"s1","source":"t","label":"benign","category":"same","context":"peek","method":"CONNECT","url":"news.example.org:443","headers":[],"body":"","sni":"news.example.org","handshake":"FgMBBiABAAYcAwO9XG6NdLOty8Ug"}
+{"id":"f1","source":"t","label":"benign","category":"first","context":"nobump","method":"CONNECT","url":"news.example.org:443","headers":[],"body":"","sni":"shop.example.net"}
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "peek.jsonl")
+	if err := os.WriteFile(path, []byte(corpus), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	eng, err := newSPMEngine([]string{"waf_h_sequence"}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := newReport(eng, "test", false)
+	seq := 0
+	if err := runFile(path, eng, rep, &seq, 0); err != nil {
+		t.Fatal(err)
+	}
+	rep.finish()
+	if n := rep.Signals["t|peek|attack"]["TLS_SNI_MISMATCH"]; n != 1 {
+		t.Errorf("evasion: TLS_SNI_MISMATCH on %d records, want 1 (%v)", n, rep.Signals)
+	}
+	for _, k := range []string{"t|peek|benign", "t|nobump|benign"} {
+		if len(rep.Signals[k]) != 0 {
+			t.Errorf("%s signalled %v, want nothing (same name; no handshake is a first pass)", k, rep.Signals[k])
+		}
 	}
 }

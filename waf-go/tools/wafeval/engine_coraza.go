@@ -6,6 +6,7 @@ import (
 
 	"secure-proxy-waf/internal/crs"
 	"secure-proxy-waf/internal/engine"
+	"secure-proxy-waf/internal/inspect"
 )
 
 // corazaEngine is the WAF's CRS half (internal/crs) on its own: Coraza with
@@ -49,7 +50,7 @@ func (e *corazaEngine) InspectResponse(resp *http.Response) Verdict {
 	return Verdict{NotInspected: true}
 }
 
-func (e *corazaEngine) Inspect(r *http.Request, clientIP string) Verdict {
+func (e *corazaEngine) Inspect(r *http.Request, clientIP string, _ *inspect.Hello) Verdict {
 	// The production handler lets LAN destinations through uninspected; the
 	// comparison keeps that, so both engines see the same requests.
 	if engine.IsLANHost(r.Host) {
