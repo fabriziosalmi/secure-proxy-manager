@@ -45,7 +45,8 @@ for at least one minor release before disappearing.
   - `/metrics` counts the passes, the tunnels that were not TLS and the
     mismatches.
   - Measured with `wafeval` on 45,665 `CONNECT`s that hide an attack host in
-    the server name: 100% signalled; blocked 5.13% of the DGA set, 0.09% of
+    the server name (45,663 inspected; 2 go to LAN hosts, which the WAF
+    does not inspect): 100% of those inspected signalled; blocked 5.13% of the DGA set, 0.09% of
     the phishing set and 0.12% of the Cobalt Strike set. 270,329 `CONNECT`s
     whose server name is their host signalled nothing. No configuration
     sends the headers yet.
