@@ -289,3 +289,25 @@ these steps:
 | iOS, iPadOS | Open the file on the device, install it in Settings, General, VPN and Device Management, then turn it on in Settings, General, About, Certificate Trust Settings |
 | Android | Settings, Security, Encryption and credentials, Install a certificate, CA certificate. Apps built for Android 7 or later do not trust a user-installed CA |
 | Firefox | Settings, Privacy and Security, Certificates, View Certificates, Authorities, Import |
+
+### Traffic on port 443 that is not TLS
+
+With HTTPS inspection on, the proxy reads the TLS handshake of every
+`CONNECT` before it decrypts the connection. When what comes through is not
+TLS, the proxy accepts the `CONNECT` with `200` and then closes the
+connection: there is nothing it could decrypt and inspect. SSH through the
+proxy to port 443 (`ssh.github.com:443`, for example) is one such case.
+
+To let such connections through uninspected, add this line to
+`/config/custom_squid_extra.conf`:
+
+```
+on_unsupported_protocol tunnel all
+```
+
+The data in those tunnels then reaches its destination without passing
+through the WAF.
+
+A protocol in which the server speaks first (SMTP, FTP, IMAP) waits forever
+either way: the proxy is waiting for a handshake from the client that never
+comes.
