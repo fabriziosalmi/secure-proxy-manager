@@ -329,6 +329,9 @@ through still encrypted. Clients need no certificate.
   (`waf_tls_handshakes_total`), those that were not TLS
   (`waf_tls_not_tls_total`) and the mismatches
   (`waf_tls_sni_mismatch_total`).
+- The WAF also takes the JA4 fingerprint of each handshake, with no score,
+  and logs the first time a client shows one (`WAF TLS-JA4`); see
+  [Architecture](./architecture.md).
 - With HTTPS inspection on, the proxy decrypts instead, and this setting has
   no effect.
 

@@ -1,6 +1,7 @@
 package inspect
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"testing"
@@ -14,6 +15,25 @@ const (
 	tlsHello   = "FgMBBiABAAYcAwO9XG6NdLOty8Ug"
 	plainHello = "SEVMTE8gcGxhaW4gdGV4dA0K"
 )
+
+// ParseHello fingerprints a whole ClientHello and leaves the fingerprint
+// empty for a prefix or for bytes that are not one.
+func TestParseHelloJA4(t *testing.T) {
+	full := base64.StdEncoding.EncodeToString(record(readmeHello(), 16384))
+	if h := ParseHello("www.example.org", full); h == nil || h.JA4 != "t13d1516h2_8daaf6152771_e5627efa2ab1" {
+		t.Errorf("whole hello: %+v", h)
+	}
+	if h := ParseHello("-", tlsHello); h == nil || !h.TLS || h.JA4 != "" {
+		t.Errorf("prefix of a hello: %+v, want TLS with no JA4", h)
+	}
+	if h := ParseHello("-", plainHello); h == nil || h.JA4 != "" {
+		t.Errorf("plain text: %+v", h)
+	}
+	big := base64.StdEncoding.EncodeToString(record(readmeHello(), 16384)) + strings.Repeat("A", maxHelloBase64)
+	if h := ParseHello("-", big); h == nil || h.JA4 != "" {
+		t.Errorf("over the bound: JA4 %q, want none", h.JA4)
+	}
+}
 
 func TestParseHello(t *testing.T) {
 	for _, c := range []struct {

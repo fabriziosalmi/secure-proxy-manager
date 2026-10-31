@@ -143,6 +143,18 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   (`waf_tls_handshakes_total`), those that were not TLS
   (`waf_tls_not_tls_total`) and the mismatches
   (`waf_tls_sni_mismatch_total`).
+- The same pass takes the JA4 fingerprint of the client's TLS ClientHello,
+  with no score. The WAF keeps, per client address, the fingerprints seen
+  since it started: up to 10,000 clients and 64 fingerprints each. It logs
+  each new pair (`WAF TLS-JA4`, with the client's earlier fingerprint
+  count and the User-Agent of the `CONNECT`'s first pass when one was
+  sent). `/metrics` adds:
+  - `waf_tls_ja4_total`: handshakes fingerprinted;
+  - `waf_tls_ja4_unparsed_total`: handshakes that did not parse as a whole
+    ClientHello;
+  - `waf_tls_ja4_new_for_client_total`: a client showing a fingerprint
+    after another one;
+  - `waf_tls_ja4_clients`, `waf_tls_ja4_pairs`: what is held.
 - With `WAF_ENGINE=hybrid` (the default) a request the built-in rules let
   through then goes to the OWASP Core Rule Set 4.25.0 on Coraza 3.8.1, at
   paranoia level 1, which blocks at an inbound anomaly score of 5. It reads

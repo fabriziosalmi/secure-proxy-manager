@@ -17,6 +17,21 @@ for at least one minor release before disappearing.
 
 ### Added
 
+- With TLS server names on, the WAF takes the JA4 fingerprint of each
+  client's TLS ClientHello. It adds no score. Per client address it keeps
+  the fingerprints seen since it started (bounded), and logs each new pair
+  with the `CONNECT`'s User-Agent. `/metrics` counts:
+  - the handshakes fingerprinted;
+  - those that did not parse;
+  - a client showing a new fingerprint after another one.
+
+  The fingerprint reproduces the JA4 README example exactly. End to end
+  through the proxy:
+  - curl, `openssl s_client` and Python each keep one fingerprint across
+    connections;
+  - `openssl s_client` and Python share one (the same OpenSSL and the same
+    defaults, no ALPN).
+
 - Settings > Inspection > Read TLS server names without decrypting
   (`tls_peek_enabled`, off by default). The proxy reads the server name in
   each client's TLS handshake (`ssl_bump peek`, then `splice`) and passes it

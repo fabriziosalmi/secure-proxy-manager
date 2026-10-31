@@ -25,7 +25,14 @@ type Hello struct {
 	// TLS says the bytes start a TLS ClientHello. A tunnel Squid let through
 	// as not TLS (on_unsupported_protocol tunnel) has TLS false.
 	TLS bool
+	// JA4 is the hello's JA4 fingerprint; "" when the bytes did not parse
+	// as a whole ClientHello or were over maxHelloBase64.
+	JA4 string
 }
+
+// maxHelloBase64 bounds what is decoded for the fingerprint. A ClientHello
+// with post-quantum key shares is about 2 KiB of base64 (Squid 7.7, curl).
+const maxHelloBase64 = 64 << 10
 
 // ParseHello reads the two ICAP header values of a peeked CONNECT. It
 // returns nil when there is no handshake, which is every REQMOD but the
@@ -36,6 +43,11 @@ func ParseHello(sniHeader, helloHeader string) *Hello {
 		return nil
 	}
 	h := &Hello{TLS: startsClientHello(helloHeader)}
+	if h.TLS && len(helloHeader) <= maxHelloBase64 {
+		if raw, err := base64.StdEncoding.DecodeString(helloHeader); err == nil {
+			h.JA4, _ = JA4(raw)
+		}
+	}
 	sni := strings.TrimSpace(sniHeader)
 	if sni == "" || sni == "-" {
 		return h
