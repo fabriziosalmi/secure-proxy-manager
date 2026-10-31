@@ -169,6 +169,13 @@ grep -q 'db=ok' <<<"$bump" && ok "SSL-bump: the certificate database is created"
 grep -q 'reuse=ok' <<<"$bump" && ok "SSL-bump: an existing database is kept" || bad "SSL-bump: an existing database is kept" "$bump"
 grep -q 'squid_rc=124' <<<"$bump" && ! grep -qE 'FATAL|crashing' <<<"$bump" \
   && ok "SSL-bump: Squid runs (the certificate helper does not crash)" || bad "SSL-bump: Squid runs" "$bump"
+# The documented way to let non-TLS traffic on 443 through under SSL bump
+# (docs/guide/configuration.md): the extras line lands in the config and
+# Squid accepts it with the bump block.
+tunnel_seed='touch /config/ssl_bump_enabled; echo "on_unsupported_protocol tunnel all" > /config/custom_squid_extra.conf'
+conf="$(generate "$tunnel_seed")"
+grep -q '^on_unsupported_protocol tunnel all' <<<"$conf" && ok "SSL-bump: on_unsupported_protocol from the extras is kept" || bad "SSL-bump: on_unsupported_protocol from the extras is kept"
+parses "$tunnel_seed" && ok "SSL-bump: squid -k parse accepts on_unsupported_protocol" || bad "SSL-bump: squid -k parse accepts on_unsupported_protocol"
 
 echo "── GUI whitelist set ──"
 # GUI_IP_WHITELIST names extra client SOURCES. It must not create a destination

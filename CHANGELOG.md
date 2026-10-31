@@ -26,6 +26,12 @@ for at least one minor release before disappearing.
 - `wafeval` reports, per dataset, context and label, on how many records
   each detector scored, under the block threshold too (`signals`,
   `signal_records`).
+- The configuration guide says what HTTPS inspection does to traffic on port
+  443 that is not TLS: the proxy accepts the `CONNECT` and closes the
+  connection, so SSH to `ssh.github.com:443` through the proxy fails. It
+  gives the `custom_squid_extra.conf` line that lets such connections through
+  uninspected (`on_unsupported_protocol tunnel all`); the config generation
+  test checks that Squid accepts that line with the SSL-bump block.
 
 ### Fixed
 
