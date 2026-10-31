@@ -434,7 +434,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 
 	in.Scan(req.Request)
 	in.logScanFindings(in.reputationHost(req.Request.Host))
-	in.logHello(req.Request.Host)
+	in.logHello(req.Request)
 
 	feature := in.feature(req.Request)
 	in.Heuristics(req.Request, feature.BodyEntropy, feature.URLEntropy)
@@ -528,23 +528,52 @@ func (in *inspection) reputationHost(host string) string {
 }
 
 // logHello counts and logs the second pass of a peeked CONNECT: a tunnel
-// that is not TLS, and a server name other than the CONNECT's host.
-func (in *inspection) logHello(host string) {
+// that is not TLS, a server name other than the CONNECT's host, and a JA4
+// fingerprint the client had not shown before. On a first pass, once peeked
+// CONNECTs have been seen, it keeps the User-Agent for the second.
+func (in *inspection) logHello(r *http.Request) {
+	host := r.Host
 	h := in.Hello
 	if h == nil {
+		if r.Method == http.MethodConnect && tlsHandshakes.Load() > 0 {
+			uaLinks.put(uaLinkKey(in.ClientIP, host), truncate(r.Header.Get("User-Agent"), 200), in.startTime)
+		}
 		return
 	}
 	tlsHandshakes.Add(1)
+	ua := uaLinks.take(uaLinkKey(in.ClientIP, host), in.startTime)
 	if !h.TLS {
 		tlsNotTLS.Add(1)
 		slog.Info("WAF TLS not-tls", "event_id", in.eventID, "client_ip", in.ClientIP, "host", host)
 		return
 	}
+	in.logJA4(host, ua)
 	if h.Mismatch(host) {
 		tlsSNIMismatch.Add(1)
 		slog.Info("WAF TLS-SNI", "event_id", in.eventID, "client_ip", in.ClientIP, "host", host,
 			"sni", truncate(h.SNI, 200), "sni_invalid", h.SNIInvalid)
 	}
+}
+
+// logJA4 counts the handshake's fingerprint and logs it the first time this
+// client shows it, with how many others the client had shown and the
+// User-Agent of the CONNECT's first pass.
+func (in *inspection) logJA4(host, ua string) {
+	h := in.Hello
+	if h.JA4 == "" {
+		tlsJA4Unparsed.Add(1)
+		return
+	}
+	tlsJA4Total.Add(1)
+	isNew, before, tracked := ja4Seen.observe(in.ClientIP, h.JA4)
+	if !isNew {
+		return
+	}
+	if before > 0 {
+		tlsJA4NewForClient.Add(1)
+	}
+	slog.Info("WAF TLS-JA4", "event_id", in.eventID, "client_ip", in.ClientIP, "ja4", h.JA4,
+		"host", host, "sni", truncate(h.SNI, 200), "client_ja4s_before", before, "tracked", tracked, "user_agent", ua)
 }
 
 // logScanFindings records what Scan found that has its own log line or
@@ -1161,6 +1190,7 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 
 	cacheStats := eng.SafeCache().Stats()
 
+	ja4Clients, ja4Pairs := ja4Seen.size()
 	fmt.Fprintf(w,
 		"# HELP waf_requests_total Total ICAP requests inspected.\n"+
 			"# TYPE waf_requests_total counter\n"+
@@ -1266,7 +1296,22 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 			"waf_tls_not_tls_total %d\n"+
 			"# HELP waf_tls_sni_mismatch_total Peeked TLS handshakes naming a server other than the CONNECT's host.\n"+
 			"# TYPE waf_tls_sni_mismatch_total counter\n"+
-			"waf_tls_sni_mismatch_total %d\n",
+			"waf_tls_sni_mismatch_total %d\n"+
+			"# HELP waf_tls_ja4_total Peeked TLS handshakes fingerprinted (JA4).\n"+
+			"# TYPE waf_tls_ja4_total counter\n"+
+			"waf_tls_ja4_total %d\n"+
+			"# HELP waf_tls_ja4_unparsed_total Peeked TLS handshakes that did not parse as a whole ClientHello.\n"+
+			"# TYPE waf_tls_ja4_unparsed_total counter\n"+
+			"waf_tls_ja4_unparsed_total %d\n"+
+			"# HELP waf_tls_ja4_new_for_client_total JA4 fingerprints a client showed after it had shown another one.\n"+
+			"# TYPE waf_tls_ja4_new_for_client_total counter\n"+
+			"waf_tls_ja4_new_for_client_total %d\n"+
+			"# HELP waf_tls_ja4_clients Clients with a JA4 fingerprint held since the WAF started.\n"+
+			"# TYPE waf_tls_ja4_clients gauge\n"+
+			"waf_tls_ja4_clients %d\n"+
+			"# HELP waf_tls_ja4_pairs Client and JA4 fingerprint pairs held since the WAF started.\n"+
+			"# TYPE waf_tls_ja4_pairs gauge\n"+
+			"waf_tls_ja4_pairs %d\n",
 		trafficEnabled,
 		trafficLogDropped.Load(),
 		trafficWritable,
@@ -1281,6 +1326,11 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		tlsHandshakes.Load(),
 		tlsNotTLS.Load(),
 		tlsSNIMismatch.Load(),
+		tlsJA4Total.Load(),
+		tlsJA4Unparsed.Load(),
+		tlsJA4NewForClient.Load(),
+		ja4Clients,
+		ja4Pairs,
 	)
 
 	writePolicyMetrics(w)

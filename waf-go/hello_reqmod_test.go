@@ -24,12 +24,21 @@ const (
 // out), and returns the verdict.
 func runConnectPass(t *testing.T, hostport, sni, hello string) verdict {
 	t.Helper()
+	return runConnectPassUA(t, hostport, sni, hello, "")
+}
+
+// runConnectPassUA is runConnectPass with the CONNECT's User-Agent.
+func runConnectPassUA(t *testing.T, hostport, sni, hello, ua string) verdict {
+	t.Helper()
 	prevLog := trafficLog
 	trafficLog = &TrafficLogger{ch: make(chan TrafficFeature, 8)}
 	defer func() { trafficLog = prevLog }()
 
 	ireq := &icap.Request{Request: httptest.NewRequest(http.MethodConnect, hostport, nil), Header: squidHeader()}
 	ireq.Header.Set("X-Client-Ip", "198.51.100.40")
+	if ua != "" {
+		ireq.Request.Header.Set("User-Agent", ua)
+	}
 	if sni != "" {
 		ireq.Header.Set("X-SPM-SNI", sni)
 	}
