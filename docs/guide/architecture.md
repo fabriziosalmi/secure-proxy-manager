@@ -133,6 +133,16 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
 - Each built-in match adds its rule's severity to an anomaly score; a request
   is blocked when the score reaches `WAF_BLOCK_THRESHOLD` (default `10`).
   Categories in `WAF_OBSERVE_CATEGORIES` match and are logged with no score.
+- A `CONNECT` that Squid peeked at without decrypting reaches the WAF a
+  second time, with the TLS server name the client asked for and its first
+  bytes in two ICAP headers, `X-SPM-SNI` and `X-SPM-Client-Hello`. That pass
+  reads only the server name. A name other than the `CONNECT`'s host scores
+  5 (`TLS-SNI-001`, category `TLS_SNI_MISMATCH`), and the SSRF rules and the
+  DGA and typosquat checks read it. The pass is not counted again as a
+  request or in the per-client heuristics. `/metrics` counts the passes
+  (`waf_tls_handshakes_total`), those that were not TLS
+  (`waf_tls_not_tls_total`) and the mismatches
+  (`waf_tls_sni_mismatch_total`).
 - With `WAF_ENGINE=hybrid` (the default) a request the built-in rules let
   through then goes to the OWASP Core Rule Set 4.25.0 on Coraza 3.8.1, at
   paranoia level 1, which blocks at an inbound anomaly score of 5. It reads

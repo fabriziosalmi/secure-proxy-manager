@@ -11,6 +11,7 @@ describe('wafCategoryLabel', () => {
     expect(wafCategoryLabel('DGA_DOMAIN')).toEqual({ label: 'Generated domain name (DGA)', kind: 'domain reputation' })
     expect(wafCategoryLabel('TYPOSQUATTING').kind).toBe('domain reputation')
     expect(wafCategoryLabel('BODY_OVERSIZE').kind).toBe('size limit')
+    expect(wafCategoryLabel('TLS_SNI_MISMATCH')).toEqual({ label: 'TLS server name other than the CONNECT host', kind: 'TLS handshake' })
   })
   // The Core Rule Set's families, as waf-go/internal/crs/crs.go names them
   // (families) plus CRS for a rule outside them. Written from its key,

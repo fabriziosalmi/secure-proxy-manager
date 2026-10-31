@@ -125,6 +125,9 @@ type Inspection struct {
 
 	RawURL   string
 	ClientIP string
+	// Hello is set on the second pass of a peeked CONNECT: what Squid read
+	// of the client's first bytes. Nil on every other request.
+	Hello *Hello
 
 	// Accumulated signals. Score is the sum of every match's Score, and the
 	// block decision is Blocked(Score), checked once, at the end.
@@ -340,6 +343,10 @@ func (in *Inspection) Add(m engine.MatchResult) {
 // the caller has computed the entropy of what Scan read.
 func (in *Inspection) Scan(r *http.Request) {
 	in.filter(r)
+	if in.Hello != nil && r.Method == http.MethodConnect {
+		in.scanHello(r)
+		return
+	}
 	in.scanSignatures(r)
 	if !in.URLCached {
 		in.scanDomainReputation(r.Host)
@@ -501,6 +508,11 @@ func (in *Inspection) scanDomainReputation(host string) {
 // scored against the entropy of the body and the URL, which is why they run
 // after the caller has built its traffic feature rather than inside Scan.
 func (in *Inspection) Heuristics(r *http.Request, bodyEntropy, urlEntropy float64) {
+	// The second pass of a CONNECT is the same request: counting it again
+	// would double every per-client window.
+	if in.Hello != nil {
+		return
+	}
 	hResults, hScore := in.Eng.CheckRequestHeuristics(
 		in.ClientIP, r.Method, r.Host, r.URL.Path,
 		in.BodyStr, in.BodySize, bodyEntropy, urlEntropy,
@@ -563,7 +575,13 @@ func Rejoin(read []byte, rest io.ReadCloser) io.ReadCloser {
 // handler lets through uninspected. TestEvaluateMatchesHandleReqmod holds
 // the two paths to the same verdict.
 func Evaluate(eng *engine.Engine, crsEng *crs.Engine, pol *policy.Policy, r *http.Request, clientIP string) (in *Inspection, lanSkipped bool) {
-	in = &Inspection{Eng: eng, CRSEng: crsEng, Policy: pol, RawURL: r.URL.String(), ClientIP: clientIP}
+	return EvaluateHello(eng, crsEng, pol, r, clientIP, nil)
+}
+
+// EvaluateHello is Evaluate for a request that may be the second pass of a
+// peeked CONNECT: hello is what ParseHello made of Squid's two headers.
+func EvaluateHello(eng *engine.Engine, crsEng *crs.Engine, pol *policy.Policy, r *http.Request, clientIP string, hello *Hello) (in *Inspection, lanSkipped bool) {
+	in = &Inspection{Eng: eng, CRSEng: crsEng, Policy: pol, RawURL: r.URL.String(), ClientIP: clientIP, Hello: hello}
 	if engine.IsLANHost(r.Host) {
 		return in, true
 	}

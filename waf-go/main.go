@@ -71,6 +71,16 @@ var (
 	// gap (payload hidden behind >1 MB of padding) is observable, not silent.
 	bodyTruncatedCount atomic.Int64
 
+	// tlsHandshakes counts the second passes of peeked CONNECTs (Squid's
+	// ssl_bump peek, then splice), tlsNotTLS those whose first bytes were not
+	// a TLS handshake (a tunnel let through as another protocol), and
+	// tlsSNIMismatch the TLS ones naming a server other than the CONNECT's
+	// host. Counted whatever the category switches say, so the rate of each
+	// on real traffic can be read before anything blocks on it.
+	tlsHandshakes  atomic.Int64
+	tlsNotTLS      atomic.Int64
+	tlsSNIMismatch atomic.Int64
+
 	// respmodUninspectable counts text responses the WAF could NOT actually scan
 	// because the body was compressed (Content-Encoding gzip/br/deflate) — the
 	// regex rules would only see compressed bytes. Surfaced so operators know
@@ -399,6 +409,7 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 			Policy:   currentPolicy.Load(),
 			RawURL:   req.Request.URL.String(),
 			ClientIP: clientIPFrom(req),
+			Hello:    helloFrom(req),
 		},
 		eventID:   nextEventID(startTime),
 		startTime: startTime,
@@ -422,7 +433,8 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 	in.URLCached = in.cacheable && eng.SafeCache().IsSafe(in.cacheKey)
 
 	in.Scan(req.Request)
-	in.logScanFindings(req.Request.Host)
+	in.logScanFindings(in.reputationHost(req.Request.Host))
+	in.logHello(req.Request.Host)
 
 	feature := in.feature(req.Request)
 	in.Heuristics(req.Request, feature.BodyEntropy, feature.URLEntropy)
@@ -449,9 +461,18 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 		exceptionHits.Add(int64(n))
 	}
 
-	// Non-blocking: Write() enqueues to bounded channel, record() uses atomics
-	trafficLog.Write(feature)
-	stats.record(feature, in.Blocked(), categories)
+	// Non-blocking: Write() enqueues to bounded channel, record() uses atomics.
+	// The second pass of a CONNECT is the request already counted: it adds
+	// its categories and a block, and a record only when something matched.
+	if in.Hello != nil {
+		if len(ruleIDs) > 0 {
+			trafficLog.Write(feature)
+		}
+		stats.recordHandshake(in.Blocked(), categories)
+	} else {
+		trafficLog.Write(feature)
+		stats.record(feature, in.Blocked(), categories)
+	}
 
 	// Log all matches for observability, even if below threshold
 	if len(ruleIDs) > 0 && !in.Blocked() {
@@ -484,6 +505,46 @@ func clientIPFrom(req *icap.Request) string {
 		}
 	}
 	return "unknown"
+}
+
+// helloFrom reads what Squid saw of a CONNECT's first client bytes after it
+// peeked at them (adaptation_meta X-SPM-SNI and X-SPM-Client-Hello). Nil on
+// any other REQMOD, and on the first pass of a CONNECT, which has no
+// handshake yet.
+func helloFrom(req *icap.Request) *inspect.Hello {
+	if req.Request.Method != http.MethodConnect {
+		return nil
+	}
+	return inspect.ParseHello(req.Header.Get("X-Spm-Sni"), req.Header.Get("X-Spm-Client-Hello"))
+}
+
+// reputationHost is the name the domain reputation checks read: the server
+// name of a handshake that differs from the CONNECT's host, else the host.
+func (in *inspection) reputationHost(host string) string {
+	if in.Hello != nil && in.Hello.Mismatch(host) && in.Hello.SNI != "" {
+		return in.Hello.SNI
+	}
+	return host
+}
+
+// logHello counts and logs the second pass of a peeked CONNECT: a tunnel
+// that is not TLS, and a server name other than the CONNECT's host.
+func (in *inspection) logHello(host string) {
+	h := in.Hello
+	if h == nil {
+		return
+	}
+	tlsHandshakes.Add(1)
+	if !h.TLS {
+		tlsNotTLS.Add(1)
+		slog.Info("WAF TLS not-tls", "event_id", in.eventID, "client_ip", in.ClientIP, "host", host)
+		return
+	}
+	if h.Mismatch(host) {
+		tlsSNIMismatch.Add(1)
+		slog.Info("WAF TLS-SNI", "event_id", in.eventID, "client_ip", in.ClientIP, "host", host,
+			"sni", truncate(h.SNI, 200), "sni_invalid", h.SNIInvalid)
+	}
 }
 
 // logScanFindings records what Scan found that has its own log line or
@@ -542,6 +603,9 @@ func block(w icap.ResponseWriter, in *inspection, ruleIDs, categories []string) 
 	source := "URL"
 	if in.BodyStr != "" {
 		source = "URL+BODY"
+	}
+	if in.Hello != nil {
+		source = "TLS"
 	}
 	primaryCategory := "UNKNOWN"
 	if len(categories) > 0 {
@@ -1193,7 +1257,16 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 			"waf_body_truncated_total %d\n"+
 			"# HELP waf_respmod_uninspectable_total Text responses skipped because the body was compressed (coverage gap).\n"+
 			"# TYPE waf_respmod_uninspectable_total counter\n"+
-			"waf_respmod_uninspectable_total %d\n",
+			"waf_respmod_uninspectable_total %d\n"+
+			"# HELP waf_tls_handshakes_total CONNECTs whose first client bytes Squid peeked at and sent to the WAF.\n"+
+			"# TYPE waf_tls_handshakes_total counter\n"+
+			"waf_tls_handshakes_total %d\n"+
+			"# HELP waf_tls_not_tls_total Peeked CONNECTs whose first bytes were not a TLS handshake.\n"+
+			"# TYPE waf_tls_not_tls_total counter\n"+
+			"waf_tls_not_tls_total %d\n"+
+			"# HELP waf_tls_sni_mismatch_total Peeked TLS handshakes naming a server other than the CONNECT's host.\n"+
+			"# TYPE waf_tls_sni_mismatch_total counter\n"+
+			"waf_tls_sni_mismatch_total %d\n",
 		trafficEnabled,
 		trafficLogDropped.Load(),
 		trafficWritable,
@@ -1205,6 +1278,9 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		notifyFailed["no_credential"].Load(),
 		bodyTruncatedCount.Load(),
 		respmodUninspectable.Load(),
+		tlsHandshakes.Load(),
+		tlsNotTLS.Load(),
+		tlsSNIMismatch.Load(),
 	)
 
 	writePolicyMetrics(w)

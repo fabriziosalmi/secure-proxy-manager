@@ -72,6 +72,25 @@ func (s *statsCollector) record(feature TrafficFeature, blocked bool, categories
 	s.mu.Unlock()
 }
 
+// recordHandshake adds what the second pass of a peeked CONNECT found: its
+// categories and, if it blocked, a block. The request itself, its
+// destination and its user agent were counted on the first pass.
+func (s *statsCollector) recordHandshake(blocked bool, categories []string) {
+	if blocked {
+		s.totalBlocked.Add(1)
+	}
+	if len(categories) == 0 {
+		return
+	}
+	s.mu.Lock()
+	for _, cat := range categories {
+		if len(s.categoryCounts) < 100 || s.categoryCounts[cat] > 0 {
+			s.categoryCounts[cat]++
+		}
+	}
+	s.mu.Unlock()
+}
+
 // recentWindow is the period over which requests_last_minute is counted.
 const recentWindow = 60 * time.Second
 
