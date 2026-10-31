@@ -17,6 +17,22 @@ for at least one minor release before disappearing.
 
 ### Added
 
+- Settings > Inspection > Read TLS server names without decrypting
+  (`tls_peek_enabled`, off by default). The proxy reads the server name in
+  each client's TLS handshake (`ssl_bump peek`, then `splice`) and passes it
+  to the WAF, which checks it as described below. Nothing is decrypted and
+  clients need no certificate.
+  - A connection that is not TLS passes uninspected.
+  - The access log keeps one line per connection, except for a `CONNECT`
+    without `Host`, which is logged twice, and a connection on which the
+    client never sends a byte, which is not logged.
+  - Measured end to end with the generated configuration and the WAF:
+    - a name other than the `CONNECT` host passes, scored 5 and counted;
+    - a generated-looking name in its place is blocked;
+    - SSH-like traffic to port 443 passes.
+  - The config contract check now also requires every settings marker file
+    the backend writes to have a reader in the proxy or DNS service.
+
 - The WAF reads the TLS server name of a `CONNECT` when Squid sends it. With
   `ssl_bump peek` and then `splice`, Squid passes a `CONNECT` through REQMOD
   a second time, with the server name and the client's first bytes in the
@@ -29,7 +45,8 @@ for at least one minor release before disappearing.
   - `/metrics` counts the passes, the tunnels that were not TLS and the
     mismatches.
   - Measured with `wafeval` on 45,665 `CONNECT`s that hide an attack host in
-    the server name: 100% signalled; blocked 5.13% of the DGA set, 0.09% of
+    the server name (45,663 inspected; 2 go to LAN hosts, which the WAF
+    does not inspect): 100% of those inspected signalled; blocked 5.13% of the DGA set, 0.09% of
     the phishing set and 0.12% of the Cobalt Strike set. 270,329 `CONNECT`s
     whose server name is their host signalled nothing. No configuration
     sends the headers yet.

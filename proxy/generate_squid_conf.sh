@@ -705,6 +705,48 @@ SSLEOF
         echo "$SSL_BUMP_BLOCK" >> "$SQUID_CONF"
 
     echo "SSL Bump config injected. WAF can now inspect HTTPS content."
+elif [ -f /config/tls_peek_enabled ]; then
+    echo "TLS server names ENABLED: peek at each ClientHello, then splice (nothing is decrypted)"
+
+    # The port reads TLS (ssl-bump) but never mints a certificate: every
+    # connection is spliced after the peek, so the CA is only the option
+    # Squid requires on an ssl-bump port and signs nothing.
+    sed -i 's/^http_port 3128$/http_port 3128 ssl-bump cert=\/config\/ssl_cert.pem key=\/config\/ssl_key.pem/' "$SQUID_CONF"
+
+    # After the peek Squid sends the CONNECT through REQMOD a second time;
+    # these two headers carry the server name and the client's first bytes
+    # to the WAF (waf-go/internal/inspect/hello.go). A tunnel whose first
+    # bytes are not TLS (SSH to port 443) passes, uninspected as it was
+    # before the peek.
+    cat >> "$SQUID_CONF" <<'PEEKEOF'
+
+# ── TLS server names (peek, then splice: nothing is decrypted) ─────────────
+# Squid starts the certificate helper on any ssl-bump port; without its own
+# database it crashes until Squid stops. One process, signing nothing here.
+sslcrtd_program /usr/lib/squid/security_file_certgen -s /config/ssl_db -M 4MB
+sslcrtd_children 1 startup=1 idle=1
+acl step1 at_step SslBump1
+ssl_bump peek step1
+ssl_bump splice all
+on_unsupported_protocol tunnel all
+adaptation_meta X-SPM-SNI "%ssl::>sni" all
+adaptation_meta X-SPM-Client-Hello "%>handshake" all
+PEEKEOF
+
+    # Each peeked CONNECT is two transactions, and both would be logged: the
+    # client's CONNECT (NONE_NONE/200, no bytes, Host with its port, or no
+    # Host from an HTTP/1.0 client) and the tunnel (TCP_TUNNEL/200 with the
+    # bytes, or the WAF's 403; Host without a port). The first is left out.
+    # Squid has no ACL on the log status, so a CONNECT that never sends a byte
+    # (a protocol in which the server speaks first) is left out too, and an
+    # HTTP/1.0 CONNECT without Host is still logged twice. The ACLs come
+    # before the access_log line that names them.
+    sed -i 's|^access_log daemon:/var/log/squid/access.log spm !spm_self_mgr spm_has_request$|acl spm_peek_connect method CONNECT\
+acl spm_peek_ok http_status 200\
+acl spm_peek_hostport req_header Host :[0-9]+$\
+acl spm_peek_first all-of spm_peek_connect spm_peek_ok spm_peek_hostport\
+access_log daemon:/var/log/squid/access.log spm !spm_self_mgr spm_has_request !spm_peek_first|' "$SQUID_CONF"
+    grep -q '!spm_peek_first$' "$SQUID_CONF" || echo "WARNING: the access_log line was not found; a peeked CONNECT is logged twice"
 else
     echo "SSL Bump disabled (no /config/ssl_bump_enabled file)"
 fi

@@ -311,3 +311,32 @@ through the WAF.
 A protocol in which the server speaks first (SMTP, FTP, IMAP) waits forever
 either way: the proxy is waiting for a handshake from the client that never
 comes.
+
+## TLS server names without decrypting
+
+Settings > Inspection > Read TLS server names without decrypting
+(`tls_peek_enabled`, off by default) makes the proxy read the server name
+each client puts in its TLS handshake. The proxy then lets the connection
+through still encrypted. Clients need no certificate.
+
+- The WAF receives the name and checks it: a name other than the host the
+  client gave in its `CONNECT` scores 5 (`TLS-SNI-001`), and the SSRF rules
+  and the DGA and typosquat checks read it. Such a mismatch blocks only
+  together with one of those checks.
+- A connection whose first bytes are not TLS (SSH to port 443) passes,
+  uninspected, and the WAF counts it.
+- `/metrics` on the WAF counts the handshakes read
+  (`waf_tls_handshakes_total`), those that were not TLS
+  (`waf_tls_not_tls_total`) and the mismatches
+  (`waf_tls_sni_mismatch_total`).
+- With HTTPS inspection on, the proxy decrypts instead, and this setting has
+  no effect.
+
+The access log keeps one line per connection: the tunnel, with its bytes,
+or the WAF's 403. Two cases differ:
+
+- A `CONNECT` that carries no `Host` header (some HTTP/1.0 clients) is
+  logged twice.
+- A connection on which the client never sends a byte is not logged. This
+  is what happens with a protocol in which the server speaks first (SMTP,
+  FTP, IMAP): it waits forever, as it does under HTTPS inspection.
