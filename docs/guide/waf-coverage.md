@@ -4,13 +4,16 @@ What the WAF can detect depends on what Squid shows it. This page gives,
 for each context, what each detector caught on public datasets, measured
 with `wafeval` (`waf-go/tools/wafeval`) on the default engine (the
 built-in rules, then the OWASP Core Rule Set at paranoia level 1), with no
-policy, on the WAF at commit `bc7527c`.
+policy, on the WAF at commit `2271967`. On every record without a TLS
+server name its verdicts and signals are those measured at `bc7527c`, except
+the real-traffic DGA row (see below).
 
 ## Contexts
 
 | Context | What the WAF receives | What runs |
 |---|---|---|
 | HTTPS without SSL bump | `CONNECT host:port` and its headers | the SSRF rules on host and port, the DGA and typosquat checks, the per-client heuristics. The Core Rule Set does not run on a `CONNECT` |
+| HTTPS with TLS server names on, without SSL bump | the same `CONNECT`, then a second time with the server name and the first bytes of the client's handshake | the same as without SSL bump; on the second pass, a signal when the server name is not the `CONNECT` host, and the SSRF rules and the DGA and typosquat checks on that name ([configuration](./configuration.md#tls-server-names-without-decrypting)) |
 | Plain HTTP, or HTTPS with SSL bump | request line, headers, body | every request rule, the base64 pass, the DGA and typosquat checks, the heuristics, then the Core Rule Set |
 | Responses (plain HTTP or SSL bump) | status, headers, body | the dangerous content types, the response rules, the PII counter |
 
@@ -57,6 +60,45 @@ Without SSL bump the WAF blocks none of these attacks:
   (RFC 6761). The DGA and typosquat checks now skip such names. No other
   row changed.
 
+## HTTPS with TLS server names, without SSL bump
+
+The second pass of each `CONNECT` is evaluated with the server name its
+client asked for. Two kinds of record:
+
+- **Same name:** every `CONNECT` above, with its own host as the server
+  name. This is what a client sends when it hides nothing.
+- **Evasion:** a `CONNECT` to a benign Tranco host with the attack host as
+  the server name. This is what a client sends to get past a check on the
+  `CONNECT` line.
+
+`corpus/peek.py` writes both from the records above. The server name is
+real, and the handshake bytes are the start of a real TLS 1.3 ClientHello.
+
+| Dataset | Kind | Label | Records | Blocked | Signalled |
+|---|---|---|---|---|---|
+| snsec-net/dga-detection-drift26dsn | evasion | attack (DGA) | 19,950 | 5.13% | TLS_SNI_MISMATCH 100%, DGA_DOMAIN 5.13% |
+| fox-srt/cobaltstrike-beacon-corpus | evasion | attack (C2 hosts) | 19,998 | 0.12% | TLS_SNI_MISMATCH 100%, SSRF 0.68%, TYPOSQUATTING 0.11%, DGA_DOMAIN 0.01% |
+| pirocheto/phishing-url | evasion | attack (phishing hosts) | 5,715 | 0.09% | TLS_SNI_MISMATCH 100%, SSRF 0.07%, TYPOSQUATTING 0.05%, DGA_DOMAIN 0.03% |
+| snsec-net/dga-detection-drift26dsn | same name | attack (DGA) | 19,950 | 0 | none |
+| fox-srt/cobaltstrike-beacon-corpus | same name | attack (C2 hosts) | 19,775 | 0 | none |
+| pirocheto/phishing-url | same name | attack (phishing hosts) | 5,715 | 0 | none |
+| Tranco top-million crawl, each host once | same name | benign | 198,647 | 0 | none |
+| snsec-net/dga-detection-drift26dsn | same name | benign | 20,118 | 0 | none |
+| pirocheto/phishing-url | same name | benign | 5,715 | 0 | none |
+| Real egress traffic of one small installation | same name | benign | 182 | 0 | none |
+
+Results:
+
+- **Evasion:** every evasion is signalled. One is blocked when the hidden
+  name also fails a check of its own:
+  - a generated name: mismatch 5 + DGA 6;
+  - a lookalike: mismatch 5 + typosquat 5;
+  - a metadata host: SSRF-001 alone.
+- **Same name:** the second pass of a client that hides nothing signals
+  nothing, on 270,102 records.
+- **Not checked yet:** whether a host behind the hidden name is a known C2.
+  The WAF does not have that detector.
+
 ## Plain HTTP or SSL bump: requests
 
 | Dataset | Label | Records | Blocked | Signalled (largest shares) |
@@ -102,7 +144,7 @@ A response row names only the response's primary category.
   - C2 reputation;
   - destinations rare for a client;
   - NXDOMAIN bursts;
-  - the TLS server name of a connection that is not bumped.
+  - a fingerprint of the client's TLS handshake (JA4).
 
 ## Reproducing
 
