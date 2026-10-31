@@ -29,6 +29,10 @@ type Verdict struct {
 	Uninspectable bool
 	// NotInspected is true when the engine has no response inspection.
 	NotInspected bool
+	// Signals are the detectors that scored on this record, blocked or not,
+	// each named once: an spm category (a rule set, DGA_DOMAIN, a
+	// heuristic), or CRS when one of its rules scored.
+	Signals []string
 	// Explain is, with -explain, what each matched rule matched: "rule:
 	// matched text", truncated.
 	Explain []string
@@ -197,7 +201,13 @@ func (e *spmEngine) Describe() map[string]any {
 
 func (e *spmEngine) InspectResponse(resp *http.Response) Verdict {
 	v := inspect.EvaluateResponse(e.eng, resp)
-	return Verdict{Blocked: v.Blocked, Score: v.Score, Rules: v.Rules, Categories: []string{v.Category}, Uninspectable: v.Uninspectable}
+	out := Verdict{Blocked: v.Blocked, Score: v.Score, Rules: v.Rules, Categories: []string{v.Category}, Uninspectable: v.Uninspectable}
+	// A response names only its primary category: EvaluateResponse reports
+	// no other.
+	if v.Score > 0 {
+		out.Signals = []string{v.Category}
+	}
+	return out
 }
 
 func (e *spmEngine) Inspect(r *http.Request, clientIP string) Verdict {
@@ -206,7 +216,7 @@ func (e *spmEngine) Inspect(r *http.Request, clientIP string) Verdict {
 		return Verdict{LANSkipped: true}
 	}
 	rules, cats := inspect.Summarize(in.Matches)
-	v := Verdict{Blocked: in.Blocked(), Score: in.Score, Rules: rules, Categories: cats}
+	v := Verdict{Blocked: in.Blocked(), Score: in.Score, Rules: rules, Categories: cats, Signals: signals(in)}
 	if explainOn && in.Eng.Blocked(in.Score) {
 		v.Explain = spmExplain(r, in.RawURL, in.BodyStr, rules)
 	}
@@ -220,6 +230,24 @@ func (e *spmEngine) Inspect(r *http.Request, clientIP string) Verdict {
 		v.exceptions = exceptionsFor(in, policy.RequestHost(r.Host), r.URL.Path)
 	}
 	return v
+}
+
+// signals names, once each, the spm categories whose matches scored and CRS
+// when one of its rules scored. A stage skipped because an earlier one
+// already blocks (CRS, the base64 pass) signals nothing.
+func signals(in *inspect.Inspection) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range in.Matches {
+		if m.Score > 0 && !seen[m.Category] {
+			seen[m.Category] = true
+			out = append(out, m.Category)
+		}
+	}
+	if in.CRS != nil && len(in.CRS.Rules) > 0 {
+		out = append(out, "CRS")
+	}
+	return out
 }
 
 // emitOn is set by -emit-exceptions.

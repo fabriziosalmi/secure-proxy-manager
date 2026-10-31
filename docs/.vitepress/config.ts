@@ -122,6 +122,7 @@ export default defineConfig({
           { text: 'Environment Variables', link: '/guide/configuration' },
           { text: 'Blacklists and exceptions', link: '/guide/blacklists' },
           { text: 'Security', link: '/guide/security' },
+          { text: 'WAF coverage', link: '/guide/waf-coverage' },
           { text: 'Security Advisories', link: '/guide/security-advisories' }
         ]
       },

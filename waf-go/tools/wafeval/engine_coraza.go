@@ -61,6 +61,9 @@ func (e *corazaEngine) Inspect(r *http.Request, clientIP string) Verdict {
 	}
 	res := e.crs.Inspect(r, body, clientIP, explainOn)
 	v := Verdict{Blocked: res.Blocked, Rules: res.Rules, Explain: res.Explain}
+	if len(res.Rules) > 0 {
+		v.Signals = []string{"CRS"}
+	}
 	if res.Blocked {
 		v.Score = 1
 	}

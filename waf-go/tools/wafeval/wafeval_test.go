@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -75,6 +76,29 @@ func TestMiniCorpusCounts(t *testing.T) {
 	}
 	if rep.FNObserved["t|nobump"] != 1 {
 		t.Errorf("fn_observed = %v, want t|nobump: 1", rep.FNObserved)
+	}
+	// Signals count what scored, blocked or not: the typosquat under the
+	// threshold is one. The parse error and the LAN host were not inspected.
+	wantRecords := map[string]int{"t|bump|attack": 2, "t|bump|benign": 2, "t|nobump|attack": 1, "t|nobump|benign": 1}
+	if len(rep.SignalRecords) != len(wantRecords) {
+		t.Errorf("signal_records = %v, want %v", rep.SignalRecords, wantRecords)
+	}
+	for k, n := range wantRecords {
+		if rep.SignalRecords[k] != n {
+			t.Errorf("signal_records[%s] = %d, want %d", k, rep.SignalRecords[k], n)
+		}
+	}
+	for k, want := range map[string]string{"t|bump|attack": "SQL_INJECTION XSS_ATTACKS", "t|nobump|attack": "TYPOSQUATTING"} {
+		for _, d := range strings.Fields(want) {
+			if rep.Signals[k][d] != 1 {
+				t.Errorf("signals[%s][%s] = %d, want 1 (all: %v)", k, d, rep.Signals[k][d], rep.Signals[k])
+			}
+		}
+	}
+	for _, k := range []string{"t|bump|benign", "t|nobump|benign"} {
+		if len(rep.Signals[k]) != 0 {
+			t.Errorf("signals[%s] = %v, want none", k, rep.Signals[k])
+		}
 	}
 	if rep.Corpus[0].Records != 8 || len(rep.Corpus[0].SHA256) != 64 {
 		t.Errorf("corpus entry %+v", rep.Corpus[0])

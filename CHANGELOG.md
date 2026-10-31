@@ -15,6 +15,18 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+### Added
+
+- A documentation page, WAF coverage, gives for each context (HTTPS
+  without SSL bump, requests and responses with it) what each detector
+  caught and how often it fires on benign traffic, measured on public
+  datasets. Without SSL bump the WAF blocks none of the DGA, phishing or
+  Cobalt Strike hosts; the DGA check signals 5.13% of a DGA set. With SSL
+  bump, 0.08% of Cobalt Strike beacon requests are blocked.
+- `wafeval` reports, per dataset, context and label, on how many records
+  each detector scored, under the block threshold too (`signals`,
+  `signal_records`).
+
 ### Fixed
 
 - The WAF decodes a value sent as base64 in the URL or in a body argument
