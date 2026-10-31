@@ -72,13 +72,17 @@ func isHostName(s string) bool {
 			return false
 		}
 		for i := 0; i < len(label); i++ {
-			c := label[i]
-			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+			if !hostByte(label[i]) {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+// hostByte is a byte a lower-case host name label may hold.
+func hostByte(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_'
 }
 
 // connectHost is a CONNECT's host name, lower case, without the port or a
