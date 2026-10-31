@@ -692,6 +692,7 @@ var squidToggleFiles = []struct {
 	file string
 }{
 	{"ssl_bump_enabled", "ssl_bump_enabled"},
+	{"tls_peek_enabled", "tls_peek_enabled"},
 	{"egress_default_deny", "egress_default_deny"},
 	{"aggressive_caching_enabled", "aggressive_caching_enabled"},
 	{"enable_offline_mode", "offline_mode_enabled"},

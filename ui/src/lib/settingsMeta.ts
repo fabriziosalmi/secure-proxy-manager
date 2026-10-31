@@ -60,7 +60,7 @@ export const SECTION_KEYS: Record<SectionId, string[]> = {
     'auto_refresh_enabled', 'auto_refresh_hours',
   ],
   inspection: [
-    'ssl_bump_enabled',
+    'ssl_bump_enabled', 'tls_peek_enabled',
     'waf_h_entropy', 'waf_h_beaconing', 'waf_h_pii', 'waf_h_sharding', 'waf_h_ghosting', 'waf_h_sequence',
   ],
   alerts: [
@@ -150,6 +150,7 @@ export const APPLY_MODE: Record<string, ApplyMode> = {
   waf_h_ghosting: 'waf',
   waf_h_sequence: 'waf',
   ssl_bump_enabled: 'reload',
+  tls_peek_enabled: 'reload',
   enable_notifications: 'live',
   notify_waf_block: 'live',
   notify_login_failure: 'live',
@@ -201,6 +202,7 @@ export const FIELD_LABELS: Record<string, string> = {
   waf_h_ghosting: 'Protocol ghosting',
   waf_h_sequence: 'Sequence validation',
   ssl_bump_enabled: 'HTTPS inspection',
+  tls_peek_enabled: 'TLS server names',
   enable_notifications: 'Send alerts',
   notify_waf_block: 'WAF blocks',
   notify_login_failure: 'Failed sign-ins',

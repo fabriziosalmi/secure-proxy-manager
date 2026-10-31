@@ -328,6 +328,7 @@ var DefaultSettings = [][]string{
 	{"memory_cache", "256"},
 	// Feature toggles
 	{"ssl_bump_enabled", "false"},
+	{"tls_peek_enabled", "false"},
 	{"egress_default_deny", "false"},
 	{"aggressive_caching_enabled", "false"},
 	{"cache_bypass_domains", ""},

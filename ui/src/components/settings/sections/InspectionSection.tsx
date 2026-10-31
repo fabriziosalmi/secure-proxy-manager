@@ -149,6 +149,17 @@ export function InspectionSection({ form }: { form: SectionForm }) {
           </Notice>
         )}
         <div className="mt-4 border-t border-line-subtle pt-4">
+          <ToggleRow
+            form={form}
+            setting="tls_peek_enabled"
+            label="Read TLS server names without decrypting"
+            help="The proxy reads the server name each client puts in its TLS handshake and lets the connection through still encrypted. The WAF checks that name, and flags one other than the host the client asked the proxy for. Clients need no certificate. While HTTPS inspection is on, the proxy decrypts instead and this setting has no effect."
+          />
+          {v.tls_peek_enabled === 'true' && v.ssl_bump_enabled === 'true' && (
+            <p className="mt-2 text-xs text-ink-muted">HTTPS inspection is on: the proxy decrypts, and this setting has no effect until it is off.</p>
+          )}
+        </div>
+        <div className="mt-4 border-t border-line-subtle pt-4">
           <CertificateAuthority />
         </div>
       </Section>

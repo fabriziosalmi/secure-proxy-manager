@@ -177,6 +177,39 @@ conf="$(generate "$tunnel_seed")"
 grep -q '^on_unsupported_protocol tunnel all' <<<"$conf" && ok "SSL-bump: on_unsupported_protocol from the extras is kept" || bad "SSL-bump: on_unsupported_protocol from the extras is kept"
 parses "$tunnel_seed" && ok "SSL-bump: squid -k parse accepts on_unsupported_protocol" || bad "SSL-bump: squid -k parse accepts on_unsupported_protocol"
 
+echo "── TLS server names ON (peek, then splice) ──"
+conf="$(generate 'touch /config/tls_peek_enabled')"
+grep -q '^http_port 3128 ssl-bump cert=/config/ssl_cert.pem key=/config/ssl_key.pem$' <<<"$conf" && ok "peek: the port reads TLS" || bad "peek: the port reads TLS"
+grep -q 'generate-host-certificates' <<<"$conf" && bad "peek: no certificate is minted" "generate-host-certificates found" || ok "peek: no certificate is minted"
+grep -q '^ssl_bump splice all$' <<<"$conf" && ! grep -q '^ssl_bump bump' <<<"$conf" && ok "peek: every connection is spliced" || bad "peek: every connection is spliced"
+grep -q '^on_unsupported_protocol tunnel all$' <<<"$conf" && ok "peek: a tunnel that is not TLS passes" || bad "peek: a tunnel that is not TLS passes"
+grep -q '^adaptation_meta X-SPM-SNI "%ssl::>sni" all$' <<<"$conf" && grep -q '^adaptation_meta X-SPM-Client-Hello "%>handshake" all$' <<<"$conf" \
+  && ok "peek: the WAF gets the server name and the handshake" || bad "peek: the WAF gets the server name and the handshake"
+# The ACLs of the log filter are defined before the access_log line that
+# names them, or Squid refuses the configuration.
+acl_line=$(grep -n '^acl spm_peek_first ' <<<"$conf" | cut -d: -f1)
+log_line=$(grep -n '^access_log daemon:/var/log/squid/access.log spm .*!spm_peek_first$' <<<"$conf" | cut -d: -f1)
+[ -n "$acl_line" ] && [ -n "$log_line" ] && [ "$acl_line" -lt "$log_line" ] \
+  && ok "peek: the client's CONNECT line is left out of the access log" || bad "peek: the client's CONNECT line is left out of the access log" "acl at ${acl_line:-none}, access_log at ${log_line:-none}"
+parses 'touch /config/tls_peek_enabled' && ok "peek: squid -k parse accepts it" || bad "peek: squid -k parse accepts it"
+peek="$(docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c '
+  mkdir -p /config /etc/squid /var/spool/squid /var/log/squid /run/squid
+  touch /config/tls_peek_enabled
+  /usr/local/bin/generate_squid_conf.sh >/dev/null 2>&1
+  chown -R proxy:proxy /var/spool/squid /var/log/squid /run/squid
+  squid -z -N >/dev/null 2>&1; rm -f /run/squid/squid.pid
+  timeout 8 squid -N -d1 >/tmp/sq.log 2>&1; echo "squid_rc=$?"
+  grep -m1 -E "FATAL" /tmp/sq.log
+' 2>/dev/null)"
+grep -q 'squid_rc=124' <<<"$peek" && ! grep -q 'FATAL' <<<"$peek" && ok "peek: Squid runs" || bad "peek: Squid runs" "$peek"
+
+echo "── HTTPS inspection and TLS server names both ON ──"
+# Inspection decrypts; the peek-only directives would contradict it.
+conf="$(generate 'touch /config/ssl_bump_enabled /config/tls_peek_enabled')"
+grep -q '^ssl_bump bump all$' <<<"$conf" && ! grep -q '^ssl_bump splice all$' <<<"$conf" && ! grep -q 'adaptation_meta X-SPM' <<<"$conf" && ! grep -q 'spm_peek_first' <<<"$conf" \
+  && ok "both on: HTTPS inspection wins" || bad "both on: HTTPS inspection wins"
+parses 'touch /config/ssl_bump_enabled /config/tls_peek_enabled' && ok "both on: squid -k parse accepts it" || bad "both on: squid -k parse accepts it"
+
 echo "── GUI whitelist set ──"
 # GUI_IP_WHITELIST names extra client SOURCES. It must not create a destination
 # ACL or an allow rule of its own (the old gui_override did both, ahead of the

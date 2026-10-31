@@ -96,6 +96,22 @@ if [ -z "$go_status" ] || [ "$go_status" != "$sh_status" ]; then
     fail=1
 fi
 
+# Toggle markers: a boolean setting reaches the proxy or the DNS service as a
+# file under /config that the backend creates or deletes (squidToggleFiles in
+# backend-go/internal/handlers/settings.go). A marker no service reads is a
+# setting the UI saves and nothing obeys.
+markers="$(sed -n '/^var squidToggleFiles/,/^}$/p' backend-go/internal/handlers/settings.go | sed -n 's/.*{"[a-z_]*", "\([a-z_]*\)"}.*/\1/p')"
+if [ -z "$markers" ]; then
+    printf "${R}MISMATCH${N}: no toggle markers found in squidToggleFiles (backend-go/internal/handlers/settings.go)\n"
+    fail=1
+fi
+for m in $markers; do
+    if ! grep -rqE "/config/$m([^a-z_]|\$)" proxy dns; then
+        printf "${R}MISMATCH${N}: the backend writes the marker /config/%s, and nothing in proxy/ or dns/ reads it\n" "$m"
+        fail=1
+    fi
+done
+
 # The admin credential stays with the backend: no shipped compose file passes
 # BASIC_AUTH_* to the proxy (the proxy login has its own credentials), as none
 # passes them to the WAF.
@@ -175,6 +191,6 @@ else
 fi
 
 if [ "$fail" -eq "$list_fail" ]; then
-    printf "${G}OK${N}: the proxy login files agree, BASIC_AUTH_* reaches only the backend, the backend is in the proxy group, shared WAF variables reach both waf and proxy, and the service token volume is mounted only in backend and waf\n"
+    printf "${G}OK${N}: the proxy login files agree, BASIC_AUTH_* reaches only the backend, the backend is in the proxy group, every toggle marker has a reader, shared WAF variables reach both waf and proxy, and the service token volume is mounted only in backend and waf\n"
 fi
 exit "$fail"

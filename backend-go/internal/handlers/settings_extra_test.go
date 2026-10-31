@@ -86,6 +86,43 @@ func TestSettingsHandlers_BulkUpdate_SSLBump(t *testing.T) {
 	}
 }
 
+// The TLS server names setting reaches the proxy as its own marker file,
+// which proxy/generate_squid_conf.sh reads; HTTPS inspection's is untouched.
+func TestSettingsHandlers_BulkUpdate_TLSPeek(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewSettingsHandlers(db, cfg)
+	marker := filepath.Join(cfg.ConfigDir, "tls_peek_enabled")
+	bump := filepath.Join(cfg.ConfigDir, "ssl_bump_enabled")
+
+	for _, c := range []struct {
+		value string
+		want  bool
+	}{{"true", true}, {"false", false}} {
+		body, _ := json.Marshal(map[string]string{"tls_peek_enabled": c.value})
+		w := httptest.NewRecorder()
+		h.BulkUpdate(w, httptest.NewRequest("POST", "/api/settings", bytes.NewBuffer(body)))
+		if w.Code != 200 {
+			t.Fatalf("tls_peek_enabled=%s: status %d, body %s", c.value, w.Code, w.Body.String())
+		}
+		_, err := os.Stat(marker)
+		if got := err == nil; got != c.want {
+			t.Errorf("tls_peek_enabled=%s: marker present %v, want %v", c.value, got, c.want)
+		}
+		if _, err := os.Stat(bump); err == nil {
+			t.Errorf("tls_peek_enabled=%s created the HTTPS inspection marker", c.value)
+		}
+	}
+
+	// A value that is not a boolean is refused.
+	body, _ := json.Marshal(map[string]string{"tls_peek_enabled": "peek"})
+	w := httptest.NewRecorder()
+	h.BulkUpdate(w, httptest.NewRequest("POST", "/api/settings", bytes.NewBuffer(body)))
+	if w.Code == 200 {
+		t.Errorf("tls_peek_enabled=peek accepted")
+	}
+}
+
 func TestSettingsHandlers_BulkUpdate_InvalidJSON(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
