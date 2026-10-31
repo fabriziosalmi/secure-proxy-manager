@@ -134,11 +134,18 @@ process holding one; free it, change the host side of the mapping, or set
   every request it can read (`WAF_ENGINE=legacy` turns the Core Rule Set off).
   Data leak, financial data and cloud secret rules alert without blocking by
   default. It blocks responses with executable content types and fails
-  closed by default (`WAF_FAIL_OPEN=0`).
+  closed by default (`WAF_FAIL_OPEN=0`). What each detector catches in each
+  context, on public datasets: [WAF coverage](docs/guide/waf-coverage.md).
 - **HTTPS.** HTTPS is tunnelled with `CONNECT` by default, so the WAF sees the
-  destination only. Settings > Inspection > Inspect HTTPS traffic turns on
-  SSL bump with a CA the proxy generates on first start; every client must
-  trust that CA.
+  destination only. Two settings in Settings > Inspection widen that:
+  - **Read TLS server names without decrypting** (off by default) reads the
+    server name in each client's TLS handshake and lets the connection
+    through still encrypted, with no certificate on the clients. The WAF
+    flags a name other than the `CONNECT`'s host, runs its SSRF, DGA and
+    typosquat checks on it, and records the client's JA4 fingerprint with no
+    score. [Configuration](docs/guide/configuration.md#tls-server-names-without-decrypting).
+  - **Inspect HTTPS traffic** turns on SSL bump with a CA the proxy
+    generates on first start. Every client must trust that CA.
 - **Proxy login (off by default).** Settings > Clients and access > Login
   > Require proxy login, with a proxy username and password of its own (not
   the dashboard login). The backend writes only a bcrypt hash of the password
@@ -253,6 +260,8 @@ Report vulnerabilities privately, as described in [SECURITY.md](SECURITY.md).
 - [API reference](docs/api/reference.md); a running backend lists every
   route at `GET /api/docs` (authenticated)
 - [DEPLOYMENT.md](DEPLOYMENT.md): installation, TLS, backups, upgrades
+- [WAF coverage](docs/guide/waf-coverage.md): what each detector catches,
+  with and without SSL bump, measured on public datasets
 - [BENCHMARKS.md](BENCHMARKS.md): what has been measured, and how
 - [CHANGELOG.md](CHANGELOG.md): release history
 
