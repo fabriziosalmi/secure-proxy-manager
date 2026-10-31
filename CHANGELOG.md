@@ -57,6 +57,12 @@ for at least one minor release before disappearing.
   datasets. Without SSL bump the WAF blocks none of the DGA, phishing or
   Cobalt Strike hosts; the DGA check signals 5.13% of a DGA set. With SSL
   bump, 0.08% of Cobalt Strike beacon requests are blocked.
+- The WAF coverage page gives the context with TLS server names on. In it,
+  a `CONNECT` that hides an attack host in its server name is signalled
+  every time, and blocked when that name also fails a check of its own:
+  5.13% of the DGA set, 0.09% of the phishing set and 0.12% of the Cobalt
+  Strike set. A server name equal to the host signals nothing, on 270,102
+  records.
 - `wafeval` reports, per dataset, context and label, on how many records
   each detector scored, under the block threshold too (`signals`,
   `signal_records`).
