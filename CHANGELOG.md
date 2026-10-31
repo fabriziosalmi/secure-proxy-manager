@@ -15,6 +15,27 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.25.0] - 2026-10-31
+
+A detection release for HTTPS without SSL bump.
+
+- **TLS server names.** A new setting, Settings > Inspection > Read TLS
+  server names without decrypting (off by default), has the proxy read the
+  server name in each client's TLS handshake and let the connection through
+  still encrypted. The WAF checks that name:
+  - against the `CONNECT`'s host;
+  - with its SSRF, DGA and typosquat checks.
+
+  It also records each client's JA4 fingerprint, with no score.
+- **Detection.** The WAF decodes base64 values for its traversal, path and
+  command injection rules. The DGA and typosquat checks skip special-use
+  top-level domains.
+- **Documentation.** A new page gives the WAF's coverage by context.
+- **Security.** follow-redirects 1.16.2 closes CVE-2026-116689 in the UI.
+
+No route, field or status code is removed. Nothing is **BREAKING** and
+`X-API-Version` stays 1.
+
 ### Added
 
 - With TLS server names on, the WAF takes the JA4 fingerprint of each
