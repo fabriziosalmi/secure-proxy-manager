@@ -678,10 +678,12 @@ fi
 if [ -f /config/ssl_bump_enabled ]; then
     echo "SSL Bump ENABLED: injecting HTTPS interception config"
 
-    # Replace http_port with https_port + ssl-bump
+    # The port reads TLS (ssl-bump) and mints a certificate per host
     sed -i 's/^http_port 3128$/http_port 3128 ssl-bump \\\n  cert=\/config\/ssl_cert.pem \\\n  key=\/config\/ssl_key.pem \\\n  generate-host-certificates=on \\\n  dynamic_cert_mem_cache_size=4MB/' "$SQUID_CONF"
 
-    # Add ssl_bump directives before the first http_access line
+    # Appended at the end, like the peek block below: Squid reads the ssl_bump
+    # rules as their own list, so where they sit among the http_access lines
+    # does not change what they do.
     SSL_BUMP_BLOCK=$(cat <<'SSLEOF'
 
 # ── SSL Bump (HTTPS Inspection) ────────────────────────────────────────────
@@ -700,9 +702,7 @@ ssl_bump bump all
 
 SSLEOF
 )
-    # Insert before the first "http_access" line
-    sed -i "/^http_access/i\\${SSL_BUMP_BLOCK}" "$SQUID_CONF" 2>/dev/null || \
-        echo "$SSL_BUMP_BLOCK" >> "$SQUID_CONF"
+    echo "$SSL_BUMP_BLOCK" >> "$SQUID_CONF"
 
     echo "SSL Bump config injected. WAF can now inspect HTTPS content."
 elif [ -f /config/tls_peek_enabled ]; then
