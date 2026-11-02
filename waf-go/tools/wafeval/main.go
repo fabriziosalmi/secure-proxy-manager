@@ -47,6 +47,12 @@ type Record struct {
 	// A record without Handshake is a first pass.
 	SNI       string `json:"sni,omitempty"`
 	Handshake string `json:"handshake,omitempty"`
+	// Client and TS make a record part of a timeline: records that name the
+	// same Client share one client address, so the per-client heuristics see
+	// them together, and TS (RFC 3339) is the time the heuristics measure.
+	// Without them a record is alone and seen now.
+	Client string `json:"client,omitempty"`
+	TS     string `json:"ts,omitempty"`
 }
 
 func main() {
@@ -66,6 +72,7 @@ func main() {
 	policyFile := flag.String("policy", "", "apply this WAF policy file (WAF_POLICY_FILE) to the spm and hybrid engines")
 	emitFile := flag.String("emit-exceptions", "", "write a policy file with one exception per rule that scored on a false positive")
 	emitSources := flag.String("emit-sources", "", "comma-separated sources whose false positives -emit-exceptions takes (all if empty)")
+	timeline := flag.String("timeline", "", "write one JSON line per record that has a client or a time: when, who, its signals and verdict")
 	flag.Parse()
 	if *out == "" || flag.NArg() == 0 {
 		fmt.Fprintln(os.Stderr, "usage: wafeval -out report.json [-md report.md] corpus.jsonl...")
@@ -125,6 +132,25 @@ func main() {
 	}
 
 	rep := newReport(eng, *commit, !*noLatency)
+	// closeTimeline flushes and closes -timeline; its error fails the run,
+	// since a timeline cut short by a full disk must not pass for complete.
+	closeTimeline := func() error { return nil }
+	if *timeline != "" {
+		tf, err := os.OpenFile(*timeline, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "wafeval:", err)
+			os.Exit(1)
+		}
+		tw := bufio.NewWriter(tf)
+		rep.timeline = json.NewEncoder(tw)
+		closeTimeline = func() error {
+			if err := tw.Flush(); err != nil {
+				tf.Close()
+				return err
+			}
+			return tf.Close()
+		}
+	}
 	rep.explainN = *explainN
 	explainOn = *explainN > 0
 	if evalPolicy != nil {
@@ -149,6 +175,10 @@ func main() {
 	}
 	rep.finish()
 	pprof.StopCPUProfile()
+	if err := closeTimeline(); err != nil {
+		fmt.Fprintln(os.Stderr, "wafeval: timeline:", err)
+		os.Exit(1)
+	}
 
 	if err := writeJSON(*out, rep); err != nil {
 		fmt.Fprintln(os.Stderr, "wafeval:", err)
@@ -194,7 +224,11 @@ func runFile(path string, eng Engine, rep *Report, seq *int, limit int) error {
 		}
 		n++
 		*seq++
-		rep.add(&rec, eng, clientIPFor(*seq))
+		ip, at, err := rep.replayClient(&rec, *seq)
+		if err != nil {
+			return fmt.Errorf("%s line %d: %w", path, n, err)
+		}
+		rep.add(&rec, eng, ip, at)
 	}
 	if err := sc.Err(); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
@@ -211,6 +245,12 @@ func runFile(path string, eng Engine, rep *Report, seq *int, limit int) error {
 // so the per-client heuristic windows never mix two records.
 func clientIPFor(seq int) string {
 	return fmt.Sprintf("100.%d.%d.%d", 64+(seq>>16)&63, (seq>>8)&255, seq&255)
+}
+
+// timelineIPFor gives the n-th client named in a timeline its address, in
+// 198.18.0.0/15, apart from the per-record addresses of clientIPFor.
+func timelineIPFor(n int) string {
+	return fmt.Sprintf("198.%d.%d.%d", 18+(n>>16)&1, (n>>8)&255, n&255)
 }
 
 func splitList(s string) []string {

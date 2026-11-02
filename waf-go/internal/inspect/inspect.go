@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"secure-proxy-waf/internal/crs"
 	"secure-proxy-waf/internal/engine"
@@ -125,6 +126,9 @@ type Inspection struct {
 
 	RawURL   string
 	ClientIP string
+	// Now is when the request was seen, for the per-client heuristic
+	// windows; zero means time.Now(). Only a replay sets it.
+	Now time.Time
 	// Hello is set on the second pass of a peeked CONNECT: what Squid read
 	// of the client's first bytes. Nil on every other request.
 	Hello *Hello
@@ -513,7 +517,11 @@ func (in *Inspection) Heuristics(r *http.Request, bodyEntropy, urlEntropy float6
 	if in.Hello != nil {
 		return
 	}
-	hResults, hScore := in.Eng.CheckRequestHeuristics(
+	now := in.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	hResults, hScore := in.Eng.CheckRequestHeuristicsAt(now,
 		in.ClientIP, r.Method, r.Host, r.URL.Path,
 		in.BodyStr, in.BodySize, bodyEntropy, urlEntropy,
 	)
@@ -581,7 +589,13 @@ func Evaluate(eng *engine.Engine, crsEng *crs.Engine, pol *policy.Policy, r *htt
 // EvaluateHello is Evaluate for a request that may be the second pass of a
 // peeked CONNECT: hello is what ParseHello made of Squid's two headers.
 func EvaluateHello(eng *engine.Engine, crsEng *crs.Engine, pol *policy.Policy, r *http.Request, clientIP string, hello *Hello) (in *Inspection, lanSkipped bool) {
-	in = &Inspection{Eng: eng, CRSEng: crsEng, Policy: pol, RawURL: r.URL.String(), ClientIP: clientIP, Hello: hello}
+	return EvaluateAt(eng, crsEng, pol, r, clientIP, hello, time.Time{})
+}
+
+// EvaluateAt is EvaluateHello for a request seen at now (zero: time.Now()),
+// for a replay that keeps each record's own time.
+func EvaluateAt(eng *engine.Engine, crsEng *crs.Engine, pol *policy.Policy, r *http.Request, clientIP string, hello *Hello, now time.Time) (in *Inspection, lanSkipped bool) {
+	in = &Inspection{Eng: eng, CRSEng: crsEng, Policy: pol, RawURL: r.URL.String(), ClientIP: clientIP, Hello: hello, Now: now}
 	if engine.IsLANHost(r.Host) {
 		return in, true
 	}

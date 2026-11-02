@@ -151,3 +151,33 @@ func TestIsInvalidSequence(t *testing.T) {
 		t.Errorf("Expected valid sequence for POST /login with prior GET /login")
 	}
 }
+
+// CheckRequestHeuristicsAt measures the intervals of the times it is given,
+// not of the calls: a replay of a 60 s beacon is a beacon however fast it
+// runs, and requests given one instant are not.
+func TestCheckRequestHeuristicsAtUsesGivenTime(t *testing.T) {
+	cfg := HeuristicsFromEnv()
+	cfg.BeaconingDetection = true
+	beacon := func(e *Engine, client string, at func(i int) time.Time) int {
+		first := 0
+		for i := 0; i < 6; i++ {
+			res, _ := e.CheckRequestHeuristicsAt(at(i), client, "GET", "c2.example.net", "/b", "", 0, 2.0, 2.0)
+			for _, r := range res {
+				if r.ID == "H2-BEACON" && first == 0 {
+					first = i + 1
+				}
+			}
+		}
+		return first
+	}
+	t0 := time.Date(2017, 7, 7, 10, 0, 0, 0, time.UTC)
+
+	e := New(Config{Heuristics: cfg})
+	if got := beacon(e, "10.0.0.5", func(i int) time.Time { return t0.Add(time.Duration(i) * time.Minute) }); got != 5 {
+		t.Errorf("60 s apart: H2 first at request %d, want 5", got)
+	}
+	e = New(Config{Heuristics: cfg})
+	if got := beacon(e, "10.0.0.6", func(int) time.Time { return t0 }); got != 0 {
+		t.Errorf("one instant: H2 at request %d, want none", got)
+	}
+}

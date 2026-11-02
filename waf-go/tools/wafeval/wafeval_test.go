@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A corpus whose outcome is known line by line.
@@ -128,7 +130,7 @@ func TestCorazaAdapterBaseline(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if v := eng.Inspect(r, "192.0.2.10", nil); v.Blocked != c.want {
+			if v := eng.Inspect(r, "192.0.2.10", nil, time.Time{}); v.Blocked != c.want {
 				t.Errorf("PL%d %s %s: blocked=%v want %v (rules %v)", pl, c.rec.Method, c.rec.URL, v.Blocked, c.want, v.Rules)
 			}
 		}
@@ -150,7 +152,7 @@ func TestCorazaAdapterBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v := pl1.Inspect(r, "192.0.2.10", nil); v.Blocked {
+	if v := pl1.Inspect(r, "192.0.2.10", nil, time.Time{}); v.Blocked {
 		t.Errorf("PL1 blocked a text/plain beacon (rules %v)", v.Rules)
 	}
 
@@ -178,7 +180,7 @@ func TestCorazaAdapterBaseline(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if v := pl1.Inspect(r, "192.0.2.10", nil); v.Blocked {
+		if v := pl1.Inspect(r, "192.0.2.10", nil, time.Time{}); v.Blocked {
 			t.Errorf("PL1 blocked %s %s (rules %v)", rec.Method, rec.URL, v.Rules)
 		}
 	}
@@ -219,7 +221,7 @@ func TestRestrictedExtensionsEgress(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if v := eng.Inspect(r, "192.0.2.10", nil); v.Blocked != c.want {
+		if v := eng.Inspect(r, "192.0.2.10", nil, time.Time{}); v.Blocked != c.want {
 			t.Errorf("%s: blocked=%v want %v (rules %v)", c.url, v.Blocked, c.want, v.Rules)
 		}
 	}
@@ -251,7 +253,7 @@ func TestHybridEngine(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if v := eng.Inspect(r, "192.0.2.10", nil); v.Blocked != c.want {
+		if v := eng.Inspect(r, "192.0.2.10", nil, time.Time{}); v.Blocked != c.want {
 			t.Errorf("%s: blocked=%v want %v (rules %v)", c.name, v.Blocked, c.want, v.Rules)
 		}
 	}
@@ -348,5 +350,79 @@ func TestPeekRecords(t *testing.T) {
 		if len(rep.Signals[k]) != 0 {
 			t.Errorf("%s signalled %v, want nothing (same name; no handshake is a first pass)", k, rep.Signals[k])
 		}
+	}
+}
+
+// Records that name a client share its heuristic windows and are measured at
+// their own time: six requests a minute apart are a beacon from the fifth on,
+// while the same six without a client are six strangers, and write no
+// timeline line.
+func TestTimelineRecords(t *testing.T) {
+	var b strings.Builder
+	t0 := time.Date(2017, 7, 7, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 6; i++ {
+		fmt.Fprintf(&b, `{"id":"b%d","source":"t","label":"attack","category":"beacon","context":"bump","method":"GET","url":"http://c2.example.net/b","headers":[],"body":"","client":"bot","ts":%q}`+"\n",
+			i+1, t0.Add(time.Duration(i)*time.Minute).Format(time.RFC3339))
+	}
+	for i := 0; i < 6; i++ {
+		fmt.Fprintf(&b, `{"id":"s%d","source":"t","label":"benign","category":"alone","context":"bump","method":"GET","url":"http://c2.example.net/b","headers":[],"body":""}`+"\n", i+1)
+	}
+	b.WriteString(`{"id":"p1","source":"t","label":"attack","category":"broken","context":"bump","method":"GET","url":"http://shop.example.com/a b c","headers":[],"body":"","client":"other","ts":"2017-07-07T10:00:00Z"}` + "\n")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "timeline.jsonl")
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	eng, err := newSPMEngine([]string{"waf_h_sequence"}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := newReport(eng, "test", false)
+	var out bytes.Buffer
+	rep.timeline = json.NewEncoder(&out)
+	seq := 0
+	if err := runFile(path, eng, rep, &seq, 0); err != nil {
+		t.Fatal(err)
+	}
+	var beacons []string
+	lines := 0
+	dec := json.NewDecoder(&out)
+	for dec.More() {
+		var e TimelineEntry
+		if err := dec.Decode(&e); err != nil {
+			t.Fatal(err)
+		}
+		lines++
+		if e.ID == "p1" {
+			if !e.ParseError || e.Client != "other" {
+				t.Errorf("malformed record: %+v, want parse_error for client other", e)
+			}
+			continue
+		}
+		if e.Client != "bot" || e.Host != "c2.example.net" {
+			t.Errorf("%s: client %q host %q, want bot and c2.example.net", e.ID, e.Client, e.Host)
+		}
+		for _, s := range e.Signals {
+			if s == "HEURISTIC_BEACONING" {
+				beacons = append(beacons, e.ID)
+			}
+		}
+	}
+	if lines != 7 {
+		t.Errorf("%d timeline lines, want 7 (the records with a client, the malformed one too)", lines)
+	}
+	if strings.Join(beacons, ",") != "b5,b6" {
+		t.Errorf("beacon signalled on %v, want b5,b6", beacons)
+	}
+	if n := rep.Signals["t|bump|benign"]["HEURISTIC_BEACONING"]; n != 0 {
+		t.Errorf("records without a client: beacon on %d, want 0", n)
+	}
+
+	bad := filepath.Join(dir, "bad.jsonl")
+	if err := os.WriteFile(bad, []byte(`{"id":"x","source":"t","label":"benign","context":"bump","method":"GET","url":"http://a.example/","headers":[],"body":"","ts":"yesterday"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := runFile(bad, eng, rep, &seq, 0); err == nil || !strings.Contains(err.Error(), "line 1: ts") {
+		t.Errorf("unparsable ts: error %v, want one naming line 1 and ts", err)
 	}
 }

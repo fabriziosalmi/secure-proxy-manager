@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"runtime"
 	"sort"
 	"strings"
@@ -60,6 +62,10 @@ type Report struct {
 	catCells   map[string]*Cell
 	latency    map[string][]time.Duration
 	keepTiming bool
+	// timeline, with -timeline, gets one line per record that has a client
+	// or a time; clients maps each client name to its address.
+	timeline *json.Encoder
+	clients  map[string]string
 }
 
 type ScoreCheck struct {
@@ -139,19 +145,81 @@ func (rep *Report) example(key, id string) {
 	}
 }
 
-func (rep *Report) add(rec *Record, eng Engine, clientIP string) {
+// replayClient is the address and time a record is inspected with: its own
+// address unless it names a client, now unless it has a time.
+func (rep *Report) replayClient(rec *Record, seq int) (string, time.Time, error) {
+	var at time.Time
+	if rec.TS != "" {
+		t, err := time.Parse(time.RFC3339Nano, rec.TS)
+		if err != nil {
+			return "", at, fmt.Errorf("ts: %w", err)
+		}
+		at = t
+	}
+	if rec.Client == "" {
+		return clientIPFor(seq), at, nil
+	}
+	if rep.clients == nil {
+		rep.clients = map[string]string{}
+	}
+	ip, ok := rep.clients[rec.Client]
+	if !ok {
+		if len(rep.clients) >= 1<<17 {
+			return "", at, fmt.Errorf("more than %d clients", 1<<17)
+		}
+		ip = timelineIPFor(len(rep.clients))
+		rep.clients[rec.Client] = ip
+	}
+	return ip, at, nil
+}
+
+// TimelineEntry is one line of -timeline.
+type TimelineEntry struct {
+	TS       string   `json:"ts,omitempty"`
+	Client   string   `json:"client,omitempty"`
+	ID       string   `json:"id"`
+	Label    string   `json:"label"`
+	Category string   `json:"category,omitempty"`
+	Host     string   `json:"host,omitempty"`
+	Signals  []string `json:"signals,omitempty"`
+	Rules    []string `json:"rules,omitempty"`
+	Score    int      `json:"score"`
+	Blocked  bool     `json:"blocked"`
+	// ParseError: the record could not be built into a request or a
+	// response, so it was not inspected.
+	ParseError bool `json:"parse_error,omitempty"`
+}
+
+// writeTimeline writes rec's -timeline line, when there is a timeline and
+// rec has a client or a time. An encoder error is a full disk or a closed
+// file: the timeline would be wrong, so wafeval stops.
+func (rep *Report) writeTimeline(rec *Record, host string, v Verdict, parseError bool) {
+	if rep.timeline == nil || (rec.Client == "" && rec.TS == "") {
+		return
+	}
+	if err := rep.timeline.Encode(TimelineEntry{TS: rec.TS, Client: rec.Client, ID: rec.ID, Label: rec.Label,
+		Category: rec.Category, Host: host, Signals: v.Signals, Rules: v.Rules, Score: v.Score, Blocked: v.Blocked,
+		ParseError: parseError}); err != nil {
+		fmt.Fprintln(os.Stderr, "wafeval: timeline:", err)
+		os.Exit(1)
+	}
+}
+
+func (rep *Report) add(rec *Record, eng Engine, clientIP string, at time.Time) {
 	sum := rep.cell(rep.cells, rec.Source, rec.Context, "")
 	cat := rep.cell(rep.catCells, rec.Source, rec.Context, rec.Category)
 	key := rec.Source + "|" + rec.Context
 
 	var v Verdict
 	var start time.Time
+	var host string
 	if rec.Kind == "response" {
 		resp, err := buildResponse(rec)
 		if err != nil {
 			sum.ParseErrors++
 			cat.ParseErrors++
 			rep.example("parse_error|"+key, rec.ID)
+			rep.writeTimeline(rec, "", v, true)
 			return
 		}
 		start = now()
@@ -170,16 +238,20 @@ func (rep *Report) add(rec *Record, eng Engine, clientIP string) {
 			sum.ParseErrors++
 			cat.ParseErrors++
 			rep.example("parse_error|"+key, rec.ID)
+			rep.writeTimeline(rec, "", v, true)
 			return
 		}
 		start = now()
-		v = eng.Inspect(r, clientIP, inspect.ParseHello(rec.SNI, rec.Handshake))
+		v = eng.Inspect(r, clientIP, inspect.ParseHello(rec.SNI, rec.Handshake), at)
+		host = r.Host
 	}
 	if rep.keepTiming {
 		d := now().Sub(start)
 		rep.latency[rec.Context] = append(rep.latency[rec.Context], d)
 		rep.latency[key] = append(rep.latency[key], d)
 	}
+	// After the latency sample, which measures the inspection alone.
+	rep.writeTimeline(rec, host, v, false)
 	if v.LANSkipped {
 		sum.LANSkipped++
 		cat.LANSkipped++

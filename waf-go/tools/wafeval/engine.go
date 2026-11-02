@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"secure-proxy-waf/internal/crs"
 	"secure-proxy-waf/internal/engine"
@@ -83,7 +84,7 @@ func spmExplain(r *http.Request, rawURL, body string, ids []string) []string {
 type Engine interface {
 	Name() string
 	Describe() map[string]any
-	Inspect(r *http.Request, clientIP string, hello *inspect.Hello) Verdict
+	Inspect(r *http.Request, clientIP string, hello *inspect.Hello, now time.Time) Verdict
 	InspectResponse(resp *http.Response) Verdict
 }
 
@@ -210,8 +211,8 @@ func (e *spmEngine) InspectResponse(resp *http.Response) Verdict {
 	return out
 }
 
-func (e *spmEngine) Inspect(r *http.Request, clientIP string, hello *inspect.Hello) Verdict {
-	in, lan := evaluate(e.eng, e.crs, r, clientIP, hello)
+func (e *spmEngine) Inspect(r *http.Request, clientIP string, hello *inspect.Hello, now time.Time) Verdict {
+	in, lan := evaluate(e.eng, e.crs, r, clientIP, hello, now)
 	if lan {
 		return Verdict{LANSkipped: true}
 	}
@@ -291,11 +292,11 @@ func exceptionsFor(in *inspect.Inspection, host, path string) []policy.Exception
 var evalPolicy *policy.Policy
 
 // evaluate is inspect.Evaluate under -policy, with -explain passed to CRS.
-func evaluate(eng *engine.Engine, c *crs.Engine, r *http.Request, clientIP string, hello *inspect.Hello) (*inspect.Inspection, bool) {
+func evaluate(eng *engine.Engine, c *crs.Engine, r *http.Request, clientIP string, hello *inspect.Hello, now time.Time) (*inspect.Inspection, bool) {
 	if !explainOn || c == nil {
-		return inspect.EvaluateHello(eng, c, evalPolicy, r, clientIP, hello)
+		return inspect.EvaluateAt(eng, c, evalPolicy, r, clientIP, hello, now)
 	}
-	in := &inspect.Inspection{Eng: eng, CRSEng: c, Policy: evalPolicy, Explain: true, RawURL: r.URL.String(), ClientIP: clientIP, Hello: hello}
+	in := &inspect.Inspection{Eng: eng, CRSEng: c, Policy: evalPolicy, Explain: true, RawURL: r.URL.String(), ClientIP: clientIP, Hello: hello, Now: now}
 	if engine.IsLANHost(r.Host) {
 		return in, true
 	}
