@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"secure-proxy-waf/internal/crs"
 	"secure-proxy-waf/internal/engine"
@@ -50,7 +51,7 @@ func (e *corazaEngine) InspectResponse(resp *http.Response) Verdict {
 	return Verdict{NotInspected: true}
 }
 
-func (e *corazaEngine) Inspect(r *http.Request, clientIP string, _ *inspect.Hello) Verdict {
+func (e *corazaEngine) Inspect(r *http.Request, clientIP string, _ *inspect.Hello, _ time.Time) Verdict {
 	// The production handler lets LAN destinations through uninspected; the
 	// comparison keeps that, so both engines see the same requests.
 	if engine.IsLANHost(r.Host) {

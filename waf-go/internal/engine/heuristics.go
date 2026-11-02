@@ -170,10 +170,17 @@ func (e *Engine) CleanupClientStates() {
 // CheckRequestHeuristics evaluates behavioral heuristics for a request.
 // Returns additional score and match results.
 func (e *Engine) CheckRequestHeuristics(clientIP, method, host, path, body string, bodySize int, bodyEntropy, urlEntropy float64) ([]HeuristicResult, int) {
+	return e.CheckRequestHeuristicsAt(time.Now(), clientIP, method, host, path, body, bodySize, bodyEntropy, urlEntropy)
+}
+
+// CheckRequestHeuristicsAt is CheckRequestHeuristics for a request seen at
+// now: a replay (wafeval) passes each record's own time, so the per-client
+// windows measure the recorded intervals rather than the replay's speed.
+func (e *Engine) CheckRequestHeuristicsAt(now time.Time, clientIP, method, host, path, body string, bodySize int, bodyEntropy, urlEntropy float64) ([]HeuristicResult, int) {
 	// One consistent snapshot of the (runtime-mutable) config for this request.
 	cfg := e.Heuristics()
 
-	snap := e.recordClientRequest(cfg, clientIP, method, host, path, bodySize, time.Now())
+	snap := e.recordClientRequest(cfg, clientIP, method, host, path, bodySize, now)
 
 	// Each heuristic looks only at the config, the request and the snapshot of
 	// the client's history taken above; none of them touches shared state.
