@@ -132,16 +132,24 @@ func main() {
 	}
 
 	rep := newReport(eng, *commit, !*noLatency)
+	// closeTimeline flushes and closes -timeline; its error fails the run,
+	// since a timeline cut short by a full disk must not pass for complete.
+	closeTimeline := func() error { return nil }
 	if *timeline != "" {
 		tf, err := os.OpenFile(*timeline, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "wafeval:", err)
 			os.Exit(1)
 		}
-		defer tf.Close()
 		tw := bufio.NewWriter(tf)
-		defer tw.Flush()
 		rep.timeline = json.NewEncoder(tw)
+		closeTimeline = func() error {
+			if err := tw.Flush(); err != nil {
+				tf.Close()
+				return err
+			}
+			return tf.Close()
+		}
 	}
 	rep.explainN = *explainN
 	explainOn = *explainN > 0
@@ -167,6 +175,10 @@ func main() {
 	}
 	rep.finish()
 	pprof.StopCPUProfile()
+	if err := closeTimeline(); err != nil {
+		fmt.Fprintln(os.Stderr, "wafeval: timeline:", err)
+		os.Exit(1)
+	}
 
 	if err := writeJSON(*out, rep); err != nil {
 		fmt.Fprintln(os.Stderr, "wafeval:", err)

@@ -185,6 +185,24 @@ type TimelineEntry struct {
 	Rules    []string `json:"rules,omitempty"`
 	Score    int      `json:"score"`
 	Blocked  bool     `json:"blocked"`
+	// ParseError: the record could not be built into a request or a
+	// response, so it was not inspected.
+	ParseError bool `json:"parse_error,omitempty"`
+}
+
+// writeTimeline writes rec's -timeline line, when there is a timeline and
+// rec has a client or a time. An encoder error is a full disk or a closed
+// file: the timeline would be wrong, so wafeval stops.
+func (rep *Report) writeTimeline(rec *Record, host string, v Verdict, parseError bool) {
+	if rep.timeline == nil || (rec.Client == "" && rec.TS == "") {
+		return
+	}
+	if err := rep.timeline.Encode(TimelineEntry{TS: rec.TS, Client: rec.Client, ID: rec.ID, Label: rec.Label,
+		Category: rec.Category, Host: host, Signals: v.Signals, Rules: v.Rules, Score: v.Score, Blocked: v.Blocked,
+		ParseError: parseError}); err != nil {
+		fmt.Fprintln(os.Stderr, "wafeval: timeline:", err)
+		os.Exit(1)
+	}
 }
 
 func (rep *Report) add(rec *Record, eng Engine, clientIP string, at time.Time) {
@@ -201,6 +219,7 @@ func (rep *Report) add(rec *Record, eng Engine, clientIP string, at time.Time) {
 			sum.ParseErrors++
 			cat.ParseErrors++
 			rep.example("parse_error|"+key, rec.ID)
+			rep.writeTimeline(rec, "", v, true)
 			return
 		}
 		start = now()
@@ -219,26 +238,20 @@ func (rep *Report) add(rec *Record, eng Engine, clientIP string, at time.Time) {
 			sum.ParseErrors++
 			cat.ParseErrors++
 			rep.example("parse_error|"+key, rec.ID)
+			rep.writeTimeline(rec, "", v, true)
 			return
 		}
 		start = now()
 		v = eng.Inspect(r, clientIP, inspect.ParseHello(rec.SNI, rec.Handshake), at)
 		host = r.Host
 	}
-	if rep.timeline != nil && (rec.Client != "" || rec.TS != "") {
-		// An encoder error is a full disk or a closed file: the report
-		// would be wrong, so stop.
-		if err := rep.timeline.Encode(TimelineEntry{TS: rec.TS, Client: rec.Client, ID: rec.ID, Label: rec.Label,
-			Category: rec.Category, Host: host, Signals: v.Signals, Rules: v.Rules, Score: v.Score, Blocked: v.Blocked}); err != nil {
-			fmt.Fprintln(os.Stderr, "wafeval: timeline:", err)
-			os.Exit(1)
-		}
-	}
 	if rep.keepTiming {
 		d := now().Sub(start)
 		rep.latency[rec.Context] = append(rep.latency[rec.Context], d)
 		rep.latency[key] = append(rep.latency[key], d)
 	}
+	// After the latency sample, which measures the inspection alone.
+	rep.writeTimeline(rec, host, v, false)
 	if v.LANSkipped {
 		sum.LANSkipped++
 		cat.LANSkipped++

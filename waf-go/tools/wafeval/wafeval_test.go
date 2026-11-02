@@ -367,6 +367,7 @@ func TestTimelineRecords(t *testing.T) {
 	for i := 0; i < 6; i++ {
 		fmt.Fprintf(&b, `{"id":"s%d","source":"t","label":"benign","category":"alone","context":"bump","method":"GET","url":"http://c2.example.net/b","headers":[],"body":""}`+"\n", i+1)
 	}
+	b.WriteString(`{"id":"p1","source":"t","label":"attack","category":"broken","context":"bump","method":"GET","url":"http://shop.example.com/a b c","headers":[],"body":"","client":"other","ts":"2017-07-07T10:00:00Z"}` + "\n")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "timeline.jsonl")
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
@@ -392,6 +393,12 @@ func TestTimelineRecords(t *testing.T) {
 			t.Fatal(err)
 		}
 		lines++
+		if e.ID == "p1" {
+			if !e.ParseError || e.Client != "other" {
+				t.Errorf("malformed record: %+v, want parse_error for client other", e)
+			}
+			continue
+		}
 		if e.Client != "bot" || e.Host != "c2.example.net" {
 			t.Errorf("%s: client %q host %q, want bot and c2.example.net", e.ID, e.Client, e.Host)
 		}
@@ -401,8 +408,8 @@ func TestTimelineRecords(t *testing.T) {
 			}
 		}
 	}
-	if lines != 6 {
-		t.Errorf("%d timeline lines, want 6 (only the records with a client)", lines)
+	if lines != 7 {
+		t.Errorf("%d timeline lines, want 7 (the records with a client, the malformed one too)", lines)
 	}
 	if strings.Join(beacons, ",") != "b5,b6" {
 		t.Errorf("beacon signalled on %v, want b5,b6", beacons)
