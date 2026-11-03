@@ -29,14 +29,25 @@ function Code({ children }: { children: string }) {
   return <code className="rounded bg-surface-muted px-1 py-px font-mono text-[12px] text-ink">{children}</code>;
 }
 
-const HEURISTICS: { key: string; label: string; help: string }[] = [
-  { key: 'waf_h_entropy', label: 'Entropy detection', help: 'Scores a request body over 256 bytes, or a URL, whose entropy is above 7.5 (WAF_H_ENTROPY_MAX): data that looks encrypted or compressed leaving the network. Adds 6 for a body, 7 for a URL.' },
-  { key: 'waf_h_beaconing', label: 'Beaconing', help: 'Scores a client that makes at least 5 requests in 5 minutes at regular intervals with payloads of nearly the same size, the pattern of malware checking in with its controller. Adds 6.' },
-  { key: 'waf_h_pii', label: 'Personal data in responses', help: 'Scores a response that carries more than 5 email addresses, card-like numbers or US social security numbers. Adds 10.' },
-  { key: 'waf_h_sharding', label: 'Destination sharding', help: 'Scores a client that contacts more than 50 different destinations within a minute. Adds 6.' },
-  { key: 'waf_h_ghosting', label: 'Protocol ghosting', help: 'Scores a request body that starts like SSH, SMTP, a Linux (ELF) or a Windows (PE) executable. Adds 7.' },
-  { key: 'waf_h_sequence', label: 'Sequence validation', help: 'Scores a POST to a /login path that does not follow a GET, and a DELETE that follows anything but a GET. Adds 7. Off in the shipped compose.' },
+// adds: the most each one adds to a score (heuristics.go), to say which can
+// block on its own at the running threshold.
+const HEURISTICS: { key: string; label: string; help: string; adds: number }[] = [
+  { key: 'waf_h_entropy', adds: 7, label: 'Entropy detection', help: 'Scores a request body over 256 bytes, or a URL, whose entropy is above 7.5 (WAF_H_ENTROPY_MAX): data that looks encrypted or compressed leaving the network. Adds 6 for a body, 7 for a URL.' },
+  { key: 'waf_h_beaconing', adds: 6, label: 'Beaconing', help: 'Scores a client that makes at least 5 requests in 5 minutes at regular intervals with payloads of nearly the same size, the pattern of malware checking in with its controller. Adds 6.' },
+  { key: 'waf_h_pii', adds: 10, label: 'Personal data in responses', help: 'Scores a response that carries more than 5 email addresses, card-like numbers or US social security numbers. Adds 10.' },
+  { key: 'waf_h_sharding', adds: 6, label: 'Destination sharding', help: 'Scores a client that contacts more than 50 different destinations within a minute. Adds 6.' },
+  { key: 'waf_h_ghosting', adds: 7, label: 'Protocol ghosting', help: 'Scores a request body that starts like SSH, SMTP, a Linux (ELF) or a Windows (PE) executable. Adds 7.' },
+  { key: 'waf_h_sequence', adds: 7, label: 'Sequence validation', help: 'Scores a POST to a /login path that does not follow a GET, and a DELETE that follows anything but a GET. Adds 7. Off in the shipped compose.' },
 ];
+
+/** Which heuristics can block on their own at threshold, in a clause. */
+function secondSignal(threshold: number): string {
+  const alone = HEURISTICS.filter((h) => h.adds >= threshold).map((h) => h.label);
+  if (alone.length === 0) return 'so each needs a second signal to block';
+  if (alone.length === HEURISTICS.length) return 'so any one of them can block on its own';
+  const names = alone.length === 1 ? alone[0] : `${alone.slice(0, -1).join(', ')} and ${alone[alone.length - 1]}`;
+  return `so ${names} can block on ${alone.length === 1 ? 'its' : 'their'} own, and the others need a second signal`;
+}
 
 interface RunningHeuristics { available: boolean; running?: Record<string, boolean>; reason?: string }
 
@@ -135,8 +146,8 @@ export function InspectionSection({ form }: { form: SectionForm }) {
   const status = useQuery({ ...wafStatusQuery, staleTime: 10_000 });
   const threshold = status.data?.status === 'ok' ? status.data.running?.threshold : undefined;
   const blocksAt = threshold
-    ? `The WAF blocks at a score of ${formatCount(threshold)}`
-    : 'The WAF blocks at WAF_BLOCK_THRESHOLD in .env, 10 in the shipped compose';
+    ? `The WAF blocks at a score of ${formatCount(threshold)}, ${secondSignal(threshold)}`
+    : 'The WAF blocks at WAF_BLOCK_THRESHOLD in .env, 10 in the shipped compose, so most need a second signal to block';
 
   return (
     <div className="flex flex-col gap-4">
@@ -178,7 +189,7 @@ export function InspectionSection({ form }: { form: SectionForm }) {
       <Section
         level={3}
         title="WAF heuristics"
-        description={`Each one adds to a request's score. ${blocksAt}, so most need a second signal to block.`}
+        description={`Each one adds to a request's score. ${blocksAt}.`}
       >
         {waf.isSuccess && waf.data && !waf.data.available && (
           <Notice tone="warning" title="The running WAF could not be asked what it applies" className="mb-3">

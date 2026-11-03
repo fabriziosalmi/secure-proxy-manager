@@ -188,7 +188,11 @@ function SettingsPage() {
       queryClient.setQueryData<SettingRow[]>(SETTINGS_KEY, (old) => rowsAfterSave(old, req));
       drafts.discard(id);
       drafts.setResult(id, { kind: 'saved', at: new Date(), modes: req.modes, apply, failedFiles, waf });
-      if (waf) void queryClient.invalidateQueries({ queryKey: ['waf', 'heuristics'] });
+      if (waf) {
+        void queryClient.invalidateQueries({ queryKey: ['waf', 'heuristics'] });
+        // The heuristics count on the running WAF's status changes with them.
+        void queryClient.invalidateQueries({ queryKey: ['waf', 'status'] });
+      }
       void queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
     } catch (err) {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined;

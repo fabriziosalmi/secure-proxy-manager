@@ -68,10 +68,22 @@ const blockedByDay = {
   reasons: [r('domain_blacklist', 'Domain blacklist (proxy)', 70), r('domain_blacklist_dns', 'Domain blacklist (DNS sinkhole)', 37), r('port_policy', 'Port policy', 30), r('unclassified', 'Unclassified (no reason recorded)', 8)],
 };
 
+/**
+ * GET /api/waf/status: a hybrid WAF in Log only that also kept an old policy,
+ * so the Overview and Inspection lay out both notices and every row.
+ */
+const wafStatus = {
+  status: 'ok', categories: 22, categories_enabled: 22, categories_observed: 3, rules: 179, rules_enabled: 179, rules_observed: 41,
+  running: {
+    engine: 'hybrid', threshold: 10, regex_engine: 'go', regex_shadow: true, heuristics: 5,
+    policy_mode: 'observe', policy_exceptions: 12, policy_reload_failed: true, policy_observe_rules: 2,
+  },
+};
+
 const coverage = {
   domain_blacklist: { entries: 77569, squid_acl: domainAcl },
   ip_blacklist: { entries: 50772, squid_acl: { entries: 50772, networks: 32215, dropped: 0, written_at: 1761693300 } },
-  waf: { status: 'ok', categories: 21, categories_enabled: 21, rules: 172, rules_enabled: 172 },
+  waf: wafStatus,
   https_inspection: false, proxy_login: false, proxy_login_status: { state: 'off', users: 0, written_at: 0 },
   alerts: { enabled: false, channels: 0, waf_alerts_delivered: true },
 };
@@ -232,6 +244,7 @@ export function answer(url: URL): Json | undefined {
     case 'audit-log': return list(audit, { total: audit.length, limit: 50, offset: 0, retention_days: 365 });
     case 'waf/events/dmi3z8mpcz74-1': return ok(wafEvent);
     case 'waf/policy': return ok(wafPolicy);
+    case 'waf/status': return ok(wafStatus);
     case 'waf/heuristics': return ok({ available: true, running: { waf_h_entropy: true, waf_h_beaconing: true, waf_h_pii: true, waf_h_sharding: true, waf_h_ghosting: true, waf_h_sequence: false } });
     case 'waf/categories': return ok([{ name: 'SQL_INJECTION', rules: 22, enabled: true }, { name: 'CUSTOM_USER_RULES', rules: 0, enabled: true }]);
   }

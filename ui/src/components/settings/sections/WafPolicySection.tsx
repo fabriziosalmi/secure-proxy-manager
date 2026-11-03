@@ -19,9 +19,11 @@ import {
   exceptionScope,
   fetchWafPolicy,
   putWafPolicy,
+  refreshWafState,
   reloadText,
   wafPolicyKey,
   type WafPolicyFile,
+  type WafReload,
 } from '../../../lib/wafPolicy';
 
 type Mode = 'block' | 'observe';
@@ -37,13 +39,15 @@ export function WafPolicySection() {
 
   const save = async (next: WafPolicyFile, done: string, failed: string) => {
     if (!state.data) return;
+    let reload: WafReload | undefined;
     try {
       const res = await putWafPolicy(next, state.data.sha256);
+      reload = res.waf;
       toast.success(`${done} ${reloadText(res.waf)}`);
     } catch (err) {
       toast.error(getErrorMessage(err, failed));
     } finally {
-      void queryClient.invalidateQueries({ queryKey: wafPolicyKey });
+      refreshWafState(queryClient, reload);
     }
   };
 

@@ -21,8 +21,8 @@ import {
   fetchWafEvent,
   isCoreRuleSet,
   observeWafRule,
+  refreshWafState,
   reloadText,
-  wafPolicyKey,
   type WafEvent,
   type WafPolicyException,
 } from '../lib/wafPolicy';
@@ -76,7 +76,7 @@ export function WafBlockDetail({ eventId }: { eventId: string }) {
       const res = await addWafException({ ...x, comment: `Added from the access log (event ${e.event_id})` });
       if (res.added === false) toast.success('The policy already has this exception.');
       else toast.success(`Exception added for ${x.rule}. ${reloadText(res.waf)}`);
-      void queryClient.invalidateQueries({ queryKey: wafPolicyKey });
+      refreshWafState(queryClient, res.waf);
     } catch (err) {
       toast.error(getErrorMessage(err, `The exception for ${x.rule} was not added.`));
     }
@@ -94,7 +94,7 @@ export function WafBlockDetail({ eventId }: { eventId: string }) {
       const res = await observeWafRule(rule);
       if (res.added === false) toast.success(`${rule} is already logged only.`);
       else toast.success(`${rule} is logged only. ${reloadText(res.waf)}`);
-      void queryClient.invalidateQueries({ queryKey: wafPolicyKey });
+      refreshWafState(queryClient, res.waf);
     } catch (err) {
       toast.error(getErrorMessage(err, `${rule} was not left to log only.`));
     }

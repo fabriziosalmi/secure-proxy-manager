@@ -7,6 +7,7 @@ import type { Coverage } from '../../types';
 import { formatCount } from '../../lib/format';
 import { sectionPath, type SectionId } from '../../lib/settingsMeta';
 import { SHARED_SEVERITY, type Posture } from '../../lib/posture';
+import { CRS_THRESHOLD, onlyLogged } from '../../lib/wafRunning';
 
 /** A line's state, in the one model Settings uses too (lib/posture). */
 export type CoverageState = Posture;
@@ -77,11 +78,16 @@ function wafLine(c: Coverage): CoverageLine {
   const rules = w.rules_enabled === w.rules
     ? `${formatCount(w.rules)} request rules in ${formatCount(w.categories)} categories`
     : `${formatCount(w.rules_enabled)} of ${formatCount(w.rules)} request rules on, in ${formatCount(w.categories_enabled)} of ${formatCount(w.categories)} categories`;
-  // Categories that only log never add to a score; the hybrid engine ships
-  // three of them, so they are said, not flagged.
-  const observed = w.categories_observed ? ` (${formatCount(w.categories_observed)} only logged)` : '';
-  const crs = run?.engine === 'hybrid' ? ', plus the OWASP Core Rule Set' : '';
-  const blocks = run ? `; blocks at a score of ${formatCount(run.threshold)} and inspects` : ', inspecting';
+  // What only logs never adds to a score; the hybrid engine ships three
+  // such categories, so they are said, not flagged.
+  const logged = onlyLogged(w, run);
+  const observed = logged ? ` (${logged})` : '';
+  const hybrid = run?.engine === 'hybrid';
+  const crs = hybrid ? ', plus the OWASP Core Rule Set' : '';
+  // The threshold scores the SPM rules; the Core Rule Set blocks at its own.
+  const blocks = run
+    ? `; SPM rules block at a score of ${formatCount(run.threshold)}${hybrid ? `, the Core Rule Set at its own ${CRS_THRESHOLD}` : ''}; inspects`
+    : ', inspecting';
   return { ...base, state: 'on', text: `WAF: ${rules}${observed}${crs}${blocks} ${scope}` };
 }
 

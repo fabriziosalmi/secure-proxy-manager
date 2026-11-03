@@ -344,6 +344,8 @@ export interface WafRunning {
   policy_mode: string;
   policy_exceptions: number;
   policy_reload_failed: boolean;
+  /** Single rules the policy makes log-only; absent from an older backend. */
+  policy_observe_rules?: number;
 }
 
 /**

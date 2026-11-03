@@ -82,10 +82,10 @@ describe('coverageLines', () => {
     const waf = { ...coverageBody.waf, categories: 20, categories_enabled: 20, categories_observed: 3, rules: 180, rules_enabled: 180, running }
     expect(lines({ ...coverageBody, waf }).waf).toMatchObject({
       state: 'on',
-      text: 'WAF: 180 request rules in 20 categories (3 only logged), plus the OWASP Core Rule Set; blocks at a score of 10 and inspects plain HTTP only',
+      text: 'WAF: 180 request rules in 20 categories (3 categories only logged), plus the OWASP Core Rule Set; SPM rules block at a score of 10, the Core Rule Set at its own 5; inspects plain HTTP only',
     })
     expect(lines({ ...coverageBody, waf: { ...waf, categories_observed: 0, running: { ...running, engine: 'legacy', threshold: 5 } } }).waf.text)
-      .toBe('WAF: 180 request rules in 20 categories; blocks at a score of 5 and inspects plain HTTP only')
+      .toBe('WAF: 180 request rules in 20 categories; SPM rules block at a score of 5; inspects plain HTTP only')
     expect(lines({ ...coverageBody, waf: { ...waf, running: { ...running, policy_mode: 'observe' } } }).waf)
       .toMatchObject({ state: 'needs-attention', text: 'WAF: Log only, it records what it would block and blocks nothing' })
     expect(lines({ ...coverageBody, waf: { ...waf, running: { ...running, policy_reload_failed: true } } }).waf)

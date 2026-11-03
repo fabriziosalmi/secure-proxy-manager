@@ -18,8 +18,10 @@ describe('WafRunning', () => {
   it('lists what the WAF reports, not what the compose ships', () => {
     expect(wafRunningRows(ok, running)).toEqual([
       ['Engine', 'SPM rules plus the OWASP Core Rule Set'],
-      ['Blocks at', 'a score of 10 (WAF_BLOCK_THRESHOLD)'],
-      ['Request rules', '180 on, in 20 categories, 3 of them only logged'],
+      // The threshold scores the SPM rules; the Core Rule Set blocks at its own.
+      ['SPM rules block at', 'a score of 10 (WAF_BLOCK_THRESHOLD)'],
+      ['Core Rule Set blocks at', 'its own anomaly score of 5'],
+      ['Request rules', '180 on, in 20 categories; 3 categories only logged'],
       ['Regular expressions', "Go's regexp decides; the other engine runs beside it and the WAF logs any disagreement"],
       ['Heuristics on', '5'],
       ['Policy', 'Block, 2 exceptions'],
@@ -27,11 +29,15 @@ describe('WafRunning', () => {
     const legacy = wafRunningRows({ ...ok, categories_observed: 0 }, { ...running, engine: 'legacy', threshold: 7, regex_engine: 're2', regex_shadow: false, policy_mode: '' })
     expect(legacy).toEqual([
       ['Engine', 'SPM rules only, without the OWASP Core Rule Set'],
-      ['Blocks at', 'a score of 7 (WAF_BLOCK_THRESHOLD)'],
+      ['SPM rules block at', 'a score of 7 (WAF_BLOCK_THRESHOLD)'],
       ['Request rules', '180 on, in 20 categories'],
       ['Regular expressions', 'RE2'],
       ['Heuristics on', '5'],
     ])
+    // Rules the policy makes log-only are counted with the categories.
+    expect(wafRunningRows({ ...ok, categories_observed: 1 }, { ...running, policy_observe_rules: 2 })).toContainEqual(
+      ['Request rules', '180 on, in 20 categories; 1 category and 2 single rules only logged'],
+    )
   })
 
   it('warns that Log only blocks nothing', async () => {
