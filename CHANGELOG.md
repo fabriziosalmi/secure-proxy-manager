@@ -15,6 +15,26 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.26.2] - 2026-11-03
+
+Two fixes found reading a deployment with real traffic.
+
+### Fixed
+
+- The blocklist refresh and the egress provider refresh are due an
+  interval after their last run, read from the audit log, and no longer an
+  interval after each start of the backend. A backend restarted more often
+  than the interval (an update, a reboot, a daily rebuild) never refreshed
+  its lists. A run that is due, or a list never refreshed, now starts two
+  minutes after the backend does, and a change of the settings applies
+  within 30 minutes.
+- The generated `squid.conf` no longer has `dns_v4_first`, which Squid 7
+  logged as an obsolete `ERROR` on every start, and writes
+  `pipeline_prefetch 1` for the deprecated `on`. No behaviour changes.
+
+No route, field or status code is removed. Nothing is **BREAKING** and
+`X-API-Version` stays 1.
+
 ## [3.26.1] - 2026-11-03
 
 The images of 3.26.0, with the web image fixed. 3.26.0 published only its
