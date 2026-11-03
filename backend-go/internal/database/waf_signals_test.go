@@ -11,7 +11,7 @@ func TestStoreAndClearWAFSignals(t *testing.T) {
 	db := openInit(t)
 	at := time.Date(2026, 11, 3, 10, 0, 0, 123_000_000, time.UTC)
 	if err := StoreWAFSignals(db, []WAFSignal{
-		{At: at, ClientIP: "192.0.2.7", Host: "paypa1.com", Category: "TYPOSQUATTING", Rule: "ML-TYPO-001"},
+		{At: at, ClientIP: "192.0.2.7", Host: "paypa1.com", Category: "TYPOSQUATTING", Rule: "ML-TYPO-001", EventID: "e"},
 		{At: at, ClientIP: "192.0.2.7", Category: "CLOUD_SECRETS", Observed: true, Blocked: true, EventID: "e"},
 	}); err != nil {
 		t.Fatal(err)

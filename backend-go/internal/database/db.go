@@ -199,7 +199,8 @@ var schemaStatements = []string{
 		rule TEXT NOT NULL DEFAULT '',
 		observed INTEGER NOT NULL DEFAULT 0,
 		blocked INTEGER NOT NULL DEFAULT 0,
-		event_id TEXT NOT NULL DEFAULT ''
+		event_id TEXT NOT NULL,
+		UNIQUE (event_id, category)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_waf_signals_client_ts ON waf_signals(client_ip, ts_ms)`,
 	`CREATE INDEX IF NOT EXISTS idx_waf_signals_ts ON waf_signals(ts_ms)`,

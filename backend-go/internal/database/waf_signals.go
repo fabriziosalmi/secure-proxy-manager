@@ -22,13 +22,15 @@ type WAFSignal struct {
 	EventID  string
 }
 
-// StoreWAFSignals inserts sigs in one transaction.
+// StoreWAFSignals inserts sigs in one transaction. A signal already stored
+// (same event and category) is left as it is: the WAF retries a report whose
+// answer it did not get, which the backend may have stored.
 func StoreWAFSignals(db *sql.DB, sigs []WAFSignal) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare(`INSERT INTO waf_signals
+	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO waf_signals
 		(ts_ms, client_ip, host, category, rule, observed, blocked, event_id) VALUES (?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		_ = tx.Rollback()

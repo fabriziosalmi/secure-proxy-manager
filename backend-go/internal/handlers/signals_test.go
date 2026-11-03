@@ -123,6 +123,10 @@ func TestReceiveSignalsRejectsMalformedReports(t *testing.T) {
 		// Every field is bounded, so only the body limit stops a report
 		// padded with a field the decoder ignores.
 		{"oversized body", report(func(m map[string]any) { m["pad"] = strings.Repeat("p", signalReportMaxBytes) })},
+		{"no event id", report(func(m map[string]any) { m["event_id"] = "" })},
+		// One report and nothing after it.
+		{"a second value after the report", append(report(func(map[string]any) {}), []byte(`{"x":1}`)...)},
+		{"whitespace past the limit after the report", append(report(func(map[string]any) {}), []byte(strings.Repeat(" ", signalReportMaxBytes))...)},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			db, _, _, cleanup := setupTestDB(t)
@@ -137,6 +141,27 @@ func TestReceiveSignalsRejectsMalformedReports(t *testing.T) {
 				t.Errorf("%d rows stored from a rejected report", n)
 			}
 		})
+	}
+}
+
+// The WAF retries a report whose answer it did not get, which the backend
+// may have stored: the same report twice is stored once.
+func TestReceiveSignalsRetryIsStoredOnce(t *testing.T) {
+	db, _, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewSecurityHandlers(db, nil, nil, make(NotifyQueue, 1))
+	body := signalReport("192.0.2.7",
+		map[string]any{"category": "TYPOSQUATTING", "rule": "ML-TYPO-001"},
+		map[string]any{"category": "DGA_DOMAIN", "rule": "ML-DGA-001"})
+	for i := 0; i < 2; i++ {
+		w := httptest.NewRecorder()
+		h.ReceiveSignals(w, httptest.NewRequest("POST", "/api/internal/signals", bytes.NewReader(body)))
+		if w.Code != http.StatusOK {
+			t.Fatalf("delivery %d: %d", i+1, w.Code)
+		}
+	}
+	if n := len(signalRows(t, db)); n != 2 {
+		t.Errorf("%d rows after a retried report of 2 signals, want 2", n)
 	}
 }
 

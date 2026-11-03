@@ -64,6 +64,7 @@ var (
 		"rejected":      new(atomic.Int64), // 4xx: a credential or request problem, not retried
 		"server_error":  new(atomic.Int64), // 5xx, after the retries
 		"no_credential": new(atomic.Int64), // no service token (env or file) and BASIC_AUTH_* unset
+		"rate_limited":  new(atomic.Int64), // 429, after the retries
 	}
 
 	// bodyTruncatedCount counts requests whose body exceeded maxBodyInspectSize,
@@ -329,6 +330,14 @@ func deliverBackend(path string, data map[string]interface{}, failed map[string]
 		switch {
 		case resp.StatusCode < 400:
 			return
+		case resp.StatusCode == http.StatusTooManyRequests:
+			// The backend's per-address limit: it passes once the bucket
+			// refills, so this is retried, unlike a refusal.
+			if attempt == notifyAttempts-1 {
+				failed["rate_limited"].Add(1)
+				slog.Warn("alert not delivered to the backend", "path", path, "event_id", eventID, "reason", "rate_limited",
+					"attempts", notifyAttempts)
+			}
 		case resp.StatusCode < 500:
 			failed["rejected"].Add(1)
 			slog.Warn("alert rejected by the backend: check INTERNAL_ALERT_TOKEN on the waf and backend services",
@@ -1292,6 +1301,7 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 			"waf_notify_failed_total{reason=\"rejected\"} %d\n"+
 			"waf_notify_failed_total{reason=\"server_error\"} %d\n"+
 			"waf_notify_failed_total{reason=\"no_credential\"} %d\n"+
+			"waf_notify_failed_total{reason=\"rate_limited\"} %d\n"+
 			"# HELP waf_body_truncated_total Requests whose body exceeded the inspection limit (only a prefix was scanned).\n"+
 			"# TYPE waf_body_truncated_total counter\n"+
 			"waf_body_truncated_total %d\n"+
@@ -1331,6 +1341,7 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		notifyFailed["rejected"].Load(),
 		notifyFailed["server_error"].Load(),
 		notifyFailed["no_credential"].Load(),
+		notifyFailed["rate_limited"].Load(),
 		bodyTruncatedCount.Load(),
 		respmodUninspectable.Load(),
 		tlsHandshakes.Load(),

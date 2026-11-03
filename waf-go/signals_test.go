@@ -213,3 +213,46 @@ func TestMetricsExposeSignals(t *testing.T) {
 		}
 	}
 }
+
+func TestSignalSeenForget(t *testing.T) {
+	s := newSignalSeen(10)
+	t0 := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
+	s.admit("a", "X", t0)
+	s.forget("a", "X", t0.Add(time.Second)) // not the admission it would undo
+	if send, _ := s.admit("a", "X", t0.Add(2*time.Second)); send {
+		t.Fatal("forget with another instant removed the admission")
+	}
+	s.forget("a", "X", t0)
+	if send, _ := s.admit("a", "X", t0.Add(3*time.Second)); !send {
+		t.Error("after forget, the pair was still coalesced")
+	}
+}
+
+// A signal dropped because the queue was full is not coalesced: the next
+// request of that client and category is sent.
+func TestQueueFullDoesNotCoalesce(t *testing.T) {
+	withEngine(t, engine.Config{BlockThreshold: 10})
+	freshSignals(t)
+	for len(signalChan) < cap(signalChan) {
+		signalChan <- map[string]interface{}{}
+	}
+	full := signalCounts["queue_full"].Load()
+	runReqmod(t, httptest.NewRequest(http.MethodConnect, "paypa1.com:443", nil), "192.0.2.7")
+	if signalCounts["queue_full"].Load() != full+1 {
+		t.Fatal("the signal was not dropped as queue_full")
+	}
+	drainSignals()
+	runReqmod(t, httptest.NewRequest(http.MethodConnect, "paypa1.com:443", nil), "192.0.2.7")
+	select {
+	case <-signalChan:
+	default:
+		t.Error("after the queue drained, the client's typosquat was still coalesced")
+	}
+}
+
+func TestHostForSignal(t *testing.T) {
+	long := strings.Repeat("a", 254)
+	if hostForSignal(long) != "" || hostForSignal(long[:253]) != long[:253] {
+		t.Error("a host longer than 253 bytes is omitted, one of 253 kept")
+	}
+}

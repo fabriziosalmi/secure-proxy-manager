@@ -71,6 +71,7 @@ var (
 		"rejected":      new(atomic.Int64),
 		"server_error":  new(atomic.Int64),
 		"no_credential": new(atomic.Int64),
+		"rate_limited":  new(atomic.Int64),
 	}
 )
 
@@ -112,6 +113,17 @@ func (s *signalSeen) admit(client, category string, now time.Time) (send, full b
 	}
 	s.at[key] = now
 	return true, false
+}
+
+// forget undoes admit for a signal that was not sent after all, unless a
+// later admit has replaced it.
+func (s *signalSeen) forget(client, category string, at time.Time) {
+	key := client + "\x00" + category
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if t, ok := s.at[key]; ok && t.Equal(at) {
+		delete(s.at, key)
+	}
 }
 
 // signalItem is one category of one request: the first rule that matched
@@ -174,7 +186,7 @@ func queueSignals(in *inspection, host string, now time.Time) {
 		"event_id":  in.eventID,
 		"ts":        now.UTC().Format(time.RFC3339Nano),
 		"client_ip": in.ClientIP,
-		"host":      truncate(host, 253),
+		"host":      hostForSignal(host),
 		"blocked":   in.Blocked(),
 		"signals":   send,
 	}
@@ -183,7 +195,21 @@ func queueSignals(in *inspection, host string, now time.Time) {
 		signalCounts["queued"].Add(int64(len(send)))
 	default:
 		signalCounts["queue_full"].Add(int64(len(send)))
+		// Not sent: the next request of this client and category may be.
+		for _, it := range send {
+			signalTable.forget(in.ClientIP, it.Category, now)
+		}
 	}
+}
+
+// hostForSignal is host, or nothing when it is longer than a name can be
+// (253 bytes): the backend refuses a longer one, and a cut name names no
+// host.
+func hostForSignal(host string) string {
+	if len(host) > 253 {
+		return ""
+	}
+	return host
 }
 
 // signalWorker delivers queued signals until stop is closed (nil: forever).
@@ -204,7 +230,7 @@ func writeSignalMetrics(w http.ResponseWriter) {
 		fmt.Fprintf(w, "waf_signals_total{result=%q} %d\n", r, signalCounts[r].Load())
 	}
 	fmt.Fprintf(w, "# HELP waf_signals_failed_total Signal deliveries that did not reach the backend, by reason.\n# TYPE waf_signals_failed_total counter\n")
-	for _, r := range []string{"network", "rejected", "server_error", "no_credential"} {
+	for _, r := range []string{"network", "rejected", "server_error", "no_credential", "rate_limited"} {
 		fmt.Fprintf(w, "waf_signals_failed_total{reason=%q} %d\n", r, signalFailed[r].Load())
 	}
 }

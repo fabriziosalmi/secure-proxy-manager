@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -279,8 +280,15 @@ const (
 func (h *SecurityHandlers) ReceiveSignals(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, signalReportMaxBytes)
 	var rep wafSignalReport
-	if err := json.NewDecoder(r.Body).Decode(&rep); err != nil {
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&rep); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid signal report")
+		return
+	}
+	// One JSON value and nothing after it: Decode stops at the first value,
+	// so without this a padded or doubled report would pass.
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		writeError(w, http.StatusBadRequest, "invalid signal report: data after the report")
 		return
 	}
 	sigs, err := signalsFrom(rep)
@@ -312,8 +320,8 @@ func signalsFrom(rep wafSignalReport) ([]database.WAFSignal, error) {
 	if net.ParseIP(rep.ClientIP) == nil {
 		return nil, fmt.Errorf("client_ip: not an address")
 	}
-	if len(rep.Host) > signalHostMax || len(rep.EventID) > signalNameMax {
-		return nil, fmt.Errorf("host or event_id too long")
+	if len(rep.Host) > signalHostMax || rep.EventID == "" || len(rep.EventID) > signalNameMax {
+		return nil, fmt.Errorf("host too long, or event_id missing or too long")
 	}
 	if len(rep.Signals) == 0 || len(rep.Signals) > signalReportMax {
 		return nil, fmt.Errorf("signals: 1 to %d", signalReportMax)
