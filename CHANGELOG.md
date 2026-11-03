@@ -15,6 +15,19 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.26.1] - 2026-11-03
+
+The images of 3.26.0, with the web image fixed. 3.26.0 published only its
+dns image: the release scan found two HIGH findings in the web image, its
+gate left that image untagged, and the other images of the run stopped
+with it. Install or upgrade to 3.26.1; everything under 3.26.0 below is in
+it.
+
+### Security
+
+- The web image installs libexpat 2.10.0, which fixes CVE-2026-117610 and
+  CVE-2026-118370. The nginx base image ships 2.9.0.
+
 ## [3.26.0] - 2026-11-03
 
 A release for the people who watch the network, not only the requests.
