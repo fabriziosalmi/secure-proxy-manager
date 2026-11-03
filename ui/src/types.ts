@@ -97,6 +97,10 @@ export interface ListSource {
   entries: number;
   first_added: string;
   last_added: string;
+  /** The last refresh of a url source (workers/list_sync.go), UTC; absent until one ran. */
+  refreshed_at?: string;
+  refresh_status?: 'ok' | 'held' | 'failed';
+  refresh_detail?: string;
 }
 
 /** What the proxy recorded after merging an IP list for Squid. */

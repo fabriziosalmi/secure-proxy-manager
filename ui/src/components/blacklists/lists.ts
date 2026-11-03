@@ -186,3 +186,20 @@ export function methodsFor(list: ListDef): AddMethod[] {
 export function sourceTitle(s: Pick<ListSource, 'kind' | 'source' | 'label'>): string {
   return sourceName(s.kind, s.source, s.label);
 }
+
+/**
+ * What the last refresh of a url source came to, in a line: refreshed, held
+ * (the feed listed fewer than half of its entries, which are kept) or not
+ * downloaded. Null for a source never refreshed.
+ */
+export function refreshLine(s: Pick<ListSource, 'refreshed_at' | 'refresh_status' | 'refresh_detail'>): { tone: 'ok' | 'warning' | 'danger'; text: string } | null {
+  if (!s.refreshed_at || !s.refresh_status) return null;
+  const when = formatWhen(s.refreshed_at, { style: 'glance', inSentence: true });
+  const detail = s.refresh_detail ? `: ${s.refresh_detail}` : '';
+  switch (s.refresh_status) {
+    case 'ok': return { tone: 'ok', text: `Refreshed ${when}${detail}` };
+    case 'held': return { tone: 'warning', text: `Held ${when}${detail}` };
+    case 'failed': return { tone: 'danger', text: `Not refreshed ${when}${detail}` };
+    default: return null;
+  }
+}

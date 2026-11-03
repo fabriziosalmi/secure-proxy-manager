@@ -184,9 +184,10 @@ const presets: Record<string, Json[]> = {
 const listSources: Record<string, Json[]> = {
   'ip-blacklist': [{ id: null, kind: 'unrecorded', source: '', label: '', entries: 50772, first_added: '2026-10-25 08:00:00', last_added: '2026-10-25 08:02:00' }],
   'domain-blacklist': [
-    { id: 1, kind: 'url', source: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', label: 'StevenBlack Unified', entries: 62841, first_added: '2026-10-28 13:25:00', last_added: '2026-10-28 13:25:40' },
-    { id: 2, kind: 'url', source: 'https://someonewhocares.org/hosts/zero/hosts', label: 'DanPollock Hosts', entries: 12902, first_added: '2026-10-28 13:26:00', last_added: '2026-10-28 13:26:10' },
-    { id: 3, kind: 'url', source: 'https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-hosts.txt', label: 'URLhaus Malware', entries: 1826, first_added: '2026-10-28 13:26:20', last_added: '2026-10-28 13:26:21' },
+    // The three outcomes of a refresh, the held one with the longest note.
+    { id: 1, kind: 'url', source: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', label: 'StevenBlack Unified', entries: 62841, first_added: '2026-10-28 13:25:00', last_added: '2026-10-28 13:25:40', refreshed_at: '2026-11-03 06:00:00', refresh_status: 'ok', refresh_detail: 'listed 62,903 entries' },
+    { id: 2, kind: 'url', source: 'https://someonewhocares.org/hosts/zero/hosts', label: 'DanPollock Hosts', entries: 12902, first_added: '2026-10-28 13:26:00', last_added: '2026-10-28 13:26:10', refreshed_at: '2026-11-03 06:00:05', refresh_status: 'held', refresh_detail: 'listed 1,204 entries, fewer than half of the 12,902 it added: they are kept' },
+    { id: 3, kind: 'url', source: 'https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-hosts.txt', label: 'URLhaus Malware', entries: 1826, first_added: '2026-10-28 13:26:20', last_added: '2026-10-28 13:26:21', refreshed_at: '2026-11-03 06:00:09', refresh_status: 'failed', refresh_detail: 'not downloaded: the server answered HTTP 410' },
   ],
   'ip-whitelist': [],
   'domain-whitelist': [{ id: 9, kind: 'manual', source: '', label: '', entries: 22, first_added: '2026-10-28 13:26:00', last_added: '2026-10-28 13:26:30' }],
