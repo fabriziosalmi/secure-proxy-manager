@@ -15,6 +15,111 @@ for at least one minor release before disappearing.
 
 ## [Unreleased]
 
+## [3.26.0] - 2026-11-03
+
+A release for the people who watch the network, not only the requests.
+
+- **Client trajectories.** Some WAF signals describe the client rather than
+  the request: a typosquatted name, a generated name, regular check-ins, a
+  TLS name other than the one asked for, secrets or data on the way out.
+  The WAF now sends them to the backend, scored or matched in Log only. The
+  backend reads each client's day of signals as a trajectory. Analytics
+  lists them, the Overview names the clients of the last 24 hours, and a
+  new alert says so once per client and day.
+- **Blocklist refresh.** The refresh keeps every imported list in step with
+  its feed: it adds what is new and removes what the feed dropped. A feed
+  that reads nothing, or less than half its entries, is held. A list with a
+  failed feed is not pruned.
+- **Alerts.** The proxy down and back, a blocklist feed that failed and a
+  new version now reach the alert channels. The Alerts page says what each
+  channel answered.
+- **The WAF's state.** The Overview says when the WAF blocks nothing (Log
+  only) or keeps an old policy after a failed reload. Settings > Inspection
+  shows what the WAF runs, category by category.
+- **Access log and Analytics.** The access log takes a time range. Analytics
+  shows the hosts asked for most. The Services line lists the Squid
+  advisories behind its count.
+- **Security.** vite 6.4.5 for the documentation site and minimatch 11.0.3
+  for the UI lint toolchain close two Dependabot alerts. Neither reaches the
+  shipped images.
+
+No route, field or status code is removed. Nothing is **BREAKING** and
+`X-API-Version` stays 1.
+
+### Added
+
+- Client trajectories.
+  - The WAF posts the signals of each inspected request to
+    `POST /api/internal/signals`: the categories of the three phases,
+    scored or Log only, the first of each category per client every 10
+    minutes. They have their own queue, so they never push a block alert
+    out. `/metrics` counts them by result (`waf_signals_total`) and failed
+    deliveries by reason (`waf_signals_failed_total`).
+  - The backend stores one row per signal (`waf_signals`) and notifies
+    nobody. Every minute it reads each client's signals as trajectories
+    (`waf_trajectories`). Two rules apply within 24 hours:
+    - a later phase after an earlier one, with at least one signal that is
+      not probabilistic;
+    - three distinct signals.
+
+    Each client has one trajectory a day.
+  - `GET /api/waf/trajectories` lists them and `GET /api/waf/trajectories/{id}`
+    returns one, with the client's signals in its window.
+  - Analytics > Client trajectories shows each client with its stages and,
+    in a drawer, its signals in order. The Overview shows a notice for the
+    last 24 hours.
+  - `waf_trajectory` (`warning`, grouped by client) is raised once per
+    trajectory. `notify_waf_trajectory` switches it off.
+  - In GDPR mode the signals are not stored, so no trajectory is read: a
+    masked address is a network. Trajectories stored before are shown
+    masked, and their alert names the network.
+  - The WAF guide explains the phases and the rules.
+- System events alert: `proxy_down`, `proxy_up`,
+  `blocklist_refresh_failed`, `update_available`, switched by
+  `notify_system` and not grouped. `GET /api/notifications/status` reports
+  what each channel answered since the backend started, and the Alerts page
+  shows it.
+- `GET /api/waf/status`: what the WAF runs (engine, threshold, regex engine,
+  policy mode, rule counts). Settings > Inspection lists the categories and
+  whether each scores, only logs or is off.
+- `GET /api/logs` and the export take `since` and `until`. The Logs page has
+  From and Until.
+- `GET /api/analytics/top-destinations`: the 20 hosts asked for most in the
+  last 7 days, with the blocked count.
+- `GET /api/audit-log?q=`: text search in the user, action, target or
+  details.
+- A default-deny block offers "Allow this destination".
+- wafeval replays timelines per client (`-timeline`) and reads them as
+  trajectories (`-correlate`). A corpus tool writes timelines of real
+  traffic and of Fox-IT Cobalt Strike beacons.
+
+### Changed
+
+- The blocklist refresh syncs every imported list, built-in feeds and lists
+  imported from a URL alike, with its feed. It removes the entries the feed
+  dropped, with the guards above. It writes in windows, so the access log
+  tailer is not starved. Each source shows when it was last refreshed and
+  what happened.
+- The backend's per-address rate limit does not count the WAF's calls to
+  its internal routes with the service token. The WAF retries a `429`
+  (`waf_notify_failed_total{reason="rate_limited"}` after the retries)
+  instead of dropping the alert.
+- Protection coverage and the Overview say when the WAF is in Log only or
+  runs an old policy after a failed reload.
+- Allowed hours are labelled UTC, the clock Squid applies them on, and the
+  page gives them on the viewer's clock.
+
+### Fixed
+
+- The pattern tester reads the newest requests, not the oldest SQLite
+  reached first.
+- Global search says when it could not search instead of "No results".
+- The setup wizard says when skipping was not saved.
+- Live rows of the access log wait while the pointer or the keyboard focus
+  is on the table, so the row aimed at is the row opened.
+- The proxy config generator appends the HTTPS inspection block directly; no
+  behaviour change.
+
 ## [3.25.0] - 2026-10-31
 
 A detection release for HTTPS without SSL bump.
