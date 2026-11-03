@@ -63,12 +63,26 @@ function wafLine(c: Coverage): CoverageLine {
   if (w.status !== 'ok' || w.rules === null || w.rules_enabled === null || w.categories === null || w.categories_enabled === null) {
     return { ...base, state: 'needs-attention', text: 'WAF: answered with an error, so its rules are not reported' };
   }
+  // What it runs, from its /health: Log only and a failed policy reload are
+  // read before the rule count, which would otherwise say "on".
+  const run = w.running;
+  if (run?.policy_mode === 'observe') {
+    return { ...base, state: 'needs-attention', text: 'WAF: Log only, it records what it would block and blocks nothing' };
+  }
+  if (run?.policy_reload_failed) {
+    return { ...base, state: 'needs-attention', text: 'WAF: its last policy reload failed, so it still runs the policy it had before' };
+  }
   const scope = c.https_inspection ? 'plain HTTP and inspected HTTPS' : 'plain HTTP only';
   if (w.rules_enabled === 0) return { ...base, state: 'needs-attention', text: `WAF: every rule category is switched off (${formatCount(w.categories)} categories)` };
   const rules = w.rules_enabled === w.rules
     ? `${formatCount(w.rules)} request rules in ${formatCount(w.categories)} categories`
     : `${formatCount(w.rules_enabled)} of ${formatCount(w.rules)} request rules on, in ${formatCount(w.categories_enabled)} of ${formatCount(w.categories)} categories`;
-  return { ...base, state: 'on', text: `WAF: ${rules}, inspecting ${scope}` };
+  // Categories that only log never add to a score; the hybrid engine ships
+  // three of them, so they are said, not flagged.
+  const observed = w.categories_observed ? ` (${formatCount(w.categories_observed)} only logged)` : '';
+  const crs = run?.engine === 'hybrid' ? ', plus the OWASP Core Rule Set' : '';
+  const blocks = run ? `; blocks at a score of ${formatCount(run.threshold)} and inspects` : ', inspecting';
+  return { ...base, state: 'on', text: `WAF: ${rules}${observed}${crs}${blocks} ${scope}` };
 }
 
 function httpsLine(on: boolean | null): CoverageLine {

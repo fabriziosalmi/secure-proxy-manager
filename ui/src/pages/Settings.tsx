@@ -33,7 +33,8 @@ import { LogsSection } from '../components/settings/sections/LogsSection';
 import { AdminSection } from '../components/settings/sections/AdminSection';
 import { EngineSection } from '../components/settings/sections/EngineSection';
 import { AppearanceSection } from '../components/settings/sections/AppearanceSection';
-import { needsAttention, type AttentionItem } from '../lib/attention';
+import type { AttentionItem } from '../lib/attention';
+import { useNeedsAttention } from '../hooks/useNeedsAttention';
 import { statusQuery, useEgressSummary, type ProxyAuthStatus } from '../lib/queries';
 import type { SectionForm } from '../components/settings/sectionForm';
 import { parseSettings, secretStateOf } from '../lib/secrets';
@@ -102,16 +103,9 @@ function SettingsPage() {
     return merged;
   }, [parsed.values, drafts.edits]);
 
-  // The Overview's list, and its count on the nav. The stored values, not
-  // the drafts: it describes what is running.
-  const attention = useMemo(() => needsAttention({
-    values: parsed.values,
-    secrets: parsed.secrets,
-    proxyStatus: status.isError ? null : status.data ? (status.data.proxy_status ?? 'unknown') : undefined,
-    egressTotal: egress.manual,
-    egressProviderEntries: egress.providerEntries,
-    proxyAuth: status.data?.proxy_auth,
-  }), [parsed, status.isError, status.data, egress.manual, egress.providerEntries]);
+  // The Overview's list, and its count on the nav (hooks/useNeedsAttention):
+  // the stored values, not the drafts, since it describes what is running.
+  const { items: attention } = useNeedsAttention({ egress: needEgress });
   const warnings = attention.filter((a) => a.posture === 'needs-attention').length;
 
   const changesIn = (id: SectionId) =>

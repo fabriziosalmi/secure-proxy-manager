@@ -330,6 +330,40 @@ export interface DashboardSummary {
 export type WafStatus = 'ok' | 'auth_failed' | 'unreachable' | 'error';
 
 /**
+ * What the WAF runs, from its GET /health (backend analytics_coverage.go).
+ * engine "hybrid" adds the OWASP Core Rule Set; threshold is the score that
+ * blocks a request; policy_mode is "block", or "observe" for Log only, and
+ * empty from a WAF older than the policy.
+ */
+export interface WafRunning {
+  engine: string;
+  threshold: number;
+  regex_engine: string;
+  regex_shadow: boolean;
+  heuristics: number;
+  policy_mode: string;
+  policy_exceptions: number;
+  policy_reload_failed: boolean;
+}
+
+/**
+ * GET /api/waf/status, and the coverage's waf: the rule counts from the
+ * WAF's GET /categories, null unless status is ok; the categories and rules
+ * that only log (enabled, never scored); and what it runs, null when its
+ * /health did not answer.
+ */
+export interface WafCoverage {
+  status: WafStatus;
+  categories: number | null;
+  categories_enabled: number | null;
+  categories_observed?: number | null;
+  rules: number | null;
+  rules_enabled: number | null;
+  rules_observed?: number | null;
+  running?: WafRunning | null;
+}
+
+/**
  * The WAF's own counters (waf-go stats.go snapshot), since it last started
  * or its counters were reset. top_blocked_categories are the 10 rule
  * categories that matched the most requests, blocked or not.
@@ -412,14 +446,8 @@ export interface Coverage {
   domain_blacklist: { entries: number | null; squid_acl: SquidDomainAcl | null };
   /** squid_acl: what Squid loaded, as the proxy recorded it; null when it has not. */
   ip_blacklist: { entries: number | null; squid_acl: IpAclStatus | null };
-  /** The WAF's own rule counts, from GET /categories; null unless status is ok. */
-  waf: {
-    status: WafStatus;
-    categories: number | null;
-    categories_enabled: number | null;
-    rules: number | null;
-    rules_enabled: number | null;
-  };
+  /** The WAF as GET /api/waf/status reports it. */
+  waf: WafCoverage;
   https_inspection: boolean | null;
   proxy_login: boolean | null;
   /** What the proxy did about proxy login, as it recorded it; null when it has not. */

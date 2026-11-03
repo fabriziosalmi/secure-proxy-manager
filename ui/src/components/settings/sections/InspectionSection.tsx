@@ -1,7 +1,8 @@
 /**
- * Inspection: HTTPS inspection with its certificate authority, the six WAF
- * heuristics with what the running WAF applies, the WAF policy (log-only
- * rules and exceptions, WafPolicySection) and the pattern tester.
+ * Inspection: HTTPS inspection with its certificate authority, what the WAF
+ * runs (WafRunning), the six WAF heuristics with what the running WAF
+ * applies, the WAF policy (log-only rules and exceptions, WafPolicySection)
+ * and the pattern tester.
  *
  * The heuristics are stored values pushed to the WAF on save and by the
  * backend's reconciler; GET /api/waf/heuristics says what the WAF runs now,
@@ -19,6 +20,9 @@ import { Button } from '../../ui/Button';
 import { ToggleRow } from '../fields';
 import { RegexPlayground } from '../../RegexPlayground';
 import { WafPolicySection } from './WafPolicySection';
+import { WafRunning } from './WafRunning';
+import { wafStatusQuery } from '../../../lib/queries';
+import { formatCount } from '../../../lib/format';
 import type { SectionForm } from '../sectionForm';
 
 function Code({ children }: { children: string }) {
@@ -128,6 +132,11 @@ export function InspectionSection({ form }: { form: SectionForm }) {
   const turningOn = v.ssl_bump_enabled === 'true' && form.stored.ssl_bump_enabled !== 'true';
   const waf = useQuery(wafHeuristicsQuery);
   const running = waf.data?.available ? waf.data.running : undefined;
+  const status = useQuery({ ...wafStatusQuery, staleTime: 10_000 });
+  const threshold = status.data?.status === 'ok' ? status.data.running?.threshold : undefined;
+  const blocksAt = threshold
+    ? `The WAF blocks at a score of ${formatCount(threshold)}`
+    : 'The WAF blocks at WAF_BLOCK_THRESHOLD in .env, 10 in the shipped compose';
 
   return (
     <div className="flex flex-col gap-4">
@@ -164,10 +173,12 @@ export function InspectionSection({ form }: { form: SectionForm }) {
         </div>
       </Section>
 
+      <WafRunning />
+
       <Section
         level={3}
         title="WAF heuristics"
-        description="Each one adds to a request's score. The WAF blocks at WAF_BLOCK_THRESHOLD in .env, 10 in the shipped compose, so most need a second signal to block."
+        description={`Each one adds to a request's score. ${blocksAt}, so most need a second signal to block.`}
       >
         {waf.isSuccess && waf.data && !waf.data.available && (
           <Notice tone="warning" title="The running WAF could not be asked what it applies" className="mb-3">

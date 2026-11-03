@@ -74,4 +74,21 @@ describe('coverageLines', () => {
     expect(lines({ ...coverageBody, ip_blacklist: { entries: 3, squid_acl: null } }).ip.text).toBe('IP blacklist: 3 entries; the proxy has not reported loading them')
     expect(lines({ ...coverageBody, domain_blacklist: { entries: 0, squid_acl: null } }).domain).toMatchObject({ state: 'worth-knowing', text: 'Domain blacklist: empty, no domain is blocked' })
   })
+
+  // The WAF's /health decides before the rule count: Log only blocks
+  // nothing, whatever the categories say.
+  it('reads what the WAF runs: engine, threshold, only-logged categories, Log only and a failed reload', () => {
+    const running = { engine: 'hybrid', threshold: 10, regex_engine: 'go', regex_shadow: false, heuristics: 6, policy_mode: 'block', policy_exceptions: 0, policy_reload_failed: false }
+    const waf = { ...coverageBody.waf, categories: 20, categories_enabled: 20, categories_observed: 3, rules: 180, rules_enabled: 180, running }
+    expect(lines({ ...coverageBody, waf }).waf).toMatchObject({
+      state: 'on',
+      text: 'WAF: 180 request rules in 20 categories (3 only logged), plus the OWASP Core Rule Set; blocks at a score of 10 and inspects plain HTTP only',
+    })
+    expect(lines({ ...coverageBody, waf: { ...waf, categories_observed: 0, running: { ...running, engine: 'legacy', threshold: 5 } } }).waf.text)
+      .toBe('WAF: 180 request rules in 20 categories; blocks at a score of 5 and inspects plain HTTP only')
+    expect(lines({ ...coverageBody, waf: { ...waf, running: { ...running, policy_mode: 'observe' } } }).waf)
+      .toMatchObject({ state: 'needs-attention', text: 'WAF: Log only, it records what it would block and blocks nothing' })
+    expect(lines({ ...coverageBody, waf: { ...waf, running: { ...running, policy_reload_failed: true } } }).waf)
+      .toMatchObject({ state: 'needs-attention', text: 'WAF: its last policy reload failed, so it still runs the policy it had before' })
+  })
 })

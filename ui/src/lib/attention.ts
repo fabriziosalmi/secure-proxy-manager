@@ -1,9 +1,12 @@
 /**
- * The Overview's "Needs attention" list, worked out from what the API
- * reports: the stored settings, the secrets' state, the proxy status and the
- * size of the egress allowlist. An input that is not known yet produces no
- * item, and one that could not be read says so; nothing here is a guess.
+ * The "Needs attention" list, worked out from what the API reports: the
+ * stored settings, the secrets' state, the proxy status, the size of the
+ * egress allowlist and what the WAF runs. Settings, Overview shows every
+ * item; the Overview page shows those that need attention. An input that is
+ * not known yet produces no item, and one that could not be read says so;
+ * nothing here is a guess.
  */
+import type { WafCoverage } from '../types';
 import type { SecretState } from './secrets';
 import type { ProxyAuthStatus } from './queries';
 import type { SectionId } from './settingsMeta';
@@ -35,6 +38,8 @@ export interface AttentionInput {
   egressProviderEntries?: number | null;
   /** GET /api/status proxy_auth: what the proxy did about proxy login; undefined when not reported. */
   proxyAuth?: ProxyAuthStatus;
+  /** GET /api/waf/status; undefined while loading, null when the request failed. */
+  waf?: WafCoverage | null;
 }
 
 /** The sentence the dashboard uses for login on with nothing to check it against. */
@@ -68,7 +73,43 @@ export function configuredChannels(secrets: Record<string, SecretState>): string
   return Object.entries(CHANNELS).filter(([, keys]) => keys.every((k) => secrets[k] === 'set')).map(([name]) => name);
 }
 
-export function needsAttention({ values, secrets, proxyStatus, egressTotal, egressProviderEntries, proxyAuth }: AttentionInput): AttentionItem[] {
+/**
+ * What the WAF says about itself. A WAF in Log only, or one that kept an old
+ * policy, still shows as on everywhere else, so both are said here.
+ */
+function wafItems(waf: WafCoverage | null | undefined): AttentionItem[] {
+  if (!waf) return [];
+  const where = { section: 'inspection' as const, action: 'Inspection' };
+  switch (waf.status) {
+    case 'auth_failed':
+      return [{
+        id: 'waf-refuses-backend',
+        posture: 'needs-attention',
+        title: 'The WAF refuses the backend',
+        body: 'It refused the backend credential, so its state and statistics are not shown. Set INTERNAL_ALERT_TOKEN to the same value on the waf and backend services.',
+      }];
+    case 'unreachable':
+      return [{
+        id: 'waf-unreachable',
+        posture: 'needs-attention',
+        title: 'The backend cannot reach the WAF',
+        body: 'Its state is not known. If the WAF itself is down, clients get an error on every request it inspects, unless WAF_FAIL_OPEN=1 lets them through uninspected.',
+      }];
+    case 'error':
+      return [{ id: 'waf-error', posture: 'needs-attention', title: 'The WAF answered the backend with an error', body: 'Its state is not known. The WAF log says why.' }];
+  }
+  const run = waf.running;
+  const items: AttentionItem[] = [];
+  if (run?.policy_mode === 'observe') {
+    items.push({ id: 'waf-log-only', posture: 'needs-attention', title: 'The WAF is in Log only: it blocks nothing', body: 'It records what it would block. Switch the WAF policy back to Block when you are done.', ...where });
+  }
+  if (run?.policy_reload_failed) {
+    items.push({ id: 'waf-policy-not-reloaded', posture: 'needs-attention', title: 'The WAF could not reload its policy', body: 'It still runs the policy it had before. The WAF policy shows why.', ...where });
+  }
+  return items;
+}
+
+export function needsAttention({ values, secrets, proxyStatus, egressTotal, egressProviderEntries, proxyAuth, waf }: AttentionInput): AttentionItem[] {
   const on = (k: string) => values[k] === 'true';
   const items: AttentionItem[] = [];
 
@@ -89,6 +130,8 @@ export function needsAttention({ values, secrets, proxyStatus, egressTotal, egre
   } else if (proxyStatus !== undefined && proxyStatus !== 'running') {
     items.push({ id: 'proxy-down', posture: 'needs-attention', title: 'The proxy is not running', body: `The backend reports the proxy as "${proxyStatus}". Clients cannot browse until the proxy container runs.` });
   }
+
+  items.push(...wafItems(waf));
 
   const effectiveEgressTotal =
     egressTotal === null || egressProviderEntries === null

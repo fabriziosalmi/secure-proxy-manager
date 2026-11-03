@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, getData } from './api';
 import { formatCount } from './format';
-import type { EgressProvider, ProxyAuthStatus, SettingRow } from '../types';
+import type { EgressProvider, ProxyAuthStatus, SettingRow, WafCoverage } from '../types';
 
 // Queries that more than one component reads. One definition per key, so two
 // components never cache different shapes under the same key.
@@ -123,6 +123,15 @@ export function useEgressSummary(options?: EgressSummaryOptions): EgressSummary 
     isError,
   };
 }
+
+/**
+ * GET /api/waf/status: the WAF's rules and what it runs (engine, block
+ * threshold, regex engine, policy mode), for Overview, Settings and Inspection.
+ */
+export const wafStatusQuery = {
+  queryKey: ['waf', 'status'] as const,
+  queryFn: () => getData<WafCoverage>('waf/status'),
+};
 
 /**
  * GET /api/settings: every setting row. The key and the shape are the ones
