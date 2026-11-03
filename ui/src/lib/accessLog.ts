@@ -298,6 +298,45 @@ export function allowableDomain(r: LogEntry): string | null {
   return requestHost(r.destination);
 }
 
+/**
+ * The host "Allow this destination" would add to the default-deny allowlist
+ * for r: a request default-deny egress refused, to a host name. Null for any
+ * other block.
+ */
+export function allowableEgress(r: LogEntry): string | null {
+  if (!isBlocked(r) || r.reason !== 'egress_policy') return null;
+  return requestHost(r.destination);
+}
+
+/** The IPv4 address a destination names ("203.0.113.7:443", "http://203.0.113.7/x"), or null. */
+function requestAddress(destination: string | undefined): string | null {
+  const d = (destination ?? '').trim();
+  let host: string;
+  if (d.includes('://')) {
+    try {
+      host = new URL(d).hostname;
+    } catch {
+      return null;
+    }
+  } else {
+    host = d.split('/')[0].split(':')[0];
+  }
+  return IPV4.test(host) ? host : null;
+}
+
+/**
+ * Where an IP blacklist block is looked up: the blocked IPs, filtered by the
+ * address when the request named one. A host name is blocked for the address
+ * it resolved to, which the log does not record, so then the whole list. An
+ * IP exception would not lift it: the proxy checks the blacklist first. Null
+ * for any other block.
+ */
+export function ipBlacklistLink(r: LogEntry): string | null {
+  if (!isBlocked(r) || r.reason !== 'ip_blacklist') return null;
+  const addr = requestAddress(r.destination);
+  return addr ? `/blacklists?tab=blocked-ips&q=${encodeURIComponent(addr)}` : '/blacklists?tab=blocked-ips';
+}
+
 // Why, per rule, in the words of the rule itself (proxy/generate_squid_conf.sh
 // and docs/design/block-reasons.md).
 const WHY: Record<string, string> = {

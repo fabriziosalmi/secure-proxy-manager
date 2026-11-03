@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  allowableDomain, apiParams, isHttpCode, matchesFilters, readFilters, requestHost, splitStatus, squidResultText, statusTone, whyText, writeFilters,
+  allowableDomain, allowableEgress, apiParams, ipBlacklistLink, isHttpCode, matchesFilters, readFilters, requestHost, splitStatus, squidResultText, statusTone, whyText, writeFilters,
   NO_FILTERS,
 } from './accessLog'
 import type { LogEntry } from '../types'
@@ -117,6 +117,26 @@ describe('row facts', () => {
       expect(allowableDomain(entry({ blocked: 1, reason, destination: 'ads.example.com:443' }))).toBeNull()
     }
     expect(allowableDomain(entry({ blocked: 0, reason: 'domain_blacklist' }))).toBeNull()
+  })
+
+  it('offers the default-deny allowlist only for an egress-policy block of a host name', () => {
+    expect(allowableEgress(entry({ blocked: 1, reason: 'egress_policy', destination: 'api.example.com:443' }))).toBe('api.example.com')
+    expect(allowableEgress(entry({ blocked: 1, reason: 'egress_policy', destination: 'http://api.example.com/v1' }))).toBe('api.example.com')
+    expect(allowableEgress(entry({ blocked: 1, reason: 'egress_policy', destination: '203.0.113.7:443' }))).toBeNull()
+    for (const reason of ['domain_blacklist', 'ip_blacklist', 'waf', 'direct_ip']) {
+      expect(allowableEgress(entry({ blocked: 1, reason, destination: 'api.example.com:443' }))).toBeNull()
+    }
+    expect(allowableEgress(entry({ blocked: 0, reason: 'egress_policy', destination: 'api.example.com:443' }))).toBeNull()
+  })
+
+  // An IP exception would not lift an IP blacklist block (the proxy checks
+  // the blacklist first), so the detail points at the blacklist entry.
+  it('points an IP blacklist block at the blocked IPs, by address when the request named one', () => {
+    expect(ipBlacklistLink(entry({ blocked: 1, reason: 'ip_blacklist', destination: '203.0.113.7:443' }))).toBe('/blacklists?tab=blocked-ips&q=203.0.113.7')
+    expect(ipBlacklistLink(entry({ blocked: 1, reason: 'ip_blacklist', destination: 'http://203.0.113.7/x' }))).toBe('/blacklists?tab=blocked-ips&q=203.0.113.7')
+    // A name blocked for the address it resolved to: the log has no address.
+    expect(ipBlacklistLink(entry({ blocked: 1, reason: 'ip_blacklist', destination: 'bad.example:443' }))).toBe('/blacklists?tab=blocked-ips')
+    expect(ipBlacklistLink(entry({ blocked: 1, reason: 'egress_policy', destination: '203.0.113.7:443' }))).toBeNull()
   })
 
   it('says why in a sentence, for every rule and for one it does not know', () => {

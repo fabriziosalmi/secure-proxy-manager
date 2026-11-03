@@ -271,8 +271,8 @@ export function Dashboard() {
           loading={loading}
           value={requests}
         />
-        <StatCard label="Blocked" tone={blocked ? 'danger' : 'default'} loading={loading} value={blocked} sub={blockedSub} />
-        <StatCard label="Active clients" loading={loading} value={clients} sub={clientsSub} />
+        <StatCard label="Blocked" tone={blocked ? 'danger' : 'default'} loading={loading} value={blocked} sub={blockedSub} to={blockedLogsLink()} />
+        <StatCard label="Active clients" loading={loading} value={clients} sub={clientsSub} to="/clients" />
         <StatCard
           label="Blacklist entries"
           loading={loading}

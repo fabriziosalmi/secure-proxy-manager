@@ -136,7 +136,7 @@ export function InspectionSection({ form }: { form: SectionForm }) {
           form={form}
           setting="ssl_bump_enabled"
           label="Inspect HTTPS traffic"
-          help="Without it, HTTPS passes as an encrypted tunnel: the WAF, the download filter and the cache see only the destination name. With it, the proxy decrypts each request with its own certificate authority."
+          help="Without it, HTTPS passes as an encrypted tunnel: the WAF, the download filter and the cache see only the destination name. With it, the proxy decrypts each request with its own certificate authority, and closes a tunnel that carries something other than TLS, such as SSH to port 443 (the configuration guide says how to let those through)."
         />
         {turningOn && (
           <Notice tone="warning" title="Every device must trust the proxy's CA before you save" className="mt-3">
