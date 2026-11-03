@@ -149,7 +149,7 @@ The allowlist destinations themselves are not setting values. Manual entries are
 
 ## Notification limits
 
-WAF blocks and failed sign-ins reach the alert channels through one queue in the backend, which applies these settings to every event. They are read on each event, so a save applies to the next one. The test alert (`POST /api/notifications/test`) is outside them.
+WAF blocks, failed sign-ins and the backend's own events (`notify_system`) reach the alert channels through one queue in the backend, which applies these settings to every event. They are read on each event, so a save applies to the next one. The test alert (`POST /api/notifications/test`) is outside them.
 
 | Setting | Default | Values | Effect |
 |---|---|---|---|
@@ -157,6 +157,7 @@ WAF blocks and failed sign-ins reach the alert channels through one queue in the
 | `notify_max_per_hour` | `20` | whole number, 1 to 1000 | Each channel sends at most this many deliveries in any rolling hour, digests included. Past it the channel holds everything and counts it; once one of its deliveries in the hour is an hour old it sends one notice with the count, which takes that slot, and then sends again. |
 | `notify_waf_block` | `"true"` | `"true"`, `"false"` | `"false"`: WAF blocks send nothing. |
 | `notify_login_failure` | `"true"` | `"true"`, `"false"` | `"false"`: failed sign-ins send nothing. |
+| `notify_system` | `"true"` | `"true"`, `"false"` | `"false"`: the backend's own events send nothing: `proxy_down` (`error`, the proxy failed two checks a minute apart), `proxy_up` (`info`), `blocklist_refresh_failed` (`warning`, a refresh could not download a feed) and `update_available` (`info`, once per new version). |
 | `notify_min_level` | `info` | `info`, `warning`, `error` | Events below this level send nothing. WAF blocks are `error`, failed sign-ins `warning`; an event with no level counts as `info`. |
 
 A value outside these is refused with `400`. A stored value that is not usable (an older install, a row edited by hand) is read as the default.

@@ -329,6 +329,25 @@ export interface DashboardSummary {
 /** Why the backend has, or has no, figures from the WAF. */
 export type WafStatus = 'ok' | 'auth_failed' | 'unreachable' | 'error';
 
+/** One alert channel's deliveries since the backend started (handlers/notify_status.go). */
+export interface ChannelDelivery {
+  last_attempt: string | null;
+  last_delivered: string | null;
+  /** Why the last failed delivery failed; absent when none failed. */
+  last_error?: string;
+  last_error_at: string | null;
+  /** Whether the last attempt failed. */
+  last_failed: boolean;
+  delivered: number;
+  failed: number;
+}
+
+/** GET /api/notifications/status: by channel id (webhook, telegram, ...), and since when. */
+export interface NotificationStatus {
+  since: string;
+  channels: Record<string, ChannelDelivery>;
+}
+
 /** One advisory GET /api/security/cve matched to the running Squid (workers/cve_checker.go). */
 export interface SquidCve {
   id: string;

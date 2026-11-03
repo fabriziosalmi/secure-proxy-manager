@@ -69,6 +69,10 @@ func probeProxy(ctx context.Context, proxyURL string) bool {
 	return true
 }
 
+// ProbeProxy is probeProxy for the proxy watch (workers.StartProxyWatch), so
+// the alert and GET /api/status judge the proxy by one check.
+func ProbeProxy(ctx context.Context, proxyURL string) bool { return probeProxy(ctx, proxyURL) }
+
 // wafAuth is the credential for the WAF management API: the service token when
 // INTERNAL_ALERT_TOKEN is set, otherwise the WAF service credentials, never the
 // human admin password as such (see workers.WAFAuth).

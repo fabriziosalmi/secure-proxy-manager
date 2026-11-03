@@ -385,6 +385,7 @@ var DefaultSettings = [][]string{
 	{"notify_max_per_hour", "20"},
 	{"notify_waf_block", "true"},
 	{"notify_login_failure", "true"},
+	{"notify_system", "true"},
 	{"notify_min_level", "info"},
 	// Auto-refresh
 	{"auto_refresh_enabled", "false"},

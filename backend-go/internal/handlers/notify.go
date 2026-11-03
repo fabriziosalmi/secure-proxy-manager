@@ -142,6 +142,7 @@ func (f *notifyFanout) submit(d delivery) {
 	default:
 		metrics.NotificationFailed(d.channel)
 		metrics.NotificationDropped()
+		recordDelivery(d.channel, false, "too many alerts were waiting for this channel, so one was dropped")
 		log.Warn().Str("channel", d.channel).Msg("notification channel queue full; delivery dropped")
 	}
 }
@@ -166,8 +167,9 @@ func (d delivery) send(client *http.Client) {
 //
 // Nothing here logs the URL or the headers: the Gotify token, the Telegram bot
 // token and the webhook bearer token travel in them.
-func (d delivery) sendTries(client *http.Client, tries int) deliveryResult {
-	res := deliveryResult{Channel: d.channel}
+func (d delivery) sendTries(client *http.Client, tries int) (res deliveryResult) {
+	res = deliveryResult{Channel: d.channel}
+	defer func() { recordDelivery(d.channel, res.Delivered, res.Error) }()
 	for attempt := 0; attempt < tries; attempt++ {
 		req, err := http.NewRequest(http.MethodPost, d.url, bytes.NewReader(d.body))
 		if err != nil {
@@ -219,11 +221,11 @@ func (d delivery) sendTries(client *http.Client, tries int) deliveryResult {
 func loadNotificationSettings(db *sql.DB, encKey string) (map[string]string, bool) {
 	// The channel settings, then the limits (notify_limit.go).
 	rows, err := db.Query(
-		"SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+		"SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
 		"enable_notifications", "webhook_url", "webhook_bearer_token", "gotify_url", "gotify_token",
 		"teams_webhook_url", "telegram_bot_token", "telegram_chat_id",
 		"ntfy_url", "ntfy_topic",
-		settingGroupWindow, settingMaxPerHour, settingNotifyWAFBlock, settingNotifyLoginFailure, settingMinLevel,
+		settingGroupWindow, settingMaxPerHour, settingNotifyWAFBlock, settingNotifyLoginFailure, settingNotifySystem, settingMinLevel,
 	)
 	if err != nil {
 		return nil, false

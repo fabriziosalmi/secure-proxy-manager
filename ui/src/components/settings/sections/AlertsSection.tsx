@@ -1,5 +1,7 @@
 /**
- * Alerts: where block and sign-in alerts go, and proof that they arrive.
+ * Alerts: where block, sign-in and system alerts go, proof that they arrive,
+ * and what each channel answered since the backend started
+ * (GET /api/notifications/status).
  *
  * Every channel setting is write-only (lib/secrets): the page knows whether a
  * value is stored, never the value. The test (POST /api/notifications/test)
@@ -13,6 +15,7 @@
  * not pass them.
  */
 import { useState, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getErrorMessage } from '../../../lib/api';
 import { Section } from '../../ui/Section';
 import { Notice } from '../../ui/Notice';
@@ -20,6 +23,9 @@ import { Button } from '../../ui/Button';
 import { Badge } from '../../ui/Badge';
 import { ChoiceRow, SecretRow, TextField, ToggleRow } from '../fields';
 import { configuredChannels } from '../../../lib/attention';
+import { notificationStatusQuery } from '../../../lib/queries';
+import { formatWhen } from '../../../lib/format';
+import type { ChannelDelivery } from '../../../types';
 import type { SectionForm } from '../sectionForm';
 
 function Code({ children }: { children: string }) {
@@ -93,13 +99,56 @@ type TestState = { kind: 'idle' | 'busy' } | { kind: 'done'; answer: TestAnswer 
 
 const channelName = (id: string) => CHANNELS.find((c) => c.id === id)?.name ?? id;
 
+/** One channel's deliveries in a sentence, newest outcome first. */
+function deliveryLine(d: ChannelDelivery): string {
+  const when = (ts: string | null) => (ts ? formatWhen(ts, { style: 'glance', inSentence: true }) : 'never');
+  const counts = `${d.delivered} delivered, ${d.failed} failed`;
+  if (d.last_failed) return `Last attempt failed ${when(d.last_error_at)}: ${d.last_error ?? 'no reason recorded'}. ${counts}.`;
+  return `Last delivered ${when(d.last_delivered)}. ${counts}.`;
+}
+
+/**
+ * What became of the alerts on each channel since the backend started. A
+ * failed delivery used to reach only a metric and a log line: a channel could
+ * stop working (an expired token, a moved webhook) while this page read "on".
+ */
+function Deliveries({ alertsOn }: { alertsOn: boolean }) {
+  // Read while alerts are on; with them off, only after a test (TestAlert
+  // fetches it), so the page asks nothing it does not show.
+  const q = useQuery({ ...notificationStatusQuery, enabled: alertsOn, refetchInterval: alertsOn ? 30_000 : false });
+  if (!q.data && !alertsOn) return <p className="text-sm text-ink-muted">Alerts are off. What each channel answers is listed here while they are on, and after a test.</p>;
+  if (q.isPending) return null;
+  if (q.isError || !q.data) return <p className="text-sm text-ink-muted">What the channels answered could not be read.</p>;
+  const used = Object.entries(q.data.channels);
+  const since = formatWhen(q.data.since, { style: 'glance', inSentence: true });
+  if (used.length === 0) return <p className="text-sm text-ink-muted">No alert has been sent since the backend started ({since}).</p>;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-sm text-ink-secondary">Since the backend started ({since}):</p>
+      <ul aria-label="Deliveries by channel" className="flex flex-col gap-1.5">
+        {used.map(([id, d]) => (
+          <li key={id} className="flex flex-wrap items-center gap-2 text-sm">
+            <Badge tone={d.last_failed ? 'danger' : 'success'}>{d.last_failed ? 'Failing' : 'Working'}</Badge>
+            <span className="font-medium text-ink">{channelName(id)}</span>
+            <span className="text-ink-muted [overflow-wrap:anywhere]">{deliveryLine(d)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function TestAlert({ unsaved, enabled }: { unsaved: number; enabled: boolean }) {
+  const queryClient = useQueryClient();
   const [state, setState] = useState<TestState>({ kind: 'idle' });
   const send = async () => {
     setState({ kind: 'busy' });
     try {
       const res = await api.post('notifications/test', {});
       setState({ kind: 'done', answer: (res.data ?? {}) as TestAnswer });
+      // The test is a delivery too: the list below shows its outcome, with
+      // alerts off as well (the list does not poll then).
+      void queryClient.fetchQuery({ ...notificationStatusQuery, staleTime: 0 });
     } catch (err) {
       setState({ kind: 'failed', message: getErrorMessage(err, 'the backend did not answer') });
     }
@@ -177,6 +226,12 @@ export function AlertsSection({ form, unsaved }: { form: SectionForm; unsaved: n
           label="Failed sign-ins"
           help="An alert when a sign-in to this dashboard fails. Its level is warning."
         />
+        <ToggleRow
+          form={form}
+          setting="notify_system"
+          label="Proxy, blocklist and update events"
+          help="An alert when the proxy stops answering for two checks a minute apart (error) and when it is back (info), when the blocklist refresh cannot download a feed (warning), and once for each new version (info)."
+        />
         <ChoiceRow
           form={form}
           setting="notify_min_level"
@@ -237,6 +292,10 @@ export function AlertsSection({ form, unsaved }: { form: SectionForm; unsaved: n
 
       <Section level={3} title="Test">
         <TestAlert unsaved={unsaved} enabled={form.stored.enable_notifications === 'true'} />
+      </Section>
+
+      <Section level={3} title="Deliveries">
+        <Deliveries alertsOn={form.stored.enable_notifications === 'true'} />
       </Section>
     </div>
   );

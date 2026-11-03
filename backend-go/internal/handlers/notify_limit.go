@@ -46,7 +46,11 @@ const (
 	settingMaxPerHour         = "notify_max_per_hour"
 	settingNotifyWAFBlock     = "notify_waf_block"
 	settingNotifyLoginFailure = "notify_login_failure"
-	settingMinLevel           = "notify_min_level"
+	// settingNotifySystem switches off the events the backend's own workers
+	// raise (workers/alerts.go): the proxy down and back, a blocklist feed
+	// that failed to download, a new version.
+	settingNotifySystem = "notify_system"
+	settingMinLevel     = "notify_min_level"
 
 	defaultGroupWindowMinutes = 10
 	defaultMaxPerHour         = 20
@@ -64,8 +68,12 @@ var levelName = []string{"info", "warning", "error"}
 // eventTypeSwitch is the setting that switches an event type off, for the
 // types that have one.
 var eventTypeSwitch = map[string]string{
-	"waf_block":     settingNotifyWAFBlock,
-	"login_failure": settingNotifyLoginFailure,
+	"waf_block":                settingNotifyWAFBlock,
+	"login_failure":            settingNotifyLoginFailure,
+	"proxy_down":               settingNotifySystem,
+	"proxy_up":                 settingNotifySystem,
+	"blocklist_refresh_failed": settingNotifySystem,
+	"update_available":         settingNotifySystem,
 }
 
 // Bounds on what the limiter holds, so a flood from many addresses costs
@@ -187,6 +195,13 @@ func groupKey(eventType, clientIP string) string { return eventType + "\x00" + c
 func (n *notifyLimiter) admit(event map[string]any, l notifyLimits) []map[string]any {
 	now := n.now()
 	eventType, clientIP := eventString(event, "event_type"), eventString(event, "client_ip")
+	// The backend's own events come once per change of state: grouping them
+	// would hold a second proxy_down that follows a proxy_up within the
+	// window, leaving "back" as the last word, and fold two new versions into
+	// one digest. The per-channel cap (allow) still applies to them.
+	if eventTypeSwitch[eventType] == settingNotifySystem {
+		return []map[string]any{event}
+	}
 	key := groupKey(eventType, clientIP)
 	out := n.closeIfDue(key, now, nil)
 	overflow := false

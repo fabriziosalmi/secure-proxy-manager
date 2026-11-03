@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -92,6 +94,9 @@ type refreshCount struct {
 	Fetched  int `json:"fetched"`
 	Failed   int `json:"failed"`
 	NotAdded int `json:"not_added,omitempty"`
+	// failedURLs are the feeds not read, one per line, for the alert; never
+	// in the audit, since a custom URL can carry a key.
+	failedURLs string
 }
 
 // runRefresh is one run of the worker: every feed refreshed, then one audit
@@ -104,6 +109,33 @@ func runRefresh(db *sql.DB) {
 		details = nil
 	}
 	database.Audit(db, "system", "refresh_blacklists", "", string(details))
+	// The feeds' URLs stay out of the alert: a custom one can carry a key.
+	failed, total := 0, 0
+	var urls []string
+	for _, c := range counts {
+		failed += c.Failed
+		total += c.Failed + c.Fetched
+		urls = append(urls, strings.Fields(c.failedURLs)...)
+	}
+	// Once per change: the same feeds still down on the next run send
+	// nothing more; a run with none down resets it.
+	sort.Strings(urls)
+	key := strings.Join(urls, "\n")
+	lastRefreshFailures.Lock()
+	changed := key != lastRefreshFailures.key
+	lastRefreshFailures.key = key
+	lastRefreshFailures.Unlock()
+	if failed > 0 && changed {
+		raiseAlert("blocklist_refresh_failed", "warning", fmt.Sprintf(
+			"The blocklist refresh could not download %d of %d feeds; the lists keep the entries they had. The backend log names the feeds.",
+			failed, total))
+	}
+}
+
+// lastRefreshFailures is the set of feeds the last run could not download.
+var lastRefreshFailures struct {
+	sync.Mutex
+	key string
 }
 
 func refreshAll(db *sql.DB) map[string]refreshCount {
@@ -176,6 +208,7 @@ func refreshList(db *sql.DB, table, col string, urls []string) refreshCount {
 		data, err := fetchRefreshFeed(u)
 		if err != nil {
 			c.Failed++
+			c.failedURLs += u + "\n"
 			if errors.Is(err, errRefreshRefused) {
 				log.Warn().Str("url", u).Msg("blacklist refresh: refusing non-routable/invalid URL")
 			} else {

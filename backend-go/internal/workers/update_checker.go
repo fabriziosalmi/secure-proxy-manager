@@ -3,6 +3,7 @@ package workers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -126,6 +127,7 @@ func check(url string) {
 	current := strings.TrimSuffix(config.AppVersion, "-go")
 
 	updateMu.Lock()
+	prev := updateInfo
 	updateInfo = UpdateInfo{
 		Available: latest != current && semverGreater(latest, current),
 		Latest:    release.TagName,
@@ -133,10 +135,15 @@ func check(url string) {
 		URL:       release.HTMLURL,
 		CheckedAt: time.Now().UTC().Format(time.RFC3339),
 	}
+	info := updateInfo
 	updateMu.Unlock()
 
-	if updateInfo.Available {
+	if info.Available {
 		log.Info().Str("latest", release.TagName).Str("current", config.AppVersion).Msg("update available")
+		// Once per new version, not on every check.
+		if !prev.Available || prev.Latest != info.Latest {
+			raiseAlert("update_available", "info", fmt.Sprintf("Secure Proxy Manager %s is available; this one runs %s. %s", info.Latest, info.Current, info.URL))
+		}
 	} else {
 		log.Debug().Str("latest", release.TagName).Msg("up to date")
 	}
