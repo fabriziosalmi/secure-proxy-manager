@@ -9,13 +9,13 @@ describe('refreshWafState', () => {
 
   const keys = (qc: QueryClient) => vi.mocked(qc.invalidateQueries).mock.calls.map((c) => JSON.stringify(c[0]?.queryKey))
 
-  it('reads the policy and the WAF status again, once when the WAF reloaded', () => {
+  it('reads the policy, the WAF status and the categories again, once when the WAF reloaded', () => {
     vi.useFakeTimers()
     const qc = new QueryClient()
     vi.spyOn(qc, 'invalidateQueries')
     refreshWafState(qc, { reloaded: true })
     vi.advanceTimersByTime(10_000)
-    expect(keys(qc)).toEqual(['["waf","policy"]', '["waf","status"]'])
+    expect(keys(qc)).toEqual(['["waf","policy"]', '["waf","status"]', '["waf","categories"]'])
   })
 
   it('reads them again after the WAF has had the time to pick the file up when the reload was not confirmed', () => {
@@ -23,10 +23,10 @@ describe('refreshWafState', () => {
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
     refreshWafState(qc, { reloaded: false, detail: 'the WAF did not answer' })
-    expect(spy).toHaveBeenCalledTimes(2)
+    expect(spy).toHaveBeenCalledTimes(3)
     vi.advanceTimersByTime(5_999)
-    expect(spy).toHaveBeenCalledTimes(2)
+    expect(spy).toHaveBeenCalledTimes(3)
     vi.advanceTimersByTime(1)
-    expect(keys(qc)).toEqual(['["waf","policy"]', '["waf","status"]', '["waf","policy"]', '["waf","status"]'])
+    expect(keys(qc)).toEqual(['["waf","policy"]', '["waf","status"]', '["waf","categories"]', '["waf","policy"]', '["waf","status"]', '["waf","categories"]'])
   })
 })

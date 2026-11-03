@@ -213,11 +213,14 @@ export function Dashboard() {
   });
   const status = useQuery({ ...statusQuery, refetchInterval, staleTime: 10_000 });
   const attention = useNeedsAttention({ refetchInterval });
-  // The advisories behind the proxy's CVE count, read only when there are some.
+  // The advisories behind the proxy's CVE count, read only when there are
+  // some. The key carries the version and the count, so a new Squid or a
+  // count that changed reads them again instead of showing the old list.
+  const cveCount = status.data?.squid_cves ?? 0;
   const cve = useQuery<CveInfo | null>({
-    queryKey: ['security', 'cve'],
+    queryKey: ['security', 'cve', status.data?.squid_version ?? '', cveCount],
     queryFn: () => getData<CveInfo>('security/cve'),
-    enabled: (status.data?.squid_cves ?? 0) > 0,
+    enabled: cveCount > 0,
     staleTime: 5 * 60_000,
   });
   const cache = useQuery<CacheStats | null>({
@@ -313,7 +316,7 @@ export function Dashboard() {
         <LatestBlocks rows={s?.recent_blocks} loading={loading} error={summary.isError} now={summary.dataUpdatedAt} />
       </div>
 
-      <ServicesPanel rows={serviceRows(status, summary, cache)} proxyCves={cve.data?.cves} />
+      <ServicesPanel rows={serviceRows(status, summary, cache)} proxyCves={cveCount > 0 ? cve.data?.cves : undefined} />
     </div>
   );
 }

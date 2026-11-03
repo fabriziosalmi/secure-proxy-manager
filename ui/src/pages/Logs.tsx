@@ -324,6 +324,8 @@ export function Logs() {
   };
 
   const exportCsv = async () => {
+    // The backend refuses a range that can hold no request; the table says so.
+    if (noRange) return;
     setExporting(true);
     try {
       const res = await api.get(`logs/export?${query}`, { responseType: 'blob' });
@@ -517,7 +519,7 @@ export function Logs() {
               Live updates
             </Button>
             <span role="status" aria-label="Live updates" className="self-center text-xs text-ink-muted">{liveState}</span>
-            <Button icon={<Download />} onClick={() => { void exportCsv(); }} disabled={exporting}>
+            <Button icon={<Download />} onClick={() => { void exportCsv(); }} disabled={exporting || noRange}>
               {exporting ? 'Exporting' : 'Export CSV'}
             </Button>
           </>

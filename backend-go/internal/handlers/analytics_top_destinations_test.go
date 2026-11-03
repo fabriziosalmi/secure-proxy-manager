@@ -9,8 +9,8 @@ import (
 )
 
 // The most requested hosts of the window: one row per host whatever its port
-// or path, with its blocked count, the stack's own traffic and older rows
-// left out.
+// (8443 and 8080 included) or path, with its blocked count, the stack's own
+// traffic and older rows left out.
 func TestTopDestinationsCountsHostsOfTheClients(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -21,9 +21,9 @@ func TestTopDestinationsCountsHostsOfTheClients(t *testing.T) {
 		at        time.Time
 	}{
 		{lanClient, "a.test:443", 0, now},
-		{lanClient, "a.test:443", 1, now},
+		{lanClient, "a.test:8443", 1, now},
 		{lanClient, "http://a.test/x", 0, now},
-		{lan172, "https://a.test/y", 0, now},
+		{lan172, "http://a.test:8080/y", 0, now},
 		{lanClient, "b.test:443", 0, now},
 		{lanClient, "b.test:443", 0, now},
 		// The backend's own requests and an 8-day-old one are not counted.
@@ -52,5 +52,16 @@ func TestTopDestinationsCountsHostsOfTheClients(t *testing.T) {
 	if len(body.Data) != 2 || body.Data[0].Host != "a.test" || body.Data[0].Requests != 4 || body.Data[0].Blocked != 1 ||
 		body.Data[1].Host != "b.test" || body.Data[1].Requests != 2 || body.Data[1].Blocked != 0 {
 		t.Errorf("top destinations = %+v; want a.test 4 (1 blocked), b.test 2", body.Data)
+	}
+}
+
+func TestHostWithoutPort(t *testing.T) {
+	for in, want := range map[string]string{
+		"a.test": "a.test", "a.test:8443": "a.test", "203.0.113.7:443": "203.0.113.7",
+		"[2001:db8::1]:443": "[2001:db8::1]", "2001:db8::1": "2001:db8::1",
+	} {
+		if got := hostWithoutPort(in); got != want {
+			t.Errorf("hostWithoutPort(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

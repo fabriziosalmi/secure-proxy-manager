@@ -7,7 +7,7 @@
  */
 import type { QueryClient } from '@tanstack/react-query';
 import { api, getData } from './api';
-import { wafStatusQuery } from './queries';
+import { wafCategoriesQuery, wafStatusQuery } from './queries';
 
 /** One block, as the WAF reported it. */
 export interface WafEvent {
@@ -91,6 +91,8 @@ export function refreshWafState(queryClient: QueryClient, reload?: WafReload): v
   const again = () => {
     void queryClient.invalidateQueries({ queryKey: wafPolicyKey });
     void queryClient.invalidateQueries({ queryKey: wafStatusQuery.queryKey });
+    // A category the policy observes or no longer observes changes its row.
+    void queryClient.invalidateQueries({ queryKey: wafCategoriesQuery.queryKey });
   };
   again();
   if (reload && !reload.reloaded) setTimeout(again, POLICY_POLL_MS);

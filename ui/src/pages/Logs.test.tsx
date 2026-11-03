@@ -334,6 +334,8 @@ describe('Logs', () => {
       fireEvent.change(screen.getByLabelText('Until'), { target: { value: '2026-11-02T13:00' } })
       expect(await screen.findByText('Until is not later than From')).toBeInTheDocument()
       expect(logCalls().length).toBe(sent)
+      // The export would be refused the same way: it is not offered.
+      expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
     } finally {
       restoreTz()
     }
