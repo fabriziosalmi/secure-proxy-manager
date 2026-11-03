@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -72,10 +74,17 @@ func (rl *rateLimiter) allow(ip string) bool {
 
 // GlobalRateLimit applies a per-IP token bucket rate limiter to all requests.
 // rate: requests per second allowed per IP. burst: max burst size.
-func GlobalRateLimit(rate float64, burst int) func(http.Handler) http.Handler {
+// A request for which an exempt predicate holds is not counted.
+func GlobalRateLimit(rate float64, burst int, exempt ...func(*http.Request) bool) func(http.Handler) http.Handler {
 	rl := newRateLimiter(rate, burst)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			for _, ex := range exempt {
+				if ex(r) {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
 			ip := extractIP(r)
 			if !rl.allow(ip) {
 				w.Header().Set("Retry-After", "1")
@@ -84,6 +93,30 @@ func GlobalRateLimit(rate float64, burst int) func(http.Handler) http.Handler {
 			}
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+// internalServicePaths are the routes the WAF posts to with the service
+// token.
+var internalServicePaths = map[string]bool{"/api/internal/alert": true, "/api/internal/signals": true}
+
+// InternalServiceRequest is an exemption for GlobalRateLimit: a request to
+// one of the WAF's internal routes that carries the service token. The WAF
+// sends block alerts and client signals from one address, so a burst of
+// signals would spend the bucket its alerts need, and the token already
+// tells the WAF from anyone else. With no token configured nothing is
+// exempt.
+func InternalServiceRequest(token string) func(*http.Request) bool {
+	if token == "" {
+		return func(*http.Request) bool { return false }
+	}
+	want := []byte(token)
+	return func(r *http.Request) bool {
+		if !internalServicePaths[r.URL.Path] {
+			return false
+		}
+		got := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		return subtle.ConstantTimeCompare([]byte(got), want) == 1
 	}
 }
 

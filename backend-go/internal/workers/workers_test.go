@@ -618,3 +618,25 @@ func TestRetentionPrunesWAFEvents(t *testing.T) {
 		t.Errorf("waf_events after retention: %v", ids)
 	}
 }
+
+// The WAF's signals go with them, by their own instant.
+func TestRetentionPrunesWAFSignals(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	_, _ = db.Exec("INSERT INTO settings (setting_name, setting_value) VALUES ('log_retention_days', '30')")
+	old := time.Now().Add(-31 * 24 * time.Hour).UnixMilli()
+	recent := time.Now().Add(-29 * 24 * time.Hour).UnixMilli()
+	_, _ = db.Exec("INSERT INTO waf_signals (ts_ms, client_ip, category, event_id) VALUES (?, '192.0.2.1', 'DGA_DOMAIN', 'old'), (?, '192.0.2.1', 'DGA_DOMAIN', 'recent')", old, recent)
+	runRetention(db)
+	var ids []string
+	rows, _ := db.Query("SELECT event_id FROM waf_signals")
+	for rows.Next() {
+		var id string
+		_ = rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if len(ids) != 1 || ids[0] != "recent" {
+		t.Errorf("waf_signals after retention: %v", ids)
+	}
+}

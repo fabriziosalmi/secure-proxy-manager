@@ -177,8 +177,8 @@ func run() error {
 	r.Use(appMW.SessionCSRF(cfg)) // before any handler: a cookie alone never changes state from another site
 	r.Use(appMW.SecurityHeaders)
 	r.Use(appMW.APIVersion)
-	r.Use(appMW.GlobalRateLimit(20, 60))       // 20 req/s sustained, 60 burst per IP
-	r.Use(appMW.MaxBodySize(55 * 1024 * 1024)) // 55MB max (for large blacklist imports)
+	r.Use(appMW.GlobalRateLimit(20, 60, appMW.InternalServiceRequest(cfg.AlertToken))) // 20 req/s sustained, 60 burst per IP; the WAF's service calls apart
+	r.Use(appMW.MaxBodySize(55 * 1024 * 1024))                                         // 55MB max (for large blacklist imports)
 
 	authMW := appMW.Auth(authSvc)
 

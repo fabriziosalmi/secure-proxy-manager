@@ -33,6 +33,8 @@ func TestFailedAlertDeliveriesAreCountedAndRetriedByReason(t *testing.T) {
 	}{
 		{"rejected token", "rejected", 401, 1},
 		{"server error", "server_error", 503, int32(notifyAttempts)},
+		// The backend's per-address limit passes once its bucket refills.
+		{"rate limited", "rate_limited", 429, int32(notifyAttempts)},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -51,7 +51,8 @@ type Config struct {
 	ProxyURL       string
 	GeoIPURL       string
 
-	// AlertToken authenticates the WAF when it posts to /api/internal/alert.
+	// AlertToken authenticates the WAF when it posts to /api/internal/alert
+	// and /api/internal/signals.
 	// It exists so the WAF does not need the admin credential: that container
 	// is the one that parses attacker-controlled request bodies, and holding
 	// BASIC_AUTH_PASSWORD gave it full control of the management API

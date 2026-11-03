@@ -263,7 +263,7 @@ func (h *LogHandlers) Timeline(w http.ResponseWriter, r *http.Request) {
 func (h *LogHandlers) Clear(w http.ResponseWriter, r *http.Request) {
 	username, _ := r.Context().Value(middleware.CtxUsername).(string)
 	h.db.Exec("DELETE FROM proxy_logs") //nolint:errcheck
-	h.db.Exec("DELETE FROM waf_events") //nolint:errcheck
+	database.ClearWAFRecords(h.db)
 	h.src.forget()
 	h.db.Exec("INSERT INTO audit_log(username,action,target,details) VALUES(?,?,?,?)", username, "clear_logs", "proxy_logs", "") //nolint:errcheck
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "All logs cleared"})
@@ -275,7 +275,7 @@ func (h *LogHandlers) ClearOld(w http.ResponseWriter, r *http.Request) {
 		days = 30
 	}
 	res, err := h.db.Exec("DELETE FROM proxy_logs WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(days)+" days") // slopless-disable-line VBC-004 -- the concatenation builds a bound argument, not the statement
-	h.db.Exec("DELETE FROM waf_events WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(days)+" days")             //nolint:errcheck // slopless-disable-line VBC-004 -- the concatenation builds a bound argument, not the statement
+	database.PruneWAFRecords(h.db, days)                                                                                 //nolint:errcheck
 	var deleted int64
 	if err == nil && res != nil {
 		deleted, _ = res.RowsAffected()
