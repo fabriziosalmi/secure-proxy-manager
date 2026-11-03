@@ -19,6 +19,7 @@ import { SecretRow, TextField, ToggleRow } from '../fields';
 import type { SectionForm } from '../sectionForm';
 import type { ProxyAuthStatus } from '../../../lib/queries';
 import { PROXY_LOGIN_NO_CREDENTIALS, proxyLoginWithoutCredentials } from '../../../lib/attention';
+import { utcClockIn, viewerZone } from '../../../lib/format';
 
 const PRIVATE_NETWORKS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', 'fc00::/7', 'fe80::/10'];
 
@@ -69,7 +70,15 @@ export function AccessSection({ form, proxyAuth }: { form: SectionForm; proxyAut
   const passwordAfterSave = password.edit ? password.edit.kind === 'replace' : password.state !== 'unset';
   const draftWithout = loginOn && (!v.proxy_auth_username || !passwordAfterSave);
   const turningHoursOn = v.enable_time_restrictions === 'true' && form.stored.enable_time_restrictions !== 'true';
-  const hours = v.time_restriction_start && v.time_restriction_end ? `${v.time_restriction_start} to ${v.time_restriction_end}` : null;
+  const hours = v.time_restriction_start && v.time_restriction_end ? `${v.time_restriction_start} to ${v.time_restriction_end} UTC` : null;
+  // The proxy reads the window on its own clock, UTC: the same hours on the
+  // viewer's clock, today, unless the viewer is on UTC too.
+  const zone = viewerZone();
+  const localFrom = zone ? utcClockIn(v.time_restriction_start ?? '', zone) : null;
+  const localUntil = zone ? utcClockIn(v.time_restriction_end ?? '', zone) : null;
+  const localHours = localFrom && localUntil && (localFrom !== v.time_restriction_start || localUntil !== v.time_restriction_end)
+    ? `${localFrom} to ${localUntil}`
+    : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -117,12 +126,15 @@ export function AccessSection({ form, proxyAuth }: { form: SectionForm; proxyAut
           form={form}
           setting="enable_time_restrictions"
           label="Limit to a time window"
-          help="Outside the window every proxy client is refused, every day of the week. Times follow the proxy container's clock."
+          help="Outside the window every proxy client is refused, every day of the week. Times are UTC: the proxy container's clock has no time zone set."
         >
           <div className="grid gap-4 sm:grid-cols-2">
-            <TextField form={form} setting="time_restriction_start" label="From" type="time" />
-            <TextField form={form} setting="time_restriction_end" label="Until" type="time" hint="Must be later than From, on the same day." />
+            <TextField form={form} setting="time_restriction_start" label="From (UTC)" type="time" />
+            <TextField form={form} setting="time_restriction_end" label="Until (UTC)" type="time" hint="Must be later than From, on the same day." />
           </div>
+          {localHours && (
+            <p className="mt-2 text-xs text-ink-muted">On this browser&apos;s clock ({zone}) that is {localHours} today; it moves by an hour when daylight saving time changes.</p>
+          )}
         </ToggleRow>
         {turningHoursOn && (
           <Notice tone="warning" title="Clients are refused outside the window after you save" className="mt-3">
