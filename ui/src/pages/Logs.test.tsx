@@ -519,13 +519,13 @@ describe('Logs', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('egress-allowlist', { entry: 'api.example.com', include_subdomains: false, description: 'Allowed from the access log' }))
   })
 
-  it('points an IP blacklist block at its entry, not at an IP exception that would not lift it', async () => {
+  it('points an IP blacklist block at the blacklist, not at an IP exception that would not lift it', async () => {
     const ipBlock = row({ id: 10, destination: '203.0.113.7:443', status: 'TCP_DENIED/403', blocked: true, reason: 'ip_blacklist', reason_label: 'IP blacklist' })
     logsBody = () => page([ipBlock])
     renderWithProviders(<Logs />)
     fireEvent.click(await screen.findByRole('button', { name: ipBlock.destination }))
     const details = screen.getByRole('region', { name: 'Request details' })
-    expect(within(details).getByRole('link', { name: 'Find it on the IP blacklist' })).toHaveAttribute('href', '/blacklists?tab=blocked-ips&q=203.0.113.7')
+    expect(within(details).getByRole('link', { name: 'Open the IP blacklist' })).toHaveAttribute('href', '/blacklists?tab=blocked-ips')
     expect(within(details).queryByRole('button', { name: /^Allow/ })).not.toBeInTheDocument()
   })
 

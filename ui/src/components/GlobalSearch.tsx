@@ -108,7 +108,8 @@ export function GlobalSearch() {
   // Search logic
   const search = useCallback(async (q: string) => {
     const mine = ++seq.current;
-    if (!q.trim()) { setResults([]); setFailed(0); return; }
+    // A search that asks no backend ends any spinner a replaced one left on.
+    if (!q.trim()) { setResults([]); setFailed(0); setLoading(false); return; }
     const lower = q.toLowerCase();
     const items: SearchResult[] = [];
     let failures = 0;
@@ -218,6 +219,8 @@ export function GlobalSearch() {
         failures = Math.max(failures, 1);
       }
       if (mine !== seq.current) return;
+      setLoading(false);
+    } else {
       setLoading(false);
     }
 
@@ -362,9 +365,12 @@ export function GlobalSearch() {
           )}
         </div>
 
-        {failed > 0 && failed < LOOKUPS && query.length > 0 && !loading && (
+        {/* With every lookup failed and no result, the list area says so. */}
+        {failed > 0 && (failed < LOOKUPS || results.length > 0) && query.length > 0 && !loading && (
           <p role="status" className="border-t border-line-subtle px-4 py-2 text-xs text-warning">
-            {failed} of {LOOKUPS} lookups failed, so some matches may be missing.
+            {failed === LOOKUPS
+              ? 'The search could not reach the backend, so only pages and settings are listed.'
+              : `${failed} of ${LOOKUPS} lookups failed, so some matches may be missing.`}
           </p>
         )}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line-subtle bg-surface-muted px-4 py-2 text-xs text-ink-muted">

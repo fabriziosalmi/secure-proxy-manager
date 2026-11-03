@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 
@@ -34,7 +35,8 @@ func auditCategoryCond(category string) (cond database.SQLText, ok bool) {
 const auditTextCond database.SQLText = `(IFNULL(username, '') LIKE ? ESCAPE '\' OR IFNULL(action, '') LIKE ? ESCAPE '\' ` +
 	`OR IFNULL(target, '') LIKE ? ESCAPE '\' OR IFNULL(details, '') LIKE ? ESCAPE '\')`
 
-// auditMaxQuery bounds the text search, as the access log bounds its own.
+// auditMaxQuery bounds the text search, in characters (the search field's
+// maxLength counts characters too).
 const auditMaxQuery = 200
 
 // auditWhere is the WHERE clause of a category and a text search, with the
@@ -67,7 +69,7 @@ func (h *AnalyticsHandlers) AuditLog(w http.ResponseWriter, r *http.Request) {
 	limit := clamp(queryInt(r, "limit", 50), 1, 200)
 	offset := max0(queryInt(r, "offset", 0))
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	if len(q) > auditMaxQuery {
+	if utf8.RuneCountInString(q) > auditMaxQuery {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("q is longer than %d characters", auditMaxQuery))
 		return
 	}

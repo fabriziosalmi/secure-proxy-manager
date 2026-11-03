@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -142,5 +143,9 @@ func TestAuditLogSearchesTextOnTheServer(t *testing.T) {
 	}
 	if code, _, _ := auditPage(t, h, "?q="+strings.Repeat("a", 201)); code != http.StatusBadRequest {
 		t.Errorf("a 201-character q = %d, want 400", code)
+	}
+	// The limit counts characters: 200 of them in two bytes each are allowed.
+	if code, _, _ := auditPage(t, h, "?q="+url.QueryEscape(strings.Repeat("é", 200))); code != http.StatusOK {
+		t.Errorf("a 200-character non-ASCII q = %d, want 200", code)
 	}
 }

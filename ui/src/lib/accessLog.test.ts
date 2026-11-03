@@ -131,10 +131,10 @@ describe('row facts', () => {
 
   // An IP exception would not lift an IP blacklist block (the proxy checks
   // the blacklist first), so the detail points at the blacklist entry.
-  it('points an IP blacklist block at the blocked IPs, by address when the request named one', () => {
-    expect(ipBlacklistLink(entry({ blocked: 1, reason: 'ip_blacklist', destination: '203.0.113.7:443' }))).toBe('/blacklists?tab=blocked-ips&q=203.0.113.7')
-    expect(ipBlacklistLink(entry({ blocked: 1, reason: 'ip_blacklist', destination: 'http://203.0.113.7/x' }))).toBe('/blacklists?tab=blocked-ips&q=203.0.113.7')
-    // A name blocked for the address it resolved to: the log has no address.
+  // The blocking entry can be a network or the address a name resolved to,
+  // so the link opens the whole list rather than a search that could miss it.
+  it('points an IP blacklist block at the blocked IPs, unfiltered', () => {
+    expect(ipBlacklistLink(entry({ blocked: 1, reason: 'ip_blacklist', destination: '8.8.8.8:443' }))).toBe('/blacklists?tab=blocked-ips')
     expect(ipBlacklistLink(entry({ blocked: 1, reason: 'ip_blacklist', destination: 'bad.example:443' }))).toBe('/blacklists?tab=blocked-ips')
     expect(ipBlacklistLink(entry({ blocked: 1, reason: 'egress_policy', destination: '203.0.113.7:443' }))).toBeNull()
   })

@@ -677,7 +677,7 @@ function RequestDetail({ r, filters, onAllow, onAllowEgress, onShowClient }: {
             to={ipList}
             className="inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-control border border-line-strong bg-surface px-3 text-[13px] font-semibold text-ink-secondary transition-colors hover:bg-surface-muted hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
           >
-            Find it on the IP blacklist
+            Open the IP blacklist
           </Link>
         )}
         {clientTarget && filters.client !== clientTarget && (
