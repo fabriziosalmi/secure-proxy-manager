@@ -181,8 +181,11 @@ export function needsAttention({ values, secrets, proxyStatus, egressTotal, egre
   }
 
   // A channel whose last delivery failed: alerts on, but they do not arrive.
+  // Only the channels set up now: the status keeps a channel whose settings
+  // were since removed.
+  const configured = new Set(configuredChannels(secrets));
   const failing = on('enable_notifications') && alertDelivery
-    ? Object.entries(alertDelivery.channels).filter(([, d]) => d.last_failed)
+    ? Object.entries(alertDelivery.channels).filter(([id, d]) => d.last_failed && configured.has(CHANNEL_NAMES[id] ?? id))
     : [];
   if (failing.length) {
     const names = failing.map(([id]) => CHANNEL_NAMES[id] ?? id);

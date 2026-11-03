@@ -55,6 +55,8 @@ func TestARefreshWithAFailedFeedRaisesAnAlert(t *testing.T) {
 	got := captureAlerts(t)
 	orig := fetchRefreshFeed
 	t.Cleanup(func() { fetchRefreshFeed = orig })
+	lastRefreshFailures.key = ""
+	t.Cleanup(func() { lastRefreshFailures.key = "" })
 
 	fetchRefreshFeed = func(u string) (string, error) { return "0.0.0.0 a.example\n1.1.1.1\n", nil }
 	runRefresh(db)
@@ -72,6 +74,23 @@ func TestARefreshWithAFailedFeedRaisesAnAlert(t *testing.T) {
 	ev := got()
 	if len(ev) != 1 || ev[0]["event_type"] != "blocklist_refresh_failed" || ev[0]["level"] != "warning" {
 		t.Fatalf("alerts = %v; want one blocklist_refresh_failed warning", ev)
+	}
+	// The same feed still down: nothing more. Back, then down again: one more.
+	runRefresh(db)
+	if n := len(got()); n != 1 {
+		t.Errorf("the same failure on the next run sent %d alerts in all, want still 1", n)
+	}
+	fetchRefreshFeed = func(u string) (string, error) { return "0.0.0.0 a.example\n1.1.1.1\n", nil }
+	runRefresh(db)
+	fetchRefreshFeed = func(u string) (string, error) {
+		if u == defaultDomainLists[1] {
+			return "", errors.New("HTTP 410")
+		}
+		return "0.0.0.0 a.example\n1.1.1.1\n", nil
+	}
+	runRefresh(db)
+	if n := len(got()); n != 2 {
+		t.Errorf("down, up, down sent %d alerts, want 2", n)
 	}
 	msg := fmt.Sprint(ev[0]["message"])
 	want := fmt.Sprintf("could not download 1 of %d feeds", len(defaultIPLists)+len(defaultDomainLists))

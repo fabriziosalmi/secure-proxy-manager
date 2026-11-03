@@ -159,6 +159,7 @@ func run() error {
 		select {
 		case notify <- event:
 		default:
+			metrics.NotificationDropped()
 			log.Warn().Interface("event_type", event["event_type"]).Msg("alert queue full; event dropped")
 		}
 	})

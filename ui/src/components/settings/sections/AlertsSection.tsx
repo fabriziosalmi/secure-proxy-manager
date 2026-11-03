@@ -112,8 +112,11 @@ function deliveryLine(d: ChannelDelivery): string {
  * failed delivery used to reach only a metric and a log line: a channel could
  * stop working (an expired token, a moved webhook) while this page read "on".
  */
-function Deliveries() {
-  const q = useQuery({ ...notificationStatusQuery, refetchInterval: 30_000 });
+function Deliveries({ alertsOn }: { alertsOn: boolean }) {
+  // Read while alerts are on; with them off, only after a test (TestAlert
+  // fetches it), so the page asks nothing it does not show.
+  const q = useQuery({ ...notificationStatusQuery, enabled: alertsOn, refetchInterval: alertsOn ? 30_000 : false });
+  if (!q.data && !alertsOn) return <p className="text-sm text-ink-muted">Alerts are off. What each channel answers is listed here while they are on, and after a test.</p>;
   if (q.isPending) return null;
   if (q.isError || !q.data) return <p className="text-sm text-ink-muted">What the channels answered could not be read.</p>;
   const used = Object.entries(q.data.channels);
@@ -143,8 +146,9 @@ function TestAlert({ unsaved, enabled }: { unsaved: number; enabled: boolean }) 
     try {
       const res = await api.post('notifications/test', {});
       setState({ kind: 'done', answer: (res.data ?? {}) as TestAnswer });
-      // The test is a delivery too: the list below shows its outcome.
-      void queryClient.invalidateQueries({ queryKey: notificationStatusQuery.queryKey });
+      // The test is a delivery too: the list below shows its outcome, with
+      // alerts off as well (the list does not poll then).
+      void queryClient.fetchQuery({ ...notificationStatusQuery, staleTime: 0 });
     } catch (err) {
       setState({ kind: 'failed', message: getErrorMessage(err, 'the backend did not answer') });
     }
@@ -291,7 +295,7 @@ export function AlertsSection({ form, unsaved }: { form: SectionForm; unsaved: n
       </Section>
 
       <Section level={3} title="Deliveries">
-        <Deliveries />
+        <Deliveries alertsOn={form.stored.enable_notifications === 'true'} />
       </Section>
     </div>
   );

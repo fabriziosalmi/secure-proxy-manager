@@ -148,8 +148,10 @@ describe('needsAttention', () => {
     const bad = { last_attempt: 't', last_delivered: null, last_error: 'the server refused the credentials (HTTP 401)', last_error_at: 't', last_failed: true, delivered: 0, failed: 2 }
     const on = { ...fresh, enable_notifications: 'true' }
 
+    const secrets = { webhook_url: 'set' as const, telegram_bot_token: 'set' as const, telegram_chat_id: 'set' as const }
+
     it('says which channels are not arriving, with alerts on', () => {
-      const items = needsAttention(input({ values: on, alertDelivery: { since: 't', channels: { telegram: ok, webhook: bad } } }))
+      const items = needsAttention(input({ values: on, secrets, alertDelivery: { since: 't', channels: { telegram: ok, webhook: bad } } }))
       const item = items.find((a) => a.id === 'alerts-failing')
       expect(item).toMatchObject({
         posture: 'needs-attention',
@@ -160,9 +162,17 @@ describe('needsAttention', () => {
     })
 
     it('says nothing with alerts off, every channel working, or nothing read', () => {
-      expect(ids(input({ values: fresh, alertDelivery: { since: 't', channels: { webhook: bad } } }))).not.toContain('needs-attention:alerts-failing')
-      expect(ids(input({ values: on, alertDelivery: { since: 't', channels: { telegram: ok } } }))).not.toContain('needs-attention:alerts-failing')
-      expect(ids(input({ values: on, alertDelivery: undefined }))).not.toContain('needs-attention:alerts-failing')
+      expect(ids(input({ values: fresh, secrets, alertDelivery: { since: 't', channels: { webhook: bad } } }))).not.toContain('needs-attention:alerts-failing')
+      expect(ids(input({ values: on, secrets, alertDelivery: { since: 't', channels: { telegram: ok } } }))).not.toContain('needs-attention:alerts-failing')
+      expect(ids(input({ values: on, secrets, alertDelivery: undefined }))).not.toContain('needs-attention:alerts-failing')
+    })
+
+    // The status remembers a channel since the backend started; one whose
+    // settings were removed since is not "not arriving".
+    it('leaves out a failing channel that is no longer set up', () => {
+      const telegramOnly = { telegram_bot_token: 'set' as const, telegram_chat_id: 'set' as const }
+      expect(ids(input({ values: on, secrets: telegramOnly, alertDelivery: { since: 't', channels: { telegram: ok, webhook: bad } } })))
+        .not.toContain('needs-attention:alerts-failing')
     })
   })
 })

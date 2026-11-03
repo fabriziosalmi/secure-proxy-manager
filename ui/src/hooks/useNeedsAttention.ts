@@ -32,7 +32,9 @@ export function useNeedsAttention({ egress = false, refetchInterval }: Options =
   const waf = useQuery({ ...wafStatusQuery, refetchInterval, staleTime: 10_000 });
   const egressSummary = useEgressSummary({ enabled: egress || parsed.values.egress_default_deny === 'true' });
   // Read only with alerts on: what a channel answered matters then.
-  const delivery = useQuery({ ...notificationStatusQuery, refetchInterval, staleTime: 10_000, enabled: parsed.values.enable_notifications === 'true' });
+  // Polled on Settings too, which passes no interval: a channel that fails or
+  // recovers while the page is open must change the list.
+  const delivery = useQuery({ ...notificationStatusQuery, refetchInterval: refetchInterval ?? 30_000, staleTime: 10_000, enabled: parsed.values.enable_notifications === 'true' });
 
   // The stored values, not a draft: it describes what is running.
   const items = useMemo(() => needsAttention({

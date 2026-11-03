@@ -278,6 +278,28 @@ func TestOffTypesAndLowLevelsAreNotSent(t *testing.T) {
 	}
 }
 
+// The backend's own events are not grouped: down, back and down again within
+// the window all go out, so the last word is not "back" while the proxy is
+// down, and two versions are not folded into one digest.
+func TestSystemEventsAreNotGrouped(t *testing.T) {
+	now := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
+	n := newNotifyLimiter(func() time.Time { return now })
+	var out []string
+	for i, typ := range []string{"proxy_down", "proxy_up", "proxy_down", "update_available", "update_available"} {
+		now = now.Add(time.Duration(i) * time.Minute)
+		for _, e := range n.admit(map[string]any{"event_type": typ, "level": "error"}, defaultLimits) {
+			out = append(out, eventString(e, "event_type"))
+		}
+	}
+	if strings.Join(out, ",") != "proxy_down,proxy_up,proxy_down,update_available,update_available" {
+		t.Errorf("admitted %v; want every system event", out)
+	}
+	// A WAF block from the same address in the window is still grouped.
+	if len(n.admit(wafBlock("192.0.2.1", "SQLI"), defaultLimits)) != 1 || len(n.admit(wafBlock("192.0.2.1", "SQLI"), defaultLimits)) != 0 {
+		t.Error("WAF blocks are no longer grouped")
+	}
+}
+
 // A value out of range in the database is read as the default, not as no
 // limit.
 func TestUnusableStoredLimitsFallBackToTheDefaults(t *testing.T) {

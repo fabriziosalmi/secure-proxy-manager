@@ -195,6 +195,13 @@ func groupKey(eventType, clientIP string) string { return eventType + "\x00" + c
 func (n *notifyLimiter) admit(event map[string]any, l notifyLimits) []map[string]any {
 	now := n.now()
 	eventType, clientIP := eventString(event, "event_type"), eventString(event, "client_ip")
+	// The backend's own events come once per change of state: grouping them
+	// would hold a second proxy_down that follows a proxy_up within the
+	// window, leaving "back" as the last word, and fold two new versions into
+	// one digest. The per-channel cap (allow) still applies to them.
+	if eventTypeSwitch[eventType] == settingNotifySystem {
+		return []map[string]any{event}
+	}
 	key := groupKey(eventType, clientIP)
 	out := n.closeIfDue(key, now, nil)
 	overflow := false

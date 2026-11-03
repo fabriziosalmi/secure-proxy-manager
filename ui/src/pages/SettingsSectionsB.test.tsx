@@ -258,7 +258,7 @@ describe('Settings sections, part B', () => {
 
     // A channel could stop working while this page read "on": what each one
     // answered since the backend started is listed, and the test refreshes it.
-    it('lists what each channel answered since the backend started', async () => {
+    it('lists what each channel answered since the backend started, with alerts off only after a test', async () => {
       const base = vi.mocked(api.get).getMockImplementation()!
       vi.mocked(api.get).mockImplementation(((url: string) => url === 'notifications/status'
         ? Promise.resolve({ data: { status: 'success', data: {
@@ -269,7 +269,14 @@ describe('Settings sections, part B', () => {
           },
         } } })
         : base(url)) as never)
+      vi.mocked(api.post).mockImplementation(((url: string) => url === 'notifications/test'
+        ? Promise.resolve({ data: { status: 'success', message: 'Delivered to 1 of 2 configured channels', data: { notifications_enabled: false, channels: [] } } })
+        : Promise.resolve({ data: { status: 'success' } })) as never)
       renderAt('/settings/alerts')
+      // Alerts are off in the stored settings: nothing is asked until a test.
+      expect(await screen.findByText(/^Alerts are off\. What each channel answers is listed here while they are on, and after a test\.$/)).toBeInTheDocument()
+      expect(vi.mocked(api.get).mock.calls.map(([u]) => String(u))).not.toContain('notifications/status')
+      fireEvent.click(screen.getByRole('button', { name: 'Send a test alert' }))
       const list = await screen.findByRole('list', { name: 'Deliveries by channel' })
       const items = within(list).getAllByRole('listitem').map((li) => li.textContent)
       expect(items[0]).toMatch(/^WorkingTelegramLast delivered .+\. 3 delivered, 0 failed\.$/)
