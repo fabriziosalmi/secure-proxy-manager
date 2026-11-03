@@ -37,7 +37,13 @@ CAP = 100_000
 
 
 def iso(t):
-    return t.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    return t.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def secs(x):
+    # A sleep in seconds to the millisecond: "g" keeps six digits, which
+    # would merge sleeps such as 1234.567 and 1234.568 into one category.
+    return f"{x:.3f}".rstrip("0").rstrip(".")
 
 
 def real(out_path, logs):
@@ -83,6 +89,10 @@ def configs(parquet, n, seed):
         proto, sleep, jitter = s.get("SETTING_PROTOCOL"), s.get("SETTING_SLEEPTIME"), s.get("SETTING_JITTER")
         dom = s.get("SETTING_DOMAINS") or ""
         parts = [p.strip() for p in str(dom).split(",") if p.strip()]
+        # A host field can hold several hosts separated by spaces (see
+        # convert.py): the beacon contacts the first.
+        if parts:
+            parts[0] = parts[0].split()[0]
         if proto not in (0, 8) or not isinstance(sleep, int) or sleep <= 0 or not isinstance(jitter, int) or len(parts) < 2:
             continue
         # SETTING_DOMAINS is "host,uri[,host,uri...]"; a few configs hold
@@ -121,7 +131,7 @@ def window_of(real_path, client, minutes, start=None):
         return a, sel
     best, j = (0, 0, 0), 0
     for i in range(len(times)):
-        while times[i] - times[j] > w:
+        while times[i] - times[j] >= w:
             j += 1
         if i - j + 1 > best[0]:
             best = (i - j + 1, j, i)
@@ -153,7 +163,7 @@ def beacons(out_path, parquet, n, seed, real_path=None, client=None, minutes=30,
                 for k, t in enumerate(beacon_times(c, start, span, rng)):
                     sent = k + 1
                     yield t, 0, {"id": f"{name}/{k}", "source": "fox-srt/cobaltstrike-beacon-corpus", "label": "attack",
-                                 "category": f"sleep{c['sleep']:g}s-jitter{c['jitter']}", "context": ctx,
+                                 "category": f"sleep{secs(c['sleep'])}s-jitter{c['jitter']}", "context": ctx,
                                  "method": method, "url": url, "headers": [], "body": "", "client": name}
 
             real_recs = ((t, 1, dict(r, id=f"{name}/{r['id']}", client=name)) for t, r in window)
