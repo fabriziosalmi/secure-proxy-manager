@@ -13,7 +13,9 @@ import (
 // and what it runs, from GET /health. The counts are nil unless status is
 // "ok": a WAF that did not answer has no rule count, which is not zero rules.
 // CategoriesObserved and RulesObserved count the enabled categories that
-// only log their matches and never score them.
+// only log their matches and never score them, by WAF_OBSERVE_CATEGORIES or
+// by the policy; single rules the policy makes log-only are counted in
+// Running.PolicyObserveRules.
 type wafCoverage struct {
 	Status             string      `json:"status"`
 	Categories         *int        `json:"categories"`
@@ -29,8 +31,8 @@ type wafCoverage struct {
 // adds the OWASP Core Rule Set), the score at which it blocks a request, the
 // regex engine and whether a second one checks it, how many heuristics are on,
 // and the policy's mode ("block", or "observe" for Log only), its number of
-// exceptions and whether its last reload failed. PolicyMode is empty when
-// the WAF predates the policy.
+// exceptions, whether its last reload failed and how many rules it makes
+// log-only. PolicyMode is empty when the WAF predates the policy.
 type wafRunning struct {
 	Engine             string `json:"engine"`
 	Threshold          int    `json:"threshold"`
@@ -40,6 +42,7 @@ type wafRunning struct {
 	PolicyMode         string `json:"policy_mode"`
 	PolicyExceptions   int    `json:"policy_exceptions"`
 	PolicyReloadFailed bool   `json:"policy_reload_failed"`
+	PolicyObserveRules int    `json:"policy_observe_rules"`
 }
 
 // wafRunningConfig reads the WAF's GET /health; nil when it did not answer
@@ -63,6 +66,7 @@ func wafRunningConfig(r *http.Request, cfg *config.Config) *wafRunning {
 			Mode         string `json:"mode"`
 			Exceptions   int    `json:"exceptions"`
 			ReloadFailed bool   `json:"reload_failed"`
+			ObserveRules int    `json:"observe_rules"`
 		} `json:"policy"`
 	}
 	if json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&body) != nil || body.Engine == "" || body.Threshold <= 0 {
@@ -71,7 +75,7 @@ func wafRunningConfig(r *http.Request, cfg *config.Config) *wafRunning {
 	return &wafRunning{
 		Engine: body.Engine, Threshold: body.Threshold, RegexEngine: body.RegexEngine, RegexShadow: body.RegexShadow,
 		Heuristics: body.Heuristics, PolicyMode: body.Policy.Mode, PolicyExceptions: body.Policy.Exceptions,
-		PolicyReloadFailed: body.Policy.ReloadFailed,
+		PolicyReloadFailed: body.Policy.ReloadFailed, PolicyObserveRules: body.Policy.ObserveRules,
 	}
 }
 

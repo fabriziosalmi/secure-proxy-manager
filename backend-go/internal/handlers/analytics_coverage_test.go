@@ -159,7 +159,7 @@ func TestWAFStatusReportsWhatTheWAFRuns(t *testing.T) {
 				`{"name":"XSS","rules":72,"enabled":false,"observe":true}]}`))
 		case "/health":
 			_, _ = w.Write([]byte(`{"status":"healthy","commit":"abc","engine":"hybrid","regex_engine":"go","regex_shadow":true,` +
-				`"rules":202,"categories":3,"threshold":10,"heuristics":6,"policy":{"mode":"observe","exceptions":2,"reload_failed":true}}`))
+				`"rules":202,"categories":3,"threshold":10,"heuristics":6,"policy":{"mode":"observe","exceptions":2,"reload_failed":true,"observe_rules":4}}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -176,7 +176,7 @@ func TestWAFStatusReportsWhatTheWAFRuns(t *testing.T) {
 	if d.Status != "ok" || !intIs(d.CategoriesEnabled, 2) || !intIs(d.CategoriesObserved, 1) || !intIs(d.RulesObserved, 30) {
 		t.Errorf("waf = %s, %v on, %v observed (%v rules); want ok, 2 on, 1 observed (30 rules)", d.Status, val(d.CategoriesEnabled), val(d.CategoriesObserved), val(d.RulesObserved))
 	}
-	want := wafRunning{Engine: "hybrid", Threshold: 10, RegexEngine: "go", RegexShadow: true, Heuristics: 6, PolicyMode: "observe", PolicyExceptions: 2, PolicyReloadFailed: true}
+	want := wafRunning{Engine: "hybrid", Threshold: 10, RegexEngine: "go", RegexShadow: true, Heuristics: 6, PolicyMode: "observe", PolicyExceptions: 2, PolicyReloadFailed: true, PolicyObserveRules: 4}
 	if d.Running == nil || *d.Running != want {
 		t.Errorf("running = %+v; want %+v", d.Running, want)
 	}
