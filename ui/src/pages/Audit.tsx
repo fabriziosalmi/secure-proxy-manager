@@ -2,9 +2,10 @@
  * Audit log (route /audit, Audit.dc.html): who changed what, and every
  * sign-in, newest first.
  *
- * - GET /api/audit-log, 50 a page, with ?category=all|changes|signins: the
- *   filter is applied by the backend, so the count and Newer / Older page
- *   through the filtered log, not through one page of it.
+ * - GET /api/audit-log, 50 a page, with ?category=all|changes|signins and
+ *   ?q= (text in the user, the action, the target or the details): both are
+ *   applied by the backend, so the count and Newer / Older page through the
+ *   filtered log, not through one page of it.
  * - Each row in plain words (lib/auditEvents): "Imported 71,140 domains from
  *   StevenBlack Unified", "Removed all 640,929 blocked domains". A key the
  *   page does not know is shown verbatim.
@@ -26,6 +27,8 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { DataTable, type Column } from '../components/ui/DataTable';
 import { Button } from '../components/ui/Button';
+import { SearchInput } from '../components/ui/SearchInput';
+import { useDebounced } from '../hooks/useDebounced';
 
 const PAGE_SIZE = 50;
 const EXPORT_PAGE = 200; // the backend's largest page
@@ -56,12 +59,12 @@ const KIND_STYLE: Record<AuditKind, string> = {
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function fetchWholeLog(category: Category): Promise<AuditEntry[]> {
+async function fetchWholeLog(category: Category, q: string): Promise<AuditEntry[]> {
   const out: AuditEntry[] = [];
   for (let page = 0, offset = 0; page < EXPORT_MAX_PAGES; page++) {
     // Paced under the nginx limit of 20 requests per second.
     if (page > 0) await pause(55);
-    const r = await api.get('audit-log', { params: { limit: EXPORT_PAGE, offset, category } });
+    const r = await api.get('audit-log', { params: { limit: EXPORT_PAGE, offset, category, ...(q ? { q } : {}) } });
     const rows = (r.data?.data ?? []) as AuditEntry[];
     out.push(...rows);
     offset += rows.length;
@@ -73,12 +76,14 @@ async function fetchWholeLog(category: Category): Promise<AuditEntry[]> {
 
 export function Audit() {
   const [category, setCategory] = useState<Category>('all');
+  const [search, setSearch] = useState('');
+  const q = useDebounced(search.trim(), 300);
   const [offset, setOffset] = useState(0);
   const [exporting, setExporting] = useState(false);
 
   const log = useQuery<AuditPageData>({
-    queryKey: ['audit-log', category, offset],
-    queryFn: () => api.get('audit-log', { params: { limit: PAGE_SIZE, offset, category } }).then((r) => r.data),
+    queryKey: ['audit-log', category, q, offset],
+    queryFn: () => api.get('audit-log', { params: { limit: PAGE_SIZE, offset, category, ...(q ? { q } : {}) } }).then((r) => r.data),
     placeholderData: keepPreviousData,
     refetchInterval: 30_000,
   });
@@ -95,7 +100,7 @@ export function Audit() {
     if (exporting) return;
     setExporting(true);
     try {
-      const all = await fetchWholeLog(category);
+      const all = await fetchWholeLog(category, q);
       const url = URL.createObjectURL(new Blob([auditCsv(all)], { type: 'text/csv' }));
       const link = document.createElement('a');
       link.href = url;
@@ -163,7 +168,17 @@ export function Audit() {
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <SegmentedControl<Category> label="Show" options={CATEGORIES} value={category} onChange={pick} />
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <SegmentedControl<Category> label="Show" options={CATEGORIES} value={category} onChange={pick} />
+          <SearchInput
+            label="Search the audit log"
+            placeholder="Search users, targets and details"
+            value={search}
+            onChange={(v) => { setSearch(v); setOffset(0); }}
+            maxLength={200}
+            className="w-full sm:w-[280px]"
+          />
+        </div>
         <p className="text-[13px] text-ink-muted">
           Newest first. Times are in your time zone{zone ? ` (${zone})` : ''}.
         </p>
@@ -178,7 +193,7 @@ export function Audit() {
           loading={log.isPending}
           error={log.isError ? 'The audit log did not answer.' : null}
           onRetry={() => { void log.refetch(); }}
-          empty={EMPTY[category]}
+          empty={q ? { title: `Nothing matches "${q}"`, description: 'The search looks in the user, what changed (a domain, an address, a setting) and the details.' } : EMPTY[category]}
           pagination={{ offset, limit: PAGE_SIZE, total, onChange: setOffset, previousLabel: 'Newer', nextLabel: 'Older' }}
         />
       </section>

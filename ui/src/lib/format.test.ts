@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest'
-import { formatAge, formatBytes, formatClock, formatCount, formatDate, formatDateTime, formatHourMinute, formatKilobytes, formatPercent, formatRange, formatShare, formatTime, formatWhen, formatWhenExact } from './format'
+import { formatAge, formatBytes, formatClock, formatCount, formatDate, formatDateTime, formatHourMinute, formatKilobytes, formatPercent, formatRange, formatShare, formatTime, formatWhen, formatWhenExact, utcClockIn } from './format'
 import { simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 
 describe('formatRange', () => {
@@ -227,5 +227,22 @@ describe('formatWhen', () => {
 
   it('gives the exact time with the zone for a tooltip', () => {
     expect(formatWhenExact('2026-10-28 22:51:10')).toBe('2026-10-28 23:51:10 (Europe/Rome)')
+  })
+})
+
+describe('utcClockIn', () => {
+  it('reads a UTC time on the clock of a zone, on a given day', () => {
+    const winter = new Date(Date.UTC(2026, 0, 15))
+    const summer = new Date(Date.UTC(2026, 6, 15))
+    expect(utcClockIn('08:00', 'Europe/Rome', winter)).toBe('09:00')
+    expect(utcClockIn('08:00', 'Europe/Rome', summer)).toBe('10:00')
+    expect(utcClockIn('23:30', 'Asia/Kolkata', winter)).toBe('05:00')
+    expect(utcClockIn('18:00', 'UTC', winter)).toBe('18:00')
+  })
+
+  it('is null for a value that is not HH:MM or an unknown zone', () => {
+    expect(utcClockIn('8:00', 'Europe/Rome')).toBeNull()
+    expect(utcClockIn('24:00', 'Europe/Rome')).toBeNull()
+    expect(utcClockIn('08:00', 'Mars/Olympus')).toBeNull()
   })
 })

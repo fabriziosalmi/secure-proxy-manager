@@ -77,7 +77,7 @@ export const PROFILES: Profile[] = [
   {
     id: 'kiosk',
     name: 'Kiosk',
-    summary: 'For a public terminal: proxy login, open 08:00 to 18:00, every filter, archives and scripts blocked, 10 Mbps.',
+    summary: 'For a public terminal: proxy login, open 08:00 to 18:00 UTC, every filter, archives and scripts blocked, 10 Mbps.',
     values: {
       ssl_bump_enabled: 'false',
       enable_safesearch: 'true', enable_youtube_restricted: 'true',

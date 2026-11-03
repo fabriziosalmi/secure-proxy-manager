@@ -205,4 +205,55 @@ describe('GlobalSearch', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(document.activeElement).toBe(trigger)
   })
+
+  // A backend that does not answer is not "no results".
+  it('says the search could not reach the backend when every lookup fails', async () => {
+    const { api } = await import('../lib/api')
+    vi.mocked(api.get).mockRejectedValue(new Error('Network Error'))
+    const user = userEvent.setup()
+    renderWithProviders(<GlobalSearch />)
+    await user.keyboard('{Meta>}k{/Meta}')
+    await user.type(await screen.findByPlaceholderText(/search/i), 'zz-nothing')
+    expect(await screen.findByText('The search could not reach the backend, so nothing was looked up.')).toBeInTheDocument()
+    expect(screen.queryByText(/No results for/)).not.toBeInTheDocument()
+  })
+
+  it('says how many lookups failed when only some do', async () => {
+    const { api } = await import('../lib/api')
+    vi.mocked(api.get).mockImplementation((url: string) =>
+      url.startsWith('logs') || url.startsWith('egress-allowlist') ? Promise.reject(new Error('500')) : Promise.resolve({ data: { data: [] } }))
+    const user = userEvent.setup()
+    renderWithProviders(<GlobalSearch />)
+    await user.keyboard('{Meta>}k{/Meta}')
+    await user.type(await screen.findByPlaceholderText(/search/i), 'zz-nothing')
+    expect(await screen.findByText('2 of 6 lookups failed, so some matches may be missing.')).toBeInTheDocument()
+    expect(screen.getByText(/No results for/)).toBeInTheDocument()
+  })
+
+  // Pages and settings still match locally; the failure must still be said.
+  it('says the backend was not reached even when pages or settings match', async () => {
+    const { api } = await import('../lib/api')
+    vi.mocked(api.get).mockRejectedValue(new Error('Network Error'))
+    const user = userEvent.setup()
+    renderWithProviders(<GlobalSearch />)
+    await user.keyboard('{Meta>}k{/Meta}')
+    await user.type(await screen.findByPlaceholderText(/search/i), 'settings')
+    expect(await screen.findByText('The search could not reach the backend, so only pages and settings are listed.')).toBeInTheDocument()
+    expect(screen.getAllByRole('option').length).toBeGreaterThan(0)
+  })
+
+  // A search still waiting when the field is cleared must not leave its
+  // spinner on: the cleared field asks no backend and ends it.
+  it('stops the spinner when the field is cleared during a search', async () => {
+    const { api } = await import('../lib/api')
+    vi.mocked(api.get).mockImplementation(() => new Promise(() => {}))
+    const user = userEvent.setup()
+    renderWithProviders(<GlobalSearch />)
+    await user.keyboard('{Meta>}k{/Meta}')
+    const input = await screen.findByPlaceholderText(/search/i)
+    await user.type(input, 'zz')
+    expect(await screen.findByRole('status', { name: 'Searching' })).toBeInTheDocument()
+    await user.clear(input)
+    await waitFor(() => expect(screen.queryByRole('status', { name: 'Searching' })).not.toBeInTheDocument())
+  })
 })

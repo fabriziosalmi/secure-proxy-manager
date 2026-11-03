@@ -189,6 +189,48 @@ func TestAnalyticsHandlers_AuditLog(t *testing.T) {
 	}
 }
 
+// A busy window holds more than the 10,000 rows the tester reads: it reads
+// the newest, so a pattern seen only in the latest requests is found.
+func TestTestRuleReadsTheNewestRequests(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	h := NewAnalyticsHandlers(db, cfg)
+	old := time.Now().Add(-2 * time.Hour)
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 10000; i++ {
+		if _, err := tx.Exec("INSERT INTO proxy_logs (timestamp, unix_timestamp, source_ip, destination) VALUES (?, ?, '192.168.1.5', 'old.example:443')",
+			old.Format("2006-01-02 15:04:05"), old.Unix()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if _, err := db.Exec("INSERT INTO proxy_logs (timestamp, unix_timestamp, source_ip, destination) VALUES (?, ?, '192.168.1.5', 'fresh-malware.example:443')",
+		now.Format("2006-01-02 15:04:05"), now.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]any{"regex": "malware", "hours": 24})
+	w := httptest.NewRecorder()
+	h.TestRule(w, httptest.NewRequest("POST", "/api/waf/test-rule", bytes.NewBuffer(body)))
+	var resp struct {
+		Data struct {
+			Scanned int `json:"scanned"`
+			Matched int `json:"matched"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Data.Scanned != 10000 || resp.Data.Matched != 1 {
+		t.Errorf("scanned %d, matched %d; want 10000 and 1, the newest request included", resp.Data.Scanned, resp.Data.Matched)
+	}
+}
+
 func TestAnalyticsHandlers_TestRule(t *testing.T) {
 	db, _, cfg, cleanup := setupTestDB(t)
 	defer cleanup()

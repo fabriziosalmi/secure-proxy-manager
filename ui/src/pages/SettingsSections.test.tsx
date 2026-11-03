@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { Routes, Route } from 'react-router'
 import { AxiosError } from 'axios'
-import { renderWithProviders } from '../test/helpers'
+import { renderWithProviders, setRomeTimeZone } from '../test/helpers'
 import { expectNoAxeViolations } from '../test/axe'
 import { DESKTOP_QUERY } from '../hooks/useMediaQuery'
 import { Settings } from './Settings'
@@ -241,6 +241,21 @@ describe('Settings sections', () => {
       expect(settingsPosts()).toHaveLength(0)
     })
 
+    // The proxy reads the window on its own clock, UTC; in Italy 08:00 UTC
+    // is 09:00 or 10:00, which the page now says.
+    it('says the window is UTC, and what it is on the browser clock', async () => {
+      const restore = setRomeTimeZone()
+      try {
+        renderAt('/settings/access')
+        fireEvent.click(await screen.findByRole('switch', { name: 'Limit to a time window' }))
+        fireEvent.change(screen.getByLabelText('From (UTC)'), { target: { value: '08:00' } })
+        fireEvent.change(screen.getByLabelText('Until (UTC)'), { target: { value: '18:00' } })
+        expect(screen.getByText(/^On this browser's clock \(Europe\/Rome\) that is (09:00 to 19:00|10:00 to 20:00) today/)).toBeInTheDocument()
+      } finally {
+        restore()
+      }
+    })
+
     it('shows the stored values, says which are missing, and checks the window before sending', async () => {
       renderAt('/settings/access')
       fireEvent.click(await screen.findByRole('switch', { name: 'Limit bandwidth' }))
@@ -249,14 +264,14 @@ describe('Settings sections', () => {
       expect(screen.getByLabelText('Each client (kbps)')).toHaveAccessibleDescription(/No value is stored for this yet\./)
 
       fireEvent.click(screen.getByRole('switch', { name: 'Limit to a time window' }))
-      fireEvent.change(screen.getByLabelText('From'), { target: { value: '18:00' } })
-      fireEvent.change(screen.getByLabelText('Until'), { target: { value: '08:00' } })
+      fireEvent.change(screen.getByLabelText('From (UTC)'), { target: { value: '18:00' } })
+      fireEvent.change(screen.getByLabelText('Until (UTC)'), { target: { value: '08:00' } })
       fireEvent.change(screen.getByLabelText('Each client (kbps)'), { target: { value: '500' } })
       save()
-      const until = screen.getByLabelText('Until')
+      const until = screen.getByLabelText('Until (UTC)')
       expect(until).toHaveAttribute('aria-invalid', 'true')
       expect(until).toHaveAccessibleDescription(/Must be later than the start time/)
-      expect(within(bar()).getByRole('status')).toHaveTextContent('Not saved: Until needs attention')
+      expect(within(bar()).getByRole('status')).toHaveTextContent('Not saved: Until (UTC) needs attention')
       expect(settingsPosts()).toHaveLength(0)
 
       fireEvent.change(until, { target: { value: '19:00' } })

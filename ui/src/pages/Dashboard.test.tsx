@@ -121,6 +121,14 @@ describe('Dashboard (Overview)', () => {
   })
 
   // It read "1 IPs" on a deployment with one blocked network.
+  // Each count opens the rows it counts: the blocked requests, the clients.
+  it('links the Blocked and Active clients cards to what they count', async () => {
+    renderWithProviders(<Dashboard />)
+    await waitFor(() => { expect(card('Client requests')).toHaveTextContent('1,180') })
+    expect(within(card('Blocked')).getByRole('link', { name: 'Blocked' }).getAttribute('href')).toMatch(/^\/logs\?.*outcome=blocked/)
+    expect(within(card('Active clients')).getByRole('link', { name: 'Active clients' })).toHaveAttribute('href', '/clients')
+  })
+
   it('counts one rule in the singular', async () => {
     serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, ip_blacklist_count: 1, domain_blacklist_count: 1 } })
     renderWithProviders(<Dashboard />)

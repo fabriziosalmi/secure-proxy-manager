@@ -69,6 +69,17 @@ describe('SetupWizard', () => {
     })
   })
 
+  it('says when skipping could not be saved, and still lets the admin in', async () => {
+    vi.mocked(api.post).mockRejectedValueOnce(new Error('Network Error'))
+    const toastError = vi.spyOn(toast, 'error')
+    const user = userEvent.setup()
+    renderWithProviders(<SetupWizard onComplete={onComplete} />)
+    await user.click(screen.getByText('Advanced'))
+    await user.click(screen.getAllByRole('button').filter((b) => b.textContent?.trim().startsWith('Skip Wizard'))[0])
+    await waitFor(() => expect(onComplete).toHaveBeenCalled())
+    expect(toastError).toHaveBeenCalledWith('Setup was not marked as done (the backend did not answer), so this wizard opens again next time.')
+  })
+
   it.each([
     {
       envLabel: 'Homelab',

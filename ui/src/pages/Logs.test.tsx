@@ -503,6 +503,32 @@ describe('Logs', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('domain-whitelist', { domain: 'ads.example.net', description: 'Allowed from the access log' }))
   })
 
+  // Default-deny refuses a destination until it is allowlisted: the detail
+  // adds it, after a confirmation, as the exact name.
+  it('allows a destination default-deny refused through the egress allowlist', async () => {
+    const egressBlock = row({ id: 9, destination: 'api.example.com:443', status: 'TCP_DENIED/403', blocked: true, reason: 'egress_policy', reason_label: 'Egress policy' })
+    logsBody = () => page([egressBlock])
+    renderWithProviders(<Logs />)
+    fireEvent.click(await screen.findByRole('button', { name: egressBlock.destination }))
+    const details = screen.getByRole('region', { name: 'Request details' })
+    expect(within(details).queryByRole('button', { name: 'Allow this domain' })).not.toBeInTheDocument()
+    fireEvent.click(within(details).getByRole('button', { name: 'Allow this destination' }))
+    const dialog = await screen.findByRole('alertdialog', { name: 'Allow api.example.com?' })
+    expect(dialog).toHaveTextContent('default-deny allowlist, as this exact name')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Allow destination' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('egress-allowlist', { entry: 'api.example.com', include_subdomains: false, description: 'Allowed from the access log' }))
+  })
+
+  it('points an IP blacklist block at the blacklist, not at an IP exception that would not lift it', async () => {
+    const ipBlock = row({ id: 10, destination: '203.0.113.7:443', status: 'TCP_DENIED/403', blocked: true, reason: 'ip_blacklist', reason_label: 'IP blacklist' })
+    logsBody = () => page([ipBlock])
+    renderWithProviders(<Logs />)
+    fireEvent.click(await screen.findByRole('button', { name: ipBlock.destination }))
+    const details = screen.getByRole('region', { name: 'Request details' })
+    expect(within(details).getByRole('link', { name: 'Open the IP blacklist' })).toHaveAttribute('href', '/blacklists?tab=blocked-ips')
+    expect(within(details).queryByRole('button', { name: /^Allow/ })).not.toBeInTheDocument()
+  })
+
   it('shows what the WAF matched on a WAF block with an event ID, and offers its exceptions', async () => {
     logsBody = () => page([{ ...wafBlock, event_id: 'dmi3z8mpcz74-1' }, dnsBlock])
     vi.mocked(api.get).mockImplementation(((url: string) => {

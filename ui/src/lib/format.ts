@@ -114,6 +114,23 @@ export function viewerZone(): string | null {
   }
 }
 
+/**
+ * An "HH:MM" in UTC as the clock reads in zone on the day `on` (today by
+ * default): "08:00" is "09:00" in Europe/Rome in winter and "10:00" in
+ * summer. Null for a value that is not HH:MM or a zone the browser does not
+ * know. The proxy applies its allowed hours in UTC.
+ */
+export function utcClockIn(hm: string, zone: string, on: Date = new Date()): string | null {
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(hm);
+  if (!m) return null;
+  const at = new Date(Date.UTC(on.getUTCFullYear(), on.getUTCMonth(), on.getUTCDate(), Number(m[1]), Number(m[2])));
+  try {
+    return new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(at);
+  } catch {
+    return null;
+  }
+}
+
 /** "2026-10-28 23:51:10 (Europe/Rome)": a timestamp whole, for a tooltip or a detail. */
 export function formatWhenExact(ts: string): string {
   if (!parsed(ts)) return ts;

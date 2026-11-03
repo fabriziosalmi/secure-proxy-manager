@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Shield, Baby, Server, Lock, Monitor, ChevronRight, ChevronLeft, Zap, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { api } from '../lib/api';
+import { api, getErrorMessage } from '../lib/api';
 import { applyToProxy, describeApply, type ApplyOutcome } from '../lib/reload';
 import { cn } from '../lib/utils';
 import { useModal } from '../hooks/useModal';
@@ -145,12 +145,16 @@ export function SetupWizard({ onComplete }: Props) {
   const handleFinish = async () => {
     if (!env) return;
 
-    // Advanced = skip wizard, just mark complete
+    // Advanced = skip wizard, just mark complete. A failed save is said: the
+    // wizard closes either way, so a down backend does not trap the admin,
+    // but it opens again at the next sign-in.
     if (env === 'advanced') {
       try {
         await api.post('settings', { wizard_completed: 'true' });
         await queryClient.invalidateQueries({ queryKey: ['settings'] });
-      } catch { /* ignore */ }
+      } catch (err) {
+        toast.error(`Setup was not marked as done (${getErrorMessage(err, 'the backend did not answer')}), so this wizard opens again next time.`);
+      }
       onComplete();
       return;
     }

@@ -11,7 +11,7 @@
  */
 import { createPortal } from 'react-dom';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -29,7 +29,7 @@ import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData, getErrorMessage } from '../lib/api';
 import { formatBytes, formatCount, formatWhen, formatWhenExact, viewerZone } from '../lib/format';
 import {
-  allowableDomain, apiParams, hasFilters, isBlocked, isHttpCode, maskedToNetwork, matchesFilters, readFilters, splitStatus, squidResultText, statusTone, whyText,
+  allowableDomain, allowableEgress, apiParams, ipBlacklistLink, hasFilters, isBlocked, isHttpCode, maskedToNetwork, matchesFilters, readFilters, splitStatus, squidResultText, statusTone, whyText,
   writeFilters,
   NO_FILTERS, type LogFilters, type Outcome,
 } from '../lib/accessLog';
@@ -356,6 +356,24 @@ export function Logs() {
     }
   };
 
+  const allowEgress = async (host: string) => {
+    const ok = await confirm({
+      title: `Allow ${host}?`,
+      body:
+        `${host} is added to the default-deny allowlist, as this exact name: its subdomains are not. Clients then reach it ` +
+        'while only allowlisted destinations are allowed; the other rules (blacklists, WAF, time and content rules) still apply.',
+      confirmLabel: 'Allow destination',
+    });
+    if (!ok) return;
+    try {
+      await api.post('egress-allowlist', { entry: host, include_subdomains: false, description: 'Allowed from the access log' });
+      toast.success(`${host} is on the default-deny allowlist. The lists are being exported to the proxy.`);
+      void queryClient.invalidateQueries({ queryKey: ['egress-allowlist'] });
+    } catch (err) {
+      toast.error(getErrorMessage(err, `${host} was not added to the default-deny allowlist.`));
+    }
+  };
+
   const showClient = (ip: string) => {
     setSelectedKey(null);
     setFilters({ client: ip });
@@ -565,13 +583,13 @@ export function Logs() {
 
       {isDesktop && selected && (
         <Section title="Request details">
-          <RequestDetail r={selected} filters={filters} onAllow={allowDomain} onShowClient={showClient} />
+          <RequestDetail r={selected} filters={filters} onAllow={allowDomain} onAllowEgress={allowEgress} onShowClient={showClient} />
         </Section>
       )}
 
       {!isDesktop && selected && (
         <RequestDrawer onClose={() => setSelectedKey(null)}>
-          <RequestDetail r={selected} filters={filters} onAllow={allowDomain} onShowClient={showClient} />
+          <RequestDetail r={selected} filters={filters} onAllow={allowDomain} onAllowEgress={allowEgress} onShowClient={showClient} />
         </RequestDrawer>
       )}
 
@@ -598,13 +616,16 @@ function footerText(shown: number, total: number, filtered: boolean, showInterna
   return parts.join(' ');
 }
 
-function RequestDetail({ r, filters, onAllow, onShowClient }: {
+function RequestDetail({ r, filters, onAllow, onAllowEgress, onShowClient }: {
   r: LogEntry;
   filters: LogFilters;
   onAllow: (host: string, r: LogEntry) => void;
+  onAllowEgress: (host: string) => void;
   onShowClient: (ip: string) => void;
 }) {
   const host = allowableDomain(r);
+  const egressHost = allowableEgress(r);
+  const ipList = ipBlacklistLink(r);
   const { squid, code } = splitStatus(r.status);
   const maskedNet = maskedToNetwork(r.source_ip);
   const clientTarget = maskedNet ?? r.source_ip;
@@ -650,6 +671,15 @@ function RequestDetail({ r, filters, onAllow, onShowClient }: {
       {r.reason === 'waf' && r.event_id && <WafBlockDetail eventId={r.event_id} />}
       <div className="flex flex-wrap gap-2">
         {host && <Button size="sm" onClick={() => onAllow(host, r)}>Allow this domain</Button>}
+        {egressHost && <Button size="sm" onClick={() => onAllowEgress(egressHost)}>Allow this destination</Button>}
+        {ipList && (
+          <Link
+            to={ipList}
+            className="inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-control border border-line-strong bg-surface px-3 text-[13px] font-semibold text-ink-secondary transition-colors hover:bg-surface-muted hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+          >
+            Open the IP blacklist
+          </Link>
+        )}
         {clientTarget && filters.client !== clientTarget && (
           <Button size="sm" onClick={() => onShowClient(clientTarget)}>
             {maskedNet ? "Show this network's requests" : "Show this client's requests"}
