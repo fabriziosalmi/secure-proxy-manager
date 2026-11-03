@@ -267,6 +267,11 @@ func createPostMigrationIndexes(db *sql.DB) error {
 	// upgrade. Only blocked rows are indexed, so it stays tiny.
 	postMigrationIndexes := []string{
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_blocked ON proxy_logs(blocked) WHERE blocked = 1`,
+		// One source's rows in id order, for the refresh's windows
+		// (workers/list_sync.go): a window then reads its own rows only, not
+		// every row in its id range, nor every row of the source sorted.
+		`CREATE INDEX IF NOT EXISTS idx_ip_blacklist_source_id ON ip_blacklist(source_id, id)`,
+		`CREATE INDEX IF NOT EXISTS idx_domain_blacklist_source_id ON domain_blacklist(source_id, id)`,
 		// Correlation-id lookup (join a WAF event → its proxy_logs row). Partial:
 		// only blocked rows carry an event_id, so the index stays tiny (#107).
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_event_id ON proxy_logs(event_id) WHERE event_id IS NOT NULL`,

@@ -18,6 +18,7 @@ import (
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/listentry"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/models"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/validate"
@@ -657,13 +658,15 @@ func (h *BlacklistHandlers) existingEntries(table, col string) (map[string]struc
 // entryVerdict is what the parser decided about one feed line. The distinction
 // between ignored and invalid is what keeps the response counters honest: a
 // comment is not a rejected entry, and must not inflate "skipped".
-type entryVerdict int
+// entryVerdict is what a feed line comes to (listentry, shared with the
+// refresh worker so a line means the same entry on both paths).
+type entryVerdict = listentry.Verdict
 
 const (
-	entryIgnored  entryVerdict = iota // blank line or comment — not counted at all
-	entryAccepted                     // importable
-	entryInvalid                      // counted as skipped
-	entryBogon                        // counted as skipped and as bogon_skipped
+	entryIgnored  = listentry.Ignored  // blank line or comment, not counted at all
+	entryAccepted = listentry.Accepted // importable
+	entryInvalid  = listentry.Invalid  // counted as skipped
+	entryBogon    = listentry.Bogon    // counted as skipped and as bogon_skipped
 )
 
 // importStats are the counters returned to the caller.
@@ -708,51 +711,10 @@ func parseImport(content, blType string, existing map[string]struct{}) ([]string
 	return toInsert, stats
 }
 
-// classifyImportEntry extracts the entry from one feed line and judges it. The
-// entry is the last field, which handles both a bare list and the hosts-file
-// form ("0.0.0.0 evil.example").
+// classifyImportEntry extracts the entry from one feed line and judges it
+// (listentry.Parse).
 func classifyImportEntry(line, blType string) (string, entryVerdict) {
-	line = strings.TrimSpace(line)
-	if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
-		return "", entryIgnored
-	}
-	parts := strings.Fields(line)
-	if len(parts) == 0 {
-		return "", entryIgnored
-	}
-	entry := parts[len(parts)-1]
-	if blType == "ip" {
-		return classifyImportIP(entry)
-	}
-	return classifyImportDomain(entry)
-}
-
-func classifyImportIP(entry string) (string, entryVerdict) {
-	if !isValidCIDR(entry) {
-		return "", entryInvalid
-	}
-	// Firehol/bogon feeds include RFC1918 + loopback ranges; importing them
-	// into the source ip_blacklist would lock out the LAN clients.
-	if isLANBogonCIDR(entry) {
-		return "", entryBogon
-	}
-	return entry, entryAccepted
-}
-
-func classifyImportDomain(entry string) (string, entryVerdict) {
-	// Strip URL scheme.
-	if strings.HasPrefix(entry, "http://") || strings.HasPrefix(entry, "https://") {
-		u, err := url.Parse(entry)
-		if err != nil || u.Hostname() == "" {
-			return "", entryInvalid
-		}
-		entry = u.Hostname()
-	}
-	if !strings.Contains(entry, ".") || strings.HasPrefix(entry, ".") || strings.HasSuffix(entry, ".") ||
-		!isValidDomainEntry(entry) {
-		return "", entryInvalid
-	}
-	return entry, entryAccepted
+	return listentry.Parse(line, listentry.Kind(blType))
 }
 
 // importBatchSize bounds one transaction. A feed of hundreds of thousands of

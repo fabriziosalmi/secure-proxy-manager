@@ -400,18 +400,23 @@ With **Settings > Filtering > Refresh imported lists** on, a background worker
 downloads the blocked lists again every `auto_refresh_hours` hours (default
 24, from 1 to 168):
 
-- every list imported from a URL, the Popular lists included;
+- every list imported from a URL that still has entries, the Popular lists
+  included (a cleared list is not filled again from a source the page no
+  longer shows);
 - the built-in feeds: Firehol Level 1 and Stamparm Ipsum level 1 (IP),
   StevenBlack Unified hosts and URLhaus, malware-filter mirror (domain);
 - the URLs in the `ip_blacklist_urls` and `domain_blacklist_urls` settings,
   one per line.
 
-Each feed that answers is synced with the entries its source added:
+Every feed of a list is read first, each line as an import reads it (a URL
+names its host). Then each feed that answered is synced with the entries its
+source added:
 
-- what it lists that the list lacks is added under its source (the domain
-  list stops at its limit);
 - what it no longer lists goes, unless another feed read in the same run
-  still lists it: then the entry stays and moves to that feed's source.
+  still lists it: then the entry stays and moves to that feed's source;
+- what it lists that the list lacks is added under its source, after the
+  removals, so their room under the domain limit is used in the same run. A
+  source left with no entry is removed.
 
 Nothing is removed:
 

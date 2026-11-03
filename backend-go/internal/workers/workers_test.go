@@ -62,7 +62,7 @@ func TestRefreshTakesOnlyRoutableAddresses(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 	serveFeeds(t, map[string]string{"https://feed.test/ips.txt": "1.1.1.1\n2.2.2.2\n10.0.0.1\n# comment\nnotanip"})
-	c := refreshList(db, "ip_blacklist", "ip", []string{"https://feed.test/ips.txt"})
+	c := refreshList(db, "ip_blacklist", []string{"https://feed.test/ips.txt"})
 	if c.Added != 2 {
 		t.Errorf("added %d, want 2 (bogon and invalid dropped)", c.Added)
 	}
@@ -80,9 +80,9 @@ func TestRefreshRecordsTheFeedURLAsTheSource(t *testing.T) {
 	defer cleanup()
 	const feed = "https://feed.test/hosts"
 	serveFeeds(t, map[string]string{feed: "0.0.0.0 a.example\n"})
-	refreshList(db, "domain_blacklist", "domain", []string{feed})
+	refreshList(db, "domain_blacklist", []string{feed})
 	serveFeeds(t, map[string]string{feed: "0.0.0.0 a.example\n0.0.0.0 b.example\n"})
-	refreshList(db, "domain_blacklist", "domain", []string{feed})
+	refreshList(db, "domain_blacklist", []string{feed})
 	rows, err := db.Query("SELECT s.kind, s.source, e.source_id FROM domain_blacklist e JOIN list_sources s ON s.id = e.source_id")
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +117,7 @@ func TestRefreshList_RefusesLoopback(t *testing.T) {
 	defer ts.Close()
 
 	// ts.URL is 127.0.0.1 — the SSRF guard must refuse it and insert nothing.
-	refreshList(db, "ip_blacklist", "ip", []string{ts.URL})
+	refreshList(db, "ip_blacklist", []string{ts.URL})
 	var count int
 	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&count)
 	if count != 0 {
@@ -383,7 +383,7 @@ func TestInsertBlacklistEntries_Domain(t *testing.T) {
 	// Domain lists are not CIDR/bogon-filtered; hosts-format lines take the last
 	// field. 0.0.0.0 example.com -> example.com.
 	serveFeeds(t, map[string]string{"https://feed.test/hosts": "0.0.0.0 evil.example\nbad.test\n# comment"})
-	if c := refreshList(db, "domain_blacklist", "domain", []string{"https://feed.test/hosts"}); c.Added != 2 {
+	if c := refreshList(db, "domain_blacklist", []string{"https://feed.test/hosts"}); c.Added != 2 {
 		t.Errorf("expected 2 domains inserted, got %+v", c)
 	}
 }
@@ -568,7 +568,7 @@ func TestRefreshStopsAtTheDomainLimit(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 	serveFeeds(t, map[string]string{"https://feed.test/hosts": "0.0.0.0 a.example\n0.0.0.0 b.example\n0.0.0.0 c.example\n0.0.0.0 d.example\n"})
-	c := refreshList(db, "domain_blacklist", "domain", []string{"https://feed.test/hosts"})
+	c := refreshList(db, "domain_blacklist", []string{"https://feed.test/hosts"})
 	var n int
 	_ = db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&n)
 	if c.Added != 2 || c.NotAdded != 2 || n != 2 {

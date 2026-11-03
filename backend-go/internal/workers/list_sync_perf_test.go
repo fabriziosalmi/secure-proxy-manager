@@ -84,9 +84,14 @@ func TestListSyncPerformance(t *testing.T) {
 	c1 := syncDomains(db, feedA)
 	first := time.Since(start)
 
-	serveFeeds(t, map[string]string{feedA: feed(n / 10)}) // a tenth dropped, a tenth new
+	// B: one name, its id after A's half million. Its windows must read its
+	// own row, not the half million before it.
+	serveFeeds(t, map[string]string{feedA: feed(0), feedB: hosts("only-b.example")})
+	syncDomains(db, feedA, feedB)
+
+	serveFeeds(t, map[string]string{feedA: feed(n / 10), feedB: hosts("only-b.example")}) // a tenth dropped, a tenth new
 	start = time.Now()
-	c2 := syncDomains(db, feedA)
+	c2 := syncDomains(db, feedA, feedB)
 	second := time.Since(start)
 	cancel()
 	wg.Wait()
@@ -96,12 +101,12 @@ func TestListSyncPerformance(t *testing.T) {
 	t.Logf("second run %v: %+v", second.Round(time.Millisecond), c2)
 	t.Logf("peak heap %d MiB; writer: longest wait %d ms, %d failed inserts; refresh: %d write transactions, longest held %d ms",
 		peak.Load()>>20, maxWait.Load(), failures.Load(), txs.Load(), maxHeld.Load())
-	if c1.Added != n || c2.Added != n/10 || c2.Removed != n/10 {
+	if c1.Added != n || c2.Added != n/10 || c2.Removed != n/10 || c2.Fetched != 2 {
 		t.Errorf("counts: first %+v, second %+v", c1, c2)
 	}
 	// Measured on an M4 laptop: 4.4 to 4.9 s, 3.7 to 4.4 s, 75 MiB, the
 	// writer waiting 57 to 112 ms. The bounds leave room for a slower host.
-	if first > 15*time.Second || second > 15*time.Second || peak.Load() > 400<<20 || maxWait.Load() > 500 || failures.Load() > 0 {
+	if first > 15*time.Second || second > 15*time.Second || peak.Load() > 400<<20 || maxWait.Load() > 500 || maxHeld.Load() > 300 || failures.Load() > 0 {
 		t.Errorf("over the predictions: first %v, second %v, heap %d MiB, writer wait %d ms, failures %d",
 			first, second, peak.Load()>>20, maxWait.Load(), failures.Load())
 	}

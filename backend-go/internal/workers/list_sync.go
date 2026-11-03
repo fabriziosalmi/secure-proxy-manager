@@ -11,20 +11,22 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/netguard"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/listentry"
 )
 
 // The refresh of the blocked lists, as a sync with each feed.
 //
-// Every list imported from a URL (a Popular list, an address typed in the
-// import form), the built-in feeds and the URLs in ip_blacklist_urls and
-// domain_blacklist_urls are downloaded again. For each feed that answers:
+// Every list imported from a URL that still has entries (a Popular list, an
+// address typed in the import form), the built-in feeds and the URLs in
+// ip_blacklist_urls and domain_blacklist_urls are downloaded again. A run
+// reads every feed of a list first, then for each feed that answered:
 //
-//   - the entries it lists that the list lacks are added under its source
-//     (the domain list stops at its limit, as before);
 //   - the entries its source added that it no longer lists go: to another
 //     feed read in the same run that still lists them (the entry moves to
-//     that source), or out of the list.
+//     that source), or out of the list;
+//   - then the entries it lists that the list lacks are added under its
+//     source, so a removal frees room under the domain limit for an addition
+//     of the same run.
 //
 // Nothing is removed from a list when:
 //
@@ -36,60 +38,95 @@ import (
 //     first, and removing it would leave a gap until the feed comes back.
 //
 // Entries added by hand, from a paste, a country, a preset or a restore are
-// never compared with a feed: only a url source's own entries are. The
-// refresh used to only add, so an entry a feed dropped stayed blocked for
-// ever, and a list imported from a URL was never downloaded again.
+// never compared with a feed: only a url source's own entries are. A line of
+// a feed is read with listentry.Parse, as the import reads it, so an entry an
+// import added is the entry the refresh compares. The refresh used to only
+// add, so an entry a feed dropped stayed blocked for ever, and a list imported
+// from a URL was never downloaded again.
 
-// syncList holds the statements of one list, so no table name is built from
-// input. Every write covers one window: a range of the feed's entries for an
-// insert, a range of the list's ids for a move or a removal, of at most
-// syncChunk rows. The windows' bounds are read first, without the write lock,
-// so a transaction holds the lock for its window alone (list_sync_perf_test.go).
+// syncList holds the statements of one list, each written out, so no table
+// name is built from input. Every write covers one window of at most
+// syncChunk rows: a range of a feed's entries for an addition, a range of one
+// source's ids (on the (source_id, id) index) for a move or a removal. The
+// bounds of a window are read first, without the write lock, so a transaction
+// holds the lock for its window alone (list_sync_perf_test.go).
 type syncList struct {
-	table, col string
-	count      string
-	bySource   string
-	candidates string
-	// feedBound and feedLast are a feed's entry syncChunk rows after the
-	// given one, and its last entry.
-	feedBound, feedLast string
-	insertNew           string
-	// idBound and idLast are the same for a source's rows in the list.
-	idBound, idLast string
-	moveStale       string
-	deleteStale     string
+	kind        listentry.Kind
+	feedSources string // the url sources with entries, for feedURLs
+	count       string
+	bySource    string
+	candidates  string
+	insertNew   string
+	idBound     string // the id syncChunk rows of a source after a given id
+	idLast      string // the last id of a source after a given id
+	moveStale   string
+	deleteStale string
 }
 
 var syncLists = map[string]syncList{
-	"ip_blacklist":     newSyncList("ip_blacklist", "ip"),
-	"domain_blacklist": newSyncList("domain_blacklist", "domain"),
+	"ip_blacklist": {
+		kind: listentry.IP,
+		feedSources: `SELECT s.source FROM list_sources s
+			WHERE s.list = 'ip_blacklist' AND s.kind = 'url'
+			AND EXISTS (SELECT 1 FROM ip_blacklist e WHERE e.source_id = s.id) ORDER BY s.id`,
+		count:    `SELECT COUNT(*) FROM ip_blacklist`,
+		bySource: `SELECT COUNT(*) FROM ip_blacklist WHERE source_id = ?`,
+		candidates: `SELECT COUNT(*) FROM temp.refresh_feed f WHERE f.source_id = ?
+			AND NOT EXISTS (SELECT 1 FROM ip_blacklist t WHERE t.ip = f.entry)`,
+		insertNew: `INSERT OR IGNORE INTO ip_blacklist (ip, description, source_id)
+			SELECT f.entry, '', ? FROM temp.refresh_feed f
+			WHERE f.source_id = ? AND f.entry > ? AND f.entry <= ?
+			AND NOT EXISTS (SELECT 1 FROM ip_blacklist t WHERE t.ip = f.entry) LIMIT ?`,
+		idBound: `SELECT id FROM ip_blacklist INDEXED BY idx_ip_blacklist_source_id
+			WHERE source_id = ? AND id > ? ORDER BY id LIMIT 1 OFFSET ?`,
+		idLast: `SELECT MAX(id) FROM ip_blacklist INDEXED BY idx_ip_blacklist_source_id
+			WHERE source_id = ? AND id > ?`,
+		moveStale: `UPDATE ip_blacklist
+			SET source_id = (SELECT MIN(f.source_id) FROM temp.refresh_feed f WHERE f.entry = ip_blacklist.ip AND f.source_id <> ?)
+			WHERE id IN (SELECT d.id FROM ip_blacklist d INDEXED BY idx_ip_blacklist_source_id
+				WHERE d.source_id = ? AND d.id > ? AND d.id <= ?
+				AND NOT EXISTS (SELECT 1 FROM temp.refresh_feed f WHERE f.source_id = ? AND f.entry = d.ip)
+				AND EXISTS (SELECT 1 FROM temp.refresh_feed f WHERE f.entry = d.ip AND f.source_id <> ?))`,
+		deleteStale: `DELETE FROM ip_blacklist WHERE id IN (SELECT d.id FROM ip_blacklist d INDEXED BY idx_ip_blacklist_source_id
+			WHERE d.source_id = ? AND d.id > ? AND d.id <= ?
+			AND NOT EXISTS (SELECT 1 FROM temp.refresh_feed f WHERE f.source_id = ? AND f.entry = d.ip))`,
+	},
+	"domain_blacklist": {
+		kind: listentry.Domain,
+		feedSources: `SELECT s.source FROM list_sources s
+			WHERE s.list = 'domain_blacklist' AND s.kind = 'url'
+			AND EXISTS (SELECT 1 FROM domain_blacklist e WHERE e.source_id = s.id) ORDER BY s.id`,
+		count:    `SELECT COUNT(*) FROM domain_blacklist`,
+		bySource: `SELECT COUNT(*) FROM domain_blacklist WHERE source_id = ?`,
+		candidates: `SELECT COUNT(*) FROM temp.refresh_feed f WHERE f.source_id = ?
+			AND NOT EXISTS (SELECT 1 FROM domain_blacklist t WHERE t.domain = f.entry)`,
+		insertNew: `INSERT OR IGNORE INTO domain_blacklist (domain, description, source_id)
+			SELECT f.entry, '', ? FROM temp.refresh_feed f
+			WHERE f.source_id = ? AND f.entry > ? AND f.entry <= ?
+			AND NOT EXISTS (SELECT 1 FROM domain_blacklist t WHERE t.domain = f.entry) LIMIT ?`,
+		idBound: `SELECT id FROM domain_blacklist INDEXED BY idx_domain_blacklist_source_id
+			WHERE source_id = ? AND id > ? ORDER BY id LIMIT 1 OFFSET ?`,
+		idLast: `SELECT MAX(id) FROM domain_blacklist INDEXED BY idx_domain_blacklist_source_id
+			WHERE source_id = ? AND id > ?`,
+		moveStale: `UPDATE domain_blacklist
+			SET source_id = (SELECT MIN(f.source_id) FROM temp.refresh_feed f WHERE f.entry = domain_blacklist.domain AND f.source_id <> ?)
+			WHERE id IN (SELECT d.id FROM domain_blacklist d INDEXED BY idx_domain_blacklist_source_id
+				WHERE d.source_id = ? AND d.id > ? AND d.id <= ?
+				AND NOT EXISTS (SELECT 1 FROM temp.refresh_feed f WHERE f.source_id = ? AND f.entry = d.domain)
+				AND EXISTS (SELECT 1 FROM temp.refresh_feed f WHERE f.entry = d.domain AND f.source_id <> ?))`,
+		deleteStale: `DELETE FROM domain_blacklist WHERE id IN (SELECT d.id FROM domain_blacklist d INDEXED BY idx_domain_blacklist_source_id
+			WHERE d.source_id = ? AND d.id > ? AND d.id <= ?
+			AND NOT EXISTS (SELECT 1 FROM temp.refresh_feed f WHERE f.source_id = ? AND f.entry = d.domain))`,
+	},
 }
 
-func newSyncList(table, col string) syncList {
-	// table and col are the two constants above.
-	notListed := "NOT EXISTS (SELECT 1 FROM " + table + " t WHERE t." + col + " = f.entry)"
-	own := "NOT EXISTS (SELECT 1 FROM temp.refresh_feed f WHERE f.source_id = ? AND f.entry = " + table + "." + col + ")"
-	elsewhere := "EXISTS (SELECT 1 FROM temp.refresh_feed f WHERE f.entry = " + table + "." + col + " AND f.source_id <> ?)"
-	// "+source_id" keeps SQLite on the id (rowid) range: on the source index
-	// it sorted every row of the source by id for each window.
-	window := "+source_id = ? AND id > ? AND id <= ?"
-	return syncList{
-		table:      table,
-		col:        col,
-		count:      "SELECT COUNT(*) FROM " + table,
-		bySource:   "SELECT COUNT(*) FROM " + table + " WHERE source_id = ?",
-		candidates: "SELECT COUNT(*) FROM temp.refresh_feed f WHERE f.source_id = ? AND " + notListed,
-		feedBound:  "SELECT entry FROM temp.refresh_feed WHERE source_id = ? AND entry > ? ORDER BY entry LIMIT 1 OFFSET ?",
-		feedLast:   "SELECT MAX(entry) FROM temp.refresh_feed WHERE source_id = ? AND entry > ?",
-		insertNew: "INSERT OR IGNORE INTO " + table + " (" + col + ", description, source_id) " +
-			"SELECT f.entry, '', ? FROM temp.refresh_feed f WHERE f.source_id = ? AND f.entry > ? AND f.entry <= ? AND " + notListed + " LIMIT ?",
-		idBound: "SELECT id FROM " + table + " WHERE +source_id = ? AND id > ? ORDER BY id LIMIT 1 OFFSET ?",
-		idLast:  "SELECT MAX(id) FROM " + table + " WHERE +source_id = ? AND id > ?",
-		moveStale: "UPDATE " + table + " SET source_id = (SELECT MIN(f.source_id) FROM temp.refresh_feed f WHERE f.entry = " +
-			table + "." + col + " AND f.source_id <> ?) WHERE " + window + " AND " + own + " AND " + elsewhere,
-		deleteStale: "DELETE FROM " + table + " WHERE " + window + " AND " + own,
-	}
-}
+// The feed's statements touch the temporary table only; they are the same for
+// both lists.
+const (
+	feedBound = "SELECT entry FROM temp.refresh_feed WHERE source_id = ? AND entry > ? ORDER BY entry LIMIT 1 OFFSET ?"
+	feedLast  = "SELECT MAX(entry) FROM temp.refresh_feed WHERE source_id = ? AND entry > ?"
+	feedStore = "INSERT OR IGNORE INTO temp.refresh_feed(source_id, entry) VALUES(?, ?)"
+)
 
 // refreshCount is what one run did to one list: the feeds read and not read,
 // the entries added, moved to another source and removed, the new domains
@@ -128,9 +165,9 @@ const heldBelow = 0.5
 var syncChunk = 25_000
 
 // refreshList syncs one list with its feeds (see the top of this file).
-func refreshList(db *sql.DB, table, col string, urls []string) refreshCount {
+func refreshList(db *sql.DB, table string, urls []string) refreshCount {
 	q, ok := syncLists[table]
-	if !ok || q.col != col {
+	if !ok {
 		log.Error().Str("table", table).Msg("blacklist refresh: not a list it syncs")
 		return refreshCount{}
 	}
@@ -151,12 +188,17 @@ func refreshList(db *sql.DB, table, col string, urls []string) refreshCount {
 	defer conn.ExecContext(ctx, "DROP TABLE IF EXISTS temp.refresh_feed") //nolint:errcheck // frees the memory before the connection goes back
 
 	var c refreshCount
+	failed := func(u string) {
+		c.Failed++
+		c.failedURLs += u + "\n"
+	}
+	// 1. Every feed, read and stored, before anything is compared: a move
+	//    needs to know which other feeds still list an entry.
 	var reads []feedRead
 	for _, u := range urls {
 		data, err := fetchRefreshFeed(u)
 		if err != nil {
-			c.Failed++
-			c.failedURLs += u + "\n"
+			failed(u)
 			if errors.Is(err, errRefreshRefused) {
 				log.Warn().Str("url", u).Msg("blacklist refresh: refusing non-routable/invalid URL")
 			} else {
@@ -165,35 +207,41 @@ func refreshList(db *sql.DB, table, col string, urls []string) refreshCount {
 			noteSourceRefresh(ctx, conn, table, u, "failed", fetchFailure(err))
 			continue
 		}
-		c.Fetched++
-		fr, added, capped, err := readFeed(ctx, conn, q, u, data)
+		fr, err := storeFeed(ctx, conn, q, table, u, data)
 		if err != nil {
-			// Counted as not read: its entries stay, and nothing else of this
-			// list is removed in this run.
-			c.Fetched--
-			c.Failed++
-			c.failedURLs += u + "\n"
+			// Counted as not read: its entries stay, and nothing of this list
+			// is removed in this run.
+			failed(u)
 			log.Error().Err(err).Str("url", u).Msg("blacklist refresh: the feed could not be stored")
 			continue
 		}
-		c.Added += added
-		c.NotAdded += capped
+		c.Fetched++
 		reads = append(reads, fr)
 	}
 
-	moved, removed, err := syncStale(ctx, conn, q, reads, c.Failed == 0)
+	// 2. What each feed dropped: moved or removed.
+	c.RemovalDeferred = c.Failed > 0
+	moved, removed, err := syncStale(ctx, conn, q, reads, !c.RemovalDeferred)
+	c.Moved, c.Removed = moved, removed
 	if err != nil {
 		log.Error().Err(err).Str("table", table).Msg("blacklist refresh: the stale entries were left in place")
 	}
-	c.Moved, c.Removed = moved, removed
-	c.RemovalDeferred = c.Failed > 0
+
+	// 3. What each feed added, in the room the removals left.
 	for _, fr := range reads {
+		added, capped, err := addNew(ctx, conn, q, fr.sourceID)
+		c.Added += added
+		c.NotAdded += capped
+		if err != nil {
+			log.Error().Err(err).Str("url", fr.url).Msg("blacklist refresh: the new entries were not all added")
+		}
 		if fr.held {
 			c.Held++
 		}
-		if fr.owned == 0 && fr.read == 0 {
-			database.DropSourceIfEmpty(db, table, fr.sourceID)
-		}
+		// A source left with no entry (all moved to another feed, none to
+		// add) is removed: the table shows no such source, and a hidden one
+		// would still be refreshed.
+		database.DropSourceIfEmpty(db, table, fr.sourceID)
 	}
 	if c.Added > 0 || c.Removed > 0 || c.Moved > 0 {
 		log.Info().Str("table", table).Int("added", c.Added).Int("removed", c.Removed).Int("moved", c.Moved).
@@ -215,86 +263,72 @@ func resetRefreshFeed(ctx context.Context, conn *sql.Conn) error {
 	return nil
 }
 
-// feedEntry is the entry a feed line names, or "" for a line that is not one:
-// a comment, an address that is not one or a LAN range (the ip_blacklist is a
-// destination ACL denied before local_dst is allowed, so a LAN range would cut
-// every client off from LAN services), a name that is not one.
-func feedEntry(col, line string) string {
-	parts := strings.Fields(line)
-	if len(parts) == 0 || strings.HasPrefix(parts[0], "#") {
-		return ""
-	}
-	entry := parts[len(parts)-1]
-	switch col {
-	case "ip":
-		if !netguard.IsValidCIDR(entry) || netguard.IsLANBogonCIDR(entry) {
-			return ""
-		}
-	case "domain":
-		if !netguard.IsValidDomainEntry(entry) {
-			return ""
-		}
-	}
-	return entry
-}
-
-// readFeed stores one feed's entries, then adds those the list lacks under the
-// feed's source, the source a manual import of the same URL uses.
-func readFeed(ctx context.Context, conn *sql.Conn, q syncList, url, data string) (fr feedRead, added, capped int, err error) {
+// storeFeed records the feed's source (the source a manual import of the same
+// URL uses), stores its entries in the temporary table, and says whether it
+// is held.
+func storeFeed(ctx context.Context, conn *sql.Conn, q syncList, table, url, data string) (fr feedRead, err error) {
 	fr.url = url
-	// The source first, in a short write: its id keys the feed's entries.
 	if err := writeTx(ctx, conn, func(c connQuerier) error {
-		id, err := database.KeyedSource(c, q.table, database.SourceURL, url, "")
+		id, err := database.KeyedSource(c, table, database.SourceURL, url, "")
 		if err != nil {
 			return err
 		}
 		fr.sourceID = id
 		return c.QueryRow(q.bySource, fr.sourceID).Scan(&fr.owned)
 	}); err != nil {
-		return fr, 0, 0, err
+		return fr, err
 	}
 
-	// The entries, into the temporary table only: the main database is not
+	// The entries go to the temporary table only: the main database is not
 	// locked while a large feed is parsed.
-	ttx, err := conn.BeginTx(ctx, nil)
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
-		return fr, 0, 0, err
+		return fr, err
 	}
-	defer ttx.Rollback() //nolint:errcheck
-	stmt, err := ttx.PrepareContext(ctx, "INSERT OR IGNORE INTO temp.refresh_feed(source_id, entry) VALUES(?, ?)")
+	defer tx.Rollback() //nolint:errcheck // no-op once committed
+	stmt, err := tx.PrepareContext(ctx, feedStore)
 	if err != nil {
-		return fr, 0, 0, err
+		return fr, err
 	}
+	defer stmt.Close() //nolint:errcheck
 	for _, line := range strings.Split(data, "\n") {
-		if e := feedEntry(q.col, line); e != "" {
-			if res, err := stmt.ExecContext(ctx, fr.sourceID, e); err != nil {
-				stmt.Close()
-				return fr, 0, 0, err
-			} else if n, _ := res.RowsAffected(); n > 0 {
-				fr.read++
-			}
+		e, v := listentry.Parse(line, q.kind)
+		if v != listentry.Accepted {
+			continue
+		}
+		res, err := stmt.ExecContext(ctx, fr.sourceID, e)
+		if err != nil {
+			return fr, err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			fr.read++
 		}
 	}
-	stmt.Close()
-	if err := ttx.Commit(); err != nil {
-		return fr, 0, 0, err
+	if err := tx.Commit(); err != nil {
+		return fr, err
 	}
 	fr.held = fr.read == 0 || float64(fr.read) < heldBelow*float64(fr.owned)
+	return fr, nil
+}
 
-	// The new entries, syncChunk at a time: the list is locked for one insert
-	// at a time. The domain list is bounded by what dnsmasq can hold in memory
-	// (database.DomainBlacklistLimit); past it nothing more is added, and the
-	// count says so.
+// addNew adds the entries a stored feed lists that the list lacks, a window
+// of the feed's entries per transaction. The domain list is bounded by what
+// dnsmasq can hold in memory (database.DomainBlacklistLimit); past it nothing
+// more is added, and capped says how many were left out.
+func addNew(ctx context.Context, conn *sql.Conn, q syncList, sourceID int64) (added, capped int, err error) {
 	var candidates int
-	if err := conn.QueryRowContext(ctx, q.candidates, fr.sourceID).Scan(&candidates); err != nil {
-		return fr, 0, 0, err
+	if err := conn.QueryRowContext(ctx, q.candidates, sourceID).Scan(&candidates); err != nil {
+		return 0, 0, err
+	}
+	if candidates == 0 {
+		return 0, 0, nil
 	}
 	full := false
-	err = feedWindows(ctx, conn, q, fr.sourceID, func(lo, hi string) (bool, error) {
+	err = feedWindows(ctx, conn, sourceID, func(lo, hi string) (bool, error) {
 		var n int
 		err := writeTx(ctx, conn, func(c connQuerier) error {
 			room := -1 // no limit
-			if q.col == "domain" {
+			if q.kind == listentry.Domain {
 				var total int
 				if err := c.QueryRow(q.count).Scan(&total); err != nil {
 					return err
@@ -302,7 +336,7 @@ func readFeed(ctx context.Context, conn *sql.Conn, q syncList, url, data string)
 				room = max(0, database.DomainBlacklistLimit()-total)
 				full = room == 0
 			}
-			res, err := c.Exec(q.insertNew, fr.sourceID, fr.sourceID, lo, hi, room)
+			res, err := c.Exec(q.insertNew, sourceID, sourceID, lo, hi, room)
 			if err != nil {
 				return err
 			}
@@ -313,22 +347,18 @@ func readFeed(ctx context.Context, conn *sql.Conn, q syncList, url, data string)
 		added += n
 		return !full, err
 	})
-	if err != nil {
-		return fr, added, 0, err
-	}
-	if q.col == "domain" && candidates > added {
+	if q.kind == listentry.Domain && candidates > added {
 		capped = candidates - added
 		log.Warn().Int("not_added", capped).Int("limit", database.DomainBlacklistLimit()).
 			Msg("blacklist refresh: the domain blacklist is at SPM_DNS_BLOCKLIST_MAX_DOMAINS; entries past it were not added")
 	}
-	return fr, added, capped, nil
+	return added, capped, err
 }
 
 // syncStale moves or removes, a window per transaction, the entries each
 // feed read in full no longer lists, and records each feed's refresh on its
-// source.
-// remove is false when a feed of the list was not read: entries then only
-// move.
+// source. remove is false when a feed of the list was not read: entries then
+// only move.
 func syncStale(ctx context.Context, conn *sql.Conn, q syncList, reads []feedRead, remove bool) (moved, removed int, err error) {
 	for _, fr := range reads {
 		status, detail := "ok", "listed "+thousands(fr.read)+" entries"
@@ -367,13 +397,13 @@ func syncStale(ctx context.Context, conn *sql.Conn, q syncList, reads []feedRead
 // feedWindows calls fn on each range (lo, hi] of a feed's entries, of at
 // most syncChunk entries, in order, until fn says to stop or the feed ends.
 // The bounds are read without the write lock.
-func feedWindows(ctx context.Context, conn *sql.Conn, q syncList, sourceID int64, fn func(lo, hi string) (bool, error)) error {
+func feedWindows(ctx context.Context, conn *sql.Conn, sourceID int64, fn func(lo, hi string) (bool, error)) error {
 	lo := ""
 	for {
 		var hi sql.NullString
-		err := conn.QueryRowContext(ctx, q.feedBound, sourceID, lo, syncChunk-1).Scan(&hi)
+		err := conn.QueryRowContext(ctx, feedBound, sourceID, lo, syncChunk-1).Scan(&hi)
 		if errors.Is(err, sql.ErrNoRows) {
-			err = conn.QueryRowContext(ctx, q.feedLast, sourceID, lo).Scan(&hi)
+			err = conn.QueryRowContext(ctx, feedLast, sourceID, lo).Scan(&hi)
 		}
 		if err != nil {
 			return err
@@ -390,7 +420,7 @@ func feedWindows(ctx context.Context, conn *sql.Conn, q syncList, sourceID int64
 }
 
 // idWindows runs query, a move or a removal, on each range (lo, hi] of a
-// source's ids in the list, of at most syncChunk rows, one write
+// source's ids in the list, of at most syncChunk of its rows, one write
 // transaction each, and returns the rows it changed.
 func idWindows(ctx context.Context, conn *sql.Conn, q syncList, sourceID int64, query string, args func(lo, hi int64) []any) (int, error) {
 	total := 0
@@ -422,86 +452,4 @@ func idWindows(ctx context.Context, conn *sql.Conn, q syncList, sourceID int64, 
 		total += n
 		lo = hi.Int64
 	}
-}
-
-const refreshNote = "UPDATE list_sources SET refreshed_at = ?, refresh_status = ?, refresh_detail = ? WHERE id = ?"
-
-// connQuerier is a connection as database.KeyedSource takes it.
-type connQuerier struct {
-	ctx  context.Context
-	conn *sql.Conn
-}
-
-func (c connQuerier) Exec(query string, args ...any) (sql.Result, error) {
-	return c.conn.ExecContext(c.ctx, query, args...)
-}
-
-func (c connQuerier) QueryRow(query string, args ...any) *sql.Row {
-	return c.conn.QueryRowContext(c.ctx, query, args...)
-}
-
-// writeTx runs fn in a transaction that takes the write lock first (BEGIN
-// IMMEDIATE). A transaction that reads, then writes, after another connection
-// wrote in between, fails in WAL mode with SQLITE_BUSY_SNAPSHOT, which the
-// busy timeout does not wait out: the log tailer writes every few seconds, so
-// the refresh would fail at random. Taken first, the lock is waited for.
-func writeTx(ctx context.Context, conn *sql.Conn, fn func(q connQuerier) error) error {
-	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
-		return err
-	}
-	held := time.Now()
-	if err := fn(connQuerier{ctx, conn}); err != nil {
-		_, _ = conn.ExecContext(ctx, "ROLLBACK")
-		return err
-	}
-	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
-		_, _ = conn.ExecContext(ctx, "ROLLBACK")
-		return err
-	}
-	d := time.Since(held)
-	writeLockHeld(d)
-	// The next transaction waits as long as this one held the lock (up to
-	// 100 ms): back to back, they starved the log tailer, whose busy handler
-	// retries every up to 100 ms and kept missing the gap between a COMMIT
-	// and the next BEGIN (measured: 82 ms held at most, 1.5 s waited).
-	time.Sleep(min(d, 100*time.Millisecond))
-	return nil
-}
-
-// writeLockHeld sees how long each write transaction held the lock; the
-// performance test measures with it.
-var writeLockHeld = func(time.Duration) {}
-
-// noteSourceRefresh records a feed that could not be read on its source, if
-// it has one; a built-in feed never imported has none, and none is created.
-func noteSourceRefresh(ctx context.Context, conn *sql.Conn, table, url, status, detail string) {
-	_, _ = conn.ExecContext(ctx,
-		"UPDATE list_sources SET refreshed_at = ?, refresh_status = ?, refresh_detail = ? WHERE list = ? AND kind = 'url' AND source = ?",
-		time.Now().UTC().Format("2006-01-02 15:04:05"), status, detail, table, url)
-}
-
-// fetchFailure says why a feed was not read without its URL, which the source
-// row already holds.
-func fetchFailure(err error) string {
-	switch {
-	case errors.Is(err, errRefreshRefused):
-		return "not downloaded: the address is not a public one"
-	case strings.HasPrefix(err.Error(), "HTTP "):
-		return "not downloaded: the server answered " + err.Error()
-	default:
-		return "not downloaded: no answer"
-	}
-}
-
-// thousands writes n with a comma between thousands, as the UI writes counts
-// (50,772): the note is shown as it is stored.
-func thousands(n int) string {
-	s := fmt.Sprint(n)
-	if n < 0 {
-		return "-" + thousands(-n)
-	}
-	for i := len(s) - 3; i > 0; i -= 3 {
-		s = s[:i] + "," + s[i:]
-	}
-	return s
 }

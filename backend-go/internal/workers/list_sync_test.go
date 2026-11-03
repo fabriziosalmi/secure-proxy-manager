@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -62,7 +63,7 @@ const (
 )
 
 func syncDomains(db *sql.DB, urls ...string) refreshCount {
-	return refreshList(db, "domain_blacklist", "domain", urls)
+	return refreshList(db, "domain_blacklist", urls)
 }
 
 func expectListed(t *testing.T, db *sql.DB, want ...string) {
@@ -206,33 +207,161 @@ func TestRemovalWaitsWhileAFeedOfTheListFails(t *testing.T) {
 	expectListed(t, db, "a.test<-url:"+feedA, "b.test<-url:"+feedA, "y.test<-url:"+feedB)
 }
 
-// The refresh downloads every URL a list was imported from, not only the
-// built-in feeds and the setting, each once.
+// The refresh downloads every URL a list was imported from that still has
+// entries, not only the built-in feeds and the setting, each once.
 func TestTheRefreshCoversEveryImportedURL(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
+	withEntry := func(list, url, entry string) {
+		t.Helper()
+		id, err := database.KeyedSource(db, list, database.SourceURL, url, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		col := map[string]string{"domain_blacklist": "domain", "ip_blacklist": "ip"}[list]
+		if _, err := db.Exec("INSERT INTO "+list+"("+col+", source_id) VALUES(?, ?)", entry, id); err != nil {
+			t.Fatal(err)
+		}
+	}
 	const imported = "https://imported.test/list.txt"
-	if _, err := database.KeyedSource(db, "domain_blacklist", database.SourceURL, imported, "Imported list"); err != nil {
-		t.Fatal(err)
-	}
+	withEntry("domain_blacklist", imported, "imported.example")
 	// The built-in StevenBlack feed imported by hand too: listed once.
-	if _, err := database.KeyedSource(db, "domain_blacklist", database.SourceURL, defaultDomainLists[0], "StevenBlack Unified"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec("INSERT OR REPLACE INTO settings(setting_name, setting_value) VALUES('domain_blacklist_urls', ?)", "https://setting.test/x\n\n"+imported); err != nil {
-		t.Fatal(err)
-	}
+	withEntry("domain_blacklist", defaultDomainLists[0], "steven.example")
 	got := feedURLs(db, "domain_blacklist", defaultDomainLists, "https://setting.test/x\n\n"+imported)
 	want := append(append([]string{}, defaultDomainLists...), "https://setting.test/x", imported)
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("feeds = %v\nwant    %v", got, want)
 	}
 	// An imported IP list is not a domain feed.
-	if _, err := database.KeyedSource(db, "ip_blacklist", database.SourceURL, "https://ips.test/l", ""); err != nil {
-		t.Fatal(err)
-	}
+	withEntry("ip_blacklist", "https://ips.test/l", "203.0.113.9")
 	if ip := feedURLs(db, "ip_blacklist", nil, ""); strings.Join(ip, " ") != "https://ips.test/l" {
 		t.Errorf("ip feeds = %v", ip)
+	}
+}
+
+// A url source left with no entry (the list was cleared) is not refreshed:
+// the sources table does not show it, so it could neither be seen nor
+// removed while it refilled the list.
+func TestAClearedListIsNotRefilledByAHiddenSource(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	const imported = "https://imported.test/list.txt"
+	serveFeeds(t, map[string]string{imported: hosts("a.test", "b.test")})
+	syncDomains(db, imported)
+	if _, err := db.Exec("DELETE FROM domain_blacklist"); err != nil { // Remove every entry on this list
+		t.Fatal(err)
+	}
+	if got := feedURLs(db, "domain_blacklist", nil, ""); len(got) != 0 {
+		t.Errorf("feeds after clearing = %v; want none", got)
+	}
+}
+
+// A source whose every entry moved to another feed is removed with them, so
+// no source without entries stays to be refreshed.
+func TestASourceLeftEmptyIsRemoved(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	serveFeeds(t, map[string]string{feedA: hosts("x.test"), feedB: hosts("y.test")})
+	syncDomains(db, feedA, feedB)
+	// A now lists z.test instead of x.test, which B lists: x.test moves to B.
+	serveFeeds(t, map[string]string{feedA: hosts("z.test"), feedB: hosts("x.test", "y.test")})
+	syncDomains(db, feedA, feedB)
+	expectListed(t, db, "x.test<-url:"+feedB, "y.test<-url:"+feedB, "z.test<-url:"+feedA)
+	// z.test removed by hand; A lists only x.test, which B holds: A has no
+	// entry left after the run, and its source goes.
+	if _, err := db.Exec("DELETE FROM domain_blacklist WHERE domain = 'z.test'"); err != nil {
+		t.Fatal(err)
+	}
+	serveFeeds(t, map[string]string{feedA: hosts("x.test"), feedB: hosts("x.test", "y.test")})
+	syncDomains(db, feedA, feedB)
+	var n int
+	_ = db.QueryRow("SELECT COUNT(*) FROM list_sources WHERE source = ?", feedA).Scan(&n)
+	if n != 0 {
+		t.Errorf("A's source with no entry left is still there")
+	}
+}
+
+// A feed line is read as the import reads it (listentry): a URL names its
+// host. An unchanged feed with a URL line must not lose that host.
+func TestAFeedIsReadAsTheImportReadsIt(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	// What an import of the feed added: tracker.test from the URL line.
+	id, err := database.KeyedSource(db, "domain_blacklist", database.SourceURL, feedA, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{"tracker.test", "bare.test"} {
+		if _, err := db.Exec("INSERT INTO domain_blacklist(domain, source_id) VALUES(?, ?)", d, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	serveFeeds(t, map[string]string{feedA: "https://tracker.test/path?x=1\nbare.test\n; a comment\n"})
+	if c := syncDomains(db, feedA); c.Removed != 0 || c.Added != 0 {
+		t.Errorf("run = %+v; want nothing removed or added", c)
+	}
+	expectListed(t, db, "bare.test<-url:"+feedA, "tracker.test<-url:"+feedA)
+}
+
+// Removals come before additions, so the room a removal frees under the
+// domain limit takes an addition of the same run.
+func TestARemovalMakesRoomForAnAdditionInTheSameRun(t *testing.T) {
+	t.Setenv("SPM_DNS_BLOCKLIST_MAX_DOMAINS", "2")
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	serveFeeds(t, map[string]string{feedA: hosts("a.test", "b.test")})
+	syncDomains(db, feedA)
+	serveFeeds(t, map[string]string{feedA: hosts("a.test", "c.test")})
+	c := syncDomains(db, feedA)
+	if c.Added != 1 || c.Removed != 1 || c.NotAdded != 0 {
+		t.Errorf("run = %+v; want b.test removed and c.test added", c)
+	}
+	expectListed(t, db, "a.test<-url:"+feedA, "c.test<-url:"+feedA)
+}
+
+// Each window reads one source's rows on the (source_id, id) index: on the id
+// range alone, a source whose few rows sit after a million others scanned the
+// million while it held the write lock.
+func TestTheWindowsReadOnlyTheirSourceRows(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err := resetRefreshFeed(ctx, conn); err != nil {
+		t.Fatal(err)
+	}
+	for table, q := range syncLists {
+		for name, stmt := range map[string]string{"idBound": q.idBound, "moveStale": q.moveStale, "deleteStale": q.deleteStale} {
+			rows, err := conn.QueryContext(ctx, "EXPLAIN QUERY PLAN "+stmt, 1, 1, 1, 1, 1, 1)
+			if err != nil {
+				rows, err = conn.QueryContext(ctx, "EXPLAIN QUERY PLAN "+stmt, 1, 1, 1, 1)
+			}
+			if err != nil {
+				rows, err = conn.QueryContext(ctx, "EXPLAIN QUERY PLAN "+stmt, 1, 1, 1)
+			}
+			if err != nil {
+				t.Fatalf("%s %s: %v", table, name, err)
+			}
+			var plan []string
+			for rows.Next() {
+				var id, parent, unused int
+				var detail string
+				if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+					t.Fatal(err)
+				}
+				plan = append(plan, detail)
+			}
+			rows.Close()
+			joined := strings.Join(plan, " | ")
+			want := "idx_" + table + "_source_id (source_id=? AND id>?"
+			if !strings.Contains(joined, want) || strings.Contains(joined, "TEMP B-TREE FOR ORDER BY") {
+				t.Errorf("%s %s plan = %s; want a range of %s", table, name, joined, want)
+			}
+		}
 	}
 }
 

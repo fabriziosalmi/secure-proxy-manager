@@ -134,8 +134,8 @@ func refreshAll(db *sql.DB) map[string]refreshCount {
 	domainURLs := feedURLs(db, "domain_blacklist", defaultDomainLists, customDomainURLs)
 
 	return map[string]refreshCount{
-		"ip_blacklist":     refreshList(db, "ip_blacklist", "ip", ipURLs),
-		"domain_blacklist": refreshList(db, "domain_blacklist", "domain", domainURLs),
+		"ip_blacklist":     refreshList(db, "ip_blacklist", ipURLs),
+		"domain_blacklist": refreshList(db, "domain_blacklist", domainURLs),
 	}
 }
 
@@ -168,8 +168,11 @@ var fetchRefreshFeed = func(u string) (string, error) {
 
 // feedURLs is every feed a list is refreshed from, each once: the built-in
 // feeds, the URLs of the setting (one per line), and every URL the list was
-// imported from (a Popular list, an address typed in the import form). The
-// last were never downloaded again before.
+// imported from that still has entries (a Popular list, an address typed in
+// the import form). The last were never downloaded again before. A url source
+// with no entry left, because the list was cleared or its entries went to
+// another feed, is not refreshed: the sources table does not show it, so it
+// could be neither seen nor removed while it refilled the list.
 func feedURLs(db *sql.DB, table string, builtIn []string, setting string) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -185,7 +188,11 @@ func feedURLs(db *sql.DB, table string, builtIn []string, setting string) []stri
 	for _, u := range strings.Split(setting, "\n") {
 		add(u)
 	}
-	rows, err := db.Query("SELECT source FROM list_sources WHERE list = ? AND kind = 'url' ORDER BY id", table)
+	q, ok := syncLists[table]
+	if !ok {
+		return out
+	}
+	rows, err := db.Query(q.feedSources)
 	if err != nil {
 		log.Warn().Err(err).Str("table", table).Msg("blacklist refresh: the imported URLs could not be read; only the built-in feeds are refreshed")
 		return out
