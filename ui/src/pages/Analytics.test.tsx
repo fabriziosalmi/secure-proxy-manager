@@ -52,6 +52,7 @@ const bodies: Record<string, unknown> = {
   'waf/stats': wafStats,
   'analytics/shadow-it': [{ name: 'Facebook', domain: 'facebook.com', requests: 1328, category: 'Social' }],
   'analytics/user-agents': { methods: [], service_types: [{ name: 'Other', count: 50772 }, { name: 'CDN', count: 230 }] },
+  'waf/trajectories': [],
   'analytics/file-extensions': { extensions: [{ ext: '.js', count: 12 }, { ext: '.png', count: 3 }], categories: [{ category: 'Web', count: 12 }, { category: 'Images', count: 3 }], examined: 40, limit: 10000 },
 }
 
@@ -98,6 +99,7 @@ describe('Analytics', () => {
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'Blocked requests per day, by rule',
       'Protection coverage',
+      'Client trajectories',
       'WAF rule matches',
       'Cloud services in use',
       'Traffic by kind of service',

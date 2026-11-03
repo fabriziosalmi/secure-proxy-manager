@@ -35,6 +35,56 @@ check, or `CRS` for any Core Rule Set rule. A stage that does not run
 because an earlier one already blocks signals nothing. The `CRS` share on a
 row is therefore the share where the built-in rules had not already blocked.
 
+## Client trajectories
+
+Most signals that describe a client, rather than a request, score below the
+block threshold. On its own, a typosquatted name, a check-in at regular
+intervals or a secret in a request body is weak evidence. Several of them
+from one client, in the order a compromised host produces them, are much
+stronger. The WAF sends these signals to the backend, scored or matched in
+Log only. Each category is sent at most once per client every 10 minutes.
+The backend reads them as trajectories every minute.
+
+Each signal belongs to one phase of what a compromised host does on the way
+out:
+
+| Phase | Signals |
+|---|---|
+| Arrival: it reached something meant to compromise it | `TYPOSQUATTING` |
+| Contact: it called out the way an implant does | `DGA_DOMAIN`, `HEURISTIC_BEACONING`, `TLS_SNI_MISMATCH` |
+| Action: it did what an implant does | `HEURISTIC_SHARDING`, `CRYPTO_TUNNEL`, `POST_EXPLOIT`, `DATA_EXFIL`, `CLOUD_SECRETS`, `DATA_LEAK_PREVENTION`, `FINANCIAL_DATA`, `HEURISTIC_ENTROPY`, `HEURISTIC_GHOSTING`, `RANSOMWARE` |
+
+Classic web attacks, protocol anomalies and the Core Rule Set describe a
+request, not the client, and are not part of a trajectory.
+
+A client's signals make a trajectory when, within 24 hours, either rule
+holds:
+
+- **Order**: a signal of a later phase follows one of an earlier phase at an
+  earlier instant, and at least one signal in the window is not
+  probabilistic. Beaconing, sharding, entropy and ghosting are
+  probabilistic: browsing produces them too. A device's periodic check-in
+  followed by a news page with its ad hosts would otherwise read as contact
+  then action, so two of them alone are not enough.
+- **Breadth**: three distinct signals, in any phases.
+
+Signals of one instant (one request) have no order between them.
+
+Each client has at most one trajectory a day. Signals that arrive within the
+24 hours after its first signal update it. A new trajectory is looked for
+only after that.
+
+Each trajectory raises one `waf_trajectory` alert (`warning`;
+`notify_waf_trajectory` switches it off). The UI shows trajectories in two
+places:
+
+- Analytics, Client trajectories: each client with its stages, and the
+  signals of that day in order;
+- the Overview: a notice when there was one in the last 24 hours.
+
+In GDPR mode a client is stored as its network, so the signals are not
+stored and no trajectory is read.
+
 ## HTTPS without SSL bump
 
 | Dataset | Label | Records | Blocked | Signalled |

@@ -80,7 +80,9 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
   come from its workers, once per change of state: `proxy_down` and
   `proxy_up` (a TCP check of the proxy every minute, two failures in a row
   for down), `blocklist_refresh_failed` and `update_available`; `notify_system`
-  switches them off. The queue groups WAF blocks and sign-ins of one type from
+  switches them off. `waf_trajectory` comes from the trajectory worker, once
+  per client and day ([client trajectories](./waf-coverage.md#client-trajectories));
+  `notify_waf_trajectory` switches it off. The queue groups WAF blocks and sign-ins of one type from
   one address for `notify_group_window_minutes` (the first is sent, the rest
   are counted into one digest), never the own events, and lets each channel
   send at most `notify_max_per_hour` in any hour, then one notice with the

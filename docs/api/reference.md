@@ -142,6 +142,8 @@ Details: [Logs and Analytics API](./logs.md).
 | `PUT`  | `/api/waf/policy` | Replace the policy file with `{policy, sha256}`, `sha256` being the digest `GET` returned; `409` when the file changed since |
 | `POST` | `/api/waf/policy/exceptions` | Add one exception `{rule, host?, path?, target?, comment?}` |
 | `POST` | `/api/waf/policy/observe-rules` | Leave one rule `{rule}` to log only |
+| `GET`  | `/api/waf/trajectories` | [Client trajectories](../guide/waf-coverage.md#client-trajectories) that closed in the last `days` (1 to 90, default 7), latest first: `client_ip`, `rule` (`order` or `breadth`), `start`, `closed` (when the pattern was complete), `end`, `phases`, `categories`, `hosts`, `signals` |
+| `GET`  | `/api/waf/trajectories/{id}` | One trajectory and the client's signals in its window (`start` to 24 hours later), each with `at`, `category`, `phase`, `host`, `rule`, `observed` (Log only) and `blocked`; at most 500, `truncated` when there were more |
 
 ## Settings and maintenance
 
@@ -175,6 +177,7 @@ Details: [Settings and Maintenance API](./settings.md).
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/api/internal/alert` | WAF block notifications, on the backend's port only (`backend:5000` inside the stack); the web container answers `404` for `/api/internal/`. With `INTERNAL_ALERT_TOKEN` set, only `Authorization: Bearer <that token>` is accepted; without it, normal admin authentication. The alerts pass the [notification limits](./settings.md#notification-limits) |
+| `POST` | `/api/internal/signals` | The WAF's client signals (the categories in the [client trajectory](../guide/waf-coverage.md#client-trajectories) phases), stored and never sent to a channel. Same port and token as `/api/internal/alert`; the WAF's calls with the token are not counted by the per-address rate limit. Nothing is stored while `gdpr_mode` is on |
 | `POST` | `/api/dns/detect` | Probe a subnet for Pi-hole or AdGuard instances (at most 2 scans at a time) |
 | `GET`  | `/debug/pprof/...` | Go runtime profiles (authenticated) |
 

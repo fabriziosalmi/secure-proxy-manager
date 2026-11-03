@@ -276,6 +276,15 @@ func TestOffTypesAndLowLevelsAreNotSent(t *testing.T) {
 	if !noSystem.wants(login) || !noSystem.wants(wafBlock("192.0.2.1", "SQLI")) {
 		t.Error("turning system events off turned other alerts off")
 	}
+	// notify_waf_trajectory switches off a client's trajectory, and only it.
+	traj := map[string]any{"event_type": "waf_trajectory", "level": "warning", "client_ip": "192.0.2.1"}
+	noTraj := limitsFrom(map[string]string{settingNotifyTrajectory: "false"})
+	if noTraj.wants(traj) || !defaultLimits.wants(traj) || noSystem.wants(traj) != true {
+		t.Error("waf_trajectory follows notify_waf_trajectory, on by default, not notify_system")
+	}
+	if !noTraj.wants(wafBlock("192.0.2.1", "SQLI")) {
+		t.Error("turning trajectories off turned WAF blocks off")
+	}
 }
 
 // The backend's own events are not grouped: down, back and down again within
@@ -392,6 +401,36 @@ func TestTheNotificationLimitsAreSeeded(t *testing.T) {
 		}
 		if validateSettingValue(k, v) != nil {
 			t.Errorf("the seeded %s=%q does not pass its own validator", k, v)
+		}
+	}
+}
+
+// Every event-type switch is read from the database with the other
+// notification settings: a switch the read leaves out is never applied.
+func TestEverySwitchIsReadFromTheDatabase(t *testing.T) {
+	db, _, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	if _, err := db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES ('enable_notifications', 'true')"); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, key := range eventTypeSwitch {
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if _, err := db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES (?, 'false')", key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	settings, ok := loadNotificationSettings(db, "0000000000000000000000000000000000000000000000000000000000000000")
+	if !ok {
+		t.Fatal("notification settings not read")
+	}
+	limits := limitsFrom(settings)
+	for eventType, key := range eventTypeSwitch {
+		if limits.wants(map[string]any{"event_type": eventType, "level": "error"}) {
+			t.Errorf("%s still wanted with %s stored false: the read leaves the switch out", eventType, key)
 		}
 	}
 }
