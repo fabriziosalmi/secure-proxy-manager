@@ -208,6 +208,9 @@ export function Logs() {
     liveFor.current = { filters, showInternal };
     // eslint-disable-next-line react-hooks/set-state-in-effect -- a new view starts with no live rows
     setLiveRows([]);
+    // Nor held ones: they were matched against the view that is gone.
+    heldRows.current = [];
+    setHeldCount(0);
   }, [filters, showInternal]);
 
   const seq = useRef(0);
