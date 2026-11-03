@@ -55,16 +55,16 @@ func TestRunRetention(t *testing.T) {
 	}
 }
 
-func TestInsertBlacklistEntries(t *testing.T) {
+// Routable addresses are taken; a private range, a comment and a line that
+// is not an address are not (the ip_blacklist is a dst ACL denied before LAN
+// destinations).
+func TestRefreshTakesOnlyRoutableAddresses(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
-
-	// Routable IPs are inserted; the private 10.0.0.1 and the invalid line are
-	// dropped (the ip_blacklist is a dst ACL denied before LAN destinations).
-	added, _ := insertBlacklistEntries(db, "ip_blacklist", "ip", "https://feed.test/ips.txt",
-		"1.1.1.1\n2.2.2.2\n10.0.0.1\n# comment\nnotanip", map[string]struct{}{})
-	if added != 2 {
-		t.Errorf("expected 2 inserted (bogon/invalid dropped), got %d", added)
+	serveFeeds(t, map[string]string{"https://feed.test/ips.txt": "1.1.1.1\n2.2.2.2\n10.0.0.1\n# comment\nnotanip"})
+	c := refreshList(db, "ip_blacklist", []string{"https://feed.test/ips.txt"})
+	if c.Added != 2 {
+		t.Errorf("added %d, want 2 (bogon and invalid dropped)", c.Added)
 	}
 	var priv int
 	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist WHERE ip='10.0.0.1'").Scan(&priv)
@@ -79,8 +79,10 @@ func TestRefreshRecordsTheFeedURLAsTheSource(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 	const feed = "https://feed.test/hosts"
-	insertBlacklistEntries(db, "domain_blacklist", "domain", feed, "0.0.0.0 a.example\n", map[string]struct{}{})
-	insertBlacklistEntries(db, "domain_blacklist", "domain", feed, "0.0.0.0 b.example\n", map[string]struct{}{"a.example": {}})
+	serveFeeds(t, map[string]string{feed: "0.0.0.0 a.example\n"})
+	refreshList(db, "domain_blacklist", []string{feed})
+	serveFeeds(t, map[string]string{feed: "0.0.0.0 a.example\n0.0.0.0 b.example\n"})
+	refreshList(db, "domain_blacklist", []string{feed})
 	rows, err := db.Query("SELECT s.kind, s.source, e.source_id FROM domain_blacklist e JOIN list_sources s ON s.id = e.source_id")
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +117,7 @@ func TestRefreshList_RefusesLoopback(t *testing.T) {
 	defer ts.Close()
 
 	// ts.URL is 127.0.0.1 — the SSRF guard must refuse it and insert nothing.
-	refreshList(db, "ip_blacklist", "ip", []string{ts.URL})
+	refreshList(db, "ip_blacklist", []string{ts.URL})
 	var count int
 	_ = db.QueryRow("SELECT COUNT(*) FROM ip_blacklist").Scan(&count)
 	if count != 0 {
@@ -380,10 +382,9 @@ func TestInsertBlacklistEntries_Domain(t *testing.T) {
 
 	// Domain lists are not CIDR/bogon-filtered; hosts-format lines take the last
 	// field. 0.0.0.0 example.com -> example.com.
-	added, _ := insertBlacklistEntries(db, "domain_blacklist", "domain", "https://feed.test/hosts",
-		"0.0.0.0 evil.example\nbad.test\n# comment", map[string]struct{}{})
-	if added != 2 {
-		t.Errorf("expected 2 domains inserted, got %d", added)
+	serveFeeds(t, map[string]string{"https://feed.test/hosts": "0.0.0.0 evil.example\nbad.test\n# comment"})
+	if c := refreshList(db, "domain_blacklist", []string{"https://feed.test/hosts"}); c.Added != 2 {
+		t.Errorf("expected 2 domains inserted, got %+v", c)
 	}
 }
 
@@ -566,12 +567,12 @@ func TestRefreshStopsAtTheDomainLimit(t *testing.T) {
 	t.Setenv("SPM_DNS_BLOCKLIST_MAX_DOMAINS", "2")
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
-	added, _ := insertBlacklistEntries(db, "domain_blacklist", "domain", "https://feed.test/hosts",
-		"0.0.0.0 a.example\n0.0.0.0 b.example\n0.0.0.0 c.example\n0.0.0.0 d.example\n", map[string]struct{}{})
+	serveFeeds(t, map[string]string{"https://feed.test/hosts": "0.0.0.0 a.example\n0.0.0.0 b.example\n0.0.0.0 c.example\n0.0.0.0 d.example\n"})
+	c := refreshList(db, "domain_blacklist", []string{"https://feed.test/hosts"})
 	var n int
 	_ = db.QueryRow("SELECT COUNT(*) FROM domain_blacklist").Scan(&n)
-	if added != 2 || n != 2 {
-		t.Errorf("refresh with a limit of 2 added %d, table holds %d", added, n)
+	if c.Added != 2 || c.NotAdded != 2 || n != 2 {
+		t.Errorf("refresh with a limit of 2: %+v, table holds %d; want 2 added, 2 not added", c, n)
 	}
 }
 

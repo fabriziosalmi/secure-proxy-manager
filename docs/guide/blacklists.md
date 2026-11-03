@@ -396,16 +396,41 @@ fetched instead of both.
 
 ## Automatic refresh
 
-With **Settings > Filtering > Refresh the built-in feeds** on, a background
-worker re-imports four fixed lists every `auto_refresh_hours` hours (default
+With **Settings > Filtering > Refresh imported lists** on, a background worker
+downloads the blocked lists again every `auto_refresh_hours` hours (default
 24, from 1 to 168):
 
-- IP: Firehol Level 1, Stamparm Ipsum (level 1).
-- Domain: StevenBlack Unified hosts, URLhaus (malware-filter mirror).
+- every list imported from a URL that still has entries, the Popular lists
+  included (a cleared list is not filled again from a source the page no
+  longer shows);
+- the built-in feeds: Firehol Level 1 and Stamparm Ipsum level 1 (IP),
+  StevenBlack Unified hosts and URLhaus, malware-filter mirror (domain);
+- the URLs in the `ip_blacklist_urls` and `domain_blacklist_urls` settings,
+  one per line.
 
-The settings are `auto_refresh_enabled` and `auto_refresh_hours`. To refresh
-other feeds on a schedule, call the import endpoint from cron on the host:
+Every feed of a list is read first, each line as an import reads it (a URL
+names its host). Then each feed that answered is synced with the entries its
+source added:
 
-```bash
-0 3 * * * curl -sk -X POST https://localhost:8443/api/blacklists/import -u admin:your_password -H "Content-Type: application/json" -d '{"type": "domain", "url": "https://big.oisd.nl/domainswild"}'
-```
+- what it no longer lists goes, unless another feed read in the same run
+  still lists it: then the entry stays and moves to that feed's source;
+- what it lists that the list lacks is added under its source, after the
+  removals, so their room under the domain limit is used in the same run. A
+  source left with no entry is removed.
+
+Nothing is removed:
+
+- from a feed that lists no entry, or fewer than half of the entries its
+  source holds: it is **held**, a truncated or replaced file being likelier
+  than a feed that dropped half its threats at once;
+- from a list one of whose feeds could not be downloaded in that run: an
+  entry that feed lists may belong to another source.
+
+Entries added by hand, pasted, blocked by country or added from a preset are
+never compared with a feed. Each source's row under **Where the entries came
+from** says when it was last refreshed and what came of it (refreshed, held,
+not downloaded), and each run writes one audit row with what it added,
+removed and held per list. A feed that cannot be downloaded sends an alert
+when alerts are on, once while it stays down.
+
+The settings are `auto_refresh_enabled` and `auto_refresh_hours`.

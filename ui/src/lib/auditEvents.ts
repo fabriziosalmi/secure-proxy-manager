@@ -268,11 +268,25 @@ function describeRefresh(e: AuditEntry): AuditDescription | null {
   const fetched = (num(ip ?? null, 'fetched') ?? 0) + (num(dom ?? null, 'fetched') ?? 0);
   const failed = (num(ip ?? null, 'failed') ?? 0) + (num(dom ?? null, 'failed') ?? 0);
   const notAdded = num(dom ?? null, 'not_added') ?? 0;
+  // Since the refresh syncs with each feed (workers/list_sync.go): what it
+  // took out, moved to another feed, held and left for a later run. Rows
+  // written before carry none of these.
+  const ipRemoved = num(ip ?? null, 'removed') ?? 0;
+  const domRemoved = num(dom ?? null, 'removed') ?? 0;
+  const moved = (num(ip ?? null, 'moved') ?? 0) + (num(dom ?? null, 'moved') ?? 0);
+  const held = (num(ip ?? null, 'held') ?? 0) + (num(dom ?? null, 'held') ?? 0);
+  const deferred = ip?.removal_deferred === true || dom?.removal_deferred === true;
+  const removed = ipRemoved + domRemoved > 0
+    ? `, removed ${count(ipRemoved, 'blocked IP', 'blocked IPs')} and ${count(domRemoved, 'blocked domain', 'blocked domains')}`
+    : '';
   return {
-    event: `Auto-refresh added ${count(ipAdded, 'blocked IP', 'blocked IPs')} and ${count(domAdded, 'blocked domain', 'blocked domains')}`,
+    event: `Auto-refresh added ${count(ipAdded, 'blocked IP', 'blocked IPs')} and ${count(domAdded, 'blocked domain', 'blocked domains')}${removed}`,
     details: join([
       `${formatCount(fetched)} of ${count(fetched + failed, 'list', 'lists')} read${failed > 0 ? `, ${formatCount(failed)} could not be fetched` : ''}`,
       notAdded > 0 ? `${count(notAdded, 'domain', 'domains')} not added: the domain blacklist is at its limit` : null,
+      moved > 0 ? `${count(moved, 'entry', 'entries')} a feed dropped stayed, under another feed that still lists ${moved === 1 ? 'it' : 'them'}` : null,
+      held > 0 ? `${count(held, 'feed', 'feeds')} held: ${held === 1 ? 'it' : 'they'} listed fewer than half of ${held === 1 ? 'its' : 'their'} entries, which were kept` : null,
+      deferred ? 'Nothing removed from a list with a feed that could not be fetched' : null,
     ]),
     kind: 'change',
   };

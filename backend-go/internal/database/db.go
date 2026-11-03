@@ -242,6 +242,19 @@ func applyColumnMigrations(db *sql.DB) error {
 		return err
 	}
 
+	// list_sources exists only once version 4 has run, so its columns are
+	// added after the versioned steps. What the last refresh of a url source
+	// came to (workers/list_sync.go): when, ok, held or failed, and in words.
+	// A later rebuild of list_sources must copy them.
+	for _, m := range []string{
+		"ALTER TABLE list_sources ADD COLUMN refreshed_at TEXT",
+		"ALTER TABLE list_sources ADD COLUMN refresh_status TEXT",
+		"ALTER TABLE list_sources ADD COLUMN refresh_detail TEXT",
+	} {
+		if _, err := db.Exec(m); err != nil && !isDuplicateColumnErr(err) {
+			return fmt.Errorf("migration %q: %w", m, err)
+		}
+	}
 	return nil
 }
 
@@ -254,6 +267,11 @@ func createPostMigrationIndexes(db *sql.DB) error {
 	// upgrade. Only blocked rows are indexed, so it stays tiny.
 	postMigrationIndexes := []string{
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_blocked ON proxy_logs(blocked) WHERE blocked = 1`,
+		// One source's rows in id order, for the refresh's windows
+		// (workers/list_sync.go): a window then reads its own rows only, not
+		// every row in its id range, nor every row of the source sorted.
+		`CREATE INDEX IF NOT EXISTS idx_ip_blacklist_source_id ON ip_blacklist(source_id, id)`,
+		`CREATE INDEX IF NOT EXISTS idx_domain_blacklist_source_id ON domain_blacklist(source_id, id)`,
 		// Correlation-id lookup (join a WAF event → its proxy_logs row). Partial:
 		// only blocked rows carry an event_id, so the index stays tiny (#107).
 		`CREATE INDEX IF NOT EXISTS idx_proxy_logs_event_id ON proxy_logs(event_id) WHERE event_id IS NOT NULL`,

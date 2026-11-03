@@ -98,8 +98,8 @@ export function FilteringSection({ form }: { form: SectionForm }) {
         <ToggleRow
           form={form}
           setting="auto_refresh_enabled"
-          label="Refresh the built-in feeds"
-          help="Downloads FireHOL level 1 and IPsum level 1 (IPs) and StevenBlack hosts and the URLhaus filter (domains) again, imports what is new, then reloads DNS."
+          label="Refresh imported lists"
+          help="Downloads again each list imported from a URL, Popular lists included, and the built-in feeds: FireHOL level 1 and IPsum level 1 (IPs), StevenBlack hosts and the URLhaus filter (domains). It adds what a feed lists that is new and removes what it no longer lists; an entry another list still names stays, and entries added by hand, pasted, by country or from a preset are never removed. A feed that cannot be downloaded, or lists fewer than half of the entries it added, keeps them. Then DNS reloads."
         >
           <TextField
             form={form}

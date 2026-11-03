@@ -71,4 +71,32 @@ describe('SourcesSection layout', () => {
     expect(pieces).toHaveLength(4)
     for (const p of pieces) expect(classes(p)).toContain('whitespace-nowrap')
   })
+
+  // What the last refresh of each url source came to: a source that stopped
+  // downloading, or came back short, is seen where the source is.
+  it('says what the last refresh of each url source came to', () => {
+    const at = '2026-11-03 10:00:00'
+    renderWithProviders(
+      <SourcesSection
+        list={LISTS[0]}
+        sources={[
+          { ...sources[0], id: 1, refreshed_at: at, refresh_status: 'ok', refresh_detail: 'listed 50,772 entries' },
+          { ...sources[0], id: 3, source: 'https://b.test/l', refreshed_at: at, refresh_status: 'held', refresh_detail: 'listed 30 entries, fewer than half of the 1,200 it added: they are kept' },
+          { ...sources[0], id: 4, source: 'https://c.test/l', refreshed_at: at, refresh_status: 'failed', refresh_detail: 'not downloaded: the server answered HTTP 410' },
+          sources[1],
+        ]}
+        loading={false}
+        error={false}
+        onRetry={() => {}}
+        onRemove={() => {}}
+      />,
+    )
+    const notes = [...document.querySelectorAll('[data-refresh]')].map((n) => [n.getAttribute('data-refresh'), n.textContent])
+    expect(notes).toHaveLength(3)
+    expect(notes[0][1]).toMatch(/^Refreshed .+: listed 50,772 entries$/)
+    expect(notes[1][1]).toMatch(/^Held .+: listed 30 entries, fewer than half of the 1,200 it added: they are kept$/)
+    expect(notes[2][1]).toMatch(/^Not refreshed .+: not downloaded: the server answered HTTP 410$/)
+    expect(document.querySelector('[data-refresh="held"]')?.className).toContain('text-warning')
+    expect(document.querySelector('[data-refresh="failed"]')?.className).toContain('text-danger')
+  })
 })

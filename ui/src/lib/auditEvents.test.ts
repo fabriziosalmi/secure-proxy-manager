@@ -72,6 +72,20 @@ describe('describeAudit', () => {
     expect(d.details).toBe('3 of 4 lists read, 1 could not be fetched. 5 domains not added: the domain blacklist is at its limit')
   })
 
+  // Since the refresh syncs with its feeds: what it removed, what moved to
+  // another feed, the feeds held, and removals left for a later run.
+  it('describes what a sync run removed, moved, held and deferred', () => {
+    const d = describeAudit({ ...row('refresh_blacklists', '', JSON.stringify({
+      domain_blacklist: { added: 120, removed: 4500, moved: 3, fetched: 3, failed: 0, held: 1 },
+      ip_blacklist: { added: 7, removed: 0, fetched: 1, failed: 1, removal_deferred: true },
+    })), username: 'system' })
+    expect(d.event).toBe('Auto-refresh added 7 blocked IPs and 120 blocked domains, removed 0 blocked IPs and 4,500 blocked domains')
+    expect(d.details).toBe(
+      '4 of 5 lists read, 1 could not be fetched. 3 entries a feed dropped stayed, under another feed that still lists them. '
+      + '1 feed held: it listed fewer than half of its entries, which were kept. Nothing removed from a list with a feed that could not be fetched',
+    )
+  })
+
   it('describes the upgrade step that rewrote *.name egress entries', () => {
     const d = describeAudit({ ...row('rewrite_egress_wildcards', 'egress_allowlist', '{"dropped":2,"entries":["*.a.example > .a.example"],"rewritten":1}'), username: 'system' })
     expect(d.event).toBe('The upgrade rewrote 1 egress entry from *.name to .name')

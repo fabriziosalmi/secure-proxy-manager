@@ -1,9 +1,9 @@
 /**
  * SourcesSection: where the entries of a list came from (GET
  * /api/{list}/sources), one row per source with the entries it added and
- * when, and the removal of a whole source. Each entry belongs to the source
- * that added it first, so the count next to a source is exactly what its
- * removal takes away.
+ * when, what its last refresh came to (a url source), and the removal of a
+ * whole source. Each entry belongs to the source that added it first, so the
+ * count next to a source is exactly what its removal takes away.
  */
 import type { ReactNode } from 'react';
 import { formatCount } from '../../lib/format';
@@ -11,7 +11,7 @@ import type { ListSource } from '../../types';
 import { Button } from '../ui/Button';
 import { DataTable, type Column } from '../ui/DataTable';
 import { Section } from '../ui/Section';
-import { addedRange, sourceDetail, sourceTitle, type ListDef } from './lists';
+import { addedRange, refreshLine, sourceDetail, sourceTitle, type ListDef } from './lists';
 
 export interface SourcesSectionProps {
   list: ListDef;
@@ -54,6 +54,14 @@ function AddedRange({ first, last }: { first: string; last: string }) {
   );
 }
 
+/** The last refresh of a url source, coloured by what it came to. */
+function RefreshNote({ s }: { s: ListSource }) {
+  const r = refreshLine(s);
+  if (!r) return null;
+  const tone = r.tone === 'ok' ? 'text-ink-muted' : r.tone === 'warning' ? 'text-warning' : 'text-danger';
+  return <span data-refresh={s.refresh_status} className={`text-xs [overflow-wrap:anywhere] ${tone}`}>{r.text}</span>;
+}
+
 export function SourcesSection({ list, sources, loading, error, onRetry, onRemove, className }: SourcesSectionProps) {
   // The source column takes the width the others leave (w-full) and no more
   // (max-w-0), so a long URL or list name is cut with an ellipsis, its whole
@@ -87,6 +95,7 @@ export function SourcesSection({ list, sources, loading, error, onRetry, onRemov
               <span title={detail} className="line-clamp-2 text-xs text-ink-muted [overflow-wrap:anywhere]">{detail}</span>
             ))}
             <span className="text-xs text-ink-muted sm:hidden">Added <AddedRange first={s.first_added} last={s.last_added} /></span>
+            <RefreshNote s={s} />
           </div>
         );
       },
