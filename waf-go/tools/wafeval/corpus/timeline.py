@@ -4,6 +4,7 @@
 Usage:
   timeline.py real OUT.jsonl access.log [access.log.0 ...]
   timeline.py beacons OUT.jsonl beacons.parquet N SEED [REAL.jsonl CLIENT MINUTES [START]]
+  timeline.py stories OUT.jsonl beacons.parquet N SEED REAL.jsonl CLIENT MINUTES [START]
 
 real: every request of a real installation's Squid access logs ('spm'
 format, see convert_real.py), in time order, with the client address as the
@@ -22,10 +23,24 @@ name of its own, so every beacon meets the same real traffic. The densest
 stretch can be a burst and then silence: name START to pick a stretch where
 the client is steadily active.
 
-The beacon records are labelled attack; the real records copied next to
-them stay benign. Output stays on the machine it is written on.
+stories: what -correlate is measured on. N configurations among those H2
+can see (a mean interval of 1 to 75 seconds, a jitter of at most 68%, a C2
+host that is not a private address), each the attacker of one story of a
+kind in KINDS, in turn, mixed into the same window of CLIENT's records as
+in beacons. A story is up to three stages: arrival, a CONNECT to a
+typosquatted name at ARRIVE minutes; contact, the beacon from CONTACT
+minutes to the end of the window; action at ACT minutes, either a burst of
+CONNECTs to SHARD_HOSTS hosts of REAL.jsonl or a POST of a generated secret
+to the C2 host (context bump: it assumes the body is inspected). The kinds
+with one stage are the controls: no trajectory should come of them.
+contact-shard has only signals that need corroboration (a beacon, a burst),
+so -correlate does not report it either: it is what that rule costs.
+
+The beacon and story records are labelled attack; the real records copied
+next to them stay benign. Output stays on the machine it is written on.
 """
-import heapq, ipaddress, json, random, sys
+import heapq, ipaddress, json, random, string, sys
+from urllib.parse import urlsplit
 from datetime import datetime, timedelta, timezone
 
 LOCAL = [ipaddress.ip_network(n) for n in ("172.16.0.0/12", "127.0.0.0/8", "::1/128")]
@@ -34,6 +49,20 @@ SPAN = timedelta(minutes=30)
 # A sleep of a few milliseconds makes millions of records in a window; past
 # this many the beacon stops, and the run says how many beacons it cut.
 CAP = 100_000
+
+# Names CheckTyposquat reports (edit distance or homoglyphs of a protected
+# name). Combosquats such as paypal-secure.com are not reported, so they
+# are not here.
+TYPOS = ["paypa1.com", "rnicrosoft.com", "gooogle.com", "githb.com", "arnazon.com", "facebok.com",
+         "linkedln.com", "outlok.com", "g00gle.com", "micorsoft.com", "appel.com", "cloudfare.com",
+         "protonmai1.com", "yah00.com"]
+# (kind, arrival, contact, action)
+KINDS = [("full", True, True, "shard"), ("contact-secret", False, True, "secret"),
+         ("arrival-secret", True, False, "secret"), ("contact-shard", False, True, "shard"),
+         ("beacon-only", False, True, None),
+         ("typo-only", True, False, None), ("shard-only", False, False, "shard")]
+ARRIVE, CONTACT, ACT = 5, 15, 60
+SHARD_HOSTS, SHARD_GAP = 60, 0.8
 
 
 def iso(t):
@@ -77,7 +106,7 @@ def real(out_path, logs):
     print(f"real: {len(recs)} records, {len({r[1] for r in recs})} clients")
 
 
-def configs(parquet, n, seed):
+def configs(parquet, n, seed, keep=None):
     import pyarrow.parquet as pq
     rows = pq.read_table(parquet, columns=["id", "config_json"]).to_pylist()
     picked = []
@@ -104,6 +133,8 @@ def configs(parquet, n, seed):
         port = s.get("SETTING_PORT") or (443 if proto == 8 else 80)
         picked.append({"id": str(r["id"]), "https": proto == 8, "host": parts[0], "uri": parts[1],
                        "port": port, "sleep": sleep / 1000.0, "jitter": min(max(jitter, 0), 99)})
+    if keep:
+        picked = [c for c in picked if keep(c)]
     picked.sort(key=lambda c: c["id"])
     return random.Random(seed).sample(picked, n)
 
@@ -177,6 +208,94 @@ def beacons(out_path, parquet, n, seed, real_path=None, client=None, minutes=30,
     print(f"beacons: {len(cfgs)} configs, {total} records, {cut} cut at {CAP} records")
 
 
+def in_h2_range(c):
+    try:
+        lan = ipaddress.ip_address(c["host"]).is_private
+    except ValueError:
+        lan = False
+    return not lan and c["jitter"] <= 68 and 1 <= c["sleep"] * (1 - c["jitter"] / 200) <= 75
+
+
+def host_of(r):
+    if r["method"] == "CONNECT":
+        return r["url"].rsplit(":", 1)[0]
+    return urlsplit(r["url"]).hostname or ""
+
+
+def secret_body(rng):
+    def pick(chars, n):
+        return "".join(rng.choice(chars) for _ in range(n))
+    alnum = string.ascii_letters + string.digits
+    kind = rng.choice(("aws", "github", "pem"))
+    if kind == "aws":
+        return ("aws_access_key_id=AKIA" + pick(string.ascii_uppercase + string.digits, 16)
+                + "\naws_secret_access_key=" + pick(alnum + "/+", 40))
+    if kind == "github":
+        return "token=ghp_" + pick(alnum, 36)
+    # Built from parts so the source holds no key header for scanners to flag.
+    return "-----BEGIN " + "RSA PRIVATE KEY-----\n" + pick(alnum, 64) + "\n-----END " + "RSA PRIVATE KEY-----"
+
+
+def stories(out_path, parquet, n, seed, real_path, client, minutes, start_at=None):
+    last = timedelta(minutes=ACT, seconds=(SHARD_HOSTS - 1) * SHARD_GAP)
+    if timedelta(minutes=minutes) <= last:
+        sys.exit(f"stories: a window of {minutes} minutes ends before the last stage, at {last}")
+    cfgs = configs(parquet, n, seed, keep=in_h2_range)
+    start, window = window_of(real_path, client, minutes, start_at)
+    span = timedelta(minutes=minutes)
+    hosts = sorted({h for h in (host_of(json.loads(ln)) for ln in open(real_path)) if h})
+    if len(hosts) < SHARD_HOSTS:
+        sys.exit(f"stories: {real_path} names {len(hosts)} hosts, a burst needs {SHARD_HOSTS}")
+    print(f"mixed into {client}: {len(window)} real records from {iso(start)}; {len(hosts)} hosts for bursts")
+    rng = random.Random(seed)
+    total = cut = 0
+    kinds = {}
+    with open(out_path, "w") as out:
+        for i, c in enumerate(cfgs):
+            kind, arrive, beacon, act = KINDS[i % len(KINDS)]
+            kinds[kind] = kinds.get(kind, 0) + 1
+            name = f"story/{kind}/{c['id']}"
+
+            def rec(stage, k, method, url, ctx, body="", headers=(), source="synthetic-story"):
+                return {"id": f"{name}/{stage}/{k}", "source": source, "label": "attack",
+                        "category": f"story:{kind}:{stage}", "context": ctx, "method": method, "url": url,
+                        "headers": list(headers), "body": body, "client": name}
+
+            staged = []
+            if arrive:
+                staged.append((start + timedelta(minutes=ARRIVE), 0, rec("arrival", 0, "CONNECT", f"{rng.choice(TYPOS)}:443", "nobump")))
+            if act == "shard":
+                at = start + timedelta(minutes=ACT)
+                for k, h in enumerate(rng.sample(hosts, SHARD_HOSTS)):
+                    staged.append((at + timedelta(seconds=k * SHARD_GAP), 0, rec("action", k, "CONNECT", f"{h}:443", "nobump")))
+            elif act == "secret":
+                staged.append((start + timedelta(minutes=ACT), 0, rec("action", 0, "POST", f"https://{c['host']}/upload", "bump",
+                                                                       secret_body(rng), [["Content-Type", "text/plain"]])))
+            sent = 0
+
+            def beacon_recs():
+                nonlocal sent
+                if not beacon:
+                    return
+                if c["https"]:
+                    method, url, ctx = "CONNECT", f"{c['host']}:{c['port']}", "nobump"
+                else:
+                    port = "" if c["port"] == 80 else f":{c['port']}"
+                    method, url, ctx = "GET", f"http://{c['host']}{port}{c['uri']}", "bump"  # slopless-disable-line VBC-034 -- a plain-HTTP beacon configuration is a plain-HTTP request as the proxy sees it
+                at = start + timedelta(minutes=CONTACT)
+                for k, t in enumerate(beacon_times(c, at, span - (at - start), rng)):
+                    sent = k + 1
+                    yield t, 0, rec("contact", k, method, url, ctx, source="fox-srt/cobaltstrike-beacon-corpus")
+
+            real_recs = ((t, 1, dict(r, id=f"{name}/{r['id']}", client=name)) for t, r in window)
+            for t, _, r in heapq.merge(sorted(staged, key=lambda x: x[0]), beacon_recs(), real_recs, key=lambda x: (x[0], x[1])):
+                r["ts"] = iso(t)
+                out.write(json.dumps(r, sort_keys=True) + "\n")
+                total += 1
+            cut += sent == CAP
+    print(f"stories: {len(cfgs)} ({', '.join(f'{k} {v}' for k, v in kinds.items())}), {total} records, {cut} beacons cut at {CAP} records")
+
+
 if __name__ == "__main__":
     mode = sys.argv[1]
     if mode == "real":
@@ -187,5 +306,8 @@ if __name__ == "__main__":
             beacons(a[0], a[1], int(a[2]), int(a[3]))
         else:
             beacons(a[0], a[1], int(a[2]), int(a[3]), a[4], a[5], int(a[6]), a[7] if len(a) > 7 else None)
+    elif mode == "stories":
+        a = sys.argv[2:]
+        stories(a[0], a[1], int(a[2]), int(a[3]), a[4], a[5], int(a[6]), a[7] if len(a) > 7 else None)
     else:
         sys.exit(__doc__)

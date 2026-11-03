@@ -182,6 +182,7 @@ type TimelineEntry struct {
 	Category string   `json:"category,omitempty"`
 	Host     string   `json:"host,omitempty"`
 	Signals  []string `json:"signals,omitempty"`
+	Observed []string `json:"observed,omitempty"`
 	Rules    []string `json:"rules,omitempty"`
 	Score    int      `json:"score"`
 	Blocked  bool     `json:"blocked"`
@@ -198,7 +199,7 @@ func (rep *Report) writeTimeline(rec *Record, host string, v Verdict, parseError
 		return
 	}
 	if err := rep.timeline.Encode(TimelineEntry{TS: rec.TS, Client: rec.Client, ID: rec.ID, Label: rec.Label,
-		Category: rec.Category, Host: host, Signals: v.Signals, Rules: v.Rules, Score: v.Score, Blocked: v.Blocked,
+		Category: rec.Category, Host: host, Signals: v.Signals, Observed: v.Observed, Rules: v.Rules, Score: v.Score, Blocked: v.Blocked,
 		ParseError: parseError}); err != nil {
 		fmt.Fprintln(os.Stderr, "wafeval: timeline:", err)
 		os.Exit(1)

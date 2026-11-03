@@ -34,6 +34,9 @@ type Verdict struct {
 	// each named once: an spm category (a rule set, DGA_DOMAIN, a
 	// heuristic), or CRS when one of its rules scored.
 	Signals []string
+	// Observed are the spm categories that matched in observe (Log only),
+	// so scored 0: what a live installation logs without acting on it.
+	Observed []string
 	// Explain is, with -explain, what each matched rule matched: "rule:
 	// matched text", truncated.
 	Explain []string
@@ -217,7 +220,7 @@ func (e *spmEngine) Inspect(r *http.Request, clientIP string, hello *inspect.Hel
 		return Verdict{LANSkipped: true}
 	}
 	rules, cats := inspect.Summarize(in.Matches)
-	v := Verdict{Blocked: in.Blocked(), Score: in.Score, Rules: rules, Categories: cats, Signals: signals(in)}
+	v := Verdict{Blocked: in.Blocked(), Score: in.Score, Rules: rules, Categories: cats, Signals: signals(in), Observed: observed(in)}
 	if explainOn && in.Eng.Blocked(in.Score) {
 		v.Explain = spmExplain(r, in.RawURL, in.BodyStr, rules)
 	}
@@ -231,6 +234,20 @@ func (e *spmEngine) Inspect(r *http.Request, clientIP string, hello *inspect.Hel
 		v.exceptions = exceptionsFor(in, policy.RequestHost(r.Host), r.URL.Path)
 	}
 	return v
+}
+
+// observed names, once each, the spm categories of matches that scored 0:
+// a category in observe, or a rule a policy observes.
+func observed(in *inspect.Inspection) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range in.Matches {
+		if m.Score == 0 && !seen[m.Category] {
+			seen[m.Category] = true
+			out = append(out, m.Category)
+		}
+	}
+	return out
 }
 
 // signals names, once each, the spm categories whose matches scored and CRS
