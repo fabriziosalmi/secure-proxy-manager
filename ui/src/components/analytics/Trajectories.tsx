@@ -95,7 +95,7 @@ export function Trajectories({ rows, loading, error, onRetry, gdpr }: {
         isRowSelected={(r) => r.id === open?.id}
         empty={{
           title: 'No client trajectory in the last 7 days',
-          description: 'A client appears here when its WAF signals over a day follow one another, such as a typosquatted name and then a secret sent out.',
+          description: 'A client appears here when its WAF signals of one day add up: one stage followed another, such as a typosquatted name and then a secret sent out, or three different kinds came together.',
         }}
       />
       {open && <TrajectoryDrawer trajectory={open} onClose={() => setOpen(null)} />}

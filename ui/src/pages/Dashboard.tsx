@@ -135,8 +135,8 @@ function trajectoryNotice(rows?: WafTrajectory[] | null): ReactNode[] {
       title={clients.length === 1 ? "A client's WAF signals read as a compromised host" : `${clients.length} clients' WAF signals read as a compromised host`}
       action={<Link to="/analytics#trajectories" className="underline-offset-2 hover:underline">Open trajectories</Link>}
     >
-      In the last 24 hours: <span className="font-mono">{named}</span>. Their signals followed one another, such as a
-      typosquatted name and then a secret sent out.
+      In the last 24 hours: <span className="font-mono">{named}</span>. Their WAF signals of one day add up: one stage
+      followed another, such as a typosquatted name and then a secret sent out, or three different kinds came together.
     </Notice>,
   ];
 }

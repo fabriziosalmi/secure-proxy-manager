@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 )
 
 // addSignals stores one request's signals; each call is its own event, as
@@ -201,8 +202,8 @@ func TestTrajectoryRaisesOneAlert(t *testing.T) {
 	t0 := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
 	addSignals(t, db, "192.0.2.12", t0, "TYPOSQUATTING")
 	addSignals(t, db, "192.0.2.12", t0.Add(time.Minute), "CLOUD_SECRETS")
-	reportTrajectories(sweep(t, db, t0.Add(2*time.Minute)))
-	reportTrajectories(sweep(t, db, t0.Add(3*time.Minute)))
+	reportTrajectories(db, sweep(t, db, t0.Add(2*time.Minute)))
+	reportTrajectories(db, sweep(t, db, t0.Add(3*time.Minute)))
 	evs := got()
 	if len(evs) != 1 {
 		t.Fatalf("%d alerts, want 1: %+v", len(evs), evs)
@@ -213,5 +214,30 @@ func TestTrajectoryRaisesOneAlert(t *testing.T) {
 		e["rule"] != "order" || e["trajectory_id"] == nil ||
 		!strings.Contains(msg, "192.0.2.12") || !strings.Contains(msg, "TYPOSQUATTING, CLOUD_SECRETS") {
 		t.Errorf("alert = %+v", e)
+	}
+}
+
+// GDPR mode switched on after the signals were stored: the alert, which
+// goes to the channels without passing ReceiveAlert, names the network.
+func TestTrajectoryAlertMaskedInGDPRMode(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	got := captureAlerts(t)
+	t0 := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
+	addSignals(t, db, "192.0.2.13", t0, "TYPOSQUATTING")
+	addSignals(t, db, "192.0.2.13", t0.Add(time.Minute), "CLOUD_SECRETS")
+	if _, err := db.Exec("INSERT OR REPLACE INTO settings (setting_name, setting_value) VALUES ('gdpr_mode', 'true')"); err != nil {
+		t.Fatal(err)
+	}
+	privacy.InvalidateDB(db)
+	t.Cleanup(func() { privacy.InvalidateDB(db) })
+	reportTrajectories(db, sweep(t, db, t0.Add(2*time.Minute)))
+	evs := got()
+	if len(evs) != 1 {
+		t.Fatalf("%d alerts, want 1", len(evs))
+	}
+	msg, _ := evs[0]["message"].(string)
+	if evs[0]["client_ip"] != "192.0.2.x" || !strings.Contains(msg, "192.0.2.x") || strings.Contains(msg, "192.0.2.13") {
+		t.Errorf("alert in GDPR mode = %+v", evs[0])
 	}
 }

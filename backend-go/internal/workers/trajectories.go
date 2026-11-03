@@ -12,6 +12,7 @@ import (
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/metrics"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/trajectory"
 )
 
@@ -35,22 +36,30 @@ func StartTrajectoryWatch(ctx context.Context, db *sql.DB) {
 			if err != nil {
 				log.Warn().Err(err).Msg("trajectory sweep failed")
 			}
-			reportTrajectories(found)
+			reportTrajectories(db, found)
 			metrics.WorkerHeartbeat("trajectory_watch")
 		}
 	})
 }
 
 // reportTrajectories logs and raises waf_trajectory for each trajectory a
-// sweep stored new: once each, since a row is found new only once.
-func reportTrajectories(found []database.WAFTrajectory) {
+// sweep stored new: once each, since a row is found new only once. The
+// alert goes to the queue directly, not through ReceiveAlert, so the client
+// is masked here when GDPR mode is on: it may have been switched on after
+// the signals were stored.
+func reportTrajectories(db *sql.DB, found []database.WAFTrajectory) {
+	gdpr := len(found) > 0 && privacy.Enabled(db)
 	for _, tr := range found {
-		log.Warn().Str("client", tr.ClientIP).Str("rule", tr.Rule).Strs("categories", tr.Categories).
+		client := tr.ClientIP
+		if gdpr && net.ParseIP(client) != nil {
+			client = privacy.MaskIP(client)
+		}
+		log.Warn().Str("client", client).Str("rule", tr.Rule).Strs("categories", tr.Categories).
 			Msg("a client's signals read as a trajectory")
 		raiseClientAlert("waf_trajectory", "warning",
 			fmt.Sprintf("Client %s: its WAF signals since %s read as a compromised host (%s): %s. See Analytics, Client trajectories.",
-				tr.ClientIP, tr.Start.UTC().Format("2006-01-02 15:04 UTC"), tr.Rule, strings.Join(tr.Categories, ", ")),
-			tr.ClientIP, map[string]any{"trajectory_id": tr.ID, "rule": tr.Rule, "phases": tr.Phases, "categories": tr.Categories})
+				client, tr.Start.UTC().Format("2006-01-02 15:04 UTC"), tr.Rule, strings.Join(tr.Categories, ", ")),
+			client, map[string]any{"trajectory_id": tr.ID, "rule": tr.Rule, "phases": tr.Phases, "categories": tr.Categories})
 	}
 }
 
