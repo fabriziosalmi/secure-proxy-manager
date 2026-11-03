@@ -10,7 +10,7 @@
  * the table on a wide screen and in a drawer below lg.
  */
 import { createPortal } from 'react-dom';
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, X } from 'lucide-react';
@@ -127,6 +127,22 @@ export function Logs() {
   const [live, setLive] = useState(true);
   const [wsStatus, setWsStatus] = useState<WsStatus>('disconnected');
   const [liveRows, setLiveRows] = useState<Row[]>([]);
+  // Live rows that arrived while the pointer or the keyboard focus was on
+  // the table. Each new row goes on top, so it would move the row under the
+  // pointer, and a click aimed at one request would open another: they wait
+  // here and go in when the pointer and the focus have left the table.
+  const heldRows = useRef<Row[]>([]);
+  const [heldCount, setHeldCount] = useState(0);
+  const holding = useRef({ pointer: false, focus: false });
+  const isHolding = () => holding.current.pointer || holding.current.focus;
+  const releaseHeld = useCallback(() => {
+    if (holding.current.pointer || holding.current.focus) return;
+    const held = heldRows.current;
+    if (held.length === 0) return;
+    heldRows.current = [];
+    setHeldCount(0);
+    setLiveRows((prev) => [...held, ...prev].slice(0, LIVE_MAX));
+  }, []);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [search, setSearch] = useState(filters.q);
@@ -192,6 +208,9 @@ export function Logs() {
     liveFor.current = { filters, showInternal };
     // eslint-disable-next-line react-hooks/set-state-in-effect -- a new view starts with no live rows
     setLiveRows([]);
+    // Nor held ones: they were matched against the view that is gone.
+    heldRows.current = [];
+    setHeldCount(0);
   }, [filters, showInternal]);
 
   const seq = useRef(0);
@@ -267,7 +286,13 @@ export function Logs() {
             if (!matchesFilters(row, view.filters, view.showInternal)) return;
             seq.current += 1;
             const key = row.id ? `id-${row.id}` : `live-${seq.current}`;
-            setLiveRows((prev) => [{ key, entry: row }, ...prev].slice(0, LIVE_MAX));
+            const add = (prev: Row[]) => [{ key, entry: row }, ...prev].slice(0, LIVE_MAX);
+            if (isHolding()) {
+              heldRows.current = add(heldRows.current);
+              setHeldCount(heldRows.current.length);
+            } else {
+              setLiveRows(add);
+            }
           } catch { /* skip */ }
         };
 
@@ -580,6 +605,16 @@ export function Logs() {
       </section>
 
       <Section title="Requests" description={timesNote()} flush>
+        <div
+          onPointerEnter={() => { holding.current.pointer = true; }}
+          onPointerLeave={() => { holding.current.pointer = false; releaseHeld(); }}
+          onFocus={() => { holding.current.focus = true; }}
+          onBlur={(e) => {
+            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+            holding.current.focus = false;
+            releaseHeld();
+          }}
+        >
         <DataTable<Row>
           caption="Access log requests"
           columns={columns}
@@ -591,6 +626,12 @@ export function Logs() {
           empty={empty}
           isRowSelected={isDesktop ? (r) => r.key === selectedKey : undefined}
         />
+        {/* Below the table: a line that appears above it would move the rows
+            it is there to keep still. */}
+        <p role="status" aria-label="Held live rows" className={cn('px-5 py-2 text-[13px] text-ink-muted', heldCount === 0 && 'sr-only')}>
+          {heldCount > 0 ? `${formatCount(heldCount)} new ${heldCount === 1 ? 'request' : 'requests'}, shown when you leave the table` : ''}
+        </p>
+        </div>
         {footer && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle px-5 py-3">
             <p className="text-[13px] text-ink-muted">{footer}</p>
