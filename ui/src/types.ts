@@ -374,6 +374,44 @@ export interface TopDestination {
 }
 
 /**
+ * One client's WAF signals over a day read as a trajectory (backend
+ * internal/trajectory, GET /api/waf/trajectories). rule "order": a later
+ * phase followed an earlier one; "breadth": three distinct signals.
+ * Times are RFC 3339; closed is when the rule first held.
+ */
+export interface WafTrajectory {
+  id: number;
+  client_ip: string;
+  rule: 'order' | 'breadth' | string;
+  start: string;
+  closed: string;
+  end: string;
+  phases: string[];
+  categories: string[];
+  hosts: string[];
+  signals: number;
+}
+
+/** One signal of a trajectory's window (GET /api/waf/trajectories/{id}). */
+export interface WafTrajectorySignal {
+  at: string;
+  category: string;
+  phase: string;
+  host: string;
+  rule: string;
+  /** Matched in Log only: the WAF logged it and did not act on it. */
+  observed: boolean;
+  blocked: boolean;
+  event_id: string;
+}
+
+export interface WafTrajectoryDetail {
+  trajectory: WafTrajectory;
+  signals: WafTrajectorySignal[];
+  truncated: boolean;
+}
+
+/**
  * What the WAF runs, from its GET /health (backend analytics_coverage.go).
  * engine "hybrid" adds the OWASP Core Rule Set; threshold is the score that
  * blocks a request; policy_mode is "block", or "observe" for Log only, and

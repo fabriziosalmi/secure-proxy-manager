@@ -232,6 +232,12 @@ export function AlertsSection({ form, unsaved }: { form: SectionForm; unsaved: n
           label="Proxy, blocklist and update events"
           help="An alert when the proxy stops answering for two checks a minute apart (error) and when it is back (info), when the blocklist refresh cannot download a feed (warning), and once for each new version (info)."
         />
+        <ToggleRow
+          form={form}
+          setting="notify_waf_trajectory"
+          label="Client trajectories"
+          help="An alert when a client's WAF signals over a day read as a compromised host: it reached a typosquatted name, called out like an implant, or sent secrets or data out (Analytics, Client trajectories). Once per client and day. Its level is warning."
+        />
         <ChoiceRow
           form={form}
           setting="notify_min_level"

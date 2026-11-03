@@ -674,6 +674,7 @@ test.describe('UI: Analytics', () => {
     await expect(page.getByRole('heading', { level: 2 })).toHaveText([
       'Blocked requests per day, by rule',
       'Protection coverage',
+      'Client trajectories',
       'WAF rule matches',
       'Cloud services in use',
       'Traffic by kind of service',

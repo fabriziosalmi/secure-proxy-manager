@@ -149,7 +149,7 @@ The allowlist destinations themselves are not setting values. Manual entries are
 
 ## Notification limits
 
-WAF blocks, failed sign-ins and the backend's own events (`notify_system`) reach the alert channels through one queue in the backend, which applies these settings to every event. They are read on each event, so a save applies to the next one. The test alert (`POST /api/notifications/test`) is outside them.
+WAF blocks, failed sign-ins, client trajectories and the backend's own events (`notify_system`) reach the alert channels through one queue in the backend, which applies these settings to every event. They are read on each event, so a save applies to the next one. The test alert (`POST /api/notifications/test`) is outside them.
 
 | Setting | Default | Values | Effect |
 |---|---|---|---|
@@ -158,6 +158,7 @@ WAF blocks, failed sign-ins and the backend's own events (`notify_system`) reach
 | `notify_waf_block` | `"true"` | `"true"`, `"false"` | `"false"`: WAF blocks send nothing. |
 | `notify_login_failure` | `"true"` | `"true"`, `"false"` | `"false"`: failed sign-ins send nothing. |
 | `notify_system` | `"true"` | `"true"`, `"false"` | `"false"`: the backend's own events send nothing: `proxy_down` (`error`, the proxy failed two checks a minute apart), `proxy_up` (`info`), `blocklist_refresh_failed` (`warning`, a refresh could not download a feed) and `update_available` (`info`, once per new version). |
+| `notify_waf_trajectory` | `"true"` | `"true"`, `"false"` | `"false"`: client trajectories send nothing. `waf_trajectory` (`warning`) is raised once for each client whose WAF signals over a day read as a compromised host (see [WAF coverage: client trajectories](../guide/waf-coverage.md#client-trajectories)); it carries `client_ip`, `trajectory_id`, `rule`, `phases` and `categories`, and is grouped by client like a WAF block. |
 | `notify_min_level` | `info` | `info`, `warning`, `error` | Events below this level send nothing. WAF blocks are `error`, failed sign-ins `warning`; an event with no level counts as `info`. |
 
 A value outside these is refused with `400`. A stored value that is not usable (an older install, a row edited by hand) is read as the default.
@@ -187,7 +188,7 @@ With `gdpr_mode` on, `client_ip` on `POST /api/internal/alert` is masked before 
 
 ## Privacy (`gdpr_mode`)
 
-`gdpr_mode` (`"true"` or `"false"`, default `"false"`, Settings > Logs and privacy > Mask client IPs) masks client IP addresses across all API responses (`GET /api/logs`, `GET /api/logs/export`, `/api/ws/logs`, `GET /api/clients/statistics`, `GET /api/clients/{ip}/details`, `GET /api/dashboard/summary`), the MCP server and outbound alert deliveries. IPv4 addresses are masked to `/24` (`192.168.1.x`) and IPv6 addresses to `/64` (`2001:db8:1:2::x`). The SQLite database (`proxy_logs`) and `GET /api/database/export` keep the full unmasked client addresses so network aggregation and classification remain exact when the setting is toggled.
+`gdpr_mode` (`"true"` or `"false"`, default `"false"`, Settings > Logs and privacy > Mask client IPs) masks client IP addresses across all API responses (`GET /api/logs`, `GET /api/logs/export`, `/api/ws/logs`, `GET /api/clients/statistics`, `GET /api/clients/{ip}/details`, `GET /api/dashboard/summary`), the MCP server and outbound alert deliveries. IPv4 addresses are masked to `/24` (`192.168.1.x`) and IPv6 addresses to `/64` (`2001:db8:1:2::x`). The SQLite database (`proxy_logs`) and `GET /api/database/export` keep the full unmasked client addresses so network aggregation and classification remain exact when the setting is toggled. While it is on, the WAF's client signals are not stored, so no new [client trajectory](../guide/waf-coverage.md#client-trajectories) is read: a masked address is a network, and a network's devices would read as one client. Trajectories stored before it was switched on are shown masked.
 
 ---
 

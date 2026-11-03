@@ -101,6 +101,28 @@ describe('Dashboard (Overview)', () => {
     vi.restoreAllMocks()
   })
 
+  // Clients whose WAF signals read as a compromised host come first, named,
+  // with the way to their signals; none, no notice.
+  it('names the clients with a trajectory in the last day, first, and links to them', async () => {
+    const row = { id: 1, client_ip: '192.0.2.7', rule: 'order', start: '2026-07-01T09:00:00Z', closed: '2026-07-01T09:15:00Z', end: '2026-07-01T09:15:00Z', phases: ['arrival', 'contact'], categories: ['TYPOSQUATTING', 'DGA_DOMAIN'], hosts: [], signals: 2 }
+    serve({ ...DEFAULT_ROUTES, 'waf/trajectories': [row, { ...row, id: 2 }] })
+    renderWithProviders(<Dashboard />)
+    const notice = await screen.findByText("A client's WAF signals read as a compromised host")
+    const box = notice.closest('[role="status"], [role="alert"], div') as HTMLElement
+    expect(box.textContent).toContain('192.0.2.7')
+    expect(screen.getByRole('link', { name: 'Open trajectories' })).toHaveAttribute('href', '/analytics#trajectories')
+    expect(vi.mocked(api.get).mock.calls.some(([u]) => u === 'waf/trajectories?days=1')).toBe(true)
+  })
+
+  it('shows no trajectory notice when there is none', async () => {
+    serve({ ...DEFAULT_ROUTES, 'waf/trajectories': [] })
+    renderWithProviders(<Dashboard />)
+    await waitFor(() => { expect(vi.mocked(api.get).mock.calls.some(([u]) => u === 'waf/trajectories?days=1')).toBe(true) })
+    await screen.findByRole('heading', { level: 1, name: 'Overview' })
+    await act(async () => { await Promise.resolve() })
+    expect(screen.queryByText(/read as a compromised host/)).toBeNull()
+  })
+
   it('is the Overview of the last 24 hours, with the time it was updated', async () => {
     renderWithProviders(<Dashboard />)
     expect(screen.getByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument()

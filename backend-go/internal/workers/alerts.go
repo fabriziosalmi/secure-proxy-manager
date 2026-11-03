@@ -40,6 +40,26 @@ func raiseAlert(eventType, level, message string) {
 	})
 }
 
+// raiseClientAlert hands the sink an event about one client: client_ip makes
+// it group with that client's other events of the type, as a WAF block does.
+func raiseClientAlert(eventType, level, message, clientIP string, details map[string]any) {
+	p := alertSink.Load()
+	if p == nil {
+		return
+	}
+	event := map[string]any{
+		"timestamp":  time.Now().UTC().Format(time.RFC3339),
+		"event_type": eventType,
+		"level":      level,
+		"message":    message,
+		"client_ip":  clientIP,
+	}
+	for k, v := range details {
+		event[k] = v
+	}
+	(*p)(event)
+}
+
 // proxyWatch is the proxy's state as the watch last decided it.
 type proxyWatch struct {
 	down     bool

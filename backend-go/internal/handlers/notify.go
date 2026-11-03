@@ -221,11 +221,12 @@ func (d delivery) sendTries(client *http.Client, tries int) (res deliveryResult)
 func loadNotificationSettings(db *sql.DB, encKey string) (map[string]string, bool) {
 	// The channel settings, then the limits (notify_limit.go).
 	rows, err := db.Query(
-		"SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+		"SELECT setting_name, setting_value FROM settings WHERE setting_name IN (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
 		"enable_notifications", "webhook_url", "webhook_bearer_token", "gotify_url", "gotify_token",
 		"teams_webhook_url", "telegram_bot_token", "telegram_chat_id",
 		"ntfy_url", "ntfy_topic",
-		settingGroupWindow, settingMaxPerHour, settingNotifyWAFBlock, settingNotifyLoginFailure, settingNotifySystem, settingMinLevel,
+		settingGroupWindow, settingMaxPerHour, settingNotifyWAFBlock, settingNotifyLoginFailure, settingNotifySystem,
+		settingNotifyTrajectory, settingMinLevel,
 	)
 	if err != nil {
 		return nil, false
