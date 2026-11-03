@@ -27,11 +27,33 @@ func TestStoreAndClearWAFSignals(t *testing.T) {
 	if _, err := db.Exec("INSERT INTO waf_events (event_id) VALUES ('e')"); err != nil {
 		t.Fatal(err)
 	}
+	if _, inserted, err := InsertWAFTrajectory(db, WAFTrajectory{ClientIP: "192.0.2.7", Rule: "order", Start: at, Closed: at, End: at}); err != nil || !inserted {
+		t.Fatalf("trajectory not inserted: %v", err)
+	}
 	ClearWAFRecords(db)
-	var events, signals int
+	var events, signals, trajectories int
 	_ = db.QueryRow("SELECT COUNT(*) FROM waf_events").Scan(&events)
 	_ = db.QueryRow("SELECT COUNT(*) FROM waf_signals").Scan(&signals)
-	if events != 0 || signals != 0 {
-		t.Errorf("after ClearWAFRecords: %d events, %d signals", events, signals)
+	_ = db.QueryRow("SELECT COUNT(*) FROM waf_trajectories").Scan(&trajectories)
+	if events != 0 || signals != 0 || trajectories != 0 {
+		t.Errorf("after ClearWAFRecords: %d events, %d signals, %d trajectories", events, signals, trajectories)
+	}
+}
+
+// A client has one trajectory per start instant: storing it again is not an
+// error and adds nothing.
+func TestInsertWAFTrajectoryOncePerStart(t *testing.T) {
+	db := openInit(t)
+	at := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
+	tr := WAFTrajectory{ClientIP: "192.0.2.7", Rule: "order", Start: at, Closed: at, End: at}
+	if _, inserted, err := InsertWAFTrajectory(db, tr); err != nil || !inserted {
+		t.Fatalf("first insert: inserted=%v err=%v", inserted, err)
+	}
+	if _, inserted, err := InsertWAFTrajectory(db, tr); err != nil || inserted {
+		t.Fatalf("second insert: inserted=%v err=%v, want ignored", inserted, err)
+	}
+	tr.ClientIP = "192.0.2.8"
+	if _, inserted, err := InsertWAFTrajectory(db, tr); err != nil || !inserted {
+		t.Fatalf("another client, same instant: inserted=%v err=%v", inserted, err)
 	}
 }

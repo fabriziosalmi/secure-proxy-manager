@@ -639,4 +639,21 @@ func TestRetentionPrunesWAFSignals(t *testing.T) {
 	if len(ids) != 1 || ids[0] != "recent" {
 		t.Errorf("waf_signals after retention: %v", ids)
 	}
+	// Trajectories go by their start.
+	for _, ms := range []int64{old, recent} {
+		at := time.UnixMilli(ms)
+		_, _, _ = database.InsertWAFTrajectory(db, database.WAFTrajectory{ClientIP: "192.0.2.1", Rule: "order", Start: at, Closed: at, End: at})
+	}
+	runRetention(db)
+	var starts []int64
+	rows, _ = db.Query("SELECT start_ms FROM waf_trajectories")
+	for rows.Next() {
+		var ms int64
+		_ = rows.Scan(&ms)
+		starts = append(starts, ms)
+	}
+	rows.Close()
+	if len(starts) != 1 || starts[0] != recent {
+		t.Errorf("waf_trajectories after retention: %v, want only %d", starts, recent)
+	}
 }

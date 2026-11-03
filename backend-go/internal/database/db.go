@@ -204,6 +204,22 @@ var schemaStatements = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_waf_signals_client_ts ON waf_signals(client_ip, ts_ms)`,
 	`CREATE INDEX IF NOT EXISTS idx_waf_signals_ts ON waf_signals(ts_ms)`,
+	// One client's signals read as a trajectory (WAFTrajectory); one per
+	// client and start instant.
+	`CREATE TABLE IF NOT EXISTS waf_trajectories (
+		id INTEGER PRIMARY KEY,
+		client_ip TEXT NOT NULL,
+		rule TEXT NOT NULL,
+		start_ms INTEGER NOT NULL,
+		closed_ms INTEGER NOT NULL,
+		end_ms INTEGER NOT NULL,
+		phases TEXT NOT NULL DEFAULT '[]',
+		categories TEXT NOT NULL DEFAULT '[]',
+		hosts TEXT NOT NULL DEFAULT '[]',
+		signals INTEGER NOT NULL DEFAULT 0,
+		UNIQUE (client_ip, start_ms)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_waf_trajectories_closed ON waf_trajectories(closed_ms)`,
 }
 
 // createSchema creates every table and index the schema declares. It is

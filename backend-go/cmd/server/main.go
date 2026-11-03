@@ -164,6 +164,8 @@ func run() error {
 		}
 	})
 	workers.StartProxyWatch(workerCtx, proxyURLHost(cfg.ProxyURL), func(ctx context.Context) bool { return handlers.ProbeProxy(ctx, cfg.ProxyURL) })
+	// Reads the WAF's client signals as trajectories (internal/trajectory).
+	workers.StartTrajectoryWatch(workerCtx, db)
 	workers.StartUpdateChecker(workerCtx, "")
 	workers.CheckSquidCVEs()
 
@@ -213,6 +215,7 @@ func run() error {
 	handlers.NewDNSDetectHandlers(db).Register(r, authMW)
 	handlers.NewEgressProviderHandlers(db, cfg).Register(r, authMW)
 	handlers.NewWAFPolicyHandlers(db, cfg).Register(r, authMW)
+	handlers.NewTrajectoryHandlers(db).Register(r, authMW)
 	handlers.RegisterAPIDocs(r, authMW)
 
 	// ── Prometheus metrics (internal network only; not proxied by nginx) ──────
