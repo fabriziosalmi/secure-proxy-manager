@@ -192,7 +192,8 @@ func trajectoryOf(client, rule string, win []signalEvent) Trajectory {
 }
 
 // readSignalEvents reads -timeline lines and keeps, per client, the signals
-// that belong to a phase. A line without a time or a client is skipped.
+// that belong to a phase, scored or observed: a category in Log only still
+// says what the client did. A line without a time or a client is skipped.
 func readSignalEvents(paths []string) (map[string][]signalEvent, int, error) {
 	byClient := map[string][]signalEvent{}
 	lines := 0
@@ -220,7 +221,7 @@ func readSignalEvents(paths []string) (map[string][]signalEvent, int, error) {
 				f.Close()
 				return nil, lines, fmt.Errorf("%s line %d: ts: %w", p, n, err)
 			}
-			for _, s := range e.Signals {
+			for _, s := range append(e.Signals, e.Observed...) {
 				if ph, ok := signalPhase[s]; ok {
 					byClient[e.Client] = append(byClient[e.Client], signalEvent{at: at, signal: s, phase: ph, host: e.Host, id: e.ID, attack: e.Label == "attack"})
 				}

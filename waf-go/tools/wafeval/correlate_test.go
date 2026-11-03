@@ -54,6 +54,8 @@ func TestCorrelateReadsTimelines(t *testing.T) {
 		`{"ts":"2026-11-01T10:10:00Z","client":"a","id":"3","label":"attack","host":"z.test","signals":["HEURISTIC_SHARDING"],"score":6,"blocked":false}`,
 		`{"ts":"2026-11-01T10:10:00Z","client":"b","id":"4","label":"benign","host":"z.test","signals":["HEURISTIC_SHARDING"],"score":6,"blocked":false}`,
 		`{"id":"5","label":"benign","signals":["HEURISTIC_SHARDING"],"score":6,"blocked":false}`,
+		`{"ts":"2026-11-01T11:00:00Z","client":"c","id":"6","label":"attack","host":"paypa1.com","signals":["TYPOSQUATTING"],"score":5,"blocked":false}`,
+		`{"ts":"2026-11-01T12:00:00Z","client":"c","id":"7","label":"attack","host":"c2.test","observed":["CLOUD_SECRETS"],"score":0,"blocked":false}`,
 	}
 	if err := os.WriteFile(p, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -62,14 +64,18 @@ func TestCorrelateReadsTimelines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// SQL_INJECTION has no phase; the line with no client is skipped.
-	if n != 5 || len(byClient["a"]) != 2 || len(byClient["b"]) != 1 || len(byClient) != 2 {
+	// SQL_INJECTION has no phase; the line with no client is skipped; an
+	// observed category counts as a signal.
+	if n != 7 || len(byClient["a"]) != 2 || len(byClient["b"]) != 1 || len(byClient["c"]) != 2 || len(byClient) != 3 {
 		t.Fatalf("read %d lines, clients %v", n, byClient)
 	}
 	ts := correlate(byClient)
-	if len(ts) != 1 || ts[0].Client != "a" || ts[0].Rule != "order" ||
+	if len(ts) != 2 || ts[0].Client != "a" || ts[0].Rule != "order" ||
 		strings.Join(ts[0].Phases, ",") != "contact,action" || strings.Join(ts[0].Hosts, ",") != "x.test,z.test" || ts[0].Attack != 2 {
 		t.Errorf("trajectories = %+v", ts)
+	}
+	if len(ts) == 2 && (ts[1].Client != "c" || strings.Join(ts[1].Signals, ",") != "TYPOSQUATTING,CLOUD_SECRETS") {
+		t.Errorf("observed secret: trajectory %+v, want c with TYPOSQUATTING then CLOUD_SECRETS", ts[1])
 	}
 
 	out := filepath.Join(dir, "out.json")
