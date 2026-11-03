@@ -114,6 +114,7 @@ var routeDocs = map[string]docMeta{
 	"GET /api/settings":                            {auth: true, desc: "Get all settings as [{setting_name, setting_value}]"},
 	"POST /api/settings":                           {auth: true, desc: "Bulk update settings ({key: value, ...}); 400 lists every refused value in errors {key: message}"},
 	"POST /api/notifications/test":                 {auth: true, desc: "Send a test alert to every configured channel; data.channels reports each delivery"},
+	"GET /api/notifications/status":                {auth: true, desc: "What became of the alerts on each channel since the backend started (since): last_attempt, last_delivered, last_error, last_error_at, last_failed, delivered, failed; test alerts count"},
 	"GET /api/waf/heuristics":                      {auth: true, desc: "The WAF heuristics the running WAF applies (data.available, data.running)"},
 	"GET /api/status":                              {auth: true, desc: "System status overview"},
 	"GET /api/traffic/statistics":                  {auth: true, desc: "Traffic statistics by time period"},

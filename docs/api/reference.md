@@ -167,6 +167,7 @@ Details: [Settings and Maintenance API](./settings.md).
 | `GET`    | `/api/security/rate-limits` | Failed-login counts per address |
 | `DELETE` | `/api/security/rate-limits/{ip}` | Clear one address's count |
 | `POST`   | `/api/notifications/test` | Send one test alert to every channel that has all its settings (webhook, Gotify, Telegram, ntfy, Teams), outside the [notification limits](./settings.md#notification-limits); `data.channels` reports each delivery |
+| `GET`    | `/api/notifications/status` | For each channel used since the backend started (`since`, kept in memory): `last_attempt`, `last_delivered`, `last_error` and `last_error_at` (why the last failed delivery failed, without the URL), `last_failed`, `delivered`, `failed`. Test alerts count |
 
 ## Internal
 

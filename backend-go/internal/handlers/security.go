@@ -197,6 +197,7 @@ func (h *SecurityHandlers) Register(r chi.Router, authMW func(http.Handler) http
 	r.With(authMW).Get("/api/security/score", h.ScoreGone)
 	r.With(authMW).Get("/api/security/cve", h.CVECheck)
 	r.With(authMW).Post("/api/notifications/test", h.TestNotification)
+	r.With(authMW).Get("/api/notifications/status", h.NotificationStatus)
 }
 
 func (h *SecurityHandlers) CVECheck(w http.ResponseWriter, r *http.Request) {

@@ -256,6 +256,27 @@ describe('Settings sections, part B', () => {
       expect(within(bar()).getByRole('status')).toHaveTextContent('Not saved: 2 fields need attention')
     })
 
+    // A channel could stop working while this page read "on": what each one
+    // answered since the backend started is listed, and the test refreshes it.
+    it('lists what each channel answered since the backend started', async () => {
+      const base = vi.mocked(api.get).getMockImplementation()!
+      vi.mocked(api.get).mockImplementation(((url: string) => url === 'notifications/status'
+        ? Promise.resolve({ data: { status: 'success', data: {
+          since: '2026-11-03T09:00:00Z',
+          channels: {
+            telegram: { last_attempt: '2026-11-03T10:00:00Z', last_delivered: '2026-11-03T10:00:00Z', last_error_at: null, last_failed: false, delivered: 3, failed: 0 },
+            webhook: { last_attempt: '2026-11-03T10:05:00Z', last_delivered: null, last_error: 'the server refused the credentials (HTTP 401)', last_error_at: '2026-11-03T10:05:00Z', last_failed: true, delivered: 0, failed: 2 },
+          },
+        } } })
+        : base(url)) as never)
+      renderAt('/settings/alerts')
+      const list = await screen.findByRole('list', { name: 'Deliveries by channel' })
+      const items = within(list).getAllByRole('listitem').map((li) => li.textContent)
+      expect(items[0]).toMatch(/^WorkingTelegramLast delivered .+\. 3 delivered, 0 failed\.$/)
+      expect(items[1]).toMatch(/^FailingWebhookLast attempt failed .+: the server refused the credentials \(HTTP 401\)\. 0 delivered, 2 failed\.$/)
+      expect(screen.getByRole('switch', { name: 'Proxy, blocklist and update events' })).toBeInTheDocument()
+    })
+
     it('tests the saved channels and shows what each one answered', async () => {
       vi.mocked(api.post).mockImplementation((url: string) => {
         if (url === 'notifications/test') {

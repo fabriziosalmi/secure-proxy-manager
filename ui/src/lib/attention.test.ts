@@ -142,4 +142,27 @@ describe('needsAttention', () => {
       expect(waf({ waf: { status: 'error', ...none } })).toEqual(['needs-attention:waf-error'])
     })
   })
+
+  describe('alert deliveries', () => {
+    const ok = { last_attempt: 't', last_delivered: 't', last_error_at: null, last_failed: false, delivered: 3, failed: 0 }
+    const bad = { last_attempt: 't', last_delivered: null, last_error: 'the server refused the credentials (HTTP 401)', last_error_at: 't', last_failed: true, delivered: 0, failed: 2 }
+    const on = { ...fresh, enable_notifications: 'true' }
+
+    it('says which channels are not arriving, with alerts on', () => {
+      const items = needsAttention(input({ values: on, alertDelivery: { since: 't', channels: { telegram: ok, webhook: bad } } }))
+      const item = items.find((a) => a.id === 'alerts-failing')
+      expect(item).toMatchObject({
+        posture: 'needs-attention',
+        title: 'Alerts to Webhook are not arriving',
+        body: "The last delivery failed: the server refused the credentials (HTTP 401). Check the channel's settings, then send a test alert.",
+        section: 'alerts',
+      })
+    })
+
+    it('says nothing with alerts off, every channel working, or nothing read', () => {
+      expect(ids(input({ values: fresh, alertDelivery: { since: 't', channels: { webhook: bad } } }))).not.toContain('needs-attention:alerts-failing')
+      expect(ids(input({ values: on, alertDelivery: { since: 't', channels: { telegram: ok } } }))).not.toContain('needs-attention:alerts-failing')
+      expect(ids(input({ values: on, alertDelivery: undefined }))).not.toContain('needs-attention:alerts-failing')
+    })
+  })
 })

@@ -1,14 +1,15 @@
 /**
  * The "Needs attention" list (lib/attention) with the queries it reads: the
- * stored settings, the status, what the WAF runs and, when default-deny is on
- * or the caller asks, the egress allowlist. Settings and the Overview page
+ * stored settings, the status, what the WAF runs, what the alert channels
+ * answered (with alerts on) and, when default-deny is on or the caller asks,
+ * the egress allowlist. Settings and the Overview page
  * read it from here, so the two cannot report the running configuration
  * differently.
  */
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { needsAttention, type AttentionItem } from '../lib/attention';
-import { settingsQuery, statusQuery, useEgressSummary, wafStatusQuery } from '../lib/queries';
+import { notificationStatusQuery, settingsQuery, statusQuery, useEgressSummary, wafStatusQuery } from '../lib/queries';
 import { parseSettings } from '../lib/secrets';
 
 interface Options {
@@ -30,6 +31,8 @@ export function useNeedsAttention({ egress = false, refetchInterval }: Options =
   const status = useQuery({ ...statusQuery, refetchInterval, staleTime: 10_000 });
   const waf = useQuery({ ...wafStatusQuery, refetchInterval, staleTime: 10_000 });
   const egressSummary = useEgressSummary({ enabled: egress || parsed.values.egress_default_deny === 'true' });
+  // Read only with alerts on: what a channel answered matters then.
+  const delivery = useQuery({ ...notificationStatusQuery, refetchInterval, staleTime: 10_000, enabled: parsed.values.enable_notifications === 'true' });
 
   // The stored values, not a draft: it describes what is running.
   const items = useMemo(() => needsAttention({
@@ -40,7 +43,8 @@ export function useNeedsAttention({ egress = false, refetchInterval }: Options =
     egressProviderEntries: egressSummary.providerEntries,
     proxyAuth: status.data?.proxy_auth,
     waf: waf.isError ? null : waf.data,
-  }), [parsed, status.isError, status.data, egressSummary.manual, egressSummary.providerEntries, waf.isError, waf.data]);
+    alertDelivery: delivery.data,
+  }), [parsed, status.isError, status.data, egressSummary.manual, egressSummary.providerEntries, waf.isError, waf.data, delivery.data]);
 
   return { items, settingsLoaded: settings.isSuccess, settingsPending: settings.isPending };
 }

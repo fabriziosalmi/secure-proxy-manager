@@ -6,7 +6,7 @@
  * not known yet produces no item, and one that could not be read says so;
  * nothing here is a guess.
  */
-import type { WafCoverage } from '../types';
+import type { NotificationStatus, WafCoverage } from '../types';
 import type { SecretState } from './secrets';
 import type { ProxyAuthStatus } from './queries';
 import type { SectionId } from './settingsMeta';
@@ -40,6 +40,8 @@ export interface AttentionInput {
   proxyAuth?: ProxyAuthStatus;
   /** GET /api/waf/status; undefined while loading, null when the request failed. */
   waf?: WafCoverage | null;
+  /** GET /api/notifications/status; undefined while loading or not read. */
+  alertDelivery?: NotificationStatus | null;
 }
 
 /** The sentence the dashboard uses for login on with nothing to check it against. */
@@ -68,6 +70,9 @@ const CHANNELS: Record<string, string[]> = {
   'Microsoft Teams': ['teams_webhook_url'],
   Webhook: ['webhook_url'],
 };
+
+/** The channel ids GET /api/notifications/status reports, in words. */
+const CHANNEL_NAMES: Record<string, string> = { webhook: 'Webhook', telegram: 'Telegram', gotify: 'Gotify', ntfy: 'ntfy', teams: 'Microsoft Teams' };
 
 export function configuredChannels(secrets: Record<string, SecretState>): string[] {
   return Object.entries(CHANNELS).filter(([, keys]) => keys.every((k) => secrets[k] === 'set')).map(([name]) => name);
@@ -109,7 +114,7 @@ function wafItems(waf: WafCoverage | null | undefined): AttentionItem[] {
   return items;
 }
 
-export function needsAttention({ values, secrets, proxyStatus, egressTotal, egressProviderEntries, proxyAuth, waf }: AttentionInput): AttentionItem[] {
+export function needsAttention({ values, secrets, proxyStatus, egressTotal, egressProviderEntries, proxyAuth, waf, alertDelivery }: AttentionInput): AttentionItem[] {
   const on = (k: string) => values[k] === 'true';
   const items: AttentionItem[] = [];
 
@@ -170,6 +175,23 @@ export function needsAttention({ values, secrets, proxyStatus, egressTotal, egre
       posture: 'needs-attention',
       title: unreadable.length === 1 ? 'An alert setting cannot be read' : `${unreadable.length} alert settings cannot be read`,
       body: 'They were stored with another encryption key. Enter them again.',
+      section: 'alerts',
+      action: 'Alerts',
+    });
+  }
+
+  // A channel whose last delivery failed: alerts on, but they do not arrive.
+  const failing = on('enable_notifications') && alertDelivery
+    ? Object.entries(alertDelivery.channels).filter(([, d]) => d.last_failed)
+    : [];
+  if (failing.length) {
+    const names = failing.map(([id]) => CHANNEL_NAMES[id] ?? id);
+    const [, first] = failing[0];
+    items.push({
+      id: 'alerts-failing',
+      posture: 'needs-attention',
+      title: `Alerts to ${names.join(' and ')} are not arriving`,
+      body: `The last delivery failed: ${first.last_error ?? 'no reason recorded'}. Check the channel's settings, then send a test alert.`,
       section: 'alerts',
       action: 'Alerts',
     });

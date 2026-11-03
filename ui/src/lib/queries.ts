@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, getData } from './api';
 import { formatCount } from './format';
-import type { EgressProvider, ProxyAuthStatus, SettingRow, WafCoverage } from '../types';
+import type { EgressProvider, NotificationStatus, ProxyAuthStatus, SettingRow, WafCoverage } from '../types';
 
 // Queries that more than one component reads. One definition per key, so two
 // components never cache different shapes under the same key.
@@ -131,6 +131,15 @@ export function useEgressSummary(options?: EgressSummaryOptions): EgressSummary 
 export const wafStatusQuery = {
   queryKey: ['waf', 'status'] as const,
   queryFn: () => getData<WafCoverage>('waf/status'),
+};
+
+/**
+ * GET /api/notifications/status: what became of the alerts on each channel
+ * since the backend started.
+ */
+export const notificationStatusQuery = {
+  queryKey: ['notifications', 'status'] as const,
+  queryFn: () => getData<NotificationStatus>('notifications/status'),
 };
 
 /**
