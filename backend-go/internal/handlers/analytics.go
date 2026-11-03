@@ -1801,9 +1801,11 @@ func (h *AnalyticsHandlers) TestRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Query recent destinations from logs
+	// The latest destinations in the window, newest first: without the order
+	// the cap kept whichever rows SQLite reached first, the oldest on the
+	// timestamp index, not the recent requests the page promises.
 	rows, err := h.db.Query(
-		string("SELECT destination FROM proxy_logs WHERE unix_timestamp >= ? AND destination IS NOT NULL AND destination != '' AND "+clientRows+" LIMIT 10000"), // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
+		string("SELECT destination FROM proxy_logs WHERE unix_timestamp >= ? AND destination IS NOT NULL AND destination != '' AND "+clientRows+" ORDER BY unix_timestamp DESC LIMIT 10000"), // slopless-disable-line VBC-004 -- SQL text is SQLText from constants and placeholders, values are bound (database/sqltext.go)
 		sinceUnix(time.Duration(req.Hours)*time.Hour),
 	)
 	if err != nil {
