@@ -39,8 +39,14 @@ var defaultDomainLists = []string{
 // StartBlacklistRefresh runs an auto-refresh loop based on DB settings. After
 // each export it signals dnsmasq to reload (Squid's blacklists are picked up
 // separately by the proxy-side watchdog; only the DNS sinkhole needs the nudge).
+//
+// A run is due an interval after the last one, read from its audit row, so a
+// restart does not put it off: the loop used to wait a whole interval after
+// every start, and a backend restarted more often than that never refreshed.
 func StartBlacklistRefresh(ctx context.Context, db *sql.DB, configDir string) {
 	Track(func() {
+		started := time.Now()
+		var ranAt time.Time // this process's last run, in case the audit row cannot be read
 		for {
 			// Re-read settings on each cycle so changes take effect.
 			enabled, interval := readRefreshSettings(db)
@@ -49,19 +55,23 @@ func StartBlacklistRefresh(ctx context.Context, db *sql.DB, configDir string) {
 				case <-ctx.Done():
 					log.Info().Msg("blacklist refresh worker stopping")
 					return
-				case <-time.After(30 * time.Minute):
+				case <-time.After(refreshRecheck):
 				}
 				continue
 			}
-			select {
-			case <-ctx.Done():
-				log.Info().Msg("blacklist refresh worker stopping")
-				return
-			case <-time.After(time.Duration(interval) * time.Hour):
+			if wait := refreshDue(time.Now(), started, lastBlocklistRefresh(db), ranAt, time.Duration(interval)*time.Hour); wait > 0 {
+				select {
+				case <-ctx.Done():
+					log.Info().Msg("blacklist refresh worker stopping")
+					return
+				case <-time.After(wait):
+				}
+				continue
 			}
 			log.Info().Msg("auto-refresh blacklists starting")
 			metrics.WorkerHeartbeat("blacklist_refresh")
 			runRefresh(db)
+			ranAt = time.Now()
 			if err := database.ExportBlacklistsToFiles(db, configDir); err != nil {
 				log.Warn().Err(err).Msg("blacklist export after auto-refresh failed")
 				continue
@@ -76,6 +86,59 @@ func StartBlacklistRefresh(ctx context.Context, db *sql.DB, configDir string) {
 		}
 	})
 	log.Info().Msg("blacklist auto-refresh worker started")
+}
+
+// refreshStartDelay: the first run after a start waits at least this long,
+// so the stack is up before the feeds download.
+const refreshStartDelay = 2 * time.Minute
+
+// refreshRecheck bounds one wait, so a change of the settings (switched on,
+// a new interval) applies within it.
+const refreshRecheck = 30 * time.Minute
+
+// refreshDue is how long a refresh worker waits before its next run, 0 to
+// run now: an interval after the last run, the later of the one in the audit
+// log (audited) and this process's (ranAt), and not before refreshStartDelay
+// after started; at most refreshRecheck at a time. Never run: due at once.
+func refreshDue(now, started, audited, ranAt time.Time, interval time.Duration) time.Duration {
+	last := audited
+	if ranAt.After(last) {
+		last = ranAt
+	}
+	due := started.Add(refreshStartDelay)
+	if !last.IsZero() {
+		if next := last.Add(interval); next.After(due) {
+			due = next
+		}
+	}
+	wait := due.Sub(now)
+	switch {
+	case wait <= 0:
+		return 0
+	case wait > refreshRecheck:
+		return refreshRecheck
+	}
+	return wait
+}
+
+// lastBlocklistRefresh is when the worker last finished a run of runRefresh.
+func lastBlocklistRefresh(db *sql.DB) time.Time {
+	return lastAudited(db, "refresh_blacklists", "refresh_blacklists")
+}
+
+// lastAudited is when a worker last wrote action or orAction to the audit
+// log as user "system", that is finished a run; zero when it never did or the
+// row cannot be read. An admin's refresh by hand does not count.
+func lastAudited(db *sql.DB, action, orAction string) time.Time {
+	var ts sql.NullString
+	if err := db.QueryRow("SELECT MAX(timestamp) FROM audit_log WHERE username = 'system' AND action IN (?, ?)", action, orAction).Scan(&ts); err != nil || !ts.Valid {
+		return time.Time{}
+	}
+	t, err := time.Parse("2006-01-02 15:04:05", ts.String)
+	if err != nil {
+		return time.Time{}
+	}
+	return t.UTC()
 }
 
 func readRefreshSettings(db *sql.DB) (bool, int) {

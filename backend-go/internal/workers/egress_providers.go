@@ -907,29 +907,44 @@ func ListEgressProviders(db *sql.DB) ([]EgressProviderState, error) {
 
 // StartEgressProviderRefresh refreshes enabled egress providers every
 // egress_provider_refresh_hours (default 24, minimum 6), even when
-// egress_default_deny is disabled so the lists stay ready.
+// egress_default_deny is disabled so the lists stay ready. A run is due that
+// long after the last one in the audit log, as for the blocklists
+// (refreshDue): a restart does not put it off.
 func StartEgressProviderRefresh(ctx context.Context, db *sql.DB, configDir string) {
 	egressWorkerMu.Lock()
 	egressWorkerCtx = ctx
 	egressWorkerMu.Unlock()
 	Track(func() {
 		log.Info().Msg("egress provider refresh worker started")
+		started := time.Now()
+		var ranAt time.Time
 		for {
 			metrics.WorkerHeartbeat("egress_provider_refresh")
 			hours := readEgressRefreshHours(db)
-			select {
-			case <-ctx.Done():
-				log.Info().Msg("egress provider refresh worker stopped")
-				return
-			case <-time.After(time.Duration(hours) * time.Hour):
+			audited := lastEgressRefresh(db)
+			if wait := refreshDue(time.Now(), started, audited, ranAt, time.Duration(hours)*time.Hour); wait > 0 {
+				select {
+				case <-ctx.Done():
+					log.Info().Msg("egress provider refresh worker stopped")
+					return
+				case <-time.After(wait):
+				}
+				continue
 			}
 			if ctx.Err() != nil {
 				return
 			}
 			RefreshEnabledEgressProviders(db, configDir, "system")
+			ranAt = time.Now()
 			metrics.WorkerHeartbeat("egress_provider_refresh")
 		}
 	})
+}
+
+// lastEgressRefresh is when the worker last refreshed a provider, whether
+// the download worked or not.
+func lastEgressRefresh(db *sql.DB) time.Time {
+	return lastAudited(db, "egress_provider_refreshed", "egress_provider_refresh_failed")
 }
 
 func readEgressRefreshHours(db *sql.DB) int {

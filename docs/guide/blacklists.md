@@ -267,8 +267,9 @@ confirmation in the UI (and `"confirm_shared": true` in
 
 Every fetch (initial enable, manual refresh, or background refresh every
 `egress_provider_refresh_hours` hours, default 24, from 6 to 168 under
-**Settings > Filtering**) validates the entire candidate list before touching
-the active entries:
+**Settings > Filtering**, counted from the last background refresh in the
+audit log rather than from a restart) validates the entire candidate list
+before touching the active entries:
 
 - **Prefix width limits:** any IPv4 prefix wider than `/8` or IPv6 prefix wider
   than `/16` rejects the whole update.
@@ -398,7 +399,10 @@ fetched instead of both.
 
 With **Settings > Filtering > Refresh imported lists** on, a background worker
 downloads the blocked lists again every `auto_refresh_hours` hours (default
-24, from 1 to 168):
+24, from 1 to 168). The hours count from the last run, which the audit log
+records, not from the last restart: a run that is due, or a list never
+refreshed, starts about two minutes after the backend does, and a change of
+the settings applies within half an hour. Each run downloads:
 
 - every list imported from a URL that still has entries, the Popular lists
   included (a cleared list is not filled again from a source the page no
