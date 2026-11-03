@@ -439,6 +439,23 @@ describe('Logs', () => {
     expect(bodyRows()).toHaveLength(5)
   })
 
+  // A keyboard user on a row is holding the table as a pointer is: a new
+  // row on top would move the row their next Enter opens. The rows wait,
+  // said below the table, and go in when the focus leaves it.
+  it('holds live rows while the keyboard focus is in the table', async () => {
+    renderWithProviders(<Logs />)
+    await waitFor(() => expect(bodyRows()).toHaveLength(4))
+    const sock = await openSocket()
+    const first = within(bodyRows()[0]).getAllByRole('button')[0]
+    act(() => { first.focus() })
+    send(sock, { id: 60, timestamp: '2026-04-04 12:06:00', source_ip: '192.168.1.10', method: 'GET', destination: 'held.example.com', status: 'TCP_MISS/200', bytes: 1, blocked: 0, reason: 'none', internal: false })
+    expect(screen.queryByText('held.example.com')).not.toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Held live rows' })).toHaveTextContent('1 new request, shown when you leave the table')
+    act(() => { first.blur() })
+    await waitFor(() => expect(destinations()[0]).toBe('held.example.com'))
+    expect(screen.getByRole('status', { name: 'Held live rows' })).toHaveTextContent('')
+  })
+
   // Live rows used to be prepended whatever the page showed: a filtered view
   // filled with rows it did not select.
   it('prepends a live row only when it matches the filters on screen', async () => {
