@@ -191,3 +191,27 @@ func TestSweepWaitsForAClear(t *testing.T) {
 		t.Fatal("the sweep did not run after the clear")
 	}
 }
+
+// Each trajectory a sweep stores new raises one waf_trajectory, about its
+// client, naming what it saw; a later sweep raises nothing for it.
+func TestTrajectoryRaisesOneAlert(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	got := captureAlerts(t)
+	t0 := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
+	addSignals(t, db, "192.0.2.12", t0, "TYPOSQUATTING")
+	addSignals(t, db, "192.0.2.12", t0.Add(time.Minute), "CLOUD_SECRETS")
+	reportTrajectories(sweep(t, db, t0.Add(2*time.Minute)))
+	reportTrajectories(sweep(t, db, t0.Add(3*time.Minute)))
+	evs := got()
+	if len(evs) != 1 {
+		t.Fatalf("%d alerts, want 1: %+v", len(evs), evs)
+	}
+	e := evs[0]
+	msg, _ := e["message"].(string)
+	if e["event_type"] != "waf_trajectory" || e["level"] != "warning" || e["client_ip"] != "192.0.2.12" ||
+		e["rule"] != "order" || e["trajectory_id"] == nil ||
+		!strings.Contains(msg, "192.0.2.12") || !strings.Contains(msg, "TYPOSQUATTING, CLOUD_SECRETS") {
+		t.Errorf("alert = %+v", e)
+	}
+}

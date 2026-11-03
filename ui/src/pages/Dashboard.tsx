@@ -23,7 +23,7 @@ import { getData } from '../lib/api';
 import { statusQuery } from '../lib/queries';
 import { proxyAddress } from '../lib/utils';
 import { formatClock, formatCount, formatShare, formatWhen, formatWhenExact } from '../lib/format';
-import type { CacheStats, CveInfo, DashboardSummary, TimelineEntry } from '../types';
+import type { CacheStats, CveInfo, DashboardSummary, TimelineEntry, WafTrajectory } from '../types';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Section } from '../components/ui/Section';
 import { StatCard } from '../components/ui/StatCard';
@@ -117,6 +117,28 @@ function notices(summary: { data?: DashboardSummary | null; isError: boolean }):
   }
   // The WAF refusing the backend is in "Needs attention" (lib/attention).
   return out;
+}
+
+/**
+ * Clients whose WAF signals of the last day read as a compromised host
+ * (GET /api/waf/trajectories?days=1), first on the page: it is the one
+ * notice about a client, not about the setup.
+ */
+function trajectoryNotice(rows?: WafTrajectory[] | null): ReactNode[] {
+  if (!rows || rows.length === 0) return [];
+  const clients = [...new Set(rows.map((r) => r.client_ip))];
+  const named = clients.slice(0, 3).join(', ') + (clients.length > 3 ? ` and ${clients.length - 3} more` : '');
+  return [
+    <Notice
+      key="trajectories"
+      tone="danger"
+      title={clients.length === 1 ? "A client's WAF signals read as a compromised host" : `${clients.length} clients' WAF signals read as a compromised host`}
+      action={<Link to="/analytics#trajectories" className="underline-offset-2 hover:underline">Open trajectories</Link>}
+    >
+      In the last 24 hours: <span className="font-mono">{named}</span>. Their signals followed one another, such as a
+      typosquatted name and then a secret sent out.
+    </Notice>,
+  ];
 }
 
 function ReasonBadge({ reason, label }: { reason?: string; label?: string }) {
@@ -223,6 +245,11 @@ export function Dashboard() {
     enabled: cveCount > 0,
     staleTime: 5 * 60_000,
   });
+  const trajectories = useQuery<WafTrajectory[] | null>({
+    queryKey: ['waf', 'trajectories', 1],
+    queryFn: () => getData<WafTrajectory[]>('waf/trajectories?days=1'),
+    refetchInterval,
+  });
   const cache = useQuery<CacheStats | null>({
     queryKey: ['cache'],
     queryFn: () => getData<CacheStats>('cache/statistics'),
@@ -264,7 +291,7 @@ export function Dashboard() {
 
   const updated = summary.dataUpdatedAt ? ` · updated ${formatClock(summary.dataUpdatedAt)}` : '';
   // What needs attention first: it says why the numbers below may mislead.
-  const pageNotices = [...attentionNotices(attention.items), ...notices(summary)];
+  const pageNotices = [...trajectoryNotice(trajectories.data), ...attentionNotices(attention.items), ...notices(summary)];
 
   return (
     <div className="flex flex-col gap-6">

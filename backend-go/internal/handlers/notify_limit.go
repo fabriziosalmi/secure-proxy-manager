@@ -50,7 +50,11 @@ const (
 	// raise (workers/alerts.go): the proxy down and back, a blocklist feed
 	// that failed to download, a new version.
 	settingNotifySystem = "notify_system"
-	settingMinLevel     = "notify_min_level"
+	// settingNotifyTrajectory switches off waf_trajectory: a client whose
+	// WAF signals over a day read as a compromised host (workers/
+	// trajectories.go).
+	settingNotifyTrajectory = "notify_waf_trajectory"
+	settingMinLevel         = "notify_min_level"
 
 	defaultGroupWindowMinutes = 10
 	defaultMaxPerHour         = 20
@@ -74,6 +78,7 @@ var eventTypeSwitch = map[string]string{
 	"proxy_up":                 settingNotifySystem,
 	"blocklist_refresh_failed": settingNotifySystem,
 	"update_available":         settingNotifySystem,
+	"waf_trajectory":           settingNotifyTrajectory,
 }
 
 // Bounds on what the limiter holds, so a flood from many addresses costs

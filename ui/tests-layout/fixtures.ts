@@ -241,6 +241,15 @@ export function answer(url: URL): Json | undefined {
       { host: 'static.chartbeat.com', requests: 640, blocked: 640 },
     ]);
     case 'analytics/file-extensions': return ok({ extensions: [], categories: [], examined: 0, limit: 10000 });
+    // Analytics asks for 7 days and gets one trajectory with a long IPv6
+    // client; the Overview asks for 1 day and gets none, so its notices are
+    // the ones its own checks expect.
+    case 'waf/trajectories': return ok(url.searchParams.get('days') === '7' ? [{
+      id: 1, client_ip: '2001:db8:85a3:1234:5678:8a2e:370:7334', rule: 'order',
+      start: '2026-10-28T09:00:00Z', closed: '2026-10-28T09:15:00Z', end: '2026-10-28T10:00:00Z',
+      phases: ['arrival', 'contact', 'action'], categories: ['TYPOSQUATTING', 'HEURISTIC_BEACONING', 'CLOUD_SECRETS'],
+      hosts: ['paypa1.com'], signals: 3,
+    }] : []);
     case 'clients/statistics': return { status: 'success', ...clients };
     case 'logs/stats': return ok({ total_count: 6539, blocked_count: 145, blocked_by_reason: [r('domain_blacklist', 'Domain blacklist (proxy)', 100)] });
     case 'logs': return list(logRows, { total: 6539, limit: 100, offset: 0, internal: 120 });

@@ -10,7 +10,9 @@
  *   the only WAF call: the dashboard summary is not downloaded for it;
  * - analytics/shadow-it, analytics/user-agents, analytics/file-extensions:
  *   services, kinds of service and file types of the last 7 days;
- * - analytics/top-destinations: the hosts asked for most in the last 7 days.
+ * - analytics/top-destinations: the hosts asked for most in the last 7 days;
+ * - waf/trajectories?days=7: clients whose WAF signals over a day read as a
+ *   compromised host (settings, for GDPR mode, says why none are read).
  *
  * "Client traffic" is what the Overview counts: no DNS sinkhole rows and
  * nothing from the stack's own addresses (#422).
@@ -22,11 +24,13 @@
  * summed up. The
  * top-domains word cloud and the regex playground are gone from this page.
  */
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getData } from '../lib/api';
-import type { BlockedByDay, Coverage, FileExtData, ServiceTypeData, ShadowItService, TopDestination } from '../types';
+import type { BlockedByDay, Coverage, FileExtData, ServiceTypeData, ShadowItService, TopDestination, WafTrajectory } from '../types';
+import { settingsQuery } from '../lib/queries';
+import { Trajectories } from '../components/analytics/Trajectories';
 import { readWafStats, type WafReading } from '../lib/wafStats';
 import { PageHeader } from '../components/ui/PageHeader';
 import { BlockedPerDay } from '../components/analytics/BlockedPerDay';
@@ -90,6 +94,18 @@ export function Analytics() {
     queryFn: () => getData<FileExtData>('analytics/file-extensions'),
     refetchInterval,
   });
+  const trajectories = useQuery<WafTrajectory[] | null>({
+    queryKey: ['waf', 'trajectories', 7],
+    queryFn: () => getData<WafTrajectory[]>('waf/trajectories?days=7'),
+    refetchInterval,
+  });
+  const settings = useQuery(settingsQuery);
+  // The Overview links to #trajectories; the router does not scroll to it.
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash === '#trajectories' && trajectories.isSuccess) document.getElementById('trajectories')?.scrollIntoView();
+  }, [hash, trajectories.isSuccess]);
+  const gdpr = settings.data?.find((s) => s.setting_name === 'gdpr_mode')?.setting_value === 'true';
   const top = useQuery<TopDestination[] | null>({
     queryKey: ['analytics', 'top-destinations'],
     queryFn: () => getData<TopDestination[]>('analytics/top-destinations'),
@@ -113,6 +129,16 @@ export function Analytics() {
       <div className="flex flex-wrap gap-4">
         <BlockedPerDay data={days.data} loading={days.isPending} error={days.isError} />
         <ProtectionCoverage data={coverage.data} loading={coverage.isPending} error={coverage.isError} />
+      </div>
+
+      <div id="trajectories" className="scroll-mt-4">
+        <Trajectories
+          rows={trajectories.data}
+          loading={trajectories.isPending}
+          error={trajectories.isError}
+          onRetry={() => { void trajectories.refetch(); }}
+          gdpr={gdpr}
+        />
       </div>
 
       {/* Two by two, or four in a row on the widest screens: an auto-fit grid
