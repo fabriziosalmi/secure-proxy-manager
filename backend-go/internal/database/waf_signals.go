@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -47,9 +48,22 @@ func StoreWAFSignals(db *sql.DB, sigs []WAFSignal) error {
 	return tx.Commit()
 }
 
+// wafRecordsMu orders the clean-up of what the WAF reported against the
+// correlator's sweep: a sweep that read a client's signals before a clear
+// must not store a trajectory from them after it.
+var wafRecordsMu sync.Mutex
+
+// LockWAFRecords holds ClearWAFRecords and PruneWAFRecords off until the
+// returned function is called.
+func LockWAFRecords() (unlock func()) {
+	wafRecordsMu.Lock()
+	return wafRecordsMu.Unlock
+}
+
 // ClearWAFRecords deletes what the WAF reported, blocks and signals, and
 // the trajectories read from them, with the access log they go with.
 func ClearWAFRecords(db *sql.DB) {
+	defer LockWAFRecords()()
 	db.Exec("DELETE FROM waf_events")       //nolint:errcheck
 	db.Exec("DELETE FROM waf_signals")      //nolint:errcheck
 	db.Exec("DELETE FROM waf_trajectories") //nolint:errcheck
@@ -58,6 +72,7 @@ func ClearWAFRecords(db *sql.DB) {
 // PruneWAFRecords deletes what the WAF reported more than days ago, and the
 // trajectories that started then.
 func PruneWAFRecords(db *sql.DB, days int) error {
+	defer LockWAFRecords()()
 	if _, err := db.Exec("DELETE FROM waf_events WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(days)+" days"); err != nil { // slopless-disable-line VBC-004 -- the concatenation builds a bound argument, not the statement
 		return err
 	}

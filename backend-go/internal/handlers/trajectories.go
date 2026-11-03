@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/privacy"
 	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/trajectory"
 )
 
@@ -47,7 +49,21 @@ func (h *TrajectoryHandlers) List(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "trajectories not read")
 		return
 	}
+	if privacy.Enabled(h.db) {
+		for i := range ts {
+			ts[i].ClientIP = maskStoredIP(ts[i].ClientIP)
+		}
+	}
 	writeOK(w, ts)
+}
+
+// maskStoredIP masks an address stored in full, for GDPR mode switched on
+// after it was stored; a value that is not an address is left as it is.
+func maskStoredIP(ip string) string {
+	if net.ParseIP(ip) == nil {
+		return ip
+	}
+	return privacy.MaskIP(ip)
 }
 
 // trajectorySignal is one signal of a trajectory's window, as the detail
@@ -85,6 +101,10 @@ func (h *TrajectoryHandlers) Get(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "signals not read")
 		return
+	}
+	// Masked after the lookup, which needs the stored address.
+	if privacy.Enabled(h.db) {
+		t.ClientIP = maskStoredIP(t.ClientIP)
 	}
 	truncated := len(rows) > trajectorySignalsMax
 	if truncated {

@@ -103,3 +103,41 @@ func TestTrajectoryAPI(t *testing.T) {
 }
 
 func jsonID(id int64) string { b, _ := json.Marshal(id); return string(b) }
+
+// GDPR mode switched on after trajectories were stored: the list and the
+// detail show the client masked; the detail still finds its signals.
+func TestTrajectoryAPIMasksInGDPRMode(t *testing.T) {
+	db, _, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	start := time.Now().Add(-time.Hour).Truncate(time.Millisecond).UTC()
+	if err := database.StoreWAFSignals(db, []database.WAFSignal{
+		{At: start, ClientIP: "192.0.2.7", Host: "paypa1.com", Category: "TYPOSQUATTING", EventID: "e1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	id, _, err := database.InsertWAFTrajectory(db, database.WAFTrajectory{ClientIP: "192.0.2.7", Rule: "order", Start: start, Closed: start, End: start})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setGDPRMode(t, db, true)
+	h := trajectoryRouter(NewTrajectoryHandlers(db))
+	var list struct {
+		Data []database.WAFTrajectory `json:"data"`
+	}
+	if code := getTrajectoryJSON(t, h, "/api/waf/trajectories", &list); code != http.StatusOK || len(list.Data) != 1 || list.Data[0].ClientIP != "192.0.2.x" {
+		t.Errorf("list in GDPR mode: %d %+v", code, list.Data)
+	}
+	var one struct {
+		Data struct {
+			Trajectory database.WAFTrajectory `json:"trajectory"`
+			Signals    []trajectorySignal     `json:"signals"`
+		} `json:"data"`
+	}
+	if code := getTrajectoryJSON(t, h, "/api/waf/trajectories/"+jsonID(id), &one); code != http.StatusOK ||
+		one.Data.Trajectory.ClientIP != "192.0.2.x" || len(one.Data.Signals) != 1 {
+		t.Errorf("detail in GDPR mode: %d %+v", code, one.Data)
+	}
+	if maskStoredIP("192.0.2.x") != "192.0.2.x" {
+		t.Error("an address stored masked was masked again")
+	}
+}

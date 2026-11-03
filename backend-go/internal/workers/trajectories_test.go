@@ -137,3 +137,57 @@ func TestSweepTrajectoriesOneRowPerDay(t *testing.T) {
 		t.Errorf("found %+v, want one trajectory from -40h holding 4 signals", found)
 	}
 }
+
+// A client stored masked (from before GDPR mode dropped signals) is a
+// network: its signals, which may be several clients', make no trajectory.
+func TestSweepTrajectoriesSkipsMaskedClients(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	t0 := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
+	addSignals(t, db, "192.0.2.x", t0, "TYPOSQUATTING")
+	addSignals(t, db, "192.0.2.x", t0.Add(time.Minute), "CLOUD_SECRETS")
+	if found := sweep(t, db, t0.Add(2*time.Minute)); len(found) != 0 {
+		t.Errorf("a masked network made %+v", found)
+	}
+}
+
+// A clear waits for a sweep in progress, so a sweep that read signals
+// before the clear cannot store a trajectory after it.
+func TestClearWaitsForTheSweep(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	unlock := database.LockWAFRecords() // a sweep in progress
+	done := make(chan struct{})
+	go func() { database.ClearWAFRecords(db); close(done) }()
+	select {
+	case <-done:
+		t.Fatal("the clear ran while a sweep held the WAF records")
+	case <-time.After(100 * time.Millisecond):
+	}
+	unlock()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the clear did not run after the sweep")
+	}
+}
+
+// The sweep takes the same lock: while a clear holds it, a sweep waits.
+func TestSweepWaitsForAClear(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	unlock := database.LockWAFRecords() // a clear in progress
+	done := make(chan struct{})
+	go func() { _, _ = SweepTrajectories(db, time.Now()); close(done) }()
+	select {
+	case <-done:
+		t.Fatal("the sweep ran while a clear held the WAF records")
+	case <-time.After(100 * time.Millisecond):
+	}
+	unlock()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the sweep did not run after the clear")
+	}
+}

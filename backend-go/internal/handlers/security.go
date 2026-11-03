@@ -276,7 +276,9 @@ const (
 
 // ReceiveSignals stores the WAF's signals for the trajectory correlator.
 // Unlike ReceiveAlert it notifies nobody: a signal on its own is not an
-// alert. The client address is masked in GDPR mode, as an alert's is.
+// alert. In GDPR mode it stores nothing: a trajectory is one client's, and
+// a masked address (a.b.c.x) is a network, so storing signals under it
+// would only read a network's mixed traffic as one client.
 func (h *SecurityHandlers) ReceiveSignals(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, signalReportMaxBytes)
 	var rep wafSignalReport
@@ -297,9 +299,8 @@ func (h *SecurityHandlers) ReceiveSignals(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if privacy.Enabled(h.db) {
-		for i := range sigs {
-			sigs[i].ClientIP = privacy.MaskIP(sigs[i].ClientIP)
-		}
+		writeJSON(w, http.StatusOK, map[string]any{"status": "success", "stored": 0, "reason": "gdpr_mode"})
+		return
 	}
 	if err := database.StoreWAFSignals(h.db, sigs); err != nil {
 		log.Warn().Err(err).Str("event_id", rep.EventID).Msg("WAF signals not stored")

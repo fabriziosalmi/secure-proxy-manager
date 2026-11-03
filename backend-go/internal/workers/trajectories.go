@@ -3,6 +3,7 @@ package workers
 import (
 	"context"
 	"database/sql"
+	"net"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -50,13 +51,20 @@ func StartTrajectoryWatch(ctx context.Context, db *sql.DB) {
 // looked for only among signals after it. Signals are read from two windows
 // back, so a trajectory that closes now is found whatever its start, and a
 // row already stored is never found again: its start is the same instant.
+//
+// A client stored masked (a.b.c.x, from before signals were dropped in GDPR
+// mode) is a whole network, not a client, and is not read.
 func SweepTrajectories(db *sql.DB, now time.Time) ([]database.WAFTrajectory, error) {
+	defer database.LockWAFRecords()()
 	clients, err := database.SignalClientsSince(db, now.Add(-trajectory.Window))
 	if err != nil {
 		return nil, err
 	}
 	var found []database.WAFTrajectory
 	for _, c := range clients {
+		if net.ParseIP(c) == nil {
+			continue
+		}
 		last, hasLast, err := database.LastWAFTrajectory(db, c)
 		if err != nil {
 			return found, err

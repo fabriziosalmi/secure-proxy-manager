@@ -46,7 +46,8 @@ func signalRows(t *testing.T, db *sql.DB) []signalRow {
 }
 
 // A report becomes one row per signal and notifies nobody: a signal is not
-// an alert. In GDPR mode the client is stored masked, as an alert's is.
+// an alert. In GDPR mode nothing is stored: a masked address is a network,
+// and a network's mixed traffic would read as one client.
 func TestReceiveSignalsStoresRowsAndNotifiesNobody(t *testing.T) {
 	for _, gdpr := range []bool{false, true} {
 		t.Run(fmt.Sprintf("gdpr=%v", gdpr), func(t *testing.T) {
@@ -66,13 +67,15 @@ func TestReceiveSignalsStoresRowsAndNotifiesNobody(t *testing.T) {
 			if len(notify) != 0 {
 				t.Errorf("a signal report queued %d notifications", len(notify))
 			}
-			client := "192.0.2.7"
-			if gdpr {
-				client = "192.0.2.x"
-			}
 			want := []signalRow{
-				{1793700000123, client, "paypa1.com", "TYPOSQUATTING", "ML-TYPO-001", "e-1", false, false},
-				{1793700000123, client, "paypa1.com", "CLOUD_SECRETS", "SEC-AWS-1", "e-1", true, false},
+				{1793700000123, "192.0.2.7", "paypa1.com", "TYPOSQUATTING", "ML-TYPO-001", "e-1", false, false},
+				{1793700000123, "192.0.2.7", "paypa1.com", "CLOUD_SECRETS", "SEC-AWS-1", "e-1", true, false},
+			}
+			if gdpr {
+				want = nil
+				if !strings.Contains(w.Body.String(), `"reason":"gdpr_mode"`) {
+					t.Errorf("GDPR mode answer: %s", w.Body.String())
+				}
 			}
 			got := signalRows(t, db)
 			if len(got) != len(want) {
