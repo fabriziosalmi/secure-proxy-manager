@@ -130,6 +130,13 @@ for _ in $(seq 1 60); do
 done
 sleep 10 # the log tailer reads the last lines
 
+# A configured install has its admin password changed; a fresh one is told
+# to, at the top of the Overview, which the screenshot is not about.
+NEW_PASS="Demo-$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')!7"
+api POST change-password "{\"current_password\":\"${PASS}\",\"new_password\":\"${NEW_PASS}\"}"
+PASS="$NEW_PASS"
+AUTH="${USER_NAME}:${PASS}"
+
 echo "── capture ──"
 docker build -q -t "$PW_IMAGE" tests/e2e >/dev/null
 NET="$(docker inspect "$(docker compose ps -q web)" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | tr ' ' '\n' | grep '_frontend$')"

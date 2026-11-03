@@ -74,15 +74,21 @@ on both; `waf` is on `proxy-internal` only; `web` is on `frontend` only.
 - Probes: `/livez` and `/health` (process up), `/readyz` and `/api/ready`
   (database answers within 2 seconds, otherwise `503`). The container
   healthcheck runs `/server -healthcheck`, which calls `/readyz`.
-- Alerts: WAF blocks (the WAF posts them to `/api/internal/alert`) and failed
-  sign-ins go through one queue to the configured channels (webhook, Telegram,
-  Gotify, ntfy, Teams). The queue groups alerts of one type from one address
-  for `notify_group_window_minutes` (the first is sent, the rest are counted
-  into one digest) and lets each channel send at most `notify_max_per_hour`
-  in any hour, then one notice with the count it held
+- Alerts: WAF blocks (the WAF posts them to `/api/internal/alert`), failed
+  sign-ins and the backend's own events go through one queue to the
+  configured channels (webhook, Telegram, Gotify, ntfy, Teams). The own events
+  come from its workers, once per change of state: `proxy_down` and
+  `proxy_up` (a TCP check of the proxy every minute, two failures in a row
+  for down), `blocklist_refresh_failed` and `update_available`; `notify_system`
+  switches them off. The queue groups WAF blocks and sign-ins of one type from
+  one address for `notify_group_window_minutes` (the first is sent, the rest
+  are counted into one digest), never the own events, and lets each channel
+  send at most `notify_max_per_hour` in any hour, then one notice with the
+  count it held
   ([Settings API: notification limits](../api/settings.md#notification-limits)).
-  The counts are in memory: a graceful shutdown sends what is pending, a
-  crash loses it.
+  What each channel answered since the backend started is kept in memory and
+  served at `GET /api/notifications/status`. The counts are in memory too: a
+  graceful shutdown sends what is pending, a crash loses it.
 - Prometheus metrics at `/metrics` on port 5000, not proxied by nginx.
 
 ### `proxy`: Squid
