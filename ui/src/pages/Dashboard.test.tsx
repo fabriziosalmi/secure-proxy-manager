@@ -129,6 +129,31 @@ describe('Dashboard (Overview)', () => {
     expect(within(card('Active clients')).getByRole('link', { name: 'Active clients' })).toHaveAttribute('href', '/clients')
   })
 
+  // The count said there were advisories, not which: the list is under the
+  // proxy's line, read only when there are some.
+  it('lists the advisories behind the proxy CVE count, and asks for none when there are none', async () => {
+    serve({
+      ...DEFAULT_ROUTES,
+      status: { proxy_status: 'running', proxy_port: '3128', version: '3.14.3', squid_version: '6.13', squid_cves: 2, cves_checked: true },
+      'security/cve': { version: '6.13', cves_checked: true, cves: [
+        { id: 'CVE-2024-45802', severity: 'high', summary: 'DoS via ESI processing (Squid <6.10)' },
+        { id: 'CVE-2026-33526', severity: 'medium', summary: 'DoS via ICP protocol handling (only if ICP enabled)' },
+      ] },
+    })
+    renderWithProviders(<Dashboard />)
+    expect(await screen.findByText('Which 2 advisories')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'CVE-2024-45802' })).toHaveAttribute('href', 'https://nvd.nist.gov/vuln/detail/CVE-2024-45802')
+    expect(screen.getByText(/only if ICP enabled/)).toBeInTheDocument()
+  })
+
+  it('does not ask for the advisories when the proxy has none', async () => {
+    renderWithProviders(<Dashboard />)
+    await waitFor(() => { expect(card('Client requests')).toHaveTextContent('1,180') })
+    await waitFor(() => { expect(vi.mocked(api.get).mock.calls.map((c) => c[0])).toContain('status') })
+    expect(vi.mocked(api.get).mock.calls.map((c) => c[0])).not.toContain('security/cve')
+    expect(screen.queryByText(/advisor/)).toBeNull()
+  })
+
   it('counts one rule in the singular', async () => {
     serve({ ...DEFAULT_ROUTES, 'dashboard/summary': { ...summaryData, ip_blacklist_count: 1, domain_blacklist_count: 1 } })
     renderWithProviders(<Dashboard />)

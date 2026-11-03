@@ -23,7 +23,7 @@ import { getData } from '../lib/api';
 import { statusQuery } from '../lib/queries';
 import { proxyAddress } from '../lib/utils';
 import { formatClock, formatCount, formatShare, formatWhen, formatWhenExact } from '../lib/format';
-import type { CacheStats, DashboardSummary, TimelineEntry } from '../types';
+import type { CacheStats, CveInfo, DashboardSummary, TimelineEntry } from '../types';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Section } from '../components/ui/Section';
 import { StatCard } from '../components/ui/StatCard';
@@ -213,6 +213,13 @@ export function Dashboard() {
   });
   const status = useQuery({ ...statusQuery, refetchInterval, staleTime: 10_000 });
   const attention = useNeedsAttention({ refetchInterval });
+  // The advisories behind the proxy's CVE count, read only when there are some.
+  const cve = useQuery<CveInfo | null>({
+    queryKey: ['security', 'cve'],
+    queryFn: () => getData<CveInfo>('security/cve'),
+    enabled: (status.data?.squid_cves ?? 0) > 0,
+    staleTime: 5 * 60_000,
+  });
   const cache = useQuery<CacheStats | null>({
     queryKey: ['cache'],
     queryFn: () => getData<CacheStats>('cache/statistics'),
@@ -306,7 +313,7 @@ export function Dashboard() {
         <LatestBlocks rows={s?.recent_blocks} loading={loading} error={summary.isError} now={summary.dataUpdatedAt} />
       </div>
 
-      <ServicesPanel rows={serviceRows(status, summary, cache)} />
+      <ServicesPanel rows={serviceRows(status, summary, cache)} proxyCves={cve.data?.cves} />
     </div>
   );
 }
