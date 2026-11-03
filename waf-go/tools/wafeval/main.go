@@ -73,10 +73,18 @@ func main() {
 	emitFile := flag.String("emit-exceptions", "", "write a policy file with one exception per rule that scored on a false positive")
 	emitSources := flag.String("emit-sources", "", "comma-separated sources whose false positives -emit-exceptions takes (all if empty)")
 	timeline := flag.String("timeline", "", "write one JSON line per record that has a client or a time: when, who, its signals and verdict")
+	correlateMode := flag.Bool("correlate", false, "read -timeline files instead of corpora and write the trajectories each client's signals make")
 	flag.Parse()
 	if *out == "" || flag.NArg() == 0 {
-		fmt.Fprintln(os.Stderr, "usage: wafeval -out report.json [-md report.md] corpus.jsonl...")
+		fmt.Fprintln(os.Stderr, "usage: wafeval -out report.json [-md report.md] corpus.jsonl...\n       wafeval -correlate -out trajectories.json timeline.jsonl...")
 		os.Exit(2)
+	}
+	if *correlateMode {
+		if err := runCorrelate(*out, flag.Args()); err != nil {
+			fmt.Fprintln(os.Stderr, "wafeval:", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	crsOptions.KeepPolicy = *keepPolicy
