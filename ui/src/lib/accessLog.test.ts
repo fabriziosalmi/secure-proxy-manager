@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
-  allowableDomain, allowableEgress, apiParams, ipBlacklistLink, isHttpCode, matchesFilters, readFilters, requestHost, splitStatus, squidResultText, statusTone, whyText, writeFilters,
+  allowableDomain, allowableEgress, apiParams, emptyRange, fromLocalInput, ipBlacklistLink, isHttpCode, matchesFilters, readFilters, requestHost, splitStatus, squidResultText, statusTone, toLocalInput, whyText, writeFilters,
   NO_FILTERS,
 } from './accessLog'
 import type { LogEntry } from '../types'
+import { setRomeTimeZone } from '../test/helpers'
 
 const entry = (over: Partial<LogEntry> = {}): LogEntry => ({
   timestamp: '2026-04-04 12:00:00', source_ip: '192.168.1.10', method: 'GET', destination: 'http://Example.com/a',
@@ -12,10 +13,35 @@ const entry = (over: Partial<LogEntry> = {}): LogEntry => ({
 
 describe('filters in the URL', () => {
   it('round-trips, leaving defaults out', () => {
-    const f = { q: 'ads', outcome: 'blocked' as const, client: '192.168.1.10', rule: 'waf' }
-    expect(writeFilters(f).toString()).toBe('q=ads&outcome=blocked&client=192.168.1.10&rule=waf')
+    const f = { q: 'ads', outcome: 'blocked' as const, client: '192.168.1.10', rule: 'waf', since: 1793628000, until: 1793631600 }
+    expect(writeFilters(f).toString()).toBe('q=ads&outcome=blocked&client=192.168.1.10&rule=waf&since=1793628000&until=1793631600')
     expect(readFilters(writeFilters(f))).toEqual(f)
     expect(writeFilters(NO_FILTERS).toString()).toBe('')
+  })
+
+  it('reads a time only as positive whole seconds', () => {
+    for (const bad of ['since=abc', 'since=-5', 'since=0', 'since=1.5', 'since=']) {
+      expect(readFilters(new URLSearchParams(bad)).since).toBeNull()
+    }
+  })
+
+  // The inputs read and write the viewer's clock; the API gets Unix seconds.
+  it('converts a datetime-local value on the browser clock to Unix seconds and back', () => {
+    const restore = setRomeTimeZone()
+    try {
+      expect(fromLocalInput('2026-11-02T14:00')).toBe(Date.UTC(2026, 10, 2, 13, 0) / 1000)
+      expect(toLocalInput(Date.UTC(2026, 10, 2, 13, 0) / 1000)).toBe('2026-11-02T14:00')
+      expect(fromLocalInput('')).toBeNull()
+      expect(fromLocalInput('yesterday')).toBeNull()
+    } finally {
+      restore()
+    }
+  })
+
+  it('knows a range that can hold no request', () => {
+    expect(emptyRange({ ...NO_FILTERS, since: 100, until: 100 })).toBe(true)
+    expect(emptyRange({ ...NO_FILTERS, since: 100, until: 101 })).toBe(false)
+    expect(emptyRange({ ...NO_FILTERS, since: 100 })).toBe(false)
   })
 
   it('ignores an outcome it does not know', () => {
@@ -23,8 +49,8 @@ describe('filters in the URL', () => {
   })
 
   it('names the API parameters', () => {
-    const p = apiParams({ q: 'x', outcome: 'allowed', client: '10.0.0.1', rule: 'waf' }, true)
-    expect(p.toString()).toBe('q=x&outcome=allowed&source_ip=10.0.0.1&reason=waf&include_internal=true')
+    const p = apiParams({ q: 'x', outcome: 'allowed', client: '10.0.0.1', rule: 'waf', since: 10, until: 20 }, true)
+    expect(p.toString()).toBe('q=x&outcome=allowed&source_ip=10.0.0.1&reason=waf&since=10&until=20&include_internal=true')
     expect(apiParams(NO_FILTERS, false).toString()).toBe('')
   })
 })
@@ -32,6 +58,13 @@ describe('filters in the URL', () => {
 describe('matchesFilters (live rows)', () => {
   it('applies each filter as the server does', () => {
     expect(matchesFilters(entry(), NO_FILTERS, false)).toBe(true)
+    // The range as the server applies it: since included, until left out.
+    const at = Date.UTC(2026, 6, 1, 9, 0) / 1000
+    const row = entry({ timestamp: '2026-07-01 09:00:00' })
+    expect(matchesFilters(row, { ...NO_FILTERS, since: at }, false)).toBe(true)
+    expect(matchesFilters(row, { ...NO_FILTERS, since: at + 1 }, false)).toBe(false)
+    expect(matchesFilters(row, { ...NO_FILTERS, until: at }, false)).toBe(false)
+    expect(matchesFilters(row, { ...NO_FILTERS, until: at + 1 }, false)).toBe(true)
     expect(matchesFilters(entry(), { ...NO_FILTERS, client: '192.168.1.1' }, false)).toBe(false)
     expect(matchesFilters(entry(), { ...NO_FILTERS, outcome: 'blocked' }, false)).toBe(false)
     expect(matchesFilters(entry({ blocked: 1, reason: 'waf' }), { ...NO_FILTERS, outcome: 'blocked' }, false)).toBe(true)

@@ -7,6 +7,7 @@
  * traffic is shown is the viewer's own choice and lives in localStorage.
  */
 import type { LogEntry } from '../types';
+import { parseUtc } from './utils';
 
 export type Outcome = 'all' | 'allowed' | 'blocked';
 
@@ -18,9 +19,37 @@ export interface LogFilters {
   client: string;
   /** A block_reason key; empty for any rule. */
   rule: string;
+  /** A time range in Unix seconds: since included, until left out; null when open. */
+  since: number | null;
+  until: number | null;
 }
 
-export const NO_FILTERS: LogFilters = { q: '', outcome: 'all', client: '', rule: '' };
+export const NO_FILTERS: LogFilters = { q: '', outcome: 'all', client: '', rule: '', since: null, until: null };
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** A datetime-local value ("2026-11-02T14:00"), on the viewer's clock, for Unix seconds. */
+export function toLocalInput(sec: number): string {
+  const d = new Date(sec * 1000);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/** Unix seconds for a datetime-local value, read on the viewer's clock; null when empty or not a time. */
+export function fromLocalInput(value: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  const ms = new Date(value).getTime();
+  return Number.isNaN(ms) ? null : Math.floor(ms / 1000);
+}
+
+/** Whether f's time range can hold no request: until is not later than since. */
+export const emptyRange = (f: LogFilters) => f.since !== null && f.until !== null && f.until <= f.since;
+
+/** A positive whole number of seconds from a URL parameter, or null. */
+function seconds(raw: string | null): number | null {
+  if (!raw || !/^\d{1,12}$/.test(raw)) return null;
+  const n = Number(raw);
+  return n > 0 ? n : null;
+}
 
 export function readFilters(params: URLSearchParams): LogFilters {
   const outcome = params.get('outcome');
@@ -29,6 +58,8 @@ export function readFilters(params: URLSearchParams): LogFilters {
     outcome: outcome === 'allowed' || outcome === 'blocked' ? outcome : 'all',
     client: params.get('client')?.trim() ?? '',
     rule: params.get('rule')?.trim() ?? '',
+    since: seconds(params.get('since')),
+    until: seconds(params.get('until')),
   };
 }
 
@@ -39,10 +70,13 @@ export function writeFilters(f: LogFilters): URLSearchParams {
   if (f.outcome !== 'all') p.set('outcome', f.outcome);
   if (f.client) p.set('client', f.client);
   if (f.rule) p.set('rule', f.rule);
+  if (f.since) p.set('since', String(f.since));
+  if (f.until) p.set('until', String(f.until));
   return p;
 }
 
-export const hasFilters = (f: LogFilters) => f.q !== '' || f.outcome !== 'all' || f.client !== '' || f.rule !== '';
+export const hasFilters = (f: LogFilters) =>
+  f.q !== '' || f.outcome !== 'all' || f.client !== '' || f.rule !== '' || f.since !== null || f.until !== null;
 
 /** The GET /api/logs (and /api/logs/export) parameters for f. */
 export function apiParams(f: LogFilters, showInternal: boolean): URLSearchParams {
@@ -51,6 +85,8 @@ export function apiParams(f: LogFilters, showInternal: boolean): URLSearchParams
   if (f.outcome !== 'all') p.set('outcome', f.outcome);
   if (f.client) p.set('source_ip', f.client);
   if (f.rule) p.set('reason', f.rule);
+  if (f.since) p.set('since', String(f.since));
+  if (f.until) p.set('until', String(f.until));
   if (showInternal) p.set('include_internal', 'true');
   return p;
 }
@@ -192,6 +228,12 @@ export function matchesFilters(r: LogEntry, f: LogFilters, showInternal: boolean
   if (f.outcome === 'allowed' && isBlocked(r)) return false;
   if (f.rule && !(isBlocked(r) && r.reason === f.rule)) return false;
   if (f.q && !(r.destination ?? '').toLowerCase().includes(f.q.toLowerCase())) return false;
+  if (f.since !== null || f.until !== null) {
+    const at = parseUtc(r.timestamp ?? '').getTime() / 1000;
+    if (Number.isNaN(at)) return false;
+    if (f.since !== null && at < f.since) return false;
+    if (f.until !== null && at >= f.until) return false;
+  }
   if (!showInternal && !f.client && r.internal === true) return false;
   return true;
 }

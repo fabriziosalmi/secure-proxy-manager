@@ -94,7 +94,7 @@ var routeDocs = map[string]docMeta{
 	"POST /api/ip-whitelist":                       {auth: true, desc: "Add IP to whitelist ({ip, description})"},
 	"DELETE /api/ip-whitelist/{id}":                {auth: true, desc: "Delete IP from whitelist by ID"},
 	"POST /api/logout":                             {auth: true, desc: "Invalidate current JWT token"},
-	"GET /api/logs":                                {auth: true, desc: "Proxy access logs, internal sources left out by default (?limit=25&offset=0&sort=timestamp&order=desc&source_ip=&outcome=allowed|blocked&reason=&q=&include_internal=false&before_id=)"},
+	"GET /api/logs":                                {auth: true, desc: "Proxy access logs, internal sources left out by default (?limit=25&offset=0&sort=timestamp&order=desc&source_ip=&outcome=allowed|blocked&reason=&q=&include_internal=false&before_id=&since=&until=, since and until in Unix seconds)"},
 	"GET /api/logs/export":                         {auth: true, desc: "The access log rows GET /api/logs selects for the same filters, all of them, as streamed CSV"},
 	"POST /api/logs/clear":                         {auth: true, desc: "Delete all proxy logs"},
 	"POST /api/logs/clear-old":                     {auth: true, desc: "Delete logs older than N days (?days=30)"},
