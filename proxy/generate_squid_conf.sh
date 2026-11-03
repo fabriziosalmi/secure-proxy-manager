@@ -451,8 +451,7 @@ coredump_dir /var/spool/squid
 # Connection performance tuning
 client_persistent_connections on
 server_persistent_connections on
-pipeline_prefetch on
-dns_v4_first on
+pipeline_prefetch 1
 request_body_max_size 10 MB
 reply_body_max_size 200 MB
 max_filedesc 65535
