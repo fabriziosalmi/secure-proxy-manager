@@ -117,7 +117,11 @@ process holding one; free it, change the host side of the mapping, or set
   country's address blocks. Every entry records the source that added it, so
   an import or a paste can be removed as a whole. A domain exception takes the
   same name off Blocked domains however it is written there (`name`,
-  `*.name`, `.name`, any case). [Lists guide](docs/guide/blacklists.md).
+  `*.name`, `.name`, any case). With Refresh imported lists on, every list
+  imported from a URL is downloaded again on a schedule and synced: what is
+  new is added, what the feed dropped is removed, unless another list still
+  names it; a feed that cannot be downloaded, or comes back with fewer than
+  half of its entries, keeps them. [Lists guide](docs/guide/blacklists.md).
 - **DNS sinkhole.** dnsmasq answers `0.0.0.0` and `::` for every blocked
   domain, and Squid also denies those names itself while the list has at most
   `SPM_SQUID_DOMAIN_ACL_MAX` (250,000) entries.
@@ -152,16 +156,26 @@ process holding one; free it, change the host side of the mapping, or set
   to the file the proxy checks; a device without them gets `407`. With login
   on and no credentials the proxy refuses every client (`403`) and the
   dashboard says so. [Security: proxy login](docs/guide/security.md#proxy-login).
-- **Access policy settings.** Allowed hours, bandwidth limits, SafeSearch,
-  YouTube restricted mode and blocked download extensions, in Settings.
-- **Visibility.** Dashboard, Analytics, Access logs (server-side filters, CSV
-  export, the stack's own traffic hidden by default), Clients, and an Audit log
-  that records every list change and keeps rows for 365 days. A WebSocket feed
-  streams new log rows to the UI.
-- **Alerts.** WAF blocks and failed sign-ins can be sent to a webhook, Gotify,
-  Telegram, ntfy or Microsoft Teams. Alerts of one type from one address are
-  grouped into a digest (10 minutes by default), and each channel sends at
-  most 20 per hour by default, then one notice with the count it held.
+- **Access policy settings.** Allowed hours (in UTC, the proxy container's
+  clock; the page shows them on the browser's clock too), bandwidth limits,
+  SafeSearch, YouTube restricted mode and blocked download extensions, in
+  Settings.
+- **Visibility.** The Overview opens with what needs attention (a WAF in Log
+  only, an unreachable WAF, an alert channel that stopped delivering, proxy
+  login with no credentials). Analytics adds the most requested destinations;
+  the Access logs have server-side filters, a time range and CSV export, with
+  the stack's own traffic hidden by default; Settings > Inspection shows what
+  the WAF runs (engine, block threshold, rule categories, policy mode). Also
+  Clients, and an Audit log, searchable on the server, that records every list
+  change and keeps rows for 365 days. A WebSocket feed streams new log rows to
+  the UI.
+- **Alerts.** WAF blocks, failed sign-ins and the backend's own events (the
+  proxy down and back, a blocklist feed that cannot be downloaded, a new
+  version) can be sent to a webhook, Gotify, Telegram, ntfy or Microsoft
+  Teams. WAF blocks and sign-ins of one type from one address are grouped into
+  a digest (10 minutes by default), and each channel sends at most 20 per hour
+  by default, then one notice with the count it held. Settings > Alerts lists
+  what each channel answered since the backend started.
 - **Operations.** Prometheus metrics on the internal network (backend
   `:5000/metrics`, WAF `:8080/metrics`), health probes `/livez` and `/readyz`,
   configuration backup and restore in Settings > Admin and backup. The backend
