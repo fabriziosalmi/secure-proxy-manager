@@ -2,20 +2,77 @@ package handlers
 
 import (
 	"encoding/json"
-	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 	"io"
 	"net/http"
+
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/config"
+	"github.com/fabriziosalmi/secure-proxy-manager/backend-go/internal/database"
 )
 
-// wafCoverage is what the WAF reports about its rules, from GET /categories.
-// The counts are nil unless status is "ok": a WAF that did not answer has no
-// rule count, which is not zero rules.
+// wafCoverage is what the WAF reports about its rules, from GET /categories,
+// and what it runs, from GET /health. The counts are nil unless status is
+// "ok": a WAF that did not answer has no rule count, which is not zero rules.
+// CategoriesObserved and RulesObserved count the enabled categories that
+// only log their matches and never score them.
 type wafCoverage struct {
-	Status            string `json:"status"`
-	Categories        *int   `json:"categories"`
-	CategoriesEnabled *int   `json:"categories_enabled"`
-	Rules             *int   `json:"rules"`
-	RulesEnabled      *int   `json:"rules_enabled"`
+	Status             string      `json:"status"`
+	Categories         *int        `json:"categories"`
+	CategoriesEnabled  *int        `json:"categories_enabled"`
+	CategoriesObserved *int        `json:"categories_observed"`
+	Rules              *int        `json:"rules"`
+	RulesEnabled       *int        `json:"rules_enabled"`
+	RulesObserved      *int        `json:"rules_observed"`
+	Running            *wafRunning `json:"running"`
+}
+
+// wafRunning is what the WAF's GET /health says it runs: the engine ("hybrid"
+// adds the OWASP Core Rule Set), the score at which it blocks a request, the
+// regex engine and whether a second one checks it, how many heuristics are on,
+// and the policy's mode ("block", or "observe" for Log only), its number of
+// exceptions and whether its last reload failed. PolicyMode is empty when
+// the WAF predates the policy.
+type wafRunning struct {
+	Engine             string `json:"engine"`
+	Threshold          int    `json:"threshold"`
+	RegexEngine        string `json:"regex_engine"`
+	RegexShadow        bool   `json:"regex_shadow"`
+	Heuristics         int    `json:"heuristics"`
+	PolicyMode         string `json:"policy_mode"`
+	PolicyExceptions   int    `json:"policy_exceptions"`
+	PolicyReloadFailed bool   `json:"policy_reload_failed"`
+}
+
+// wafRunningConfig reads the WAF's GET /health; nil when it did not answer
+// with an engine and a threshold.
+func wafRunningConfig(r *http.Request, cfg *config.Config) *wafRunning {
+	resp, err := wafGetBreaker(r.Context(), cfg, "/health")
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var body struct {
+		Engine      string `json:"engine"`
+		RegexEngine string `json:"regex_engine"`
+		RegexShadow bool   `json:"regex_shadow"`
+		Threshold   int    `json:"threshold"`
+		Heuristics  int    `json:"heuristics"`
+		Policy      struct {
+			Mode         string `json:"mode"`
+			Exceptions   int    `json:"exceptions"`
+			ReloadFailed bool   `json:"reload_failed"`
+		} `json:"policy"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&body) != nil || body.Engine == "" || body.Threshold <= 0 {
+		return nil
+	}
+	return &wafRunning{
+		Engine: body.Engine, Threshold: body.Threshold, RegexEngine: body.RegexEngine, RegexShadow: body.RegexShadow,
+		Heuristics: body.Heuristics, PolicyMode: body.Policy.Mode, PolicyExceptions: body.Policy.Exceptions,
+		PolicyReloadFailed: body.Policy.ReloadFailed,
+	}
 }
 
 // wafRuleCoverage asks the WAF for its categories. status is "ok",
@@ -39,21 +96,35 @@ func (h *AnalyticsHandlers) wafRuleCoverage(r *http.Request) wafCoverage {
 		Data []struct {
 			Rules   int  `json:"rules"`
 			Enabled bool `json:"enabled"`
+			Observe bool `json:"observe"`
 		} `json:"data"`
 	}
 	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body) != nil || body.Data == nil {
 		return wafCoverage{Status: "error"}
 	}
-	var cats, catsOn, rules, rulesOn int
+	var cats, catsOn, catsObs, rules, rulesOn, rulesObs int
 	for _, c := range body.Data {
 		cats++
 		rules += c.Rules
 		if c.Enabled {
 			catsOn++
 			rulesOn += c.Rules
+			if c.Observe {
+				catsObs++
+				rulesObs += c.Rules
+			}
 		}
 	}
-	return wafCoverage{Status: "ok", Categories: &cats, CategoriesEnabled: &catsOn, Rules: &rules, RulesEnabled: &rulesOn}
+	return wafCoverage{
+		Status: "ok", Categories: &cats, CategoriesEnabled: &catsOn, CategoriesObserved: &catsObs,
+		Rules: &rules, RulesEnabled: &rulesOn, RulesObserved: &rulesObs, Running: wafRunningConfig(r, h.cfg),
+	}
+}
+
+// WAFStatus answers GET /api/waf/status: the WAF's rules and what it runs,
+// as the coverage reports them, for the pages that show the WAF's state.
+func (h *AnalyticsHandlers) WAFStatus(w http.ResponseWriter, r *http.Request) {
+	writeOK(w, h.wafRuleCoverage(r))
 }
 
 // countOrNil is a COUNT(*) of query, nil when it fails: a count that could

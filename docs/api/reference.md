@@ -131,6 +131,7 @@ Details: [Logs and Analytics API](./logs.md).
 | `GET`  | `/api/security/score` | Retired: `410 Gone` |
 | `GET`  | `/api/security/cve` | The Squid version (`version`), whether its major version has an advisory table (`cves_checked`) and the advisories matched to it (`cves`) |
 | `GET`  | `/api/waf/stats` | WAF statistics (from the WAF) |
+| `GET`  | `/api/waf/status` | What the WAF runs: engine, block threshold, regex engine, policy mode, rule counts |
 | `GET`  | `/api/waf/categories` | WAF rule categories and whether each is on |
 | `POST` | `/api/waf/categories/toggle` | Turn a category on or off in the running WAF |
 | `GET`  | `/api/waf/heuristics` | The heuristics the running WAF applies, or `available: false` with the reason |

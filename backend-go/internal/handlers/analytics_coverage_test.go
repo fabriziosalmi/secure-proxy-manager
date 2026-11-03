@@ -70,8 +70,8 @@ func TestCoverageOfAFreshInstall(t *testing.T) {
 	if !boolIs(d.Alert.Enabled, false) || !intIs(d.Alert.Channels, 0) || !boolIs(d.Alert.WAFDelivered, false) {
 		t.Errorf("alerts = enabled %v, channels %v, waf %v; want off, 0 channels, WAF alerts not delivered", val(d.Alert.Enabled), val(d.Alert.Channels), val(d.Alert.WAFDelivered))
 	}
-	if d.WAF.Status != "unreachable" || d.WAF.Rules != nil || d.WAF.Categories != nil {
-		t.Errorf("waf = %+v; want unreachable with no counts", d.WAF)
+	if d.WAF.Status != "unreachable" || d.WAF.Rules != nil || d.WAF.Categories != nil || d.WAF.Running != nil {
+		t.Errorf("waf = %+v; want unreachable with no counts and nothing running", d.WAF)
 	}
 }
 
@@ -136,6 +136,72 @@ func TestCoverageReportsWhatIsSwitchedOn(t *testing.T) {
 	}
 	if d.WAF.Status != "ok" || !intIs(d.WAF.Categories, 2) || !intIs(d.WAF.CategoriesEnabled, 1) || !intIs(d.WAF.Rules, 172) || !intIs(d.WAF.RulesEnabled, 100) {
 		t.Errorf("waf = %s, %v categories (%v on), %v rules (%v on); want ok, 2 categories (1 on), 172 rules (100 on)", d.WAF.Status, val(d.WAF.Categories), val(d.WAF.CategoriesEnabled), val(d.WAF.Rules), val(d.WAF.RulesEnabled))
+	}
+	// A WAF without GET /health (404 here) still reports its rules.
+	if d.WAF.Running != nil || !intIs(d.WAF.CategoriesObserved, 0) {
+		t.Errorf("waf running = %+v, observed %v; want null and 0 when /health does not answer", d.WAF.Running, val(d.WAF.CategoriesObserved))
+	}
+}
+
+// What the WAF runs comes from its /health, and the categories that only
+// log are counted apart: Log only and a failed policy reload must reach the
+// pages, which otherwise show the WAF as on.
+func TestWAFStatusReportsWhatTheWAFRuns(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	freshWAFBreaker(t)
+	waf := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/categories":
+			_, _ = w.Write([]byte(`{"status":"ok","data":[` +
+				`{"name":"SQL_INJECTION","rules":100,"enabled":true,"observe":false},` +
+				`{"name":"CLOUD_SECRETS","rules":30,"enabled":true,"observe":true},` +
+				`{"name":"XSS","rules":72,"enabled":false,"observe":true}]}`))
+		case "/health":
+			_, _ = w.Write([]byte(`{"status":"healthy","commit":"abc","engine":"hybrid","regex_engine":"go","regex_shadow":true,` +
+				`"rules":202,"categories":3,"threshold":10,"heuristics":6,"policy":{"mode":"observe","exceptions":2,"reload_failed":true}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer waf.Close()
+	cfg.WAFURL = waf.URL
+
+	var resp struct {
+		Data wafCoverage `json:"data"`
+	}
+	getJSON(t, NewAnalyticsHandlers(db, cfg).WAFStatus, "/api/waf/status", &resp)
+	d := resp.Data
+	// XSS is off, so its observe flag does not count.
+	if d.Status != "ok" || !intIs(d.CategoriesEnabled, 2) || !intIs(d.CategoriesObserved, 1) || !intIs(d.RulesObserved, 30) {
+		t.Errorf("waf = %s, %v on, %v observed (%v rules); want ok, 2 on, 1 observed (30 rules)", d.Status, val(d.CategoriesEnabled), val(d.CategoriesObserved), val(d.RulesObserved))
+	}
+	want := wafRunning{Engine: "hybrid", Threshold: 10, RegexEngine: "go", RegexShadow: true, Heuristics: 6, PolicyMode: "observe", PolicyExceptions: 2, PolicyReloadFailed: true}
+	if d.Running == nil || *d.Running != want {
+		t.Errorf("running = %+v; want %+v", d.Running, want)
+	}
+}
+
+// A /health without an engine or a threshold is not a WAF's answer.
+func TestWAFStatusIgnoresAHealthWithoutEngine(t *testing.T) {
+	db, _, cfg, cleanup := setupTestDB(t)
+	defer cleanup()
+	freshWAFBreaker(t)
+	waf := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			_, _ = w.Write([]byte(`{"status":"healthy"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"ok","data":[{"name":"SQL_INJECTION","rules":1,"enabled":true}]}`))
+	}))
+	defer waf.Close()
+	cfg.WAFURL = waf.URL
+	var resp struct {
+		Data wafCoverage `json:"data"`
+	}
+	getJSON(t, NewAnalyticsHandlers(db, cfg).WAFStatus, "/api/waf/status", &resp)
+	if resp.Data.Status != "ok" || resp.Data.Running != nil {
+		t.Errorf("waf = %+v; want ok with running null", resp.Data)
 	}
 }
 
