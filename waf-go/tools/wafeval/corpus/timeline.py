@@ -33,6 +33,8 @@ minutes to the end of the window; action at ACT minutes, either a burst of
 CONNECTs to SHARD_HOSTS hosts of REAL.jsonl or a POST of a generated secret
 to the C2 host (context bump: it assumes the body is inspected). The kinds
 with one stage are the controls: no trajectory should come of them.
+contact-shard has only signals that need corroboration (a beacon, a burst),
+so -correlate does not report it either: it is what that rule costs.
 
 The beacon and story records are labelled attack; the real records copied
 next to them stay benign. Output stays on the machine it is written on.
@@ -56,7 +58,8 @@ TYPOS = ["paypa1.com", "rnicrosoft.com", "gooogle.com", "githb.com", "arnazon.co
          "protonmai1.com", "yah00.com"]
 # (kind, arrival, contact, action)
 KINDS = [("full", True, True, "shard"), ("contact-secret", False, True, "secret"),
-         ("arrival-secret", True, False, "secret"), ("beacon-only", False, True, None),
+         ("arrival-secret", True, False, "secret"), ("contact-shard", False, True, "shard"),
+         ("beacon-only", False, True, None),
          ("typo-only", True, False, None), ("shard-only", False, False, "shard")]
 ARRIVE, CONTACT, ACT = 5, 15, 60
 SHARD_HOSTS, SHARD_GAP = 60, 0.8

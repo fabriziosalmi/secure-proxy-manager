@@ -59,6 +59,19 @@ var signalPhase = map[string]phase{
 	"RANSOMWARE":           action,
 }
 
+// probabilistic are the signals the WAF scores below its block threshold
+// because, alone, they need corroboration (the heuristics' own words):
+// regular check-ins, many hosts in a minute, a high-entropy body or URL,
+// another protocol in a body. Browsing makes them too (a device's periodic
+// check-in, a news page and its ad hosts), so two of them do not make an
+// order trajectory on their own.
+var probabilistic = map[string]bool{
+	"HEURISTIC_BEACONING": true,
+	"HEURISTIC_SHARDING":  true,
+	"HEURISTIC_ENTROPY":   true,
+	"HEURISTIC_GHOSTING":  true,
+}
+
 // trajectoryWindow is how far apart two signals of one trajectory may be.
 const trajectoryWindow = 24 * time.Hour
 
@@ -96,7 +109,8 @@ type Trajectory struct {
 // reports, for each client, the first window that meets a rule:
 //
 //   - order: a signal of one phase, then within the window one of a later
-//     phase (arrival then contact, contact then action, arrival then action);
+//     phase (arrival then contact, contact then action, arrival then action),
+//     with at least one signal of the window not probabilistic;
 //   - breadth: breadthMin distinct signals within the window, whatever
 //     their phases.
 //
@@ -127,7 +141,7 @@ func firstTrajectory(client string, evs []signalEvent) (Trajectory, bool) {
 		}
 		win := evs[i : end+1]
 		rule := ""
-		if ordered(win) {
+		if ordered(win) && corroborated(win) {
 			rule = "order"
 		} else if distinct(win) >= breadthMin {
 			rule = "breadth"
@@ -149,6 +163,16 @@ func ordered(win []signalEvent) bool {
 		}
 		if earliest == 0 || e.phase < earliest {
 			earliest = e.phase
+		}
+	}
+	return false
+}
+
+// corroborated is whether win holds a signal that is not probabilistic.
+func corroborated(win []signalEvent) bool {
+	for _, e := range win {
+		if !probabilistic[e.signal] {
+			return true
 		}
 	}
 	return false

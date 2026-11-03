@@ -19,7 +19,13 @@ func TestCorrelateRules(t *testing.T) {
 		evs  []signalEvent
 		rule string // "" for no trajectory
 	}{
-		{"contact then action", []signalEvent{ev(0, "HEURISTIC_BEACONING"), ev(30, "HEURISTIC_SHARDING")}, "order"},
+		{"contact then action", []signalEvent{ev(0, "HEURISTIC_BEACONING"), ev(30, "CLOUD_SECRETS")}, "order"},
+		// Two probabilistic signals in order are not enough: a device's
+		// check-ins and a news page with its ad hosts make them too. A third
+		// signal, or one that is not probabilistic, is.
+		{"probabilistic contact then action", []signalEvent{ev(0, "HEURISTIC_BEACONING"), ev(30, "HEURISTIC_SHARDING")}, ""},
+		{"probabilistic, then a third", []signalEvent{ev(0, "HEURISTIC_BEACONING"), ev(30, "HEURISTIC_SHARDING"), ev(40, "HEURISTIC_ENTROPY")}, "breadth"},
+		{"generated name then probabilistic action", []signalEvent{ev(0, "DGA_DOMAIN"), ev(30, "HEURISTIC_SHARDING")}, "order"},
 		{"arrival then contact", []signalEvent{ev(0, "TYPOSQUATTING"), ev(5, "DGA_DOMAIN")}, "order"},
 		{"arrival then action", []signalEvent{ev(0, "TYPOSQUATTING"), ev(60, "CLOUD_SECRETS")}, "order"},
 		// The other way round is not a trajectory, and two signals are not
@@ -27,8 +33,8 @@ func TestCorrelateRules(t *testing.T) {
 		{"action then contact", []signalEvent{ev(0, "HEURISTIC_SHARDING"), ev(30, "HEURISTIC_BEACONING")}, ""},
 		{"same phase twice", []signalEvent{ev(0, "HEURISTIC_BEACONING"), ev(1, "HEURISTIC_BEACONING")}, ""},
 		// More than a day apart.
-		{"contact then action a day later", []signalEvent{ev(0, "HEURISTIC_BEACONING"), ev(24*60+1, "HEURISTIC_SHARDING")}, ""},
-		{"exactly a day", []signalEvent{ev(0, "HEURISTIC_BEACONING"), ev(24*60, "HEURISTIC_SHARDING")}, "order"},
+		{"contact then action a day later", []signalEvent{ev(0, "HEURISTIC_BEACONING"), ev(24*60+1, "POST_EXPLOIT")}, ""},
+		{"exactly a day", []signalEvent{ev(0, "HEURISTIC_BEACONING"), ev(24*60, "POST_EXPLOIT")}, "order"},
 		{"three distinct actions", []signalEvent{ev(0, "CLOUD_SECRETS"), ev(1, "DATA_EXFIL"), ev(2, "POST_EXPLOIT")}, "breadth"},
 		{"action, contact, then a later action", []signalEvent{ev(0, "HEURISTIC_SHARDING"), ev(10, "DGA_DOMAIN"), ev(20, "HEURISTIC_SHARDING")}, "order"},
 	} {
@@ -51,7 +57,7 @@ func TestCorrelateReadsTimelines(t *testing.T) {
 	lines := []string{
 		`{"ts":"2026-11-01T10:00:00Z","client":"a","id":"1","label":"attack","host":"x.test","signals":["HEURISTIC_BEACONING"],"score":6,"blocked":false}`,
 		`{"ts":"2026-11-01T10:05:00Z","client":"a","id":"2","label":"attack","host":"y.test","signals":["SQL_INJECTION"],"score":10,"blocked":true}`,
-		`{"ts":"2026-11-01T10:10:00Z","client":"a","id":"3","label":"attack","host":"z.test","signals":["HEURISTIC_SHARDING"],"score":6,"blocked":false}`,
+		`{"ts":"2026-11-01T10:10:00Z","client":"a","id":"3","label":"attack","host":"z.test","signals":["DATA_EXFIL"],"score":6,"blocked":false}`,
 		`{"ts":"2026-11-01T10:10:00Z","client":"b","id":"4","label":"benign","host":"z.test","signals":["HEURISTIC_SHARDING"],"score":6,"blocked":false}`,
 		`{"id":"5","label":"benign","signals":["HEURISTIC_SHARDING"],"score":6,"blocked":false}`,
 		`{"ts":"2026-11-01T11:00:00Z","client":"c","id":"6","label":"attack","host":"paypa1.com","signals":["TYPOSQUATTING"],"score":5,"blocked":false}`,
