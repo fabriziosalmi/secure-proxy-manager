@@ -5,7 +5,7 @@ import { expectNoAxeViolations } from '../test/axe'
 import { api } from '../lib/api'
 import { Audit } from './Audit'
 
-type Params = { limit?: number; offset?: number; category?: string }
+type Params = { limit?: number; offset?: number; category?: string; q?: string }
 
 const ROWS = [
   { id: 6, timestamp: '2026-07-01 09:05:00', username: 'admin', action: 'login', target: '', details: '' },
@@ -96,6 +96,29 @@ describe('Audit', () => {
     expect(screen.getByRole('button', { name: 'Changes' })).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(screen.getByRole('button', { name: 'Sign-ins' }))
     await waitFor(() => expect(calls.at(-1)).toEqual({ limit: 50, offset: 0, category: 'signins' }))
+  })
+
+  // The search runs on the server, over the whole log, from its first page.
+  it('searches on the server, from the first page', async () => {
+    total = 120
+    renderWithProviders(<Audit />)
+    await screen.findByText('1 to 6 of 120')
+    fireEvent.click(screen.getByRole('button', { name: 'Older' }))
+    await waitFor(() => expect(calls.at(-1)).toEqual({ limit: 50, offset: 50, category: 'all' }))
+    fireEvent.change(screen.getByLabelText('Search the audit log'), { target: { value: ' 203.0.113.5 ' } })
+    await waitFor(() => expect(calls.at(-1)).toEqual({ limit: 50, offset: 0, category: 'all', q: '203.0.113.5' }))
+  })
+
+  it('says nothing matches a search, not that nothing was recorded', async () => {
+    total = 0
+    vi.mocked(api.get).mockImplementation(((_url: string, config?: { params?: Params }) => {
+      calls.push(config?.params ?? {})
+      return Promise.resolve({ data: { status: 'success', data: [], meta: { total: 0, limit: 50, offset: 0, retention_days: 365 } } })
+    }) as never)
+    renderWithProviders(<Audit />)
+    fireEvent.change(await screen.findByLabelText('Search the audit log'), { target: { value: 'nobody' } })
+    expect(await screen.findByText('Nothing matches "nobody"')).toBeInTheDocument()
+    expect(screen.queryByText('No event recorded yet')).not.toBeInTheDocument()
   })
 
   it('pages with Newer and Older, Newer disabled on the newest page', async () => {
