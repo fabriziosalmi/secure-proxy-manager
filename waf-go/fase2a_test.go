@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -105,5 +106,33 @@ func TestRespmodCompressedIsUninspectable(t *testing.T) {
 	}
 	if got := respmodUninspectable.Load(); got != before+1 {
 		t.Errorf("respmodUninspectable = %d, want %d", got, before+1)
+	}
+}
+
+// A response is skipped when its request went to a LAN host, as the request
+// itself was: the router's own admin script, full of addresses, was blocked
+// as a PII leak. The same body from a public host is still blocked.
+func TestRespmodSkipsLANHosts(t *testing.T) {
+	withEngine(t, engine.Config{BlockThreshold: 10, Heuristics: engine.HeuristicsFromEnv()})
+	var body strings.Builder
+	for i := 0; i < 10; i++ {
+		fmt.Fprintf(&body, "contact%d@vendor.example ", i)
+	}
+	blocked := func(url string) bool {
+		resp := httptest.NewRecorder().Result()
+		resp.Header.Set("Content-Type", "text/html")
+		resp.Body = nopRC(body.String())
+		w := &mockResponseWriter{}
+		handleRespmod(w, &icap.Request{Method: "RESPMOD", Request: httptest.NewRequest(http.MethodGet, url, nil), Response: resp, Header: squidHeader()})
+		r, ok := w.resp.(*http.Response)
+		return ok && r.StatusCode == http.StatusForbidden
+	}
+	if !blocked("http://shop.example.com/page") {
+		t.Fatal("a public host's response with 10 addresses passed: the body no longer trips H3-PII, the test proves nothing")
+	}
+	for _, url := range []string{"http://192.168.0.1/webpages/js/chunk-vendors.js", "http://10.0.0.5/", "http://[fd00::1]/"} {
+		if blocked(url) {
+			t.Errorf("%s: blocked, want passed (a LAN host's response is not inspected)", url)
+		}
 	}
 }

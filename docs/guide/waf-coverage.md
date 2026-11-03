@@ -17,6 +17,10 @@ the real-traffic DGA row (see below).
 | Plain HTTP, or HTTPS with SSL bump | request line, headers, body | every request rule, the base64 pass, the DGA and typosquat checks, the heuristics, then the Core Rule Set |
 | Responses (plain HTTP or SSL bump) | status, headers, body | the dangerous content types, the response rules, the PII counter |
 
+A request to a LAN host (`localhost`, a private or link-local address) is not
+inspected, and neither is its response: the router's, NAS's or printer's own
+pages are not client traffic leaving the network.
+
 ## Blocked and signalled
 
 Each row gives two numbers:
