@@ -47,19 +47,24 @@ func StoreWAFSignals(db *sql.DB, sigs []WAFSignal) error {
 	return tx.Commit()
 }
 
-// ClearWAFRecords deletes what the WAF reported, blocks and signals, with
-// the access log they go with.
+// ClearWAFRecords deletes what the WAF reported, blocks and signals, and
+// the trajectories read from them, with the access log they go with.
 func ClearWAFRecords(db *sql.DB) {
-	db.Exec("DELETE FROM waf_events")  //nolint:errcheck
-	db.Exec("DELETE FROM waf_signals") //nolint:errcheck
+	db.Exec("DELETE FROM waf_events")       //nolint:errcheck
+	db.Exec("DELETE FROM waf_signals")      //nolint:errcheck
+	db.Exec("DELETE FROM waf_trajectories") //nolint:errcheck
 }
 
-// PruneWAFRecords deletes what the WAF reported more than days ago.
+// PruneWAFRecords deletes what the WAF reported more than days ago, and the
+// trajectories that started then.
 func PruneWAFRecords(db *sql.DB, days int) error {
 	if _, err := db.Exec("DELETE FROM waf_events WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(days)+" days"); err != nil { // slopless-disable-line VBC-004 -- the concatenation builds a bound argument, not the statement
 		return err
 	}
 	cutoff := time.Now().Add(-time.Duration(days) * 24 * time.Hour).UnixMilli()
-	_, err := db.Exec("DELETE FROM waf_signals WHERE ts_ms < ?", cutoff)
+	if _, err := db.Exec("DELETE FROM waf_signals WHERE ts_ms < ?", cutoff); err != nil {
+		return err
+	}
+	_, err := db.Exec("DELETE FROM waf_trajectories WHERE start_ms < ?", cutoff)
 	return err
 }
