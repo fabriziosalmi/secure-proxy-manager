@@ -86,17 +86,26 @@ type signalEvent struct {
 	phase  phase
 	host   string
 	id     string
+	line   lineRef
 	attack bool
 }
+
+// lineRef is the timeline line a signal came from: one record, even where
+// two timelines reuse an id (each "timeline.py real" output starts at
+// real/0).
+type lineRef struct{ file, line int }
 
 // Trajectory is one client's report: the rule that made it, the signals in
 // the order they came, and how many of its lines were labelled attack (a
 // replay knows; a live installation would not).
 type Trajectory struct {
-	Client  string   `json:"client"`
-	Rule    string   `json:"rule"` // "order" or "breadth"
-	Start   string   `json:"start"`
-	End     string   `json:"end"`
+	Client string `json:"client"`
+	Rule   string `json:"rule"` // "order" or "breadth"
+	Start  string `json:"start"`
+	End    string `json:"end"`
+	// Closed is the instant the rule first held: when a live correlator
+	// would have reported.
+	Closed  string   `json:"closed"`
 	Phases  []string `json:"phases"`
 	Signals []string `json:"signals"`
 	Hosts   []string `json:"hosts"`
@@ -106,16 +115,8 @@ type Trajectory struct {
 }
 
 // correlate reads the signal events of each client in time order and
-// reports, for each client, the first window that meets a rule:
-//
-//   - order: a signal of one phase, then within the window one of a later
-//     phase (arrival then contact, contact then action, arrival then action),
-//     with at least one signal of the window not probabilistic;
-//   - breadth: breadthMin distinct signals within the window, whatever
-//     their phases.
-//
-// A client is reported once, from the first signal of that window to the
-// last signal within a window of it.
+// reports each client once, at the first instant a rule holds (see
+// firstTrajectory).
 func correlate(byClient map[string][]signalEvent) []Trajectory {
 	clients := make([]string, 0, len(byClient))
 	for c := range byClient {
@@ -133,62 +134,77 @@ func correlate(byClient map[string][]signalEvent) []Trajectory {
 	return out
 }
 
+// firstTrajectory walks evs (in time order) as a live correlator would, one
+// instant at a time, keeping the signals of the last trajectoryWindow, and
+// stops at the first instant a rule holds:
+//
+//   - order: a signal of this instant is of a later phase than one of an
+//     earlier instant in the window (arrival then contact, contact then
+//     action, arrival then action), and a signal of the window is not
+//     probabilistic;
+//   - breadth: breadthMin distinct signals in the window, whatever their
+//     phases.
+//
+// Signals of one instant (one request, or requests at the same time) have
+// no order among them. The counts move with the window, so a client that
+// only beacons all day costs one pass. The trajectory runs from the
+// window's first signal to the last within trajectoryWindow of it.
 func firstTrajectory(client string, evs []signalEvent) (Trajectory, bool) {
-	for i := range evs {
-		end := i
-		for end+1 < len(evs) && evs[end+1].at.Sub(evs[i].at) <= trajectoryWindow {
-			end++
+	var phases [action + 1]int
+	signals := map[string]int{}
+	firm := 0 // signals in the window that are not probabilistic
+	add := func(e signalEvent, n int) {
+		phases[e.phase] += n
+		signals[e.signal] += n
+		if signals[e.signal] == 0 {
+			delete(signals, e.signal)
 		}
-		win := evs[i : end+1]
+		if !probabilistic[e.signal] {
+			firm += n
+		}
+	}
+	lo := 0
+	for k := 0; k < len(evs); {
+		at := evs[k].at
+		for lo < k && at.Sub(evs[lo].at) > trajectoryWindow {
+			add(evs[lo], -1)
+			lo++
+		}
+		earliest := phase(0)
+		for p := arrival; p <= action; p++ {
+			if phases[p] > 0 {
+				earliest = p
+				break
+			}
+		}
+		next, later := k, false
+		for ; next < len(evs) && evs[next].at.Equal(at); next++ {
+			later = later || earliest != 0 && evs[next].phase > earliest
+			add(evs[next], 1)
+		}
 		rule := ""
-		if ordered(win) && corroborated(win) {
+		if later && firm > 0 {
 			rule = "order"
-		} else if distinct(win) >= breadthMin {
+		} else if len(signals) >= breadthMin {
 			rule = "breadth"
 		}
 		if rule != "" {
-			return trajectoryOf(client, rule, win), true
+			last := next
+			for last < len(evs) && evs[last].at.Sub(evs[lo].at) <= trajectoryWindow {
+				last++
+			}
+			t := trajectoryOf(client, rule, evs[lo:last])
+			t.Closed = at.UTC().Format(time.RFC3339)
+			return t, true
 		}
+		k = next
 	}
 	return Trajectory{}, false
 }
 
-// ordered is whether a signal of a later phase follows one of an earlier
-// phase in win (which is in time order).
-func ordered(win []signalEvent) bool {
-	earliest := phase(0)
-	for _, e := range win {
-		if earliest != 0 && e.phase > earliest {
-			return true
-		}
-		if earliest == 0 || e.phase < earliest {
-			earliest = e.phase
-		}
-	}
-	return false
-}
-
-// corroborated is whether win holds a signal that is not probabilistic.
-func corroborated(win []signalEvent) bool {
-	for _, e := range win {
-		if !probabilistic[e.signal] {
-			return true
-		}
-	}
-	return false
-}
-
-func distinct(win []signalEvent) int {
-	seen := map[string]bool{}
-	for _, e := range win {
-		seen[e.signal] = true
-	}
-	return len(seen)
-}
-
 func trajectoryOf(client, rule string, win []signalEvent) Trajectory {
 	t := Trajectory{Client: client, Rule: rule, Start: win[0].at.UTC().Format(time.RFC3339), End: win[len(win)-1].at.UTC().Format(time.RFC3339)}
-	seenPhase, seenSignal, seenHost, seenID := map[phase]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
+	seenPhase, seenSignal, seenHost, seenLine := map[phase]bool{}, map[string]bool{}, map[string]bool{}, map[lineRef]bool{}
 	for _, e := range win {
 		if !seenPhase[e.phase] {
 			seenPhase[e.phase] = true
@@ -202,8 +218,8 @@ func trajectoryOf(client, rule string, win []signalEvent) Trajectory {
 			seenHost[e.host] = true
 			t.Hosts = append(t.Hosts, e.host)
 		}
-		if !seenID[e.id] {
-			seenID[e.id] = true
+		if !seenLine[e.line] {
+			seenLine[e.line] = true
 			t.Events = append(t.Events, e.id)
 			if e.attack {
 				t.Attack++
@@ -221,7 +237,7 @@ func trajectoryOf(client, rule string, win []signalEvent) Trajectory {
 func readSignalEvents(paths []string) (map[string][]signalEvent, int, error) {
 	byClient := map[string][]signalEvent{}
 	lines := 0
-	for _, p := range paths {
+	for fi, p := range paths {
 		f, err := os.Open(p)
 		if err != nil {
 			return nil, lines, err
@@ -247,7 +263,7 @@ func readSignalEvents(paths []string) (map[string][]signalEvent, int, error) {
 			}
 			for _, s := range append(e.Signals, e.Observed...) {
 				if ph, ok := signalPhase[s]; ok {
-					byClient[e.Client] = append(byClient[e.Client], signalEvent{at: at, signal: s, phase: ph, host: e.Host, id: e.ID, attack: e.Label == "attack"})
+					byClient[e.Client] = append(byClient[e.Client], signalEvent{at: at, signal: s, phase: ph, host: e.Host, id: e.ID, line: lineRef{fi, n}, attack: e.Label == "attack"})
 				}
 			}
 		}

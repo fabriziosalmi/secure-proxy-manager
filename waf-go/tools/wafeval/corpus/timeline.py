@@ -237,6 +237,9 @@ def secret_body(rng):
 
 
 def stories(out_path, parquet, n, seed, real_path, client, minutes, start_at=None):
+    last = timedelta(minutes=ACT, seconds=(SHARD_HOSTS - 1) * SHARD_GAP)
+    if timedelta(minutes=minutes) <= last:
+        sys.exit(f"stories: a window of {minutes} minutes ends before the last stage, at {last}")
     cfgs = configs(parquet, n, seed, keep=in_h2_range)
     start, window = window_of(real_path, client, minutes, start_at)
     span = timedelta(minutes=minutes)

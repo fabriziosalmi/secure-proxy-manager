@@ -36,7 +36,12 @@ func TestCorrelateRules(t *testing.T) {
 		{"contact then action a day later", []signalEvent{ev(0, "HEURISTIC_BEACONING"), ev(24*60+1, "POST_EXPLOIT")}, ""},
 		{"exactly a day", []signalEvent{ev(0, "HEURISTIC_BEACONING"), ev(24*60, "POST_EXPLOIT")}, "order"},
 		{"three distinct actions", []signalEvent{ev(0, "CLOUD_SECRETS"), ev(1, "DATA_EXFIL"), ev(2, "POST_EXPLOIT")}, "breadth"},
+		{"three distinct actions, never three in a day", []signalEvent{ev(0, "CLOUD_SECRETS"), ev(1000, "DATA_EXFIL"), ev(2000, "POST_EXPLOIT")}, ""},
 		{"action, contact, then a later action", []signalEvent{ev(0, "HEURISTIC_SHARDING"), ev(10, "DGA_DOMAIN"), ev(20, "HEURISTIC_SHARDING")}, "order"},
+		// Two signals of one instant (one request: a generated name whose
+		// body holds a secret) have no order between them.
+		{"one instant", []signalEvent{ev(0, "DGA_DOMAIN"), ev(0, "CLOUD_SECRETS")}, ""},
+		{"one instant, then a later action", []signalEvent{ev(0, "DGA_DOMAIN"), ev(0, "CLOUD_SECRETS"), ev(1, "POST_EXPLOIT")}, "order"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			ts := correlate(map[string][]signalEvent{"c": c.evs})
@@ -48,6 +53,22 @@ func TestCorrelateRules(t *testing.T) {
 				t.Errorf("trajectories = %+v; want rule %q", ts, c.rule)
 			}
 		})
+	}
+}
+
+// A client that beacons all day and does nothing else is the common case,
+// and must not cost the square of its signals: 100,000 check-ins within a
+// day take well under a second.
+func TestCorrelateLongQuietClient(t *testing.T) {
+	evs := make([]signalEvent, 100_000)
+	t0 := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	for i := range evs {
+		evs[i] = signalEvent{at: t0.Add(time.Duration(i) * 500 * time.Millisecond), signal: "HEURISTIC_BEACONING", phase: contact, line: lineRef{0, i + 1}}
+	}
+	start := time.Now()
+	ts := correlate(map[string][]signalEvent{"c": evs})
+	if took := time.Since(start); len(ts) != 0 || took > 2*time.Second {
+		t.Errorf("%d trajectories in %v; want none, in under 2s", len(ts), took)
 	}
 }
 
@@ -66,18 +87,24 @@ func TestCorrelateReadsTimelines(t *testing.T) {
 	if err := os.WriteFile(p, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	byClient, n, err := readSignalEvents([]string{p})
+	// A second timeline reuses id 1 for another request of client a.
+	p2 := filepath.Join(dir, "tl2.jsonl")
+	if err := os.WriteFile(p2, []byte(`{"ts":"2026-11-01T10:20:00Z","client":"a","id":"1","label":"attack","host":"w.test","signals":["POST_EXPLOIT"],"score":10,"blocked":true}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	byClient, n, err := readSignalEvents([]string{p, p2})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// SQL_INJECTION has no phase; the line with no client is skipped; an
 	// observed category counts as a signal.
-	if n != 7 || len(byClient["a"]) != 2 || len(byClient["b"]) != 1 || len(byClient["c"]) != 2 || len(byClient) != 3 {
+	if n != 8 || len(byClient["a"]) != 3 || len(byClient["b"]) != 1 || len(byClient["c"]) != 2 || len(byClient) != 3 {
 		t.Fatalf("read %d lines, clients %v", n, byClient)
 	}
 	ts := correlate(byClient)
 	if len(ts) != 2 || ts[0].Client != "a" || ts[0].Rule != "order" ||
-		strings.Join(ts[0].Phases, ",") != "contact,action" || strings.Join(ts[0].Hosts, ",") != "x.test,z.test" || ts[0].Attack != 2 {
+		strings.Join(ts[0].Phases, ",") != "contact,action" || strings.Join(ts[0].Hosts, ",") != "x.test,z.test,w.test" ||
+		ts[0].Attack != 3 || len(ts[0].Events) != 3 || ts[0].Closed != "2026-11-01T10:10:00Z" {
 		t.Errorf("trajectories = %+v", ts)
 	}
 	if len(ts) == 2 && (ts[1].Client != "c" || strings.Join(ts[1].Signals, ",") != "TYPOSQUATTING,CLOUD_SECRETS") {
