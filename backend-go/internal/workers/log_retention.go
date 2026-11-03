@@ -79,8 +79,8 @@ func runRetention(db *sql.DB) {
 		return
 	}
 	deleted, _ := res.RowsAffected()
-	// The WAF's account of a block goes with its access log row.
-	if _, err := db.Exec("DELETE FROM waf_events WHERE timestamp < datetime('now', ?)", "-"+strconv.Itoa(days)+" days"); err != nil { // slopless-disable-line VBC-004 -- the concatenation builds a bound argument, not the statement
+	// The WAF's account of a block, and its signals, go with the access log.
+	if err := database.PruneWAFRecords(db, days); err != nil {
 		log.Warn().Err(err).Msg("WAF event retention cleanup failed")
 	}
 	metrics.RetentionRan(days)

@@ -86,6 +86,7 @@ var routeDocs = map[string]docMeta{
 	"POST /api/egress-providers/{name}/apply-held": {auth: true, desc: "Apply a held update (>25% growth) for an egress provider"},
 	"GET /api/health":                              {auth: false, desc: "Health check: returns version, runtime, update/CVE info"},
 	"POST /api/internal/alert":                     {auth: true, desc: "Receive security alert from WAF/proxy"},
+	"POST /api/internal/signals":                   {auth: true, desc: "Receive the WAF's client signals (stored for the trajectory correlator, never notified)"},
 	"GET /api/ip-blacklist":                        {auth: true, desc: "List IP blacklist (?page=1&page_size=50&search=...)"},
 	"POST /api/ip-blacklist":                       {auth: true, desc: "Add IP to blacklist ({ip, description})"},
 	"POST /api/ip-blacklist/bulk-delete":           {auth: true, desc: "Bulk delete IPs by ID array"},

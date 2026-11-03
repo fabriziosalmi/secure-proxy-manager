@@ -1144,7 +1144,7 @@ func (h *AnalyticsHandlers) WAFStats(w http.ResponseWriter, r *http.Request) {
 
 func (h *AnalyticsHandlers) ResetCounters(w http.ResponseWriter, r *http.Request) {
 	res, err := h.db.Exec("DELETE FROM proxy_logs")
-	h.db.Exec("DELETE FROM waf_events") //nolint:errcheck
+	database.ClearWAFRecords(h.db)
 	var deleted int64
 	if err == nil && res != nil {
 		deleted, _ = res.RowsAffected()

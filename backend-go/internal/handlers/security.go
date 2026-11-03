@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -192,6 +193,7 @@ func (h *SecurityHandlers) Register(r chi.Router, authMW func(http.Handler) http
 		alertToken = h.cfg.AlertToken
 	}
 	r.With(appMW.ServiceAuth(alertToken, authMW)).Post("/api/internal/alert", h.ReceiveAlert)
+	r.With(appMW.ServiceAuth(alertToken, authMW)).Post("/api/internal/signals", h.ReceiveSignals)
 	r.With(authMW).Get("/api/security/rate-limits", h.GetRateLimits)
 	r.With(authMW).Delete("/api/security/rate-limits/{ip}", h.ClearRateLimit)
 	r.With(authMW).Get("/api/security/score", h.ScoreGone)
@@ -245,6 +247,98 @@ func (h *SecurityHandlers) ReceiveAlert(w http.ResponseWriter, r *http.Request) 
 		log.Warn().Msg("notification queue full; alert dropped")
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
+}
+
+// wafSignalReport is what the WAF posts to /api/internal/signals: the signals
+// of one inspected request.
+type wafSignalReport struct {
+	EventID  string `json:"event_id"`
+	TS       string `json:"ts"`
+	ClientIP string `json:"client_ip"`
+	Host     string `json:"host"`
+	Blocked  bool   `json:"blocked"`
+	Signals  []struct {
+		Category string `json:"category"`
+		Rule     string `json:"rule"`
+		Observed bool   `json:"observed"`
+	} `json:"signals"`
+}
+
+// Bounds on a signal report. The WAF is the process that parses what
+// clients send, so what it posts is held to its own shape.
+const (
+	signalReportMaxBytes = 64 << 10
+	signalReportMax      = 32
+	signalNameMax        = 64
+	signalHostMax        = 253
+)
+
+// ReceiveSignals stores the WAF's signals for the trajectory correlator.
+// Unlike ReceiveAlert it notifies nobody: a signal on its own is not an
+// alert. The client address is masked in GDPR mode, as an alert's is.
+func (h *SecurityHandlers) ReceiveSignals(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, signalReportMaxBytes)
+	var rep wafSignalReport
+	if err := json.NewDecoder(r.Body).Decode(&rep); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid signal report")
+		return
+	}
+	sigs, err := signalsFrom(rep)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if privacy.Enabled(h.db) {
+		for i := range sigs {
+			sigs[i].ClientIP = privacy.MaskIP(sigs[i].ClientIP)
+		}
+	}
+	if err := database.StoreWAFSignals(h.db, sigs); err != nil {
+		log.Warn().Err(err).Str("event_id", rep.EventID).Msg("WAF signals not stored")
+		writeError(w, http.StatusInternalServerError, "signals not stored")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "success", "stored": len(sigs)})
+}
+
+// signalsFrom checks a report and turns it into rows: a time, a client
+// address, and 1 to signalReportMax signals named in capitals and
+// underscores.
+func signalsFrom(rep wafSignalReport) ([]database.WAFSignal, error) {
+	at, err := time.Parse(time.RFC3339Nano, rep.TS)
+	if err != nil {
+		return nil, fmt.Errorf("ts: not an RFC 3339 time")
+	}
+	if net.ParseIP(rep.ClientIP) == nil {
+		return nil, fmt.Errorf("client_ip: not an address")
+	}
+	if len(rep.Host) > signalHostMax || len(rep.EventID) > signalNameMax {
+		return nil, fmt.Errorf("host or event_id too long")
+	}
+	if len(rep.Signals) == 0 || len(rep.Signals) > signalReportMax {
+		return nil, fmt.Errorf("signals: 1 to %d", signalReportMax)
+	}
+	out := make([]database.WAFSignal, 0, len(rep.Signals))
+	for _, s := range rep.Signals {
+		if !signalName(s.Category) || len(s.Rule) > signalNameMax {
+			return nil, fmt.Errorf("signals: a category is capitals and underscores, a rule at most %d bytes", signalNameMax)
+		}
+		out = append(out, database.WAFSignal{At: at, ClientIP: rep.ClientIP, Host: rep.Host, Category: s.Category,
+			Rule: s.Rule, Observed: s.Observed, Blocked: rep.Blocked, EventID: rep.EventID})
+	}
+	return out, nil
+}
+
+func signalName(s string) bool {
+	if s == "" || len(s) > signalNameMax {
+		return false
+	}
+	for _, c := range s {
+		if (c < 'A' || c > 'Z') && c != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *SecurityHandlers) GetRateLimits(w http.ResponseWriter, r *http.Request) {

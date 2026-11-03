@@ -188,6 +188,21 @@ var schemaStatements = []string{
 		crs_targets TEXT NOT NULL DEFAULT '[]'
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_waf_events_ts ON waf_events(timestamp)`,
+	// What the WAF saw a client do on the way out, one row per signal
+	// (WAFSignal); ts_ms is the WAF's instant in Unix milliseconds.
+	`CREATE TABLE IF NOT EXISTS waf_signals (
+		id INTEGER PRIMARY KEY,
+		ts_ms INTEGER NOT NULL,
+		client_ip TEXT NOT NULL,
+		host TEXT NOT NULL DEFAULT '',
+		category TEXT NOT NULL,
+		rule TEXT NOT NULL DEFAULT '',
+		observed INTEGER NOT NULL DEFAULT 0,
+		blocked INTEGER NOT NULL DEFAULT 0,
+		event_id TEXT NOT NULL DEFAULT ''
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_waf_signals_client_ts ON waf_signals(client_ip, ts_ms)`,
+	`CREATE INDEX IF NOT EXISTS idx_waf_signals_ts ON waf_signals(ts_ms)`,
 }
 
 // createSchema creates every table and index the schema declares. It is

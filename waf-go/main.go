@@ -260,6 +260,13 @@ const notifyAttempts = 3
 var notifyRetryDelay = func(attempt int) time.Duration { return time.Duration(250<<attempt) * time.Millisecond }
 
 func notifyBackend(data map[string]interface{}) {
+	deliverBackend("/api/internal/alert", data, notifyFailed)
+}
+
+// deliverBackend posts data to the backend's internal path with the service
+// credential, retrying as notifyBackend's comments say, and counts what did
+// not arrive in failed (by the reasons notifyFailed names).
+func deliverBackend(path string, data map[string]interface{}, failed map[string]*atomic.Int64) {
 	backendURL := os.Getenv("BACKEND_URL")
 	if backendURL == "" {
 		backendURL = "http://backend:5000"
@@ -277,7 +284,7 @@ func notifyBackend(data map[string]interface{}) {
 	authUser := os.Getenv("BASIC_AUTH_USERNAME")
 	authPass := os.Getenv("BASIC_AUTH_PASSWORD")
 	if alertToken == "" && (authUser == "" || authPass == "") {
-		notifyFailed["no_credential"].Add(1)
+		failed["no_credential"].Add(1)
 		warnNoAlertCredential()
 		return
 	}
@@ -287,7 +294,7 @@ func notifyBackend(data map[string]interface{}) {
 		log.Printf("Failed to marshal alert data: %v\n", err)
 		return
 	}
-	eventID := ""
+	eventID, _ := data["event_id"].(string)
 	if d, ok := data["details"].(map[string]interface{}); ok {
 		eventID, _ = d["event_id"].(string)
 	}
@@ -298,7 +305,7 @@ func notifyBackend(data map[string]interface{}) {
 		if attempt > 0 {
 			time.Sleep(notifyRetryDelay(attempt - 1))
 		}
-		req, err := http.NewRequest("POST", backendURL+"/api/internal/alert", bytes.NewReader(payload))
+		req, err := http.NewRequest("POST", backendURL+path, bytes.NewReader(payload))
 		if err != nil {
 			log.Printf("Failed to create alert request: %v\n", err)
 			return
@@ -313,8 +320,8 @@ func notifyBackend(data map[string]interface{}) {
 		resp, err := notifyClient.Do(req)
 		if err != nil {
 			if attempt == notifyAttempts-1 {
-				notifyFailed["network"].Add(1)
-				slog.Warn("alert not delivered to the backend", "event_id", eventID, "reason", "network", "attempts", notifyAttempts, "error", err.Error())
+				failed["network"].Add(1)
+				slog.Warn("alert not delivered to the backend", "path", path, "event_id", eventID, "reason", "network", "attempts", notifyAttempts, "error", err.Error())
 			}
 			continue
 		}
@@ -323,13 +330,13 @@ func notifyBackend(data map[string]interface{}) {
 		case resp.StatusCode < 400:
 			return
 		case resp.StatusCode < 500:
-			notifyFailed["rejected"].Add(1)
+			failed["rejected"].Add(1)
 			slog.Warn("alert rejected by the backend: check INTERNAL_ALERT_TOKEN on the waf and backend services",
-				"event_id", eventID, "status", resp.StatusCode)
+				"path", path, "event_id", eventID, "status", resp.StatusCode)
 			return
 		case attempt == notifyAttempts-1:
-			notifyFailed["server_error"].Add(1)
-			slog.Warn("alert not delivered to the backend", "event_id", eventID, "reason", "server_error",
+			failed["server_error"].Add(1)
+			slog.Warn("alert not delivered to the backend", "path", path, "event_id", eventID, "reason", "server_error",
 				"status", resp.StatusCode, "attempts", notifyAttempts)
 		}
 	}
@@ -473,6 +480,8 @@ func handleReqmod(w icap.ResponseWriter, req *icap.Request) {
 		trafficLog.Write(feature)
 		stats.record(feature, in.Blocked(), categories)
 	}
+
+	queueSignals(in, policy.RequestHost(in.reputationHost(req.Request.Host)), startTime)
 
 	// Log all matches for observability, even if below threshold
 	if len(ruleIDs) > 0 && !in.Blocked() {
@@ -967,6 +976,7 @@ func main() {
 	// Start bounded notification worker pool (circuit breaker pattern)
 	for i := 0; i < maxNotifyWorkers; i++ {
 		go notifyWorker(nil)
+		go signalWorker(nil)
 	}
 	log.Printf("Notification worker pool: %d workers, queue=%d\n", maxNotifyWorkers, cap(notifyChan))
 
@@ -1334,6 +1344,7 @@ func (h *MgmtHandlers) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	)
 
 	writePolicyMetrics(w)
+	writeSignalMetrics(w)
 
 	// REQMOD inspection latency histogram → enables p50/p95/p99 in Prometheus.
 	reqmodLatency.write(w, "waf_reqmod_duration_seconds", "REQMOD request inspection latency in seconds.")
