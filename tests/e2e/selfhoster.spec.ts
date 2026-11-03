@@ -678,6 +678,7 @@ test.describe('UI: Analytics', () => {
       'Cloud services in use',
       'Traffic by kind of service',
       'Downloads by file type',
+      'Most requested destinations',
     ]);
     const perDay = page.getByRole('region', { name: 'Blocked requests per day, by rule' });
     await expect(

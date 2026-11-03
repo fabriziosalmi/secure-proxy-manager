@@ -382,6 +382,7 @@ func (h *AnalyticsHandlers) Register(r chi.Router, authMW func(http.Handler) htt
 	r.With(authMW, etag).Get("/api/analytics/user-agents", h.UserAgents)
 	r.With(authMW, etag).Get("/api/analytics/file-extensions", h.FileExtensions)
 	r.With(authMW, etag).Get("/api/analytics/top-domains", h.TopDomains)
+	r.With(authMW, etag).Get("/api/analytics/top-destinations", h.TopDestinations)
 	r.With(authMW, etag).Get("/api/analytics/blocked-by-day", h.BlockedByDay)
 	r.With(authMW).Get("/api/analytics/coverage", h.Coverage)
 	r.With(authMW, etag).Get("/api/audit-log", h.AuditLog)
@@ -1737,6 +1738,87 @@ func (h *AnalyticsHandlers) TopDomains(w http.ResponseWriter, r *http.Request) {
 		result = append(result, map[string]any{"domain": d, "count": c})
 	}
 	writeOK(w, result)
+}
+
+// TopDestinations answers GET /api/analytics/top-destinations: the 20 hosts
+// the clients asked for most in the analytics window, each with how many of
+// those requests were blocked. The stack's own traffic is left out, as in
+// every analytics count. A host is one row whatever its ports and paths:
+// destinationKey keeps a port other than 80 and 443 (another service, for the
+// other top lists), so the ports are merged here. A database failure is an
+// error, not an empty list.
+func (h *AnalyticsHandlers) TopDestinations(w http.ResponseWriter, r *http.Request) {
+	ext, extArgs := notInternal(h.src.Present())
+	// #nosec G202 -- destinationKey, clientRows and ext are constants and placeholders; values are bound.
+	rows, err := h.db.Query(string(`
+		SELECT `+destinationKey+` AS host, COUNT(*) AS cnt, SUM(blocked) AS blk FROM proxy_logs
+		WHERE destination IS NOT NULL AND destination != ''
+		AND unix_timestamp >= ? AND `+clientRows+` AND `+ext+`
+		GROUP BY host`), append([]any{sinceUnix(analyticsWindow)}, extArgs...)...)
+	if err != nil {
+		writeInternalError(w, "top_destinations", err)
+		return
+	}
+	defer rows.Close()
+	type dest struct {
+		host          string
+		requests, blk int
+	}
+	byHost := map[string]*dest{}
+	for rows.Next() {
+		var hostPort string
+		var cnt, blk int
+		if err := rows.Scan(&hostPort, &cnt, &blk); err != nil {
+			writeInternalError(w, "top_destinations", err)
+			return
+		}
+		host := hostWithoutPort(hostPort)
+		d := byHost[host]
+		if d == nil {
+			d = &dest{host: host}
+			byHost[host] = d
+		}
+		d.requests += cnt
+		d.blk += blk
+	}
+	if err := rows.Err(); err != nil {
+		writeInternalError(w, "top_destinations", err)
+		return
+	}
+	list := make([]*dest, 0, len(byHost))
+	for _, d := range byHost {
+		list = append(list, d)
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].requests != list[j].requests {
+			return list[i].requests > list[j].requests
+		}
+		return list[i].host < list[j].host
+	})
+	if len(list) > 20 {
+		list = list[:20]
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, d := range list {
+		out = append(out, map[string]any{"host": d.host, "requests": d.requests, "blocked": d.blk})
+	}
+	writeOK(w, out)
+}
+
+// hostWithoutPort is "a.test" for "a.test:8443" and "[2001:db8::1]" for
+// "[2001:db8::1]:443"; a bare IPv6 address, which has several colons and no
+// brackets, is left as it is.
+func hostWithoutPort(s string) string {
+	if strings.HasPrefix(s, "[") {
+		if i := strings.Index(s, "]"); i > 0 {
+			return s[:i+1]
+		}
+		return s
+	}
+	if strings.Count(s, ":") == 1 {
+		return s[:strings.Index(s, ":")]
+	}
+	return s
 }
 
 // WAFCategories proxies GET /categories from the WAF container.

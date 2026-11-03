@@ -133,6 +133,27 @@ export const wafStatusQuery = {
   queryFn: () => getData<WafCoverage>('waf/status'),
 };
 
+/** One of the WAF's rule categories, as GET /api/waf/categories relays it. */
+export interface WafCategory {
+  name: string;
+  rules: number;
+  enabled: boolean;
+  /** Logged and never scored, by WAF_OBSERVE_CATEGORIES or the policy; absent from an older WAF. */
+  observe?: boolean;
+}
+
+/**
+ * GET /api/waf/categories: the WAF's rule categories. A WAF that is down
+ * answers 502; that is an answer here (null), not an app-wide toast.
+ */
+export const wafCategoriesQuery = {
+  queryKey: ['waf', 'categories'] as const,
+  queryFn: () => api.get('waf/categories')
+    .then((r) => (Array.isArray(r.data?.data) ? (r.data.data as WafCategory[]) : null))
+    .catch(() => null),
+  retry: false,
+};
+
 /**
  * GET /api/settings: every setting row. The key and the shape are the ones
  * the Settings page caches, so a save there refreshes every reader.

@@ -21,7 +21,7 @@ import { ToggleRow } from '../fields';
 import { RegexPlayground } from '../../RegexPlayground';
 import { WafPolicySection } from './WafPolicySection';
 import { WafRunning } from './WafRunning';
-import { wafStatusQuery } from '../../../lib/queries';
+import { wafCategoriesQuery, wafStatusQuery } from '../../../lib/queries';
 import { formatCount } from '../../../lib/format';
 import type { SectionForm } from '../sectionForm';
 
@@ -219,19 +219,9 @@ export function InspectionSection({ form }: { form: SectionForm }) {
   );
 }
 
-interface WafCategory { name: string; rules: number; enabled: boolean }
-
 /** How many custom patterns the WAF loaded, from GET /api/waf/categories. */
 function CustomPatterns() {
-  const cats = useQuery({
-    queryKey: ['waf', 'categories'],
-    // A WAF that is down answers 502 here; the line below says so, so the
-    // failure is an answer, not an app-wide "failed to load" toast.
-    queryFn: () => api.get('waf/categories')
-      .then((r) => (Array.isArray(r.data?.data) ? (r.data.data as WafCategory[]) : null))
-      .catch(() => null),
-    retry: false,
-  });
+  const cats = useQuery(wafCategoriesQuery);
   let loaded: string;
   if (cats.isPending) loaded = 'Asking the WAF which custom patterns it loaded...';
   else if (cats.isError || !cats.data) loaded = 'The WAF could not be asked which custom patterns it loaded.';

@@ -27,6 +27,8 @@ import (
 //     out unless this is true. A source_ip names the address wanted, so it is
 //     never left out for being internal.
 //   - before_id: a cursor; only rows with a lower id, for "Load older".
+//   - since, until: a time range in Unix seconds, since included and until
+//     left out, on unix_timestamp (indexed). Either may be absent.
 type logFilter struct {
 	sourceIP        string
 	sourceCIDR      bool
@@ -36,6 +38,7 @@ type logFilter struct {
 	q               string
 	includeInternal bool
 	beforeID        int64
+	since, until    int64
 }
 
 // Bounds on the filter values: the longest IPv6 text is 45 bytes, a reason
@@ -85,6 +88,21 @@ func parseLogFilter(r *http.Request) (logFilter, error) {
 			return f, errors.New("before_id must be a positive row id")
 		}
 		f.beforeID = n
+	}
+	for _, t := range []struct {
+		name string
+		dst  *int64
+	}{{"since", &f.since}, {"until", &f.until}} {
+		if s := v.Get(t.name); s != "" {
+			n, err := strconv.ParseInt(s, 10, 64)
+			if err != nil || n < 1 {
+				return f, errors.New(t.name + " must be a time in Unix seconds")
+			}
+			*t.dst = n
+		}
+	}
+	if f.since > 0 && f.until > 0 && f.until <= f.since {
+		return f, errors.New("until must be later than since")
 	}
 	return f, nil
 }
@@ -195,6 +213,12 @@ func (f logFilter) conds() ([]database.SQLText, []any) {
 	}
 	if f.q != "" {
 		c, a = append(c, `destination LIKE ? ESCAPE '\'`), append(a, "%"+escapeLike(f.q)+"%")
+	}
+	if f.since > 0 {
+		c, a = append(c, "unix_timestamp >= ?"), append(a, f.since)
+	}
+	if f.until > 0 {
+		c, a = append(c, "unix_timestamp < ?"), append(a, f.until)
 	}
 	return c, a
 }

@@ -27,6 +27,7 @@ Returns access log rows matching the filters, with pagination metadata.
 | `q` | | A substring of `destination`, case-insensitive for ASCII; `%` and `_` match themselves. At most 256 bytes |
 | `include_internal` | `false` | `true` includes the stack's own traffic (see below) |
 | `before_id` | | Cursor: only rows with a lower `id`. Sets the order to `id` descending and ignores `offset` |
+| `since`, `until` | | A time range in Unix seconds on `unix_timestamp` (indexed): `since` included, `until` left out. Either may be absent; `until` not later than `since` answers `400` |
 
 A malformed filter value is refused with `400`.
 
@@ -132,7 +133,7 @@ GET /api/logs/export
 ```
 
 Streams, as CSV, every row `GET /api/logs` selects for the same filters
-(`source_ip`, `outcome`, `reason`, `q`, `include_internal`, `before_id`),
+(`source_ip`, `outcome`, `reason`, `q`, `include_internal`, `before_id`, `since`, `until`),
 newest first, read 2,000 rows at a time. `limit`, `offset` and `sort` do not
 apply. The file is named `access-log-<date>.csv`. Columns: `id`,
 `timestamp_utc`, `source_ip`, `internal`, `kind`, `method`, `destination`,

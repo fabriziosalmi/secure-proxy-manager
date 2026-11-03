@@ -204,6 +204,49 @@ func TestLogsDestinationSearchIsALiteralSubstring(t *testing.T) {
 	}
 }
 
+// since and until select a time range on unix_timestamp: since included,
+// until left out, with the count of that range. "What happened yesterday at
+// 14:00" needed an export before.
+func TestLogsTimeRange(t *testing.T) {
+	db, _, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	base := time.Date(2026, 11, 2, 14, 0, 0, 0, time.UTC)
+	for i, d := range []string{"a.test", "b.test", "c.test", "d.test", "e.test"} {
+		insertLogRow(t, db, base.Add(time.Duration(i)*30*time.Minute), lanClient, "GET", "http://"+d+"/", i%2, "waf")
+	}
+	h := NewLogHandlers(db)
+	cases := []struct {
+		query string
+		want  []string
+	}{
+		// 14:30 included, 15:30 left out: 14:30 and 15:00.
+		{fmt.Sprintf("since=%d&until=%d", base.Add(30*time.Minute).Unix(), base.Add(90*time.Minute).Unix()), []string{"http://c.test/", "http://b.test/"}},
+		{fmt.Sprintf("since=%d", base.Add(90*time.Minute).Unix()), []string{"http://e.test/", "http://d.test/"}},
+		{fmt.Sprintf("until=%d", base.Add(30*time.Minute).Unix()), []string{"http://a.test/"}},
+		// With the other filters: the blocked rows of the range.
+		{fmt.Sprintf("since=%d&until=%d&outcome=blocked", base.Unix(), base.Add(2*time.Hour).Unix()), []string{"http://d.test/", "http://b.test/"}},
+		{fmt.Sprintf("since=%d&until=%d&outcome=allowed", base.Unix(), base.Add(2*time.Hour).Unix()), []string{"http://c.test/", "http://a.test/"}},
+	}
+	for _, c := range cases {
+		p, code := getLogs(t, h, c.query+"&sort=id&order=desc")
+		if code != http.StatusOK {
+			t.Fatalf("%s: status %d", c.query, code)
+		}
+		var got []string
+		for _, r := range p.Data {
+			got = append(got, r.Destination)
+		}
+		if strings.Join(got, ",") != strings.Join(c.want, ",") || p.Meta.Total != len(c.want) {
+			t.Errorf("%s: got %v (total %d), want %v", c.query, got, p.Meta.Total, c.want)
+		}
+	}
+	for _, q := range []string{"since=abc", "until=-5", "since=0", fmt.Sprintf("since=%d&until=%d", base.Unix(), base.Unix())} {
+		if _, code := getLogs(t, h, q); code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", q, code)
+		}
+	}
+}
+
 // before_id pages back through the log in id order; the pages neither
 // overlap nor skip a row.
 func TestLogsCursorPagesOlderRows(t *testing.T) {
@@ -273,6 +316,7 @@ func TestLogCountsEqualTheDirectCount(t *testing.T) {
 		{outcome: "allowed"}, {outcome: "allowed", includeInternal: true},
 		{outcome: "blocked"}, {reason: "domain_blacklist"}, {reason: "domain_blacklist", includeInternal: true},
 		{q: "test"}, {q: "host-only", outcome: "allowed"}, {sourceIP: hostGateway, outcome: "allowed"},
+		{since: 1, until: time.Now().Add(time.Hour).Unix(), outcome: "allowed"}, {since: time.Now().Add(time.Hour).Unix()},
 	} {
 		w, a := f.where(internal, false)
 		var direct int

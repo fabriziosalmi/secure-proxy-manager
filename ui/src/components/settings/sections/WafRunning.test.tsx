@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { renderWithProviders } from '../../../test/helpers'
 import { api } from '../../../lib/api'
 import { WafRunning } from './WafRunning'
@@ -51,5 +51,22 @@ describe('WafRunning', () => {
     serve({ status: 'unreachable', categories: null, categories_enabled: null, rules: null, rules_enabled: null })
     renderWithProviders(<WafRunning />)
     expect(await screen.findByText('Not known. The backend cannot reach the WAF.')).toBeInTheDocument()
+  })
+
+  // The categories the coverage counts, each with whether it scores, only
+  // logs or is off, so a category the policy observes can be seen.
+  it('lists the rule categories and what each does', async () => {
+    vi.spyOn(api, 'get').mockImplementation(((url: string) => Promise.resolve({ data: url === 'waf/categories'
+      ? { status: 'ok', data: [
+        { name: 'XSS_ATTACKS', rules: 72, enabled: true, observe: false },
+        { name: 'CLOUD_SECRETS', rules: 30, enabled: true, observe: true },
+        { name: 'SQL_INJECTION', rules: 100, enabled: false, observe: false },
+      ] }
+      : { data: { ...ok, running } } })) as never)
+    renderWithProviders(<WafRunning />)
+    const summary = await screen.findByText('Rule categories: 3 (1 only logged, 1 off)')
+    const table = within(summary.closest('details') as HTMLElement).getByRole('table')
+    const rows = within(table).getAllByRole('row').slice(1).map((r) => r.textContent)
+    expect(rows).toEqual(['Cloud secrets30Only logged', 'Cross-site scripting72Scores', 'SQL injection100Off'])
   })
 })

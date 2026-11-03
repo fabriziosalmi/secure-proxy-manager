@@ -234,6 +234,11 @@ export function answer(url: URL): Json | undefined {
       { name: 'Facebook', domain: 'facebook.com', requests: 4, category: 'Social' },
     ]);
     case 'analytics/user-agents': return ok({ methods: [], service_types: [{ name: 'Apple', count: 4445 }, { name: 'Other', count: 3086 }, { name: 'Google Services', count: 418 }] });
+    case 'analytics/top-destinations': return ok([
+      { host: 'gateway.icloud.com', requests: 4210, blocked: 0 },
+      { host: 'a-very-long-subdomain-name.cdn.some-content-delivery-network.example.com', requests: 1180, blocked: 12 },
+      { host: 'static.chartbeat.com', requests: 640, blocked: 640 },
+    ]);
     case 'analytics/file-extensions': return ok({ extensions: [], categories: [], examined: 0, limit: 10000 });
     case 'clients/statistics': return { status: 'success', ...clients };
     case 'logs/stats': return ok({ total_count: 6539, blocked_count: 145, blocked_by_reason: [r('domain_blacklist', 'Domain blacklist (proxy)', 100)] });

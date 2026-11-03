@@ -29,7 +29,7 @@ import { useMediaQuery, DESKTOP_QUERY } from '../hooks/useMediaQuery';
 import { api, getData, getErrorMessage } from '../lib/api';
 import { formatBytes, formatCount, formatWhen, formatWhenExact, viewerZone } from '../lib/format';
 import {
-  allowableDomain, allowableEgress, apiParams, ipBlacklistLink, hasFilters, isBlocked, isHttpCode, maskedToNetwork, matchesFilters, readFilters, splitStatus, squidResultText, statusTone, whyText,
+  allowableDomain, allowableEgress, apiParams, emptyRange, fromLocalInput, hasFilters, ipBlacklistLink, isBlocked, isHttpCode, maskedToNetwork, matchesFilters, readFilters, splitStatus, squidResultText, statusTone, toLocalInput, whyText,
   writeFilters,
   NO_FILTERS, type LogFilters, type Outcome,
 } from '../lib/accessLog';
@@ -155,8 +155,12 @@ export function Logs() {
   }, [search]);
 
   const query = apiParams(filters, showInternal).toString();
+  // A range that can hold no request is not sent: the backend refuses it,
+  // and the table says why instead of "did not answer".
+  const noRange = emptyRange(filters);
   const logs = useInfiniteQuery({
     queryKey: ['logs', 'page', query],
+    enabled: !noRange,
     queryFn: ({ pageParam }) => {
       const p = new URLSearchParams(query);
       p.set('limit', String(PAGE_SIZE));
@@ -320,6 +324,8 @@ export function Logs() {
   };
 
   const exportCsv = async () => {
+    // The backend refuses a range that can hold no request; the table says so.
+    if (noRange) return;
     setExporting(true);
     try {
       const res = await api.get(`logs/export?${query}`, { responseType: 'blob' });
@@ -446,7 +452,9 @@ export function Logs() {
   const hidden = firstMeta?.internal ?? 0;
   const filtered = hasFilters(filters);
   let empty: { title: string; description: ReactNode; action?: ReactNode };
-  if (filtered) {
+  if (noRange) {
+    empty = { title: 'Until is not later than From', description: 'No request can be in that range. Change one of the two times.' };
+  } else if (filtered) {
     empty = {
       title: 'No request matches these filters',
       description: hidden > 0 && !showInternal
@@ -511,7 +519,7 @@ export function Logs() {
               Live updates
             </Button>
             <span role="status" aria-label="Live updates" className="self-center text-xs text-ink-muted">{liveState}</span>
-            <Button icon={<Download />} onClick={() => { void exportCsv(); }} disabled={exporting}>
+            <Button icon={<Download />} onClick={() => { void exportCsv(); }} disabled={exporting || noRange}>
               {exporting ? 'Exporting' : 'Export CSV'}
             </Button>
           </>
@@ -546,6 +554,25 @@ export function Logs() {
             {ruleOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </label>
+        {/* On the viewer's clock, as every time on the page. */}
+        <label className="flex min-w-0 items-center gap-2 text-sm text-ink-secondary">
+          From
+          <input
+            type="datetime-local"
+            className={SELECT_CLASS}
+            value={filters.since ? toLocalInput(filters.since) : ''}
+            onChange={(e) => setFilters({ since: fromLocalInput(e.target.value) })}
+          />
+        </label>
+        <label className="flex min-w-0 items-center gap-2 text-sm text-ink-secondary">
+          Until
+          <input
+            type="datetime-local"
+            className={SELECT_CLASS}
+            value={filters.until ? toLocalInput(filters.until) : ''}
+            onChange={(e) => setFilters({ until: fromLocalInput(e.target.value) })}
+          />
+        </label>
         <div className="flex h-9 items-center gap-2.5 rounded-control border border-line-strong bg-surface px-3 text-sm text-ink-secondary">
           <Switch labelledBy={switchLabelId} checked={showInternal} onChange={toggleInternal} />
           <span id={switchLabelId}>Show internal traffic</span>
@@ -558,7 +585,7 @@ export function Logs() {
           columns={columns}
           rows={rows}
           rowKey={(r) => r.key}
-          loading={logs.isPending}
+          loading={logs.isPending && !noRange}
           error={logs.isError ? 'logs did not answer.' : null}
           onRetry={() => { void logs.refetch(); }}
           empty={empty}
@@ -574,7 +601,7 @@ export function Logs() {
             )}
             {logs.hasNextPage && loaded >= MAX_LOADED && (
               <p className="text-[13px] text-ink-muted">
-                The newest {formatCount(MAX_LOADED)} are loaded. Search, filter or export the log to reach older requests.
+                The newest {formatCount(MAX_LOADED)} are loaded. Search, filter, pick a time range or export the log to reach older requests.
               </p>
             )}
           </div>
