@@ -145,7 +145,7 @@ def beacons(out_path, parquet, n, seed, real_path=None, client=None, minutes=30,
                 method, url, ctx = "CONNECT", f"{c['host']}:{c['port']}", "nobump"
             else:
                 port = "" if c["port"] == 80 else f":{c['port']}"
-                method, url, ctx = "GET", f"http://{c['host']}{port}{c['uri']}", "bump"
+                method, url, ctx = "GET", f"http://{c['host']}{port}{c['uri']}", "bump"  # slopless-disable-line VBC-034 -- a plain-HTTP beacon configuration is a plain-HTTP request as the proxy sees it
             sent = 0
 
             def beacon_recs():
