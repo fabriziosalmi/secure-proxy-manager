@@ -47,6 +47,17 @@ parses() {
   " >/dev/null 2>&1
 }
 
+# What squid says while it parses the config the generator produced.
+parse_log() {
+  local seed="$1"
+  docker run --rm --memory 256m --entrypoint /bin/bash "$IMAGE" -c "
+    mkdir -p /config /etc/squid
+    $seed
+    /usr/local/bin/generate_squid_conf.sh >/dev/null 2>&1
+    /usr/sbin/squid -k parse 2>&1
+  " 2>/dev/null
+}
+
 echo "── baseline (no toggles) ──"
 conf="$(generate 'true')"
 case "$conf" in *__GENERATOR_FAILED__*) bad "generator runs" "$conf";; *) ok "generator runs";; esac
@@ -56,6 +67,11 @@ grep -q 'http_access deny all' <<<"$conf" && ok "terminating deny present"  || b
 grep -q 'icap_service service_req' <<<"$conf" && ok "ICAP REQMOD wired"     || bad "ICAP REQMOD wired"
 grep -q 'bypass=0' <<<"$conf"         && ok "REQMOD fails closed (bypass=0)" || bad "REQMOD fails closed (bypass=0)"
 parses 'true' && ok "squid -k parse accepts it" || bad "squid -k parse accepts it"
+# Squid logs an obsolete directive as ERROR and a deprecated value as WARNING
+# on every start (dns_v4_first, pipeline_prefetch on): noise that hides a real
+# error in the log an admin reads first.
+stale="$(parse_log 'true' | grep -iE 'obsolete|deprecated' || true)"
+[ -z "$stale" ] && ok "squid finds no obsolete or deprecated directive" || bad "squid finds no obsolete or deprecated directive" "$stale"
 # The watchdog's localhost fetch of the cache manager (cache statistics) is
 # neither logged as client traffic nor sent to the WAF. A LAN client's attempt
 # at the manager is still both: the ACL needs localhost AND manager.
