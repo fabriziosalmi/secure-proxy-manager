@@ -348,6 +348,27 @@ export interface NotificationStatus {
   channels: Record<string, ChannelDelivery>;
 }
 
+/** One advisory GET /api/security/cve matched to the running Squid (workers/cve_checker.go). */
+export interface SquidCve {
+  id: string;
+  severity: string;
+  summary: string;
+}
+
+/** GET /api/security/cve. */
+export interface CveInfo {
+  version?: string;
+  cves_checked?: boolean;
+  cves?: SquidCve[];
+}
+
+/** One host of GET /api/analytics/top-destinations: client requests of the last 7 days. */
+export interface TopDestination {
+  host: string;
+  requests: number;
+  blocked: number;
+}
+
 /**
  * What the WAF runs, from its GET /health (backend analytics_coverage.go).
  * engine "hybrid" adds the OWASP Core Rule Set; threshold is the score that

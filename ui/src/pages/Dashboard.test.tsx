@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { renderWithProviders, simulateItalianLocale, setRomeTimeZone } from '../test/helpers'
 import { expectNoAxeViolations } from '../test/axe'
 import { Dashboard } from './Dashboard'
@@ -127,6 +127,53 @@ describe('Dashboard (Overview)', () => {
     await waitFor(() => { expect(card('Client requests')).toHaveTextContent('1,180') })
     expect(within(card('Blocked')).getByRole('link', { name: 'Blocked' }).getAttribute('href')).toMatch(/^\/logs\?.*outcome=blocked/)
     expect(within(card('Active clients')).getByRole('link', { name: 'Active clients' })).toHaveAttribute('href', '/clients')
+  })
+
+  // The count said there were advisories, not which: the list is under the
+  // proxy's line, read only when there are some.
+  it('lists the advisories behind the proxy CVE count, and asks for none when there are none', async () => {
+    serve({
+      ...DEFAULT_ROUTES,
+      status: { proxy_status: 'running', proxy_port: '3128', version: '3.14.3', squid_version: '6.13', squid_cves: 2, cves_checked: true },
+      'security/cve': { version: '6.13', cves_checked: true, cves: [
+        { id: 'CVE-2024-45802', severity: 'high', summary: 'DoS via ESI processing (Squid <6.10)' },
+        { id: 'CVE-2026-33526', severity: 'medium', summary: 'DoS via ICP protocol handling (only if ICP enabled)' },
+      ] },
+    })
+    renderWithProviders(<Dashboard />)
+    expect(await screen.findByText('Which 2 advisories')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'CVE-2024-45802' })).toHaveAttribute('href', 'https://nvd.nist.gov/vuln/detail/CVE-2024-45802')
+    expect(screen.getByText(/only if ICP enabled/)).toBeInTheDocument()
+  })
+
+  // The list must follow the count: a refresh that reports none (Squid was
+  // updated) takes the old advisories away instead of keeping them cached.
+  it('drops the advisories when a status refresh reports none', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      let cves = 2
+      vi.mocked(api.get).mockImplementation(((url: string) => {
+        if (url === 'status') return Promise.resolve({ data: { data: { proxy_status: 'running', proxy_port: '3128', squid_version: '6.13', squid_cves: cves, cves_checked: true } } })
+        if (url === 'security/cve') return Promise.resolve({ data: { data: { version: '6.13', cves_checked: true, cves: [{ id: 'CVE-2024-45802', severity: 'high', summary: 'DoS via ESI processing' }, { id: 'CVE-2024-25111', severity: 'high', summary: 'chunked decoding DoS' }] } } })
+        for (const [path, data] of Object.entries(DEFAULT_ROUTES)) if (url.startsWith(path)) return Promise.resolve({ data: { data } })
+        return Promise.resolve({ data: { data: null } })
+      }) as never)
+      renderWithProviders(<Dashboard />)
+      expect(await screen.findByText('Which 2 advisories')).toBeInTheDocument()
+      cves = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(31_000) })
+      await waitFor(() => expect(screen.queryByText(/advisor/)).toBeNull())
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not ask for the advisories when the proxy has none', async () => {
+    renderWithProviders(<Dashboard />)
+    await waitFor(() => { expect(card('Client requests')).toHaveTextContent('1,180') })
+    await waitFor(() => { expect(vi.mocked(api.get).mock.calls.map((c) => c[0])).toContain('status') })
+    expect(vi.mocked(api.get).mock.calls.map((c) => c[0])).not.toContain('security/cve')
+    expect(screen.queryByText(/advisor/)).toBeNull()
   })
 
   it('counts one rule in the singular', async () => {

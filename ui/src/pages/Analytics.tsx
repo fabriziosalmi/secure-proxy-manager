@@ -9,7 +9,8 @@
  * - waf/stats (or waf_status saying why not): the WAF's own category counters,
  *   the only WAF call: the dashboard summary is not downloaded for it;
  * - analytics/shadow-it, analytics/user-agents, analytics/file-extensions:
- *   services, kinds of service and file types of the last 7 days.
+ *   services, kinds of service and file types of the last 7 days;
+ * - analytics/top-destinations: the hosts asked for most in the last 7 days.
  *
  * "Client traffic" is what the Overview counts: no DNS sinkhole rows and
  * nothing from the stack's own addresses (#422).
@@ -25,13 +26,14 @@ import { Link } from 'react-router';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getData } from '../lib/api';
-import type { BlockedByDay, Coverage, FileExtData, ServiceTypeData, ShadowItService } from '../types';
+import type { BlockedByDay, Coverage, FileExtData, ServiceTypeData, ShadowItService, TopDestination } from '../types';
 import { readWafStats, type WafReading } from '../lib/wafStats';
 import { PageHeader } from '../components/ui/PageHeader';
 import { BlockedPerDay } from '../components/analytics/BlockedPerDay';
 import { ProtectionCoverage } from '../components/analytics/ProtectionCoverage';
 import { FileTypes, ServiceKinds, ServicesInUse, WafCategories } from '../components/analytics/TrafficSections';
 import { viewerTimeZone } from '../components/analytics/days';
+import { TopDestinations } from '../components/analytics/TopDestinations';
 
 const REFETCH = 60_000;
 
@@ -88,6 +90,11 @@ export function Analytics() {
     queryFn: () => getData<FileExtData>('analytics/file-extensions'),
     refetchInterval,
   });
+  const top = useQuery<TopDestination[] | null>({
+    queryKey: ['analytics', 'top-destinations'],
+    queryFn: () => getData<TopDestination[]>('analytics/top-destinations'),
+    refetchInterval,
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -116,6 +123,8 @@ export function Analytics() {
         <ServiceKinds kinds={state(kinds)} />
         <FileTypes files={state(files)} />
       </div>
+
+      <TopDestinations rows={top.data} loading={top.isPending} error={top.isError} onRetry={() => { void top.refetch(); }} />
     </div>
   );
 }

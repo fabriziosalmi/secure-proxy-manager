@@ -317,6 +317,30 @@ describe('Logs', () => {
     expect(new URLSearchParams(window.location.search).get('client')).toBe('192.168.1.10')
   })
 
+  // "What happened yesterday at 14:00": a range on the browser clock, sent
+  // as Unix seconds; a range that can hold nothing is not sent.
+  it('filters a time range on the browser clock, and says when the range is empty', async () => {
+    const restoreTz = setRomeTimeZone()
+    try {
+      renderWithProviders(<Logs />)
+      await waitFor(() => expect(logCalls().length).toBe(1))
+      fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-11-02T14:00' } })
+      await waitFor(() => expect(lastLogParams().get('since')).toBe(String(Date.UTC(2026, 10, 2, 13, 0) / 1000)))
+      fireEvent.change(screen.getByLabelText('Until'), { target: { value: '2026-11-02T15:00' } })
+      await waitFor(() => expect(lastLogParams().get('until')).toBe(String(Date.UTC(2026, 10, 2, 14, 0) / 1000)))
+      expect(new URLSearchParams(window.location.search).get('since')).toBe(String(Date.UTC(2026, 10, 2, 13, 0) / 1000))
+
+      const sent = logCalls().length
+      fireEvent.change(screen.getByLabelText('Until'), { target: { value: '2026-11-02T13:00' } })
+      expect(await screen.findByText('Until is not later than From')).toBeInTheDocument()
+      expect(logCalls().length).toBe(sent)
+      // The export would be refused the same way: it is not offered.
+      expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
+    } finally {
+      restoreTz()
+    }
+  })
+
   it('searches the destination once typing stops, not on every key', async () => {
     renderWithProviders(<Logs />)
     await waitFor(() => expect(logCalls().length).toBe(1))
@@ -389,7 +413,7 @@ describe('Logs', () => {
     }
     await waitFor(() => expect(bodyRows()).toHaveLength(MAX_LOADED))
     expect(screen.queryByRole('button', { name: 'Load older' })).not.toBeInTheDocument()
-    expect(screen.getByText('The newest 1,000 are loaded. Search, filter or export the log to reach older requests.')).toBeInTheDocument()
+    expect(screen.getByText('The newest 1,000 are loaded. Search, filter, pick a time range or export the log to reach older requests.')).toBeInTheDocument()
     logsBody = () => page([allowed, dnsBlock, wafBlock, oldBlock])
   }, 30_000)
 
