@@ -52,6 +52,10 @@ var probeDialer = &net.Dialer{Timeout: 1 * time.Second}
 // error:transaction-end-before-headers, measured on Squid 7.7), unless its
 // access_log is limited to transactions that have a request, which
 // proxy/generate_squid_conf.sh does (spm_has_request).
+// ProbeProxy is probeProxy for the proxy watch (workers.StartProxyWatch), so
+// the alert and GET /api/status judge the proxy by one check.
+func ProbeProxy(ctx context.Context, proxyURL string) bool { return probeProxy(ctx, proxyURL) }
+
 func probeProxy(ctx context.Context, proxyURL string) bool {
 	u, err := url.Parse(proxyURL)
 	if err != nil || u.Hostname() == "" {

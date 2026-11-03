@@ -46,7 +46,11 @@ const (
 	settingMaxPerHour         = "notify_max_per_hour"
 	settingNotifyWAFBlock     = "notify_waf_block"
 	settingNotifyLoginFailure = "notify_login_failure"
-	settingMinLevel           = "notify_min_level"
+	// settingNotifySystem switches off the events the backend's own workers
+	// raise (workers/alerts.go): the proxy down and back, a blocklist feed
+	// that failed to download, a new version.
+	settingNotifySystem = "notify_system"
+	settingMinLevel     = "notify_min_level"
 
 	defaultGroupWindowMinutes = 10
 	defaultMaxPerHour         = 20
@@ -64,8 +68,12 @@ var levelName = []string{"info", "warning", "error"}
 // eventTypeSwitch is the setting that switches an event type off, for the
 // types that have one.
 var eventTypeSwitch = map[string]string{
-	"waf_block":     settingNotifyWAFBlock,
-	"login_failure": settingNotifyLoginFailure,
+	"waf_block":                settingNotifyWAFBlock,
+	"login_failure":            settingNotifyLoginFailure,
+	"proxy_down":               settingNotifySystem,
+	"proxy_up":                 settingNotifySystem,
+	"blocklist_refresh_failed": settingNotifySystem,
+	"update_available":         settingNotifySystem,
 }
 
 // Bounds on what the limiter holds, so a flood from many addresses costs

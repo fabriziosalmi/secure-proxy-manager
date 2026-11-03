@@ -65,6 +65,7 @@ var settingValidators = map[string]func(string) error{
 	settingMaxPerHour:         validBoundedInt(1, maxMaxPerHour, "alerts"),
 	settingNotifyWAFBlock:     validBool,
 	settingNotifyLoginFailure: validBool,
+	settingNotifySystem:       validBool,
 	settingMinLevel:           validAlertLevel,
 	// The proxy login (proxy_login.go). Both end up in proxy_users.htpasswd,
 	// one line of "username:hash" that Squid's helper reads.

@@ -261,6 +261,21 @@ func TestOffTypesAndLowLevelsAreNotSent(t *testing.T) {
 	if limitsFrom(map[string]string{settingNotifyLoginFailure: "false"}).wants(login) {
 		t.Error("a failed sign-in was wanted with failed sign-ins off")
 	}
+	// notify_system switches off every event the backend's workers raise,
+	// and nothing else.
+	noSystem := limitsFrom(map[string]string{settingNotifySystem: "false"})
+	for _, typ := range []string{"proxy_down", "proxy_up", "blocklist_refresh_failed", "update_available"} {
+		ev := map[string]any{"event_type": typ, "level": "error"}
+		if noSystem.wants(ev) {
+			t.Errorf("%s was wanted with system events off", typ)
+		}
+		if !defaultLimits.wants(ev) {
+			t.Errorf("%s was not wanted by default", typ)
+		}
+	}
+	if !noSystem.wants(login) || !noSystem.wants(wafBlock("192.0.2.1", "SQLI")) {
+		t.Error("turning system events off turned other alerts off")
+	}
 }
 
 // A value out of range in the database is read as the default, not as no

@@ -104,6 +104,17 @@ func runRefresh(db *sql.DB) {
 		details = nil
 	}
 	database.Audit(db, "system", "refresh_blacklists", "", string(details))
+	// The feeds' URLs stay out of the alert: a custom one can carry a key.
+	failed, total := 0, 0
+	for _, c := range counts {
+		failed += c.Failed
+		total += c.Failed + c.Fetched
+	}
+	if failed > 0 {
+		raiseAlert("blocklist_refresh_failed", "warning", fmt.Sprintf(
+			"The blocklist refresh could not download %d of %d feeds; the lists keep the entries they had. The backend log names the feeds.",
+			failed, total))
+	}
 }
 
 func refreshAll(db *sql.DB) map[string]refreshCount {

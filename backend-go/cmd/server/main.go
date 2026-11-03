@@ -152,6 +152,17 @@ func run() error {
 	// while the UI kept showing the operator's choice (SECURE-CONF-02).
 	workers.StartWAFReconciler(workerCtx, db, cfg.WAFURL,
 		workers.WAFAuth{Token: cfg.AlertToken, User: cfg.WAFServiceUser, Pass: cfg.WAFServicePass})
+	// The workers' own events (the proxy down and back, a blocklist feed that
+	// failed, a new version) go to the same queue as the security alerts;
+	// a full queue drops the event rather than stall the worker.
+	workers.SetAlertSink(func(event map[string]any) {
+		select {
+		case notify <- event:
+		default:
+			log.Warn().Interface("event_type", event["event_type"]).Msg("alert queue full; event dropped")
+		}
+	})
+	workers.StartProxyWatch(workerCtx, proxyURLHost(cfg.ProxyURL), func(ctx context.Context) bool { return handlers.ProbeProxy(ctx, cfg.ProxyURL) })
 	workers.StartUpdateChecker(workerCtx, "")
 	workers.CheckSquidCVEs()
 
